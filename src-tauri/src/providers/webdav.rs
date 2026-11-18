@@ -405,6 +405,42 @@ fn webdav_redirect_policy() -> reqwest::redirect::Policy {
     })
 }
 
+/// The redirect policy of a client that trusts the Filen bridge's self-signed
+/// certificate: a redirect is followed only to the bridge's own origin, so the
+/// relaxed checks never reach another server.
+fn bridge_redirect_policy() -> reqwest::redirect::Policy {
+    reqwest::redirect::Policy::custom(|attempt| {
+        let leaves_the_bridge = attempt
+            .previous()
+            .first()
+            .is_none_or(|first| first.origin() != attempt.url().origin());
+        if leaves_the_bridge {
+            let message = format!(
+                "redirect to {} refused: it leaves the Filen bridge",
+                crate::local_bridge::url_origin(attempt.url().as_str())
+            );
+            attempt.error(message)
+        } else if attempt.previous().len() >= 10 {
+            attempt.error("too many redirects")
+        } else {
+            attempt.follow()
+        }
+    })
+}
+
+/// How a WebDAV connection checks the server's TLS certificate.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CertificateTrust {
+    /// Checked: the default.
+    Verified,
+    /// Not checked: the user turned verification off for this server.
+    UserDisabled,
+    /// Not checked for the Filen Desktop bridge our probe found answering
+    /// HTTPS on 127.0.0.1 during this connect, whose certificate is
+    /// self-signed. No system proxy, no redirect to another origin.
+    FilenBridge,
+}
+
 /// The refused redirect inside a failed send, if that is what failed.
 fn insecure_redirect(e: &reqwest::Error) -> Option<&InsecureRedirect> {
     let mut source = std::error::Error::source(e);
@@ -556,6 +592,9 @@ fn path_violates_root(path: &str, boundary: Option<&str>) -> bool {
 pub struct WebDavProvider {
     config: WebDavConfig,
     client: Client,
+    /// The certificate policy `client` was built with, decided again on
+    /// every connect.
+    certificate_trust: CertificateTrust,
     current_path: String,
     connected: bool,
     /// Digest auth state (set during connect if server requires it)
@@ -1047,13 +1086,19 @@ impl WebDavProvider {
                 config.url
             );
         }
-        let client = Self::http_client(&config, !config.verify_cert)?;
+        let certificate_trust = if config.verify_cert {
+            CertificateTrust::Verified
+        } else {
+            CertificateTrust::UserDisabled
+        };
+        let client = Self::http_client(&config, certificate_trust)?;
 
         let infinity_refused = infinity_refused_from_the_start(config.provider_id.as_deref());
         let profile_url = config.url.clone();
         Ok(Self {
             config,
             client,
+            certificate_trust,
             current_path: "/".to_string(),
             connected: false,
             digest_auth: None,
@@ -1070,15 +1115,15 @@ impl WebDavProvider {
         })
     }
 
-    /// The HTTP client of a connection to `config`, with certificate checks
-    /// off when `accept_invalid_certs`.
+    /// The HTTP client of a connection to `config`, checking certificates as
+    /// `trust` says.
     fn http_client(
         config: &WebDavConfig,
-        accept_invalid_certs: bool,
+        trust: CertificateTrust,
     ) -> Result<Client, ProviderError> {
         let mut client_builder = Client::builder()
             .user_agent(crate::providers::AEROFTP_WEBDAV_USER_AGENT)
-            .danger_accept_invalid_certs(accept_invalid_certs)
+            .danger_accept_invalid_certs(trust != CertificateTrust::Verified)
             .connect_timeout(crate::providers::http_limits::limit(
                 std::time::Duration::from_secs(30),
             ))
@@ -1102,6 +1147,9 @@ impl WebDavProvider {
         // request costs nothing and removes the stale-reuse failure class.
         if super::mega_df::is_megacmd_webdav_provider_id(config.provider_id.as_deref()) {
             client_builder = client_builder.pool_max_idle_per_host(0);
+        }
+        if trust == CertificateTrust::FilenBridge {
+            client_builder = client_builder.no_proxy().redirect(bridge_redirect_policy());
         }
 
         client_builder
@@ -4042,20 +4090,35 @@ impl StorageProvider for WebDavProvider {
         // connect survives either choice, pinning the loopback IP to dodge
         // local.webdav.filen.io DNS NODATA on Windows.
         if self.config.provider_id.as_deref() == Some("filen-desktop-webdav") {
-            if let Some(live) = crate::local_bridge::detected_bridge_url(&self.config.url).await {
-                if live != self.config.url {
+            let live = crate::local_bridge::detected_bridge_url(&self.config.url).await;
+            if let Some(live) = &live {
+                if *live != self.config.url {
                     tracing::info!(
                         "[WEBDAV] Filen bridge reconciled to {}",
-                        crate::local_bridge::url_origin(&live)
+                        crate::local_bridge::url_origin(live)
                     );
-                    self.config.url = live;
+                    self.config.url = live.clone();
                 }
-                // Filen Desktop serves HTTPS with a self-signed certificate.
-                // Trusted only here: the Filen preset, a URL our own probe
-                // just found answering HTTPS, on the literal 127.0.0.1 it pins.
-                if self.config.verify_cert && self.config.url.starts_with("https://127.0.0.1:") {
-                    self.client = Self::http_client(&self.config, true)?;
-                }
+            }
+            // Filen Desktop serves HTTPS with a self-signed certificate.
+            // Trusted only here: the Filen WebDAV preset, a URL our own probe
+            // found answering HTTPS during THIS connect, on the literal
+            // 127.0.0.1 it pins and the WebDAV bridge's own port. Decided
+            // again on every connect, so it never outlives that probe.
+            let trust = if !self.config.verify_cert {
+                CertificateTrust::UserDisabled
+            } else if live.is_some()
+                && self.config.url.starts_with("https://127.0.0.1:")
+                && crate::local_bridge::bridge_default_port(&self.config.url)
+                    == crate::local_bridge::bridge_kind_default_port("filen-webdav")
+            {
+                CertificateTrust::FilenBridge
+            } else {
+                CertificateTrust::Verified
+            };
+            if trust != self.certificate_trust {
+                self.client = Self::http_client(&self.config, trust)?;
+                self.certificate_trust = trust;
             }
         }
         if super::mega_df::is_megacmd_webdav_provider_id(self.config.provider_id.as_deref()) {
@@ -9775,12 +9838,34 @@ mod filen_bridge_certificate_tests {
 
     /// A self-signed HTTPS WebDAV root on a free loopback port.
     async fn self_signed_bridge() -> (u16, tokio::task::JoinHandle<()>) {
+        let reply = format!(
+            "HTTP/1.1 207 Multi-Status\r\nContent-Type: application/xml\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{ROOT_207}",
+            ROOT_207.len()
+        );
+        let (port, server, _) = self_signed_server(reply).await;
+        (port, server)
+    }
+
+    /// A self-signed HTTPS server on a free loopback port answering every
+    /// request with `reply`, and the count of requests it has read.
+    async fn self_signed_server(
+        reply: String,
+    ) -> (
+        u16,
+        tokio::task::JoinHandle<()>,
+        std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    ) {
         let acceptor = super::collection_redirect_tests::tls_acceptor();
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
+        let requests = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counted = requests.clone();
+        let reply = std::sync::Arc::new(reply);
         let server = tokio::spawn(async move {
             while let Ok((stream, _)) = listener.accept().await {
                 let acceptor = acceptor.clone();
+                let counted = counted.clone();
+                let reply = reply.clone();
                 tokio::spawn(async move {
                     let Ok(mut stream) = acceptor.accept(stream).await else {
                         return;
@@ -9793,16 +9878,22 @@ mod filen_bridge_certificate_tests {
                             Ok(n) => request.extend_from_slice(&chunk[..n]),
                         }
                     }
-                    let reply = format!(
-                        "HTTP/1.1 207 Multi-Status\r\nContent-Type: application/xml\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{ROOT_207}",
-                        ROOT_207.len()
-                    );
+                    counted.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                     let _ = stream.write_all(reply.as_bytes()).await;
                     let _ = stream.shutdown().await;
                 });
             }
         });
-        (port, server)
+        (port, server, requests)
+    }
+
+    /// Stops a fixture server and waits until its listener is closed.
+    async fn stop(server: tokio::task::JoinHandle<()>) {
+        server.abort();
+        let stopped = tokio::time::timeout(std::time::Duration::from_secs(5), server)
+            .await
+            .expect("server still running");
+        assert!(stopped.unwrap_err().is_cancelled());
     }
 
     fn config(url: String, provider_id: Option<&str>) -> WebDavConfig {
@@ -9842,6 +9933,75 @@ mod filen_bridge_certificate_tests {
         let outcome = provider.connect().await;
         server.abort();
         assert!(outcome.is_err(), "a self-signed certificate was accepted");
+    }
+
+    /// The exception is earned by the probe of one connect: when the bridge
+    /// is gone at the next connect, that connect checks certificates again.
+    #[tokio::test]
+    async fn the_certificate_exception_does_not_outlive_the_probe_that_earned_it() {
+        let (port, server) = self_signed_bridge().await;
+        crate::local_bridge::alias_test_port(port, 1900);
+        let mut provider = WebDavProvider::new(config(
+            format!("https://127.0.0.1:{port}/"),
+            Some("filen-desktop-webdav"),
+        ))
+        .unwrap();
+        provider
+            .connect()
+            .await
+            .expect("the HTTPS bridge must connect");
+        assert_eq!(provider.certificate_trust, CertificateTrust::FilenBridge);
+        stop(server).await;
+        assert!(provider.connect().await.is_err());
+        assert_eq!(provider.certificate_trust, CertificateTrust::Verified);
+    }
+
+    /// Filen Desktop runs an S3 bridge too (port 1800). The Filen WebDAV
+    /// preset pointed at it is not its own bridge, so its certificate is
+    /// checked.
+    #[tokio::test]
+    async fn the_filen_webdav_preset_on_the_s3_bridge_port_keeps_checking() {
+        let (port, server) = self_signed_bridge().await;
+        crate::local_bridge::alias_test_port(port, 1800);
+        let mut provider = WebDavProvider::new(config(
+            format!("https://127.0.0.1:{port}/"),
+            Some("filen-desktop-webdav"),
+        ))
+        .unwrap();
+        let outcome = provider.connect().await;
+        server.abort();
+        assert!(outcome.is_err(), "a self-signed certificate was accepted");
+        assert_eq!(provider.certificate_trust, CertificateTrust::Verified);
+    }
+
+    /// The relaxed checks stay on the bridge: a redirect to another origin,
+    /// itself self-signed, is refused before any request reaches it.
+    #[tokio::test]
+    async fn a_redirect_from_the_bridge_to_another_origin_is_not_followed() {
+        let (other, other_server, other_requests) = self_signed_server(format!(
+            "HTTP/1.1 207 Multi-Status\r\nContent-Type: application/xml\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{ROOT_207}",
+            ROOT_207.len()
+        ))
+        .await;
+        let (port, server, _) = self_signed_server(format!(
+            "HTTP/1.1 302 Found\r\nLocation: https://127.0.0.1:{other}/\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+        ))
+        .await;
+        crate::local_bridge::alias_test_port(port, 1900);
+        let mut provider = WebDavProvider::new(config(
+            format!("https://127.0.0.1:{port}/"),
+            Some("filen-desktop-webdav"),
+        ))
+        .unwrap();
+        let outcome = provider.connect().await;
+        server.abort();
+        other_server.abort();
+        assert!(outcome.is_err(), "the bridge's redirect was followed");
+        assert_eq!(
+            other_requests.load(std::sync::atomic::Ordering::SeqCst),
+            0,
+            "a request reached another origin under the relaxed checks"
+        );
     }
 
     /// A LAN address, a custom port or a bridge that does not answer is never

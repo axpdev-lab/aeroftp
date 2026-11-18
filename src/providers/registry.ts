@@ -1622,7 +1622,7 @@ export const PROVIDERS: ProviderConfig[] = [
             'Install MEGAcmd from https://mega.io/cmd',
             'Open the MEGAcmd terminal and run: login your-email@example.com',
             'Just connect: AeroFTP runs "mega-webdav /" itself to start the bridge and read its address (no manual step). {ui:connection.forms.fetchUrl} below is an optional manual refresh.',
-            'To serve over TLS, stop the plain location (webdav -d --all) and run webdav / --tls --certificate=<file> --key=<file> in MEGAcmd, with a certificate this computer trusts (AeroFTP checks it): on each connect AeroFTP uses the address mega-webdav / prints',
+            'To serve over TLS, run webdav -d --all in MEGAcmd (it stops every location MEGAcmd serves, not only the plain one), then webdav / --tls --certificate=<file> --key=<file>, with a certificate this computer trusts (AeroFTP checks it): on each connect AeroFTP uses the address mega-webdav / prints',
         ],
     },
     {

@@ -1083,6 +1083,12 @@ impl S3Provider {
             debug!("[S3] accepting invalid TLS certificates (self-signed / loopback)");
             client_builder = client_builder.danger_accept_invalid_certs(true);
         }
+        // A local endpoint is reached directly: a system proxy cannot reach
+        // this machine's loopback or mDNS names, and with the certificate
+        // trusted above it could answer in the endpoint's place.
+        if endpoint_is_local {
+            client_builder = client_builder.no_proxy();
+        }
         let client = client_builder.build().map_err(|e| {
             ProviderError::ConnectionFailed(format!("HTTP client init failed: {e}"))
         })?;

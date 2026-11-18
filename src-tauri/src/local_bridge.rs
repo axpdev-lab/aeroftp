@@ -268,13 +268,7 @@ pub async fn bridge_status(kind: String, port: Option<u16>) -> Result<BridgeStat
 /// Deliberately NOT any local host: a LAN NAS on one of these ports is not a
 /// bridge and must keep its saved scheme untouched. #389.
 pub fn is_local_bridge_authority(host: &str, port: u16) -> bool {
-    // A test's fixture stands on a free port for a bridge's default one, so
-    // the test cannot collide with a real bridge running on this machine.
-    #[cfg(test)]
-    let port = match TEST_PORT_ALIAS.with(std::cell::Cell::get) {
-        Some((fixture, bridge)) if fixture == port => bridge,
-        _ => port,
-    };
+    let port = bridge_port_of(port);
     let loopback = host == "127.0.0.1" || host == "::1" || host.eq_ignore_ascii_case("localhost");
     match port {
         1800 => loopback || host.eq_ignore_ascii_case("local.s3.filen.io"),
@@ -282,6 +276,19 @@ pub fn is_local_bridge_authority(host: &str, port: u16) -> bool {
         4443 => loopback, // MEGAcmd local WebDAV bridge
         _ => false,
     }
+}
+
+/// The bridge default port `port` stands for: itself, except in a test whose
+/// fixture stands on a free port for a bridge's default one, so the test
+/// cannot collide with a real bridge running on this machine.
+fn bridge_port_of(port: u16) -> u16 {
+    #[cfg(test)]
+    if let Some((fixture, bridge)) = TEST_PORT_ALIAS.with(std::cell::Cell::get) {
+        if fixture == port {
+            return bridge;
+        }
+    }
+    port
 }
 
 #[cfg(test)]
@@ -309,8 +316,13 @@ pub(crate) fn alias_test_port(fixture: u16, bridge: u16) {
 /// started), so the caller keeps the saved URL and the normal flow proceeds.
 pub async fn detect_bridge_scheme(host: &str, port: u16) -> Option<&'static str> {
     for scheme in ["https", "http"] {
+        // The answer must come from the bridge itself: no system proxy may
+        // answer in its place, and no redirect may hand the probe to another
+        // server. A redirect is an HTTP response, so it proves the scheme.
         let Ok(client) = reqwest::Client::builder()
             .danger_accept_invalid_certs(true)
+            .no_proxy()
+            .redirect(reqwest::redirect::Policy::none())
             .connect_timeout(std::time::Duration::from_secs(3))
             .timeout(std::time::Duration::from_secs(5))
             .build()
@@ -335,18 +347,28 @@ pub async fn detect_bridge_scheme(host: &str, port: u16) -> Option<&'static str>
 /// machine, which is what a caller trusting the bridge's certificate needs.
 /// #389.
 pub async fn detected_bridge_url(url: &str) -> Option<String> {
+    let (port, tail) = bridge_authority(url)?;
+    let scheme = detect_bridge_scheme("127.0.0.1", port).await?;
+    Some(format!("{scheme}://127.0.0.1:{port}{tail}"))
+}
+
+/// The port and the path/query/fragment tail (verbatim) of `url` when its
+/// authority is a known bridge ([`is_local_bridge_authority`]).
+fn bridge_authority(url: &str) -> Option<(u16, &str)> {
     let (_, rest) = url.split_once("://")?;
-    // Split authority from the path/query tail (preserved verbatim).
-    let authority_end = rest.find('/').unwrap_or(rest.len());
+    let authority_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
     let (authority, tail) = rest.split_at(authority_end);
     let (host, port_str) = authority.rsplit_once(':')?;
     let host = host.trim_start_matches('[').trim_end_matches(']');
     let port = port_str.parse::<u16>().ok()?;
-    if !is_local_bridge_authority(host, port) {
-        return None;
-    }
-    let scheme = detect_bridge_scheme("127.0.0.1", port).await?;
-    Some(format!("{scheme}://127.0.0.1:{port}{tail}"))
+    is_local_bridge_authority(host, port).then_some((port, tail))
+}
+
+/// The default port of the bridge `url` points at (1800, 1900 or 4443), or
+/// `None` when `url` is not a known bridge. A preset uses it to tell its own
+/// bridge from another one running on the same machine.
+pub fn bridge_default_port(url: &str) -> Option<u16> {
+    bridge_authority(url).map(|(port, _)| bridge_port_of(port))
 }
 
 /// [`detected_bridge_url`], or the input unchanged when there is no live
@@ -357,10 +379,13 @@ pub async fn reconcile_local_bridge_url(url: &str) -> String {
         .unwrap_or_else(|| url.to_string())
 }
 
-/// The scheme, host and port of a URL, for a log line: a path or a query can
-/// carry a token, and the reconciled bridge URL keeps both.
+/// The scheme, host and port of a URL, for a log line: user info, a path or a
+/// query can carry a secret, and the reconciled bridge URL keeps the last two.
 pub fn url_origin(url: &str) -> String {
-    url.split('/').take(3).collect::<Vec<_>>().join("/")
+    match url::Url::parse(url) {
+        Ok(parsed) => parsed.origin().ascii_serialization(),
+        Err(_) => "<invalid url>".to_string(),
+    }
 }
 
 #[cfg(test)]
@@ -397,10 +422,20 @@ mod tests {
     /// says. 401 because any status proves the scheme. Returns the port and
     /// the accept task, which the test stops.
     async fn bridge(tls: bool) -> (u16, tokio::task::JoinHandle<()>) {
+        bridge_answering(
+            tls,
+            b"HTTP/1.1 401 Unauthorized\r\ncontent-length: 0\r\nconnection: close\r\n\r\n",
+        )
+        .await
+    }
+
+    /// [`bridge`], answering every request with `response`.
+    async fn bridge_answering(
+        tls: bool,
+        response: &'static [u8],
+    ) -> (u16, tokio::task::JoinHandle<()>) {
         use std::sync::Arc;
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
-        const RESPONSE: &[u8] =
-            b"HTTP/1.1 401 Unauthorized\r\ncontent-length: 0\r\nconnection: close\r\n\r\n";
         let certified = rcgen::generate_simple_self_signed(vec!["localhost".to_string()]).unwrap();
         let key = rustls_pki_types::PrivateKeyDer::Pkcs8(
             rustls_pki_types::PrivatePkcs8KeyDer::from(certified.signing_key.serialize_der()),
@@ -426,12 +461,12 @@ mod tests {
                             return;
                         };
                         let _ = stream.read(&mut buf).await;
-                        let _ = stream.write_all(RESPONSE).await;
+                        let _ = stream.write_all(response).await;
                         let _ = stream.shutdown().await;
                     } else {
                         let mut stream = stream;
                         let _ = stream.read(&mut buf).await;
-                        let _ = stream.write_all(RESPONSE).await;
+                        let _ = stream.write_all(response).await;
                         let _ = stream.shutdown().await;
                     }
                 });
@@ -460,6 +495,62 @@ mod tests {
                 .expect("bridge still running");
             assert!(stopped.unwrap_err().is_cancelled());
         }
+    }
+
+    /// A bridge that answers the probe with a redirect has answered: the
+    /// probe neither follows it (another server would then speak for the
+    /// bridge) nor reads it as a wrong scheme.
+    #[tokio::test]
+    async fn a_redirect_from_the_bridge_proves_its_scheme_and_is_not_followed() {
+        let closed = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let elsewhere = closed.local_addr().unwrap().port();
+        drop(closed);
+        let response: &'static [u8] = Box::leak(
+            format!(
+                "HTTP/1.1 302 Found\r\nlocation: https://127.0.0.1:{elsewhere}/\r\ncontent-length: 0\r\nconnection: close\r\n\r\n"
+            )
+            .into_bytes()
+            .into_boxed_slice(),
+        );
+        let (port, server) = bridge_answering(true, response).await;
+        let scheme = detect_bridge_scheme("127.0.0.1", port).await;
+        server.abort();
+        assert_eq!(scheme, Some("https"));
+    }
+
+    /// The tail after the authority is kept verbatim, also when it starts
+    /// with a query or a fragment rather than a path.
+    #[tokio::test]
+    async fn the_detected_url_keeps_a_query_or_fragment_tail() {
+        let (port, server) = bridge(false).await;
+        alias_test_port(port, 1900);
+        for tail in ["?mode=dav", "/dav?mode=dav", "#top", ""] {
+            assert_eq!(
+                detected_bridge_url(&format!("https://localhost:{port}{tail}")).await,
+                Some(format!("http://127.0.0.1:{port}{tail}")),
+                "tail {tail:?}"
+            );
+        }
+        server.abort();
+        assert_eq!(
+            bridge_default_port(&format!("https://127.0.0.1:{port}/")),
+            Some(1900)
+        );
+        assert_eq!(bridge_default_port("https://127.0.0.1:1800/"), Some(1800));
+        assert_eq!(bridge_default_port("https://192.168.1.10:1900/"), None);
+    }
+
+    #[test]
+    fn url_origin_prints_scheme_host_and_port_only() {
+        assert_eq!(
+            url_origin("https://user:secret@127.0.0.1:1900/dav?token=abc#x"),
+            "https://127.0.0.1:1900"
+        );
+        assert_eq!(
+            url_origin("http://127.0.0.1:1800?X-Amz-Signature=abc"),
+            "http://127.0.0.1:1800"
+        );
+        assert_eq!(url_origin("not a url"), "<invalid url>");
     }
 
     #[tokio::test]

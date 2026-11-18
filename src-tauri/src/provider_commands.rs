@@ -19484,9 +19484,18 @@ mod tests {
                             Ok(n) => request.extend_from_slice(&buffer[..n]),
                         }
                     }
-                    let body = "<ListAllMyBucketsResult><Buckets><Bucket><Name>Documents</Name></Bucket></Buckets></ListAllMyBucketsResult>";
+                    // Only the service root lists buckets, as on a real S3
+                    // endpoint: a Fetch that asked anything else gets a 404.
+                    let line = String::from_utf8_lossy(&request);
+                    let line = line.lines().next().unwrap_or_default();
+                    let lists = line.starts_with("GET / ") || line.starts_with("GET /?");
+                    let (status, body) = if lists {
+                        ("200 OK", "<ListAllMyBucketsResult><Buckets><Bucket><Name>Documents</Name></Bucket></Buckets></ListAllMyBucketsResult>")
+                    } else {
+                        ("404 Not Found", "")
+                    };
                     let reply = format!(
-                        "HTTP/1.1 200 OK\r\nContent-Type: application/xml\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        "HTTP/1.1 {status}\r\nContent-Type: application/xml\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
                         body.len()
                     );
                     let _ = stream.write_all(reply.as_bytes()).await;
