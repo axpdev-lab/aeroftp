@@ -161,6 +161,7 @@ run-clean.sh
 # Exception: generates third-party license notices from locked dependency trees
 !/scripts/gen-third-party-notices.ts
 !/scripts/spdx-standard-licenses.json
+!/scripts/reviewed-license-terms.json
 # Exception: stripped-diacritics gate and its reviewed baseline, run by the
 # fast checks workflow (#628 item 12)
 !/scripts/i18n-diacritics.mjs

@@ -16,7 +16,7 @@ fallback) are not covered by this document.
 
 ## Licensing Exceptions
 
-- **UnRAR (`unrar_sys`):** RAR extraction uses the UnRAR source code by Alexander Roshal (through the unrar crate, vendored unrar_sys), distributed under its own license, which allows it to be used and redistributed but forbids using it to re-create the RAR compression algorithm. AeroFTP only extracts RAR archives and never creates them. The UnRAR license is not a free-software license, and it is not GPL-compatible. For the full text of the UnRAR license, see [Notice Entry 614](#exception-unrar-sys).
+- **UnRAR (`unrar_sys`):** RAR extraction uses the UnRAR source code by Alexander Roshal (through the unrar crate, vendored unrar_sys), distributed under its own license, which allows it to be used and redistributed but forbids using it to re-create the RAR compression algorithm. AeroFTP only extracts RAR archives and never creates them. The UnRAR license is not a free-software license, and it is not GPL-compatible. For the full text of the UnRAR license, see [Notice Entry 617](#exception-unrar-sys).
 
 ---
 
@@ -4660,9 +4660,7 @@ DEALINGS IN THE SOFTWARE.
   - Copyright 2014-2015 The Rust Project Developers. (src/lib.rs)
 - `scopeguard@1.2.0` (cargo, file: `LICENSE-APACHE`)
 - `security-framework@2.11.1` (cargo, file: `LICENSE-APACHE`)
-  - Copyright (c) 1999-2007 Apple Inc.  All Rights Reserved. (THIRD_PARTY)
 - `security-framework@3.7.0` (cargo, file: `LICENSE-APACHE`)
-  - Copyright (c) 1999-2007 Apple Inc.  All Rights Reserved. (THIRD_PARTY)
 - `security-framework-sys@2.17.0` (cargo, file: `LICENSE-APACHE`)
 - `send_wrapper@0.6.0` (cargo, file: `LICENSE-APACHE.txt`)
   - Copyright 2017 Thomas Keh. (src/lib.rs)
@@ -30193,19 +30191,10 @@ Please refer to the LICENSE-APACHE file for more details on the Apache License 2
 **Used by component(s):**
 - `monaco-editor@0.57.0` (npm, file: `LICENSE`)
   - Copyright (C) David Owens II, owensd.io. All rights reserved. (esm/vs/languages/definitions/swift/swift.js)
-  - Copyright (c) 1991-2017 Unicode, Inc. All rights reserved. (ThirdPartyNotices.txt)
-  - Copyright (c) 2007-2017 Einar Lielmanis, Liam Newman, and contributors. (ThirdPartyNotices.txt)
   - Copyright (c) 2007-2018 Einar Lielmanis, Liam Newman, and contributors. (esm/external/vscode-css-languageservice/lib/esm/beautify/beautify-css.js)
-  - Copyright (c) 2011-2018, Christopher Jeffrey (https://github.com/chjj/) (ThirdPartyNotices.txt)
   - Copyright (c) 2011-2024, Christopher Jeffrey. (MIT Licensed) (esm/vs/base/common/marked/marked.js)
   - Copyright (c) 2013, Nick Fitzgerald (esm/external/vscode-json-languageservice/lib/esm/utils/glob.js)
-  - Copyright (c) 2015 David Owens II (ThirdPartyNotices.txt)
-  - Copyright (c) 2018 The Khronos Group Inc. (ThirdPartyNotices.txt)
-  - Copyright (c) 2018+, MarkedJS (https://github.com/markedjs/) (ThirdPartyNotices.txt)
-  - Copyright Drifty Co. http://drifty.com/. (ThirdPartyNotices.txt)
-  - Copyright Joyent, Inc. and other Node contributors. (ThirdPartyNotices.txt)
-  - Copyright © 2015 W3C® (MIT, ERCIM, Keio, Beihang). This software or document includes material copied (ThirdPartyNotices.txt)
-  - Copyright © 2018 WHATWG (Apple, Google, Mozilla, Microsoft). This work is licensed under a Creative Commons Attribution 4.0 International License: Attribution 4.0 International (ThirdPartyNotices.txt)
+  - Copyright Joyent, Inc. and other Node contributors. (esm/vs/base/common/path.js)
 
 ```text
 The MIT License (MIT)
@@ -30231,10 +30220,465 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+### Notice Entry 398
+
+**Used by component(s):**
+- `monaco-editor@0.57.0` (npm, file: `ThirdPartyNotices.txt`)
+
+```text
+THIRD-PARTY SOFTWARE NOTICES AND INFORMATION
+Do Not Translate or Localize
+
+This project incorporates components from the projects listed below. The original copyright notices and the licenses
+under which Microsoft received such components are set forth below. Microsoft reserves all rights not expressly granted
+herein, whether by implication, estoppel or otherwise.
+
+
+
+%% nodejs path library (https://github.com/nodejs/node/tree/43dd49c9782848c25e5b03448c8a0f923f13c158)
+=========================================
+Copyright Joyent, Inc. and other Node contributors.
+
+Permission is hereby granted, free of charge, to any person obtaining a
+copy of this software and associated documentation files (the
+"Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to permit
+persons to whom the Software is furnished to do so, subject to the
+following conditions:
+
+The above copyright notice and this permission notice shall be included
+in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
+NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
+USE OR OTHER DEALINGS IN THE SOFTWARE.
+=========================================
+END OF nodejs path library NOTICES AND INFORMATION
+
+
+
+
+%% markedjs NOTICES AND INFORMATION BEGIN HERE
+=========================================
+The MIT License (MIT)
+
+Copyright (c) 2018+, MarkedJS (https://github.com/markedjs/)
+Copyright (c) 2011-2018, Christopher Jeffrey (https://github.com/chjj/)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+=========================================
+END OF markedjs NOTICES AND INFORMATION
+
+
+
+%% typescript version 4.4.4 (https://github.com/microsoft/TypeScript)
+=========================================
+Copyright (c) Microsoft Corporation. All rights reserved.
+
+Apache License
+
+Version 2.0, January 2004
+
+http://www.apache.org/licenses/
+
+TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+
+1. Definitions.
+
+"License" shall mean the terms and conditions for use, reproduction, and distribution as defined by Sections 1 through 9 of this document.
+
+"Licensor" shall mean the copyright owner or entity authorized by the copyright owner that is granting the License.
+
+"Legal Entity" shall mean the union of the acting entity and all other entities that control, are controlled by, or are under common control with that entity. For the purposes of this definition, "control" means (i) the power, direct or indirect, to cause the direction or management of such entity, whether by contract or otherwise, or (ii) ownership of fifty percent (50%) or more of the outstanding shares, or (iii) beneficial ownership of such entity.
+
+"You" (or "Your") shall mean an individual or Legal Entity exercising permissions granted by this License.
+
+"Source" form shall mean the preferred form for making modifications, including but not limited to software source code, documentation source, and configuration files.
+
+"Object" form shall mean any form resulting from mechanical transformation or translation of a Source form, including but not limited to compiled object code, generated documentation, and conversions to other media types.
+
+"Work" shall mean the work of authorship, whether in Source or Object form, made available under the License, as indicated by a copyright notice that is included in or attached to the work (an example is provided in the Appendix below).
+
+"Derivative Works" shall mean any work, whether in Source or Object form, that is based on (or derived from) the Work and for which the editorial revisions, annotations, elaborations, or other modifications represent, as a whole, an original work of authorship. For the purposes of this License, Derivative Works shall not include works that remain separable from, or merely link (or bind by name) to the interfaces of, the Work and Derivative Works thereof.
+
+"Contribution" shall mean any work of authorship, including the original version of the Work and any modifications or additions to that Work or Derivative Works thereof, that is intentionally submitted to Licensor for inclusion in the Work by the copyright owner or by an individual or Legal Entity authorized to submit on behalf of the copyright owner. For the purposes of this definition, "submitted" means any form of electronic, verbal, or written communication sent to the Licensor or its representatives, including but not limited to communication on electronic mailing lists, source code control systems, and issue tracking systems that are managed by, or on behalf of, the Licensor for the purpose of discussing and improving the Work, but excluding communication that is conspicuously marked or otherwise designated in writing by the copyright owner as "Not a Contribution."
+
+"Contributor" shall mean Licensor and any individual or Legal Entity on behalf of whom a Contribution has been received by Licensor and subsequently incorporated within the Work.
+
+2. Grant of Copyright License. Subject to the terms and conditions of this License, each Contributor hereby grants to You a perpetual, worldwide, non-exclusive, no-charge, royalty-free, irrevocable copyright license to reproduce, prepare Derivative Works of, publicly display, publicly perform, sublicense, and distribute the Work and such Derivative Works in Source or Object form.
+
+3. Grant of Patent License. Subject to the terms and conditions of this License, each Contributor hereby grants to You a perpetual, worldwide, non-exclusive, no-charge, royalty-free, irrevocable (except as stated in this section) patent license to make, have made, use, offer to sell, sell, import, and otherwise transfer the Work, where such license applies only to those patent claims licensable by such Contributor that are necessarily infringed by their Contribution(s) alone or by combination of their Contribution(s) with the Work to which such Contribution(s) was submitted. If You institute patent litigation against any entity (including a cross-claim or counterclaim in a lawsuit) alleging that the Work or a Contribution incorporated within the Work constitutes direct or contributory patent infringement, then any patent licenses granted to You under this License for that Work shall terminate as of the date such litigation is filed.
+
+4. Redistribution. You may reproduce and distribute copies of the Work or Derivative Works thereof in any medium, with or without modifications, and in Source or Object form, provided that You meet the following conditions:
+
+You must give any other recipients of the Work or Derivative Works a copy of this License; and
+
+You must cause any modified files to carry prominent notices stating that You changed the files; and
+
+You must retain, in the Source form of any Derivative Works that You distribute, all copyright, patent, trademark, and attribution notices from the Source form of the Work, excluding those notices that do not pertain to any part of the Derivative Works; and
+
+If the Work includes a "NOTICE" text file as part of its distribution, then any Derivative Works that You distribute must include a readable copy of the attribution notices contained within such NOTICE file, excluding those notices that do not pertain to any part of the Derivative Works, in at least one of the following places: within a NOTICE text file distributed as part of the Derivative Works; within the Source form or documentation, if provided along with the Derivative Works; or, within a display generated by the Derivative Works, if and wherever such third-party notices normally appear. The contents of the NOTICE file are for informational purposes only and do not modify the License. You may add Your own attribution notices within Derivative Works that You distribute, alongside or as an addendum to the NOTICE text from the Work, provided that such additional attribution notices cannot be construed as modifying the License. You may add Your own copyright statement to Your modifications and may provide additional or different license terms and conditions for use, reproduction, or distribution of Your modifications, or for any such Derivative Works as a whole, provided Your use, reproduction, and distribution of the Work otherwise complies with the conditions stated in this License.
+
+5. Submission of Contributions. Unless You explicitly state otherwise, any Contribution intentionally submitted for inclusion in the Work by You to the Licensor shall be under the terms and conditions of this License, without any additional terms or conditions. Notwithstanding the above, nothing herein shall supersede or modify the terms of any separate license agreement you may have executed with Licensor regarding such Contributions.
+
+6. Trademarks. This License does not grant permission to use the trade names, trademarks, service marks, or product names of the Licensor, except as required for reasonable and customary use in describing the origin of the Work and reproducing the content of the NOTICE file.
+
+7. Disclaimer of Warranty. Unless required by applicable law or agreed to in writing, Licensor provides the Work (and each Contributor provides its Contributions) on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied, including, without limitation, any warranties or conditions of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A PARTICULAR PURPOSE. You are solely responsible for determining the appropriateness of using or redistributing the Work and assume any risks associated with Your exercise of permissions under this License.
+
+8. Limitation of Liability. In no event and under no legal theory, whether in tort (including negligence), contract, or otherwise, unless required by applicable law (such as deliberate and grossly negligent acts) or agreed to in writing, shall any Contributor be liable to You for damages, including any direct, indirect, special, incidental, or consequential damages of any character arising as a result of this License or out of the use or inability to use the Work (including but not limited to damages for loss of goodwill, work stoppage, computer failure or malfunction, or any and all other commercial damages or losses), even if such Contributor has been advised of the possibility of such damages.
+
+9. Accepting Warranty or Additional Liability. While redistributing the Work or Derivative Works thereof, You may choose to offer, and charge a fee for, acceptance of support, warranty, indemnity, or other liability obligations and/or rights consistent with this License. However, in accepting such obligations, You may act only on Your own behalf and on Your sole responsibility, not on behalf of any other Contributor, and only if You agree to indemnify, defend, and hold each Contributor harmless for any liability incurred by, or claims asserted against, such Contributor by reason of your accepting any such warranty or additional liability.
+
+END OF TERMS AND CONDITIONS
+
+
+The TypeScript software incorporates third party material from the projects listed below. The original copyright notice and the license under which Microsoft received such third party material are set forth below. Microsoft reserves all other rights not expressly granted, whether by implication, estoppel or otherwise.
+
+
+------------------- DefinitelyTyped --------------------
+This file is based on or incorporates material from the projects listed below (collectively "Third Party Code"). Microsoft is not the original author of the Third Party Code. The original copyright notice and the license, under which Microsoft received such Third Party Code, are set forth below. Such licenses and notices are provided for informational purposes only. Microsoft, not the third party, licenses the Third Party Code to you under the terms set forth in the EULA for the Microsoft Product. Microsoft reserves all other rights not expressly granted under this agreement, whether by implication, estoppel or otherwise.
+DefinitelyTyped
+This project is licensed under the MIT license. Copyrights are respective of each contributor listed at the beginning of each definition file. Provided for Informational Purposes Only
+
+MIT License
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the ""Software""), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+--------------------------------------------------------------------------------------
+
+------------------- Unicode --------------------
+UNICODE, INC. LICENSE AGREEMENT - DATA FILES AND SOFTWARE
+
+Unicode Data Files include all data files under the directories
+http://www.unicode.org/Public/, http://www.unicode.org/reports/,
+http://www.unicode.org/cldr/data/, http://source.icu-project.org/repos/icu/, and
+http://www.unicode.org/utility/trac/browser/.
+
+Unicode Data Files do not include PDF online code charts under the
+directory http://www.unicode.org/Public/.
+
+Software includes any source code published in the Unicode Standard
+or under the directories
+http://www.unicode.org/Public/, http://www.unicode.org/reports/,
+http://www.unicode.org/cldr/data/, http://source.icu-project.org/repos/icu/, and
+http://www.unicode.org/utility/trac/browser/.
+
+NOTICE TO USER: Carefully read the following legal agreement.
+BY DOWNLOADING, INSTALLING, COPYING OR OTHERWISE USING UNICODE INC.'S
+DATA FILES ("DATA FILES"), AND/OR SOFTWARE ("SOFTWARE"),
+YOU UNEQUIVOCALLY ACCEPT, AND AGREE TO BE BOUND BY, ALL OF THE
+TERMS AND CONDITIONS OF THIS AGREEMENT.
+IF YOU DO NOT AGREE, DO NOT DOWNLOAD, INSTALL, COPY, DISTRIBUTE OR USE
+THE DATA FILES OR SOFTWARE.
+
+COPYRIGHT AND PERMISSION NOTICE
+
+Copyright (c) 1991-2017 Unicode, Inc. All rights reserved.
+Distributed under the Terms of Use in http://www.unicode.org/copyright.html.
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of the Unicode data files and any associated documentation
+(the "Data Files") or Unicode software and any associated documentation
+(the "Software") to deal in the Data Files or Software
+without restriction, including without limitation the rights to use,
+copy, modify, merge, publish, distribute, and/or sell copies of
+the Data Files or Software, and to permit persons to whom the Data Files
+or Software are furnished to do so, provided that either
+(a) this copyright and permission notice appear with all copies
+of the Data Files or Software, or
+(b) this copyright and permission notice appear in associated
+Documentation.
+
+THE DATA FILES AND SOFTWARE ARE PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT OF THIRD PARTY RIGHTS.
+IN NO EVENT SHALL THE COPYRIGHT HOLDER OR HOLDERS INCLUDED IN THIS
+NOTICE BE LIABLE FOR ANY CLAIM, OR ANY SPECIAL INDIRECT OR CONSEQUENTIAL
+DAMAGES, OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE,
+DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+PERFORMANCE OF THE DATA FILES OR SOFTWARE.
+
+Except as contained in this notice, the name of a copyright holder
+shall not be used in advertising or otherwise to promote the sale,
+use or other dealings in these Data Files or Software without prior
+written authorization of the copyright holder.
+-------------------------------------------------------------------------------------
+
+-------------------Document Object Model-----------------------------
+DOM
+
+W3C License
+This work is being provided by the copyright holders under the following license.
+By obtaining and/or copying this work, you (the licensee) agree that you have read, understood, and will comply with the following terms and conditions.
+Permission to copy, modify, and distribute this work, with or without modification, for any purpose and without fee or royalty is hereby granted, provided that you include the following
+on ALL copies of the work or portions thereof, including modifications:
+* The full text of this NOTICE in a location viewable to users of the redistributed or derivative work.
+* Any pre-existing intellectual property disclaimers, notices, or terms and conditions. If none exist, the W3C Software and Document Short Notice should be included.
+* Notice of any changes or modifications, through a copyright statement on the new code or document such as "This software or document includes material copied from or derived
+from [title and URI of the W3C document]. Copyright © [YEAR] W3C® (MIT, ERCIM, Keio, Beihang)."
+Disclaimers
+THIS WORK IS PROVIDED "AS IS," AND COPYRIGHT HOLDERS MAKE NO REPRESENTATIONS OR WARRANTIES, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO, WARRANTIES OF MERCHANTABILITY OR
+FITNESS FOR ANY PARTICULAR PURPOSE OR THAT THE USE OF THE SOFTWARE OR DOCUMENT WILL NOT INFRINGE ANY THIRD PARTY PATENTS, COPYRIGHTS, TRADEMARKS OR OTHER RIGHTS.
+COPYRIGHT HOLDERS WILL NOT BE LIABLE FOR ANY DIRECT, INDIRECT, SPECIAL OR CONSEQUENTIAL DAMAGES ARISING OUT OF ANY USE OF THE SOFTWARE OR DOCUMENT.
+The name and trademarks of copyright holders may NOT be used in advertising or publicity pertaining to the work without specific, written prior permission.
+Title to copyright in this work will at all times remain with copyright holders.
+
+---------
+
+DOM
+Copyright © 2018 WHATWG (Apple, Google, Mozilla, Microsoft). This work is licensed under a Creative Commons Attribution 4.0 International License: Attribution 4.0 International
+=======================================================================
+Creative Commons Corporation ("Creative Commons") is not a law firm and does not provide legal services or legal advice. Distribution of Creative Commons public licenses does not create a lawyer-client or other relationship. Creative Commons makes its licenses and related information available on an "as-is" basis. Creative Commons gives no warranties regarding its licenses, any material licensed under their terms and conditions, or any related information. Creative Commons disclaims all liability for damages resulting from their use to the fullest extent possible. Using Creative Commons Public Licenses Creative Commons public licenses provide a standard set of terms and conditions that creators and other rights holders may use to share original works of authorship and other material subject to copyright and certain other rights specified in the public license below. The following considerations are for informational purposes only, are not exhaustive, and do not form part of our licenses. Considerations for licensors: Our public licenses are intended for use by those authorized to give the public permission to use material in ways otherwise restricted by copyright and certain other rights. Our licenses are irrevocable. Licensors should read and understand the terms and conditions of the license they choose before applying it. Licensors should also secure all rights necessary before applying our licenses so that the public can reuse the material as expected. Licensors should clearly mark any material not subject to the license. This includes other CC- licensed material, or material used under an exception or limitation to copyright. More considerations for licensors:
+
+wiki.creativecommons.org/Considerations_for_licensors Considerations for the public: By using one of our public licenses, a licensor grants the public permission to use the licensed material under specified terms and conditions. If the licensor's permission is not necessary for any reason--for example, because of any applicable exception or limitation to copyright--then that use is not regulated by the license. Our licenses grant only permissions under copyright and certain other rights that a licensor has authority to grant. Use of the licensed material may still be restricted for other reasons, including because others have copyright or other rights in the material. A licensor may make special requests, such as asking that all changes be marked or described. Although not required by our licenses, you are encouraged to respect those requests where reasonable. More_considerations for the public: wiki.creativecommons.org/Considerations_for_licensees =======================================================================
+Creative Commons Attribution 4.0 International Public License By exercising the Licensed Rights (defined below), You accept and agree to be bound by the terms and conditions of this Creative Commons Attribution 4.0 International Public License ("Public License"). To the extent this Public License may be interpreted as a contract, You are granted the Licensed Rights in consideration of Your acceptance of these terms and conditions, and the Licensor grants You such rights in consideration of benefits the Licensor receives from making the Licensed Material available under these terms and conditions. Section 1 -- Definitions. a. Adapted Material means material subject to Copyright and Similar Rights that is derived from or based upon the Licensed Material and in which the Licensed Material is translated, altered, arranged, transformed, or otherwise modified in a manner requiring permission under the Copyright and Similar Rights held by the Licensor. For purposes of this Public License, where the Licensed Material is a musical work, performance, or sound recording, Adapted Material is always produced where the Licensed Material is synched in timed relation with a moving image. b. Adapter's License means the license You apply to Your Copyright and Similar Rights in Your contributions to Adapted Material in accordance with the terms and conditions of this Public License. c. Copyright and Similar Rights means copyright and/or similar rights closely related to copyright including, without limitation, performance, broadcast, sound recording, and Sui Generis Database Rights, without regard to how the rights are labeled or categorized. For purposes of this Public License, the rights specified in Section 2(b)(1)-(2) are not Copyright and Similar Rights. d. Effective Technological Measures means those measures that, in the absence of proper authority, may not be circumvented under laws fulfilling obligations under Article 11 of the WIPO Copyright Treaty adopted on December 20, 1996, and/or similar international agreements. e. Exceptions and Limitations means fair use, fair dealing, and/or any other exception or limitation to Copyright and Similar Rights that applies to Your use of the Licensed Material. f. Licensed Material means the artistic or literary work, database, or other material to which the Licensor applied this Public License. g. Licensed Rights means the rights granted to You subject to the terms and conditions of this Public License, which are limited to all Copyright and Similar Rights that apply to Your use of the Licensed Material and that the Licensor has authority to license. h. Licensor means the individual(s) or entity(ies) granting rights under this Public License. i. Share means to provide material to the public by any means or process that requires permission under the Licensed Rights, such as reproduction, public display, public performance, distribution, dissemination, communication, or importation, and to make material available to the public including in ways that members of the public may access the material from a place and at a time individually chosen by them. j. Sui Generis Database Rights means rights other than copyright resulting from Directive 96/9/EC of the European Parliament and of the Council of 11 March 1996 on the legal protection of databases, as amended and/or succeeded, as well as other essentially equivalent rights anywhere in the world. k. You means the individual or entity exercising the Licensed Rights under this Public License. Your has a corresponding meaning. Section 2 -- Scope. a. License grant. 1. Subject to the terms and conditions of this Public License, the Licensor hereby grants You a worldwide, royalty-free, non-sublicensable, non-exclusive, irrevocable license to exercise the Licensed Rights in the Licensed Material to: a. reproduce and Share the Licensed Material, in whole or in part; and b. produce, reproduce, and Share Adapted Material. 2. Exceptions and Limitations. For the avoidance of doubt, where Exceptions and Limitations apply to Your use, this Public License does not apply, and You do not need to comply with its terms and conditions. 3. Term. The term of this Public License is specified in Section 6(a). 4. Media and formats; technical modifications allowed. The Licensor authorizes You to exercise the Licensed Rights in all media and formats whether now known or hereafter created, and to make technical modifications necessary to do so. The Licensor waives and/or agrees not to assert any right or authority to forbid You from making technical modifications necessary to exercise the Licensed Rights, including technical modifications necessary to circumvent Effective Technological Measures. For purposes of this Public License, simply making modifications authorized by this Section 2(a) (4) never produces Adapted Material. 5. Downstream recipients. a. Offer from the Licensor -- Licensed Material. Every recipient of the Licensed Material automatically receives an offer from the Licensor to exercise the Licensed Rights under the terms and conditions of this Public License. b. No downstream restrictions. You may not offer or impose any additional or different terms or conditions on, or apply any Effective Technological Measures to, the Licensed Material if doing so restricts exercise of the Licensed Rights by any recipient of the Licensed Material. 6. No endorsement. Nothing in this Public License constitutes or may be construed as permission to assert or imply that You are, or that Your use of the Licensed Material is, connected with, or sponsored, endorsed, or granted official status by, the Licensor or others designated to receive attribution as provided in Section 3(a)(1)(A)(i). b. Other rights. 1. Moral rights, such as the right of integrity, are not licensed under this Public License, nor are publicity, privacy, and/or other similar personality rights; however, to the extent possible, the Licensor waives and/or agrees not to assert any such rights held by the Licensor to the limited extent necessary to allow You to exercise the Licensed Rights, but not otherwise. 2. Patent and trademark rights are not licensed under this Public License. 3. To the extent possible, the Licensor waives any right to collect royalties from You for the exercise of the Licensed Rights, whether directly or through a collecting society under any voluntary or waivable statutory or compulsory licensing scheme. In all other cases the Licensor expressly reserves any right to collect such royalties. Section 3 -- License Conditions. Your exercise of the Licensed Rights is expressly made subject to the following conditions. a. Attribution. 1. If You Share the Licensed Material (including in modified form), You must: a. retain the following if it is supplied by the Licensor with the Licensed Material: i. identification of the creator(s) of the Licensed Material and any others designated to receive attribution, in any reasonable manner requested by the Licensor (including by pseudonym if designated); ii. a copyright notice; iii. a notice that refers to this Public License; iv. a notice that refers to the disclaimer of warranties; v. a URI or hyperlink to the Licensed Material to the extent reasonably practicable; b. indicate if You modified the Licensed Material and retain an indication of any previous modifications; and c. indicate the Licensed Material is licensed under this Public License, and include the text of, or the URI or hyperlink to, this Public License. 2. You may satisfy the conditions in Section 3(a)(1) in any reasonable manner based on the medium, means, and context in which You Share the Licensed Material. For example, it may be reasonable to satisfy the conditions by providing a URI or hyperlink to a resource that includes the required information. 3. If requested by the Licensor, You must remove any of the information required by Section 3(a)(1)(A) to the extent reasonably practicable. 4. If You Share Adapted Material You produce, the Adapter's License You apply must not prevent recipients of the Adapted Material from complying with this Public License. Section 4 -- Sui Generis Database Rights. Where the Licensed Rights include Sui Generis Database Rights that apply to Your use of the Licensed Material: a. for the avoidance of doubt, Section 2(a)(1) grants You the right to extract, reuse, reproduce, and Share all or a substantial portion of the contents of the database; b. if You include all or a substantial portion of the database contents in a database in which You have Sui Generis Database Rights, then the database in which You have Sui Generis Database Rights (but not its individual contents) is Adapted Material; and c. You must comply with the conditions in Section 3(a) if You Share all or a substantial portion of the contents of the database. For the avoidance of doubt, this Section 4 supplements and does not replace Your obligations under this Public License where the Licensed Rights include other Copyright and Similar Rights. Section 5 -- Disclaimer of Warranties and Limitation of Liability. a. UNLESS OTHERWISE SEPARATELY UNDERTAKEN BY THE LICENSOR, TO THE EXTENT POSSIBLE, THE LICENSOR OFFERS THE LICENSED MATERIAL AS-IS AND AS-AVAILABLE, AND MAKES NO REPRESENTATIONS OR WARRANTIES OF ANY KIND CONCERNING THE LICENSED MATERIAL, WHETHER EXPRESS, IMPLIED, STATUTORY, OR OTHER. THIS INCLUDES, WITHOUT LIMITATION, WARRANTIES OF TITLE, MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, NON-INFRINGEMENT, ABSENCE OF LATENT OR OTHER DEFECTS, ACCURACY, OR THE PRESENCE OR ABSENCE OF ERRORS, WHETHER OR NOT KNOWN OR DISCOVERABLE. WHERE DISCLAIMERS OF WARRANTIES ARE NOT ALLOWED IN FULL OR IN PART, THIS DISCLAIMER MAY NOT APPLY TO YOU. b. TO THE EXTENT POSSIBLE, IN NO EVENT WILL THE LICENSOR BE LIABLE TO YOU ON ANY LEGAL THEORY (INCLUDING, WITHOUT LIMITATION, NEGLIGENCE) OR OTHERWISE FOR ANY DIRECT, SPECIAL, INDIRECT, INCIDENTAL, CONSEQUENTIAL, PUNITIVE, EXEMPLARY, OR OTHER LOSSES, COSTS, EXPENSES, OR DAMAGES ARISING OUT OF THIS PUBLIC LICENSE OR USE OF THE LICENSED MATERIAL, EVEN IF THE LICENSOR HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH LOSSES, COSTS, EXPENSES, OR DAMAGES. WHERE A LIMITATION OF LIABILITY IS NOT ALLOWED IN FULL OR IN PART, THIS LIMITATION MAY NOT APPLY TO YOU. c. The disclaimer of warranties and limitation of liability provided above shall be interpreted in a manner that, to the extent possible, most closely approximates an absolute disclaimer and waiver of all liability. Section 6 -- Term and Termination. a. This Public License applies for the term of the Copyright and Similar Rights licensed here. However, if You fail to comply with this Public License, then Your rights under this Public License terminate automatically. b. Where Your right to use the Licensed Material has terminated under Section 6(a), it reinstates: 1. automatically as of the date the violation is cured, provided it is cured within 30 days of Your discovery of the violation; or 2. upon express reinstatement by the Licensor. For the avoidance of doubt, this Section 6(b) does not affect any right the Licensor may have to seek remedies for Your violations of this Public License. c. For the avoidance of doubt, the Licensor may also offer the Licensed Material under separate terms or conditions or stop distributing the Licensed Material at any time; however, doing so will not terminate this Public License. d. Sections 1, 5, 6, 7, and 8 survive termination of this Public License. Section 7 -- Other Terms and Conditions. a. The Licensor shall not be bound by any additional or different terms or conditions communicated by You unless expressly agreed. b. Any arrangements, understandings, or agreements regarding the Licensed Material not stated herein are separate from and independent of the terms and conditions of this Public License. Section 8 -- Interpretation. a. For the avoidance of doubt, this Public License does not, and shall not be interpreted to, reduce, limit, restrict, or impose conditions on any use of the Licensed Material that could lawfully be made without permission under this Public License. b. To the extent possible, if any provision of this Public License is deemed unenforceable, it shall be automatically reformed to the minimum extent necessary to make it enforceable. If the provision cannot be reformed, it shall be severed from this Public License without affecting the enforceability of the remaining terms and conditions. c. No term or condition of this Public License will be waived and no failure to comply consented to unless expressly agreed to by the Licensor. d. Nothing in this Public License constitutes or may be interpreted as a limitation upon, or waiver of, any privileges and immunities that apply to the Licensor or You, including from the legal processes of any jurisdiction or authority. ======================================================================= Creative Commons is not a party to its public licenses. Notwithstanding, Creative Commons may elect to apply one of its public licenses to material it publishes and in those instances will be considered the "Licensor." Except for the limited purpose of indicating that material is shared under a Creative Commons public license or as otherwise permitted by the Creative Commons policies published at creativecommons.org/policies, Creative Commons does not authorize the use of the trademark "Creative Commons" or any other trademark or logo of Creative Commons without its prior written consent including, without limitation, in connection with any unauthorized modifications to any of its public licenses or any other arrangements, understandings, or agreements concerning use of licensed material. For the avoidance of doubt, this paragraph does not form part of the public licenses. Creative Commons may be contacted at creativecommons.org.
+
+--------------------------------------------------------------------------------
+
+----------------------Web Background Synchronization------------------------------
+
+Web Background Synchronization Specification
+Portions of spec © by W3C
+
+W3C Community Final Specification Agreement
+To secure commitments from participants for the full text of a Community or Business Group Report, the group may call for voluntary commitments to the following terms; a "summary" is
+available. See also the related "W3C Community Contributor License Agreement".
+1. The Purpose of this Agreement.
+This Agreement sets forth the terms under which I make certain copyright and patent rights available to you for your implementation of the Specification.
+Any other capitalized terms not specifically defined herein have the same meaning as those terms have in the "W3C Patent Policy", and if not defined there, in the "W3C Process Document".
+2. Copyrights.
+2.1. Copyright Grant. I grant to you a perpetual (for the duration of the applicable copyright), worldwide, non-exclusive, no-charge, royalty-free, copyright license, without any obligation for accounting to me, to reproduce, prepare derivative works of, publicly display, publicly perform, sublicense, distribute, and implement the Specification to the full extent of my copyright interest in the Specification.
+2.2. Attribution. As a condition of the copyright grant, you must include an attribution to the Specification in any derivative work you make based on the Specification. That attribution must include, at minimum, the Specification name and version number.
+3. Patents.
+3.1. Patent Licensing Commitment. I agree to license my Essential Claims under the W3C Community RF Licensing Requirements. This requirement includes Essential Claims that I own and any that I have the right to license without obligation of payment or other consideration to an unrelated third party. W3C Community RF Licensing Requirements obligations made concerning the Specification and described in this policy are binding on me for the life of the patents in question and encumber the patents containing Essential Claims, regardless of changes in participation status or W3C Membership. I also agree to license my Essential Claims under the W3C Community RF Licensing Requirements in derivative works of the Specification so long as all normative portions of the Specification are maintained and that this licensing commitment does not extend to any portion of the derivative work that was not included in the Specification.
+3.2. Optional, Additional Patent Grant. In addition to the provisions of Section 3.1, I may also, at my option, make certain intellectual property rights infringed by implementations of the Specification, including Essential Claims, available by providing those terms via the W3C Web site.
+4. No Other Rights. Except as specifically set forth in this Agreement, no other express or implied patent, trademark, copyright, or other property rights are granted under this Agreement, including by implication, waiver, or estoppel.
+5. Antitrust Compliance. I acknowledge that I may compete with other participants, that I am under no obligation to implement the Specification, that each participant is free to develop competing technologies and standards, and that each party is free to license its patent rights to third parties, including for the purpose of enabling competing technologies and standards.
+6. Non-Circumvention. I agree that I will not intentionally take or willfully assist any third party to take any action for the purpose of circumventing my obligations under this Agreement.
+7. Transition to W3C Recommendation Track. The Specification developed by the Project may transition to the W3C Recommendation Track. The W3C Team is responsible for notifying me that a Corresponding Working Group has been chartered. I have no obligation to join the Corresponding Working Group. If the Specification developed by the Project transitions to the W3C Recommendation Track, the following terms apply:
+7.1. If I join the Corresponding Working Group. If I join the Corresponding Working Group, I will be subject to all W3C rules, obligations, licensing commitments, and policies that govern that Corresponding Working Group.
+7.2. If I Do Not Join the Corresponding Working Group.
+7.2.1. Licensing Obligations to Resulting Specification. If I do not join the Corresponding Working Group, I agree to offer patent licenses according to the W3C Royalty-Free licensing requirements described in Section 5 of the W3C Patent Policy for the portions of the Specification included in the resulting Recommendation. This licensing commitment does not extend to any portion of an implementation of the Recommendation that was not included in the Specification. This licensing commitment may not be revoked but may be modified through the exclusion process defined in Section 4 of the W3C Patent Policy. I am not required to join the Corresponding Working Group to exclude patents from the W3C Royalty-Free licensing commitment, but must otherwise follow the normal exclusion procedures defined by the W3C Patent Policy. The W3C Team will notify me of any Call for Exclusion in the Corresponding Working Group as set forth in Section 4.5 of the W3C Patent Policy.
+7.2.2. No Disclosure Obligation. If I do not join the Corresponding Working Group, I have no patent disclosure obligations outside of those set forth in Section 6 of the W3C Patent Policy.
+8. Conflict of Interest. I will disclose significant relationships when those relationships might reasonably be perceived as creating a conflict of interest with my role. I will notify W3C of any change in my affiliation using W3C-provided mechanisms.
+9. Representations, Warranties and Disclaimers. I represent and warrant that I am legally entitled to grant the rights and promises set forth in this Agreement. IN ALL OTHER RESPECTS THE SPECIFICATION IS PROVIDED AS IS. The entire risk as to implementing or otherwise using the Specification is assumed by the implementer and user. Except as stated herein, I expressly disclaim any warranties (express, implied, or otherwise), including implied warranties of merchantability, non-infringement, fitness for a particular purpose, or title, related to the Specification. IN NO EVENT WILL ANY PARTY BE LIABLE TO ANY OTHER PARTY FOR LOST PROFITS OR ANY FORM OF INDIRECT, SPECIAL, INCIDENTAL, OR CONSEQUENTIAL DAMAGES OF ANY CHARACTER FROM ANY CAUSES OF ACTION OF ANY KIND WITH RESPECT TO THIS AGREEMENT, WHETHER BASED ON BREACH OF CONTRACT, TORT (INCLUDING NEGLIGENCE), OR OTHERWISE, AND WHETHER OR NOT THE OTHER PARTY HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. All of my obligations under Section 3 regarding the transfer, successors in interest, or assignment of Granted Claims will be satisfied if I notify the transferee or assignee of any patent that I know contains Granted Claims of the obligations under Section 3. Nothing in this Agreement requires me to undertake a patent search.
+10. Definitions.
+10.1. Agreement. Agreement means this W3C Community Final Specification Agreement.
+10.2. Corresponding Working Group. Corresponding Working Group is a W3C Working Group that is chartered to develop a Recommendation, as defined in the W3C Process Document, that takes the Specification as an input.
+10.3. Essential Claims. Essential Claims shall mean all claims in any patent or patent application in any jurisdiction in the world that would necessarily be infringed by implementation of the Specification. A claim is necessarily infringed hereunder only when it is not possible to avoid infringing it because there is no non-infringing alternative for implementing the normative portions of the Specification. Existence of a non-infringing alternative shall be judged based on the state of the art at the time of the publication of the Specification. The following are expressly excluded from and shall not be deemed to constitute Essential Claims:
+10.3.1. any claims other than as set forth above even if contained in the same patent as Essential Claims; and
+10.3.2. claims which would be infringed only by:
+portions of an implementation that are not specified in the normative portions of the Specification, or
+enabling technologies that may be necessary to make or use any product or portion thereof that complies with the Specification and are not themselves expressly set forth in the Specification (e.g., semiconductor manufacturing technology, compiler technology, object-oriented technology, basic operating system technology, and the like); or
+the implementation of technology developed elsewhere and merely incorporated by reference in the body of the Specification.
+10.3.3. design patents and design registrations.
+For purposes of this definition, the normative portions of the Specification shall be deemed to include only architectural and interoperability requirements. Optional features in the RFC 2119 sense are considered normative unless they are specifically identified as informative. Implementation examples or any other material that merely illustrate the requirements of the Specification are informative, rather than normative.
+10.4. I, Me, or My. I, me, or my refers to the signatory.
+10.5 Project. Project means the W3C Community Group or Business Group for which I executed this Agreement.
+10.6. Specification. Specification means the Specification identified by the Project as the target of this agreement in a call for Final Specification Commitments. W3C shall provide the authoritative mechanisms for the identification of this Specification.
+10.7. W3C Community RF Licensing Requirements. W3C Community RF Licensing Requirements license shall mean a non-assignable, non-sublicensable license to make, have made, use, sell, have sold, offer to sell, import, and distribute and dispose of implementations of the Specification that:
+10.7.1. shall be available to all, worldwide, whether or not they are W3C Members;
+10.7.2. shall extend to all Essential Claims owned or controlled by me;
+10.7.3. may be limited to implementations of the Specification, and to what is required by the Specification;
+10.7.4. may be conditioned on a grant of a reciprocal RF license (as defined in this policy) to all Essential Claims owned or controlled by the licensee. A reciprocal license may be required to be available to all, and a reciprocal license may itself be conditioned on a further reciprocal license from all.
+10.7.5. may not be conditioned on payment of royalties, fees or other consideration;
+10.7.6. may be suspended with respect to any licensee when licensor issued by licensee for infringement of claims essential to implement the Specification or any W3C Recommendation;
+10.7.7. may not impose any further conditions or restrictions on the use of any technology, intellectual property rights, or other restrictions on behavior of the licensee, but may include reasonable, customary terms relating to operation or maintenance of the license relationship such as the following: choice of law and dispute resolution;
+10.7.8. shall not be considered accepted by an implementer who manifests an intent not to accept the terms of the W3C Community RF Licensing Requirements license as offered by the licensor.
+10.7.9. The RF license conforming to the requirements in this policy shall be made available by the licensor as long as the Specification is in effect. The term of such license shall be for the life of the patents in question.
+I am encouraged to provide a contact from which licensing information can be obtained and other relevant licensing information. Any such information will be made publicly available.
+10.8. You or Your. You, you, or your means any person or entity who exercises copyright or patent rights granted under this Agreement, and any person that person or entity controls.
+
+-------------------------------------------------------------------------------------
+
+------------------- WebGL -----------------------------
+Copyright (c) 2018 The Khronos Group Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a
+copy of this software and/or associated documentation files (the
+"Materials"), to deal in the Materials without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Materials, and to
+permit persons to whom the Materials are furnished to do so, subject to
+the following conditions:
+
+The above copyright notice and this permission notice shall be included
+in all copies or substantial portions of the Materials.
+
+THE MATERIALS ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+MATERIALS OR THE USE OR OTHER DEALINGS IN THE MATERIALS.
+------------------------------------------------------
+
+
+=========================================
+END OF typescript NOTICES AND INFORMATION
+
+
+
+
+%% HTML 5.1 W3C Working Draft version 08 October 2015 (http://www.w3.org/TR/2015/WD-html51-20151008/)
+=========================================
+Copyright © 2015 W3C® (MIT, ERCIM, Keio, Beihang). This software or document includes material copied
+from or derived from HTML 5.1 W3C Working Draft (http://www.w3.org/TR/2015/WD-html51-20151008/.)
+
+THIS DOCUMENT IS PROVIDED "AS IS," AND COPYRIGHT HOLDERS MAKE NO REPRESENTATIONS OR WARRANTIES, EXPRESS OR IMPLIED, INCLUDING, BUT
+NOT LIMITED TO, WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, NON-INFRINGEMENT, OR TITLE; THAT THE CONTENTS OF
+THE DOCUMENT ARE SUITABLE FOR ANY PURPOSE; NOR THAT THE IMPLEMENTATION OF SUCH CONTENTS WILL NOT INFRINGE ANY THIRD PARTY
+PATENTS, COPYRIGHTS, TRADEMARKS OR OTHER RIGHTS.
+
+COPYRIGHT HOLDERS WILL NOT BE LIABLE FOR ANY DIRECT, INDIRECT, SPECIAL OR CONSEQUENTIAL DAMAGES ARISING OUT OF ANY USE OF THE
+DOCUMENT OR THE PERFORMANCE OR IMPLEMENTATION OF THE CONTENTS THEREOF.
+
+The name and trademarks of copyright holders may NOT be used in advertising or publicity pertaining to this document or its contents
+without specific, written prior permission. Title to copyright in this document will at all times remain with copyright holders.
+=========================================
+END OF HTML 5.1 W3C Working Draft NOTICES AND INFORMATION
+
+
+
+
+%% JS Beautifier version 1.6.2 (https://github.com/beautify-web/js-beautify)
+=========================================
+The MIT License (MIT)
+
+Copyright (c) 2007-2017 Einar Lielmanis, Liam Newman, and contributors.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+=========================================
+END OF js-beautify NOTICES AND INFORMATION
+
+
+
+
+%% Ionic documentation version 1.2.4 (https://github.com/driftyco/ionic-site)
+=========================================
+Copyright Drifty Co. http://drifty.com/.
+
+Apache License
+
+Version 2.0, January 2004
+
+http://www.apache.org/licenses/
+
+TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+
+1. Definitions.
+
+"License" shall mean the terms and conditions for use, reproduction, and distribution as defined by Sections 1 through 9 of this document.
+
+"Licensor" shall mean the copyright owner or entity authorized by the copyright owner that is granting the License.
+
+"Legal Entity" shall mean the union of the acting entity and all other entities that control, are controlled by, or are under common control with that entity. For the purposes of this definition, "control" means (i) the power, direct or indirect, to cause the direction or management of such entity, whether by contract or otherwise, or (ii) ownership of fifty percent (50%) or more of the outstanding shares, or (iii) beneficial ownership of such entity.
+
+"You" (or "Your") shall mean an individual or Legal Entity exercising permissions granted by this License.
+
+"Source" form shall mean the preferred form for making modifications, including but not limited to software source code, documentation source, and configuration files.
+
+"Object" form shall mean any form resulting from mechanical transformation or translation of a Source form, including but not limited to compiled object code, generated documentation, and conversions to other media types.
+
+"Work" shall mean the work of authorship, whether in Source or Object form, made available under the License, as indicated by a copyright notice that is included in or attached to the work (an example is provided in the Appendix below).
+
+"Derivative Works" shall mean any work, whether in Source or Object form, that is based on (or derived from) the Work and for which the editorial revisions, annotations, elaborations, or other modifications represent, as a whole, an original work of authorship. For the purposes of this License, Derivative Works shall not include works that remain separable from, or merely link (or bind by name) to the interfaces of, the Work and Derivative Works thereof.
+
+"Contribution" shall mean any work of authorship, including the original version of the Work and any modifications or additions to that Work or Derivative Works thereof, that is intentionally submitted to Licensor for inclusion in the Work by the copyright owner or by an individual or Legal Entity authorized to submit on behalf of the copyright owner. For the purposes of this definition, "submitted" means any form of electronic, verbal, or written communication sent to the Licensor or its representatives, including but not limited to communication on electronic mailing lists, source code control systems, and issue tracking systems that are managed by, or on behalf of, the Licensor for the purpose of discussing and improving the Work, but excluding communication that is conspicuously marked or otherwise designated in writing by the copyright owner as "Not a Contribution."
+
+"Contributor" shall mean Licensor and any individual or Legal Entity on behalf of whom a Contribution has been received by Licensor and subsequently incorporated within the Work.
+
+2. Grant of Copyright License. Subject to the terms and conditions of this License, each Contributor hereby grants to You a perpetual, worldwide, non-exclusive, no-charge, royalty-free, irrevocable copyright license to reproduce, prepare Derivative Works of, publicly display, publicly perform, sublicense, and distribute the Work and such Derivative Works in Source or Object form.
+
+3. Grant of Patent License. Subject to the terms and conditions of this License, each Contributor hereby grants to You a perpetual, worldwide, non-exclusive, no-charge, royalty-free, irrevocable (except as stated in this section) patent license to make, have made, use, offer to sell, sell, import, and otherwise transfer the Work, where such license applies only to those patent claims licensable by such Contributor that are necessarily infringed by their Contribution(s) alone or by combination of their Contribution(s) with the Work to which such Contribution(s) was submitted. If You institute patent litigation against any entity (including a cross-claim or counterclaim in a lawsuit) alleging that the Work or a Contribution incorporated within the Work constitutes direct or contributory patent infringement, then any patent licenses granted to You under this License for that Work shall terminate as of the date such litigation is filed.
+
+4. Redistribution. You may reproduce and distribute copies of the Work or Derivative Works thereof in any medium, with or without modifications, and in Source or Object form, provided that You meet the following conditions:
+
+You must give any other recipients of the Work or Derivative Works a copy of this License; and
+
+You must cause any modified files to carry prominent notices stating that You changed the files; and
+
+You must retain, in the Source form of any Derivative Works that You distribute, all copyright, patent, trademark, and attribution notices from the Source form of the Work, excluding those notices that do not pertain to any part of the Derivative Works; and
+
+If the Work includes a "NOTICE" text file as part of its distribution, then any Derivative Works that You distribute must include a readable copy of the attribution notices contained within such NOTICE file, excluding those notices that do not pertain to any part of the Derivative Works, in at least one of the following places: within a NOTICE text file distributed as part of the Derivative Works; within the Source form or documentation, if provided along with the Derivative Works; or, within a display generated by the Derivative Works, if and wherever such third-party notices normally appear. The contents of the NOTICE file are for informational purposes only and do not modify the License. You may add Your own attribution notices within Derivative Works that You distribute, alongside or as an addendum to the NOTICE text from the Work, provided that such additional attribution notices cannot be construed as modifying the License. You may add Your own copyright statement to Your modifications and may provide additional or different license terms and conditions for use, reproduction, or distribution of Your modifications, or for any such Derivative Works as a whole, provided Your use, reproduction, and distribution of the Work otherwise complies with the conditions stated in this License.
+
+5. Submission of Contributions. Unless You explicitly state otherwise, any Contribution intentionally submitted for inclusion in the Work by You to the Licensor shall be under the terms and conditions of this License, without any additional terms or conditions. Notwithstanding the above, nothing herein shall supersede or modify the terms of any separate license agreement you may have executed with Licensor regarding such Contributions.
+
+6. Trademarks. This License does not grant permission to use the trade names, trademarks, service marks, or product names of the Licensor, except as required for reasonable and customary use in describing the origin of the Work and reproducing the content of the NOTICE file.
+
+7. Disclaimer of Warranty. Unless required by applicable law or agreed to in writing, Licensor provides the Work (and each Contributor provides its Contributions) on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied, including, without limitation, any warranties or conditions of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A PARTICULAR PURPOSE. You are solely responsible for determining the appropriateness of using or redistributing the Work and assume any risks associated with Your exercise of permissions under this License.
+
+8. Limitation of Liability. In no event and under no legal theory, whether in tort (including negligence), contract, or otherwise, unless required by applicable law (such as deliberate and grossly negligent acts) or agreed to in writing, shall any Contributor be liable to You for damages, including any direct, indirect, special, incidental, or consequential damages of any character arising as a result of this License or out of the use or inability to use the Work (including but not limited to damages for loss of goodwill, work stoppage, computer failure or malfunction, or any and all other commercial damages or losses), even if such Contributor has been advised of the possibility of such damages.
+
+9. Accepting Warranty or Additional Liability. While redistributing the Work or Derivative Works thereof, You may choose to offer, and charge a fee for, acceptance of support, warranty, indemnity, or other liability obligations and/or rights consistent with this License. However, in accepting such obligations, You may act only on Your own behalf and on Your sole responsibility, not on behalf of any other Contributor, and only if You agree to indemnify, defend, and hold each Contributor harmless for any liability incurred by, or claims asserted against, such Contributor by reason of your accepting any such warranty or additional liability.
+
+END OF TERMS AND CONDITIONS
+=========================================
+END OF Ionic documentation NOTICES AND INFORMATION
+
+
+
+
+%% vscode-swift version 0.0.1 (https://github.com/owensd/vscode-swift)
+=========================================
+The MIT License (MIT)
+
+Copyright (c) 2015 David Owens II
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+=========================================
+END OF vscode-swift NOTICES AND INFORMATION
+```
+
 <a id="notice-moxcms"></a>
 <a id="notice-pxfm"></a>
 
-### Notice Entry 398
+### Notice Entry 399
 
 **Used by component(s):**
 - `moxcms@0.8.1` (cargo, file: `LICENSE-APACHE.md`)
@@ -30445,7 +30889,7 @@ Apache License
    limitations under the License.
 ```
 
-### Notice Entry 399
+### Notice Entry 400
 
 **Used by component(s):**
 - `moxcms@0.8.1` (cargo, file: `LICENSE.md`)
@@ -30482,7 +30926,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 <a id="notice-ms"></a>
 
-### Notice Entry 400
+### Notice Entry 401
 
 **Used by component(s):**
 - `ms@2.1.3` (npm, file: `license.md`)
@@ -30511,7 +30955,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 401
+### Notice Entry 402
 
 **Used by component(s):**
 - `muda@0.19.3` (cargo, file: `LICENSE-MIT`)
@@ -30541,7 +30985,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 402
+### Notice Entry 403
 
 **Used by component(s):**
 - `muda@0.19.3` (cargo, file: `LICENSE.spdx`)
@@ -30568,7 +31012,7 @@ PackageDownloadLocation: git+ssh://github.com/tauri-apps/muda.git
 Creator: Person: Daniel Thompson-Yvetot
 ```
 
-### Notice Entry 403
+### Notice Entry 404
 
 **Used by component(s):**
 - `multimap@0.10.1` (cargo, file: `LICENSE-MIT`)
@@ -30601,7 +31045,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 404
+### Notice Entry 405
 
 **Used by component(s):**
 - `multiversion@0.9.0` (cargo, file: `LICENSE-MIT`)
@@ -30617,7 +31061,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 405
+### Notice Entry 406
 
 **Used by component(s):**
 - `multiversion_no_op@1.0.0` (cargo, file: `COPYRIGHT`)
@@ -30640,7 +31084,7 @@ See the Licenses for the specific language governing permissions and
 limitations under the Licenses.
 ```
 
-### Notice Entry 406
+### Notice Entry 407
 
 **Used by component(s):**
 - `n0-mainline@0.5.0` (cargo, file: `LICENSE-MIT`)
@@ -30671,7 +31115,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 407
+### Notice Entry 408
 
 **Used by component(s):**
 - `native-tls@0.2.18` (cargo, file: `LICENSE-MIT`)
@@ -30700,7 +31144,7 @@ SOFTWARE.
 
 <a id="notice-netdev"></a>
 
-### Notice Entry 408
+### Notice Entry 409
 
 **Used by component(s):**
 - `netdev@0.45.1` (cargo, file: `LICENSE`)
@@ -30734,7 +31178,7 @@ SOFTWARE.
 <a id="notice-netlink-proto"></a>
 <a id="notice-netlink-sys"></a>
 
-### Notice Entry 409
+### Notice Entry 410
 
 **Used by component(s):**
 - `netlink-packet-core@0.8.2` (cargo, file: `LICENSE-MIT`)
@@ -30778,7 +31222,7 @@ SOFTWARE.
 
 <a id="notice-netlink-packet-route"></a>
 
-### Notice Entry 410
+### Notice Entry 411
 
 **Used by component(s):**
 - `netlink-packet-route@0.31.0` (cargo, file: `LICENSE-MIT`)
@@ -30809,7 +31253,7 @@ SOFTWARE.
 <a id="notice-new-debug-unreachable"></a>
 <a id="notice-ordered-float"></a>
 
-### Notice Entry 411
+### Notice Entry 412
 
 **Used by component(s):**
 - `new_debug_unreachable@1.0.6` (cargo, file: `LICENSE-MIT`)
@@ -30845,7 +31289,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-nix"></a>
 
-### Notice Entry 412
+### Notice Entry 413
 
 **Used by component(s):**
 - `nix@0.28.0` (cargo, file: `LICENSE`)
@@ -30879,7 +31323,7 @@ THE SOFTWARE.
 
 <a id="notice-nom"></a>
 
-### Notice Entry 413
+### Notice Entry 414
 
 **Used by component(s):**
 - `nom@7.1.3` (cargo, file: `LICENSE`)
@@ -30912,7 +31356,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 <a id="notice-noq-proto"></a>
 <a id="notice-noq-udp"></a>
 
-### Notice Entry 414
+### Notice Entry 415
 
 **Used by component(s):**
 - `noq@1.3.0` (cargo, file: `LICENSE-APACHE`)
@@ -31124,7 +31568,7 @@ Apache License
    limitations under the License.
 ```
 
-### Notice Entry 415
+### Notice Entry 416
 
 **Used by component(s):**
 - `noq@1.3.0` (cargo, file: `LICENSE-MIT`)
@@ -31144,7 +31588,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 <a id="notice-notify"></a>
 
-### Notice Entry 416
+### Notice Entry 417
 
 **Used by component(s):**
 - `notify@8.2.1` (cargo, file: `LICENSE-CC0`)
@@ -31194,7 +31638,7 @@ For these and/or other purposes and motivations, and without any expectation of 
      d. Affirmer understands and acknowledges that Creative Commons is not a party to this document and has no duty or obligation with respect to this CC0 or use of the Work.
 ```
 
-### Notice Entry 417
+### Notice Entry 418
 
 **Used by component(s):**
 - `notify-rust@4.18.0` (cargo, file: `LICENSE-MIT`)
@@ -31225,7 +31669,7 @@ SOFTWARE.
 
 <a id="notice-nu-ansi-term"></a>
 
-### Notice Entry 418
+### Notice Entry 419
 
 **Used by component(s):**
 - `nu-ansi-term@0.50.3` (cargo, file: `LICENSE`)
@@ -31255,7 +31699,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 419
+### Notice Entry 420
 
 **Used by component(s):**
 - `num-conv@0.2.2` (cargo, file: `LICENSE-MIT`)
@@ -31282,7 +31726,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 420
+### Notice Entry 421
 
 **Used by component(s):**
 - `num_enum@0.7.6` (cargo, file: `LICENSE-BSD`)
@@ -31320,7 +31764,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 <a id="notice-num-threads"></a>
 
-### Notice Entry 421
+### Notice Entry 422
 
 **Used by component(s):**
 - `num_threads@0.1.7` (cargo, file: `LICENSE-Apache`)
@@ -31529,7 +31973,7 @@ Apache License
    limitations under the License.
 ```
 
-### Notice Entry 422
+### Notice Entry 423
 
 **Used by component(s):**
 - `num_threads@0.1.7` (cargo, file: `LICENSE-MIT`)
@@ -31556,7 +32000,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 423
+### Notice Entry 424
 
 **Used by component(s):**
 - `ocb3@0.1.0` (cargo, file: `LICENSE-MIT`)
@@ -31589,7 +32033,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 424
+### Notice Entry 425
 
 **Used by component(s):**
 - `olpc-cjson@0.1.4` (cargo, file: `LICENSE-MIT`)
@@ -31606,7 +32050,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN  NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE  SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 425
+### Notice Entry 426
 
 **Used by component(s):**
 - `opaque-debug@0.3.1` (cargo, file: `LICENSE-MIT`)
@@ -31641,7 +32085,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-open"></a>
 
-### Notice Entry 426
+### Notice Entry 427
 
 **Used by component(s):**
 - `open@5.4.5` (cargo, file: `LICENSE.md`)
@@ -31676,7 +32120,7 @@ OTHER DEALINGS IN THE SOFTWARE.
 
 <a id="notice-openidconnect"></a>
 
-### Notice Entry 427
+### Notice Entry 428
 
 **Used by component(s):**
 - `openidconnect@4.0.1` (cargo, file: `LICENSE`)
@@ -31705,7 +32149,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 428
+### Notice Entry 429
 
 **Used by component(s):**
 - `openssl@0.10.81` (cargo, file: `LICENSE`)
@@ -31728,7 +32172,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### Notice Entry 429
+### Notice Entry 430
 
 **Used by component(s):**
 - `openssl-macros@0.1.1` (cargo, file: `LICENSE-MIT`)
@@ -31755,7 +32199,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 430
+### Notice Entry 431
 
 **Used by component(s):**
 - `openssl-src@300.6.1+3.6.3` (cargo, file: `openssl/LICENSE.txt`)
@@ -32194,7 +32638,7 @@ Apache License
    END OF TERMS AND CONDITIONS
 ```
 
-### Notice Entry 431
+### Notice Entry 432
 
 **Used by component(s):**
 - `openssl-src@300.6.1+3.6.3` (cargo, file: `openssl/external/perl/Text-Template-1.56/LICENSE`)
@@ -32584,7 +33028,7 @@ The End
 
 <a id="notice-option-ext"></a>
 
-### Notice Entry 432
+### Notice Entry 433
 
 **Used by component(s):**
 - `option-ext@0.2.0` (cargo, file: `LICENSE.txt`)
@@ -32969,7 +33413,7 @@ Exhibit B - "Incompatible With Secondary Licenses" Notice
 <a id="notice-os-pipe"></a>
 <a id="notice-shared-child"></a>
 
-### Notice Entry 433
+### Notice Entry 434
 
 **Used by component(s):**
 - `os_pipe@1.2.3` (cargo, file: `LICENSE`)
@@ -32999,7 +33443,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### Notice Entry 434
+### Notice Entry 435
 
 **Used by component(s):**
 - `p256@0.13.2` (cargo, file: `LICENSE-MIT`)
@@ -33035,7 +33479,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 435
+### Notice Entry 436
 
 **Used by component(s):**
 - `p384@0.13.1` (cargo, file: `LICENSE-MIT`)
@@ -33069,7 +33513,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 436
+### Notice Entry 437
 
 **Used by component(s):**
 - `parking@2.2.1` (cargo, file: `LICENSE-THIRD-PARTY`)
@@ -33089,7 +33533,7 @@ copied, modified, or distributed except according to those terms.
 <a id="notice-parse-entities"></a>
 <a id="notice-property-information"></a>
 
-### Notice Entry 437
+### Notice Entry 438
 
 **Used by component(s):**
 - `parse-entities@4.0.2` (npm, file: `license`)
@@ -33120,7 +33564,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 438
+### Notice Entry 439
 
 **Used by component(s):**
 - `pbkdf2@0.12.2` (cargo, file: `LICENSE-MIT`)
@@ -33157,7 +33601,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-pem"></a>
 
-### Notice Entry 439
+### Notice Entry 440
 
 **Used by component(s):**
 - `pem@3.0.6` (cargo, file: `LICENSE.md`)
@@ -33187,7 +33631,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 440
+### Notice Entry 441
 
 **Used by component(s):**
 - `pem-rfc7468@1.0.0` (cargo, file: `LICENSE-MIT`)
@@ -33221,7 +33665,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 441
+### Notice Entry 442
 
 **Used by component(s):**
 - `petgraph@0.8.3` (cargo, file: `assets/images/LICENSE.md`)
@@ -33242,7 +33686,7 @@ work.  If not, see <http://creativecommons.org/licenses/by-sa/4.0/>.
 <a id="notice-phf-macros"></a>
 <a id="notice-phf-shared"></a>
 
-### Notice Entry 442
+### Notice Entry 443
 
 **Used by component(s):**
 - `phf@0.13.1` (cargo, file: `LICENSE`)
@@ -33274,7 +33718,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 443
+### Notice Entry 444
 
 **Used by component(s):**
 - `pkcs1@0.7.5` (cargo, file: `LICENSE-MIT`)
@@ -33312,7 +33756,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-plist"></a>
 
-### Notice Entry 444
+### Notice Entry 445
 
 **Used by component(s):**
 - `plist@1.10.1` (cargo, file: `LICENCE`)
@@ -33339,7 +33783,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 445
+### Notice Entry 446
 
 **Used by component(s):**
 - `png@0.17.16` (cargo, file: `LICENSE-MIT`)
@@ -33373,7 +33817,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 446
+### Notice Entry 447
 
 **Used by component(s):**
 - `poly1305@0.8.0` (cargo, file: `LICENSE-MIT`)
@@ -33406,7 +33850,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 447
+### Notice Entry 448
 
 **Used by component(s):**
 - `poly1305@0.9.1` (cargo, file: `LICENSE-MIT`)
@@ -33439,7 +33883,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 448
+### Notice Entry 449
 
 **Used by component(s):**
 - `polyval@0.6.2` (cargo, file: `LICENSE-MIT`)
@@ -33474,7 +33918,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-positioned-io"></a>
 
-### Notice Entry 449
+### Notice Entry 450
 
 **Used by component(s):**
 - `positioned-io@0.3.5` (cargo, file: `LICENSE-MIT`)
@@ -33505,7 +33949,7 @@ THE SOFTWARE.
 
 <a id="notice-posix-acl"></a>
 
-### Notice Entry 450
+### Notice Entry 451
 
 **Used by component(s):**
 - `posix-acl@1.2.0` (cargo, file: `LICENSE`)
@@ -33534,7 +33978,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 451
+### Notice Entry 452
 
 **Used by component(s):**
 - `postcard@1.1.3` (cargo, file: `LICENSE-MIT`)
@@ -33570,7 +34014,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-powerfmt"></a>
 
-### Notice Entry 452
+### Notice Entry 453
 
 **Used by component(s):**
 - `powerfmt@0.2.0` (cargo, file: `LICENSE-Apache`)
@@ -33779,7 +34223,7 @@ Apache License
    limitations under the License.
 ```
 
-### Notice Entry 453
+### Notice Entry 454
 
 **Used by component(s):**
 - `powerfmt@0.2.0` (cargo, file: `LICENSE-MIT`)
@@ -33808,7 +34252,7 @@ SOFTWARE.
 
 <a id="notice-ppmd-rust"></a>
 
-### Notice Entry 454
+### Notice Entry 455
 
 **Used by component(s):**
 - `ppmd-rust@1.4.1` (cargo, file: `LICENSE-CC0.md`)
@@ -33935,7 +34379,7 @@ party to this document and has no duty or obligation with respect to
 this CC0 or use of the Work.
 ```
 
-### Notice Entry 455
+### Notice Entry 456
 
 **Used by component(s):**
 - `ppmd-rust@1.4.1` (cargo, file: `LICENSE-MIT-0.md`)
@@ -33961,7 +34405,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 <a id="notice-ppv-lite86"></a>
 
-### Notice Entry 456
+### Notice Entry 457
 
 **Used by component(s):**
 - `ppv-lite86@0.2.21` (cargo, file: `LICENSE-APACHE`)
@@ -34170,7 +34614,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### Notice Entry 457
+### Notice Entry 458
 
 **Used by component(s):**
 - `ppv-lite86@0.2.21` (cargo, file: `LICENSE-MIT`)
@@ -34205,7 +34649,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-precomputed-hash"></a>
 
-### Notice Entry 458
+### Notice Entry 459
 
 **Used by component(s):**
 - `precomputed-hash@0.1.1` (cargo, file: `LICENSE`)
@@ -34234,7 +34678,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 459
+### Notice Entry 460
 
 **Used by component(s):**
 - `primal-check@0.3.4` (cargo, file: `LICENSE-MIT`)
@@ -34267,7 +34711,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 460
+### Notice Entry 461
 
 **Used by component(s):**
 - `primefield@0.14.0` (cargo, file: `LICENSE-MIT`)
@@ -34302,7 +34746,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-prismjs"></a>
 
-### Notice Entry 461
+### Notice Entry 462
 
 **Used by component(s):**
 - `prismjs@1.30.0` (npm, file: `LICENSE`)
@@ -34333,7 +34777,7 @@ THE SOFTWARE.
 
 <a id="notice-proc-macro-error"></a>
 
-### Notice Entry 462
+### Notice Entry 463
 
 **Used by component(s):**
 - `proc-macro-error@0.4.12` (cargo, file: `LICENSE-APACHE`)
@@ -34542,7 +34986,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### Notice Entry 463
+### Notice Entry 464
 
 **Used by component(s):**
 - `proc-macro-error@0.4.12` (cargo, file: `LICENSE-MIT`)
@@ -34573,7 +35017,7 @@ SOFTWARE.
 
 <a id="notice-proc-macro-error-attr"></a>
 
-### Notice Entry 464
+### Notice Entry 465
 
 **Used by component(s):**
 - `proc-macro-error@1.0.4` (cargo, file: `LICENSE-APACHE`)
@@ -34784,7 +35228,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### Notice Entry 465
+### Notice Entry 466
 
 **Used by component(s):**
 - `proc-macro-error@1.0.4` (cargo, file: `LICENSE-MIT`)
@@ -34815,7 +35259,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 466
+### Notice Entry 467
 
 **Used by component(s):**
 - `proc-macro-hack@0.5.20+deprecated` (cargo, file: `LICENSE-MIT`)
@@ -34850,7 +35294,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-prometheus"></a>
 
-### Notice Entry 467
+### Notice Entry 468
 
 **Used by component(s):**
 - `prometheus@0.14.0` (cargo, file: `LICENSE`)
@@ -35069,7 +35513,7 @@ Apache License
 <a id="notice-snafu"></a>
 <a id="notice-snafu-derive"></a>
 
-### Notice Entry 468
+### Notice Entry 469
 
 **Used by component(s):**
 - `proxy-protocol@0.5.0` (cargo, file: `LICENCE-APACHE-2.0`)
@@ -35284,7 +35728,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### Notice Entry 469
+### Notice Entry 470
 
 **Used by component(s):**
 - `proxy-protocol@0.5.0` (cargo, file: `LICENCE-MIT`)
@@ -35315,7 +35759,7 @@ SOFTWARE.
 
 <a id="notice-qrcode.react"></a>
 
-### Notice Entry 470
+### Notice Entry 471
 
 **Used by component(s):**
 - `qrcode.react@4.2.0` (npm, file: `LICENSE`)
@@ -35342,7 +35786,7 @@ This product bundles QR Code Generator, which is available under a
 "MIT" license. For details, see src/third-party/qrcodegen.
 ```
 
-### Notice Entry 471
+### Notice Entry 472
 
 **Used by component(s):**
 - `quick-error@2.0.1` (cargo, file: `LICENSE-MIT`)
@@ -35371,7 +35815,7 @@ SOFTWARE.
 
 <a id="notice-quick-xml"></a>
 
-### Notice Entry 472
+### Notice Entry 473
 
 **Used by component(s):**
 - `quick-xml@0.42.0` (cargo, file: `LICENSE-MIT.md`)
@@ -35404,7 +35848,7 @@ THE SOFTWARE.
 
 <a id="notice-radium"></a>
 
-### Notice Entry 473
+### Notice Entry 474
 
 **Used by component(s):**
 - `radium@0.7.0` (cargo, file: `LICENSE.txt`)
@@ -35433,7 +35877,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 474
+### Notice Entry 475
 
 **Used by component(s):**
 - `rand@0.10.3` (cargo, file: `COPYRIGHT`)
@@ -35464,7 +35908,7 @@ published under these same licenses.
 
 <a id="notice-rand"></a>
 
-### Notice Entry 475
+### Notice Entry 476
 
 **Used by component(s):**
 - `rand@0.10.3` (cargo, file: `LICENSE-APACHE`)
@@ -35653,7 +36097,7 @@ END OF TERMS AND CONDITIONS
 
 <a id="notice-rand-core"></a>
 
-### Notice Entry 476
+### Notice Entry 477
 
 **Used by component(s):**
 - `rand@0.10.3` (cargo, file: `LICENSE-MIT`)
@@ -35693,7 +36137,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 477
+### Notice Entry 478
 
 **Used by component(s):**
 - `rand_core@0.10.1` (cargo, file: `COPYRIGHT`)
@@ -35712,7 +36156,7 @@ licensed under the Apache License, Version 2.0 <LICENSE-APACHE> or
 
 <a id="notice-rand-pcg"></a>
 
-### Notice Entry 478
+### Notice Entry 479
 
 **Used by component(s):**
 - `rand_core@0.10.1` (cargo, file: `LICENSE-APACHE`)
@@ -35910,7 +36354,7 @@ APPENDIX: How to apply the Apache License to your work.
    identification within third-party archives.
 ```
 
-### Notice Entry 479
+### Notice Entry 480
 
 **Used by component(s):**
 - `rand_core@0.10.1` (cargo, file: `LICENSE-MIT`)
@@ -35943,7 +36387,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 480
+### Notice Entry 481
 
 **Used by component(s):**
 - `rand_pcg@0.10.2` (cargo, file: `LICENSE-MIT`)
@@ -35977,7 +36421,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 481
+### Notice Entry 482
 
 **Used by component(s):**
 - `range-collections@0.4.6` (cargo, file: `LICENSE-MIT.md`)
@@ -36011,7 +36455,7 @@ SOFTWARE.
 <a id="notice-ratatui-crossterm"></a>
 <a id="notice-ratatui-widgets"></a>
 
-### Notice Entry 482
+### Notice Entry 483
 
 **Used by component(s):**
 - `ratatui@0.30.2` (cargo, file: `LICENSE`)
@@ -36046,7 +36490,7 @@ SOFTWARE.
 
 <a id="notice-ratatui-macros"></a>
 
-### Notice Entry 483
+### Notice Entry 484
 
 **Used by component(s):**
 - `ratatui-macros@0.7.2` (cargo, file: `LICENSE`)
@@ -36074,7 +36518,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 484
+### Notice Entry 485
 
 **Used by component(s):**
 - `raw-window-handle@0.6.2` (cargo, file: `LICENSE-MIT.md`)
@@ -36103,7 +36547,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 485
+### Notice Entry 486
 
 **Used by component(s):**
 - `raw-window-handle@0.6.2` (cargo, file: `LICENSE-ZLIB.md`)
@@ -36124,7 +36568,7 @@ Permission is granted to anyone to use this software for any purpose, including 
 
 <a id="notice-rcgen"></a>
 
-### Notice Entry 486
+### Notice Entry 487
 
 **Used by component(s):**
 - `rcgen@0.14.10` (cargo, file: `LICENSE`)
@@ -36350,7 +36794,7 @@ Apache License, version 2.0
 <a id="notice-react-dom"></a>
 <a id="notice-scheduler"></a>
 
-### Notice Entry 487
+### Notice Entry 488
 
 **Used by component(s):**
 - `react@18.3.1` (npm, file: `LICENSE`)
@@ -36383,7 +36827,7 @@ SOFTWARE.
 
 <a id="notice-react-markdown"></a>
 
-### Notice Entry 488
+### Notice Entry 489
 
 **Used by component(s):**
 - `react-markdown@10.1.0` (npm, file: `license`)
@@ -36414,7 +36858,7 @@ SOFTWARE.
 
 <a id="notice-react-virtuoso"></a>
 
-### Notice Entry 489
+### Notice Entry 490
 
 **Used by component(s):**
 - `react-virtuoso@4.18.22` (npm, file: `LICENSE`)
@@ -36445,7 +36889,7 @@ SOFTWARE.
 
 <a id="notice-react-window"></a>
 
-### Notice Entry 490
+### Notice Entry 491
 
 **Used by component(s):**
 - `react-window@2.5.3` (npm, file: `LICENSE.md`)
@@ -36474,7 +36918,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 491
+### Notice Entry 492
 
 **Used by component(s):**
 - `redb@3.1.3` (cargo, file: `LICENSE-MIT`)
@@ -36504,7 +36948,7 @@ SOFTWARE.
 
 <a id="notice-redox-syscall"></a>
 
-### Notice Entry 492
+### Notice Entry 493
 
 **Used by component(s):**
 - `redox_syscall@0.2.16` (cargo, file: `LICENSE`)
@@ -36537,7 +36981,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 <a id="notice-redox-users"></a>
 
-### Notice Entry 493
+### Notice Entry 494
 
 **Used by component(s):**
 - `redox_users@0.4.6` (cargo, file: `LICENSE`)
@@ -36569,7 +37013,7 @@ SOFTWARE.
 
 <a id="notice-reed-solomon-erasure"></a>
 
-### Notice Entry 494
+### Notice Entry 495
 
 **Used by component(s):**
 - `reed-solomon-erasure@6.0.0` (cargo, file: `LICENSE`)
@@ -36602,7 +37046,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 495
+### Notice Entry 496
 
 **Used by component(s):**
 - `regex-syntax@0.8.11` (cargo, file: `src/unicode_tables/LICENSE-UNICODE`)
@@ -36670,7 +37114,7 @@ written authorization of the copyright holder.
 <a id="notice-remark-parse"></a>
 <a id="notice-remark-stringify"></a>
 
-### Notice Entry 496
+### Notice Entry 497
 
 **Used by component(s):**
 - `remark-parse@11.0.0` (npm, file: `license`)
@@ -36702,7 +37146,7 @@ THE SOFTWARE.
 
 <a id="notice-reqwest"></a>
 
-### Notice Entry 497
+### Notice Entry 498
 
 **Used by component(s):**
 - `reqwest@0.13.5` (cargo, file: `LICENSE-APACHE`)
@@ -36911,7 +37355,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### Notice Entry 498
+### Notice Entry 499
 
 **Used by component(s):**
 - `reqwest@0.13.5` (cargo, file: `LICENSE-MIT`)
@@ -36940,7 +37384,7 @@ THE SOFTWARE.
 
 <a id="notice-rfd"></a>
 
-### Notice Entry 499
+### Notice Entry 500
 
 **Used by component(s):**
 - `rfd@0.16.0` (cargo, file: `LICENSE`)
@@ -36969,7 +37413,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 500
+### Notice Entry 501
 
 **Used by component(s):**
 - `ring@0.17.14` (cargo, file: `LICENSE`)
@@ -37028,7 +37472,7 @@ for the license to code that was sourced from the once_cell project.
 
 <a id="notice-ring"></a>
 
-### Notice Entry 501
+### Notice Entry 502
 
 **Used by component(s):**
 - `ring@0.17.14` (cargo, file: `LICENSE-BoringSSL`)
@@ -37307,7 +37751,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### Notice Entry 502
+### Notice Entry 503
 
 **Used by component(s):**
 - `ring@0.17.14` (cargo, file: `LICENSE-other-bits`)
@@ -37328,7 +37772,7 @@ OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
 CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
-### Notice Entry 503
+### Notice Entry 504
 
 **Used by component(s):**
 - `ring@0.17.14` (cargo, file: `src/polyfill/once_cell/LICENSE-MIT`)
@@ -37360,7 +37804,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 504
+### Notice Entry 505
 
 **Used by component(s):**
 - `rustdct@0.7.1` (cargo, file: `LICENSE-MIT`)
@@ -37389,7 +37833,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 505
+### Notice Entry 506
 
 **Used by component(s):**
 - `rustix@1.1.6` (cargo, file: `COPYRIGHT`)
@@ -37426,7 +37870,7 @@ is licensed under:
 at your option.
 ```
 
-### Notice Entry 506
+### Notice Entry 507
 
 **Used by component(s):**
 - `rustix-linux-procfs@0.1.1` (cargo, file: `COPYRIGHT`)
@@ -37463,7 +37907,7 @@ is licensed under:
 at your option.
 ```
 
-### Notice Entry 507
+### Notice Entry 508
 
 **Used by component(s):**
 - `rustls-native-certs@0.8.5` (cargo, file: `LICENSE`)
@@ -37482,7 +37926,7 @@ of these licenses, at your option.
 
 <a id="notice-rustls-pki-types"></a>
 
-### Notice Entry 508
+### Notice Entry 509
 
 **Used by component(s):**
 - `rustls-pki-types@1.15.1` (cargo, file: `LICENSE-APACHE`)
@@ -37691,7 +38135,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### Notice Entry 509
+### Notice Entry 510
 
 **Used by component(s):**
 - `rustls-pki-types@1.15.1` (cargo, file: `LICENSE-MIT`)
@@ -37724,7 +38168,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 510
+### Notice Entry 511
 
 **Used by component(s):**
 - `rustls-platform-verifier@0.7.0` (cargo, file: `LICENSE-MIT`)
@@ -37755,7 +38199,7 @@ SOFTWARE.
 
 <a id="notice-rustls-webpki"></a>
 
-### Notice Entry 511
+### Notice Entry 512
 
 **Used by component(s):**
 - `rustls-webpki@0.103.16` (cargo, file: `LICENSE`)
@@ -37784,7 +38228,7 @@ The files under third-party/chromium are licensed as described in
 third-party/chromium/LICENSE.
 ```
 
-### Notice Entry 512
+### Notice Entry 513
 
 **Used by component(s):**
 - `salsa20@0.10.2` (cargo, file: `LICENSE-MIT`)
@@ -37817,7 +38261,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 513
+### Notice Entry 514
 
 **Used by component(s):**
 - `salsa20@0.11.0` (cargo, file: `LICENSE-MIT`)
@@ -37851,7 +38295,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 514
+### Notice Entry 515
 
 **Used by component(s):**
 - `same-file@1.0.6` (cargo, file: `LICENSE-MIT`)
@@ -37883,7 +38327,7 @@ THE SOFTWARE.
 
 <a id="notice-schannel"></a>
 
-### Notice Entry 515
+### Notice Entry 516
 
 **Used by component(s):**
 - `schannel@0.1.29` (cargo, file: `LICENSE.md`)
@@ -37901,7 +38345,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <a id="notice-schemars"></a>
 <a id="notice-schemars-derive"></a>
 
-### Notice Entry 516
+### Notice Entry 517
 
 **Used by component(s):**
 - `schemars@0.8.22` (cargo, file: `LICENSE`)
@@ -37932,7 +38376,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 517
+### Notice Entry 518
 
 **Used by component(s):**
 - `scopeguard@1.2.0` (cargo, file: `LICENSE-MIT`)
@@ -37965,7 +38409,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 518
+### Notice Entry 519
 
 **Used by component(s):**
 - `sec1@0.7.3` (cargo, file: `LICENSE-MIT`)
@@ -37998,7 +38442,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 519
+### Notice Entry 520
 
 **Used by component(s):**
 - `secrecy@0.10.3` (cargo, file: `LICENSE-MIT`)
@@ -38027,7 +38471,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 520
+### Notice Entry 521
 
 **Used by component(s):**
 - `secrecy@0.8.0` (cargo, file: `LICENSE-MIT`)
@@ -38056,7 +38500,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 521
+### Notice Entry 522
 
 **Used by component(s):**
 - `security-framework@2.11.1` (cargo, file: `LICENSE-MIT`)
@@ -38086,9 +38530,121 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
+### Notice Entry 523
+
+**Used by component(s):**
+- `security-framework@2.11.1` (cargo, file: `THIRD_PARTY`)
+- `security-framework@3.7.0` (cargo, file: `THIRD_PARTY`)
+
+```text
+This project contains documentation adapted from Apple Inc.'s Security Framework
+under the following license:
+
+APPLE PUBLIC SOURCE LICENSE
+Version 2.0 -  August 6, 2003
+
+Please read this License carefully before downloading this software.  By downloading or using this software, you are agreeing to be bound by the terms of this License.  If you do not or cannot agree to the terms of this License, please do not download or use the software.
+
+Apple Note:  In January 2007, Apple changed its corporate name from "Apple Computer, Inc." to "Apple Inc."  This change has been reflected below and copyright years updated, but no other changes have been made to the APSL 2.0.
+
+1.  General; Definitions.  This License applies to any program or other work which Apple Inc. ("Apple") makes publicly available and which contains a notice placed by Apple identifying such program or work as "Original Code" and stating that it is subject to the terms of this Apple Public Source License version 2.0 ("License").  As used in this License:
+
+1.1  "Applicable Patent Rights" mean:  (a) in the case where Apple is the grantor of rights, (i) claims of patents that are now or hereafter acquired, owned by or assigned to Apple and (ii) that cover subject matter contained in the Original Code, but only to the extent necessary to use, reproduce and/or distribute the Original Code without infringement; and (b) in the case where You are the grantor of rights, (i) claims of patents that are now or hereafter acquired, owned by or assigned to You and (ii) that cover subject matter in Your Modifications, taken alone or in combination with Original Code.
+
+1.2 "Contributor" means any person or entity that creates or contributes to the creation of Modifications.
+
+1.3  "Covered Code" means the Original Code, Modifications, the combination of Original Code and any Modifications, and/or any respective portions thereof.
+
+1.4 "Externally Deploy" means: (a) to sublicense, distribute or otherwise make Covered Code available, directly or indirectly, to anyone other than You; and/or (b) to use Covered Code, alone or as part of a Larger Work, in any way to provide a service, including but not limited to delivery of content, through electronic communication with a client other than You.
+
+1.5 "Larger Work" means a work which combines Covered Code or portions thereof with code not governed by the terms of this License.
+
+1.6 "Modifications" mean any addition to, deletion from, and/or change to, the substance and/or structure of the Original Code, any previous Modifications, the combination of Original Code and any previous Modifications, and/or any respective portions thereof.  When code is released as a series of files, a Modification is:  (a) any addition to or deletion from the contents of a file containing Covered Code; and/or (b) any new file or other representation of computer program statements that contains any part of Covered Code. 
+
+1.7 "Original Code" means (a) the Source Code of a program or other work as originally made available by Apple under this License, including the Source Code of any updates or upgrades to such programs or works made available by Apple under this License, and that has been expressly identified by Apple as such in the header file(s) of such work; and (b) the object code compiled from such Source Code and originally made available by Apple under this License
+
+1.8 "Source Code" means the human readable form of a program or other work that is suitable for making modifications to it, including all modules it contains, plus any associated interface definition files, scripts used to control compilation and installation of an executable (object code).
+
+1.9 "You" or "Your" means an individual or a legal entity exercising rights under this License.  For legal entities, "You" or "Your" includes any entity which controls, is controlled by, or is under common control with, You, where "control" means (a) the power, direct or indirect, to cause the direction or management of such entity, whether by contract or otherwise, or (b) ownership of fifty percent (50%) or more of the outstanding shares or beneficial ownership of such entity.
+
+2.  Permitted Uses; Conditions & Restrictions.   Subject to the terms and conditions of this License, Apple hereby grants You, effective on the date You accept this License and download the Original Code, a world-wide, royalty-free, non-exclusive license, to the extent of Apple's Applicable Patent Rights and copyrights covering the Original Code, to do the following:
+
+2.1 Unmodified Code.  You may use, reproduce, display, perform, internally distribute within Your organization, and Externally Deploy verbatim, unmodified copies of the Original Code, for commercial or non-commercial purposes, provided that in each instance:
+
+(a) You must retain and reproduce in all copies of Original Code the copyright and other proprietary notices and disclaimers of Apple as they appear in the Original Code, and keep intact all notices in the Original Code that refer to this License; and
+
+(b)     You must include a copy of this License with every copy of Source Code of Covered Code and documentation You distribute or Externally Deploy, and You may not offer or impose any terms on such Source Code that alter or restrict this License or the recipients' rights hereunder, except as permitted under Section 6.
+
+2.2 Modified Code.  You may modify Covered Code and use, reproduce, display, perform, internally distribute within Your organization, and Externally Deploy Your Modifications and Covered Code, for commercial or non-commercial purposes, provided that in each instance You also meet all of these conditions:
+
+(a) You must satisfy all the conditions of Section 2.1 with respect to the Source Code of the Covered Code; 
+
+(b) You must duplicate, to the extent it does not already exist, the notice in Exhibit A in each file of the Source Code of all Your Modifications, and cause the modified files to carry prominent notices stating that You changed the files and the date of any change; and
+
+(c) If You Externally Deploy Your Modifications, You must make Source Code of all Your Externally Deployed Modifications either available to those to whom You have Externally Deployed Your Modifications, or publicly available.  Source Code of Your Externally Deployed Modifications must be released under the terms set forth in this License, including the license grants set forth in Section 3 below, for as long as you Externally Deploy the Covered Code or twelve (12) months from the date of initial External Deployment, whichever is longer. You should preferably distribute the Source Code of Your Externally Deployed Modifications electronically (e.g. download from a web site).
+
+2.3 Distribution of Executable Versions.  In addition, if You Externally Deploy Covered Code (Original Code and/or Modifications) in object code, executable form only, You must include a prominent notice, in the code itself as well as in related documentation, stating that Source Code of the Covered Code is available under the terms of this License with information on how and where to obtain such Source Code.  
+
+2.4 Third Party Rights.  You expressly acknowledge and agree that although Apple and each Contributor grants the licenses to their respective portions of the Covered Code set forth herein, no assurances are provided by Apple or any Contributor that the Covered Code does not infringe the patent or other intellectual property rights of any other entity. Apple and each Contributor disclaim any liability to You for claims brought by any other entity based on infringement of intellectual property rights or otherwise. As a condition to exercising the rights and licenses granted hereunder, You hereby assume sole responsibility to secure any other intellectual property rights needed, if any. For example, if a third party patent license is required to allow You to distribute the Covered Code, it is Your responsibility to acquire that license before distributing the Covered Code.
+
+3.  Your Grants.  In consideration of, and as a condition to, the licenses granted to You under this License, You hereby grant to any person or entity receiving or distributing Covered Code under this License a non-exclusive, royalty-free, perpetual, irrevocable license, under Your Applicable Patent Rights and other intellectual property rights (other than patent) owned or controlled by You, to use, reproduce, display, perform, modify, sublicense, distribute and Externally Deploy Your Modifications of the same scope and extent as Apple's licenses under Sections 2.1 and 2.2 above.  
+
+4.  Larger Works.  You may create a Larger Work by combining Covered Code with other code not governed by the terms of this License and distribute the Larger Work as a single product.  In each such instance, You must make sure the requirements of this License are fulfilled for the Covered Code or any portion thereof. 
+
+5.  Limitations on Patent License.   Except as expressly stated in Section 2, no other patent rights, express or implied, are granted by Apple herein.  Modifications and/or Larger Works may require additional patent licenses from Apple which Apple may grant in its sole discretion.  
+
+6.  Additional Terms.  You may choose to offer, and to charge a fee for, warranty, support, indemnity or liability obligations and/or other rights consistent with the scope of the license granted herein ("Additional Terms") to one or more recipients of Covered Code. However, You may do so only on Your own behalf and as Your sole responsibility, and not on behalf of Apple or any Contributor. You must obtain the recipient's agreement that any such Additional Terms are offered by You alone, and You hereby agree to indemnify, defend and hold Apple and every Contributor harmless for any liability incurred by or claims asserted against Apple or such Contributor by reason of any such Additional Terms. 
+
+7.  Versions of the License.  Apple may publish revised and/or new versions of this License from time to time.  Each version will be given a distinguishing version number.  Once Original Code has been published under a particular version of this License, You may continue to use it under the terms of that version. You may also choose to use such Original Code under the terms of any subsequent version of this License published by Apple.  No one other than Apple has the right to modify the terms applicable to Covered Code created under this License.  
+
+8.  NO WARRANTY OR SUPPORT.  The Covered Code may contain in whole or in part pre-release, untested, or not fully tested works.  The Covered Code may contain errors that could cause failures or loss of data, and may be incomplete or contain inaccuracies.  You expressly acknowledge and agree that use of the Covered Code, or any portion thereof, is at Your sole and entire risk.  THE COVERED CODE IS PROVIDED "AS IS" AND WITHOUT WARRANTY, UPGRADES OR SUPPORT OF ANY KIND AND APPLE AND APPLE'S LICENSOR(S) (COLLECTIVELY REFERRED TO AS "APPLE" FOR THE PURPOSES OF SECTIONS 8 AND 9) AND ALL CONTRIBUTORS EXPRESSLY DISCLAIM ALL WARRANTIES AND/OR CONDITIONS, EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES AND/OR CONDITIONS OF MERCHANTABILITY, OF SATISFACTORY QUALITY, OF FITNESS FOR A PARTICULAR PURPOSE, OF ACCURACY, OF QUIET ENJOYMENT, AND NONINFRINGEMENT OF THIRD PARTY RIGHTS.  APPLE AND EACH CONTRIBUTOR DOES NOT WARRANT AGAINST INTERFERENCE WITH YOUR ENJOYMENT OF THE COVERED CODE, THAT THE FUNCTIONS CONTAINED IN THE COVERED CODE WILL MEET YOUR REQUIREMENTS, THAT THE OPERATION OF THE COVERED CODE WILL BE UNINTERRUPTED OR ERROR-FREE, OR THAT DEFECTS IN THE COVERED CODE WILL BE CORRECTED.  NO ORAL OR WRITTEN INFORMATION OR ADVICE GIVEN BY APPLE, AN APPLE AUTHORIZED REPRESENTATIVE OR ANY CONTRIBUTOR SHALL CREATE A WARRANTY.  You acknowledge that the Covered Code is not intended for use in the operation of nuclear facilities, aircraft navigation, communication systems, or air traffic control machines in which case the failure of the Covered Code could lead to death, personal injury, or severe physical or environmental damage.
+
+9.  LIMITATION OF LIABILITY. TO THE EXTENT NOT PROHIBITED BY LAW, IN NO EVENT SHALL APPLE OR ANY CONTRIBUTOR BE LIABLE FOR ANY INCIDENTAL, SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES ARISING OUT OF OR RELATING TO THIS LICENSE OR YOUR USE OR INABILITY TO USE THE COVERED CODE, OR ANY PORTION THEREOF, WHETHER UNDER A THEORY OF CONTRACT, WARRANTY, TORT (INCLUDING NEGLIGENCE), PRODUCTS LIABILITY OR OTHERWISE, EVEN IF APPLE OR SUCH CONTRIBUTOR HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES AND NOTWITHSTANDING THE FAILURE OF ESSENTIAL PURPOSE OF ANY REMEDY. SOME JURISDICTIONS DO NOT ALLOW THE LIMITATION OF LIABILITY OF INCIDENTAL OR CONSEQUENTIAL DAMAGES, SO THIS LIMITATION MAY NOT APPLY TO YOU. In no event shall Apple's total liability to You for all damages (other than as may be required by applicable law) under this License exceed the amount of fifty dollars ($50.00).
+
+10. Trademarks.  This License does not grant any rights to use the trademarks or trade names  "Apple", "Mac", "Mac OS", "QuickTime", "QuickTime Streaming Server" or any other trademarks, service marks, logos or trade names belonging to Apple (collectively "Apple Marks") or to any trademark, service mark, logo or trade name belonging to any Contributor.  You agree not to use any Apple Marks in or as part of the name of products derived from the Original Code or to endorse or promote products derived from the Original Code other than as expressly permitted by and in strict compliance at all times with Apple's third party trademark usage guidelines which are posted at http://www.apple.com/legal/guidelinesfor3rdparties.html.  
+
+11. Ownership. Subject to the licenses granted under this License, each Contributor retains all rights, title and interest in and to any Modifications made by such Contributor.  Apple retains all rights, title and interest in and to the Original Code and any Modifications made by or on behalf of Apple ("Apple Modifications"), and such Apple Modifications will not be automatically subject to this License.  Apple may, at its sole discretion, choose to license such Apple Modifications under this License, or on different terms from those contained in this License or may choose not to license them at all.  
+
+12. Termination.  
+
+12.1    Termination.  This License and the rights granted hereunder will terminate:
+
+(a) automatically without notice from Apple if You fail to comply with any term(s) of this License and fail to cure such breach within 30 days of becoming aware of such breach;
+(b) immediately in the event of the circumstances described in Section 13.5(b); or
+(c) automatically without notice from Apple if You, at any time during the term of this License, commence an action for patent infringement against Apple; provided that Apple did not first commence an action for patent infringement against You in that instance.
+
+12.2    Effect of Termination.  Upon termination, You agree to immediately stop any further use, reproduction, modification, sublicensing and distribution of the Covered Code.  All sublicenses to the Covered Code which have been properly granted prior to termination shall survive any termination of this License.  Provisions which, by their nature, should remain in effect beyond the termination of this License shall survive, including but not limited to Sections 3, 5, 8, 9, 10, 11, 12.2 and 13.  No party will be liable to any other for compensation, indemnity or damages of any sort solely as a result of terminating this License in accordance with its terms, and termination of this License will be without prejudice to any other right or remedy of any party.
+
+13.     Miscellaneous.
+
+13.1    Government End Users.   The Covered Code is a "commercial item" as defined in FAR 2.101.  Government software and technical data rights in the Covered Code include only those rights customarily provided to the public as defined in this License. This customary commercial license in technical data and software is provided in accordance with FAR 12.211 (Technical Data) and 12.212 (Computer Software) and, for Department of Defense purchases, DFAR 252.227-7015 (Technical Data -- Commercial Items) and 227.7202-3 (Rights in Commercial Computer Software or Computer Software Documentation).  Accordingly, all U.S. Government End Users acquire Covered Code with only those rights set forth herein.
+
+13.2    Relationship of Parties.  This License will not be construed as creating an agency, partnership, joint venture or any other form of legal association between or among You, Apple or any Contributor, and You will not represent to the contrary, whether expressly, by implication, appearance or otherwise.
+
+13.3    Independent Development.   Nothing in this License will impair Apple's right to acquire, license, develop, have others develop for it, market and/or distribute technology or products that perform the same or similar functions as, or otherwise compete with, Modifications, Larger Works, technology or products that You may develop, produce, market or distribute.
+
+13.4    Waiver; Construction.  Failure by Apple or any Contributor to enforce any provision of this License will not be deemed a waiver of future enforcement of that or any other provision.  Any law or regulation which provides that the language of a contract shall be construed against the drafter will not apply to this License.
+
+13.5    Severability.  (a) If for any reason a court of competent jurisdiction finds any provision of this License, or portion thereof, to be unenforceable, that provision of the License will be enforced to the maximum extent permissible so as to effect the economic benefits and intent of the parties, and the remainder of this License will continue in full force and effect.  (b) Notwithstanding the foregoing, if applicable law prohibits or restricts You from fully and/or specifically complying with Sections 2 and/or 3 or prevents the enforceability of either of those Sections, this License will immediately terminate and You must immediately discontinue any use of the Covered Code and destroy all copies of it that are in your possession or control.
+
+13.6    Dispute Resolution.  Any litigation or other dispute resolution between You and Apple relating to this License shall take place in the Northern District of California, and You and Apple hereby consent to the personal jurisdiction of, and venue in, the state and federal courts within that District with respect to this License. The application of the United Nations Convention on Contracts for the International Sale of Goods is expressly excluded.
+
+13.7    Entire Agreement; Governing Law.  This License constitutes the entire agreement between the parties with respect to the subject matter hereof.  This License shall be governed by the laws of the United States and the State of California, except that body of California law concerning conflicts of law. 
+
+Where You are located in the province of Quebec, Canada, the following clause applies:  The parties hereby confirm that they have requested that this License and all related documents be drafted in English.  Les parties ont exigé que le présent contrat et tous les documents connexes soient rédigés en anglais.
+
+EXHIBIT A. 
+
+"Portions Copyright (c) 1999-2007 Apple Inc.  All Rights Reserved.
+
+This file contains Original Code and/or Modifications of Original Code as defined in and that are subject to the Apple Public Source License Version 2.0 (the 'License').  You may not use this file except in compliance with the License.  Please obtain a copy of the License at http://www.opensource.apple.com/apsl/ and read it before using this file.
+
+The Original Code and all software distributed under the License are distributed on an 'AS IS' basis, WITHOUT WARRANTY OF ANY KIND, EITHER EXPRESS OR IMPLIED, AND APPLE HEREBY DISCLAIMS ALL SUCH WARRANTIES, INCLUDING WITHOUT LIMITATION, ANY WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, QUIET ENJOYMENT OR NON-INFRINGEMENT.  Please see the License for the specific language governing rights and limitations under the License."
+```
+
 <a id="notice-serde-error"></a>
 
-### Notice Entry 522
+### Notice Entry 524
 
 **Used by component(s):**
 - `serde-error@0.1.3` (cargo, file: `LICENSE`)
@@ -38116,7 +38672,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 <a id="notice-serde-value"></a>
 
-### Notice Entry 523
+### Notice Entry 525
 
 **Used by component(s):**
 - `serde-value@0.7.0` (cargo, file: `COPYING`)
@@ -38145,7 +38701,7 @@ THE SOFTWARE.
 
 <a id="notice-serde-bencode"></a>
 
-### Notice Entry 524
+### Notice Entry 526
 
 **Used by component(s):**
 - `serde_bencode@0.2.4` (cargo, file: `LICENSE.md`)
@@ -38176,7 +38732,7 @@ SOFTWARE.
 
 <a id="notice-serde-json-canonicalizer"></a>
 
-### Notice Entry 525
+### Notice Entry 527
 
 **Used by component(s):**
 - `serde_json_canonicalizer@0.3.2` (cargo, file: `LICENSE`)
@@ -38206,7 +38762,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 526
+### Notice Entry 528
 
 **Used by component(s):**
 - `serde_urlencoded@0.7.1` (cargo, file: `LICENSE-MIT`)
@@ -38239,7 +38795,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 527
+### Notice Entry 529
 
 **Used by component(s):**
 - `serdect@0.2.0` (cargo, file: `LICENSE-MIT`)
@@ -38269,7 +38825,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 528
+### Notice Entry 530
 
 **Used by component(s):**
 - `serdect@0.4.3` (cargo, file: `LICENSE-MIT`)
@@ -38298,7 +38854,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 529
+### Notice Entry 531
 
 **Used by component(s):**
 - `serial2@0.2.38` (cargo, file: `LICENSE-APACHE`)
@@ -38321,7 +38877,7 @@ limitations under the License.
 
 <a id="notice-serial2"></a>
 
-### Notice Entry 530
+### Notice Entry 532
 
 **Used by component(s):**
 - `serial2@0.2.38` (cargo, file: `LICENSE-BSD`)
@@ -38353,7 +38909,7 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### Notice Entry 531
+### Notice Entry 533
 
 **Used by component(s):**
 - `serialize-to-javascript@0.1.2` (cargo, file: `LICENSE-MIT`)
@@ -38383,7 +38939,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 532
+### Notice Entry 534
 
 **Used by component(s):**
 - `sha1-checked@0.10.0` (cargo, file: `LICENSE-MIT`)
@@ -38418,7 +38974,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-sha1-smol"></a>
 
-### Notice Entry 533
+### Notice Entry 535
 
 **Used by component(s):**
 - `sha1_smol@1.0.1` (cargo, file: `LICENSE`)
@@ -38486,7 +39042,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 534
+### Notice Entry 536
 
 **Used by component(s):**
 - `sha3@0.10.9` (cargo, file: `LICENSE-MIT`)
@@ -38522,7 +39078,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 535
+### Notice Entry 537
 
 **Used by component(s):**
 - `sha3@0.11.0` (cargo, file: `LICENSE-MIT`)
@@ -38562,7 +39118,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-sharded-slab"></a>
 
-### Notice Entry 536
+### Notice Entry 538
 
 **Used by component(s):**
 - `sharded-slab@0.1.7` (cargo, file: `LICENSE`)
@@ -38589,7 +39145,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### Notice Entry 537
+### Notice Entry 539
 
 **Used by component(s):**
 - `shared_library@0.1.9` (cargo, file: `LICENSE-MIT`)
@@ -38624,7 +39180,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-shell-words"></a>
 
-### Notice Entry 538
+### Notice Entry 540
 
 **Used by component(s):**
 - `shell-words@1.1.1` (cargo, file: `LICENSE-APACHE`)
@@ -38833,7 +39389,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### Notice Entry 539
+### Notice Entry 541
 
 **Used by component(s):**
 - `shell-words@1.1.1` (cargo, file: `LICENSE-MIT`)
@@ -38866,7 +39422,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 540
+### Notice Entry 542
 
 **Used by component(s):**
 - `shlex@1.3.0` (cargo, file: `LICENSE-APACHE`)
@@ -38890,7 +39446,7 @@ limitations under the License.
 
 <a id="notice-shlex"></a>
 
-### Notice Entry 541
+### Notice Entry 543
 
 **Used by component(s):**
 - `shlex@1.3.0` (cargo, file: `LICENSE-MIT`)
@@ -38920,7 +39476,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### Notice Entry 542
+### Notice Entry 544
 
 **Used by component(s):**
 - `signal-hook@0.3.18` (cargo, file: `LICENSE-MIT`)
@@ -38956,7 +39512,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 543
+### Notice Entry 545
 
 **Used by component(s):**
 - `sigstore@0.14.0` (cargo, file: `COPYRIGHT.txt`)
@@ -38979,7 +39535,7 @@ limitations under the License.
 
 <a id="notice-simd-adler32"></a>
 
-### Notice Entry 544
+### Notice Entry 546
 
 **Used by component(s):**
 - `simd-adler32@0.3.10` (cargo, file: `LICENSE.md`)
@@ -39010,7 +39566,7 @@ SOFTWARE.
 
 <a id="notice-simple-dns"></a>
 
-### Notice Entry 545
+### Notice Entry 547
 
 **Used by component(s):**
 - `simple-dns@0.12.0` (cargo, file: `LICENSE`)
@@ -39041,7 +39597,7 @@ SOFTWARE.
 
 <a id="notice-simple-asn1"></a>
 
-### Notice Entry 546
+### Notice Entry 548
 
 **Used by component(s):**
 - `simple_asn1@0.6.4` (cargo, file: `LICENSE`)
@@ -39062,7 +39618,7 @@ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 ```
 
-### Notice Entry 547
+### Notice Entry 549
 
 **Used by component(s):**
 - `siphasher@1.0.3` (cargo, file: `COPYING`)
@@ -39077,7 +39633,7 @@ http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 option.
 ```
 
-### Notice Entry 548
+### Notice Entry 550
 
 **Used by component(s):**
 - `smallvec@1.16.0` (cargo, file: `LICENSE-MIT`)
@@ -39110,7 +39666,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 549
+### Notice Entry 551
 
 **Used by component(s):**
 - `snafu@0.6.10` (cargo, file: `LICENSE-MIT`)
@@ -39150,7 +39706,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-softbuffer"></a>
 
-### Notice Entry 550
+### Notice Entry 552
 
 **Used by component(s):**
 - `softbuffer@0.4.8` (cargo, file: `LICENSE-APACHE`)
@@ -39359,7 +39915,7 @@ Apache License
    limitations under the License.
 ```
 
-### Notice Entry 551
+### Notice Entry 553
 
 **Used by component(s):**
 - `softbuffer@0.4.8` (cargo, file: `LICENSE-MIT`)
@@ -39388,7 +39944,7 @@ SOFTWARE.
 
 <a id="notice-spez"></a>
 
-### Notice Entry 552
+### Notice Entry 554
 
 **Used by component(s):**
 - `spez@0.1.2` (cargo, file: `LICENSE`)
@@ -39423,7 +39979,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 <a id="notice-spin"></a>
 <a id="notice-zip"></a>
 
-### Notice Entry 553
+### Notice Entry 555
 
 **Used by component(s):**
 - `spin@0.10.1` (cargo, file: `LICENSE`)
@@ -39457,7 +40013,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 554
+### Notice Entry 556
 
 **Used by component(s):**
 - `sponge-cursor@0.1.0` (cargo, file: `LICENSE-MIT`)
@@ -39490,7 +40046,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 555
+### Notice Entry 557
 
 **Used by component(s):**
 - `stable_deref_trait@1.2.1` (cargo, file: `LICENSE-MIT`)
@@ -39525,7 +40081,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-state-local"></a>
 
-### Notice Entry 556
+### Notice Entry 558
 
 **Used by component(s):**
 - `state-local@1.0.7` (npm, file: `LICENSE`)
@@ -39554,7 +40110,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 557
+### Notice Entry 559
 
 **Used by component(s):**
 - `static_assertions@1.1.0` (cargo, file: `LICENSE-MIT`)
@@ -39585,7 +40141,7 @@ SOFTWARE.
 
 <a id="notice-strsim"></a>
 
-### Notice Entry 558
+### Notice Entry 560
 
 **Used by component(s):**
 - `strsim@0.11.1` (cargo, file: `LICENSE`)
@@ -39619,7 +40175,7 @@ SOFTWARE.
 <a id="notice-strum"></a>
 <a id="notice-strum-macros"></a>
 
-### Notice Entry 559
+### Notice Entry 561
 
 **Used by component(s):**
 - `strum@0.28.0` (cargo, file: `LICENSE`)
@@ -39651,7 +40207,7 @@ SOFTWARE.
 
 <a id="notice-style-to-js"></a>
 
-### Notice Entry 560
+### Notice Entry 562
 
 **Used by component(s):**
 - `style-to-js@1.1.21` (npm, file: `LICENSE`)
@@ -39683,7 +40239,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 <a id="notice-style-to-object"></a>
 
-### Notice Entry 561
+### Notice Entry 563
 
 **Used by component(s):**
 - `style-to-object@1.0.14` (npm, file: `LICENSE`)
@@ -39715,7 +40271,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 <a id="notice-subtle"></a>
 
-### Notice Entry 562
+### Notice Entry 564
 
 **Used by component(s):**
 - `subtle@2.6.1` (cargo, file: `LICENSE`)
@@ -39755,7 +40311,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 <a id="notice-swift-rs"></a>
 
-### Notice Entry 563
+### Notice Entry 565
 
 **Used by component(s):**
 - `swift-rs@1.0.8` (cargo, file: `LICENSE-APACHE`)
@@ -39964,7 +40520,7 @@ Apache License
    limitations under the License.
 ```
 
-### Notice Entry 564
+### Notice Entry 566
 
 **Used by component(s):**
 - `swift-rs@1.0.8` (cargo, file: `LICENSE-MIT`)
@@ -39993,7 +40549,7 @@ SOFTWARE.
 
 <a id="notice-synstructure"></a>
 
-### Notice Entry 565
+### Notice Entry 567
 
 **Used by component(s):**
 - `synstructure@0.13.2` (cargo, file: `LICENSE`)
@@ -40008,7 +40564,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 566
+### Notice Entry 568
 
 **Used by component(s):**
 - `system-configuration@0.7.0` (cargo, file: `LICENSE-MIT`)
@@ -40043,7 +40599,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 567
+### Notice Entry 569
 
 **Used by component(s):**
 - `tagptr@0.2.0` (cargo, file: `LICENSE-APACHE`)
@@ -40066,7 +40622,7 @@ limitations under the License.
 
 <a id="notice-tagptr"></a>
 
-### Notice Entry 568
+### Notice Entry 570
 
 **Used by component(s):**
 - `tagptr@0.2.0` (cargo, file: `LICENSE-MIT`)
@@ -40095,7 +40651,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 569
+### Notice Entry 571
 
 **Used by component(s):**
 - `tao@0.35.3` (cargo, file: `LICENSE.spdx`)
@@ -40121,7 +40677,7 @@ PackageDownloadLocation: git+ssh://github.com/tauri-apps/tao.git
 Creator: Person: Daniel Thompson-Yvetot
 ```
 
-### Notice Entry 570
+### Notice Entry 572
 
 **Used by component(s):**
 - `tao-macros@0.1.4` (cargo, file: `LICENSE-MIT`)
@@ -40150,7 +40706,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 571
+### Notice Entry 573
 
 **Used by component(s):**
 - `tao-macros@0.1.4` (cargo, file: `LICENSE.spdx`)
@@ -40179,7 +40735,7 @@ Creator: Person: Daniel Thompson-Yvetot
 
 <a id="notice-tap"></a>
 
-### Notice Entry 572
+### Notice Entry 574
 
 **Used by component(s):**
 - `tap@1.0.1` (cargo, file: `LICENSE.txt`)
@@ -40208,7 +40764,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 573
+### Notice Entry 575
 
 **Used by component(s):**
 - `tar@0.4.46` (cargo, file: `LICENSE-MIT`)
@@ -40241,7 +40797,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 574
+### Notice Entry 576
 
 **Used by component(s):**
 - `tauri-plugin-single-instance@2.4.5` (cargo, file: `LICENSE_MIT`)
@@ -40272,7 +40828,7 @@ SOFTWARE.
 
 <a id="notice-tauri-winres"></a>
 
-### Notice Entry 575
+### Notice Entry 577
 
 **Used by component(s):**
 - `tauri-winres@0.3.6` (cargo, file: `LICENSE`)
@@ -40309,7 +40865,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 576
+### Notice Entry 578
 
 **Used by component(s):**
 - `tauri-winrt-notification@0.7.3` (cargo, file: `LICENSE.spdx`)
@@ -40336,7 +40892,7 @@ PackageDownloadLocation: git+ssh://github.com/tauri-apps/winrt-notification.git
 Creator: Person: Daniel Thompson-Yvetot
 ```
 
-### Notice Entry 577
+### Notice Entry 579
 
 **Used by component(s):**
 - `tempfile@3.27.0` (cargo, file: `LICENSE-MIT`)
@@ -40370,7 +40926,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 578
+### Notice Entry 580
 
 **Used by component(s):**
 - `tendril@0.5.1` (cargo, file: `LICENSE-MIT`)
@@ -40405,7 +40961,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-tiff"></a>
 
-### Notice Entry 579
+### Notice Entry 581
 
 **Used by component(s):**
 - `tiff@0.11.3` (cargo, file: `LICENSE`)
@@ -40434,7 +40990,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 580
+### Notice Entry 582
 
 **Used by component(s):**
 - `time@0.3.55` (cargo, file: `LICENSE-MIT`)
@@ -40465,7 +41021,7 @@ SOFTWARE.
 
 <a id="notice-tinyvec-macros"></a>
 
-### Notice Entry 581
+### Notice Entry 583
 
 **Used by component(s):**
 - `tinyvec_macros@0.1.1` (cargo, file: `LICENSE-APACHE.md`)
@@ -40674,7 +41230,7 @@ Apache License
    limitations under the License.
 ```
 
-### Notice Entry 582
+### Notice Entry 584
 
 **Used by component(s):**
 - `tinyvec_macros@0.1.1` (cargo, file: `LICENSE-MIT.md`)
@@ -40703,7 +41259,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 583
+### Notice Entry 585
 
 **Used by component(s):**
 - `tinyvec_macros@0.1.1` (cargo, file: `LICENSE-ZLIB.md`)
@@ -40732,7 +41288,7 @@ freely, subject to the following restrictions:
 
 <a id="notice-tlsh2"></a>
 
-### Notice Entry 584
+### Notice Entry 586
 
 **Used by component(s):**
 - `tlsh2@1.1.0` (cargo, file: `LICENSE`)
@@ -41022,7 +41578,7 @@ freely, subject to the following restrictions:
    (stdin)= 11e8757af16132dd60979eacd73a525a40ff31f0
 ```
 
-### Notice Entry 585
+### Notice Entry 587
 
 **Used by component(s):**
 - `tlsh2@1.1.0` (cargo, file: `NOTICE.txt`)
@@ -41071,7 +41627,7 @@ freely, subject to the following restrictions:
 <a id="notice-tokio-stream"></a>
 <a id="notice-tokio-util"></a>
 
-### Notice Entry 586
+### Notice Entry 588
 
 **Used by component(s):**
 - `tokio@1.54.1` (cargo, file: `LICENSE`)
@@ -41104,7 +41660,7 @@ SOFTWARE.
 
 <a id="notice-tokio-macros"></a>
 
-### Notice Entry 587
+### Notice Entry 589
 
 **Used by component(s):**
 - `tokio-macros@2.7.2` (cargo, file: `LICENSE`)
@@ -41141,7 +41697,7 @@ SOFTWARE.
 <a id="notice-tracing-log"></a>
 <a id="notice-tracing-subscriber"></a>
 
-### Notice Entry 588
+### Notice Entry 590
 
 **Used by component(s):**
 - `tokio-native-tls@0.3.1` (cargo, file: `LICENSE`)
@@ -41191,7 +41747,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-tokio-rustls"></a>
 
-### Notice Entry 589
+### Notice Entry 591
 
 **Used by component(s):**
 - `tokio-rustls@0.26.6` (cargo, file: `LICENSE-APACHE`)
@@ -41400,7 +41956,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### Notice Entry 590
+### Notice Entry 592
 
 **Used by component(s):**
 - `tokio-rustls@0.26.6` (cargo, file: `LICENSE-MIT`)
@@ -41435,7 +41991,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-tokio-websockets"></a>
 
-### Notice Entry 591
+### Notice Entry 593
 
 **Used by component(s):**
 - `tokio-websockets@0.13.3` (cargo, file: `LICENSE`)
@@ -41464,7 +42020,7 @@ THE SOFTWARE.
 
 <a id="notice-totp-rs"></a>
 
-### Notice Entry 592
+### Notice Entry 594
 
 **Used by component(s):**
 - `totp-rs@5.7.2` (cargo, file: `LICENSE`)
@@ -41497,7 +42053,7 @@ SOFTWARE.
 <a id="notice-tower-layer"></a>
 <a id="notice-tower-service"></a>
 
-### Notice Entry 593
+### Notice Entry 595
 
 **Used by component(s):**
 - `tower@0.5.3` (cargo, file: `LICENSE`)
@@ -41535,7 +42091,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-tower-http"></a>
 
-### Notice Entry 594
+### Notice Entry 596
 
 **Used by component(s):**
 - `tower-http@0.6.11` (cargo, file: `LICENSE`)
@@ -41570,7 +42126,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-transpose"></a>
 
-### Notice Entry 595
+### Notice Entry 597
 
 **Used by component(s):**
 - `transpose@0.2.3` (cargo, file: `LICENSE-APACHE`)
@@ -41779,7 +42335,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### Notice Entry 596
+### Notice Entry 598
 
 **Used by component(s):**
 - `transpose@0.2.3` (cargo, file: `LICENSE-MIT`)
@@ -41814,7 +42370,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-trash"></a>
 
-### Notice Entry 597
+### Notice Entry 599
 
 **Used by component(s):**
 - `trash@5.3.0` (cargo, file: `LICENSE.txt`)
@@ -41838,7 +42394,7 @@ DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
 OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 598
+### Notice Entry 600
 
 **Used by component(s):**
 - `tray-icon@0.23.1` (cargo, file: `LICENSE.spdx`)
@@ -41867,7 +42423,7 @@ Creator: Person: Daniel Thompson-Yvetot
 
 <a id="notice-trough"></a>
 
-### Notice Entry 599
+### Notice Entry 601
 
 **Used by component(s):**
 - `trough@2.2.0` (npm, file: `license`)
@@ -41898,7 +42454,7 @@ THE SOFTWARE.
 
 <a id="notice-try-lock"></a>
 
-### Notice Entry 600
+### Notice Entry 602
 
 **Used by component(s):**
 - `try-lock@0.2.5` (cargo, file: `LICENSE`)
@@ -41926,7 +42482,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### Notice Entry 601
+### Notice Entry 603
 
 **Used by component(s):**
 - `twofish@0.7.1` (cargo, file: `LICENSE-MIT`)
@@ -41959,7 +42515,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 602
+### Notice Entry 604
 
 **Used by component(s):**
 - `typenum@1.20.1` (cargo, file: `LICENSE`)
@@ -41970,7 +42526,7 @@ MIT OR Apache-2.0
 
 <a id="notice-typenum"></a>
 
-### Notice Entry 603
+### Notice Entry 605
 
 **Used by component(s):**
 - `typenum@1.20.1` (cargo, file: `LICENSE-APACHE`)
@@ -42179,7 +42735,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### Notice Entry 604
+### Notice Entry 606
 
 **Used by component(s):**
 - `typenum@1.20.1` (cargo, file: `LICENSE-MIT`)
@@ -42210,13 +42766,10 @@ SOFTWARE.
 
 <a id="notice-uds-windows"></a>
 
-### Notice Entry 605
+### Notice Entry 607
 
 **Used by component(s):**
 - `uds_windows@1.2.1` (cargo, file: `LICENSE`)
-  - Copyright (c) 2014 Alex Crichton (THIRDPARTYNOTICES)
-  - Copyright (c) 2014 Carl Lerche and other MIO contributors (THIRDPARTYNOTICES)
-  - Copyright 2016 The Rust Project Developers (THIRDPARTYNOTICES)
 
 ```text
 MIT License
@@ -42242,7 +42795,88 @@ MIT License
     SOFTWARE
 ```
 
-### Notice Entry 606
+### Notice Entry 608
+
+**Used by component(s):**
+- `uds_windows@1.2.1` (cargo, file: `THIRDPARTYNOTICES`)
+
+```text
+Third Party Notices
+
+***
+
+rust
+Copyright 2016 The Rust Project Developers
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+***
+
+mio
+Copyright (c) 2014 Carl Lerche and other MIO contributors
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+***
+
+miow
+Copyright (c) 2014 Alex Crichton
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+```
+
+### Notice Entry 609
 
 **Used by component(s):**
 - `unicode-ident@1.0.24` (cargo, file: `LICENSE-UNICODE`)
@@ -42290,7 +42924,7 @@ dealings in these Data Files or Software without prior written
 authorization of the copyright holder.
 ```
 
-### Notice Entry 607
+### Notice Entry 610
 
 **Used by component(s):**
 - `unicode-normalization@0.1.26` (cargo, file: `COPYRIGHT`)
@@ -42309,7 +42943,7 @@ notice may not be copied, modified, or distributed except
 according to those terms.
 ```
 
-### Notice Entry 608
+### Notice Entry 611
 
 **Used by component(s):**
 - `unicode-truncate@2.0.1` (cargo, file: `LICENSE-MIT`)
@@ -42345,7 +42979,7 @@ DEALINGS IN THE SOFTWARE.
 <a id="notice-unified"></a>
 <a id="notice-vfile"></a>
 
-### Notice Entry 609
+### Notice Entry 612
 
 **Used by component(s):**
 - `unified@11.0.5` (npm, file: `license`)
@@ -42379,7 +43013,7 @@ THE SOFTWARE.
 
 <a id="notice-unist-util-is"></a>
 
-### Notice Entry 610
+### Notice Entry 613
 
 **Used by component(s):**
 - `unist-util-is@6.0.1` (npm, file: `license`)
@@ -42411,7 +43045,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 <a id="notice-unit-prefix"></a>
 
-### Notice Entry 611
+### Notice Entry 614
 
 **Used by component(s):**
 - `unit-prefix@0.5.2` (cargo, file: `LICENSE`)
@@ -42440,7 +43074,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 612
+### Notice Entry 615
 
 **Used by component(s):**
 - `universal-hash@0.5.1` (cargo, file: `LICENSE-MIT`)
@@ -42473,7 +43107,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 613
+### Notice Entry 616
 
 **Used by component(s):**
 - `universal-hash@0.6.1` (cargo, file: `LICENSE-MIT`)
@@ -42508,7 +43142,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="exception-unrar-sys"></a>
 
-### Notice Entry 614
+### Notice Entry 617
 
 **Used by component(s):**
 - `unrar_sys@0.5.8` (cargo, file: `vendor/unrar/license.txt`)
@@ -42562,7 +43196,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-untrusted"></a>
 
-### Notice Entry 615
+### Notice Entry 618
 
 **Used by component(s):**
 - `untrusted@0.7.1` (cargo, file: `LICENSE.txt`)
@@ -42586,7 +43220,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-urlencoding"></a>
 
-### Notice Entry 616
+### Notice Entry 619
 
 **Used by component(s):**
 - `urlencoding@2.1.3` (cargo, file: `LICENSE`)
@@ -42616,7 +43250,7 @@ THE SOFTWARE.
 
 <a id="notice-urlpattern"></a>
 
-### Notice Entry 617
+### Notice Entry 620
 
 **Used by component(s):**
 - `urlpattern@0.3.0` (cargo, file: `LICENSE`)
@@ -42645,7 +43279,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 618
+### Notice Entry 621
 
 **Used by component(s):**
 - `utf8_iter@1.0.4` (cargo, file: `COPYRIGHT`)
@@ -42695,7 +43329,7 @@ licensed under the Apache License, Version 2.0 <LICENSE-APACHE> or
 <LICENSE-MIT> or <http://opensource.org/licenses/MIT>, at your option.
 ```
 
-### Notice Entry 619
+### Notice Entry 622
 
 **Used by component(s):**
 - `utf8parse@0.2.2` (cargo, file: `LICENSE-MIT`)
@@ -42728,7 +43362,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 620
+### Notice Entry 623
 
 **Used by component(s):**
 - `uuid@1.29.2` (cargo, file: `LICENSE-MIT`)
@@ -42762,7 +43396,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 621
+### Notice Entry 624
 
 **Used by component(s):**
 - `vcpkg@0.2.15` (cargo, file: `LICENSE-MIT`)
@@ -42797,7 +43431,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-version-compare"></a>
 
-### Notice Entry 622
+### Notice Entry 625
 
 **Used by component(s):**
 - `version-compare@0.2.1` (cargo, file: `LICENSE`)
@@ -42824,7 +43458,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 623
+### Notice Entry 626
 
 **Used by component(s):**
 - `version_check@0.9.5` (cargo, file: `LICENSE-MIT`)
@@ -42854,7 +43488,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 <a id="notice-vswhom"></a>
 <a id="notice-vswhom-sys"></a>
 
-### Notice Entry 624
+### Notice Entry 627
 
 **Used by component(s):**
 - `vswhom@0.1.0` (cargo, file: `LICENSE`)
@@ -42886,7 +43520,7 @@ SOFTWARE.
 
 <a id="notice-want"></a>
 
-### Notice Entry 625
+### Notice Entry 628
 
 **Used by component(s):**
 - `want@0.3.2` (cargo, file: `LICENSE`)
@@ -42915,7 +43549,7 @@ THE SOFTWARE.
 
 <a id="notice-web-time"></a>
 
-### Notice Entry 626
+### Notice Entry 629
 
 **Used by component(s):**
 - `web-time@1.1.0` (cargo, file: `LICENSE-APACHE`)
@@ -43124,7 +43758,7 @@ Apache License
    limitations under the License.
 ```
 
-### Notice Entry 627
+### Notice Entry 630
 
 **Used by component(s):**
 - `web-time@1.1.0` (cargo, file: `LICENSE-MIT`)
@@ -43155,7 +43789,7 @@ SOFTWARE.
 
 <a id="notice-webbrowser"></a>
 
-### Notice Entry 628
+### Notice Entry 631
 
 **Used by component(s):**
 - `webbrowser@1.2.4` (cargo, file: `LICENSE-APACHE`)
@@ -43353,7 +43987,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### Notice Entry 629
+### Notice Entry 632
 
 **Used by component(s):**
 - `webbrowser@1.2.4` (cargo, file: `LICENSE-MIT`)
@@ -43390,7 +44024,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-webkit2gtk"></a>
 
-### Notice Entry 630
+### Notice Entry 633
 
 **Used by component(s):**
 - `webkit2gtk@2.0.2` (cargo, file: `LICENSE`)
@@ -43420,7 +44054,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 <a id="notice-webkit2gtk-sys"></a>
 
-### Notice Entry 631
+### Notice Entry 634
 
 **Used by component(s):**
 - `webkit2gtk-sys@2.0.2` (cargo, file: `LICENSE`)
@@ -43449,7 +44083,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 <a id="notice-webpki-root-certs"></a>
 <a id="notice-webpki-roots"></a>
 
-### Notice Entry 632
+### Notice Entry 635
 
 **Used by component(s):**
 - `webpki-root-certs@1.0.11` (cargo, file: `LICENSE`)
@@ -43521,7 +44155,7 @@ of Data, including for example machine learning models and models'
 insights.
 ```
 
-### Notice Entry 633
+### Notice Entry 636
 
 **Used by component(s):**
 - `weezl@0.1.12` (cargo, file: `LICENSE-MIT`)
@@ -43552,7 +44186,7 @@ SOFTWARE.
 
 <a id="notice-which"></a>
 
-### Notice Entry 634
+### Notice Entry 637
 
 **Used by component(s):**
 - `which@8.0.6` (cargo, file: `LICENSE.txt`)
@@ -43581,7 +44215,7 @@ THE SOFTWARE.
 
 <a id="notice-whisper-rs"></a>
 
-### Notice Entry 635
+### Notice Entry 638
 
 **Used by component(s):**
 - `whisper-rs@0.16.0` (cargo, file: `LICENSE`)
@@ -43614,7 +44248,7 @@ OTHER DEALINGS IN THE SOFTWARE.
 For more information, please refer to <https://unlicense.org>
 ```
 
-### Notice Entry 636
+### Notice Entry 639
 
 **Used by component(s):**
 - `whisper-rs-sys@0.15.0` (cargo, file: `whisper.cpp/LICENSE`)
@@ -43653,7 +44287,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 637
+### Notice Entry 640
 
 **Used by component(s):**
 - `winapi@0.3.9` (cargo, file: `LICENSE-MIT`)
@@ -43680,7 +44314,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 638
+### Notice Entry 641
 
 **Used by component(s):**
 - `window-vibrancy@0.6.0` (cargo, file: `LICENSE-MIT`)
@@ -43709,7 +44343,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 639
+### Notice Entry 642
 
 **Used by component(s):**
 - `window-vibrancy@0.6.0` (cargo, file: `LICENSE.spdx`)
@@ -43736,7 +44370,7 @@ PackageDownloadLocation: git+ssh://github.com/tauri-apps/window-vibrancy.git
 Creator: Person: Daniel Thompson-Yvetot
 ```
 
-### Notice Entry 640
+### Notice Entry 643
 
 **Used by component(s):**
 - `windows@0.58.0` (cargo, file: `license-apache-2.0`)
@@ -44014,7 +44648,7 @@ Apache License
 
 <a id="notice-winnow"></a>
 
-### Notice Entry 641
+### Notice Entry 644
 
 **Used by component(s):**
 - `winnow@0.5.40` (cargo, file: `LICENSE-MIT`)
@@ -44047,7 +44681,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 <a id="notice-winreg"></a>
 
-### Notice Entry 642
+### Notice Entry 645
 
 **Used by component(s):**
 - `winreg@0.10.1` (cargo, file: `LICENSE`)
@@ -44076,7 +44710,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### Notice Entry 643
+### Notice Entry 646
 
 **Used by component(s):**
 - `wnaf@0.14.1` (cargo, file: `LICENSE-MIT`)
@@ -44110,7 +44744,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 644
+### Notice Entry 647
 
 **Used by component(s):**
 - `wry@0.55.1` (cargo, file: `LICENSE-MIT`)
@@ -44139,7 +44773,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 645
+### Notice Entry 648
 
 **Used by component(s):**
 - `wry@0.55.1` (cargo, file: `LICENSE.spdx`)
@@ -44167,7 +44801,7 @@ PackageDownloadLocation: git+ssh://github.com/tauri-apps/wry.git
 Creator: Person: Daniel Thompson-Yvetot
 ```
 
-### Notice Entry 646
+### Notice Entry 649
 
 **Used by component(s):**
 - `x11rb@0.13.2` (cargo, file: `LICENSE-MIT`)
@@ -44203,7 +44837,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-x25519-dalek"></a>
 
-### Notice Entry 647
+### Notice Entry 650
 
 **Used by component(s):**
 - `x25519-dalek@2.0.1` (cargo, file: `LICENSE`)
@@ -44244,7 +44878,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 <a id="notice-xml-rs"></a>
 
-### Notice Entry 648
+### Notice Entry 651
 
 **Used by component(s):**
 - `xml-rs@0.8.29` (cargo, file: `LICENSE`)
@@ -44275,7 +44909,7 @@ SOFTWARE.
 
 <a id="notice-xmltree"></a>
 
-### Notice Entry 649
+### Notice Entry 652
 
 **Used by component(s):**
 - `xmltree@0.10.3` (cargo, file: `LICENSE`)
@@ -44291,7 +44925,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 650
+### Notice Entry 653
 
 **Used by component(s):**
 - `yasna@0.6.0` (cargo, file: `LICENSE-MIT`)
@@ -44312,7 +44946,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <a id="notice-zvariant"></a>
 <a id="notice-zvariant-derive"></a>
 
-### Notice Entry 651
+### Notice Entry 654
 
 **Used by component(s):**
 - `zbus@5.19.0` (cargo, file: `LICENSE`)
@@ -44351,7 +44985,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-zcheapstr"></a>
 
-### Notice Entry 652
+### Notice Entry 655
 
 **Used by component(s):**
 - `zcheapstr@1.1.0` (cargo, file: `LICENSE`)
@@ -44387,7 +45021,7 @@ DEALINGS IN THE SOFTWARE.
 <a id="notice-zerocopy"></a>
 <a id="notice-zerocopy-derive"></a>
 
-### Notice Entry 653
+### Notice Entry 656
 
 **Used by component(s):**
 - `zerocopy@0.8.63` (cargo, file: `LICENSE-APACHE`)
@@ -44597,7 +45231,7 @@ Apache License
    limitations under the License.
 ```
 
-### Notice Entry 654
+### Notice Entry 657
 
 **Used by component(s):**
 - `zerocopy@0.8.63` (cargo, file: `LICENSE-BSD`)
@@ -44630,7 +45264,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### Notice Entry 655
+### Notice Entry 658
 
 **Used by component(s):**
 - `zerocopy@0.8.63` (cargo, file: `LICENSE-MIT`)
@@ -44666,7 +45300,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-zlib-rs"></a>
 
-### Notice Entry 656
+### Notice Entry 659
 
 **Used by component(s):**
 - `zlib-rs@0.6.7` (cargo, file: `LICENSE`)
@@ -44695,7 +45329,7 @@ freely, subject to the following restrictions:
 
 <a id="notice-zopfli"></a>
 
-### Notice Entry 657
+### Notice Entry 660
 
 **Used by component(s):**
 - `zopfli@0.8.3` (cargo, file: `COPYING`)
@@ -44908,7 +45542,7 @@ Apache License
 <a id="notice-zstd-safe"></a>
 <a id="notice-zstd-sys"></a>
 
-### Notice Entry 658
+### Notice Entry 661
 
 **Used by component(s):**
 - `zstd@0.14.4` (cargo, file: `LICENSE`)
@@ -44946,7 +45580,7 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### Notice Entry 659
+### Notice Entry 662
 
 **Used by component(s):**
 - `zstd-sys@2.1.3+zstd.1.5.7` (cargo, file: `LICENSE.BSD-2-Clause`)
@@ -44983,7 +45617,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### Notice Entry 660
+### Notice Entry 663
 
 **Used by component(s):**
 - `zstd-sys@2.1.3+zstd.1.5.7` (cargo, file: `LICENSE.BSD-3-Clause`)
@@ -45023,7 +45657,7 @@ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### Notice Entry 661
+### Notice Entry 664
 
 **Used by component(s):**
 - `zstd-sys@2.1.3+zstd.1.5.7` (cargo, file: `zstd/LICENSE`)
@@ -45062,7 +45696,7 @@ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### Notice Entry 662
+### Notice Entry 665
 
 **Used by component(s):**
 - `zune-core@0.5.3` (cargo, file: `LICENSE-MIT`)
@@ -45092,7 +45726,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 663
+### Notice Entry 666
 
 **Used by component(s):**
 - `zune-core@0.5.3` (cargo, file: `LICENSE-ZLIB`)

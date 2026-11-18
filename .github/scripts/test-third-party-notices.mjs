@@ -39,7 +39,7 @@ import {
   holderKey,
   holderOfNotice,
   npmAuthors,
-  namesLicense,
+  reviewedLicenseTerms,
   standardTextId,
 } from '../../scripts/gen-third-party-notices.ts';
 
@@ -468,6 +468,34 @@ test('readPackageFiles: collects COPYRIGHT files into noticeFiles without suppre
   }
 });
 
+test('readPackageFiles: the third-party notices a package collects are notice files, at the root, in a license folder and in vendored code', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'third-party-fixture-'));
+  try {
+    const write = (rel, content) => {
+      fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, rel), content);
+    };
+    write('LICENSE', 'MIT License');
+    // The names real packages use: monaco-editor, uds_windows, security-framework, rolldown.
+    const names = ['ThirdPartyNotices.txt', 'THIRDPARTYNOTICES', 'THIRD_PARTY', 'THIRD-PARTY-LICENSE', 'third-party-licenses.md', '3rd-party-notices.txt', 'ThirdPartyNoticeText.txt'];
+    for (const name of names) write(name, `Notices in ${name}`);
+    write('LICENSES/ThirdPartyNotices.txt', 'Notices in the license folder');
+    write('vendor/lib/ThirdPartyNotices.txt', 'Notices of vendored code');
+    // Code and data named like one stay code and data.
+    write('third_party.rs', '// Copyright (c) 2020 Code');
+    write('third-party.json', '{}');
+    write('vendor/lib/third_party.js', 'module.exports = {};');
+    const { licenseFiles, noticeFiles } = readPackageFiles(tmpDir, 'third-party-pkg@1.0.0');
+    assert.deepStrictEqual(licenseFiles.map((f) => f.filename), ['LICENSE']);
+    assert.deepStrictEqual(
+      noticeFiles.map((f) => [f.filename, f.vendored === true]).sort(),
+      [...names.map((n) => [n, false]), ['LICENSES/ThirdPartyNotices.txt', false], ['vendor/lib/ThirdPartyNotices.txt', true]].sort()
+    );
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
 test('readPackageFiles: fails fast on missing package directory (no silent absence)', () => {
   assert.throws(
     () => readPackageFiles('/non/existent/package/dir/12345', 'dummy-pkg@1.0.0'),
@@ -637,6 +665,19 @@ test('standard SPDX texts: a shipped text covers a term only when it carries eve
   const inserted = mit.replace(words('this permission notice shall'), 'this permission notice (including the next paragraph) shall');
   assert.notStrictEqual(inserted, mit);
   assert.deepStrictEqual(standardFor('MIT', inserted), []);
+  // Only a reviewed insertion: one that reverses or conditions the grant, or
+  // any other words inside a sentence, is another text.
+  for (const [from, to] of [
+    ['Permission is hereby granted', 'Permission is hereby not granted'],
+    ['Permission is hereby granted', 'Permission is never hereby granted'],
+    ['Permission is hereby granted', 'Permission is hereby, subject to written approval, granted'],
+    ['this permission notice shall', 'this permission notice (excluding the next paragraph) shall'],
+    ['WITHOUT WARRANTY OF ANY KIND', 'WITHOUT WARRANTY OF ANY KIND EXCEPT'],
+  ]) {
+    const changed = mit.replace(words(from), to);
+    assert.notStrictEqual(changed, mit, to);
+    assert.deepStrictEqual(standardFor('MIT', changed), ['MIT'], to);
+  }
   const extraClause = mit.replace(words('substantial portions of the Software.'), 'substantial portions of the Software.\n\nDistributions of modified copies shall replace the Original Author\'s bug reporting addresses with those of the parties responsible for the changes, or remove them entirely.');
   assert.notStrictEqual(extraClause, mit);
   assert.deepStrictEqual(standardFor('MIT', extraClause), []);
@@ -648,6 +689,11 @@ test('standard SPDX texts: a shipped text covers a term only when it carries eve
   const named = bsd3.replace(words('the copyright holder nor'), 'Example Corp nor').replace(words('THE COPYRIGHT HOLDERS AND CONTRIBUTORS'), 'EXAMPLE CORP AND ITS CONTRIBUTORS').replace(words('THE COPYRIGHT HOLDER OR CONTRIBUTORS'), 'EXAMPLE CORP');
   assert.strictEqual(named.match(/copyright holder/gi), null);
   assert.deepStrictEqual(standardFor('BSD-3-Clause', named), []);
+  // A slot holds a name, never a word that turns what its sentence says.
+  for (const negated of [named.replace(words('EXAMPLE CORP BE LIABLE'), 'EXAMPLE CORP NOT BE LIABLE'), named.replace(words('Example Corp nor'), 'Example Corp, except its affiliates, nor')]) {
+    assert.notStrictEqual(negated, named);
+    assert.deepStrictEqual(standardFor('BSD-3-Clause', negated), ['BSD-3-Clause']);
+  }
   const bulleted = bsd3.replace(/^\s*([123])\. /gm, '* ');
   assert.notStrictEqual(bulleted, bsd3);
   assert.deepStrictEqual(standardFor('BSD-3-Clause', bulleted), []);
@@ -668,16 +714,14 @@ test('standard SPDX texts: a shipped text covers a term only when it carries eve
   );
 });
 
-test('license names: an identifier counts as a word, a reviewed title names a license with no standard text', () => {
-  assert.strictEqual(namesLicense('BSD-1-Clause', 'The BSD 1-Clause License (BSD-1-Clause)'), true);
-  assert.strictEqual(namesLicense('bzip2-1.0.6', 'SPDX-License-Identifier: BZIP2-1.0.6'), true);
-  assert.strictEqual(namesLicense('LGPL-2.1', 'licensed under LGPL-2.1-or-later'), false, 'a longer identifier is another license');
-  assert.strictEqual(namesLicense('MIT', 'MIT-0'), false);
-  assert.strictEqual(namesLicense('bzip2-1.0.6', 'bzip2-1.0.60'), false);
-  assert.strictEqual(namesLicense('bzip2-1.0.6', 'The original program, "bzip2", the associated library "libbzip2", and all documentation'), true);
-  assert.strictEqual(namesLicense('CDLA-Permissive-2.0', '# Community Data License Agreement - Permissive - Version 2.0'), true);
-  assert.strictEqual(namesLicense('CDLA-Permissive-2.0', 'Community Data License Agreement - Sharing - Version 1.0'), false);
-  assert.strictEqual(namesLicense('bzip2-1.0.6', 'This program, "custom-zip", is free software.'), false);
+test('reviewed terms: each license with no standard text has its whole terms from the SPDX list, and nothing else', () => {
+  const reviewed = reviewedLicenseTerms();
+  assert.deepStrictEqual(Object.keys(reviewed).sort(), ['CDLA-Permissive-2.0', 'bzip2-1.0.6']);
+  assert.match(reviewed['bzip2-1.0.6'], /^Redistribution and use in source and binary forms/);
+  assert.match(reviewed['bzip2-1.0.6'], /EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE\.\n$/);
+  assert.match(reviewed['CDLA-Permissive-2.0'], /Community Data License Agreement - Permissive - Version 2\.0/);
+  const raw = JSON.parse(fs.readFileSync(path.join(ROOT, 'scripts', 'reviewed-license-terms.json'), 'utf8'));
+  for (const id of Object.keys(reviewed)) assert.match(raw[id].source, new RegExp(`^https://spdx\\.org/licenses/${id.replace(/\./g, '\\.')}\\.html$`));
 });
 
 test('standard SPDX texts: LGPL-2.1, LGPL-2.1-only and LGPL-2.1+ share the LGPL-2.1 document and keep the grant they declare', () => {
@@ -764,17 +808,30 @@ test('standard SPDX texts: every term of the chosen license needs its text, an o
   // An exception is a term of its own: the Apache-2.0 text alone does not carry it.
   assert.deepStrictEqual(standardFor(comp('test-with', 'Apache-2.0 WITH LLVM-exception', [['LICENSE-APACHE', apache]])), ['Apache-2.0 WITH LLVM-exception']);
   assert.deepStrictEqual(standardFor(comp('test-with-both', 'Apache-2.0 WITH LLVM-exception', [['LICENSE-APACHE', `${apache}\n\n${shippedLicense('', 'LLVM-exception')}`]])), []);
-  // A term with no standard text is carried by a file that carries none of the
-  // standard texts, grants permission itself and names that license, by its
-  // identifier or its reviewed title; without one the generation fails with
-  // the package and the term.
-  const bzip2 = 'This program, "bzip2", the associated library "libbzip2", and all documentation, are copyright (C) 1996-2010 Julian R Seward. All rights reserved. Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met.';
-  const tagged = 'SPDX-License-Identifier: bzip2-1.0.6\n\nRedistribution and use in source and binary forms are permitted provided this notice is kept.';
+  // A term with no standard text is carried by a file that carries its whole
+  // reviewed terms, whatever holder and version its attribution names;
+  // without one the generation fails with the package and the term.
+  const bzip2Terms = reviewedLicenseTerms()['bzip2-1.0.6'];
+  const bzip2 = `The original program, "bzip2", the associated library "libbzip2", and all\ndocumentation, are\n\nCopyright (C) 1996-2021 Julian R Seward.\n\n${bzip2Terms}\nJulian Seward, jseward@acm.org\nbzip2/libbzip2 version 1.1.0 of 6 September 2010\n`;
   assert.deepStrictEqual(standardFor(comp('test-custom', 'MIT AND bzip2-1.0.6', [['LICENSE-MIT', mit], ['LICENSE', bzip2]])), []);
-  assert.deepStrictEqual(standardFor(comp('test-custom', 'MIT AND bzip2-1.0.6', [['LICENSE-MIT', mit], ['LICENSE', tagged]])), []);
+  // A grant that only names the license is no text of it: cut before the
+  // conditions, before the disclaimer, or a short grant under its tag.
+  const truncated = 'This program, "bzip2", the associated library "libbzip2", and all documentation, are copyright (C) 1996-2010 Julian R Seward. All rights reserved. Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met.';
+  const noDisclaimer = bzip2.slice(0, bzip2.indexOf('THIS SOFTWARE IS PROVIDED'));
+  const tagged = 'SPDX-License-Identifier: bzip2-1.0.6\n\nRedistribution and use in source and binary forms are permitted provided this notice is kept.';
+  const negatedCondition = bzip2.replace('must retain the above copyright', 'need not retain the above copyright');
+  assert.notStrictEqual(negatedCondition, bzip2);
   // A grant for another work is another license, and a file that only names the licenses carries no terms of its own.
   const custom = 'This program, "custom-zip", is free software. Redistribution and use in source and binary forms are permitted provided this notice is kept.';
-  for (const files of [[['LICENSE-MIT', mit]], [['LICENSE-MIT', mit], ['COPYING', pointer]], [['LICENSE-MIT', mit], ['LICENSE', custom]]]) {
+  for (const files of [
+    [['LICENSE-MIT', mit]],
+    [['LICENSE-MIT', mit], ['COPYING', pointer]],
+    [['LICENSE-MIT', mit], ['LICENSE', custom]],
+    [['LICENSE-MIT', mit], ['LICENSE', truncated]],
+    [['LICENSE-MIT', mit], ['LICENSE', noDisclaimer]],
+    [['LICENSE-MIT', mit], ['LICENSE', tagged]],
+    [['LICENSE-MIT', mit], ['LICENSE', negatedCondition]],
+  ]) {
     assert.throws(
       () => generateNoticesMarkdown([comp('test-custom', 'MIT AND bzip2-1.0.6', files)], []),
       /Component test-custom@1\.0\.0 requires standard license text for 'bzip2-1\.0\.6'/
@@ -812,13 +869,12 @@ test('standard SPDX texts: every term of the chosen license needs its text, an o
 
   const gpl2 = 'GNU GENERAL PUBLIC LICENSE\nVersion 2, June 1991\nEveryone is permitted to copy and distribute verbatim copies.\nYou may copy and distribute verbatim copies of the Program.';
   assert.deepStrictEqual(standardFor(comp('test-gpl2-or-apache', 'Apache-2.0 OR GPL-2.0-only', [['LICENSE-GPLv2', gpl2]])), ['Apache-2.0']);
-  // One grant is the text of one license: a file that names both still covers one term,
-  // and it covers the term that no other file names.
+  // A file that mentions a second license carries no terms of it: the
+  // conjunct is still uncovered, with any number of files.
   const both = `${bzip2}\nThis notice also covers BSD-3-Clause-Clear.`;
-  assert.deepStrictEqual(standardFor(comp('test-two-custom', 'bzip2-1.0.6 AND BSD-3-Clause-Clear', [['LICENSE', both], ['LICENSE-BZIP2', bzip2]])), []);
-  for (const file of [bzip2, both]) {
+  for (const files of [[['LICENSE', bzip2]], [['LICENSE', both]], [['LICENSE', both], ['LICENSE-BZIP2', bzip2]]]) {
     assert.throws(
-      () => generateNoticesMarkdown([comp('test-two-custom', 'bzip2-1.0.6 AND BSD-3-Clause-Clear', [['LICENSE', file]])], []),
+      () => generateNoticesMarkdown([comp('test-two-custom', 'bzip2-1.0.6 AND BSD-3-Clause-Clear', files)], []),
       /Component test-two-custom@1\.0\.0 requires standard license text for 'BSD-3-Clause-Clear'/
     );
   }
@@ -1382,6 +1438,46 @@ test('comment closers: a line comment keeps a closer in its text, a block commen
     const scanned = findPackageCopyrightNotices(tmpDir).map((n) => n.notice);
     assert.ok(scanned.includes('Copyright (c) 2017 Path Holder, for src/*/gen'), 'the // notice keeps src/*/gen');
     assert.ok(scanned.includes('Copyright (c) 2016 Define Holder'), 'the #define block comment ends at its closer');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('comment closers: inside a block comment a closer ends it whatever leads the line, in every block style and both scanners', () => {
+  const pairs = [['/*', '*/'], ['(*', '*)'], ['{-', '-}'], ['<!--', '-->']];
+  const leaders = ['//', '#', '--', ';', '%'];
+  const known = new Set(Object.keys(JSON.parse(fs.readFileSync(SPDX_STANDARD_LICENSES_FILE, 'utf8'))));
+  for (const [open, close] of pairs) {
+    for (const leader of leaders) {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'inner-closer-fixture-'));
+      try {
+        fs.writeFileSync(path.join(tmpDir, 'LICENSE'), 'MIT License\n\nCopyright (c) 2020 Wrapper Author\n\nPermission is hereby granted.');
+        fs.mkdirSync(path.join(tmpDir, 'gen'));
+        fs.writeFileSync(
+          path.join(tmpDir, 'gen', 'inner.src'),
+          `${open}\n${leader} Copyright (c) 2021 Inner Holder ${close} code();\n${open}\n${leader} SPDX-License-Identifier: BSD-2-Clause ${close} int x;\n`
+        );
+        const comp = { name: 'inner-pkg', version: '1.0.0', license: 'MIT', source: 'cargo', packageDir: tmpDir, authors: ['Wrapper Author'], ...readPackageFiles(tmpDir, 'inner-pkg@1.0.0') };
+        const bundled = findBundledCodeUnderOtherLicenses(comp, known);
+        const label = `${open} ... ${leader} ... ${close}`;
+        assert.deepEqual(bundled.map((b) => b.license), ['BSD-2-Clause'], `${label}: the tag ends at the closer, the code after it is no part of it`);
+        const scanned = findPackageCopyrightNotices(tmpDir).map((n) => n.notice);
+        assert.ok(scanned.includes('Copyright (c) 2021 Inner Holder'), `${label}: the holder ends at the closer: ${JSON.stringify(scanned)}`);
+        assert.ok(!scanned.some((n) => n.includes('code()')), `${label}: no code after the closer in a holder`);
+      } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    }
+  }
+  // A real line comment keeps a closer in its text: a closer at its end is
+  // dropped from the tag, and one in its words stays.
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'line-closer-fixture-'));
+  try {
+    fs.writeFileSync(path.join(tmpDir, 'LICENSE'), 'MIT License\n\nCopyright (c) 2020 Wrapper Author\n\nPermission is hereby granted.');
+    fs.writeFileSync(path.join(tmpDir, 'line.rs'), '// Copyright (c) 2019 Line Vendor, for src/*/gen\n// SPDX-License-Identifier: BSD-2-Clause */\nfn x() {}\n');
+    const comp = { name: 'line-pkg', version: '1.0.0', license: 'MIT', source: 'cargo', packageDir: tmpDir, authors: ['Wrapper Author'], ...readPackageFiles(tmpDir, 'line-pkg@1.0.0') };
+    assert.deepEqual(findBundledCodeUnderOtherLicenses(comp, known).map((b) => b.license), ['BSD-2-Clause']);
+    assert.ok(findPackageCopyrightNotices(tmpDir).map((n) => n.notice).includes('Copyright (c) 2019 Line Vendor, for src/*/gen'));
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
@@ -2593,6 +2689,82 @@ const fencedBlockAfter = (md, anchorTag) => {
   return m[2];
 };
 
+// The top-level conjuncts of a workflow `if:` expression, each without the
+// parentheses around it, or null when an `||` at the top joins it (then no
+// single conjunct is required). Quoted strings are no operators.
+const topLevelConjuncts = (condition) => {
+  let expr = condition.trim();
+  const wrapped = /^\$\{\{([\s\S]*)\}\}$/.exec(expr);
+  if (wrapped) expr = wrapped[1].trim();
+  const unwrap = (e) => {
+    for (;;) {
+      e = e.trim();
+      if (!e.startsWith('(') || !e.endsWith(')')) return e;
+      let depth = 0;
+      let closesAtEnd = true;
+      for (let i = 0, q = null; i < e.length; i++) {
+        if (q) {
+          if (e[i] === q) q = null;
+        } else if (e[i] === "'") q = "'";
+        else if (e[i] === '(') depth++;
+        else if (e[i] === ')' && --depth === 0 && i < e.length - 1) {
+          closesAtEnd = false;
+          break;
+        }
+      }
+      if (!closesAtEnd) return e;
+      e = e.slice(1, -1);
+    }
+  };
+  expr = unwrap(expr);
+  const parts = [];
+  let depth = 0;
+  let from = 0;
+  for (let i = 0, q = null; i < expr.length; i++) {
+    if (q) {
+      if (expr[i] === q) q = null;
+    } else if (expr[i] === "'") q = "'";
+    else if (expr[i] === '(') depth++;
+    else if (expr[i] === ')') depth--;
+    else if (depth === 0 && expr.startsWith('||', i)) return null;
+    else if (depth === 0 && expr.startsWith('&&', i)) {
+      parts.push(unwrap(expr.slice(from, i)));
+      from = i + 2;
+      i++;
+    }
+  }
+  parts.push(unwrap(expr.slice(from)));
+  return parts;
+};
+// Whether a job's `if:` requires a needed job to succeed: the comparison is
+// one of the top-level conjuncts, so no other term can run the job without it.
+const requiresSuccessOf = (condition, need) => (topLevelConjuncts(condition) ?? []).some((c) => c.replace(/\s+/g, ' ') === `needs.${need}.result == 'success'`);
+
+test('workflow conditions: a needed job must succeed only when its success is a top-level conjunct', () => {
+  for (const ok of [
+    "${{ !cancelled() && startsWith(github.ref, 'refs/tags/') && needs.linux-validate.result == 'success' }}",
+    "${{ !cancelled() && needs.linux-validate.result == 'success' && (startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch') }}",
+    "${{ (needs.linux-validate.result == 'success') && startsWith(github.ref, 'refs/tags/') }}",
+    "needs.linux-validate.result == 'success'",
+    "${{ contains(github.ref, '||') && needs.linux-validate.result == 'success' }}",
+  ]) {
+    assert.strictEqual(requiresSuccessOf(ok, 'linux-validate'), true, ok);
+  }
+  // The same comparison under an `||`, a negation, or as part of another
+  // comparison lets the job run without it.
+  for (const bad of [
+    "${{ needs.linux-validate.result == 'success' || github.ref_type == 'tag' }}",
+    "${{ startsWith(github.ref, 'refs/tags/') && needs.linux-validate.result == 'success' || github.event_name == 'workflow_dispatch' }}",
+    "${{ startsWith(github.ref, 'refs/tags/') && (needs.linux-validate.result == 'success' || always()) }}",
+    "${{ !(needs.linux-validate.result == 'success') && startsWith(github.ref, 'refs/tags/') }}",
+    "${{ !cancelled() && needs.linux-validate.result != 'failure' }}",
+    "${{ !cancelled() && needs.linux-validate.result == 'success' == false }}",
+    "${{ !cancelled() && needs.other-job.result == 'success' }}",
+  ]) {
+    assert.strictEqual(requiresSuccessOf(bad, 'linux-validate'), false, bad);
+  }
+});
+
 test('release workflow: every publish job requires a job that checks the notices against the lockfiles', () => {
   const workflow = fs.readFileSync(path.join(ROOT, '.github/workflows/build.yml'), 'utf8');
   // The jobs, by id, with their text up to the next job.
@@ -2622,7 +2794,8 @@ test('release workflow: every publish job requires a job that checks the notices
     assert.ok(needs && needs[1].split(',').map((s) => s.trim()).includes('linux-validate'), `${id} needs linux-validate`);
     // `if: !cancelled()` would run a job whose needs failed: the condition
     // must require linux-validate's success explicitly.
-    assert.match(job, /\n {4}if: \$\{\{[^\n]*needs\.linux-validate\.result == 'success'/, `${id} requires linux-validate to succeed`);
+    const condition = /\n {4}if: ([^\n]+)\n/.exec(job);
+    assert.ok(condition && requiresSuccessOf(condition[1], 'linux-validate'), `${id} requires linux-validate to succeed: ${condition?.[1]}`);
   }
 });
 

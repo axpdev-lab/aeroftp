@@ -559,7 +559,12 @@ const VENDORED_SKIP_DIR = /^(?:\.git|\.github|node_modules|tests?|testdata|fixtu
 // (copying.rs, copyright.mjs, copyright.pm, license.yml, dompurify's
 // src/license_header, a lowercase name after the separator).
 const VENDORED_LICENSE_FILE =
-  /^(?:licen[sc]e|copying|unlicense|notice|copyright)(?:[-_][^.]*)?(?:\.(?:txt|md|markdown|rst|info-zip|apache|mit|bsd|gplv[23]|lgplv2\.1|unicode|spdx))?$/i;
+  /^(?:licen[sc]e|copying|unlicense|notice|copyright|(?:third|3rd)[-_]?party(?:[-_]?(?:notices?(?:[-_]?text)?|licen[sc]es?))?)(?:[-_][^.]*)?(?:\.(?:txt|md|markdown|rst|info-zip|apache|mit|bsd|gplv[23]|lgplv2\.1|unicode|spdx))?$/i;
+// A notice by name: NOTICE, COPYRIGHT, and the third-party notices a package
+// collects for the code it bundles (monaco-editor's ThirdPartyNotices.txt,
+// uds_windows' THIRDPARTYNOTICES, security-framework's THIRD_PARTY). Each is
+// reproduced whole: its terms are those of the code it names.
+const NOTICE_FILE = /^(?:notice|copyright|(?:third|3rd)[-_]?party)/i;
 // A source or data file by its extension: never a license or notice text.
 const SOURCE_FILE = /\.(?:[cm]?[jt]sx?|rs|c|h|cc|cpp|hpp|py|rb|go|java|kt|swift|sh|pl|pm|php|json|ya?ml|toml|lock|css|map)$/i;
 // Permission text in a source header (see findBundledCodeUnderOtherLicenses).
@@ -637,7 +642,7 @@ export function readPackageFiles(
       // A source file named after a license word (license.js, copyright.rs)
       // is code; LICENSE.Apache_2.0, LICENSE-MIT and NOTICES.md stay texts.
       if (SOURCE_FILE.test(f)) continue;
-      if (/^(notice|copyright)/i.test(f)) {
+      if (NOTICE_FILE.test(f)) {
         noticeFiles.push({ filename: f, content: fs.readFileSync(fullPath, 'utf8').replace(/\r\n/g, '\n').trim() });
       } else if (/^(licen[sc]e|copying|unlicense)/i.test(f)) {
         licenseFiles.push({ filename: f, content: fs.readFileSync(fullPath, 'utf8').replace(/\r\n/g, '\n').trim() });
@@ -654,7 +659,7 @@ export function readPackageFiles(
             const filename = `${entry.name}/${sub.name}`;
             const content = fs.readFileSync(fullPath, 'utf8').replace(/\r\n/g, '\n').trim();
             if (content.length > 0) {
-              if (/^(notice|copyright)/i.test(sub.name)) {
+              if (NOTICE_FILE.test(sub.name)) {
                 noticeFiles.push({ filename, content });
               } else {
                 licenseFiles.push({ filename, content });
@@ -686,7 +691,7 @@ export function readPackageFiles(
               const content = fs.readFileSync(path.join(d, sub.name), 'utf8').replace(/\r\n/g, '\n').trim();
               if (content.length === 0) continue;
               // A vendored file describes the vendored code, not the package.
-              if (/^(notice|copyright)/i.test(sub.name)) {
+              if (NOTICE_FILE.test(sub.name)) {
                 noticeFiles.push({ filename, content, vendored: true });
               } else {
                 licenseFiles.push({ filename, content, vendored: true });
@@ -786,7 +791,9 @@ export function findPackageCopyrightNotices(
     }
     // Binary files (a NUL byte near the start, as grep -I decides) hold no notice.
     if (buf.subarray(0, 8000).includes(0)) continue;
-    const lines = buf.toString('utf8').split(/\r?\n/);
+    const text = buf.toString('utf8');
+    const lines = text.split(/\r?\n/);
+    const inside = mayHoldBlockComments(text) ? linesInsideBlockComments(lines) : [];
 
     // In a machine-readable copyright file (REUSE .reuse/dep5, debian/copyright)
     // a `Copyright:` field names holders on its line and on the indented lines
@@ -807,7 +814,7 @@ export function findPackageCopyrightNotices(
         }
         continue;
       }
-      const closes = stripsCloser(rawLine, false);
+      const closes = stripsCloser(rawLine, inside[li] ?? false);
       let line = rawLine.replace(COMMENT_LEADER, '');
       if (closes) line = line.replace(COMMENT_CLOSER_AT_END, '');
       line = line.trim();
@@ -850,7 +857,7 @@ export function findPackageCopyrightNotices(
           cleaned,
           nextLine === undefined
             ? undefined
-            : stripsCloser(nextLine, false)
+            : stripsCloser(nextLine, inside[li + 1] ?? false)
               ? nextLine.replace(COMMENT_LEADER, '').replace(COMMENT_CLOSER_AT_END, '')
               : nextLine.replace(COMMENT_LEADER, '')
         );
@@ -1060,12 +1067,22 @@ const STANDARD_TEXT_SLOTS: Record<string, string[]> = {
   ISC: ['the author'],
   MIT: ['the authors or copyright holders'],
 };
-// Words a shipped text may insert inside one sentence of a standard text
-// ("this permission notice (including the next paragraph) shall be
-// included"), and the words a slot may hold. Between two sentences any text
+// What a shipped text may insert inside one sentence of a standard text: only
+// a reviewed insertion, by license. Measured on the dependency tree
+// (2026-11-18, 1161 Cargo and 131 npm packages, the minimal alignment of
+// every covering file): the one insertion any file needs is MIT's "this
+// permission notice (including the next paragraph) shall be included". Any
+// other is another text: "Permission is hereby not granted" keeps every
+// standard word in order and grants nothing. Between two sentences any text
 // may stand: a license with an added clause still carries every standard one.
-const SENTENCE_INSERT_WORDS = 8;
+const REVIEWED_INSERTIONS: Record<string, string[]> = {
+  MIT: ['including the next paragraph'],
+};
+const SENTENCE_INSERT_WORDS = Math.max(...Object.values(REVIEWED_INSERTIONS).flat().map((s) => s.split(' ').length));
+// A slot holds a holder's name, of up to this many words, and never a word
+// that would change what its sentence grants or excludes.
 const SLOT_WORDS = 16;
+const NEGATING_WORDS = new Set(['not', 'no', 'never', 'nor', 'neither', 'without', 'except', 'unless', 'cannot']);
 const URL_TEXT = /<?\bhttps?:\/\/[^\s>)]+>?|\bwww\.[^\s>)]+/gi;
 
 // Reviewed spellings of one standard word: the verb after a slot agrees
@@ -1085,15 +1102,22 @@ function termWords(text: string): string[] {
 }
 
 // The sentences of a standard text's terms, each a list of words, with null
-// where a slot stands. The title lines before the terms, and what follows
-// the terms (the appendix on how to apply them, an exhibit), are no terms.
+// where a slot stands. The title paragraphs before the terms (each under ten
+// words, or a copyright line with its address), and what follows the terms
+// (the appendix on how to apply them, an exhibit), are no terms. The skip is
+// by paragraph, never by line: the first line of the MIT grant has nine words
+// and is a term.
 function standardSentences(id: string, text: string): (string | null)[][] {
   const terms = text.split(/END OF TERMS AND CONDITIONS|How to Apply These Terms|^\s*APPENDIX\b|^\s*Exhibit A\b/im)[0];
-  const lines = terms.split('\n');
+  const paragraphs = terms.split(/\n\s*\n/);
   let start = 0;
-  while (start < lines.length && lines[start].trim().split(/\s+/).filter(Boolean).length < 10) start++;
+  while (
+    start < paragraphs.length &&
+    (paragraphs[start].trim().split(/\s+/).filter(Boolean).length < 10 || /^\s*Copyright\b/i.test(paragraphs[start]))
+  )
+    start++;
   const slots = (STANDARD_TEXT_SLOTS[id] ?? []).map((s) => s.split(' ')).sort((a, b) => b.length - a.length);
-  return licenseTermsOf(lines.slice(start).join('\n'))
+  return licenseTermsOf(paragraphs.slice(start).join('\n\n'))
     .split(/(?<=[.;:])\s+/)
     .map((sentence) => {
       const words = termWords(sentence);
@@ -1112,8 +1136,9 @@ function standardSentences(id: string, text: string): (string | null)[][] {
 
 /**
  * Whether a shipped file carries the whole standard text: every sentence of
- * its terms, in order, each word of a sentence within a few inserted words of
- * the one before, and other words only in a slot. Similarity finds the
+ * its terms, in order, each word of a sentence right after the one before or
+ * after a reviewed insertion (REVIEWED_INSERTIONS), and other words only in a
+ * slot, none of them negating. Similarity finds the
  * candidate texts; this decides coverage, so a text with a clause removed
  * (Apache-2.0 without section 4(a)) still gets the standard text.
  */
@@ -1124,6 +1149,7 @@ export function carriesWholeStandardText(id: string, standardText: string, fileT
     if (!at.has(w)) at.set(w, []);
     at.get(w)!.push(i);
   });
+  const reviewed = new Set(REVIEWED_INSERTIONS[id] ?? []);
   let from = 0;
   for (const sentence of standardSentences(id, standardText)) {
     // The file positions where the sentence so far can end, earliest first.
@@ -1137,13 +1163,24 @@ export function carriesWholeStandardText(id: string, standardText: string, fileT
       const positions = (at.get(word) ?? []).filter((p) => p >= from);
       if (ends === null) ends = positions;
       else {
-        // Both lists ascend: a position follows when an end lies in
-        // [p - gap - 1, p - 1].
+        // Both lists ascend: a position follows an end in [p - gap - 1,
+        // p - 1] when the words between them are nothing, a reviewed
+        // insertion, or a slot's name.
         const next: number[] = [];
         let k = 0;
         for (const p of positions) {
           while (k < ends.length && ends[k] < p - gap - 1) k++;
-          if (k < ends.length && ends[k] < p) next.push(p);
+          for (let j = k; j < ends.length && ends[j] < p; j++) {
+            const between = file.slice(ends[j] + 1, p);
+            const follows =
+              gap === SLOT_WORDS
+                ? !between.some((w) => NEGATING_WORDS.has(w))
+                : between.length === 0 || reviewed.has(between.join(' '));
+            if (follows) {
+              next.push(p);
+              break;
+            }
+          }
         }
         ends = next;
       }
@@ -1155,24 +1192,23 @@ export function carriesWholeStandardText(id: string, standardText: string, fileT
   return true;
 }
 
-// How the text of a license with no standard text names itself, reviewed
-// against the files that ship it: a grant without that name (a custom-zip
-// license next to MIT AND bzip2-1.0.6) is another license, not this one.
-const NON_STANDARD_LICENSE_TITLES: Record<string, RegExp> = {
-  // libbz2-rs-sys: "The original program, "bzip2", the associated library "libbzip2", ..."
-  'bzip2-1.0.6': /"bzip2",\s+the\s+associated\s+library\s+"libbzip2"/,
-  // webpki-roots, webpki-root-certs.
-  'CDLA-Permissive-2.0': /Community\s+Data\s+License\s+Agreement\s*-\s*Permissive\s*[-,]\s*Version\s+2\.0/i,
-};
-
-// Whether a text names a license: its SPDX identifier as a word
-// ("(BSD-1-Clause)", "SPDX-License-Identifier: bzip2-1.0.6"), or the
-// reviewed title of a license with no standard text.
-export function namesLicense(id: string, text: string): boolean {
-  return (
-    new RegExp(`(?<![A-Za-z0-9.+-])${escapeRegExp(id)}(?![A-Za-z0-9+-]|\\.[0-9])`, 'i').test(text) ||
-    (NON_STANDARD_LICENSE_TITLES[id]?.test(text) ?? false)
-  );
+// The reviewed terms of the licenses with no standard text (bzip2-1.0.6,
+// CDLA-Permissive-2.0): a package file covers one only when it carries those
+// terms whole, as a standard text is covered. A grant that only names the
+// license (a truncated text, an identifier mentioned beside another license)
+// carries no terms.
+export const REVIEWED_LICENSE_TERMS_FILE = path.join(__dirname, 'reviewed-license-terms.json');
+let reviewedTerms: Record<string, string> | undefined;
+export function reviewedLicenseTerms(): Record<string, string> {
+  if (!reviewedTerms) {
+    const raw = JSON.parse(fs.readFileSync(REVIEWED_LICENSE_TERMS_FILE, 'utf8')) as Record<string, { terms: string } | string>;
+    reviewedTerms = Object.fromEntries(
+      Object.entries(raw)
+        .filter(([id]) => !id.startsWith('_'))
+        .map(([id, entry]) => [id, typeof entry === 'string' ? entry : entry.terms])
+    );
+  }
+  return reviewedTerms;
 }
 
 // The 6-grams of each standard text, and the seam 6-grams that distinguish a
@@ -1188,9 +1224,9 @@ const standardShingles = new WeakMap<
  * the choices those files cover best. Empty when the files cover a whole
  * choice (MIT OR Apache-2.0 with LICENSE-MIT). A term is covered by a file that
  * carries its whole standard text; a term with no standard text (bzip2-1.0.6)
- * is covered by a file that carries none of the standard texts, grants
- * permission itself and names that license (namesLicense), not one that only
- * names licenses (siphasher's COPYING) nor a grant for another work.
+ * by a file that carries its whole reviewed terms (reviewedLicenseTerms), and
+ * by nothing else: not by a file that only names licenses (siphasher's
+ * COPYING), nor by a grant that names it without its terms.
  * The choices whose uncovered terms all have a standard text come first; with
  * none, the best covered ones are returned and the caller names the missing
  * text.
@@ -1223,37 +1259,13 @@ function uncoveredLicenseTerms(
   const hasText = (id: string) => standard.has(standardTextId(id));
   const carriesAt = (id: string, i: number) =>
     similar(standardTextId(id), files[i]) && carriesWholeStandardText(standardTextId(id), standardLicenses[standardTextId(id)], ownTexts[i]);
-  // A term with no standard text is covered by a file that grants permission
-  // itself and names that license. A version of a standard text with a clause
-  // removed is still that text, never a grant of its own.
-  const grantsOwn = files.map(
-    (f, i) => PERMISSION_TEXT.test(ownTexts[i]) && ![...standard.keys()].some((other) => similar(other, f))
+  // A term with no standard text is covered by a file that carries its whole
+  // reviewed terms; with none reviewed, by nothing.
+  const reviewed = reviewedLicenseTerms();
+  const carriesReviewed = (id: string) => id in reviewed && ownTexts.some((text) => carriesWholeStandardText(id, reviewed[id], text));
+  const left = choices.map((terms) =>
+    terms.filter((term) => !term.split(' WITH ').every((id) => (hasText(id) ? files.some((_, i) => carriesAt(id, i)) : carriesReviewed(id))))
   );
-  // Each such term takes a file of its own: one grant is the text of one
-  // license, even when it names two. The terms are matched to the files that
-  // name them so that as many as possible get one (augmenting paths): a file
-  // naming both is left to the term no other file names.
-  const left = choices.map((terms) => {
-    const own = terms.flatMap((term, ti) =>
-      term.split(' WITH ').filter((id) => !hasText(id)).map((id) => ({ ti, files: ownTexts.map((text, k) => k).filter((k) => grantsOwn[k] && namesLicense(id, ownTexts[k])) }))
-    );
-    const fileOf = new Map<number, number>();
-    const assign = (n: number, seen: Set<number>): boolean => {
-      for (const k of own[n].files) {
-        if (seen.has(k)) continue;
-        seen.add(k);
-        if (!fileOf.has(k) || assign(fileOf.get(k)!, seen)) {
-          fileOf.set(k, n);
-          return true;
-        }
-      }
-      return false;
-    };
-    const unmatched = new Set(own.map((_, n) => n).filter((n) => !assign(n, new Set())).map((n) => own[n].ti));
-    return terms.filter(
-      (term, ti) => unmatched.has(ti) || !term.split(' WITH ').every((id) => !hasText(id) || files.some((_, i) => carriesAt(id, i)))
-    );
-  });
   if (left.some((terms) => terms.length === 0)) return [];
   const reproducible = left
     .map((terms, i) => i)
@@ -1505,6 +1517,42 @@ function cCommentOpeners(line: string): { last: number; open: boolean } {
   return { last, open: inComment };
 }
 
+// For each line, whether it starts inside a block comment an earlier line
+// opened, read forward through the file. Inside one, the first closer ends
+// it, a line comment leader included (`// SPDX-License-Identifier: MIT */`
+// under `/*`), and what follows on the line may open another. The openers
+// follow the header scan: a C opener anywhere outside a string literal or a
+// line comment (cCommentOpeners), the others at the start of a line.
+function linesInsideBlockComments(lines: string[]): boolean[] {
+  const inside: boolean[] = [];
+  let pair: [string, string] | null = null;
+  for (const line of lines) {
+    inside.push(pair !== null);
+    let rest = line;
+    if (pair) {
+      const at = rest.indexOf(pair[1]);
+      if (at === -1) continue;
+      rest = rest.slice(at + pair[1].length);
+      pair = null;
+    }
+    for (const [opener, closer] of COMMENT_BLOCKS) {
+      const opens =
+        opener === '/*'
+          ? cCommentOpeners(rest).open
+          : rest.trimStart().startsWith(opener) && !rest.slice(rest.indexOf(opener) + opener.length).includes(closer);
+      if (opens) {
+        pair = [opener, closer];
+        break;
+      }
+    }
+  }
+  return inside;
+}
+
+// Whether a file can hold a block comment at all: most files of a package
+// have no closer, and their lines need no tracking.
+const mayHoldBlockComments = (text: string) => COMMENT_BLOCKS.some(([, closer]) => text.includes(closer));
+
 /**
  * Whether a line that carries an SPDX-License-Identifier tag at `at` is a
  * license header: a comment line in a source file (its leader decides, not
@@ -1575,9 +1623,12 @@ export function findBundledCodeUnderOtherLicenses(
       if (!entry.isFile()) continue;
       const buf = fs.readFileSync(path.join(dir, entry.name));
       if (buf.subarray(0, 8000).includes(0)) continue;
-      const lines = buf.toString('utf8').split(/\r?\n/);
+      const text = buf.toString('utf8');
+      const lines = text.split(/\r?\n/);
+      const inside = text.includes('SPDX-License-Identifier') && mayHoldBlockComments(text) ? linesInsideBlockComments(lines) : [];
       lines.forEach((line, i) => {
-        const m = line.match(closesBlock(line) ? SPDX_TAG : SPDX_TAG_IN_LINE_COMMENT);
+        // Inside a block comment a closer ends it, whatever leads the line.
+        const m = line.match(inside[i] || closesBlock(line) ? SPDX_TAG : SPDX_TAG_IN_LINE_COMMENT);
         if (!m) return;
         // The choices of the header's expression. One whose licenses the
         // package declares covers the code: its holders are still kept, as
