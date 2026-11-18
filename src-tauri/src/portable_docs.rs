@@ -543,6 +543,24 @@ mod tests {
 
     const KEY: &str = "new-exe-key";
 
+    /// The About dialog opens `THIRD-PARTY-NOTICES.md` at Tauri's resource
+    /// root (thirdPartyLicenses.ts), which must be the running exe's own
+    /// folder on Windows, where the portable ZIP puts the notices beside
+    /// AeroFTP.exe: an offline portable app then opens the shipped file, not
+    /// the online copy. Tauri's executableDir is unsupported on Windows, so
+    /// this pins the one lookup the portable build relies on.
+    #[cfg(windows)]
+    #[test]
+    fn the_resource_root_of_a_windows_app_is_the_running_exe_folder() {
+        use tauri::Manager;
+        let app = tauri::test::mock_app();
+        let exe = std::env::current_exe().expect("current exe");
+        assert_eq!(
+            app.path().resource_dir().expect("resource dir"),
+            exe.parent().expect("exe folder")
+        );
+    }
+
     /// An app folder with installed documents and a pending folder for the
     /// exe whose key is `key` (none: no key file).
     fn folder(key: Option<&str>) -> tempfile::TempDir {
