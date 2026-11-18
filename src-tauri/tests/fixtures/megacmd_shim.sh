@@ -22,7 +22,11 @@
 # one time, and `/y.txt` gains a new current version after its first listing
 # (a file put at the path by another client). Every
 # mega-get source is appended to get.log, its local target to
-# get-targets.log, and every mega-put target to put.log; a file
+# get-targets.log, and every mega-put target to put.log (its size to put-size,
+# which lists /v.txt with a new current version H:vAAAAAA4 of that size, and
+# with H:vAAAAAA5 below it when a file put-raced says another client put the
+# file just before); a file put-stdout-fails makes mega-put print its failure
+# on stdout and exit 1 with nothing put; a file
 # get-writes-then-fails makes mega-get write 500 bytes and then refuse; get-short makes
 # it write 3 bytes, print its failure on stdout and exit 1. `mega-thumbnail /photo.jpg <out>` writes the first bytes of a JPEG
 # to <out>; for `/plain.txt`, a file with no thumbnail, it writes nothing and
@@ -55,6 +59,12 @@ case "$(basename "$0")" in
             echo '----    3           13 16Nov2026 15:53:00 H:vAAAAAA3 v.txt'
             echo ''
             echo 'Versions of v.txt:'
+            if [ -f "$here/put-size" ]; then
+                echo "----    5 $(cat "$here/put-size") 16Nov2026 15:54:00 H:vAAAAAA4 v.txt#1794840840"
+                if [ -f "$here/put-raced" ]; then
+                    echo '----    4           21 16Nov2026 15:53:30 H:vAAAAAA5 v.txt#1794840810'
+                fi
+            fi
             echo '----    3           13 16Nov2026 15:53:00 H:vAAAAAA3 v.txt#1794840780'
             echo '----    2           12 16Nov2026 15:52:57 H:vAAAAAA2 v.txt#1794840777'
             echo '----    1            8 16Nov2026 15:52:55 H:vAAAAAA1 v.txt#1794840775'
@@ -132,6 +142,11 @@ case "$(basename "$0")" in
             echo "Upload failed: Access denied" >&2
             exit 2
         fi
+        if [ -f "$here/put-stdout-fails" ]; then
+            # The failure on stdout and a non-zero exit, nothing put.
+            echo "Upload failed: Access denied"
+            exit 1
+        fi
         if [ -f "$here/put-stalls" ]; then
             printf 'TRANSFERRING ||####..........||(3/30 MB:  10.00 %%) \000\r' >&2
             sleep 3
@@ -148,6 +163,7 @@ case "$(basename "$0")" in
             done
         fi
         echo "$2" >> "$here/put.log"
+        wc -c < "$1" | tr -d ' ' > "$here/put-size"
         printf '\nUpload finished: %s\n' "$2"
         printf 'TRANSFERRING ||##############||(30/30 MB: 100.00 %%) \000\n' >&2
         ;;

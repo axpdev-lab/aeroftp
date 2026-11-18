@@ -1444,9 +1444,7 @@ impl StorageProvider for MegaCmdProvider {
         // Rename into place, or copy where the temp folder is on another
         // file system; the guard removes whatever is left.
         if tokio::fs::rename(&temp.0, local_path).await.is_err() {
-            tokio::fs::copy(&temp.0, local_path)
-                .await
-                .map_err(ProviderError::IoError)?;
+            copy_version_into_place(&temp.0, local_path).await?;
         }
         Ok(())
     }
@@ -1460,8 +1458,8 @@ impl StorageProvider for MegaCmdProvider {
         // mega-put names the file by its path, which MEGAcmd resolves when it
         // runs: a file put at the path while the version downloaded would be
         // overwritten. The path must still hold the version listed current.
-        let now = self.list_versions(path).await?;
-        let now = now.first().map(|v| v.id.clone());
+        let listed = self.list_versions(path).await?;
+        let now = listed.first().map(|v| v.id.clone());
         if now != head {
             return Err(ProviderError::NotFound(format!(
                 "{path} changed while the version downloaded (current version {}, now {}): \
@@ -1470,10 +1468,33 @@ impl StorageProvider for MegaCmdProvider {
                 now.as_deref().unwrap_or("none")
             )));
         }
+        let head_size = listed.first().map(|v| v.size);
+        let restored_size = std::fs::metadata(&temp.0).map(|m| m.len()).ok();
         let local_arg = Self::normalize_local_path_for_cli(&temp.0.to_string_lossy());
         self.run_mega_transfer_with_reauth("mega-put", &[&local_arg, &abs_path], Some(&|_| {}))
             .await
             .map_err(|e| ProviderError::TransferFailed(format!("Version restore failed: {}", e)))?;
+        // The runner takes a failed put that wrote on stdout for output, so
+        // the chain tells: the restore is a new current version right above
+        // the one listed current before.
+        let after = self.list_versions(path).await?;
+        let new_head = after.first().map(|v| v.id.clone());
+        if new_head == head {
+            // Nothing new on top. A put of the contents the file already has
+            // adds no version: then the sizes agree.
+            if restored_size.is_some() && restored_size == head_size {
+                return Ok(());
+            }
+            return Err(ProviderError::TransferFailed(format!(
+                "MEGA did not take the restored version: {path} is as it was, try again"
+            )));
+        }
+        if after.get(1).map(|v| &v.id) != head.as_ref() {
+            return Err(ProviderError::TransferFailed(format!(
+                "{path} was also written by someone else during the restore: MEGA keeps \
+                 every version, list its versions again and check which one should be current"
+            )));
+        }
         Ok(())
     }
 
@@ -1987,6 +2008,22 @@ fn thumbnail_mime(bytes: &[u8]) -> Option<&'static str> {
     }
 }
 
+/// Copy a fetched version over `to` the way a download writes: beside it
+/// first, renamed over it once whole, so a copy cut short (a full disk, a
+/// read error) leaves the file already there untouched.
+async fn copy_version_into_place(from: &std::path::Path, to: &str) -> Result<(), ProviderError> {
+    let mut source = tokio::fs::File::open(from)
+        .await
+        .map_err(ProviderError::IoError)?;
+    let mut atomic = super::atomic_write::AtomicFile::new(to)
+        .await
+        .map_err(ProviderError::IoError)?;
+    tokio::io::copy(&mut source, atomic.file_mut())
+        .await
+        .map_err(ProviderError::IoError)?;
+    atomic.commit().await.map_err(ProviderError::IoError)
+}
+
 /// Refuse to create or name a node whose path holds a MEGAcmd wildcard: the
 /// command would read the name as a pattern and act on whatever it matches.
 fn refuse_mega_wildcard_name(path: &str) -> Result<(), ProviderError> {
@@ -2160,6 +2197,40 @@ fn name_after_columns(line: &str, columns: usize) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The copy a version takes where the temp folder is on another file
+    /// system: a read that fails after the destination was opened leaves the
+    /// file already there as it was (a plain copy truncates it first), and a
+    /// whole copy replaces it.
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn a_cut_version_copy_leaves_the_file_already_there_untouched() {
+        let dir = tempfile::tempdir().unwrap();
+        let destination = dir.path().join("kept.txt");
+        std::fs::write(&destination, "the file the user kept").unwrap();
+        let to = destination.to_str().unwrap();
+        // A regular file whose first read fails (EIO): the copy has opened
+        // both ends when it breaks.
+        let failing = std::path::Path::new("/proc/self/mem");
+        assert!(copy_version_into_place(failing, to).await.is_err());
+        assert_eq!(
+            std::fs::read_to_string(&destination).unwrap(),
+            "the file the user kept"
+        );
+        let leftovers: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(leftovers, [std::ffi::OsString::from("kept.txt")]);
+
+        let version = dir.path().join("version.bin");
+        std::fs::write(&version, "the version").unwrap();
+        copy_version_into_place(&version, to).await.unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&destination).unwrap(),
+            "the version"
+        );
+    }
     use crate::providers::MegaConnectionMode;
 
     /// A listing that answered means the path is there.
@@ -3358,6 +3429,53 @@ mod tests {
             .await
             .expect("restore");
         assert_eq!(stand_in_log(&dir, "get.log"), ["H:vAAAAAA2"]);
+        assert_eq!(stand_in_log(&dir, "put.log"), ["/v.txt"]);
+        let versions = provider.list_versions("/v.txt").await.unwrap();
+        let rows: Vec<(&str, u64)> = versions.iter().map(|v| (v.id.as_str(), v.size)).collect();
+        assert_eq!(rows[..2], [("H:vAAAAAA4", 12), ("H:vAAAAAA3", 13)]);
+    }
+
+    /// MEGAcmd can say a put failed on stdout with a non-zero exit, which
+    /// the runner takes as output: with no new version on top of the file
+    /// the restore is a failure, not a success.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_megacmd_restore_that_put_nothing_is_a_failure() {
+        let (mut provider, dir) = provider_with_stand_in_versions();
+        std::fs::write(dir.path().join("put-stdout-fails"), "").unwrap();
+        let outcome = provider.restore_version("/v.txt", "H:vAAAAAA2").await;
+        assert!(
+            matches!(&outcome, Err(ProviderError::TransferFailed(m)) if m.contains("did not take")),
+            "{outcome:?}"
+        );
+    }
+
+    /// A put of the contents the file already has adds no version on top:
+    /// with the sizes equal, nothing new is not taken for a failure.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_megacmd_restore_of_the_current_contents_adds_nothing_and_succeeds() {
+        let (mut provider, dir) = provider_with_stand_in_versions();
+        std::fs::write(dir.path().join("put-stdout-fails"), "").unwrap();
+        provider
+            .restore_version("/v.txt", "H:vAAAAAA3")
+            .await
+            .expect("the current contents need no new version");
+    }
+
+    /// mega-put resolves the path when it runs: a version another client put
+    /// there after the last check sits between the restore and the version
+    /// listed current, and the restore says so instead of a plain success.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_megacmd_restore_raced_by_another_client_is_reported() {
+        let (mut provider, dir) = provider_with_stand_in_versions();
+        std::fs::write(dir.path().join("put-raced"), "").unwrap();
+        let outcome = provider.restore_version("/v.txt", "H:vAAAAAA2").await;
+        assert!(
+            matches!(&outcome, Err(ProviderError::TransferFailed(m)) if m.contains("someone else")),
+            "{outcome:?}"
+        );
         assert_eq!(stand_in_log(&dir, "put.log"), ["/v.txt"]);
     }
 

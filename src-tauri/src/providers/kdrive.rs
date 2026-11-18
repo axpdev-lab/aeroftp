@@ -2628,6 +2628,74 @@ mod tests {
         (provider, moves)
     }
 
+    /// Row 0 of the versions dialog, `current`, is the file itself: its
+    /// download is the file's own (`/2/.../download`, never a versions URL),
+    /// its restore sends no request at all, and a past version still
+    /// downloads by its own id.
+    #[tokio::test]
+    async fn the_current_row_is_the_file_itself_and_a_past_one_its_version() {
+        use axum::response::IntoResponse;
+        use std::sync::{Arc, Mutex};
+        let seen: Arc<Mutex<Vec<String>>> = Arc::default();
+        let log = Arc::clone(&seen);
+        let app = axum::Router::new().fallback(axum::routing::get(move |uri: axum::http::Uri| {
+            let log = Arc::clone(&log);
+            async move {
+                let path = uri.path().to_string();
+                log.lock().unwrap().push(path.clone());
+                let file =
+                    serde_json::json!({ "id": 11, "name": "a.txt", "type": "file", "size": 4 });
+                match path.as_str() {
+                    "/3/drive/987654/files/1/files" => {
+                        axum::Json(serde_json::json!({ "result": "success", "data": [file] }))
+                            .into_response()
+                    }
+                    "/2/drive/987654/files/11/download" => "live".into_response(),
+                    "/3/drive/987654/files/11/versions/2/download" => "two".into_response(),
+                    _ => axum::http::StatusCode::NOT_FOUND.into_response(),
+                }
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = test_provider();
+        provider.connected = true;
+        provider.api_base_override = Some(format!("http://{addr}"));
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("a.txt");
+        let out = out.to_str().unwrap();
+
+        provider
+            .download_version("/a.txt", super::super::CURRENT_VERSION_ID, out)
+            .await
+            .expect("the current row downloads the file");
+        assert_eq!(std::fs::read_to_string(out).unwrap(), "live");
+        assert!(
+            seen.lock()
+                .unwrap()
+                .iter()
+                .all(|p| !p.contains("/versions")),
+            "{seen:?}"
+        );
+
+        let before = seen.lock().unwrap().len();
+        let restored = provider
+            .restore_version("/a.txt", super::super::CURRENT_VERSION_ID)
+            .await;
+        assert!(
+            matches!(restored, Err(ProviderError::NotSupported(_))),
+            "{restored:?}"
+        );
+        assert_eq!(seen.lock().unwrap().len(), before, "{seen:?}");
+
+        provider
+            .download_version("/a.txt", "2", out)
+            .await
+            .expect("a past version downloads by its id");
+        assert_eq!(std::fs::read_to_string(out).unwrap(), "two");
+    }
+
     /// kDrive's move names no conflict behaviour, so the destination is
     /// looked up first and a taken one refused before any move.
     #[tokio::test]

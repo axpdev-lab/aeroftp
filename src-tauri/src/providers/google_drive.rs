@@ -2646,9 +2646,11 @@ impl StorageProvider for GoogleDriveProvider {
             .await
             .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
         // The head revision is the current contents (Drive lists it among
-        // the others, oldest first).
+        // the others, oldest first). It is read after the list, so a file
+        // uploaded in between has a head the list does not hold: its size
+        // and time come with it, for that row.
         let head_url = format!(
-            "{}/files/{}?fields=headRevisionId",
+            "{}/files/{}?fields=headRevisionId,modifiedTime,size",
             self.drive_api(),
             file.id
         );
@@ -2670,12 +2672,25 @@ impl StorageProvider for GoogleDriveProvider {
         #[serde(rename_all = "camelCase")]
         struct Head {
             head_revision_id: Option<String>,
+            modified_time: Option<String>,
+            size: Option<String>,
         }
         let head: Head = head
             .json()
             .await
             .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
-        revisions_in_dialog_order(&body, head.head_revision_id.as_deref())
+        let head = head.head_revision_id.map(|id| super::FileVersion {
+            id,
+            modified: head.modified_time,
+            size: head
+                .size
+                .as_deref()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(0),
+            modified_by: None,
+            deleted: false,
+        });
+        revisions_in_dialog_order(&body, head)
     }
 
     async fn download_version(
@@ -3320,10 +3335,13 @@ impl StorageProvider for GoogleDriveProvider {
 
 /// A `revisions.list` answer in the order every `list_versions` answers in
 /// ([`super::versions_current_first`]). Drive lists the head revision too,
-/// oldest first: the file's `headRevisionId` names it.
+/// oldest first: the file's `headRevisionId` names it. A head the list does
+/// not hold (a revision uploaded after the list was read, or one past the
+/// list's first page) is row 0 as `head` describes it, so a past revision is
+/// never shown as the current one.
 fn revisions_in_dialog_order(
     body: &str,
-    head: Option<&str>,
+    head: Option<super::FileVersion>,
 ) -> Result<Vec<super::FileVersion>, ProviderError> {
     #[derive(Deserialize)]
     #[serde(rename_all = "camelCase")]
@@ -3355,10 +3373,11 @@ fn revisions_in_dialog_order(
             deleted: false,
         })
         .collect();
+    let head_id = head.as_ref().map(|h| h.id.clone());
     Ok(super::versions_current_first(
         versions,
-        |v| Some(v.id.as_str()) == head,
-        || None,
+        |v| Some(&v.id) == head_id.as_ref(),
+        || head,
         |v| super::version_time_millis(v.modified.as_deref()),
     ))
 }
@@ -4735,14 +4754,51 @@ mod tests {
             {"id":"r3","modifiedTime":"2026-11-16T15:02:00.000Z","size":"16",
              "lastModifyingUser":{"displayName":"Ale"}}
         ]}"#;
-        let versions = super::revisions_in_dialog_order(body, Some("r3")).expect("parse");
+        let versions = super::revisions_in_dialog_order(body, Some(head("r3"))).expect("parse");
         let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
         assert_eq!(ids, ["r3", "r2", "r1"]);
         // The head is told by its id, not by its time.
-        let versions = super::revisions_in_dialog_order(body, Some("r2")).expect("parse");
+        let versions = super::revisions_in_dialog_order(body, Some(head("r2"))).expect("parse");
         let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
         assert_eq!(ids, ["r2", "r3", "r1"]);
         assert_eq!(versions[0].size, 12);
         assert_eq!(versions[1].modified_by.as_deref(), Some("Ale"));
+    }
+
+    /// The head revision as the file's metadata names it (id only: a listed
+    /// head keeps its own row).
+    fn head(id: &str) -> super::super::FileVersion {
+        super::super::FileVersion {
+            id: id.to_string(),
+            modified: None,
+            size: 0,
+            modified_by: None,
+            deleted: false,
+        }
+    }
+
+    /// A revision uploaded after the list was read is the head the list does
+    /// not hold: it is row 0, with the file's own size and time, and the
+    /// listed revisions all follow as past ones.
+    #[test]
+    fn a_drive_head_the_list_does_not_hold_is_still_row_0() {
+        let body = r#"{"revisions":[
+            {"id":"r1","modifiedTime":"2026-11-16T15:00:00.000Z","size":"8"},
+            {"id":"r2","modifiedTime":"2026-11-16T15:01:00.000Z","size":"12"}
+        ]}"#;
+        let r3 = super::super::FileVersion {
+            id: "r3".to_string(),
+            modified: Some("2026-11-16T15:02:00.000Z".to_string()),
+            size: 16,
+            modified_by: None,
+            deleted: false,
+        };
+        let versions = super::revisions_in_dialog_order(body, Some(r3)).expect("parse");
+        let rows: Vec<(&str, u64)> = versions.iter().map(|v| (v.id.as_str(), v.size)).collect();
+        assert_eq!(rows, [("r3", 16), ("r2", 12), ("r1", 8)]);
+        // A file with no head revision (none named) has no current row made up.
+        let versions = super::revisions_in_dialog_order(body, None).expect("parse");
+        let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
+        assert_eq!(ids, ["r2", "r1"]);
     }
 }

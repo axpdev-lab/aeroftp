@@ -762,8 +762,10 @@ struct VersionAttributes {
     /// Display name of who uploaded this version.
     #[serde(default)]
     created_by: Option<serde_json::Value>,
+    /// Kept as written (`1.10` stays `1.10`): parsed as a JSON number it
+    /// would read `1.1`, another version's number and place.
     #[serde(default)]
-    version_number: Option<serde_json::Value>,
+    version_number: Option<Box<serde_json::value::RawValue>>,
 }
 
 /// A JSON number, or a number written as a string.
@@ -775,15 +777,39 @@ fn json_number(value: &serde_json::Value) -> Option<f64> {
     }
 }
 
-/// The version number as WorkDrive writes it in `revert_to` (`"5.0"`): a
+/// The version number as WorkDrive writes it in `revert_to` (`"5.0"`): the
+/// text of the answer, string or number, never re-printed from a float; a
 /// whole number keeps its `.0`.
-fn version_label(value: &serde_json::Value) -> Option<String> {
-    match value {
-        serde_json::Value::String(text) if !text.trim().is_empty() => Some(text.trim().to_string()),
-        serde_json::Value::Number(n) if n.is_f64() => Some(n.to_string()),
-        serde_json::Value::Number(n) => Some(format!("{n}.0")),
-        _ => None,
+fn version_label(raw: &serde_json::value::RawValue) -> Option<String> {
+    let text = raw.get().trim();
+    let text = if text.starts_with('"') {
+        serde_json::from_str::<String>(text).ok()?
+    } else if text.parse::<f64>().is_ok() {
+        text.to_string()
+    } else {
+        return None;
+    };
+    let text = text.trim();
+    if text.is_empty() {
+        None
+    } else if text.contains(['.', 'e', 'E']) {
+        Some(text.to_string())
+    } else {
+        Some(format!("{text}.0"))
     }
+}
+
+/// A version number compared part by part (`1.10` after `1.9`, `2` equal to
+/// `2.0`); `None` for a label that is not dotted whole numbers.
+fn version_parts(label: &str) -> Option<Vec<u64>> {
+    let mut parts = label
+        .split('.')
+        .map(|part| part.parse::<u64>().ok())
+        .collect::<Option<Vec<u64>>>()?;
+    while parts.len() > 1 && parts.last() == Some(&0) {
+        parts.pop();
+    }
+    Some(parts)
 }
 
 /// A versions answer in the order every `list_versions` answers in
@@ -792,7 +818,13 @@ fn version_label(value: &serde_json::Value) -> Option<String> {
 /// number first, then the others by number, newest first. A row's id is its
 /// version number, the one download and restore take.
 fn versions_in_dialog_order(mut data: Vec<VersionResource>) -> Vec<FileVersion> {
-    let number = |v: &VersionResource| v.attributes.version_number.as_ref().and_then(json_number);
+    let number = |v: &VersionResource| {
+        v.attributes
+            .version_number
+            .as_deref()
+            .and_then(version_label)
+            .and_then(|label| version_parts(&label))
+    };
     let millis = |v: &VersionResource| {
         v.attributes
             .created_time_in_milliseconds
@@ -802,8 +834,7 @@ fn versions_in_dialog_order(mut data: Vec<VersionResource>) -> Vec<FileVersion> 
     };
     data.sort_by(|a, b| {
         number(b)
-            .unwrap_or(f64::MIN)
-            .total_cmp(&number(a).unwrap_or(f64::MIN))
+            .cmp(&number(a))
             .then(millis(b).total_cmp(&millis(a)))
     });
     data.into_iter()
@@ -829,7 +860,7 @@ fn versions_in_dialog_order(mut data: Vec<VersionResource>) -> Vec<FileVersion> 
             FileVersion {
                 id: attributes
                     .version_number
-                    .as_ref()
+                    .as_deref()
                     .and_then(version_label)
                     .unwrap_or(v.id),
                 modified,
@@ -7402,6 +7433,27 @@ mod tests {
         assert!(versions
             .iter()
             .all(|v| v.modified.is_some() && v.modified_by.is_none()));
+    }
+
+    /// Minor versions past the ninth: `1.10` is newer than `1.9` and keeps
+    /// its own number as its id (a float would read it `1.1`), written as a
+    /// JSON number as the live answer does, and as a string.
+    #[test]
+    fn zoho_minor_versions_past_the_ninth_keep_their_number_and_place() {
+        for (ten, nine) in [("1.10", "1.9"), (r#""1.10""#, r#""1.9""#)] {
+            let body = format!(
+                r#"{{"data":[
+                    {{"id":"r9","attributes":{{"version_number":{nine},"created_time_in_milliseconds":1794841300000,"file_size":9}}}},
+                    {{"id":"r10","attributes":{{"version_number":{ten},"created_time_in_milliseconds":1794841200000,"file_size":10}}}},
+                    {{"id":"r2","attributes":{{"version_number":1.2,"created_time_in_milliseconds":1794841100000,"file_size":2}}}}
+                ]}}"#
+            );
+            let parsed: super::JsonApiListResponse<super::VersionResource> =
+                serde_json::from_str(&body).expect("versions parse");
+            let versions = super::versions_in_dialog_order(parsed.data);
+            let rows: Vec<(&str, u64)> = versions.iter().map(|v| (v.id.as_str(), v.size)).collect();
+            assert_eq!(rows, [("1.10", 10), ("1.9", 9), ("1.2", 2)], "{ten}");
+        }
     }
 
     /// The documented restore body: `revert_to` carries the version number.

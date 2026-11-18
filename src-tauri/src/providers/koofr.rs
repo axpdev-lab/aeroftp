@@ -2362,6 +2362,76 @@ mod tests {
         .await;
     }
 
+    /// Row 0 of the versions dialog, `current`, is the file itself: its
+    /// download asks for no `version`, its restore sends no request at all,
+    /// and a past version still downloads by its own id.
+    #[tokio::test]
+    async fn the_current_row_is_the_file_itself_and_a_past_one_its_version() {
+        use std::sync::{Arc, Mutex};
+        let calls: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&calls);
+        let app = axum::Router::new().fallback(axum::routing::get(move |uri: axum::http::Uri| {
+            let seen = Arc::clone(&seen);
+            async move {
+                let query = uri.query().unwrap_or_default().to_string();
+                seen.lock().unwrap().push(format!("{}?{query}", uri.path()));
+                if uri.path() != "/mounts/M/files/get" {
+                    return (axum::http::StatusCode::NOT_FOUND, "");
+                }
+                if query.contains("version=k1") {
+                    (axum::http::StatusCode::OK, "one")
+                } else {
+                    (axum::http::StatusCode::OK, "live")
+                }
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = KoofrProvider::new(KoofrConfig {
+            email: "u@example.com".to_string(),
+            password: secrecy::SecretString::from("p".to_string()),
+            initial_path: None,
+        });
+        provider.connected = true;
+        provider.mount_id = "M".to_string();
+        provider.api_base_override = Some(format!("http://{addr}"));
+        provider.content_base_override = Some(format!("http://{addr}"));
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("a.txt");
+        let out = out.to_str().unwrap();
+
+        provider
+            .download_version("/a.txt", super::super::CURRENT_VERSION_ID, out)
+            .await
+            .expect("the current row downloads the file");
+        assert_eq!(std::fs::read_to_string(out).unwrap(), "live");
+        assert!(
+            calls
+                .lock()
+                .unwrap()
+                .iter()
+                .all(|c| !c.contains("version=")),
+            "{calls:?}"
+        );
+
+        let before = calls.lock().unwrap().len();
+        let restored = provider
+            .restore_version("/a.txt", super::super::CURRENT_VERSION_ID)
+            .await;
+        assert!(
+            matches!(restored, Err(ProviderError::NotSupported(_))),
+            "{restored:?}"
+        );
+        assert_eq!(calls.lock().unwrap().len(), before, "{calls:?}");
+
+        provider
+            .download_version("/a.txt", "k1", out)
+            .await
+            .expect("a past version downloads by its id");
+        assert_eq!(std::fs::read_to_string(out).unwrap(), "one");
+    }
+
     /// A provider on a Koofr double that answers every request 409
     /// `AlreadyExists` and records its path.
     async fn provider_on_refusing_koofr(

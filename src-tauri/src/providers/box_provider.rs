@@ -3518,6 +3518,72 @@ mod tests {
         p
     }
 
+    /// Row 0 of the versions dialog, `current`, is the file itself: its
+    /// download is `/files/{id}/content` with no `version`, its restore sends
+    /// no request at all, and a past version still downloads by its own id.
+    #[tokio::test]
+    async fn the_current_row_is_the_file_itself_and_a_past_one_its_version() {
+        use std::sync::{Arc, Mutex};
+        let calls: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&calls);
+        let app = axum::Router::new().fallback(axum::routing::get(move |uri: axum::http::Uri| {
+            let seen = Arc::clone(&seen);
+            async move {
+                use axum::response::IntoResponse;
+                let query = uri.query().unwrap_or_default().to_string();
+                seen.lock().unwrap().push(format!("{}?{query}", uri.path()));
+                match uri.path() {
+                    "/folders/0/items" => axum::Json(serde_json::json!({
+                        "entries": [{"type": "file", "id": "55", "name": "a.txt"}],
+                        "offset": 0, "limit": 1000, "total_count": 1
+                    }))
+                    .into_response(),
+                    "/files/55/content" if query.contains("version=12") => "twelve".into_response(),
+                    "/files/55/content" => "live".into_response(),
+                    _ => axum::http::StatusCode::NOT_FOUND.into_response(),
+                }
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = fixture_connected();
+        provider.api_base_override = Some(format!("http://{addr}"));
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("a.txt");
+        let out = out.to_str().unwrap();
+
+        provider
+            .download_version("/a.txt", super::super::CURRENT_VERSION_ID, out)
+            .await
+            .expect("the current row downloads the file");
+        assert_eq!(std::fs::read_to_string(out).unwrap(), "live");
+        assert!(
+            calls
+                .lock()
+                .unwrap()
+                .iter()
+                .all(|c| !c.contains("version=")),
+            "{calls:?}"
+        );
+
+        let before = calls.lock().unwrap().len();
+        let restored = provider
+            .restore_version("/a.txt", super::super::CURRENT_VERSION_ID)
+            .await;
+        assert!(
+            matches!(restored, Err(ProviderError::NotSupported(_))),
+            "{restored:?}"
+        );
+        assert_eq!(calls.lock().unwrap().len(), before, "{calls:?}");
+
+        provider
+            .download_version("/a.txt", "12", out)
+            .await
+            .expect("a past version downloads by its id");
+        assert_eq!(std::fs::read_to_string(out).unwrap(), "twelve");
+    }
+
     /// One item of [`provider_on_box`]: id, name, parent id, `file` or `folder`.
     type BoxDoubleItem = (String, String, String, String);
 
