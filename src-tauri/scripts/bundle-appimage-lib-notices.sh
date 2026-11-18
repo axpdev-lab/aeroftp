@@ -198,10 +198,13 @@ if [ "${#missing[@]}" -gt 0 ]; then
     exit 1
 fi
 
+# The archive snapshot of the build date (UTC) keeps every version listed
+# when Launchpad no longer serves it.
+SNAPSHOT_DATE="$(date -u +%Y%m%dT000000Z)"
 {
     echo "Libraries this AppImage bundles. Each line: the library, the Ubuntu package that provides it and its version, then the Ubuntu source package it was built from, its version, and the Launchpad page of that source version."
     echo "The terms of each package are in usr/share/doc/<package>/copyright."
-    echo "Written offer: for at least three years from the date of the AeroFTP $VERSION release, anyone who asks can obtain from us the complete corresponding source code of each library listed here, at the source package version listed, for a charge no more than our cost of providing it. Ask at dev@aeroftp.app, the contact published in SECURITY.md of https://github.com/axpdev-lab/aeroftp. The Launchpad links are given for convenience only: this offer stands whether or not a link still works."
+    echo "Written offer: for at least three years from the date of the AeroFTP $VERSION release, anyone who asks can obtain from us the complete corresponding source code of each library listed here, at the source package version listed, for a charge no more than our cost of providing it. Ask at dev@aeroftp.app, the contact published in SECURITY.md of https://github.com/axpdev-lab/aeroftp. Every version listed is a package of the Ubuntu archive, and the archive keeps its source: we fetch that exact version from the Launchpad page listed, or from the archive snapshot of the build date at https://snapshot.ubuntu.com/ubuntu/$SNAPSHOT_DATE/ when Launchpad no longer serves it, and send it to you."
     echo
     while IFS= read -r path; do
         echo "$path ${lines[$path]}"

@@ -904,26 +904,58 @@ export function findPackageCopyrightNotices(
   return notices;
 }
 
+/** Whether `where`, the source cargo tree prints after a package (none for crates.io), names the metadata package `pkg`. */
+function treeSourceIs(pkg: { source?: string | null; manifest_path: string }, where: string | undefined): boolean {
+  const src = pkg.source;
+  if (src == null) return where === path.dirname(pkg.manifest_path);
+  if (/^(?:registry|sparse)\+https:\/\/(?:github\.com\/rust-lang\/crates\.io-index|index\.crates\.io\/)$/.test(src)) return where === undefined;
+  if (src.startsWith('git+') && where !== undefined) {
+    const [url, sha = ''] = src.slice(4).split('#');
+    const [whereUrl, whereSha = ''] = where.split('#');
+    return whereUrl === url && whereSha.length > 0 && sha.startsWith(whereSha);
+  }
+  return false;
+}
+
+/**
+ * The metadata ids of the packages `cargo tree --format {p}` lists: each line
+ * is matched to exactly one package by name, version and source, so a Git
+ * fork with the name and version of a registry crate is active only when the
+ * tree reaches it. A line that matches none or several fails the run.
+ */
+export function activeCargoPackageIds(treeRaw: string, packages: any[]): Set<string> {
+  const byNameVersion = new Map<string, any[]>();
+  for (const pkg of packages) {
+    const key = `${pkg.name}@${pkg.version}`;
+    if (!byNameVersion.has(key)) byNameVersion.set(key, []);
+    byNameVersion.get(key)!.push(pkg);
+  }
+  const ids = new Set<string>();
+  for (const raw of treeRaw.split('\n')) {
+    const line = raw.trim();
+    const match = line.match(/^([a-zA-Z0-9_\-]+) v([0-9.\-+a-zA-Z]+)((?: \([^()]*\))*)$/);
+    if (!match) continue;
+    const [, name, version, rest] = match;
+    if (name === 'aeroftp' || name === 'aeroftp-peer-l0') continue;
+    const where = [...rest.matchAll(/ \(([^()]*)\)/g)].map((m) => m[1]).find((x) => x !== '*' && x !== 'proc-macro');
+    const hits = (byNameVersion.get(`${name}@${version}`) ?? []).filter((pkg) => treeSourceIs(pkg, where));
+    if (hits.length !== 1) {
+      throw new Error(`cargo tree lists "${line}", which names ${hits.length} packages of cargo metadata, not one`);
+    }
+    ids.add(hits[0].id);
+  }
+  return ids;
+}
+
 export function collectCargoDependencies(): ComponentInfo[] {
   const cargoToml = path.join(ROOT, 'src-tauri', 'Cargo.toml');
 
   // Exact active production graph (normal + build dependencies across all target platforms)
   const treeRaw = execFileSync(
     'cargo',
-    ['tree', '--locked', '--prefix', 'none', '--target', 'all', '-e', 'normal,build', '--manifest-path', cargoToml],
+    ['tree', '--locked', '--prefix', 'none', '--target', 'all', '-e', 'normal,build', '--format', '{p}', '--manifest-path', cargoToml],
     { maxBuffer: 64 * 1024 * 1024, encoding: 'utf8' }
   );
-
-  const activeCrates = new Set<string>();
-  for (const line of treeRaw.split('\n')) {
-    const match = line.trim().match(/^([a-zA-Z0-9_\-]+)\s+v([0-9\.\-+a-zA-Z]+)/);
-    if (match) {
-      const [, name, version] = match;
-      if (name !== 'aeroftp' && name !== 'aeroftp-peer-l0') {
-        activeCrates.add(`${name}@${version}`);
-      }
-    }
-  }
 
   const metaRaw = execFileSync(
     'cargo',
@@ -933,10 +965,11 @@ export function collectCargoDependencies(): ComponentInfo[] {
   const meta = JSON.parse(metaRaw);
   const packages: any[] = meta.packages || [];
   const results: ComponentInfo[] = [];
+  const activeIds = activeCargoPackageIds(treeRaw, packages);
 
   for (const pkg of packages) {
     const key = `${pkg.name}@${pkg.version}`;
-    if (!activeCrates.has(key)) continue;
+    if (!activeIds.has(pkg.id)) continue;
 
     let license = pkg.license;
     if (!license) {
@@ -1219,8 +1252,49 @@ function standardSentences(id: string, text: string): (string | null)[][] {
  * candidate texts; this decides coverage, so a text with a clause removed
  * (Apache-2.0 without section 4(a)) still gets the standard text.
  */
+/**
+ * The names a slot may hold in `fileText`: a role the standard texts give a
+ * holder ("the copyright holder", "the author", its plural, which ISC
+ * texts use with "DISCLAIM", and "the copyright owner"), or a holder that a copyright line of the same
+ * file names (any run of its words: "the University of California" in "The
+ * Regents of the University of California"), or a reviewed name
+ * (REVIEWED_SLOT_NAMES). Anything else in a slot is a
+ * change of the terms ("Example Corp when used alone"), so the file does not
+ * cover them.
+ */
+// "the copyright owner or contributors": the BSD wording SPDX matches as the
+// same variable (zerocopy, zstd).
+const SLOT_ROLES = [...new Set([...Object.values(STANDARD_TEXT_SLOTS).flat(), 'the authors', 'the copyright owner', 'the copyright owners', 'the copyright owner or contributors'])];
+// Reviewed names a slot holds where the file's copyright line names another
+// holder: the BSD-3-Clause of Go and protobuf ("Copyright 2009 The Go
+// Authors", "Neither the name of Google Inc. nor").
+const REVIEWED_SLOT_NAMES = ['Google Inc.', 'Google LLC'];
+function slotNamesOf(fileText: string): Set<string> {
+  const names = new Set([...SLOT_ROLES, ...REVIEWED_SLOT_NAMES].map((s) => termTokens(s, true).words.join(' ')));
+  for (const raw of fileText.split('\n')) {
+    const line = raw.replace(COMMENT_LEADER, '');
+    if (!isAttributionLine(line)) continue;
+    const holder = line
+      .replace(/^\s*(?:(?:copyright|\(c\)|©)\s*)+/i, '')
+      .replace(/^(?:[0-9]{4}(?:\s*[-,–]\s*(?:[0-9]{4}|present))*[-,–\s]*)+/i, '')
+      .replace(/\.?\s*all rights reserved\.?.*$/i, '');
+    const words = termTokens(holder, true).words;
+    for (let i = 0; i < words.length; i++) for (let j = i + 1; j <= words.length; j++) names.add(words.slice(i, j).join(' '));
+  }
+  return names;
+}
+
+/** Whether a slot's words are one of `names`, alone or with "and/or (its) contributors" after it. */
+function slotHolds(names: Set<string>, words: string[]): boolean {
+  if (words.length === 0) return true;
+  const fill = words.join(' ');
+  const withContributors = fill.match(/^(.+) (?:and|or) (?:its )?contributors$/);
+  return names.has(fill) || (withContributors !== null && names.has(withContributors[1]));
+}
+
 export function carriesWholeStandardText(id: string, standardText: string, fileText: string): boolean {
   const { words: file, boundary } = termTokens(fileText);
+  const slotNames = slotNamesOf(fileText);
   const at = new Map<string, number[]>();
   file.forEach((w, i) => {
     if (!at.has(w)) at.set(w, []);
@@ -1250,10 +1324,11 @@ export function carriesWholeStandardText(id: string, standardText: string, fileT
           for (let j = k; j < ends.length && ends[j] < p; j++) {
             const between = file.slice(ends[j] + 1, p);
             // The next word follows at once, after a reviewed insertion, or
-            // after a slot's name with no negating word; between two
-            // sentences nothing may stand.
+            // after a slot's name: the standard one or a holder the file
+            // names, never a negating word; between two sentences nothing
+            // may stand.
             const follows = slot
-              ? !between.some((w) => NEGATING_WORDS.has(w))
+              ? !between.some((w) => NEGATING_WORDS.has(w)) && slotHolds(slotNames, between)
               : between.length === 0 || reviewed.has(between.join(' '));
             if (follows) {
               next.push(p);
@@ -2207,7 +2282,9 @@ export function renderNotices(
   lines.push('the Ubuntu source package and version it was built from, and a link to that source on Launchpad. For at least three years');
   lines.push('from the date of each release, anyone who asks can obtain from us the complete corresponding source code of each of those');
   lines.push('libraries, at the version listed, for a charge no more than our cost of providing it: ask at dev@aeroftp.app, the contact');
-  lines.push('published in [SECURITY.md](SECURITY.md). The links are given for convenience only: the offer stands whether or not a link still works.');
+  lines.push('published in [SECURITY.md](SECURITY.md). Every version listed is a package of the Ubuntu archive, which keeps its source: we fetch');
+  lines.push("that exact version from the Launchpad page listed, or from the Ubuntu archive snapshot of the release's build date at");
+  lines.push('snapshot.ubuntu.com when Launchpad no longer serves it, and send it to you.');
   lines.push('');
 
   const allComponents = [...sortedCargoDeps, ...sortedNpmDeps];

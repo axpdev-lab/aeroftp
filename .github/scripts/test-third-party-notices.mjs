@@ -7,13 +7,15 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { createRequire, syncBuiltinESMExports } from 'node:module';
 import { createHash } from 'node:crypto';
 import {
   isGplCompatible,
   tokenizeSpdx,
   extractSpdxLicenseIds,
+  activeCargoPackageIds,
+  carriesWholeStandardText,
   collectCargoDependencies,
   collectNpmDependencies,
   readPackageFiles,
@@ -1606,6 +1608,29 @@ test('source notices: a package whose license names a holder still lists the oth
   }
 });
 
+test('standard texts: a slot holds the standard words or a holder the file names, never a condition', () => {
+  const std = JSON.parse(fs.readFileSync(SPDX_STANDARD_LICENSES_FILE, 'utf8'))['BSD-3-Clause'];
+  const shipped = (slot) => std.replace('<year> <copyright holders>', '2020 Example Corp').replace('the copyright holder nor', `${slot} nor`);
+  assert.ok(carriesWholeStandardText('BSD-3-Clause', std, shipped('the copyright holder')));
+  assert.ok(carriesWholeStandardText('BSD-3-Clause', std, shipped('Example Corp')), 'the holder its copyright line names');
+  assert.ok(!carriesWholeStandardText('BSD-3-Clause', std, shipped('Example Corp when used alone')), 'a condition in the slot changes the terms');
+  assert.ok(!carriesWholeStandardText('BSD-3-Clause', std, shipped('Other Corp')), 'a name no copyright line of the file gives');
+});
+
+test('cargo inventory: a package is active by its id, so a test-only fork with the name and version of a registry crate is not', () => {
+  const registry = { id: 'registry+https://github.com/rust-lang/crates.io-index#twin@1.0.0', name: 'twin', version: '1.0.0', source: 'registry+https://github.com/rust-lang/crates.io-index', manifest_path: '/r/twin-1.0.0/Cargo.toml' };
+  const fork = { id: 'git+https://github.com/x/twin?rev=r#abcdef0123456789', name: 'twin', version: '1.0.0', source: 'git+https://github.com/x/twin?rev=r#abcdef0123456789', manifest_path: '/g/twin/Cargo.toml' };
+  const local = { id: 'path+file:///w/peer#helper@0.1.0', name: 'helper', version: '0.1.0', source: null, manifest_path: '/w/peer/Cargo.toml' };
+  const pkgs = [registry, fork, local];
+  // Only the registry crate in the production tree: the fork, a dev dependency, stays out.
+  assert.deepStrictEqual([...activeCargoPackageIds('aeroftp v4.2.7 (/w)\ntwin v1.0.0\nhelper v0.1.0 (/w/peer)\ntwin v1.0.0 (*)\n', pkgs)].sort(), [local.id, registry.id].sort());
+  // Both in the production tree: both are listed.
+  assert.deepStrictEqual([...activeCargoPackageIds('twin v1.0.0\ntwin v1.0.0 (https://github.com/x/twin?rev=r#abcdef01)\n', pkgs)].sort(), [fork.id, registry.id].sort());
+  // A line no package matches, or a source of another kind, fails the run.
+  assert.throws(() => activeCargoPackageIds('twin v2.0.0\n', pkgs), /names 0 packages/);
+  assert.throws(() => activeCargoPackageIds('twin v1.0.0 (https://github.com/y/twin#abcdef01)\n', pkgs), /names 0 packages/);
+});
+
 test('source notices: two installed packages with one name and version keep their own holders', () => {
   const dirs = [fs.mkdtempSync(path.join(os.tmpdir(), 'same-name-a-')), fs.mkdtempSync(path.join(os.tmpdir(), 'same-name-b-'))];
   try {
@@ -1793,7 +1818,9 @@ test('scope: the introduction claims only the Cargo and npm dependencies it list
   const md = generateNoticesMarkdown([], []);
   const intro = md.slice(0, md.indexOf('\n---\n'));
   assert.match(intro, /license texts\nfor the Rust \(Cargo\) and Node\.js \(npm\) production dependencies that AeroFTP distribution packages include:/);
-  assert.match(intro, /System libraries that are not Cargo or npm dependencies \(for example WebKitGTK, which the AppImage bundles as a\nfallback\) are not covered by this document\. The AppImage ships the copyright file of the Ubuntu package of each library\nit bundles in `usr\/share\/doc\/<package>\/copyright`, and `usr\/share\/doc\/BUNDLED-LIBRARIES\.txt` names that package and its version,\nthe Ubuntu source package and version it was built from, and a link to that source on Launchpad\. For at least three years\nfrom the date of each release, anyone who asks can obtain from us the complete corresponding source code of each of those\nlibraries, at the version listed, for a charge no more than our cost of providing it: ask at dev@aeroftp\.app, the contact\npublished in \[SECURITY\.md\]\(SECURITY\.md\)\. The links are given for convenience only: the offer stands whether or not a link still works\./);
+  assert.match(intro, /System libraries that are not Cargo or npm dependencies \(for example WebKitGTK, which the AppImage bundles as a\nfallback\) are not covered by this document\. The AppImage ships the copyright file of the Ubuntu package of each library\nit bundles in `usr\/share\/doc\/<package>\/copyright`, and `usr\/share\/doc\/BUNDLED-LIBRARIES\.txt` names that package and its version,\nthe Ubuntu source package and version it was built from, and a link to that source on Launchpad\. For at least three years\nfrom the date of each release, anyone who asks can obtain from us the complete corresponding source code of each of those\nlibraries, at the version listed, for a charge no more than our cost of providing it: ask at dev@aeroftp\.app, the contact\npublished in \[SECURITY\.md\]\(SECURITY\.md\)\. Every version listed is a package of the Ubuntu archive, which keeps its source: we fetch\nthat exact version from the Launchpad page listed, or from the Ubuntu archive snapshot of the release's build date at\nsnapshot\.ubuntu\.com when Launchpad no longer serves it, and send it to you\./);
+  // The offer states what the release process provides, nothing it cannot.
+  assert.doesNotMatch(intro, /convenience only|whether or not a link still works/);
   // The contact of the offer is the one SECURITY.md publishes, not a new address.
   assert.match(fs.readFileSync(path.join(ROOT, 'SECURITY.md'), 'utf8'), /security contact \*\*dev@aeroftp\.app\*\*/);
   assert.doesNotMatch(md, /all production dependencies|All bundled components|Total Bundled Components/);
@@ -1943,7 +1970,18 @@ test('third-party license files: reproduced as notices, a package\'s own only wh
   }
 });
 
-test('AppImage: every bundled library ships the copyright file of the package that installed its file, and one without it fails the build', { skip: process.platform === 'win32' }, () => {
+// The AppImage is built on Ubuntu: the script reads the versions with
+// dpkg-query, so the fixture runs where dpkg is (the Checks job), never as a
+// silent pass elsewhere.
+const HAS_DPKG_QUERY = process.platform === 'linux' && spawnSync('dpkg-query', ['--version'], { stdio: 'ignore' }).status === 0;
+
+test('AppImage: the fixture is never skipped on the Linux CI runner', () => {
+  if (process.env.GITHUB_ACTIONS === 'true' && process.platform === 'linux') {
+    assert.ok(HAS_DPKG_QUERY, 'dpkg-query is on the Ubuntu runner, so the AppImage fixture runs there');
+  }
+});
+
+test('AppImage: every bundled library ships the copyright file of the package that installed its file, and one without it fails the build', { skip: !HAS_DPKG_QUERY && 'needs Linux with dpkg-query, as the AppImage build' }, () => {
   const script = path.join(ROOT, 'src-tauri/scripts/bundle-appimage-lib-notices.sh');
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'appimage-notices-fixture-'));
   const write = (rel, content) => {
@@ -1996,10 +2034,13 @@ test('AppImage: every bundled library ships the copyright file of the package th
     const list = fs.readFileSync(path.join(doc, 'BUNDLED-LIBRARIES.txt'), 'utf8');
     // The written offer of the source, valid three years from the release,
     // at the contact SECURITY.md publishes; no asset is named.
-    assert.ok(
-      list.includes('\nWritten offer: for at least three years from the date of the AeroFTP 9.8.7 release, anyone who asks can obtain from us the complete corresponding source code of each library listed here, at the source package version listed, for a charge no more than our cost of providing it. Ask at dev@aeroftp.app, the contact published in SECURITY.md of https://github.com/axpdev-lab/aeroftp. The Launchpad links are given for convenience only: this offer stands whether or not a link still works.\n'),
+    // The archive snapshot is named by the UTC build date, so the exact
+    // version stays retrievable when Launchpad no longer serves it.
+    assert.match(
       list,
+      /\nWritten offer: for at least three years from the date of the AeroFTP 9\.8\.7 release, anyone who asks can obtain from us the complete corresponding source code of each library listed here, at the source package version listed, for a charge no more than our cost of providing it\. Ask at dev@aeroftp\.app, the contact published in SECURITY\.md of https:\/\/github\.com\/axpdev-lab\/aeroftp\. Every version listed is a package of the Ubuntu archive, and the archive keeps its source: we fetch that exact version from the Launchpad page listed, or from the archive snapshot of the build date at https:\/\/snapshot\.ubuntu\.com\/ubuntu\/20[0-9]{2}(0[1-9]|1[0-2])(0[1-9]|[12][0-9]|3[01])T000000Z\/ when Launchpad no longer serves it, and send it to you\.\n/,
     );
+    assert.doesNotMatch(list, /convenience only|whether or not a link still works/);
     assert.doesNotMatch(list, /lib-sources|\.tar\b/);
     const entries = [
       'usr/lib/fallback/libwebkit2gtk-4.1.so.0 libwebkit2gtk-4.1-0 1.19-0ubuntu1 libwebkit2gtk-4.1-0 1.19-0ubuntu1 https://launchpad.net/ubuntu/+source/libwebkit2gtk-4.1-0/1.19-0ubuntu1',
@@ -3511,7 +3552,7 @@ test('anchor validation: excludes fenced code blocks from duplicate anchor detec
 });
 
 test('alloc-stdlib: copyright line matches upstream license and separates author from copyright holder', () => {
-  const content = fs.readFileSync(path.join(ROOT, 'THIRD-PARTY-NOTICES.md'), 'utf8');
+  const content = lf(fs.readFileSync(path.join(ROOT, 'THIRD-PARTY-NOTICES.md'), 'utf8'));
   assert.match(content, /Copyright \(c\) 2016 Dropbox, Inc\. \(alloc-stdlib\)/);
   assert.doesNotMatch(committedNoticesWithVerbatim().generated, /Copyright \(c\) 2016 Dropbox, Inc\., Daniel Reiter Horn/);
   assert.match(
@@ -3542,7 +3583,7 @@ test('findPackageCopyrightNotices: extracts header notices, deduplicates, and ig
 });
 
 test('componentsWithoutFiles copyright notices: extracts upstream source header notices and marks packages without notices', () => {
-  const noticesContent = fs.readFileSync(path.join(ROOT, 'THIRD-PARTY-NOTICES.md'), 'utf8');
+  const noticesContent = lf(fs.readFileSync(path.join(ROOT, 'THIRD-PARTY-NOTICES.md'), 'utf8'));
   const mitSection = noticesContent.split('### Standard License: MIT')[1]?.split('### Standard License:')[0] || '';
 
   // qrcodegen@1.8.0 must retain its upstream copyright notice from src/lib.rs
@@ -3612,6 +3653,23 @@ test('findPackageCopyrightNotices: root AUTHORS copyright lines are extracted as
   }
 });
 
+/**
+ * Whether the notices mark the component as shipping no copyright notice,
+ * read the same from an LF and a CRLF checkout.
+ */
+function marksNoNotice(noticesContent, name, version) {
+  const esc = (t) => t.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+  return new RegExp(`- \`${esc(name)}@${esc(version)}\`[^\n]*\n\\s+- No copyright notice is shipped in the package`).test(lf(noticesContent));
+}
+
+test('property selector: a component without a notice is found from an LF and a CRLF checkout alike', () => {
+  const md = '- `quiet@1.0.0` - SPDX: `MIT`\n  - No copyright notice is shipped in the package\n- `loud@1.0.0` - SPDX: `MIT`\n  - Copyright (c) 2020 Loud\n';
+  for (const text of [md, md.replace(/\n/g, '\r\n')]) {
+    assert.ok(marksNoNotice(text, 'quiet', '1.0.0'), JSON.stringify(text));
+    assert.ok(!marksNoNotice(text, 'loud', '1.0.0'));
+  }
+});
+
 test('property: no component marked with "No copyright notice is shipped" has copyright lines in its package sources', () => {
   const noticesContent = fs.readFileSync(path.join(ROOT, 'THIRD-PARTY-NOTICES.md'), 'utf8');
   const { cargo, npm } = realTree();
@@ -3626,12 +3684,7 @@ test('property: no component marked with "No copyright notice is shipped" has co
   for (const c of allComponents) {
     if (!c.packageDir || !fs.existsSync(c.packageDir)) continue;
 
-    // Check if component has "No copyright notice is shipped in the package"
-    const escaped = c.name.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&') + '@' + c.version.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
-    const reg = new RegExp(`- \`${escaped}\`[^\n]*\n\\s+- No copyright notice is shipped in the package`);
-    if (!reg.test(noticesContent)) {
-      continue;
-    }
+    if (!marksNoNotice(noticesContent, c.name, c.version)) continue;
 
     const matched = grepCopyrightLines(c.packageDir)
       .split('\n')
