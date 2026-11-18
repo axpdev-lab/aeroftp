@@ -459,6 +459,35 @@ test('standard SPDX texts: every term of the chosen license needs its text, an o
   );
   // The section says what is missing: the text of a declared license, not every license file.
   assert.match(generateNoticesMarkdown([comp('test-and-one', 'MIT AND Apache-2.0', [['LICENSE-MIT', mit]])], []), /without bundling\nthe text of each of those licenses in their published crate archives\./);
+  const googleBsd3 = STANDARD_TEXTS['BSD-3-Clause']
+    .replace(/^Copyright.*?\nAll rights reserved\.\n+/s, '')
+    .replace(/^[123]\./gm, '   *')
+    .replace('the copyright holder', 'Google Inc.')
+    .replace('COPYRIGHT HOLDER', 'COPYRIGHT OWNER');
+  assert.deepStrictEqual(standardFor(comp('test-google-bsd3', 'BSD-3-Clause', [['LICENSE', googleBsd3]])), []);
+  assert.deepStrictEqual(standardFor(comp('test-google-bsd3-for-bsd2', 'BSD-2-Clause', [['LICENSE', googleBsd3]])), ['BSD-2-Clause']);
+  assert.deepStrictEqual(standardFor(comp('test-combined-mit-mit0', 'MIT AND MIT-0', [['LICENSE', `${mit}\n\n${shippedLicense('', 'MIT-0')}`]])), []);
+
+  const gpl2 = 'GNU GENERAL PUBLIC LICENSE\nVersion 2, June 1991\nEveryone is permitted to copy and distribute verbatim copies.\nYou may copy and distribute verbatim copies of the Program.';
+  assert.deepStrictEqual(standardFor(comp('test-gpl2-or-apache', 'Apache-2.0 OR GPL-2.0-only', [['LICENSE-GPLv2', gpl2]])), ['Apache-2.0']);
+  assert.throws(
+    () => generateNoticesMarkdown([comp('test-two-custom', 'bzip2-1.0.6 AND BSD-3-Clause-Clear', [['LICENSE', custom]])], []),
+    /Component test-two-custom@1\.0\.0 requires standard license text for 'BSD-3-Clause-Clear'/
+  );
+
+  PINNED_FALLBACK_ATTRIBUTIONS['slot-pkg@1.0.0'] = {
+    author: 'Reviewed BSD Author',
+    source: 'https://example.com/slot-pkg',
+  };
+  try {
+    const slotOut = generateNoticesMarkdown([comp('slot-pkg', 'MIT AND BSD-3-Clause', [['LICENSE-MIT', mit]])], []);
+    assert.match(slotOut, /No copyright notice is shipped upstream; authors per https:\/\/example\.com\/slot-pkg: Reviewed BSD Author \(slot-pkg\)/);
+    const bsdSection = slotOut.slice(slotOut.indexOf('### Standard License: BSD-3-Clause'));
+    const bsdText = bsdSection.slice(bsdSection.indexOf('```text'));
+    assert.doesNotMatch(bsdText.slice(0, bsdText.indexOf('\n```\n')), /`LICENSE-MIT`/);
+  } finally {
+    delete PINNED_FALLBACK_ATTRIBUTIONS['slot-pkg@1.0.0'];
+  }
 });
 
 test('markdown formatting: uses extended code fences when notice content contains embedded backticks', () => {

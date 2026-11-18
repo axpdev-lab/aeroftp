@@ -45067,8 +45067,7 @@ Authors for the following components as listed in package manifests or reviewed 
 - `sigstore_protobuf_specs@0.5.2` - SPDX: `Apache-2.0` (authors: Sigstore Authors <sigstore-dev@googlegroups.com>)
   - No copyright notice is shipped in the package
 - `siphasher@1.0.3` - SPDX: `MIT/Apache-2.0` (authors: Frank Denis <github@pureftpd.org>)
-  - Copyright 2012-2015 The Rust Project Developers. (src/sip.rs)
-  - Copyright 2014 The Rust Project Developers. (src/tests.rs)
+  - The copyright notices it ships are in its license files, reproduced above (`COPYING`)
 - `suppaftp@12.2.1` - SPDX: `MIT OR Apache-2.0` (authors: Christian Visintin <christian.visintin@veeso.dev>)
   - No copyright notice is shipped in the package
 - `tauri-plugin@2.6.3` - SPDX: `Apache-2.0 OR MIT` (authors: Tauri Programme within The Commons Conservancy)
@@ -46068,8 +46067,7 @@ Authors for the following components as listed in package manifests or reviewed 
 - `sigchld@0.2.5` - SPDX: `MIT` (authors: Jack O'Connor)
   - No copyright notice is shipped in the package
 - `siphasher@1.0.3` - SPDX: `MIT/Apache-2.0` (authors: Frank Denis <github@pureftpd.org>)
-  - Copyright 2012-2015 The Rust Project Developers. (src/sip.rs)
-  - Copyright 2014 The Rust Project Developers. (src/tests.rs)
+  - The copyright notices it ships are in its license files, reproduced above (`COPYING`)
 - `suppaftp@12.2.1` - SPDX: `MIT OR Apache-2.0` (authors: Christian Visintin <christian.visintin@veeso.dev>)
   - No copyright notice is shipped in the package
 - `tauri-plugin@2.6.3` - SPDX: `Apache-2.0 OR MIT` (authors: Tauri Programme within The Commons Conservancy)

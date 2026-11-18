@@ -884,9 +884,11 @@ export function collectNpmDependencies(
 // A shipped file carries a standard license text when it holds this share of
 // the text's word 6-grams, its attribution lines left out. A standard text
 // inside a longer one (BSD-2-Clause in BSD-3-Clause, 0BSD in ISC, MIT-0 in
-// MIT, from 0.94 to 0.97) is the longer one's: the file is that text. Between
-// different texts the share is at most 0.82 (BSD-3-Clause in BSD-2-Clause).
-const LICENSE_TEXT_SHARE = 0.85;
+// MIT, from 0.94 to 0.97) has seam 6-grams where the longer text inserts its
+// extra clause before the disclaimer, so the longer text alone holds none of
+// them while a file that ships the shorter text (alone or beside the longer
+// one) holds them. Between other texts the share is at most 0.82.
+const LICENSE_TEXT_SHARE = 0.84;
 
 function termShingles(text: string): Set<string> {
   const words = licenseTermsOf(text).toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
@@ -901,11 +903,12 @@ function shareOf(part: Set<string>, whole: Set<string>): number {
   return part.size === 0 ? 0 : n / part.size;
 }
 
-// The 6-grams of each standard text, and of the longer standard texts that
-// contain it, built once per standard licenses file.
+// The 6-grams of each standard text, and the seam 6-grams that distinguish a
+// shorter text from the longer standard texts that contain it, built once per
+// standard licenses file.
 const standardShingles = new WeakMap<
   Record<string, string>,
-  { texts: Map<string, Set<string>>; longer: Map<string, Set<string>[]> }
+  { texts: Map<string, Set<string>>; seams: Map<string, Set<string>> }
 >();
 
 /**
@@ -926,24 +929,34 @@ function uncoveredLicenseTerms(
 ): string[][] {
   if (!standardShingles.has(standardLicenses)) {
     const texts = new Map(Object.entries(standardLicenses).map(([id, text]) => [id, termShingles(text)]));
-    const longer = new Map(
-      [...texts].map(([id, text]) => [
-        id,
-        [...texts].filter(([other, o]) => other !== id && shareOf(text, o) >= LICENSE_TEXT_SHARE).map(([, o]) => o),
-      ])
-    );
-    standardShingles.set(standardLicenses, { texts, longer });
+    const seams = new Map<string, Set<string>>();
+    for (const [id, text] of texts) {
+      const longer = [...texts].filter(([other, o]) => other !== id && shareOf(text, o) >= LICENSE_TEXT_SHARE).map(([, o]) => o);
+      if (longer.length > 0) {
+        seams.set(id, new Set([...text].filter((x) => longer.every((o) => !o.has(x)))));
+      }
+    }
+    standardShingles.set(standardLicenses, { texts, seams });
   }
-  const { texts: standard, longer } = standardShingles.get(standardLicenses)!;
+  const { texts: standard, seams } = standardShingles.get(standardLicenses)!;
   const files = ownTexts.map(termShingles);
   const carries = (id: string, file: Set<string>) =>
     shareOf(standard.get(id)!, file) >= LICENSE_TEXT_SHARE &&
-    !longer.get(id)!.some((text) => shareOf(text, file) >= LICENSE_TEXT_SHARE);
-  const covered = (id: string) =>
-    standard.has(id)
-      ? files.some((f) => carries(id, f))
-      : files.some((f, i) => PERMISSION_TEXT.test(ownTexts[i]) && ![...standard.keys()].some((other) => carries(other, f)));
-  const left = choices.map((terms) => terms.filter((term) => !term.split(' WITH ').every(covered)));
+    (!seams.has(id) || shareOf(seams.get(id)!, file) >= 0.5);
+  const nonStandardFiles = files.filter(
+    (f, i) => PERMISSION_TEXT.test(ownTexts[i]) && ![...standard.keys()].some((other) => carries(other, f))
+  ).length;
+  const left = choices.map((terms) => {
+    let freeNonStandard = nonStandardFiles;
+    return terms.filter((term) => {
+      const parts = term.split(' WITH ');
+      if (!parts.every((id) => standard.has(id) || freeNonStandard > 0)) return true;
+      for (const id of parts) {
+        if (standard.has(id) ? !files.some((f) => carries(id, f)) : freeNonStandard-- <= 0) return true;
+      }
+      return false;
+    });
+  });
   if (left.some((terms) => terms.length === 0)) return [];
   const reproducible = left
     .map((terms, i) => i)
@@ -1864,6 +1877,10 @@ export function renderNotices(
   // carry only some of them (MIT AND Apache-2.0 with LICENSE-MIT alone) gets the
   // standard text of the others.
   const mapTerm = (term: string) => term.replace(/^LGPL-2\.1\+?(?= WITH |$)/, 'LGPL-2.1-or-later');
+  const compatibleChoices = (choices: string[][]) => {
+    const compat = choices.filter((terms) => isGplCompatible(terms.join(' AND ')));
+    return compat.length > 0 ? compat : choices;
+  };
   let standardLicenses: Record<string, string> | undefined;
   const readStandardLicenses = (): Record<string, string> => {
     if (!standardLicenses) {
@@ -1880,7 +1897,11 @@ export function renderNotices(
     if (ownTexts.length === 0) continue;
     const alternatives = spdxAlternatives(comp.license);
     if (!alternatives) continue;
-    const left = uncoveredLicenseTerms(alternatives.map((terms) => terms.map(mapTerm)), ownTexts, readStandardLicenses());
+    const left = uncoveredLicenseTerms(
+      compatibleChoices(alternatives).map((terms) => terms.map(mapTerm)),
+      ownTexts,
+      readStandardLicenses()
+    );
     if (left.length > 0) standardTextTerms.set(comp, left);
   }
   const componentsWithStandardTexts = [...componentsWithoutFiles, ...standardTextTerms.keys()];
@@ -1895,13 +1916,15 @@ export function renderNotices(
       : (PINNED_FALLBACK_ATTRIBUTIONS[`${comp.name}@${comp.version}`]?.author ??
         spdxDocumentAttribution(comp)?.author ??
         (ownFilesNotice(comp) ? 'named in its license files' : undefined));
-  const ownFilesNotice = (comp: ComponentInfo) =>
-    standardTextTerms.has(comp) && hasCopyrightHolderInFiles(comp)
-      ? `The copyright notices it ships are in its license files, reproduced above (${comp.licenseFiles
-          .filter((f) => !f.vendored)
-          .map((f) => `\`${f.filename}\``)
-          .join(', ')})`
+  const ownFilesNotice = (comp: ComponentInfo) => {
+    if (!standardTextTerms.has(comp)) return undefined;
+    const files = [...comp.licenseFiles, ...comp.noticeFiles]
+      .filter((f) => !f.vendored && hasCopyrightHolderInFiles({ ...comp, licenseFiles: [f], noticeFiles: [] }))
+      .map((f) => `\`${f.filename}\``);
+    return files.length > 0
+      ? `The copyright notices it ships are in its license files, reproduced above (${files.join(', ')})`
       : undefined;
+  };
 
   if (componentsWithStandardTexts.length > 0) {
     const standardLicenses = readStandardLicenses();
@@ -1945,7 +1968,7 @@ export function renderNotices(
       const missingTexts = (terms: string[]) =>
         terms.flatMap((term) => term.split(' WITH ')).filter((id) => !standardLicenses[id]);
       // A package with own files needs only the terms they leave out.
-      const mapped = standardTextTerms.get(comp) ?? alternatives.map((terms) => terms.map(mapTerm));
+      const mapped = standardTextTerms.get(comp) ?? compatibleChoices(alternatives).map((terms) => terms.map(mapTerm));
       const reproducible = mapped.filter((terms) => missingTexts(terms).length === 0);
       if (reproducible.length === 0) {
         throw new Error(
@@ -1988,19 +2011,20 @@ export function renderNotices(
         const spdxDoc = spdxDocumentAttribution(comp);
         lines.push(`- \`${comp.name}@${comp.version}\` - SPDX: \`${comp.license}\` (authors: ${authorsOf(comp)})`);
 
-        const excluded = [...comp.licenseFiles, ...comp.noticeFiles].map((f) => f.filename);
-        const pkgNotices = findPackageCopyrightNotices(comp.packageDir, excluded, vendoredFolders(comp));
         if (spdxDoc?.notice) {
           lines.push(`  - ${spdxDoc.notice} (${spdxDoc.file})`);
         }
-        if (pkgNotices.length > 0) {
+        const ownNotice = ownFilesNotice(comp);
+        const excluded = [...comp.licenseFiles, ...comp.noticeFiles].map((f) => f.filename);
+        const pkgNotices = ownNotice ? [] : findPackageCopyrightNotices(comp.packageDir, excluded, vendoredFolders(comp));
+        if (ownNotice) {
+          lines.push(`  - ${ownNotice}`);
+        } else if (pkgNotices.length > 0) {
           for (const n of pkgNotices) {
             lines.push(`  - ${n.notice} (${n.file})`);
           }
         } else if (spdxDoc?.notice) {
           // The copyright line of the SPDX document is listed above.
-        } else if (ownFilesNotice(comp)) {
-          lines.push(`  - ${ownFilesNotice(comp)}`);
         } else if (comp.noticeFiles.length > 0) {
           lines.push(`  - Notice file shipped: ${comp.noticeFiles.map((f) => f.filename).join(', ')}`);
         } else {
@@ -2038,8 +2062,6 @@ export function renderNotices(
             for (const n of pkgNotices) {
               attributionLines.push(`${n.notice} (${comp.name})`);
             }
-          } else if (ownFilesNotice(comp)) {
-            attributionLines.push(`${ownFilesNotice(comp)} (${comp.name})`);
           } else if (comp.noticeFiles.length > 0) {
             attributionLines.push(`Notice file shipped: ${comp.noticeFiles.map((f) => f.filename).join(', ')} (${comp.name})`);
           } else {
