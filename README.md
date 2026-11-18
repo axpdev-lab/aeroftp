@@ -892,7 +892,7 @@ GPL-3.0-or-later - See [LICENSE](LICENSE) for details.
 </table>
 
 <p align="center">
-  <b>Pull requests are reviewed, scanned and verified by</b>
+  <b>Code review and security tools</b>
 </p>
 
 <table align="center">
