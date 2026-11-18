@@ -680,7 +680,25 @@ test('standard SPDX texts: a shipped text covers a term only when it carries eve
   }
   const extraClause = mit.replace(words('substantial portions of the Software.'), 'substantial portions of the Software.\n\nDistributions of modified copies shall replace the Original Author\'s bug reporting addresses with those of the parties responsible for the changes, or remove them entirely.');
   assert.notStrictEqual(extraClause, mit);
-  assert.deepStrictEqual(standardFor('MIT', extraClause), []);
+  // Fail-closed: a clause added between two standard sentences makes another
+  // text, so the standard text is reproduced beside it.
+  assert.deepStrictEqual(standardFor('MIT', extraClause), ['MIT']);
+  // Nothing before the first sentence may turn it: the terms start at a
+  // sentence or paragraph boundary.
+  for (const lead of ['No permission is hereby granted', 'No such permission is hereby granted', 'Neither permission is hereby granted']) {
+    const changed = mit.replace(words('Permission is hereby granted'), lead);
+    assert.notStrictEqual(changed, mit, lead);
+    assert.deepStrictEqual(standardFor('MIT', changed), ['MIT'], lead);
+  }
+  // A number in a term is a term; a list marker is not.
+  const lgpl = shippedLicense('', 'LGPL-2.1-or-later');
+  const gpl3 = lgpl.replace(words('instead of to this License. (If a newer version than version 2 of the ordinary GNU General Public License has appeared'), 'instead of to this License. (If a newer version than version 3 of the ordinary GNU General Public License has appeared');
+  assert.notStrictEqual(gpl3, lgpl);
+  assert.deepStrictEqual(standardFor('LGPL-2.1-or-later', lgpl), []);
+  assert.deepStrictEqual(standardFor('LGPL-2.1-or-later', gpl3), ['LGPL-2.1-or-later']);
+  const renumbered = lgpl.replace(/^(\s*)(\d+)\. /gm, (m, sp, n) => `${sp}${n})  `);
+  assert.notStrictEqual(renumbered, lgpl);
+  assert.deepStrictEqual(standardFor('LGPL-2.1-or-later', renumbered), []);
   const noCondition = mit.replace(words('The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.'), '');
   assert.notStrictEqual(noCondition, mit);
   assert.deepStrictEqual(standardFor('MIT', noCondition), ['MIT'], 'the notice condition removed keeps the standard text');
@@ -1249,12 +1267,22 @@ test('anchors: a file that only names the licenses takes no anchor, which goes t
     write('split/LICENSE-APACHE', standard['Apache-2.0']);
     const pointer = { name: 'pointer_pkg', version: '1.0.0', license: 'MIT/Apache-2.0', source: 'cargo', packageDir: path.join(tmpDir, 'pointer'), authors: ['Pointer Author'], ...readPackageFiles(path.join(tmpDir, 'pointer'), 'pointer_pkg@1.0.0') };
     const split = { name: 'split-pkg', version: '1.0.0', license: 'MIT OR Apache-2.0', source: 'cargo', packageDir: path.join(tmpDir, 'split'), authors: ['Split Author'], ...readPackageFiles(path.join(tmpDir, 'split'), 'split-pkg@1.0.0') };
-    const md = generateNoticesMarkdown([pointer, split], []);
+    // A file with only the opening of the MIT grant is reproduced, and the
+    // anchor goes to the whole text beside it.
+    write('stub/COPYRIGHT', 'Copyright 2020 Stub Author.\n\nPermission is hereby granted,\nfree of charge, to any person.');
+    write('stub/LICENSE-MIT', `Copyright 2020 Stub Author.\n\n${standard.MIT}`);
+    const stubFiles = readPackageFiles(path.join(tmpDir, 'stub'), 'stub-pkg@1.0.0');
+    const stub = { name: 'stub-pkg', version: '1.0.0', license: 'MIT', source: 'cargo', packageDir: path.join(tmpDir, 'stub'), authors: ['Stub Author'], licenseFiles: [...stubFiles.licenseFiles, ...stubFiles.noticeFiles], noticeFiles: [] };
+    const md = generateNoticesMarkdown([pointer, split, stub], []);
+    assert.ok(md.includes('Permission is hereby granted,\nfree of charge, to any person.'), 'the stub is reproduced');
+    assert.strictEqual(md.split('<a id="notice-stub-pkg"></a>').length - 1, 1);
     const textAfter = (id) => md.slice(md.indexOf(`<a id="${id}"></a>`)).split('\n```text\n')[1].split('\n')[0];
     assert.strictEqual(md.split('<a id="notice-pointer-pkg"></a>').length - 1, 1);
     assert.match(md.slice(md.indexOf('<a id="notice-pointer-pkg"></a>')), /^<a id="notice-pointer-pkg"><\/a>\n\n### Standard License: /);
     assert.notStrictEqual(textAfter('notice-pointer-pkg'), 'Copyright 2016-2026 Pointer Author.');
     assert.strictEqual(textAfter('notice-split-pkg'), standard['Apache-2.0'].split('\n')[0]);
+    assert.strictEqual(textAfter('notice-stub-pkg'), 'Copyright 2020 Stub Author.');
+    assert.ok(md.slice(md.indexOf('<a id="notice-stub-pkg"></a>')).split('\n```\n')[0].includes(standard.MIT.split('\n')[0]), 'the anchor leads to the whole MIT text');
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
@@ -1490,7 +1518,7 @@ test('source notices: a package whose license names a holder still lists the oth
       fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
       fs.writeFileSync(path.join(tmpDir, rel), content);
     };
-    const mit = 'MIT License\n\nCopyright (c) 2020 Wrapper Author\n\nPermission is hereby granted, free of charge, to any person obtaining a copy of this software.';
+    const mit = 'MIT License\n\nCopyright (c) 2020 Wrapper Author\n\nPermission is hereby granted,\nfree of charge, to any person.';
     write('LICENSE', mit);
     // A second, untagged holder in the sources, in two files: listed once.
     write('src/lib.rs', '// Copyright (c) 2021 Contributor Two\nfn a() {}\n');

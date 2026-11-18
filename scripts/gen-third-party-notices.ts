@@ -1073,8 +1073,11 @@ const STANDARD_TEXT_SLOTS: Record<string, string[]> = {
 // every covering file): the one insertion any file needs is MIT's "this
 // permission notice (including the next paragraph) shall be included". Any
 // other is another text: "Permission is hereby not granted" keeps every
-// standard word in order and grants nothing. Between two sentences any text
-// may stand: a license with an added clause still carries every standard one.
+// standard word in order and grants nothing. Between two sentences nothing
+// may stand, and the terms start and end at a sentence or paragraph boundary:
+// a text that differs in any other way (an added clause, a leading "No", a
+// changed version number) is another text, and the standard one is
+// reproduced beside it.
 const REVIEWED_INSERTIONS: Record<string, string[]> = {
   MIT: ['including the next paragraph'],
 };
@@ -1090,16 +1093,47 @@ const URL_TEXT = /<?\bhttps?:\/\/[^\s>)]+>?|\bwww\.[^\s>)]+/gi;
 // untrusted, for ISC's "THE AUTHOR DISCLAIMS").
 const EQUIVALENT_TERM_WORDS: Record<string, string> = { disclaims: 'disclaim' };
 
-// The words of a license text as the terms comparison reads them: no
-// attribution lines and no URLs, without list markers (`1.`, `(a)`) or
-// single letters, which shipped texts number differently.
-function termWords(text: string): string[] {
-  return licenseTermsOf(text.replace(URL_TEXT, ' '))
-    .toLowerCase()
-    .split(/[^a-z0-9]+/)
-    .filter((w) => w.length > 1 && !/^[0-9]+$/.test(w))
-    .map((w) => EQUIVALENT_TERM_WORDS[w] ?? w);
+// A list marker at the start of a line (`1.`, `1.1.`, `(a)`, `ii)`, `*`,
+// a Markdown heading `## 1.`, as webpki-root-certs numbers CDLA-Permissive-2.0):
+// shipped texts number and bullet their clauses differently.
+const LIST_MARKER = /^[ \t]*(?:#{1,6}[ \t]+)?(?:\(?(?:\d+(?:\.\d+)*|[a-z]|[ivx]{1,4})[.)]|\((?:\d+|[a-z]|[ivx]{1,4})\)|[*\u2022-])[ \t]+/gim;
+
+// The words of a license text as the terms comparison reads them, with no
+// attribution lines, no URLs and no list markers. Numbers stay (a version
+// in a term is a term: "version 2 of the GNU General Public License");
+// single letters go. `boundary[i]` says that a sentence end or a paragraph
+// break stands before word i (or that it is the first word): a text carries
+// a standard text only from such a boundary to such a boundary.
+function termTokens(text: string, markersRemoved = false): { words: string[]; boundary: boolean[] } {
+  // licenseTermsOf's lines, with the line breaks kept for the boundaries.
+  const lines = text
+    .replace(URL_TEXT, ' ')
+    .split('\n')
+    .filter((l) => !isAttributionLine(l) && !/^\s*(?:all rights reserved|spdx-license-identifier:)/i.test(l))
+    // A heading (`## License`, or a title over a `----` or `====` line) and a
+    // rule end a paragraph: "ISC License\n-----------\nPermission to use".
+    .map((l) => (/^[ \t]*(?:[-=*_][ \t]*){3,}$/.test(l) ? '' : /^[ \t]*#{1,6}[ \t]/.test(l) ? `${l}\n` : l))
+    .join('\n');
+  const prepared = (markersRemoved ? lines : lines.replace(LIST_MARKER, '')).toLowerCase();
+  const words: string[] = [];
+  const boundary: boolean[] = [];
+  let last = 0;
+  let pendingBoundary = true;
+  for (const m of prepared.matchAll(/[a-z0-9]+/g)) {
+    const between = prepared.slice(last, m.index);
+    last = m.index! + m[0].length;
+    if (/[.;:!?]|\n[ \t]*\n/.test(between)) pendingBoundary = true;
+    if (m[0].length < 2 && !/[0-9]/.test(m[0])) continue;
+    words.push(EQUIVALENT_TERM_WORDS[m[0]] ?? m[0]);
+    boundary.push(pendingBoundary);
+    pendingBoundary = false;
+  }
+  if (/[.;:!?]|\n[ \t]*\n/.test(prepared.slice(last)) || prepared.slice(last).trim() === '') boundary.push(true);
+  else boundary.push(false);
+  return { words, boundary };
 }
+// A sentence of a standard text, its list markers already removed by line.
+const sentenceWords = (sentence: string): string[] => termTokens(sentence, true).words;
 
 // The sentences of a standard text's terms, each a list of words, with null
 // where a slot stands. The title paragraphs before the terms (each under ten
@@ -1117,10 +1151,10 @@ function standardSentences(id: string, text: string): (string | null)[][] {
   )
     start++;
   const slots = (STANDARD_TEXT_SLOTS[id] ?? []).map((s) => s.split(' ')).sort((a, b) => b.length - a.length);
-  return licenseTermsOf(paragraphs.slice(start).join('\n\n'))
+  return licenseTermsOf(paragraphs.slice(start).join('\n\n').replace(LIST_MARKER, ''))
     .split(/(?<=[.;:])\s+/)
     .map((sentence) => {
-      const words = termWords(sentence);
+      const words = sentenceWords(sentence);
       const out: (string | null)[] = [];
       for (let i = 0; i < words.length; ) {
         const slot = slots.find((s) => s.every((w, k) => words[i + k] === w));
@@ -1136,60 +1170,64 @@ function standardSentences(id: string, text: string): (string | null)[][] {
 
 /**
  * Whether a shipped file carries the whole standard text: every sentence of
- * its terms, in order, each word of a sentence right after the one before or
+ * its terms, in order and one right after the other, from a sentence or
+ * paragraph boundary to another, each word right after the one before or
  * after a reviewed insertion (REVIEWED_INSERTIONS), and other words only in a
- * slot, none of them negating. Similarity finds the
+ * slot, none of them negating. Fail-closed: when unsure it says no, and the
+ * standard text is reproduced. Similarity finds the
  * candidate texts; this decides coverage, so a text with a clause removed
  * (Apache-2.0 without section 4(a)) still gets the standard text.
  */
 export function carriesWholeStandardText(id: string, standardText: string, fileText: string): boolean {
-  const file = termWords(fileText);
+  const { words: file, boundary } = termTokens(fileText);
   const at = new Map<string, number[]>();
   file.forEach((w, i) => {
     if (!at.has(w)) at.set(w, []);
     at.get(w)!.push(i);
   });
   const reviewed = new Set(REVIEWED_INSERTIONS[id] ?? []);
-  let from = 0;
+  // The file positions where the standard text so far can end, ascending.
+  let ends: number[] | null = null;
+  let slot = false;
   for (const sentence of standardSentences(id, standardText)) {
-    // The file positions where the sentence so far can end, earliest first.
-    let ends: number[] | null = null;
-    let gap = SENTENCE_INSERT_WORDS;
     for (const word of sentence) {
       if (word === null) {
-        gap = SLOT_WORDS;
+        slot = true;
         continue;
       }
-      const positions = (at.get(word) ?? []).filter((p) => p >= from);
-      if (ends === null) ends = positions;
-      else {
-        // Both lists ascend: a position follows an end in [p - gap - 1,
-        // p - 1] when the words between them are nothing, a reviewed
-        // insertion, or a slot's name.
-        const next: number[] = [];
+      const positions = at.get(word) ?? [];
+      const next: number[] = [];
+      if (ends === null) {
+        // The terms start at a sentence or paragraph boundary: "No
+        // permission is hereby granted" does not start with "Permission".
+        for (const p of positions) if (boundary[p]) next.push(p);
+      } else {
         let k = 0;
+        const gap = slot ? SLOT_WORDS : SENTENCE_INSERT_WORDS;
         for (const p of positions) {
           while (k < ends.length && ends[k] < p - gap - 1) k++;
           for (let j = k; j < ends.length && ends[j] < p; j++) {
             const between = file.slice(ends[j] + 1, p);
-            const follows =
-              gap === SLOT_WORDS
-                ? !between.some((w) => NEGATING_WORDS.has(w))
-                : between.length === 0 || reviewed.has(between.join(' '));
+            // The next word follows at once, after a reviewed insertion, or
+            // after a slot's name with no negating word; between two
+            // sentences nothing may stand.
+            const follows = slot
+              ? !between.some((w) => NEGATING_WORDS.has(w))
+              : between.length === 0 || reviewed.has(between.join(' '));
             if (follows) {
               next.push(p);
               break;
             }
           }
         }
-        ends = next;
       }
-      gap = SENTENCE_INSERT_WORDS;
+      ends = next;
+      slot = false;
       if (ends.length === 0) return false;
     }
-    from = ends![0] + 1;
   }
-  return true;
+  // ... and end at one: "WITHOUT WARRANTY OF ANY KIND EXCEPT" is no end.
+  return ends !== null && ends.some((e) => boundary[e + 1]);
 }
 
 // The reviewed terms of the licenses with no standard text (bzip2-1.0.6,
@@ -2210,18 +2248,20 @@ export function renderNotices(
     return `${fence}${lang}\n${content}\n${fence}`;
   }
 
-  // A file carries a license when it holds the standard text of a license its
-  // component declares, or grants permission itself; a file that only names
-  // the licenses (siphasher's COPYING) takes no anchor, which then goes to the
-  // standard texts reproduced for the component below.
+  // A file carries a license when it holds the whole standard or reviewed
+  // text of a license its component declares; only for a license with
+  // neither does a grant of its own count. A file that only names the
+  // licenses (siphasher's COPYING) or holds part of a grant takes no anchor,
+  // which then goes to the whole text, or to the standard texts reproduced
+  // for the component below.
   const carriesALicense = (c: LicenseTextGroup['components'][number], text: string) => {
-    if (PERMISSION_TEXT.test(text)) return true;
     const comp = compMap.get(`${c.source}:${c.name}@${c.version}`);
     if (!comp) return true;
     const standard = readStandardLicenses();
-    return extractSpdxLicenseIds(comp.license).some(
-      (id) => standardTextId(id) in standard && uncoveredLicenseTerms([[id]], [text], standard).length === 0
-    );
+    const reviewed = reviewedLicenseTerms();
+    const referenced = extractSpdxLicenseIds(comp.license).filter((id) => standardTextId(id) in standard || id in reviewed);
+    if (referenced.length === 0) return PERMISSION_TEXT.test(text);
+    return referenced.some((id) => uncoveredLicenseTerms([[id]], [text], standard).length === 0);
   };
   const seenAnchorIds = new Set<string>();
   let groupIndex = 1;
