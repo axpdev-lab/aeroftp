@@ -22,7 +22,8 @@
 # bytes cannot be compared with the system file.
 #
 # It does not guess: a bundled library whose package cannot be found, or is
-# not one package, or whose package ships no copyright file or has no version
+# not one package, or is one package that does not own the file the loader
+# resolves the name to, or whose package ships no copyright file or has no version
 # or source version,
 # fails the build and is named; so does a folder of the AppDir that cannot be
 # listed.
@@ -87,6 +88,7 @@ if ! owners="$(
                 nm = ll[i]; sub(/^[ \t]+/, "", nm); sub(/[ \t].*/, "", nm)
                 p = ll[i]; sub(/.* => /, "", p)
                 ld[nm "\t" norm(p)] = 1
+                ldname[nm] = 1
             }
         }
         NR == FNR { rel[++libs] = $1; name[libs] = $2; tail[libs] = $3; want[$2] = 1; next }
@@ -104,9 +106,22 @@ if ! owners="$(
                 c = cand[name[i]]
                 pkgs = distinct(c)
                 if (pkgs == "") { print rel[i] "\t-"; continue }
-                if (pkgs !~ / /) { print rel[i] "\t" pkgs; continue }
+                m = split(c, parts, "\n")
+                # One package installed the name. A library the loader
+                # resolves (not a plugin in its own folder) came from the
+                # path ldconfig gives: the package must own that file.
+                if (pkgs !~ / /) {
+                    if (tail[i] ~ /\// || !(name[i] in ldname)) { print rel[i] "\t" pkgs; continue }
+                    own = 0
+                    for (j = 1; j <= m; j++) {
+                        split(parts[j], f, "\t")
+                        if (parts[j] != "" && ((name[i] "\t" f[1]) in ld)) own = 1
+                    }
+                    print rel[i] "\t" (own ? "" : "!") pkgs
+                    continue
+                }
                 # The system path that ends with the path in the AppDir.
-                m = split(c, parts, "\n"); byPath = ""
+                byPath = ""
                 for (j = 1; j <= m; j++) {
                     split(parts[j], f, "\t")
                     if (parts[j] != "" && tail[i] ~ /\// && substr(f[1], length(f[1]) - length(tail[i])) == "/" tail[i]) byPath = byPath parts[j] "\n"
@@ -148,6 +163,10 @@ for rel in "${LIBS[@]}"; do
     pkg="${OWNER[$rel]:--}"
     if [ "$pkg" = "-" ]; then
         missing+=("$rel: no package installed it")
+        continue
+    fi
+    if [ "${pkg:0:1}" = "!" ]; then
+        missing+=("$rel: only package ${pkg#!} installs that name, but the loader resolves it (ldconfig -p) to a file that package does not own")
         continue
     fi
     if [ "${pkg:0:1}" = "?" ]; then

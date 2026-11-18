@@ -2034,6 +2034,14 @@ test('AppImage: every bundled library ships the copyright file of the package th
     ldcache(['libwebkit2gtk-4.1.so.0', 'libgtk-3.so.0']);
     fails(/fallback\/libfoo\.so\.1: installed under that name by more than one package \(foo-plugins libfoo1\)/);
     ldcache(['libwebkit2gtk-4.1.so.0', 'libgtk-3.so.0', 'libfoo.so.1']);
+    // One package installs the name, but the loader resolves it to a file
+    // elsewhere (a copy under /usr/local): that package is not where it came
+    // from, so the build fails instead of naming it.
+    const ldLine = (n, p) => `\t${n} (libc6,x86-64) => ${p}\n`;
+    write('ldcache', `4 libs found in cache \`/etc/ld.so.cache'\n${ldLine('libwebkit2gtk-4.1.so.0', '/usr/local/lib/libwebkit2gtk-4.1.so.0')}${ldLine('libgtk-3.so.0', `${A}/libgtk-3.so.0`)}${ldLine('libfoo.so.1', `${A}/libfoo.so.1`)}`);
+    fails(/fallback\/libwebkit2gtk-4\.1\.so\.0: only package libwebkit2gtk-4\.1-0 installs that name, but the loader resolves it \(ldconfig -p\) to a file that package does not own/);
+    ldcache(['libwebkit2gtk-4.1.so.0', 'libgtk-3.so.0', 'libfoo.so.1']);
+    run();
     // A library no package installed, a package without its copyright file
     // or its version fails the build and is named: nothing is guessed.
     write('app/usr/lib/fallback/libsoup-3.0.so.0', 'elf');
