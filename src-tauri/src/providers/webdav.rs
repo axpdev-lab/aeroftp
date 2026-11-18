@@ -10216,7 +10216,7 @@ mod filen_bridge_certificate_tests {
 /// Shape measured on the lab server on 2026-10-02, where `cd` into a folder
 /// failed with a bare 401 while listing the same folder worked.
 #[cfg(test)]
-mod collection_redirect_tests {
+pub(crate) mod collection_redirect_tests {
     #[tokio::test]
     async fn probe_contract_webdav_does_not_erase_a_refused_redirect() {
         let stub = spawn_downgrading_server(|_| {
@@ -10250,7 +10250,7 @@ mod collection_redirect_tests {
         downgraded_hits: Arc<AtomicUsize>,
     }
 
-    pub(super) fn tls_acceptor() -> tokio_rustls::TlsAcceptor {
+    pub(crate) fn tls_acceptor() -> tokio_rustls::TlsAcceptor {
         let certified = rcgen::generate_simple_self_signed(vec!["localhost".to_string()]).unwrap();
         let key = rustls_pki_types::PrivateKeyDer::Pkcs8(
             rustls_pki_types::PrivatePkcs8KeyDer::from(certified.signing_key.serialize_der()),

@@ -1015,7 +1015,6 @@ impl S3Provider {
         (entries, truncated)
     }
 
-    /// Create a new S3 provider with the given configuration
     /// The client for STS: the data-plane client's timeouts and redirect
     /// refusal, without the local-endpoint certificate trust and proxy
     /// bypass, which are for the S3 endpoint only.
@@ -1035,6 +1034,7 @@ impl S3Provider {
             .map_err(|e| ProviderError::ConnectionFailed(format!("HTTP client init failed: {e}")))
     }
 
+    /// Create a new S3 provider with the given configuration
     pub fn new(config: S3Config) -> Result<Self, ProviderError> {
         // Every request URL is the endpoint with the bucket and the key
         // appended (`build_url`, the Tigris quota, bucket discovery), so a
@@ -10460,6 +10460,68 @@ mod tests {
             matches!(outcome, Err(ProviderError::Timeout)),
             "{outcome:?}"
         );
+    }
+
+    /// A local S3 endpoint makes the data-plane client accept any
+    /// certificate. AssumeRole goes to STS, not to that endpoint, so it must
+    /// keep checking the certificate unless the user turned checks off: a
+    /// self-signed STS server is refused with `verify_cert`, reached without.
+    #[tokio::test]
+    async fn assume_role_checks_the_sts_certificate_even_for_a_local_endpoint() {
+        let acceptor = super::super::webdav::collection_redirect_tests::tls_acceptor();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let requests = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counted = Arc::clone(&requests);
+        let server = tokio::spawn(async move {
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+            while let Ok((stream, _)) = listener.accept().await {
+                let acceptor = acceptor.clone();
+                let counted = Arc::clone(&counted);
+                tokio::spawn(async move {
+                    let Ok(mut stream) = acceptor.accept(stream).await else {
+                        return;
+                    };
+                    let mut chunk = [0u8; 8192];
+                    let _ = stream.read(&mut chunk).await;
+                    counted.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    let body = "<ErrorResponse><Error><Code>AccessDenied</Code>\
+                                <Message>test</Message></Error></ErrorResponse>";
+                    let reply = format!(
+                        "HTTP/1.1 403 Forbidden\r\nContent-Type: text/xml\r\n\
+                         Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    );
+                    let _ = stream.write_all(reply.as_bytes()).await;
+                    let _ = stream.shutdown().await;
+                });
+            }
+        });
+        sts::TEST_STS_HOST.with(|host| *host.borrow_mut() = Some(format!("127.0.0.1:{port}")));
+        for verify_cert in [true, false] {
+            let mut provider = cleartext_test_provider(
+                "https://127.0.0.1:9/",
+                false,
+                Some("arn:aws:iam::123456789012:role/test"),
+            );
+            if !verify_cert {
+                provider = S3Provider::new(S3Config {
+                    verify_cert: false,
+                    ..provider.config.clone()
+                })
+                .unwrap();
+            }
+            let before = requests.load(std::sync::atomic::Ordering::SeqCst);
+            let outcome = provider.ensure_fresh_credentials().await;
+            assert!(outcome.is_err(), "verify_cert={verify_cert}: {outcome:?}");
+            let reached = requests.load(std::sync::atomic::Ordering::SeqCst) > before;
+            assert_eq!(
+                reached, !verify_cert,
+                "verify_cert={verify_cert}: STS reached={reached}: {outcome:?}"
+            );
+        }
+        sts::TEST_STS_HOST.with(|host| *host.borrow_mut() = None);
+        server.abort();
     }
 
     /// Build a provider whose only interesting property is its endpoint, for the
