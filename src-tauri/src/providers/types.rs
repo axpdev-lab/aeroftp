@@ -2694,6 +2694,13 @@ pub enum ProviderError {
     )]
     TargetChanged,
 
+    /// An FTP reply that refused the command, by the status the reply parser
+    /// read, and what we were doing (`during`: our own words, ` (while
+    /// uploading /x)`). Never the server's text: the status alone is
+    /// classified, so a reply whose text holds `HTTP 403` stays a 425 (T8).
+    #[error("FTP status {code}: command rejected{during}")]
+    FtpRefused { code: u16, during: String },
+
     #[error("Not connected to server")]
     NotConnected,
 
@@ -3187,6 +3194,65 @@ mod tests {
         assert!(is_target_changed_text(
             &ProviderError::TargetChanged.to_string()
         ));
+    }
+
+    /// The refusal's marker is never produced bare, in any native source
+    /// outside its tests: the word with no colon is no refusal for either
+    /// reader (the shared table's "CONNECTION_CHANGED" row), so a producer
+    /// that wrote it would be retried as an ordinary failure. Every
+    /// occurrence of the word is the colon form, `{CONNECTION_CHANGED_MARKER}:`
+    /// in a format string, the constant's definition or its import, a reader
+    /// (`starts_with`, `contains`, a match arm), or `IpcError::Marker`, which
+    /// `sync::ipc_error_parts` renders with its colon (pinned by its test, the
+    /// render a row of the shared table).
+    #[test]
+    fn no_native_producer_writes_the_changed_target_marker_without_its_colon() {
+        assert!(TARGET_CHANGED_MARKER.ends_with(':'));
+        let test_module = regex::Regex::new(
+            r"(?ms)^#\[cfg\(test\)\]\n(?:#\[[^\n]*\]\n)*mod [A-Za-z0-9_]+ \{\n.*?^\}\n",
+        )
+        .unwrap();
+        let reader =
+            regex::Regex::new(r"(?:starts_with|contains)\((?:crate::)?(?:provider_commands::)?$")
+                .unwrap();
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let (mut files, mut bare) = (0, Vec::new());
+        for entry in walkdir::WalkDir::new(&root) {
+            let entry = entry.unwrap();
+            if entry.path().extension().is_none_or(|ext| ext != "rs") {
+                continue;
+            }
+            files += 1;
+            let source = std::fs::read_to_string(entry.path()).unwrap();
+            let production = test_module.replace_all(&source, "");
+            for line in production.lines() {
+                let code = line.trim_start();
+                if code.starts_with("//")
+                    || code.starts_with("use ")
+                    || code.starts_with(
+                        "pub const CONNECTION_CHANGED_MARKER: &str = \"CONNECTION_CHANGED\";",
+                    )
+                {
+                    continue;
+                }
+                for (at, word) in line.match_indices("CONNECTION_CHANGED") {
+                    let (before, rest) = (&line[..at], &line[at + word.len()..]);
+                    let colon = rest.starts_with(':') || rest.starts_with("_MARKER}:");
+                    let read = reader.is_match(before)
+                        || (before.ends_with('"') && rest.starts_with("\" =>"));
+                    let marker = before.ends_with("Marker(\"") && rest.starts_with("\")");
+                    if !(colon || read || marker) {
+                        bare.push(format!("{}: {}", entry.path().display(), line.trim()));
+                    }
+                }
+            }
+        }
+        assert!(files > 100, "read {files} files");
+        assert!(
+            bare.is_empty(),
+            "the marker written bare:\n{}",
+            bare.join("\n")
+        );
     }
     use std::collections::HashMap;
 

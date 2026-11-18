@@ -1081,14 +1081,28 @@ pub fn resolve_profile_oauth_token(
     slug: &str,
     profile_id: &str,
 ) -> Result<Option<String>, String> {
+    resolve_profile_oauth_token_for(store, slug, profile_id, None)
+}
+
+/// [`resolve_profile_oauth_token`] for the account `user` whichever is active
+/// (a connection bound to the account it began with); `None` the active one.
+pub fn resolve_profile_oauth_token_for(
+    store: &CredentialStore,
+    slug: &str,
+    profile_id: &str,
+    user: Option<i64>,
+) -> Result<Option<String>, String> {
     // Owner-aware: only the legacy owner falls back to the shared vault, so a
     // profile id or singleton shared with another user never lends its token.
     let read = |key: String| -> Result<Option<String>, String> {
-        Ok(
-            crate::user_partitions::resolve_active_credential_owner_aware(store, &key)?
-                .map(|value| value.to_string())
-                .filter(|value| !value.is_empty()),
-        )
+        Ok(match user {
+            Some(user) => {
+                crate::user_partitions::resolve_credential_for_user_owner_aware(store, user, &key)?
+            }
+            None => crate::user_partitions::resolve_active_credential_owner_aware(store, &key)?,
+        }
+        .map(|value| value.to_string())
+        .filter(|value| !value.is_empty()))
     };
     if !profile_id.is_empty() {
         if let Some(value) = read(format!("oauth_{}_{}", slug, profile_id))? {

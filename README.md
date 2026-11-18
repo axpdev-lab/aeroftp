@@ -893,6 +893,10 @@ RAR extraction uses the UnRAR source code by Alexander Roshal (through the `unra
   </tr>
 </table>
 
+<p align="center">
+  <b>Code review and security tools</b>
+</p>
+
 <table align="center">
   <tr>
     <td align="center">
@@ -910,6 +914,9 @@ RAR extraction uses the UnRAR source code by Alexander Roshal (through the `unra
     <td align="center">
       <a href="https://snyk.io"><img src="icons/snyk.png" alt="Snyk" height="48" /></a>
     </td>
+    <td align="center">
+      <a href="https://www.chainguard.dev"><img src="icons/chainguard.png" alt="Chainguard" height="48" /></a>
+    </td>
   </tr>
   <tr>
     <td align="center"><sub>CodeRabbit</sub></td>
@@ -917,6 +924,7 @@ RAR extraction uses the UnRAR source code by Alexander Roshal (through the `unra
     <td align="center"><sub>Aikido Security</sub></td>
     <td align="center"><sub>Socket.dev</sub></td>
     <td align="center"><sub>Snyk</sub></td>
+    <td align="center"><sub>Chainguard</sub></td>
   </tr>
 </table>
 

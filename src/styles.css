@@ -752,10 +752,17 @@ html {
 [role="status"] > div { min-width: 0; }
 [role="status"] button > span { white-space: nowrap; }
 
-@media (max-width: 1100px) {
-  [role="status"] button > span:not(.px-1):not(.px-1\.5):not(.min-w-\[18px\]):not(.min-w-\[16px\]) {
-    display: none;
-  }
+/* Labels drop to icons when the bar is measured too narrow for them
+   (useStatusBarFit), not at a fixed viewport width: the launcher labels
+   first, the status labels last. A hidden label leaves the flow but keeps
+   its width, so the measure stays exact in every state. */
+[role="status"][data-compact="launchers"] [data-statusbar-label="launcher"],
+[role="status"][data-compact="all"] [data-statusbar-label] {
+  position: absolute;
+  top: 0;
+  left: 0;
+  visibility: hidden;
+  pointer-events: none;
 }
 
 @media (max-width: 900px) {

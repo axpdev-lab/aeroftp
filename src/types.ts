@@ -560,6 +560,7 @@ export interface ConnectionParams {
 }
 
 export interface DownloadParams {
+  expected_gui_target?: number;
   remote_path: string;
   local_path: string;
   modified?: string;
@@ -567,6 +568,7 @@ export interface DownloadParams {
 }
 
 export interface UploadParams {
+  expected_gui_target?: number;
   local_path: string;
   remote_path: string;
   use_delta?: boolean;
@@ -1099,6 +1101,8 @@ export interface SyncIndex {
   files: Record<string, SyncIndexEntry>;
   /** Remote spelling of a local key, only when the two strings differ. */
   remote_spellings?: Record<string, string>;
+  /** The intent clock when the backend read this index: a save carries it back, and is refused when a path it still holds was retired after that read. */
+  read_seq?: number | null;
 }
 
 // ============ Sync Phase 2: Reliability Types ============
@@ -1471,6 +1475,7 @@ export interface VerifyResult {
 export type JournalEntryStatus =
   | "pending"
   | "in_progress"
+  | "transferred"
   | "completed"
   | "failed"
   | "skipped"
@@ -1487,9 +1492,16 @@ export type SyncEcStatus =
   | "verify_failed";
 
 export interface SyncJournalEntry {
+  intent_token?: string | null;
   baseline_key?: string | null;
   source_path?: string | null;
   relative_path: string;
+  overwrites_existing?: boolean;
+  archive_state?: 'started' | 'archived' | null;
+  archive_receipt?: string | null;
+  source_size?: number | null;
+  source_mtime?: string | null;
+  source_sha256?: string | null;
   action: string;
   status: JournalEntryStatus;
   attempts: number;
@@ -1505,6 +1517,7 @@ export interface SyncJournalEntry {
 }
 
 export interface SyncJournal {
+  intent_protocol?: number;
   id: string;
   created_at: string;
   updated_at: string;
@@ -1512,6 +1525,17 @@ export interface SyncJournal {
   remote_path: string;
   /** The saved profile this journal belongs to, as on {@link SyncIndex}. */
   profile_id?: string;
+  /** False or absent when the interrupted plan cannot safely be reconstructed. */
+  resume_safe?: boolean;
+  /** Opaque backend owner tag. Never a credential or a profile identity guess. */
+  owner_binding?: string;
+  backup_dir?: string | null;
+  backup_stamp?: string | null;
+  ec_enabled?: boolean;
+  ec_pct?: number | null;
+  ec_max_file_size?: number | null;
+  remote_dirs?: string[];
+  local_dirs?: string[];
   direction: SyncDirection;
   retry_policy: RetryPolicy;
   verify_policy: VerifyPolicy;

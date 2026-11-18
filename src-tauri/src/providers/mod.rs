@@ -275,7 +275,7 @@ where
     let start = provider.pwd().await?;
     let found = walk_for_find(provider, path, pattern, &start, budget).await;
     if provider.pwd().await.ok().as_deref() != Some(start.as_str()) {
-        provider.cd(&start).await?;
+        provider.return_to_folder(&start).await?;
     }
     found
 }
@@ -1246,6 +1246,13 @@ pub const FILEN_DESKTOP_BRIDGE_NOTE: &str = "Filen Desktop preset: these figures
 #[async_trait]
 #[allow(dead_code)]
 pub trait StorageProvider: Send + Sync {
+    /// Backend-only provenance of the credential actually used by connect.
+    /// Dynamic token sources verify their sealed owner on every call. No raw
+    /// token or unkeyed credential hash may cross IPC from this material.
+    fn sync_owner_identity(&self) -> Result<Option<zeroize::Zeroizing<String>>, ProviderError> {
+        Ok(None)
+    }
+
     /// Downcast to concrete provider type for provider-specific operations
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
 
@@ -1286,8 +1293,11 @@ pub trait StorageProvider: Send + Sync {
     /// protected-branch refusal). From then on the provider itself refuses
     /// every write of the session (`TargetChanged`), whoever holds it: a
     /// plan made against the previous tree stops at its next write, and a
-    /// new connection is a new provider. Callers that show the target must
-    /// read this flag to refresh their view.
+    /// new connection is a new provider. The GUI target reads the flag
+    /// without the provider lock, at every pin and target read
+    /// (`ProviderState::observe_target_poison`), and moves its epoch once,
+    /// so the page reads the target again before a compare can use a
+    /// listing of the previous tree.
     fn target_poison(&self) -> Option<std::sync::Arc<std::sync::atomic::AtomicBool>> {
         None
     }
@@ -1339,6 +1349,16 @@ pub trait StorageProvider: Send + Sync {
 
     /// Go to parent directory
     async fn cd_up(&mut self) -> Result<(), ProviderError>;
+
+    /// Stand again in `folder`, a folder [`Self::pwd`] reported before the
+    /// session moved (a folder transfer walks its tree with [`Self::cd`]).
+    ///
+    /// The default enters it with [`Self::cd`]. A provider whose reports may
+    /// be relative overrides it: a relative report names the folder only from
+    /// where it was read, so from anywhere else `cd` would enter another one.
+    async fn return_to_folder(&mut self, folder: &str) -> Result<(), ProviderError> {
+        self.cd(folder).await
+    }
 
     /// Download a file to local path
     async fn download(

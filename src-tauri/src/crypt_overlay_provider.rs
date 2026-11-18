@@ -125,6 +125,39 @@ pub enum OverlayKeys {
     },
 }
 
+impl OverlayKeys {
+    /// What decides the names a listing shows through this overlay, for the
+    /// target identity a sync index records (`SyncIndex::target_identity`):
+    /// the naming settings (rclone: filename mode, directory names, the `off`
+    /// suffix; AeroCrypt: the config version) and a domain-separated digest
+    /// of the key that decrypts the names, so another vault or password under
+    /// the same profile is another target. The key itself never leaves; the
+    /// digest is hashed again into the identity.
+    pub(crate) fn naming_fingerprint(&self) -> serde_json::Value {
+        use sha2::Digest;
+        let digest = |key: &[u8]| {
+            let mut hash = sha2::Sha256::new();
+            hash.update(b"aeroftp target-identity overlay-names v1");
+            hash.update(key);
+            format!("{:x}", hash.finalize())
+        };
+        match self {
+            OverlayKeys::Rclone(keys) => serde_json::json!({
+                "kind": "rclone-crypt",
+                "filenameEncryption": format!("{:?}", keys.filename_encryption),
+                "directoryNameEncryption": keys.directory_name_encryption,
+                "offSuffix": keys.off_suffix,
+                "names": digest(&[keys.name_key.as_slice(), keys.name_tweak.as_slice()].concat()),
+            }),
+            OverlayKeys::AeroCrypt { master_key, config } => serde_json::json!({
+                "kind": "aerocrypt",
+                "version": config.version(),
+                "names": digest(master_key),
+            }),
+        }
+    }
+}
+
 impl Drop for OverlayKeys {
     fn drop(&mut self) {
         if let Self::AeroCrypt { master_key, .. } = self {
@@ -1328,8 +1361,95 @@ async fn ensure_parent_dirs(inner: &mut Box<dyn StorageProvider>, enc_path: &str
     }
 }
 
+/// How [`CryptOverlayProvider::enter`] asks the inner provider to move.
+#[derive(Clone, Copy)]
+enum Entry {
+    /// [`StorageProvider::cd`].
+    Cd,
+    /// [`StorageProvider::return_to_folder`].
+    Return,
+}
+
+impl CryptOverlayProvider {
+    /// The body of `cd` and `return_to_folder`: map `path`, keep the scope
+    /// alias state, and move the inner provider as `entry` says.
+    async fn enter(&mut self, path: &str, entry: Entry) -> Result<(), ProviderError> {
+        // A relative target is relative to where the session is, which is
+        // unknown while a report is missing; an absolute one is not.
+        if !path.starts_with('/') {
+            self.settle_scope_alias().await?;
+        }
+        let enc = self.map(path, true, AccessKind::Read)?;
+        // Pending before the server is asked, and for this request: a `cd`
+        // into the anchor that is cancelled after the server moved never
+        // reaches learn_scope_alias, and the next path call must still ask
+        // where the session landed instead of reading the anchor's other name
+        // as a folder outside it. While an earlier probe waits, a `cd`
+        // cancelled midway leaves the session in one of two folders that no
+        // report tells apart: unknown, not the earlier probe's answer. A
+        // refused `cd` moved nothing and leaves the state as it was.
+        let before = self.alias_pending.clone();
+        if before.is_some() {
+            self.alias_pending = Some(AliasPending::Unknown);
+        } else if self.below_scope(&enc).is_some() {
+            self.alias_pending = Some(AliasPending::Probe(enc.clone()));
+        }
+        let moved = match entry {
+            Entry::Cd => self.inner.cd(&enc).await,
+            Entry::Return => self.inner.return_to_folder(&enc).await,
+        };
+        if let Err(e) = moved {
+            self.alias_pending = before;
+            return Err(e);
+        }
+        self.learn_scope_alias(&enc).await;
+        Ok(())
+    }
+}
+
 #[async_trait]
 impl StorageProvider for CryptOverlayProvider {
+    fn sync_owner_identity(&self) -> Result<Option<zeroize::Zeroizing<String>>, ProviderError> {
+        let Some(inner) = self.inner.sync_owner_identity()? else {
+            return Ok(None);
+        };
+        let material = match &self.keys {
+            OverlayKeys::AeroCrypt { master_key, config } => {
+                let (salt, id): (&[u8], Option<&[u8]>) = match config {
+                    OverlayConfig::V1 { salt } => (salt.as_slice(), None),
+                    OverlayConfig::V2 { salt } => (salt.as_slice(), None),
+                    OverlayConfig::V3 { salt, vault_id, .. } => {
+                        (salt.as_slice(), vault_id.as_ref().map(|id| id.as_slice()))
+                    }
+                    OverlayConfig::V4 { vault_id, .. } => (&[], Some(vault_id.as_slice())),
+                };
+                serde_json::to_string(&(
+                    "aerocrypt",
+                    inner.as_str(),
+                    &self.scope,
+                    master_key,
+                    config.version(),
+                    salt,
+                    id,
+                ))
+            }
+            OverlayKeys::Rclone(keys) => serde_json::to_string(&(
+                "rclone",
+                inner.as_str(),
+                &self.scope,
+                &keys.name_key,
+                &keys.data_key,
+                &keys.name_tweak,
+                format!("{:?}", keys.filename_encryption),
+                &keys.off_suffix,
+                keys.directory_name_encryption,
+            )),
+        };
+        material
+            .map(|value| Some(zeroize::Zeroizing::new(value)))
+            .map_err(|_| ProviderError::TargetChanged)
+    }
+
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         // Honest downcast target: this IS a CryptOverlayProvider. Callers that
         // need provider-specific operations on the inner transport must reach it
@@ -1413,32 +1533,15 @@ impl StorageProvider for CryptOverlayProvider {
         if path == ".." {
             return self.cd_up().await;
         }
-        // A relative target is relative to where the session is, which is
-        // unknown while a report is missing; an absolute one is not.
-        if !path.starts_with('/') {
-            self.settle_scope_alias().await?;
-        }
-        let enc = self.map(path, true, AccessKind::Read)?;
-        // Pending before the server is asked, and for this request: a `cd`
-        // into the anchor that is cancelled after the server moved never
-        // reaches learn_scope_alias, and the next path call must still ask
-        // where the session landed instead of reading the anchor's other name
-        // as a folder outside it. While an earlier probe waits, a `cd`
-        // cancelled midway leaves the session in one of two folders that no
-        // report tells apart: unknown, not the earlier probe's answer. A
-        // refused `cd` moved nothing and leaves the state as it was.
-        let before = self.alias_pending.clone();
-        if before.is_some() {
-            self.alias_pending = Some(AliasPending::Unknown);
-        } else if self.below_scope(&enc).is_some() {
-            self.alias_pending = Some(AliasPending::Probe(enc.clone()));
-        }
-        if let Err(e) = self.inner.cd(&enc).await {
-            self.alias_pending = before;
-            return Err(e);
-        }
-        self.learn_scope_alias(&enc).await;
-        Ok(())
+        self.enter(path, Entry::Cd).await
+    }
+
+    /// Mapped and tracked as [`Self::cd`] maps and tracks it, with the inner
+    /// provider's own return: only it knows whether a refused return leaves
+    /// its session usable in the folder it stands in (FTP closes it as lost),
+    /// and whether a relative report names a folder from anywhere.
+    async fn return_to_folder(&mut self, folder: &str) -> Result<(), ProviderError> {
+        self.enter(folder, Entry::Return).await
     }
 
     /// At or below the anchor, Up goes to the parent of the folder the
@@ -2473,7 +2576,7 @@ pub fn validate_headerless_config_salt(
 
 /// Scoped unlocks write only the captured partition. A legacy scope writes only
 /// the legacy vault; neither case rediscovers the active user or its mirror.
-fn persist_public_overlay_config_for_unlock(
+pub(crate) fn persist_public_overlay_config_for_unlock(
     auth_scope: Option<&crate::profile_auth::AuthScope<'_>>,
     id: &str,
     config_json: &str,
@@ -2958,18 +3061,30 @@ pub(crate) async fn wrap_connected_provider_for_profile_in_scope(
 ///
 /// The overlay is anchored by [`aerocloud_overlay_profile`], where the app
 /// anchors it when it opens the profile.
+///
+/// `account` is the one the connection began with (U9): the profile and its
+/// overlay secrets are that account's, whichever is active by now, the
+/// legacy owner's only for `LEGACY_ONLY_ACCOUNT`. Read for the active one, a
+/// switch while connecting wrapped the session in another account's overlay,
+/// and a headed recovery could write its marker on this account's remote.
 pub async fn wrap_connected_provider_for_profile_named(
     inner: Box<dyn StorageProvider>,
     profile_id: Option<&str>,
     profile_name: &str,
     store: &crate::credential_store::CredentialStore,
+    account: i64,
 ) -> Result<Box<dyn StorageProvider>, String> {
-    let profiles = crate::user_partitions::mcp_list_active_server_profiles(store)?;
+    let profiles = crate::user_partitions::mcp_list_server_profiles(store, Some(account))?;
     let Some(profile) = select_aerocloud_profile(&profiles, profile_id, profile_name) else {
         return Ok(inner);
     };
     let profile = aerocloud_overlay_profile(profile);
-    wrap_connected_provider_for_profile(inner, &profile, store).await
+    wrap_connected_provider_for_profile_in_scope(
+        inner,
+        &profile,
+        &crate::profile_auth::AuthScope::for_captured(store, account),
+    )
+    .await
 }
 
 /// The profile as AeroCloud wraps it: a binding without a folder of its own
@@ -3042,8 +3157,9 @@ pub async fn build_aerocloud_overlay_stack(
     profile_id: Option<&str>,
     profile_name: &str,
     store: &crate::credential_store::CredentialStore,
+    account: i64,
 ) -> Result<Box<dyn StorageProvider>, String> {
-    wrap_connected_provider_for_profile_named(inner, profile_id, profile_name, store).await
+    wrap_connected_provider_for_profile_named(inner, profile_id, profile_name, store, account).await
 }
 
 /// The saved profile an AeroCloud config names: by its stable id when the
@@ -4999,6 +5115,27 @@ pub(crate) mod tests {
         }
     }
 
+    /// CodeRabbit CLI on the integrated delta of #1561: the overlay's
+    /// return entered an absolute folder with the inner `cd`, so an inner
+    /// provider that closes its session on a refused return (FTP) stayed
+    /// usable in the folder it stood in. Inside the scope and outside it, the
+    /// overlay maps the folder and hands it to the inner provider's own return.
+    #[tokio::test]
+    async fn a_return_through_the_overlay_is_the_inner_providers_own_return() {
+        let mem = MemProvider::new();
+        let returns = mem.returns.clone();
+        let mut provider = CryptOverlayProvider::new(Box::new(mem), aerocrypt_keys(), "/Vault");
+        provider.return_to_folder("/Plain").await.unwrap();
+        provider.return_to_folder("/Vault/a").await.unwrap();
+        let asked = returns.lock().unwrap().clone();
+        assert_eq!(asked.len(), 2, "{asked:?}");
+        assert_eq!(asked[0], "/Plain");
+        assert!(
+            asked[1].starts_with("/Vault/") && asked[1] != "/Vault/a",
+            "not the mapped folder: {asked:?}"
+        );
+    }
+
     /// V1 regression (pre-tag audit): the fetch-side classifier must mirror
     /// `encode_plain_target` decision-for-decision. A RELATIVE target under a
     /// bound scope is encrypted in full by the mapper, so it must classify as
@@ -5859,6 +5996,8 @@ pub(crate) mod tests {
         literal_tilde: bool,
         /// `cd` into this folder fails, as on a folder removed meanwhile.
         refuse_cd: Option<&'static str>,
+        /// Every folder `return_to_folder` was asked for, in order.
+        returns: std::sync::Arc<Mutex<Vec<String>>>,
         /// The login folder the provider recorded at connect, as FTP keeps
         /// the post-login `PWD`: `resolve_home_scope` uses it instead of a
         /// `cd("~")` the protocol may not honour.
@@ -5898,6 +6037,7 @@ pub(crate) mod tests {
                 identity_calls: Mutex::new(Vec::new()),
                 literal_tilde: false,
                 refuse_cd: None,
+                returns: Default::default(),
                 login_folder: None,
                 kind: ProviderType::Ftp,
                 reports_as: None,
@@ -6126,6 +6266,10 @@ pub(crate) mod tests {
                 std::future::pending::<()>().await;
             }
             Ok(())
+        }
+        async fn return_to_folder(&mut self, folder: &str) -> Result<(), ProviderError> {
+            self.returns.lock().unwrap().push(folder.to_string());
+            self.cd(folder).await
         }
         /// `CDUP`: the last step of the folder as the server holds it, dropped
         /// as written.

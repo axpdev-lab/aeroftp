@@ -15134,17 +15134,23 @@ host = sftp://u:TopSecret99@sftp.example.test
         );
         let huge = "%FF".repeat(200_000);
         let url = format!("https://alice:{huge}@dav.example.test/files");
-        let started = std::time::Instant::now();
         let decoded = percent_decode_userinfo_lossless(&huge);
         let parts = parse_webdav_url_parts(&url);
-        let elapsed = started.elapsed();
         assert_eq!(decoded.len(), huge.len());
         assert_eq!(parts.userinfo_user.as_deref(), Some("alice"));
         assert_eq!(parts.userinfo_pass.as_deref(), Some(huge.as_str()));
-        assert!(
-            elapsed < std::time::Duration::from_secs(5),
-            "quadratic slowdown on %FF run through parse_webdav_url_parts: {:?}",
-            elapsed
+        let run = |n: usize| "%FF".repeat(n);
+        crate::linear_time::assert_linear(
+            "a %FF run",
+            200_000,
+            run,
+            percent_decode_userinfo_lossless,
+        );
+        crate::linear_time::assert_linear(
+            "a %FF run through parse_webdav_url_parts",
+            200_000,
+            |n| format!("https://alice:{}@dav.example.test/files", run(n)),
+            parse_webdav_url_parts,
         );
     }
 

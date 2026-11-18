@@ -1561,18 +1561,17 @@ mod tests {
 
     /// CLAUDE-AV-B9-04: the entity lookahead used to scan the whole remaining
     /// string for `;` on every `&`, so a field of N ampersands with no
-    /// semicolon cost O(N^2). A 1 MB run has to finish immediately, and the
-    /// ampersands must be preserved verbatim.
+    /// semicolon cost O(N^2). A 1 MB run takes as long whole as in ten parts,
+    /// and the ampersands must be preserved verbatim.
     #[test]
     fn html_unescape_is_linear_on_a_field_of_bare_ampersands() {
         let hostile = "&".repeat(1_000_000);
-        let started = std::time::Instant::now();
-        let out = html_unescape(&hostile);
-        assert_eq!(out.len(), hostile.len());
-        assert!(
-            started.elapsed() < std::time::Duration::from_secs(2),
-            "html_unescape went quadratic: {:?}",
-            started.elapsed()
+        assert_eq!(html_unescape(&hostile), hostile);
+        crate::linear_time::assert_linear(
+            "html_unescape",
+            1_000_000,
+            |n| "&".repeat(n),
+            html_unescape,
         );
     }
 

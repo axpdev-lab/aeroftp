@@ -409,7 +409,7 @@ impl DirectoryProvider {
         };
         #[cfg(not(unix))]
         let permissions = None;
-        RemoteEntry {
+        let mut entry = RemoteEntry {
             name,
             path: virtual_path,
             is_dir: meta.is_dir(),
@@ -422,7 +422,14 @@ impl DirectoryProvider {
             link_target: None,
             mime_type: None,
             metadata: Default::default(),
+        };
+        // A FIFO, a socket or a device is neither a file nor a folder: its
+        // type is marked unconfirmed, so a backup receipt never takes it for
+        // the archived file (T2).
+        if !meta.is_file() && !meta.is_dir() && !is_symlink {
+            crate::providers::ftp_listing::mark_entry_type_unconfirmed(&mut entry);
         }
+        entry
     }
 
     /// Top-level directories under the mount, exposed as session "storages" for
@@ -1371,6 +1378,32 @@ fn same_file(
 
 #[cfg(test)]
 mod tests {
+    /// T2: a FIFO in the folder is not a file a backup receipt may accept;
+    /// a regular file is. Through the production `stat` and
+    /// `provider_receipt_is_file`.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_fifo_is_no_backup_receipt() {
+        use crate::providers::StorageProvider;
+        let dir = tempfile::tempdir().unwrap();
+        let fifo = dir.path().join("pipe");
+        let c_path = std::ffi::CString::new(fifo.to_str().unwrap()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(c_path.as_ptr(), 0o644) }, 0);
+        std::fs::write(dir.path().join("file.txt"), b"abc").unwrap();
+        let mut provider = super::DirectoryProvider::local(dir.path().to_path_buf());
+        provider.connect().await.unwrap();
+        assert!(
+            !crate::sync_backup::provider_receipt_is_file(&mut provider, "/pipe")
+                .await
+                .unwrap()
+        );
+        assert!(
+            crate::sync_backup::provider_receipt_is_file(&mut provider, "/file.txt")
+                .await
+                .unwrap()
+        );
+    }
+
     /// Deep-scan 50, 51: a link at the name is refused by the open itself,
     /// for a read and for an upload, and its target is left alone.
     /// Deep-scan 50, 51, on the provider's own open: a link at the name is

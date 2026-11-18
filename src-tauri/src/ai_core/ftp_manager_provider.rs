@@ -64,7 +64,7 @@ impl FtpManagerProvider {
             .list_files_for_probe(include_hidden)
             .await
             .map_err(failed);
-        self.0.change_dir(&previous).await.map_err(failed)?;
+        self.0.return_to_folder(&previous).await.map_err(failed)?;
         Ok(listed?
             .into_iter()
             .map(|file| {
@@ -229,7 +229,7 @@ impl StorageProvider for FtpManagerProvider {
         if path == "/" || path == "." {
             let previous = self.0.current_path();
             self.0.change_dir(path).await.map_err(failed)?;
-            self.0.change_dir(&previous).await.map_err(failed)?;
+            self.0.return_to_folder(&previous).await.map_err(failed)?;
             return Ok(RemoteEntry::directory(path.to_string(), path.to_string()));
         }
         let (parent, name) = parent_and_name(path);
@@ -245,10 +245,16 @@ impl StorageProvider for FtpManagerProvider {
             }
             Err(error) => return Err(error),
         };
+        // A server that reads `-a` as a pathname would list the folder named
+        // `-a` instead (see `FtpManager::list_receipt_folder`).
+        let ambiguous = entries.iter().any(|entry| entry.name == "-a");
         if let Some(entry) = entries.into_iter().find(|entry| entry.name == name) {
             return Ok(entry);
         }
         if name.starts_with('.') {
+            if ambiguous {
+                return Err(ProviderError::Other("LIST -a is ambiguous here: the folder holds an entry named -a, so a dot-prefixed name cannot be looked up".into()));
+            }
             if let Some(entry) = self
                 .list_probe(parent, true)
                 .await?
@@ -313,6 +319,70 @@ mod tests {
 #[cfg(test)]
 mod probe_contract_tests {
     use super::*;
+
+    /// The agent lists `/x` on the GUI's session, which shows `/shown`; the
+    /// server refuses the return. The lease used to hand the session back in
+    /// `/x`, where the panel's next relative delete reached `/x/a.txt`. The
+    /// listing fails with the closed connection and no DELE reaches the
+    /// server.
+    #[tokio::test]
+    async fn a_refused_return_closes_the_borrowed_gui_session() {
+        let (mut session, log) = crate::legacy_ftp_walk_tests::session_that_cannot_return().await;
+        let listed = {
+            let mut lease = FtpManagerProvider::borrow(&mut session);
+            lease.provider.list("/x").await
+        };
+        let error = listed.expect_err("the return was refused").to_string();
+        assert!(error.contains("connection was closed"), "{error}");
+        assert!(!session.is_connected());
+        assert!(session.remove("a.txt").await.is_err());
+        assert!(!log
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|line| line.starts_with("DELE")));
+    }
+
+    /// The agent's `stat` over the GUI's FTP session: with a folder named
+    /// `-a` in the bare listing, a dot name it does not show is neither found
+    /// nor missing (`LIST -a` could be that folder's listing); without one,
+    /// `LIST -a` finds it.
+    #[tokio::test]
+    async fn stat_of_a_dot_name_refuses_a_folder_named_dash_a() {
+        static AMBIGUOUS: &[(&str, &str)] = &[
+            ("/d", "drwxr-xr-x 2 user group 4096 Jan 20 10:00 -a\r\n"),
+            ("/d/-a", "-rw-r--r-- 1 user group 5 Jan 20 10:00 .env\r\n"),
+        ];
+        let (addr, seen) = crate::ftp::exists_tests::dir_server(AMBIGUOUS).await;
+        let mut manager = FtpManager::new();
+        manager.connect(&addr).await.unwrap();
+        manager.login("u", "p").await.unwrap();
+        let mut provider = FtpManagerProvider(manager);
+        let refused = provider.stat("/d/.env").await;
+        assert!(
+            matches!(&refused, Err(ProviderError::Other(message)) if message.contains("ambiguous")),
+            "{refused:?}"
+        );
+        assert!(!seen.lock().unwrap().iter().any(|line| line == "LIST -a"));
+
+        static PLAIN: &[(&str, &str)] = &[
+            ("/d", "-rw-r--r-- 1 user group 5 Jan 20 10:00 b.txt\r\n"),
+            ("/d/-a", "-rw-r--r-- 1 user group 5 Jan 20 10:00 .env\r\n"),
+        ];
+        let (addr, _) = crate::ftp::exists_tests::dir_server(PLAIN).await;
+        let mut manager = FtpManager::new();
+        manager.connect(&addr).await.unwrap();
+        manager.login("u", "p").await.unwrap();
+        let mut provider = FtpManagerProvider(manager);
+        // No `-a` entry: the server honours `-a` as an option here only in
+        // the sense the fixture models (it lists `/d/-a`), so what matters is
+        // that the lookup is allowed and returns that row.
+        let found = provider
+            .stat("/d/.env")
+            .await
+            .expect("an unambiguous dot name is looked up");
+        assert_eq!(found.name, ".env");
+    }
 
     #[tokio::test]
     async fn audit425_legacy_ftp_preserves_unknown_size_and_uses_size_command() {
