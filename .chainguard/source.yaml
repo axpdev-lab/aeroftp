@@ -20,6 +20,13 @@ spec:
       ctlog:
         url: https://rekor.sigstore.dev
 
+    # The maintainer's GPG signing keys, one per workstation (L1, L2),
+    # as published on the GitHub account. This is the day-to-day path:
+    # the key is unlocked once in gpg-agent, so agents can sign without
+    # a browser login. Revoking a key on GitHub removes it from here.
+    - key:
+        kms: https://github.com/axpnet.gpg
+
     # Commits GitHub creates and signs itself: squash/merge commits on
     # main, edits made in the web UI, and commits made through the API.
     - key:
