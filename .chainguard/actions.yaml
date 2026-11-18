@@ -1,0 +1,16 @@
+# Chainguard Actions, read by the Chainguard GitHub App from the default
+# branch. Suggestions only: when a pull request changes a workflow under
+# .github/workflows/, the app posts a non-blocking review comment that
+# proposes Chainguard's hardened, SHA-pinned equivalent of each upstream
+# action it uses. Nothing is changed or blocked.
+#
+# Migration pull requests stay off: third-party actions are already
+# pinned by SHA and Dependabot updates them weekly. Revisit once the
+# suggestions show what the hardened equivalents would change.
+#
+# Docs: https://www.chainguard.dev/docs/chainguard/guardener/github/actions-security
+
+enabled: true
+
+migrate:
+  enabled: false
