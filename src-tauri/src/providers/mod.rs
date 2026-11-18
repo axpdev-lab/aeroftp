@@ -93,6 +93,8 @@ pub mod upload_cursor;
 pub mod upload_progress;
 pub mod upload_source;
 pub mod uploadcare;
+#[cfg(test)]
+mod url_text_guard;
 pub mod webdav;
 pub mod xml_text;
 pub mod yandex_disk;

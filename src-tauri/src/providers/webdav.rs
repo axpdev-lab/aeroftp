@@ -257,13 +257,7 @@ impl DigestState {
             header.push_str(&format!(r#", opaque="{}""#, opaque));
         }
 
-        tracing::debug!(
-            "[WebDAV Digest] method={} uri={} nc={} response={}",
-            method,
-            uri,
-            nc_str,
-            response
-        );
+        tracing::debug!("[WebDAV Digest] method={} nc={}", method, nc_str);
 
         header
     }
@@ -462,14 +456,36 @@ impl std::fmt::Display for InsecureRedirect {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "the server redirected {} to {}, which leaves HTTPS, and AeroFTP does not follow a redirect from HTTPS to HTTP. \
+            "the server at {} redirected to {}, which leaves HTTPS, and AeroFTP does not follow a redirect from HTTPS to HTTP. \
              This is a server misconfiguration, typically a TLS-terminating reverse proxy whose backend builds http:// redirects",
-            self.from, self.to
+            self.from.origin().ascii_serialization(),
+            self.to.origin().ascii_serialization()
         )
     }
 }
 
 impl std::error::Error for InsecureRedirect {}
+
+/// The value of a response header as the download diagnostic logs it. A
+/// `Location` or `Content-Location` names a URL whose path or query can carry
+/// a secret (the MEGAcmd path token), so only its origin is kept; a
+/// `Set-Cookie` is a session credential and is not printed at all.
+fn diagnostic_header_value(
+    name: &reqwest::header::HeaderName,
+    value: &reqwest::header::HeaderValue,
+) -> String {
+    use reqwest::header::{CONTENT_LOCATION, LOCATION, SET_COOKIE};
+    let Ok(text) = value.to_str() else {
+        return "<binary>".to_string();
+    };
+    if name == SET_COOKIE {
+        "<redacted>".to_string()
+    } else if name == LOCATION || name == CONTENT_LOCATION {
+        crate::local_bridge::url_origin(text)
+    } else {
+        text.to_string()
+    }
+}
 
 /// The WebDAV client's redirect policy: reqwest's default (follow at most ten
 /// hops), except that a hop from `https` to `http` is refused with
@@ -1210,7 +1226,7 @@ impl WebDavProvider {
         if !config.verify_cert {
             tracing::warn!(
                 "[WEBDAV] TLS certificate verification DISABLED for {}: connection is vulnerable to MITM attacks",
-                config.url
+                crate::local_bridge::url_origin(&config.url)
             );
         }
         let client_policy = ClientPolicy {
@@ -1738,10 +1754,9 @@ impl WebDavProvider {
         if let Some(ref state) = self.digest_auth {
             let uri_path = extract_uri_path(&url);
             tracing::debug!(
-                "[WebDAV] Digest request: {} {} (uri={})",
+                "[WebDAV] Digest request: {} to {}",
                 method.as_str(),
-                url,
-                uri_path
+                crate::local_bridge::url_origin(&url)
             );
             let auth = state.authorization(
                 method.as_str(),
@@ -3409,9 +3424,8 @@ impl WebDavProvider {
         let mut entries = Vec::new();
 
         tracing::debug!(
-            "[WebDAV] Parsing XML with base_path: {}, url: {}",
-            base_path,
-            self.config.url
+            "[WebDAV] Parsing XML from {}",
+            crate::local_bridge::url_origin(&self.config.url)
         );
 
         // The configured URL and `build_url` carry the base's own escapes
@@ -3521,10 +3535,7 @@ impl WebDavProvider {
                                 || href_path == root_path;
 
                             if is_self_reference {
-                                tracing::debug!(
-                                    "[WebDAV] Skipping self-reference: {}",
-                                    decoded_href
-                                );
+                                tracing::debug!("[WebDAV] Skipping the self-reference");
                                 continue;
                             }
 
@@ -4252,9 +4263,8 @@ impl StorageProvider for WebDavProvider {
                             );
                             if url != self.config.url {
                                 tracing::info!(
-                                    "[MEGAcmd] bridge serves the account at {}; connecting there instead of {}",
-                                    url,
-                                    self.config.url
+                                    "[MEGAcmd] bridge serves the account below its root at {}; connecting to the served path",
+                                    crate::local_bridge::url_origin(&url)
                                 );
                                 self.config.url = url;
                             }
@@ -4288,7 +4298,7 @@ impl StorageProvider for WebDavProvider {
         if self.config.url.starts_with("http://") {
             tracing::warn!(
                 "[WEBDAV] Connection uses unencrypted HTTP ({}). Credentials and data will be sent in plaintext.",
-                self.config.url
+                crate::local_bridge::url_origin(&self.config.url)
             );
         }
 
@@ -4299,7 +4309,7 @@ impl StorageProvider for WebDavProvider {
         if let Some(entry) = self.probe_single_file().await {
             tracing::info!(
                 "[WebDAV] Detected single-file resource at {} ({}, {} bytes); enabling single-file mode",
-                self.config.url,
+                crate::local_bridge::url_origin(&self.config.url),
                 entry.name,
                 entry.size
             );
@@ -4954,7 +4964,7 @@ impl StorageProvider for WebDavProvider {
                 let headers_dump: String = response
                     .headers()
                     .iter()
-                    .map(|(k, v)| format!("{}={}", k, v.to_str().unwrap_or("<binary>")))
+                    .map(|(k, v)| format!("{}={}", k, diagnostic_header_value(k, v)))
                     .collect::<Vec<_>>()
                     .join(", ");
                 let body_snippet = response
@@ -4965,9 +4975,10 @@ impl StorageProvider for WebDavProvider {
                     .take(512)
                     .collect::<String>();
                 tracing::info!(
-                    "[WEBDAV] download non-success: status={} url={} headers=[{}] body=\"{}\"",
+                    "[WEBDAV] download non-success: status={} origin={} path={} headers=[{}] body=\"{}\"",
                     status,
-                    self.build_url(remote_path),
+                    crate::local_bridge::url_origin(&self.config.url),
+                    remote_path,
                     headers_dump,
                     body_snippet
                 );
@@ -6007,7 +6018,9 @@ impl StorageProvider for WebDavProvider {
                 // Rare: a previous transfer with the same UUID is still
                 // pending. UUID v4 collisions are effectively impossible,
                 // so this surfaces a real conflict the operator should see.
-                return Err(ProviderError::AlreadyExists(folder_url));
+                return Err(ProviderError::AlreadyExists(format!(
+                    "Nextcloud chunked upload {transfer_id}"
+                )));
             }
             StatusCode::CONFLICT => {
                 return Err(ProviderError::InvalidPath(
@@ -6032,8 +6045,8 @@ impl StorageProvider for WebDavProvider {
 
         tracing::info!(
             target: "webdav_chunked",
-            "[WEBDAV] Nextcloud chunked v2 begin: MKCOL {} (size={})",
-            folder_url,
+            "[WEBDAV] Nextcloud chunked v2 begin: upload {} (size={})",
+            transfer_id,
             total_size
         );
 
@@ -6151,9 +6164,9 @@ impl StorageProvider for WebDavProvider {
 
         tracing::info!(
             target: "webdav_chunked",
-            "[WEBDAV] Nextcloud chunked v2 finalize: MOVE {} -> {} (size={})",
-            assemble_url,
-            destination_url,
+            "[WEBDAV] Nextcloud chunked v2 finalize: upload {} -> {} (size={})",
+            payload.transfer_id,
+            handle.remote_path,
             payload.total_size
         );
 
@@ -6219,9 +6232,9 @@ impl StorageProvider for WebDavProvider {
                 let status = response.status();
                 if !(status.is_success() || status == StatusCode::NOT_FOUND) {
                     tracing::warn!(
-                        "[WEBDAV] Nextcloud chunked abort returned {} for {}",
+                        "[WEBDAV] Nextcloud chunked abort returned {} for upload {}",
                         status,
-                        folder_url
+                        payload.transfer_id
                     );
                 }
             }
@@ -10083,6 +10096,44 @@ mod filen_bridge_certificate_tests {
         );
     }
 
+    /// With a system proxy set, the Filen bridge on plain HTTP is reached
+    /// directly, while another WebDAV server on this machine keeps the user's
+    /// proxy (the control: the proxy is in effect). In a child process,
+    /// because the proxy variables are process-wide.
+    #[tokio::test]
+    async fn a_filen_bridge_skips_the_system_proxy_and_other_servers_take_it() {
+        if !crate::local_bridge::proxied::in_child(
+            "providers::webdav::filen_bridge_certificate_tests::a_filen_bridge_skips_the_system_proxy_and_other_servers_take_it",
+        ) {
+            return;
+        }
+        let proxy = crate::local_bridge::proxied::RecordingProxy::start().await;
+        let (port, server) = plain_bridge().await;
+        crate::local_bridge::alias_test_port(port, 1900);
+        let mut bridge = WebDavProvider::new(config(
+            format!("http://127.0.0.1:{port}/"),
+            Some("filen-desktop-webdav"),
+        ))
+        .unwrap();
+        let outcome = bridge.connect().await;
+        assert!(
+            !proxy.saw(&format!("127.0.0.1:{port}")),
+            "the Filen bridge went through the system proxy: {:?}",
+            proxy.lines()
+        );
+        outcome.expect("the HTTP bridge must connect directly");
+
+        let mut other =
+            WebDavProvider::new(config(format!("http://127.0.0.1:{port}/"), None)).unwrap();
+        let _ = other.connect().await;
+        server.abort();
+        assert!(
+            proxy.saw(&format!("127.0.0.1:{port}")),
+            "the control did not reach the proxy, so the proxy was not in effect: {:?}",
+            proxy.lines()
+        );
+    }
+
     /// The trust needs a loopback IP written as such: a name is resolved by
     /// DNS, which may point anywhere.
     #[test]
@@ -10508,7 +10559,9 @@ pub(crate) mod collection_redirect_tests {
         match &err {
             ProviderError::ServerError(msg) => {
                 assert!(msg.contains("leaves HTTPS"), "{msg}");
-                assert!(msg.contains("http://127.0.0.1:1/elsewhere"), "{msg}");
+                assert!(msg.contains("to http://127.0.0.1:1,"), "{msg}");
+                assert!(!msg.contains("/elsewhere"), "{msg}");
+                assert!(!msg.contains("/moved"), "{msg}");
             }
             other => panic!("expected ServerError, got {other:?}"),
         }
@@ -10587,6 +10640,57 @@ pub(crate) mod collection_redirect_tests {
         assert!(!refused("https://h/a", "http://h/b/").is_to_collection_form());
         assert!(!refused("https://h/a", "http://h/a").is_to_collection_form());
         assert!(!refused("https://h/a?x=1", "http://h/a/").is_to_collection_form());
+    }
+
+    /// The refusal names the two origins, never a path, a query or userinfo:
+    /// any of them can carry a secret (the MEGAcmd path token).
+    #[test]
+    fn a_refused_downgrade_names_the_origins_only() {
+        let refused = InsecureRedirect {
+            from: reqwest::Url::parse(
+                "https://u:FROM-PASS@dav.example:8443/FROM-TOKEN/Cloud?k=FROM-QUERY",
+            )
+            .unwrap(),
+            to: reqwest::Url::parse("http://dav.example/TO-TOKEN/Cloud/?k=TO-QUERY#TO-FRAGMENT")
+                .unwrap(),
+        }
+        .to_string();
+        assert!(refused.contains("https://dav.example:8443"), "{refused}");
+        assert!(refused.contains("http://dav.example"), "{refused}");
+        for secret in [
+            "FROM-PASS",
+            "FROM-TOKEN",
+            "FROM-QUERY",
+            "TO-TOKEN",
+            "TO-QUERY",
+            "TO-FRAGMENT",
+        ] {
+            assert!(!refused.contains(secret), "{secret} in {refused}");
+        }
+    }
+
+    /// The download diagnostic keeps a header's value, except a Location or
+    /// Content-Location (origin only) and a Set-Cookie (not printed).
+    #[test]
+    fn the_download_diagnostic_keeps_no_url_path_and_no_cookie() {
+        use reqwest::header::{HeaderName, HeaderValue};
+        let value = |name: &str, value: &str| {
+            diagnostic_header_value(
+                &HeaderName::from_bytes(name.as_bytes()).unwrap(),
+                &HeaderValue::from_str(value).unwrap(),
+            )
+        };
+        assert_eq!(
+            value("location", "https://dav.example/TOKEN/x?k=Q"),
+            "https://dav.example"
+        );
+        assert_eq!(
+            value("content-location", "http://127.0.0.1:4443/TOKEN/"),
+            "http://127.0.0.1:4443"
+        );
+        assert_eq!(value("location", "/TOKEN/x"), "<invalid url>");
+        assert_eq!(value("set-cookie", "session=SECRET; Path=/"), "<redacted>");
+        assert_eq!(value("content-type", "text/plain"), "text/plain");
     }
 }
 

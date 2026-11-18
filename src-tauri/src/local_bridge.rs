@@ -305,6 +305,117 @@ pub(crate) fn alias_test_port(fixture: u16, bridge: u16) {
     TEST_PORT_ALIAS.with(|alias| alias.set(Some((fixture, bridge))));
 }
 
+/// A system proxy for tests, in a child process of the test binary.
+///
+/// The proxy variables are process-wide and the test harness runs tests on
+/// parallel threads, so a test that sets them runs itself again as the only
+/// test of a child process ([`in_child`]) and only that child sets them
+/// ([`RecordingProxy::start`]).
+#[cfg(test)]
+pub(crate) mod proxied {
+    use std::sync::{Arc, Mutex};
+
+    const CHILD: &str = "AEROFTP_PROXIED_TEST";
+
+    /// True in the child process that runs `test` (its path below the crate
+    /// root, as `cargo test` prints it). In the parent, runs `test` alone in
+    /// a child process, asserts that it passed, and returns false.
+    pub(crate) fn in_child(test: &str) -> bool {
+        if std::env::var(CHILD).as_deref() == Ok(test) {
+            return true;
+        }
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([test, "--exact", "--nocapture", "--test-threads=1"])
+            .env(CHILD, test)
+            .output()
+            .expect("the test binary runs again");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(
+            output.status.success() && stdout.contains("1 passed"),
+            "{test} failed in its child process:\n{stdout}\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        false
+    }
+
+    /// A proxy on a loopback port that answers every request `403` and keeps
+    /// its first line: `CONNECT host:port HTTP/1.1` for a tunnel, `GET
+    /// http://host:port/... HTTP/1.1` for a plain request.
+    pub(crate) struct RecordingProxy {
+        lines: Arc<Mutex<Vec<String>>>,
+        server: tokio::task::JoinHandle<()>,
+    }
+
+    impl RecordingProxy {
+        /// Start the proxy and make it this process's system proxy for HTTP
+        /// and HTTPS, with no exceptions. Only in a child of [`in_child`].
+        pub(crate) async fn start() -> Self {
+            assert!(
+                std::env::var(CHILD).is_ok(),
+                "the proxy variables are process-wide"
+            );
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let address = format!("http://{}", listener.local_addr().unwrap());
+            for name in ["NO_PROXY", "no_proxy", "REQUEST_METHOD"] {
+                std::env::remove_var(name);
+            }
+            for name in [
+                "HTTP_PROXY",
+                "http_proxy",
+                "HTTPS_PROXY",
+                "https_proxy",
+                "ALL_PROXY",
+                "all_proxy",
+            ] {
+                std::env::set_var(name, &address);
+            }
+            let lines = Arc::new(Mutex::new(Vec::new()));
+            let kept = Arc::clone(&lines);
+            let server = tokio::spawn(async move {
+                while let Ok((mut stream, _)) = listener.accept().await {
+                    let kept = Arc::clone(&kept);
+                    tokio::spawn(async move {
+                        let mut request = Vec::new();
+                        let mut chunk = [0u8; 4096];
+                        while !request.windows(4).any(|w| w == b"\r\n\r\n") {
+                            match stream.read(&mut chunk).await {
+                                Ok(0) | Err(_) => break,
+                                Ok(n) => request.extend_from_slice(&chunk[..n]),
+                            }
+                        }
+                        let text = String::from_utf8_lossy(&request);
+                        kept.lock()
+                            .unwrap()
+                            .push(text.lines().next().unwrap_or("").to_string());
+                        let _ = stream
+                            .write_all(b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                            .await;
+                        let _ = stream.shutdown().await;
+                    });
+                }
+            });
+            Self { lines, server }
+        }
+
+        /// The first line of every request the proxy received.
+        pub(crate) fn lines(&self) -> Vec<String> {
+            self.lines.lock().unwrap().clone()
+        }
+
+        /// True when a request named `authority` (`host:port`).
+        pub(crate) fn saw(&self, authority: &str) -> bool {
+            self.lines().iter().any(|line| line.contains(authority))
+        }
+    }
+
+    impl Drop for RecordingProxy {
+        fn drop(&mut self) {
+            self.server.abort();
+        }
+    }
+}
+
 /// Probe a loopback bridge port to learn whether it speaks HTTPS or plain HTTP.
 ///
 /// The local mount apps let the user pick the protocol (HTTP/HTTPS) inside the

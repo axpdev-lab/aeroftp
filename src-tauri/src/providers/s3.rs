@@ -1056,6 +1056,21 @@ impl S3Provider {
                     .to_string(),
             ));
         }
+        // Credentials go in the signed headers, never in the URL, so a user
+        // name or password in the endpoint is not used by S3; it would only
+        // ride along in every request URL and in every error that names one.
+        if config.endpoint.as_deref().is_some_and(|endpoint| {
+            let after_scheme = endpoint
+                .split_once("://")
+                .map_or(endpoint, |(_, rest)| rest);
+            after_scheme.split('/').next().unwrap_or("").contains('@')
+        }) {
+            return Err(ProviderError::InvalidConfig(
+                "The S3 endpoint must not contain a user name or a password (user:password@): \
+                 S3 signs every request with the access key, so remove everything up to the @"
+                    .to_string(),
+            ));
+        }
         if !config.path_style && !config.bucket.is_empty() {
             // The bucket becomes URL authority in virtual-hosted mode, not path data.
             let endpoint = config
@@ -10526,6 +10541,65 @@ mod tests {
         server.abort();
     }
 
+    /// With a system proxy set, a request to a local endpoint goes to the
+    /// endpoint directly, and AssumeRole goes through the proxy to AWS STS:
+    /// the local trust (direct, any certificate) must not reach STS, and the
+    /// user's proxy must not see local traffic. In a child process, because
+    /// the proxy variables are process-wide.
+    #[tokio::test]
+    async fn a_local_endpoint_skips_the_system_proxy_and_assume_role_takes_it() {
+        if !crate::local_bridge::proxied::in_child(
+            "providers::s3::tests::a_local_endpoint_skips_the_system_proxy_and_assume_role_takes_it",
+        ) {
+            return;
+        }
+        let proxy = crate::local_bridge::proxied::RecordingProxy::start().await;
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let requests = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counted = Arc::clone(&requests);
+        let server = tokio::spawn(async move {
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+            while let Ok((mut stream, _)) = listener.accept().await {
+                let counted = Arc::clone(&counted);
+                tokio::spawn(async move {
+                    let mut chunk = [0u8; 8192];
+                    let _ = stream.read(&mut chunk).await;
+                    counted.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    let _ = stream
+                        .write_all(b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                        .await;
+                    let _ = stream.shutdown().await;
+                });
+            }
+        });
+        let endpoint = format!("http://127.0.0.1:{port}/");
+
+        let direct = cleartext_test_provider(&endpoint, true, None);
+        let _ = direct.discover_buckets().await;
+        assert!(
+            requests.load(std::sync::atomic::Ordering::SeqCst) > 0,
+            "the local endpoint was not reached; proxy saw {:?}",
+            proxy.lines()
+        );
+        assert!(
+            !proxy.saw(&format!("127.0.0.1:{port}")),
+            "a local endpoint request went through the system proxy: {:?}",
+            proxy.lines()
+        );
+
+        let with_role =
+            cleartext_test_provider(&endpoint, true, Some("arn:aws:iam::123456789012:role/test"));
+        let outcome = with_role.ensure_fresh_credentials().await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        assert!(
+            proxy.saw("sts.us-east-1.amazonaws.com:443"),
+            "AssumeRole did not go through the system proxy: {:?}",
+            proxy.lines()
+        );
+        server.abort();
+    }
+
     /// Build a provider whose only interesting property is its endpoint, for the
     /// cleartext-consent checks. Nothing here touches the network.
     fn cleartext_test_provider(
@@ -11263,6 +11337,42 @@ mod tests {
                 .clone()
         )
         .is_ok());
+    }
+
+    /// A user name or password in the endpoint is refused: S3 never uses it,
+    /// and it would appear in every request URL and every error naming one.
+    /// An `@` later in the path is a key character, not userinfo.
+    #[test]
+    fn an_endpoint_with_userinfo_is_refused() {
+        for endpoint in [
+            "https://user:hunter2@gateway.example/s3",
+            "https://hunter2@gateway.example",
+            "http://u:hunter2@127.0.0.1:1800",
+        ] {
+            for (path_style, bucket) in [(true, ""), (true, "b"), (false, "b")] {
+                let mut config = make_provider(Some("https://gateway.example/s3"))
+                    .config
+                    .clone();
+                config.endpoint = Some(endpoint.to_string());
+                config.path_style = path_style;
+                config.bucket = bucket.to_string();
+                match S3Provider::new(config) {
+                    Err(ProviderError::InvalidConfig(message)) => {
+                        assert!(message.contains("user name or a password"), "{message}");
+                        assert!(!message.contains("hunter2"), "{message}");
+                    }
+                    other => panic!(
+                        "{endpoint} path_style={path_style}: {:?}",
+                        other.map(|_| ())
+                    ),
+                }
+            }
+        }
+        let mut config = make_provider(Some("https://gateway.example/s3"))
+            .config
+            .clone();
+        config.endpoint = Some("https://gateway.example/s3/team@example".to_string());
+        assert!(S3Provider::new(config).is_ok());
     }
 
     #[test]
