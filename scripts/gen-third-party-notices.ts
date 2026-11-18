@@ -1513,7 +1513,8 @@ export function isSpdxHeaderLine(line: string, rel: string, at: number): boolean
 export function findBundledCodeUnderOtherLicenses(
   comp: ComponentInfo,
   knownLicenseIds: Set<string>,
-  knownMentions: Record<string, string> = KNOWN_SPDX_TAG_MENTIONS
+  knownMentions: Record<string, string> = KNOWN_SPDX_TAG_MENTIONS,
+  textCarried: (term: string) => boolean = () => true
 ): { license: string; notices: string[]; files: string[]; headers: { text: string; files: string[] }[]; declared?: true }[] {
   const declared = new Set(extractSpdxLicenseIds(comp.license));
   // The license texts a REUSE folder ships, by identifier (the file name) and
@@ -1603,7 +1604,12 @@ export function findBundledCodeUnderOtherLicenses(
           t.split(' WITH ').every(
             (id) => !knownLicenseIds.has(id) && shippedTexts.some((x) => x.id === id && (x.root === '' || entryRel.startsWith(`${x.root}/`)))
           );
-        const declaredTerm = (t: string) => declared.has(t.split(' WITH ')[0]);
+        // Declared and carried: naming a term in the package's expression is
+        // not enough when the notices carry no text of it (MIT OR Apache-2.0
+        // with LICENSE-MIT alone carries no Apache text), so a header under
+        // that term alone is reproduced with its standard text, and a header
+        // offering a carried choice takes that one.
+        const declaredTerm = (t: string) => declared.has(t.split(' WITH ')[0]) && textCarried(t);
         const undeclaredOf = (terms: string[]) => terms.filter((t) => !declaredTerm(t) && !shippedTerm(t));
         // A header whose only license is a known upstream typo is no license:
         // its terms are left out, its holders are kept, as declared.
@@ -1978,12 +1984,51 @@ export function renderNotices(
     }
     return standardLicenses;
   };
+  // Every term of the chosen license needs its text: a package whose own files
+  // carry only some of them (MIT AND Apache-2.0 with LICENSE-MIT alone) gets the
+  // standard text of the others.
+  const mapTerm = (term: string) => term.replace(/^LGPL-2\.1\+?(?= WITH |$)/, 'LGPL-2.1-or-later');
+  const compatibleChoices = (choices: string[][]) => {
+    const compat = choices.filter((terms) => isGplCompatible(terms.join(' AND ')));
+    return compat.length > 0 ? compat : choices;
+  };
+  const standardTextTerms = new Map<ComponentInfo, string[][]>();
+  for (const comp of allComponents) {
+    const ownTexts = comp.licenseFiles.filter((f) => !f.vendored && f.content.trim().length > 0).map((f) => f.content);
+    if (ownTexts.length === 0) continue;
+    const alternatives = spdxAlternatives(comp.license);
+    if (!alternatives) continue;
+    const left = uncoveredLicenseTerms(
+      compatibleChoices(alternatives).map((terms) => terms.map(mapTerm)),
+      ownTexts,
+      readStandardLicenses()
+    );
+    if (left.length > 0) standardTextTerms.set(comp, left);
+  }
   const bundledCache = new Map<ComponentInfo, ReturnType<typeof findBundledCodeUnderOtherLicenses>>();
   let knownLicenseIds: Set<string> | undefined;
+  // Whether the notices carry the text of a term of a package's license:
+  // its own files carry it, or its standard text is added for the package
+  // (the reproducible choices of standardTextTerms, or, with no own files,
+  // of its whole expression). Naming the identifier in the expression is not
+  // enough: MIT OR Apache-2.0 with LICENSE-MIT alone carries no Apache text.
+  const textCarried = (comp: ComponentInfo, term: string) => {
+    const standard = readStandardLicenses();
+    const mapped = mapTerm(term);
+    const ownTexts = comp.licenseFiles.filter((f) => !f.vendored && f.content.trim().length > 0).map((f) => f.content);
+    if (ownTexts.length > 0 && uncoveredLicenseTerms([[mapped]], ownTexts, standard).length === 0) return true;
+    const alternatives = spdxAlternatives(comp.license);
+    if (!alternatives) return false;
+    const added = ownTexts.length > 0 ? (standardTextTerms.get(comp) ?? []) : compatibleChoices(alternatives).map((terms) => terms.map(mapTerm));
+    const ids = new Set(added.filter((terms) => terms.every((x) => x.split(' WITH ').every((id) => standard[id]))).flat().flatMap((x) => x.split(' WITH ')));
+    return mapped.split(' WITH ').every((id) => ids.has(id));
+  };
   const bundledOf = (comp: ComponentInfo) => {
     if (!comp.packageDir) return [];
     if (!knownLicenseIds) knownLicenseIds = new Set(Object.keys(readStandardLicenses()));
-    if (!bundledCache.has(comp)) bundledCache.set(comp, findBundledCodeUnderOtherLicenses(comp, knownLicenseIds));
+    if (!bundledCache.has(comp)) {
+      bundledCache.set(comp, findBundledCodeUnderOtherLicenses(comp, knownLicenseIds, KNOWN_SPDX_TAG_MENTIONS, (term) => textCarried(comp, term)));
+    }
     return bundledCache.get(comp)!;
   };
   const listedDeclaredHolders = new Set<string>();
@@ -2195,27 +2240,6 @@ export function renderNotices(
     groupIndex++;
   }
 
-  // Every term of the chosen license needs its text: a package whose own files
-  // carry only some of them (MIT AND Apache-2.0 with LICENSE-MIT alone) gets the
-  // standard text of the others.
-  const mapTerm = (term: string) => term.replace(/^LGPL-2\.1\+?(?= WITH |$)/, 'LGPL-2.1-or-later');
-  const compatibleChoices = (choices: string[][]) => {
-    const compat = choices.filter((terms) => isGplCompatible(terms.join(' AND ')));
-    return compat.length > 0 ? compat : choices;
-  };
-  const standardTextTerms = new Map<ComponentInfo, string[][]>();
-  for (const comp of allComponents) {
-    const ownTexts = comp.licenseFiles.filter((f) => !f.vendored && f.content.trim().length > 0).map((f) => f.content);
-    if (ownTexts.length === 0) continue;
-    const alternatives = spdxAlternatives(comp.license);
-    if (!alternatives) continue;
-    const left = uncoveredLicenseTerms(
-      compatibleChoices(alternatives).map((terms) => terms.map(mapTerm)),
-      ownTexts,
-      readStandardLicenses()
-    );
-    if (left.length > 0) standardTextTerms.set(comp, left);
-  }
   const componentsWithStandardTexts = [...componentsWithoutFiles, ...standardTextTerms.keys()];
   // A package with own license files that name holders ships its copyright
   // notices there: they are reproduced above with those files.

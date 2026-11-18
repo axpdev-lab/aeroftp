@@ -1423,6 +1423,66 @@ test('bundled code: a header under the declared license keeps its holder beside 
   }
 });
 
+test('bundled code: a declared term counts as covered only when the notices carry its text, a choice that is carried is taken', () => {
+  const tmpDirs = [];
+  const fixture = (license, files) => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bundled-carried-fixture-'));
+    tmpDirs.push(tmpDir);
+    for (const [rel, content] of Object.entries(files)) {
+      fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, rel), content);
+    }
+    return { name: `carried-${tmpDirs.length}`, version: '1.0.0', license, source: 'cargo', packageDir: tmpDir, authors: ['Wrapper Author'], ...readPackageFiles(tmpDir, `carried-${tmpDirs.length}@1.0.0`) };
+  };
+  const headers = {
+    'src/apache.rs': '// Copyright 2019 Apache Header Author\n// SPDX-License-Identifier: Apache-2.0\nfn a() {}\n',
+    'src/mit.rs': '// Copyright 2019 Mit Header Author\n// SPDX-License-Identifier: MIT\nfn b() {}\n',
+    'src/either.rs': '// Copyright 2019 Either Header Author\n// SPDX-License-Identifier: Apache-2.0 OR MIT\nfn c() {}\n',
+    'src/both.rs': '// Copyright 2019 Both Header Author\n// SPDX-License-Identifier: MIT AND Apache-2.0\nfn d() {}\n',
+  };
+  const apacheClause = 'Grant of Copyright License';
+  const mitClause = 'Permission is hereby granted, free of charge';
+  const count = (md, s) => md.split(s).length - 1;
+  try {
+    // MIT OR Apache-2.0 with LICENSE-MIT alone: the notices carry no Apache
+    // text, so an Apache-2.0 header (alone or in a conjunct) is bundled code
+    // with the standard text; a header offering MIT takes the carried MIT.
+    const orMit = fixture('MIT OR Apache-2.0', { 'LICENSE-MIT': shippedLicense('MIT License\n\nCopyright (c) 2020 Wrapper Author', 'MIT'), ...headers });
+    let md = generateNoticesMarkdown([orMit], []);
+    const apache = md.slice(md.indexOf('### Bundled Code: Apache-2.0'));
+    assert.match(apache, /^### Bundled Code: Apache-2\.0\n\n- `carried-1@1\.0\.0` \(cargo, SPDX: `MIT OR Apache-2\.0`\) bundles code under Apache-2\.0 in `src\/apache\.rs`, `src\/both\.rs`\n {2}- Copyright 2019 Apache Header Author\n {2}- Copyright 2019 Both Header Author\n/);
+    assert.strictEqual(count(md, apacheClause), 1, 'the Apache text appears once, with the bundled code');
+    assert.strictEqual(count(md, mitClause), 1, 'the MIT text appears once, from LICENSE-MIT');
+    assert.match(md, /\n {2}- Copyright 2019 Mit Header Author \(in a source header under MIT\)\n/);
+    assert.match(md, /\n {2}- Copyright 2019 Either Header Author \(in a source header under MIT\)\n/);
+    assert.doesNotMatch(md, /### Bundled Code: MIT/);
+    assert.doesNotMatch(md, /Either Header Author[^\n]*Apache|Mit Header Author[^\n]*Apache/);
+    // The same package shipping both texts: every header is declared, no
+    // bundled section and no second text.
+    const orBoth = fixture('MIT OR Apache-2.0', { 'LICENSE-MIT': shippedLicense('MIT License\n\nCopyright (c) 2020 Wrapper Author', 'MIT'), 'LICENSE-APACHE': STANDARD_TEXTS['Apache-2.0'], ...headers });
+    md = generateNoticesMarkdown([orBoth], []);
+    assert.doesNotMatch(md, /### Bundled Code:/);
+    assert.strictEqual(count(md, apacheClause), 1);
+    assert.match(md, /\n {2}- Copyright 2019 Apache Header Author \(in a source header under Apache-2\.0\)\n/);
+    // MIT AND Apache-2.0 with LICENSE-MIT alone: the Apache text is added for
+    // the package itself, so the Apache headers are covered by it, once.
+    const andMit = fixture('MIT AND Apache-2.0', { 'LICENSE-MIT': shippedLicense('MIT License\n\nCopyright (c) 2020 Wrapper Author', 'MIT'), ...headers });
+    md = generateNoticesMarkdown([andMit], []);
+    assert.doesNotMatch(md, /### Bundled Code:/);
+    assert.strictEqual(count(md, apacheClause), 1, 'the package standard text covers the Apache headers');
+    assert.match(md, /\n {2}- Copyright 2019 Apache Header Author \(in a source header under Apache-2\.0\)\n/);
+    // No own license file: every choice whose text exists is reproduced
+    // (MIT OR Apache-2.0 gives both), so both terms are carried.
+    const noFiles = fixture('MIT OR Apache-2.0', headers);
+    md = generateNoticesMarkdown([noFiles], []);
+    assert.doesNotMatch(md, /### Bundled Code:/);
+    assert.strictEqual(count(md, apacheClause), 1);
+    assert.strictEqual(count(md, mitClause), 1);
+  } finally {
+    for (const d of tmpDirs) fs.rmSync(d, { recursive: true, force: true });
+  }
+});
+
 test('standard-license fallback: choices come from the parsed expression, a conjunct is never dropped, an exception keeps its text', () => {
   const fallback = (name, license) => ({ name, version: '1.0.0', license, source: 'cargo', licenseFiles: [], noticeFiles: [], authors: ['Fallback Author'] });
   // A tab-separated AND binds both choices: BSD-3-Clause-Clear has no text, so this fails.
