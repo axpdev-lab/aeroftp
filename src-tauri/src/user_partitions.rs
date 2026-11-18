@@ -3363,6 +3363,193 @@ pub(crate) fn replace_user_credential_if_unchanged(
     })
 }
 
+/// Replace the copy of `credential_id` that [`resolve_credential_for_user_owner_aware`]
+/// (`user`, or [`resolve_active_credential_owner_aware`] for `None`) reads,
+/// only while it still holds `expected` (`None`: no copy at all, which is then
+/// created). Read, comparison and write share one lock: the partition's
+/// IMMEDIATE transaction, or the vault's cross-process write lock, taken
+/// inside that transaction when the legacy owner reads the vault, so no row
+/// appears in between. `Ok(false)`: the copy changed since `expected` was
+/// read, and nothing is written. Only that copy is written: readers prefer
+/// the row, and the legacy owner falls back to the vault, so each of them
+/// reads the replacement.
+pub(crate) fn replace_owner_aware_if_unchanged(
+    store: &CredentialStore,
+    user: Option<i64>,
+    credential_id: &str,
+    credential_type: &str,
+    expected: Option<&str>,
+    replacement: &str,
+) -> Result<bool, String> {
+    let vault = || -> Result<bool, String> {
+        match expected {
+            Some(expected) => {
+                store.replace_secret_if_unchanged(credential_id, expected, replacement)
+            }
+            None => store.store_secret_if_absent(credential_id, replacement),
+        }
+        .map_err(|e| format!("Conditional vault write: {e}"))
+    };
+    if user == Some(LEGACY_ONLY_ACCOUNT) {
+        let written = vault()?;
+        // The legacy owner's row of that key, when it still holds the chain
+        // the vault held, is the same chain: it follows, so a reader of the
+        // row is not left with a token Jotta consumed. A row that holds
+        // another chain is left as it is.
+        if let Some(expected) = expected.filter(|_| written) {
+            let follow = || -> Result<(), String> {
+                init_or_migrate_cli(store)?;
+                let conn = open_or_init_cli()?;
+                if let Some(owner) = nonprofile_secret_owner(&conn)? {
+                    let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
+                    replace_user_credential_if_unchanged(
+                        &conn,
+                        &root_key,
+                        owner,
+                        credential_id,
+                        credential_type,
+                        (expected, replacement),
+                        false,
+                    )?;
+                }
+                Ok(())
+            };
+            if let Err(e) = follow() {
+                log::warn!("Conditional credential write: the owner's row did not follow: {e}");
+            }
+        }
+        return Ok(written);
+    }
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    let Some(user_id) = (match user {
+        Some(user) => Some(user),
+        // No active account: the vault, as the active reader reads it then
+        // (`resolve_active_credential_owner_aware`).
+        None => active_user_id(&conn)?,
+    }) else {
+        return vault();
+    };
+    let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
+    let root_secret = user_crypto::secret_key_from_bytes(&root_key);
+    with_user_dek(&conn, &root_secret, user_id, |user_id, dek| {
+        let tx =
+            rusqlite::Transaction::new_unchecked(&conn, rusqlite::TransactionBehavior::Immediate)
+                .map_err(|e| format!("Begin conditional credential write: {e}"))?;
+        if user.is_none() && active_user_id(&tx)? != Some(user_id) {
+            return Err(ACCOUNT_CHANGED.to_owned());
+        }
+        let current = read_credential_with_dek(&tx, user_id, dek, credential_id)?;
+        let reads_vault = current.is_none() && nonprofile_secret_owner(&tx)? == Some(user_id);
+        if reads_vault {
+            let written = vault()?;
+            tx.commit()
+                .map_err(|e| format!("Commit conditional credential write: {e}"))?;
+            return Ok(written);
+        }
+        use subtle::ConstantTimeEq;
+        let unchanged = match (&current, expected) {
+            (Some(current), Some(expected)) => {
+                bool::from(current.as_bytes().ct_eq(expected.as_bytes()))
+            }
+            (None, None) => true,
+            _ => false,
+        };
+        if !unchanged {
+            return Ok(false);
+        }
+        set_user_credential_with_dek(
+            &tx,
+            user_id,
+            dek,
+            credential_id,
+            credential_type,
+            replacement,
+        )?;
+        let owner = nonprofile_secret_owner(&tx)? == Some(user_id);
+        tx.commit()
+            .map_err(|e| format!("Commit conditional credential write: {e}"))?;
+        // The legacy owner's vault copy, read by a vault-only reader
+        // (`LEGACY_ONLY_ACCOUNT`), follows while it holds the same chain;
+        // after the commit, so no vault lock is taken inside the
+        // transaction. A copy that holds another chain stays.
+        if let Some(expected) = expected.filter(|_| owner) {
+            if let Err(e) = store.replace_secret_if_unchanged(credential_id, expected, replacement)
+            {
+                log::warn!("Conditional credential write: the vault copy did not follow: {e}");
+            }
+        }
+        Ok(true)
+    })
+}
+
+/// The `global_state` key that counts the deletions of a refresh chain's
+/// key for one owner: tagged, so the shared database names neither.
+fn chain_deletion_key(
+    store: &CredentialStore,
+    owner: Option<i64>,
+    account: &str,
+) -> Result<String, String> {
+    let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
+    let root_secret = user_crypto::secret_key_from_bytes(&root_key);
+    let owner = owner.map_or_else(|| "none".to_string(), |o| o.to_string());
+    let tag = user_crypto::metadata_tag(
+        &root_secret,
+        b"chain-deleted",
+        &format!("{owner}|{account}"),
+    )?;
+    Ok(format!("chain_deleted:{tag}"))
+}
+
+/// How many times `account` was deleted for `owner`, by any process: a
+/// rotation filed before the last deletion is not handed out again
+/// (`load_refresh_chain` in providers/jottacloud.rs).
+pub(crate) fn chain_deletions(
+    store: &CredentialStore,
+    owner: Option<i64>,
+    account: &str,
+) -> Result<u64, String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    let key = chain_deletion_key(store, owner, account)?;
+    let value: Option<String> = conn
+        .query_row(
+            "SELECT value FROM global_state WHERE key = ?1",
+            params![key],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| format!("Read chain deletions: {e}"))?;
+    Ok(value.and_then(|v| v.parse().ok()).unwrap_or(0))
+}
+
+/// Count one more deletion of `account` for `owner`, before the key is
+/// deleted ([`chain_deletions`]).
+pub(crate) fn record_chain_deletion(
+    store: &CredentialStore,
+    owner: Option<i64>,
+    account: &str,
+) -> Result<(), String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    let key = chain_deletion_key(store, owner, account)?;
+    let tx = rusqlite::Transaction::new_unchecked(&conn, rusqlite::TransactionBehavior::Immediate)
+        .map_err(|e| format!("Begin chain deletion: {e}"))?;
+    let count: u64 = tx
+        .query_row(
+            "SELECT value FROM global_state WHERE key = ?1",
+            params![key],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(|e| format!("Read chain deletions: {e}"))?
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0);
+    upsert_global_state(&tx, &key, &(count + 1).to_string(), now_ms())?;
+    tx.commit()
+        .map_err(|e| format!("Commit chain deletion: {e}"))
+}
+
 /// Guard an implicit GUI account during a global/memory token update. Resolve
 /// the session before SQLite, and never perform network I/O inside `refresh`.
 pub(crate) fn with_unchanged_active_credential_user<R>(
