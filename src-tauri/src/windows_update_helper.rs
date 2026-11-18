@@ -389,8 +389,10 @@ fn stage_update(staged: &StagedPortable, current_exe: &Path) -> Result<Vec<&'sta
         }
         cli.push(name);
     }
-    // The documents are optional: one that cannot be staged leaves the
-    // installed ones as they are, and the update of the exes goes on.
+    // The documents go with the exes: the helper deletes the extracted
+    // update after the swap, so a batch that cannot be staged would leave
+    // the new exe with the old documents and nothing to install them from.
+    // The update stops before the swap instead, and everything stays.
     let docs: Vec<(&Path, &'static str)> = [
         (&staged.new_marker, portable_docs::DOCS[0]),
         (&staged.new_readme, portable_docs::DOCS[1]),
@@ -403,7 +405,10 @@ fn stage_update(staged: &StagedPortable, current_exe: &Path) -> Result<Vec<&'sta
     if let Err(e) =
         portable_docs::stage_pending_docs(exe_dir, &staged.new_exe, &docs, &random_suffix())
     {
-        log::warn!("portable update: {e}; the installed documents stay as they are");
+        discard_staged(current_exe, &cli);
+        return Err(format!(
+            "{e}; the update is not applied, the installed exe and documents stay as they are"
+        ));
     }
     Ok(cli)
 }
@@ -652,12 +657,17 @@ del /F /Q {new} >nul 2>&1
     // batch with the exes, by the names a staging writes and never
     // recursively: anything else in the folder, and the folder, stay
     // (`portable_docs::remove_batch`). The current batch, the old exe's
-    // documents still pending, stays for its next start.
+    // documents still pending, stays for its next start. `del` given a
+    // folder deletes the files inside it, so a name that is a folder
+    // (`X\` exists) is skipped: only a file of that name is deleted.
     let next = exe_dir.join(portable_docs::NEXT_DIR);
     for name in portable_docs::BATCH_FILES {
+        let file = next.join(name);
+        let as_folder = PathBuf::from(format!("{}\\", file.display()));
         discard_block.push_str(&format!(
-            "del /F /Q {} >nul 2>&1\n",
-            quote_for_cmd(&next.join(name))
+            "if not exist {} del /F /Q {} >nul 2>&1\n",
+            quote_for_cmd(&as_folder),
+            quote_for_cmd(&file)
         ));
     }
     discard_block.push_str(&format!("rmdir {} >nul 2>&1\n", quote_for_cmd(&next)));
@@ -1238,10 +1248,9 @@ mod tests {
         let mut fx = fixture();
         with_docs(&mut fx, |_| true);
         let script = script_for(&fx);
-        assert!(
-            !script.contains("README.txt"),
-            "the helper copies no document"
-        );
+        // The helper copies no document (its failed-swap cleanup names them):
+        // the bytes below show the README old after the helper, new after
+        // the start.
         run(&fx, &runnable(&script));
         assert!(!fx.staged.stage_dir.exists());
         assert_eq!(
@@ -1495,6 +1504,57 @@ mod tests {
         assert_eq!(names_in(&next), vec!["user.txt".to_string()]);
     }
 
+    #[test]
+    fn a_failed_swap_never_deletes_inside_a_folder_named_like_a_document() {
+        let mut fx = fixture();
+        with_docs(&mut fx, |_| true);
+        let script = script_for(&fx);
+        let next = fx.app.join(portable_docs::NEXT_DIR);
+        // README.txt is someone's folder, with a file of its own.
+        let folder = next.join("README.txt");
+        std::fs::remove_file(&folder).expect("staged readme");
+        std::fs::create_dir(&folder).expect("folder");
+        std::fs::write(folder.join("sentinel.txt"), b"mine").expect("sentinel");
+        std::fs::remove_file(beside_path(&fx.current)).expect("staged exe");
+        run(&fx, &runnable(&script));
+        assert_eq!(
+            std::fs::read(folder.join("sentinel.txt")).expect("kept"),
+            b"mine"
+        );
+        // The staged files themselves are gone; only the folder is left.
+        assert_eq!(names_in(&next), vec!["README.txt".to_string()]);
+    }
+
+    #[test]
+    fn an_update_whose_documents_cannot_be_staged_stops_before_the_swap() {
+        let mut fx = fixture();
+        with_docs(&mut fx, |_| true);
+        // A folder of someone else's where the next batch is published:
+        // staging cannot finish, and that folder is not emptied to finish it.
+        let next = fx.app.join(portable_docs::NEXT_DIR);
+        std::fs::create_dir(&next).expect("obstruction");
+        std::fs::write(next.join("notes.txt"), b"not ours").expect("user file");
+        let refused = stage_update(&fx.staged, &fx.current).expect_err("refused");
+        assert!(refused.contains("the update is not applied"), "{refused}");
+        // Nothing beside the installed exe, the obstruction untouched, the
+        // documents of the update still where they were extracted.
+        assert!(!beside_path(&fx.current).exists());
+        assert_eq!(
+            std::fs::read(next.join("notes.txt")).expect("kept"),
+            b"not ours"
+        );
+        assert!(fx.staged.new_readme.as_deref().is_some_and(Path::is_file));
+        // Without the obstruction the same update stages its documents.
+        std::fs::remove_file(next.join("notes.txt")).expect("cleared");
+        std::fs::remove_dir(&next).expect("cleared");
+        stage_update(&fx.staged, &fx.current).expect("staged");
+        assert!(fx
+            .app
+            .join(portable_docs::NEXT_DIR)
+            .join("README.txt")
+            .is_file());
+    }
+
     /// An update whose CLI staging fails, before the helper, leaves the
     /// documents the running exe still has pending, and its next start
     /// installs them.
@@ -1704,6 +1764,18 @@ mod tests {
         let script = script_for(&fx);
         assert!(!script.contains("aeroftp-app"), "{script}");
         run(&fx, &runnable(&script));
+        assert_eq!(read(&fx, "AeroFTP.exe"), NEW_EXE);
+        // The helper leaves the marker in the next batch; the new app's
+        // start installs it.
+        assert!(
+            fx.app
+                .join(portable_docs::NEXT_DIR)
+                .join("portable.marker")
+                .is_file(),
+            "the marker waits for the start"
+        );
+        assert!(!fx.app.join("portable.marker").exists());
+        start_new_app(&fx);
         let mut expected: Vec<String> = THREE_EXES.iter().map(|n| n.to_string()).collect();
         expected.push("portable.marker".to_string());
         assert_eq!(names_in(&fx.app), expected);
@@ -1816,9 +1888,20 @@ mod tests {
         assert_eq!(status.code(), free_status.code());
         assert_eq!(read(&fx, "aeroftp-cli.exe"), b"old cli");
         assert_eq!(read(&fx, "aeroftp-dispatch.exe"), b"new dispatch");
-        assert_eq!(read(&fx, "portable.marker"), b"portable");
         assert!(!fx.staged.stage_dir.exists());
         assert_eq!(std::fs::read(&fx.log).expect("log"), b"");
+        // The helper leaves the marker in the next batch; the new app's
+        // start installs it.
+        assert!(
+            fx.app
+                .join(portable_docs::NEXT_DIR)
+                .join("portable.marker")
+                .is_file(),
+            "the marker waits for the start"
+        );
+        assert!(!fx.app.join("portable.marker").exists());
+        start_new_app(&fx);
+        assert_eq!(read(&fx, "portable.marker"), b"portable");
     }
 
     /// An update without the CLI exes leaves the installed ones alone.
