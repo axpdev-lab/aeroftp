@@ -74,5 +74,16 @@
   "_tagMentions": "An SPDX-License-Identifier tag in a source file outside a comment the scanner knows is no header only when reviewed here, by package@version:file:line text.",
   "tagMentions": {
     "zerocopy@0.8.63:ci/check_packaging.sh:-e '/* SPDX-License-Identifier: BSD-2-Clause OR Apache-2.0 OR MIT */' \\": "a sed expression in a CI script that checks the headers of zerocopy's own files; the crate's own license covers them"
-  }
+  },
+  "_sourceTexts": "A license text and notice a source file carries in a comment with no SPDX tag of its own, reproduced from its first to its last line (both compared without the comment leader).",
+  "sourceTexts": [
+    {
+      "package": "tao",
+      "file": "src/keyboard.rs",
+      "from": "This file contains a substantial portion of the UI Events Specification by the W3C. In",
+      "to": "--------- END OF W3C SHORT NOTICE ---------------------------------------------------------------",
+      "license": "W3C Software and Document Notice and License, with the W3C Software and Document Short Notice",
+      "source": "tao 0.35.3 src/keyboard.rs lines 7 to 74, read 2026-11-18"
+    }
+  ]
 }

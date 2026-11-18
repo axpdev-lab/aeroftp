@@ -1252,6 +1252,26 @@ export function reviewedLicenseTerms(): Record<string, string> {
   );
 }
 export const reviewedNotices = (): ReviewedNotice[] => (reviewedEntries().notices as ReviewedNotice[] | undefined) ?? [];
+type ReviewedSourceText = { package: string; file: string; from: string; to: string; license: string; source: string };
+export const reviewedSourceTexts = (): ReviewedSourceText[] => (reviewedEntries().sourceTexts as ReviewedSourceText[] | undefined) ?? [];
+// The comment of a reviewed source text, from its first line to its last,
+// without the comment leaders; a file that no longer has both lines fails, so
+// a changed upstream is read again.
+export function reviewedSourceText(comp: ComponentInfo, r: ReviewedSourceText): string {
+  const full = path.join(comp.packageDir!, r.file);
+  const lines = fs.existsSync(full) ? fs.readFileSync(full, 'utf8').split(/\r?\n/) : [];
+  const start = lines.findIndex((l) => l.replace(COMMENT_LEADER, '').trim() === r.from);
+  const end = start === -1 ? -1 : lines.findIndex((l, i) => i >= start && l.replace(COMMENT_LEADER, '').trim() === r.to);
+  if (start === -1 || end === -1) {
+    throw new Error(
+      `${comp.name}@${comp.version} ${r.file} no longer has the reviewed source text from ${JSON.stringify(r.from)} to ${JSON.stringify(r.to)}: read the file again and update its sourceTexts entry in scripts/reviewed-license-terms.json`
+    );
+  }
+  return lines
+    .slice(start, end + 1)
+    .map((l) => l.replace(COMMENT_LEADER, '').replace(/^ /, '').trimEnd())
+    .join('\n');
+}
 export const reviewedTagMentions = (): Record<string, string> => (reviewedEntries().tagMentions as Record<string, string> | undefined) ?? {};
 
 // The 6-grams of each standard text, and the seam 6-grams that distinguish a
@@ -2655,7 +2675,7 @@ export function renderNotices(
     if (byLicense.size > 0) {
       lines.push('## Bundled Code Under Other Licenses');
       lines.push('');
-      lines.push('These components bundle code from another project under a license they do not declare themselves. The bundled files name that license in their SPDX-License-Identifier header. The standard text is reproduced with the copyright lines of the header, and the header itself when its permission text differs from the standard text.');
+      lines.push('These components bundle code from another project under a license whose text the notices above do not already carry for them: a license they do not declare, or one they declare without shipping its text. The bundled files name that license in their SPDX-License-Identifier header. The standard text is reproduced with the copyright lines of the header, and the header itself when its permission text differs from the standard text.');
       lines.push('');
       for (const licKey of [...byLicense.keys()].sort(compareStrings)) {
         lines.push(`### Bundled Code: ${[...bundledLabels.get(licKey)!].sort(compareStrings).join(', ')}`);
@@ -2673,6 +2693,23 @@ export function renderNotices(
         assertNoTermsPlaceholders(licKey, text);
         lines.push(makeCodeBlock(exceptionId ? `${text}\n\n${standardTexts[exceptionId]}` : text));
         lines.push('');
+      }
+    }
+    // A license text inside a source file with no tag of its own (tao's
+    // keyboard.rs carries the W3C license and notice under an Apache-2.0
+    // tag): reviewed by file and reproduced from its first to its last line.
+    const sourceTexts = bundledComponents.flatMap((comp) =>
+      reviewedSourceTexts()
+        .filter((r) => r.package === comp.name)
+        .map((r) => ({ comp, r, text: reviewedSourceText(comp, r) }))
+    );
+    if (sourceTexts.length > 0) {
+      lines.push('## License Texts Inside Source Files');
+      lines.push('');
+      lines.push('These source files carry the license and notice of material they include, in a comment with no SPDX-License-Identifier of its own. The comment is reproduced as shipped.');
+      lines.push('');
+      for (const { comp, r, text } of sourceTexts) {
+        lines.push(`- \`${comp.name}@${comp.version}\`, \`${r.file}\`: ${r.license}`, '', makeVerbatimBlock(text), '');
       }
     }
     if (ownTermHeaders.length > 0) {

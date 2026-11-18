@@ -43,6 +43,7 @@ import {
   standardTextId,
   reviewedNotices,
   reviewedTagMentions,
+  reviewedSourceTexts,
 } from '../../scripts/gen-third-party-notices.ts';
 
 // The committed notices with the blocks the generator reproduces as shipped,
@@ -1662,6 +1663,12 @@ test('bundled code: a declared term counts as covered only when the notices carr
     // with the standard text; a header offering MIT takes the carried MIT.
     const orMit = fixture('MIT OR Apache-2.0', { 'LICENSE-MIT': shippedLicense('MIT License\n\nCopyright (c) 2020 Wrapper Author', 'MIT'), ...headers });
     let md = generateNoticesMarkdown([orMit], []);
+    // The package declares Apache-2.0 as a choice, so the section must not
+    // say the license is one it does not declare: it is one whose text the
+    // notices do not already carry for it.
+    const intro = md.slice(md.indexOf('## Bundled Code Under Other Licenses')).split('\n')[2];
+    assert.match(intro, /whose text the notices above do not already carry for them: a license they do not declare, or one they declare without shipping its text\./);
+    assert.doesNotMatch(intro, /under a license they do not declare themselves/);
     const apache = md.slice(md.indexOf('### Bundled Code: Apache-2.0'));
     assert.match(apache, /^### Bundled Code: Apache-2\.0\n\n- `carried-1@1\.0\.0` \(cargo, SPDX: `MIT OR Apache-2\.0`\) bundles code under Apache-2\.0 in `src\/apache\.rs`, `src\/both\.rs`\n {2}- Copyright 2019 Apache Header Author\n {2}- Copyright 2019 Both Header Author\n/);
     assert.strictEqual(count(md, apacheClause), 1, 'the Apache text appears once, with the bundled code');
@@ -1781,6 +1788,32 @@ test('reviewed notices and tag mentions: each entry names its source and the who
     assert.ok(r.notice.startsWith(r.line.replace(/,$/, '')), r.line);
   }
   for (const [key, reason] of Object.entries(reviewedTagMentions())) assert.ok(/^[^@]+@[^:]+:[^:]+:/.test(key) && reason, key);
+});
+
+test('reviewed source texts: a license text inside a source comment is reproduced whole, and a file that lost its reviewed lines fails the run', () => {
+  const reviewed = reviewedSourceTexts();
+  assert.ok(reviewed.length > 0);
+  for (const r of reviewed) assert.ok(r.package && r.file && r.from && r.to && r.license && r.source, JSON.stringify(r));
+  const r = reviewed.find((x) => x.package === 'tao' && x.file === 'src/keyboard.rs');
+  assert.ok(r, 'the tao W3C text is reviewed');
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'source-text-fixture-'));
+  try {
+    const file = path.join(tmpDir, 'src', 'keyboard.rs');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const body = `// Copyright 2021 Fixture Author\n// SPDX-License-Identifier: Apache-2.0\n\n// ${r.from}\n// Copyright (c) 2016 Fixture Consortium. All Rights Reserved.\n//\n// Permission to copy, modify, and distribute this work is granted.\n// ${r.to}\n\nfn k() {}\n`;
+    fs.writeFileSync(file, body);
+    const comp = { name: 'tao', version: '9.9.9', license: 'Apache-2.0', source: 'cargo', packageDir: tmpDir, authors: ['Fixture Author'], ...readPackageFiles(tmpDir, 'tao@9.9.9') };
+    const md = generateNoticesMarkdown([comp], []);
+    const section = md.slice(md.indexOf('## License Texts Inside Source Files'));
+    assert.ok(md.includes('## License Texts Inside Source Files'));
+    assert.ok(section.includes(`- \`tao@9.9.9\`, \`src/keyboard.rs\`: ${r.license}`));
+    assert.ok(section.includes(`${r.from}\nCopyright (c) 2016 Fixture Consortium. All Rights Reserved.\n\nPermission to copy, modify, and distribute this work is granted.\n${r.to}\n`), 'the comment is reproduced from its first to its last line, without the leaders');
+    assert.ok(!section.includes('fn k()'));
+    fs.writeFileSync(file, body.replace(`// ${r.to}\n`, ''));
+    assert.throws(() => generateNoticesMarkdown([comp], []), /no longer has the reviewed source text/);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
 });
 
 test('findPackageCopyrightNotices: a template copyright line is no notice, a license text keeps its placeholders', () => {

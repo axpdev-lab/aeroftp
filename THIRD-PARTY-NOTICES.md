@@ -47687,7 +47687,7 @@ freely, subject to the following restrictions:
 
 ## Bundled Code Under Other Licenses
 
-These components bundle code from another project under a license they do not declare themselves. The bundled files name that license in their SPDX-License-Identifier header. The standard text is reproduced with the copyright lines of the header, and the header itself when its permission text differs from the standard text.
+These components bundle code from another project under a license whose text the notices above do not already carry for them: a license they do not declare, or one they declare without shipping its text. The bundled files name that license in their SPDX-License-Identifier header. The standard text is reproduced with the copyright lines of the header, and the header itself when its permission text differs from the standard text.
 
 ### Bundled Code: Apache-2.0 WITH LLVM-exception
 
@@ -48168,6 +48168,83 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
 IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
+```
+
+## License Texts Inside Source Files
+
+These source files carry the license and notice of material they include, in a comment with no SPDX-License-Identifier of its own. The comment is reproduced as shipped.
+
+- `tao@0.35.3`, `src/keyboard.rs`: W3C Software and Document Notice and License, with the W3C Software and Document Short Notice
+
+```text
+This file contains a substantial portion of the UI Events Specification by the W3C. In
+particular, the variant names within `Key` and `KeyCode` and their documentation are modified
+versions of contents of the aforementioned specification.
+
+The original documents are:
+
+### For `Key`
+UI Events KeyboardEvent key Values
+https://www.w3.org/TR/2017/CR-uievents-key-20170601/
+Copyright © 2017 W3C® (MIT, ERCIM, Keio, Beihang).
+
+### For `KeyCode`
+UI Events KeyboardEvent code Values
+https://www.w3.org/TR/2017/CR-uievents-code-20170601/
+Copyright © 2017 W3C® (MIT, ERCIM, Keio, Beihang).
+
+These documents were used under the terms of the following license. This W3C license as well as
+the W3C short notice apply to the `Key` and `KeyCode` enums and their variants and the
+documentation attached to their variants.
+
+--------- BEGGINING OF W3C LICENSE --------------------------------------------------------------
+
+License
+
+By obtaining and/or copying this work, you (the licensee) agree that you have read, understood,
+and will comply with the following terms and conditions.
+
+Permission to copy, modify, and distribute this work, with or without modification, for any
+purpose and without fee or royalty is hereby granted, provided that you include the following on
+ALL copies of the work or portions thereof, including modifications:
+
+- The full text of this NOTICE in a location viewable to users of the redistributed or derivative
+  work.
+- Any pre-existing intellectual property disclaimers, notices, or terms and conditions. If none
+  exist, the W3C Software and Document Short Notice should be included.
+- Notice of any changes or modifications, through a copyright statement on the new code or
+  document such as "This software or document includes material copied from or derived from
+  [title and URI of the W3C document]. Copyright © [YEAR] W3C® (MIT, ERCIM, Keio, Beihang)."
+
+Disclaimers
+
+THIS WORK IS PROVIDED "AS IS," AND COPYRIGHT HOLDERS MAKE NO REPRESENTATIONS OR WARRANTIES,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO, WARRANTIES OF MERCHANTABILITY OR FITNESS FOR
+ANY PARTICULAR PURPOSE OR THAT THE USE OF THE SOFTWARE OR DOCUMENT WILL NOT INFRINGE ANY THIRD
+PARTY PATENTS, COPYRIGHTS, TRADEMARKS OR OTHER RIGHTS.
+
+COPYRIGHT HOLDERS WILL NOT BE LIABLE FOR ANY DIRECT, INDIRECT, SPECIAL OR CONSEQUENTIAL DAMAGES
+ARISING OUT OF ANY USE OF THE SOFTWARE OR DOCUMENT.
+
+The name and trademarks of copyright holders may NOT be used in advertising or publicity
+pertaining to the work without specific, written prior permission. Title to copyright in this
+work will at all times remain with copyright holders.
+
+--------- END OF W3C LICENSE --------------------------------------------------------------------
+
+--------- BEGGINING OF W3C SHORT NOTICE ---------------------------------------------------------
+
+tao: https://github.com/tauri-apps/tao
+
+Copyright © 2021 World Wide Web Consortium, (Massachusetts Institute of Technology, European
+Research Consortium for Informatics and Mathematics, Keio University, Beihang). All Rights
+Reserved. This work is distributed under the W3C® Software License [1] in the hope that it will
+be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+FITNESS FOR A PARTICULAR PURPOSE.
+
+[1] http://www.w3.org/Consortium/Legal/copyright-software
+
+--------- END OF W3C SHORT NOTICE ---------------------------------------------------------------
 ```
 
 ## Source Headers With Their Own Terms
