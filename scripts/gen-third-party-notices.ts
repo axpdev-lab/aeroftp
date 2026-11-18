@@ -2194,9 +2194,11 @@ export function renderNotices(
   lines.push('The components listed here are distributed in accordance with their respective licensing terms.');
   lines.push('System libraries that are not Cargo or npm dependencies (for example WebKitGTK, which the AppImage bundles as a');
   lines.push('fallback) are not covered by this document. The AppImage ships the copyright file of the Ubuntu package of each library');
-  lines.push('it bundles in `usr/share/doc/<package>/copyright`, and `usr/share/doc/BUNDLED-LIBRARIES.txt` names that package and its version.');
-  lines.push('The source of each of those packages, at that version, is published with every release as the asset');
-  lines.push('`aeroftp-<version>-appimage-lib-sources.tar`, beside the AppImage of that version.');
+  lines.push('it bundles in `usr/share/doc/<package>/copyright`, and `usr/share/doc/BUNDLED-LIBRARIES.txt` names that package and its version,');
+  lines.push('the Ubuntu source package and version it was built from, and a link to that source on Launchpad. For at least three years');
+  lines.push('from the date of each release, anyone who asks can obtain from us the complete corresponding source code of each of those');
+  lines.push('libraries, at the version listed, for a charge no more than our cost of providing it: ask at dev@aeroftp.app, the contact');
+  lines.push('published in [SECURITY.md](SECURITY.md). The links are given for convenience only: the offer stands whether or not a link still works.');
   lines.push('');
 
   const allComponents = [...sortedCargoDeps, ...sortedNpmDeps];

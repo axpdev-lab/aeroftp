@@ -8,9 +8,10 @@
 # copyright. For every bundled shared object this script finds the package
 # that installed it and copies that file to usr/share/doc/<package>/copyright
 # in the AppDir, and writes usr/share/doc/BUNDLED-LIBRARIES.txt naming the
-# package and version of each library, and the release asset that holds the
-# source of each at that version (download-appimage-lib-sources.sh, run on
-# that list, writes it).
+# package and version of each library and the Ubuntu source package and
+# version it was built from, the Launchpad page of that source version
+# (https://launchpad.net/ubuntu/+source/<source>/<version>, the version with
+# its epoch, as Launchpad names it), and the written offer of that source.
 #
 # The package is the one that installed the file the library was copied from.
 # A file name installed by one package is that package's. A name several
@@ -21,7 +22,8 @@
 # bytes cannot be compared with the system file.
 #
 # It does not guess: a bundled library whose package cannot be found, or is
-# not one package, or whose package ships no copyright file or has no version,
+# not one package, or whose package ships no copyright file or has no version
+# or source version,
 # fails the build and is named; so does a folder of the AppDir that cannot be
 # listed.
 #
@@ -35,7 +37,6 @@ set -euo pipefail
 
 APPDIR="${1:?usage: bundle-appimage-lib-notices.sh <AppDir> <AeroFTP version>}"
 VERSION="${2:?usage: bundle-appimage-lib-notices.sh <AppDir> <AeroFTP version>}"
-SOURCES_ASSET="aeroftp-$VERSION-appimage-lib-sources.tar"
 ADMINDIR="${AEROFTP_DPKG_ADMINDIR:-/var/lib/dpkg}"
 DOC_ROOT="${AEROFTP_DOC_ROOT:-/usr/share/doc}"
 OUT_DOC="$APPDIR/usr/share/doc"
@@ -132,8 +133,11 @@ while IFS=$'\t' read -r rel pkg; do
     OWNER["$rel"]="$pkg"
 done <<< "$owners"
 
+# "<version> <source package> <source version> <Launchpad page of that
+# source version>", empty when any is missing.
 version_of() {
-    dpkg-query --admindir="$ADMINDIR" -W -f='${Version}\n' "$1" 2>/dev/null | awk 'NR == 1' || true
+    dpkg-query --admindir="$ADMINDIR" -W -f='${Version}\t${source:Package}\t${source:Version}\n' "$1" 2>/dev/null |
+        awk -F'\t' 'NR == 1 && $1 != "" && $2 != "" && $3 != "" { print $1 " " $2 " " $3 " https://launchpad.net/ubuntu/+source/" $2 "/" $3 }' || true
 }
 
 mkdir -p "$OUT_DOC"
@@ -157,7 +161,7 @@ for rel in "${LIBS[@]}"; do
     fi
     version="$(version_of "$pkg")"
     if [ -z "$version" ]; then
-        missing+=("$rel: package $pkg has no version in $ADMINDIR")
+        missing+=("$rel: package $pkg has no version or source version in $ADMINDIR")
         continue
     fi
     mkdir -p "$OUT_DOC/$pkg"
@@ -173,8 +177,9 @@ if [ "${#missing[@]}" -gt 0 ]; then
 fi
 
 {
-    echo "Libraries this AppImage bundles, the Ubuntu package that provides each, and its version."
-    echo "The terms of each package are in usr/share/doc/<package>/copyright. The source of each package, at that version, is in $SOURCES_ASSET, published with the AeroFTP $VERSION release beside this AppImage."
+    echo "Libraries this AppImage bundles. Each line: the library, the Ubuntu package that provides it and its version, then the Ubuntu source package it was built from, its version, and the Launchpad page of that source version."
+    echo "The terms of each package are in usr/share/doc/<package>/copyright."
+    echo "Written offer: for at least three years from the date of the AeroFTP $VERSION release, anyone who asks can obtain from us the complete corresponding source code of each library listed here, at the source package version listed, for a charge no more than our cost of providing it. Ask at dev@aeroftp.app, the contact published in SECURITY.md of https://github.com/axpdev-lab/aeroftp. The Launchpad links are given for convenience only: this offer stands whether or not a link still works."
     echo
     while IFS= read -r path; do
         echo "$path ${lines[$path]}"

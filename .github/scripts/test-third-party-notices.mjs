@@ -1761,7 +1761,9 @@ test('scope: the introduction claims only the Cargo and npm dependencies it list
   const md = generateNoticesMarkdown([], []);
   const intro = md.slice(0, md.indexOf('\n---\n'));
   assert.match(intro, /license texts\nfor the Rust \(Cargo\) and Node\.js \(npm\) production dependencies that AeroFTP distribution packages include:/);
-  assert.match(intro, /System libraries that are not Cargo or npm dependencies \(for example WebKitGTK, which the AppImage bundles as a\nfallback\) are not covered by this document\. The AppImage ships the copyright file of the Ubuntu package of each library\nit bundles in `usr\/share\/doc\/<package>\/copyright`, and `usr\/share\/doc\/BUNDLED-LIBRARIES\.txt` names that package and its version\.\nThe source of each of those packages, at that version, is published with every release as the asset\n`aeroftp-<version>-appimage-lib-sources\.tar`, beside the AppImage of that version\./);
+  assert.match(intro, /System libraries that are not Cargo or npm dependencies \(for example WebKitGTK, which the AppImage bundles as a\nfallback\) are not covered by this document\. The AppImage ships the copyright file of the Ubuntu package of each library\nit bundles in `usr\/share\/doc\/<package>\/copyright`, and `usr\/share\/doc\/BUNDLED-LIBRARIES\.txt` names that package and its version,\nthe Ubuntu source package and version it was built from, and a link to that source on Launchpad\. For at least three years\nfrom the date of each release, anyone who asks can obtain from us the complete corresponding source code of each of those\nlibraries, at the version listed, for a charge no more than our cost of providing it: ask at dev@aeroftp\.app, the contact\npublished in \[SECURITY\.md\]\(SECURITY\.md\)\. The links are given for convenience only: the offer stands whether or not a link still works\./);
+  // The contact of the offer is the one SECURITY.md publishes, not a new address.
+  assert.match(fs.readFileSync(path.join(ROOT, 'SECURITY.md'), 'utf8'), /security contact \*\*dev@aeroftp\.app\*\*/);
   assert.doesNotMatch(md, /all production dependencies|All bundled components|Total Bundled Components/);
   assert.match(md, /- \*\*Total Listed Components:\*\* 0/);
 });
@@ -1908,7 +1910,11 @@ test('AppImage: every bundled library ships the copyright file of the package th
   const dpkg = (pkgs) => {
     fs.rmSync(path.join(tmpDir, 'dpkg'), { recursive: true, force: true });
     for (const [pkg, files] of Object.entries(pkgs)) write(`dpkg/info/${pkg}:amd64.list`, `/.\n/usr\n${files.join('\n')}\n`);
-    write('dpkg/status', Object.keys(pkgs).map((pkg) => `Package: ${pkg}\nStatus: install ok installed\nArchitecture: amd64\nVersion: 1.${pkg.length}-0ubuntu1\n`).join('\n'));
+    // libgtk-3-0 is built from the gtk+3.0 source package, libfoo1 from a
+    // source version with an epoch; the others from a source of their own
+    // name and version, which dpkg then leaves out of the status.
+    const source = { 'libgtk-3-0': 'Source: gtk+3.0 (3.24.33-1ubuntu2)\n', libfoo1: 'Source: foo (2:1.7-0ubuntu1)\n' };
+    write('dpkg/status', Object.keys(pkgs).map((pkg) => `Package: ${pkg}\nStatus: install ok installed\nArchitecture: amd64\n${source[pkg] ?? ''}Version: 1.${pkg.length}-0ubuntu1\n`).join('\n'));
   };
   const ldcache = (names) => write('ldcache', `${names.length} libs found in cache \`/etc/ld.so.cache'\n${names.map((n) => `\t${n} (libc6,x86-64) => /lib/x86_64-linux-gnu/${n}\n`).join('')}`);
   try {
@@ -1933,16 +1939,32 @@ test('AppImage: every bundled library ships the copyright file of the package th
     for (const pkg of ['libwebkit2gtk-4.1-0', 'libgtk-3-0', 'libfoo1', 'foo-plugins']) assert.strictEqual(fs.readFileSync(path.join(doc, pkg, 'copyright'), 'utf8'), `${pkg} terms`);
     assert.ok(!fs.existsSync(path.join(doc, 'some-app')));
     const list = fs.readFileSync(path.join(doc, 'BUNDLED-LIBRARIES.txt'), 'utf8');
-    assert.match(list, /The source of each package, at that version, is in aeroftp-9\.8\.7-appimage-lib-sources\.tar, published with the AeroFTP 9\.8\.7 release beside this AppImage\./);
-    for (const line of [
-      'usr/lib/fallback/libwebkit2gtk-4.1.so.0 libwebkit2gtk-4.1-0 1.19-0ubuntu1',
-      'usr/lib/fallback/libgtk-3.so.0 libgtk-3-0 1.10-0ubuntu1',
-      'usr/lib/gtk-3.0/3.0.0/immodules/im-xim.so libgtk-3-0 1.10-0ubuntu1',
-      // The same name, each to the package that installed the file it was copied from.
-      'usr/lib/fallback/libfoo.so.1 libfoo1 1.7-0ubuntu1',
-      'usr/lib/foo/plugins/libfoo.so.1 foo-plugins 1.11-0ubuntu1',
-    ]) {
-      assert.ok(list.includes(`\n${line}\n`), line);
+    // The written offer of the source, valid three years from the release,
+    // at the contact SECURITY.md publishes; no asset is named.
+    assert.ok(
+      list.includes('\nWritten offer: for at least three years from the date of the AeroFTP 9.8.7 release, anyone who asks can obtain from us the complete corresponding source code of each library listed here, at the source package version listed, for a charge no more than our cost of providing it. Ask at dev@aeroftp.app, the contact published in SECURITY.md of https://github.com/axpdev-lab/aeroftp. The Launchpad links are given for convenience only: this offer stands whether or not a link still works.\n'),
+      list,
+    );
+    assert.doesNotMatch(list, /lib-sources|\.tar\b/);
+    const entries = [
+      'usr/lib/fallback/libwebkit2gtk-4.1.so.0 libwebkit2gtk-4.1-0 1.19-0ubuntu1 libwebkit2gtk-4.1-0 1.19-0ubuntu1 https://launchpad.net/ubuntu/+source/libwebkit2gtk-4.1-0/1.19-0ubuntu1',
+      'usr/lib/fallback/libgtk-3.so.0 libgtk-3-0 1.10-0ubuntu1 gtk+3.0 3.24.33-1ubuntu2 https://launchpad.net/ubuntu/+source/gtk+3.0/3.24.33-1ubuntu2',
+      'usr/lib/gtk-3.0/3.0.0/immodules/im-xim.so libgtk-3-0 1.10-0ubuntu1 gtk+3.0 3.24.33-1ubuntu2 https://launchpad.net/ubuntu/+source/gtk+3.0/3.24.33-1ubuntu2',
+      // The same name, each to the package that installed the file it was
+      // copied from. Launchpad names a version with its epoch.
+      'usr/lib/fallback/libfoo.so.1 libfoo1 1.7-0ubuntu1 foo 2:1.7-0ubuntu1 https://launchpad.net/ubuntu/+source/foo/2:1.7-0ubuntu1',
+      'usr/lib/foo/plugins/libfoo.so.1 foo-plugins 1.11-0ubuntu1 foo-plugins 1.11-0ubuntu1 https://launchpad.net/ubuntu/+source/foo-plugins/1.11-0ubuntu1',
+    ];
+    for (const line of entries) assert.ok(list.includes(`\n${line}\n`), line);
+    // Every listed library names its package, its version, its source
+    // package and version (what the offer is honoured from), and the
+    // Launchpad page of exactly that source version.
+    const listed = list.split('\n').filter((l) => l.startsWith('usr/'));
+    assert.strictEqual(listed.length, entries.length);
+    for (const line of listed) {
+      const m = line.match(/^usr\/\S+ \S+ \d\S* (\S+) (\d\S*) (\S+)$/);
+      assert.ok(m, line);
+      assert.strictEqual(m[3], `https://launchpad.net/ubuntu/+source/${m[1]}/${m[2]}`, line);
     }
     assert.doesNotMatch(list, /libown/, 'AeroFTP\'s own folder is not a bundled system library');
     // A name more than one package installs, which neither its path nor the
@@ -1960,7 +1982,7 @@ test('AppImage: every bundled library ships the copyright file of the package th
     run();
     const status = fs.readFileSync(path.join(tmpDir, 'dpkg/status'), 'utf8');
     write('dpkg/status', status.split('\n\n').filter((s) => !s.includes('Package: libsoup-3.0-0\n')).join('\n\n'));
-    fails(/fallback\/libsoup-3\.0\.so\.0: package libsoup-3\.0-0 has no version/);
+    fails(/fallback\/libsoup-3\.0\.so\.0: package libsoup-3\.0-0 has no version or source version/);
     dpkg({ ...packages, 'libsoup-3.0-0': [`${A}/libsoup-3.0.so.0`] });
     run();
     // A folder find cannot read fails the build instead of shipping the
@@ -1976,110 +1998,10 @@ test('AppImage: every bundled library ships the copyright file of the package th
     }
     // The release workflow runs it on the AppDir it packs.
     const workflow = fs.readFileSync(path.join(ROOT, '.github/workflows/build.yml'), 'utf8');
-    assert.match(workflow, /\n {10}"\$GITHUB_WORKSPACE\/src-tauri\/scripts\/patch-appimage-lib-fallback\.sh" "\$\(pwd\)"\n[\s\S]*?\n {10}"\$GITHUB_WORKSPACE\/src-tauri\/scripts\/bundle-appimage-lib-notices\.sh" "\$\(pwd\)" "\$AEROFTP_VERSION"\n[\s\S]*?appimagetool/);
-  } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-  }
-});
-
-test('AppImage sources: the source of every bundled package at its version goes in one tar, and one that cannot be fetched fails the build', { skip: process.platform === 'win32' }, () => {
-  const script = path.join(ROOT, 'src-tauri/scripts/download-appimage-lib-sources.sh');
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'appimage-sources-fixture-'));
-  const write = (rel, content, mode) => {
-    fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, rel), content);
-    if (mode) fs.chmodSync(path.join(tmpDir, rel), mode);
-  };
-  const sha = (text) => createHash('sha256').update(text).digest('hex');
-  // Two bundled packages of one source (gtk+3.0) and one of its own.
-  write('list', [
-    'Libraries this AppImage bundles, the Ubuntu package that provides each, and its version.',
-    'The terms of each package are in usr/share/doc/<package>/copyright.',
-    '',
-    'usr/lib/fallback/libgtk-3.so.0 libgtk-3-0 3.24.33-1ubuntu2.2',
-    'usr/lib/fallback/libgdk-3.so.0 libgtk-3-0 3.24.33-1ubuntu2.2',
-    'usr/lib/gtk-3.0/3.0.0/immodules/im-xim.so gtk3-modules 3.24.33-1ubuntu2.2',
-    'usr/lib/fallback/libz.so.1 zlib1g 1:1.2.11.dfsg-2ubuntu9.2',
-    '',
-  ].join('\n'));
-  const status = (extra = '') => write('dpkg/status', [
-    'Package: libgtk-3-0\nStatus: install ok installed\nArchitecture: amd64\nSource: gtk+3.0\nVersion: 3.24.33-1ubuntu2.2\n',
-    'Package: gtk3-modules\nStatus: install ok installed\nArchitecture: amd64\nSource: gtk+3.0\nVersion: 3.24.33-1ubuntu2.2\n',
-    `Package: zlib1g\nStatus: install ok installed\nArchitecture: amd64\nSource: zlib\nVersion: 1:1.2.11.dfsg-2ubuntu9.2\n${extra}`,
-  ].join('\n'));
-  status();
-  fs.mkdirSync(path.join(tmpDir, 'dpkg/info'), { recursive: true });
-  // apt-get source finds gtk+3.0 in the runner's archive, not the zlib
-  // version (an update since the image was built): Launchpad has it.
-  write('bin/apt-get', `#!/bin/bash\ncase "$*" in *"gtk+3.0=3.24.33-1ubuntu2.2"*) echo dsc > gtk+3.0_3.24.33-1ubuntu2.2.dsc; echo tar > gtk+3.0_3.24.33.orig.tar.xz ;; *) exit 100 ;; esac\n`, 0o755);
-  const orig = 'zlib orig';
-  const debian = 'zlib debian';
-  const dsc = (origSum) => `Format: 3.0 (quilt)\nSource: zlib\nChecksums-Sha256:\n ${origSum} ${orig.length} zlib_1.2.11.dfsg.orig.tar.gz\n ${sha(debian)} ${debian.length} zlib_1.2.11.dfsg-2ubuntu9.2.debian.tar.xz\nFiles:\n x 1 y\n`;
-  write('lp/zlib_1.2.11.dfsg-2ubuntu9.2.dsc', dsc(sha(orig)));
-  write('lp/zlib_1.2.11.dfsg.orig.tar.gz', orig);
-  write('lp/zlib_1.2.11.dfsg-2ubuntu9.2.debian.tar.xz', debian);
-  // curl serves the Launchpad URLs of zlib 1:1.2.11.dfsg-2ubuntu9.2 from lp/.
-  write('bin/curl', `#!/bin/bash\nout=""; url=""\nwhile [ $# -gt 0 ]; do case "$1" in -o) out="$2"; shift 2 ;; -*) shift ;; *) url="$1"; shift ;; esac; done\ncase "$url" in https://launchpad.net/ubuntu/+archive/primary/+sourcefiles/zlib/1:1.2.11.dfsg-2ubuntu9.2/*) cp -- "${tmpDir}/lp/\${url##*/}" "$out" ;; *) exit 22 ;; esac\n`, 0o755);
-  const tar = path.join(tmpDir, 'out/sources.tar');
-  fs.mkdirSync(path.dirname(tar), { recursive: true });
-  const run = () =>
-    execFileSync('bash', [script, path.join(tmpDir, 'list'), tar], {
-      env: { ...process.env, PATH: `${path.join(tmpDir, 'bin')}:${process.env.PATH}`, AEROFTP_DPKG_ADMINDIR: path.join(tmpDir, 'dpkg') },
-      stdio: 'pipe',
-      encoding: 'utf8',
-    });
-  const fails = (pattern) => assert.throws(run, (e) => pattern.test(String(e.stderr)) || assert.fail(String(e.stderr)));
-  try {
-    run();
-    const listed = execFileSync('tar', ['-tf', tar], { encoding: 'utf8' }).split('\n').filter(Boolean).sort();
-    assert.deepStrictEqual(listed, [
-      'SOURCES.txt',
-      'sources/',
-      'sources/gtk+3.0_3.24.33-1ubuntu2.2/',
-      'sources/gtk+3.0_3.24.33-1ubuntu2.2/gtk+3.0_3.24.33-1ubuntu2.2.dsc',
-      'sources/gtk+3.0_3.24.33-1ubuntu2.2/gtk+3.0_3.24.33.orig.tar.xz',
-      'sources/zlib_1.2.11.dfsg-2ubuntu9.2/',
-      'sources/zlib_1.2.11.dfsg-2ubuntu9.2/zlib_1.2.11.dfsg-2ubuntu9.2.debian.tar.xz',
-      'sources/zlib_1.2.11.dfsg-2ubuntu9.2/zlib_1.2.11.dfsg-2ubuntu9.2.dsc',
-      'sources/zlib_1.2.11.dfsg-2ubuntu9.2/zlib_1.2.11.dfsg.orig.tar.gz',
-    ]);
-    const index = execFileSync('tar', ['-xOf', tar, 'SOURCES.txt'], { encoding: 'utf8' });
-    for (const line of ['gtk3-modules 3.24.33-1ubuntu2.2 gtk+3.0 3.24.33-1ubuntu2.2', 'libgtk-3-0 3.24.33-1ubuntu2.2 gtk+3.0 3.24.33-1ubuntu2.2', 'zlib1g 1:1.2.11.dfsg-2ubuntu9.2 zlib 1:1.2.11.dfsg-2ubuntu9.2']) {
-      assert.ok(index.includes(`\n${line}\n`), line);
-    }
-    // A file that does not match the SHA-256 of its .dsc is no source.
-    write('lp/zlib_1.2.11.dfsg-2ubuntu9.2.dsc', dsc(sha('another orig')));
-    fails(/zlib 1:1\.2\.11\.dfsg-2ubuntu9\.2: its source could not be downloaded/);
-    write('lp/zlib_1.2.11.dfsg-2ubuntu9.2.dsc', dsc(sha(orig)));
-    // A source neither archive has fails and is named.
-    fs.rmSync(path.join(tmpDir, 'lp/zlib_1.2.11.dfsg-2ubuntu9.2.debian.tar.xz'));
-    fails(/zlib 1:1\.2\.11\.dfsg-2ubuntu9\.2: its source could not be downloaded/);
-    write('lp/zlib_1.2.11.dfsg-2ubuntu9.2.debian.tar.xz', debian);
-    run();
-    // The list names a version that is not the one installed, or a package
-    // the dpkg database does not have.
-    write('dpkg/status', fs.readFileSync(path.join(tmpDir, 'dpkg/status'), 'utf8').replace('Version: 1:1.2.11.dfsg-2ubuntu9.2', 'Version: 1:1.2.11.dfsg-2ubuntu9.3'));
-    fails(/zlib1g: the list names 1:1\.2\.11\.dfsg-2ubuntu9\.2, 1:1\.2\.11\.dfsg-2ubuntu9\.3 is installed/);
-    status();
-    fs.appendFileSync(path.join(tmpDir, 'list'), 'usr/lib/fallback/libsoup-3.0.so.0 libsoup-3.0-0 3.0.7-0ubuntu1\n');
-    fails(/libsoup-3\.0-0 3\.0\.7-0ubuntu1: not in the dpkg database/);
-    // A list without packages has nothing to publish: it fails.
-    write('list', 'Libraries this AppImage bundles.\n');
-    fails(/names no bundled package/);
-    // The release workflow runs it on the Linux leg of every build, without
-    // a condition that skips a tag or ignores its failure, and publishes the
-    // tar with the installers.
-    const workflow = fs.readFileSync(path.join(ROOT, '.github/workflows/build.yml'), 'utf8');
-    const step = workflow.match(/\n {6}- name: Download the sources of the AppImage's bundled libraries\n([\s\S]*?)(?=\n {6}- name: )/);
-    assert.ok(step, 'the sources step exists');
-    assert.match(step[1], /^ {8}if: matrix\.target == 'linux'\n/m);
-    assert.doesNotMatch(step[1], /^ {8}(?:continue-on-error|if: .*(?:refs\/tags|pull_request|event_name))/m);
-    assert.match(step[1], /\n {10}src-tauri\/scripts\/download-appimage-lib-sources\.sh \\\n {12}\/tmp\/appimage-fix\/squashfs-root\/usr\/share\/doc\/BUNDLED-LIBRARIES\.txt \\\n {12}"src-tauri\/target\/release\/bundle\/appimage\/aeroftp-\$\{AEROFTP_VERSION\}-appimage-lib-sources\.tar"\n/);
-    assert.ok(workflow.indexOf('bundle-appimage-lib-notices.sh') < workflow.indexOf('download-appimage-lib-sources.sh'), 'after the list is written');
-    const upload = workflow.match(/\n {6}- name: Upload Linux installers\n([\s\S]*?)(?=\n {6}- name: )/);
-    assert.ok(upload && /\n {12}src-tauri\/target\/release\/bundle\/appimage\/aeroftp-\*-appimage-lib-sources\.tar\n/.test(upload[1]), 'the tar goes with the installers to the release');
-    const publish = workflow.match(/\n {2}publish-github-release:\n([\s\S]*?)(?=\n {2}[a-z0-9_-]+:\n)/);
-    assert.ok(publish && /\n {10}files: \|\n {12}release-assets\/\*\*\n/.test(publish[1]), 'every downloaded artifact is published');
+    assert.match(workflow, /\n {10}AEROFTP_VERSION=\$\(jq -r \.version src-tauri\/tauri\.conf\.json\)\n[\s\S]*?\n {10}"\$GITHUB_WORKSPACE\/src-tauri\/scripts\/patch-appimage-lib-fallback\.sh" "\$\(pwd\)"\n[\s\S]*?\n {10}"\$GITHUB_WORKSPACE\/src-tauri\/scripts\/bundle-appimage-lib-notices\.sh" "\$\(pwd\)" "\$AEROFTP_VERSION"\n[\s\S]*?appimagetool/);
+    // The source is offered in writing, not downloaded or published by the build.
+    assert.doesNotMatch(workflow, /download-appimage-lib-sources|apt-get source|lib-sources\.tar|deb-src/);
+    assert.ok(!fs.existsSync(path.join(ROOT, 'src-tauri/scripts/download-appimage-lib-sources.sh')));
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

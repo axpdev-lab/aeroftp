@@ -590,8 +590,8 @@ jobs:
           # --- Fix 3b: the terms of every bundled library ---
           # THIRD-PARTY-NOTICES.md covers the Cargo and npm dependencies; each
           # bundled library ships its Ubuntu package's copyright file under
-          # usr/share/doc/<package>/, listed in usr/share/doc/BUNDLED-LIBRARIES.txt,
-          # which names the release asset with their sources (next step).
+          # usr/share/doc/<package>/, listed in usr/share/doc/BUNDLED-LIBRARIES.txt
+          # with its source package and the written offer of that source.
           # A library with no package or no copyright file fails the build.
           "$GITHUB_WORKSPACE/src-tauri/scripts/bundle-appimage-lib-notices.sh" "$(pwd)" "$AEROFTP_VERSION"
 
@@ -703,30 +703,6 @@ jobs:
           # listing it cannot read instead of passing it.
           "$GITHUB_WORKSPACE/scripts/appimage-permissions-check.sh" "$APPIMAGE"
 
-      # The source of every Ubuntu package whose libraries the AppImage
-      # bundles (several under the LGPL), at the version bundled, published
-      # with the release as one asset beside the AppImage and named in its
-      # BUNDLED-LIBRARIES.txt and in THIRD-PARTY-NOTICES.md. It runs on every
-      # build of the Linux leg, so a source that cannot be fetched fails main
-      # before any tag; a package without its source fails the build, as one
-      # without its copyright file does. The deb-src entries are the runner's
-      # own Ubuntu archive, the one the bundled packages came from.
-      - name: Download the sources of the AppImage's bundled libraries
-        if: matrix.target == 'linux'
-        shell: bash
-        run: |
-          set -euo pipefail
-          AEROFTP_VERSION=$(jq -r .version src-tauri/tauri.conf.json)
-          sed -n 's/^deb \(.*\)$/deb-src \1/p' /etc/apt/sources.list | sudo tee /etc/apt/sources.list.d/aeroftp-deb-src.list
-          if [ ! -s /etc/apt/sources.list.d/aeroftp-deb-src.list ]; then
-            echo "::error::no Ubuntu archive in /etc/apt/sources.list to read the sources from"
-            exit 1
-          fi
-          sudo apt-get update -qq
-          src-tauri/scripts/download-appimage-lib-sources.sh \
-            /tmp/appimage-fix/squashfs-root/usr/share/doc/BUNDLED-LIBRARIES.txt \
-            "src-tauri/target/release/bundle/appimage/aeroftp-${AEROFTP_VERSION}-appimage-lib-sources.tar"
-
       - name: Assert Linux ACL packaging contracts
         if: matrix.target == 'linux'
         shell: bash
@@ -827,8 +803,6 @@ jobs:
             # release-assets like the installers, so it is signed with
             # Sigstore and published among the release assets.
             src-tauri/target/release/bundle/appimage/*.AppImage.zsync
-            # The source of the libraries the AppImage bundles.
-            src-tauri/target/release/bundle/appimage/aeroftp-*-appimage-lib-sources.tar
           if-no-files-found: warn
           retention-days: 1
 
