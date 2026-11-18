@@ -22,14 +22,14 @@ spec:
 
     # The maintainer's GPG signing keys, one per workstation (L1, L2),
     # as published on the GitHub account. This is the day-to-day path:
-    # the key is unlocked once in gpg-agent, so agents can sign without
-    # a browser login. Deleting a key from the GitHub account removes it
+    # gpg-agent caches the passphrase, so agents can sign without a
+    # browser login. Deleting a key from the GitHub account removes it
     # from here.
     - key:
         kms: https://github.com/axpnet.gpg
 
-    # Commits GitHub creates and signs itself: squash and merge commits
-    # made on main from the web UI, and edits made in the web editor.
-    # Rebase merges are not signed by GitHub.
+    # Commits GitHub creates and signs itself: the squash commit of a
+    # merged pull request, and edits made in the web editor. Rebase
+    # merges are not signed by GitHub.
     - key:
         kms: https://github.com/web-flow.gpg
