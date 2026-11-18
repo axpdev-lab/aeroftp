@@ -7946,6 +7946,12 @@ thread_local! {
     static HOLDS_TEST_LOCK: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
+/// Whether this thread holds [`test_lock`].
+#[cfg(test)]
+pub(crate) fn holds_test_lock() -> bool {
+    HOLDS_TEST_LOCK.get()
+}
+
 #[cfg(test)]
 fn assert_test_lock_held() {
     assert!(

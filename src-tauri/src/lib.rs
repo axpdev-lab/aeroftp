@@ -822,11 +822,26 @@ mod only_main_window_tests {
 /// variable such as `HOME`. Tests run on parallel threads of one process, so a
 /// lock per module serialises a module against itself and nothing else: two
 /// modules each holding their own lock still overwrite each other's `HOME`.
+///
+/// A test that also takes [`user_partitions::test_lock`] takes this one
+/// first: two tests taking them in opposite orders wait on each other for
+/// good, so taking this one while holding the other fails the test instead.
 #[cfg(test)]
 pub(crate) mod test_env {
     pub(crate) fn lock() -> std::sync::MutexGuard<'static, ()> {
+        assert!(
+            !crate::user_partitions::holds_test_lock(),
+            "test_env::lock() taken while this thread holds user_partitions::test_lock(): take test_env::lock() first"
+        );
         static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
         LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    #[test]
+    #[should_panic(expected = "take test_env::lock() first")]
+    fn the_env_lock_after_the_partition_lock_fails_instead_of_waiting() {
+        let _partition = crate::user_partitions::test_lock();
+        let _env = lock();
     }
 }
 pub mod connection_manifest;
