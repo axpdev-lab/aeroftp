@@ -36,6 +36,8 @@ import {
   parseMode,
   writeNoticesFile,
   npmInstallsHere,
+  holderKey,
+  holderOfNotice,
 } from '../../scripts/gen-third-party-notices.ts';
 
 // The committed notices with the blocks the generator reproduces as shipped,
@@ -597,7 +599,7 @@ test('standard SPDX texts: every term of the chosen license needs its text, an o
   // Without manifest authors the holders the package's own files name are its
   // authors; with neither, a reviewed attribution is still required.
   const holderOnly = { ...comp('test-holder-only', 'MIT AND Apache-2.0', [['LICENSE-MIT', mit]]), authors: [] };
-  assert.match(generateNoticesMarkdown([holderOnly], []), /- `test-holder-only@1\.0\.0` - SPDX: `MIT AND Apache-2\.0` \(authors: named in its license files\)\n {2}- The copyright notices it ships are in its license files, reproduced above \(`LICENSE-MIT`\)\n/);
+  assert.match(generateNoticesMarkdown([holderOnly], []), /- `test-holder-only@1\.0\.0` - SPDX: `MIT AND Apache-2\.0` \(authors: named in its license files\)\n {2}- The copyright notices it ships are reproduced above, with its license files \(`LICENSE-MIT`\)\n/);
   assert.throws(
     () => generateNoticesMarkdown([{ ...comp('test-no-holder', 'MIT AND Apache-2.0', [['LICENSE-MIT', shippedLicense('', 'MIT')]]), authors: [] }], []),
     /Component test-no-holder@1\.0\.0 has no manifest authors and is missing reviewed attribution/
@@ -1190,6 +1192,65 @@ test('comment closers: a line comment keeps a closer in its text, a block commen
   }
 });
 
+test('source notices: a package whose license names a holder still lists the other holders of its sources, each once', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'extra-holder-fixture-'));
+  try {
+    const write = (rel, content) => {
+      fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, rel), content);
+    };
+    const mit = 'MIT License\n\nCopyright (c) 2020 Wrapper Author\n\nPermission is hereby granted, free of charge, to any person obtaining a copy of this software.';
+    write('LICENSE', mit);
+    // A second, untagged holder in the sources, in two files: listed once.
+    write('src/lib.rs', '// Copyright (c) 2021 Contributor Two\nfn a() {}\n');
+    write('src/two.rs', '// Copyright (c) 2021 Contributor Two\nfn b() {}\n');
+    // The holder the license names, with other years and spellings: not listed again.
+    write('src/own.rs', '// Copyright (c) 2022 Wrapper Author.\n');
+    write('README.md', '(c) 2015 - Present - The Wrapper Author\n');
+    const comp = { name: 'extra-holder', version: '1.0.0', license: 'MIT', source: 'cargo', packageDir: tmpDir, authors: ['Wrapper Author'], ...readPackageFiles(tmpDir, 'extra-holder@1.0.0') };
+    const md = generateNoticesMarkdown([comp], []);
+    const entry = md.slice(md.indexOf('`extra-holder@1.0.0`'), md.indexOf('```', md.indexOf('`extra-holder@1.0.0`')));
+    assert.deepStrictEqual(entry.match(/^ {2}- .*$/gm), ['  - Copyright (c) 2021 Contributor Two (src/lib.rs)']);
+    assert.strictEqual(md.split('Copyright (c) 2020 Wrapper Author').length - 1, 1, 'the license text, with its holder, is reproduced once');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('source notices: a notice read from a string literal, a source map, a README or a man page is the notice alone', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'notice-shape-fixture-'));
+  try {
+    const write = (rel, content) => {
+      fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, rel), content);
+    };
+    write('src/html.rs', 'const S: &str = "// Copyright 2019-2024 Literal Holder\\r// SPDX-License-Identifier: MIT\\r\\nwindow.x = () => {}";\n');
+    write('lib/a.js.map', '{"sourcesContent":["/**\\n * Copyright (c) 2017 Map Holder. All rights reserved.\\n * @license MIT\\n */"]}\n');
+    write('README.md', 'Copyright (c) 2014-2017, Link Holder ([www.example.com](https://www.example.com/home)) (MIT License)<br>\nCopyright (c) 2014 Entity Holder &lt;holder@example.com&gt;\n');
+    write('man/tool.1', 'Copyright (c) 2011\\-2014, Roff Holder (MIT License)\\.\n');
+    write('src/mail.rs', '// Copyright (c) 2016 Mail Holder <mail@example.com>\n');
+    assert.deepStrictEqual(findPackageCopyrightNotices(tmpDir).map((n) => n.notice), [
+      'Copyright (c) 2011-2014, Roff Holder',
+      'Copyright (c) 2014 Entity Holder <holder@example.com>',
+      'Copyright (c) 2014-2017, Link Holder (www.example.com)',
+      'Copyright (c) 2016 Mail Holder <mail@example.com>',
+      'Copyright (c) 2017 Map Holder. All rights reserved.',
+      'Copyright 2019-2024 Literal Holder',
+    ]);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('holders: a dash after the years and a leading "The" name the same holder', () => {
+  const key = (n) => holderKey(holderOfNotice(n));
+  assert.strictEqual(key('(c) 2015 - Present - The Tauri Programme within The Commons Conservancy.'), key('Copyright (c) 2017 - Present Tauri Programme within The Commons Conservancy'));
+  assert.strictEqual(key('Copyright 2014 The Rust Project Developers.'), key('Copyright 2015 Rust Project Developers'));
+  // A holder whose name only starts like another stays apart.
+  assert.notStrictEqual(key('Copyright 2020 Theodore Smith'), key('Copyright 2020 Odore Smith'));
+  assert.notStrictEqual(key('Copyright 2020 Alice'), key('Copyright 2020 Alice Smith'));
+});
+
 test('bundled code: an unstarred block comment is read whole, its holder and its own terms are reproduced', () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bundled-unstarred-fixture-'));
   try {
@@ -1624,7 +1685,15 @@ test('bundled code: a block comment is found however far its opener is from the 
     const md = generateNoticesMarkdown([comp], []);
     const bsd = md.slice(md.indexOf('### Bundled Code: BSD-2-Clause'));
     assert.ok(bsd.includes(terms), 'the shipped permission text is reproduced');
-    assert.doesNotMatch(md, /Adjacent Holder|After Holder|Later Holder|No copyright line in the header/);
+    // The notices outside the headers are the package's sources, listed with
+    // the package; a header holder is listed only with its bundled code.
+    const entry = md.slice(md.indexOf('`long-block-pkg@1.0.0`'), md.indexOf('### Bundled Code'));
+    assert.deepStrictEqual(entry.match(/^ {2}- .*$/gm), [
+      '  - Copyright (c) 2001 Adjacent Holder (vendor/long.c)',
+      '  - Copyright (c) 2002 After Holder (vendor/long.c)',
+      '  - Copyright (c) 2003 Later Holder (vendor/glob.c)',
+    ]);
+    assert.doesNotMatch(md.slice(md.indexOf('### Bundled Code')), /Adjacent Holder|After Holder|Later Holder|No copyright line in the header/);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

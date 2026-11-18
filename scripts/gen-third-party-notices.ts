@@ -804,6 +804,19 @@ export function findPackageCopyrightNotices(
       if (match) {
         // A notice inside a minified line ends where its comment does.
         let cleaned = (closes ? match[0].replace(FROM_COMMENT_CLOSER, '') : match[0]).replace(/(?:\\n)?"[);,\s]*$/, '').trim();
+        // A notice inside a string literal or a source map ends at its first
+        // escaped line break; one in a README or a man page is read as text:
+        // a Markdown link keeps its words, a `<br>` and entities go, and roff
+        // escapes (`2011\-2014`, `\.`) are the characters they stand for.
+        cleaned = cleaned
+          .replace(/\\[rn].*$/, '')
+          .replace(/\[([^\]]+)\]\([^)\s]+\)/g, '$1')
+          .replace(/<\/?(?:br|b|i|em|strong|p|span|sub|sup)\b[^<>@]*>/gi, '')
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>')
+          .replace(/&amp;/g, '&')
+          .replace(/\\([-.\\])/g, '$1')
+          .trim();
         cleaned = cleaned.replace(/\s*\([A-Za-z0-9\.\s\-]+ [Ll]icense\)\.?$/, '');
         cleaned = cleaned.replace(/\s+See the\b.*/i, '');
         cleaned = cleaned.trim();
@@ -1184,7 +1197,7 @@ export function noOwnNoticeLine(comp: ComponentInfo): string {
 export function holderOfNotice(notice: string): string {
   return notice
     .replace(/^\s*(?:(?:copyright|\(c\)|©)\s*)+/i, '')
-    .replace(/^(?:[0-9]{4}(?:\s*[-,–]\s*(?:[0-9]{4}|present))*[,\s]*)+/i, '')
+    .replace(/^(?:[0-9]{4}(?:\s*[-,–]\s*(?:[0-9]{4}|present))*[-,–\s]*)+/i, '')
     .replace(/\.?\s*all rights reserved\.?.*$/i, '')
     .replace(/[.,;\s]+$/, '')
     .trim();
@@ -1192,7 +1205,7 @@ export function holderOfNotice(notice: string): string {
 
 /** A holder compared without case, spacing or a trailing period. */
 export function holderKey(holder: string): string {
-  return holder.toLowerCase().replace(/\s+/g, ' ').replace(/[.,;\s]+$/, '').trim();
+  return holder.toLowerCase().replace(/\s+/g, ' ').replace(/[.,;\s]+$/, '').trim().replace(/^the /, '');
 }
 
 /**
@@ -1984,6 +1997,16 @@ export function renderNotices(
           for (const [n, licenses] of byNotice) {
             lines.push(`  - ${n} (in a source header under ${licenses.sort(compareStrings).join(', ')})`);
           }
+          // The files name a holder, and the sources may name others (an
+          // untagged src/lib.rs by a second contributor): each of their
+          // notices is listed once, leaving out the holders the files name
+          // and those of the bundled headers, listed above or with the
+          // bundled code under their own license.
+          const named = new Set([...ownHolders, ...bundledOf(fullComp).flatMap((b) => b.notices).map((n) => holderKey(holderOfNotice(n)))]);
+          const excluded = [...fullComp.licenseFiles, ...fullComp.noticeFiles].map((f) => f.filename);
+          for (const n of findPackageCopyrightNotices(fullComp.packageDir, excluded, vendoredFolders(fullComp))) {
+            if (!named.has(holderKey(holderOfNotice(n.notice)))) lines.push(`  - ${n.notice} (${n.file})`);
+          }
         }
       }
       if (fullComp && fullComp.licenseFiles.some((f) => !f.vendored) && !hasCopyrightHolderInFiles(fullComp)) {
@@ -2043,7 +2066,7 @@ export function renderNotices(
       .filter((f) => !f.vendored && hasCopyrightHolderInFiles({ ...comp, licenseFiles: [f], noticeFiles: [] }))
       .map((f) => `\`${f.filename}\``);
     return files.length > 0
-      ? `The copyright notices it ships are in its license files, reproduced above (${files.join(', ')})`
+      ? `The copyright notices it ships are reproduced above, with its license files (${files.join(', ')})`
       : undefined;
   };
 
