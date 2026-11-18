@@ -1364,12 +1364,28 @@ export function assertNoGeneratedPlaceholders(output: string, verbatimBlocks: st
   }
 }
 
+/** The notices markdown. */
 export function generateNoticesMarkdown(
   cargoDeps: ComponentInfo[],
   npmDeps: ComponentInfo[],
   spdxLicensesFile = SPDX_STANDARD_LICENSES_FILE,
   nonFreeExceptions: NonFreeException[] = KNOWN_NON_FREE_EXCEPTIONS
 ): string {
+  return renderNotices(cargoDeps, npmDeps, spdxLicensesFile, nonFreeExceptions).output;
+}
+
+/**
+ * The notices markdown and the blocks it reproduces as shipped, the ones
+ * assertNoGeneratedPlaceholders leaves out: a check of the committed file
+ * leaves out the same blocks, never every fenced one, because the standard
+ * texts the notices fill in are fenced too.
+ */
+export function renderNotices(
+  cargoDeps: ComponentInfo[],
+  npmDeps: ComponentInfo[],
+  spdxLicensesFile = SPDX_STANDARD_LICENSES_FILE,
+  nonFreeExceptions: NonFreeException[] = KNOWN_NON_FREE_EXCEPTIONS
+): { output: string; verbatimBlocks: string[] } {
   // Verify all pinned fallback attributions declare a non-empty source
   for (const [key, attr] of Object.entries(PINNED_FALLBACK_ATTRIBUTIONS)) {
     if (!attr.source || attr.source.trim().length === 0) {
@@ -1906,7 +1922,7 @@ export function generateNoticesMarkdown(
     seenIds.add(id);
   }
 
-  return output;
+  return { output, verbatimBlocks };
 }
 
 function main() {

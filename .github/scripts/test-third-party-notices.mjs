@@ -31,7 +31,25 @@ import {
   holdersOf,
   assertNoGeneratedPlaceholders,
   KNOWN_SPDX_TAG_MENTIONS,
+  renderNotices,
 } from '../../scripts/gen-third-party-notices.ts';
+
+// The committed notices with the blocks the generator reproduces as shipped,
+// from a fresh generation of the same tree (check:licenses runs first in CI,
+// so the two are equal). Checks of the committed file read the text the
+// notices write: content minus exactly those blocks.
+let committedNotices;
+function committedNoticesWithVerbatim() {
+  if (!committedNotices) {
+    const content = fs.readFileSync(path.join(ROOT, 'THIRD-PARTY-NOTICES.md'), 'utf8').replace(/\r\n/g, '\n');
+    const { output, verbatimBlocks } = renderNotices(collectCargoDependencies(), collectNpmDependencies());
+    assert.strictEqual(content, output, 'THIRD-PARTY-NOTICES.md is up to date (npm run gen:licenses)');
+    let generated = content;
+    for (const block of verbatimBlocks) generated = generated.split(block).join('');
+    committedNotices = { content, verbatimBlocks, generated };
+  }
+  return committedNotices;
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1403,12 +1421,41 @@ test('licensing exceptions: fails fast on restriction clauses wrapped across lin
   );
 });
 
+test('committed notices: a placeholder in a block quoted as shipped passes, one in a generated block or line fails', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'quoted-placeholder-fixture-'));
+  try {
+    const write = (rel, content) => {
+      fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, rel), content);
+    };
+    const standard = JSON.parse(fs.readFileSync(SPDX_STANDARD_LICENSES_FILE, 'utf8'));
+    write('LICENSE', standard['MIT'].replace(/Copyright \(c\) <year> <copyright holders>/, 'Copyright (c) 2020 Wrapper Author'));
+    // An upstream header that keeps the template line and its own terms.
+    write('lib/quoted.c', '/*\n * Copyright (c) <year> <copyright holders>\n * Permission to use, copy, modify, and distribute this software is granted.\n * SPDX-License-Identifier: ISC\n */\n');
+    const comp = { name: 'quoted-placeholder', version: '1.0.0', license: 'MIT', source: 'cargo', packageDir: tmpDir, authors: ['Wrapper Author'], ...readPackageFiles(tmpDir, 'quoted-placeholder@1.0.0') };
+    const { output, verbatimBlocks } = renderNotices([comp], []);
+    assert.match(output, /<copyright holders>/, 'the upstream header is quoted as shipped');
+    // The committed-file check, with the generator's verbatim set, passes.
+    assert.doesNotThrow(() => assertNoGeneratedPlaceholders(output, verbatimBlocks));
+    // Mutations: the same placeholder in a generated fenced block (a filled-in
+    // standard text) and in a holder line still fail.
+    const inGeneratedBlock = `${output}\n\`\`\`text\nCopyright (c) <year> <copyright holders>\n\`\`\`\n`;
+    assert.throws(() => assertNoGeneratedPlaceholders(inGeneratedBlock, verbatimBlocks), /unpopulated placeholders/);
+    assert.throws(() => assertNoGeneratedPlaceholders(`${output}\n- Copyright (c) <copyright holders> (x)\n`, verbatimBlocks), /unpopulated placeholders/);
+    assert.throws(() => assertNoGeneratedPlaceholders(`${output}\n- authors: see repository maintainers\n`, verbatimBlocks), /unpopulated placeholders/);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
 test('fallback placeholders: no <copyright holders> or unpopulated placeholders remain in output', () => {
   const noticesFile = path.join(ROOT, 'THIRD-PARTY-NOTICES.md');
   const content = fs.readFileSync(noticesFile, 'utf8');
 
-  assert.doesNotMatch(content, /<copyright holders>/);
-  assert.doesNotMatch(content, /see repository maintainers/);
+  // A block quoted as shipped may keep an upstream placeholder; the text the
+  // notices write may not, standard texts included. The generator's own set.
+  const { verbatimBlocks } = committedNoticesWithVerbatim();
+  assertNoGeneratedPlaceholders(content, verbatimBlocks);
   // Verifies reviewed attribution is present for cx448
   assert.match(
     content,
@@ -1498,7 +1545,7 @@ test('THIRD-PARTY-NOTICES.md contains expected critical crates and packages with
   // Standard declarations for crates without physical files (asserts source statement and NO ownership claim)
   assert.match(content, /## Standard License Texts for Components without Dedicated License Files/);
   assert.match(content, /Authors for the following components as listed in package manifests or reviewed attributions:/);
-  assert.doesNotMatch(content, /The copyright holders for (?:the following|these) components are the authors/);
+  assert.doesNotMatch(committedNoticesWithVerbatim().generated, /The copyright holders for (?:the following|these) components are the authors/);
 
   // Exclusions (dev deps and unused optional crates like aws-lc-fips-sys)
   assert.doesNotMatch(content, /\| vitest \|/);
@@ -1736,7 +1783,7 @@ test('anchor validation: excludes fenced code blocks from duplicate anchor detec
 test('alloc-stdlib: copyright line matches upstream license and separates author from copyright holder', () => {
   const content = fs.readFileSync(path.join(ROOT, 'THIRD-PARTY-NOTICES.md'), 'utf8');
   assert.match(content, /Copyright \(c\) 2016 Dropbox, Inc\. \(alloc-stdlib\)/);
-  assert.doesNotMatch(content, /Copyright \(c\) 2016 Dropbox, Inc\., Daniel Reiter Horn/);
+  assert.doesNotMatch(committedNoticesWithVerbatim().generated, /Copyright \(c\) 2016 Dropbox, Inc\., Daniel Reiter Horn/);
   assert.match(
     content,
     /- `alloc-stdlib@0\.2\.4` - SPDX: `BSD-3-Clause` \(authors: Daniel Reiter Horn <danielrh@dropbox\.com>\)/
