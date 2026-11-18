@@ -611,7 +611,12 @@ fn s3_error_code_and_message(body: &str) -> Option<String> {
     let tag = |name: &str| {
         body.split(&format!("<{name}>"))
             .nth(1)
-            .and_then(|rest| rest.split(&format!("</{name}>")).next())
+            // A closed element only: an unclosed one would take the rest of
+            // the reply with it, `<Resource>` included.
+            .and_then(|rest| {
+                rest.split_once(&format!("</{name}>"))
+                    .map(|(inner, _)| inner)
+            })
             .map(str::trim)
             .filter(|text| !text.is_empty())
     };
@@ -877,8 +882,11 @@ impl Drop for DeltaHold {
 /// the authority it would have, after any leading slashes.
 fn endpoint_has_userinfo(endpoint: &str) -> bool {
     match url::Url::parse(endpoint) {
-        Ok(url) => !url.username().is_empty() || url.password().is_some(),
-        Err(_) => endpoint
+        // Only a URL with a host has an authority to read: `user:pw@host`
+        // parses as the scheme `user` with an opaque path, so it takes the
+        // textual check below.
+        Ok(url) if url.has_host() => !url.username().is_empty() || url.password().is_some(),
+        _ => endpoint
             .split_once("://")
             .map_or(endpoint, |(_, rest)| rest)
             .trim_start_matches(['/', '\\'])
@@ -11361,6 +11369,8 @@ mod tests {
             "https:///u:hunter2@gateway.example/s3",
             "HTTPS://u:hunter2@gateway.example",
             "https:\\\\u:hunter2@gateway.example",
+            "user:hunter2@gateway.example",
+            "u:hunter2@127.0.0.1:1800/s3",
         ] {
             for (path_style, bucket) in [(true, ""), (true, "b"), (false, "b")] {
                 let mut config = make_provider(Some("https://gateway.example/s3"))
@@ -19915,6 +19925,9 @@ mod tests {
             msg,
             "GET failed (404 Not Found): NoSuchKey: The specified key does not exist."
         );
+        let unclosed = "<Error><Code>AccessDenied</Code><Message>denied<Resource>/mount/opaque-capability</Resource></Error>";
+        let msg = format_s3_error("GET failed", reqwest::StatusCode::FORBIDDEN, unclosed, None);
+        assert_eq!(msg, "GET failed (403 Forbidden): AccessDenied");
         let bare = "<Error><Resource>/bucket/private/tax-2026.pdf</Resource></Error>";
         let msg = format_s3_error("GET failed", reqwest::StatusCode::NOT_FOUND, bare, None);
         assert!(!msg.contains("tax-2026"), "{msg}");

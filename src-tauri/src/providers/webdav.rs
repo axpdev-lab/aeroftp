@@ -494,9 +494,18 @@ fn server_message(body: &str, base_url: &str) -> String {
     let mut shown = message.to_string();
     if let Ok(url) = url::Url::parse(base_url) {
         let path = url.path().trim_end_matches('/');
-        if path.len() > 1 {
-            let decoded = percent_decode_str(path).decode_utf8_lossy().into_owned();
-            shown = shown.replace(path, "<base>").replace(&decoded, "<base>");
+        // Every leading part of the base path, longest first: a server can
+        // echo only `/<handle>` of `/<handle>/Cloud%20Drive`, and the handle
+        // alone opens the drive.
+        let mut prefixes: Vec<&str> = path
+            .match_indices('/')
+            .map(|(at, _)| &path[..at])
+            .filter(|prefix| prefix.len() > 1)
+            .collect();
+        prefixes.push(path);
+        for prefix in prefixes.into_iter().rev().filter(|prefix| prefix.len() > 1) {
+            let decoded = percent_decode_str(prefix).decode_utf8_lossy().into_owned();
+            shown = shown.replace(prefix, "<base>").replace(&decoded, "<base>");
         }
     }
     sanitize_api_error(&shown)
@@ -10761,6 +10770,9 @@ pub(crate) mod collection_redirect_tests {
         assert_eq!(shown, "No such file: <base>/a.txt");
         let ocs = r#"{"ocs":{"meta":{"status":"failure","message":"Wrong share password"}}}"#;
         assert_eq!(server_message(ocs, base), "Wrong share password");
+        // Only the first segment echoed: it is the handle, so it goes too.
+        let partial = "<d:error><s:message>Cannot access /TOKEN123</s:message></d:error>";
+        assert_eq!(server_message(partial, base), "Cannot access <base>");
         let html = "<html><body>/TOKEN123/Cloud%20Drive forbidden</body></html>";
         assert_eq!(
             server_message(html, base),

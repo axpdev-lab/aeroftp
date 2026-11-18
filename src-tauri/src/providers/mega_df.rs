@@ -336,7 +336,7 @@ pub(crate) fn classify_mega_webdav_result(
 /// process reach the drive with no password, so it stays out of an error.
 fn served_origins_only(output: &str) -> String {
     static ADDRESS: std::sync::LazyLock<regex::Regex> =
-        std::sync::LazyLock::new(|| regex::Regex::new(r"https?://[^\s'\x22<>]+").unwrap());
+        std::sync::LazyLock::new(|| regex::Regex::new(r"(?i)https?://[^\s'\x22<>]+").unwrap());
     ADDRESS
         .replace_all(output, |found: &regex::Captures| {
             crate::local_bridge::url_origin(&found[0])
@@ -723,6 +723,15 @@ Total size taken up by file versions:     31457280 bytes (30.0 MB)
         assert!(err.contains("http://127.0.0.1:4443 "), "{err}");
         assert!(!err.contains("H4ndl3Tok"), "{err}");
         assert!(!err.contains("Cloud%20Drive"), "{err}");
+        // A scheme is case-insensitive, and an echoed name can carry any case.
+        let err = classify_mega_webdav_result(
+            false,
+            Some(1),
+            "[err: failed HTTPS://127.0.0.1:4443/H4ndl3Tok/Cloud%20Drive]",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(!err.contains("H4ndl3Tok"), "{err}");
     }
 
     #[test]
