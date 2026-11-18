@@ -50,6 +50,8 @@ pub(crate) const DOCS: [&str; 4] = [
     "LICENSE.txt",
     "THIRD-PARTY-NOTICES.md",
 ];
+/// Every file a staging writes in a batch: the documents and the key.
+pub(crate) const BATCH_FILES: [&str; 5] = [DOCS[0], DOCS[1], DOCS[2], DOCS[3], KEY_FILE];
 
 /// Windows error codes of a rename refused because another process holds
 /// the target (`ERROR_SHARING_VIOLATION`, `ERROR_LOCK_VIOLATION`) or because
@@ -197,24 +199,32 @@ fn slot(dir: &Path) -> Slot {
 }
 
 /// Removes staging folders a stopped update left (`TMP_PREFIX*`). Called
-/// under the lock only, so no staging is in progress.
+/// under the lock only, so no staging is in progress. Only what a staging
+/// writes goes (remove_batch): a folder that merely has the name keeps what
+/// else it holds.
 fn remove_staging_leftovers(exe_dir: &Path) {
     let Ok(entries) = std::fs::read_dir(exe_dir) else {
         return;
     };
     for entry in entries.flatten() {
         if entry.file_name().to_string_lossy().starts_with(TMP_PREFIX) {
-            let _ = std::fs::remove_dir_all(entry.path());
+            remove_batch(&entry.path());
         }
     }
 }
 
-/// Removes whatever is at `path`: a folder with its content, or a file.
+/// Removes a batch at `path`: in a folder, the documents and the key a
+/// staging writes, then the folder if that left it empty. Never recursive,
+/// so anything else in the folder, and the folder, stay. A file or a link at
+/// the path (a slot name is reserved) is removed itself, never followed.
 /// Whether something was there.
-fn remove_any(path: &Path) -> bool {
+fn remove_batch(path: &Path) -> bool {
     match std::fs::symlink_metadata(path) {
         Ok(meta) if meta.is_dir() => {
-            let _ = std::fs::remove_dir_all(path);
+            for name in BATCH_FILES {
+                let _ = std::fs::remove_file(path.join(name));
+            }
+            let _ = std::fs::remove_dir(path);
             true
         }
         Ok(_) => {
@@ -267,11 +277,11 @@ fn stage_with(
             std::fs::copy(source, tmp.join(name))?;
         }
         std::fs::write(tmp.join(KEY_FILE), &key)?;
-        remove_any(&next);
+        remove_batch(&next);
         publish(&tmp, &next)
     })();
     staged.map_err(|e| {
-        let _ = std::fs::remove_dir_all(&tmp);
+        remove_batch(&tmp);
         fail(e)
     })
 }
@@ -283,7 +293,7 @@ pub(crate) fn discard_pending_docs(exe_dir: &Path) {
         return;
     };
     remove_staging_leftovers(exe_dir);
-    remove_any(&exe_dir.join(NEXT_DIR));
+    remove_batch(&exe_dir.join(NEXT_DIR));
 }
 
 /// The outcome of a failed replace of `target`.
@@ -318,7 +328,7 @@ fn install_pass(
         Slot::Missing => {}
         Slot::Key(k) if k == own_key => {
             // This exe's documents supersede an older exe's.
-            stale |= remove_any(&current);
+            stale |= remove_batch(&current);
             if std::fs::rename(&next, &current).is_err() {
                 source = next.clone();
             }
@@ -327,7 +337,7 @@ fn install_pass(
         // waiting for its swap. It is never read here; a failed swap, a
         // discard or the next staging removes it.
         Slot::Key(_) => {}
-        Slot::Invalid => stale |= remove_any(&next),
+        Slot::Invalid => stale |= remove_batch(&next),
     }
     match slot(&source) {
         Slot::Missing => {
@@ -336,7 +346,7 @@ fn install_pass(
         }
         Slot::Key(k) if k == own_key => {}
         Slot::Key(_) | Slot::Invalid => {
-            remove_any(&source);
+            remove_batch(&source);
             return (Pending::Stale, None);
         }
     }
@@ -363,7 +373,7 @@ fn install_pass(
         outcomes.push((name, outcome));
     }
     if !DOCS.iter().any(|name| source.join(name).is_file()) {
-        let _ = std::fs::remove_dir_all(&source);
+        remove_batch(&source);
     }
     (Pending::Docs(outcomes), Some(source))
 }
@@ -870,6 +880,59 @@ mod tests {
             Pending::Stale
         );
         assert!(!dir.path().join(PENDING_DIR).exists());
+    }
+
+    #[test]
+    fn cleanup_removes_only_what_a_staging_writes_and_keeps_an_unrelated_folder() {
+        let dir = folder(Some("other-exe"));
+        // A folder that only has a staging name, with content of its own.
+        let unrelated = dir.path().join(format!("{TMP_PREFIX}user"));
+        std::fs::create_dir_all(unrelated.join("sub")).unwrap();
+        std::fs::write(unrelated.join("notes.txt"), "mine").unwrap();
+        std::fs::write(unrelated.join("sub").join("deep.txt"), "mine too").unwrap();
+        // A staging an update stopped in the middle: documents and key.
+        let stopped = dir.path().join(format!("{TMP_PREFIX}stopped"));
+        std::fs::create_dir(&stopped).unwrap();
+        std::fs::write(stopped.join("README.txt"), "half staged").unwrap();
+        std::fs::write(stopped.join(KEY_FILE), "some-exe").unwrap();
+        // Another exe's current batch, with a file nobody staged in it.
+        std::fs::write(dir.path().join(PENDING_DIR).join("user.txt"), "kept").unwrap();
+        let replace = |_: &Path, _: &Path| -> io::Result<()> {
+            panic!("a stale document is never installed")
+        };
+        assert_eq!(
+            install_pending_docs(dir.path(), KEY, replace),
+            Pending::Stale
+        );
+        assert!(!stopped.exists(), "the stopped staging goes whole");
+        assert_eq!(read(&unrelated, "notes.txt"), "mine");
+        assert_eq!(read(&unrelated.join("sub"), "deep.txt"), "mine too");
+        let pending = dir.path().join(PENDING_DIR);
+        assert_eq!(read(&pending, "user.txt"), "kept");
+        for name in BATCH_FILES {
+            assert!(!pending.join(name).exists(), "{name}");
+        }
+        // Staging and a discard leave them as they are too.
+        let (_stage, exe_b, _key_b, readme_b) = new_exe(b"B");
+        stage_pending_docs(dir.path(), &exe_b, &[(&readme_b, "README.txt")], "b").unwrap();
+        discard_pending_docs(dir.path());
+        assert!(!dir.path().join(NEXT_DIR).exists());
+        assert_eq!(read(&unrelated.join("sub"), "deep.txt"), "mine too");
+        assert_eq!(read(&pending, "user.txt"), "kept");
+        // A staging whose folder name is taken fails without touching it.
+        let taken = dir.path().join(format!("{TMP_PREFIX}taken"));
+        std::fs::create_dir(&taken).unwrap();
+        std::fs::write(taken.join("README.txt"), "not ours").unwrap();
+        std::fs::write(taken.join("own.txt"), "not ours").unwrap();
+        let failed = stage_with(
+            dir.path(),
+            &exe_b,
+            &[(&readme_b, "README.txt")],
+            "taken",
+            |_, _| Ok(()),
+        );
+        assert!(failed.is_err());
+        assert_eq!(read(&taken, "own.txt"), "not ours");
     }
 
     /// An exe in its own folder, and a README to stage for it.

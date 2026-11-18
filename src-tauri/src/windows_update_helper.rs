@@ -45,10 +45,16 @@ fn temp_dir() -> PathBuf {
     std::env::temp_dir()
 }
 
-/// Convert a Rust path into a CMD-friendly quoted string. Doubles any
-/// embedded `"` (rare in real paths) and wraps in `"..."`.
+/// Convert a Rust path into a quoted string for a line of a `.cmd` helper:
+/// the path as it is, never expanded. Doubles any embedded `"` (rare in real
+/// paths) and every `%`, which a batch file reads as one literal `%`
+/// (`C:\%TEMP%\AeroFTP` names that folder, not the temp one), and wraps in
+/// `"..."`. The helpers turn delayed expansion off, so `!` is literal too.
 fn quote_for_cmd(path: &Path) -> String {
-    let s = path.to_string_lossy().replace('"', "\"\"");
+    let s = path
+        .to_string_lossy()
+        .replace('"', "\"\"")
+        .replace('%', "%%");
     format!("\"{s}\"")
 }
 
@@ -139,7 +145,7 @@ fn write_msi_helper(msi_path: &Path, exe_path: &Path) -> Result<PathBuf, String>
 
     let body = format!(
         r#"@echo off
-setlocal
+setlocal disabledelayedexpansion
 rem AeroFTP MSI auto-update helper. Self-deletes on completion.
 
 rem Wait for the parent AeroFTP process to release file locks.
@@ -181,7 +187,7 @@ fn write_nsis_helper(setup_path: &Path, exe_path: &Path) -> Result<PathBuf, Stri
 
     let body = format!(
         r#"@echo off
-setlocal
+setlocal disabledelayedexpansion
 rem AeroFTP NSIS auto-update helper. Self-deletes on completion.
 
 ping 127.0.0.1 -n 3 >nul
@@ -643,16 +649,22 @@ del /F /Q {new} >nul 2>&1
     // The marker, README, LICENSE and notices are not copied here: the old
     // app staged them beside the exes as the next batch (`portable_docs`),
     // and the new app installs them at its start. A failed swap drops that
-    // batch with the exes; the current batch, the old exe's documents still
-    // pending, stays for its next start.
-    discard_block.push_str(&format!(
-        "rmdir /S /Q {} >nul 2>&1\n",
-        quote_for_cmd(&exe_dir.join(portable_docs::NEXT_DIR))
-    ));
+    // batch with the exes, by the names a staging writes and never
+    // recursively: anything else in the folder, and the folder, stay
+    // (`portable_docs::remove_batch`). The current batch, the old exe's
+    // documents still pending, stays for its next start.
+    let next = exe_dir.join(portable_docs::NEXT_DIR);
+    for name in portable_docs::BATCH_FILES {
+        discard_block.push_str(&format!(
+            "del /F /Q {} >nul 2>&1\n",
+            quote_for_cmd(&next.join(name))
+        ));
+    }
+    discard_block.push_str(&format!("rmdir {} >nul 2>&1\n", quote_for_cmd(&next)));
 
     let body = format!(
         r#"@echo off
-setlocal enableextensions
+setlocal enableextensions disabledelayedexpansion
 rem AeroFTP portable in-place update helper. The updater has already
 rem copied the new exes, whole, next to the installed ones. This helper
 rem replaces the app exe with its copy in one rename on the same volume,
@@ -941,10 +953,15 @@ mod tests {
     }
 
     fn fixture() -> Fixture {
+        fixture_in("app")
+    }
+
+    /// The fixture with the app in the folder `app_name` of the temp dir.
+    fn fixture_in(app_name: &str) -> Fixture {
         let root = tempfile::tempdir().expect("temp dir");
         std::fs::create_dir(root.path().join("logs")).expect("log dir");
         let log = root.path().join("logs").join(crate::portable::APP_LOG_FILE);
-        let app = root.path().join("app");
+        let app = root.path().join(app_name);
         std::fs::create_dir(&app).expect("app dir");
         let current = app.join("AeroFTP.exe");
         std::fs::write(&current, OLD_EXE).expect("old exe");
@@ -1071,11 +1088,17 @@ mod tests {
     }
 
     fn run(fx: &Fixture, lines: &[String]) -> std::process::ExitStatus {
+        run_env(fx, lines, &[])
+    }
+
+    /// `run` with `env` set for the helper.
+    fn run_env(fx: &Fixture, lines: &[String], env: &[(&str, &str)]) -> std::process::ExitStatus {
         let script = fx.root.path().join("helper.cmd");
         std::fs::write(&script, lines.concat()).expect("write script");
         std::process::Command::new("cmd.exe")
             .args(["/D", "/C", "call"])
             .arg(&script)
+            .envs(env.iter().copied())
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
@@ -1409,6 +1432,67 @@ mod tests {
             )])
         );
         assert_eq!(read(&fx, "THIRD-PARTY-NOTICES.md"), b"old exe's notices");
+    }
+
+    /// A path is never expanded by the helper: in a folder whose name holds
+    /// `%AEROFTP_TEST_DIR%`, set to `other` for the helper, a failed swap
+    /// drops only this folder's next batch, never the one of the folder that
+    /// name would expand to, and a complete run installs the new exe here.
+    #[test]
+    fn a_folder_name_with_percent_signs_is_the_folder_the_helper_works_in() {
+        const VAR: (&str, &str) = ("AEROFTP_TEST_DIR", "other");
+        let mut fx = fixture_in("app%AEROFTP_TEST_DIR%");
+        with_docs(&mut fx, |_| true);
+        let other = fx.root.path().join("appother");
+        let other_next = other.join(portable_docs::NEXT_DIR);
+        std::fs::create_dir_all(&other_next).expect("other next batch");
+        std::fs::write(other_next.join("README.txt"), b"other readme").expect("other readme");
+        std::fs::write(other_next.join("exe.key"), b"other key").expect("other key");
+        std::fs::write(other.join("AeroFTP.exe"), b"other exe").expect("other exe");
+        let script = script_for(&fx);
+        assert!(fx.app.join(portable_docs::NEXT_DIR).is_dir());
+        std::fs::remove_file(beside_path(&fx.current)).expect("staged exe");
+        run_env(&fx, &runnable(&script), &[VAR]);
+        assert_eq!(read(&fx, "AeroFTP.exe"), OLD_EXE);
+        assert!(!fx.app.join(portable_docs::NEXT_DIR).exists());
+        assert_eq!(
+            std::fs::read(other_next.join("README.txt")).expect("kept"),
+            b"other readme"
+        );
+        assert_eq!(
+            std::fs::read(other_next.join("exe.key")).expect("kept"),
+            b"other key"
+        );
+        assert_eq!(
+            std::fs::read(other.join("AeroFTP.exe")).expect("kept"),
+            b"other exe"
+        );
+        // A whole run in such a folder replaces the exe there, and only there.
+        let fx = fixture_in("app%AEROFTP_TEST_DIR%");
+        let other = fx.root.path().join("appother");
+        std::fs::create_dir(&other).expect("other app");
+        std::fs::write(other.join("AeroFTP.exe"), b"other exe").expect("other exe");
+        let script = script_for(&fx);
+        run_env(&fx, &runnable(&script), &[VAR]);
+        assert_eq!(read(&fx, "AeroFTP.exe"), NEW_EXE);
+        assert_eq!(
+            std::fs::read(other.join("AeroFTP.exe")).expect("kept"),
+            b"other exe"
+        );
+    }
+
+    /// A failed swap removes the next batch by the names a staging writes:
+    /// a file nobody staged keeps the folder, and its content, as it is.
+    #[test]
+    fn a_failed_swap_keeps_a_file_nobody_staged_in_the_next_batch() {
+        let mut fx = fixture();
+        with_docs(&mut fx, |_| true);
+        let script = script_for(&fx);
+        let next = fx.app.join(portable_docs::NEXT_DIR);
+        std::fs::write(next.join("user.txt"), b"not staged").expect("user file");
+        std::fs::remove_file(beside_path(&fx.current)).expect("staged exe");
+        run(&fx, &runnable(&script));
+        assert_eq!(names_in(&next), vec!["user.txt".to_string()]);
     }
 
     /// An update whose CLI staging fails, before the helper, leaves the
