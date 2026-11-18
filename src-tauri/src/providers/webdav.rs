@@ -397,18 +397,26 @@ fn refused_certificate(e: &reqwest::Error) -> bool {
     false
 }
 
-/// The words the native TLS backends use for a server certificate they
-/// refuse: OpenSSL on Linux ("certificate verify failed"), SChannel on
-/// Windows ("A certificate chain processed, but terminated in a root
-/// certificate which is not trusted", "The certificate chain was issued by an
-/// authority that is not trusted") and Security.framework on macOS ("invalid
-/// certificate chain", "The trust policy was not trusted."). A refused
-/// connection, a failed name lookup, a reset or a timeout says none of them.
+/// The phrases TLS backends use for a server certificate they refused:
+/// OpenSSL on Linux ("certificate verify failed", measured), rustls ("invalid
+/// peer certificate"), SChannel on Windows ("... root certificate which is not
+/// trusted ...", "... issued by an authority that is not trusted") and
+/// Security.framework on macOS ("invalid certificate chain", "The trust policy
+/// was not trusted."). Phrases, not the bare word "certificate": a server that
+/// asks for a client certificate ("alert certificate required", "alert bad
+/// certificate") refuses our side, and AeroFTP's WebDAV client presents none.
+/// A refused connection, a failed name lookup, a reset or a timeout says
+/// none of them either.
 fn names_a_refused_certificate(text: &str) -> bool {
     let text = text.to_ascii_lowercase();
-    ["certificate", "not trusted"]
-        .iter()
-        .any(|word| text.contains(word))
+    [
+        "certificate verify failed",
+        "invalid peer certificate",
+        "invalid certificate chain",
+        "not trusted",
+    ]
+    .iter()
+    .any(|phrase| text.contains(phrase))
 }
 
 /// [`describe_reqwest_error`] as the `ParseError` of a reply body that could
@@ -11248,6 +11256,11 @@ mod error_text_tests {
             "Connection reset by peer (os error 104)",
             "operation timed out",
             "connection closed before message completed",
+            // The server refusing our side: a client certificate it wants.
+            "error:0A00045C:SSL routines::tlsv13 alert certificate required",
+            "error:0A000412:SSL routines::sslv3 alert bad certificate",
+            "received fatal alert: CertificateRequired",
+            "peer did not return a certificate",
         ] {
             assert!(!names_a_refused_certificate(other), "{other}");
         }

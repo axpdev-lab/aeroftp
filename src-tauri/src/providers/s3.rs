@@ -1016,9 +1016,12 @@ impl S3Provider {
     }
 
     /// The client for STS: the data-plane client's timeouts and redirect
-    /// refusal, without the local-endpoint certificate trust and proxy
-    /// bypass, which are for the S3 endpoint only.
-    fn sts_client(config: &S3Config) -> Result<Client, ProviderError> {
+    /// refusal, and nothing of what the user chose for the S3 endpoint. The
+    /// STS host is always AWS (`sts::assume_role`), so its certificate is
+    /// always checked: neither the local-endpoint trust nor "Verify
+    /// certificate" turned off (meant for a self-signed MinIO, say) reaches
+    /// the role's credential exchange, and the system proxy is kept.
+    fn sts_client() -> Result<Client, ProviderError> {
         Client::builder()
             .user_agent(crate::providers::AEROFTP_USER_AGENT)
             .connect_timeout(crate::providers::http_limits::limit(
@@ -1029,7 +1032,6 @@ impl S3Provider {
             ))
             .redirect(reqwest::redirect::Policy::none())
             .http1_only()
-            .danger_accept_invalid_certs(!config.verify_cert)
             .build()
             .map_err(|e| ProviderError::ConnectionFailed(format!("HTTP client init failed: {e}")))
     }
@@ -1133,7 +1135,7 @@ impl S3Provider {
         let client = client_builder.build().map_err(|e| {
             ProviderError::ConnectionFailed(format!("HTTP client init failed: {e}"))
         })?;
-        let sts_client = Self::sts_client(&config)?;
+        let sts_client = Self::sts_client()?;
 
         Ok(Self {
             config,
@@ -10462,12 +10464,12 @@ mod tests {
         );
     }
 
-    /// A local S3 endpoint makes the data-plane client accept any
-    /// certificate. AssumeRole goes to STS, not to that endpoint, so it must
-    /// keep checking the certificate unless the user turned checks off: a
-    /// self-signed STS server is refused with `verify_cert`, reached without.
+    /// A local S3 endpoint, or certificate checks turned off for it, makes the
+    /// data-plane client accept any certificate. AssumeRole goes to AWS STS,
+    /// not to that endpoint, so neither reaches it: a self-signed STS server
+    /// is refused whatever `verify_cert` says.
     #[tokio::test]
-    async fn assume_role_checks_the_sts_certificate_even_for_a_local_endpoint() {
+    async fn assume_role_always_checks_the_sts_certificate() {
         let acceptor = super::super::webdav::collection_redirect_tests::tls_acceptor();
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
@@ -10515,9 +10517,9 @@ mod tests {
             let outcome = provider.ensure_fresh_credentials().await;
             assert!(outcome.is_err(), "verify_cert={verify_cert}: {outcome:?}");
             let reached = requests.load(std::sync::atomic::Ordering::SeqCst) > before;
-            assert_eq!(
-                reached, !verify_cert,
-                "verify_cert={verify_cert}: STS reached={reached}: {outcome:?}"
+            assert!(
+                !reached,
+                "verify_cert={verify_cert}: an unverified STS server was reached: {outcome:?}"
             );
         }
         sts::TEST_STS_HOST.with(|host| *host.borrow_mut() = None);
