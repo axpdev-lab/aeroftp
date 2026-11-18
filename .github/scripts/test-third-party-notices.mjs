@@ -7,7 +7,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { execFileSync, execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
+import { syncBuiltinESMExports } from 'node:module';
 import {
   isGplCompatible,
   tokenizeSpdx,
@@ -31,7 +32,6 @@ import {
   isSpdxHeaderLine,
   holdersOf,
   assertNoGeneratedPlaceholders,
-  KNOWN_SPDX_TAG_MENTIONS,
   renderNotices,
 } from '../../scripts/gen-third-party-notices.ts';
 
@@ -58,6 +58,17 @@ const ROOT = path.resolve(__dirname, '..', '..');
 
 // A license file as packages ship it: its first lines, then the standard terms
 // without their placeholder line. A file must carry the text to cover a term.
+// The lines of a package that mention a copyright. The directory is a literal
+// argument, never shell text: a "$" in the checkout path is part of the name.
+// Exit status 1 is "no match"; any other failure is an error.
+const grepCopyrightLines = (dir) => {
+  try {
+    return execFileSync('grep', ['-rIhi', '-E', '(copyright|©|\\(c\\))', '--', dir], { encoding: 'utf8' });
+  } catch (err) {
+    if (err.status === 1) return '';
+    throw new Error(`Grep scan failed for ${dir} (status ${err.status}): ${err.message}`);
+  }
+};
 const STANDARD_TEXTS = JSON.parse(fs.readFileSync(SPDX_STANDARD_LICENSES_FILE, 'utf8'));
 const shippedLicense = (lead, id) =>
   [lead, STANDARD_TEXTS[id].replace(/^.*<(?:year|copyright holders?)>.*\n+/im, '')].filter(Boolean).join('\n\n');
@@ -245,6 +256,9 @@ test('npm collection: walks lock entries by path and preserves multiple versions
     fs.writeFileSync(path.join(tmpDir, 'node_modules/bar/node_modules/foo/LICENSE'), 'Apache License foo v2');
     fs.mkdirSync(path.join(tmpDir, 'node_modules/bar'), { recursive: true });
     fs.writeFileSync(path.join(tmpDir, 'node_modules/bar/LICENSE'), 'MIT License bar');
+    for (const [dir, version] of [['node_modules/foo', '1.0.0'], ['node_modules/bar', '1.0.0'], ['node_modules/bar/node_modules/foo', '2.0.0']]) {
+      fs.writeFileSync(path.join(tmpDir, dir, 'package.json'), JSON.stringify({ name: dir.split('/').pop(), version }));
+    }
 
     const lockPath = path.join(tmpDir, 'package-lock.json');
     fs.writeFileSync(lockPath, JSON.stringify(fixtureLock));
@@ -259,6 +273,72 @@ test('npm collection: walks lock entries by path and preserves multiple versions
     // Dev dependencies must be excluded
     assert.strictEqual(deps.some((d) => d.name === 'dev-tool'), false, 'devDependencies must be excluded');
   } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('npm collection: the installed package must be the locked package and version, or the notices would name the wrong files', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'npm-version-fixture-'));
+  try {
+    const lockPath = path.join(tmpDir, 'package-lock.json');
+    fs.writeFileSync(lockPath, JSON.stringify({ lockfileVersion: 3, packages: { '': {}, 'node_modules/foo': { version: '2.0.0', license: 'MIT' } } }));
+    fs.mkdirSync(path.join(tmpDir, 'node_modules/foo'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, 'node_modules/foo/LICENSE'), 'MIT License foo');
+    fs.writeFileSync(path.join(tmpDir, 'node_modules/foo/package.json'), JSON.stringify({ name: 'foo', version: '2.0.0' }));
+    assert.deepStrictEqual(collectNpmDependencies(lockPath, tmpDir).map((d) => `${d.name}@${d.version}`), ['foo@2.0.0']);
+    fs.writeFileSync(path.join(tmpDir, 'node_modules/foo/package.json'), JSON.stringify({ name: 'foo', version: '1.0.0' }));
+    assert.throws(
+      () => collectNpmDependencies(lockPath, tmpDir),
+      /node_modules\/foo is installed as foo@1\.0\.0, but package-lock\.json locks foo@2\.0\.0: run npm ci/
+    );
+    // npm's own reader accepts a manifest that starts with a byte order mark.
+    fs.writeFileSync(path.join(tmpDir, 'node_modules/foo/package.json'), '\uFEFF' + JSON.stringify({ name: 'foo', version: '2.0.0' }));
+    assert.deepStrictEqual(collectNpmDependencies(lockPath, tmpDir).map((d) => `${d.name}@${d.version}`), ['foo@2.0.0']);
+    fs.rmSync(path.join(tmpDir, 'node_modules/foo/package.json'));
+    assert.throws(
+      () => collectNpmDependencies(lockPath, tmpDir),
+      /node_modules\/foo has no package\.json, but package-lock\.json locks foo@2\.0\.0: run npm ci/
+    );
+    // An alias is installed under its own directory and checked against the package it resolves to.
+    fs.writeFileSync(lockPath, JSON.stringify({ lockfileVersion: 3, packages: { '': {}, 'node_modules/foo': { name: 'baz', version: '2.0.0', license: 'MIT' } } }));
+    fs.writeFileSync(path.join(tmpDir, 'node_modules/foo/package.json'), JSON.stringify({ name: 'baz', version: '2.0.0' }));
+    assert.deepStrictEqual(collectNpmDependencies(lockPath, tmpDir).map((d) => `${d.name}@${d.version}`), ['baz@2.0.0']);
+    fs.writeFileSync(path.join(tmpDir, 'node_modules/foo/package.json'), JSON.stringify({ name: 'bar', version: '2.0.0' }));
+    assert.throws(
+      () => collectNpmDependencies(lockPath, tmpDir),
+      /node_modules\/foo is installed as bar@2\.0\.0, but package-lock\.json locks baz@2\.0\.0: run npm ci/
+    );
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('directory order: the same package contents give the same notices in any enumeration order', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dir-order-fixture-'));
+  const original = fs.readdirSync;
+  try {
+    const write = (rel, content) => {
+      fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, rel), content);
+    };
+    write('LICENSE', shippedLicense('MIT License\n\nCopyright (c) 2020 Order Author', 'MIT'));
+    write('src/a.c', '/* Copyright (c) 2001 Alpha Vendor\n * SPDX-License-Identifier: BSD-3-Clause */\n');
+    write('src/b.c', '/* Copyright (c) 2002 Beta Vendor\n * SPDX-License-Identifier: BSD-3-Clause */\n');
+    write('src/c.rs', '// Copyright 2003 Gamma Holder\n');
+    const render = () => {
+      const comp = { name: 'order-pkg', version: '1.0.0', license: 'MIT', source: 'cargo', packageDir: tmpDir, authors: ['Order Author'], ...readPackageFiles(tmpDir, 'order-pkg@1.0.0') };
+      return generateNoticesMarkdown([comp], []);
+    };
+    const sorted = render();
+    // Windows keeps the file system's order: the reverse of the sorted one here.
+    fs.readdirSync = (...args) => original(...args).reverse();
+    syncBuiltinESMExports();
+    const reversed = render();
+    assert.match(sorted, /bundles code under BSD-3-Clause in `src\/a\.c`, `src\/b\.c`/);
+    assert.strictEqual(reversed, sorted);
+  } finally {
+    fs.readdirSync = original;
+    syncBuiltinESMExports();
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
@@ -458,7 +538,7 @@ test('standard SPDX texts: every term of the chosen license needs its text, an o
     /Component slot-pkg@1\.0\.0 requires an entry in PINNED_FALLBACK_ATTRIBUTIONS/
   );
   // The section says what is missing: the text of a declared license, not every license file.
-  assert.match(generateNoticesMarkdown([comp('test-and-one', 'MIT AND Apache-2.0', [['LICENSE-MIT', mit]])], []), /without bundling\nthe text of each of those licenses in their published crate archives\./);
+  assert.match(generateNoticesMarkdown([comp('test-and-one', 'MIT AND Apache-2.0', [['LICENSE-MIT', mit]])], []), /need one or more standard license texts: their manifests declare the\nlicenses, and their package files do not include the text of each of them\./);
   const googleBsd3 = STANDARD_TEXTS['BSD-3-Clause']
     .replace(/^Copyright.*?\nAll rights reserved\.\n+/s, '')
     .replace(/^[123]\./gm, '   *')
@@ -766,8 +846,40 @@ test('vendored license files: they keep their text but neither cover the package
     // The anchor goes to the package's own license text when it has one.
     const after = (id) => md.slice(md.indexOf(`<a id="${id}"></a>`)).split('\n```text\n')[1].split('\n')[0];
     assert.strictEqual(after('notice-own-and-vendored'), 'MIT License');
-    // A package whose only license text is vendored is anchored at that text (unrar_sys).
-    assert.strictEqual(after('notice-only-vendored'), 'Copyright (c) 2004 Bar Project');
+    // A package whose only license text is vendored is anchored at the standard
+    // text of its own license, not at the vendored one (whisper-rs-sys).
+    assert.strictEqual(after('notice-only-vendored'), 'Permission is hereby granted, free of charge, to any');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('anchors: a licensing exception links to its vendored text, the package anchor to its own license', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'exception-anchor-fixture-'));
+  try {
+    fs.mkdirSync(path.join(tmpDir, 'vendor', 'rar'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, 'vendor', 'rar', 'license.txt'), 'Vendored RAR license terms.\nUse it, never re-create the algorithm.');
+    const comp = { name: 'vend_rar', version: '1.0.0', license: 'MIT', source: 'cargo', packageDir: tmpDir, authors: ['Rar Wrapper'], ...readPackageFiles(tmpDir, 'vend_rar@1.0.0') };
+    assert.deepStrictEqual(comp.licenseFiles.map((f) => [f.filename, f.vendored]), [['vendor/rar/license.txt', true]]);
+    const exception = { crateName: 'vend_rar', version: '1.0.0', author: 'Rar Author', licenseName: 'RAR', sourceFile: 'vendor/rar/license.txt', facts: 'It is not free software.' };
+    const md = generateNoticesMarkdown([comp], [], SPDX_STANDARD_LICENSES_FILE, [exception]);
+    // Follow each link to the first text block after its anchor.
+    const textAfter = (id) => md.slice(md.indexOf(`<a id="${id}"></a>`)).split('\n```text\n')[1].split('\n')[0];
+    assert.match(md, /see \[Notice Entry \d+\]\(#exception-vend-rar\)/);
+    assert.strictEqual(textAfter('exception-vend-rar'), 'Vendored RAR license terms.');
+    assert.strictEqual(textAfter('notice-vend-rar'), 'Permission is hereby granted, free of charge, to any');
+    // Another version of the crate with another text: the exception still names the registered version's text, under one anchor.
+    const oldDir = path.join(tmpDir, 'old');
+    fs.mkdirSync(path.join(oldDir, 'vendor', 'rar'), { recursive: true });
+    fs.writeFileSync(path.join(oldDir, 'vendor', 'rar', 'license.txt'), 'Older RAR license terms.\nUse it.');
+    const old = { name: 'vend_rar', version: '0.9.0', license: 'MIT', source: 'cargo', packageDir: oldDir, authors: ['Rar Wrapper'], ...readPackageFiles(oldDir, 'vend_rar@0.9.0') };
+    const both = generateNoticesMarkdown([old, comp], [], SPDX_STANDARD_LICENSES_FILE, [exception]);
+    assert.strictEqual(both.split('<a id="exception-vend-rar"></a>').length - 1, 1);
+    assert.strictEqual(both.slice(both.indexOf('<a id="exception-vend-rar"></a>')).split('\n```text\n')[1].split('\n')[0], 'Vendored RAR license terms.');
+    const linked = Number(both.match(/see \[Notice Entry (\d+)\]\(#exception-vend-rar\)/)[1]);
+    const entry = both.split(`### Notice Entry ${linked}\n`)[1].split('### Notice Entry ')[0];
+    assert.match(entry, /Vendored RAR license terms\./);
+    assert.doesNotMatch(entry, /Older RAR license terms/);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
@@ -1463,7 +1575,6 @@ test('bundled code: a header expression made of SPDX tokens that does not parse 
     write('lib/example.js', '// Example: SPDX-License-Identifier: MIT (preferred)\n');
     // And one version: the same line in another version of the package fails.
     assert.throws(() => findBundledCodeUnderOtherLicenses({ ...comp, version: '2.0.0' }, known, listed), /malformed-pkg@2\.0\.0 has a malformed SPDX-License-Identifier in lib\/example\.js/);
-    assert.deepStrictEqual(KNOWN_SPDX_TAG_MENTIONS, {}, 'no reviewed mention is needed on the current tree');
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
@@ -1647,7 +1758,7 @@ test('licensing exceptions: generates exception section for unrar_sys with Rosha
   assert.match(content, /re-create the RAR compression algorithm/);
   assert.match(content, /only extracts RAR archives and never creates them/);
   assert.match(content, /not GPL-compatible/);
-  assert.match(content, /\[Notice Entry \d+\]\(#notice-unrar-sys\)/);
+  assert.match(content, /\[Notice Entry \d+\]\(#exception-unrar-sys\)/);
 });
 
 test('licensing exceptions: fails fast if declared exception crate is missing from tree', () => {
@@ -1819,8 +1930,13 @@ test('THIRD-PARTY-NOTICES.md contains expected critical crates and packages with
   assert.match(content, /## Third-Party License Texts, Copyright Notices, and Files/);
   assert.match(content, /### Notice Entry/);
 
-  // Standard declarations for crates without physical files (asserts source statement and NO ownership claim)
-  assert.match(content, /## Standard License Texts for Components without Dedicated License Files/);
+  // Standard texts for the dependencies that need them (asserts source statement and NO ownership claim):
+  // npm packages as well as crates, and crates that ship some license texts but not the selected one.
+  assert.match(content, /## Standard License Texts for Dependencies that Need Them/);
+  const standardSection = content.slice(content.indexOf('## Standard License Texts for Dependencies that Need Them'));
+  assert.match(standardSection, /- `@tauri-apps\/plugin-dialog@[^`]+` - SPDX:/);
+  assert.match(standardSection, /- `iroh-relay@1\.2\.0` - SPDX: `MIT OR Apache-2\.0`/);
+  assert.doesNotMatch(content, /Components without Dedicated License Files|The following crates declare/);
   assert.match(content, /Authors for the following components as listed in package manifests or reviewed attributions:/);
   assert.doesNotMatch(committedNoticesWithVerbatim().generated, /The copyright holders for (?:the following|these) components are the authors/);
 
@@ -1888,9 +2004,9 @@ test('README.md notice links resolve to valid anchors in THIRD-PARTY-NOTICES.md'
     );
   }
 
-  // Specifically verify notice-unrar-sys is present and linked
-  assert.ok(readmeContent.includes('THIRD-PARTY-NOTICES.md#notice-unrar-sys'));
-  assert.ok(noticesContent.includes('<a id="notice-unrar-sys"></a>'));
+  // Specifically verify the UnRAR license is present and linked
+  assert.ok(readmeContent.includes('THIRD-PARTY-NOTICES.md#exception-unrar-sys'));
+  assert.ok(noticesContent.includes('<a id="exception-unrar-sys"></a>'));
 });
 
 test('THIRD-PARTY-NOTICES.md: every anchor id in the generated file is unique', () => {
@@ -2181,27 +2297,12 @@ test('property: no component marked with "No copyright notice is shipped" has co
       continue;
     }
 
-    let hits = '';
-    try {
-      hits = execSync(
-        `grep -rIhi -E "(copyright|©|\\(c\\))" ${JSON.stringify(c.packageDir)}`,
-        { encoding: 'utf8' }
-      );
-      const matched = hits
-        .split('\n')
-        .map((l) => l.trim())
-        .filter((l) => l.length > 0 && copyrightPattern.test(l) && !boilerplateRegex.test(l) && !cocoaApiRegex.test(l));
-      if (matched.length > 0) {
-        falseNoneList.push({ comp: `${c.source} ${c.name}@${c.version}`, matched });
-      }
-    } catch (err) {
-      if (err.status === 1) {
-        // grep exit status 1 indicates no matches found, which is expected for components lacking copyright notices
-      } else {
-        throw new Error(
-          `Grep scan failed for ${c.source} ${c.name}@${c.version} in ${c.packageDir} (status ${err.status}): ${err.message}`
-        );
-      }
+    const matched = grepCopyrightLines(c.packageDir)
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0 && copyrightPattern.test(l) && !boilerplateRegex.test(l) && !cocoaApiRegex.test(l));
+    if (matched.length > 0) {
+      falseNoneList.push({ comp: `${c.source} ${c.name}@${c.version}`, matched });
     }
   }
 
@@ -2245,21 +2346,25 @@ test('notice-only component: generates "Notice file shipped: ..." and does not c
 });
 
 test('property: grep scan error propagates and fails validation instead of being swallowed', () => {
-  assert.throws(
-    () => {
-      try {
-        // Force an invalid grep option so grep exits with status 2
-        execSync('grep --definitely-invalid-option . 2>/dev/null', { encoding: 'utf8' });
-      } catch (err) {
-        if (err.status === 1) {
-          // would be swallowed if exit code was 1
-        } else {
-          throw new Error(`Grep scan failed (status ${err.status}): ${err.message}`);
-        }
-      }
-    },
-    /Grep scan failed \(status 2\)/
-  );
+  // A child of a private temp directory, never created, so nothing else can put it there.
+  const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'grep-missing-'));
+  try {
+    assert.throws(() => grepCopyrightLines(path.join(parent, 'missing')), /Grep scan failed for .* \(status 2\)/);
+  } finally {
+    fs.rmSync(parent, { recursive: true, force: true });
+  }
+});
+
+test('property: the grep scan reads a directory whose name has a literal dollar sign', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'grep-$HOME-$PATH-'));
+  try {
+    fs.writeFileSync(path.join(tmpDir, 'lib.rs'), '// Copyright 2024 Dollar Holder\n');
+    assert.strictEqual(grepCopyrightLines(tmpDir).trim(), '// Copyright 2024 Dollar Holder');
+    fs.writeFileSync(path.join(tmpDir, 'lib.rs'), 'fn main() {}\n');
+    assert.strictEqual(grepCopyrightLines(tmpDir), '');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
 });
 
 test('holder-free license: SPDX headers and REUSE Copyright fields are notices, a yearless "Copyright (c)" is no holder', () => {

@@ -145,6 +145,19 @@ describe('thirdPartyLicenses', () => {
         expect(res).toEqual({ success: true, target: GITHUB_NOTICES_URL });
       });
 
+      it('reports failure for a URL that does not parse, without calling either opener or logging the input', async () => {
+        const windowOpen = vi.fn().mockReturnValue({});
+        vi.stubGlobal('window', { open: windowOpen });
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+        for (const url of ['', 'not a url', 'https://user:dummy-token-1234@[bad']) {
+          await expect(openUrl(url)).resolves.toBe(false);
+        }
+        expect(shellOpen).not.toHaveBeenCalled();
+        expect(windowOpen).not.toHaveBeenCalled();
+        expect(JSON.stringify(warn.mock.calls)).not.toContain('dummy-token-1234');
+      });
+
       it('reports success when the shell opens the URL', async () => {
         shellOpen.mockResolvedValue(undefined);
         const windowOpen = vi.fn();
@@ -168,9 +181,9 @@ describe('thirdPartyLicenses', () => {
       vi.restoreAllMocks();
     });
 
-    it('points to immutable release tag ref instead of main branch', () => {
-      expect(GITHUB_NOTICES_URL).toBe(`https://github.com/axpdev-lab/aeroftp/blob/v${packageJson.version}/THIRD-PARTY-NOTICES.md`);
-      expect(GITHUB_NOTICES_URL).not.toContain('/blob/main/');
+    it('points to the raw file at the immutable release tag, not to main or to the blob page', () => {
+      expect(GITHUB_NOTICES_URL).toBe(`https://raw.githubusercontent.com/axpdev-lab/aeroftp/v${packageJson.version}/THIRD-PARTY-NOTICES.md`);
+      expect(GITHUB_NOTICES_URL).not.toMatch(/\/main\/|\/blob\//);
     });
   });
 });

@@ -551,6 +551,12 @@ const LICENSE_DIR_TEXT_FILE = /^(?!(?:readme|changelog|index|makefile)(?:\.|$))(
 // LICENSES/MIT.txt is a text, LICENSES/README.md and LICENSES/build.rs are not.
 const isLicenseDirText = (name: string) => LICENSE_DIR_TEXT_FILE.test(name) && !SOURCE_FILE.test(name);
 
+// Directory entries in one order on every platform: Windows returns them in
+// the order the file system keeps, so a walk that lists files or holders in
+// enumeration order would generate different notices from the same contents.
+const readDirSorted = (dir: string): fs.Dirent[] =>
+  fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) => compareStrings(a.name, b.name));
+
 export function readPackageFiles(
   dir: string,
   componentId: string,
@@ -580,7 +586,7 @@ export function readPackageFiles(
   }
 
   // 2. Scan direct entries in package directory
-  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  const entries = readDirSorted(dir);
   for (const entry of entries) {
     if (entry.isFile()) {
       const f = entry.name;
@@ -601,7 +607,7 @@ export function readPackageFiles(
       // license/, licence/) with the rule of a nested one (isLicenseDirText).
       const subDir = path.join(dir, entry.name);
       try {
-        const subEntries = fs.readdirSync(subDir, { withFileTypes: true });
+        const subEntries = readDirSorted(subDir);
         for (const sub of subEntries) {
           if (sub.isFile() && isLicenseDirText(sub.name)) {
             const fullPath = path.join(subDir, sub.name);
@@ -626,7 +632,7 @@ export function readPackageFiles(
       const subDir = path.join(dir, entry.name);
       try {
         const walkVendored = (d: string, rel: string) => {
-          for (const sub of fs.readdirSync(d, { withFileTypes: true })) {
+          for (const sub of readDirSorted(d)) {
             const filename = `${rel}/${sub.name}`;
             if (sub.isDirectory()) {
               if (!VENDORED_SKIP_DIR.test(sub.name)) walkVendored(path.join(d, sub.name), filename);
@@ -695,7 +701,7 @@ export function findPackageCopyrightNotices(
   // components and are scanned as themselves.
   function walk(currentDir: string, relBase: string) {
     if (!fs.existsSync(currentDir)) return;
-    const entries = fs.readdirSync(currentDir, { withFileTypes: true });
+    const entries = readDirSorted(currentDir);
     for (const e of entries) {
       const rel = relBase ? `${relBase}/${e.name}` : e.name;
       const full = path.join(currentDir, e.name);
@@ -864,6 +870,24 @@ export function collectNpmDependencies(
     const version = pkgInfo.version || 'unknown';
     const depDir = path.join(baseDir, pkgPath);
     const componentId = `${name}@${version}`;
+    // The files read are the installed package's: a node_modules left from
+    // another lockfile would give its license files the locked version's name.
+    // An alias is installed under its own directory name, so the installed
+    // manifest is checked against the locked package name, not the directory.
+    const installedManifest = path.join(depDir, 'package.json');
+    if (fs.existsSync(depDir)) {
+      if (!fs.existsSync(installedManifest)) {
+        throw new Error(
+          `${pkgPath} has no package.json, but package-lock.json locks ${name}@${version}: run npm ci, then generate the notices again`
+        );
+      }
+      const installed = JSON.parse(fs.readFileSync(installedManifest, 'utf8').replace(/^\uFEFF/, ''));
+      if (installed.name !== name || installed.version !== version) {
+        throw new Error(
+          `${pkgPath} is installed as ${installed.name}@${installed.version}, but package-lock.json locks ${name}@${version}: run npm ci, then generate the notices again`
+        );
+      }
+    }
     const { licenseFiles, noticeFiles } = readPackageFiles(depDir, componentId);
 
     results.push({
@@ -1254,7 +1278,7 @@ export function findBundledCodeUnderOtherLicenses(
   const SPDX_TAG = new RegExp(`SPDX-License-Identifier:\\s*(.+?)\\s*${COMMENT_CLOSER_ALTERNATIVES}?\\s*$`);
   const stripLeader = (l: string) => l.replace(COMMENT_LEADER, '').replace(/^\s/, '').replace(FROM_COMMENT_CLOSER, '').trimEnd();
   const walk = (dir: string, rel: string) => {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    for (const entry of readDirSorted(dir)) {
       const entryRel = rel ? `${rel}/${entry.name}` : entry.name;
       if (entry.isDirectory()) {
         if (!VENDORED_SKIP_DIR.test(entry.name)) walk(path.join(dir, entry.name), entryRel);
@@ -1581,6 +1605,12 @@ export function assertNoGeneratedPlaceholders(output: string, verbatimBlocks: st
 }
 
 /** The notices markdown. */
+// The anchor of a licensing exception's own license text.
+const exceptionAnchorId = (exc: NonFreeException) => `exception-${exc.crateName.replace(/_/g, '-')}`;
+// The text an exception names is the one of the registered crate version.
+const isExceptionText = (exc: NonFreeException, c: LicenseTextGroup['components'][number]) =>
+  c.source === 'cargo' && c.name === exc.crateName && c.version === exc.version && c.filename === exc.sourceFile;
+
 export function generateNoticesMarkdown(
   cargoDeps: ComponentInfo[],
   npmDeps: ComponentInfo[],
@@ -1703,9 +1733,7 @@ export function renderNotices(
     for (const exc of activeExceptions) {
       let entryIndex = -1;
       for (let i = 0; i < groupedTexts.length; i++) {
-        const match = groupedTexts[i].components.some(
-          (c) => c.name === exc.crateName && c.filename === exc.sourceFile
-        );
+        const match = groupedTexts[i].components.some((c) => isExceptionText(exc, c));
         if (match) {
           entryIndex = i + 1;
           break;
@@ -1717,7 +1745,7 @@ export function renderNotices(
         );
       }
       lines.push(
-        `- **UnRAR (\`${exc.crateName}\`):** ${exc.facts} For the full text of the UnRAR license, see [Notice Entry ${entryIndex}](#notice-${exc.crateName.replace(/_/g, '-')}).`
+        `- **UnRAR (\`${exc.crateName}\`):** ${exc.facts} For the full text of the UnRAR license, see [Notice Entry ${entryIndex}](#${exceptionAnchorId(exc)}).`
       );
     }
     lines.push('');
@@ -1783,18 +1811,20 @@ export function renderNotices(
   }
 
   const seenAnchorIds = new Set<string>();
-  const withoutOwnLicense = new Set(componentsWithoutFiles.map((c) => `${c.source}:${c.name}@${c.version}`));
   let groupIndex = 1;
   for (const group of groupedTexts) {
     const newAnchors: string[] = [];
+    // A licensing exception links to the vendored text it names
+    // (vendor/unrar/license.txt), under an anchor of its own.
+    for (const exc of activeExceptions.filter((e) => group.components.some((c) => isExceptionText(e, c)))) {
+      newAnchors.push(`<a id="${exceptionAnchorId(exc)}"></a>`);
+    }
     // A component's anchor leads to its own license text, never to a notice
     // file or an SPDX document that only names the license, nor to a vendored
-    // library's license when the package has its own. A package whose only
-    // license text is vendored (unrar_sys, vendor/unrar/license.txt) is
-    // anchored there.
-    for (const comp of group.components.filter(
-      (c) => c.isLicenseText && (!c.vendored || withoutOwnLicense.has(`${c.source}:${c.name}@${c.version}`))
-    )) {
+    // library's license: a package whose only license text is vendored
+    // (whisper-rs-sys, whisper.cpp/LICENSE) is anchored at the standard text
+    // of the license it declares.
+    for (const comp of group.components.filter((c) => c.isLicenseText && !c.vendored)) {
       const anchorId = `notice-${comp.name.replace(/_/g, '-')}`;
       if (!seenAnchorIds.has(anchorId)) {
         seenAnchorIds.add(anchorId);
@@ -1931,10 +1961,10 @@ export function renderNotices(
 
     lines.push('---');
     lines.push('');
-    lines.push('## Standard License Texts for Components without Dedicated License Files');
+    lines.push('## Standard License Texts for Dependencies that Need Them');
     lines.push('');
-    lines.push('The following crates declare standard open-source licenses in their crate manifests without bundling');
-    lines.push('the text of each of those licenses in their published crate archives.');
+    lines.push('The following dependencies need one or more standard license texts: their manifests declare the');
+    lines.push('licenses, and their package files do not include the text of each of them.');
     lines.push('In accordance with licensing requirements, the standard verbatim text for each applicable license is');
     lines.push(
       'provided below. Authors are listed as declared in package manifests or reviewed attributions; copyright notices, where available, reproduce upstream repository declarations.'

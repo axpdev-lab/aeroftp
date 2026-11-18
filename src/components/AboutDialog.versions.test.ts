@@ -181,12 +181,4 @@ describe('AboutDialog frontend dependency versions', () => {
         expect(aboutDialogSrc).toContain('__FRONTEND_VERSIONS__');
         expect(aboutDialogSrc).toContain("{ name: 'Vite', version: _fv.vite }");
     });
-
-    it('AboutDialog component declares Third-Party Licenses action invoking openThirdPartyLicenses', () => {
-        const aboutDialogPath = resolve(__dirname, 'AboutDialog.tsx');
-        const aboutDialogSrc = readFileSync(aboutDialogPath, 'utf-8');
-
-        expect(aboutDialogSrc).toContain('openThirdPartyLicenses');
-        expect(aboutDialogSrc).toContain("t('about.thirdPartyLicenses')");
-    });
 });

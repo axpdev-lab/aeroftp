@@ -582,10 +582,11 @@ fn portable_helper_script(
     // A file held open without write sharing refuses the replace. The log
     // line is in a group that swallows cmd's error when the log itself is
     // held, and the helper goes on with its exit code unchanged.
-    let warn_line = |name: &str| {
+    const IN_USE: &str = "is in use, kept the installed one";
+    let warn_line = |name: &str, outcome: &str| {
         match log_file {
         Some(log) => format!(
-            "if exist {dir} ((echo [windows_update_helper][WARN] portable update: {name} is in use, kept the installed one)>>{log}) 2>nul\n",
+            "if exist {dir} ((echo [windows_update_helper][WARN] portable update: {name} {outcome})>>{log}) 2>nul\n",
             dir = quote_for_cmd(log.parent().unwrap_or(exe_dir)),
             log = quote_for_cmd(log),
         ),
@@ -601,7 +602,7 @@ fn portable_helper_script(
         let target = exe_dir.join(name);
         let new = quote_for_cmd(&beside_path(&target));
         discard_block.push_str(&format!("del /F /Q {new} >nul 2>&1\n"));
-        let log_line = warn_line(name);
+        let log_line = warn_line(name, IN_USE);
         cli_block.push_str(&format!(
             r#"set RETRY=0
 :cli_{i}
@@ -624,7 +625,9 @@ del /F /Q {new} >nul 2>&1
     // every release (build.yml stages them beside LICENSE.txt). A document
     // open in an editor that does not share writes refuses the copy: it is
     // retried like a CLI exe, then the installed one is kept and the log
-    // says so.
+    // says so. `copy` onto a directory writes inside it, so a directory with
+    // the document's name, found before any attempt, is left as it is,
+    // nothing is copied into it, and the log says so.
     let docs = [
         (&staged.new_marker, "portable.marker"),
         (&staged.new_readme, "README.txt"),
@@ -634,10 +637,12 @@ del /F /Q {new} >nul 2>&1
     let mut copy_block = String::new();
     for (i, &(src, name)) in docs.iter().enumerate() {
         let Some(src) = src else { continue };
-        let log_line = warn_line(name);
+        let log_line = warn_line(name, IN_USE);
+        let dir_line = warn_line(name, "is a directory, copied nothing into it");
         copy_block.push_str(&format!(
             r#"set RETRY=0
 :doc_{i}
+if exist {dst_children} goto doc_{i}_dir
 copy /Y {src} {dst} >nul 2>&1
 if not errorlevel 1 goto doc_{i}_done
 set /a RETRY+=1
@@ -645,10 +650,13 @@ if %RETRY% GEQ {CLI_ATTEMPTS} goto doc_{i}_busy
 ping 127.0.0.1 -n 2 >nul
 goto doc_{i}
 :doc_{i}_busy
-{log_line}:doc_{i}_done
+{log_line}goto doc_{i}_done
+:doc_{i}_dir
+{dir_line}:doc_{i}_done
 "#,
             src = quote_for_cmd(src),
             dst = quote_for_cmd(&exe_dir.join(name)),
+            dst_children = quote_for_cmd(&exe_dir.join(name).join("*")),
         ));
     }
 
@@ -1157,6 +1165,44 @@ mod tests {
         assert_eq!(
             log.trim_end(),
             "[windows_update_helper][WARN] portable update: THIRD-PARTY-NOTICES.md is in use, kept the installed one"
+        );
+    }
+
+    /// A directory with a document's name is left as it is: `copy` would
+    /// write the new file inside it, over a file of the same name there. The
+    /// helper copies nothing into it, says so in the app log, and still
+    /// replaces the other documents and the exe and removes the stage.
+    #[test]
+    fn a_directory_at_a_document_path_is_left_unchanged_and_the_log_says_so() {
+        let mut fx = fixture();
+        for (name, old, new) in DOC_FILES {
+            std::fs::write(fx.staged.stage_dir.join(name), new).expect("staged file");
+            if name != "THIRD-PARTY-NOTICES.md" {
+                std::fs::write(fx.app.join(name), old).expect("installed file");
+            }
+        }
+        let dir = fx.app.join("THIRD-PARTY-NOTICES.md");
+        std::fs::create_dir(&dir).expect("directory at the document path");
+        std::fs::write(dir.join("THIRD-PARTY-NOTICES.md"), b"sentinel").expect("sentinel");
+        fx.staged.new_readme = Some(fx.staged.stage_dir.join("README.txt"));
+        fx.staged.new_license = Some(fx.staged.stage_dir.join("LICENSE.txt"));
+        fx.staged.new_notices = Some(fx.staged.stage_dir.join("THIRD-PARTY-NOTICES.md"));
+        let script = script_for(&fx);
+        run(&fx, &runnable(&script));
+        assert!(dir.is_dir());
+        assert_eq!(
+            std::fs::read(dir.join("THIRD-PARTY-NOTICES.md")).expect("sentinel"),
+            b"sentinel"
+        );
+        assert_eq!(names_in(&dir), vec!["THIRD-PARTY-NOTICES.md".to_string()]);
+        assert_eq!(read(&fx, "AeroFTP.exe"), NEW_EXE);
+        assert_eq!(read(&fx, "README.txt"), b"new readme");
+        assert_eq!(read(&fx, "LICENSE.txt"), b"new license");
+        assert!(!fx.staged.stage_dir.exists());
+        let log = std::fs::read_to_string(&fx.log).expect("log");
+        assert_eq!(
+            log.trim_end(),
+            "[windows_update_helper][WARN] portable update: THIRD-PARTY-NOTICES.md is a directory, copied nothing into it"
         );
     }
 

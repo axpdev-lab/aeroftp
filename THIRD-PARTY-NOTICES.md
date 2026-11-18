@@ -14,7 +14,7 @@ All bundled components are distributed in accordance with their respective licen
 
 ## Licensing Exceptions
 
-- **UnRAR (`unrar_sys`):** RAR extraction uses the UnRAR source code by Alexander Roshal (through the unrar crate, vendored unrar_sys), distributed under its own license, which allows it to be used and redistributed but forbids using it to re-create the RAR compression algorithm. AeroFTP only extracts RAR archives and never creates them. The UnRAR license is not a free-software license, and it is not GPL-compatible. For the full text of the UnRAR license, see [Notice Entry 614](#notice-unrar-sys).
+- **UnRAR (`unrar_sys`):** RAR extraction uses the UnRAR source code by Alexander Roshal (through the unrar crate, vendored unrar_sys), distributed under its own license, which allows it to be used and redistributed but forbids using it to re-create the RAR compression algorithm. AeroFTP only extracts RAR archives and never creates them. The UnRAR license is not a free-software license, and it is not GPL-compatible. For the full text of the UnRAR license, see [Notice Entry 614](#exception-unrar-sys).
 
 ---
 
@@ -42225,7 +42225,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-<a id="notice-unrar-sys"></a>
+<a id="exception-unrar-sys"></a>
 
 ### Notice Entry 614
 
@@ -43332,8 +43332,6 @@ OTHER DEALINGS IN THE SOFTWARE.
 
 For more information, please refer to <https://unlicense.org>
 ```
-
-<a id="notice-whisper-rs-sys"></a>
 
 ### Notice Entry 636
 
@@ -44841,10 +44839,10 @@ freely, subject to the following restrictions:
 
 ---
 
-## Standard License Texts for Components without Dedicated License Files
+## Standard License Texts for Dependencies that Need Them
 
-The following crates declare standard open-source licenses in their crate manifests without bundling
-the text of each of those licenses in their published crate archives.
+The following dependencies need one or more standard license texts: their manifests declare the
+licenses, and their package files do not include the text of each of them.
 In accordance with licensing requirements, the standard verbatim text for each applicable license is
 provided below. Authors are listed as declared in package manifests or reviewed attributions; copyright notices, where available, reproduce upstream repository declarations.
 
@@ -44915,6 +44913,7 @@ provided below. Authors are listed as declared in package manifests or reviewed 
 <a id="notice-unic-common"></a>
 <a id="notice-unic-ucd-ident"></a>
 <a id="notice-unic-ucd-version"></a>
+<a id="notice-unrar-sys"></a>
 <a id="notice-winapi-i686-pc-windows-gnu"></a>
 <a id="notice-winapi-x86-64-pc-windows-gnu"></a>
 
@@ -46512,6 +46511,7 @@ Exhibit B - "Incompatible With Secondary Licenses" Notice
 ```
 
 <a id="notice-pharos"></a>
+<a id="notice-whisper-rs-sys"></a>
 
 ### Standard License: Unlicense
 

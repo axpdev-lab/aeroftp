@@ -6,7 +6,9 @@ import { executableDir, resolveResource } from '@tauri-apps/api/path';
 import packageJson from '../../package.json';
 import { openUrl } from './openUrl';
 
-export const GITHUB_NOTICES_URL = `https://github.com/axpdev-lab/aeroftp/blob/v${packageJson.version}/THIRD-PARTY-NOTICES.md`;
+// The raw file at the release tag: GitHub's page for the file shows no text at
+// this size, only a "View raw" link.
+export const GITHUB_NOTICES_URL = `https://raw.githubusercontent.com/axpdev-lab/aeroftp/v${packageJson.version}/THIRD-PARTY-NOTICES.md`;
 
 /**
  * Absolute Linux candidate paths where THIRD-PARTY-NOTICES.md may be installed.
