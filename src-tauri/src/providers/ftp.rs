@@ -2018,6 +2018,9 @@ impl FtpProvider {
     }
 }
 
+/// How long `disconnect` waits for the reply to its QUIT.
+const GOODBYE_BUDGET: std::time::Duration = std::time::Duration::from_secs(5);
+
 #[async_trait]
 impl StorageProvider for FtpProvider {
     fn sync_owner_identity(&self) -> Result<Option<zeroize::Zeroizing<String>>, ProviderError> {
@@ -2271,7 +2274,6 @@ impl StorageProvider for FtpProvider {
     /// command would not read it anyway. The connection is closed at once,
     /// where the QUIT used to cost the user the whole budget after a Cancel.
     async fn disconnect(&mut self) -> Result<(), ProviderError> {
-        const GOODBYE_BUDGET: std::time::Duration = std::time::Duration::from_secs(5);
         self.owed_folder = None;
         let abandoned = self.abandoned_command.swap(false, Ordering::Relaxed);
         if let Some(mut stream) = self.stream.take() {
@@ -12802,57 +12804,98 @@ mod abandoned_command_tests {
         Answered,
         /// Never answered, as a server stuck on it does.
         Silent,
-        /// Answered 400 ms late, after the client has given up on it.
+        /// Answered late: once the test releases it, after the client has
+        /// given up on it.
         Late,
-        /// Passive mode answered at once; a `DELE` answered 400 ms late.
+        /// Passive mode answered at once; a `DELE` answered late, once the
+        /// test releases it.
         LateDele,
     }
 
+    /// What the server logs when a control connection ends, after every
+    /// line it read from it.
+    const CLOSED: &str = "<CONNECTION CLOSED>";
+
+    /// What the server logs once a late reply has been written to the
+    /// connection that asked for it.
+    const LATE_REPLY_WRITTEN: &str = "<LATE REPLY WRITTEN>";
+
+    /// Every line the server logged, with the control connection it came
+    /// on: 1 for the first the client opened, 2 for the next, and so on.
+    type Log = Mutex<Vec<(usize, String)>>;
+
     /// A server that logs every command line and answers each one, the
     /// passive-mode request as `passive` says. It keeps reading, so a QUIT
-    /// sent afterwards would still reach the log.
-    async fn server(passive: Passive) -> (u16, Arc<Mutex<Vec<String>>>) {
+    /// sent afterwards would still reach the log, and logs [`CLOSED`] when the
+    /// client closes. A late reply waits for the returned `release`.
+    async fn server(passive: Passive) -> (u16, Arc<Log>, Arc<tokio::sync::Notify>) {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
         let log = Arc::new(Mutex::new(Vec::new()));
+        let release = Arc::new(tokio::sync::Notify::new());
         let server_log = Arc::clone(&log);
+        let server_release = Arc::clone(&release);
         tokio::spawn(async move {
+            let mut connections = 0;
             while let Ok((stream, _)) = listener.accept().await {
+                connections += 1;
+                let connection = connections;
                 let log = Arc::clone(&server_log);
+                let release = Arc::clone(&server_release);
                 tokio::spawn(async move {
-                    let (read, mut write) = stream.into_split();
-                    let mut lines = BufReader::new(read).lines();
-                    if write.write_all(b"220 ready\r\n").await.is_err() {
-                        return;
-                    }
-                    while let Ok(Some(line)) = lines.next_line().await {
-                        log.lock().unwrap().push(line.clone());
-                        let cmd = line.split_whitespace().next().unwrap_or("").to_uppercase();
-                        let reply = match cmd.as_str() {
-                            "PASV" | "EPSV" if passive == Passive::Silent => continue,
-                            "PASV" | "EPSV" if passive == Passive::Late => {
-                                tokio::time::sleep(Duration::from_millis(400)).await;
-                                "227 Entering Passive Mode (127,0,0,1,0,1)\r\n"
-                            }
-                            "DELE" if passive == Passive::LateDele => {
-                                tokio::time::sleep(Duration::from_millis(400)).await;
-                                "250 deleted\r\n"
-                            }
-                            "USER" => "331 password please\r\n",
-                            "PASS" => "230 logged in\r\n",
-                            "PWD" => "257 \"/\" is current\r\n",
-                            "CWD" => "250 ok\r\n",
-                            "QUIT" => "221 bye\r\n",
-                            _ => "200 ok\r\n",
-                        };
-                        if write.write_all(reply.as_bytes()).await.is_err() {
-                            return;
-                        }
-                    }
+                    serve(stream, passive, connection, &log, &release).await;
+                    log.lock().unwrap().push((connection, CLOSED.to_string()));
                 });
             }
         });
-        (port, log)
+        (port, log, release)
+    }
+
+    async fn serve(
+        stream: tokio::net::TcpStream,
+        passive: Passive,
+        connection: usize,
+        log: &Log,
+        release: &tokio::sync::Notify,
+    ) {
+        let (read, mut write) = stream.into_split();
+        let mut lines = BufReader::new(read).lines();
+        if write.write_all(b"220 ready\r\n").await.is_err() {
+            return;
+        }
+        while let Ok(Some(line)) = lines.next_line().await {
+            log.lock().unwrap().push((connection, line.clone()));
+            let cmd = line.split_whitespace().next().unwrap_or("").to_uppercase();
+            let late = matches!(
+                (cmd.as_str(), passive),
+                ("PASV" | "EPSV", Passive::Late) | ("DELE", Passive::LateDele)
+            );
+            let reply = match cmd.as_str() {
+                "PASV" | "EPSV" if passive == Passive::Silent => continue,
+                "PASV" | "EPSV" if passive == Passive::Late => {
+                    release.notified().await;
+                    "227 Entering Passive Mode (127,0,0,1,0,1)\r\n"
+                }
+                "DELE" if passive == Passive::LateDele => {
+                    release.notified().await;
+                    "250 deleted\r\n"
+                }
+                "USER" => "331 password please\r\n",
+                "PASS" => "230 logged in\r\n",
+                "PWD" => "257 \"/\" is current\r\n",
+                "CWD" => "250 ok\r\n",
+                "QUIT" => "221 bye\r\n",
+                _ => "200 ok\r\n",
+            };
+            if write.write_all(reply.as_bytes()).await.is_err() {
+                return;
+            }
+            if late {
+                log.lock()
+                    .unwrap()
+                    .push((connection, LATE_REPLY_WRITTEN.to_string()));
+            }
+        }
     }
 
     async fn connected(port: u16) -> FtpProvider {
@@ -12870,108 +12913,282 @@ mod abandoned_command_tests {
         provider
     }
 
-    fn sent(log: &Mutex<Vec<String>>, command: &str) -> bool {
+    fn sent(log: &Log, command: &str) -> bool {
+        sent_any(log, &[command])
+    }
+
+    fn sent_any(log: &Log, commands: &[&str]) -> bool {
+        log.lock().unwrap().iter().any(|(_, line)| {
+            let line = line.to_uppercase();
+            commands
+                .iter()
+                .any(|command| line.starts_with(&command.to_uppercase()))
+        })
+    }
+
+    /// The lines of one control connection that start with `command`.
+    fn on(log: &Log, connection: usize, command: &str) -> Vec<String> {
         log.lock()
             .unwrap()
             .iter()
-            .any(|line| line.to_uppercase().starts_with(command))
+            .filter(|(on, line)| {
+                *on == connection && line.to_uppercase().starts_with(&command.to_uppercase())
+            })
+            .map(|(_, line)| line.clone())
+            .collect()
+    }
+
+    /// Waits until every control connection the client opened has closed.
+    async fn until_all_closed(log: &Log) {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            let (opened, closed) = {
+                let log = log.lock().unwrap();
+                let opened = log.iter().map(|(on, _)| *on).max().unwrap_or(0);
+                let closed = log.iter().filter(|(_, line)| line == CLOSED).count();
+                (opened, closed)
+            };
+            if opened > 0 && closed == opened {
+                return;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "a control connection stayed open: {:?}",
+                log.lock().unwrap()
+            );
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    }
+
+    /// Waits until the server has read `command` (or logged [`CLOSED`] or
+    /// [`LATE_REPLY_WRITTEN`]): a fixed wait is too short on a busy runner,
+    /// or lets a late line pass.
+    async fn until_sent(log: &Log, command: &str) {
+        until_any_sent(log, &[command]).await;
+    }
+
+    /// [`until_sent`] for the first of `commands` the server reads, under
+    /// one deadline: a waiter per command would let one fail while another
+    /// command is already in the log.
+    async fn until_any_sent(log: &Log, commands: &[&str]) {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !sent_any(log, commands) {
+            assert!(
+                Instant::now() < deadline,
+                "the server never read any of {commands:?}: {:?}",
+                log.lock().unwrap()
+            );
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
     }
 
     /// A listing dropped while the server sits on PASV disconnects at once, with no QUIT.
     #[tokio::test]
     async fn a_cancelled_listing_is_closed_at_once_without_quit() {
-        let (port, log) = server(Passive::Silent).await;
+        let (port, log, _release) = server(Passive::Silent).await;
         let mut provider = connected(port).await;
         // What a Cancel of the foreground listing does: the listing future is
         // dropped while it waits for the passive-mode reply.
+        let passive = until_any_sent(&log, &["PASV", "EPSV"]);
         tokio::select! {
+            biased;
             _ = provider.list("/") => panic!("the server never answers the passive-mode request"),
-            _ = tokio::time::sleep(Duration::from_millis(300)) => {}
+            _ = passive => {}
         }
-        assert!(
-            sent(&log, "PASV") || sent(&log, "EPSV"),
-            "{:?}",
-            log.lock().unwrap()
-        );
 
         let started = Instant::now();
         provider.disconnect().await.unwrap();
         let took = started.elapsed();
-        assert!(
-            took < Duration::from_secs(1),
-            "the disconnect took {took:?}"
-        );
+        // A QUIT waiting for its reply would take the whole budget.
+        assert!(took < GOODBYE_BUDGET / 2, "the disconnect took {took:?}");
         assert!(!provider.is_connected());
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        until_sent(&log, CLOSED).await;
         assert!(!sent(&log, "QUIT"), "{:?}", log.lock().unwrap());
     }
 
     /// Commands that came back leave nothing marked: the disconnect still sends QUIT.
     #[tokio::test]
     async fn a_disconnect_after_finished_commands_still_says_goodbye() {
-        let (port, log) = server(Passive::Answered).await;
+        let (port, log, _release) = server(Passive::Answered).await;
         let mut provider = connected(port).await;
         provider.cd("/").await.unwrap();
         provider.pwd().await.unwrap();
         provider.disconnect().await.unwrap();
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        until_sent(&log, CLOSED).await;
         assert!(sent(&log, "QUIT"), "{:?}", log.lock().unwrap());
+    }
+
+    /// When the late reply of an abandoned command reaches the first
+    /// connection, relative to the next command: already written and
+    /// waiting there (the unread-reply check catches it), or still held by
+    /// the server while the next command runs (only the abandoned-command
+    /// mark can tell).
+    #[derive(Clone, Copy, Debug)]
+    enum LateReply {
+        Queued,
+        Outstanding,
+    }
+
+    /// Lets the late reply go before the next command when it is
+    /// [`LateReply::Queued`], and waits until the client can read it: the
+    /// server having written it is not enough, the bytes must have reached
+    /// the client's side of the first connection, where the same
+    /// non-consuming peek the next command makes ([`FtpProvider::reply_pending`])
+    /// sees them. Otherwise the next command could redial for the
+    /// abandoned-command mark alone and leave the queued case untested.
+    async fn before_next_command(
+        order: LateReply,
+        provider: &FtpProvider,
+        log: &Log,
+        release: &tokio::sync::Notify,
+    ) {
+        if let LateReply::Queued = order {
+            release.notify_one();
+            until_sent(log, LATE_REPLY_WRITTEN).await;
+            let deadline = Instant::now() + Duration::from_secs(10);
+            while !provider.reply_pending().await {
+                assert!(
+                    Instant::now() < deadline,
+                    "the late reply never reached the client: {:?}",
+                    log.lock().unwrap()
+                );
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        }
+    }
+
+    /// Checks the next command ran on a fresh session, then, when the late
+    /// reply was still held, lets it go and waits until the first connection
+    /// is closed: the server's next late reply then belongs to the second.
+    async fn after_next_command(order: LateReply, log: &Log, release: &tokio::sync::Notify) {
+        let logins = log
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(_, line)| line.to_uppercase().starts_with("USER"))
+            .count();
+        assert_eq!(logins, 2, "{order:?}: {:?}", log.lock().unwrap());
+        // The next command went to the fresh session, not to the first: the
+        // first has no PWD after the abandoned command, and the last PWD is
+        // the second session's (`connect` sends its own while logging in).
+        let full = log.lock().unwrap().clone();
+        let abandoned = full
+            .iter()
+            .position(|(on, line)| {
+                *on == 1 && ["DELE", "PASV", "EPSV"].iter().any(|c| line.starts_with(c))
+            })
+            .expect("the abandoned command is in the log");
+        assert!(
+            !full[abandoned..]
+                .iter()
+                .any(|(on, line)| *on == 1 && line == "PWD"),
+            "{order:?}: {full:?}"
+        );
+        assert_eq!(
+            full.iter()
+                .rev()
+                .find(|(_, line)| line == "PWD")
+                .map(|(on, _)| *on),
+            Some(2),
+            "{order:?}: {full:?}"
+        );
+        if let LateReply::Outstanding = order {
+            assert!(
+                !sent(log, LATE_REPLY_WRITTEN),
+                "{order:?}: the late reply went out before the next command ended"
+            );
+            release.notify_one();
+            until_sent(log, CLOSED).await;
+        }
     }
 
     /// M3: a delete dropped after its `DELE` was sent (a Cancel) leaves its
     /// reply to come. The next command redials instead of reading that
-    /// `250` as its own answer, and a later delete works on the new session.
+    /// `250` as its own answer, whether it is already there or still to
+    /// come, and a later delete works on the new session.
     #[tokio::test]
     async fn a_cancelled_delete_leaves_no_late_reply_for_the_next_command() {
-        let (port, log) = server(Passive::LateDele).await;
-        let mut provider = connected(port).await;
-        tokio::select! {
-            _ = provider.delete("/a.txt") => panic!("the DELE reply comes after the client gave up"),
-            _ = tokio::time::sleep(Duration::from_millis(150)) => {}
+        for order in [LateReply::Queued, LateReply::Outstanding] {
+            let (port, log, release) = server(Passive::LateDele).await;
+            let mut provider = connected(port).await;
+            tokio::select! {
+                biased;
+                _ = provider.delete("/a.txt") => panic!("the DELE reply comes after the client gave up"),
+                _ = until_sent(&log, "DELE") => {}
+            }
+            before_next_command(order, &provider, &log, &release).await;
+            let path = tokio::time::timeout(Duration::from_secs(5), provider.pwd())
+                .await
+                .unwrap_or_else(|_| panic!("{order:?}: the command must end"))
+                .unwrap_or_else(|e| {
+                    panic!("{order:?}: the command must succeed on a fresh session: {e:?}")
+                });
+            assert_eq!(path, "/");
+            after_next_command(order, &log, &release).await;
+            {
+                // The fixture holds every DELE reply. This one stays held
+                // until the server has read the command, and the delete must
+                // still be waiting then: a delete that returned without
+                // reading its own reply would end here.
+                let second = provider.delete("/b.txt");
+                tokio::pin!(second);
+                // `biased`: the delete is polled first on every wake, so a
+                // delete already done cannot lose the race to the log check.
+                tokio::select! {
+                    biased;
+                    ended = &mut second => {
+                        panic!("{order:?}: the delete ended before its reply came: {ended:?}")
+                    }
+                    _ = until_sent(&log, "DELE /b.txt") => {}
+                }
+                // And once more right before the release: a zero timeout
+                // polls the delete first.
+                if let Ok(ended) = tokio::time::timeout(Duration::ZERO, &mut second).await {
+                    panic!("{order:?}: the delete ended before its reply came: {ended:?}");
+                }
+                release.notify_one();
+                tokio::time::timeout(Duration::from_secs(5), second)
+                    .await
+                    .unwrap_or_else(|_| panic!("{order:?}: the delete must end"))
+                    .unwrap_or_else(|e| {
+                        panic!("{order:?}: the delete must read its own reply: {e:?}")
+                    });
+            }
+            provider.disconnect().await.unwrap();
+            until_all_closed(&log).await;
+            // Each delete on its own session: the abandoned one on the first,
+            // the next one on the fresh session the redial opened, and no third.
+            let full = log.lock().unwrap().clone();
+            assert_eq!(on(&log, 1, "DELE"), ["DELE /a.txt"], "{order:?}: {full:?}");
+            assert_eq!(on(&log, 2, "DELE"), ["DELE /b.txt"], "{order:?}: {full:?}");
+            assert!(on(&log, 3, "USER").is_empty(), "{order:?}: {full:?}");
         }
-        assert!(sent(&log, "DELE"), "{:?}", log.lock().unwrap());
-        let path = tokio::time::timeout(Duration::from_secs(5), provider.pwd())
-            .await
-            .expect("the command must end")
-            .expect("the command must succeed on a fresh session");
-        assert_eq!(path, "/");
-        tokio::time::timeout(Duration::from_secs(5), provider.delete("/b.txt"))
-            .await
-            .expect("the delete must end")
-            .expect("the delete must read its own reply");
-        let logins = log
-            .lock()
-            .unwrap()
-            .iter()
-            .filter(|line| line.to_uppercase().starts_with("USER"))
-            .count();
-        assert_eq!(logins, 2, "{:?}", log.lock().unwrap());
-        provider.disconnect().await.unwrap();
     }
 
-    /// After an abandoned listing whose reply comes late, the next command redials instead of reading it.
+    /// After an abandoned listing whose reply comes late, the next command
+    /// redials instead of reading it, whether it is already there or still
+    /// to come. Read there, it would be taken as that command's reply.
     #[tokio::test]
     async fn the_next_command_after_an_abandoned_one_redials_instead_of_reading_its_late_reply() {
-        let (port, log) = server(Passive::Late).await;
-        let mut provider = connected(port).await;
-        tokio::select! {
-            _ = provider.list("/") => panic!("the passive-mode reply comes after the client gave up"),
-            _ = tokio::time::sleep(Duration::from_millis(150)) => {}
+        for order in [LateReply::Queued, LateReply::Outstanding] {
+            let (port, log, release) = server(Passive::Late).await;
+            let mut provider = connected(port).await;
+            let passive = until_any_sent(&log, &["PASV", "EPSV"]);
+            tokio::select! {
+                biased;
+                _ = provider.list("/") => panic!("the passive-mode reply comes after the client gave up"),
+                _ = passive => {}
+            }
+            before_next_command(order, &provider, &log, &release).await;
+            let path = tokio::time::timeout(Duration::from_secs(5), provider.pwd())
+                .await
+                .unwrap_or_else(|_| panic!("{order:?}: the command must end"))
+                .unwrap_or_else(|e| {
+                    panic!("{order:?}: the command must succeed on a fresh session: {e:?}")
+                });
+            assert_eq!(path, "/");
+            after_next_command(order, &log, &release).await;
+            provider.disconnect().await.unwrap();
         }
-        // The late `227` lands on the first connection while the next command
-        // runs. Read there, it would be taken as that command's reply.
-        let path = tokio::time::timeout(Duration::from_secs(5), provider.pwd())
-            .await
-            .expect("the command must end")
-            .expect("the command must succeed on a fresh session");
-        assert_eq!(path, "/");
-        let logins = log
-            .lock()
-            .unwrap()
-            .iter()
-            .filter(|line| line.to_uppercase().starts_with("USER"))
-            .count();
-        assert_eq!(logins, 2, "{:?}", log.lock().unwrap());
-        provider.disconnect().await.unwrap();
     }
 }

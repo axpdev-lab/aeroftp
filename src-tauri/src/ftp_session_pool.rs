@@ -708,11 +708,17 @@ mod tests {
         assert_eq!(config.acquire_timeout_ms, 30_000);
     }
 
-    #[tokio::test]
+    /// The clock is paused, as in `acquire_bounds_checkout_io_by_the_deadline`:
+    /// it moves only to the next timer, so the elapsed time is the deadline
+    /// whatever the runner's load, and an acquire that waits past it (a
+    /// fixed retry pause, a second full wait) shows up as such.
+    #[tokio::test(start_paused = true)]
     async fn acquire_discards_unhealthy_session_and_waits_for_the_deadline() {
-        let pool = FtpSessionPool::unhealthy_for_test(80);
-        let started = std::time::Instant::now();
-        let acquired = tokio::time::timeout(std::time::Duration::from_secs(1), pool.acquire())
+        const DEADLINE: std::time::Duration = std::time::Duration::from_millis(80);
+        let pool = FtpSessionPool::unhealthy_for_test(DEADLINE.as_millis() as u64);
+        let started = tokio::time::Instant::now();
+        // A hang guard; the deadline itself is checked below.
+        let acquired = tokio::time::timeout(std::time::Duration::from_secs(10), pool.acquire())
             .await
             .expect("a broken session must not be retried without a deadline");
         let error = match acquired {
@@ -723,10 +729,10 @@ mod tests {
             error.contains("Timed out"),
             "health failure must stay inside the deadline, not fail the checkout at once: {error}"
         );
+        let elapsed = started.elapsed();
         assert!(
-            started.elapsed() >= std::time::Duration::from_millis(40),
-            "acquire returned before the deadline: {:?}",
-            started.elapsed()
+            elapsed >= DEADLINE && elapsed < DEADLINE * 2,
+            "acquire must return at its deadline ({DEADLINE:?}), it returned after {elapsed:?}"
         );
         tokio::time::sleep(std::time::Duration::from_millis(40)).await;
         assert_eq!(
