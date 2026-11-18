@@ -15,11 +15,13 @@ import type { RemoteFile } from '../types';
 import { formatSize, formatDate } from '../utils/formatters';
 
 interface PCloudTrashManagerProps {
+  /** `provider_connection_generation` read when the trash was opened: every trash command carries it, so none acts on another connection. */
+  generation: number;
   onClose: () => void;
   onRefreshFiles?: () => void;
 }
 
-export function PCloudTrashManager({ onClose, onRefreshFiles }: PCloudTrashManagerProps) {
+export function PCloudTrashManager({ generation, onClose, onRefreshFiles }: PCloudTrashManagerProps) {
   const t = useTranslation();
   const modalDrag = useDraggableModal();
   const humanLog = useHumanizedLog();
@@ -36,7 +38,7 @@ export function PCloudTrashManager({ onClose, onRefreshFiles }: PCloudTrashManag
     setLoading(true);
     setError(null);
     try {
-      const result = await invoke<RemoteFile[]>('pcloud_list_trash');
+      const result = await invoke<RemoteFile[]>('pcloud_list_trash', { generation });
       setItems(result);
       setSelected(new Set());
     } catch (err) {
@@ -44,7 +46,7 @@ export function PCloudTrashManager({ onClose, onRefreshFiles }: PCloudTrashManag
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [generation]);
 
   useEffect(() => {
     loadTrash();
@@ -85,7 +87,7 @@ export function PCloudTrashManager({ onClose, onRefreshFiles }: PCloudTrashManag
     try {
       for (const item of sel) {
         const id = item.metadata?.fileid ?? item.metadata?.folderid ?? '';
-        await invoke('pcloud_restore_from_trash', { id, isFolder: item.is_dir });
+        await invoke('pcloud_restore_from_trash', { generation, id, isFolder: item.is_dir });
       }
       humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_restore_success', { provider: 'pCloud Drive', count: selectedCount }) });
       await loadTrash();
@@ -108,7 +110,7 @@ export function PCloudTrashManager({ onClose, onRefreshFiles }: PCloudTrashManag
     try {
       for (const item of sel) {
         const id = item.metadata?.fileid ?? item.metadata?.folderid ?? '';
-        await invoke('pcloud_permanently_delete_trash', { id, isFolder: item.is_dir });
+        await invoke('pcloud_permanently_delete_trash', { generation, id, isFolder: item.is_dir });
       }
       humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_delete_success', { provider: 'pCloud Drive', count: selectedCount }) });
       await loadTrash();
@@ -127,7 +129,7 @@ export function PCloudTrashManager({ onClose, onRefreshFiles }: PCloudTrashManag
     setActionLoading('empty');
     setError(null);
     try {
-      await invoke('pcloud_empty_trash');
+      await invoke('pcloud_empty_trash', { generation });
       humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_empty_success', { provider: 'pCloud Drive' }) });
       await loadTrash();
       onRefreshFiles?.();

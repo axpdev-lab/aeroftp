@@ -408,6 +408,14 @@ pub struct YandexDiskProvider {
     api_base_override: Option<String>,
 }
 
+/// Items one trash listing reads before it stops: the lenient listing keeps
+/// what it read, the strict one used to check an id is an error. Tests use a
+/// small cap so the fixture stays small.
+#[cfg(not(test))]
+const YANDEX_TRASH_ITEM_CAP: usize = 100_000;
+#[cfg(test)]
+const YANDEX_TRASH_ITEM_CAP: usize = 5;
+
 impl YandexDiskProvider {
     /// Build the provider and its HTTP client, with the limits of [`crate::providers::http_limits`].
     /// Nothing is sent until the first request.
@@ -751,6 +759,16 @@ impl YandexDiskProvider {
 
     /// List trash contents.
     pub async fn list_trash(&mut self) -> Result<Vec<RemoteEntry>, ProviderError> {
+        self.list_trash_pages(false).await
+    }
+
+    /// The whole trash or an error: past the listing's item cap this is an
+    /// error, not the first part of the trash.
+    pub async fn list_trash_complete(&mut self) -> Result<Vec<RemoteEntry>, ProviderError> {
+        self.list_trash_pages(true).await
+    }
+
+    async fn list_trash_pages(&mut self, strict: bool) -> Result<Vec<RemoteEntry>, ProviderError> {
         let mut all_items = Vec::new();
         let mut offset: u64 = 0;
         let limit: u64 = 1000;
@@ -784,8 +802,20 @@ impl YandexDiskProvider {
                 let entries: Vec<RemoteEntry> =
                     embedded.items.iter().map(resource_to_entry).collect();
                 all_items.extend(entries);
-                let total = embedded.total.unwrap_or(0);
-                if total == 0 || offset + count >= total || all_items.len() > 100_000 {
+                // Without a total, a short page is the last one.
+                let last = match embedded.total {
+                    Some(total) => total == 0 || offset + count >= total,
+                    None => count < limit,
+                };
+                if last || count == 0 {
+                    break;
+                }
+                if all_items.len() > YANDEX_TRASH_ITEM_CAP {
+                    if strict {
+                        return Err(ProviderError::ServerError(format!(
+                            "List trash failed: the trash holds more than {YANDEX_TRASH_ITEM_CAP} items"
+                        )));
+                    }
                     break;
                 }
                 offset += count;
@@ -2650,6 +2680,156 @@ mod tests {
     /// sends back, and turns it into the GUI command's calls: PUT
     /// `trash/resources/restore`, DELETE `trash/resources?path=` for one
     /// item, and DELETE `trash/resources` without a path for Empty.
+    /// The trash lists by offset: an id on the second page is in the trash
+    /// and is restored, after both pages were read.
+    /// A trash that pages past the item cap: the lenient listing (GUI) keeps
+    /// what it read, the strict one that checks an id is an error, so an id
+    /// past the cap is never refused as unknown. Under a timeout, so a listing
+    /// that never stops fails the test instead of hanging it.
+    #[tokio::test]
+    async fn trash_listing_past_the_item_cap_is_kept_or_an_error() {
+        let app =
+            axum::Router::new().fallback(axum::routing::any(|uri: axum::http::Uri| async move {
+                let offset: u64 = uri
+                    .query()
+                    .unwrap_or("")
+                    .split('&')
+                    .find_map(|kv| kv.strip_prefix("offset="))
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(0);
+                axum::Json(serde_json::json!({
+                    "path": "trash:/",
+                    "type": "dir",
+                    "_embedded": {
+                        "items": [{
+                            "name": format!("f{offset}.txt"),
+                            "path": format!("trash:/f{offset}.txt"),
+                            "type": "file",
+                            "size": 1
+                        }],
+                        "total": 1_000_000_000u64,
+                        "limit": 1000,
+                        "offset": offset
+                    }
+                }))
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = YandexDiskProvider::new("t".to_string(), None)
+            .with_test_api_base(&format!("http://{addr}"));
+        provider.connected = true;
+        let bounded = std::time::Duration::from_secs(10);
+
+        let lenient = tokio::time::timeout(bounded, provider.list_trash())
+            .await
+            .expect("the lenient listing must stop at the cap");
+        assert_eq!(
+            lenient
+                .expect("the lenient listing keeps what it read")
+                .len(),
+            YANDEX_TRASH_ITEM_CAP + 1
+        );
+        let strict = tokio::time::timeout(bounded, provider.list_trash_complete())
+            .await
+            .expect("the strict listing must stop at the cap");
+        assert!(
+            matches!(&strict, Err(ProviderError::ServerError(m))
+                if m.contains(&format!("more than {YANDEX_TRASH_ITEM_CAP} items"))),
+            "{strict:?}"
+        );
+        server.abort();
+        assert!(
+            server.await.is_err_and(|e| e.is_cancelled()),
+            "the test server must stop with the test"
+        );
+    }
+
+    #[tokio::test]
+    async fn trash_dispatch_accepts_an_id_on_the_second_trash_page() {
+        use crate::provider_trash::{run, TrashKind, TrashOp, TrashOutcome};
+        use axum::response::IntoResponse;
+        use std::sync::{Arc, Mutex};
+        let calls: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&calls);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method, uri: axum::http::Uri| {
+                let query = urlencoding::decode(uri.query().unwrap_or(""))
+                    .unwrap()
+                    .to_string();
+                seen.lock()
+                    .unwrap()
+                    .push(format!("{method} {}?{query}", uri.path()));
+                let second = query.contains("offset=1");
+                async move {
+                    if method != axum::http::Method::GET {
+                        return (
+                            axum::http::StatusCode::CREATED,
+                            r#"{"href":"x","method":"GET"}"#,
+                        )
+                            .into_response();
+                    }
+                    let name = if second { "b.txt" } else { "a.txt" };
+                    axum::Json(serde_json::json!({
+                        "path": "trash:/",
+                        "type": "dir",
+                        "_embedded": {
+                            "items": [{
+                                "name": name,
+                                "path": format!("trash:/{name}_1"),
+                                "type": "file",
+                                "size": 1
+                            }],
+                            "total": 2,
+                            "limit": 1000,
+                            "offset": if second { 1 } else { 0 }
+                        }
+                    }))
+                    .into_response()
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = YandexDiskProvider::new("t".to_string(), None)
+            .with_test_api_base(&format!("http://{addr}"));
+        provider.connected = true;
+
+        let restored = run(
+            &mut provider,
+            TrashOp::Restore {
+                id: "/trash:/b.txt_1".into(),
+            },
+        )
+        .await;
+        assert!(
+            matches!(
+                &restored,
+                Ok(TrashOutcome::Restored {
+                    kind: TrashKind::Yandex,
+                    ..
+                })
+            ),
+            "{restored:?}"
+        );
+        server.abort();
+        assert!(
+            server.await.is_err_and(|e| e.is_cancelled()),
+            "the test server must stop with the test"
+        );
+        let calls = calls.lock().unwrap().clone();
+        assert_eq!(calls.len(), 3, "{calls:?}");
+        assert!(
+            calls[0].contains("offset=0") && calls[1].contains("offset=1"),
+            "{calls:?}"
+        );
+        assert!(
+            calls[2].starts_with("PUT ") && calls[2].contains("/trash/resources/restore"),
+            "{calls:?}"
+        );
+    }
+
     #[tokio::test]
     async fn trash_dispatch_sends_the_listed_trash_path_back() {
         use crate::provider_trash::{run, TrashKind, TrashOp, TrashOutcome};

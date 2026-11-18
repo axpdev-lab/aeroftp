@@ -831,8 +831,10 @@ impl GoogleDriveProvider {
     pub async fn list_trash(&mut self) -> Result<Vec<RemoteEntry>, ProviderError> {
         let mut all_files = Vec::new();
         let mut page_token: Option<String> = None;
+        let mut pages = 0usize;
 
         loop {
+            super::trash_page_counted(&mut pages, "The Google Drive trash listing")?;
             let mut url = format!(
                 "{}/files?q=trashed=true&fields=files(id,name,mimeType,size,modifiedTime,parents),nextPageToken,incompleteSearch&pageSize=1000",
                 self.drive_api()
@@ -4339,6 +4341,123 @@ mod tests {
     /// The shared trash entry point (GUI, CLI and agent) lists the Drive
     /// trash with the file id as the row id, restores and deletes by that
     /// id, and refuses Empty before any request, as the GUI manager does.
+    /// The trash lists in pages: an id on the second page is in the trash
+    /// and is restored, after both pages were read.
+    /// A trash listing whose pages never end (a new page token on every page)
+    /// is an error at the page cap, not a caller held for ever: no request
+    /// goes out past the cap. Under a timeout, so a loop without the cap fails
+    /// the test instead of hanging it.
+    #[tokio::test]
+    async fn trash_listing_with_endless_page_tokens_ends_at_the_page_cap() {
+        use axum::response::IntoResponse;
+        use std::sync::{Arc, Mutex};
+        let calls: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&calls);
+        let app = axum::Router::new().fallback(axum::routing::any(move |uri: axum::http::Uri| {
+            seen.lock().unwrap().push(uri.to_string());
+            let query = uri.query().unwrap_or("").to_string();
+            async move {
+                let _ = &query;
+                axum::Json(serde_json::json!({
+                    "files": [], "incompleteSearch": false, "nextPageToken": "MORE"
+                }))
+                .into_response()
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = test_provider();
+        provider.connected = true;
+        provider.api_origin_override = Some(format!("http://{addr}"));
+        provider.test_access_token = Some("t".into());
+        let got = tokio::time::timeout(std::time::Duration::from_secs(10), provider.list_trash())
+            .await
+            .expect("an endless trash listing must end, not hang");
+        let cap = crate::providers::TRASH_PAGE_CAP;
+        assert!(
+            matches!(&got, Err(ProviderError::ServerError(m)) if m.contains(&format!("within {cap} pages"))),
+            "{got:?}"
+        );
+        assert_eq!(
+            calls.lock().unwrap().len(),
+            cap,
+            "one request a page, none past the cap"
+        );
+        server.abort();
+        assert!(
+            server.await.is_err_and(|e| e.is_cancelled()),
+            "the test server must stop with the test"
+        );
+    }
+
+    #[tokio::test]
+    async fn trash_dispatch_accepts_an_id_on_the_second_trash_page() {
+        use crate::provider_trash::{run, TrashKind, TrashOp, TrashOutcome};
+        use axum::response::IntoResponse;
+        use std::sync::{Arc, Mutex};
+
+        let requests: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&requests);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method, uri: axum::http::Uri| {
+                let second = uri.query().unwrap_or("").contains("pageToken=P2");
+                seen.lock().unwrap().push(format!(
+                    "{method} {}{}",
+                    uri.path(),
+                    if second { " page 2" } else { "" }
+                ));
+                async move {
+                    if method != axum::http::Method::GET {
+                        return axum::Json(serde_json::json!({"id": "FILE2", "trashed": false}))
+                            .into_response();
+                    }
+                    let id = if second { "FILE2" } else { "FILE1" };
+                    let mut page = serde_json::json!({
+                        "files": [{
+                            "id": id,
+                            "name": format!("{id}.txt"),
+                            "mimeType": "text/plain",
+                            "size": "1",
+                            "parents": ["root"]
+                        }],
+                        "incompleteSearch": false
+                    });
+                    if !second {
+                        page["nextPageToken"] = "P2".into();
+                    }
+                    axum::Json(page).into_response()
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut provider = test_provider();
+        provider.connected = true;
+        provider.api_origin_override = Some(format!("http://{addr}"));
+        provider.test_access_token = Some("t".into());
+
+        let restored = run(&mut provider, TrashOp::Restore { id: "FILE2".into() }).await;
+        assert!(
+            matches!(&restored, Ok(TrashOutcome::Restored { kind: TrashKind::GoogleDrive, id, .. }) if id == "FILE2"),
+            "{restored:?}"
+        );
+        server.abort();
+        assert!(
+            server.await.is_err_and(|e| e.is_cancelled()),
+            "the test server must stop with the test"
+        );
+        assert_eq!(
+            *requests.lock().unwrap(),
+            [
+                "GET /drive/v3/files",
+                "GET /drive/v3/files page 2",
+                "PATCH /drive/v3/files/FILE2"
+            ]
+        );
+    }
+
     #[tokio::test]
     async fn trash_dispatch_uses_the_drive_file_id_and_refuses_empty() {
         use crate::provider_trash::{run, TrashError, TrashKind, TrashOp, TrashOutcome};

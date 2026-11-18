@@ -176,6 +176,28 @@ use async_trait::async_trait;
 use serde::Serialize;
 use std::collections::HashMap;
 
+/// Pages one trash listing reads before it is an error. A service that keeps
+/// sending a new cursor, marker, link or full page must not hold the caller
+/// for ever; 10,000 pages hold hundreds of thousands of items at the smallest
+/// page size used here. Tests use a small cap so an endless fixture ends in
+/// milliseconds.
+#[cfg(not(test))]
+pub(crate) const TRASH_PAGE_CAP: usize = 10_000;
+#[cfg(test)]
+pub(crate) const TRASH_PAGE_CAP: usize = 20;
+
+/// Count one more page of a trash listing, before its request: past
+/// `TRASH_PAGE_CAP` the listing is an error and nothing more is sent.
+pub(crate) fn trash_page_counted(pages: &mut usize, listing: &str) -> Result<(), ProviderError> {
+    *pages += 1;
+    if *pages > TRASH_PAGE_CAP {
+        return Err(ProviderError::ServerError(format!(
+            "{listing} did not end within {TRASH_PAGE_CAP} pages"
+        )));
+    }
+    Ok(())
+}
+
 /// Match a filename against a find pattern.
 /// Supports glob patterns (`*`, `?`, `[`) via globset, falls back to
 /// case-insensitive substring match for plain strings like "report".

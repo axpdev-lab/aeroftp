@@ -21,6 +21,8 @@ interface HiddenEntry {
 }
 
 interface B2HiddenManagerProps {
+  /** `provider_connection_generation` read when the trash was opened: every trash command carries it, so none acts on another connection. */
+  generation: number;
   onClose: () => void;
   onRefreshFiles?: () => void;
   currentPath: string;
@@ -36,7 +38,7 @@ interface B2HiddenManagerProps {
  * either restore the file (drop the marker) or hard-delete every version of
  * the path (irreversible).
  */
-export function B2HiddenManager({ onClose, onRefreshFiles, currentPath }: B2HiddenManagerProps) {
+export function B2HiddenManager({ generation, onClose, onRefreshFiles, currentPath }: B2HiddenManagerProps) {
   const t = useTranslation();
   const modalDrag = useDraggableModal();
   const humanLog = useHumanizedLog();
@@ -53,7 +55,7 @@ export function B2HiddenManager({ onClose, onRefreshFiles, currentPath }: B2Hidd
     setLoading(true);
     setError(null);
     try {
-      const result = await invoke<HiddenEntry[]>('b2_list_hidden', { path: currentPath || '/' });
+      const result = await invoke<HiddenEntry[]>('b2_list_hidden', { generation, path: currentPath || '/' });
       setItems(result);
       setSelected(new Set());
     } catch (err) {
@@ -61,7 +63,7 @@ export function B2HiddenManager({ onClose, onRefreshFiles, currentPath }: B2Hidd
     } finally {
       setLoading(false);
     }
-  }, [currentPath]);
+  }, [currentPath, generation]);
 
   useEffect(() => {
     loadHidden();
@@ -88,7 +90,7 @@ export function B2HiddenManager({ onClose, onRefreshFiles, currentPath }: B2Hidd
     setActionLoading('restore');
     try {
       for (const path of paths) {
-        await invoke('b2_restore_hidden', { path });
+        await invoke('b2_restore_hidden', { generation, path });
       }
       humanLog.updateEntry(logId, { status: 'success', message: t(paths.length === 1 ? 'activity.b2_hidden_restore_success_one' : 'activity.b2_hidden_restore_success_many', { provider: 'Backblaze B2', count: paths.length }) });
       await loadHidden();
@@ -115,7 +117,7 @@ export function B2HiddenManager({ onClose, onRefreshFiles, currentPath }: B2Hidd
     try {
       let totalVersions = 0;
       for (const path of paths) {
-        const versions = await invoke<number>('b2_permanent_delete', { path });
+        const versions = await invoke<number>('b2_permanent_delete', { generation, path });
         totalVersions += versions;
       }
       humanLog.updateEntry(logId, {

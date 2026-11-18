@@ -15,6 +15,8 @@ import type { RemoteFile } from '../types';
 import { formatSize, formatDate } from '../utils/formatters';
 
 interface OpenDriveTrashManagerProps {
+  /** `provider_connection_generation` read when the trash was opened: every trash command carries it, so none acts on another connection. */
+  generation: number;
   onClose: () => void;
   onRefreshFiles?: () => void;
 }
@@ -24,7 +26,7 @@ interface OpenDriveTrashActionItem {
   isDir: boolean;
 }
 
-export function OpenDriveTrashManager({ onClose, onRefreshFiles }: OpenDriveTrashManagerProps) {
+export function OpenDriveTrashManager({ generation, onClose, onRefreshFiles }: OpenDriveTrashManagerProps) {
   const t = useTranslation();
   const modalDrag = useDraggableModal();
   const humanLog = useHumanizedLog();
@@ -41,7 +43,7 @@ export function OpenDriveTrashManager({ onClose, onRefreshFiles }: OpenDriveTras
     setLoading(true);
     setError(null);
     try {
-      const result = await invoke<RemoteFile[]>('opendrive_list_trash');
+      const result = await invoke<RemoteFile[]>('opendrive_list_trash', { generation });
       setItems(result);
       setSelected(new Set());
     } catch (err) {
@@ -49,7 +51,7 @@ export function OpenDriveTrashManager({ onClose, onRefreshFiles }: OpenDriveTras
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [generation]);
 
   useEffect(() => {
     loadTrash();
@@ -95,7 +97,7 @@ export function OpenDriveTrashManager({ onClose, onRefreshFiles }: OpenDriveTras
     setActionLoading('restore');
     setError(null);
     try {
-      await invoke('opendrive_restore_from_trash', { items: selectedItems });
+      await invoke('opendrive_restore_from_trash', { generation, items: selectedItems });
       humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_restore_success', { provider: 'OpenDrive', count: selectedCount }) });
       await loadTrash();
       onRefreshFiles?.();
@@ -115,7 +117,7 @@ export function OpenDriveTrashManager({ onClose, onRefreshFiles }: OpenDriveTras
     setActionLoading('delete');
     setError(null);
     try {
-      await invoke('opendrive_permanent_delete', { items: selectedItems });
+      await invoke('opendrive_permanent_delete', { generation, items: selectedItems });
       humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_delete_success', { provider: 'OpenDrive', count: selectedCount }) });
       await loadTrash();
       onRefreshFiles?.();
@@ -134,7 +136,7 @@ export function OpenDriveTrashManager({ onClose, onRefreshFiles }: OpenDriveTras
     setActionLoading('empty');
     setError(null);
     try {
-      await invoke('opendrive_empty_trash');
+      await invoke('opendrive_empty_trash', { generation });
       humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_empty_success', { provider: 'OpenDrive' }) });
       await loadTrash();
       onRefreshFiles?.();

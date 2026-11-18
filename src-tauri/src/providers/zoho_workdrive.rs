@@ -1272,13 +1272,27 @@ impl ZohoWorkdriveProvider {
 
     /// List trashed files from privatespace and team folders (with pagination)
     pub async fn list_trash(&self) -> Result<Vec<RemoteEntry>, ProviderError> {
+        self.list_trash_pages(false).await
+    }
+
+    /// The whole trash or an error: a page that fails or does not parse
+    /// ends the listing with that error instead of a shorter list, so an id
+    /// past it is never taken for one the trash does not hold.
+    pub async fn list_trash_complete(&self) -> Result<Vec<RemoteEntry>, ProviderError> {
+        self.list_trash_pages(true).await
+    }
+
+    async fn list_trash_pages(&self, strict: bool) -> Result<Vec<RemoteEntry>, ProviderError> {
+        let cut = |what: String| ProviderError::ServerError(format!("List trash failed: {what}"));
         let mut results = Vec::new();
         let page_limit = 50;
 
         // List privatespace trash (paginated)
         if let Some(ref ps_id) = self.privatespace_id {
             let mut offset = 0;
+            let mut pages = 0usize;
             loop {
+                super::trash_page_counted(&mut pages, "The Zoho WorkDrive trash listing")?;
                 let url = format!(
                     "{}/privatespace/{}/trashedfiles?page%5Blimit%5D={}&page%5Boffset%5D={}",
                     self.api_base(),
@@ -1297,12 +1311,23 @@ impl ZohoWorkdriveProvider {
                     .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
                 if !resp.status().is_success() {
+                    if strict {
+                        return Err(cut(format!(
+                            "private space page at {offset}: {}",
+                            resp.status()
+                        )));
+                    }
                     break;
                 }
 
                 let body = resp.text().await.unwrap_or_default();
-                if let Ok(parsed) = serde_json::from_str::<JsonApiListResponse<FileResource>>(&body)
-                {
+                let parsed = serde_json::from_str::<JsonApiListResponse<FileResource>>(&body);
+                if strict {
+                    if let Err(e) = &parsed {
+                        return Err(cut(format!("private space page at {offset}: {e}")));
+                    }
+                }
+                if let Ok(parsed) = parsed {
                     let count = parsed.data.len();
                     info!(
                         "Zoho WorkDrive trash (privatespace): {} items at offset {}",
@@ -1330,7 +1355,9 @@ impl ZohoWorkdriveProvider {
             .collect();
         for tf in &discovered {
             let mut offset = 0;
+            let mut pages = 0usize;
             loop {
+                super::trash_page_counted(&mut pages, "The Zoho WorkDrive trash listing")?;
                 let url = format!(
                     "{}/teamfolders/{}/trashedfiles?page%5Blimit%5D={}&page%5Boffset%5D={}",
                     self.api_base(),
@@ -1348,12 +1375,27 @@ impl ZohoWorkdriveProvider {
 
                 let resp = match resp {
                     Ok(r) if r.status().is_success() => r,
+                    Ok(r) if strict => {
+                        return Err(cut(format!(
+                            "team folder {} page at {offset}: {}",
+                            tf.1,
+                            r.status()
+                        )));
+                    }
+                    Err(e) if strict => {
+                        return Err(cut(format!("team folder {} page at {offset}: {e}", tf.1)));
+                    }
                     _ => break,
                 };
 
                 let body = resp.text().await.unwrap_or_default();
-                if let Ok(parsed) = serde_json::from_str::<JsonApiListResponse<FileResource>>(&body)
-                {
+                let parsed = serde_json::from_str::<JsonApiListResponse<FileResource>>(&body);
+                if strict {
+                    if let Err(e) = &parsed {
+                        return Err(cut(format!("team folder {} page at {offset}: {e}", tf.1)));
+                    }
+                }
+                if let Ok(parsed) = parsed {
                     let count = parsed.data.len();
                     info!(
                         "Zoho WorkDrive trash (team folder {}): {} items at offset {}",
@@ -7228,6 +7270,99 @@ mod tests {
     /// and deleted through the one-file status PATCH (`/files/{id}`, status 1
     /// then 61), never the batch one, and Empty is refused before any
     /// request, as the GUI manager does.
+    /// A trash page that fails is an error for a restore or delete from the
+    /// CLI or the agent, not a shorter trash: the id is not refused as one
+    /// the trash does not hold, and nothing is changed.
+    /// A trash listing whose pages never end (a new full page on every page)
+    /// is an error at the page cap, not a caller held for ever: no request
+    /// goes out past the cap. Under a timeout, so a loop without the cap fails
+    /// the test instead of hanging it.
+    #[tokio::test]
+    async fn trash_listing_of_endless_full_pages_ends_at_the_page_cap() {
+        use axum::response::IntoResponse;
+        use std::sync::{Arc, Mutex};
+        let calls: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&calls);
+        let app = axum::Router::new().fallback(axum::routing::any(move |uri: axum::http::Uri| {
+            seen.lock().unwrap().push(uri.to_string());
+            let query = uri.query().unwrap_or("").to_string();
+            async move {
+                let _ = &query;
+                let row = serde_json::json!({"id": "Z1", "attributes": {
+                        "name": "a.txt", "type": "file", "modified_time": "Jan 2, 2026"}});
+                axum::Json(serde_json::json!({"data": vec![row; 50]})).into_response()
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = ZohoWorkdriveProvider::new(config("com"));
+        provider.endpoint_override = Some(format!("http://{addr}"));
+        provider.test_access_token = Some("test-token".into());
+        provider.connected = true;
+        provider.privatespace_id = Some("PS".into());
+        let got = tokio::time::timeout(std::time::Duration::from_secs(10), provider.list_trash())
+            .await
+            .expect("an endless trash listing must end, not hang");
+        let cap = crate::providers::TRASH_PAGE_CAP;
+        assert!(
+            matches!(&got, Err(ProviderError::ServerError(m)) if m.contains(&format!("within {cap} pages"))),
+            "{got:?}"
+        );
+        assert_eq!(
+            calls.lock().unwrap().len(),
+            cap,
+            "one request a page, none past the cap"
+        );
+        server.abort();
+        assert!(
+            server.await.is_err_and(|e| e.is_cancelled()),
+            "the test server must stop with the test"
+        );
+    }
+
+    #[tokio::test]
+    async fn trash_dispatch_fails_rather_than_refuse_an_id_past_a_failed_page() {
+        use crate::provider_trash::{run, TrashError, TrashOp};
+        use std::sync::{Arc, Mutex};
+        let calls: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = calls.clone();
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method, uri: axum::http::Uri| {
+                seen.lock()
+                    .unwrap()
+                    .push(format!("{method} {}", uri.path()));
+                async { axum::http::StatusCode::INTERNAL_SERVER_ERROR }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut provider = ZohoWorkdriveProvider::new(config("com"));
+        provider.endpoint_override = Some(format!("http://{addr}"));
+        provider.test_access_token = Some("test-token".into());
+        provider.connected = true;
+        provider.privatespace_id = Some("PS".into());
+
+        for op in [
+            TrashOp::Restore { id: "Z1".into() },
+            TrashOp::Delete { id: "Z1".into() },
+        ] {
+            let got = run(&mut provider, op.clone()).await;
+            assert!(matches!(got, Err(TrashError::Failed(_))), "{op:?}: {got:?}");
+        }
+        server.abort();
+        assert!(
+            server.await.is_err_and(|e| e.is_cancelled()),
+            "the test server must stop with the test"
+        );
+        let calls = calls.lock().unwrap().clone();
+        assert!(
+            !calls.is_empty() && calls.iter().all(|c| c.starts_with("GET ")),
+            "{calls:?}"
+        );
+    }
+
     #[tokio::test]
     async fn trash_dispatch_sends_a_single_id_to_the_one_file_status_patch() {
         use crate::provider_trash::{run, TrashError, TrashKind, TrashOp, TrashOutcome};

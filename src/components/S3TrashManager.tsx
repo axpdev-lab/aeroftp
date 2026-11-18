@@ -32,6 +32,8 @@ interface EmptyTrashSummary {
 }
 
 interface S3TrashManagerProps {
+  /** `provider_connection_generation` read when the trash was opened: every trash command carries it, so none acts on another connection. */
+  generation: number;
   onClose: () => void;
   onRefreshFiles?: () => void;
 }
@@ -39,7 +41,7 @@ interface S3TrashManagerProps {
 /** Restore mode routed to `s3_restore_from_trash`. */
 type RestoreMode = 'undelete' | 'copy_forward' | 'purge';
 
-export function S3TrashManager({ onClose, onRefreshFiles }: S3TrashManagerProps) {
+export function S3TrashManager({ generation, onClose, onRefreshFiles }: S3TrashManagerProps) {
   const t = useTranslation();
   const modalDrag = useDraggableModal();
   const humanLog = useHumanizedLog();
@@ -62,6 +64,7 @@ export function S3TrashManager({ onClose, onRefreshFiles }: S3TrashManagerProps)
     setError(null);
     try {
       const result = await invoke<TrashEntry[]>('s3_list_trash', {
+        generation,
         prefix: '',
         includeNoncurrent,
       });
@@ -71,7 +74,7 @@ export function S3TrashManager({ onClose, onRefreshFiles }: S3TrashManagerProps)
     } finally {
       setLoading(false);
     }
-  }, [includeNoncurrent]);
+  }, [includeNoncurrent, generation]);
 
   useEffect(() => {
     loadTrash();
@@ -101,6 +104,7 @@ export function S3TrashManager({ onClose, onRefreshFiles }: S3TrashManagerProps)
     const logId = humanLog.logRaw('activity.trash_restore_start', 'INFO', { provider: 'S3', count: 1 });
     try {
       await invoke('s3_restore_from_trash', {
+        generation,
         key: entry.key,
         versionId: entry.version_id,
         mode,
@@ -128,6 +132,7 @@ export function S3TrashManager({ onClose, onRefreshFiles }: S3TrashManagerProps)
     setError(null);
     try {
       const summary = await invoke<EmptyTrashSummary>('s3_empty_trash', {
+        generation,
         prefix: '',
         includeNoncurrent,
         dryRun: true,
@@ -148,6 +153,7 @@ export function S3TrashManager({ onClose, onRefreshFiles }: S3TrashManagerProps)
     setError(null);
     try {
       const summary = await invoke<EmptyTrashSummary>('s3_empty_trash', {
+        generation,
         prefix: '',
         includeNoncurrent,
         dryRun: false,

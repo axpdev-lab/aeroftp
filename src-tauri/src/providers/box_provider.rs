@@ -738,7 +738,9 @@ impl BoxProvider {
         let mut offset: u64 = 0;
         const PAGE_LIMIT: u64 = 1000;
 
+        let mut pages = 0usize;
         loop {
+            super::trash_page_counted(&mut pages, "The Box trash listing")?;
             let token = self.get_token().await?;
             let url = format!(
                 "{}/folders/trash/items?fields=name,type,id,size,modified_at,trashed_at,parent&limit={}&offset={}",
@@ -5027,6 +5029,53 @@ mod tests {
     /// with `<item_type>:<id>` as the row id, so a trashed folder is restored
     /// and deleted on the folders endpoints, and Empty is refused before any
     /// request, as the GUI manager does.
+    /// A trash listing whose pages never end (a new full page under a total never reached on every page)
+    /// is an error at the page cap, not a caller held for ever: no request
+    /// goes out past the cap. Under a timeout, so a loop without the cap fails
+    /// the test instead of hanging it.
+    #[tokio::test]
+    async fn trash_listing_that_never_reaches_its_total_ends_at_the_page_cap() {
+        use axum::response::IntoResponse;
+        use std::sync::{Arc, Mutex};
+        let calls: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&calls);
+        let app = axum::Router::new().fallback(axum::routing::any(move |uri: axum::http::Uri| {
+            seen.lock().unwrap().push(uri.to_string());
+            let query = uri.query().unwrap_or("").to_string();
+            async move {
+                let _ = &query;
+                axum::Json(serde_json::json!({
+                    "entries": [{"type": "file", "id": "F1", "name": "a.txt", "size": 1}],
+                    "total_count": 1_000_000_000u64, "offset": 0, "limit": 1000
+                }))
+                .into_response()
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = fixture_connected();
+        provider.api_base_override = Some(format!("http://{addr}"));
+        let got = tokio::time::timeout(std::time::Duration::from_secs(10), provider.list_trash())
+            .await
+            .expect("an endless trash listing must end, not hang");
+        let cap = crate::providers::TRASH_PAGE_CAP;
+        assert!(
+            matches!(&got, Err(ProviderError::ServerError(m)) if m.contains(&format!("within {cap} pages"))),
+            "{got:?}"
+        );
+        assert_eq!(
+            calls.lock().unwrap().len(),
+            cap,
+            "one request a page, none past the cap"
+        );
+        server.abort();
+        assert!(
+            server.await.is_err_and(|e| e.is_cancelled()),
+            "the test server must stop with the test"
+        );
+    }
+
     #[tokio::test]
     async fn trash_dispatch_routes_a_folder_id_to_the_folders_endpoints() {
         use crate::provider_trash::{run, TrashError, TrashKind, TrashOp, TrashOutcome};

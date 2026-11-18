@@ -696,7 +696,9 @@ impl DropboxProvider {
         let mut result: ListFolderResult = self.rpc_call("files/list_folder", &body).await?;
         let mut all_entries = result.entries;
 
+        let mut pages = 1usize;
         while result.has_more {
+            super::trash_page_counted(&mut pages, "The Dropbox deleted-file listing")?;
             let continue_body = serde_json::json!({
                 "cursor": result.cursor
             });
@@ -4475,6 +4477,51 @@ mod tests {
     /// no `permanently_delete` sent; on a business one Delete purges the id
     /// and Empty purges every listed row by path, as the GUI loops
     /// `dropbox_permanent_delete`.
+    /// A trash listing whose pages never end (a new cursor with has_more on every page)
+    /// is an error at the page cap, not a caller held for ever: no request
+    /// goes out past the cap. Under a timeout, so a loop without the cap fails
+    /// the test instead of hanging it.
+    #[tokio::test]
+    async fn trash_listing_with_endless_has_more_ends_at_the_page_cap() {
+        use std::sync::{Arc, Mutex};
+        let calls: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&calls);
+        let app = axum::Router::new().fallback(axum::routing::any(move |uri: axum::http::Uri| {
+            seen.lock().unwrap().push(uri.path().to_string());
+            async move {
+                axum::Json(serde_json::json!({
+                    "entries": [], "cursor": "MORE", "has_more": true
+                }))
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = fixture_connected();
+        provider.content_base_override = Some(format!("http://{addr}"));
+        let got = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            provider.list_deleted("/"),
+        )
+        .await
+        .expect("an endless trash listing must end, not hang");
+        let cap = crate::providers::TRASH_PAGE_CAP;
+        assert!(
+            matches!(&got, Err(ProviderError::ServerError(m)) if m.contains(&format!("within {cap} pages"))),
+            "{got:?}"
+        );
+        assert_eq!(
+            calls.lock().unwrap().len(),
+            cap,
+            "one request a page, none past the cap"
+        );
+        server.abort();
+        assert!(
+            server.await.is_err_and(|e| e.is_cancelled()),
+            "the test server must stop with the test"
+        );
+    }
+
     #[tokio::test]
     async fn trash_dispatch_purges_by_path_only_on_a_business_account() {
         use crate::provider_trash::{run, TrashError, TrashKind, TrashOp, TrashOutcome};

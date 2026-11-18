@@ -2780,15 +2780,30 @@ impl AzureProvider {
 
     /// List soft-deleted blobs in the container.
     pub async fn list_deleted_blobs(&self) -> Result<Vec<super::RemoteEntry>, ProviderError> {
-        let base_url = format!(
+        self.list_deleted_blobs_under("").await
+    }
+
+    /// The deleted blobs whose container-absolute name starts with `prefix`
+    /// (all of them for an empty prefix), every page to the last marker.
+    pub async fn list_deleted_blobs_under(
+        &self,
+        prefix: &str,
+    ) -> Result<Vec<super::RemoteEntry>, ProviderError> {
+        let mut base_url = format!(
             "{}?restype=container&comp=list&include=deleted",
             self.blob_url("")
         );
+        if !prefix.is_empty() {
+            base_url.push_str("&prefix=");
+            base_url.push_str(&urlencoding::encode(prefix));
+        }
 
         let mut all_entries = Vec::new();
         let mut marker: Option<String> = None;
+        let mut pages = 0usize;
 
         loop {
+            super::trash_page_counted(&mut pages, "The Azure deleted-blob listing")?;
             let url = match &marker {
                 Some(m) => format!("{}&marker={}", base_url, urlencoding::encode(m)),
                 None => base_url.clone(),
@@ -2913,16 +2928,27 @@ impl AzureProvider {
                         in_blob = false;
                     }
                     Ok(quick_xml::events::Event::Eof) => break,
-                    Err(_) => break,
+                    // A listing cut short is an error, not a shorter trash.
+                    Err(e) => {
+                        return Err(ProviderError::ParseError(format!(
+                            "List deleted blobs: unreadable listing: {e}"
+                        )))
+                    }
                     _ => {}
                 }
                 buf.clear();
             }
 
-            if next_marker.is_some() {
-                marker = next_marker.map(|m| m.trim().to_string());
-            } else {
-                break;
+            match next_marker.map(|m| m.trim().to_string()) {
+                Some(next) if !next.is_empty() => {
+                    if marker.as_deref() == Some(next.as_str()) {
+                        return Err(ProviderError::ServerError(format!(
+                            "List deleted blobs: the service sent marker '{next}' twice"
+                        )));
+                    }
+                    marker = Some(next);
+                }
+                _ => break,
             }
         }
 
@@ -4847,6 +4873,83 @@ Time:2026-01-01</Message>
         assert_eq!(AZURE_ACCESS_TIERS, ["Hot", "Cool", "Cold", "Archive"]);
     }
 
+    /// A deleted-blob listing that cannot be read to its end is an error,
+    /// not a shorter trash: an unreadable page, a marker sent twice, or new
+    /// markers without end. Each call runs under a timeout, so a listing that
+    /// never ends fails the test instead of hanging it.
+    #[tokio::test]
+    async fn trash_deleted_blob_listing_cut_short_is_an_error() {
+        let app =
+            axum::Router::new().fallback(axum::routing::any(|uri: axum::http::Uri| async move {
+                let query = uri.query().unwrap_or("").to_string();
+                if query.contains("prefix=broken") {
+                    concat!(
+                        r#"<?xml version="1.0" encoding="utf-8"?>"#,
+                        r#"<EnumerationResults><Blobs><Blob><Name>broken.txt</Nme>"#
+                    )
+                    .to_string()
+                } else if query.contains("prefix=endless") {
+                    // A new marker on every page: M<n> answers M<n+1>.
+                    let n: u64 = query
+                        .split('&')
+                        .find_map(|kv| kv.strip_prefix("marker=M"))
+                        .and_then(|v| v.parse().ok())
+                        .unwrap_or(0);
+                    format!(
+                        concat!(
+                            r#"<?xml version="1.0" encoding="utf-8"?>"#,
+                            r#"<EnumerationResults><Blobs></Blobs>"#,
+                            r#"<NextMarker>M{}</NextMarker></EnumerationResults>"#
+                        ),
+                        n + 1
+                    )
+                } else {
+                    concat!(
+                        r#"<?xml version="1.0" encoding="utf-8"?>"#,
+                        r#"<EnumerationResults><Blobs></Blobs>"#,
+                        r#"<NextMarker>M1</NextMarker></EnumerationResults>"#
+                    )
+                    .to_string()
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut config = test_config();
+        config.endpoint = Some(format!("http://{addr}"));
+        let mut provider = AzureProvider::new(config);
+        provider.connected = true;
+
+        let bounded = std::time::Duration::from_secs(10);
+        let broken = tokio::time::timeout(bounded, provider.list_deleted_blobs_under("broken"))
+            .await
+            .expect("an unreadable page must end the listing");
+        assert!(
+            matches!(&broken, Err(ProviderError::ParseError(_))),
+            "{broken:?}"
+        );
+        let looping = tokio::time::timeout(bounded, provider.list_deleted_blobs_under("loop"))
+            .await
+            .expect("a repeated marker must end the listing");
+        assert!(
+            matches!(&looping, Err(ProviderError::ServerError(m)) if m.contains("twice")),
+            "{looping:?}"
+        );
+        let endless = tokio::time::timeout(bounded, provider.list_deleted_blobs_under("endless"))
+            .await
+            .expect("endless new markers must end the listing");
+        assert!(
+            matches!(&endless, Err(ProviderError::ServerError(m))
+                if m.contains(&format!("within {} pages", crate::providers::TRASH_PAGE_CAP))),
+            "{endless:?}"
+        );
+        server.abort();
+        assert!(
+            server.await.is_err_and(|e| e.is_cancelled()),
+            "the test server must stop with the test"
+        );
+    }
+
     /// The shared trash entry point (CLI `trash`, MCP `remote_trash`) lists
     /// the soft-deleted blobs of the container, live ones left out, with the
     /// blob name as the id the GUI manager sends back, and restores one with
@@ -4927,10 +5030,27 @@ Time:2026-01-01</Message>
         assert_eq!(
             take(),
             [
-                "GET /mycontainer?restype=container&comp=list&include=deleted",
+                "GET /mycontainer?restype=container&comp=list&include=deleted&prefix=docs%2Freport.txt",
                 "PUT /mycontainer/docs/report.txt?comp=undelete"
             ]
         );
+
+        // A live blob, and a name that only starts a deleted one, are no
+        // trash rows: one listing under that name, no undelete.
+        for crafted in ["live.txt", "docs/report"] {
+            let got = run(&mut provider, TrashOp::Restore { id: crafted.into() }).await;
+            assert!(
+                matches!(got, Err(TrashError::BadId(_))),
+                "{crafted}: {got:?}"
+            );
+            assert_eq!(
+                take(),
+                [format!(
+                    "GET /mycontainer?restype=container&comp=list&include=deleted&prefix={}",
+                    urlencoding::encode(crafted)
+                )]
+            );
+        }
 
         for op in [
             TrashOp::Delete { id: id.clone() },

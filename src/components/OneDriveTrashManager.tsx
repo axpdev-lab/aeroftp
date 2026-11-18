@@ -23,11 +23,13 @@ interface TrashEntry {
 }
 
 interface OneDriveTrashManagerProps {
+  /** `provider_connection_generation` read when the trash was opened: every trash command carries it, so none acts on another connection. */
+  generation: number;
   onClose: () => void;
   onRefreshFiles?: () => void;
 }
 
-export function OneDriveTrashManager({ onClose, onRefreshFiles }: OneDriveTrashManagerProps) {
+export function OneDriveTrashManager({ generation, onClose, onRefreshFiles }: OneDriveTrashManagerProps) {
   const t = useTranslation();
   const modalDrag = useDraggableModal();
   const humanLog = useHumanizedLog();
@@ -43,7 +45,7 @@ export function OneDriveTrashManager({ onClose, onRefreshFiles }: OneDriveTrashM
     setLoading(true);
     setError(null);
     try {
-      const result = await invoke<TrashEntry[]>('onedrive_list_trash');
+      const result = await invoke<TrashEntry[]>('onedrive_list_trash', { generation });
       setItems(result);
       setSelected(new Set());
     } catch (err) {
@@ -51,7 +53,7 @@ export function OneDriveTrashManager({ onClose, onRefreshFiles }: OneDriveTrashM
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [generation]);
 
   useEffect(() => {
     loadTrash();
@@ -75,7 +77,7 @@ export function OneDriveTrashManager({ onClose, onRefreshFiles }: OneDriveTrashM
     setActionLoading('restore');
     try {
       for (const itemId of itemIds) {
-        await invoke('onedrive_restore_from_trash', { itemId });
+        await invoke('onedrive_restore_from_trash', { generation, itemId });
       }
       humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_restore_success', { provider: 'OneDrive', count: itemIds.length }) });
       await loadTrash();
@@ -103,7 +105,7 @@ export function OneDriveTrashManager({ onClose, onRefreshFiles }: OneDriveTrashM
     setActionLoading('delete');
     try {
       for (const itemId of itemIds) {
-        await invoke('onedrive_permanent_delete', { itemId });
+        await invoke('onedrive_permanent_delete', { generation, itemId });
       }
       humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_delete_success', { provider: 'OneDrive', count: itemIds.length }) });
       await loadTrash();

@@ -23,12 +23,14 @@ interface TrashEntry {
 }
 
 interface DropboxTrashManagerProps {
+  /** `provider_connection_generation` read when the trash was opened: every trash command carries it, so none acts on another connection. */
+  generation: number;
   onClose: () => void;
   onRefreshFiles?: () => void;
   currentPath: string;
 }
 
-export function DropboxTrashManager({ onClose, onRefreshFiles, currentPath }: DropboxTrashManagerProps) {
+export function DropboxTrashManager({ generation, onClose, onRefreshFiles, currentPath }: DropboxTrashManagerProps) {
   const t = useTranslation();
   const modalDrag = useDraggableModal();
   const humanLog = useHumanizedLog();
@@ -51,17 +53,17 @@ export function DropboxTrashManager({ onClose, onRefreshFiles, currentPath }: Dr
 
   useEffect(() => {
     let cancelled = false;
-    invoke<string>('dropbox_account_type')
+    invoke<string>('dropbox_account_type', { generation })
       .then(tier => { if (!cancelled) setAccountType(tier); })
       .catch(() => { if (!cancelled) setAccountType('basic'); });
     return () => { cancelled = true; };
-  }, []);
+  }, [generation]);
 
   const loadTrash = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const result = await invoke<TrashEntry[]>('dropbox_list_trash', { path: currentPath || '/' });
+      const result = await invoke<TrashEntry[]>('dropbox_list_trash', { generation, path: currentPath || '/' });
       setItems(result);
       setSelected(new Set());
     } catch (err) {
@@ -69,7 +71,7 @@ export function DropboxTrashManager({ onClose, onRefreshFiles, currentPath }: Dr
     } finally {
       setLoading(false);
     }
-  }, [currentPath]);
+  }, [currentPath, generation]);
 
   useEffect(() => {
     loadTrash();
@@ -96,7 +98,7 @@ export function DropboxTrashManager({ onClose, onRefreshFiles, currentPath }: Dr
       for (const path of paths) {
         const item = items.find(i => i.path === path);
         const rev = item?.metadata?.rev || '';
-        await invoke('dropbox_restore_from_trash', { path, rev });
+        await invoke('dropbox_restore_from_trash', { generation, path, rev });
       }
       humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_restore_success', { provider: 'Dropbox', count: paths.length }) });
       await loadTrash();
@@ -123,7 +125,7 @@ export function DropboxTrashManager({ onClose, onRefreshFiles, currentPath }: Dr
     setError(null);
     try {
       for (const path of paths) {
-        await invoke('dropbox_permanent_delete', { path });
+        await invoke('dropbox_permanent_delete', { generation, path });
       }
       humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_delete_success', { provider: 'Dropbox', count: paths.length }) });
       await loadTrash();
@@ -147,7 +149,7 @@ export function DropboxTrashManager({ onClose, onRefreshFiles, currentPath }: Dr
     setError(null);
     try {
       for (const path of paths) {
-        await invoke('dropbox_permanent_delete', { path });
+        await invoke('dropbox_permanent_delete', { generation, path });
       }
       humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_empty_success', { provider: 'Dropbox' }) });
       await loadTrash();

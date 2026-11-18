@@ -1628,6 +1628,9 @@ const App: React.FC = () => {
   const [showKDriveTrash, setShowKDriveTrash] = useState(false);
   const [showAzureTrash, setShowAzureTrash] = useState(false);
   const [showNextcloudTrash, setShowNextcloudTrash] = useState(false);
+  // The connection generation a trash manager was opened at: every command it
+  // sends carries it, and the backend refuses one from another connection.
+  const [trashGeneration, setTrashGeneration] = useState<number | null>(null);
   const [shareLinkDialog, setShareLinkDialog] = useState<{ path: string; fileName: string; providerName: string; providerIcon?: React.ReactNode } | null>(null);
   const [fileLuFolderSettingsDialog, setFileLuFolderSettingsDialog] = useState<{
     path: string; name: string; filedrop: boolean; isPublic: boolean;
@@ -2715,6 +2718,19 @@ const App: React.FC = () => {
       return showToastNotifications ? toastWarning(title, message) : null;
     }
   }), [showToastNotifications, toastSuccess, toastError, toastInfo, toastWarning, logActivity]);
+
+  const trashOpenSeq = useRef(0);
+  const openTrashManager = useCallback(async (show: () => void) => {
+    const seq = ++trashOpenSeq.current;
+    try {
+      const generation = await invoke<number>('provider_connection_generation');
+      if (seq !== trashOpenSeq.current) return;
+      setTrashGeneration(generation);
+      show();
+    } catch (err) {
+      if (seq === trashOpenSeq.current) notify.error(t('contextMenu.viewTrash'), String(err));
+    }
+  }, [notify, t]);
 
   useEffect(() => {
     const report = (event: Event) => {
@@ -21092,8 +21108,10 @@ const App: React.FC = () => {
           />
         )}
 
-        {showZohoTrash && (
+        {showZohoTrash && trashGeneration !== null && (
           <ZohoTrashManager
+            key={trashGeneration}
+            generation={trashGeneration}
             onClose={() => setShowZohoTrash(false)}
             onRefreshFiles={() => loadRemoteFiles(undefined, true)}
           />
@@ -21113,46 +21131,60 @@ const App: React.FC = () => {
             onClose={() => setBoxCollabTarget(null)}
           />
         )}
-        {showJottaTrash && (
+        {showJottaTrash && trashGeneration !== null && (
           <JottacloudTrashManager
+            key={trashGeneration}
+            generation={trashGeneration}
             onClose={() => setShowJottaTrash(false)}
             onRefreshFiles={() => loadRemoteFiles(undefined, true)}
           />
         )}
-        {showMegaTrash && (
+        {showMegaTrash && trashGeneration !== null && (
           <MegaTrashManager
+            key={trashGeneration}
+            generation={trashGeneration}
             onClose={() => setShowMegaTrash(false)}
             onRefreshFiles={() => loadRemoteFiles(undefined, true)}
           />
         )}
-        {showGDriveTrash && (
+        {showGDriveTrash && trashGeneration !== null && (
           <GoogleDriveTrashManager
+            key={trashGeneration}
+            generation={trashGeneration}
             onClose={() => setShowGDriveTrash(false)}
             onRefreshFiles={() => loadRemoteFiles(undefined, true)}
           />
         )}
-        {showBoxTrash && (
+        {showBoxTrash && trashGeneration !== null && (
           <BoxTrashManager
+            key={trashGeneration}
+            generation={trashGeneration}
             onClose={() => setShowBoxTrash(false)}
             onRefreshFiles={() => loadRemoteFiles(undefined, true)}
           />
         )}
-        {showDropboxTrash && (
+        {showDropboxTrash && trashGeneration !== null && (
           <DropboxTrashManager
+            key={trashGeneration}
+            generation={trashGeneration}
             onClose={() => setShowDropboxTrash(false)}
             onRefreshFiles={() => loadRemoteFiles(undefined, true)}
             currentPath={currentRemotePath}
           />
         )}
-        {showB2Hidden && (
+        {showB2Hidden && trashGeneration !== null && (
           <B2HiddenManager
+            key={trashGeneration}
+            generation={trashGeneration}
             onClose={() => setShowB2Hidden(false)}
             onRefreshFiles={() => loadRemoteFiles(undefined, true)}
             currentPath={currentRemotePath}
           />
         )}
-        {showOneDriveTrash && (
+        {showOneDriveTrash && trashGeneration !== null && (
           <OneDriveTrashManager
+            key={trashGeneration}
+            generation={trashGeneration}
             onClose={() => setShowOneDriveTrash(false)}
             onRefreshFiles={() => loadRemoteFiles(undefined, true)}
           />
@@ -21188,20 +21220,26 @@ const App: React.FC = () => {
             providerName={boxTagsTarget.providerName}
           />
         )}
-        {showFileLuTrash && (
+        {showFileLuTrash && trashGeneration !== null && (
           <FileLuTrashManager
+            key={trashGeneration}
+            generation={trashGeneration}
             onClose={() => setShowFileLuTrash(false)}
             onRefreshFiles={() => loadRemoteFiles(undefined, true)}
           />
         )}
-        {showKoofrTrash && (
+        {showKoofrTrash && trashGeneration !== null && (
           <KoofrTrashManager
+            key={trashGeneration}
+            generation={trashGeneration}
             onClose={() => setShowKoofrTrash(false)}
             onRefreshFiles={() => loadRemoteFiles(undefined, true)}
           />
         )}
-        {showInternxtTrash && (
+        {showInternxtTrash && trashGeneration !== null && (
           <InternxtTrashManager
+            key={trashGeneration}
+            generation={trashGeneration}
             onClose={() => setShowInternxtTrash(false)}
             onRefreshFiles={() => loadRemoteFiles(undefined, true)}
           />
@@ -21222,38 +21260,50 @@ const App: React.FC = () => {
             onClose={() => setShareLinkDialog(null)}
           />
         )}
-        {showOpenDriveTrash && (
+        {showOpenDriveTrash && trashGeneration !== null && (
           <OpenDriveTrashManager
+            key={trashGeneration}
+            generation={trashGeneration}
             onClose={() => setShowOpenDriveTrash(false)}
             onRefreshFiles={() => loadRemoteFiles(undefined, true)}
           />
         )}
-        {showYandexTrash && (
+        {showYandexTrash && trashGeneration !== null && (
           <YandexTrashManager
+            key={trashGeneration}
+            generation={trashGeneration}
             onClose={() => setShowYandexTrash(false)}
             onRefreshFiles={() => loadRemoteFiles(undefined, true)}
           />
         )}
-        {showPCloudTrash && (
+        {showPCloudTrash && trashGeneration !== null && (
           <PCloudTrashManager
+            key={trashGeneration}
+            generation={trashGeneration}
             onClose={() => setShowPCloudTrash(false)}
             onRefreshFiles={() => loadRemoteFiles(undefined, true)}
           />
         )}
-        {showS3Trash && (
+        {showS3Trash && trashGeneration !== null && (
           <S3TrashManager
+            key={trashGeneration}
+            generation={trashGeneration}
             onClose={() => setShowS3Trash(false)}
             onRefreshFiles={() => loadRemoteFiles(undefined, true)}
           />
         )}
-        {showKDriveTrash && (
+        {showKDriveTrash && trashGeneration !== null && (
           <KDriveTrashManager
+            key={trashGeneration}
+            generation={trashGeneration}
             onClose={() => setShowKDriveTrash(false)}
             onRefreshFiles={() => loadRemoteFiles(undefined, true)}
           />
         )}
-        {showAzureTrash && (
+        {showAzureTrash && trashGeneration !== null && (
           <AzureTrashManager
+            key={trashGeneration}
+            generation={trashGeneration}
             onClose={() => setShowAzureTrash(false)}
             onRefreshFiles={() => loadRemoteFiles(undefined, true)}
           />
@@ -22486,18 +22536,18 @@ const App: React.FC = () => {
                       const activeProviderId = liveConnectionParams.providerId;
                       const isAzure = proto === 'azure' || (proto === 's3' && activeProviderId === 'azure');
                       const trashMap: Record<string, () => void> = {
-                        zohoworkdrive: () => setShowZohoTrash(true),
-                        jottacloud: () => setShowJottaTrash(true),
-                        mega: () => setShowMegaTrash(true),
-                        googledrive: () => setShowGDriveTrash(true),
-                        box: () => setShowBoxTrash(true),
-                        dropbox: () => setShowDropboxTrash(true),
-                        filelu: () => setShowFileLuTrash(true),
-                        koofr: () => setShowKoofrTrash(true),
+                        zohoworkdrive: () => openTrashManager(() => setShowZohoTrash(true)),
+                        jottacloud: () => openTrashManager(() => setShowJottaTrash(true)),
+                        mega: () => openTrashManager(() => setShowMegaTrash(true)),
+                        googledrive: () => openTrashManager(() => setShowGDriveTrash(true)),
+                        box: () => openTrashManager(() => setShowBoxTrash(true)),
+                        dropbox: () => openTrashManager(() => setShowDropboxTrash(true)),
+                        filelu: () => openTrashManager(() => setShowFileLuTrash(true)),
+                        koofr: () => openTrashManager(() => setShowKoofrTrash(true)),
                         // internxt: disabled: API endpoint returns 400, needs investigation
-                        opendrive: () => setShowOpenDriveTrash(true),
-                        yandexdisk: () => setShowYandexTrash(true),
-                        kdrive: () => setShowKDriveTrash(true),
+                        opendrive: () => openTrashManager(() => setShowOpenDriveTrash(true)),
+                        yandexdisk: () => openTrashManager(() => setShowYandexTrash(true)),
+                        kdrive: () => openTrashManager(() => setShowKDriveTrash(true)),
                         // pcloud: disabled: pCloud refuses its trash endpoints to OAuth
                         // access tokens. Verified live against a real account: listfolder
                         // returns result 0 while trash_list returns result 1000 "Log in
@@ -22506,9 +22556,9 @@ const App: React.FC = () => {
                         // for an OAuth caller. pCloud OAuth has no trash permission to
                         // request (manageshares is the only one), so no re-authorization
                         // fixes it. See docs/dev/drafts/TRACKER-628-DRAFT-pcloud-trash.md
-                        onedrive: () => setShowOneDriveTrash(true),
-                        backblaze: () => setShowB2Hidden(true),
-                        s3: () => setShowS3Trash(true),
+                        onedrive: () => openTrashManager(() => setShowOneDriveTrash(true)),
+                        backblaze: () => openTrashManager(() => setShowB2Hidden(true)),
+                        s3: () => openTrashManager(() => setShowS3Trash(true)),
                       };
                       let handler: (() => void) | undefined = trashMap[proto || ''];
                       if (proto === 's3' && !s3PresetOffersTrash(activeProviderId)) {
@@ -22517,7 +22567,7 @@ const App: React.FC = () => {
                       // Azure rides on the s3 protocol key: its own trash view wins
                       // over the generic S3 version/trash browser.
                       if (isAzure) {
-                        handler = () => setShowAzureTrash(true);
+                        handler = () => openTrashManager(() => setShowAzureTrash(true));
                       }
                       // Nextcloud trash API only works on Nextcloud/FeliCloud WebDAV servers
                       if (proto === 'webdav') {

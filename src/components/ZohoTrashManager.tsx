@@ -24,11 +24,13 @@ interface TrashEntry {
 }
 
 interface ZohoTrashManagerProps {
+  /** `provider_connection_generation` read when the trash was opened: every trash command carries it, so none acts on another connection. */
+  generation: number;
   onClose: () => void;
   onRefreshFiles?: () => void;
 }
 
-export function ZohoTrashManager({ onClose, onRefreshFiles }: ZohoTrashManagerProps) {
+export function ZohoTrashManager({ generation, onClose, onRefreshFiles }: ZohoTrashManagerProps) {
   const t = useTranslation();
   const modalDrag = useDraggableModal();
   const humanLog = useHumanizedLog();
@@ -44,7 +46,7 @@ export function ZohoTrashManager({ onClose, onRefreshFiles }: ZohoTrashManagerPr
     setLoading(true);
     setError(null);
     try {
-      const result = await invoke<TrashEntry[]>('zoho_list_trash');
+      const result = await invoke<TrashEntry[]>('zoho_list_trash', { generation });
       setItems(result);
       setSelected(new Set());
     } catch (err) {
@@ -52,7 +54,7 @@ export function ZohoTrashManager({ onClose, onRefreshFiles }: ZohoTrashManagerPr
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [generation]);
 
   useEffect(() => {
     loadTrash();
@@ -77,7 +79,7 @@ export function ZohoTrashManager({ onClose, onRefreshFiles }: ZohoTrashManagerPr
     const logId = humanLog.logRaw('activity.trash_restore_start', 'INFO', { provider: 'Zoho WorkDrive', count: ids.length });
     setActionLoading('restore');
     try {
-      await invoke('zoho_restore_from_trash', { fileIds: ids });
+      await invoke('zoho_restore_from_trash', { generation, fileIds: ids });
       humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_restore_success', { provider: 'Zoho WorkDrive', count: ids.length }) });
       await loadTrash();
       onRefreshFiles?.();
@@ -104,7 +106,7 @@ export function ZohoTrashManager({ onClose, onRefreshFiles }: ZohoTrashManagerPr
     const logId = humanLog.logRaw('activity.trash_delete_start', 'INFO', { provider: 'Zoho WorkDrive', count: ids.length });
     setActionLoading('delete');
     try {
-      await invoke('zoho_permanent_delete', { fileIds: ids });
+      await invoke('zoho_permanent_delete', { generation, fileIds: ids });
       humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_delete_success', { provider: 'Zoho WorkDrive', count: ids.length }) });
       await loadTrash();
       onRefreshFiles?.();

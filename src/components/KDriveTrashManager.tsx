@@ -15,11 +15,13 @@ import type { RemoteFile } from '../types';
 import { formatSize, formatDate } from '../utils/formatters';
 
 interface KDriveTrashManagerProps {
+  /** `provider_connection_generation` read when the trash was opened: every trash command carries it, so none acts on another connection. */
+  generation: number;
   onClose: () => void;
   onRefreshFiles?: () => void;
 }
 
-export function KDriveTrashManager({ onClose, onRefreshFiles }: KDriveTrashManagerProps) {
+export function KDriveTrashManager({ generation, onClose, onRefreshFiles }: KDriveTrashManagerProps) {
   const t = useTranslation();
   const modalDrag = useDraggableModal();
   const humanLog = useHumanizedLog();
@@ -36,7 +38,7 @@ export function KDriveTrashManager({ onClose, onRefreshFiles }: KDriveTrashManag
     setLoading(true);
     setError(null);
     try {
-      const result = await invoke<RemoteFile[]>('kdrive_list_trash');
+      const result = await invoke<RemoteFile[]>('kdrive_list_trash', { generation });
       setItems(result);
       setSelected(new Set());
     } catch (err) {
@@ -44,7 +46,7 @@ export function KDriveTrashManager({ onClose, onRefreshFiles }: KDriveTrashManag
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [generation]);
 
   useEffect(() => {
     loadTrash();
@@ -85,7 +87,7 @@ export function KDriveTrashManager({ onClose, onRefreshFiles }: KDriveTrashManag
     try {
       for (const item of sel) {
         const fileId = item.metadata?.file_id ?? '';
-        await invoke('kdrive_restore_from_trash', { fileId });
+        await invoke('kdrive_restore_from_trash', { generation, fileId });
       }
       humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_restore_success', { provider: 'kDrive', count: selectedCount }) });
       await loadTrash();
@@ -108,7 +110,7 @@ export function KDriveTrashManager({ onClose, onRefreshFiles }: KDriveTrashManag
     try {
       for (const item of sel) {
         const fileId = item.metadata?.file_id ?? '';
-        await invoke('kdrive_permanently_delete_trash', { fileId });
+        await invoke('kdrive_permanently_delete_trash', { generation, fileId });
       }
       humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_delete_success', { provider: 'kDrive', count: selectedCount }) });
       await loadTrash();
@@ -128,7 +130,7 @@ export function KDriveTrashManager({ onClose, onRefreshFiles }: KDriveTrashManag
     setActionLoading('empty');
     setError(null);
     try {
-      await invoke('kdrive_empty_trash');
+      await invoke('kdrive_empty_trash', { generation });
       humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_empty_success', { provider: 'kDrive' }) });
       await loadTrash();
       onRefreshFiles?.();

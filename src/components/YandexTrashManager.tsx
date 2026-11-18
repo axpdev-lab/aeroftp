@@ -15,11 +15,13 @@ import type { RemoteFile } from '../types';
 import { formatSize, formatDate } from '../utils/formatters';
 
 interface YandexTrashManagerProps {
+  /** `provider_connection_generation` read when the trash was opened: every trash command carries it, so none acts on another connection. */
+  generation: number;
   onClose: () => void;
   onRefreshFiles?: () => void;
 }
 
-export function YandexTrashManager({ onClose, onRefreshFiles }: YandexTrashManagerProps) {
+export function YandexTrashManager({ generation, onClose, onRefreshFiles }: YandexTrashManagerProps) {
   const t = useTranslation();
   const modalDrag = useDraggableModal();
   const humanLog = useHumanizedLog();
@@ -36,7 +38,7 @@ export function YandexTrashManager({ onClose, onRefreshFiles }: YandexTrashManag
     setLoading(true);
     setError(null);
     try {
-      const result = await invoke<RemoteFile[]>('yandex_list_trash');
+      const result = await invoke<RemoteFile[]>('yandex_list_trash', { generation });
       setItems(result);
       setSelected(new Set());
     } catch (err) {
@@ -44,7 +46,7 @@ export function YandexTrashManager({ onClose, onRefreshFiles }: YandexTrashManag
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [generation]);
 
   useEffect(() => {
     loadTrash();
@@ -83,7 +85,7 @@ export function YandexTrashManager({ onClose, onRefreshFiles }: YandexTrashManag
     setActionLoading('restore');
     setError(null);
     try {
-      await invoke('yandex_restore_from_trash', { paths });
+      await invoke('yandex_restore_from_trash', { generation, paths });
       humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_restore_success', { provider: 'Yandex Disk', count: selectedCount }) });
       await loadTrash();
       onRefreshFiles?.();
@@ -103,7 +105,7 @@ export function YandexTrashManager({ onClose, onRefreshFiles }: YandexTrashManag
     setActionLoading('delete');
     setError(null);
     try {
-      await invoke('yandex_permanent_delete', { paths });
+      await invoke('yandex_permanent_delete', { generation, paths });
       humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_delete_success', { provider: 'Yandex Disk', count: selectedCount }) });
       await loadTrash();
       onRefreshFiles?.();
@@ -122,7 +124,7 @@ export function YandexTrashManager({ onClose, onRefreshFiles }: YandexTrashManag
     setActionLoading('empty');
     setError(null);
     try {
-      await invoke('yandex_empty_trash');
+      await invoke('yandex_empty_trash', { generation });
       humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_empty_success', { provider: 'Yandex Disk' }) });
       await loadTrash();
       onRefreshFiles?.();

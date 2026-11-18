@@ -23,11 +23,13 @@ interface TrashEntry {
 }
 
 interface GoogleDriveTrashManagerProps {
+  /** `provider_connection_generation` read when the trash was opened: every trash command carries it, so none acts on another connection. */
+  generation: number;
   onClose: () => void;
   onRefreshFiles?: () => void;
 }
 
-export function GoogleDriveTrashManager({ onClose, onRefreshFiles }: GoogleDriveTrashManagerProps) {
+export function GoogleDriveTrashManager({ generation, onClose, onRefreshFiles }: GoogleDriveTrashManagerProps) {
   const t = useTranslation();
   const modalDrag = useDraggableModal();
   const humanLog = useHumanizedLog();
@@ -43,7 +45,7 @@ export function GoogleDriveTrashManager({ onClose, onRefreshFiles }: GoogleDrive
     setLoading(true);
     setError(null);
     try {
-      const result = await invoke<TrashEntry[]>('google_drive_list_trash');
+      const result = await invoke<TrashEntry[]>('google_drive_list_trash', { generation });
       setItems(result);
       setSelected(new Set());
     } catch (err) {
@@ -51,7 +53,7 @@ export function GoogleDriveTrashManager({ onClose, onRefreshFiles }: GoogleDrive
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [generation]);
 
   useEffect(() => {
     loadTrash();
@@ -76,7 +78,7 @@ export function GoogleDriveTrashManager({ onClose, onRefreshFiles }: GoogleDrive
     const logId = humanLog.logRaw('activity.trash_restore_start', 'INFO', { provider: 'Google Drive', count: fileIds.length });
     setActionLoading('restore');
     try {
-      await invoke('google_drive_restore_from_trash', { fileIds });
+      await invoke('google_drive_restore_from_trash', { generation, fileIds });
       humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_restore_success', { provider: 'Google Drive', count: fileIds.length }) });
       await loadTrash();
       onRefreshFiles?.();
@@ -103,7 +105,7 @@ export function GoogleDriveTrashManager({ onClose, onRefreshFiles }: GoogleDrive
     const logId = humanLog.logRaw('activity.trash_delete_start', 'INFO', { provider: 'Google Drive', count: fileIds.length });
     setActionLoading('delete');
     try {
-      await invoke('google_drive_permanent_delete', { fileIds });
+      await invoke('google_drive_permanent_delete', { generation, fileIds });
       humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_delete_success', { provider: 'Google Drive', count: fileIds.length }) });
       await loadTrash();
       onRefreshFiles?.();

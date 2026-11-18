@@ -24,11 +24,13 @@ interface DeletedFileEntry {
 }
 
 interface FileLuTrashManagerProps {
+  /** `provider_connection_generation` read when the trash was opened: every trash command carries it, so none acts on another connection. */
+  generation: number;
   onClose: () => void;
   onRefreshFiles?: () => void;
 }
 
-export function FileLuTrashManager({ onClose, onRefreshFiles }: FileLuTrashManagerProps) {
+export function FileLuTrashManager({ generation, onClose, onRefreshFiles }: FileLuTrashManagerProps) {
   const t = useTranslation();
   const modalDrag = useDraggableModal();
   const humanLog = useHumanizedLog();
@@ -44,7 +46,7 @@ export function FileLuTrashManager({ onClose, onRefreshFiles }: FileLuTrashManag
     setLoading(true);
     setError(null);
     try {
-      const result = await invoke<DeletedFileEntry[]>('filelu_list_deleted');
+      const result = await invoke<DeletedFileEntry[]>('filelu_list_deleted', { generation });
       setItems(result);
       setSelected(new Set());
     } catch (err) {
@@ -52,7 +54,7 @@ export function FileLuTrashManager({ onClose, onRefreshFiles }: FileLuTrashManag
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [generation]);
 
   useEffect(() => { loadTrash(); }, [loadTrash]);
 
@@ -76,7 +78,7 @@ export function FileLuTrashManager({ onClose, onRefreshFiles }: FileLuTrashManag
     setActionLoading('restore');
     try {
       for (const code of selected) {
-        await invoke('filelu_restore_file', { fileCode: code });
+        await invoke('filelu_restore_file', { generation, fileCode: code });
       }
       humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_restore_success', { provider: 'FileLu', count: selectedCount }) });
       await loadTrash();
@@ -96,7 +98,7 @@ export function FileLuTrashManager({ onClose, onRefreshFiles }: FileLuTrashManag
     setActionLoading('delete');
     try {
       for (const code of selected) {
-        await invoke('filelu_permanent_delete', { fileCode: code });
+        await invoke('filelu_permanent_delete', { generation, fileCode: code });
       }
       humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_delete_success', { provider: 'FileLu', count: selectedCount }) });
       await loadTrash();
@@ -140,7 +142,7 @@ export function FileLuTrashManager({ onClose, onRefreshFiles }: FileLuTrashManag
     const logId = humanLog.logRaw('activity.trash_restore_start', 'INFO', { provider: 'FileLu', count: 1 });
     setActionLoading('restore');
     try {
-      await invoke('filelu_restore_file', { fileCode: code });
+      await invoke('filelu_restore_file', { generation, fileCode: code });
       humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_restore_success', { provider: 'FileLu', count: 1 }) });
       await loadTrash();
       onRefreshFiles?.();
@@ -150,13 +152,13 @@ export function FileLuTrashManager({ onClose, onRefreshFiles }: FileLuTrashManag
     } finally {
       setActionLoading(null);
     }
-  }, [humanLog, loadTrash, onRefreshFiles, t]);
+  }, [humanLog, loadTrash, onRefreshFiles, t, generation]);
 
   const deleteOne = useCallback(async (code: string) => {
     const logId = humanLog.logRaw('activity.trash_delete_start', 'INFO', { provider: 'FileLu', count: 1 });
     setActionLoading('delete');
     try {
-      await invoke('filelu_permanent_delete', { fileCode: code });
+      await invoke('filelu_permanent_delete', { generation, fileCode: code });
       humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_delete_success', { provider: 'FileLu', count: 1 }) });
       await loadTrash();
     } catch (err) {
@@ -165,7 +167,7 @@ export function FileLuTrashManager({ onClose, onRefreshFiles }: FileLuTrashManag
     } finally {
       setActionLoading(null);
     }
-  }, [humanLog, loadTrash, t]);
+  }, [humanLog, loadTrash, t, generation]);
 
   const fileLuColumns = useMemo(
     () => [

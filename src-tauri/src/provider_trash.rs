@@ -1231,7 +1231,7 @@ fn check_shape(kind: TrashKind, id: &str) -> Res<()> {
 /// (Dropbox, B2: the id is the row's path); the whole trash elsewhere.
 fn listing_scope(kind: TrashKind, id: &str) -> String {
     match kind {
-        TrashKind::Dropbox | TrashKind::B2 => match id.rsplit_once('/') {
+        TrashKind::Dropbox => match id.rsplit_once('/') {
             Some((parent, _)) if !parent.is_empty() => parent.to_string(),
             _ => "/".to_string(),
         },
@@ -1244,12 +1244,82 @@ fn listing_scope(kind: TrashKind, id: &str) -> String {
 /// deleted for good past the trash (Google Drive, OneDrive), and an endpoint
 /// name would pass for an item (`trash` on Drive empties the whole trash).
 /// The GUI passes ids from its own listing and does not come through here.
+///
+/// S3 and Azure list only under the id's own key or blob name, so one id
+/// never costs a scan of the whole bucket or container.
 async fn listed(p: &mut dyn StorageProvider, kind: TrashKind, id: &str) -> Res<()> {
-    let items = list(p, kind, &listing_scope(kind, id)).await?;
-    if items
-        .iter()
-        .any(|item| item.get("id").and_then(Value::as_str) == Some(id))
-    {
+    let found = match kind {
+        TrashKind::S3 => {
+            let (_, rest) = split_id(kind, id)?;
+            let (_, key) = split_id(kind, rest)?;
+            // The listing drops a leading `/` from its prefix, which would
+            // leave a key that starts with one outside it: list all then.
+            let prefix = if key.starts_with('/') { "" } else { key };
+            s3_list(p, prefix, false)
+                .await?
+                .iter()
+                .any(|e| s3_id(e) == id)
+        }
+        TrashKind::Azure => {
+            let azure = concrete::<AzureProvider>(p, "Failed to access Azure provider")?;
+            azure
+                .list_deleted_blobs_under(id)
+                .await
+                .map_err(|e| e.to_string())?
+                .iter()
+                .any(|e| e.path == id)
+        }
+        // These listings can stop early for the GUI (a failed page, an item
+        // or page cap): here they read to the end or fail, so an id past the
+        // cut is never refused as not in the trash.
+        TrashKind::Zoho => {
+            let zoho =
+                concrete::<ZohoWorkdriveProvider>(p, "Failed to access Zoho WorkDrive provider")?;
+            let rows = zoho
+                .list_trash_complete()
+                .await
+                .map_err(|e| e.to_string())?;
+            rows.iter().any(|e| entry_id(kind, e) == id)
+        }
+        TrashKind::Yandex => {
+            let yandex =
+                concrete::<YandexDiskProvider>(p, "Failed to access Yandex Disk provider")?;
+            let rows = yandex
+                .list_trash_complete()
+                .await
+                .map_err(|e| e.to_string())?;
+            rows.iter().any(|e| entry_id(kind, e) == id)
+        }
+        // B2 lists by name prefix: the id's own name is enough.
+        TrashKind::B2 => {
+            let b2 = concrete::<B2Provider>(p, "B2 downcast failed")?;
+            let rows = b2
+                .list_hidden_files_complete(id)
+                .await
+                .map_err(|e| e.to_string())?;
+            rows.iter().any(|e| entry_id(kind, e) == id)
+        }
+        // Koofr answers one page of at most KOOFR_TRASH_PAGE items and its
+        // next-page parameter is not documented: a full page may have more
+        // behind it, so it cannot show that an id is not there.
+        TrashKind::Koofr => {
+            let rows = koofr_list(p).await?;
+            if rows.len() >= crate::providers::koofr::KOOFR_TRASH_PAGE {
+                return Err(TrashError::Failed(format!(
+                    "the Koofr trash lists at most {} items at a time and holds that many or more: \
+                     restore or delete this item from the app",
+                    crate::providers::koofr::KOOFR_TRASH_PAGE
+                )));
+            }
+            rows.iter()
+                .any(|e| format!("{}:{}", esc(&e.mount_id), e.path) == id)
+        }
+        _ => list(p, kind, &listing_scope(kind, id))
+            .await?
+            .iter()
+            .any(|item| item.get("id").and_then(Value::as_str) == Some(id)),
+    };
+    if found {
         return Ok(());
     }
     Err(TrashError::BadId(format!(

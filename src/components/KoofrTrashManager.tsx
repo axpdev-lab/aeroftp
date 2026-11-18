@@ -23,11 +23,13 @@ interface KoofrTrashItem {
 }
 
 interface KoofrTrashManagerProps {
+  /** `provider_connection_generation` read when the trash was opened: every trash command carries it, so none acts on another connection. */
+  generation: number;
   onClose: () => void;
   onRefreshFiles?: () => void;
 }
 
-export function KoofrTrashManager({ onClose, onRefreshFiles }: KoofrTrashManagerProps) {
+export function KoofrTrashManager({ generation, onClose, onRefreshFiles }: KoofrTrashManagerProps) {
   const t = useTranslation();
   const modalDrag = useDraggableModal();
   const humanLog = useHumanizedLog();
@@ -43,7 +45,7 @@ export function KoofrTrashManager({ onClose, onRefreshFiles }: KoofrTrashManager
     setLoading(true);
     setError(null);
     try {
-      const result = await invoke<KoofrTrashItem[]>('koofr_list_trash');
+      const result = await invoke<KoofrTrashItem[]>('koofr_list_trash', { generation });
       setItems(result);
       setSelected(new Set());
     } catch (err) {
@@ -51,7 +53,7 @@ export function KoofrTrashManager({ onClose, onRefreshFiles }: KoofrTrashManager
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [generation]);
 
   useEffect(() => {
     loadTrash();
@@ -81,7 +83,7 @@ export function KoofrTrashManager({ onClose, onRefreshFiles }: KoofrTrashManager
     const logId = humanLog.logRaw('activity.trash_restore_start', 'INFO', { provider: 'Koofr', count: selectedCount });
     setActionLoading('restore');
     try {
-      await invoke('koofr_restore_trash', { files });
+      await invoke('koofr_restore_trash', { generation, files });
       humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_restore_success', { provider: 'Koofr', count: selectedCount }) });
       await loadTrash();
       onRefreshFiles?.();
@@ -106,7 +108,7 @@ export function KoofrTrashManager({ onClose, onRefreshFiles }: KoofrTrashManager
     const logId = humanLog.logRaw('activity.trash_empty_start', 'INFO', { provider: 'Koofr', count: totalCount });
     setActionLoading('empty');
     try {
-      await invoke('koofr_empty_trash');
+      await invoke('koofr_empty_trash', { generation });
       humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_empty_success', { provider: 'Koofr' }) });
       await loadTrash();
       onRefreshFiles?.();

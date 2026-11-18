@@ -23,11 +23,13 @@ interface TrashEntry {
 }
 
 interface MegaTrashManagerProps {
+  /** `provider_connection_generation` read when the trash was opened: every trash command carries it, so none acts on another connection. */
+  generation: number;
   onClose: () => void;
   onRefreshFiles?: () => void;
 }
 
-export function MegaTrashManager({ onClose, onRefreshFiles }: MegaTrashManagerProps) {
+export function MegaTrashManager({ generation, onClose, onRefreshFiles }: MegaTrashManagerProps) {
   const t = useTranslation();
   const modalDrag = useDraggableModal();
   const humanLog = useHumanizedLog();
@@ -43,7 +45,7 @@ export function MegaTrashManager({ onClose, onRefreshFiles }: MegaTrashManagerPr
     setLoading(true);
     setError(null);
     try {
-      const result = await invoke<TrashEntry[]>('mega_list_trash');
+      const result = await invoke<TrashEntry[]>('mega_list_trash', { generation });
       setItems(result);
       setSelected(new Set());
     } catch (err) {
@@ -51,7 +53,7 @@ export function MegaTrashManager({ onClose, onRefreshFiles }: MegaTrashManagerPr
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [generation]);
 
   useEffect(() => {
     loadTrash();
@@ -72,7 +74,7 @@ export function MegaTrashManager({ onClose, onRefreshFiles }: MegaTrashManagerPr
     const logId = humanLog.logRaw('activity.trash_restore_start', 'INFO', { provider: 'MEGA', count: filenames.length });
     setActionLoading('restore');
     try {
-      await invoke('mega_restore_from_trash', { filenames });
+      await invoke('mega_restore_from_trash', { generation, filenames });
       humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_restore_success', { provider: 'MEGA', count: filenames.length }) });
       await loadTrash();
       onRefreshFiles?.();
@@ -99,7 +101,7 @@ export function MegaTrashManager({ onClose, onRefreshFiles }: MegaTrashManagerPr
     const logId = humanLog.logRaw('activity.trash_delete_start', 'INFO', { provider: 'MEGA', count: filenames.length });
     setActionLoading('delete');
     try {
-      await invoke('mega_permanent_delete', { filenames });
+      await invoke('mega_permanent_delete', { generation, filenames });
       humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_delete_success', { provider: 'MEGA', count: filenames.length }) });
       await loadTrash();
       onRefreshFiles?.();

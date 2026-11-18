@@ -19,11 +19,13 @@ interface InternxtTrashItem {
 }
 
 interface InternxtTrashManagerProps {
+  /** `provider_connection_generation` read when the trash was opened: every trash command carries it, so none acts on another connection. */
+  generation: number;
   onClose: () => void;
   onRefreshFiles?: () => void;
 }
 
-export function InternxtTrashManager({ onClose }: InternxtTrashManagerProps) {
+export function InternxtTrashManager({ generation, onClose }: InternxtTrashManagerProps) {
   const t = useTranslation();
   const modalDrag = useDraggableModal();
   const [items, setItems] = useState<InternxtTrashItem[]>([]);
@@ -34,14 +36,14 @@ export function InternxtTrashManager({ onClose }: InternxtTrashManagerProps) {
     setLoading(true);
     setError(null);
     try {
-      const result = await invoke<InternxtTrashItem[]>('internxt_list_trash');
+      const result = await invoke<InternxtTrashItem[]>('internxt_list_trash', { generation });
       setItems(result);
     } catch (err) {
       setError(String(err));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [generation]);
 
   useEffect(() => {
     loadTrash();

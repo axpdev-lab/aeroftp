@@ -8434,8 +8434,10 @@ impl StorageProvider for S3Provider {
         let mut key_marker: Option<String> = None;
         let mut version_id_marker: Option<String> = None;
         let mut sent_markers: HashSet<(String, Option<String>)> = HashSet::new();
+        let mut pages = 0usize;
 
         loop {
+            super::trash_page_counted(&mut pages, "The S3 version listing")?;
             let mut params: Vec<(&str, &str)> = vec![("versions", ""), ("prefix", prefix)];
 
             let km_str: String;
@@ -20660,6 +20662,68 @@ mod tests {
     /// (undelete), an older version's id (`v:`) restores by copying it
     /// forward, delete purges the named version, and empty is one batch
     /// delete of the soft-deleted rows under the bucket root only.
+    /// A trash listing whose pages never end (a new key marker on every page)
+    /// is an error at the page cap, not a caller held for ever: no request
+    /// goes out past the cap. Under a timeout, so a loop without the cap fails
+    /// the test instead of hanging it.
+    #[tokio::test]
+    async fn trash_listing_with_endless_new_markers_ends_at_the_page_cap() {
+        use std::sync::{Arc, Mutex};
+        let calls: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&calls);
+        let app = axum::Router::new().fallback(axum::routing::any(move |uri: axum::http::Uri| {
+            let query = uri.query().unwrap_or("").to_string();
+            seen.lock().unwrap().push(query.clone());
+            // A new marker on every page: k<n> answers k<n+1>.
+            let n: u64 = query
+                .split('&')
+                .find_map(|kv| kv.strip_prefix("key-marker=k"))
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0);
+            let xml = format!(
+                concat!(
+                    r#"<?xml version="1.0" encoding="UTF-8"?>"#,
+                    r#"<ListVersionsResult><IsTruncated>true</IsTruncated>"#,
+                    r#"<NextKeyMarker>k{}</NextKeyMarker></ListVersionsResult>"#
+                ),
+                n + 1
+            );
+            async move {
+                axum::http::Response::builder()
+                    .status(200)
+                    .header("content-length", xml.len().to_string())
+                    .body(axum::body::Body::from(xml))
+                    .unwrap()
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        let got = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            provider.list_object_versions("", false),
+        )
+        .await
+        .expect("an endless trash listing must end, not hang");
+        let cap = crate::providers::TRASH_PAGE_CAP;
+        assert!(
+            matches!(&got, Err(ProviderError::ServerError(m)) if m.contains(&format!("within {cap} pages"))),
+            "{got:?}"
+        );
+        assert_eq!(
+            calls.lock().unwrap().len(),
+            cap,
+            "one request a page, none past the cap"
+        );
+        server.abort();
+        assert!(
+            server.await.is_err_and(|e| e.is_cancelled()),
+            "the test server must stop with the test"
+        );
+    }
+
     #[tokio::test]
     async fn trash_dispatch_undeletes_a_marker_and_copies_a_version_forward() {
         use crate::provider_trash::{run, TrashError, TrashKind, TrashOp, TrashOutcome};
@@ -20798,7 +20862,7 @@ mod tests {
         assert_eq!(
             *seen.lock().unwrap(),
             [
-                "LIST prefix=",
+                "LIST prefix=docs%2Freport.pdf",
                 "DELETE /test-bucket/docs/report.pdf?versionId=del-marker-001"
             ]
         );
@@ -20824,7 +20888,7 @@ mod tests {
         assert_eq!(
             *seen.lock().unwrap(),
             [
-                "LIST prefix=",
+                "LIST prefix=docs%2Freport.pdf",
                 "PUT /test-bucket/docs/report.pdf? copy=/test-bucket/docs/report.pdf?versionId=v-002"
             ]
         );
@@ -20850,7 +20914,7 @@ mod tests {
         assert_eq!(
             *seen.lock().unwrap(),
             [
-                "LIST prefix=",
+                "LIST prefix=docs%2Freport.pdf",
                 "DELETE /test-bucket/docs/report.pdf?versionId=v-002"
             ]
         );
@@ -20858,14 +20922,19 @@ mod tests {
         // `m::` would reach delete_version with no key and no version, and
         // another flag or an empty part is no row: refused unsent. The live
         // current version of cat.jpg and its older one are no trash rows
-        // either: one listing, no delete or copy.
+        // either: one listing, under that key only, no delete or copy.
+        let none: &[&str] = &[];
         for (crafted, listings) in [
-            ("m::", 0),
-            ("m::docs/report.pdf", 0),
-            ("m:del-marker-001:", 0),
-            ("x:v-002:docs/report.pdf", 0),
-            ("v:v-100:photos/cat.jpg", 1),
-            ("v:v-099:photos/cat.jpg", 1),
+            ("m::", none),
+            ("m::docs/report.pdf", none),
+            ("m:del-marker-001:", none),
+            ("x:v-002:docs/report.pdf", none),
+            ("v:v-100:photos/cat.jpg", &["LIST prefix=photos%2Fcat.jpg"]),
+            ("v:v-099:photos/cat.jpg", &["LIST prefix=photos%2Fcat.jpg"]),
+            // The listing trims a leading slash from its prefix, so a key that
+            // starts with one is checked against the whole listing: an id
+            // never misses its own row for want of a matching prefix.
+            ("m:del-marker-001:/docs/report.pdf", &["LIST prefix="]),
         ] {
             for op in [
                 TrashOp::Delete { id: crafted.into() },
@@ -20874,11 +20943,7 @@ mod tests {
                 seen.lock().unwrap().clear();
                 let got = run(&mut provider, op.clone()).await;
                 assert!(matches!(got, Err(TrashError::BadId(_))), "{op:?}: {got:?}");
-                assert_eq!(
-                    *seen.lock().unwrap(),
-                    vec!["LIST prefix="; listings],
-                    "{op:?}"
-                );
+                assert_eq!(*seen.lock().unwrap(), listings, "{op:?}");
             }
         }
 

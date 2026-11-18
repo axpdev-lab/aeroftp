@@ -2678,6 +2678,23 @@ impl B2Provider {
         &mut self,
         prefix: &str,
     ) -> Result<Vec<RemoteEntry>, ProviderError> {
+        self.list_hidden_files_pages(prefix, false).await
+    }
+
+    /// Every hidden file under `prefix` or an error: running out of pages
+    /// with more to read is an error here, not a shorter list.
+    pub async fn list_hidden_files_complete(
+        &mut self,
+        prefix: &str,
+    ) -> Result<Vec<RemoteEntry>, ProviderError> {
+        self.list_hidden_files_pages(prefix, true).await
+    }
+
+    async fn list_hidden_files_pages(
+        &mut self,
+        prefix: &str,
+        strict: bool,
+    ) -> Result<Vec<RemoteEntry>, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
@@ -2748,8 +2765,14 @@ impl B2Provider {
                     start_name = Some(n);
                     start_id = Some(i);
                 }
-                _ => break,
+                _ => return Ok(out),
             }
+        }
+        if strict {
+            return Err(ProviderError::ServerError(format!(
+                "List trash failed: more than {} file versions under '{prefix}'",
+                PAGE_SIZE * MAX_PAGES
+            )));
         }
         Ok(out)
     }
@@ -7536,6 +7559,57 @@ mod tests {
     /// id is the hidden file's path, restore deletes its hide marker by file
     /// id, delete purges every version and says how many, and empty (which
     /// the app's manager does not offer) sends nothing.
+    /// Past its page cap the hidden-file listing still has more to read: the
+    /// complete listing says so, the app's listing keeps what it read.
+    #[tokio::test]
+    async fn trash_complete_hidden_file_listing_fails_at_the_page_cap() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+        let pages = Arc::new(AtomicUsize::new(0));
+        let seen = Arc::clone(&pages);
+        let app = axum::Router::new().fallback(axum::routing::post(move || {
+            let n = seen.fetch_add(1, Ordering::SeqCst);
+            async move {
+                axum::Json(serde_json::json!({
+                    "files": [{
+                        "fileId": format!("hide-{n}"),
+                        "fileName": format!("docs/f{n:03}.txt"),
+                        "action": "hide",
+                        "contentLength": 0,
+                        "uploadTimestamp": 1_700_000_000_000_i64
+                    }],
+                    "nextFileName": format!("docs/f{:03}.txt", n + 1),
+                    "nextFileId": format!("hide-{}", n + 1)
+                }))
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut p = empty_provider();
+        p.api_url = format!("http://{addr}");
+        p.auth_token = SecretString::new("token".into());
+        p.bucket_id = "bucket".into();
+        p.connected = true;
+
+        let read = p
+            .list_hidden_files("/docs")
+            .await
+            .expect("the app's listing");
+        assert_eq!(read.len(), 25, "one row per page up to the cap");
+        let complete = p.list_hidden_files_complete("/docs").await;
+        assert!(
+            matches!(&complete, Err(ProviderError::ServerError(m)) if m.contains("more than")),
+            "{complete:?}"
+        );
+        server.abort();
+        assert!(
+            server.await.is_err_and(|e| e.is_cancelled()),
+            "the test server must stop with the test"
+        );
+        assert_eq!(pages.load(Ordering::SeqCst), 50);
+    }
+
     #[tokio::test]
     async fn trash_dispatch_restores_the_hide_marker_and_refuses_empty() {
         use crate::provider_trash::{run, TrashError, TrashKind, TrashOp, TrashOutcome};
@@ -7618,7 +7692,7 @@ mod tests {
         assert_eq!(
             *calls.lock().unwrap(),
             [
-                "list prefix=docs start=",
+                "list prefix=docs/a.txt start=",
                 "list prefix=docs/a.txt start=docs/a.txt",
                 "delete docs/a.txt hide-1",
             ]
@@ -7637,7 +7711,7 @@ mod tests {
         assert_eq!(
             *calls.lock().unwrap(),
             [
-                "list prefix=docs start=",
+                "list prefix=docs/a.txt start=",
                 "list prefix=docs/a.txt start=docs/a.txt",
                 "delete docs/a.txt hide-1",
                 "delete docs/a.txt upl-1",

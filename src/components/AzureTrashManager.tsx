@@ -22,11 +22,13 @@ interface AzureTrashItem {
 }
 
 interface AzureTrashManagerProps {
+  /** `provider_connection_generation` read when the trash was opened: every trash command carries it, so none acts on another connection. */
+  generation: number;
   onClose: () => void;
   onRefreshFiles?: () => void;
 }
 
-export function AzureTrashManager({ onClose, onRefreshFiles }: AzureTrashManagerProps) {
+export function AzureTrashManager({ generation, onClose, onRefreshFiles }: AzureTrashManagerProps) {
   const t = useTranslation();
   const modalDrag = useDraggableModal();
   const humanLog = useHumanizedLog();
@@ -42,7 +44,7 @@ export function AzureTrashManager({ onClose, onRefreshFiles }: AzureTrashManager
     setLoading(true);
     setError(null);
     try {
-      const result = await invoke<AzureTrashItem[]>('azure_list_deleted_blobs');
+      const result = await invoke<AzureTrashItem[]>('azure_list_deleted_blobs', { generation });
       setItems(result);
       setSelected(new Set());
     } catch (err) {
@@ -50,7 +52,7 @@ export function AzureTrashManager({ onClose, onRefreshFiles }: AzureTrashManager
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [generation]);
 
   useEffect(() => {
     loadTrash();
@@ -72,7 +74,7 @@ export function AzureTrashManager({ onClose, onRefreshFiles }: AzureTrashManager
     setActionLoading('restore');
     try {
       for (const item of selectedItems) {
-        await invoke('azure_undelete_blob', { blobName: item.path });
+        await invoke('azure_undelete_blob', { generation, blobName: item.path });
       }
       humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_restore_success', { provider: 'Azure Blob', count: selectedItems.length }) });
       await loadTrash();

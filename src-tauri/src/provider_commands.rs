@@ -334,6 +334,26 @@ impl ProviderState {
         Ok(Some(pin))
     }
 
+    /// The provider slot, locked, while the live connection is still the one
+    /// of `generation` (what [`provider_connection_generation`] answered when
+    /// a dialog opened): checked under the provider lock, which every connect,
+    /// disconnect and swap holds to bump the generation, and held by the
+    /// caller for its whole command, so no other connection can take the slot
+    /// meanwhile. `since` says what the dialog read ("the trash was opened").
+    pub(crate) async fn lock_connection_of_generation(
+        &self,
+        generation: u64,
+        since: &str,
+    ) -> Result<tokio::sync::MutexGuard<'_, Option<Box<dyn StorageProvider>>>, String> {
+        let slot = self.provider.lock().await;
+        if self.connection_generation.load(Ordering::SeqCst) != generation {
+            return Err(format!(
+                "{CONNECTION_CHANGED_MARKER}: the connection changed since {since}; nothing was changed"
+            ));
+        }
+        Ok(slot)
+    }
+
     /// Holds the connection whose generation is `expected` until the guard is
     /// dropped: swaps and disconnects take the write side of the gate first,
     /// so they wait. An error when another connection is live already. A read
@@ -11702,8 +11722,13 @@ pub async fn fourshared_connect(
 
 /// List trashed files/folders in Zoho WorkDrive (privatespace + team folders)
 #[tauri::command]
-pub async fn zoho_list_trash(state: State<'_, ProviderState>) -> Result<Vec<RemoteEntry>, String> {
-    let mut provider_guard = state.provider.lock().await;
+pub async fn zoho_list_trash(
+    state: State<'_, ProviderState>,
+    generation: u64,
+) -> Result<Vec<RemoteEntry>, String> {
+    let mut provider_guard = state
+        .lock_connection_of_generation(generation, "the trash was opened")
+        .await?;
     let provider = provider_guard
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
@@ -11723,8 +11748,11 @@ pub async fn zoho_list_trash(state: State<'_, ProviderState>) -> Result<Vec<Remo
 pub async fn zoho_permanent_delete(
     state: State<'_, ProviderState>,
     file_ids: Vec<String>,
+    generation: u64,
 ) -> Result<(), String> {
-    let mut provider_guard = state.provider.lock().await;
+    let mut provider_guard = state
+        .lock_connection_of_generation(generation, "the trash was opened")
+        .await?;
     let provider = provider_guard
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
@@ -11743,8 +11771,11 @@ pub async fn zoho_permanent_delete(
 pub async fn zoho_restore_from_trash(
     state: State<'_, ProviderState>,
     file_ids: Vec<String>,
+    generation: u64,
 ) -> Result<(), String> {
-    let mut provider_guard = state.provider.lock().await;
+    let mut provider_guard = state
+        .lock_connection_of_generation(generation, "the trash was opened")
+        .await?;
     let provider = provider_guard
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
@@ -11852,8 +11883,11 @@ pub async fn zoho_create_native_document(
 #[tauri::command]
 pub async fn jottacloud_list_trash(
     state: State<'_, ProviderState>,
+    generation: u64,
 ) -> Result<Vec<RemoteEntry>, String> {
-    let mut provider_guard = state.provider.lock().await;
+    let mut provider_guard = state
+        .lock_connection_of_generation(generation, "the trash was opened")
+        .await?;
     let provider = provider_guard
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
@@ -11872,8 +11906,11 @@ pub async fn jottacloud_list_trash(
 pub async fn jottacloud_restore_from_trash(
     state: State<'_, ProviderState>,
     paths: Vec<String>,
+    generation: u64,
 ) -> Result<crate::providers::jottacloud::TrashRestoreReport, String> {
-    let mut provider_guard = state.provider.lock().await;
+    let mut provider_guard = state
+        .lock_connection_of_generation(generation, "the trash was opened")
+        .await?;
     let provider = provider_guard
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
@@ -11892,8 +11929,11 @@ pub async fn jottacloud_restore_from_trash(
 pub async fn jottacloud_permanent_delete(
     state: State<'_, ProviderState>,
     paths: Vec<String>,
+    generation: u64,
 ) -> Result<(), String> {
-    let mut provider_guard = state.provider.lock().await;
+    let mut provider_guard = state
+        .lock_connection_of_generation(generation, "the trash was opened")
+        .await?;
     let provider = provider_guard
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
@@ -11910,8 +11950,13 @@ pub async fn jottacloud_permanent_delete(
 /// Empty the whole Jottacloud trash (`files/v1/purge_trash`, rclone's
 /// `cleanup`). Returns the counts the server reports, files then folders.
 #[tauri::command]
-pub async fn jottacloud_empty_trash(state: State<'_, ProviderState>) -> Result<(u64, u64), String> {
-    let mut provider_guard = state.provider.lock().await;
+pub async fn jottacloud_empty_trash(
+    state: State<'_, ProviderState>,
+    generation: u64,
+) -> Result<(u64, u64), String> {
+    let mut provider_guard = state
+        .lock_connection_of_generation(generation, "the trash was opened")
+        .await?;
     let provider = provider_guard
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
@@ -11929,8 +11974,13 @@ pub async fn jottacloud_empty_trash(state: State<'_, ProviderState>) -> Result<(
 
 /// List items in MEGA Rubbish Bin
 #[tauri::command]
-pub async fn mega_list_trash(state: State<'_, ProviderState>) -> Result<Vec<RemoteEntry>, String> {
-    let mut provider_guard = state.provider.lock().await;
+pub async fn mega_list_trash(
+    state: State<'_, ProviderState>,
+    generation: u64,
+) -> Result<Vec<RemoteEntry>, String> {
+    let mut provider_guard = state
+        .lock_connection_of_generation(generation, "the trash was opened")
+        .await?;
     let provider = provider_guard
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
@@ -11949,8 +11999,11 @@ pub async fn mega_list_trash(state: State<'_, ProviderState>) -> Result<Vec<Remo
 pub async fn mega_restore_from_trash(
     state: State<'_, ProviderState>,
     filenames: Vec<String>,
+    generation: u64,
 ) -> Result<(), String> {
-    let mut provider_guard = state.provider.lock().await;
+    let mut provider_guard = state
+        .lock_connection_of_generation(generation, "the trash was opened")
+        .await?;
     let provider = provider_guard
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
@@ -11969,8 +12022,11 @@ pub async fn mega_restore_from_trash(
 pub async fn mega_permanent_delete(
     state: State<'_, ProviderState>,
     filenames: Vec<String>,
+    generation: u64,
 ) -> Result<(), String> {
-    let mut provider_guard = state.provider.lock().await;
+    let mut provider_guard = state
+        .lock_connection_of_generation(generation, "the trash was opened")
+        .await?;
     let provider = provider_guard
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
@@ -11990,8 +12046,11 @@ pub async fn mega_permanent_delete(
 #[tauri::command]
 pub async fn google_drive_list_trash(
     state: State<'_, ProviderState>,
+    generation: u64,
 ) -> Result<Vec<RemoteEntry>, String> {
-    let mut provider_guard = state.provider.lock().await;
+    let mut provider_guard = state
+        .lock_connection_of_generation(generation, "the trash was opened")
+        .await?;
     let provider = provider_guard
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
@@ -12010,8 +12069,11 @@ pub async fn google_drive_list_trash(
 pub async fn google_drive_restore_from_trash(
     state: State<'_, ProviderState>,
     file_ids: Vec<String>,
+    generation: u64,
 ) -> Result<(), String> {
-    let mut provider_guard = state.provider.lock().await;
+    let mut provider_guard = state
+        .lock_connection_of_generation(generation, "the trash was opened")
+        .await?;
     let provider = provider_guard
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
@@ -12030,8 +12092,11 @@ pub async fn google_drive_restore_from_trash(
 pub async fn google_drive_permanent_delete(
     state: State<'_, ProviderState>,
     file_ids: Vec<String>,
+    generation: u64,
 ) -> Result<(), String> {
-    let mut provider_guard = state.provider.lock().await;
+    let mut provider_guard = state
+        .lock_connection_of_generation(generation, "the trash was opened")
+        .await?;
     let provider = provider_guard
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
@@ -12051,8 +12116,11 @@ pub async fn google_drive_permanent_delete(
 #[tauri::command]
 pub async fn opendrive_list_trash(
     state: State<'_, ProviderState>,
+    generation: u64,
 ) -> Result<Vec<RemoteEntry>, String> {
-    let mut provider_guard = state.provider.lock().await;
+    let mut provider_guard = state
+        .lock_connection_of_generation(generation, "the trash was opened")
+        .await?;
     let provider = provider_guard
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
@@ -12071,8 +12139,11 @@ pub async fn opendrive_list_trash(
 pub async fn opendrive_restore_from_trash(
     state: State<'_, ProviderState>,
     items: Vec<OpenDriveTrashActionItem>,
+    generation: u64,
 ) -> Result<(), String> {
-    let mut provider_guard = state.provider.lock().await;
+    let mut provider_guard = state
+        .lock_connection_of_generation(generation, "the trash was opened")
+        .await?;
     let provider = provider_guard
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
@@ -12092,8 +12163,11 @@ pub async fn opendrive_restore_from_trash(
 pub async fn opendrive_permanent_delete(
     state: State<'_, ProviderState>,
     items: Vec<OpenDriveTrashActionItem>,
+    generation: u64,
 ) -> Result<(), String> {
-    let mut provider_guard = state.provider.lock().await;
+    let mut provider_guard = state
+        .lock_connection_of_generation(generation, "the trash was opened")
+        .await?;
     let provider = provider_guard
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
@@ -12110,8 +12184,13 @@ pub async fn opendrive_permanent_delete(
 
 /// Empty OpenDrive Trash.
 #[tauri::command]
-pub async fn opendrive_empty_trash(state: State<'_, ProviderState>) -> Result<(), String> {
-    let mut provider_guard = state.provider.lock().await;
+pub async fn opendrive_empty_trash(
+    state: State<'_, ProviderState>,
+    generation: u64,
+) -> Result<(), String> {
+    let mut provider_guard = state
+        .lock_connection_of_generation(generation, "the trash was opened")
+        .await?;
     let provider = provider_guard
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
@@ -12305,8 +12384,11 @@ pub async fn fourshared_set_path_privacy(
 #[tauri::command]
 pub async fn yandex_list_trash(
     state: State<'_, ProviderState>,
+    generation: u64,
 ) -> Result<Vec<RemoteEntry>, String> {
-    let mut provider_guard = state.provider.lock().await;
+    let mut provider_guard = state
+        .lock_connection_of_generation(generation, "the trash was opened")
+        .await?;
     let provider = provider_guard
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
@@ -12325,8 +12407,11 @@ pub async fn yandex_list_trash(
 pub async fn yandex_restore_from_trash(
     state: State<'_, ProviderState>,
     paths: Vec<String>,
+    generation: u64,
 ) -> Result<(), String> {
-    let mut provider_guard = state.provider.lock().await;
+    let mut provider_guard = state
+        .lock_connection_of_generation(generation, "the trash was opened")
+        .await?;
     let provider = provider_guard
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
@@ -12345,8 +12430,11 @@ pub async fn yandex_restore_from_trash(
 pub async fn yandex_permanent_delete(
     state: State<'_, ProviderState>,
     paths: Vec<String>,
+    generation: u64,
 ) -> Result<(), String> {
-    let mut provider_guard = state.provider.lock().await;
+    let mut provider_guard = state
+        .lock_connection_of_generation(generation, "the trash was opened")
+        .await?;
     let provider = provider_guard
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
@@ -12362,8 +12450,13 @@ pub async fn yandex_permanent_delete(
 
 /// Empty Yandex Disk trash
 #[tauri::command]
-pub async fn yandex_empty_trash(state: State<'_, ProviderState>) -> Result<(), String> {
-    let mut provider_guard = state.provider.lock().await;
+pub async fn yandex_empty_trash(
+    state: State<'_, ProviderState>,
+    generation: u64,
+) -> Result<(), String> {
+    let mut provider_guard = state
+        .lock_connection_of_generation(generation, "the trash was opened")
+        .await?;
     let provider = provider_guard
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
@@ -12381,8 +12474,13 @@ pub async fn yandex_empty_trash(state: State<'_, ProviderState>) -> Result<(), S
 
 /// List items in Box trash
 #[tauri::command]
-pub async fn box_list_trash(state: State<'_, ProviderState>) -> Result<Vec<RemoteEntry>, String> {
-    let mut guard = state.provider.lock().await;
+pub async fn box_list_trash(
+    state: State<'_, ProviderState>,
+    generation: u64,
+) -> Result<Vec<RemoteEntry>, String> {
+    let mut guard = state
+        .lock_connection_of_generation(generation, "the trash was opened")
+        .await?;
     let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
     if provider.provider_type() != ProviderType::Box {
         return Err("Only available for Box".to_string());
@@ -12420,8 +12518,11 @@ pub async fn box_restore_from_trash(
     state: State<'_, ProviderState>,
     item_id: String,
     item_type: String,
+    generation: u64,
 ) -> Result<(), String> {
-    let mut guard = state.provider.lock().await;
+    let mut guard = state
+        .lock_connection_of_generation(generation, "the trash was opened")
+        .await?;
     let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
     if provider.provider_type() != ProviderType::Box {
         return Err("Only available for Box".to_string());
@@ -12437,8 +12538,11 @@ pub async fn box_permanent_delete(
     state: State<'_, ProviderState>,
     item_id: String,
     item_type: String,
+    generation: u64,
 ) -> Result<(), String> {
-    let mut guard = state.provider.lock().await;
+    let mut guard = state
+        .lock_connection_of_generation(generation, "the trash was opened")
+        .await?;
     let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
     if provider.provider_type() != ProviderType::Box {
         return Err("Only available for Box".to_string());
@@ -12882,8 +12986,11 @@ pub async fn filelu_set_folder_settings(
 #[tauri::command]
 pub async fn filelu_list_deleted(
     state: State<'_, ProviderState>,
+    generation: u64,
 ) -> Result<Vec<crate::providers::filelu::DeletedFileEntry>, String> {
-    let mut guard = state.provider.lock().await;
+    let mut guard = state
+        .lock_connection_of_generation(generation, "the trash was opened")
+        .await?;
     let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
     if provider.provider_type() != ProviderType::FileLu {
         return Err("Only available for FileLu".to_string());
@@ -12898,8 +13005,11 @@ pub async fn filelu_list_deleted(
 pub async fn filelu_restore_file(
     state: State<'_, ProviderState>,
     file_code: String,
+    generation: u64,
 ) -> Result<(), String> {
-    let mut guard = state.provider.lock().await;
+    let mut guard = state
+        .lock_connection_of_generation(generation, "the trash was opened")
+        .await?;
     let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
     if provider.provider_type() != ProviderType::FileLu {
         return Err("Only available for FileLu".to_string());
@@ -12914,8 +13024,11 @@ pub async fn filelu_restore_file(
 pub async fn filelu_permanent_delete(
     state: State<'_, ProviderState>,
     file_code: String,
+    generation: u64,
 ) -> Result<(), String> {
-    let mut guard = state.provider.lock().await;
+    let mut guard = state
+        .lock_connection_of_generation(generation, "the trash was opened")
+        .await?;
     let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
     if provider.provider_type() != ProviderType::FileLu {
         return Err("Only available for FileLu".to_string());
@@ -13039,8 +13152,11 @@ pub async fn google_drive_delete_comment(
 pub async fn dropbox_list_trash(
     state: State<'_, ProviderState>,
     path: String,
+    generation: u64,
 ) -> Result<Vec<RemoteEntry>, String> {
-    let mut guard = state.provider.lock().await;
+    let mut guard = state
+        .lock_connection_of_generation(generation, "the trash was opened")
+        .await?;
     let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
     if provider.provider_type() != ProviderType::Dropbox {
         return Err("Only available for Dropbox".to_string());
@@ -13056,8 +13172,11 @@ pub async fn dropbox_restore_from_trash(
     state: State<'_, ProviderState>,
     path: String,
     rev: String,
+    generation: u64,
 ) -> Result<(), String> {
-    let mut guard = state.provider.lock().await;
+    let mut guard = state
+        .lock_connection_of_generation(generation, "the trash was opened")
+        .await?;
     let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
     if provider.provider_type() != ProviderType::Dropbox {
         return Err("Only available for Dropbox".to_string());
@@ -13072,8 +13191,11 @@ pub async fn dropbox_restore_from_trash(
 pub async fn dropbox_permanent_delete(
     state: State<'_, ProviderState>,
     path: String,
+    generation: u64,
 ) -> Result<(), String> {
-    let mut guard = state.provider.lock().await;
+    let mut guard = state
+        .lock_connection_of_generation(generation, "the trash was opened")
+        .await?;
     let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
     if provider.provider_type() != ProviderType::Dropbox {
         return Err("Only available for Dropbox".to_string());
@@ -13087,8 +13209,13 @@ pub async fn dropbox_permanent_delete(
 /// gates Permanent Delete / Empty Trash on "business" because
 /// `files/permanently_delete` is a Dropbox Business only endpoint.
 #[tauri::command]
-pub async fn dropbox_account_type(state: State<'_, ProviderState>) -> Result<String, String> {
-    let mut guard = state.provider.lock().await;
+pub async fn dropbox_account_type(
+    state: State<'_, ProviderState>,
+    generation: u64,
+) -> Result<String, String> {
+    let mut guard = state
+        .lock_connection_of_generation(generation, "the trash was opened")
+        .await?;
     let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
     if provider.provider_type() != ProviderType::Dropbox {
         return Err("Only available for Dropbox".to_string());
@@ -13104,8 +13231,11 @@ pub async fn dropbox_account_type(state: State<'_, ProviderState>) -> Result<Str
 #[tauri::command]
 pub async fn onedrive_list_trash(
     state: State<'_, ProviderState>,
+    generation: u64,
 ) -> Result<Vec<RemoteEntry>, String> {
-    let mut guard = state.provider.lock().await;
+    let mut guard = state
+        .lock_connection_of_generation(generation, "the trash was opened")
+        .await?;
     let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
     if provider.provider_type() != ProviderType::OneDrive {
         return Err("Only available for OneDrive".to_string());
@@ -13120,8 +13250,11 @@ pub async fn onedrive_list_trash(
 pub async fn onedrive_restore_from_trash(
     state: State<'_, ProviderState>,
     item_id: String,
+    generation: u64,
 ) -> Result<(), String> {
-    let mut guard = state.provider.lock().await;
+    let mut guard = state
+        .lock_connection_of_generation(generation, "the trash was opened")
+        .await?;
     let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
     if provider.provider_type() != ProviderType::OneDrive {
         return Err("Only available for OneDrive".to_string());
@@ -13136,8 +13269,11 @@ pub async fn onedrive_restore_from_trash(
 pub async fn onedrive_permanent_delete(
     state: State<'_, ProviderState>,
     item_id: String,
+    generation: u64,
 ) -> Result<(), String> {
-    let mut guard = state.provider.lock().await;
+    let mut guard = state
+        .lock_connection_of_generation(generation, "the trash was opened")
+        .await?;
     let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
     if provider.provider_type() != ProviderType::OneDrive {
         return Err("Only available for OneDrive".to_string());
@@ -15835,8 +15971,11 @@ pub async fn s3_list_trash(
     state: State<'_, ProviderState>,
     prefix: String,
     include_noncurrent: bool,
+    generation: u64,
 ) -> Result<Vec<crate::providers::TrashEntry>, String> {
-    let mut guard = state.provider.lock().await;
+    let mut guard = state
+        .lock_connection_of_generation(generation, "the trash was opened")
+        .await?;
     let provider = guard.as_mut().ok_or("Not connected")?;
     if provider.provider_type() != ProviderType::S3 {
         return Err("Trash browse is only available for S3".into());
@@ -15861,8 +16000,11 @@ pub async fn s3_restore_from_trash(
     key: String,
     version_id: String,
     mode: String,
+    generation: u64,
 ) -> Result<(), String> {
-    let mut guard = state.provider.lock().await;
+    let mut guard = state
+        .lock_connection_of_generation(generation, "the trash was opened")
+        .await?;
     let provider = guard.as_mut().ok_or("Not connected")?;
     if provider.provider_type() != ProviderType::S3 {
         return Err("Trash restore is only available for S3".into());
@@ -15881,8 +16023,11 @@ pub async fn s3_empty_trash(
     prefix: String,
     include_noncurrent: bool,
     dry_run: bool,
+    generation: u64,
 ) -> Result<S3EmptyTrashSummary, String> {
-    let mut guard = state.provider.lock().await;
+    let mut guard = state
+        .lock_connection_of_generation(generation, "the trash was opened")
+        .await?;
     let provider = guard.as_mut().ok_or("Not connected")?;
     if provider.provider_type() != ProviderType::S3 {
         return Err("Empty trash is only available for S3".into());
@@ -15926,8 +16071,11 @@ pub async fn azure_set_blob_tier(
 #[tauri::command]
 pub async fn azure_list_deleted_blobs(
     state: State<'_, ProviderState>,
+    generation: u64,
 ) -> Result<Vec<crate::providers::RemoteEntry>, String> {
-    let mut guard = state.provider.lock().await;
+    let mut guard = state
+        .lock_connection_of_generation(generation, "the trash was opened")
+        .await?;
     let provider = guard.as_mut().ok_or("Not connected")?;
     if provider.provider_type() != ProviderType::Azure {
         return Err("Only available for Azure".into());
@@ -15943,8 +16091,11 @@ pub async fn azure_undelete_blob(
     state: State<'_, ProviderState>,
     path: Option<String>,
     blob_name: Option<String>,
+    generation: u64,
 ) -> Result<(), String> {
-    let mut guard = state.provider.lock().await;
+    let mut guard = state
+        .lock_connection_of_generation(generation, "the trash was opened")
+        .await?;
     let provider = guard.as_mut().ok_or("Not connected")?;
     if provider.provider_type() != ProviderType::Azure {
         return Err("Only available for Azure".into());
@@ -15963,8 +16114,11 @@ pub async fn azure_undelete_blob(
 #[tauri::command]
 pub async fn internxt_list_trash(
     state: State<'_, ProviderState>,
+    generation: u64,
 ) -> Result<Vec<crate::providers::RemoteEntry>, String> {
-    let mut guard = state.provider.lock().await;
+    let mut guard = state
+        .lock_connection_of_generation(generation, "the trash was opened")
+        .await?;
     let provider = guard.as_mut().ok_or("Not connected")?;
     if provider.provider_type() != ProviderType::Internxt {
         return Err("Only available for Internxt".into());
@@ -15978,8 +16132,11 @@ pub async fn internxt_list_trash(
 #[tauri::command]
 pub async fn pcloud_list_trash(
     state: State<'_, ProviderState>,
+    generation: u64,
 ) -> Result<Vec<crate::providers::RemoteEntry>, String> {
-    let mut guard = state.provider.lock().await;
+    let mut guard = state
+        .lock_connection_of_generation(generation, "the trash was opened")
+        .await?;
     let provider = guard.as_mut().ok_or("Not connected")?;
     if provider.provider_type() != ProviderType::PCloud {
         return Err("Only available for pCloud".into());
@@ -15995,8 +16152,11 @@ pub async fn pcloud_restore_from_trash(
     state: State<'_, ProviderState>,
     id: String,
     is_folder: bool,
+    generation: u64,
 ) -> Result<(), String> {
-    let mut guard = state.provider.lock().await;
+    let mut guard = state
+        .lock_connection_of_generation(generation, "the trash was opened")
+        .await?;
     let provider = guard.as_mut().ok_or("Not connected")?;
     if provider.provider_type() != ProviderType::PCloud {
         return Err("Only available for pCloud".into());
@@ -16008,8 +16168,13 @@ pub async fn pcloud_restore_from_trash(
 
 /// Empty pCloud trash
 #[tauri::command]
-pub async fn pcloud_empty_trash(state: State<'_, ProviderState>) -> Result<(), String> {
-    let mut guard = state.provider.lock().await;
+pub async fn pcloud_empty_trash(
+    state: State<'_, ProviderState>,
+    generation: u64,
+) -> Result<(), String> {
+    let mut guard = state
+        .lock_connection_of_generation(generation, "the trash was opened")
+        .await?;
     let provider = guard.as_mut().ok_or("Not connected")?;
     if provider.provider_type() != ProviderType::PCloud {
         return Err("Only available for pCloud".into());
@@ -16025,8 +16190,11 @@ pub async fn pcloud_permanently_delete_trash(
     state: State<'_, ProviderState>,
     id: String,
     is_folder: bool,
+    generation: u64,
 ) -> Result<(), String> {
-    let mut guard = state.provider.lock().await;
+    let mut guard = state
+        .lock_connection_of_generation(generation, "the trash was opened")
+        .await?;
     let provider = guard.as_mut().ok_or("Not connected")?;
     if provider.provider_type() != ProviderType::PCloud {
         return Err("Only available for pCloud".into());
@@ -16042,8 +16210,11 @@ pub async fn pcloud_permanently_delete_trash(
 #[tauri::command]
 pub async fn kdrive_list_trash(
     state: State<'_, ProviderState>,
+    generation: u64,
 ) -> Result<Vec<crate::providers::RemoteEntry>, String> {
-    let mut guard = state.provider.lock().await;
+    let mut guard = state
+        .lock_connection_of_generation(generation, "the trash was opened")
+        .await?;
     let provider = guard.as_mut().ok_or("Not connected")?;
     if provider.provider_type() != ProviderType::KDrive {
         return Err("Only available for kDrive".into());
@@ -16058,8 +16229,11 @@ pub async fn kdrive_list_trash(
 pub async fn kdrive_restore_from_trash(
     state: State<'_, ProviderState>,
     file_id: String,
+    generation: u64,
 ) -> Result<(), String> {
-    let mut guard = state.provider.lock().await;
+    let mut guard = state
+        .lock_connection_of_generation(generation, "the trash was opened")
+        .await?;
     let provider = guard.as_mut().ok_or("Not connected")?;
     if provider.provider_type() != ProviderType::KDrive {
         return Err("Only available for kDrive".into());
@@ -16074,8 +16248,11 @@ pub async fn kdrive_restore_from_trash(
 pub async fn kdrive_permanently_delete_trash(
     state: State<'_, ProviderState>,
     file_id: String,
+    generation: u64,
 ) -> Result<(), String> {
-    let mut guard = state.provider.lock().await;
+    let mut guard = state
+        .lock_connection_of_generation(generation, "the trash was opened")
+        .await?;
     let provider = guard.as_mut().ok_or("Not connected")?;
     if provider.provider_type() != ProviderType::KDrive {
         return Err("Only available for kDrive".into());
@@ -16087,8 +16264,13 @@ pub async fn kdrive_permanently_delete_trash(
 
 /// Empty the entire kDrive trash
 #[tauri::command]
-pub async fn kdrive_empty_trash(state: State<'_, ProviderState>) -> Result<(), String> {
-    let mut guard = state.provider.lock().await;
+pub async fn kdrive_empty_trash(
+    state: State<'_, ProviderState>,
+    generation: u64,
+) -> Result<(), String> {
+    let mut guard = state
+        .lock_connection_of_generation(generation, "the trash was opened")
+        .await?;
     let provider = guard.as_mut().ok_or("Not connected")?;
     if provider.provider_type() != ProviderType::KDrive {
         return Err("Only available for kDrive".into());
@@ -16114,8 +16296,11 @@ pub async fn kdrive_empty_trash(state: State<'_, ProviderState>) -> Result<(), S
 pub async fn b2_list_hidden(
     state: State<'_, ProviderState>,
     path: String,
+    generation: u64,
 ) -> Result<Vec<RemoteEntry>, String> {
-    let mut guard = state.provider.lock().await;
+    let mut guard = state
+        .lock_connection_of_generation(generation, "the trash was opened")
+        .await?;
     let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
     if provider.provider_type() != ProviderType::Backblaze {
         return Err("Only available for Backblaze B2".to_string());
@@ -16132,8 +16317,11 @@ pub async fn b2_list_hidden(
 pub async fn b2_restore_hidden(
     state: State<'_, ProviderState>,
     path: String,
+    generation: u64,
 ) -> Result<(), String> {
-    let mut guard = state.provider.lock().await;
+    let mut guard = state
+        .lock_connection_of_generation(generation, "the trash was opened")
+        .await?;
     let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
     if provider.provider_type() != ProviderType::Backblaze {
         return Err("Only available for Backblaze B2".to_string());
@@ -16150,8 +16338,11 @@ pub async fn b2_restore_hidden(
 pub async fn b2_permanent_delete(
     state: State<'_, ProviderState>,
     path: String,
+    generation: u64,
 ) -> Result<u32, String> {
-    let mut guard = state.provider.lock().await;
+    let mut guard = state
+        .lock_connection_of_generation(generation, "the trash was opened")
+        .await?;
     let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
     if provider.provider_type() != ProviderType::Backblaze {
         return Err("Only available for Backblaze B2".to_string());
@@ -28750,3 +28941,7 @@ mod fourshared_attempt_key_tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "provider_trash_generation_tests.rs"]
+mod trash_generation_tests;

@@ -1095,7 +1095,9 @@ impl OneDriveProvider {
         let mut all_entries = Vec::new();
         let mut url = format!("{}/me/drive/special/deleted/children", self.graph_api());
 
+        let mut pages = 0usize;
         loop {
+            super::trash_page_counted(&mut pages, "The OneDrive recycle bin listing")?;
             let response = self
                 .client
                 .get(&url)
@@ -5237,6 +5239,42 @@ mod tests {
     /// The shared trash entry point (GUI, CLI and agent) lists the recycle
     /// bin with the Graph item id as the row id, restores and deletes by that
     /// id, and refuses Empty before any request, as the GUI manager does.
+    /// A trash listing whose pages never end (a new nextLink on every page)
+    /// is an error at the page cap, not a caller held for ever: no request
+    /// goes out past the cap. Under a timeout, so a loop without the cap fails
+    /// the test instead of hanging it.
+    #[tokio::test]
+    async fn trash_listing_with_an_endless_next_link_ends_at_the_page_cap() {
+        let (mut p, calls, server) = graph_fixture(|_, _| {
+            (
+                axum::http::StatusCode::OK,
+                serde_json::json!({
+                    "value": [],
+                    "@odata.nextLink": "{base}/v1.0/me/drive/special/deleted/children"
+                }),
+            )
+        })
+        .await;
+        let got = tokio::time::timeout(std::time::Duration::from_secs(10), p.list_trash())
+            .await
+            .expect("an endless trash listing must end, not hang");
+        let cap = crate::providers::TRASH_PAGE_CAP;
+        assert!(
+            matches!(&got, Err(ProviderError::ServerError(m)) if m.contains(&format!("within {cap} pages"))),
+            "{got:?}"
+        );
+        assert_eq!(
+            calls.lock().unwrap().len(),
+            cap,
+            "one request a page, none past the cap"
+        );
+        server.abort();
+        assert!(
+            server.await.is_err_and(|e| e.is_cancelled()),
+            "the test server must stop with the test"
+        );
+    }
+
     #[tokio::test]
     async fn trash_dispatch_uses_the_graph_item_id_and_refuses_empty() {
         use crate::provider_trash::{run, TrashError, TrashKind, TrashOp, TrashOutcome};

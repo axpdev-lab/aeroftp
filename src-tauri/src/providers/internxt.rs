@@ -2961,7 +2961,9 @@ impl InternxtProvider {
     ) -> Result<(), ProviderError> {
         let limit: usize = 50;
         let mut offset: usize = 0;
+        let mut pages = 0usize;
         loop {
+            super::trash_page_counted(&mut pages, "The Internxt trash listing")?;
             let url = format!(
                 "/storage/trash/paginated?offset={}&limit={}&type={}&root=true",
                 offset, limit, kind
@@ -5160,6 +5162,51 @@ mod tests {
     /// path as its id, as the GUI manager does. The manager only lists, so
     /// restore, delete and empty are refused and nothing more reaches the
     /// server, not even the listing an Empty runs first elsewhere.
+    /// A trash listing whose pages never end (a new full page on every page)
+    /// is an error at the page cap, not a caller held for ever: no request
+    /// goes out past the cap. Under a timeout, so a loop without the cap fails
+    /// the test instead of hanging it.
+    #[tokio::test]
+    async fn trash_listing_of_endless_full_pages_ends_at_the_page_cap() {
+        use axum::response::IntoResponse;
+        use std::sync::{Arc, Mutex};
+        let calls: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&calls);
+        let app = axum::Router::new().fallback(axum::routing::any(move |uri: axum::http::Uri| {
+            seen.lock().unwrap().push(uri.to_string());
+            let query = uri.query().unwrap_or("").to_string();
+            async move {
+                let _ = &query;
+                let row = serde_json::json!({"uuid": "f", "plainName": "a", "type": "txt",
+                        "size": 1, "folderUuid": "root-0", "updatedAt": "2026-10-01T10:00:00Z"});
+                axum::Json(serde_json::json!({"result": vec![row; 50]})).into_response()
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = test_provider();
+        provider.api_base = format!("http://{addr}");
+        let got = tokio::time::timeout(std::time::Duration::from_secs(10), provider.list_trash())
+            .await
+            .expect("an endless trash listing must end, not hang");
+        let cap = crate::providers::TRASH_PAGE_CAP;
+        assert!(
+            matches!(&got, Err(ProviderError::ServerError(m)) if m.contains(&format!("within {cap} pages"))),
+            "{got:?}"
+        );
+        assert_eq!(
+            calls.lock().unwrap().len(),
+            cap,
+            "one request a page, none past the cap"
+        );
+        server.abort();
+        assert!(
+            server.await.is_err_and(|e| e.is_cancelled()),
+            "the test server must stop with the test"
+        );
+    }
+
     #[tokio::test]
     async fn trash_dispatch_lists_by_uuid_and_sends_nothing_for_the_ops_it_lacks() {
         use crate::provider_trash::{run, TrashError, TrashKind, TrashOp, TrashOutcome};

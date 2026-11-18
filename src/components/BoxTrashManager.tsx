@@ -23,11 +23,13 @@ interface TrashEntry {
 }
 
 interface BoxTrashManagerProps {
+  /** `provider_connection_generation` read when the trash was opened: every trash command carries it, so none acts on another connection. */
+  generation: number;
   onClose: () => void;
   onRefreshFiles?: () => void;
 }
 
-export function BoxTrashManager({ onClose, onRefreshFiles }: BoxTrashManagerProps) {
+export function BoxTrashManager({ generation, onClose, onRefreshFiles }: BoxTrashManagerProps) {
   const t = useTranslation();
   const modalDrag = useDraggableModal();
   const humanLog = useHumanizedLog();
@@ -43,7 +45,7 @@ export function BoxTrashManager({ onClose, onRefreshFiles }: BoxTrashManagerProp
     setLoading(true);
     setError(null);
     try {
-      const result = await invoke<TrashEntry[]>('box_list_trash');
+      const result = await invoke<TrashEntry[]>('box_list_trash', { generation });
       setItems(result);
       setSelected(new Set());
     } catch (err) {
@@ -51,7 +53,7 @@ export function BoxTrashManager({ onClose, onRefreshFiles }: BoxTrashManagerProp
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [generation]);
 
   useEffect(() => {
     loadTrash();
@@ -78,7 +80,7 @@ export function BoxTrashManager({ onClose, onRefreshFiles }: BoxTrashManagerProp
       for (const itemId of ids) {
         const item = items.find(i => getItemId(i) === itemId);
         const itemType = item ? getItemType(item) : 'file';
-        await invoke('box_restore_from_trash', { itemId, itemType });
+        await invoke('box_restore_from_trash', { generation, itemId, itemType });
       }
       humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_restore_success', { provider: 'Box', count: ids.length }) });
       await loadTrash();
@@ -108,7 +110,7 @@ export function BoxTrashManager({ onClose, onRefreshFiles }: BoxTrashManagerProp
       for (const itemId of ids) {
         const item = items.find(i => getItemId(i) === itemId);
         const itemType = item ? getItemType(item) : 'file';
-        await invoke('box_permanent_delete', { itemId, itemType });
+        await invoke('box_permanent_delete', { generation, itemId, itemType });
       }
       humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_delete_success', { provider: 'Box', count: ids.length }) });
       await loadTrash();

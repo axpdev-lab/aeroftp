@@ -2009,12 +2009,15 @@ impl StorageProvider for KoofrProvider {
     }
 }
 
+/// How many items one Koofr trash listing asks for.
+pub const KOOFR_TRASH_PAGE: usize = 1000;
+
 // ─── Koofr-specific operations (exposed via Tauri commands) ───
 
 impl KoofrProvider {
     /// List trash items
     pub async fn list_trash(&self) -> Result<Vec<KoofrTrashFile>, ProviderError> {
-        let url = format!("{}/trash?pageSize=1000", self.api_base());
+        let url = format!("{}/trash?pageSize={KOOFR_TRASH_PAGE}", self.api_base());
         let resp = self.get(&url).await?;
         let resp = Self::check_response(resp).await?;
         let trash: KoofrTrashResponse = resp.json().await.map_http_err(|e| {
@@ -2120,8 +2123,11 @@ pub async fn trash_entries(
 #[tauri::command]
 pub async fn koofr_list_trash(
     state: tauri::State<'_, crate::provider_commands::ProviderState>,
+    generation: u64,
 ) -> Result<Vec<KoofrTrashEntry>, String> {
-    let mut guard = state.provider.lock().await;
+    let mut guard = state
+        .lock_connection_of_generation(generation, "the trash was opened")
+        .await?;
     let provider = guard.as_mut().ok_or("Not connected")?;
     crate::provider_trash::koofr_list(&mut **provider)
         .await
@@ -2132,8 +2138,11 @@ pub async fn koofr_list_trash(
 pub async fn koofr_restore_trash(
     state: tauri::State<'_, crate::provider_commands::ProviderState>,
     files: Vec<(String, String)>,
+    generation: u64,
 ) -> Result<(), String> {
-    let mut guard = state.provider.lock().await;
+    let mut guard = state
+        .lock_connection_of_generation(generation, "the trash was opened")
+        .await?;
     let provider = guard.as_mut().ok_or("Not connected")?;
     crate::provider_trash::koofr_restore(&mut **provider, files)
         .await
@@ -2143,8 +2152,11 @@ pub async fn koofr_restore_trash(
 #[tauri::command]
 pub async fn koofr_empty_trash(
     state: tauri::State<'_, crate::provider_commands::ProviderState>,
+    generation: u64,
 ) -> Result<(), String> {
-    let mut guard = state.provider.lock().await;
+    let mut guard = state
+        .lock_connection_of_generation(generation, "the trash was opened")
+        .await?;
     let provider = guard.as_mut().ok_or("Not connected")?;
     crate::provider_trash::koofr_empty(&mut **provider)
         .await
@@ -2699,6 +2711,67 @@ mod tests {
     /// id is `<mount_id>:<path>`, restore sends that pair to
     /// `trash/undelete`, empty lists then sends `DELETE /trash`, and delete
     /// (which the app's trash manager does not offer) sends nothing.
+    /// Koofr answers one page of the trash. A full page may have more behind
+    /// it, so a restore from the CLI or the agent fails there rather than
+    /// refuse an id as not in the trash, and sends nothing.
+    #[tokio::test]
+    async fn trash_dispatch_fails_rather_than_refuse_an_id_past_a_full_page() {
+        use crate::provider_trash::{run, TrashError, TrashOp};
+        use std::sync::{Arc, Mutex};
+        let calls: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&calls);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method, uri: axum::http::Uri| {
+                seen.lock().unwrap().push(format!("{method} {uri}"));
+                let files: Vec<serde_json::Value> = (0..KOOFR_TRASH_PAGE)
+                    .map(|i| {
+                        serde_json::json!({
+                            "name": format!("f{i}.txt"),
+                            "path": format!("/docs/f{i}.txt"),
+                            "mountId": "mnt-1",
+                            "size": 1,
+                            "deleted": 1_700_000_000_000_i64
+                        })
+                    })
+                    .collect();
+                let answer = serde_json::json!({ "files": files }).to_string();
+                async move { (axum::http::StatusCode::OK, answer) }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = KoofrProvider::new(KoofrConfig {
+            email: "u@example.com".to_string(),
+            password: secrecy::SecretString::from("p".to_string()),
+            initial_path: None,
+        });
+        provider.connected = true;
+        provider.mount_id = "M".to_string();
+        provider.api_base_override = Some(format!("http://{addr}"));
+
+        let got = run(
+            &mut provider,
+            TrashOp::Restore {
+                id: "mnt-1:/docs/later.txt".into(),
+            },
+        )
+        .await;
+        assert!(
+            matches!(&got, Err(TrashError::Failed(m)) if m.contains("1000")),
+            "{got:?}"
+        );
+        server.abort();
+        assert!(
+            server.await.is_err_and(|e| e.is_cancelled()),
+            "the test server must stop with the test"
+        );
+        assert_eq!(
+            *calls.lock().unwrap(),
+            [format!("GET /trash?pageSize={KOOFR_TRASH_PAGE}")]
+        );
+    }
+
     #[tokio::test]
     async fn trash_dispatch_restores_by_mount_and_path_and_refuses_delete() {
         use crate::provider_trash::{run, TrashError, TrashKind, TrashOp, TrashOutcome};

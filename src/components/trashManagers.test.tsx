@@ -71,29 +71,34 @@ interface Case {
     xOnly?: boolean;
 }
 
-const withPath = <P,>(C: React.ComponentType<P & Props>, extra: P) => (props: Props) => <C {...extra} {...props} />;
+/** The generation App read when it opened the manager: every trash command must carry it. */
+const GEN = 7;
+/** Commands a manager sends that are not about the provider's trash (settings reads). */
+const NOT_TRASH = new Set(['get_credential']);
+const atGen = <P,>(C: React.ComponentType<P & Props & { generation: number }>, extra?: P) =>
+    (props: Props) => <C {...(extra as P)} generation={GEN} {...props} />;
 const bulk = { selectAll: 'contextMenu.trashSelectAll', restoreButton: 'contextMenu.restoreFromTrash' };
 
 // InternxtTrashManager is read-only (no restore or delete call), so it has
 // nothing in flight to guard and is not listed here.
 const CASES: Case[] = [
-    { name: 'Azure', Component: AzureTrashManager, restore: 'azure_undelete_blob', ...bulk },
-    { name: 'Box', Component: BoxTrashManager, restore: 'box_restore_from_trash', ...bulk },
-    { name: 'Dropbox', Component: withPath(DropboxTrashManager, { currentPath: '/' }), restore: 'dropbox_restore_from_trash', ...bulk },
-    { name: 'FileLu', Component: FileLuTrashManager, restore: 'filelu_restore_file', selectAll: 'common.selectAll', restoreButton: 'filelu.restoreSelected', xOnly: true },
-    { name: 'Google Drive', Component: GoogleDriveTrashManager, restore: 'google_drive_restore_from_trash', ...bulk },
-    { name: 'Jottacloud', Component: JottacloudTrashManager, restore: 'jottacloud_restore_from_trash', ...bulk },
-    { name: 'kDrive', Component: KDriveTrashManager, restore: 'kdrive_restore_from_trash', ...bulk },
-    { name: 'Koofr', Component: KoofrTrashManager, restore: 'koofr_restore_trash', ...bulk },
-    { name: 'MEGA', Component: MegaTrashManager, restore: 'mega_restore_from_trash', ...bulk },
+    { name: 'Azure', Component: atGen(AzureTrashManager), restore: 'azure_undelete_blob', ...bulk },
+    { name: 'Box', Component: atGen(BoxTrashManager), restore: 'box_restore_from_trash', ...bulk },
+    { name: 'Dropbox', Component: atGen(DropboxTrashManager, { currentPath: '/' }), restore: 'dropbox_restore_from_trash', ...bulk },
+    { name: 'FileLu', Component: atGen(FileLuTrashManager), restore: 'filelu_restore_file', selectAll: 'common.selectAll', restoreButton: 'filelu.restoreSelected', xOnly: true },
+    { name: 'Google Drive', Component: atGen(GoogleDriveTrashManager), restore: 'google_drive_restore_from_trash', ...bulk },
+    { name: 'Jottacloud', Component: atGen(JottacloudTrashManager), restore: 'jottacloud_restore_from_trash', ...bulk },
+    { name: 'kDrive', Component: atGen(KDriveTrashManager), restore: 'kdrive_restore_from_trash', ...bulk },
+    { name: 'Koofr', Component: atGen(KoofrTrashManager), restore: 'koofr_restore_trash', ...bulk },
+    { name: 'MEGA', Component: atGen(MegaTrashManager), restore: 'mega_restore_from_trash', ...bulk },
     { name: 'Nextcloud', Component: NextcloudTrashManager, restore: 'webdav_restore_trash', ...bulk },
-    { name: 'OneDrive', Component: OneDriveTrashManager, restore: 'onedrive_restore_from_trash', ...bulk },
-    { name: 'OpenDrive', Component: OpenDriveTrashManager, restore: 'opendrive_restore_from_trash', ...bulk },
-    { name: 'pCloud', Component: PCloudTrashManager, restore: 'pcloud_restore_from_trash', ...bulk },
-    { name: 'S3', Component: S3TrashManager, restore: 's3_restore_from_trash', restoreButton: 'contextMenu.s3TrashUndelete' },
-    { name: 'Yandex', Component: YandexTrashManager, restore: 'yandex_restore_from_trash', ...bulk },
-    { name: 'Zoho', Component: ZohoTrashManager, restore: 'zoho_restore_from_trash', ...bulk },
-    { name: 'B2 hidden files', Component: withPath(B2HiddenManager, { currentPath: '/' }), restore: 'b2_restore_hidden', ...bulk },
+    { name: 'OneDrive', Component: atGen(OneDriveTrashManager), restore: 'onedrive_restore_from_trash', ...bulk },
+    { name: 'OpenDrive', Component: atGen(OpenDriveTrashManager), restore: 'opendrive_restore_from_trash', ...bulk },
+    { name: 'pCloud', Component: atGen(PCloudTrashManager), restore: 'pcloud_restore_from_trash', ...bulk },
+    { name: 'S3', Component: atGen(S3TrashManager), restore: 's3_restore_from_trash', restoreButton: 'contextMenu.s3TrashUndelete' },
+    { name: 'Yandex', Component: atGen(YandexTrashManager), restore: 'yandex_restore_from_trash', ...bulk },
+    { name: 'Zoho', Component: atGen(ZohoTrashManager), restore: 'zoho_restore_from_trash', ...bulk },
+    { name: 'B2 hidden files', Component: atGen(B2HiddenManager, { currentPath: '/' }), restore: 'b2_restore_hidden', ...bulk },
 ];
 
 /**
@@ -102,7 +107,7 @@ const CASES: Case[] = [
  * the provider either way, so the backdrop is now inert while it runs, and
  * the X (or ESC) asks first, saying the operation keeps running.
  */
-describe.each(CASES)('the $name trash manager', ({ Component, restore, selectAll, restoreButton, xOnly }) => {
+describe.each(CASES)('the $name trash manager', ({ name, Component, restore, selectAll, restoreButton, xOnly }) => {
     let host: HTMLDivElement;
     let root: Root;
     let release: (() => void) | null;
@@ -176,6 +181,17 @@ describe.each(CASES)('the $name trash manager', ({ Component, restore, selectAll
         expect(tauri.invoke.mock.calls.length).toBe(callsBefore);
     });
 
+    it.skipIf(name === 'Nextcloud')('sends the generation it was opened at with every command', async () => {
+        await mount(vi.fn());
+        await startRestore();
+        const sent = tauri.invoke.mock.calls;
+        expect(sent.length).toBeGreaterThanOrEqual(2);
+        for (const [cmd, args] of sent) {
+            if (NOT_TRASH.has(String(cmd))) continue;
+            expect((args as { generation?: number } | undefined)?.generation, String(cmd)).toBe(GEN);
+        }
+    });
+
     it('closes at once from the X, ESC and the backdrop (where they always did) when idle', async () => {
         const onClose = vi.fn();
         await mount(onClose);
@@ -202,21 +218,21 @@ interface ConfirmCase {
 const del = { selectAll: 'contextMenu.trashSelectAll', opens: 'contextMenu.permanentDelete' };
 const empty = { opens: 'contextMenu.emptyTrash' };
 const CONFIRM_CASES: ConfirmCase[] = [
-    { name: 'Box', Component: BoxTrashManager, ...del },
-    { name: 'Dropbox', Component: withPath(DropboxTrashManager, { currentPath: '/' }), ...del },
-    { name: 'Google Drive', Component: GoogleDriveTrashManager, ...del },
-    { name: 'Jottacloud', Component: JottacloudTrashManager, ...del },
-    { name: 'kDrive', Component: KDriveTrashManager, ...empty },
-    { name: 'Koofr', Component: KoofrTrashManager, ...empty },
-    { name: 'MEGA', Component: MegaTrashManager, ...del },
+    { name: 'Box', Component: atGen(BoxTrashManager), ...del },
+    { name: 'Dropbox', Component: atGen(DropboxTrashManager, { currentPath: '/' }), ...del },
+    { name: 'Google Drive', Component: atGen(GoogleDriveTrashManager), ...del },
+    { name: 'Jottacloud', Component: atGen(JottacloudTrashManager), ...del },
+    { name: 'kDrive', Component: atGen(KDriveTrashManager), ...empty },
+    { name: 'Koofr', Component: atGen(KoofrTrashManager), ...empty },
+    { name: 'MEGA', Component: atGen(MegaTrashManager), ...del },
     { name: 'Nextcloud', Component: NextcloudTrashManager, ...empty },
-    { name: 'OneDrive', Component: OneDriveTrashManager, ...del },
-    { name: 'OpenDrive', Component: OpenDriveTrashManager, ...empty },
-    { name: 'pCloud', Component: PCloudTrashManager, ...empty },
-    { name: 'S3', Component: S3TrashManager, opens: 'contextMenu.s3TrashPurge' },
-    { name: 'Yandex', Component: YandexTrashManager, ...empty },
-    { name: 'Zoho', Component: ZohoTrashManager, ...del },
-    { name: 'B2 hidden files', Component: withPath(B2HiddenManager, { currentPath: '/' }), ...del },
+    { name: 'OneDrive', Component: atGen(OneDriveTrashManager), ...del },
+    { name: 'OpenDrive', Component: atGen(OpenDriveTrashManager), ...empty },
+    { name: 'pCloud', Component: atGen(PCloudTrashManager), ...empty },
+    { name: 'S3', Component: atGen(S3TrashManager), opens: 'contextMenu.s3TrashPurge' },
+    { name: 'Yandex', Component: atGen(YandexTrashManager), ...empty },
+    { name: 'Zoho', Component: atGen(ZohoTrashManager), ...del },
+    { name: 'B2 hidden files', Component: atGen(B2HiddenManager, { currentPath: '/' }), ...del },
 ];
 
 /**
