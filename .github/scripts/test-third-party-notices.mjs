@@ -9,6 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { syncBuiltinESMExports } from 'node:module';
+import { createHash } from 'node:crypto';
 import {
   isGplCompatible,
   tokenizeSpdx,
@@ -36,6 +37,7 @@ import {
   parseMode,
   writeNoticesFile,
   npmInstallsHere,
+  noticesLinkFrom,
   holderKey,
   holderOfNotice,
   npmAuthors,
@@ -356,6 +358,13 @@ test('npm collection: a locked package missing from the install stops the genera
     assert.throws(() => collectNpmDependencies(lockPath, tmpDir), new RegExp(`locks the optional opt@1\\.0\\.0, which npm installs only for os ${elsewhere}, so this platform cannot read its license files`));
     lockWith({ optional: true, cpu: [`!${process.arch}`] });
     assert.throws(() => collectNpmDependencies(lockPath, tmpDir), /which npm installs only for cpu !.*, so this platform cannot read/);
+    // npm also takes a single value as a string: the diagnostic names it the same way.
+    lockWith({ optional: true, os: elsewhere });
+    assert.throws(() => collectNpmDependencies(lockPath, tmpDir), new RegExp(`locks the optional opt@1\\.0\\.0, which npm installs only for os ${elsewhere}, so this platform cannot read its license files`));
+    lockWith({ optional: true, os: elsewhere, cpu: `!${process.arch}` });
+    assert.throws(() => collectNpmDependencies(lockPath, tmpDir), new RegExp(`which npm installs only for os ${elsewhere} and cpu !${process.arch}, so this platform cannot read`));
+    lockWith({ optional: true, os: process.platform });
+    assert.throws(() => collectNpmDependencies(lockPath, tmpDir), /locks the optional opt@1\.0\.0, which is not installed/);
     // Installed, an optional package is collected like any other.
     lockWith({ optional: true });
     fs.mkdirSync(path.join(tmpDir, 'node_modules/opt'), { recursive: true });
@@ -374,6 +383,9 @@ test('npm collection: os and cpu lists are read the way npm reads them', () => {
   assert.strictEqual(npmInstallsHere(['darwin', 'win32'], 'linux'), false);
   assert.strictEqual(npmInstallsHere(['!win32'], 'linux'), true);
   assert.strictEqual(npmInstallsHere(['!win32'], 'win32'), false);
+  assert.strictEqual(npmInstallsHere('linux', 'linux'), true);
+  assert.strictEqual(npmInstallsHere('darwin', 'linux'), false);
+  assert.strictEqual(npmInstallsHere('!win32', 'win32'), false);
 });
 
 test('npm collection: no locked production package is limited to some platforms, so any platform reads every license file', () => {
@@ -743,6 +755,19 @@ test('reviewed terms: each license with no standard text has its whole terms fro
   assert.match(reviewed['CDLA-Permissive-2.0'], /Community Data License Agreement - Permissive - Version 2\.0/);
   const raw = JSON.parse(fs.readFileSync(path.join(ROOT, 'scripts', 'reviewed-license-terms.json'), 'utf8'));
   for (const id of Object.keys(reviewed)) assert.match(raw[id].source, new RegExp(`^https://spdx\\.org/licenses/${id.replace(/\./g, '\\.')}\\.html$`));
+  // Pinned outside the JSON: the SHA-256 of each reviewed text, read from the
+  // SPDX license-list-data text (text/<id>.txt, 2026-11-18), whose whole terms
+  // it is. An edit of the JSON (a condition dropped) changes the digest.
+  const REVIEWED_DIGESTS = {
+    'bzip2-1.0.6': 'c6ecc45e3a362d5e8e4a6aa9dfeddb1ece6c58032b6c2516595c18bacd06a58e',
+    'CDLA-Permissive-2.0': '4531a67d443284d93ffed0803df5b10634aff21c3d77e381f2d48af01d875868',
+  };
+  for (const [id, digest] of Object.entries(REVIEWED_DIGESTS)) {
+    assert.strictEqual(createHash('sha256').update(raw[id].terms).digest('hex'), digest, id);
+  }
+  const no4 = raw['bzip2-1.0.6'].terms.replace(/4\. The name of the author[^]*?permission\.\n/, '');
+  assert.notStrictEqual(no4, raw['bzip2-1.0.6'].terms, 'the fixture drops condition 4');
+  assert.notStrictEqual(createHash('sha256').update(no4).digest('hex'), REVIEWED_DIGESTS['bzip2-1.0.6']);
 });
 
 test('standard SPDX texts: LGPL-2.1, LGPL-2.1-only and LGPL-2.1+ share the LGPL-2.1 document and keep the grant they declare', () => {
@@ -1230,7 +1255,7 @@ test('anchors: a licensing exception links to its vendored text, the package anc
     fs.writeFileSync(path.join(tmpDir, 'vendor', 'rar', 'license.txt'), 'Vendored RAR license terms.\nUse it, never re-create the algorithm.');
     const comp = { name: 'vend_rar', version: '1.0.0', license: 'MIT', source: 'cargo', packageDir: tmpDir, authors: ['Rar Wrapper'], ...readPackageFiles(tmpDir, 'vend_rar@1.0.0') };
     assert.deepStrictEqual(comp.licenseFiles.map((f) => [f.filename, f.vendored]), [['vendor/rar/license.txt', true]]);
-    const exception = { crateName: 'vend_rar', version: '1.0.0', author: 'Rar Author', licenseName: 'RAR', sourceFile: 'vendor/rar/license.txt', facts: 'It is not free software.' };
+    const exception = { crateName: 'vend_rar', version: '1.0.0', author: 'Rar Author', licenseName: 'RAR', sourceFile: 'vendor/rar/license.txt', document: 'docs/RAR-LICENSE.md', facts: 'It is not free software.' };
     const md = generateNoticesMarkdown([comp], [], SPDX_STANDARD_LICENSES_FILE, [exception]);
     // Follow each link to the first text block after its anchor.
     const textAfter = (id) => md.slice(md.indexOf(`<a id="${id}"></a>`)).split('\n```text\n')[1].split('\n')[0];
@@ -1730,7 +1755,7 @@ test('scope: the introduction claims only the Cargo and npm dependencies it list
   const md = generateNoticesMarkdown([], []);
   const intro = md.slice(0, md.indexOf('\n---\n'));
   assert.match(intro, /license texts\nfor the Rust \(Cargo\) and Node\.js \(npm\) production dependencies that AeroFTP distribution packages include:/);
-  assert.match(intro, /System libraries that are not Cargo or npm dependencies \(for example WebKitGTK, which the AppImage bundles as a\nfallback\) are not covered by this document\./);
+  assert.match(intro, /System libraries that are not Cargo or npm dependencies \(for example WebKitGTK, which the AppImage bundles as a\nfallback\) are not covered by this document\. The AppImage ships the copyright file of the Ubuntu package of each library\nit bundles in `usr\/share\/doc\/<package>\/copyright`, and `usr\/share\/doc\/BUNDLED-LIBRARIES\.txt` names that package and its version\./);
   assert.doesNotMatch(md, /all production dependencies|All bundled components|Total Bundled Components/);
   assert.match(md, /- \*\*Total Listed Components:\*\* 0/);
 });
@@ -1788,6 +1813,89 @@ test('reviewed notices and tag mentions: each entry names its source and the who
     assert.ok(r.notice.startsWith(r.line.replace(/,$/, '')), r.line);
   }
   for (const [key, reason] of Object.entries(reviewedTagMentions())) assert.ok(/^[^@]+@[^:]+:[^:]+:/.test(key) && reason, key);
+});
+
+test('third-party license files: the package\'s own covers its license and is shown as a notice, a vendored one never covers it', () => {
+  const tmpDirs = [];
+  const bzip2 = `Copyright (C) 1996-2010 Julian R Seward.\n\n${reviewedLicenseTerms()['bzip2-1.0.6']}`;
+  const mitText = shippedLicense('Copyright (c) 2020 Third Party Author', 'MIT');
+  const fixture = (files) => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'third-party-license-fixture-'));
+    tmpDirs.push(tmpDir);
+    for (const [rel, content] of Object.entries(files)) {
+      fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, rel), content);
+    }
+    const id = `third-${tmpDirs.length}`;
+    return { name: id, version: '1.0.0', license: 'MIT AND bzip2-1.0.6', source: 'cargo', packageDir: tmpDir, authors: ['Third Party Author'], ...readPackageFiles(tmpDir, `${id}@1.0.0`) };
+  };
+  try {
+    for (const rel of ['LICENSES/THIRD-PARTY-LICENSE.txt', 'THIRD_PARTY_LICENSE.txt']) {
+      const comp = fixture({ 'LICENSE-MIT': mitText, [rel]: bzip2 });
+      assert.deepStrictEqual(comp.noticeFiles.map((f) => f.filename), [rel], 'shown as a notice');
+      const md = generateNoticesMarkdown([comp], []);
+      assert.strictEqual(md.split('The name of the author may not be used').length - 1, 1, `${rel}: the bzip2 terms appear once, from the package's file`);
+      assert.doesNotMatch(md, /## Standard License Texts for Dependencies that Need Them/);
+    }
+    // Its only text: the anchor of the package leads to it.
+    const only = fixture({ 'LICENSES/THIRD-PARTY-LICENSE.txt': `${mitText}\n\n${bzip2}` });
+    const md = generateNoticesMarkdown([only], []);
+    const anchor = md.indexOf(`<a id="notice-${only.name}"></a>`);
+    assert.ok(anchor >= 0, 'anchored');
+    assert.ok(md.indexOf('LICENSES/THIRD-PARTY-LICENSE.txt', anchor) > anchor);
+    assert.doesNotMatch(md, /## Standard License Texts for Dependencies that Need Them/);
+    // A vendored library's file describes that library, not the package.
+    const vendored = fixture({ 'LICENSE-MIT': mitText, 'vendor/lib/THIRD-PARTY-LICENSE.txt': bzip2 });
+    assert.ok(vendored.noticeFiles.every((f) => f.vendored));
+    assert.throws(() => generateNoticesMarkdown([vendored], []), new RegExp(`Component ${vendored.name}@1\\.0\\.0 requires standard license text for 'bzip2-1\\.0\\.6'`));
+  } finally {
+    for (const d of tmpDirs) fs.rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test('AppImage: every bundled library ships its package\'s copyright file, and one without it fails the build', { skip: process.platform === 'win32' }, () => {
+  const script = path.join(ROOT, 'src-tauri/scripts/bundle-appimage-lib-notices.sh');
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'appimage-notices-fixture-'));
+  const write = (rel, content) => {
+    fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, rel), content);
+  };
+  try {
+    write('app/usr/lib/fallback/libwebkit2gtk-4.1.so.0', 'elf');
+    write('app/usr/lib/fallback/libgtk-3.so.0', 'elf');
+    write('app/usr/lib/gtk-3.0/3.0.0/immodules/im-xim.so', 'elf');
+    write('app/usr/lib/aeroftp/libown.so', 'ours');
+    write('doc/libwebkit2gtk-4.1-0/copyright', 'WebKitGTK terms: LGPL-2.1 and BSD');
+    write('doc/libgtk-3-0/copyright', 'GTK terms: LGPL-2.1-or-later');
+    write('owners', 'libwebkit2gtk-4.1.so.0 libwebkit2gtk-4.1-0\nlibgtk-3.so.0 libgtk-3-0\nim-xim.so libgtk-3-0\n');
+    const run = () =>
+      execFileSync('bash', [script, path.join(tmpDir, 'app')], {
+        env: { ...process.env, AEROFTP_LIB_OWNERS: path.join(tmpDir, 'owners'), AEROFTP_DOC_ROOT: path.join(tmpDir, 'doc') },
+        stdio: 'pipe',
+        encoding: 'utf8',
+      });
+    run();
+    const doc = path.join(tmpDir, 'app/usr/share/doc');
+    assert.strictEqual(fs.readFileSync(path.join(doc, 'libwebkit2gtk-4.1-0/copyright'), 'utf8'), 'WebKitGTK terms: LGPL-2.1 and BSD');
+    assert.strictEqual(fs.readFileSync(path.join(doc, 'libgtk-3-0/copyright'), 'utf8'), 'GTK terms: LGPL-2.1-or-later');
+    const list = fs.readFileSync(path.join(doc, 'BUNDLED-LIBRARIES.txt'), 'utf8');
+    assert.match(list, /\nusr\/lib\/fallback\/libwebkit2gtk-4\.1\.so\.0 libwebkit2gtk-4\.1-0 test\n/);
+    assert.match(list, /\nusr\/lib\/gtk-3\.0\/3\.0\.0\/immodules\/im-xim\.so libgtk-3-0 test\n/);
+    assert.doesNotMatch(list, /libown/, 'AeroFTP\'s own folder is not a bundled system library');
+    // A library no package installed, or whose package ships no copyright
+    // file, fails the build and is named: nothing is guessed.
+    write('app/usr/lib/fallback/libsoup-3.0.so.0', 'elf');
+    assert.throws(run, (e) => /libsoup-3\.0\.so\.0: no package installed it/.test(String(e.stderr)));
+    write('owners', 'libwebkit2gtk-4.1.so.0 libwebkit2gtk-4.1-0\nlibgtk-3.so.0 libgtk-3-0\nim-xim.so libgtk-3-0\nlibsoup-3.0.so.0 libsoup-3.0-0\n');
+    assert.throws(run, (e) => /libsoup-3\.0\.so\.0: package libsoup-3\.0-0 ships no .*libsoup-3\.0-0\/copyright/.test(String(e.stderr)));
+    write('doc/libsoup-3.0-0/copyright', 'libsoup terms');
+    run();
+    // The release workflow runs it on the AppDir it packs.
+    const workflow = fs.readFileSync(path.join(ROOT, '.github/workflows/build.yml'), 'utf8');
+    assert.match(workflow, /\n {10}"\$GITHUB_WORKSPACE\/src-tauri\/scripts\/patch-appimage-lib-fallback\.sh" "\$\(pwd\)"\n[\s\S]*?\n {10}"\$GITHUB_WORKSPACE\/src-tauri\/scripts\/bundle-appimage-lib-notices\.sh" "\$\(pwd\)"\n[\s\S]*?appimagetool/);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
 });
 
 test('reviewed source texts: a license text inside a source comment is reproduced whole, and a file that lost its reviewed lines fails the run', () => {
@@ -2539,6 +2647,18 @@ test('licensing exceptions: each exception gets a standalone page with the text 
   assert.ok(page.includes('(../THIRD-PARTY-NOTICES.md#exception-nonfree-crate)'));
   assert.strictEqual(fencedBlockAfter(page, '# Nonfree License'), fencedBlockAfter(output, '<a id="exception-nonfree-crate"></a>'));
   assert.strictEqual(fencedBlockAfter(page, '# Nonfree License'), nonFreeText.replace(/\n$/, ''));
+  // The backlink is computed from the page's own folder: a nested page and
+  // one at the root reach the same notices.
+  for (const [document, link] of [
+    ['docs/licenses/NONFREE-LICENSE.md', '../../THIRD-PARTY-NOTICES.md'],
+    ['NONFREE-LICENSE.md', 'THIRD-PARTY-NOTICES.md'],
+  ]) {
+    const nested = renderNotices([comp], [], SPDX_STANDARD_LICENSES_FILE, [{ ...exception, document }]).documents[0];
+    assert.strictEqual(nested.file, document);
+    assert.ok(nested.content.includes(`(${link}#exception-nonfree-crate)`), document);
+    assert.strictEqual(path.posix.normalize(path.posix.join(path.posix.dirname(document), link)), 'THIRD-PARTY-NOTICES.md');
+  }
+  assert.strictEqual(noticesLinkFrom('docs/UNRAR-LICENSE.md'), '../THIRD-PARTY-NOTICES.md');
   // Without a registered exception there is no page.
   const plain = { ...comp, licenseFiles: [comp.licenseFiles[0]] };
   assert.deepStrictEqual(renderNotices([plain], [], SPDX_STANDARD_LICENSES_FILE, []).documents, []);
@@ -2770,16 +2890,20 @@ test('fallback attributions: all 33 pinned entries declare a non-empty source an
   }
 });
 
-// The fenced blocks of a Markdown file, the fence as long as the longest run
-// of backticks it encloses needs.
-const FENCED_BLOCK = /(?:^|\n)(`{3,})[^\n]*\n[\s\S]*?\n\1(?:\n|$)/g;
+// The fenced blocks of a Markdown file as GitHub reads them: a fence of three
+// or more backticks or tildes, indented up to three spaces, closed by a fence
+// of the same character at least as long, or by the end of the file.
+const FENCED_BLOCK = /(?:^|\n) {0,3}(([`~])\2{2,})[^\n]*\n[\s\S]*?(?:\n {0,3}\1\2*[ \t]*(?=\n|$)|$)/g;
+// One line ending: a CRLF checkout reads as the LF one.
+const lf = (md) => md.replace(/\r\n/g, '\n');
 // The ids an anchor tag gives outside fenced text: a license text that quotes
 // `<a id="x"></a>` in a code block is no destination.
-const anchorIdsOutsideFences = (md) => new Set(Array.from(md.replace(FENCED_BLOCK, '\n').matchAll(/<a id="([^"]+)"><\/a>/g), (m) => m[1]));
+const anchorIdsOutsideFences = (md) => new Set(Array.from(lf(md).replace(FENCED_BLOCK, '\n').matchAll(/<a id="([^"]+)"><\/a>/g), (m) => m[1]));
 // The links of a Markdown file outside fenced text, by target.
-const linksOutsideFences = (md) => Array.from(md.replace(FENCED_BLOCK, '\n').matchAll(/\[[^\]]+\]\(([^)\s]+)\)/g), (m) => m[1]);
+const linksOutsideFences = (md) => Array.from(lf(md).replace(FENCED_BLOCK, '\n').matchAll(/\[[^\]]+\]\(([^)\s]+)\)/g), (m) => m[1]);
 // The first fenced block after an anchor, its text without the fence.
-const fencedBlockAfter = (md, anchorTag) => {
+const fencedBlockAfter = (input, anchorTag) => {
+  const md = lf(input);
   const at = md.indexOf(anchorTag);
   assert.ok(at !== -1, `${anchorTag} must be present`);
   const m = /\n(`{3,})text\n([\s\S]*?)\n\1\n/.exec(md.slice(at));
@@ -2836,6 +2960,20 @@ const topLevelConjuncts = (condition) => {
 };
 // Whether a job's `if:` requires a needed job to succeed: the comparison is
 // one of the top-level conjuncts, so no other term can run the job without it.
+// Whether a workflow job runs `command` on every run and fails when it fails:
+// a step running it with no `if:` and no `continue-on-error`, in a job with
+// neither. A step that runs only on pull requests, or whose failure is
+// ignored, lets the job succeed on a tag without the check.
+const alwaysGates = (jobText, command) => {
+  const [header, stepsText] = jobText.split(/\n {4}steps:\n/);
+  if (stepsText === undefined || /\n {4}(?:if|continue-on-error):/.test(header)) return false;
+  const escaped = command.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const runs = new RegExp(`(?:^ {6}- | {8})run: ${escaped}\\s*$`, 'm');
+  return stepsText
+    .split(/\n(?= {6}- )/)
+    .filter((step) => runs.test(step))
+    .some((step) => !/(?:^ {6}- |\n {8})(?:if|continue-on-error):/.test(step));
+};
 const requiresSuccessOf = (condition, need) => (topLevelConjuncts(condition) ?? []).some((c) => c.replace(/\s+/g, ' ') === `needs.${need}.result == 'success'`);
 
 test('workflow conditions: a needed job must succeed only when its success is a top-level conjunct', () => {
@@ -2874,8 +3012,24 @@ test('release workflow: every publish job requires a job that checks the notices
     const m = /^ {2}([a-z0-9_-]+):\n/.exec(part.replace(/^\n/, ''));
     if (m) jobs.set(m[1], part);
   }
-  const runsCheck = (id) => /\n {8}run: npm run check:licenses\n/.test(jobs.get(id) ?? '');
-  assert.ok(runsCheck('linux-validate'), 'linux-validate runs npm run check:licenses');
+  assert.ok(alwaysGates(jobs.get('linux-validate') ?? '', 'npm run check:licenses'), 'linux-validate runs npm run check:licenses on every run, and fails when it fails');
+  // The same job text with the step skipped on a tag, or its failure
+  // ignored, gates nothing.
+  const job = (header, step) => `  linux-validate:\n    runs-on: ubuntu-22.04\n${header}    steps:\n      - name: Checkout\n        uses: actions/checkout@v5\n\n${step}\n      - name: Type check\n        run: npx tsc --noEmit\n`;
+  const check = '      - name: Third-party license notices match the lockfiles\n        run: npm run check:licenses\n';
+  assert.strictEqual(alwaysGates(job('', check), 'npm run check:licenses'), true);
+  assert.strictEqual(alwaysGates(job('', '      - run: npm run check:licenses\n'), 'npm run check:licenses'), true);
+  for (const [header, step] of [
+    ['', check.replace('\n        run:', "\n        if: github.event_name == 'pull_request'\n        run:")],
+    ['', `${check}        continue-on-error: true\n`],
+    ['', "      - if: ${{ !startsWith(github.ref, 'refs/tags/') }}\n        run: npm run check:licenses\n"],
+    ['', '      - name: Third-party license notices match the lockfiles\n        run: npm run check:licenses || true\n'],
+    ["    if: github.event_name == 'pull_request'\n", check],
+    ['    continue-on-error: true\n', check],
+    ['', ''],
+  ]) {
+    assert.strictEqual(alwaysGates(job(header, step), 'npm run check:licenses'), false, `${header}${step}`);
+  }
   // About's online fallback opens the notices at the tag of the app version
   // (src/utils/thirdPartyLicenses.ts): on a tag run the same job requires the
   // version sites to equal the tag, so that tag is the one whose notices the
@@ -2907,11 +3061,27 @@ test('anchor destinations: an anchor counts only outside fenced text, a quoted o
   assert.deepStrictEqual([...anchorIdsOutsideFences(nested)], ['outer']);
   // A link inside fenced text is no link.
   assert.deepStrictEqual(linksOutsideFences('```\n[x](THIRD-PARTY-NOTICES.md#a)\n```\n[y](docs/b.md)\n'), ['docs/b.md']);
+  // Tildes fence as backticks do, a longer closer closes, an indented fence
+  // is a fence, and an unclosed one runs to the end of the file.
+  assert.deepStrictEqual(linksOutsideFences('~~~\n[x](docs/UNRAR-LICENSE.md)\n~~~\n[y](docs/b.md)\n'), ['docs/b.md']);
+  assert.deepStrictEqual(linksOutsideFences('~~~text\n[x](docs/UNRAR-LICENSE.md)\n~~~~~\n[y](docs/b.md)\n'), ['docs/b.md']);
+  assert.deepStrictEqual(linksOutsideFences('  ```\n[x](docs/UNRAR-LICENSE.md)\n  ```\n[y](docs/b.md)\n'), ['docs/b.md']);
+  assert.deepStrictEqual(linksOutsideFences('~~~\n[x](docs/UNRAR-LICENSE.md)\n```\n[y](docs/b.md)\n'), [], 'a backtick line does not close a tilde fence');
+  assert.deepStrictEqual(linksOutsideFences('[y](docs/b.md)\n```\n[x](docs/UNRAR-LICENSE.md)\n'), ['docs/b.md']);
+  assert.deepStrictEqual([...anchorIdsOutsideFences('~~~\n<a id="inner"></a>\n~~~\n<a id="outer"></a>\n')], ['outer']);
+  // A CRLF copy reads as the LF one: links, anchors and the fenced text.
+  const page = '# Nonfree License\n\n```text\nthe terms\nline two\n```\n\n<a id="exception-x"></a>\n\n```text\nthe terms\nline two\n```\n\n[y](docs/b.md)\n';
+  const crlf = page.replace(/\n/g, '\r\n');
+  assert.deepStrictEqual(linksOutsideFences(crlf), linksOutsideFences(page));
+  assert.deepStrictEqual([...anchorIdsOutsideFences(crlf)], [...anchorIdsOutsideFences(page)]);
+  assert.strictEqual(fencedBlockAfter(crlf, '# Nonfree License'), 'the terms\nline two');
+  assert.strictEqual(fencedBlockAfter(crlf, '<a id="exception-x"></a>'), fencedBlockAfter(page, '<a id="exception-x"></a>'));
 });
 
 test('README.md notice links resolve outside fenced text, and the UnRAR terms have a page GitHub displays', () => {
-  const readmeContent = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8');
-  const noticesContent = fs.readFileSync(path.join(ROOT, 'THIRD-PARTY-NOTICES.md'), 'utf8');
+  // A CRLF checkout reads as the LF one (the generator's check does too).
+  const readmeContent = lf(fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8'));
+  const noticesContent = lf(fs.readFileSync(path.join(ROOT, 'THIRD-PARTY-NOTICES.md'), 'utf8'));
   const destinations = anchorIdsOutsideFences(noticesContent);
   const links = linksOutsideFences(readmeContent);
 
@@ -2923,11 +3093,10 @@ test('README.md notice links resolve outside fenced text, and the UnRAR terms ha
 
   // GitHub does not display the notices (over 2 MB): each licensing exception
   // has its own page, linked from the README, with the same text as the
-  // packaged notice.
-  assert.ok(noticesContent.length > 1024 * 1024, 'the notices are too large for GitHub to display, which is why the page exists');
+  // packaged notice, whatever size the notices reach.
   for (const exc of KNOWN_NON_FREE_EXCEPTIONS) {
     assert.ok(links.includes(exc.document), `README.md must link to ${exc.document}`);
-    const page = fs.readFileSync(path.join(ROOT, exc.document), 'utf8');
+    const page = lf(fs.readFileSync(path.join(ROOT, exc.document), 'utf8'));
     assert.ok(page.length < 64 * 1024, `${exc.document} stays small enough for GitHub to display`);
     assert.ok(page.startsWith(`# ${exc.licenseName}\n`));
     const id = `exception-${exc.crateName.replace(/_/g, '-')}`;
@@ -2940,7 +3109,7 @@ test('README.md notice links resolve outside fenced text, and the UnRAR terms ha
 
 test('THIRD-PARTY-NOTICES.md: every anchor id in the generated file is unique', () => {
   const noticesContent = fs.readFileSync(path.join(ROOT, 'THIRD-PARTY-NOTICES.md'), 'utf8');
-  const proseOutsideCodeBlocks = noticesContent.replace(FENCED_BLOCK, '\n');
+  const proseOutsideCodeBlocks = lf(noticesContent).replace(FENCED_BLOCK, '\n');
   const idMatches = Array.from(proseOutsideCodeBlocks.matchAll(/<a id="([^"]+)">/g)).map((m) => m[1]);
   assert.ok(idMatches.length > 0, 'Generated notices must contain anchors');
 

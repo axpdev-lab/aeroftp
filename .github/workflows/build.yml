@@ -586,6 +586,13 @@ jobs:
           # missing on the system.
           "$GITHUB_WORKSPACE/src-tauri/scripts/patch-appimage-lib-fallback.sh" "$(pwd)"
 
+          # --- Fix 3b: the terms of every bundled library ---
+          # THIRD-PARTY-NOTICES.md covers the Cargo and npm dependencies; each
+          # bundled library ships its Ubuntu package's copyright file under
+          # usr/share/doc/<package>/, listed in usr/share/doc/BUNDLED-LIBRARIES.txt.
+          # A library with no package or no copyright file fails the build.
+          "$GITHUB_WORKSPACE/src-tauri/scripts/bundle-appimage-lib-notices.sh" "$(pwd)"
+
           # --- Fix 4: permissions every user can run ---
           # linuxdeploy leaves AppRun.wrapped 0750 (and a 0777 schemas folder,
           # executable XML under usr/share). A mount that keeps the stored

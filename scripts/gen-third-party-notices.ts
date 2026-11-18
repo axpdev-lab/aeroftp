@@ -565,6 +565,18 @@ const VENDORED_LICENSE_FILE =
 // uds_windows' THIRDPARTYNOTICES, security-framework's THIRD_PARTY). Each is
 // reproduced whole: its terms are those of the code it names.
 const NOTICE_FILE = /^(?:notice|copyright|(?:third|3rd)[-_]?party)/i;
+// The files that can cover a package's own license: its license files and
+// the third-party license file it keeps at its root or in LICENSES/
+// (LICENSES/THIRD-PARTY-LICENSE.txt), never a vendored file. Such a file is
+// shown as a notice, since it may name other code too, and like any file it
+// covers a license only with the whole text (uncoveredLicenseTerms).
+const THIRD_PARTY_FILE = /^(?:third|3rd)[-_]?party/i;
+export const ownLicenseFiles = (comp: Pick<ComponentInfo, 'licenseFiles' | 'noticeFiles'>) =>
+  [...comp.licenseFiles, ...comp.noticeFiles.filter((f) => THIRD_PARTY_FILE.test(path.posix.basename(f.filename)))].filter(
+    (f) => !f.vendored && f.content.trim().length > 0
+  );
+export const ownLicenseTexts = (comp: Pick<ComponentInfo, 'licenseFiles' | 'noticeFiles'>): string[] =>
+  ownLicenseFiles(comp).map((f) => f.content.replace(/\r\n/g, '\n'));
 // A source or data file by its extension: never a license or notice text.
 const SOURCE_FILE = /\.(?:[cm]?[jt]sx?|rs|c|h|cc|cpp|hpp|py|rb|go|java|kt|swift|sh|pl|pm|php|json|ya?ml|toml|lock|css|map)$/i;
 // Permission text in a source header (see findBundledCodeUnderOtherLicenses).
@@ -945,7 +957,13 @@ export function collectCargoDependencies(): ComponentInfo[] {
 // Whether npm installs a package whose `os` or `cpu` list is `allowed` on
 // `value` (process.platform, process.arch): an entry names what it supports,
 // `!name` what it excludes, and no list supports everything.
-export function npmInstallsHere(allowed: string[] | undefined, value: string): boolean {
+// An npm platform field, os or cpu, as a list: npm takes a string for a
+// single value ("os": "linux") as well as an array.
+export const npmPlatformList = (field: unknown): string[] | undefined =>
+  typeof field === 'string' ? [field] : Array.isArray(field) ? field.filter((v): v is string => typeof v === 'string') : undefined;
+
+export function npmInstallsHere(field: unknown, value: string): boolean {
+  const allowed = npmPlatformList(field);
   if (!allowed || allowed.length === 0) return true;
   if (allowed.includes(`!${value}`)) return false;
   const named = allowed.filter((a) => !a.startsWith('!'));
@@ -1003,7 +1021,9 @@ export function collectNpmDependencies(
     // one under --omit=optional or when its os/cpu do not match this platform.
     if (!fs.existsSync(depDir)) {
       if (pkgInfo.optional || pkgInfo.devOptional) {
-        const only = [pkgInfo.os && `os ${pkgInfo.os.join(', ')}`, pkgInfo.cpu && `cpu ${pkgInfo.cpu.join(', ')}`].filter(Boolean);
+        const os = npmPlatformList(pkgInfo.os);
+        const cpu = npmPlatformList(pkgInfo.cpu);
+        const only = [os?.length && `os ${os.join(', ')}`, cpu?.length && `cpu ${cpu.join(', ')}`].filter(Boolean);
         throw new Error(
           !npmInstallsHere(pkgInfo.os, process.platform) || !npmInstallsHere(pkgInfo.cpu, process.arch)
             ? `${pkgPath} locks the optional ${componentId}, which npm installs only for ${only.join(' and ')}, so this platform cannot read its license files: the notices cover every platform's packages, so the package needs a reviewed source for them before it ships`
@@ -1354,9 +1374,9 @@ export function groupLicenseTexts(components: ComponentInfo[]): {
     const usableLicenseFiles = c.licenseFiles
       .map((f) => ({ ...f, content: f.content.replace(/\r\n/g, '\n') }))
       .filter((f) => f.content.trim().length > 0);
-    // Only the package's own license files cover its license: a vendored
-    // library's COPYING does not, and the package then gets the standard text.
-    if (!usableLicenseFiles.some((f) => !f.vendored)) {
+    // Only the package's own files cover its license: a vendored library's
+    // COPYING does not, and the package then gets the standard text.
+    if (ownLicenseTexts(c).length === 0) {
       componentsWithoutFiles.push(c);
     }
 
@@ -2065,6 +2085,11 @@ export function generateNoticesMarkdown(
  * leaves out the same blocks, never every fenced one, because the standard
  * texts the notices fill in are fenced too.
  */
+// The link from a page beside the notices (a repository path such as
+// docs/UNRAR-LICENSE.md) back to THIRD-PARTY-NOTICES.md at the root.
+export const noticesLinkFrom = (document: string): string =>
+  path.posix.relative(path.posix.dirname(document), 'THIRD-PARTY-NOTICES.md');
+
 export function renderNotices(
   cargoDeps: ComponentInfo[],
   npmDeps: ComponentInfo[],
@@ -2135,7 +2160,8 @@ export function renderNotices(
   lines.push('AeroFTP is licensed under the **GNU General Public License v3.0 or later** (GPL-3.0-or-later).');
   lines.push('The components listed here are distributed in accordance with their respective licensing terms.');
   lines.push('System libraries that are not Cargo or npm dependencies (for example WebKitGTK, which the AppImage bundles as a');
-  lines.push('fallback) are not covered by this document.');
+  lines.push('fallback) are not covered by this document. The AppImage ships the copyright file of the Ubuntu package of each library');
+  lines.push('it bundles in `usr/share/doc/<package>/copyright`, and `usr/share/doc/BUNDLED-LIBRARIES.txt` names that package and its version.');
   lines.push('');
 
   const allComponents = [...sortedCargoDeps, ...sortedNpmDeps];
@@ -2167,7 +2193,7 @@ export function renderNotices(
   };
   const standardTextTerms = new Map<ComponentInfo, string[][]>();
   for (const comp of allComponents) {
-    const ownTexts = comp.licenseFiles.filter((f) => !f.vendored && f.content.trim().length > 0).map((f) => f.content);
+    const ownTexts = ownLicenseTexts(comp);
     if (ownTexts.length === 0) continue;
     const alternatives = spdxAlternatives(comp.license);
     if (!alternatives) continue;
@@ -2187,7 +2213,7 @@ export function renderNotices(
   // enough: MIT OR Apache-2.0 with LICENSE-MIT alone carries no Apache text.
   const textCarried = (comp: ComponentInfo, term: string) => {
     const standard = readStandardLicenses();
-    const ownTexts = comp.licenseFiles.filter((f) => !f.vendored && f.content.trim().length > 0).map((f) => f.content);
+    const ownTexts = ownLicenseTexts(comp);
     if (ownTexts.length > 0 && uncoveredLicenseTerms([[term]], ownTexts, standard).length === 0) return true;
     const alternatives = spdxAlternatives(comp.license);
     if (!alternatives) return false;
@@ -2310,13 +2336,14 @@ export function renderNotices(
   // licenses (siphasher's COPYING) or holds part of a grant takes no anchor,
   // which then goes to the whole text, or to the standard texts reproduced
   // for the component below.
-  const carriesALicense = (c: LicenseTextGroup['components'][number], text: string) => {
+  // A notice (`notice`) takes it only with a whole standard or reviewed text.
+  const carriesALicense = (c: LicenseTextGroup['components'][number], text: string, notice = false) => {
     const comp = compMap.get(`${c.source}:${c.name}@${c.version}`);
-    if (!comp) return true;
+    if (!comp) return !notice;
     const standard = readStandardLicenses();
     const reviewed = reviewedLicenseTerms();
     const referenced = extractSpdxLicenseIds(comp.license).filter((id) => standardTextId(id) in standard || id in reviewed);
-    if (referenced.length === 0) return PERMISSION_TEXT.test(text);
+    if (referenced.length === 0) return !notice && PERMISSION_TEXT.test(text);
     return referenced.some((id) => uncoveredLicenseTerms([[id]], [text], standard).length === 0);
   };
   const seenAnchorIds = new Set<string>();
@@ -2336,19 +2363,23 @@ export function renderNotices(
           '',
           exc.facts,
           '',
-          `This is the license text that \`${exc.crateName}@${exc.version}\` ships in \`${exc.sourceFile}\`, written from the same file as the text reproduced in [THIRD-PARTY-NOTICES.md](../THIRD-PARTY-NOTICES.md#${exceptionAnchorId(exc)}), the notices AeroFTP packages ship. \`npm run check:licenses\` fails when this page no longer matches that text.`,
+          `This is the license text that \`${exc.crateName}@${exc.version}\` ships in \`${exc.sourceFile}\`, written from the same file as the text reproduced in [THIRD-PARTY-NOTICES.md](${noticesLinkFrom(exc.document)}#${exceptionAnchorId(exc)}), the notices AeroFTP packages ship. \`npm run check:licenses\` fails when this page no longer matches that text.`,
           '',
           makeCodeBlock(group.text),
           '',
         ].join('\n'),
       });
     }
-    // A component's anchor leads to its own license text, never to a notice
-    // file or an SPDX document that only names the license, nor to a vendored
+    // A component's anchor leads to its own license text, never to an SPDX
+    // document or a notice that only names the license, nor to a vendored
     // library's license: a package whose only license text is vendored
     // (whisper-rs-sys, whisper.cpp/LICENSE) is anchored at the standard text
-    // of the license it declares.
-    for (const comp of group.components.filter((c) => c.isLicenseText && !c.vendored && carriesALicense(c, group.text))) {
+    // of the license it declares. A third-party license file of the package
+    // (ownLicenseFiles) takes it only with a whole standard or reviewed text.
+    const anchored = (c: LicenseTextGroup['components'][number]) =>
+      !c.vendored &&
+      (c.isLicenseText ? carriesALicense(c, group.text) : THIRD_PARTY_FILE.test(path.posix.basename(c.filename)) && carriesALicense(c, group.text, true));
+    for (const comp of group.components.filter(anchored)) {
       const anchorId = `notice-${comp.name.replace(/_/g, '-')}`;
       if (!seenAnchorIds.has(anchorId)) {
         seenAnchorIds.add(anchorId);
@@ -2386,7 +2417,7 @@ export function renderNotices(
         }
         continue;
       }
-      if (fullComp && fullComp.licenseFiles.some((f) => !f.vendored) && hasCopyrightHolderInFiles(fullComp)) {
+      if (fullComp && ownLicenseFiles(fullComp).length > 0 && hasCopyrightHolderInFiles(fullComp)) {
         // The package's files name its holders, so its files are not scanned:
         // the holders of bundled headers under its own license are listed
         // here, once per package.
@@ -2419,7 +2450,7 @@ export function renderNotices(
           }
         }
       }
-      if (fullComp && fullComp.licenseFiles.some((f) => !f.vendored) && !hasCopyrightHolderInFiles(fullComp)) {
+      if (fullComp && ownLicenseFiles(fullComp).length > 0 && !hasCopyrightHolderInFiles(fullComp)) {
         const excluded = [...fullComp.licenseFiles, ...fullComp.noticeFiles].map((f) => f.filename);
         const pkgNotices = findPackageCopyrightNotices(fullComp.packageDir, excluded, vendoredFolders(fullComp));
         if (pkgNotices.length > 0) {
