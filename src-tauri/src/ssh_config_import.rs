@@ -2030,7 +2030,96 @@ fn ssh_jump_word(value: &str) -> Result<String, String> {
             "is not one ssh reads, and ssh would refuse the whole file",
         ));
     }
+    if !ssh_jump_reaches_no_shell(&written) {
+        return Err(refused(
+            "holds a character other than a letter, a digit or one of `._+-%@:/`, brackets other than around a whole IPv6 address in its last hop, or a name that starts with `-`, and ssh passes the jump host unquoted to a shell in the command it runs for it",
+        ));
+    }
     Ok(written)
+}
+
+/// Whether a written `ProxyJump` value, read by ssh, puts only plain words
+/// in the command ssh runs for the jump (`ssh -vvv` on 10.2p1, "Setting
+/// implicit ProxyCommand from ProxyJump"): ssh runs it through the shell
+/// and inserts the last hop's user (`-l`, after decoding an `ssh://` hop's
+/// `%XX`) and host unquoted, and the earlier hops as written (`-J`), so
+/// `u$(cmd)@h`, ``u`cmd`@h``, `u;cmd@h`, `ssh://u%24%28cmd%29@h` and
+/// `u@j$(cmd)` run `cmd`, and a host `-oProxyCommand=cmd` is read as an
+/// option. Every name must hold only ASCII letters, digits and `._+-%`
+/// (`@` in a user name) and not start with `-`; the last hop's host may be a
+/// whole IPv6 literal `[...]` instead, whose brackets ssh drops; an earlier
+/// hop, written whole into the command, only those and `:/@`, since `[` and
+/// `]` are a shell glob there (`-J [::1]:1`, and `j[ab]` anywhere). An earlier
+/// `ssh://` hop holding `%` is refused too: ssh expands the command's `%`
+/// tokens before the next ssh decodes it (`ssh://u%2B@a,b` fails with
+/// "unknown key %2", and `%%2B` makes ssh refuse the file).
+fn ssh_jump_reaches_no_shell(written: &str) -> bool {
+    let plain = |s: &str, extra: &[u8]| {
+        !s.is_empty()
+            && !s.starts_with('-')
+            && s.bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"._+-%".contains(&b) || extra.contains(&b))
+    };
+    let (earlier, last) = match written.rsplit_once(',') {
+        Some((earlier, last)) => (Some(earlier), last),
+        None => (None, written),
+    };
+    let earlier_plain = earlier.is_none_or(|earlier| {
+        earlier
+            .split(',')
+            .all(|hop| plain(hop, b":/@") && !(hop.starts_with("ssh://") && hop.contains('%')))
+    });
+    let (user, rest) = match last.strip_prefix("ssh://") {
+        Some(uri) => match uri.split_once('@') {
+            Some((user, rest)) => {
+                let user = user.split(';').next().unwrap_or("");
+                (Some(ssh_url_decode(user)), rest)
+            }
+            None => (None, uri),
+        },
+        None => match last.rfind('@') {
+            Some(at) => (Some(last[..at].to_string()), &last[at + 1..]),
+            None => (None, last),
+        },
+    };
+    let host = ssh_host_delim(rest).map_or(rest, |(host, _, _)| host);
+    // ssh writes the last hop's host without its brackets (`[::1]` is `::1`
+    // in the command), so a whole IPv6 literal is the one `[...]` read.
+    let host_plain = match host.strip_prefix('[').and_then(|h| h.strip_suffix(']')) {
+        Some(ip) => {
+            !ip.is_empty()
+                && ip
+                    .bytes()
+                    .all(|b| b.is_ascii_hexdigit() || b":.".contains(&b))
+        }
+        None => plain(host, b""),
+    };
+    earlier_plain && user.is_none_or(|user| plain(&user, b"@")) && host_plain
+}
+
+/// The text an `ssh://` user decodes to (`urldecode` in misc.c); a value
+/// [`ssh_url_decodes`] refuses is never passed here.
+fn ssh_url_decode(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        let hex = bytes
+            .get(i + 1..i + 3)
+            .and_then(|h| std::str::from_utf8(h).ok())
+            .and_then(|h| u8::from_str_radix(h, 16).ok());
+        match (bytes[i], hex) {
+            (b'%', Some(b)) => {
+                out.push(b);
+                i += 3;
+            }
+            (b, _) => {
+                out.push(b);
+                i += 1;
+            }
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
 }
 
 /// Refuses a value holding `${` for a keyword where ssh expands `${VAR}`
@@ -2637,12 +2726,10 @@ Host roundtrip
             .map(|s| s.name.as_str())
             .collect();
         assert_eq!(jumped, ["uri", "hop", "mixed"]);
-        if std::process::Command::new("ssh")
-            .arg("-V")
-            .output()
-            .is_err()
-        {
-            eprintln!("SKIPPED: no ssh here, so the file is not read back with ssh");
+        // What ssh 10.2 reads, the reference: an earlier ssh or the Windows
+        // port parses jump hosts and logs the command otherwise.
+        if !ssh_major().is_some_and(|major| major >= 10) {
+            eprintln!("SKIPPED: no ssh 10 or later here, so the file is not read back with it");
             return;
         }
         let g = |host: &str| ssh_g(&path, host);
@@ -2674,6 +2761,114 @@ Host roundtrip
                 .any(|l| l.contains("Executing proxy command: exec ssh -l u%x -p 1 ")),
             "{log}"
         );
+    }
+
+    /// A jump host goes out only when every name ssh puts in the command it
+    /// runs for the jump is a plain word: a shell character in a user or a
+    /// host, plain, `%XX`-encoded or in an earlier hop, a name that starts
+    /// with `-`, and an earlier `ssh://` hop holding `%` are refused, and
+    /// the command ssh runs for each exported one holds the names as the
+    /// profile holds them (`ssh -vvv` on 10.2p1).
+    #[test]
+    fn a_jump_host_never_reaches_a_shell() {
+        let refused = [
+            "u$(id)@j.example.com",
+            "u`id`@j.example.com",
+            "u;id@j.example.com",
+            "u|id@j.example.com",
+            "u&id@j.example.com",
+            "u>x@j.example.com",
+            "u<x@j.example.com",
+            "u*@j.example.com",
+            "u~@j.example.com",
+            "u!x@j.example.com",
+            "u(x)@j.example.com",
+            "u{x}@j.example.com",
+            "-oX@j.example.com",
+            "u@-oProxyCommand=x",
+            "u@j$(id)x",
+            "ssh://u%24%28id%29@j.example.com",
+            "ssh://u%3Bid@j.example.com",
+            "ssh://u%60id%60@j.example.com",
+            "ssh://%2DoX@j.example.com",
+            "u$(id)@a.example.com,b.example.com",
+            "ssh://u;x=y@a.example.com,b.example.com",
+            "ssh://u%2B@a.example.com,b.example.com",
+            "u@j[ab].example.com",
+            "[::1]x",
+            "[::1]:1,b.example.com",
+            "u@[]:1",
+            "u@[x]y",
+        ];
+        let exported = [
+            ("plain", "u@127.0.0.1:1", "-l u -p 1 "),
+            ("uri", "ssh://u%2B@127.0.0.1:1", "-l u+ -p 1 "),
+            ("params", "ssh://u;x=y@127.0.0.1:1", "-l u -p 1 "),
+            (
+                "earlier",
+                "a.example.com,ssh://c%2Bd@127.0.0.1:2",
+                "-l c+d -p 2 -J a.example.com ",
+            ),
+            ("ipv6", "u@[::1]:1", "-l u -p 1 "),
+            ("bare6", "[::1]", "-F "),
+        ];
+        let mut servers: Vec<_> = refused
+            .iter()
+            .enumerate()
+            .map(|(i, j)| {
+                sftp(
+                    &format!("r{i}"),
+                    "h.example.com",
+                    "u",
+                    serde_json::json!({ "proxyJump": j }),
+                )
+            })
+            .collect();
+        servers.extend(exported.iter().map(|(name, j, _)| {
+            sftp(
+                name,
+                "127.0.0.1",
+                "u",
+                serde_json::json!({ "proxyJump": j }),
+            )
+        }));
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config");
+        let outcome = export_ssh_config(&servers, &HashMap::new(), &path).unwrap();
+        let skipped: Vec<&str> = outcome.skipped.iter().map(|s| s.name.as_str()).collect();
+        let expected: Vec<String> = (0..refused.len()).map(|i| format!("r{i}")).collect();
+        assert_eq!(skipped, expected, "{:?}", outcome.skipped);
+        assert_eq!(outcome.exported, exported.len());
+        // What ssh 10.2 reads, the reference: an earlier ssh or the Windows
+        // port parses jump hosts and logs the command otherwise.
+        if !ssh_major().is_some_and(|major| major >= 10) {
+            eprintln!("SKIPPED: no ssh 10 or later here, so the commands are not read with it");
+            return;
+        }
+        for (name, _, args) in exported {
+            let out = std::process::Command::new("ssh")
+                .args(["-vvv", "-F"])
+                .arg(&path)
+                .args([
+                    "-o",
+                    "BatchMode=yes",
+                    "-o",
+                    "ConnectTimeout=5",
+                    name,
+                    "true",
+                ])
+                .output()
+                .unwrap();
+            let log = String::from_utf8_lossy(&out.stderr);
+            let command = log
+                .lines()
+                .find_map(|l| {
+                    l.split_once("Executing proxy command: exec ssh ")
+                        .map(|(_, c)| c)
+                })
+                .unwrap_or_else(|| panic!("{name}: {log}"));
+            assert!(command.starts_with(args), "{name}: {command}");
+        }
     }
 
     /// A key file path with spaces is written in double quotes, read back
@@ -4306,6 +4501,20 @@ Host roundtrip
             let text = format!("Host fine\n  HostName f.example.com\n{line}\n");
             std::fs::write(&file, &text).unwrap();
             let result = import_ssh_config(&file).unwrap();
+            // Only a Unix system has a passwd entry to read `~root` from
+            // ([`passwd_home`]): elsewhere the host is skipped, as ssh stops.
+            if cfg!(not(unix)) && line.contains("~root") {
+                assert!(result.servers.is_empty(), "{line:?}");
+                assert!(
+                    result
+                        .skipped
+                        .iter()
+                        .any(|s| s.reason.contains("an account this system does not have")),
+                    "{line:?}: {:?}",
+                    result.skipped.iter().map(|s| &s.reason).collect::<Vec<_>>()
+                );
+                continue;
+            }
             let fine = result.servers.iter().find(|s| s.name == "fine");
             let Some(fine) = fine else {
                 panic!(
