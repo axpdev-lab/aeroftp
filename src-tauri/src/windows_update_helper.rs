@@ -641,11 +641,13 @@ del /F /Q {new} >nul 2>&1
     }
 
     // The marker, README, LICENSE and notices are not copied here: the old
-    // app staged them beside the exes (`portable_docs`), and the new app
-    // installs them at its start. A failed swap drops them with the exes.
+    // app staged them beside the exes as the next batch (`portable_docs`),
+    // and the new app installs them at its start. A failed swap drops that
+    // batch with the exes; the current batch, the old exe's documents still
+    // pending, stays for its next start.
     discard_block.push_str(&format!(
         "rmdir /S /Q {} >nul 2>&1\n",
-        quote_for_cmd(&exe_dir.join(portable_docs::PENDING_DIR))
+        quote_for_cmd(&exe_dir.join(portable_docs::NEXT_DIR))
     ));
 
     let body = format!(
@@ -783,25 +785,36 @@ pub fn try_handle_post_update_cleanup_arg() {
 }
 
 /// Installs the documents a portable update staged beside the exes
-/// (`portable_docs`), in a detached thread so the UI starts at once. It waits
-/// for the helper to let go, like the `.old` cleanup, then gives each
-/// document one attempt and the held ones one shared budget of 30 passes a
-/// second apart; one still held is installed at a later start. Each outcome
-/// goes to the app log as it happened.
-pub fn install_pending_docs_in_background() {
-    let Some(exe_dir) = std::env::current_exe()
-        .ok()
-        .and_then(|exe| exe.parent().map(Path::to_path_buf))
-    else {
+/// (`portable_docs`). The first pass runs before the app opens a window, so
+/// the About dialog never finds another exe's batch; it takes the time of a
+/// hash of the exe and four renames, and only when a batch is there. The
+/// held documents then share one budget of 30 passes a second apart in a
+/// detached thread; one still held is installed at a later start. Each
+/// outcome goes to the app log once the app runs.
+pub fn install_pending_docs_at_start() {
+    let Ok(exe) = std::env::current_exe() else {
         return;
     };
-    if !exe_dir.join(portable_docs::PENDING_DIR).exists() {
+    let Some(exe_dir) = exe.parent().map(Path::to_path_buf) else {
+        return;
+    };
+    if !exe_dir.join(portable_docs::PENDING_DIR).exists()
+        && !exe_dir.join(portable_docs::NEXT_DIR).exists()
+    {
         return;
     }
+    let rename = |from: &Path, to: &Path| std::fs::rename(from, to);
+    let first = portable_docs::exe_key(&exe)
+        .map(|own_key| {
+            let first = portable_docs::install_pending_docs(&exe_dir, &own_key, rename);
+            (own_key, first)
+        })
+        .map_err(|e| e.to_string());
     std::thread::spawn(move || {
+        // The app log is set up by then.
         std::thread::sleep(Duration::from_secs(2));
-        let own_key = match std::env::current_exe().and_then(|exe| portable_docs::exe_key(&exe)) {
-            Ok(key) => key,
+        let (own_key, first) = match first {
+            Ok(first) => first,
             Err(e) => {
                 log::warn!(
                     "portable update: cannot read the running exe ({e}), the staged documents wait"
@@ -809,18 +822,24 @@ pub fn install_pending_docs_in_background() {
                 return;
             }
         };
-        let outcome = portable_docs::install_with_shared_budget(
+        let outcome = portable_docs::retry_held(
             &exe_dir,
             &own_key,
+            first,
             30,
             Duration::from_secs(1),
-            |from, to| std::fs::rename(from, to),
+            rename,
             std::thread::sleep,
         );
         match outcome {
             portable_docs::Pending::None => {}
             portable_docs::Pending::Stale => {
                 log::info!("portable update: removed staged documents that belong to another exe");
+            }
+            portable_docs::Pending::Unavailable(e) => {
+                log::warn!(
+                    "portable update: the staged documents wait, the folder lock failed ({e})"
+                );
             }
             portable_docs::Pending::Docs(outcomes) => {
                 for (name, outcome) in outcomes {
@@ -1143,7 +1162,7 @@ mod tests {
         assert_eq!(read(&fx, "aeroftp-cli.exe"), b"new cli");
         assert_eq!(read(&fx, "aeroftp-dispatch.exe"), b"new dispatch");
         // The marker waits beside the exes until the new app starts.
-        assert!(fx.app.join(portable_docs::PENDING_DIR).is_dir());
+        assert!(fx.app.join(portable_docs::NEXT_DIR).is_dir());
         assert_eq!(
             start_new_app(&fx),
             portable_docs::Pending::Docs(vec![(
@@ -1304,20 +1323,76 @@ mod tests {
         }
     }
 
-    /// A swap that fails drops the staged documents with the staged exes,
-    /// and the old app finds nothing to install.
+    /// A swap that fails drops the update's batch with the staged exes, and
+    /// keeps the old exe's documents still pending: its next start installs
+    /// them.
     #[test]
-    fn a_failed_swap_drops_the_staged_documents() {
+    fn a_failed_swap_drops_the_update_s_documents_and_keeps_the_old_exe_s() {
         let mut fx = fixture();
         with_docs(&mut fx, |_| true);
+        // The old exe's notices are still pending from its own update.
+        let current = fx.app.join(portable_docs::PENDING_DIR);
+        std::fs::create_dir(&current).expect("current batch");
+        std::fs::write(current.join("THIRD-PARTY-NOTICES.md"), b"old exe's notices")
+            .expect("pending notices");
+        let old_key = portable_docs::exe_key(&fx.current).expect("old key");
+        std::fs::write(current.join("exe.key"), &old_key).expect("key");
         let script = script_for(&fx);
-        assert!(fx.app.join(portable_docs::PENDING_DIR).is_dir());
+        assert!(fx.app.join(portable_docs::NEXT_DIR).is_dir());
         // The new exe is gone before the helper runs: the swap fails.
         std::fs::remove_file(beside_path(&fx.current)).expect("staged exe");
         run(&fx, &runnable(&script));
         assert_eq!(read(&fx, "AeroFTP.exe"), OLD_EXE);
-        assert!(!fx.app.join(portable_docs::PENDING_DIR).exists());
+        assert!(!fx.app.join(portable_docs::NEXT_DIR).exists());
         assert_eq!(read(&fx, "README.txt"), b"old readme");
+        // The old exe starts again and installs its own pending notices.
+        assert_eq!(
+            portable_docs::install_pending_docs(&fx.app, &old_key, |from, to| std::fs::rename(
+                from, to
+            )),
+            portable_docs::Pending::Docs(vec![(
+                "THIRD-PARTY-NOTICES.md",
+                portable_docs::Outcome::Installed
+            )])
+        );
+        assert_eq!(read(&fx, "THIRD-PARTY-NOTICES.md"), b"old exe's notices");
+    }
+
+    /// An update whose CLI staging fails, before the helper, leaves the
+    /// documents the running exe still has pending, and its next start
+    /// installs them.
+    #[test]
+    fn a_failed_cli_staging_keeps_the_running_exe_s_pending_notices() {
+        let mut fx = fixture();
+        with_cli(&fx);
+        with_docs(&mut fx, |_| true);
+        let current = fx.app.join(portable_docs::PENDING_DIR);
+        std::fs::create_dir(&current).expect("current batch");
+        std::fs::write(
+            current.join("THIRD-PARTY-NOTICES.md"),
+            b"running exe's notices",
+        )
+        .expect("pending notices");
+        let own_key = portable_docs::exe_key(&fx.current).expect("key");
+        std::fs::write(current.join("exe.key"), &own_key).expect("key");
+        // A folder at a staged name: the CLI exe cannot be staged.
+        std::fs::create_dir(fx.app.join("aeroftp-dispatch.exe.new")).expect("blocker");
+        let refused = stage_update(&fx.staged, &fx.current).expect_err("refused");
+        assert!(refused.contains("aeroftp-dispatch.exe"), "{refused}");
+        assert!(!fx.app.join(portable_docs::NEXT_DIR).exists());
+        assert_eq!(
+            portable_docs::install_pending_docs(&fx.app, &own_key, |from, to| std::fs::rename(
+                from, to
+            )),
+            portable_docs::Pending::Docs(vec![(
+                "THIRD-PARTY-NOTICES.md",
+                portable_docs::Outcome::Installed
+            )])
+        );
+        assert_eq!(
+            read(&fx, "THIRD-PARTY-NOTICES.md"),
+            b"running exe's notices"
+        );
     }
 
     /// The notices of the CI ZIP are staged with the README and the LICENSE.

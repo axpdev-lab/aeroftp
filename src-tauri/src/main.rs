@@ -17,10 +17,10 @@ fn main() {
     #[cfg(windows)]
     ftp_client_gui_lib::windows_update_helper::try_handle_post_update_cleanup_arg();
     // The marker, README, LICENSE and notices a portable update staged
-    // beside the exes are installed in the background, once the helper and
-    // any editor holding them let go.
+    // beside the exes are installed before the window opens; one an editor
+    // holds is retried in the background.
     #[cfg(windows)]
-    ftp_client_gui_lib::windows_update_helper::install_pending_docs_in_background();
+    ftp_client_gui_lib::windows_update_helper::install_pending_docs_at_start();
 
     ftp_client_gui_lib::run();
 }
