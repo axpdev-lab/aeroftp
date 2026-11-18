@@ -1130,6 +1130,26 @@ export function carriesWholeStandardText(id: string, standardText: string, fileT
   return true;
 }
 
+// How the text of a license with no standard text names itself, reviewed
+// against the files that ship it: a grant without that name (a custom-zip
+// license next to MIT AND bzip2-1.0.6) is another license, not this one.
+const NON_STANDARD_LICENSE_TITLES: Record<string, RegExp> = {
+  // libbz2-rs-sys: "The original program, "bzip2", the associated library "libbzip2", ..."
+  'bzip2-1.0.6': /"bzip2",\s+the\s+associated\s+library\s+"libbzip2"/,
+  // webpki-roots, webpki-root-certs.
+  'CDLA-Permissive-2.0': /Community\s+Data\s+License\s+Agreement\s*-\s*Permissive\s*[-,]\s*Version\s+2\.0/i,
+};
+
+// Whether a text names a license: its SPDX identifier as a word
+// ("(BSD-1-Clause)", "SPDX-License-Identifier: bzip2-1.0.6"), or the
+// reviewed title of a license with no standard text.
+export function namesLicense(id: string, text: string): boolean {
+  return (
+    new RegExp(`(?<![A-Za-z0-9.+-])${escapeRegExp(id)}(?![A-Za-z0-9+-]|\\.[0-9])`, 'i').test(text) ||
+    (NON_STANDARD_LICENSE_TITLES[id]?.test(text) ?? false)
+  );
+}
+
 // The 6-grams of each standard text, and the seam 6-grams that distinguish a
 // shorter text from the longer standard texts that contain it, built once per
 // standard licenses file.
@@ -1142,9 +1162,10 @@ const standardShingles = new WeakMap<
  * The terms of each choice that a package's own license files leave out, for
  * the choices those files cover best. Empty when the files cover a whole
  * choice (MIT OR Apache-2.0 with LICENSE-MIT). A term is covered by a file that
- * carries its standard text; a term with no standard text (bzip2-1.0.6) is
- * covered by a file that carries none of the standard texts and grants
- * permission itself, not one that only names licenses (siphasher's COPYING).
+ * carries its whole standard text; a term with no standard text (bzip2-1.0.6)
+ * is covered by a file that carries none of the standard texts, grants
+ * permission itself and names that license (namesLicense), not one that only
+ * names licenses (siphasher's COPYING) nor a grant for another work.
  * The choices whose uncovered terms all have a standard text come first; with
  * none, the best covered ones are returned and the caller names the missing
  * text.
@@ -1174,21 +1195,36 @@ function uncoveredLicenseTerms(
     (!seams.has(id) || shareOf(seams.get(id)!, file) >= 0.5);
   const carriesAt = (id: string, i: number) =>
     similar(id, files[i]) && carriesWholeStandardText(id, standardLicenses[id], ownTexts[i]);
-  // A version of a standard text with a clause removed is still that text,
-  // never a grant of its own for a term with no standard text.
-  const nonStandardFiles = files.filter(
+  // A term with no standard text is covered by a file that grants permission
+  // itself and names that license. A version of a standard text with a clause
+  // removed is still that text, never a grant of its own.
+  const grantsOwn = files.map(
     (f, i) => PERMISSION_TEXT.test(ownTexts[i]) && ![...standard.keys()].some((other) => similar(other, f))
-  ).length;
+  );
+  // Each such term takes a file of its own: one grant is the text of one
+  // license, even when it names two. The terms are matched to the files that
+  // name them so that as many as possible get one (augmenting paths): a file
+  // naming both is left to the term no other file names.
   const left = choices.map((terms) => {
-    let freeNonStandard = nonStandardFiles;
-    return terms.filter((term) => {
-      const parts = term.split(' WITH ');
-      if (!parts.every((id) => standard.has(id) || freeNonStandard > 0)) return true;
-      for (const id of parts) {
-        if (standard.has(id) ? !files.some((_, i) => carriesAt(id, i)) : freeNonStandard-- <= 0) return true;
+    const own = terms.flatMap((term, ti) =>
+      term.split(' WITH ').filter((id) => !standard.has(id)).map((id) => ({ ti, files: ownTexts.map((text, k) => k).filter((k) => grantsOwn[k] && namesLicense(id, ownTexts[k])) }))
+    );
+    const fileOf = new Map<number, number>();
+    const assign = (n: number, seen: Set<number>): boolean => {
+      for (const k of own[n].files) {
+        if (seen.has(k)) continue;
+        seen.add(k);
+        if (!fileOf.has(k) || assign(fileOf.get(k)!, seen)) {
+          fileOf.set(k, n);
+          return true;
+        }
       }
       return false;
-    });
+    };
+    const unmatched = new Set(own.map((_, n) => n).filter((n) => !assign(n, new Set())).map((n) => own[n].ti));
+    return terms.filter(
+      (term, ti) => unmatched.has(ti) || !term.split(' WITH ').every((id) => !standard.has(id) || files.some((_, i) => carriesAt(id, i)))
+    );
   });
   if (left.some((terms) => terms.length === 0)) return [];
   const reproducible = left

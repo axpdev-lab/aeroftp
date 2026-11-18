@@ -39,6 +39,7 @@ import {
   holderKey,
   holderOfNotice,
   npmAuthors,
+  namesLicense,
 } from '../../scripts/gen-third-party-notices.ts';
 
 // The committed notices with the blocks the generator reproduces as shipped,
@@ -653,6 +654,18 @@ test('standard SPDX texts: a shipped text covers a term only when it carries eve
   );
 });
 
+test('license names: an identifier counts as a word, a reviewed title names a license with no standard text', () => {
+  assert.strictEqual(namesLicense('BSD-1-Clause', 'The BSD 1-Clause License (BSD-1-Clause)'), true);
+  assert.strictEqual(namesLicense('bzip2-1.0.6', 'SPDX-License-Identifier: BZIP2-1.0.6'), true);
+  assert.strictEqual(namesLicense('LGPL-2.1', 'licensed under LGPL-2.1-or-later'), false, 'a longer identifier is another license');
+  assert.strictEqual(namesLicense('MIT', 'MIT-0'), false);
+  assert.strictEqual(namesLicense('bzip2-1.0.6', 'bzip2-1.0.60'), false);
+  assert.strictEqual(namesLicense('bzip2-1.0.6', 'The original program, "bzip2", the associated library "libbzip2", and all documentation'), true);
+  assert.strictEqual(namesLicense('CDLA-Permissive-2.0', '# Community Data License Agreement - Permissive - Version 2.0'), true);
+  assert.strictEqual(namesLicense('CDLA-Permissive-2.0', 'Community Data License Agreement - Sharing - Version 1.0'), false);
+  assert.strictEqual(namesLicense('bzip2-1.0.6', 'This program, "custom-zip", is free software.'), false);
+});
+
 test('standard SPDX texts: every term of the chosen license needs its text, an own file covers only the terms whose text it carries', () => {
   const mit = shippedLicense('MIT License\n\nCopyright (c) 2020 Term Holder', 'MIT');
   const apache = shippedLicense('', 'Apache-2.0');
@@ -683,11 +696,16 @@ test('standard SPDX texts: every term of the chosen license needs its text, an o
   assert.deepStrictEqual(standardFor(comp('test-with', 'Apache-2.0 WITH LLVM-exception', [['LICENSE-APACHE', apache]])), ['Apache-2.0 WITH LLVM-exception']);
   assert.deepStrictEqual(standardFor(comp('test-with-both', 'Apache-2.0 WITH LLVM-exception', [['LICENSE-APACHE', `${apache}\n\n${shippedLicense('', 'LLVM-exception')}`]])), []);
   // A term with no standard text is carried by a file that carries none of the
-  // standard texts; without one the generation fails with the package and the term.
+  // standard texts, grants permission itself and names that license, by its
+  // identifier or its reviewed title; without one the generation fails with
+  // the package and the term.
+  const bzip2 = 'This program, "bzip2", the associated library "libbzip2", and all documentation, are copyright (C) 1996-2010 Julian R Seward. All rights reserved. Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met.';
+  const tagged = 'SPDX-License-Identifier: bzip2-1.0.6\n\nRedistribution and use in source and binary forms are permitted provided this notice is kept.';
+  assert.deepStrictEqual(standardFor(comp('test-custom', 'MIT AND bzip2-1.0.6', [['LICENSE-MIT', mit], ['LICENSE', bzip2]])), []);
+  assert.deepStrictEqual(standardFor(comp('test-custom', 'MIT AND bzip2-1.0.6', [['LICENSE-MIT', mit], ['LICENSE', tagged]])), []);
+  // A grant for another work is another license, and a file that only names the licenses carries no terms of its own.
   const custom = 'This program, "custom-zip", is free software. Redistribution and use in source and binary forms are permitted provided this notice is kept.';
-  assert.deepStrictEqual(standardFor(comp('test-custom', 'MIT AND bzip2-1.0.6', [['LICENSE-MIT', mit], ['LICENSE', custom]])), []);
-  // A file that only names the licenses carries no terms of its own.
-  for (const files of [[['LICENSE-MIT', mit]], [['LICENSE-MIT', mit], ['COPYING', pointer]]]) {
+  for (const files of [[['LICENSE-MIT', mit]], [['LICENSE-MIT', mit], ['COPYING', pointer]], [['LICENSE-MIT', mit], ['LICENSE', custom]]]) {
     assert.throws(
       () => generateNoticesMarkdown([comp('test-custom', 'MIT AND bzip2-1.0.6', files)], []),
       /Component test-custom@1\.0\.0 requires standard license text for 'bzip2-1\.0\.6'/
@@ -696,7 +714,8 @@ test('standard SPDX texts: every term of the chosen license needs its text, an o
   // A choice whose missing texts exist wins over a better covered one that
   // needs a text nobody has.
   assert.deepStrictEqual(standardFor(comp('test-reproducible', '(MIT AND bzip2-1.0.6) OR Apache-2.0', [['LICENSE-MIT', mit]])), ['Apache-2.0']);
-  assert.deepStrictEqual(standardFor(comp('test-reproducible', '(MIT AND bzip2-1.0.6) OR Apache-2.0', [['LICENSE-MIT', mit], ['LICENSE', custom]])), []);
+  assert.deepStrictEqual(standardFor(comp('test-reproducible', '(MIT AND bzip2-1.0.6) OR Apache-2.0', [['LICENSE-MIT', mit], ['LICENSE', custom]])), ['Apache-2.0']);
+  assert.deepStrictEqual(standardFor(comp('test-reproducible', '(MIT AND bzip2-1.0.6) OR Apache-2.0', [['LICENSE-MIT', mit], ['LICENSE', bzip2]])), []);
   // Without manifest authors the holders the package's own files name are its
   // authors; with neither, a reviewed attribution is still required.
   const holderOnly = { ...comp('test-holder-only', 'MIT AND Apache-2.0', [['LICENSE-MIT', mit]]), authors: [] };
@@ -724,10 +743,16 @@ test('standard SPDX texts: every term of the chosen license needs its text, an o
 
   const gpl2 = 'GNU GENERAL PUBLIC LICENSE\nVersion 2, June 1991\nEveryone is permitted to copy and distribute verbatim copies.\nYou may copy and distribute verbatim copies of the Program.';
   assert.deepStrictEqual(standardFor(comp('test-gpl2-or-apache', 'Apache-2.0 OR GPL-2.0-only', [['LICENSE-GPLv2', gpl2]])), ['Apache-2.0']);
-  assert.throws(
-    () => generateNoticesMarkdown([comp('test-two-custom', 'bzip2-1.0.6 AND BSD-3-Clause-Clear', [['LICENSE', custom]])], []),
-    /Component test-two-custom@1\.0\.0 requires standard license text for 'BSD-3-Clause-Clear'/
-  );
+  // One grant is the text of one license: a file that names both still covers one term,
+  // and it covers the term that no other file names.
+  const both = `${bzip2}\nThis notice also covers BSD-3-Clause-Clear.`;
+  assert.deepStrictEqual(standardFor(comp('test-two-custom', 'bzip2-1.0.6 AND BSD-3-Clause-Clear', [['LICENSE', both], ['LICENSE-BZIP2', bzip2]])), []);
+  for (const file of [bzip2, both]) {
+    assert.throws(
+      () => generateNoticesMarkdown([comp('test-two-custom', 'bzip2-1.0.6 AND BSD-3-Clause-Clear', [['LICENSE', file]])], []),
+      /Component test-two-custom@1\.0\.0 requires standard license text for 'BSD-3-Clause-Clear'/
+    );
+  }
 
   PINNED_FALLBACK_ATTRIBUTIONS['slot-pkg@1.0.0'] = {
     author: 'Reviewed BSD Author',
