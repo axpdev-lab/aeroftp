@@ -1047,9 +1047,38 @@ impl WebDavProvider {
                 config.url
             );
         }
+        let client = Self::http_client(&config, !config.verify_cert)?;
+
+        let infinity_refused = infinity_refused_from_the_start(config.provider_id.as_deref());
+        let profile_url = config.url.clone();
+        Ok(Self {
+            config,
+            client,
+            current_path: "/".to_string(),
+            connected: false,
+            digest_auth: None,
+            server_root: None,
+            download_time: Default::default(),
+            multi_thread_streams: 1,
+            multi_thread_cutoff: 8 * 1024 * 1024,
+            single_file_mode: None,
+            infinity_headers_timeout: INFINITY_HEADERS_TIMEOUT,
+            metadata_timeout: crate::providers::http_limits::limit(METADATA_TIMEOUT),
+            infinity_refused,
+            infinity_timed_out_at: None,
+            profile_url,
+        })
+    }
+
+    /// The HTTP client of a connection to `config`, with certificate checks
+    /// off when `accept_invalid_certs`.
+    fn http_client(
+        config: &WebDavConfig,
+        accept_invalid_certs: bool,
+    ) -> Result<Client, ProviderError> {
         let mut client_builder = Client::builder()
             .user_agent(crate::providers::AEROFTP_WEBDAV_USER_AGENT)
-            .danger_accept_invalid_certs(!config.verify_cert)
+            .danger_accept_invalid_certs(accept_invalid_certs)
             .connect_timeout(crate::providers::http_limits::limit(
                 std::time::Duration::from_secs(30),
             ))
@@ -1075,29 +1104,9 @@ impl WebDavProvider {
             client_builder = client_builder.pool_max_idle_per_host(0);
         }
 
-        let client = client_builder.build().map_err(|e| {
-            ProviderError::ConnectionFailed(format!("HTTP client init failed: {e}"))
-        })?;
-
-        let infinity_refused = infinity_refused_from_the_start(config.provider_id.as_deref());
-        let profile_url = config.url.clone();
-        Ok(Self {
-            config,
-            client,
-            current_path: "/".to_string(),
-            connected: false,
-            digest_auth: None,
-            server_root: None,
-            download_time: Default::default(),
-            multi_thread_streams: 1,
-            multi_thread_cutoff: 8 * 1024 * 1024,
-            single_file_mode: None,
-            infinity_headers_timeout: INFINITY_HEADERS_TIMEOUT,
-            metadata_timeout: crate::providers::http_limits::limit(METADATA_TIMEOUT),
-            infinity_refused,
-            infinity_timed_out_at: None,
-            profile_url,
-        })
+        client_builder
+            .build()
+            .map_err(|e| ProviderError::ConnectionFailed(format!("HTTP client init failed: {e}")))
     }
 
     /// Normalize a collection (directory) path to the trailing-slash form.
@@ -4031,17 +4040,22 @@ impl StorageProvider for WebDavProvider {
         // user setting in the Filen app, independent of the scheme saved in
         // this profile. Reconcile the base URL against the live bridge so the
         // connect survives either choice, pinning the loopback IP to dodge
-        // local.webdav.filen.io DNS NODATA on Windows. The client already trusts
-        // the bridge's self-signed cert (verify_cert is false for the preset).
+        // local.webdav.filen.io DNS NODATA on Windows.
         if self.config.provider_id.as_deref() == Some("filen-desktop-webdav") {
-            let fixed = crate::local_bridge::reconcile_local_bridge_url(&self.config.url).await;
-            if fixed != self.config.url {
-                tracing::info!(
-                    "[WEBDAV] Filen bridge reconciled {} -> {}",
-                    self.config.url,
-                    fixed
-                );
-                self.config.url = fixed;
+            if let Some(live) = crate::local_bridge::detected_bridge_url(&self.config.url).await {
+                if live != self.config.url {
+                    tracing::info!(
+                        "[WEBDAV] Filen bridge reconciled to {}",
+                        crate::local_bridge::url_origin(&live)
+                    );
+                    self.config.url = live;
+                }
+                // Filen Desktop serves HTTPS with a self-signed certificate.
+                // Trusted only here: the Filen preset, a URL our own probe
+                // just found answering HTTPS, on the literal 127.0.0.1 it pins.
+                if self.config.verify_cert && self.config.url.starts_with("https://127.0.0.1:") {
+                    self.client = Self::http_client(&self.config, true)?;
+                }
             }
         }
         if super::mega_df::is_megacmd_webdav_provider_id(self.config.provider_id.as_deref()) {
@@ -9745,6 +9759,114 @@ mod recorded_propfind_fixture {
     }
 }
 
+/// The Filen Desktop WebDAV bridge serves HTTPS with a self-signed
+/// certificate. Before #389 choosing HTTPS for the preset turned certificate
+/// checks off; #389 replaced the choice with detection and left them on, so
+/// an HTTPS bridge failed its TLS handshake. The certificate is now accepted
+/// for that preset only, and only once our own probe has found it answering
+/// HTTPS on 127.0.0.1; every other WebDAV connection keeps checking.
+#[cfg(test)]
+mod filen_bridge_certificate_tests {
+    use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    const ROOT_207: &str = r#"<?xml version="1.0" encoding="utf-8"?>
+<D:multistatus xmlns:D="DAV:"><D:response><D:href>/</D:href><D:propstat><D:prop><D:resourcetype><D:collection/></D:resourcetype></D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat></D:response></D:multistatus>"#;
+
+    /// A self-signed HTTPS WebDAV root on a free loopback port.
+    async fn self_signed_bridge() -> (u16, tokio::task::JoinHandle<()>) {
+        let acceptor = super::collection_redirect_tests::tls_acceptor();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = tokio::spawn(async move {
+            while let Ok((stream, _)) = listener.accept().await {
+                let acceptor = acceptor.clone();
+                tokio::spawn(async move {
+                    let Ok(mut stream) = acceptor.accept(stream).await else {
+                        return;
+                    };
+                    let mut request = Vec::new();
+                    let mut chunk = [0u8; 4096];
+                    while !request.windows(4).any(|w| w == b"\r\n\r\n") {
+                        match stream.read(&mut chunk).await {
+                            Ok(0) | Err(_) => return,
+                            Ok(n) => request.extend_from_slice(&chunk[..n]),
+                        }
+                    }
+                    let reply = format!(
+                        "HTTP/1.1 207 Multi-Status\r\nContent-Type: application/xml\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{ROOT_207}",
+                        ROOT_207.len()
+                    );
+                    let _ = stream.write_all(reply.as_bytes()).await;
+                    let _ = stream.shutdown().await;
+                });
+            }
+        });
+        (port, server)
+    }
+
+    fn config(url: String, provider_id: Option<&str>) -> WebDavConfig {
+        WebDavConfig {
+            url,
+            username: "admin".to_string(),
+            password: secrecy::SecretString::from("admin".to_string()),
+            initial_path: None,
+            provider_id: provider_id.map(str::to_string),
+            verify_cert: true,
+            anonymous: false,
+        }
+    }
+
+    #[tokio::test]
+    async fn the_filen_bridge_over_https_connects_with_its_self_signed_certificate() {
+        let (port, server) = self_signed_bridge().await;
+        crate::local_bridge::alias_test_port(port, 1900);
+        // The preset's own host name, as the manifest stores it.
+        let mut provider = WebDavProvider::new(config(
+            format!("https://local.webdav.filen.io:{port}/"),
+            Some("filen-desktop-webdav"),
+        ))
+        .unwrap();
+        let outcome = provider.connect().await;
+        server.abort();
+        outcome.expect("the HTTPS bridge must connect");
+        assert_eq!(provider.config.url, format!("https://127.0.0.1:{port}/"));
+    }
+
+    #[tokio::test]
+    async fn a_custom_webdav_server_on_loopback_https_keeps_checking_its_certificate() {
+        let (port, server) = self_signed_bridge().await;
+        crate::local_bridge::alias_test_port(port, 1900);
+        let mut provider =
+            WebDavProvider::new(config(format!("https://127.0.0.1:{port}/"), None)).unwrap();
+        let outcome = provider.connect().await;
+        server.abort();
+        assert!(outcome.is_err(), "a self-signed certificate was accepted");
+    }
+
+    /// A LAN address, a custom port or a bridge that does not answer is never
+    /// probed as a bridge, so nothing in it can lift the certificate checks.
+    #[tokio::test]
+    async fn only_a_known_bridge_that_answers_is_detected() {
+        assert_eq!(
+            crate::local_bridge::detected_bridge_url("https://192.168.1.10:1900/").await,
+            None
+        );
+        assert_eq!(
+            crate::local_bridge::detected_bridge_url("https://127.0.0.1:1901/").await,
+            None
+        );
+        let closed = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = closed.local_addr().unwrap().port();
+        drop(closed);
+        crate::local_bridge::alias_test_port(port, 1900);
+        assert_eq!(
+            crate::local_bridge::detected_bridge_url(&format!("https://127.0.0.1:{port}/")).await,
+            None
+        );
+    }
+}
+
 /// A server behind a TLS-terminating proxy that `301`s every slash-less
 /// collection to an `http://` URL, reproduced on loopback: an HTTPS stub that
 /// serves the collection only in its trailing-slash form, and a plain-HTTP
@@ -9786,7 +9908,7 @@ mod collection_redirect_tests {
         downgraded_hits: Arc<AtomicUsize>,
     }
 
-    fn tls_acceptor() -> tokio_rustls::TlsAcceptor {
+    pub(super) fn tls_acceptor() -> tokio_rustls::TlsAcceptor {
         let certified = rcgen::generate_simple_self_signed(vec!["localhost".to_string()]).unwrap();
         let key = rustls_pki_types::PrivateKeyDer::Pkcs8(
             rustls_pki_types::PrivatePkcs8KeyDer::from(certified.signing_key.serialize_der()),

@@ -19462,14 +19462,14 @@ mod tests {
     }
 
     /// A Fetch runs before any connect, so it must find a Filen Desktop S3
-    /// bridge that serves plain HTTP while the preset starts from HTTPS. The
-    /// bridge port is fixed (1800), as only a known bridge is reconciled.
+    /// bridge that serves plain HTTP while the preset starts from HTTPS. Only
+    /// a known bridge is reconciled: the fixture's free port stands for 1800.
     #[tokio::test]
     async fn a_fetch_lists_the_buckets_of_a_bridge_on_plain_http() {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:1800")
-            .await
-            .expect("port 1800 is taken (a Filen Desktop S3 bridge running here?)");
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        crate::local_bridge::alias_test_port(port, 1800);
         let server = tokio::spawn(async move {
             loop {
                 let Ok((mut stream, _)) = listener.accept().await else {
@@ -19495,9 +19495,10 @@ mod tests {
         });
         let mut params = s3_params(None);
         params.provider_id = Some("filen-desktop-s3".to_string());
-        params.server = "https://127.0.0.1:1800".to_string();
-        params.port = Some(1800);
-        params.endpoint = Some("https://127.0.0.1:1800".to_string());
+        // The preset's endpoint as the connection manifest stores it.
+        params.server = format!("https://local.s3.filen.io:{port}");
+        params.port = Some(port);
+        params.endpoint = Some(format!("https://local.s3.filen.io:{port}"));
         params.region = Some("filen".to_string());
         params.username = "admin".to_string();
         params.password = "admin".to_string();

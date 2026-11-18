@@ -608,7 +608,11 @@ describe('a preset text names the controls its form renders', () => {
     beforeEach(() => { mocks.t = label; });
     afterEach(() => { mocks.t = identity; });
 
+    /** The connection parameters the form last handed up. */
+    let handedUp: ConnectionParams | undefined;
+
     async function renderPreset(provider: ProviderConfig) {
+        handedUp = undefined;
         function Harness() {
             const [params, setParams] = useState<ConnectionParams>({
                 protocol: provider.protocol as ProviderType,
@@ -622,7 +626,7 @@ describe('a preset text names the controls its form renders', () => {
                 connectionParams: params,
                 quickConnectDirs: dirs,
                 loading: false,
-                onConnectionParamsChange: setParams,
+                onConnectionParamsChange: (next: ConnectionParams) => { handedUp = next; setParams(next); },
                 onQuickConnectDirsChange: setDirs,
                 onConnect: vi.fn(),
             });
@@ -691,6 +695,8 @@ describe('a preset text names the controls its form renders', () => {
             endpoint.dispatchEvent(new Event('input', { bubbles: true }));
         });
         expect(endpoint.value).toBe('gateway.storjshare.io');
+        // The edit reached the connection, not only the input element.
+        expect(handedUp?.options?.endpoint).toBe('gateway.storjshare.io');
     });
 
     it('asks for the Filen S3 bucket with the Fetch button the form shows', async () => {

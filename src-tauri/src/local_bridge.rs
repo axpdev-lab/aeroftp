@@ -268,6 +268,13 @@ pub async fn bridge_status(kind: String, port: Option<u16>) -> Result<BridgeStat
 /// Deliberately NOT any local host: a LAN NAS on one of these ports is not a
 /// bridge and must keep its saved scheme untouched. #389.
 pub fn is_local_bridge_authority(host: &str, port: u16) -> bool {
+    // A test's fixture stands on a free port for a bridge's default one, so
+    // the test cannot collide with a real bridge running on this machine.
+    #[cfg(test)]
+    let port = match TEST_PORT_ALIAS.with(std::cell::Cell::get) {
+        Some((fixture, bridge)) if fixture == port => bridge,
+        _ => port,
+    };
     let loopback = host == "127.0.0.1" || host == "::1" || host.eq_ignore_ascii_case("localhost");
     match port {
         1800 => loopback || host.eq_ignore_ascii_case("local.s3.filen.io"),
@@ -275,6 +282,20 @@ pub fn is_local_bridge_authority(host: &str, port: u16) -> bool {
         4443 => loopback, // MEGAcmd local WebDAV bridge
         _ => false,
     }
+}
+
+#[cfg(test)]
+thread_local! {
+    static TEST_PORT_ALIAS: std::cell::Cell<Option<(u16, u16)>> = const { std::cell::Cell::new(None) };
+}
+
+/// For this test thread, `fixture` is read as the bridge port `bridge` by
+/// [`is_local_bridge_authority`]. A `#[tokio::test]` runs on its own
+/// current-thread runtime, so the alias reaches its whole connect and no
+/// other test.
+#[cfg(test)]
+pub(crate) fn alias_test_port(fixture: u16, bridge: u16) {
+    TEST_PORT_ALIAS.with(|alias| alias.set(Some((fixture, bridge))));
 }
 
 /// Probe a loopback bridge port to learn whether it speaks HTTPS or plain HTTP.
@@ -304,34 +325,42 @@ pub async fn detect_bridge_scheme(host: &str, port: u16) -> Option<&'static str>
     None
 }
 
-/// Reconcile a local mount-app bridge URL/endpoint against the live bridge:
-/// probe the actual scheme (the user's HTTP/HTTPS choice in the host app) and
-/// pin the loopback IP so `local.*.filen.io` DNS NODATA on Windows cannot break
-/// the connect. Returns the corrected `scheme://127.0.0.1:port<path>` (the path
-/// and query are preserved, e.g. MEGAcmd serves under a path), or the input
-/// unchanged when it is not a known bridge or the bridge does not answer (so the
-/// normal connect / auto-arm flow still runs). #389.
-pub async fn reconcile_local_bridge_url(url: &str) -> String {
-    let Some((_, rest)) = url.split_once("://") else {
-        return url.to_string();
-    };
+/// The live address of a local mount-app bridge: when `url` names a known
+/// bridge ([`is_local_bridge_authority`]) and the bridge answers, the probed
+/// scheme (the user's HTTP/HTTPS choice in the host app) on the pinned loopback
+/// IP, so `local.*.filen.io` DNS NODATA on Windows cannot break the connect:
+/// `scheme://127.0.0.1:port<path>`, path and query preserved (MEGAcmd serves
+/// under a path). `None` when it is not a known bridge or nothing answered.
+/// A `Some` is the only proof that our own probe reached the bridge on this
+/// machine, which is what a caller trusting the bridge's certificate needs.
+/// #389.
+pub async fn detected_bridge_url(url: &str) -> Option<String> {
+    let (_, rest) = url.split_once("://")?;
     // Split authority from the path/query tail (preserved verbatim).
     let authority_end = rest.find('/').unwrap_or(rest.len());
     let (authority, tail) = rest.split_at(authority_end);
-    let Some((host, port_str)) = authority.rsplit_once(':') else {
-        return url.to_string();
-    };
+    let (host, port_str) = authority.rsplit_once(':')?;
     let host = host.trim_start_matches('[').trim_end_matches(']');
-    let Ok(port) = port_str.parse::<u16>() else {
-        return url.to_string();
-    };
+    let port = port_str.parse::<u16>().ok()?;
     if !is_local_bridge_authority(host, port) {
-        return url.to_string();
+        return None;
     }
-    match detect_bridge_scheme("127.0.0.1", port).await {
-        Some(scheme) => format!("{scheme}://127.0.0.1:{port}{tail}"),
-        None => url.to_string(),
-    }
+    let scheme = detect_bridge_scheme("127.0.0.1", port).await?;
+    Some(format!("{scheme}://127.0.0.1:{port}{tail}"))
+}
+
+/// [`detected_bridge_url`], or the input unchanged when there is no live
+/// bridge behind it (so the normal connect / auto-arm flow still runs).
+pub async fn reconcile_local_bridge_url(url: &str) -> String {
+    detected_bridge_url(url)
+        .await
+        .unwrap_or_else(|| url.to_string())
+}
+
+/// The scheme, host and port of a URL, for a log line: a path or a query can
+/// carry a token, and the reconciled bridge URL keeps both.
+pub fn url_origin(url: &str) -> String {
+    url.split('/').take(3).collect::<Vec<_>>().join("/")
 }
 
 #[cfg(test)]

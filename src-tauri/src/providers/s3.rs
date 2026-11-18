@@ -457,7 +457,10 @@ pub(crate) async fn reconcile_bridge_endpoint(config: &mut S3Config) {
     if let Some(ep) = config.endpoint.clone() {
         let fixed = crate::local_bridge::reconcile_local_bridge_url(&ep).await;
         if fixed != ep {
-            tracing::info!("[S3] Filen bridge endpoint reconciled {} -> {}", ep, fixed);
+            tracing::info!(
+                "[S3] Filen bridge endpoint reconciled to {}",
+                crate::local_bridge::url_origin(&fixed)
+            );
             config.endpoint = Some(fixed);
         }
     }
