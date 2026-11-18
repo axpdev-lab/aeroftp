@@ -1886,43 +1886,93 @@ test('third-party license files: reproduced as notices, a package\'s own only wh
   }
 });
 
-test('AppImage: every bundled library ships its package\'s copyright file, and one without it fails the build', { skip: process.platform === 'win32' }, () => {
+test('AppImage: every bundled library ships the copyright file of the package that installed its file, and one without it fails the build', { skip: process.platform === 'win32' }, () => {
   const script = path.join(ROOT, 'src-tauri/scripts/bundle-appimage-lib-notices.sh');
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'appimage-notices-fixture-'));
   const write = (rel, content) => {
     fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
     fs.writeFileSync(path.join(tmpDir, rel), content);
   };
+  const A = '/usr/lib/x86_64-linux-gnu';
+  // A dpkg database: the files each package installed, and its version.
+  const packages = {
+    'libwebkit2gtk-4.1-0': [`${A}/libwebkit2gtk-4.1.so.0`],
+    'libgtk-3-0': [`${A}/libgtk-3.so.0`, `${A}/gtk-3.0/3.0.0/immodules/im-xim.so`],
+    // Two packages install a libfoo.so.1: the loader's one in the library
+    // folder, and a plugin of the same name in its own folder.
+    'libfoo1': [`${A}/libfoo.so.1`],
+    'foo-plugins': [`${A}/foo/plugins/libfoo.so.1`],
+    // A copy under /opt is no library folder linuxdeploy copies from.
+    'some-app': ['/opt/some-app/libgtk-3.so.0'],
+  };
+  const dpkg = (pkgs) => {
+    fs.rmSync(path.join(tmpDir, 'dpkg'), { recursive: true, force: true });
+    for (const [pkg, files] of Object.entries(pkgs)) write(`dpkg/info/${pkg}:amd64.list`, `/.\n/usr\n${files.join('\n')}\n`);
+    write('dpkg/status', Object.keys(pkgs).map((pkg) => `Package: ${pkg}\nStatus: install ok installed\nArchitecture: amd64\nVersion: 1.${pkg.length}-0ubuntu1\n`).join('\n'));
+  };
+  const ldcache = (names) => write('ldcache', `${names.length} libs found in cache \`/etc/ld.so.cache'\n${names.map((n) => `\t${n} (libc6,x86-64) => /lib/x86_64-linux-gnu/${n}\n`).join('')}`);
   try {
     write('app/usr/lib/fallback/libwebkit2gtk-4.1.so.0', 'elf');
     write('app/usr/lib/fallback/libgtk-3.so.0', 'elf');
     write('app/usr/lib/gtk-3.0/3.0.0/immodules/im-xim.so', 'elf');
+    write('app/usr/lib/fallback/libfoo.so.1', 'elf');
+    write('app/usr/lib/foo/plugins/libfoo.so.1', 'elf');
     write('app/usr/lib/aeroftp/libown.so', 'ours');
-    write('doc/libwebkit2gtk-4.1-0/copyright', 'WebKitGTK terms: LGPL-2.1 and BSD');
-    write('doc/libgtk-3-0/copyright', 'GTK terms: LGPL-2.1-or-later');
-    write('owners', 'libwebkit2gtk-4.1.so.0 libwebkit2gtk-4.1-0\nlibgtk-3.so.0 libgtk-3-0\nim-xim.so libgtk-3-0\n');
+    for (const pkg of Object.keys(packages)) write(`doc/${pkg}/copyright`, `${pkg} terms`);
+    dpkg(packages);
+    ldcache(['libwebkit2gtk-4.1.so.0', 'libgtk-3.so.0', 'libfoo.so.1']);
     const run = () =>
       execFileSync('bash', [script, path.join(tmpDir, 'app')], {
-        env: { ...process.env, AEROFTP_LIB_OWNERS: path.join(tmpDir, 'owners'), AEROFTP_DOC_ROOT: path.join(tmpDir, 'doc') },
+        env: { ...process.env, AEROFTP_DPKG_ADMINDIR: path.join(tmpDir, 'dpkg'), AEROFTP_LDCONFIG_P: path.join(tmpDir, 'ldcache'), AEROFTP_DOC_ROOT: path.join(tmpDir, 'doc') },
         stdio: 'pipe',
         encoding: 'utf8',
       });
+    const fails = (pattern) => assert.throws(run, (e) => pattern.test(String(e.stderr)) || assert.fail(String(e.stderr)));
     run();
     const doc = path.join(tmpDir, 'app/usr/share/doc');
-    assert.strictEqual(fs.readFileSync(path.join(doc, 'libwebkit2gtk-4.1-0/copyright'), 'utf8'), 'WebKitGTK terms: LGPL-2.1 and BSD');
-    assert.strictEqual(fs.readFileSync(path.join(doc, 'libgtk-3-0/copyright'), 'utf8'), 'GTK terms: LGPL-2.1-or-later');
+    for (const pkg of ['libwebkit2gtk-4.1-0', 'libgtk-3-0', 'libfoo1', 'foo-plugins']) assert.strictEqual(fs.readFileSync(path.join(doc, pkg, 'copyright'), 'utf8'), `${pkg} terms`);
+    assert.ok(!fs.existsSync(path.join(doc, 'some-app')));
     const list = fs.readFileSync(path.join(doc, 'BUNDLED-LIBRARIES.txt'), 'utf8');
-    assert.match(list, /\nusr\/lib\/fallback\/libwebkit2gtk-4\.1\.so\.0 libwebkit2gtk-4\.1-0 test\n/);
-    assert.match(list, /\nusr\/lib\/gtk-3\.0\/3\.0\.0\/immodules\/im-xim\.so libgtk-3-0 test\n/);
+    for (const line of [
+      'usr/lib/fallback/libwebkit2gtk-4.1.so.0 libwebkit2gtk-4.1-0 1.19-0ubuntu1',
+      'usr/lib/fallback/libgtk-3.so.0 libgtk-3-0 1.10-0ubuntu1',
+      'usr/lib/gtk-3.0/3.0.0/immodules/im-xim.so libgtk-3-0 1.10-0ubuntu1',
+      // The same name, each to the package that installed the file it was copied from.
+      'usr/lib/fallback/libfoo.so.1 libfoo1 1.7-0ubuntu1',
+      'usr/lib/foo/plugins/libfoo.so.1 foo-plugins 1.11-0ubuntu1',
+    ]) {
+      assert.ok(list.includes(`\n${line}\n`), line);
+    }
     assert.doesNotMatch(list, /libown/, 'AeroFTP\'s own folder is not a bundled system library');
-    // A library no package installed, or whose package ships no copyright
-    // file, fails the build and is named: nothing is guessed.
+    // A name more than one package installs, which neither its path nor the
+    // loader resolves to one of them, fails and names the candidates.
+    ldcache(['libwebkit2gtk-4.1.so.0', 'libgtk-3.so.0']);
+    fails(/fallback\/libfoo\.so\.1: installed under that name by more than one package \(foo-plugins libfoo1\)/);
+    ldcache(['libwebkit2gtk-4.1.so.0', 'libgtk-3.so.0', 'libfoo.so.1']);
+    // A library no package installed, a package without its copyright file
+    // or its version fails the build and is named: nothing is guessed.
     write('app/usr/lib/fallback/libsoup-3.0.so.0', 'elf');
-    assert.throws(run, (e) => /libsoup-3\.0\.so\.0: no package installed it/.test(String(e.stderr)));
-    write('owners', 'libwebkit2gtk-4.1.so.0 libwebkit2gtk-4.1-0\nlibgtk-3.so.0 libgtk-3-0\nim-xim.so libgtk-3-0\nlibsoup-3.0.so.0 libsoup-3.0-0\n');
-    assert.throws(run, (e) => /libsoup-3\.0\.so\.0: package libsoup-3\.0-0 ships no .*libsoup-3\.0-0\/copyright/.test(String(e.stderr)));
+    fails(/fallback\/libsoup-3\.0\.so\.0: no package installed it/);
+    dpkg({ ...packages, 'libsoup-3.0-0': [`${A}/libsoup-3.0.so.0`] });
+    fails(/fallback\/libsoup-3\.0\.so\.0: package libsoup-3\.0-0 ships no .*libsoup-3\.0-0\/copyright/);
     write('doc/libsoup-3.0-0/copyright', 'libsoup terms');
     run();
+    const status = fs.readFileSync(path.join(tmpDir, 'dpkg/status'), 'utf8');
+    write('dpkg/status', status.split('\n\n').filter((s) => !s.includes('Package: libsoup-3.0-0\n')).join('\n\n'));
+    fails(/fallback\/libsoup-3\.0\.so\.0: package libsoup-3\.0-0 has no version/);
+    dpkg({ ...packages, 'libsoup-3.0-0': [`${A}/libsoup-3.0.so.0`] });
+    run();
+    // A folder find cannot read fails the build instead of shipping the
+    // libraries it did list (as root every folder is readable).
+    if (process.getuid?.() !== 0) {
+      write('app/usr/lib/locked/libx.so', 'elf');
+      fs.chmodSync(path.join(tmpDir, 'app/usr/lib/locked'), 0o000);
+      try {
+        fails(/could not list every library under/);
+      } finally {
+        fs.chmodSync(path.join(tmpDir, 'app/usr/lib/locked'), 0o755);
+      }
+    }
     // The release workflow runs it on the AppDir it packs.
     const workflow = fs.readFileSync(path.join(ROOT, '.github/workflows/build.yml'), 'utf8');
     assert.match(workflow, /\n {10}"\$GITHUB_WORKSPACE\/src-tauri\/scripts\/patch-appimage-lib-fallback\.sh" "\$\(pwd\)"\n[\s\S]*?\n {10}"\$GITHUB_WORKSPACE\/src-tauri\/scripts\/bundle-appimage-lib-notices\.sh" "\$\(pwd\)"\n[\s\S]*?appimagetool/);
