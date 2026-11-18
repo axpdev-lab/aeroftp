@@ -1224,6 +1224,18 @@ test('vendored license files: they keep their text but neither cover the package
   }
 });
 
+test('standard texts: the fallback is described as the license terms, with the attribution listed separately', () => {
+  const comp = { name: 'bare-mit', version: '1.0.0', license: 'MIT', source: 'npm', licenseFiles: [], noticeFiles: [], authors: ['Bare Author'] };
+  const md = generateNoticesMarkdown([comp], []);
+  const section = md.slice(md.indexOf('## Standard License Texts for Dependencies that Need Them'));
+  assert.match(section, /the standard terms of each applicable license are provided below:\nthey are the license terms, not a copy of any component's license file, and the attribution of each component is listed separately with it\./);
+  assert.doesNotMatch(md, /verbatim text/);
+  // The attribution goes with the component, the terms carry none of their own.
+  const mit = section.slice(section.indexOf('### Standard License: MIT'));
+  assert.ok(mit.indexOf('`bare-mit@1.0.0`') !== -1 && mit.indexOf('Bare Author') < mit.indexOf('Permission is hereby granted'), mit.slice(0, 400));
+  assert.doesNotMatch(mit.slice(mit.indexOf('Permission is hereby granted')), /Copyright \(c\) <year>/);
+});
+
 test('standard texts: one render reads the SPDX table once, for the header classification, the standard texts and the bundled code', () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'spdx-once-fixture-'));
   const original = fs.readFileSync;

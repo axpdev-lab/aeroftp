@@ -2580,9 +2580,9 @@ export function renderNotices(
     lines.push('');
     lines.push('The following dependencies need one or more standard license texts: their manifests declare the');
     lines.push('licenses, and their package files do not include the text of each of them.');
-    lines.push('In accordance with licensing requirements, the standard verbatim text for each applicable license is');
+    lines.push('In accordance with licensing requirements, the standard terms of each applicable license are provided below:');
     lines.push(
-      'provided below. Authors are listed as declared in package manifests or reviewed attributions; copyright notices, where available, reproduce upstream repository declarations.'
+      'they are the license terms, not a copy of any component\'s license file, and the attribution of each component is listed separately with it. Authors are listed as declared in package manifests or reviewed attributions; copyright notices, where available, reproduce upstream repository declarations.'
     );
     lines.push('');
 
