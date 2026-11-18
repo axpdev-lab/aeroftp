@@ -47,12 +47,25 @@ import {
 // from a fresh generation of the same tree (check:licenses runs first in CI,
 // so the two are equal). Checks of the committed file read the text the
 // notices write: content minus exactly those blocks.
+// The real dependency tree, collected once for the whole suite: the Cargo
+// metadata and npm walks are the slow part, and every real-tree check reads
+// the same inventory.
+let realTreeInventory;
+function realTree() {
+  if (!realTreeInventory) realTreeInventory = { cargo: collectCargoDependencies(), npm: collectNpmDependencies() };
+  return realTreeInventory;
+}
 let committedNotices;
 function committedNoticesWithVerbatim() {
   if (!committedNotices) {
     const content = fs.readFileSync(path.join(ROOT, 'THIRD-PARTY-NOTICES.md'), 'utf8').replace(/\r\n/g, '\n');
-    const { output, verbatimBlocks } = renderNotices(collectCargoDependencies(), collectNpmDependencies());
+    const { output, verbatimBlocks, documents } = renderNotices(realTree().cargo, realTree().npm);
     assert.strictEqual(content, output, 'THIRD-PARTY-NOTICES.md is up to date (npm run gen:licenses)');
+    for (const doc of documents) {
+      const file = path.join(ROOT, doc.file);
+      assert.ok(fs.existsSync(file), `${doc.file} exists (npm run gen:licenses)`);
+      assert.strictEqual(fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n'), doc.content, `${doc.file} is up to date (npm run gen:licenses)`);
+    }
     let generated = content;
     for (const block of verbatimBlocks) generated = generated.split(block).join('');
     committedNotices = { content, verbatimBlocks, generated };
@@ -1465,15 +1478,17 @@ test('bundled code: a header under the declared license keeps its holder beside 
       fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
       fs.writeFileSync(path.join(tmpDir, rel), content);
     };
-    const mit = 'MIT License\n\nCopyright (c) 2020 Wrapper Author\n\nPermission is hereby granted, free of charge.';
-    write('LICENSE', mit);
+    // The package ships the whole MIT text, so it covers the header: a stub
+    // would get the standard text added and hide a second copy.
+    write('LICENSE', shippedLicense('MIT License\n\nCopyright (c) 2020 Wrapper Author', 'MIT'));
     write('lib/vendor.js', '/*\n * Copyright (c) 2018 Vendor Author\n * SPDX-License-Identifier: MIT\n */\n');
     const comp = { name: 'declared-pkg', version: '1.0.0', license: 'MIT', source: 'npm', packageDir: tmpDir, authors: ['Wrapper Author'], ...readPackageFiles(tmpDir, 'declared-pkg@1.0.0') };
     const md = generateNoticesMarkdown([comp], []);
     assert.ok(md.includes('Copyright (c) 2020 Wrapper Author'));
     assert.match(md, /\n {2}- Copyright \(c\) 2018 Vendor Author \(in a source header under MIT\)\n/);
     assert.doesNotMatch(md, /### Bundled Code: MIT/);
-    assert.strictEqual(md.split('Permission is hereby granted, free of charge.').length - 1, 1, 'the MIT text appears once');
+    assert.doesNotMatch(md, /### Standard License: MIT/);
+    assert.strictEqual(md.split('Permission is hereby granted, free of charge, to any\nperson obtaining a copy').length - 1, 1, 'the MIT grant appears once');
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
@@ -2248,15 +2263,14 @@ test('writing the notices: a failed write keeps the previous file whole and leav
   }
 });
 
-test('THIRD-PARTY-NOTICES.md exists and is up to date with lockfiles', () => {
-  const noticesFile = path.join(ROOT, 'THIRD-PARTY-NOTICES.md');
-  assert.strictEqual(fs.existsSync(noticesFile), true, 'THIRD-PARTY-NOTICES.md must exist in repo root');
-
-  const out = execFileSync('npx', ['tsx', 'scripts/gen-third-party-notices.ts', '--check'], {
-    cwd: ROOT,
-    encoding: 'utf8',
-  });
-  assert.match(out, /OK: .* is up to date \(\d+ Cargo, \d+ npm\)/);
+test('THIRD-PARTY-NOTICES.md and the exception pages exist and are up to date with the lockfiles', () => {
+  // One in-process generation from the suite's inventory; the CLI (--check,
+  // its exit code and its diff) runs as npm run check:licenses before this
+  // suite in CI.
+  assert.strictEqual(fs.existsSync(path.join(ROOT, 'THIRD-PARTY-NOTICES.md')), true, 'THIRD-PARTY-NOTICES.md must exist in repo root');
+  const { content } = committedNoticesWithVerbatim();
+  assert.match(content, new RegExp(`- \\*\\*Rust \\(Cargo\\) Production Crates:\\*\\* ${realTree().cargo.length}\\n`));
+  assert.match(content, new RegExp(`- \\*\\*Node\\.js / Web \\(npm\\) Production Packages:\\*\\* ${realTree().npm.length}\\n`));
 });
 
 test('check:licenses diff reporting: prints unified diff with line numbers on mismatch', () => {
@@ -2305,6 +2319,35 @@ test('licensing exceptions: generates exception section for unrar_sys with Rosha
   assert.match(content, /only extracts RAR archives and never creates them/);
   assert.match(content, /not GPL-compatible/);
   assert.match(content, /\[Notice Entry \d+\]\(#exception-unrar-sys\)/);
+});
+
+test('licensing exceptions: each exception gets a standalone page with the text of its notice entry', () => {
+  const nonFreeText = 'Nonfree terms, line one.\nThis library cannot be used to develop RAR software.\n';
+  const comp = {
+    name: 'nonfree-crate',
+    version: '1.0.0',
+    license: 'MIT',
+    source: 'cargo',
+    licenseFiles: [
+      { filename: 'LICENSE', content: shippedLicense('MIT License\n\nCopyright (c) 2020 Nonfree Author', 'MIT') },
+      { filename: 'vendor/x/license.txt', content: nonFreeText, vendored: true },
+    ],
+    noticeFiles: [],
+    authors: ['Nonfree Author'],
+  };
+  const exception = { crateName: 'nonfree-crate', version: '1.0.0', author: 'Nonfree Author', licenseName: 'Nonfree License', sourceFile: 'vendor/x/license.txt', document: 'docs/NONFREE-LICENSE.md', facts: 'The nonfree facts.' };
+  const { output, documents } = renderNotices([comp], [], SPDX_STANDARD_LICENSES_FILE, [exception]);
+  assert.deepStrictEqual(documents.map((d) => d.file), ['docs/NONFREE-LICENSE.md']);
+  const page = documents[0].content;
+  assert.ok(page.startsWith('# Nonfree License\n'));
+  assert.ok(page.includes('The nonfree facts.'));
+  assert.ok(page.includes('`nonfree-crate@1.0.0` ships in `vendor/x/license.txt`'));
+  assert.ok(page.includes('(../THIRD-PARTY-NOTICES.md#exception-nonfree-crate)'));
+  assert.strictEqual(fencedBlockAfter(page, '# Nonfree License'), fencedBlockAfter(output, '<a id="exception-nonfree-crate"></a>'));
+  assert.strictEqual(fencedBlockAfter(page, '# Nonfree License'), nonFreeText.replace(/\n$/, ''));
+  // Without a registered exception there is no page.
+  const plain = { ...comp, licenseFiles: [comp.licenseFiles[0]] };
+  assert.deepStrictEqual(renderNotices([plain], [], SPDX_STANDARD_LICENSES_FILE, []).documents, []);
 });
 
 test('licensing exceptions: fails fast if declared exception crate is missing from tree', () => {
@@ -2533,31 +2576,67 @@ test('fallback attributions: all 33 pinned entries declare a non-empty source an
   }
 });
 
-test('README.md notice links resolve to valid anchors in THIRD-PARTY-NOTICES.md', () => {
+// The fenced blocks of a Markdown file, the fence as long as the longest run
+// of backticks it encloses needs.
+const FENCED_BLOCK = /(?:^|\n)(`{3,})[^\n]*\n[\s\S]*?\n\1(?:\n|$)/g;
+// The ids an anchor tag gives outside fenced text: a license text that quotes
+// `<a id="x"></a>` in a code block is no destination.
+const anchorIdsOutsideFences = (md) => new Set(Array.from(md.replace(FENCED_BLOCK, '\n').matchAll(/<a id="([^"]+)"><\/a>/g), (m) => m[1]));
+// The links of a Markdown file outside fenced text, by target.
+const linksOutsideFences = (md) => Array.from(md.replace(FENCED_BLOCK, '\n').matchAll(/\[[^\]]+\]\(([^)\s]+)\)/g), (m) => m[1]);
+// The first fenced block after an anchor, its text without the fence.
+const fencedBlockAfter = (md, anchorTag) => {
+  const at = md.indexOf(anchorTag);
+  assert.ok(at !== -1, `${anchorTag} must be present`);
+  const m = /\n(`{3,})text\n([\s\S]*?)\n\1\n/.exec(md.slice(at));
+  assert.ok(m, `a fenced text block must follow ${anchorTag}`);
+  return m[2];
+};
+
+test('anchor destinations: an anchor counts only outside fenced text, a quoted one does not', () => {
+  const quotedOnly = 'Intro\n\n```text\nA license that quotes <a id="exception-x"></a> in its text.\n```\n';
+  assert.strictEqual(anchorIdsOutsideFences(quotedOnly).has('exception-x'), false, 'a quoted anchor is no destination');
+  const real = '<a id="exception-x"></a>\n\n### Notice Entry 1\n\n```text\nlicense text\n```\n';
+  assert.strictEqual(anchorIdsOutsideFences(real).has('exception-x'), true);
+  // A longer fence keeps a shorter one inside it as text.
+  const nested = '````text\n```\n<a id="inner"></a>\n```\n````\n<a id="outer"></a>\n';
+  assert.deepStrictEqual([...anchorIdsOutsideFences(nested)], ['outer']);
+  // A link inside fenced text is no link.
+  assert.deepStrictEqual(linksOutsideFences('```\n[x](THIRD-PARTY-NOTICES.md#a)\n```\n[y](docs/b.md)\n'), ['docs/b.md']);
+});
+
+test('README.md notice links resolve outside fenced text, and the UnRAR terms have a page GitHub displays', () => {
   const readmeContent = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8');
   const noticesContent = fs.readFileSync(path.join(ROOT, 'THIRD-PARTY-NOTICES.md'), 'utf8');
+  const destinations = anchorIdsOutsideFences(noticesContent);
+  const links = linksOutsideFences(readmeContent);
 
-  const linkRegex = /\[([^\]]+)\]\(THIRD-PARTY-NOTICES\.md#([a-zA-Z0-9_-]+)\)/g;
-  const matches = Array.from(readmeContent.matchAll(linkRegex));
-  assert.ok(matches.length > 0, 'README.md must contain at least one link to THIRD-PARTY-NOTICES.md anchor');
-
-  for (const match of matches) {
-    const anchor = match[2];
-    const anchorTag = `<a id="${anchor}"></a>`;
-    assert.ok(
-      noticesContent.includes(anchorTag),
-      `Anchor #${anchor} linked in README.md must be present in THIRD-PARTY-NOTICES.md as ${anchorTag}`
-    );
+  const anchors = links.filter((l) => l.startsWith('THIRD-PARTY-NOTICES.md#')).map((l) => l.slice('THIRD-PARTY-NOTICES.md#'.length));
+  assert.ok(anchors.length > 0, 'README.md must contain at least one link to a THIRD-PARTY-NOTICES.md anchor');
+  for (const anchor of anchors) {
+    assert.ok(destinations.has(anchor), `Anchor #${anchor} linked in README.md must be an anchor of THIRD-PARTY-NOTICES.md outside fenced text`);
   }
 
-  // Specifically verify the UnRAR license is present and linked
-  assert.ok(readmeContent.includes('THIRD-PARTY-NOTICES.md#exception-unrar-sys'));
-  assert.ok(noticesContent.includes('<a id="exception-unrar-sys"></a>'));
+  // GitHub does not display the notices (over 2 MB): each licensing exception
+  // has its own page, linked from the README, with the same text as the
+  // packaged notice.
+  assert.ok(noticesContent.length > 1024 * 1024, 'the notices are too large for GitHub to display, which is why the page exists');
+  for (const exc of KNOWN_NON_FREE_EXCEPTIONS) {
+    assert.ok(links.includes(exc.document), `README.md must link to ${exc.document}`);
+    const page = fs.readFileSync(path.join(ROOT, exc.document), 'utf8');
+    assert.ok(page.length < 64 * 1024, `${exc.document} stays small enough for GitHub to display`);
+    assert.ok(page.startsWith(`# ${exc.licenseName}\n`));
+    const id = `exception-${exc.crateName.replace(/_/g, '-')}`;
+    const anchorTag = `<a id="${id}"></a>`;
+    assert.ok(destinations.has(id), `${anchorTag} must be outside fenced text`);
+    assert.strictEqual(fencedBlockAfter(page, `# ${exc.licenseName}`), fencedBlockAfter(noticesContent, anchorTag), `${exc.document} must carry the packaged ${exc.licenseName} text`);
+  }
+  assert.ok(links.includes('docs/UNRAR-LICENSE.md'));
 });
 
 test('THIRD-PARTY-NOTICES.md: every anchor id in the generated file is unique', () => {
   const noticesContent = fs.readFileSync(path.join(ROOT, 'THIRD-PARTY-NOTICES.md'), 'utf8');
-  const proseOutsideCodeBlocks = noticesContent.replace(/(?:^|\n)(`{3,})[^\n]*\n[\s\S]*?\n\1(?:\n|$)/g, '\n');
+  const proseOutsideCodeBlocks = noticesContent.replace(FENCED_BLOCK, '\n');
   const idMatches = Array.from(proseOutsideCodeBlocks.matchAll(/<a id="([^"]+)">/g)).map((m) => m[1]);
   assert.ok(idMatches.length > 0, 'Generated notices must contain anchors');
 
@@ -2823,8 +2902,7 @@ test('findPackageCopyrightNotices: root AUTHORS copyright lines are extracted as
 
 test('property: no component marked with "No copyright notice is shipped" has copyright lines in its package sources', () => {
   const noticesContent = fs.readFileSync(path.join(ROOT, 'THIRD-PARTY-NOTICES.md'), 'utf8');
-  const cargo = collectCargoDependencies();
-  const npm = collectNpmDependencies();
+  const { cargo, npm } = realTree();
   const allComponents = [...cargo, ...npm];
 
   const copyrightPattern = /(?:copyright:?\s*(?:\([cC]\)|©|\d{4})|\([cC]\)\s*\d{4}|©\s*\d{4}|SPDX-FileCopyrightText:\s*\S)\s*[A-Za-z0-9]/i;

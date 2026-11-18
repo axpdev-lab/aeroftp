@@ -866,7 +866,7 @@ Contributions are welcome. Report bugs in [Issues](https://github.com/axpdev-lab
 
 GPL-3.0-or-later - See [LICENSE](LICENSE) for details.
 
-RAR extraction uses the UnRAR source code by Alexander Roshal (through the `unrar` crate, vendored `unrar_sys`), distributed under its own license, which allows it to be used and redistributed but forbids using it to re-create the RAR compression algorithm. AeroFTP only extracts RAR archives and never creates them. The UnRAR license is not a free-software license, and it is not GPL-compatible. For the full text of the UnRAR license, see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md#exception-unrar-sys).
+RAR extraction uses the UnRAR source code by Alexander Roshal (through the `unrar` crate, vendored `unrar_sys`), distributed under its own license, which allows it to be used and redistributed but forbids using it to re-create the RAR compression algorithm. AeroFTP only extracts RAR archives and never creates them. The UnRAR license is not a free-software license, and it is not GPL-compatible. For the full text of the UnRAR license, see [docs/UNRAR-LICENSE.md](docs/UNRAR-LICENSE.md); it is also reproduced in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md#exception-unrar-sys), the notices the packages ship.
 
 ---
 
