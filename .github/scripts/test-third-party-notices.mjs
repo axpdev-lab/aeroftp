@@ -2606,6 +2606,13 @@ test('release workflow: every publish job requires a job that checks the notices
   }
   const runsCheck = (id) => /\n {8}run: npm run check:licenses\n/.test(jobs.get(id) ?? '');
   assert.ok(runsCheck('linux-validate'), 'linux-validate runs npm run check:licenses');
+  // About's online fallback opens the notices at the tag of the app version
+  // (src/utils/thirdPartyLicenses.ts): on a tag run the same job requires the
+  // version sites to equal the tag, so that tag is the one whose notices the
+  // check above verified.
+  assert.match(jobs.get('linux-validate'), /\n {12}node scripts\/check-version-sites\.mjs --tag "\$GITHUB_REF_NAME"\n/);
+  const tsSource = fs.readFileSync(path.join(ROOT, 'src/utils/thirdPartyLicenses.ts'), 'utf8');
+  assert.match(tsSource, /GITHUB_NOTICES_URL = `https:\/\/raw\.githubusercontent\.com\/axpdev-lab\/aeroftp\/v\$\{packageJson\.version\}\/THIRD-PARTY-NOTICES\.md`;/);
   // Publishing jobs: the ones that publish on a tag.
   const publishing = [...jobs.keys()].filter((id) => /^(?:publish-|build-snap$)/.test(id));
   assert.deepStrictEqual(publishing.sort(), ['build-snap', 'publish-flatpark', 'publish-github-release', 'publish-winget']);

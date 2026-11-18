@@ -2,12 +2,15 @@
 // Copyright (c) 2024-2026 axpnet (see AI-TRANSPARENCY.md)
 
 import { invoke } from '@tauri-apps/api/core';
-import { executableDir, resolveResource } from '@tauri-apps/api/path';
+import { resolveResource, resourceDir } from '@tauri-apps/api/path';
 import packageJson from '../../package.json';
 import { openUrl } from './openUrl';
 
 // The raw file at the release tag: GitHub's page for the file shows no text at
-// this size, only a "View raw" link.
+// this size, only a "View raw" link. The tag is the ref of the published
+// build: on a tag run, build.yml's linux-validate requires every version site
+// to equal the tag (check-version-sites --tag) and the tag's notices to match
+// its lockfiles (check:licenses), and every publish job requires that job.
 export const GITHUB_NOTICES_URL = `https://raw.githubusercontent.com/axpdev-lab/aeroftp/v${packageJson.version}/THIRD-PARTY-NOTICES.md`;
 
 /**
@@ -24,12 +27,16 @@ export const LINUX_NOTICE_PATHS = [
  * Returns candidate paths for THIRD-PARTY-NOTICES.md.
  * No relative paths are included to avoid CWD-dependent resolution.
  * First candidate is the Tauri-resolved bundled resource ('../THIRD-PARTY-NOTICES.md').
- * For portable installations (e.g. Windows portable ZIP), checks beside the executable.
+ * The Windows portable ZIP ships the file beside AeroFTP.exe: Tauri's resource
+ * directory on Windows is the running executable's own folder (tauri-utils
+ * resource_dir returns current_exe().parent() there), so the file is looked
+ * up at its root. Tauri's executableDir is not that folder: it is unsupported
+ * on Windows and the XDG bin directory on Linux.
  * Subsequent candidates are standard Linux package install locations.
  */
 export async function getCandidateNoticePaths(
   resourceResolver: (path: string) => Promise<string> = resolveResource,
-  executableDirGetter: () => Promise<string> = executableDir
+  resourceDirGetter: () => Promise<string> = resourceDir
 ): Promise<string[]> {
   const candidates: string[] = [];
   try {
@@ -41,18 +48,16 @@ export async function getCandidateNoticePaths(
     // Resource resolver error or running outside packaged Tauri app
   }
   try {
-    const exeDir = await executableDirGetter();
-    if (exeDir && typeof exeDir === 'string') {
-      const sep = exeDir.includes('\\') ? '\\' : '/';
-      const exeNoticePath = exeDir.endsWith(sep)
-        ? `${exeDir}THIRD-PARTY-NOTICES.md`
-        : `${exeDir}${sep}THIRD-PARTY-NOTICES.md`;
-      if (!candidates.includes(exeNoticePath)) {
-        candidates.push(exeNoticePath);
+    const dir = await resourceDirGetter();
+    if (dir && typeof dir === 'string') {
+      const sep = dir.includes('\\') ? '\\' : '/';
+      const besideExe = dir.endsWith(sep) ? `${dir}THIRD-PARTY-NOTICES.md` : `${dir}${sep}THIRD-PARTY-NOTICES.md`;
+      if (!candidates.includes(besideExe)) {
+        candidates.push(besideExe);
       }
     }
   } catch {
-    // Executable dir error or web environment
+    // Resource dir error or web environment
   }
   candidates.push(...LINUX_NOTICE_PATHS);
   return candidates;
@@ -85,8 +90,9 @@ export async function openThirdPartyLicenses(
   try {
     const opened = await urlOpener(GITHUB_NOTICES_URL);
     return { success: opened !== false, target: GITHUB_NOTICES_URL };
-  } catch (err) {
-    console.error('Failed to open third-party licenses:', err);
+  } catch {
+    // The rejection is not logged: like openUrl's, it can carry the URL.
+    console.error('Failed to open third-party licenses');
     return { success: false, target: GITHUB_NOTICES_URL };
   }
 }
