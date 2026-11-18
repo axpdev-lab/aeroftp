@@ -1092,6 +1092,35 @@ test('bundled code: a header license with no standard text fails, a declared or 
   }
 });
 
+test('comment closers: a line comment keeps a closer in its text, a block comment still ends at its closer', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'comment-closer-fixture-'));
+  try {
+    const write = (rel, content) => {
+      fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, rel), content);
+    };
+    write('LICENSE', 'MIT License\n\nCopyright (c) 2020 Wrapper Author\n\nPermission is hereby granted.');
+    const lineTerms = 'Redistribution and use of the files under src/*/generated are permitted provided that this notice is kept.';
+    write('gen/line.rs', `// Copyright (c) 2019 Line Vendor\n// ${lineTerms}\n// SPDX-License-Identifier: BSD-2-Clause\nfn x() {}\n`);
+    const blockTerms = 'Redistribution and use in source and binary forms are permitted provided that this notice is kept.';
+    write('gen/block.c', `/* Copyright (c) 2018 Block Vendor\n * ${blockTerms}\n * SPDX-License-Identifier: BSD-2-Clause */ int y;\n`);
+    // The package scan reads a line comment to its end too.
+    write('src/n.rs', '// Copyright (c) 2017 Path Holder, for src/*/gen\n');
+    // A preprocessor line is code, not a line comment: its block comment still ends at the closer.
+    write('src/d.h', '#define X 1 /* Copyright (c) 2016 Define Holder */\n');
+    const comp = { name: 'closer-pkg', version: '1.0.0', license: 'MIT', source: 'cargo', packageDir: tmpDir, authors: ['Wrapper Author'], ...readPackageFiles(tmpDir, 'closer-pkg@1.0.0') };
+    const known = new Set(Object.keys(JSON.parse(fs.readFileSync(SPDX_STANDARD_LICENSES_FILE, 'utf8'))));
+    const texts = findBundledCodeUnderOtherLicenses(comp, known).flatMap((b) => b.headers.map((h) => h.text));
+    assert.ok(texts.includes(`Copyright (c) 2019 Line Vendor\n${lineTerms}\nSPDX-License-Identifier: BSD-2-Clause`), 'the // header keeps src/*/generated');
+    assert.ok(texts.includes(`Copyright (c) 2018 Block Vendor\n${blockTerms}\nSPDX-License-Identifier: BSD-2-Clause`), 'the C block ends at its closer, without the code after it');
+    const scanned = findPackageCopyrightNotices(tmpDir).map((n) => n.notice);
+    assert.ok(scanned.includes('Copyright (c) 2017 Path Holder, for src/*/gen'), 'the // notice keeps src/*/gen');
+    assert.ok(scanned.includes('Copyright (c) 2016 Define Holder'), 'the #define block comment ends at its closer');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
 test('bundled code: an unstarred block comment is read whole, its holder and its own terms are reproduced', () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bundled-unstarred-fixture-'));
   try {

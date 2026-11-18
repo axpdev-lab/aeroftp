@@ -767,10 +767,10 @@ export function findPackageCopyrightNotices(
         }
         continue;
       }
-      let line = rawLine
-        .replace(COMMENT_LEADER, '')
-        .replace(COMMENT_CLOSER_AT_END, '')
-        .trim();
+      const closes = stripsCloser(rawLine, false);
+      let line = rawLine.replace(COMMENT_LEADER, '');
+      if (closes) line = line.replace(COMMENT_CLOSER_AT_END, '');
+      line = line.trim();
       if (!line) continue;
 
       if (/the above copyright notice/i.test(line)) continue;
@@ -788,11 +788,19 @@ export function findPackageCopyrightNotices(
         line.match(/(?:copyright\s*(?:\([cC]\)|©)\s*[0-9]{4}|copyright\s+[0-9]{4}|\([cC]\)\s*[0-9]{4}|©\s*[0-9]{4})\s*\S.*/i);
       if (match) {
         // A notice inside a minified line ends where its comment does.
-        let cleaned = match[0].replace(FROM_COMMENT_CLOSER, '').replace(/(?:\\n)?"[);,\s]*$/, '').trim();
+        let cleaned = (closes ? match[0].replace(FROM_COMMENT_CLOSER, '') : match[0]).replace(/(?:\\n)?"[);,\s]*$/, '').trim();
         cleaned = cleaned.replace(/\s*\([A-Za-z0-9\.\s\-]+ [Ll]icense\)\.?$/, '');
         cleaned = cleaned.replace(/\s+See the\b.*/i, '');
         cleaned = cleaned.trim();
-        cleaned = withHolderContinuation(cleaned, lines[li + 1]?.replace(COMMENT_LEADER, '').replace(COMMENT_CLOSER_AT_END, ''));
+        const nextLine = lines[li + 1];
+        cleaned = withHolderContinuation(
+          cleaned,
+          nextLine === undefined
+            ? undefined
+            : stripsCloser(nextLine, false)
+              ? nextLine.replace(COMMENT_LEADER, '').replace(COMMENT_CLOSER_AT_END, '')
+              : nextLine.replace(COMMENT_LEADER, '')
+        );
         if (cleaned.length > 0 && !TEMPLATE_NOTICE.test(cleaned) && !seenNotice.has(cleaned)) {
           seenNotice.add(cleaned);
           notices.push({ notice: cleaned, file: f.rel });
@@ -1209,6 +1217,14 @@ const COMMENT_CLOSER_AT_END = new RegExp(`${COMMENT_CLOSER_ALTERNATIVES}\\s*$`);
 // A closer and what follows it on the line (a minified line goes on with code).
 const FROM_COMMENT_CLOSER = new RegExp(`\\s*${COMMENT_CLOSER_ALTERNATIVES}.*$`);
 const BLOCK_OPENER_AT_START = new RegExp(`^\\s*(?:${COMMENT_BLOCKS.map(([open]) => escapeRegExp(open)).join('|')})`);
+// A line comment's leader. Its text runs to the end of the line, so a closer
+// inside it is text (`// files under src/*/generated`), unless the line sits
+// inside a block comment, which that closer ends.
+const LINE_COMMENT_LEADER = /^\s*(?:\/\/|#(?![A-Za-z_[!])|;|--(?!>)|%|@(?=\s)|\$!|(?:[Rr][Ee][Mm]|[Dd][Nn][Ll])\b)/;
+const stripsCloser = (line: string, inBlock: boolean) => inBlock || !LINE_COMMENT_LEADER.test(line);
+// A closer ends a block comment only outside a line comment: `// files under
+// src/*/generated` is one line of a `//` run, not the end of a block.
+const closesBlock = (line: string) => COMMENT_CLOSER.test(line) && stripsCloser(line, false);
 
 // The C block comments a line opens, read left to right: a `/*` inside a
 // string literal of code (`"src/*.c"`) or after `//` opens nothing, and one
@@ -1291,9 +1307,15 @@ export function findBundledCodeUnderOtherLicenses(
   // The comment styles isSpdxHeaderLine accepts, so a header block keeps its
   // copyright and permission lines in each of them (`REM --`, `$!`, `@`).
   const isCommentLine = (l: string) => COMMENT_LEADER.test(l);
-  // The tag's expression ends before a comment closer (`*/`, `*)`, `-}`, `-->`).
-  const SPDX_TAG = new RegExp(`SPDX-License-Identifier:\\s*(.+?)\\s*${COMMENT_CLOSER_ALTERNATIVES}?\\s*$`);
-  const stripLeader = (l: string) => l.replace(COMMENT_LEADER, '').replace(/^\s/, '').replace(FROM_COMMENT_CLOSER, '').trimEnd();
+  // The tag's expression ends before a comment closer (`*/`, `*)`, `-}`,
+  // `-->`), and code after the closer is no part of it (`BSD-2-Clause */ int
+  // y;`). In a line comment a closer is text: only one at the end is dropped.
+  const SPDX_TAG = new RegExp(`SPDX-License-Identifier:\\s*(.+?)\\s*(?:${COMMENT_CLOSER_ALTERNATIVES}.*)?$`);
+  const SPDX_TAG_IN_LINE_COMMENT = new RegExp(`SPDX-License-Identifier:\\s*(.+?)\\s*${COMMENT_CLOSER_ALTERNATIVES}?\\s*$`);
+  const stripLeader = (l: string, inBlock: boolean) => {
+    const text = l.replace(COMMENT_LEADER, '').replace(/^\s/, '');
+    return (stripsCloser(l, inBlock) ? text.replace(FROM_COMMENT_CLOSER, '') : text).trimEnd();
+  };
   const walk = (dir: string, rel: string) => {
     for (const entry of readDirSorted(dir)) {
       const entryRel = rel ? `${rel}/${entry.name}` : entry.name;
@@ -1306,7 +1328,7 @@ export function findBundledCodeUnderOtherLicenses(
       if (buf.subarray(0, 8000).includes(0)) continue;
       const lines = buf.toString('utf8').split(/\r?\n/);
       lines.forEach((line, i) => {
-        const m = line.match(SPDX_TAG);
+        const m = line.match(closesBlock(line) ? SPDX_TAG : SPDX_TAG_IN_LINE_COMMENT);
         if (!m) return;
         // The choices of the header's expression. One whose licenses the
         // package declares covers the code: its holders are still kept, as
@@ -1451,11 +1473,11 @@ export function findBundledCodeUnderOtherLicenses(
           end = close;
         } else {
           while (start > 0 && (wholeLine(lines[start]) || !BLOCK_OPENER_AT_START.test(lines[start])) && inRun(lines[start - 1])) {
-            if (COMMENT_CLOSER.test(lines[start - 1]) && !wholeLine(lines[start - 1])) break;
+            if (closesBlock(lines[start - 1]) && !wholeLine(lines[start - 1])) break;
             start--;
           }
           while (
-            (wholeLine(lines[end]) || !COMMENT_CLOSER.test(lines[end])) &&
+            (wholeLine(lines[end]) || !closesBlock(lines[end])) &&
             end + 1 < lines.length &&
             inRun(lines[end + 1]) &&
             (wholeLine(lines[end + 1]) || !BLOCK_OPENER_AT_START.test(lines[end + 1]))
@@ -1463,7 +1485,7 @@ export function findBundledCodeUnderOtherLicenses(
             end++;
           }
         }
-        const block = lines.slice(start, end + 1).map(stripLeader);
+        const block = lines.slice(start, end + 1).map((l) => stripLeader(l, open !== -1));
         // Only a line that names a holder is a notice: "copyright notice and
         // this permission notice appear in all copies" is license prose.
         const notices: string[] = [];
