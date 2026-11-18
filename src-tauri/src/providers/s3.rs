@@ -626,6 +626,10 @@ pub struct S3Provider {
     baseline_test_path: Option<PathBuf>,
     config: S3Config,
     client: Client,
+    /// The client of the AWS STS AssumeRole call. STS is always a remote AWS
+    /// endpoint: it keeps the system proxy and checks certificates unless the
+    /// user turned that off, whatever `client` does for a local endpoint.
+    sts_client: Client,
     current_prefix: String,
     connected: bool,
     /// Clock offset in seconds to compensate for local system clock skew.
@@ -1012,7 +1016,44 @@ impl S3Provider {
     }
 
     /// Create a new S3 provider with the given configuration
+    /// The client for STS: the data-plane client's timeouts and redirect
+    /// refusal, without the local-endpoint certificate trust and proxy
+    /// bypass, which are for the S3 endpoint only.
+    fn sts_client(config: &S3Config) -> Result<Client, ProviderError> {
+        Client::builder()
+            .user_agent(crate::providers::AEROFTP_USER_AGENT)
+            .connect_timeout(crate::providers::http_limits::limit(
+                std::time::Duration::from_secs(30),
+            ))
+            .read_timeout(crate::providers::http_limits::limit(
+                crate::providers::http_limits::READ_TIMEOUT,
+            ))
+            .redirect(reqwest::redirect::Policy::none())
+            .http1_only()
+            .danger_accept_invalid_certs(!config.verify_cert)
+            .build()
+            .map_err(|e| ProviderError::ConnectionFailed(format!("HTTP client init failed: {e}")))
+    }
+
     pub fn new(config: S3Config) -> Result<Self, ProviderError> {
+        // Every request URL is the endpoint with the bucket and the key
+        // appended (`build_url`, the Tigris quota, bucket discovery), so a
+        // query or a fragment in it would swallow them. Refused here, where
+        // every caller passes, rather than rewritten: the message says what to
+        // change, and the endpoint itself is not repeated (a query can carry
+        // a secret).
+        if config
+            .endpoint
+            .as_deref()
+            .is_some_and(|endpoint| endpoint.contains(['?', '#']))
+        {
+            return Err(ProviderError::InvalidConfig(
+                "The S3 endpoint must not contain a query or a fragment (? or #): AeroFTP adds \
+                 the bucket and the object key after the endpoint, so remove everything from the \
+                 ? or # on"
+                    .to_string(),
+            ));
+        }
         if !config.path_style && !config.bucket.is_empty() {
             // The bucket becomes URL authority in virtual-hosted mode, not path data.
             let endpoint = config
@@ -1092,10 +1133,12 @@ impl S3Provider {
         let client = client_builder.build().map_err(|e| {
             ProviderError::ConnectionFailed(format!("HTTP client init failed: {e}"))
         })?;
+        let sts_client = Self::sts_client(&config)?;
 
         Ok(Self {
             config,
             client,
+            sts_client,
             current_prefix: String::new(),
             connected: false,
             multipart_baselines: Arc::new(std::sync::Mutex::new(HashMap::new())),
@@ -1652,7 +1695,7 @@ impl S3Provider {
         };
         // Sign the STS request with the same skew-adjusted clock as the data
         // plane (issue #301, M1), not the raw system clock.
-        let creds = sts::assume_role(&self.client, &req, self.now_adjusted()).await?;
+        let creds = sts::assume_role(&self.sts_client, &req, self.now_adjusted()).await?;
         info!(
             "[S3] STS AssumeRole succeeded for {} (expires {:?})",
             role_arn, creds.expiration
@@ -11118,6 +11161,44 @@ mod tests {
             provider.build_url("path/to/file.txt"),
             "https://my-bucket.s3.us-west-2.amazonaws.com/path/to/file.txt"
         );
+    }
+
+    /// An endpoint with a query or a fragment is refused, in both addressing
+    /// styles and with or without a bucket: every request URL appends the
+    /// bucket and key to it, which the query or fragment would swallow (a
+    /// Fetch built `<endpoint>?tenant=blue/`).
+    #[test]
+    fn an_endpoint_with_a_query_or_a_fragment_is_refused() {
+        for endpoint in [
+            "https://gateway.example/s3?tenant=blue",
+            "https://gateway.example/s3#part",
+            "http://127.0.0.1:1800?x=1",
+        ] {
+            for (path_style, bucket) in [(true, ""), (true, "b"), (false, "b")] {
+                let mut config = make_provider(Some("https://gateway.example/s3"))
+                    .config
+                    .clone();
+                config.endpoint = Some(endpoint.to_string());
+                config.path_style = path_style;
+                config.bucket = bucket.to_string();
+                match S3Provider::new(config) {
+                    Err(ProviderError::InvalidConfig(message)) => {
+                        assert!(message.contains("query or a fragment"), "{message}");
+                        assert!(!message.contains("tenant"), "{message}");
+                    }
+                    other => panic!(
+                        "{endpoint} path_style={path_style}: {:?}",
+                        other.map(|_| ())
+                    ),
+                }
+            }
+        }
+        assert!(S3Provider::new(
+            make_provider(Some("https://gateway.example/s3"))
+                .config
+                .clone()
+        )
+        .is_ok());
     }
 
     #[test]

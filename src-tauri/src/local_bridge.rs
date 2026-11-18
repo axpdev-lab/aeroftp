@@ -342,33 +342,36 @@ pub async fn detect_bridge_scheme(host: &str, port: u16) -> Option<&'static str>
 /// scheme (the user's HTTP/HTTPS choice in the host app) on the pinned loopback
 /// IP, so `local.*.filen.io` DNS NODATA on Windows cannot break the connect:
 /// `scheme://127.0.0.1:port<path>`, path and query preserved (MEGAcmd serves
-/// under a path). `None` when it is not a known bridge or nothing answered.
+/// under a path). An explicit IPv6 loopback (`[::1]`) is probed and kept as
+/// written: another service may answer on the same port over IPv4. `None`
+/// when it is not a known bridge or nothing answered.
 /// A `Some` is the only proof that our own probe reached the bridge on this
 /// machine, which is what a caller trusting the bridge's certificate needs.
 /// #389.
 pub async fn detected_bridge_url(url: &str) -> Option<String> {
-    let (port, tail) = bridge_authority(url)?;
-    let scheme = detect_bridge_scheme("127.0.0.1", port).await?;
-    Some(format!("{scheme}://127.0.0.1:{port}{tail}"))
+    let (host, port, tail) = bridge_authority(url)?;
+    let ip = if host == "::1" { "[::1]" } else { "127.0.0.1" };
+    let scheme = detect_bridge_scheme(ip, port).await?;
+    Some(format!("{scheme}://{ip}:{port}{tail}"))
 }
 
 /// The port and the path/query/fragment tail (verbatim) of `url` when its
 /// authority is a known bridge ([`is_local_bridge_authority`]).
-fn bridge_authority(url: &str) -> Option<(u16, &str)> {
+fn bridge_authority(url: &str) -> Option<(&str, u16, &str)> {
     let (_, rest) = url.split_once("://")?;
     let authority_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
     let (authority, tail) = rest.split_at(authority_end);
     let (host, port_str) = authority.rsplit_once(':')?;
     let host = host.trim_start_matches('[').trim_end_matches(']');
     let port = port_str.parse::<u16>().ok()?;
-    is_local_bridge_authority(host, port).then_some((port, tail))
+    is_local_bridge_authority(host, port).then_some((host, port, tail))
 }
 
 /// The default port of the bridge `url` points at (1800, 1900 or 4443), or
 /// `None` when `url` is not a known bridge. A preset uses it to tell its own
 /// bridge from another one running on the same machine.
 pub fn bridge_default_port(url: &str) -> Option<u16> {
-    bridge_authority(url).map(|(port, _)| bridge_port_of(port))
+    bridge_authority(url).map(|(_, port, _)| bridge_port_of(port))
 }
 
 /// [`detected_bridge_url`], or the input unchanged when there is no live
@@ -538,6 +541,32 @@ mod tests {
         );
         assert_eq!(bridge_default_port("https://127.0.0.1:1800/"), Some(1800));
         assert_eq!(bridge_default_port("https://192.168.1.10:1900/"), None);
+    }
+
+    /// An explicit IPv6 loopback is probed and kept: a different service may
+    /// listen on the same port over IPv4, and a Fetch would list its buckets.
+    #[tokio::test]
+    async fn an_explicit_ipv6_bridge_is_probed_and_kept_on_ipv6() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let Ok(listener) = tokio::net::TcpListener::bind("[::1]:0").await else {
+            eprintln!("no IPv6 loopback on this machine: nothing to check");
+            return;
+        };
+        let port = listener.local_addr().unwrap().port();
+        // Nothing of ours answers on 127.0.0.1 at this port.
+        let server = tokio::spawn(async move {
+            while let Ok((mut stream, _)) = listener.accept().await {
+                let mut buf = [0u8; 4096];
+                let _ = stream.read(&mut buf).await;
+                let _ = stream
+                    .write_all(b"HTTP/1.1 401 Unauthorized\r\ncontent-length: 0\r\nconnection: close\r\n\r\n")
+                    .await;
+            }
+        });
+        alias_test_port(port, 1800);
+        let detected = detected_bridge_url(&format!("https://[::1]:{port}/")).await;
+        server.abort();
+        assert_eq!(detected, Some(format!("http://[::1]:{port}/")));
     }
 
     #[test]

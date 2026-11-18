@@ -318,16 +318,34 @@ fn md5_hex(input: &str) -> String {
     format!("{:x}", digest)
 }
 
-/// Render a reqwest error with its full source chain.
+/// Render a reqwest error as message text: reqwest's wording, its full
+/// source chain, and the request named by its origin only.
 ///
 /// reqwest's top-level `Display` for a send failure is the generic
 /// "error sending request for url (...)"; the actionable cause (connection
 /// reset, connection closed before message completed, timed out, ...) lives
 /// in the source chain. Surfacing it turns an opaque preview/download failure
 /// into a diagnosable one (issue #264, MEGAcmd bridge GET failures).
-fn describe_reqwest_error(e: &reqwest::Error) -> String {
+///
+/// The URL itself never reaches the text: a WebDAV path can be the secret
+/// (MEGAcmd serves each location under a random token in the path) and a
+/// query can carry a token, and these messages end up in toasts, logs and
+/// CLI output. A refused certificate is named by the TLS library's own words
+/// in the chain ("certificate verify failed (self-signed certificate)" with
+/// OpenSSL), which reqwest's "error sending request" alone hides.
+fn describe_reqwest_error(e: reqwest::Error) -> String {
+    let origin = e
+        .url()
+        .map(|url| url.origin().ascii_serialization())
+        .filter(|origin| origin != "null");
+    let certificate = e.is_connect() && refused_certificate(&e);
+    let e = e.without_url();
     let mut msg = e.to_string();
-    let mut source = std::error::Error::source(e);
+    if let Some(origin) = origin {
+        msg.push_str(" to ");
+        msg.push_str(&origin);
+    }
+    let mut source = std::error::Error::source(&e);
     while let Some(s) = source {
         let detail = s.to_string();
         if !detail.is_empty() && !msg.ends_with(&detail) {
@@ -336,7 +354,67 @@ fn describe_reqwest_error(e: &reqwest::Error) -> String {
         }
         source = s.source();
     }
-    msg
+    if certificate {
+        format!("{REFUSED_CERTIFICATE} ({msg})")
+    } else {
+        msg
+    }
+}
+
+/// How a WebDAV error begins when the server's certificate was refused, so
+/// a front end can give the advice that fits (a trusted certificate) and not
+/// the advice for a server that is down.
+pub const REFUSED_CERTIFICATE: &str = "the server's TLS certificate was refused";
+
+/// Whether a connect failed on the server's certificate.
+///
+/// rustls says so in its type (`InvalidCertificate`), found through each
+/// link of the chain and inside an `io::Error`, whose `source()` skips the
+/// error it wraps. The native backends do not: `native_tls::Error` exposes
+/// only its text, so their refusal is recognised by its wording
+/// ([`names_a_refused_certificate`]).
+fn refused_certificate(e: &reqwest::Error) -> bool {
+    fn rustls_refused(cause: &(dyn std::error::Error + 'static)) -> bool {
+        matches!(
+            cause.downcast_ref::<rustls::Error>(),
+            Some(rustls::Error::InvalidCertificate(_))
+        )
+    }
+    let mut source = std::error::Error::source(e);
+    while let Some(cause) = source {
+        let inner = cause
+            .downcast_ref::<std::io::Error>()
+            .and_then(|io| io.get_ref())
+            .map(|inner| inner as &(dyn std::error::Error + 'static));
+        if rustls_refused(cause)
+            || inner.is_some_and(rustls_refused)
+            || names_a_refused_certificate(&cause.to_string())
+        {
+            return true;
+        }
+        source = cause.source();
+    }
+    false
+}
+
+/// The words the native TLS backends use for a server certificate they
+/// refuse: OpenSSL on Linux ("certificate verify failed"), SChannel on
+/// Windows ("A certificate chain processed, but terminated in a root
+/// certificate which is not trusted", "The certificate chain was issued by an
+/// authority that is not trusted") and Security.framework on macOS ("invalid
+/// certificate chain", "The trust policy was not trusted."). A refused
+/// connection, a failed name lookup, a reset or a timeout says none of them.
+fn names_a_refused_certificate(text: &str) -> bool {
+    let text = text.to_ascii_lowercase();
+    ["certificate", "not trusted"]
+        .iter()
+        .any(|word| text.contains(word))
+}
+
+/// [`describe_reqwest_error`] as the `ParseError` of a reply body that could
+/// not be read or decoded.
+fn body_read_error(e: reqwest::Error) -> ProviderError {
+    ProviderError::ParseError(describe_reqwest_error(e))
 }
 
 /// A redirect the WebDAV client refused because it leaves TLS: the request
@@ -405,9 +483,25 @@ fn webdav_redirect_policy() -> reqwest::redirect::Policy {
     })
 }
 
-/// The redirect policy of a client that trusts the Filen bridge's self-signed
-/// certificate: a redirect is followed only to the bridge's own origin, so the
-/// relaxed checks never reach another server.
+/// A redirect from the Filen bridge to another origin, refused. It carries
+/// no URL: the error a refusal becomes is shown and logged, and the request
+/// URL may hold a query the user did not mean to publish.
+#[derive(Debug)]
+struct LeftTheBridge;
+
+impl std::fmt::Display for LeftTheBridge {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(
+            "the Filen Desktop bridge redirected to another server, which AeroFTP does not follow",
+        )
+    }
+}
+
+impl std::error::Error for LeftTheBridge {}
+
+/// The redirect policy of a client for the Filen bridge: a redirect is
+/// followed only to the bridge's own origin, so the bridge's relaxed
+/// certificate checks and direct route never reach another server.
 fn bridge_redirect_policy() -> reqwest::redirect::Policy {
     reqwest::redirect::Policy::custom(|attempt| {
         let leaves_the_bridge = attempt
@@ -415,11 +509,7 @@ fn bridge_redirect_policy() -> reqwest::redirect::Policy {
             .first()
             .is_none_or(|first| first.origin() != attempt.url().origin());
         if leaves_the_bridge {
-            let message = format!(
-                "redirect to {} refused: it leaves the Filen bridge",
-                crate::local_bridge::url_origin(attempt.url().as_str())
-            );
-            attempt.error(message)
+            attempt.error(LeftTheBridge)
         } else if attempt.previous().len() >= 10 {
             attempt.error("too many redirects")
         } else {
@@ -428,17 +518,51 @@ fn bridge_redirect_policy() -> reqwest::redirect::Policy {
     })
 }
 
-/// How a WebDAV connection checks the server's TLS certificate.
+/// Whether a failed send is a redirect the Filen bridge client refused.
+fn left_the_bridge(e: &reqwest::Error) -> bool {
+    let mut source = std::error::Error::source(e);
+    while let Some(s) = source {
+        if s.downcast_ref::<LeftTheBridge>().is_some() {
+            return true;
+        }
+        source = s.source();
+    }
+    false
+}
+
+/// How a WebDAV connection's HTTP client treats the server, decided again on
+/// every connect of the Filen preset.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum CertificateTrust {
-    /// Checked: the default.
-    Verified,
-    /// Not checked: the user turned verification off for this server.
-    UserDisabled,
-    /// Not checked for the Filen Desktop bridge our probe found answering
-    /// HTTPS on 127.0.0.1 during this connect, whose certificate is
-    /// self-signed. No system proxy, no redirect to another origin.
-    FilenBridge,
+struct ClientPolicy {
+    /// Certificate checks off: the user's own choice for this server, or the
+    /// self-signed certificate of the Filen bridge over HTTPS.
+    accept_invalid_certs: bool,
+    /// The Filen Desktop WebDAV bridge our probe found on a loopback IP
+    /// during this connect, over HTTP or HTTPS: reached directly, never
+    /// through a system proxy, and never redirected to another origin.
+    filen_bridge: bool,
+}
+
+/// Whether `url` names a loopback IP literally (127.0.0.1 or ::1), not a
+/// name that DNS resolves.
+fn names_a_loopback_ip(url: &str) -> bool {
+    match url::Url::parse(url)
+        .ok()
+        .and_then(|u| u.host().map(|h| h.to_owned()))
+    {
+        Some(url::Host::Ipv4(ip)) => ip == std::net::Ipv4Addr::LOCALHOST,
+        Some(url::Host::Ipv6(ip)) => ip == std::net::Ipv6Addr::LOCALHOST,
+        _ => false,
+    }
+}
+
+/// Whether `url` is served by `host` itself, compared on the parsed host and
+/// never on a substring, which a path could carry.
+fn served_by(url: &str, host: &str) -> bool {
+    url::Url::parse(url)
+        .ok()
+        .and_then(|u| u.host_str().map(|h| h.eq_ignore_ascii_case(host)))
+        .unwrap_or(false)
 }
 
 /// The refused redirect inside a failed send, if that is what failed.
@@ -468,7 +592,8 @@ fn refused_collection_redirect(e: &reqwest::Error) -> bool {
 fn send_error(e: reqwest::Error) -> ProviderError {
     super::http_send_error(e, |e| match insecure_redirect(&e) {
         Some(refused) => ProviderError::ServerError(refused.to_string()),
-        None => ProviderError::NetworkError(describe_reqwest_error(&e)),
+        None if left_the_bridge(&e) => ProviderError::ServerError(LeftTheBridge.to_string()),
+        None => ProviderError::NetworkError(describe_reqwest_error(e)),
     })
 }
 
@@ -501,7 +626,8 @@ fn nextcloud_chunk_send_retryable(error: &reqwest::Error) -> bool {
 fn connect_send_error(e: reqwest::Error) -> ProviderError {
     super::http_send_error(e, |e| match insecure_redirect(&e) {
         Some(refused) => ProviderError::ConnectionFailed(refused.to_string()),
-        None => ProviderError::ConnectionFailed(e.to_string()),
+        None if left_the_bridge(&e) => ProviderError::ConnectionFailed(LeftTheBridge.to_string()),
+        None => ProviderError::ConnectionFailed(describe_reqwest_error(e)),
     })
 }
 
@@ -592,9 +718,8 @@ fn path_violates_root(path: &str, boundary: Option<&str>) -> bool {
 pub struct WebDavProvider {
     config: WebDavConfig,
     client: Client,
-    /// The certificate policy `client` was built with, decided again on
-    /// every connect.
-    certificate_trust: CertificateTrust,
+    /// The policy `client` was built with.
+    client_policy: ClientPolicy,
     current_path: String,
     connected: bool,
     /// Digest auth state (set during connect if server requires it)
@@ -696,14 +821,8 @@ fn is_metadata_method(method: &Method) -> bool {
 /// source chain. Koofr, for one, answers a file type it refuses to serve with
 /// a 200 that announces the size and then ends with no data (#368), which the
 /// bare message left unexplained: say how much came, and why it stopped.
-fn body_cut_short(error: &reqwest::Error, received: u64, announced: u64) -> String {
-    let mut cause = error.to_string();
-    let mut source = std::error::Error::source(error);
-    while let Some(inner) = source {
-        cause.push_str(": ");
-        cause.push_str(&inner.to_string());
-        source = inner.source();
-    }
+fn body_cut_short(error: reqwest::Error, received: u64, announced: u64) -> String {
+    let cause = describe_reqwest_error(error);
     if announced > 0 {
         format!("the download stopped after {received} of {announced} bytes ({cause})")
     } else {
@@ -1086,19 +1205,18 @@ impl WebDavProvider {
                 config.url
             );
         }
-        let certificate_trust = if config.verify_cert {
-            CertificateTrust::Verified
-        } else {
-            CertificateTrust::UserDisabled
+        let client_policy = ClientPolicy {
+            accept_invalid_certs: !config.verify_cert,
+            filen_bridge: false,
         };
-        let client = Self::http_client(&config, certificate_trust)?;
+        let client = Self::http_client(&config, client_policy)?;
 
         let infinity_refused = infinity_refused_from_the_start(config.provider_id.as_deref());
         let profile_url = config.url.clone();
         Ok(Self {
             config,
             client,
-            certificate_trust,
+            client_policy,
             current_path: "/".to_string(),
             connected: false,
             digest_auth: None,
@@ -1117,13 +1235,10 @@ impl WebDavProvider {
 
     /// The HTTP client of a connection to `config`, checking certificates as
     /// `trust` says.
-    fn http_client(
-        config: &WebDavConfig,
-        trust: CertificateTrust,
-    ) -> Result<Client, ProviderError> {
+    fn http_client(config: &WebDavConfig, policy: ClientPolicy) -> Result<Client, ProviderError> {
         let mut client_builder = Client::builder()
             .user_agent(crate::providers::AEROFTP_WEBDAV_USER_AGENT)
-            .danger_accept_invalid_certs(trust != CertificateTrust::Verified)
+            .danger_accept_invalid_certs(policy.accept_invalid_certs)
             .connect_timeout(crate::providers::http_limits::limit(
                 std::time::Duration::from_secs(30),
             ))
@@ -1148,7 +1263,7 @@ impl WebDavProvider {
         if super::mega_df::is_megacmd_webdav_provider_id(config.provider_id.as_deref()) {
             client_builder = client_builder.pool_max_idle_per_host(0);
         }
-        if trust == CertificateTrust::FilenBridge {
+        if policy.filen_bridge {
             client_builder = client_builder.no_proxy().redirect(bridge_redirect_policy());
         }
 
@@ -2392,10 +2507,7 @@ impl WebDavProvider {
                 resp.status()
             )));
         }
-        let body: serde_json::Value = resp
-            .json()
-            .await
-            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
+        let body: serde_json::Value = resp.json().await.map_http_err(body_read_error)?;
         let mounts = body
             .get("mounts")
             .and_then(|v| v.as_array())
@@ -2461,7 +2573,7 @@ impl WebDavProvider {
             .map_err(send_error)?
             .json()
             .await
-            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(body_read_error)?;
 
         let session_id = login
             .get("SessionID")
@@ -2479,7 +2591,7 @@ impl WebDavProvider {
             .map_err(send_error)?
             .json::<serde_json::Value>()
             .await
-            .map_http_err(|e| ProviderError::ParseError(e.to_string()));
+            .map_http_err(body_read_error);
 
         // Best-effort logout regardless of the users/info outcome: never
         // leak a session because the quota call failed.
@@ -2545,10 +2657,7 @@ impl WebDavProvider {
                 status
             )));
         }
-        let text = resp
-            .text()
-            .await
-            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
+        let text = resp.text().await.map_http_err(body_read_error)?;
         let json: serde_json::Value = serde_json::from_str(&text)
             .map_err(|e| ProviderError::ParseError(format!("ocs json: {}", e)))?;
         Ok(json
@@ -2591,10 +2700,7 @@ impl WebDavProvider {
             .map_err(send_error)?;
 
         let status = resp.status();
-        let text = resp
-            .text()
-            .await
-            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
+        let text = resp.text().await.map_http_err(body_read_error)?;
 
         // A server that requires a password on public links refuses the
         // share with 403. Whether that is the reason comes from its
@@ -2629,10 +2735,7 @@ impl WebDavProvider {
                 .map_err(send_error)?;
 
             let status2 = resp2.status();
-            let text2 = resp2
-                .text()
-                .await
-                .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
+            let text2 = resp2.text().await.map_http_err(body_read_error)?;
 
             if !status2.is_success() {
                 let lookup = if capability_unreadable {
@@ -2764,10 +2867,7 @@ impl WebDavProvider {
             )));
         }
 
-        let xml = resp
-            .text()
-            .await
-            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
+        let xml = resp.text().await.map_http_err(body_read_error)?;
 
         self.parse_trashbin_response(&xml)
     }
@@ -3103,10 +3203,7 @@ impl WebDavProvider {
                 response.status()
             )));
         }
-        let xml = response
-            .text()
-            .await
-            .map_http_err(|error| ProviderError::ParseError(error.to_string()))?;
+        let xml = response.text().await.map_http_err(body_read_error)?;
         let mut found = Vec::new();
         for hit in parse_nextcloud_file_id_listing(&xml)? {
             let file_id = hit.file_id.trim();
@@ -4100,25 +4197,23 @@ impl StorageProvider for WebDavProvider {
                     self.config.url = live.clone();
                 }
             }
-            // Filen Desktop serves HTTPS with a self-signed certificate.
-            // Trusted only here: the Filen WebDAV preset, a URL our own probe
-            // found answering HTTPS during THIS connect, on the literal
-            // 127.0.0.1 it pins and the WebDAV bridge's own port. Decided
-            // again on every connect, so it never outlives that probe.
-            let trust = if !self.config.verify_cert {
-                CertificateTrust::UserDisabled
-            } else if live.is_some()
-                && self.config.url.starts_with("https://127.0.0.1:")
+            // The bridge our own probe found during THIS connect, on the
+            // loopback IP it pins and the WebDAV bridge's own port. Filen
+            // Desktop serves HTTPS with a self-signed certificate, which is
+            // accepted only there. Decided again on every connect, so it
+            // never outlives that probe.
+            let filen_bridge = live.is_some()
+                && names_a_loopback_ip(&self.config.url)
                 && crate::local_bridge::bridge_default_port(&self.config.url)
-                    == crate::local_bridge::bridge_kind_default_port("filen-webdav")
-            {
-                CertificateTrust::FilenBridge
-            } else {
-                CertificateTrust::Verified
+                    == crate::local_bridge::bridge_kind_default_port("filen-webdav");
+            let policy = ClientPolicy {
+                accept_invalid_certs: !self.config.verify_cert
+                    || (filen_bridge && self.config.url.starts_with("https://")),
+                filen_bridge,
             };
-            if trust != self.certificate_trust {
-                self.client = Self::http_client(&self.config, trust)?;
-                self.certificate_trust = trust;
+            if policy != self.client_policy {
+                self.client = Self::http_client(&self.config, policy)?;
+                self.client_policy = policy;
             }
         }
         if super::mega_df::is_megacmd_webdav_provider_id(self.config.provider_id.as_deref()) {
@@ -4475,10 +4570,7 @@ impl StorageProvider for WebDavProvider {
 
         match status {
             StatusCode::OK | StatusCode::MULTI_STATUS => {
-                let xml = response
-                    .text()
-                    .await
-                    .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
+                let xml = response.text().await.map_http_err(body_read_error)?;
 
                 tracing::debug!("[WebDAV] Response XML length: {} bytes", xml.len());
                 tracing::debug!("[WebDAV] Full XML response:\n{}", xml);
@@ -4563,10 +4655,7 @@ impl StorageProvider for WebDavProvider {
 
         match response.status() {
             StatusCode::OK | StatusCode::MULTI_STATUS => {
-                let xml = response
-                    .text()
-                    .await
-                    .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
+                let xml = response.text().await.map_http_err(body_read_error)?;
 
                 let props = self.extract_xml_properties(&xml, path)?;
                 let is_collection = props.contains_key("_is_collection");
@@ -4823,7 +4912,7 @@ impl StorageProvider for WebDavProvider {
                             }
                             return Err(super::http_send_error(e, |e| {
                                 ProviderError::TransferFailed(body_cut_short(
-                                    &e, downloaded, total_size,
+                                    e, downloaded, total_size,
                                 ))
                             }));
                         }
@@ -5260,10 +5349,7 @@ impl StorageProvider for WebDavProvider {
 
             match response.status() {
                 StatusCode::OK | StatusCode::MULTI_STATUS => {
-                    let xml = response
-                        .text()
-                        .await
-                        .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
+                    let xml = response.text().await.map_http_err(body_read_error)?;
 
                     let props = self.extract_xml_properties(&xml, path)?;
                     let is_dir = props.contains_key("_is_collection");
@@ -5390,10 +5476,7 @@ impl StorageProvider for WebDavProvider {
 
             match response.status() {
                 StatusCode::OK | StatusCode::MULTI_STATUS => {
-                    let xml = response
-                        .text()
-                        .await
-                        .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
+                    let xml = response.text().await.map_http_err(body_read_error)?;
                     let props = self.extract_xml_properties(&xml, path)?;
                     return Ok(props
                         .get("checksum")
@@ -5575,7 +5658,7 @@ impl StorageProvider for WebDavProvider {
         // Koofr WebDAV does not expose RFC 4331 quota properties via PROPFIND
         // (returns 0 / 0). Use the native Koofr REST API instead: it accepts
         // basic auth with the same email + app password used for WebDAV.
-        if self.config.url.contains("app.koofr.net") {
+        if served_by(&self.config.url, "app.koofr.net") {
             if let Ok(info) = self.koofr_storage_via_api().await {
                 return Ok(info);
             }
@@ -5585,7 +5668,7 @@ impl StorageProvider for WebDavProvider {
         // OpenDrive WebDAV behaves the same way: no RFC 4331 quota over
         // PROPFIND. Read the real quota from the OpenDrive REST API using
         // the same account credentials (session auth).
-        if self.config.url.contains("webdav.opendrive.com") {
+        if served_by(&self.config.url, "webdav.opendrive.com") {
             if let Ok(info) = self.opendrive_storage_via_api().await {
                 return Ok(info);
             }
@@ -5616,10 +5699,7 @@ impl StorageProvider for WebDavProvider {
             return Err(ProviderError::NotSupported("storage_info".to_string()));
         }
 
-        let xml = response
-            .text()
-            .await
-            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
+        let xml = response.text().await.map_http_err(body_read_error)?;
 
         let props = self.extract_xml_properties(&xml, &self.current_path)?;
         let used = props
@@ -9935,6 +10015,104 @@ mod filen_bridge_certificate_tests {
         assert!(outcome.is_err(), "a self-signed certificate was accepted");
     }
 
+    const VERIFIED: ClientPolicy = ClientPolicy {
+        accept_invalid_certs: false,
+        filen_bridge: false,
+    };
+    const BRIDGE_OVER_HTTPS: ClientPolicy = ClientPolicy {
+        accept_invalid_certs: true,
+        filen_bridge: true,
+    };
+
+    /// A plain-HTTP WebDAV root on a free loopback port.
+    async fn plain_bridge() -> (u16, tokio::task::JoinHandle<()>) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = tokio::spawn(async move {
+            while let Ok((mut stream, _)) = listener.accept().await {
+                tokio::spawn(async move {
+                    let mut request = Vec::new();
+                    let mut chunk = [0u8; 4096];
+                    while !request.windows(4).any(|w| w == b"\r\n\r\n") {
+                        match stream.read(&mut chunk).await {
+                            Ok(0) | Err(_) => return,
+                            Ok(n) => request.extend_from_slice(&chunk[..n]),
+                        }
+                    }
+                    let reply = format!(
+                        "HTTP/1.1 207 Multi-Status\r\nContent-Type: application/xml\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{ROOT_207}",
+                        ROOT_207.len()
+                    );
+                    let _ = stream.write_all(reply.as_bytes()).await;
+                    let _ = stream.shutdown().await;
+                });
+            }
+        });
+        (port, server)
+    }
+
+    /// A bridge found on plain HTTP is reached directly as well (no system
+    /// proxy, no redirect away), with certificate checks left as they are.
+    #[tokio::test]
+    async fn a_filen_bridge_on_plain_http_is_reached_directly() {
+        let (port, server) = plain_bridge().await;
+        crate::local_bridge::alias_test_port(port, 1900);
+        let mut provider = WebDavProvider::new(config(
+            format!("https://local.webdav.filen.io:{port}/"),
+            Some("filen-desktop-webdav"),
+        ))
+        .unwrap();
+        let outcome = provider.connect().await;
+        server.abort();
+        outcome.expect("the HTTP bridge must connect");
+        assert_eq!(provider.config.url, format!("http://127.0.0.1:{port}/"));
+        assert_eq!(
+            provider.client_policy,
+            ClientPolicy {
+                accept_invalid_certs: false,
+                filen_bridge: true,
+            }
+        );
+    }
+
+    /// The trust needs a loopback IP written as such: a name is resolved by
+    /// DNS, which may point anywhere.
+    #[test]
+    fn only_a_literal_loopback_ip_counts_as_loopback() {
+        assert!(names_a_loopback_ip("https://127.0.0.1:1900/"));
+        assert!(names_a_loopback_ip("https://[::1]:1900/dav"));
+        assert!(!names_a_loopback_ip("https://localhost:1900/"));
+        assert!(!names_a_loopback_ip("https://local.webdav.filen.io:1900/"));
+        assert!(!names_a_loopback_ip("https://127.0.0.2:1900/"));
+        assert!(!names_a_loopback_ip("not a url"));
+    }
+
+    /// The quota APIs are asked only of their own servers: a bridge URL whose
+    /// path names one sends nothing to it.
+    #[test]
+    fn a_quota_api_is_chosen_by_the_host_not_by_a_substring() {
+        assert!(served_by(
+            "https://app.koofr.net/dav/Koofr",
+            "app.koofr.net"
+        ));
+        assert!(served_by(
+            "https://webdav.opendrive.com/",
+            "webdav.opendrive.com"
+        ));
+        assert!(!served_by(
+            "https://127.0.0.1:1900/app.koofr.net/",
+            "app.koofr.net"
+        ));
+        assert!(!served_by(
+            "https://127.0.0.1:1900/?next=webdav.opendrive.com",
+            "webdav.opendrive.com"
+        ));
+        assert!(!served_by(
+            "https://app.koofr.net.example.com/",
+            "app.koofr.net"
+        ));
+    }
+
     /// The exception is earned by the probe of one connect: when the bridge
     /// is gone at the next connect, that connect checks certificates again.
     #[tokio::test]
@@ -9950,10 +10128,10 @@ mod filen_bridge_certificate_tests {
             .connect()
             .await
             .expect("the HTTPS bridge must connect");
-        assert_eq!(provider.certificate_trust, CertificateTrust::FilenBridge);
+        assert_eq!(provider.client_policy, BRIDGE_OVER_HTTPS);
         stop(server).await;
         assert!(provider.connect().await.is_err());
-        assert_eq!(provider.certificate_trust, CertificateTrust::Verified);
+        assert_eq!(provider.client_policy, VERIFIED);
     }
 
     /// Filen Desktop runs an S3 bridge too (port 1800). The Filen WebDAV
@@ -9971,7 +10149,7 @@ mod filen_bridge_certificate_tests {
         let outcome = provider.connect().await;
         server.abort();
         assert!(outcome.is_err(), "a self-signed certificate was accepted");
-        assert_eq!(provider.certificate_trust, CertificateTrust::Verified);
+        assert_eq!(provider.client_policy, VERIFIED);
     }
 
     /// The relaxed checks stay on the bridge: a redirect to another origin,
@@ -9988,15 +10166,19 @@ mod filen_bridge_certificate_tests {
         ))
         .await;
         crate::local_bridge::alias_test_port(port, 1900);
+        // A query the refusal must not repeat: it could carry a credential.
         let mut provider = WebDavProvider::new(config(
-            format!("https://127.0.0.1:{port}/"),
+            format!("https://127.0.0.1:{port}/?token=DUMMY-SECRET"),
             Some("filen-desktop-webdav"),
         ))
         .unwrap();
         let outcome = provider.connect().await;
         server.abort();
         other_server.abort();
-        assert!(outcome.is_err(), "the bridge's redirect was followed");
+        let error = outcome.expect_err("the bridge's redirect was followed");
+        let text = error.to_string();
+        assert!(!text.contains("DUMMY-SECRET"), "{text}");
+        assert!(text.contains(&LeftTheBridge.to_string()), "{text}");
         assert_eq!(
             other_requests.load(std::sync::atomic::Ordering::SeqCst),
             0,
@@ -10902,6 +11084,172 @@ mod request_target_tests {
                 format!("https://dav.example.test/dav/alice/{query}"),
                 "{host}"
             );
+        }
+    }
+}
+
+#[cfg(test)]
+mod error_text_tests {
+    use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    // MEGAcmd serves each location under a random token in the path, and a
+    // query can carry a token: neither may reach a message.
+    const PATH_TOKEN: &str = "SECRET-PATH-TOKEN";
+    const QUERY_TOKEN: &str = "SECRET-QUERY-TOKEN";
+
+    fn url(scheme: &str, port: u16) -> String {
+        format!("{scheme}://127.0.0.1:{port}/{PATH_TOKEN}/Cloud%20Drive/?t={QUERY_TOKEN}")
+    }
+
+    fn assert_origin_only(message: &str, origin: &str) {
+        assert!(
+            !message.contains(PATH_TOKEN) && !message.contains(QUERY_TOKEN),
+            "the URL leaked: {message}"
+        );
+        assert!(message.contains(origin), "the origin is missing: {message}");
+    }
+
+    async fn closed_port() -> u16 {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        listener.local_addr().unwrap().port()
+    }
+
+    async fn failed_send(url: &str) -> reqwest::Error {
+        reqwest::Client::new()
+            .get(url)
+            .send()
+            .await
+            .expect_err("the request must fail")
+    }
+
+    /// A TLS listener with a self-signed certificate this machine does not
+    /// trust.
+    async fn untrusted_tls() -> (u16, tokio::task::JoinHandle<()>) {
+        let acceptor = super::collection_redirect_tests::tls_acceptor();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = tokio::spawn(async move {
+            while let Ok((stream, _)) = listener.accept().await {
+                let acceptor = acceptor.clone();
+                tokio::spawn(async move {
+                    let _ = acceptor.accept(stream).await;
+                });
+            }
+        });
+        (port, server)
+    }
+
+    /// A reply that announces JSON and is not: reqwest attaches the URL to
+    /// the decode error (`Response::json`).
+    async fn undecodable_reply() -> (String, reqwest::Error, tokio::task::JoinHandle<()>) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = tokio::spawn(async move {
+            while let Ok((mut stream, _)) = listener.accept().await {
+                let mut chunk = [0u8; 4096];
+                let _ = stream.read(&mut chunk).await;
+                let _ = stream
+                    .write_all(
+                        b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\
+                          Content-Length: 8\r\nConnection: close\r\n\r\nnot json",
+                    )
+                    .await;
+                let _ = stream.shutdown().await;
+            }
+        });
+        let error = reqwest::Client::new()
+            .get(url("http", port))
+            .send()
+            .await
+            .unwrap()
+            .json::<serde_json::Value>()
+            .await
+            .expect_err("not json");
+        (format!("http://127.0.0.1:{port}"), error, server)
+    }
+
+    #[tokio::test]
+    async fn send_error_names_the_origin_not_the_url() {
+        let port = closed_port().await;
+        let message = send_error(failed_send(&url("http", port)).await).to_string();
+        assert_origin_only(&message, &format!("http://127.0.0.1:{port}"));
+        assert!(!message.contains(REFUSED_CERTIFICATE), "{message}");
+    }
+
+    #[tokio::test]
+    async fn connect_send_error_names_the_origin_and_the_cause_not_the_url() {
+        let port = closed_port().await;
+        let message = connect_send_error(failed_send(&url("http", port)).await).to_string();
+        assert_origin_only(&message, &format!("http://127.0.0.1:{port}"));
+        // The cause, which reqwest's "error sending request" alone hides.
+        assert!(
+            message.to_ascii_lowercase().contains("refused"),
+            "{message}"
+        );
+        assert!(!message.contains(REFUSED_CERTIFICATE), "{message}");
+    }
+
+    #[tokio::test]
+    async fn body_read_error_names_the_origin_not_the_url() {
+        let (origin, error, server) = undecodable_reply().await;
+        assert_origin_only(&body_read_error(error).to_string(), &origin);
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn body_cut_short_names_the_origin_not_the_url() {
+        let (origin, error, server) = undecodable_reply().await;
+        assert_origin_only(&body_cut_short(error, 0, 8), &origin);
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn a_refused_certificate_is_named_and_the_url_is_not() {
+        let (port, server) = untrusted_tls().await;
+        let target = url("https", port);
+        let origin = format!("https://127.0.0.1:{port}");
+        for message in [
+            send_error(failed_send(&target).await).to_string(),
+            connect_send_error(failed_send(&target).await).to_string(),
+        ] {
+            assert_origin_only(&message, &origin);
+            assert!(message.contains(REFUSED_CERTIFICATE), "{message}");
+        }
+        server.abort();
+    }
+
+    #[test]
+    fn the_certificate_words_of_each_tls_backend_are_recognised() {
+        for refusal in [
+            // OpenSSL (Linux), as measured against a self-signed server.
+            "error:0A000086:SSL routines:tls_post_process_server_certificate:\
+             certificate verify failed:ssl/statem/statem_clnt.c:2125: (self-signed certificate)",
+            // SChannel (Windows): CERT_E_UNTRUSTEDROOT, SEC_E_UNTRUSTED_ROOT.
+            "A certificate chain processed, but terminated in a root certificate which is \
+             not trusted by the trust provider. (os error -2146762487)",
+            "The certificate chain was issued by an authority that is not trusted. \
+             (os error -2146893019)",
+            // Security.framework (macOS): errSSLXCertChainInvalid, errSecNotTrusted.
+            "invalid certificate chain",
+            "The trust policy was not trusted.",
+            // rustls, by its text as well.
+            "invalid peer certificate: UnknownIssuer",
+        ] {
+            assert!(names_a_refused_certificate(refusal), "{refusal}");
+        }
+        for other in [
+            "Connection refused (os error 111)",
+            "No connection could be made because the target machine actively refused it. \
+             (os error 10061)",
+            "failed to lookup address information: Name or service not known",
+            "No such host is known. (os error 11001)",
+            "nodename nor servname provided, or not known",
+            "Connection reset by peer (os error 104)",
+            "operation timed out",
+            "connection closed before message completed",
+        ] {
+            assert!(!names_a_refused_certificate(other), "{other}");
         }
     }
 }

@@ -699,6 +699,51 @@ describe('a preset text names the controls its form renders', () => {
         expect(handedUp?.options?.endpoint).toBe('gateway.storjshare.io');
     });
 
+    it('takes a custom Filen S3 port in the endpoint its setup text names', async () => {
+        const filen = PROVIDERS.find(provider => provider.id === 'filen-desktop-s3')!;
+        const step = filen.setupInstructions!
+            .map(text => resolvePresetText(text, filen, label))
+            .find(text => text.startsWith('On a custom port'))!;
+        expect(step).toContain(`open ${label('protocol.advanced')}, press ${label('common.edit')} and ${label('protocol.advancedUnlock')}, and enter in ${label('protocol.s3Endpoint')}`);
+        await renderPreset(filen);
+        await act(async () => button(label('protocol.advanced')).click());
+        const endpoint = [...container.querySelectorAll('label')]
+            .find(element => element.textContent?.trim() === label('protocol.s3Endpoint'))!
+            .closest('div')!.parentElement!.querySelector<HTMLInputElement>('input')!;
+        expect(endpoint.disabled).toBe(true);
+        await act(async () => button(label('common.edit')).click());
+        await act(async () => button(label('protocol.advancedUnlock')).click());
+        expect(endpoint.disabled).toBe(false);
+        await act(async () => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(endpoint, 'http://local.s3.filen.io:1801');
+            endpoint.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        // What Fetch and connect send: the connection's endpoint, as typed.
+        expect(handedUp?.options?.endpoint).toBe('http://local.s3.filen.io:1801');
+    });
+
+    it('takes a custom Filen WebDAV port in the field its setup text names', async () => {
+        const filen = PROVIDERS.find(provider => provider.id === 'filen-desktop-webdav')!;
+        const step = filen.setupInstructions!
+            .map(text => resolvePresetText(text, filen, label))
+            .find(text => text.startsWith('On a custom port'))!;
+        expect(step).toContain(`open ${label('protocol.advanced')}, press ${label('common.edit')} and ${label('protocol.advancedUnlock')}, and set ${label('connection.port')}`);
+        await renderPreset(filen);
+        await act(async () => button(label('protocol.advanced')).click());
+        const port = [...container.querySelectorAll('label')]
+            .find(element => element.textContent?.trim() === label('connection.port'))!
+            .parentElement!.querySelector<HTMLInputElement>('input')!;
+        expect(port.disabled).toBe(true);
+        await act(async () => button(label('common.edit')).click());
+        await act(async () => button(label('protocol.advancedUnlock')).click());
+        expect(port.disabled).toBe(false);
+        await act(async () => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(port, '1901');
+            port.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        expect(handedUp?.port).toBe(1901);
+    });
+
     it('asks for the Filen S3 bucket with the Fetch button the form shows', async () => {
         const filen = PROVIDERS.find(provider => provider.id === 'filen-desktop-s3')!;
         await renderPreset(filen);
