@@ -5416,6 +5416,35 @@ mod tests {
             pending_of(elsewhere_own).is_some() || pending_of("jottacloud_refresh").is_some();
         drop(loaded_from_singleton);
 
+        // Another process deletes a key the chain is written to, not the one
+        // it was loaded from: that key is neither written nor kept, the
+        // source still gets the successor.
+        let deleted_destination = "jottacloud_refresh_destination";
+        store
+            .store("jottacloud_refresh", &chain("singleton-destination"))
+            .unwrap();
+        let mut writes_to_deleted = bound("destination");
+        assert!(runtime
+            .block_on(writes_to_deleted.try_connect_with_refresh())
+            .unwrap());
+        let destination_before = stored(deleted_destination);
+        // The real delete, then this process forgets it: another process
+        // shares only the count.
+        partitions::delete_credential_for_user_dual(&store, first, deleted_destination).unwrap();
+        DELETED_CHAINS
+            .lock()
+            .unwrap()
+            .at
+            .remove(&(owner, deleted_destination.to_string()));
+        writes_to_deleted.token_expiry = Instant::now();
+        runtime
+            .block_on(writes_to_deleted.refresh_if_needed())
+            .expect("refresh");
+        let destination_after = stored(deleted_destination);
+        let destination_pending = pending_of(deleted_destination).is_some();
+        let source_after = token_of(&store.get("jottacloud_refresh").unwrap_or_default());
+        drop(writes_to_deleted);
+
         // A delete through a store handle kept after the process cache is
         // cleared is counted too.
         let kept_handle = "jottacloud_refresh_handle";
@@ -5490,6 +5519,13 @@ mod tests {
         assert_eq!(own_after, own_before, "{own_after}");
         assert_eq!(singleton_after, "", "the deleted key stays deleted");
         assert!(!elsewhere_pending, "nothing is kept for either key");
+        assert!(
+            destination_before.contains("rotated-"),
+            "the connect wrote the destination: {destination_before}"
+        );
+        assert_eq!(destination_after, "", "the deleted key stays deleted");
+        assert!(!destination_pending, "nothing is kept for the deleted key");
+        assert!(source_after.starts_with("rotated-"), "{source_after}");
         assert!(handle_deleted.is_ok());
         assert_eq!(
             handle_count,
