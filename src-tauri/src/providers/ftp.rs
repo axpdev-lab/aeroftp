@@ -12971,68 +12971,110 @@ mod abandoned_command_tests {
         assert!(sent(&log, "QUIT"), "{:?}", log.lock().unwrap());
     }
 
-    /// M3: a delete dropped after its `DELE` was sent (a Cancel) leaves its
-    /// reply to come. The next command redials instead of reading that
-    /// `250` as its own answer, and a later delete works on the new session.
-    #[tokio::test]
-    async fn a_cancelled_delete_leaves_no_late_reply_for_the_next_command() {
-        let (port, log, release) = server(Passive::LateDele).await;
-        let mut provider = connected(port).await;
-        tokio::select! {
-            _ = provider.delete("/a.txt") => panic!("the DELE reply comes after the client gave up"),
-            _ = until_sent(&log, "DELE") => {}
-        }
-        // The late `250` goes out now and is on the first connection before
-        // the next command starts.
-        release.notify_one();
-        until_sent(&log, LATE_REPLY_WRITTEN).await;
-        let path = tokio::time::timeout(Duration::from_secs(5), provider.pwd())
-            .await
-            .expect("the command must end")
-            .expect("the command must succeed on a fresh session");
-        assert_eq!(path, "/");
-        // The fixture holds every DELE reply: this one is let go at once.
-        release.notify_one();
-        tokio::time::timeout(Duration::from_secs(5), provider.delete("/b.txt"))
-            .await
-            .expect("the delete must end")
-            .expect("the delete must read its own reply");
-        let logins = log
-            .lock()
-            .unwrap()
-            .iter()
-            .filter(|line| line.to_uppercase().starts_with("USER"))
-            .count();
-        assert_eq!(logins, 2, "{:?}", log.lock().unwrap());
-        provider.disconnect().await.unwrap();
+    /// When the late reply of an abandoned command reaches the first
+    /// connection, relative to the next command: already written and
+    /// waiting there (the unread-reply check catches it), or still held by
+    /// the server while the next command runs (only the abandoned-command
+    /// mark can tell).
+    #[derive(Clone, Copy, Debug)]
+    enum LateReply {
+        Queued,
+        Outstanding,
     }
 
-    /// After an abandoned listing whose reply comes late, the next command redials instead of reading it.
-    #[tokio::test]
-    async fn the_next_command_after_an_abandoned_one_redials_instead_of_reading_its_late_reply() {
-        let (port, log, release) = server(Passive::Late).await;
-        let mut provider = connected(port).await;
-        let passive = until_any_sent(&log, &["PASV", "EPSV"]);
-        tokio::select! {
-            _ = provider.list("/") => panic!("the passive-mode reply comes after the client gave up"),
-            _ = passive => {}
+    /// Lets the late reply go before the next command when it is
+    /// [`LateReply::Queued`], and waits until it is on the first connection.
+    async fn before_next_command(
+        order: LateReply,
+        log: &Mutex<Vec<String>>,
+        release: &tokio::sync::Notify,
+    ) {
+        if let LateReply::Queued = order {
+            release.notify_one();
+            until_sent(log, LATE_REPLY_WRITTEN).await;
         }
-        // The late `227` lands on the first connection before the next
-        // command runs. Read there, it would be taken as that command's reply.
-        release.notify_one();
-        until_sent(&log, LATE_REPLY_WRITTEN).await;
-        let path = tokio::time::timeout(Duration::from_secs(5), provider.pwd())
-            .await
-            .expect("the command must end")
-            .expect("the command must succeed on a fresh session");
-        assert_eq!(path, "/");
+    }
+
+    /// Checks the next command ran on a fresh session, then, when the late
+    /// reply was still held, lets it go and waits until the first connection
+    /// is closed: the server's next late reply then belongs to the second.
+    async fn after_next_command(
+        order: LateReply,
+        log: &Mutex<Vec<String>>,
+        release: &tokio::sync::Notify,
+    ) {
         let logins = log
             .lock()
             .unwrap()
             .iter()
             .filter(|line| line.to_uppercase().starts_with("USER"))
             .count();
-        assert_eq!(logins, 2, "{:?}", log.lock().unwrap());
-        provider.disconnect().await.unwrap();
+        assert_eq!(logins, 2, "{order:?}: {:?}", log.lock().unwrap());
+        if let LateReply::Outstanding = order {
+            assert!(
+                !sent(log, LATE_REPLY_WRITTEN),
+                "{order:?}: the late reply went out before the next command ended"
+            );
+            release.notify_one();
+            until_sent(log, CLOSED).await;
+        }
+    }
+
+    /// M3: a delete dropped after its `DELE` was sent (a Cancel) leaves its
+    /// reply to come. The next command redials instead of reading that
+    /// `250` as its own answer, whether it is already there or still to
+    /// come, and a later delete works on the new session.
+    #[tokio::test]
+    async fn a_cancelled_delete_leaves_no_late_reply_for_the_next_command() {
+        for order in [LateReply::Queued, LateReply::Outstanding] {
+            let (port, log, release) = server(Passive::LateDele).await;
+            let mut provider = connected(port).await;
+            tokio::select! {
+                _ = provider.delete("/a.txt") => panic!("the DELE reply comes after the client gave up"),
+                _ = until_sent(&log, "DELE") => {}
+            }
+            before_next_command(order, &log, &release).await;
+            let path = tokio::time::timeout(Duration::from_secs(5), provider.pwd())
+                .await
+                .unwrap_or_else(|_| panic!("{order:?}: the command must end"))
+                .unwrap_or_else(|e| {
+                    panic!("{order:?}: the command must succeed on a fresh session: {e:?}")
+                });
+            assert_eq!(path, "/");
+            after_next_command(order, &log, &release).await;
+            // The fixture holds every DELE reply: this one is let go at once.
+            release.notify_one();
+            tokio::time::timeout(Duration::from_secs(5), provider.delete("/b.txt"))
+                .await
+                .unwrap_or_else(|_| panic!("{order:?}: the delete must end"))
+                .unwrap_or_else(|e| panic!("{order:?}: the delete must read its own reply: {e:?}"));
+            provider.disconnect().await.unwrap();
+        }
+    }
+
+    /// After an abandoned listing whose reply comes late, the next command
+    /// redials instead of reading it, whether it is already there or still
+    /// to come. Read there, it would be taken as that command's reply.
+    #[tokio::test]
+    async fn the_next_command_after_an_abandoned_one_redials_instead_of_reading_its_late_reply() {
+        for order in [LateReply::Queued, LateReply::Outstanding] {
+            let (port, log, release) = server(Passive::Late).await;
+            let mut provider = connected(port).await;
+            let passive = until_any_sent(&log, &["PASV", "EPSV"]);
+            tokio::select! {
+                _ = provider.list("/") => panic!("the passive-mode reply comes after the client gave up"),
+                _ = passive => {}
+            }
+            before_next_command(order, &log, &release).await;
+            let path = tokio::time::timeout(Duration::from_secs(5), provider.pwd())
+                .await
+                .unwrap_or_else(|_| panic!("{order:?}: the command must end"))
+                .unwrap_or_else(|e| {
+                    panic!("{order:?}: the command must succeed on a fresh session: {e:?}")
+                });
+            assert_eq!(path, "/");
+            after_next_command(order, &log, &release).await;
+            provider.disconnect().await.unwrap();
+        }
     }
 }
