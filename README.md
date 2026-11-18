@@ -891,6 +891,10 @@ GPL-3.0-or-later - See [LICENSE](LICENSE) for details.
   </tr>
 </table>
 
+<p align="center">
+  <b>Pull requests are reviewed, scanned and verified by</b>
+</p>
+
 <table align="center">
   <tr>
     <td align="center">
@@ -908,6 +912,9 @@ GPL-3.0-or-later - See [LICENSE](LICENSE) for details.
     <td align="center">
       <a href="https://snyk.io"><img src="icons/snyk.png" alt="Snyk" height="48" /></a>
     </td>
+    <td align="center">
+      <a href="https://www.chainguard.dev"><img src="icons/chainguard.png" alt="Chainguard" height="48" /></a>
+    </td>
   </tr>
   <tr>
     <td align="center"><sub>CodeRabbit</sub></td>
@@ -915,6 +922,7 @@ GPL-3.0-or-later - See [LICENSE](LICENSE) for details.
     <td align="center"><sub>Aikido Security</sub></td>
     <td align="center"><sub>Socket.dev</sub></td>
     <td align="center"><sub>Snyk</sub></td>
+    <td align="center"><sub>Chainguard</sub></td>
   </tr>
 </table>
 
