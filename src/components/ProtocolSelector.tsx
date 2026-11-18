@@ -1455,48 +1455,13 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
         const isNextcloud = selectedProviderId === 'nextcloud';
         const isCustomOrGeneric = !selectedProviderId || selectedProviderId === 'custom-webdav';
         const showNextcloudHint = isNextcloud || isCustomOrGeneric;
-        // Local-bridge WebDAV presets (Filen Desktop, MEGAcmd, ...) mark
-        // themselves with `defaults.webdavScheme`. MEGAcmd's scheme is chosen by
-        // AeroFTP (it arms `mega-webdav /` on HTTP), so the manual toggle stays.
         // The Filen Desktop bridge protocol is a user setting in the Filen app;
-        // AeroFTP now auto-detects it at connect (#389), so its manual toggle is
-        // replaced by an informational note. HTTPS local bridges always use a
-        // self-signed certificate (loopback), so cert verification is disabled.
+        // AeroFTP detects it at connect on the default port (#389), so the form
+        // shows a note instead of a scheme choice. MEGAcmd has its own form.
         const isFilenLocalBridge = selectedProviderId === 'filen-desktop-webdav';
-        const showWebdavSchemeToggle =
-            !!providerConfig?.defaults?.webdavScheme && !isFilenLocalBridge;
-        const currentScheme = (options.webdavScheme as 'http' | 'https' | undefined) || 'http';
 
         return (
             <div className="pt-2 border-t border-gray-200 dark:border-gray-700 mt-3 space-y-3">
-                {showWebdavSchemeToggle && (
-                    <div>
-                        <label className="block text-sm font-medium mb-1.5">{t('protocol.webdavLocalScheme')}</label>
-                        <div className="flex gap-4">
-                            {(['http', 'https'] as const).map((value) => (
-                                <label key={value} className="flex items-center gap-2 text-sm cursor-pointer">
-                                    <input
-                                        type="radio"
-                                        name="webdav-local-scheme"
-                                        checked={currentScheme === value}
-                                        onChange={() => onChange({
-                                            ...options,
-                                            webdavScheme: value,
-                                            // Loopback HTTPS bridges use self-signed certs
-                                            verifyCert: value === 'https' ? false : options.verifyCert,
-                                        })}
-                                        disabled={disabled}
-                                        className="text-blue-500 focus:ring-blue-500"
-                                    />
-                                    {value.toUpperCase()}
-                                </label>
-                            ))}
-                        </div>
-                        <p className="text-xs text-gray-500 mt-1">
-                            {t('protocol.webdavLocalSchemeHelp')}
-                        </p>
-                    </div>
-                )}
                 {isFilenLocalBridge && (
                     <div className="text-sm text-gray-600 dark:text-gray-400 flex items-start gap-2">
                         <Cloud size={14} className="mt-0.5 shrink-0" />
