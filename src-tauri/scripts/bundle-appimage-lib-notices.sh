@@ -8,7 +8,9 @@
 # copyright. For every bundled shared object this script finds the package
 # that installed it and copies that file to usr/share/doc/<package>/copyright
 # in the AppDir, and writes usr/share/doc/BUNDLED-LIBRARIES.txt naming the
-# package and version of each library, the source package to obtain for it.
+# package and version of each library, and the release asset that holds the
+# source of each at that version (download-appimage-lib-sources.sh, run on
+# that list, writes it).
 #
 # The package is the one that installed the file the library was copied from.
 # A file name installed by one package is that package's. A name several
@@ -31,7 +33,9 @@
 
 set -euo pipefail
 
-APPDIR="${1:?usage: bundle-appimage-lib-notices.sh <AppDir>}"
+APPDIR="${1:?usage: bundle-appimage-lib-notices.sh <AppDir> <AeroFTP version>}"
+VERSION="${2:?usage: bundle-appimage-lib-notices.sh <AppDir> <AeroFTP version>}"
+SOURCES_ASSET="aeroftp-$VERSION-appimage-lib-sources.tar"
 ADMINDIR="${AEROFTP_DPKG_ADMINDIR:-/var/lib/dpkg}"
 DOC_ROOT="${AEROFTP_DOC_ROOT:-/usr/share/doc}"
 OUT_DOC="$APPDIR/usr/share/doc"
@@ -170,7 +174,7 @@ fi
 
 {
     echo "Libraries this AppImage bundles, the Ubuntu package that provides each, and its version."
-    echo "The terms of each package are in usr/share/doc/<package>/copyright; its source is the Ubuntu source package of that version."
+    echo "The terms of each package are in usr/share/doc/<package>/copyright. The source of each package, at that version, is in $SOURCES_ASSET, published with the AeroFTP $VERSION release beside this AppImage."
     echo
     while IFS= read -r path; do
         echo "$path ${lines[$path]}"

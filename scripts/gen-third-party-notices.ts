@@ -2195,6 +2195,8 @@ export function renderNotices(
   lines.push('System libraries that are not Cargo or npm dependencies (for example WebKitGTK, which the AppImage bundles as a');
   lines.push('fallback) are not covered by this document. The AppImage ships the copyright file of the Ubuntu package of each library');
   lines.push('it bundles in `usr/share/doc/<package>/copyright`, and `usr/share/doc/BUNDLED-LIBRARIES.txt` names that package and its version.');
+  lines.push('The source of each of those packages, at that version, is published with every release as the asset');
+  lines.push('`aeroftp-<version>-appimage-lib-sources.tar`, beside the AppImage of that version.');
   lines.push('');
 
   const allComponents = [...sortedCargoDeps, ...sortedNpmDeps];

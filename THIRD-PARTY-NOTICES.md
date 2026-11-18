@@ -12,6 +12,8 @@ The components listed here are distributed in accordance with their respective l
 System libraries that are not Cargo or npm dependencies (for example WebKitGTK, which the AppImage bundles as a
 fallback) are not covered by this document. The AppImage ships the copyright file of the Ubuntu package of each library
 it bundles in `usr/share/doc/<package>/copyright`, and `usr/share/doc/BUNDLED-LIBRARIES.txt` names that package and its version.
+The source of each of those packages, at that version, is published with every release as the asset
+`aeroftp-<version>-appimage-lib-sources.tar`, beside the AppImage of that version.
 
 ---
 
