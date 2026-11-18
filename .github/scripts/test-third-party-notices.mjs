@@ -38,6 +38,7 @@ import {
   npmInstallsHere,
   holderKey,
   holderOfNotice,
+  npmAuthors,
 } from '../../scripts/gen-third-party-notices.ts';
 
 // The committed notices with the blocks the generator reproduces as shipped,
@@ -361,6 +362,50 @@ test('npm collection: no locked production package is limited to some platforms,
   const lock = JSON.parse(fs.readFileSync(path.join(ROOT, 'package-lock.json'), 'utf8'));
   const limited = Object.entries(lock.packages).filter(([p, info]) => p !== '' && !info.dev && (info.os || info.cpu)).map(([p]) => p);
   assert.deepStrictEqual(limited, [], 'a production package installed only on some platforms needs a reviewed source for its license files on the others');
+});
+
+test('npm authors: the manifest author is read in each form npm writes it, a url and a nameless author name no one', () => {
+  assert.deepStrictEqual(npmAuthors({ author: 'Jane Doe <jane@example.com> (https://example.com)' }), ['Jane Doe <jane@example.com>']);
+  assert.deepStrictEqual(npmAuthors({ author: 'Jane Doe <jane@example.com>' }), ['Jane Doe <jane@example.com>']);
+  assert.deepStrictEqual(npmAuthors({ author: 'Jane Doe (https://example.com)' }), ['Jane Doe']);
+  assert.deepStrictEqual(npmAuthors({ author: '  Jane Doe  ' }), ['Jane Doe']);
+  assert.deepStrictEqual(npmAuthors({ author: 'Jane Doe (https://example.com) <jane@example.com>' }), ['Jane Doe (https://example.com) <jane@example.com>'], 'another order is kept as written');
+  assert.deepStrictEqual(npmAuthors({ author: { name: 'Jane Doe', email: 'jane@example.com', url: 'https://example.com' } }), ['Jane Doe <jane@example.com>']);
+  assert.deepStrictEqual(npmAuthors({ author: { name: 'Jane Doe', url: 'https://example.com' } }), ['Jane Doe']);
+  for (const author of [undefined, '', '   ', '<jane@example.com>', '(https://example.com)', { email: 'jane@example.com' }, { name: '' }, { name: 42 }, ['Jane Doe'], 42, null]) {
+    assert.strictEqual(npmAuthors({ author }), undefined, JSON.stringify(author));
+  }
+});
+
+test('npm authors: the installed manifest gives a package its authors, and with none the reviewed attribution is still required', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'npm-authors-fixture-'));
+  try {
+    const manifests = {
+      'test-npm-string': { author: 'Jane Doe <jane@example.com> (https://example.com)' },
+      'test-npm-object': { author: { name: 'John Roe', email: 'john@example.com', url: 'https://example.com' } },
+      'test-npm-none': {},
+    };
+    const packages = { '': {} };
+    for (const [name, extra] of Object.entries(manifests)) {
+      packages[`node_modules/${name}`] = { version: '1.0.0', license: 'Apache-2.0' };
+      fs.mkdirSync(path.join(tmpDir, 'node_modules', name), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, 'node_modules', name, 'package.json'), JSON.stringify({ name, version: '1.0.0', ...extra }));
+    }
+    const lockPath = path.join(tmpDir, 'package-lock.json');
+    fs.writeFileSync(lockPath, JSON.stringify({ lockfileVersion: 3, packages }));
+    const deps = collectNpmDependencies(lockPath, tmpDir);
+    assert.deepStrictEqual(deps.map((d) => [d.name, d.authors]), [
+      ['test-npm-none', undefined],
+      ['test-npm-object', ['John Roe <john@example.com>']],
+      ['test-npm-string', ['Jane Doe <jane@example.com>']],
+    ]);
+    const md = generateNoticesMarkdown(deps.filter((d) => d.name !== 'test-npm-none'), []);
+    assert.match(md, /- `test-npm-object@1\.0\.0` - SPDX: `Apache-2\.0` \(authors: John Roe <john@example\.com>\)/);
+    assert.match(md, /- `test-npm-string@1\.0\.0` - SPDX: `Apache-2\.0` \(authors: Jane Doe <jane@example\.com>\)/);
+    assert.throws(() => generateNoticesMarkdown(deps, []), /Component test-npm-none@1\.0\.0 has no manifest authors and is missing reviewed attribution/);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
 });
 
 test('directory order: the same package contents give the same notices in any enumeration order', () => {

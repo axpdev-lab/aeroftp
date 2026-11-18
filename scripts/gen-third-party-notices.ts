@@ -915,6 +915,27 @@ export function npmInstallsHere(allowed: string[] | undefined, value: string): b
   return named.length === 0 || named.includes(value);
 }
 
+// A manifest's author as npm writes it, "Name <email> (url)" or { name,
+// email, url }, kept as Cargo keeps its authors: the name with its email, as
+// "Name <email>". A url names no one, and an author with no name is none.
+export function npmAuthors(manifest: { author?: unknown }): string[] | undefined {
+  const a = manifest.author;
+  let name = '';
+  let email = '';
+  if (typeof a === 'string') {
+    const m = a.match(/^\s*([^<(]*?)\s*(?:<([^>]*)>)?\s*(?:\(([^)]*)\))?\s*$/);
+    // Another order of the parts is kept as written.
+    name = m ? m[1] : a.trim();
+    email = m?.[2]?.trim() ?? '';
+  } else if (a && typeof a === 'object' && !Array.isArray(a)) {
+    const o = a as { name?: unknown; email?: unknown };
+    if (typeof o.name === 'string') name = o.name.trim();
+    if (typeof o.email === 'string') email = o.email.trim();
+  }
+  if (name === '') return undefined;
+  return [email ? `${name} <${email}>` : name];
+}
+
 export function collectNpmDependencies(
   pkgLockPath = path.join(ROOT, 'package-lock.json'),
   baseDir = ROOT
@@ -973,6 +994,7 @@ export function collectNpmDependencies(
       license: pkgInfo.license || 'Unknown',
       repository: pkgInfo.homepage || undefined,
       source: 'npm',
+      authors: npmAuthors(installed),
       licenseFiles,
       noticeFiles,
       packageDir: depDir,
