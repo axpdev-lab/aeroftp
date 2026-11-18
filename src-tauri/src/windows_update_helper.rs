@@ -1534,6 +1534,8 @@ mod tests {
         let next = fx.app.join(portable_docs::NEXT_DIR);
         std::fs::create_dir(&next).expect("obstruction");
         std::fs::write(next.join("notes.txt"), b"not ours").expect("user file");
+        // Named like a document a staging writes, but the user's.
+        std::fs::write(next.join("README.txt"), b"my readme").expect("user file");
         let refused = stage_update(&fx.staged, &fx.current).expect_err("refused");
         assert!(refused.contains("the update is not applied"), "{refused}");
         // Nothing beside the installed exe, the obstruction untouched, the
@@ -1543,9 +1545,14 @@ mod tests {
             std::fs::read(next.join("notes.txt")).expect("kept"),
             b"not ours"
         );
+        assert_eq!(
+            std::fs::read(next.join("README.txt")).expect("kept"),
+            b"my readme"
+        );
         assert!(fx.staged.new_readme.as_deref().is_some_and(Path::is_file));
         // Without the obstruction the same update stages its documents.
         std::fs::remove_file(next.join("notes.txt")).expect("cleared");
+        std::fs::remove_file(next.join("README.txt")).expect("cleared");
         std::fs::remove_dir(&next).expect("cleared");
         stage_update(&fx.staged, &fx.current).expect("staged");
         assert!(fx
