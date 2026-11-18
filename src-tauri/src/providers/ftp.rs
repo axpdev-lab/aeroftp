@@ -13048,6 +13048,15 @@ mod abandoned_command_tests {
                 .await
                 .unwrap_or_else(|_| panic!("{order:?}: the delete must end"))
                 .unwrap_or_else(|e| panic!("{order:?}: the delete must read its own reply: {e:?}"));
+            // The fixture answers any DELE: the path shows which one was asked.
+            let deletes: Vec<String> = log
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|line| line.to_uppercase().starts_with("DELE"))
+                .cloned()
+                .collect();
+            assert_eq!(deletes, ["DELE /a.txt", "DELE /b.txt"], "{order:?}");
             provider.disconnect().await.unwrap();
         }
     }
