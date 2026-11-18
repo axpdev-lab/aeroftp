@@ -6344,7 +6344,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
   - Copyright 2014-2021 The tao contributors (in a source header under Apache-2.0)
   - Copyright 2021-2025 Tauri Programme within The Commons Conservancy (in a source header under Apache-2.0)
   - Copyright © 2017 W3C® (MIT, ERCIM, Keio, Beihang). (src/keyboard.rs)
-  - Copyright © 2021 World Wide Web Consortium, (Massachusetts Institute of Technology, European (src/keyboard.rs)
+  - Copyright © 2021 World Wide Web Consortium, (Massachusetts Institute of Technology, European Research Consortium for Informatics and Mathematics, Keio University, Beihang). All Rights Reserved. (src/keyboard.rs)
 - `toml@0.8.2` (cargo, file: `LICENSE-APACHE`)
   - Copyright 2017 Serde Developers (src/map.rs)
 - `toml@0.9.12+spec-1.1.0` (cargo, file: `LICENSE-APACHE`)
@@ -6579,7 +6579,7 @@ Apache License
   - Copyright (c) 2015 The Rust Project Developers (src/parser/matches/arg_matches.rs)
 - `clap_complete@4.6.11` (cargo, file: `LICENSE-MIT`)
 - `clap_derive@4.6.7` (cargo, file: `LICENSE-MIT`)
-  - Copyright 2018 Guillaume Pinot (@TeXitoi) <texitoi@texitoi.eu>, (src/derives/args.rs)
+  - Copyright 2018 Guillaume Pinot (@TeXitoi) <texitoi@texitoi.eu>, Kevin Knapp (@kbknapp) <kbknapp@gmail.com>, and Ana Hobden (@hoverbear) <operator@hoverbear.org> (src/derives/args.rs)
 - `clap_lex@1.1.0` (cargo, file: `LICENSE-MIT`)
 - `colorchoice@1.0.5` (cargo, file: `LICENSE-MIT`)
 - `env_filter@0.1.4` (cargo, file: `LICENSE-MIT`)
@@ -25648,7 +25648,7 @@ DEALINGS IN THE SOFTWARE.
 **Used by component(s):**
 - `libdbus-sys@0.2.7` (cargo, file: `vendor/dbus/COPYING`)
   - (C) 2003, 2004, 2005 Thomas Vander Stichele <thomas at apestaart dot org> (vendor/dbus/m4/as-ac-expand.m4)
-  - (C) 2005-02-02 David A. Wheeler; released under the D-Bus licenses, (vendor/dbus/doc/introspect.dtd)
+  - (C) 2005-02-02 David A. Wheeler; released under the D-Bus licenses, GNU GPL version 2 (or greater) and AFL 1.1 (or greater) (vendor/dbus/doc/introspect.dtd)
   - (c) 2006 Mandriva (vendor/dbus/bus/dir-watch-inotify.c)
   - Copyright (C) 1995 A. M. Kuchling (vendor/dbus/dbus/dbus-sha.c)
   - Copyright (C) 1995, A.M. Kuchling (vendor/dbus/dbus/dbus-sha.c)
@@ -29923,7 +29923,7 @@ SOFTWARE.
 
 **Used by component(s):**
 - `moka@0.12.16` (cargo, file: `LICENSE-APACHE`)
-  - Copyright 2023 Mara Bos, (src/common/concurrent/arc.rs)
+  - Copyright 2023 Mara Bos (src/common/concurrent/arc.rs)
 
 ```text
 Apache License

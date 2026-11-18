@@ -41,6 +41,8 @@ import {
   npmAuthors,
   reviewedLicenseTerms,
   standardTextId,
+  reviewedNotices,
+  reviewedTagMentions,
 } from '../../scripts/gen-third-party-notices.ts';
 
 // The committed notices with the blocks the generator reproduces as shipped,
@@ -1497,6 +1499,22 @@ test('comment closers: inside a block comment a closer ends it whatever leads th
       }
     }
   }
+  // Inside a block comment only its own closer ends it: `*/` is text inside
+  // `(* *)`, `*)` is text inside `/* */`.
+  for (const [open, close, other] of [['(*', '*)', '*/'], ['/*', '*/', '*)'], ['{-', '-}', '*/'], ['<!--', '-->', '*)']]) {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'other-closer-fixture-'));
+    try {
+      fs.writeFileSync(path.join(tmp, 'LICENSE'), 'MIT License\n\nCopyright (c) 2020 Wrapper Author\n\nPermission is hereby granted.');
+      fs.mkdirSync(path.join(tmp, 'gen'));
+      fs.writeFileSync(path.join(tmp, 'gen', 'other.src'), `${open}\n Copyright (c) 2021 Inner Holder, for src/${other}generated\n ${close} code();\n${open}\n SPDX-License-Identifier: BSD-2-Clause ${close} int x;\n`);
+      const comp = { name: 'other-pkg', version: '1.0.0', license: 'MIT', source: 'cargo', packageDir: tmp, authors: ['Wrapper Author'], ...readPackageFiles(tmp, 'other-pkg@1.0.0') };
+      const label = `${open} ... ${other} ... ${close}`;
+      assert.ok(findPackageCopyrightNotices(tmp).map((n) => n.notice).includes(`Copyright (c) 2021 Inner Holder, for src/${other}generated`), label);
+      assert.deepEqual(findBundledCodeUnderOtherLicenses(comp, known).map((b) => b.license), ['BSD-2-Clause'], label);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  }
   // A real line comment keeps a closer in its text: a closer at its end is
   // dropped from the tag, and one in its words stays.
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'line-closer-fixture-'));
@@ -1710,40 +1728,59 @@ test('scope: the introduction claims only the Cargo and npm dependencies it list
   assert.match(md, /- \*\*Total Listed Components:\*\* 0/);
 });
 
-test('wrapped notices: a notice that ends at its years keeps the holder on its next line, never the license prose after it', () => {
+test('wrapped notices: a notice that may go on with its next line is joined only from a reviewed entry, never by a guess', () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wrapped-notice-fixture-'));
   try {
     const write = (rel, content) => {
       fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
       fs.writeFileSync(path.join(tmpDir, rel), content);
     };
-    // The xz getopt headers of lzma-sys: the holder is indented by a tab in
-    // getopt.c, by the comment's own indent in getopt_int.h.
-    write('lib/getopt.c', '/* Getopt for GNU.\n   Copyright (C) 1987,88,89,2006\n\tFree Software Foundation, Inc.\n   This file is part of the GNU C Library.\n*/\n');
-    write('lib/getopt_int.h', '/* Internal declarations for getopt.\n   Copyright (C) 1989-1994,2004\n   Free Software Foundation, Inc.\n   This file is part of the GNU C Library.\n*/\n');
-    // A notice with its holder on the line is unchanged, and prose after a
-    // holder-less notice is not taken as a holder.
-    write('lib/named.c', '/* Copyright (C) 2001 Named Holder\n   Free Software Foundation, Inc.\n*/\n');
-    write('lib/prose.c', '/* Copyright (C) 1999\n   This program is free software.\n*/\n');
-    const notices = findPackageCopyrightNotices(tmpDir).map((n) => `${n.notice} (${n.file})`);
-    assert.deepStrictEqual(notices, [
-      'Copyright (C) 1987,88,89,2006 Free Software Foundation, Inc. (lib/getopt.c)',
-      'Copyright (C) 1989-1994,2004 Free Software Foundation, Inc. (lib/getopt_int.h)',
-      'Copyright (C) 1999 (lib/prose.c)',
-      'Copyright (C) 2001 Named Holder (lib/named.c)',
+    const scanOnly = (rel, content) => {
+      fs.rmSync(path.join(tmpDir, 'lib'), { recursive: true, force: true });
+      write(rel, content);
+      return () => findPackageCopyrightNotices(tmpDir).map((n) => `${n.notice} (${n.file})`);
+    };
+    // The xz getopt header of lzma-sys, reviewed at its source: joined.
+    assert.ok(reviewedNotices().some((r) => r.line === 'Copyright (C) 1989-1994,1996-1999,2001,2003,2004' && r.next === 'Free Software Foundation, Inc.'));
+    assert.deepStrictEqual(scanOnly('lib/getopt_int.h', '/* Internal declarations for getopt.\n   Copyright (C) 1989-1994,1996-1999,2001,2003,2004\n   Free Software Foundation, Inc.\n   This file is part of the GNU C Library.\n*/\n')(), [
+      'Copyright (C) 1989-1994,1996-1999,2001,2003,2004 Free Software Foundation, Inc. (lib/getopt_int.h)',
     ]);
-
-    // A bundled header keeps the wrapped holder too.
-    fs.rmSync(path.join(tmpDir, 'lib'), { recursive: true });
+    // The same shape unreviewed fails and names the file, whatever the next
+    // line holds: a holder ("The Example Foundation"), license prose, code
+    // after a closed comment, the rest of an open parenthesis or a list.
+    for (const [rel, content] of [
+      ['lib/other.c', '/* Copyright (C) 1987,2006\n   Free Software Foundation, Inc.\n*/\n'],
+      ['lib/the.c', '/* Copyright (C) 2020\n * The Example Foundation\n */\n'],
+      ['lib/prose.c', '/* Copyright (C) 1999\n   This program is free software.\n*/\n'],
+      ['lib/closed.c', '/* Copyright (c) 2020 */\nWidget widget;\n'],
+      ['lib/paren.rs', '// Copyright 2021 Example Consortium, (First University, Second\n// Institute). All Rights Reserved.\n'],
+      ['lib/list.rs', '// Copyright 2018 First Author <first@example.org>,\n// Second Author <second@example.org>\n'],
+    ]) {
+      const scan = scanOnly(rel, content);
+      assert.throws(scan, new RegExp(`${rel.replace('.', '\\.')}:1 may continue on its next line, and the generation does not guess`), rel);
+    }
+    // A notice with its holder on the line takes nothing from the next one.
+    assert.deepStrictEqual(scanOnly('lib/named.c', '/* Copyright (C) 2001 Named Holder\n   Free Software Foundation, Inc.\n*/\n')(), ['Copyright (C) 2001 Named Holder (lib/named.c)']);
+    // A bundled header follows the same rule.
+    fs.rmSync(path.join(tmpDir, 'lib'), { recursive: true, force: true });
     write('LICENSE', 'Permission to use, copy, modify, and/or distribute this software for any purpose is hereby granted.');
-    write('vendor/getopt.c', '/* Copyright (C) 1987,2006\n   Free Software Foundation, Inc.\n   SPDX-License-Identifier: BSD-2-Clause */\n');
-    const comp = { name: 'wrapped-pkg', version: '1.0.0', license: 'ISC', source: 'cargo', packageDir: tmpDir, authors: ['Wrapper Author'], ...readPackageFiles(tmpDir, 'wrapped-pkg@1.0.0') };
+    write('vendor/getopt.c', '/* Copyright (C) 1989-1994,1996-1999,2001,2003,2004\n   Free Software Foundation, Inc.\n   SPDX-License-Identifier: BSD-2-Clause */\n');
+    const comp = () => ({ name: 'wrapped-pkg', version: '1.0.0', license: 'ISC', source: 'cargo', packageDir: tmpDir, authors: ['Wrapper Author'], ...readPackageFiles(tmpDir, 'wrapped-pkg@1.0.0') });
     const known = new Set(Object.keys(JSON.parse(fs.readFileSync(SPDX_STANDARD_LICENSES_FILE, 'utf8'))));
-    const bundled = findBundledCodeUnderOtherLicenses(comp, known);
-    assert.deepStrictEqual(bundled.find((b) => b.license === 'BSD-2-Clause')?.notices, ['Copyright (C) 1987,2006 Free Software Foundation, Inc.']);
+    assert.deepStrictEqual(findBundledCodeUnderOtherLicenses(comp(), known).find((b) => b.license === 'BSD-2-Clause')?.notices, ['Copyright (C) 1989-1994,1996-1999,2001,2003,2004 Free Software Foundation, Inc.']);
+    write('vendor/getopt.c', '/* Copyright (C) 1987,2006\n   Free Software Foundation, Inc.\n   SPDX-License-Identifier: BSD-2-Clause */\n');
+    assert.throws(() => findBundledCodeUnderOtherLicenses(comp(), known), /wrapped-pkg@1\.0\.0 vendor\/getopt\.c:1 may continue on its next line/);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
+});
+
+test('reviewed notices and tag mentions: each entry names its source and the whole notice starts with its line', () => {
+  for (const r of reviewedNotices()) {
+    assert.ok(r.source && r.line && r.next && r.notice, JSON.stringify(r));
+    assert.ok(r.notice.startsWith(r.line.replace(/,$/, '')), r.line);
+  }
+  for (const [key, reason] of Object.entries(reviewedTagMentions())) assert.ok(/^[^@]+@[^:]+:[^:]+:/.test(key) && reason, key);
 });
 
 test('findPackageCopyrightNotices: a template copyright line is no notice, a license text keeps its placeholders', () => {

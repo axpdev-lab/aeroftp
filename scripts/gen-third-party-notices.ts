@@ -735,17 +735,26 @@ const TEMPLATE_NOTICE =
  */
 // A notice made only of its marker and years, with no holder.
 const HOLDERLESS_NOTICE = /^(?:copyright\s*)?(?:(?:\([cC]\)|©)\s*)?[0-9][0-9,\-\s]*$/i;
-// The first words of license prose, which never continue a holder.
-const HOLDER_CONTINUATION_PROSE = /^(?:this|the|these|permission|licensed|all rights|redistribution|you|see|under|written|portions|based|it|use|any)\b/i;
+// A notice that may go on with its next line: no holder after its years
+// ("Copyright (C) 1987,88,...,2006" over "Free Software Foundation, Inc."),
+// an open parenthesis, or a trailing comma, `&`, and, of, by.
+const mayContinue = (notice: string) =>
+  HOLDERLESS_NOTICE.test(notice) ||
+  (notice.match(/\(/g) ?? []).length > (notice.match(/\)/g) ?? []).length ||
+  /(?:[,&]|\b(?:and|of|by))$/i.test(notice);
 
-// A notice that ends at its years continues with its holder on the next line
-// of the same comment ("Copyright (C) 1987,88,...,2006" then "Free Software
-// Foundation, Inc."); the license prose after it is no holder.
-function withHolderContinuation(notice: string, nextLine: string | undefined): string {
-  if (!HOLDERLESS_NOTICE.test(notice) || nextLine === undefined) return notice;
-  const next = nextLine.trim();
-  if (!/^[A-Z]/.test(next) || /^(?:copyright\b|\(c\)|©)/i.test(next) || HOLDER_CONTINUATION_PROSE.test(next)) return notice;
-  return `${notice} ${next}`;
+// The notice a line gives, with its next line when that may continue it:
+// never a guess. The pair must be reviewed (the `notices` of
+// reviewed-license-terms.json, read at the source); an unreviewed one fails
+// the generation and names the file.
+function noticeWithNextLine(notice: string, nextLine: string | undefined, where: string): string {
+  const next = (nextLine ?? '').trim();
+  if (!next || !mayContinue(notice)) return notice;
+  const reviewed = reviewedNotices().find((r) => r.line === notice && r.next === next);
+  if (reviewed) return reviewed.notice;
+  throw new Error(
+    `The copyright notice in ${where} may continue on its next line, and the generation does not guess: read it at the source and add {"line": ${JSON.stringify(notice)}, "next": ${JSON.stringify(next)}, "notice": "<the whole notice>", "source": "<package, file and lines>"} to the notices of scripts/reviewed-license-terms.json`
+  );
 }
 
 export function findPackageCopyrightNotices(
@@ -814,10 +823,9 @@ export function findPackageCopyrightNotices(
         }
         continue;
       }
-      const closes = stripsCloser(rawLine, inside[li] ?? false);
-      let line = rawLine.replace(COMMENT_LEADER, '');
-      if (closes) line = line.replace(COMMENT_CLOSER_AT_END, '');
-      line = line.trim();
+      const closer = inside[li] ?? null;
+      const closes = stripsCloser(rawLine, closer !== null);
+      const line = commentText(rawLine, closer).trim();
       if (!line) continue;
 
       if (/the above copyright notice/i.test(line)) continue;
@@ -835,7 +843,7 @@ export function findPackageCopyrightNotices(
         line.match(/(?:copyright\s*(?:\([cC]\)|©)\s*[0-9]{4}|copyright\s+[0-9]{4}|\([cC]\)\s*[0-9]{4}|©\s*[0-9]{4})\s*\S.*/i);
       if (match) {
         // A notice inside a minified line ends where its comment does.
-        let cleaned = (closes ? match[0].replace(FROM_COMMENT_CLOSER, '') : match[0]).replace(/(?:\\n)?"[);,\s]*$/, '').trim();
+        let cleaned = (closes ? match[0].replace(fromCloser(closer), '') : match[0]).replace(/(?:\\n)?"[);,\s]*$/, '').trim();
         // A notice inside a string literal or a source map ends at its first
         // escaped line break; one in a README or a man page is read as text:
         // a Markdown link keeps its words, a `<br>` and entities go, and roff
@@ -853,13 +861,10 @@ export function findPackageCopyrightNotices(
         cleaned = cleaned.replace(/\s+See the\b.*/i, '');
         cleaned = cleaned.trim();
         const nextLine = lines[li + 1];
-        cleaned = withHolderContinuation(
+        cleaned = noticeWithNextLine(
           cleaned,
-          nextLine === undefined
-            ? undefined
-            : stripsCloser(nextLine, inside[li + 1] ?? false)
-              ? nextLine.replace(COMMENT_LEADER, '').replace(COMMENT_CLOSER_AT_END, '')
-              : nextLine.replace(COMMENT_LEADER, '')
+          nextLine === undefined ? undefined : commentText(nextLine, inside[li + 1] ?? null),
+          `${packageDir}/${f.rel}:${li + 1}`
         );
         if (cleaned.length > 0 && !TEMPLATE_NOTICE.test(cleaned) && !seenNotice.has(cleaned)) {
           seenNotice.add(cleaned);
@@ -1236,18 +1241,18 @@ export function carriesWholeStandardText(id: string, standardText: string, fileT
 // license (a truncated text, an identifier mentioned beside another license)
 // carries no terms.
 export const REVIEWED_LICENSE_TERMS_FILE = path.join(__dirname, 'reviewed-license-terms.json');
-let reviewedTerms: Record<string, string> | undefined;
+type ReviewedNotice = { line: string; next: string; notice: string; source: string };
+let reviewedFile: Record<string, unknown> | undefined;
+const reviewedEntries = () => (reviewedFile ??= JSON.parse(fs.readFileSync(REVIEWED_LICENSE_TERMS_FILE, 'utf8')) as Record<string, unknown>);
 export function reviewedLicenseTerms(): Record<string, string> {
-  if (!reviewedTerms) {
-    const raw = JSON.parse(fs.readFileSync(REVIEWED_LICENSE_TERMS_FILE, 'utf8')) as Record<string, { terms: string } | string>;
-    reviewedTerms = Object.fromEntries(
-      Object.entries(raw)
-        .filter(([id]) => !id.startsWith('_'))
-        .map(([id, entry]) => [id, typeof entry === 'string' ? entry : entry.terms])
-    );
-  }
-  return reviewedTerms;
+  return Object.fromEntries(
+    Object.entries(reviewedEntries())
+      .filter(([, entry]) => typeof entry === 'object' && entry !== null && typeof (entry as { terms?: unknown }).terms === 'string')
+      .map(([id, entry]) => [id, (entry as { terms: string }).terms])
+  );
 }
+export const reviewedNotices = (): ReviewedNotice[] => (reviewedEntries().notices as ReviewedNotice[] | undefined) ?? [];
+export const reviewedTagMentions = (): Record<string, string> => (reviewedEntries().tagMentions as Record<string, string> | undefined) ?? {};
 
 // The 6-grams of each standard text, and the seam 6-grams that distinguish a
 // shorter text from the longer standard texts that contain it, built once per
@@ -1491,6 +1496,7 @@ export const UNREPRODUCIBLE_HEADER_IDS: Record<string, string> = {
  * of the 3727 tag lines of the dependency tree).
  */
 export const KNOWN_SPDX_TAG_MENTIONS: Record<string, string> = {};
+const knownTagMentions = (): Record<string, string> => ({ ...reviewedTagMentions(), ...KNOWN_SPDX_TAG_MENTIONS });
 
 // A comment leader: C and C++ (`//`, `/*`, ` *`), shell and Python (`#`),
 // Lisp and INI (`;`), Lua, SQL and Haskell (`--`, `{-`), TeX (`%`), ARM
@@ -1523,6 +1529,20 @@ const stripsCloser = (line: string, inBlock: boolean) => inBlock || !LINE_COMMEN
 // A closer ends a block comment only outside a line comment: `// files under
 // src/*/generated` is one line of a `//` run, not the end of a block.
 const closesBlock = (line: string) => COMMENT_CLOSER.test(line) && stripsCloser(line, false);
+// The closer that ends a line's comment: the one of the block it sits in,
+// or of the block it opens at its start; null when neither is known (any).
+const closerOf = (line: string, inBlock: string | null) =>
+  inBlock ?? COMMENT_BLOCKS.find(([open]) => line.trimStart().startsWith(open))?.[1] ?? null;
+// A closer, the one known or any, and what follows it on the line.
+const fromCloser = (closer: string | null) => (closer ? new RegExp(`\\s*${escapeRegExp(closer)}.*$`) : FROM_COMMENT_CLOSER);
+// The text of a comment line: its leader and, unless it is a line comment
+// outside a block, its closer at the end go.
+const commentText = (line: string, inBlock: string | null) => {
+  const text = line.replace(COMMENT_LEADER, '');
+  if (!stripsCloser(line, inBlock !== null)) return text;
+  const closer = closerOf(line, inBlock);
+  return text.replace(closer ? new RegExp(`${escapeRegExp(closer)}\\s*$`) : COMMENT_CLOSER_AT_END, '');
+};
 
 // The C block comments a line opens, read left to right: a `/*` inside a
 // string literal of code (`"src/*.c"`) or after `//` opens nothing, and one
@@ -1555,17 +1575,18 @@ function cCommentOpeners(line: string): { last: number; open: boolean } {
   return { last, open: inComment };
 }
 
-// For each line, whether it starts inside a block comment an earlier line
-// opened, read forward through the file. Inside one, the first closer ends
+// For each line, the closer of the block comment an earlier line opened and
+// it starts inside, or null, read forward through the file. Inside `(* *)`
+// only `*)` ends the comment: `src/*/generated` in its text is text. Inside one, the first closer ends
 // it, a line comment leader included (`// SPDX-License-Identifier: MIT */`
 // under `/*`), and what follows on the line may open another. The openers
 // follow the header scan: a C opener anywhere outside a string literal or a
 // line comment (cCommentOpeners), the others at the start of a line.
-function linesInsideBlockComments(lines: string[]): boolean[] {
-  const inside: boolean[] = [];
+function linesInsideBlockComments(lines: string[]): (string | null)[] {
+  const inside: (string | null)[] = [];
   let pair: [string, string] | null = null;
   for (const line of lines) {
-    inside.push(pair !== null);
+    inside.push(pair ? pair[1] : null);
     let rest = line;
     if (pair) {
       const at = rest.indexOf(pair[1]);
@@ -1627,7 +1648,7 @@ export function isSpdxHeaderLine(line: string, rel: string, at: number): boolean
 export function findBundledCodeUnderOtherLicenses(
   comp: ComponentInfo,
   knownLicenseIds: Set<string>,
-  knownMentions: Record<string, string> = KNOWN_SPDX_TAG_MENTIONS,
+  knownMentions: Record<string, string> = knownTagMentions(),
   textCarried: (term: string) => boolean = () => true
 ): { license: string; notices: string[]; files: string[]; headers: { text: string; files: string[] }[]; declared?: true }[] {
   const declared = new Set(extractSpdxLicenseIds(comp.license));
@@ -1666,7 +1687,14 @@ export function findBundledCodeUnderOtherLicenses(
       const inside = text.includes('SPDX-License-Identifier') && mayHoldBlockComments(text) ? linesInsideBlockComments(lines) : [];
       lines.forEach((line, i) => {
         // Inside a block comment a closer ends it, whatever leads the line.
-        const m = line.match(inside[i] || closesBlock(line) ? SPDX_TAG : SPDX_TAG_IN_LINE_COMMENT);
+        const closer = inside[i] ?? null;
+        const m = line.match(
+          closer !== null
+            ? new RegExp(`SPDX-License-Identifier:\\s*(.+?)\\s*(?:${escapeRegExp(closer)}.*)?$`)
+            : closesBlock(line)
+              ? SPDX_TAG
+              : SPDX_TAG_IN_LINE_COMMENT
+        );
         if (!m) return;
         // The choices of the header's expression. One whose licenses the
         // package declares covers the code: its holders are still kept, as
@@ -1684,7 +1712,15 @@ export function findBundledCodeUnderOtherLicenses(
         // sentence that mentions it is no header ("Documentation:
         // SPDX-License-Identifier: MIT (preferred)"), nor a list item of a
         // document.
-        if (!isSpdxHeaderLine(line, entryRel, m.index!)) return;
+        if (!isSpdxHeaderLine(line, entryRel, m.index!)) {
+          // In a document a tag in prose is a mention; in a source file the
+          // scanner knows no comment there, and does not guess.
+          const mentionKey = `${comp.name}@${comp.version}:${entryRel}:${line.trim()}`;
+          if (/\.(?:md|markdown|rst)$/i.test(entryRel) || tokenizeSpdx(m[1]).length === 0 || !spdxAlternatives(m[1]) || mentionKey in knownMentions) return;
+          throw new Error(
+            `${comp.name}@${comp.version} has an SPDX-License-Identifier in ${entryRel} outside a comment the scanner knows: '${line.trim()}'. Read it at the source; if it only mentions the tag, add ${JSON.stringify(mentionKey)} with the reason to the tagMentions of scripts/reviewed-license-terms.json`
+          );
+        }
         if (tokenizeSpdx(m[1]).length === 0) return;
         const parsed = spdxAlternatives(m[1]);
         if (!parsed) {
@@ -1836,7 +1872,7 @@ export function findBundledCodeUnderOtherLicenses(
           let text = block[bi].trim();
           const spdxText = text.match(/^SPDX-FileCopyrightText:\s*(\S.*)$/);
           if (spdxText) text = /^(?:copyright\b|\(c\)|©)/i.test(spdxText[1]) ? spdxText[1] : `Copyright ${spdxText[1]}`;
-          text = withHolderContinuation(text, block[bi + 1]);
+          if (/^(?:copyright\b|\(c\)|©)/i.test(text)) text = noticeWithNextLine(text, block[bi + 1], `${comp.name}@${comp.version} ${entryRel}:${start + bi + 1}`);
           if (/^(?:copyright\b|\(c\)|©)/i.test(text) && namesCopyrightHolder(text)) {
             notices.push(text);
           }
@@ -2151,7 +2187,7 @@ export function renderNotices(
       knownLicenseIds = new Set([...Object.keys(standard), ...Object.keys(SHARED_STANDARD_TEXTS).filter((id) => standard[standardTextId(id)])]);
     }
     if (!bundledCache.has(comp)) {
-      bundledCache.set(comp, findBundledCodeUnderOtherLicenses(comp, knownLicenseIds, KNOWN_SPDX_TAG_MENTIONS, (term) => textCarried(comp, term)));
+      bundledCache.set(comp, findBundledCodeUnderOtherLicenses(comp, knownLicenseIds, knownTagMentions(), (term) => textCarried(comp, term)));
     }
     return bundledCache.get(comp)!;
   };
