@@ -305,7 +305,34 @@ export const SHARED_STANDARD_TEXTS: Record<string, string> = {
   'LGPL-2.1+': 'LGPL-2.1-or-later',
 };
 /** The key of the standard text for an identifier. */
-export const standardTextId = (id: string): string => SHARED_STANDARD_TEXTS[id] ?? id;
+/**
+ * Whether `table` has `key` as its own entry: a key read from a package
+ * ("constructor", "toString") never finds what every object inherits.
+ */
+export function hasEntry(table: object, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(table, key);
+}
+/**
+ * The standard-text table read from `file`: an object whose every entry is a
+ * text with words in it. An empty or non-text entry fails here, by name,
+ * before any license resolves to it and renders an empty block.
+ */
+export function parseStandardLicenses(json: string, file: string): Record<string, string> {
+  const table = JSON.parse(json) as unknown;
+  if (typeof table !== 'object' || table === null || Array.isArray(table)) {
+    throw new Error(`${file} must be an object of standard license texts`);
+  }
+  const bad = Object.entries(table).filter(([, text]) => typeof text !== 'string' || !/[A-Za-z]/.test(text)).map(([id]) => id);
+  if (bad.length > 0) throw new Error(`${file} has an empty or invalid standard text for ${bad.join(', ')}`);
+  return table as Record<string, string>;
+}
+
+/** The entry of `table` at `key`, own entries only (hasEntry). */
+export function entryOf<T>(table: Record<string, T>, key: string): T | undefined {
+  return hasEntry(table, key) ? table[key] : undefined;
+}
+
+export const standardTextId = (id: string): string => entryOf(SHARED_STANDARD_TEXTS, id) ?? id;
 /** The standard-text key of a term, its exception kept (`X WITH Y`). */
 const standardTextKey = (term: string): string => term.split(' WITH ').map(standardTextId).join(' WITH ');
 
@@ -829,7 +856,7 @@ export function findPackageCopyrightNotices(
     if (buf.subarray(0, 8000).includes(0)) continue;
     const text = buf.toString('utf8');
     const lines = text.split(/\r?\n/);
-    const inside = mayHoldBlockComments(text) ? linesInsideBlockComments(lines) : [];
+    const inside = commentStateOf(f.rel, text, lines);
 
     // In a machine-readable copyright file (REUSE .reuse/dep5, debian/copyright)
     // a `Copyright:` field names holders on its line and on the indented lines
@@ -973,8 +1000,9 @@ export function collectCargoDependencies(): ComponentInfo[] {
 
     let license = pkg.license;
     if (!license) {
-      if (PINNED_CRATE_LICENSES[key]) {
-        license = PINNED_CRATE_LICENSES[key];
+      const pinnedLicense = entryOf(PINNED_CRATE_LICENSES, key);
+      if (pinnedLicense) {
+        license = pinnedLicense;
       } else {
         throw new Error(
           `Crate ${key} has no declared SPDX license and is not registered in PINNED_CRATE_LICENSES`
@@ -1198,7 +1226,7 @@ function termTokens(text: string, markersRemoved = false): { words: string[]; bo
     last = m.index! + m[0].length;
     if (/[.;:!?]|\n[ \t]*\n/.test(between)) pendingBoundary = true;
     if (m[0].length < 2 && !/[0-9]/.test(m[0])) continue;
-    words.push(EQUIVALENT_TERM_WORDS[m[0]] ?? m[0]);
+    words.push(entryOf(EQUIVALENT_TERM_WORDS, m[0]) ?? m[0]);
     boundary.push(pendingBoundary);
     pendingBoundary = false;
   }
@@ -1224,7 +1252,7 @@ function standardSentences(id: string, text: string): (string | null)[][] {
     (paragraphs[start].trim().split(/\s+/).filter(Boolean).length < 10 || /^\s*Copyright\b/i.test(paragraphs[start]))
   )
     start++;
-  const slots = (STANDARD_TEXT_SLOTS[id] ?? []).map((s) => s.split(' ')).sort((a, b) => b.length - a.length);
+  const slots = (entryOf(STANDARD_TEXT_SLOTS, id) ?? []).map((s) => s.split(' ')).sort((a, b) => b.length - a.length);
   return licenseTermsOf(paragraphs.slice(start).join('\n\n').replace(LIST_MARKER, ''))
     .split(/(?<=[.;:])\s+/)
     .map((sentence) => {
@@ -1300,7 +1328,7 @@ export function carriesWholeStandardText(id: string, standardText: string, fileT
     if (!at.has(w)) at.set(w, []);
     at.get(w)!.push(i);
   });
-  const reviewed = new Set(REVIEWED_INSERTIONS[id] ?? []);
+  const reviewed = new Set(entryOf(REVIEWED_INSERTIONS, id) ?? []);
   // The file positions where the standard text so far can end, ascending.
   let ends: number[] | null = null;
   let slot = false;
@@ -1434,11 +1462,11 @@ function uncoveredLicenseTerms(
   // LGPL-2.1-or-later document); a term with no text keeps its identifier.
   const hasText = (id: string) => standard.has(standardTextId(id));
   const carriesAt = (id: string, i: number) =>
-    similar(standardTextId(id), files[i]) && carriesWholeStandardText(standardTextId(id), standardLicenses[standardTextId(id)], ownTexts[i]);
+    similar(standardTextId(id), files[i]) && carriesWholeStandardText(standardTextId(id), entryOf(standardLicenses, standardTextId(id)) ?? '', ownTexts[i]);
   // A term with no standard text is covered by a file that carries its whole
   // reviewed terms; with none reviewed, by nothing.
   const reviewed = reviewedLicenseTerms();
-  const carriesReviewed = (id: string) => id in reviewed && ownTexts.some((text) => carriesWholeStandardText(id, reviewed[id], text));
+  const carriesReviewed = (id: string) => hasEntry(reviewed, id) && ownTexts.some((text) => carriesWholeStandardText(id, reviewed[id], text));
   const left = choices.map((terms) =>
     terms.filter((term) => !term.split(' WITH ').every((id) => (hasText(id) ? files.some((_, i) => carriesAt(id, i)) : carriesReviewed(id))))
   );
@@ -1737,6 +1765,82 @@ function linesInsideBlockComments(lines: string[]): (string | null)[] {
   return inside;
 }
 
+// Rust block comments nest (`/* outer /* inner */ still outer */`): in a
+// `.rs` file a comment ends where its depth returns to zero. `rustLine` reads
+// one line from `depth`, up to `upTo`: the depth after it, and where the last
+// comment opened from depth zero starts. Outside a comment a `"` string and a
+// `//` comment open nothing; a `'` is a lifetime as often as a character, so
+// it is no quote.
+export const isRustFile = (rel: string) => /\.rs$/i.test(rel);
+function rustLine(line: string, depth: number, upTo = line.length): { depth: number; outerOpen: number } {
+  let quote = false;
+  let outerOpen = -1;
+  for (let k = 0; k < upTo; k++) {
+    const c = line[k];
+    const n = line[k + 1];
+    if (depth > 0) {
+      if (c === '/' && n === '*') {
+        depth++;
+        k++;
+      } else if (c === '*' && n === '/') {
+        depth--;
+        k++;
+      }
+    } else if (quote) {
+      if (c === '\\') k++;
+      else if (c === '"') quote = false;
+    } else if (c === '"') {
+      quote = true;
+    } else if (c === '/' && n === '/') {
+      break;
+    } else if (c === '/' && n === '*') {
+      depth = 1;
+      outerOpen = k;
+      k++;
+    }
+  }
+  return { depth, outerOpen };
+}
+
+// For each line of a Rust file, its depth at the start (0: outside any comment).
+function rustDepths(lines: string[]): number[] {
+  const depths: number[] = [];
+  let depth = 0;
+  for (const line of lines) {
+    depths.push(depth);
+    depth = rustLine(line, depth).depth;
+  }
+  return depths;
+}
+
+// The line where the Rust comment opened at `at` on line `open` ends: where
+// its depth returns to zero, or -1.
+function rustCloseLine(lines: string[], open: number, at: number): number {
+  let depth = 0;
+  for (let k = open; k < lines.length; k++) {
+    const line = k === open ? lines[k].slice(at) : lines[k];
+    for (let j = 0; j < line.length; j++) {
+      if (line[j] === '/' && line[j + 1] === '*') {
+        depth++;
+        j++;
+      } else if (line[j] === '*' && line[j + 1] === '/') {
+        depth--;
+        j++;
+        if (depth === 0) return k;
+      }
+    }
+  }
+  return -1;
+}
+
+// The comment state of each line of a file: linesInsideBlockComments, or for
+// a Rust file the nesting depth, as the closer `*/` of the open comment.
+function commentStateOf(rel: string, text: string, lines: string[]): (string | null)[] {
+  if (!mayHoldBlockComments(text)) return [];
+  if (isRustFile(rel)) return rustDepths(lines).map((d) => (d > 0 ? '*/' : null));
+  return linesInsideBlockComments(lines);
+}
+
 // Whether a file can hold a block comment at all: most files of a package
 // have no closer, and their lines need no tracking.
 const mayHoldBlockComments = (text: string) => COMMENT_BLOCKS.some(([, closer]) => text.includes(closer));
@@ -1819,7 +1923,8 @@ export function findBundledCodeUnderOtherLicenses(
       if (buf.subarray(0, 8000).includes(0)) continue;
       const text = buf.toString('utf8');
       const lines = text.split(/\r?\n/);
-      const inside = text.includes('SPDX-License-Identifier') && mayHoldBlockComments(text) ? linesInsideBlockComments(lines) : [];
+      const inside = text.includes('SPDX-License-Identifier') ? commentStateOf(entryRel, text, lines) : [];
+      const depths = isRustFile(entryRel) && inside.length > 0 ? rustDepths(lines) : null;
       lines.forEach((line, i) => {
         // Inside a block comment a closer ends it, whatever leads the line.
         const closer = inside[i] ?? null;
@@ -1851,7 +1956,7 @@ export function findBundledCodeUnderOtherLicenses(
           // In a document a tag in prose is a mention; in a source file the
           // scanner knows no comment there, and does not guess.
           const mentionKey = `${comp.name}@${comp.version}:${entryRel}:${line.trim()}`;
-          if (/\.(?:md|markdown|rst)$/i.test(entryRel) || tokenizeSpdx(m[1]).length === 0 || !spdxAlternatives(m[1]) || mentionKey in knownMentions) return;
+          if (/\.(?:md|markdown|rst)$/i.test(entryRel) || tokenizeSpdx(m[1]).length === 0 || !spdxAlternatives(m[1]) || hasEntry(knownMentions, mentionKey)) return;
           throw new Error(
             `${comp.name}@${comp.version} has an SPDX-License-Identifier in ${entryRel} outside a comment the scanner knows: '${line.trim()}'. Read it at the source; if it only mentions the tag, add ${JSON.stringify(mentionKey)} with the reason to the tagMentions of scripts/reviewed-license-terms.json`
           );
@@ -1860,7 +1965,7 @@ export function findBundledCodeUnderOtherLicenses(
         const parsed = spdxAlternatives(m[1]);
         if (!parsed) {
           const mentionKey = `${comp.name}@${comp.version}:${entryRel}:${line.trim()}`;
-          if (mentionKey in knownMentions) return;
+          if (hasEntry(knownMentions, mentionKey)) return;
           throw new Error(
             `${comp.name}@${comp.version} has a malformed SPDX-License-Identifier in ${entryRel}: '${m[1]}'. If the line only mentions the tag, add ${JSON.stringify(mentionKey)} with the reason to KNOWN_SPDX_TAG_MENTIONS`
           );
@@ -1869,7 +1974,7 @@ export function findBundledCodeUnderOtherLicenses(
         // the other terms of that choice still go through the policy:
         // `Apache-2.inner AND GPL-2.0-only` requires GPL-2.0-only. A choice
         // made only of typos leaves no term to check.
-        const isTypo = (t: string) => t.split(' WITH ')[0] in UNREPRODUCIBLE_HEADER_IDS;
+        const isTypo = (t: string) => hasEntry(UNREPRODUCIBLE_HEADER_IDS, t.split(' WITH ')[0]);
         const nonTypo = parsed.map((terms) => terms.filter((t) => !isTypo(t))).filter((terms) => terms.length > 0);
         // Bundled code is distributed with AeroFTP like the package that ships
         // it, so a header's license goes through the policy main applies to a
@@ -1964,10 +2069,18 @@ export function findBundledCodeUnderOtherLicenses(
           // inside one, or a line that closes the comment before it and
           // opens this one after the closer (`*/ /*`).
           let k = i;
-          while (k > 0 && inside[k] !== null && !(k < i && lines[k].includes(within))) k--;
+          if (depths) {
+            // Rust: back to the line where the depth left zero, at the
+            // opener of the outermost comment.
+            while (k > 0 && depths[k] > 0) k--;
+            open = k;
+            openAt = rustLine(lines[k], 0).outerOpen;
+          } else {
+            while (k > 0 && inside[k] !== null && !(k < i && lines[k].includes(within))) k--;
+            open = k;
+          }
           pair = COMMENT_BLOCKS.find(([, c]) => c === within)!;
-          open = k;
-          openAt = pair[0] === '/*' ? cCommentOpeners(lines[k]).last : lines[k].lastIndexOf(pair[0]);
+          if (!depths) openAt = pair[0] === '/*' ? cCommentOpeners(lines[k]).last : lines[k].lastIndexOf(pair[0]);
         } else {
           const from = within === null ? 0 : closedAt + within.length;
           const found = openerOn(line, from);
@@ -1978,7 +2091,9 @@ export function findBundledCodeUnderOtherLicenses(
           }
         }
         let close = -1;
-        if (open !== -1) {
+        if (open !== -1 && depths && pair[0] === '/*') {
+          close = rustCloseLine(lines, open, openAt);
+        } else if (open !== -1) {
           const [opener, closer] = pair;
           for (let k = i; k < lines.length; k++) {
             if ((k === open ? lines[k].slice(openAt + opener.length) : lines[k]).includes(closer)) {
@@ -2303,7 +2418,7 @@ export function renderNotices(
       if (!fs.existsSync(spdxLicensesFile)) {
         throw new Error(`Standard SPDX licenses file is required but missing at ${spdxLicensesFile}`);
       }
-      standardLicenses = JSON.parse(fs.readFileSync(spdxLicensesFile, 'utf8')) as Record<string, string>;
+      standardLicenses = parseStandardLicenses(fs.readFileSync(spdxLicensesFile, 'utf8'), spdxLicensesFile);
     }
     return standardLicenses;
   };
@@ -2464,7 +2579,7 @@ export function renderNotices(
     if (!comp) return true;
     const standard = readStandardLicenses();
     const reviewed = reviewedLicenseTerms();
-    const referenced = extractSpdxLicenseIds(comp.license).filter((id) => standardTextId(id) in standard || id in reviewed);
+    const referenced = extractSpdxLicenseIds(comp.license).filter((id) => hasEntry(standard, standardTextId(id)) || hasEntry(reviewed, id));
     if (referenced.length === 0) return PERMISSION_TEXT.test(text);
     return referenced.some((id) => uncoveredLicenseTerms([[id]], [text], standard).length === 0);
   };
@@ -2602,7 +2717,7 @@ export function renderNotices(
   const authorsOf = (comp: ComponentInfo) =>
     comp.authors && comp.authors.length > 0
       ? comp.authors.join(', ')
-      : (PINNED_FALLBACK_ATTRIBUTIONS[`${comp.name}@${comp.version}`]?.author ??
+      : (entryOf(PINNED_FALLBACK_ATTRIBUTIONS, `${comp.name}@${comp.version}`)?.author ??
         spdxDocumentAttribution(comp)?.author ??
         (ownFilesNotice(comp) ? 'named in its license files' : undefined));
   const ownFilesNotice = (comp: ComponentInfo) => {
@@ -2656,7 +2771,7 @@ export function renderNotices(
         throw new Error(`Component ${key} has a license expression that does not parse: '${comp.license}'`);
       }
       const missingTexts = (terms: string[]) =>
-        terms.flatMap((term) => term.split(' WITH ')).filter((id) => !standardLicenses[standardTextId(id)]);
+        terms.flatMap((term) => term.split(' WITH ')).filter((id) => !hasEntry(standardLicenses, standardTextId(id)));
       // A package with own files needs only the terms they leave out.
       const mapped = standardTextTerms.get(comp) ?? compatibleChoices(alternatives);
       const reproducible = mapped.filter((terms) => missingTexts(terms).length === 0);
@@ -2730,7 +2845,7 @@ export function renderNotices(
 
       // "Apache-2.0 WITH LLVM-exception": the license text, then the exception's.
       const [licenseId, exceptionId] = licKey.split(' WITH ');
-      let licText = standardLicenses[licenseId];
+      let licText = entryOf(standardLicenses, licenseId) ?? '';
       const hasPlaceholders =
         /Copyright \([cC]\) <(?:year|YEAR)> <(?:copyright holders|COPYRIGHT HOLDERS|author|authors|AUTHOR|AUTHORS)>/i.test(licText) ||
         /<(?:copyright holders|author)>/i.test(licText);
@@ -2738,7 +2853,7 @@ export function renderNotices(
         const attributionLines: string[] = [];
         for (const comp of comps) {
           const key = `${comp.name}@${comp.version}`;
-          const pinned = PINNED_FALLBACK_ATTRIBUTIONS[key];
+          const pinned = entryOf(PINNED_FALLBACK_ATTRIBUTIONS, key);
           if (!pinned && !key.startsWith('test-')) {
             throw new Error(`Component ${key} requires an entry in PINNED_FALLBACK_ATTRIBUTIONS`);
           }
@@ -2774,7 +2889,7 @@ export function renderNotices(
       // not know (a "Copyright (C) <year>" with no author placeholder), fails.
       assertNoTermsPlaceholders(licKey, licText);
 
-      lines.push(makeCodeBlock(exceptionId ? `${licText}\n\n${standardLicenses[exceptionId]}` : licText));
+      lines.push(makeCodeBlock(exceptionId ? `${licText}\n\n${entryOf(standardLicenses, exceptionId) ?? ''}` : licText));
       lines.push('');
     }
   }

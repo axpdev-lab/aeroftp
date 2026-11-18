@@ -2352,6 +2352,36 @@ test('bundled code: a header whose only license is a known typo keeps a holder t
   }
 });
 
+test('bundled code: a Rust header with a nested block comment is read to its outer closer, a C one ends at its first', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nested-rust-fixture-'));
+  try {
+    const write = (rel, content) => {
+      fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, rel), content);
+    };
+    write('LICENSE', shippedLicense('MIT License\n\nCopyright (c) 2020 Wrapper Author', 'MIT'));
+    const grant = 'Permission to use this file is granted, provided that the Nested clause is kept with every copy of it.';
+    // Rust nests block comments: the holder and the grant after the inner
+    // closer are still in the header.
+    write('src/nested.rs', `/* SPDX-License-Identifier: BSD-2-Clause\n * /* Aside */\n * Copyright (c) 2021 Nested Holder\n * ${grant}\n */\nfn x() {}\n`);
+    const comp = { name: 'nested-pkg', version: '1.0.0', license: 'MIT', source: 'cargo', packageDir: tmpDir, authors: [], ...readPackageFiles(tmpDir, 'nested-pkg@1.0.0') };
+    const known = new Set(Object.keys(JSON.parse(fs.readFileSync(SPDX_STANDARD_LICENSES_FILE, 'utf8'))));
+    const [bundled] = findBundledCodeUnderOtherLicenses(comp, known);
+    assert.deepStrictEqual([bundled.license, bundled.files, bundled.notices], ['BSD-2-Clause', ['src/nested.rs'], ['Copyright (c) 2021 Nested Holder']]);
+    const md = generateNoticesMarkdown([comp], []);
+    assert.match(md, /^ {2}- Copyright \(c\) 2021 Nested Holder$/m);
+    assert.ok(md.includes('the Nested clause is kept with every copy of it'), 'the grant after the inner closer is reproduced');
+    // C does not nest: the same text in a .c file ends at the first closer,
+    // so the lines after it are no header.
+    fs.rmSync(path.join(tmpDir, 'src/nested.rs'));
+    write('src/flat.c', `/* SPDX-License-Identifier: BSD-2-Clause\n * /* Aside */\n * Copyright (c) 2021 Flat Holder\n */\nint x;\n`);
+    const flat = { ...comp, ...readPackageFiles(tmpDir, 'nested-pkg@1.0.0') };
+    assert.deepStrictEqual(findBundledCodeUnderOtherLicenses(flat, known).map((b) => b.notices), [[]]);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
 test('bundled code: an OCaml or Haskell header ends at its closer, as a C one does', () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'closer-fixture-'));
   try {
@@ -2425,6 +2455,12 @@ test('bundled code: a known typo is dropped term by term, the other terms of its
     // A header whose only license is the typo keeps its holder under the raw tag, as before.
     write('src/menu.rs', '// Copyright 2022 Typo Author\n// SPDX-License-Identifier: Apache-2.inner\n');
     assert.deepStrictEqual(findBundledCodeUnderOtherLicenses(make(), known).map((b) => [b.license, b.notices, b.declared]), [['Apache-2.inner', ['Copyright 2022 Typo Author'], true]]);
+    // Only a reviewed typo is one: a tag named like what every object
+    // inherits is an unsupported license, never a typo.
+    for (const tag of ['constructor', 'toString', '__proto__']) {
+      write('src/menu.rs', `// Copyright 2022 Typo Author\n// SPDX-License-Identifier: ${tag}\n`);
+      assert.throws(() => findBundledCodeUnderOtherLicenses(make(), known), new RegExp(`'${tag}'`), tag);
+    }
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
@@ -2777,6 +2813,29 @@ test('standard SPDX texts: preserves mandatory AND conjuncts even when expressio
     () => generateNoticesMarkdown([dummyComponent], []),
     /requires standard license text for 'MISSING-SPDX-CONJUNCT'/
   );
+});
+
+test('standard SPDX texts: an empty entry of the table fails by name before a bundled header resolves to it', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'empty-standard-fixture-'));
+  try {
+    const write = (rel, content) => {
+      fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, rel), content);
+    };
+    write('pkg/LICENSE', shippedLicense('MIT License\n\nCopyright (c) 2020 Wrapper Author', 'MIT'));
+    write('pkg/src/x.c', '/*\n * Copyright (c) 2021 Bundled Holder\n * SPDX-License-Identifier: BSD-2-Clause\n */\nint x;\n');
+    const comp = { name: 'empty-std', version: '1.0.0', license: 'MIT', source: 'cargo', packageDir: path.join(tmpDir, 'pkg'), authors: [], ...readPackageFiles(path.join(tmpDir, 'pkg'), 'empty-std@1.0.0') };
+    // The complete table: the header gets the BSD-2-Clause text.
+    const md = generateNoticesMarkdown([comp], []);
+    assert.match(md, /Copyright \(c\) 2021 Bundled Holder/);
+    assert.match(md, /Redistribution and use in source and binary forms/);
+    for (const empty of ['', '   \n', 42]) {
+      write('standard.json', JSON.stringify({ ...STANDARD_TEXTS, 'BSD-2-Clause': empty }));
+      assert.throws(() => generateNoticesMarkdown([comp], [], path.join(tmpDir, 'standard.json')), /has an empty or invalid standard text for BSD-2-Clause/, JSON.stringify(empty));
+    }
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
 });
 
 test('standard SPDX texts: fails fast if spdx-standard-licenses.json is missing when components need it', () => {
