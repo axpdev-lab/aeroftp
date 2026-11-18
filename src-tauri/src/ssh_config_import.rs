@@ -4018,6 +4018,21 @@ Host roundtrip
             );
             return;
         }
+        // ssh 10.2 is the reference: from 10.0 ssh refuses every one of these
+        // files. An earlier ssh, or the Windows port, reads some of them, and
+        // refusing a file that ssh reads is the safe direction: the hosts are
+        // listed as skipped with the reason, never imported as something
+        // else. Those files are listed here, so a new difference or one that
+        // is gone turns this red. Measured in CI: OpenSSH 8.9 (Ubuntu 22.04)
+        // and the Windows port read the `all=` file.
+        const READ_BEFORE_10: [&str; 1] =
+            ["Host fine\n  HostName f.example.com\nMatch host a all=\n  Port 1\n"];
+        let version = std::process::Command::new("ssh")
+            .arg("-V")
+            .output()
+            .map(|out| String::from_utf8_lossy(&out.stderr).trim().to_string())
+            .unwrap_or_default();
+        let mut read_here = Vec::new();
         for (config, _, _) in refused {
             std::fs::write(&bad, config).unwrap();
             let out = std::process::Command::new("ssh")
@@ -4027,8 +4042,29 @@ Host roundtrip
                 .arg("fine")
                 .output()
                 .unwrap();
-            assert!(!out.status.success(), "ssh read {config:?}");
+            if out.status.success() {
+                read_here.push(config);
+            }
         }
+        let expected: Vec<&str> = if ssh_major().is_some_and(|major| major >= 10) {
+            Vec::new()
+        } else {
+            READ_BEFORE_10.to_vec()
+        };
+        let extra: Vec<&str> = read_here
+            .iter()
+            .copied()
+            .filter(|c| !expected.contains(c))
+            .collect();
+        let missing: Vec<&str> = expected
+            .iter()
+            .copied()
+            .filter(|c| !read_here.contains(c))
+            .collect();
+        assert!(
+            extra.is_empty() && missing.is_empty(),
+            "{version} reads files this import refuses: not in the list {extra:?}, in the list but refused {missing:?}"
+        );
         // `ssh -G` on the good file: the same values for each host (a host
         // without `User` gets the local user from ssh, so it is not compared).
         let read = |alias: &str| {
