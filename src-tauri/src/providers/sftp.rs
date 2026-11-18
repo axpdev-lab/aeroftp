@@ -545,6 +545,10 @@ async fn close_sftp_file(file: russh_sftp::client::fs::File, ended: &Cancellatio
 /// trips it, whatever `--buffer-size` is.
 const SFTP_WRITE_ACK_BOUND: std::time::Duration = std::time::Duration::from_secs(300);
 
+/// How long an upload's size check keeps asking a server that answers before
+/// it reports a verification failure.
+const UPLOAD_VERIFY_WINDOW: std::time::Duration = std::time::Duration::from_secs(3);
+
 /// The buffer between an upload's local file and its remote handle.
 ///
 /// russh-sftp cuts what it is handed into WRITEs of at most the server's
@@ -2441,7 +2445,7 @@ impl SftpProvider {
         remote_path: &str,
         expected_size: u64,
     ) -> Result<(), ProviderError> {
-        let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(3);
+        let deadline = tokio::time::Instant::now() + UPLOAD_VERIFY_WINDOW;
         let mut last_observation = format!("expected {} bytes, got no metadata yet", expected_size);
 
         loop {
@@ -9208,9 +9212,11 @@ mod tests {
         .expect("the verification hung");
         let err = outcome.expect_err("an upload that cannot be verified cannot succeed");
         assert!(err.is_connection_lost(), "{err:?}");
+        // Half the window: asking on for it fails by as much again as the
+        // margin a busy runner gets.
         assert!(
-            started.elapsed() < std::time::Duration::from_secs(3),
-            "took {:?}",
+            started.elapsed() < UPLOAD_VERIFY_WINDOW / 2,
+            "took {:?}: it kept asking for the verify window",
             started.elapsed()
         );
     }

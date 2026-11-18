@@ -2333,8 +2333,13 @@ mod tests {
         let mut command = Command::new(&put);
         command.args(["/l", "/r"]).kill_on_drop(true);
         let outcome = MegaCmdProvider::run_transfer_once(command, 1, &on_percent).await;
-        assert!(matches!(outcome, Err(None)), "a 3 s silence is cut at 1 s");
-        assert!(started.elapsed() < std::time::Duration::from_secs(3));
+        assert!(matches!(outcome, Err(None)), "a 30 s silence is cut at 1 s");
+        // The cut comes at the 1 s limit; a missed one waits out the 30 s.
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(3),
+            "{:?}",
+            started.elapsed()
+        );
     }
 
     /// The percentage of a progress line exactly as MEGAcmd 2.6 writes it

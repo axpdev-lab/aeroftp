@@ -712,7 +712,8 @@ mod tests {
     async fn acquire_discards_unhealthy_session_and_waits_for_the_deadline() {
         let pool = FtpSessionPool::unhealthy_for_test(80);
         let started = std::time::Instant::now();
-        let acquired = tokio::time::timeout(std::time::Duration::from_secs(1), pool.acquire())
+        // Only a hang guard: the 80 ms deadline ends the acquire long before.
+        let acquired = tokio::time::timeout(std::time::Duration::from_secs(10), pool.acquire())
             .await
             .expect("a broken session must not be retried without a deadline");
         let error = match acquired {

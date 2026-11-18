@@ -2597,32 +2597,41 @@ mod abandoned_login_tests {
             while let Ok((stream, _)) = listener.accept().await {
                 let log = Arc::clone(&server_log);
                 tokio::spawn(async move {
-                    let (read, mut write) = stream.into_split();
-                    let mut lines = BufReader::new(read).lines();
-                    if write.write_all(b"220 ready\r\n").await.is_err() {
-                        return;
-                    }
-                    while let Ok(Some(line)) = lines.next_line().await {
-                        log.lock().unwrap().push(line.clone());
-                        let cmd = line.split_whitespace().next().unwrap_or("").to_uppercase();
-                        if cmd == silent_on {
-                            continue;
-                        }
-                        let reply = match cmd.as_str() {
-                            "USER" => "331 password please\r\n",
-                            "PASS" => "230 logged in\r\n",
-                            "PWD" => "257 \"/\" is current\r\n",
-                            "QUIT" => "221 bye\r\n",
-                            _ => "200 ok\r\n",
-                        };
-                        if write.write_all(reply.as_bytes()).await.is_err() {
-                            return;
-                        }
-                    }
+                    serve(stream, silent_on, &log).await;
+                    log.lock().unwrap().push(CLOSED.to_string());
                 });
             }
         });
         (port, log)
+    }
+
+    /// What the server logs when a control connection ends, after every
+    /// line it read from it.
+    const CLOSED: &str = "<CONNECTION CLOSED>";
+
+    async fn serve(stream: tokio::net::TcpStream, silent_on: &str, log: &Mutex<Vec<String>>) {
+        let (read, mut write) = stream.into_split();
+        let mut lines = BufReader::new(read).lines();
+        if write.write_all(b"220 ready\r\n").await.is_err() {
+            return;
+        }
+        while let Ok(Some(line)) = lines.next_line().await {
+            log.lock().unwrap().push(line.clone());
+            let cmd = line.split_whitespace().next().unwrap_or("").to_uppercase();
+            if cmd == silent_on {
+                continue;
+            }
+            let reply = match cmd.as_str() {
+                "USER" => "331 password please\r\n",
+                "PASS" => "230 logged in\r\n",
+                "PWD" => "257 \"/\" is current\r\n",
+                "QUIT" => "221 bye\r\n",
+                _ => "200 ok\r\n",
+            };
+            if write.write_all(reply.as_bytes()).await.is_err() {
+                return;
+            }
+        }
     }
 
     fn sent(log: &Mutex<Vec<String>>, command: &str) -> bool {
@@ -2630,6 +2639,20 @@ mod abandoned_login_tests {
             .unwrap()
             .iter()
             .any(|line| line.to_uppercase().starts_with(command))
+    }
+
+    /// Waits until the server has read `command` (or logged [`CLOSED`]): a
+    /// fixed wait is too short on a busy runner, or lets a late line pass.
+    async fn until_sent(log: &Mutex<Vec<String>>, command: &str) {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !sent(log, command) {
+            assert!(
+                Instant::now() < deadline,
+                "the server never read {command}: {:?}",
+                log.lock().unwrap()
+            );
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
     }
 
     /// A login dropped during USER or its closing PWD disconnects at once, with no QUIT.
@@ -2643,18 +2666,18 @@ mod abandoned_login_tests {
             manager.connect(&format!("127.0.0.1:{port}")).await.unwrap();
             tokio::select! {
                 _ = manager.login("u", "p") => panic!("the server never answers {silent}"),
-                _ = tokio::time::sleep(Duration::from_millis(300)) => {}
+                _ = until_sent(&log, silent) => {}
             }
-            assert!(sent(&log, silent), "{:?}", log.lock().unwrap());
 
             let started = Instant::now();
             manager.disconnect().await.unwrap();
             let took = started.elapsed();
+            // A QUIT waiting for its reply would take the whole timeout.
             assert!(
-                took < Duration::from_secs(1),
+                took < manager.timeouts.disconnect_timeout / 2,
                 "{silent}: the disconnect took {took:?}"
             );
-            tokio::time::sleep(Duration::from_millis(200)).await;
+            until_sent(&log, CLOSED).await;
             assert!(!sent(&log, "QUIT"), "{silent}: {:?}", log.lock().unwrap());
         }
     }
@@ -2682,7 +2705,7 @@ mod abandoned_login_tests {
         manager.connect(&format!("127.0.0.1:{port}")).await.unwrap();
         manager.login("u", "p").await.unwrap();
         manager.disconnect().await.unwrap();
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        until_sent(&log, CLOSED).await;
         assert!(sent(&log, "QUIT"), "{:?}", log.lock().unwrap());
     }
 }

@@ -355,8 +355,11 @@ async fn cli_put_to_ftp_has_no_half_second_settle() {
     );
     let before_quit = &commands[quit - 1];
     let gap = commands[quit].at.duration_since(before_quit.at);
+    // The settle sleep comes after the reply to `before_quit`, so with it
+    // back the gap is at least its 500 ms; anything shorter is the FTP path
+    // without it, however slow the runner.
     assert!(
-        gap < Duration::from_millis(300),
+        gap < Duration::from_millis(500),
         "{:?} passed between `{}` and QUIT; the SFTP-only settle sleep is back on the FTP path",
         gap,
         before_quit.line

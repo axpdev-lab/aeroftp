@@ -79,7 +79,8 @@ case "$(basename "$0")" in
         # stderr, each ended by a NUL and a carriage return, at 10, 50 and 90
         # percent; then "Upload finished" on stdout and the last line. A file put-fails makes it refuse after two progress lines; a file put-slow spaces
         # five lines 0.4 s apart (2 s in all); a file put-stalls prints one
-        # line and then says nothing for 3 s.
+        # line and then says nothing for 30 s, far past any silence limit a
+        # test sets (exec, so the kill of a cut transfer reaches the sleep).
         if [ -f "$here/put-fails" ]; then
             printf 'TRANSFERRING ||####..........||(3/30 MB:  10.00 %%) \000\r' >&2
             printf 'TRANSFERRING ||####..........||(6/30 MB:  20.00 %%) \000\r' >&2
@@ -88,8 +89,7 @@ case "$(basename "$0")" in
         fi
         if [ -f "$here/put-stalls" ]; then
             printf 'TRANSFERRING ||####..........||(3/30 MB:  10.00 %%) \000\r' >&2
-            sleep 3
-            exit 0
+            exec sleep 30
         fi
         if [ -f "$here/put-slow" ]; then
             for p in 10.00 30.00 50.00 70.00 90.00; do

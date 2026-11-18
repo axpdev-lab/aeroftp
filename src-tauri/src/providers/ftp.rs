@@ -2018,6 +2018,9 @@ impl FtpProvider {
     }
 }
 
+/// How long `disconnect` waits for the reply to its QUIT.
+const GOODBYE_BUDGET: std::time::Duration = std::time::Duration::from_secs(5);
+
 #[async_trait]
 impl StorageProvider for FtpProvider {
     fn sync_owner_identity(&self) -> Result<Option<zeroize::Zeroizing<String>>, ProviderError> {
@@ -2271,7 +2274,6 @@ impl StorageProvider for FtpProvider {
     /// command would not read it anyway. The connection is closed at once,
     /// where the QUIT used to cost the user the whole budget after a Cancel.
     async fn disconnect(&mut self) -> Result<(), ProviderError> {
-        const GOODBYE_BUDGET: std::time::Duration = std::time::Duration::from_secs(5);
         self.owed_folder = None;
         let abandoned = self.abandoned_command.swap(false, Ordering::Relaxed);
         if let Some(mut stream) = self.stream.take() {
@@ -12802,57 +12804,77 @@ mod abandoned_command_tests {
         Answered,
         /// Never answered, as a server stuck on it does.
         Silent,
-        /// Answered 400 ms late, after the client has given up on it.
+        /// Answered late: once the test releases it, after the client has
+        /// given up on it.
         Late,
-        /// Passive mode answered at once; a `DELE` answered 400 ms late.
+        /// Passive mode answered at once; a `DELE` answered late, once the
+        /// test releases it.
         LateDele,
     }
 
+    /// What the server logs when a control connection ends, after every
+    /// line it read from it.
+    const CLOSED: &str = "<CONNECTION CLOSED>";
+
     /// A server that logs every command line and answers each one, the
     /// passive-mode request as `passive` says. It keeps reading, so a QUIT
-    /// sent afterwards would still reach the log.
-    async fn server(passive: Passive) -> (u16, Arc<Mutex<Vec<String>>>) {
+    /// sent afterwards would still reach the log, and logs [`CLOSED`] when the
+    /// client closes. A late reply waits for the returned `release`.
+    async fn server(passive: Passive) -> (u16, Arc<Mutex<Vec<String>>>, Arc<tokio::sync::Notify>) {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
         let log = Arc::new(Mutex::new(Vec::new()));
+        let release = Arc::new(tokio::sync::Notify::new());
         let server_log = Arc::clone(&log);
+        let server_release = Arc::clone(&release);
         tokio::spawn(async move {
             while let Ok((stream, _)) = listener.accept().await {
                 let log = Arc::clone(&server_log);
+                let release = Arc::clone(&server_release);
                 tokio::spawn(async move {
-                    let (read, mut write) = stream.into_split();
-                    let mut lines = BufReader::new(read).lines();
-                    if write.write_all(b"220 ready\r\n").await.is_err() {
-                        return;
-                    }
-                    while let Ok(Some(line)) = lines.next_line().await {
-                        log.lock().unwrap().push(line.clone());
-                        let cmd = line.split_whitespace().next().unwrap_or("").to_uppercase();
-                        let reply = match cmd.as_str() {
-                            "PASV" | "EPSV" if passive == Passive::Silent => continue,
-                            "PASV" | "EPSV" if passive == Passive::Late => {
-                                tokio::time::sleep(Duration::from_millis(400)).await;
-                                "227 Entering Passive Mode (127,0,0,1,0,1)\r\n"
-                            }
-                            "DELE" if passive == Passive::LateDele => {
-                                tokio::time::sleep(Duration::from_millis(400)).await;
-                                "250 deleted\r\n"
-                            }
-                            "USER" => "331 password please\r\n",
-                            "PASS" => "230 logged in\r\n",
-                            "PWD" => "257 \"/\" is current\r\n",
-                            "CWD" => "250 ok\r\n",
-                            "QUIT" => "221 bye\r\n",
-                            _ => "200 ok\r\n",
-                        };
-                        if write.write_all(reply.as_bytes()).await.is_err() {
-                            return;
-                        }
-                    }
+                    serve(stream, passive, &log, &release).await;
+                    log.lock().unwrap().push(CLOSED.to_string());
                 });
             }
         });
-        (port, log)
+        (port, log, release)
+    }
+
+    async fn serve(
+        stream: tokio::net::TcpStream,
+        passive: Passive,
+        log: &Mutex<Vec<String>>,
+        release: &tokio::sync::Notify,
+    ) {
+        let (read, mut write) = stream.into_split();
+        let mut lines = BufReader::new(read).lines();
+        if write.write_all(b"220 ready\r\n").await.is_err() {
+            return;
+        }
+        while let Ok(Some(line)) = lines.next_line().await {
+            log.lock().unwrap().push(line.clone());
+            let cmd = line.split_whitespace().next().unwrap_or("").to_uppercase();
+            let reply = match cmd.as_str() {
+                "PASV" | "EPSV" if passive == Passive::Silent => continue,
+                "PASV" | "EPSV" if passive == Passive::Late => {
+                    release.notified().await;
+                    "227 Entering Passive Mode (127,0,0,1,0,1)\r\n"
+                }
+                "DELE" if passive == Passive::LateDele => {
+                    release.notified().await;
+                    "250 deleted\r\n"
+                }
+                "USER" => "331 password please\r\n",
+                "PASS" => "230 logged in\r\n",
+                "PWD" => "257 \"/\" is current\r\n",
+                "CWD" => "250 ok\r\n",
+                "QUIT" => "221 bye\r\n",
+                _ => "200 ok\r\n",
+            };
+            if write.write_all(reply.as_bytes()).await.is_err() {
+                return;
+            }
+        }
     }
 
     async fn connected(port: u16) -> FtpProvider {
@@ -12877,44 +12899,57 @@ mod abandoned_command_tests {
             .any(|line| line.to_uppercase().starts_with(command))
     }
 
+    /// Waits until the server has read `command` (or logged [`CLOSED`]): a
+    /// fixed wait is too short on a busy runner, or lets a late line pass.
+    async fn until_sent(log: &Mutex<Vec<String>>, command: &str) {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !sent(log, command) {
+            assert!(
+                Instant::now() < deadline,
+                "the server never read {command}: {:?}",
+                log.lock().unwrap()
+            );
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    }
+
     /// A listing dropped while the server sits on PASV disconnects at once, with no QUIT.
     #[tokio::test]
     async fn a_cancelled_listing_is_closed_at_once_without_quit() {
-        let (port, log) = server(Passive::Silent).await;
+        let (port, log, _release) = server(Passive::Silent).await;
         let mut provider = connected(port).await;
         // What a Cancel of the foreground listing does: the listing future is
         // dropped while it waits for the passive-mode reply.
+        let passive = async {
+            tokio::select! {
+                _ = until_sent(&log, "PASV") => {}
+                _ = until_sent(&log, "EPSV") => {}
+            }
+        };
         tokio::select! {
             _ = provider.list("/") => panic!("the server never answers the passive-mode request"),
-            _ = tokio::time::sleep(Duration::from_millis(300)) => {}
+            _ = passive => {}
         }
-        assert!(
-            sent(&log, "PASV") || sent(&log, "EPSV"),
-            "{:?}",
-            log.lock().unwrap()
-        );
 
         let started = Instant::now();
         provider.disconnect().await.unwrap();
         let took = started.elapsed();
-        assert!(
-            took < Duration::from_secs(1),
-            "the disconnect took {took:?}"
-        );
+        // A QUIT waiting for its reply would take the whole budget.
+        assert!(took < GOODBYE_BUDGET / 2, "the disconnect took {took:?}");
         assert!(!provider.is_connected());
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        until_sent(&log, CLOSED).await;
         assert!(!sent(&log, "QUIT"), "{:?}", log.lock().unwrap());
     }
 
     /// Commands that came back leave nothing marked: the disconnect still sends QUIT.
     #[tokio::test]
     async fn a_disconnect_after_finished_commands_still_says_goodbye() {
-        let (port, log) = server(Passive::Answered).await;
+        let (port, log, _release) = server(Passive::Answered).await;
         let mut provider = connected(port).await;
         provider.cd("/").await.unwrap();
         provider.pwd().await.unwrap();
         provider.disconnect().await.unwrap();
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        until_sent(&log, CLOSED).await;
         assert!(sent(&log, "QUIT"), "{:?}", log.lock().unwrap());
     }
 
@@ -12923,18 +12958,21 @@ mod abandoned_command_tests {
     /// `250` as its own answer, and a later delete works on the new session.
     #[tokio::test]
     async fn a_cancelled_delete_leaves_no_late_reply_for_the_next_command() {
-        let (port, log) = server(Passive::LateDele).await;
+        let (port, log, release) = server(Passive::LateDele).await;
         let mut provider = connected(port).await;
         tokio::select! {
             _ = provider.delete("/a.txt") => panic!("the DELE reply comes after the client gave up"),
-            _ = tokio::time::sleep(Duration::from_millis(150)) => {}
+            _ = until_sent(&log, "DELE") => {}
         }
-        assert!(sent(&log, "DELE"), "{:?}", log.lock().unwrap());
+        // The late `250` goes out now, before the next command.
+        release.notify_one();
         let path = tokio::time::timeout(Duration::from_secs(5), provider.pwd())
             .await
             .expect("the command must end")
             .expect("the command must succeed on a fresh session");
         assert_eq!(path, "/");
+        // The fixture holds every DELE reply: this one is let go at once.
+        release.notify_one();
         tokio::time::timeout(Duration::from_secs(5), provider.delete("/b.txt"))
             .await
             .expect("the delete must end")
@@ -12952,14 +12990,21 @@ mod abandoned_command_tests {
     /// After an abandoned listing whose reply comes late, the next command redials instead of reading it.
     #[tokio::test]
     async fn the_next_command_after_an_abandoned_one_redials_instead_of_reading_its_late_reply() {
-        let (port, log) = server(Passive::Late).await;
+        let (port, log, release) = server(Passive::Late).await;
         let mut provider = connected(port).await;
+        let passive = async {
+            tokio::select! {
+                _ = until_sent(&log, "PASV") => {}
+                _ = until_sent(&log, "EPSV") => {}
+            }
+        };
         tokio::select! {
             _ = provider.list("/") => panic!("the passive-mode reply comes after the client gave up"),
-            _ = tokio::time::sleep(Duration::from_millis(150)) => {}
+            _ = passive => {}
         }
-        // The late `227` lands on the first connection while the next command
-        // runs. Read there, it would be taken as that command's reply.
+        // The late `227` lands on the first connection before the next
+        // command runs. Read there, it would be taken as that command's reply.
+        release.notify_one();
         let path = tokio::time::timeout(Duration::from_secs(5), provider.pwd())
             .await
             .expect("the command must end")
