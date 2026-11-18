@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { syncBuiltinESMExports } from 'node:module';
+import { createRequire, syncBuiltinESMExports } from 'node:module';
 import { createHash } from 'node:crypto';
 import {
   isGplCompatible,
@@ -2674,7 +2674,9 @@ test('CLI mode: exactly one of --check and --write, and both together are refuse
   const before = fs.readFileSync(noticesFile);
   const mtime = fs.statSync(noticesFile).mtimeMs;
   assert.throws(
-    () => execFileSync('npx', ['tsx', 'scripts/gen-third-party-notices.ts', '--check', '--write'], { cwd: ROOT, encoding: 'utf8', stdio: 'pipe' }),
+    // The pinned tsx CLI run by this Node, as `npm run` does: an npx shim is
+    // not an executable execFileSync can start on Windows.
+    () => execFileSync(process.execPath, [createRequire(path.join(ROOT, 'package.json')).resolve('tsx/cli'), 'scripts/gen-third-party-notices.ts', '--check', '--write'], { cwd: ROOT, encoding: 'utf8', stdio: 'pipe' }),
     (err) => err.status === 1 && /exactly one of them/.test(String(err.stderr))
   );
   assert.ok(fs.readFileSync(noticesFile).equals(before));
@@ -3251,61 +3253,65 @@ test('README.md notice links resolve outside fenced text, and the UnRAR terms ha
 });
 
 test('THIRD-PARTY-NOTICES.md: every anchor id in the generated file is unique', () => {
-  const noticesContent = fs.readFileSync(path.join(ROOT, 'THIRD-PARTY-NOTICES.md'), 'utf8');
-  const proseOutsideCodeBlocks = lf(noticesContent).replace(FENCED_BLOCK, '\n');
-  const idMatches = Array.from(proseOutsideCodeBlocks.matchAll(/<a id="([^"]+)">/g)).map((m) => m[1]);
-  assert.ok(idMatches.length > 0, 'Generated notices must contain anchors');
+  // Read as a CRLF checkout would give it too: every check below runs on the
+  // normalized text, the multi-line attribution included.
+  const raw = fs.readFileSync(path.join(ROOT, 'THIRD-PARTY-NOTICES.md'), 'utf8');
+  for (const noticesContent of [lf(raw), lf(lf(raw).replace(/\n/g, '\r\n'))]) {
+    const proseOutsideCodeBlocks = noticesContent.replace(FENCED_BLOCK, '\n');
+    const idMatches = Array.from(proseOutsideCodeBlocks.matchAll(/<a id="([^"]+)">/g)).map((m) => m[1]);
+    assert.ok(idMatches.length > 0, 'Generated notices must contain anchors');
 
-  const seenIds = new Set();
-  const duplicates = [];
-  for (const id of idMatches) {
-    if (seenIds.has(id)) {
-      duplicates.push(id);
+    const seenIds = new Set();
+    const duplicates = [];
+    for (const id of idMatches) {
+      if (seenIds.has(id)) {
+        duplicates.push(id);
+      }
+      seenIds.add(id);
     }
-    seenIds.add(id);
+
+    assert.deepStrictEqual(
+      duplicates,
+      [],
+      `Found duplicate anchor ids in THIRD-PARTY-NOTICES.md: ${duplicates.join(', ')}`
+    );
+
+    // Specifically check previously duplicated IDs are now unique
+    assert.strictEqual(
+      (proseOutsideCodeBlocks.match(/<a id="notice-unrar">/g) || []).length,
+      1,
+      'notice-unrar anchor must be emitted exactly once'
+    );
+    assert.strictEqual(
+      (proseOutsideCodeBlocks.match(/<a id="notice-typeid">/g) || []).length,
+      1,
+      'notice-typeid anchor must be emitted exactly once'
+    );
+    assert.strictEqual(
+      (proseOutsideCodeBlocks.match(/<a id="notice-wasm-streams">/g) || []).length,
+      1,
+      'notice-wasm-streams anchor must be emitted exactly once'
+    );
+    assert.strictEqual(
+      (proseOutsideCodeBlocks.match(/<a id="notice-unrar-sys">/g) || []).length,
+      1,
+      'notice-unrar-sys anchor must be emitted exactly once'
+    );
+
+    // cesu8@1.1.0 attribution retained in standard license fallback alongside COPYRIGHT notice entry,
+    // bounded strictly to each matching standard-license section
+    const apacheSection = noticesContent.split('### Standard License: Apache-2.0')[1]?.split('### Standard License:')[0] || '';
+    assert.ok(apacheSection.includes('`cesu8@1.1.0`'), 'cesu8@1.1.0 must appear in Apache-2.0 standard license section');
+
+    const mitSection = noticesContent.split('### Standard License: MIT')[1]?.split('### Standard License:')[0] || '';
+    assert.ok(mitSection.includes('`cesu8@1.1.0`'), 'cesu8@1.1.0 must appear in MIT standard license section');
+
+    assert.match(noticesContent, /Eric Kidd <git@randomhacks\.net>/);
+    // The holder line of its source header, with Eric Kidd and the 2012-2014 range, under both licenses.
+    const cesu8Holder = '`cesu8@1.1.0` - SPDX: `Apache-2.0/MIT` (authors: Eric Kidd <git@randomhacks.net>)\n  - Copyright 2012-2014 The Rust Project Developers and Eric Kidd. (src/lib.rs)';
+    assert.ok(apacheSection.includes(cesu8Holder), 'the cesu8 holder line must appear in the Apache-2.0 section');
+    assert.ok(mitSection.includes(cesu8Holder), 'the cesu8 holder line must appear in the MIT section');
   }
-
-  assert.deepStrictEqual(
-    duplicates,
-    [],
-    `Found duplicate anchor ids in THIRD-PARTY-NOTICES.md: ${duplicates.join(', ')}`
-  );
-
-  // Specifically check previously duplicated IDs are now unique
-  assert.strictEqual(
-    (proseOutsideCodeBlocks.match(/<a id="notice-unrar">/g) || []).length,
-    1,
-    'notice-unrar anchor must be emitted exactly once'
-  );
-  assert.strictEqual(
-    (proseOutsideCodeBlocks.match(/<a id="notice-typeid">/g) || []).length,
-    1,
-    'notice-typeid anchor must be emitted exactly once'
-  );
-  assert.strictEqual(
-    (proseOutsideCodeBlocks.match(/<a id="notice-wasm-streams">/g) || []).length,
-    1,
-    'notice-wasm-streams anchor must be emitted exactly once'
-  );
-  assert.strictEqual(
-    (proseOutsideCodeBlocks.match(/<a id="notice-unrar-sys">/g) || []).length,
-    1,
-    'notice-unrar-sys anchor must be emitted exactly once'
-  );
-
-  // cesu8@1.1.0 attribution retained in standard license fallback alongside COPYRIGHT notice entry,
-  // bounded strictly to each matching standard-license section
-  const apacheSection = noticesContent.split('### Standard License: Apache-2.0')[1]?.split('### Standard License:')[0] || '';
-  assert.ok(apacheSection.includes('`cesu8@1.1.0`'), 'cesu8@1.1.0 must appear in Apache-2.0 standard license section');
-
-  const mitSection = noticesContent.split('### Standard License: MIT')[1]?.split('### Standard License:')[0] || '';
-  assert.ok(mitSection.includes('`cesu8@1.1.0`'), 'cesu8@1.1.0 must appear in MIT standard license section');
-
-  assert.match(noticesContent, /Eric Kidd <git@randomhacks\.net>/);
-  // The holder line of its source header, with Eric Kidd and the 2012-2014 range, under both licenses.
-  const cesu8Holder = '`cesu8@1.1.0` - SPDX: `Apache-2.0/MIT` (authors: Eric Kidd <git@randomhacks.net>)\n  - Copyright 2012-2014 The Rust Project Developers and Eric Kidd. (src/lib.rs)';
-  assert.ok(apacheSection.includes(cesu8Holder), 'the cesu8 holder line must appear in the Apache-2.0 section');
-  assert.ok(mitSection.includes(cesu8Holder), 'the cesu8 holder line must appear in the MIT section');
 });
 
 test('groupLicenseTexts: COPYRIGHT-only component receives both notice entry and standard license fallback', () => {
