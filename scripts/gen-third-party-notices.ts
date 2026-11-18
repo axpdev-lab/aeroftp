@@ -1044,7 +1044,9 @@ export const UNREPRODUCIBLE_HEADER_IDS: Record<string, string> = {
 /**
  * Reviewed lines that carry an SPDX-License-Identifier tag in a header's
  * position but only mention it (`// Example: SPDX-License-Identifier: MIT
- * (preferred)`), keyed by `<package>:<file>` with the reason. A tag that does
+ * (preferred)`), keyed by `<package>@<version>:<file>:<line>` (the line as
+ * shipped, trimmed) with the reason, so a listed mention never hides a
+ * malformed header of the same file or of another version. A tag that does
  * not parse fails the generation unless its line is listed here: it is never
  * skipped by guessing from the words around it, because that guess would also
  * skip real headers (measured: a rule on the comment leader alone skipped 258
@@ -1105,6 +1107,7 @@ export function findBundledCodeUnderOtherLicenses(
     .filter((f) => LICENSE_DIR.test(path.posix.basename(path.posix.dirname(f.filename))))
     .map((f) => ({ id: path.posix.basename(f.filename).replace(/\.(?:txt|md|markdown|rst)$/i, ''), root: f.vendored ? vendoredRoot(f.filename) : '' }));
   const found = new Map<string, { notices: string[]; files: string[]; headers: { text: string; files: string[] }[] }>();
+  const vendoredDirs = vendoredFolders(comp);
   // The comment styles isSpdxHeaderLine accepts, so a header block keeps its
   // copyright and permission lines in each of them (`REM --`, `$!`, `@`).
   const isCommentLine = (l: string) => COMMENT_LEADER.test(l);
@@ -1143,13 +1146,13 @@ export function findBundledCodeUnderOtherLicenses(
         if (tokenizeSpdx(m[1]).length === 0) return;
         const parsed = spdxAlternatives(m[1]);
         if (!parsed) {
-          if (`${comp.name}:${entryRel}` in knownMentions) return;
+          const mentionKey = `${comp.name}@${comp.version}:${entryRel}:${line.trim()}`;
+          if (mentionKey in knownMentions) return;
           throw new Error(
-            `${comp.name}@${comp.version} has a malformed SPDX-License-Identifier in ${entryRel}: '${m[1]}'. If the line only mentions the tag, add '${comp.name}:${entryRel}' with the reason to KNOWN_SPDX_TAG_MENTIONS`
+            `${comp.name}@${comp.version} has a malformed SPDX-License-Identifier in ${entryRel}: '${m[1]}'. If the line only mentions the tag, add ${JSON.stringify(mentionKey)} with the reason to KNOWN_SPDX_TAG_MENTIONS`
           );
         }
         const alternatives = parsed.filter((terms) => !terms.some((t) => t.split(' WITH ')[0] in UNREPRODUCIBLE_HEADER_IDS));
-        if (alternatives.length === 0) return;
         // A term is covered by the package's declared license. A license with no
         // standard text is also covered by the text the package ships beside the
         // vendored code (libssh2/LICENSES/FSFULLR.txt for
@@ -1162,13 +1165,19 @@ export function findBundledCodeUnderOtherLicenses(
           );
         const declaredTerm = (t: string) => declared.has(t.split(' WITH ')[0]);
         const undeclaredOf = (terms: string[]) => terms.filter((t) => !declaredTerm(t) && !shippedTerm(t));
-        const covering = alternatives.find((terms) => undeclaredOf(terms).length === 0);
+        // A header whose only license is a known upstream typo is no license:
+        // its terms are left out, its holders are kept, as declared.
+        const typoOnly = alternatives.length === 0;
+        const covering = typoOnly ? [m[1].trim()] : alternatives.find((terms) => undeclaredOf(terms).length === 0);
         let chosen: string[];
-        // Terms covered only by a text shipped beside the code: the holders of
-        // that code are listed with its folder, and a header with terms of its
-        // own is still reproduced, as declared.
+        // Terms covered only by a text shipped beside the code: a header with
+        // terms of its own is still reproduced, as declared, and its holders
+        // are kept unless the code sits in a vendored folder, whose holders
+        // are listed with that folder.
         let shippedOnly = false;
-        if (covering) {
+        if (typoOnly) {
+          chosen = covering!;
+        } else if (covering) {
           chosen = covering.filter(declaredTerm);
           if (chosen.length === 0) {
             chosen = covering;
@@ -1240,11 +1249,11 @@ export function findBundledCodeUnderOtherLicenses(
         // "You may use, copy, modify and distribute", "may be freely used".
         // A notice that only points to a license ("Licensed under the Apache
         // License", "you may not use this file except") grants nothing itself.
-        const carriesTerms = PERMISSION_TEXT.test(blockText);
-        if (shippedOnly) {
-          if (!carriesTerms) return;
-          notices.length = 0;
-        }
+        const carriesTerms = !typoOnly && PERMISSION_TEXT.test(blockText);
+        if (shippedOnly && vendoredDirs.some((d) => entryRel.startsWith(`${d}/`))) notices.length = 0;
+        // A covered header adds nothing when it names no holder and carries no
+        // terms of its own (typoOnly never reproduces its terms).
+        if ((shippedOnly || typoOnly) && !carriesTerms && notices.length === 0) return;
         for (const license of chosen) {
           const key = `${covering ? 'declared' : 'other'}\u0000${license}`;
           if (!found.has(key)) found.set(key, { notices: [], files: [], headers: [] });

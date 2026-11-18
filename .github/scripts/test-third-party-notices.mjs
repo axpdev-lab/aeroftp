@@ -998,7 +998,10 @@ test('readPackageFiles: a root license folder follows the rule of a nested one',
     const only = readPackageFiles(tmpDir, 'test-readme-only@1.0.0');
     assert.deepStrictEqual([...only.licenseFiles, ...only.noticeFiles], []);
     const comp = { name: 'test-readme-only', version: '1.0.0', license: 'MIT', source: 'npm', packageDir: tmpDir, authors: ['Readme Author'], ...only };
-    assert.match(generateNoticesMarkdown([comp], []), /### Standard License: MIT\n/);
+    const readmeOnly = generateNoticesMarkdown([comp], []);
+    assert.match(readmeOnly, /### Standard License: MIT\n/);
+    assert.match(readmeOnly, /Permission is hereby granted, free of charge/, 'the standard MIT permission text is rendered');
+    assert.doesNotMatch(readmeOnly, /The license texts of this package\./, 'the README is not rendered as a license text');
     // The British spelling is a license folder too, as in vendored code.
     fs.rmSync(path.join(tmpDir, 'LICENSES'), { recursive: true });
     fs.mkdirSync(path.join(tmpDir, 'licence'));
@@ -1022,6 +1025,20 @@ test('bundled code: a license text in the package LICENSES/ covers its own heade
     const comp = { name: 'root-reuse', version: '1.0.0', license: 'MIT', source: 'cargo', packageDir: tmpDir, authors: [], ...readPackageFiles(tmpDir, 'root-reuse@1.0.0') };
     const known = new Set(Object.keys(JSON.parse(fs.readFileSync(SPDX_STANDARD_LICENSES_FILE, 'utf8'))));
     assert.deepStrictEqual(findBundledCodeUnderOtherLicenses(comp, known), []);
+    // A header covered by that text keeps a holder the package's files do not
+    // name: nothing else lists it, because the package's own holders stop the
+    // source scan.
+    write('src/z.c', '/* Copyright (c) 2018 Other Source Author\n * SPDX-License-Identifier: Foo-Own-1.0 */\n');
+    const withHolder = { ...comp, ...readPackageFiles(tmpDir, 'root-reuse@1.0.0') };
+    assert.deepStrictEqual(findBundledCodeUnderOtherLicenses(withHolder, known).map((b) => [b.license, b.notices, b.files, b.headers.length, b.declared]), [['Foo-Own-1.0', ['Copyright (c) 2018 Other Source Author'], ['src/z.c'], 0, true]]);
+    assert.match(generateNoticesMarkdown([withHolder], []), /^ {2}- Copyright \(c\) 2018 Other Source Author \(in a source header under Foo-Own-1\.0\)$/m);
+    // The same header inside vendored code is listed with that code's folder,
+    // not twice.
+    write('vend/lib/COPYING', 'Copyright (c) 2018 Other Source Author\nRedistribution and use in source and binary forms.');
+    write('vend/lib/w.c', '/* Copyright (c) 2018 Other Source Author\n * SPDX-License-Identifier: Foo-Own-1.0 */\n');
+    fs.rmSync(path.join(tmpDir, 'src/z.c'));
+    const vendoredCase = { ...comp, ...readPackageFiles(tmpDir, 'root-reuse@1.0.0') };
+    assert.deepStrictEqual(findBundledCodeUnderOtherLicenses(vendoredCase, known), []);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
@@ -1046,6 +1063,28 @@ test('declared header holders: a holder is named by the package only when it is 
     assert.doesNotMatch(md, /Alice Smith\. \(in a source header/, 'the same holder is attributed by the package');
     assert.doesNotMatch(md, /Intel Corporation\. All Rights Reserved\. \(in a source header/, 'a holder of the credits list is attributed by the package');
     assert.match(md, /^ {2}- Copyright Batch Vendor \(in a source header under MIT\)$/m, 'a REM header names its holder');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('bundled code: a header whose only license is a known typo keeps a holder the package does not name', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'typo-holder-fixture-'));
+  try {
+    const write = (rel, content) => {
+      fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, rel), content);
+    };
+    write('LICENSE', 'MIT License\n\nCopyright (c) 2020 Wrapper Author\n\nPermission is hereby granted, free of charge.');
+    write('src/menu.rs', '// Copyright 2022-2022 Typo Header Author\n// SPDX-License-Identifier: Apache-2.inner\n');
+    write('src/items.rs', '// Copyright 2020 Wrapper Author\n// SPDX-License-Identifier: Apache-2.inner\n');
+    write('src/bare.rs', '// SPDX-License-Identifier: Apache-2.inner\n');
+    const comp = { name: 'typo-holder', version: '1.0.0', license: 'MIT', source: 'cargo', packageDir: tmpDir, authors: [], ...readPackageFiles(tmpDir, 'typo-holder@1.0.0') };
+    const known = new Set(Object.keys(JSON.parse(fs.readFileSync(SPDX_STANDARD_LICENSES_FILE, 'utf8'))));
+    assert.deepStrictEqual(findBundledCodeUnderOtherLicenses(comp, known).map((b) => [b.license, b.notices, b.files, b.headers.length, b.declared]), [['Apache-2.inner', ['Copyright 2020 Wrapper Author', 'Copyright 2022-2022 Typo Header Author'], ['src/items.rs', 'src/menu.rs'], 0, true]]);
+    const md = generateNoticesMarkdown([comp], []);
+    assert.match(md, /^ {2}- Copyright 2022-2022 Typo Header Author \(in a source header under Apache-2\.inner\)$/m);
+    assert.doesNotMatch(md, /Copyright 2020 Wrapper Author \(in a source header/, 'the package names this holder itself');
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
@@ -1111,17 +1150,24 @@ test('bundled code: a header expression made of SPDX tokens that does not parse 
     const known = new Set(Object.keys(JSON.parse(fs.readFileSync(SPDX_STANDARD_LICENSES_FILE, 'utf8'))));
     assert.deepStrictEqual(findBundledCodeUnderOtherLicenses(comp, known).filter((b) => !b.declared).map((b) => [b.license, b.files]), [['BSD-2-Clause', ['lib/arm.S', 'lib/one.c', 'lib/valid.c']]]);
     write('lib/broken.c', '/* SPDX-License-Identifier: BSD-2-Clause AND */\n');
-    assert.throws(() => findBundledCodeUnderOtherLicenses(comp, known), /malformed-pkg@1\.0\.0 has a malformed SPDX-License-Identifier in lib\/broken\.c: 'BSD-2-Clause AND'\. If the line only mentions the tag, add 'malformed-pkg:lib\/broken\.c' with the reason to KNOWN_SPDX_TAG_MENTIONS/);
+    assert.throws(() => findBundledCodeUnderOtherLicenses(comp, known), /malformed-pkg@1\.0\.0 has a malformed SPDX-License-Identifier in lib\/broken\.c: 'BSD-2-Clause AND'\. If the line only mentions the tag, add "malformed-pkg@1\.0\.0:lib\/broken\.c:\/\* SPDX-License-Identifier: BSD-2-Clause AND \*\/" with the reason to KNOWN_SPDX_TAG_MENTIONS/);
     fs.rmSync(path.join(tmpDir, 'lib/broken.c'));
     // A comment that mentions the tag fails like a malformed header: the remedy
     // is a reviewed entry, never a guess from the words before the tag.
     write('lib/example.js', '// Example: SPDX-License-Identifier: MIT (preferred)\n');
     assert.throws(() => findBundledCodeUnderOtherLicenses(comp, known), /in lib\/example\.js: 'MIT \(preferred\)'/);
-    const listed = { 'malformed-pkg:lib/example.js': 'a usage example in a comment, not a header' };
+    const listed = { 'malformed-pkg@1.0.0:lib/example.js:// Example: SPDX-License-Identifier: MIT (preferred)': 'a usage example in a comment, not a header' };
     assert.deepStrictEqual(findBundledCodeUnderOtherLicenses(comp, known, listed).filter((b) => !b.declared).map((b) => [b.license, b.files]), [['BSD-2-Clause', ['lib/arm.S', 'lib/one.c', 'lib/valid.c']]]);
     // Only the listed file is skipped: the same line elsewhere still fails.
     write('lib/other.js', '// Example: SPDX-License-Identifier: MIT (preferred)\n');
     assert.throws(() => findBundledCodeUnderOtherLicenses(comp, known, listed), /in lib\/other\.js/);
+    fs.rmSync(path.join(tmpDir, 'lib/other.js'));
+    // The entry names one line: a malformed header in the same file still fails.
+    write('lib/example.js', '// Example: SPDX-License-Identifier: MIT (preferred)\n/* SPDX-License-Identifier: BSD-2-Clause AND */\n');
+    assert.throws(() => findBundledCodeUnderOtherLicenses(comp, known, listed), /in lib\/example\.js: 'BSD-2-Clause AND'/);
+    write('lib/example.js', '// Example: SPDX-License-Identifier: MIT (preferred)\n');
+    // And one version: the same line in another version of the package fails.
+    assert.throws(() => findBundledCodeUnderOtherLicenses({ ...comp, version: '2.0.0' }, known, listed), /malformed-pkg@2\.0\.0 has a malformed SPDX-License-Identifier in lib\/example\.js/);
     assert.deepStrictEqual(KNOWN_SPDX_TAG_MENTIONS, {}, 'no reviewed mention is needed on the current tree');
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
