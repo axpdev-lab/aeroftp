@@ -2841,8 +2841,10 @@ user = alice
 
     #[test]
     fn overwrite_target_reset_rollback_restores_partition_oauth_and_jotta_secrets() {
-        let _up_guard = user_partitions::test_lock();
+        // `test_env::lock` (inside `TestVaultEnv::new`) first, as every test
+        // taking both locks does.
         let env = TestVaultEnv::new();
+        let _up_guard = user_partitions::test_lock();
         // Add a second (non-legacy) user so `"oauth"` and `"jottacloud_refresh"`
         // are partition-private (`private_token_user` returns `Some(other_id)`).
         let other_user =

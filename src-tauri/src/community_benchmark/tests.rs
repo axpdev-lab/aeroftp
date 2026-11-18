@@ -2045,12 +2045,13 @@ fn a_long_run_from_a_remote_error_is_redacted_quickly_and_whole() {
     // dump is redacted too.
     let dump = "ab:".repeat(7000);
     let report = test_report(vec![format!("body {dump} from fe80::1 refused")]);
-    let started = std::time::Instant::now();
     let json = sanitized_report_json(&report).unwrap();
-    assert!(
-        started.elapsed() < std::time::Duration::from_secs(10),
-        "{:?}",
-        started.elapsed()
+    // The scan takes as long on the dump whole as on ten tenths of it.
+    crate::linear_time::assert_linear(
+        "a hex dump",
+        7000,
+        |n| format!("body {} from fe80::1 refused", "ab:".repeat(n)),
+        redact_ipv6,
     );
     assert!(!json.contains("ab:ab"), "a piece of the dump is left");
     assert!(!json.contains("fe80"), "the address after the dump is left");
@@ -2062,12 +2063,13 @@ fn a_long_run_with_no_address_in_it_is_scanned_quickly() {
     // No start of this run parses: the worst case for the candidate scan,
     // which must stay bounded by the length of an address, not of the run.
     let dump = "xy:".repeat(7000);
-    let started = std::time::Instant::now();
     let json = sanitized_report_json(&test_report(vec![format!("body {dump} end")])).unwrap();
-    assert!(
-        started.elapsed() < std::time::Duration::from_secs(10),
-        "{:?}",
-        started.elapsed()
+    // The scan takes as long on the run whole as on ten tenths of it.
+    crate::linear_time::assert_linear(
+        "a run with no address",
+        7000,
+        |n| format!("body {} end", "xy:".repeat(n)),
+        redact_ipv6,
     );
     assert!(json.contains("xy:xy:xy"));
 }

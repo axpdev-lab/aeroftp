@@ -1,0 +1,43 @@
+name: Add swap (whole-lib builds)
+description: >-
+  Give an ubuntu-latest runner extra swap before it compiles the whole aeroftp
+  lib in test or instrumented profile. Best effort: a runner where the swap
+  cannot be added keeps going with what it has, with a warning.
+
+# Why (measured 2026-11-17 on ubuntu-26.04: 4 vCPU, 16 GB RAM, 3 GB swap):
+# linking the lib test binary, and the llvm-cov instrumented build, exhaust the
+# runner's memory, and GitHub then reports "The runner has received a shutdown
+# signal" (exit 143) or "lost communication with the server" instead of an
+# error. cli-smoke coverage, diagnostic run 44008434887: swap full for 32
+# samples (about 11 min), 361 MB available at the low point. ftp-mlsd
+# listing-timeout, run 44041783419: 448 MB available, swap 2844 of 3071 MB at
+# the lib test link. With line-tables-only debug info (set by the calling
+# workflow) and this 8 GB swapfile, coverage run 44025940171 peaked at 6012 of
+# 11263 MB of swap with 1015 MB still available, and its build fell from
+# 27m16s to 17m57s. The disk is not the limit: 110 GB free on the same runners.
+
+inputs:
+  size:
+    description: Size of the extra swapfile, as fallocate takes it.
+    default: 8G
+
+runs:
+  using: composite
+  steps:
+    - name: Add swap
+      shell: bash
+      # The input goes through the environment, never through `${{ }}` in the
+      # script body: an expression is substituted before bash parses the line.
+      env:
+        SWAP_SIZE: ${{ inputs.size }}
+      run: |
+        file=/swapfile-whole-lib
+        if sudo fallocate -l "$SWAP_SIZE" "$file" \
+          && sudo chmod 600 "$file" \
+          && sudo mkswap "$file" >/dev/null \
+          && sudo swapon "$file"; then
+          swapon --show
+          free -m
+        else
+          echo "::warning::could not add $SWAP_SIZE of swap; the whole-lib build runs with the runner's own swap"
+        fi
