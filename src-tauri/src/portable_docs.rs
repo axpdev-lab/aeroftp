@@ -184,6 +184,9 @@ enum Slot {
     Missing,
     /// A file, or a folder without a key: no batch.
     Invalid,
+    /// A folder whose key exists but cannot be read now (another process
+    /// holds it): a batch, left whole for a later pass.
+    Unreadable,
     Key(String),
 }
 
@@ -193,22 +196,26 @@ fn slot(dir: &Path) -> Slot {
         Ok(meta) if !meta.is_dir() => Slot::Invalid,
         Ok(_) => match std::fs::read_to_string(dir.join(KEY_FILE)) {
             Ok(key) => Slot::Key(key.trim().to_string()),
-            Err(_) => Slot::Invalid,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Slot::Invalid,
+            Err(_) => Slot::Unreadable,
         },
     }
 }
 
 /// Removes staging folders a stopped update left (`TMP_PREFIX*`). Called
-/// under the lock only, so no staging is in progress. Only what a staging
-/// writes goes (remove_batch): a folder that merely has the name keeps what
-/// else it holds.
+/// under the lock only, so no staging is in progress. A staging writes its
+/// key first, so only a folder holding a key file is one: a folder that
+/// merely has the name is left whole, and in one that is, only what a
+/// staging writes goes (remove_batch).
 fn remove_staging_leftovers(exe_dir: &Path) {
     let Ok(entries) = std::fs::read_dir(exe_dir) else {
         return;
     };
     for entry in entries.flatten() {
-        if entry.file_name().to_string_lossy().starts_with(TMP_PREFIX) {
-            remove_batch(&entry.path());
+        let path = entry.path();
+        let owned = std::fs::symlink_metadata(path.join(KEY_FILE)).is_ok_and(|m| m.is_file());
+        if entry.file_name().to_string_lossy().starts_with(TMP_PREFIX) && owned {
+            remove_batch(&path);
         }
     }
 }
@@ -270,13 +277,16 @@ fn stage_with(
         return Ok(());
     }
     let tmp = exe_dir.join(format!("{TMP_PREFIX}{suffix}"));
+    // A folder this call creates, and only then cleaned up on a failure: a
+    // folder already at that name is not ours, and stays as it is.
+    std::fs::create_dir(&tmp).map_err(fail)?;
     let staged = (|| -> io::Result<()> {
-        // A folder this call creates: nothing else is written into.
-        std::fs::create_dir(&tmp)?;
+        // The key first: it marks the folder as a staging for the sweep of
+        // leftovers, so a staging stopped at any point is found again.
+        std::fs::write(tmp.join(KEY_FILE), &key)?;
         for (source, name) in docs {
             std::fs::copy(source, tmp.join(name))?;
         }
-        std::fs::write(tmp.join(KEY_FILE), &key)?;
         remove_batch(&next);
         publish(&tmp, &next)
     })();
@@ -336,7 +346,7 @@ fn install_pass(
         // Another exe's: an update, of this process or another, may be
         // waiting for its swap. It is never read here; a failed swap, a
         // discard or the next staging removes it.
-        Slot::Key(_) => {}
+        Slot::Key(_) | Slot::Unreadable => {}
         Slot::Invalid => stale |= remove_batch(&next),
     }
     match slot(&source) {
@@ -345,7 +355,16 @@ fn install_pass(
             return (found, None);
         }
         Slot::Key(k) if k == own_key => {}
-        Slot::Key(_) | Slot::Invalid => {
+        // Another exe's batch: this exe may be an older companion the
+        // update could not replace, and the batch the new exe's, waiting for
+        // documents to be released. Only the exe whose batch supersedes it
+        // removes it (above). A key that cannot be read now: a later pass.
+        Slot::Key(_) => return (Pending::None, None),
+        Slot::Unreadable => {
+            let why = format!("the key of {} cannot be read now", source.display());
+            return (Pending::Unavailable(why), None);
+        }
+        Slot::Invalid => {
             remove_batch(&source);
             return (Pending::Stale, None);
         }
@@ -410,6 +429,12 @@ pub(crate) fn retry_held(
         left -= 1;
         sleep(pause);
         let (retried, source) = install_pass(exe_dir, own_key, &replace);
+        // A pass that could not look at the batch (the lock, a key that
+        // cannot be read now) says nothing about the held documents: the
+        // held result stands, and is what the start reports.
+        if matches!(retried, Pending::Unavailable(_)) {
+            break;
+        }
         if let Pending::Docs(retried) = &retried {
             for (name, outcome) in retried {
                 if let Some(entry) = last.iter_mut().find(|(n, _)| n == name) {
@@ -468,11 +493,14 @@ pub(crate) fn outcome_line(name: &str, outcome: &Outcome) -> String {
 /// exe's (a pass installs from it when the current batch of an older exe
 /// could not be removed), else those of the current batch when its key is.
 /// A batch of another exe is never exposed, and `own_key` is asked only when
-/// a batch holds notices.
+/// a batch holds notices. The path returned is a copy made under the lock,
+/// named after the batch's key: a staging that later replaces the batch at
+/// the same folder cannot change what About opens.
 pub(crate) fn own_pending_notices(
     exe_dir: &Path,
     own_key: impl FnOnce() -> Option<String>,
 ) -> Option<PathBuf> {
+    let _lock = lock_batches(exe_dir).ok()?;
     let held: Vec<(PathBuf, String)> = [NEXT_DIR, PENDING_DIR]
         .iter()
         .filter_map(|name| {
@@ -488,9 +516,13 @@ pub(crate) fn own_pending_notices(
         return None;
     }
     let own = own_key()?;
-    held.into_iter()
-        .find(|(_, k)| *k == own)
-        .map(|(notices, _)| notices)
+    let (notices, key) = held.into_iter().find(|(_, k)| *k == own)?;
+    let copy = std::env::temp_dir().join(format!(
+        "aeroftp-pending-notices-{}-{key}.md",
+        folder_id(exe_dir)
+    ));
+    std::fs::copy(&notices, &copy).ok()?;
+    Some(copy)
 }
 
 /// The key of the running exe, read once.
@@ -580,10 +612,11 @@ mod tests {
             "old THIRD-PARTY-NOTICES.md"
         );
         assert_eq!(read(dir.path(), "README.txt"), "new README.txt");
+        let offered = own_pending_notices(dir.path(), || Some(KEY.to_string()))
+            .expect("About opens the pending notices meanwhile");
         assert_eq!(
-            own_pending_notices(dir.path(), || Some(KEY.to_string())),
-            Some(dir.path().join(PENDING_DIR).join("THIRD-PARTY-NOTICES.md")),
-            "About opens the pending notices meanwhile"
+            std::fs::read_to_string(offered).unwrap(),
+            "new THIRD-PARTY-NOTICES.md"
         );
         busy.borrow_mut().clear();
         assert_eq!(
@@ -836,19 +869,32 @@ mod tests {
     }
 
     #[test]
-    fn a_folder_of_another_exe_without_a_key_or_that_is_a_file_is_removed() {
-        for key in [Some("other-exe"), None] {
-            let dir = folder(key);
-            let replace = |_: &Path, _: &Path| -> io::Result<()> {
-                panic!("a stale document is never installed")
-            };
-            assert_eq!(
-                install_pending_docs(dir.path(), KEY, replace),
-                Pending::Stale
-            );
-            assert!(!dir.path().join(PENDING_DIR).exists(), "{key:?}");
-            assert_eq!(read(dir.path(), "README.txt"), "old README.txt");
-        }
+    fn a_folder_without_a_key_or_that_is_a_file_is_removed_another_exes_batch_is_kept() {
+        let replace = |_: &Path, _: &Path| -> io::Result<()> {
+            panic!("another exe's or a stale document is never installed")
+        };
+        let dir = folder(None);
+        assert_eq!(
+            install_pending_docs(dir.path(), KEY, replace),
+            Pending::Stale
+        );
+        assert!(!dir.path().join(PENDING_DIR).exists());
+        assert_eq!(read(dir.path(), "README.txt"), "old README.txt");
+        // The new build's batch, promoted while its documents were held, and
+        // an older companion exe started before the new build again: the
+        // batch stays, and the new build installs it.
+        let dir = folder(Some("new-build"));
+        assert_eq!(
+            install_pending_docs(dir.path(), KEY, replace),
+            Pending::None
+        );
+        assert_eq!(
+            read(&dir.path().join(PENDING_DIR), "README.txt"),
+            "new README.txt"
+        );
+        install_pending_docs(dir.path(), "new-build", rename);
+        assert_eq!(read(dir.path(), "README.txt"), "new README.txt");
+        assert!(!dir.path().join(PENDING_DIR).exists());
         // A next batch without a key, or that is a file, is no batch.
         let dir = tempfile::tempdir().unwrap();
         std::fs::create_dir(dir.path().join(NEXT_DIR)).unwrap();
@@ -882,6 +928,64 @@ mod tests {
         assert!(!dir.path().join(PENDING_DIR).exists());
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn a_retry_that_cannot_take_the_lock_keeps_the_held_result() {
+        let dir = folder(Some(KEY));
+        let busy = RefCell::new(vec!["README.txt"]);
+        let lock = std::env::temp_dir().join(format!(
+            "aeroftp-pending-docs-{}.lock",
+            folder_id(dir.path())
+        ));
+        // Between the passes the lock cannot be taken (a folder at its path).
+        let outcome = install_with_shared_budget(
+            dir.path(),
+            KEY,
+            2,
+            Duration::from_secs(1),
+            held(&busy, ERROR_SHARING_VIOLATION),
+            |_| {
+                let _ = std::fs::remove_file(&lock);
+                let _ = std::fs::create_dir(&lock);
+            },
+        );
+        let _ = std::fs::remove_dir(&lock);
+        let Pending::Docs(docs) = outcome else {
+            panic!("the held result is kept: {outcome:?}");
+        };
+        assert!(docs.contains(&("README.txt", Outcome::InUse)), "{docs:?}");
+        assert_eq!(
+            read(&dir.path().join(PENDING_DIR), "README.txt"),
+            "new README.txt"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_batch_whose_key_cannot_be_read_now_is_kept_and_installed_later() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = folder(Some(KEY));
+        let key = dir.path().join(PENDING_DIR).join(KEY_FILE);
+        std::fs::set_permissions(&key, std::fs::Permissions::from_mode(0o000)).unwrap();
+        if std::fs::read(&key).is_ok() {
+            return; // as root every file is readable: nothing to hold
+        }
+        let replace = |_: &Path, _: &Path| -> io::Result<()> {
+            panic!("nothing is installed while the key cannot be read")
+        };
+        assert!(matches!(
+            install_pending_docs(dir.path(), KEY, replace),
+            Pending::Unavailable(why) if why.contains("cannot be read now")
+        ));
+        assert_eq!(
+            read(&dir.path().join(PENDING_DIR), "README.txt"),
+            "new README.txt"
+        );
+        std::fs::set_permissions(&key, std::fs::Permissions::from_mode(0o644)).unwrap();
+        install_pending_docs(dir.path(), KEY, rename);
+        assert_eq!(read(dir.path(), "README.txt"), "new README.txt");
+    }
+
     #[test]
     fn cleanup_removes_only_what_a_staging_writes_and_keeps_an_unrelated_folder() {
         let dir = folder(Some("other-exe"));
@@ -889,13 +993,16 @@ mod tests {
         let unrelated = dir.path().join(format!("{TMP_PREFIX}user"));
         std::fs::create_dir_all(unrelated.join("sub")).unwrap();
         std::fs::write(unrelated.join("notes.txt"), "mine").unwrap();
+        // Named like a document a staging writes, but the user's.
+        std::fs::write(unrelated.join("README.txt"), "my readme").unwrap();
         std::fs::write(unrelated.join("sub").join("deep.txt"), "mine too").unwrap();
         // A staging an update stopped in the middle: documents and key.
         let stopped = dir.path().join(format!("{TMP_PREFIX}stopped"));
         std::fs::create_dir(&stopped).unwrap();
         std::fs::write(stopped.join("README.txt"), "half staged").unwrap();
         std::fs::write(stopped.join(KEY_FILE), "some-exe").unwrap();
-        // Another exe's current batch, with a file nobody staged in it.
+        // A current batch that lost its key, with a file nobody staged in it.
+        std::fs::remove_file(dir.path().join(PENDING_DIR).join(KEY_FILE)).unwrap();
         std::fs::write(dir.path().join(PENDING_DIR).join("user.txt"), "kept").unwrap();
         let replace = |_: &Path, _: &Path| -> io::Result<()> {
             panic!("a stale document is never installed")
@@ -906,6 +1013,7 @@ mod tests {
         );
         assert!(!stopped.exists(), "the stopped staging goes whole");
         assert_eq!(read(&unrelated, "notes.txt"), "mine");
+        assert_eq!(read(&unrelated, "README.txt"), "my readme");
         assert_eq!(read(&unrelated.join("sub"), "deep.txt"), "mine too");
         let pending = dir.path().join(PENDING_DIR);
         assert_eq!(read(&pending, "user.txt"), "kept");
@@ -933,6 +1041,11 @@ mod tests {
         );
         assert!(failed.is_err());
         assert_eq!(read(&taken, "own.txt"), "not ours");
+        assert_eq!(read(&taken, "README.txt"), "not ours");
+        // A later sweep leaves both folders that are not stagings whole.
+        discard_pending_docs(dir.path());
+        assert_eq!(read(&taken, "README.txt"), "not ours");
+        assert_eq!(read(&unrelated, "README.txt"), "my readme");
     }
 
     /// An exe in its own folder, and a README to stage for it.
@@ -1128,20 +1241,20 @@ mod tests {
         );
         // The current batch is the running exe's.
         notices(dir.path(), PENDING_DIR, KEY, "own");
-        assert_eq!(
-            own_pending_notices(dir.path(), own),
-            Some(dir.path().join(PENDING_DIR).join("THIRD-PARTY-NOTICES.md"))
-        );
+        let offered = own_pending_notices(dir.path(), own).expect("own batch");
+        assert_eq!(std::fs::read_to_string(&offered).unwrap(), "own");
+        // A staging of another build replaces the batch after the lookup:
+        // the path About got still holds the notices it checked.
+        notices(dir.path(), PENDING_DIR, "build-c", "build C");
+        assert_eq!(std::fs::read_to_string(&offered).unwrap(), "own");
         // An editor held an older exe's current batch, so the promotion
         // failed and the pass installs from the next batch: the older exe's
         // notices are never offered, the next batch's are.
         let dir = tempfile::tempdir().unwrap();
         notices(dir.path(), PENDING_DIR, "older-exe", "older");
         notices(dir.path(), NEXT_DIR, KEY, "own");
-        assert_eq!(
-            own_pending_notices(dir.path(), own),
-            Some(dir.path().join(NEXT_DIR).join("THIRD-PARTY-NOTICES.md"))
-        );
+        let offered = own_pending_notices(dir.path(), own).expect("next batch");
+        assert_eq!(std::fs::read_to_string(offered).unwrap(), "own");
         // Once its notices are installed, nothing pending is offered, though
         // the older batch is still there.
         std::fs::remove_dir_all(dir.path().join(NEXT_DIR)).unwrap();
