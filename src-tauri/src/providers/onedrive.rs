@@ -2530,6 +2530,10 @@ impl StorageProvider for OneDriveProvider {
             .await
             .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
 
+        // Graph documents the list newest first, the current version on top,
+        // and refuses `$orderby`: its order is row 0 as every `list_versions`
+        // answers. A sort by time would put a past version above a current
+        // one that has no time or shares it.
         Ok(list
             .value
             .iter()
@@ -2589,6 +2593,7 @@ impl StorageProvider for OneDriveProvider {
     }
 
     async fn restore_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
+        super::refuse_a_restore_that_changes_nothing(self, path, version_id).await?;
         let item_id = self.resolve_path(path).await?;
         let url = format!(
             "{}/versions/{}/restoreVersion",
@@ -3353,6 +3358,78 @@ mod tests {
         provider.api_origin_override = Some(format!("http://{addr}"));
         provider.test_access_token = Some("t".to_string());
         (provider, patches)
+    }
+
+    /// Graph lists the current version first (newest to oldest, documented).
+    /// It stays row 0 even with no time of its own, its restore is refused
+    /// before restoreVersion, and the past version below it still goes there.
+    #[tokio::test]
+    async fn a_onedrive_restore_of_the_current_version_is_refused_before_any_call() {
+        use axum::response::IntoResponse;
+        use std::sync::{Arc, Mutex};
+        let seen: Arc<Mutex<Vec<String>>> = Arc::default();
+        let log = Arc::clone(&seen);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method, uri: axum::http::Uri| {
+                let log = Arc::clone(&log);
+                async move {
+                    log.lock().unwrap().push(format!("{method} {}", uri.path()));
+                    match (method.as_str(), uri.path()) {
+                        ("GET", "/v1.0/me/drive/items/F1/versions") => axum::Json(serde_json::json!({
+                            // Newest first, as documented; the current one
+                            // carries no time (Graph keeps partial metadata).
+                            "value": [
+                                {"id": "3.0", "size": 5},
+                                {"id": "2.0", "size": 3, "lastModifiedDateTime": "2026-01-02T00:00:00Z"}
+                            ]
+                        }))
+                        .into_response(),
+                        ("POST", "/v1.0/me/drive/items/F1/versions/2.0/restoreVersion") => {
+                            axum::http::StatusCode::NO_CONTENT.into_response()
+                        }
+                        _ => axum::http::StatusCode::NOT_FOUND.into_response(),
+                    }
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = test_provider();
+        provider.connected = true;
+        provider.api_origin_override = Some(format!("http://{addr}"));
+        provider.test_access_token = Some("t".to_string());
+        provider
+            .path_cache
+            .insert("f.txt".to_string(), "F1".to_string());
+        let rows: Vec<String> = provider
+            .list_versions("/f.txt")
+            .await
+            .expect("versions")
+            .into_iter()
+            .map(|v| v.id)
+            .collect();
+        assert_eq!(rows, ["3.0", "2.0"]);
+        let refused = provider.restore_version("/f.txt", "3.0").await;
+        let after_refusal = seen.lock().unwrap().clone();
+        let restored = provider.restore_version("/f.txt", "2.0").await;
+        server.abort();
+        assert!(
+            matches!(&refused, Err(ProviderError::NotSupported(m)) if m.contains("already the current")),
+            "{refused:?}"
+        );
+        assert!(
+            after_refusal.iter().all(|r| r.starts_with("GET ")),
+            "{after_refusal:?}"
+        );
+        assert!(restored.is_ok(), "{restored:?}");
+        assert!(
+            seen.lock()
+                .unwrap()
+                .contains(&"POST /v1.0/me/drive/items/F1/versions/2.0/restoreVersion".to_string()),
+            "{:?}",
+            seen.lock().unwrap()
+        );
     }
 
     /// Graph refuses a move onto a taken name with 409 `nameAlreadyExists`,

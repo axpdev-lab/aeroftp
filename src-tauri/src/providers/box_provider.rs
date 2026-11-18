@@ -3526,24 +3526,36 @@ mod tests {
         use std::sync::{Arc, Mutex};
         let calls: Arc<Mutex<Vec<String>>> = Arc::default();
         let seen = Arc::clone(&calls);
-        let app = axum::Router::new().fallback(axum::routing::get(move |uri: axum::http::Uri| {
-            let seen = Arc::clone(&seen);
-            async move {
-                use axum::response::IntoResponse;
-                let query = uri.query().unwrap_or_default().to_string();
-                seen.lock().unwrap().push(format!("{}?{query}", uri.path()));
-                match uri.path() {
-                    "/folders/0/items" => axum::Json(serde_json::json!({
-                        "entries": [{"type": "file", "id": "55", "name": "a.txt"}],
-                        "offset": 0, "limit": 1000, "total_count": 1
-                    }))
-                    .into_response(),
-                    "/files/55/content" if query.contains("version=12") => "twelve".into_response(),
-                    "/files/55/content" => "live".into_response(),
-                    _ => axum::http::StatusCode::NOT_FOUND.into_response(),
+        // Every request is recorded whatever its method; the content is
+        // served with no `version` (the file) or exactly `version=12`.
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method, uri: axum::http::Uri| {
+                let seen = Arc::clone(&seen);
+                async move {
+                    use axum::response::IntoResponse;
+                    seen.lock().unwrap().push(format!("{method} {uri}"));
+                    let url = reqwest::Url::parse(&format!("http://h{uri}")).unwrap();
+                    let versions: Vec<String> = url
+                        .query_pairs()
+                        .filter(|(k, _)| k == "version")
+                        .map(|(_, v)| v.into_owned())
+                        .collect();
+                    if method != axum::http::Method::GET {
+                        return axum::http::StatusCode::METHOD_NOT_ALLOWED.into_response();
+                    }
+                    match (uri.path(), versions.as_slice()) {
+                        ("/folders/0/items", _) => axum::Json(serde_json::json!({
+                            "entries": [{"type": "file", "id": "55", "name": "a.txt"}],
+                            "offset": 0, "limit": 1000, "total_count": 1
+                        }))
+                        .into_response(),
+                        ("/files/55/content", []) => "live".into_response(),
+                        ("/files/55/content", [v]) if v == "12" => "twelve".into_response(),
+                        _ => axum::http::StatusCode::NOT_FOUND.into_response(),
+                    }
                 }
-            }
-        }));
+            },
+        ));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move { axum::serve(listener, app).await.ok() });

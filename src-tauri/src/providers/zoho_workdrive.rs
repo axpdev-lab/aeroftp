@@ -4440,6 +4440,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
     }
 
     async fn restore_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
+        super::refuse_a_restore_that_changes_nothing(self, path, version_id).await?;
         let file_id = self.resolve_file_id(path).await?;
 
         // The documented route: POST /versions, `revert_to` the version number.
@@ -7342,6 +7343,14 @@ mod tests {
                             axum::http::StatusCode::OK,
                             r#"{"data":[{"id":"FILE9","attributes":{"name":"f.txt","type":"file"}}]}"#,
                         ),
+                        // 3.0 is the file itself: the restore is of a past version.
+                        "/workdrive/api/v1/files/FILE9/versions" => (
+                            axum::http::StatusCode::OK,
+                            r#"{"data":[
+                                {"id":"r20","attributes":{"version_number":2.0,"created_time_in_milliseconds":1794841300000,"file_size":3}},
+                                {"id":"r30","attributes":{"version_number":3.0,"created_time_in_milliseconds":1794841400000,"file_size":5}}
+                            ]}"#,
+                        ),
                         "/workdrive/api/v1/versions" => (axum::http::StatusCode::OK, "{}"),
                         "/dl/v1/workdrive/download/FILE9" => (axum::http::StatusCode::OK, "old"),
                         _ => (axum::http::StatusCode::NOT_FOUND, "unexpected endpoint"),
@@ -7369,7 +7378,7 @@ mod tests {
         server.abort();
         assert_eq!(std::fs::read_to_string(&out).unwrap(), "old");
         let calls = calls.lock().unwrap().clone();
-        let restore: Vec<&String> = calls.iter().filter(|c| c.contains("/versions")).collect();
+        let restore: Vec<&String> = calls.iter().filter(|c| c.starts_with("POST ")).collect();
         assert_eq!(restore.len(), 1, "{calls:?}");
         assert!(
             restore[0].starts_with("POST /workdrive/api/v1/versions {"),
@@ -7381,6 +7390,91 @@ mod tests {
             calls
                 .iter()
                 .any(|c| c == "GET /dl/v1/workdrive/download/FILE9?version=2.0"),
+            "{calls:?}"
+        );
+    }
+
+    /// The id a listing gives is the one its requests carry: a `1.10` listed
+    /// as a JSON number reaches the download (`?version=1.10`, that
+    /// version's contents) and the restore (`revert_to` `1.10`) as written;
+    /// the current version, row 0, is refused a restore.
+    #[tokio::test]
+    async fn a_listed_minor_version_past_the_ninth_is_the_one_downloaded_and_restored() {
+        use std::sync::{Arc, Mutex};
+        let calls: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&calls);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method, uri: axum::http::Uri, body: String| {
+                let query = uri.query().map(|q| format!("?{q}")).unwrap_or_default();
+                let line = format!("{method} {}{query} {body}", uri.path());
+                seen.lock().unwrap().push(line.trim_end().to_string());
+                async move {
+                    match (uri.path(), query.as_str()) {
+                        ("/workdrive/api/v1/privatespace/PS/files", _) => (
+                            axum::http::StatusCode::OK,
+                            r#"{"data":[{"id":"FILE9","attributes":{"name":"f.txt","type":"file"}}]}"#,
+                        ),
+                        ("/workdrive/api/v1/files/FILE9/versions", _) => (
+                            axum::http::StatusCode::OK,
+                            r#"{"data":[
+                                {"id":"r9","attributes":{"version_number":1.9,"created_time_in_milliseconds":1794841300000,"file_size":4}},
+                                {"id":"r10","attributes":{"version_number":1.10,"created_time_in_milliseconds":1794841200000,"file_size":3}},
+                                {"id":"r20","attributes":{"version_number":2.0,"created_time_in_milliseconds":1794841400000,"file_size":5}}
+                            ]}"#,
+                        ),
+                        ("/workdrive/api/v1/versions", _) => (axum::http::StatusCode::OK, "{}"),
+                        ("/dl/v1/workdrive/download/FILE9", "?version=1.10") => {
+                            (axum::http::StatusCode::OK, "ten")
+                        }
+                        ("/dl/v1/workdrive/download/FILE9", "?version=1.1") => {
+                            (axum::http::StatusCode::OK, "one-one")
+                        }
+                        _ => (axum::http::StatusCode::NOT_FOUND, "unexpected endpoint"),
+                    }
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut p = ZohoWorkdriveProvider::new(config("com"));
+        p.endpoint_override = Some(format!("http://{addr}"));
+        p.test_access_token = Some("test-token".into());
+        p.connected = true;
+        p.privatespace_id = Some("PS".into());
+        p.current_folder_id = "PS".into();
+        p.folder_cache.insert("/".into(), "PS".into());
+
+        let listed = p.list_versions("/f.txt").await.expect("versions");
+        // Row 0 is 2.0, the current version: its restore is refused before
+        // the revert call.
+        let refused = p.restore_version("/f.txt", &listed[0].id).await;
+        assert!(
+            matches!(&refused, Err(ProviderError::NotSupported(m)) if m.contains("already the current")),
+            "{refused:?}"
+        );
+        assert!(
+            !calls.lock().unwrap().iter().any(|c| c.starts_with("POST ")),
+            "{:?}",
+            calls.lock().unwrap()
+        );
+        let minor = listed[1].id.clone();
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("f.txt");
+        p.download_version("/f.txt", &minor, out.to_str().unwrap())
+            .await
+            .expect("download");
+        p.restore_version("/f.txt", &minor).await.expect("restore");
+        server.abort();
+        assert_eq!(listed[0].id, "2.0");
+        assert_eq!(minor, "1.10");
+        assert_eq!(std::fs::read_to_string(&out).unwrap(), "ten");
+        let calls = calls.lock().unwrap().clone();
+        assert!(
+            calls
+                .iter()
+                .any(|c| c.starts_with("POST /workdrive/api/v1/versions {")
+                    && c.contains(r#""revert_to":"1.10""#)),
             "{calls:?}"
         );
     }

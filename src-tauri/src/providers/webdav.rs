@@ -6853,18 +6853,43 @@ impl StorageProvider for WebDavProvider {
 }
 
 // ─── Nextcloud Tauri Commands ────────────────────────────────────────────
+//
+// Each one takes the connection `generation` the trash manager was opened on
+// and acts only while that connection is still the live one: a session
+// switch, a reconnect or another sessionless connection (AeroCloud) in
+// between is refused, so its rows are never listed, restored or deleted on
+// another account.
+
+/// What the trash refusals name as read.
+const NEXTCLOUD_TRASH_OPENED: &str = "the trash was opened";
+
+/// The WebDAV provider of the live connection, when `slot` holds one.
+fn nextcloud_trash_webdav(
+    slot: &mut Option<Box<dyn StorageProvider>>,
+) -> Result<&mut WebDavProvider, String> {
+    let provider = slot.as_mut().ok_or("Not connected")?;
+    crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
+        .as_any_mut()
+        .downcast_mut::<WebDavProvider>()
+        .ok_or_else(|| "Not a WebDAV connection".to_string())
+}
 
 #[tauri::command]
 pub async fn webdav_list_trash(
     state: tauri::State<'_, crate::provider_commands::ProviderState>,
+    generation: u64,
 ) -> Result<Vec<NextcloudTrashEntry>, String> {
-    let mut guard = state.provider.lock().await;
-    let provider = guard.as_mut().ok_or("Not connected")?;
-    let webdav = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<WebDavProvider>()
-        .ok_or("Not a WebDAV connection")?;
-    webdav
+    list_trash_of(&state, generation).await
+}
+
+async fn list_trash_of(
+    state: &crate::provider_commands::ProviderState,
+    generation: u64,
+) -> Result<Vec<NextcloudTrashEntry>, String> {
+    let mut slot = state
+        .lock_connection_of_generation(generation, NEXTCLOUD_TRASH_OPENED)
+        .await?;
+    nextcloud_trash_webdav(&mut slot)?
         .nextcloud_list_trash()
         .await
         .map_err(|e| e.to_string())
@@ -6874,14 +6899,21 @@ pub async fn webdav_list_trash(
 pub async fn webdav_restore_trash(
     state: tauri::State<'_, crate::provider_commands::ProviderState>,
     ids: Vec<String>,
+    generation: u64,
 ) -> Result<(), String> {
-    let mut guard = state.provider.lock().await;
-    let provider = guard.as_mut().ok_or("Not connected")?;
-    let webdav = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<WebDavProvider>()
-        .ok_or("Not a WebDAV connection")?;
-    for id in &ids {
+    restore_trash_of(&state, &ids, generation).await
+}
+
+async fn restore_trash_of(
+    state: &crate::provider_commands::ProviderState,
+    ids: &[String],
+    generation: u64,
+) -> Result<(), String> {
+    let mut slot = state
+        .lock_connection_of_generation(generation, NEXTCLOUD_TRASH_OPENED)
+        .await?;
+    let webdav = nextcloud_trash_webdav(&mut slot)?;
+    for id in ids {
         webdav
             .nextcloud_restore_trash(id)
             .await
@@ -6894,14 +6926,21 @@ pub async fn webdav_restore_trash(
 pub async fn webdav_delete_trash(
     state: tauri::State<'_, crate::provider_commands::ProviderState>,
     ids: Vec<String>,
+    generation: u64,
 ) -> Result<(), String> {
-    let mut guard = state.provider.lock().await;
-    let provider = guard.as_mut().ok_or("Not connected")?;
-    let webdav = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<WebDavProvider>()
-        .ok_or("Not a WebDAV connection")?;
-    for id in &ids {
+    delete_trash_of(&state, &ids, generation).await
+}
+
+async fn delete_trash_of(
+    state: &crate::provider_commands::ProviderState,
+    ids: &[String],
+    generation: u64,
+) -> Result<(), String> {
+    let mut slot = state
+        .lock_connection_of_generation(generation, NEXTCLOUD_TRASH_OPENED)
+        .await?;
+    let webdav = nextcloud_trash_webdav(&mut slot)?;
+    for id in ids {
         webdav
             .nextcloud_delete_trash_item(id)
             .await
@@ -6913,14 +6952,19 @@ pub async fn webdav_delete_trash(
 #[tauri::command]
 pub async fn webdav_empty_trash(
     state: tauri::State<'_, crate::provider_commands::ProviderState>,
+    generation: u64,
 ) -> Result<(), String> {
-    let mut guard = state.provider.lock().await;
-    let provider = guard.as_mut().ok_or("Not connected")?;
-    let webdav = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<WebDavProvider>()
-        .ok_or("Not a WebDAV connection")?;
-    webdav
+    empty_trash_of(&state, generation).await
+}
+
+async fn empty_trash_of(
+    state: &crate::provider_commands::ProviderState,
+    generation: u64,
+) -> Result<(), String> {
+    let mut slot = state
+        .lock_connection_of_generation(generation, NEXTCLOUD_TRASH_OPENED)
+        .await?;
+    nextcloud_trash_webdav(&mut slot)?
         .nextcloud_empty_trash()
         .await
         .map_err(|e| e.to_string())
@@ -7037,6 +7081,71 @@ mod tests {
             Box::new(provider)
         })
         .await;
+    }
+
+    /// The trash commands act only on the connection the manager was opened
+    /// on: with any other generation (a session switch, a reconnect, another
+    /// sessionless AeroCloud connection) nothing reaches the server, and the
+    /// refusal is the changed-connection one. The control is the live
+    /// generation, whose listing does reach it.
+    #[tokio::test]
+    async fn the_trash_commands_act_only_on_the_connection_they_were_opened_on() {
+        use axum::response::IntoResponse;
+        let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let log = seen.clone();
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method, uri: axum::http::Uri| {
+                let log = log.clone();
+                async move {
+                    log.lock().unwrap().push(format!("{method} {}", uri.path()));
+                    (
+                        axum::http::StatusCode::MULTI_STATUS,
+                        r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:"></d:multistatus>"#,
+                    )
+                        .into_response()
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+        let mut provider = WebDavProvider::new(test_config(&format!(
+            "http://{addr}/remote.php/dav/files/user/"
+        )))
+        .unwrap();
+        provider.connected = true;
+        let state = crate::provider_commands::ProviderState::new();
+        *state.provider.lock().await = Some(Box::new(provider));
+        let live = 0;
+        let stale = live + 1;
+        let ids = vec!["a.txt.d1700000000".to_string()];
+        let refusals = [
+            list_trash_of(&state, stale).await.map(|_| ()),
+            restore_trash_of(&state, &ids, stale).await,
+            delete_trash_of(&state, &ids, stale).await,
+            empty_trash_of(&state, stale).await,
+        ];
+        for outcome in &refusals {
+            assert!(
+                matches!(outcome, Err(e) if e.starts_with(crate::provider_commands::CONNECTION_CHANGED_MARKER)),
+                "{outcome:?}"
+            );
+        }
+        assert!(
+            seen.lock().unwrap().is_empty(),
+            "{:?}",
+            seen.lock().unwrap()
+        );
+        list_trash_of(&state, live)
+            .await
+            .expect("the live connection's trash");
+        server.abort();
+        assert_eq!(
+            *seen.lock().unwrap(),
+            ["PROPFIND /remote.php/dav/trashbin/user/trash/"]
+        );
     }
 
     #[test]

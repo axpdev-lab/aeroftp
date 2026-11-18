@@ -2370,21 +2370,36 @@ mod tests {
         use std::sync::{Arc, Mutex};
         let calls: Arc<Mutex<Vec<String>>> = Arc::default();
         let seen = Arc::clone(&calls);
-        let app = axum::Router::new().fallback(axum::routing::get(move |uri: axum::http::Uri| {
-            let seen = Arc::clone(&seen);
-            async move {
-                let query = uri.query().unwrap_or_default().to_string();
-                seen.lock().unwrap().push(format!("{}?{query}", uri.path()));
-                if uri.path() != "/mounts/M/files/get" {
-                    return (axum::http::StatusCode::NOT_FOUND, "");
+        // Every request is recorded whatever its method; a file is served
+        // only for exactly `path=/a.txt`, with no `version` (the file) or
+        // exactly `version=k1`.
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method, uri: axum::http::Uri| {
+                let seen = Arc::clone(&seen);
+                async move {
+                    seen.lock().unwrap().push(format!("{method} {uri}"));
+                    let url = reqwest::Url::parse(&format!("http://h{uri}")).unwrap();
+                    let values = |name: &str| -> Vec<String> {
+                        url.query_pairs()
+                            .filter(|(k, _)| k == name)
+                            .map(|(_, v)| v.into_owned())
+                            .collect()
+                    };
+                    let refused = (axum::http::StatusCode::NOT_FOUND, "");
+                    if method != axum::http::Method::GET
+                        || uri.path() != "/mounts/M/files/get"
+                        || values("path") != ["/a.txt"]
+                    {
+                        return refused;
+                    }
+                    match values("version").as_slice() {
+                        [] => (axum::http::StatusCode::OK, "live"),
+                        [v] if v == "k1" => (axum::http::StatusCode::OK, "one"),
+                        _ => refused,
+                    }
                 }
-                if query.contains("version=k1") {
-                    (axum::http::StatusCode::OK, "one")
-                } else {
-                    (axum::http::StatusCode::OK, "live")
-                }
-            }
-        }));
+            },
+        ));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move { axum::serve(listener, app).await.ok() });

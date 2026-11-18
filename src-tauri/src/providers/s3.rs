@@ -8338,7 +8338,7 @@ impl StorageProvider for S3Provider {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
-        super::refuse_a_deleted_version(self, path, version_id).await?;
+        super::refuse_a_restore_that_changes_nothing(self, path, version_id).await?;
         self.ensure_fresh_credentials().await?;
 
         let key = path.trim_start_matches('/');
@@ -13440,6 +13440,12 @@ mod tests {
                                         .unwrap()
                                         .trim_start_matches("/test-bucket/")
                                         .to_string();
+                                    // A versioned source (`?versionId=`) is read
+                                    // from the key: the double keeps one copy.
+                                    let source = match source.split_once("?versionId=") {
+                                        Some((key, _)) => key.to_string(),
+                                        None => source,
+                                    };
                                     // A source that cannot be read fails to copy
                                     // with or without the header.
                                     if source.contains("unreadable") {
@@ -15239,6 +15245,55 @@ mod tests {
             matches!(restored, Err(ProviderError::NotSupported(_))),
             "{restored:?}"
         );
+    }
+
+    /// The latest version is the key's current contents: its restore would
+    /// copy them onto the key as one more version. It is refused before the
+    /// copy; a past version is still copied.
+    #[tokio::test]
+    async fn an_s3_restore_of_the_latest_version_is_refused_before_any_copy() {
+        const TWO_VERSIONS: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ListVersionsResult>
+  <IsTruncated>false</IsTruncated>
+  <Version>
+    <Key>docs/a.txt</Key>
+    <VersionId>v1</VersionId>
+    <IsLatest>false</IsLatest>
+    <LastModified>2026-11-05T10:00:00.000Z</LastModified>
+    <Size>8</Size>
+  </Version>
+  <Version>
+    <Key>docs/a.txt</Key>
+    <VersionId>v2</VersionId>
+    <IsLatest>true</IsLatest>
+    <LastModified>2026-11-05T11:00:00.000Z</LastModified>
+    <Size>16</Size>
+  </Version>
+</ListVersionsResult>"#;
+        // Listed oldest first: the latest is told by IsLatest, not by place.
+        let config = TigrisDoubleConfig {
+            versions_xml: Some(TWO_VERSIONS),
+            ..Default::default()
+        };
+        let (mut provider, _, log) = tigris_double(&[("docs/a.txt", "A")], config).await;
+        let copies = |log: &TigrisLog| {
+            log.lock()
+                .unwrap()
+                .iter()
+                .filter(|seen| {
+                    seen.method == "PUT" && seen.headers.contains_key("x-amz-copy-source")
+                })
+                .count()
+        };
+        let refused = provider.restore_version("/docs/a.txt", "v2").await;
+        assert!(
+            matches!(&refused, Err(ProviderError::NotSupported(m)) if m.contains("already the current")),
+            "{refused:?}"
+        );
+        assert_eq!(copies(&log), 0);
+        let restored = provider.restore_version("/docs/a.txt", "v1").await;
+        assert!(restored.is_ok(), "{restored:?}");
+        assert_eq!(copies(&log), 1);
     }
 
     /// A key whose contents were purged and whose delete marker remains

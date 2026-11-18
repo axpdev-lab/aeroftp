@@ -3841,7 +3841,7 @@ impl StorageProvider for B2Provider {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
-        super::refuse_a_deleted_version(self, path, version_id).await?;
+        super::refuse_a_restore_that_changes_nothing(self, path, version_id).await?;
         let abs = self.resolved_path(path);
         let key = self.b2_key(&abs);
         // B2 has no "restore" verb: we replay the chosen version as a fresh
@@ -7588,5 +7588,66 @@ mod tests {
             "{downloaded:?}"
         );
         assert!(!target.exists());
+    }
+
+    /// Row 0 is the current contents: its restore would only copy them on
+    /// top as one more version. It is refused before b2_copy_file; a past
+    /// version is still copied.
+    #[tokio::test]
+    async fn a_b2_restore_of_the_current_version_is_refused_before_any_copy() {
+        use std::sync::{Arc, Mutex};
+        let seen: Arc<Mutex<Vec<String>>> = Arc::default();
+        let log = Arc::clone(&seen);
+        let app = axum::Router::new().fallback(axum::routing::any(move |uri: axum::http::Uri| {
+            let log = Arc::clone(&log);
+            async move {
+                log.lock().unwrap().push(uri.path().to_string());
+                serde_json::json!({
+                    "files": [
+                        // Oldest first: the current one is told by its time.
+                        {"fileName": "v.txt", "fileId": "up-1", "action": "upload",
+                         "uploadTimestamp": 1_794_841_500_000u64, "contentLength": 8},
+                        {"fileName": "v.txt", "fileId": "up-2", "action": "upload",
+                         "uploadTimestamp": 1_794_841_545_000u64, "contentLength": 16}
+                    ],
+                    "nextFileName": null,
+                    "nextFileId": null,
+                    "fileId": "up-3",
+                    "fileName": "v.txt",
+                    "action": "upload",
+                    "contentLength": 8
+                })
+                .to_string()
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut provider = empty_provider();
+        provider.api_url = address;
+        provider.auth_token = SecretString::new("master-token".into());
+        provider.bucket_id = "bucket".into();
+        provider.connected = true;
+        let refused = provider.restore_version("/v.txt", "up-2").await;
+        let after_refusal = seen.lock().unwrap().clone();
+        let restored = provider.restore_version("/v.txt", "up-1").await;
+        server.abort();
+        assert!(
+            matches!(&refused, Err(ProviderError::NotSupported(m)) if m.contains("already the current")),
+            "{refused:?}"
+        );
+        assert!(
+            after_refusal.iter().all(|p| !p.ends_with("b2_copy_file")),
+            "{after_refusal:?}"
+        );
+        assert!(restored.is_ok(), "{restored:?}");
+        assert!(
+            seen.lock()
+                .unwrap()
+                .iter()
+                .any(|p| p.ends_with("b2_copy_file")),
+            "{:?}",
+            seen.lock().unwrap()
+        );
     }
 }

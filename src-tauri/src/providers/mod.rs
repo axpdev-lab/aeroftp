@@ -517,6 +517,37 @@ pub async fn refuse_a_deleted_version<P: StorageProvider + ?Sized>(
     let Ok(versions) = provider.list_versions(path).await else {
         return Ok(());
     };
+    refuse_a_listed_marker(&versions, version_id)
+}
+
+/// Refuse to restore `version_id` of `path` when the restore cannot change
+/// anything: a delete marker, as [`refuse_a_deleted_version`], or row 0 of
+/// the list, the current version, which is the file itself (a restore of it
+/// would only add a copy of the current contents on top, or be refused by
+/// the server in its own words). A deleted file's row 0 is its deletion, so
+/// its last contents below stay restorable. A listing that fails decides
+/// nothing, as there.
+pub async fn refuse_a_restore_that_changes_nothing<P: StorageProvider + ?Sized>(
+    provider: &mut P,
+    path: &str,
+    version_id: &str,
+) -> Result<(), ProviderError> {
+    let Ok(versions) = provider.list_versions(path).await else {
+        return Ok(());
+    };
+    refuse_a_listed_marker(&versions, version_id)?;
+    if versions
+        .first()
+        .is_some_and(|current| current.id == version_id && !current.deleted)
+    {
+        return Err(ProviderError::NotSupported(
+            "This is already the current version".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn refuse_a_listed_marker(versions: &[FileVersion], version_id: &str) -> Result<(), ProviderError> {
     if versions.iter().any(|v| v.id == version_id && v.deleted) {
         return Err(ProviderError::NotSupported(
             "This version is a delete marker: the file was deleted then and it has no \
@@ -2527,7 +2558,9 @@ pub trait StorageProvider: Send + Sync {
         Err(ProviderError::NotSupported("download_version".to_string()))
     }
 
-    /// Restore a file to a specific version
+    /// Restore a file to a specific version. The current version (row 0 of
+    /// `list_versions`) is the file itself: its restore is refused with
+    /// `NotSupported` before anything is fetched or sent.
     async fn restore_version(
         &mut self,
         _path: &str,

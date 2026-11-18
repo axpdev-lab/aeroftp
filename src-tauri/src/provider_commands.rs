@@ -334,6 +334,26 @@ impl ProviderState {
         Ok(Some(pin))
     }
 
+    /// The provider slot, locked, while the live connection is still the one
+    /// of `generation` (what [`provider_connection_generation`] answered when
+    /// a dialog opened): checked under the provider lock, which every connect,
+    /// disconnect and swap holds to bump the generation, and held by the
+    /// caller for its whole command, so no other connection can take the slot
+    /// meanwhile. `since` says what the dialog read ("the trash was opened").
+    pub(crate) async fn lock_connection_of_generation(
+        &self,
+        generation: u64,
+        since: &str,
+    ) -> Result<tokio::sync::MutexGuard<'_, Option<Box<dyn StorageProvider>>>, String> {
+        let slot = self.provider.lock().await;
+        if self.connection_generation.load(Ordering::SeqCst) != generation {
+            return Err(format!(
+                "{CONNECTION_CHANGED_MARKER}: the connection changed since {since}; nothing was changed"
+            ));
+        }
+        Ok(slot)
+    }
+
     /// Holds the connection whose generation is `expected` until the guard is
     /// dropped: swaps and disconnects take the write side of the gate first,
     /// so they wait. An error when another connection is live already. A read

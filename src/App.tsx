@@ -1628,10 +1628,13 @@ const App: React.FC = () => {
   const [showKDriveTrash, setShowKDriveTrash] = useState(false);
   const [showAzureTrash, setShowAzureTrash] = useState(false);
   const [showNextcloudTrash, setShowNextcloudTrash] = useState(false);
-  // The session the Nextcloud trash was opened on: its restore and delete act
-  // on the active provider, so the manager is shown only while that session
-  // is the one on screen, never over another connection.
-  const [nextcloudTrashSession, setNextcloudTrashSession] = useState<string | null>(null);
+  // The session and the backend connection generation the Nextcloud trash was
+  // opened on: the manager is shown only while that session is on screen, and
+  // every trash command passes the generation, which the backend re-checks
+  // under its provider lock (a switch back that is still reconnecting, or
+  // another sessionless connection, has another one).
+  const [nextcloudTrashOwner, setNextcloudTrashOwner] = useState<{ sessionId: string | null; generation: number } | null>(null);
+  const nextcloudTrashOpenSeqRef = useRef(0);
   const [shareLinkDialog, setShareLinkDialog] = useState<{ path: string; fileName: string; providerName: string; providerIcon?: React.ReactNode } | null>(null);
   const [fileLuFolderSettingsDialog, setFileLuFolderSettingsDialog] = useState<{
     path: string; name: string; filedrop: boolean; isPublic: boolean;
@@ -21210,8 +21213,10 @@ const App: React.FC = () => {
             onRefreshFiles={() => loadRemoteFiles(undefined, true)}
           />
         )}
-        {showNextcloudTrash && nextcloudTrashSession === activeSessionId && (
+        {showNextcloudTrash && nextcloudTrashOwner && nextcloudTrashOwner.sessionId === activeSessionId && (
           <NextcloudTrashManager
+            key={nextcloudTrashOwner.generation}
+            generation={nextcloudTrashOwner.generation}
             providerName={getProviderById(liveConnectionParams.providerId ?? '')?.name ?? 'Nextcloud'}
             onClose={() => setShowNextcloudTrash(false)}
             onRefreshFiles={() => loadRemoteFiles(undefined, true)}
@@ -22529,8 +22534,31 @@ const App: React.FC = () => {
                       if (proto === 'webdav') {
                         const pid = liveConnectionParams.providerId;
                         if (pid && getProviderById(pid)?.features?.trash) {
-                          handler = () => {
-                            setNextcloudTrashSession(activeSessionId);
+                          handler = async () => {
+                            // The backend connection this panel lists from; the
+                            // trash commands refuse once another one holds the slot.
+                            // Read only while the backend serves this tab: during a
+                            // switch back it still holds the other connection.
+                            const notServing = () => notify.error(t('common.failed'), t('toast.remoteTargetChanged'));
+                            if (!backendServesLiveTab()) { notServing(); return; }
+                            // The connection clicked from: a sessionless tab has
+                            // no id to tell it from the next one, its target does.
+                            const target = snapshotQueuedTarget();
+                            const sessionId = activeSessionId;
+                            const seq = ++nextcloudTrashOpenSeqRef.current;
+                            let generation: number;
+                            try {
+                              generation = await invoke<number>('provider_connection_generation');
+                            } catch (e) {
+                              if (seq === nextcloudTrashOpenSeqRef.current) notify.error(t('common.failed'), String(e));
+                              return;
+                            }
+                            if (seq !== nextcloudTrashOpenSeqRef.current) return;
+                            // A generation read while another connection took the
+                            // slot is that connection's: opened only on the one
+                            // clicked from, still live.
+                            if (queuedTargetProblem(target)) { notServing(); return; }
+                            setNextcloudTrashOwner({ sessionId, generation });
                             setShowNextcloudTrash(true);
                           };
                         }

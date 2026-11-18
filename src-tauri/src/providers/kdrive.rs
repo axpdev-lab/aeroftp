@@ -2638,24 +2638,30 @@ mod tests {
         use std::sync::{Arc, Mutex};
         let seen: Arc<Mutex<Vec<String>>> = Arc::default();
         let log = Arc::clone(&seen);
-        let app = axum::Router::new().fallback(axum::routing::get(move |uri: axum::http::Uri| {
-            let log = Arc::clone(&log);
-            async move {
-                let path = uri.path().to_string();
-                log.lock().unwrap().push(path.clone());
-                let file =
-                    serde_json::json!({ "id": 11, "name": "a.txt", "type": "file", "size": 4 });
-                match path.as_str() {
-                    "/3/drive/987654/files/1/files" => {
-                        axum::Json(serde_json::json!({ "result": "success", "data": [file] }))
-                            .into_response()
+        // Every request is recorded whatever its method; only GETs are served.
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method, uri: axum::http::Uri| {
+                let log = Arc::clone(&log);
+                async move {
+                    let path = uri.path().to_string();
+                    log.lock().unwrap().push(format!("{method} {path}"));
+                    if method != axum::http::Method::GET {
+                        return axum::http::StatusCode::METHOD_NOT_ALLOWED.into_response();
                     }
-                    "/2/drive/987654/files/11/download" => "live".into_response(),
-                    "/3/drive/987654/files/11/versions/2/download" => "two".into_response(),
-                    _ => axum::http::StatusCode::NOT_FOUND.into_response(),
+                    let file =
+                        serde_json::json!({ "id": 11, "name": "a.txt", "type": "file", "size": 4 });
+                    match path.as_str() {
+                        "/3/drive/987654/files/1/files" => {
+                            axum::Json(serde_json::json!({ "result": "success", "data": [file] }))
+                                .into_response()
+                        }
+                        "/2/drive/987654/files/11/download" => "live".into_response(),
+                        "/3/drive/987654/files/11/versions/2/download" => "two".into_response(),
+                        _ => axum::http::StatusCode::NOT_FOUND.into_response(),
+                    }
                 }
-            }
-        }));
+            },
+        ));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move { axum::serve(listener, app).await.ok() });

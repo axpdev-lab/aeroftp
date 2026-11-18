@@ -12,6 +12,7 @@ import { GuardedCloseConfirm } from './GuardedCloseConfirm';
 import { TrashTable, type TrashRow } from './Trash/TrashTable';
 import { useHumanizedLog } from '../hooks/useHumanizedLog';
 import { formatSize } from '../utils/formatters';
+import { isTargetChangedRefusal } from '../utils/targetChanged';
 
 interface NextcloudTrashItem {
   id: string;
@@ -22,13 +23,23 @@ interface NextcloudTrashItem {
   is_dir: boolean;
 }
 
+/** A command's error as shown: the backend's refusal once another connection
+ *  holds the slot is said in words, not as its marker. */
+function trashErrorText(err: unknown, t: (key: string) => string): string {
+  return isTargetChangedRefusal(err) ? t('toast.remoteTargetChanged') : String(err);
+}
+
 interface NextcloudTrashManagerProps {
+  /** The backend connection generation the manager was opened on: every
+   *  command carries it, and the backend refuses it once another connection
+   *  holds the slot. */
+  generation: number;
   providerName?: string;
   onClose: () => void;
   onRefreshFiles?: () => void;
 }
 
-export function NextcloudTrashManager({ providerName, onClose, onRefreshFiles }: NextcloudTrashManagerProps) {
+export function NextcloudTrashManager({ generation, providerName, onClose, onRefreshFiles }: NextcloudTrashManagerProps) {
   const t = useTranslation();
   const modalDrag = useDraggableModal();
   const humanLog = useHumanizedLog();
@@ -44,7 +55,7 @@ export function NextcloudTrashManager({ providerName, onClose, onRefreshFiles }:
     setLoading(true);
     setError(null);
     try {
-      const result = await invoke<NextcloudTrashItem[]>('webdav_list_trash');
+      const result = await invoke<NextcloudTrashItem[]>('webdav_list_trash', { generation });
       result.sort((a, b) => b.deleted_at - a.deleted_at);
       setItems(result);
       setSelected(new Set());
@@ -53,7 +64,7 @@ export function NextcloudTrashManager({ providerName, onClose, onRefreshFiles }:
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [generation]);
 
   useEffect(() => {
     loadTrash();
@@ -79,7 +90,7 @@ export function NextcloudTrashManager({ providerName, onClose, onRefreshFiles }:
     const logId = humanLog.logRaw('activity.trash_restore_start', 'INFO', { provider: 'Nextcloud', count: selectedCount });
     setActionLoading('restore');
     try {
-      await invoke('webdav_restore_trash', { ids });
+      await invoke('webdav_restore_trash', { ids, generation });
       humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_restore_success', { provider: 'Nextcloud', count: selectedCount }) });
       await loadTrash();
       onRefreshFiles?.();
@@ -98,7 +109,7 @@ export function NextcloudTrashManager({ providerName, onClose, onRefreshFiles }:
     const logId = humanLog.logRaw('activity.trash_delete_start', 'INFO', { provider: 'Nextcloud', count: selectedCount });
     setActionLoading('delete');
     try {
-      await invoke('webdav_delete_trash', { ids });
+      await invoke('webdav_delete_trash', { ids, generation });
       humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_delete_success', { provider: 'Nextcloud', count: selectedCount }) });
       await loadTrash();
     } catch (err) {
@@ -122,7 +133,7 @@ export function NextcloudTrashManager({ providerName, onClose, onRefreshFiles }:
     const logId = humanLog.logRaw('activity.trash_empty_start', 'INFO', { provider: 'Nextcloud', count: totalCount });
     setActionLoading('empty');
     try {
-      await invoke('webdav_empty_trash');
+      await invoke('webdav_empty_trash', { generation });
       humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_empty_success', { provider: 'Nextcloud' }) });
       await loadTrash();
       onRefreshFiles?.();
@@ -279,7 +290,7 @@ export function NextcloudTrashManager({ providerName, onClose, onRefreshFiles }:
           ) : error ? (
             <div className="flex items-center justify-center py-12 text-red-500">
               <AlertTriangle size={16} className="mr-2" />
-              {error}
+              {trashErrorText(error, t)}
             </div>
           ) : items.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-gray-500 dark:text-gray-500">

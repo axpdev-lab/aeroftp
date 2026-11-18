@@ -204,6 +204,11 @@ fn drive_retry_marker_tail(status: u16, body: &str, retry_header: Option<&str>) 
     ))
 }
 
+/// The receipt of the multipart part Drive answered 200 or 201, which
+/// closed the resumable session: `complete_multipart_upload` requires it on
+/// the last part.
+const DRIVE_UPLOAD_CLOSED: &str = "drive-upload-closed";
+
 /// Bytes a resumable upload session has taken, from the `Range: bytes=0-N`
 /// of its 308 answer (N + 1); none when the header is missing.
 fn drive_acknowledged_bytes(headers: &reqwest::header::HeaderMap) -> u64 {
@@ -1447,6 +1452,55 @@ impl GoogleDriveProvider {
         Ok(file)
     }
 
+    /// The head revision of file `file_id` (its current contents) as the
+    /// file's own metadata describes it; none for a file with no revision.
+    async fn head_revision(
+        &mut self,
+        file_id: &str,
+    ) -> Result<Option<super::FileVersion>, ProviderError> {
+        let head_url = format!(
+            "{}/files/{}?fields=headRevisionId,modifiedTime,size",
+            self.drive_api(),
+            file_id
+        );
+        let head = self
+            .client
+            .get(&head_url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .send()
+            .await
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+        if !head.status().is_success() {
+            let text = head.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!(
+                "Reading the head revision failed: {}",
+                sanitize_api_error(&text)
+            )));
+        }
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Head {
+            head_revision_id: Option<String>,
+            modified_time: Option<String>,
+            size: Option<String>,
+        }
+        let head: Head = head
+            .json()
+            .await
+            .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+        Ok(head.head_revision_id.map(|id| super::FileVersion {
+            id,
+            modified: head.modified_time,
+            size: head
+                .size
+                .as_deref()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(0),
+            modified_by: None,
+            deleted: false,
+        }))
+    }
+
     /// The answer to a media GET of revision `version_id` of file `file_id`,
     /// refused unless it is a success.
     async fn revision_response(
@@ -2619,78 +2673,57 @@ impl StorageProvider for GoogleDriveProvider {
             .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
         refuse_workspace_revisions(&file, path)?;
 
-        let url = format!(
-            "{}/files/{}/revisions?fields=revisions(id,modifiedTime,size,lastModifyingUser)",
-            self.drive_api(),
-            file.id
-        );
-
-        let response = self
-            .client
-            .get(&url)
-            .header(AUTHORIZATION, self.auth_header().await?)
-            .send()
-            .await
-            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
-
-        if !response.status().is_success() {
-            let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!(
-                "List revisions failed: {}",
-                sanitize_api_error(&text)
-            )));
+        // Every page: Drive answers at most `pageSize` revisions per call
+        // (200 when it is not set), with a `nextPageToken` while more remain.
+        let mut versions = Vec::new();
+        let mut token: Option<String> = None;
+        let mut seen = std::collections::HashSet::new();
+        loop {
+            let mut url = format!(
+                "{}/files/{}/revisions?fields=nextPageToken,revisions(id,modifiedTime,size,lastModifyingUser)&pageSize=1000",
+                self.drive_api(),
+                file.id
+            );
+            if let Some(ref token) = token {
+                url.push_str("&pageToken=");
+                url.push_str(&urlencoding::encode(token));
+            }
+            let response = self
+                .client
+                .get(&url)
+                .header(AUTHORIZATION, self.auth_header().await?)
+                .send()
+                .await
+                .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            if !response.status().is_success() {
+                let text = response.text().await.unwrap_or_default();
+                return Err(ProviderError::Other(format!(
+                    "List revisions failed: {}",
+                    sanitize_api_error(&text)
+                )));
+            }
+            let body = response
+                .text()
+                .await
+                .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+            let (page, next) = revision_page(&body)?;
+            versions.extend(page);
+            match next {
+                Some(next) if !next.is_empty() && seen.insert(next.clone()) => token = Some(next),
+                Some(_) => {
+                    return Err(ProviderError::ParseError(
+                        "Google Drive revisions pagination did not advance".into(),
+                    ))
+                }
+                None => break,
+            }
         }
-
-        let body = response
-            .text()
-            .await
-            .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
         // The head revision is the current contents (Drive lists it among
         // the others, oldest first). It is read after the list, so a file
         // uploaded in between has a head the list does not hold: its size
         // and time come with it, for that row.
-        let head_url = format!(
-            "{}/files/{}?fields=headRevisionId,modifiedTime,size",
-            self.drive_api(),
-            file.id
-        );
-        let head = self
-            .client
-            .get(&head_url)
-            .header(AUTHORIZATION, self.auth_header().await?)
-            .send()
-            .await
-            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
-        if !head.status().is_success() {
-            let text = head.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!(
-                "Reading the head revision failed: {}",
-                sanitize_api_error(&text)
-            )));
-        }
-        #[derive(Deserialize)]
-        #[serde(rename_all = "camelCase")]
-        struct Head {
-            head_revision_id: Option<String>,
-            modified_time: Option<String>,
-            size: Option<String>,
-        }
-        let head: Head = head
-            .json()
-            .await
-            .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
-        let head = head.head_revision_id.map(|id| super::FileVersion {
-            id,
-            modified: head.modified_time,
-            size: head
-                .size
-                .as_deref()
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(0),
-            modified_by: None,
-            deleted: false,
-        });
-        revisions_in_dialog_order(&body, head)
+        let head = self.head_revision(&file.id).await?;
+        Ok(revisions_in_dialog_order(versions, head))
     }
 
     async fn download_version(
@@ -2715,11 +2748,23 @@ impl StorageProvider for GoogleDriveProvider {
     /// Drive has no call that makes a revision current: the revision is
     /// fetched to a private temp file (0600, removed on every exit) and sent
     /// as a new revision of the same file, which keeps its id and history.
+    /// The head revision is refused (NotSupported) before anything is sent.
     async fn restore_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
         // The file id is resolved once: a file put at the path while the
         // revision downloads is left alone, the revision goes back to its own
         // file.
         let file = self.revision_file(path).await?;
+        // The head revision is the file itself: sending it again would only
+        // add a copy of the current contents on top.
+        if self
+            .head_revision(&file.id)
+            .await?
+            .is_some_and(|head| head.id == version_id)
+        {
+            return Err(ProviderError::NotSupported(
+                "This is already the current version".into(),
+            ));
+        }
         let temp = super::VersionTempFile::create_private("aeroftp_drive_version")
             .map_err(ProviderError::IoError)?;
         let response = self.revision_response(&file.id, version_id).await?;
@@ -3289,10 +3334,34 @@ impl StorageProvider for GoogleDriveProvider {
             return Err(drive_error_from_response(resp, "Drive part upload failed").await);
         }
 
-        // Drive does not return per-part ETags; the session URL is the receipt.
+        // 308 is "incomplete": it must have taken every byte sent so far, and
+        // the last part must be answered 200 or 201, which closes the session
+        // (the same rule as the sequential upload in `upload_into`).
+        let last = end == meta.total;
+        if status == 308 {
+            let taken = drive_acknowledged_bytes(resp.headers());
+            if last || taken != end {
+                return Err(ProviderError::TransferFailed(format!(
+                    "Google Drive took {taken} of {end} bytes sent and did not complete \
+                     the upload: upload it again"
+                )));
+            }
+        } else if !last {
+            return Err(ProviderError::TransferFailed(format!(
+                "Google Drive closed the upload after {end} of {} bytes: upload it again",
+                meta.total
+            )));
+        }
+
+        // Drive does not return per-part ETags; the session URL is the
+        // receipt, and the part that closed it says so for the complete step.
         Ok(UploadedPart {
             part_number,
-            etag: String::new(),
+            etag: if last {
+                DRIVE_UPLOAD_CLOSED.to_string()
+            } else {
+                String::new()
+            },
         })
     }
 
@@ -3317,6 +3386,17 @@ impl StorageProvider for GoogleDriveProvider {
                 parts.len()
             )));
         }
+        // The count alone does not tell that Drive closed the session: only
+        // the last part's 200 or 201 does.
+        let closed = parts
+            .iter()
+            .max_by_key(|p| p.part_number)
+            .is_some_and(|p| p.part_number as usize == expected && p.etag == DRIVE_UPLOAD_CLOSED);
+        if !closed {
+            return Err(ProviderError::TransferFailed(
+                "Google Drive did not complete the upload: upload it again".to_string(),
+            ));
+        }
         Ok(())
     }
 
@@ -3333,16 +3413,9 @@ impl StorageProvider for GoogleDriveProvider {
     }
 }
 
-/// A `revisions.list` answer in the order every `list_versions` answers in
-/// ([`super::versions_current_first`]). Drive lists the head revision too,
-/// oldest first: the file's `headRevisionId` names it. A head the list does
-/// not hold (a revision uploaded after the list was read, or one past the
-/// list's first page) is row 0 as `head` describes it, so a past revision is
-/// never shown as the current one.
-fn revisions_in_dialog_order(
-    body: &str,
-    head: Option<super::FileVersion>,
-) -> Result<Vec<super::FileVersion>, ProviderError> {
+/// One `revisions.list` page: its revisions, oldest first as Drive lists
+/// them, and the token of the next page while more remain.
+fn revision_page(body: &str) -> Result<(Vec<super::FileVersion>, Option<String>), ProviderError> {
     #[derive(Deserialize)]
     #[serde(rename_all = "camelCase")]
     struct User {
@@ -3357,12 +3430,15 @@ fn revisions_in_dialog_order(
         last_modifying_user: Option<User>,
     }
     #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
     struct RevisionList {
+        #[serde(default)]
         revisions: Vec<Revision>,
+        next_page_token: Option<String>,
     }
     let list: RevisionList = serde_json::from_str(body)
         .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
-    let versions: Vec<super::FileVersion> = list
+    let versions = list
         .revisions
         .into_iter()
         .map(|r| super::FileVersion {
@@ -3373,13 +3449,26 @@ fn revisions_in_dialog_order(
             deleted: false,
         })
         .collect();
+    Ok((versions, list.next_page_token))
+}
+
+/// The revisions of every `revisions.list` page in the order every
+/// `list_versions` answers in ([`super::versions_current_first`]). Drive
+/// lists the head revision too, oldest first: the file's `headRevisionId`
+/// names it. A head the list does not hold (a revision uploaded after the
+/// list was read) is row 0 as `head` describes it, so a past revision is
+/// never shown as the current one.
+fn revisions_in_dialog_order(
+    versions: Vec<super::FileVersion>,
+    head: Option<super::FileVersion>,
+) -> Vec<super::FileVersion> {
     let head_id = head.as_ref().map(|h| h.id.clone());
-    Ok(super::versions_current_first(
+    super::versions_current_first(
         versions,
         |v| Some(&v.id) == head_id.as_ref(),
         || head,
         |v| super::version_time_millis(v.modified.as_deref()),
-    ))
+    )
 }
 
 #[cfg(test)]
@@ -4661,6 +4750,117 @@ mod tests {
         assert_eq!(decoded, meta);
     }
 
+    /// A double of a resumable session: each PUT is answered with the next
+    /// (status, Range) in `answers`.
+    async fn drive_session_double(
+        answers: Vec<(u16, Option<&'static str>)>,
+    ) -> (String, tokio::task::JoinHandle<()>) {
+        use axum::response::IntoResponse;
+        let answers = std::sync::Arc::new(std::sync::Mutex::new(
+            answers
+                .into_iter()
+                .collect::<std::collections::VecDeque<_>>(),
+        ));
+        let app = axum::Router::new().fallback(axum::routing::put(move || {
+            let answers = answers.clone();
+            async move {
+                let (status, range) = answers
+                    .lock()
+                    .unwrap()
+                    .pop_front()
+                    .expect("one answer per PUT");
+                let mut response = axum::http::StatusCode::from_u16(status)
+                    .unwrap()
+                    .into_response();
+                if let Some(range) = range {
+                    response
+                        .headers_mut()
+                        .insert("range", axum::http::HeaderValue::from_static(range));
+                }
+                response
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+        (format!("http://{addr}/session"), server)
+    }
+
+    fn drive_handle(url: &str, total: u64, part: u64) -> super::MultipartHandle {
+        super::MultipartHandle {
+            upload_id: GDriveMultipartMeta {
+                url: url.to_string(),
+                total,
+                part,
+            }
+            .encode(),
+            remote_path: "/big.bin".to_string(),
+        }
+    }
+
+    /// A part Drive answered 308 for without taking all of it, and a last
+    /// part answered 308 (the session still open), are failures: before,
+    /// any 308 was a part taken, and the complete step only counted parts.
+    #[tokio::test]
+    async fn a_drive_part_drive_did_not_take_whole_is_a_failure() {
+        for (part_number, answer) in [
+            (1, (308, Some("bytes=0-99"))),
+            (1, (308, None)),
+            (2, (308, Some("bytes=0-399"))),
+            (1, (200, None)),
+        ] {
+            let (url, server) = drive_session_double(vec![answer]).await;
+            let mut provider = test_provider();
+            provider.connected = true;
+            let handle = drive_handle(&url, 400, 200);
+            let outcome = provider
+                .upload_part(&handle, part_number, vec![7u8; 200])
+                .await;
+            server.abort();
+            assert!(
+                matches!(&outcome, Err(ProviderError::TransferFailed(m)) if m.contains("upload it again")),
+                "part {part_number} answered {answer:?}: {outcome:?}"
+            );
+        }
+    }
+
+    /// The parts Drive took whole: a 308 with the range up to the part's
+    /// end, then the last part's 200, whose receipt the complete step needs.
+    #[tokio::test]
+    async fn a_drive_upload_completes_only_after_drive_closed_it() {
+        let (url, server) =
+            drive_session_double(vec![(308, Some("bytes=0-199")), (200, None)]).await;
+        let mut provider = test_provider();
+        provider.connected = true;
+        let handle = drive_handle(&url, 400, 200);
+        let first = provider
+            .upload_part(&handle, 1, vec![1u8; 200])
+            .await
+            .expect("part 1");
+        let last = provider
+            .upload_part(&handle, 2, vec![2u8; 200])
+            .await
+            .expect("part 2");
+        server.abort();
+        provider
+            .complete_multipart_upload(handle.clone(), vec![first.clone(), last])
+            .await
+            .expect("closed by its last part");
+        let open = super::UploadedPart {
+            part_number: 2,
+            etag: String::new(),
+        };
+        let outcome = provider
+            .complete_multipart_upload(handle, vec![first, open])
+            .await;
+        assert!(
+            matches!(&outcome, Err(ProviderError::TransferFailed(m)) if m.contains("did not complete")),
+            "{outcome:?}"
+        );
+    }
+
     #[test]
     fn multipart_meta_decode_rejects_garbage() {
         let err = GDriveMultipartMeta::decode("not json").unwrap_err();
@@ -4754,15 +4954,200 @@ mod tests {
             {"id":"r3","modifiedTime":"2026-11-16T15:02:00.000Z","size":"16",
              "lastModifyingUser":{"displayName":"Ale"}}
         ]}"#;
-        let versions = super::revisions_in_dialog_order(body, Some(head("r3"))).expect("parse");
+        let versions = in_dialog_order(body, Some(head("r3"))).expect("parse");
         let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
         assert_eq!(ids, ["r3", "r2", "r1"]);
         // The head is told by its id, not by its time.
-        let versions = super::revisions_in_dialog_order(body, Some(head("r2"))).expect("parse");
+        let versions = in_dialog_order(body, Some(head("r2"))).expect("parse");
         let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
         assert_eq!(ids, ["r2", "r3", "r1"]);
         assert_eq!(versions[0].size, 12);
         assert_eq!(versions[1].modified_by.as_deref(), Some("Ale"));
+    }
+
+    /// Through `list_versions`: a head the revisions list does not hold is
+    /// row 0 with the size and time the file's own metadata gives, which the
+    /// double answers only when the request names those fields.
+    #[tokio::test]
+    async fn a_drive_head_uploaded_after_the_list_is_row_0_with_its_own_size_and_time() {
+        use axum::response::IntoResponse;
+        let app =
+            axum::Router::new().fallback(axum::routing::get(|uri: axum::http::Uri| async move {
+                let url = reqwest::Url::parse(&format!("http://h{uri}")).unwrap();
+                let fields = url
+                    .query_pairs()
+                    .find(|(k, _)| k == "fields")
+                    .map(|(_, v)| v.into_owned())
+                    .unwrap_or_default();
+                match url.path() {
+                    "/drive/v3/files" => axum::Json(serde_json::json!({
+                        "files": [{"id": "F1", "name": "f.txt", "mimeType": "text/plain"}]
+                    }))
+                    .into_response(),
+                    "/drive/v3/files/F1/revisions" => axum::Json(serde_json::json!({
+                        "revisions": [
+                            {"id": "r1", "modifiedTime": "2026-11-16T15:00:00.000Z", "size": "8"},
+                            {"id": "r2", "modifiedTime": "2026-11-16T15:01:00.000Z", "size": "12"}
+                        ]
+                    }))
+                    .into_response(),
+                    "/drive/v3/files/F1" => {
+                        let mut head = serde_json::Map::new();
+                        for (field, value) in [
+                            ("headRevisionId", "r3"),
+                            ("modifiedTime", "2026-11-16T15:02:00.000Z"),
+                            ("size", "16"),
+                        ] {
+                            if fields.split(',').any(|f| f == field) {
+                                head.insert(field.to_string(), serde_json::json!(value));
+                            }
+                        }
+                        axum::Json(serde_json::Value::Object(head)).into_response()
+                    }
+                    _ => axum::http::StatusCode::NOT_FOUND.into_response(),
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = test_provider();
+        provider.connected = true;
+        provider.api_origin_override = Some(format!("http://{addr}"));
+        provider.test_access_token = Some("t".to_string());
+        let versions = provider.list_versions("f.txt").await.expect("versions");
+        server.abort();
+        let rows: Vec<(&str, u64, Option<&str>)> = versions
+            .iter()
+            .map(|v| (v.id.as_str(), v.size, v.modified.as_deref()))
+            .collect();
+        assert_eq!(
+            rows,
+            [
+                ("r3", 16, Some("2026-11-16T15:02:00.000Z")),
+                ("r2", 12, Some("2026-11-16T15:01:00.000Z")),
+                ("r1", 8, Some("2026-11-16T15:00:00.000Z"))
+            ]
+        );
+    }
+
+    /// A Drive double for f.txt (file F1, head r3): its revisions come in two
+    /// pages, the second only for the first page's token; with `stalled`
+    /// every page names the same token. Each request is recorded as
+    /// "{method} {path}".
+    async fn drive_revisions_double(
+        stalled: bool,
+    ) -> (
+        GoogleDriveProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+        tokio::task::JoinHandle<()>,
+    ) {
+        use axum::response::IntoResponse;
+        let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let log = seen.clone();
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method, uri: axum::http::Uri| {
+                let log = log.clone();
+                async move {
+                    let url = reqwest::Url::parse(&format!("http://h{uri}")).unwrap();
+                    log.lock().unwrap().push(format!("{method} {}", url.path()));
+                    let query = |name: &str| {
+                        url.query_pairs()
+                            .find(|(k, _)| k == name)
+                            .map(|(_, v)| v.into_owned())
+                    };
+                    if method != axum::http::Method::GET {
+                        return axum::http::StatusCode::METHOD_NOT_ALLOWED.into_response();
+                    }
+                    match url.path() {
+                        "/drive/v3/files" => axum::Json(serde_json::json!({
+                            "files": [{"id": "F1", "name": "f.txt", "mimeType": "text/plain"}]
+                        }))
+                        .into_response(),
+                        "/drive/v3/files/F1/revisions" => {
+                            let fields = query("fields").unwrap_or_default();
+                            assert!(fields.contains("nextPageToken"), "{fields}");
+                            let page = if stalled {
+                                serde_json::json!({"revisions": [], "nextPageToken": "same"})
+                            } else if query("pageToken").as_deref() == Some("p 2") {
+                                serde_json::json!({"revisions": [
+                                    {"id": "r2", "modifiedTime": "2026-11-16T15:01:00.000Z", "size": "12"},
+                                    {"id": "r3", "modifiedTime": "2026-11-16T15:02:00.000Z", "size": "16"}
+                                ]})
+                            } else {
+                                serde_json::json!({"revisions": [
+                                    {"id": "r1", "modifiedTime": "2026-11-16T15:00:00.000Z", "size": "8"}
+                                ], "nextPageToken": "p 2"})
+                            };
+                            axum::Json(page).into_response()
+                        }
+                        "/drive/v3/files/F1" => axum::Json(serde_json::json!({
+                            "headRevisionId": "r3",
+                            "modifiedTime": "2026-11-16T15:02:00.000Z",
+                            "size": "16"
+                        }))
+                        .into_response(),
+                        _ => axum::http::StatusCode::NOT_FOUND.into_response(),
+                    }
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+        let mut provider = test_provider();
+        provider.connected = true;
+        provider.api_origin_override = Some(format!("http://{addr}"));
+        provider.test_access_token = Some("t".to_string());
+        (provider, seen, server)
+    }
+
+    /// Every page of `revisions.list` is read: before, only the first one
+    /// was, and a revision past it was not shown at all.
+    #[tokio::test]
+    async fn drive_versions_are_read_from_every_revisions_page() {
+        let (mut provider, _, server) = drive_revisions_double(false).await;
+        let versions = provider.list_versions("f.txt").await.expect("versions");
+        let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
+        assert_eq!(ids, ["r3", "r2", "r1"]);
+        let (mut provider, _, stalled_server) = drive_revisions_double(true).await;
+        let outcome = provider.list_versions("f.txt").await;
+        server.abort();
+        stalled_server.abort();
+        assert!(
+            matches!(&outcome, Err(ProviderError::ParseError(m)) if m.contains("did not advance")),
+            "{outcome:?}"
+        );
+    }
+
+    /// The head revision is the file itself: its restore is refused before
+    /// the revision is fetched or anything is sent, where before it was
+    /// uploaded again as a new revision.
+    #[tokio::test]
+    async fn a_drive_restore_of_the_head_revision_is_refused_before_any_transfer() {
+        let (mut provider, seen, server) = drive_revisions_double(false).await;
+        let outcome = provider.restore_version("f.txt", "r3").await;
+        server.abort();
+        assert!(
+            matches!(&outcome, Err(ProviderError::NotSupported(m)) if m.contains("already the current")),
+            "{outcome:?}"
+        );
+        let seen = seen.lock().unwrap();
+        assert!(
+            seen.iter()
+                .all(|r| !r.contains("/revisions/") && r.starts_with("GET ")),
+            "{seen:?}"
+        );
+    }
+
+    /// One page `body` in the dialog's order, with `head` as the file names it.
+    fn in_dialog_order(
+        body: &str,
+        head: Option<super::super::FileVersion>,
+    ) -> Result<Vec<super::super::FileVersion>, super::ProviderError> {
+        let (versions, _) = super::revision_page(body)?;
+        Ok(super::revisions_in_dialog_order(versions, head))
     }
 
     /// The head revision as the file's metadata names it (id only: a listed
@@ -4793,11 +5178,11 @@ mod tests {
             modified_by: None,
             deleted: false,
         };
-        let versions = super::revisions_in_dialog_order(body, Some(r3)).expect("parse");
+        let versions = in_dialog_order(body, Some(r3)).expect("parse");
         let rows: Vec<(&str, u64)> = versions.iter().map(|v| (v.id.as_str(), v.size)).collect();
         assert_eq!(rows, [("r3", 16), ("r2", 12), ("r1", 8)]);
         // A file with no head revision (none named) has no current row made up.
-        let versions = super::revisions_in_dialog_order(body, None).expect("parse");
+        let versions = in_dialog_order(body, None).expect("parse");
         let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
         assert_eq!(ids, ["r2", "r1"]);
     }

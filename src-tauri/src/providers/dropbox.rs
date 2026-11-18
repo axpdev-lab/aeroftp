@@ -2149,6 +2149,7 @@ impl StorageProvider for DropboxProvider {
     }
 
     async fn restore_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
+        super::refuse_a_restore_that_changes_nothing(self, path, version_id).await?;
         let full_path = if path.starts_with('/') {
             self.normalize_path(path)
         } else {
@@ -3522,6 +3523,58 @@ mod tests {
             .map(|v| (v.id.as_str(), v.deleted))
             .collect();
         assert_eq!(rows, [("current", true), ("r2", false), ("r1", false)]);
+    }
+
+    /// The current revision is the file itself: its restore is refused
+    /// before files/restore, a past revision still goes there.
+    #[tokio::test]
+    async fn a_dropbox_restore_of_the_current_revision_is_refused_before_any_call() {
+        use axum::{routing::post, Json, Router};
+        use serde_json::json;
+        let restores = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let seen = restores.clone();
+        let app = Router::new()
+            .route(
+                "/files/list_revisions",
+                post(|| async {
+                    Json(json!({"is_deleted":false,"entries":[
+                        {"rev":"r1","size":3,"server_modified":"2026-01-01T00:00:00Z"},
+                        {"rev":"r2","size":5,"server_modified":"2026-01-02T00:00:00Z"}
+                    ]}))
+                }),
+            )
+            .route(
+                "/files/get_metadata",
+                post(|| async {
+                    Json(json!({".tag":"file","name":"f.txt","path_display":"/f.txt","rev":"r2","size":5,"server_modified":"2026-01-02T00:00:00Z"}))
+                }),
+            )
+            .route(
+                "/files/restore",
+                post(move |Json(request): Json<serde_json::Value>| {
+                    let seen = seen.clone();
+                    async move {
+                        seen.lock().unwrap().push(request["rev"].as_str().unwrap_or("").to_string());
+                        Json(json!({".tag":"file","name":"f.txt","path_display":"/f.txt","rev":"r3","size":3}))
+                    }
+                }),
+            );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let mut provider = fixture_connected();
+        provider.content_base_override = Some(format!("http://{addr}"));
+        let refused = provider.restore_version("/f.txt", "r2").await;
+        let restored = provider.restore_version("/f.txt", "r1").await;
+        server.abort();
+        assert!(
+            matches!(&refused, Err(ProviderError::NotSupported(m)) if m.contains("already the current")),
+            "{refused:?}"
+        );
+        assert!(restored.is_ok(), "{restored:?}");
+        assert_eq!(*restores.lock().unwrap(), ["r1"]);
     }
 
     #[tokio::test]

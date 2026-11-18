@@ -86,7 +86,7 @@ const CASES: Case[] = [
     { name: 'kDrive', Component: KDriveTrashManager, restore: 'kdrive_restore_from_trash', ...bulk },
     { name: 'Koofr', Component: KoofrTrashManager, restore: 'koofr_restore_trash', ...bulk },
     { name: 'MEGA', Component: MegaTrashManager, restore: 'mega_restore_from_trash', ...bulk },
-    { name: 'Nextcloud', Component: NextcloudTrashManager, restore: 'webdav_restore_trash', ...bulk },
+    { name: 'Nextcloud', Component: withPath(NextcloudTrashManager, { generation: 7 }), restore: 'webdav_restore_trash', ...bulk },
     { name: 'OneDrive', Component: OneDriveTrashManager, restore: 'onedrive_restore_from_trash', ...bulk },
     { name: 'OpenDrive', Component: OpenDriveTrashManager, restore: 'opendrive_restore_from_trash', ...bulk },
     { name: 'pCloud', Component: PCloudTrashManager, restore: 'pcloud_restore_from_trash', ...bulk },
@@ -209,7 +209,7 @@ const CONFIRM_CASES: ConfirmCase[] = [
     { name: 'kDrive', Component: KDriveTrashManager, ...empty },
     { name: 'Koofr', Component: KoofrTrashManager, ...empty },
     { name: 'MEGA', Component: MegaTrashManager, ...del },
-    { name: 'Nextcloud', Component: NextcloudTrashManager, ...empty },
+    { name: 'Nextcloud', Component: withPath(NextcloudTrashManager, { generation: 7 }), ...empty },
     { name: 'OneDrive', Component: OneDriveTrashManager, ...del },
     { name: 'OpenDrive', Component: OpenDriveTrashManager, ...empty },
     { name: 'pCloud', Component: PCloudTrashManager, ...empty },
@@ -263,5 +263,42 @@ describe.each(CONFIRM_CASES)('ESC in the $name trash manager', ({ Component, sel
         expect(onClose).not.toHaveBeenCalled();
         escape();
         expect(onClose).toHaveBeenCalledTimes(1);
+    });
+});
+
+/**
+ * The Nextcloud trash acts on the active provider: every command carries the
+ * connection generation the manager was opened on, which the backend checks
+ * under its provider lock, so its rows never reach another connection.
+ */
+describe('the Nextcloud trash manager commands', () => {
+    it('carry the generation it was opened on', async () => {
+        const host = document.createElement('div');
+        document.body.appendChild(host);
+        const root = createRoot(host);
+        tauri.invoke.mockImplementation((cmd: string) => Promise.resolve(cmd.includes('list') ? [ENTRY] : undefined));
+        const flush = () => act(async () => { await Promise.resolve(); await Promise.resolve(); });
+        const button = (label: string) => [...document.querySelectorAll('button')].find(b => b.textContent?.includes(label)) as HTMLButtonElement;
+        const click = (el: HTMLElement) => act(() => { el.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+        act(() => root.render(<NextcloudTrashManager generation={7} onClose={() => undefined} />));
+        await flush();
+        click(button('contextMenu.trashSelectAll'));
+        click(button('contextMenu.restoreFromTrash'));
+        await flush();
+        const calls = tauri.invoke.mock.calls.filter(([cmd]) => String(cmd).startsWith('webdav_'));
+        expect(calls.map(([cmd]) => cmd)).toEqual(['webdav_list_trash', 'webdav_restore_trash', 'webdav_list_trash']);
+        for (const [, args] of calls) expect(args).toMatchObject({ generation: 7 });
+        // Refused once another connection holds the slot: said in words.
+        tauri.invoke.mockImplementation((cmd: string) => (cmd === 'webdav_restore_trash'
+            ? Promise.reject('CONNECTION_CHANGED: the connection changed since the trash was opened; nothing was changed')
+            : Promise.resolve(cmd.includes('list') ? [ENTRY] : undefined)));
+        click(button('contextMenu.trashSelectAll'));
+        click(button('contextMenu.restoreFromTrash'));
+        await flush();
+        expect(host.textContent).toContain('toast.remoteTargetChanged');
+        expect(host.textContent).not.toContain('CONNECTION_CHANGED');
+        act(() => root.unmount());
+        host.remove();
+        vi.clearAllMocks();
     });
 });
