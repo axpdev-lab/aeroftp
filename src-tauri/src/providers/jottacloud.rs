@@ -714,7 +714,7 @@ impl JottacloudProvider {
         let source_unchanged = self
             .refresh_source_account
             .as_deref()
-            .map_or(true, |source| deletions(source) == Some(true));
+            .is_none_or(|source| deletions(source) == Some(true));
         let accounts: Vec<String> = accounts
             .into_iter()
             .filter(|account| source_unchanged && deletions(account) != Some(false))
@@ -4730,7 +4730,6 @@ mod tests {
     }
 
     /// A rotation filed over the one a load has just read, before it reads
-
     /// the key (test only): `(owner, key, chain)`, taken once.
     pub(super) static FILED_AFTER_PENDING_READ: std::sync::Mutex<
         Option<(Option<i64>, String, String)>,
@@ -5581,7 +5580,6 @@ mod tests {
     }
 
     /// A chain imported while a rotation is pending wins: the next connection
-
     /// sends the imported chain and drops the rotation, and a connection that
     /// began before a later import does not write its rotation over it.
     #[test]

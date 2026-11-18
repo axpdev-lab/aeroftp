@@ -3598,7 +3598,6 @@ pub(crate) fn set_chain_deletions_raw(
 }
 
 /// The deletions of `account` for `owner` ([`ChainDeletions`]).
-
 pub(crate) fn chain_deletions(
     store: &CredentialStore,
     owner: Option<i64>,
