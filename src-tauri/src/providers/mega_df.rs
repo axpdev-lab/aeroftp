@@ -202,8 +202,8 @@ async fn mega_version_rows(path: &str) -> Result<Vec<FileVersion>, ProviderError
         return Err(mega_cmd_failure("mega-ls --versions", &output));
     }
     let stdout = String::from_utf8_lossy(&output.stdout);
-    Ok(super::mega::mega_versions_current_first(
-        super::mega::parse_mega_ls_version_handles(&stdout, path)?,
+    super::mega::mega_versions_current_first(super::mega::parse_mega_ls_version_handles(
+        &stdout, path,
     )?)
 }
 

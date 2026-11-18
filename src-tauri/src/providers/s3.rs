@@ -8262,12 +8262,12 @@ impl StorageProvider for S3Provider {
             all_versions.len(),
             key
         );
-        Ok(super::versions_current_first(
+        super::versions_current_first(
             all_versions,
             |v| latest_ids.contains(&v.id),
             || None,
             |v| super::version_time_millis(v.modified.as_deref()),
-        )?)
+        )
     }
 
     async fn download_version(
@@ -13305,6 +13305,8 @@ mod tests {
         versions_after_copy: Option<&'static str>,
         /// A copy's 200 answer: its `x-amz-version-id` (empty: none) and body.
         copy_answer: Option<(&'static str, &'static str)>,
+        /// ListObjectVersions answers a chunked body larger than the cap.
+        versions_oversized: bool,
     }
 
     impl Default for TigrisDoubleConfig {
@@ -13316,6 +13318,7 @@ mod tests {
                 versions_denied: false,
                 versions_after_copy: None,
                 copy_answer: None,
+                versions_oversized: false,
             }
         }
     }
@@ -13419,6 +13422,21 @@ mod tests {
                             && config.versions_denied =>
                         {
                             reply(403, &[], b"<Error><Code>AccessDenied</Code></Error>".to_vec())
+                        }
+                        "GET" if key.is_empty()
+                            && query.contains_key("versions")
+                            && config.versions_oversized =>
+                        {
+                            // No Content-Length: the size shows only while it is read.
+                            let chunks = (0..9).map(|_| {
+                                Ok::<_, std::io::Error>(axum::body::Bytes::from(vec![b' '; 1 << 20]))
+                            });
+                            axum::response::Response::builder()
+                                .status(200)
+                                .body(axum::body::Body::from_stream(futures_util::stream::iter(
+                                    chunks,
+                                )))
+                                .unwrap()
                         }
                         "GET" if key.is_empty() && query.contains_key("versions") => reply(
                             200,
@@ -15485,6 +15503,44 @@ mod tests {
     /// Reading a version by its id may be allowed where listing versions is
     /// not: the marker check does not turn a refused listing into a refused
     /// download.
+    /// A listing longer than the cap, sent chunked, is refused while it is
+    /// read, never buffered whole. Download and restore then go on as when
+    /// the listing is denied: a listing that cannot be read decides nothing
+    /// before the action, which acts by the version id named.
+    #[tokio::test]
+    async fn an_oversized_version_listing_is_refused_and_decides_nothing() {
+        let config = TigrisDoubleConfig {
+            versions_oversized: true,
+            ..Default::default()
+        };
+        let (mut provider, _, log) = tigris_double(&[("docs/a.txt", "A")], config).await;
+        let listed = provider.list_versions("/docs/a.txt").await;
+        assert!(
+            matches!(&listed, Err(ProviderError::TransferFailed(m)) if m.contains("8 MB")),
+            "{listed:?}"
+        );
+        let local = tempfile::tempdir().unwrap();
+        let target = local.path().join("v2");
+        provider
+            .download_version("/docs/a.txt", "v2", target.to_str().unwrap())
+            .await
+            .expect("download by version id");
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "A");
+        provider
+            .restore_version("/docs/a.txt", "v2")
+            .await
+            .expect("restore by version id");
+        let seen = log.lock().unwrap();
+        let listings = seen
+            .iter()
+            .filter(|s| s.method == "GET" && s.uri.contains("versions"))
+            .count();
+        assert_eq!(listings, 3, "list, download preflight, restore preflight");
+        assert!(seen
+            .iter()
+            .any(|s| s.method == "PUT" && s.headers.contains_key("x-amz-copy-source")));
+    }
+
     #[tokio::test]
     async fn a_known_version_downloads_without_the_right_to_list_versions() {
         let config = TigrisDoubleConfig {

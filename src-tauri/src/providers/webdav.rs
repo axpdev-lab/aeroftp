@@ -736,13 +736,14 @@ const NEXTCLOUD_FILE_ID_PROPFIND: &str = r#"<?xml version="1.0" encoding="utf-8"
 </d:propfind>"#;
 
 /// Depth-0 lookup of one file for its versions: the id and the current
-/// contents' size and time, in one answer.
+/// contents' size, time and ETag, in one answer.
 const NEXTCLOUD_FILE_PROPFIND: &str = r#"<?xml version="1.0" encoding="utf-8"?>
 <d:propfind xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns">
     <d:prop>
         <oc:fileid/>
         <d:getcontentlength/>
         <d:getlastmodified/>
+        <d:getetag/>
     </d:prop>
 </d:propfind>"#;
 
@@ -919,6 +920,9 @@ struct ListedFileId {
     /// them: read in the same answer as the id they belong to.
     size: Option<u64>,
     modified: Option<String>,
+    /// `getetag`, when asked for: the validator a read of these contents
+    /// is sent with ([`WebDavProvider::nextcloud_download_current`]).
+    etag: Option<String>,
 }
 
 /// One Nextcloud file as a single Depth-0 PROPFIND answered: its id and the
@@ -928,6 +932,7 @@ struct NextcloudFile {
     file_id: String,
     size: u64,
     modified: Option<String>,
+    etag: Option<String>,
 }
 
 /// quick-xml yields `Eof` when the body stops, even if an element is still
@@ -1169,6 +1174,8 @@ fn parse_nextcloud_file_id_listing(xml: &str) -> Result<Vec<ListedFileId>, Provi
     let mut kept_size = String::new();
     let mut staged_modified = String::new();
     let mut kept_modified = String::new();
+    let mut staged_etag = String::new();
+    let mut kept_etag = String::new();
     let mut propstat_status = String::new();
     let mut depth = 0u32;
     let mut saw_multistatus_end = false;
@@ -1192,6 +1199,7 @@ fn parse_nextcloud_file_id_listing(xml: &str) -> Result<Vec<ListedFileId>, Provi
                         kept_id.clear();
                         kept_size.clear();
                         kept_modified.clear();
+                        kept_etag.clear();
                         propstat_status.clear();
                         current_tag = None;
                     }
@@ -1200,6 +1208,7 @@ fn parse_nextcloud_file_id_listing(xml: &str) -> Result<Vec<ListedFileId>, Provi
                         staged_id.clear();
                         staged_size.clear();
                         staged_modified.clear();
+                        staged_etag.clear();
                         propstat_status.clear();
                     }
                     _ if in_response => current_tag = Some(tag),
@@ -1220,6 +1229,7 @@ fn parse_nextcloud_file_id_listing(xml: &str) -> Result<Vec<ListedFileId>, Provi
                                 (&mut kept_id, &staged_id),
                                 (&mut kept_size, &staged_size),
                                 (&mut kept_modified, &staged_modified),
+                                (&mut kept_etag, &staged_etag),
                             ] {
                                 if kept.is_empty() && !staged.is_empty() {
                                     kept.push_str(staged);
@@ -1232,11 +1242,13 @@ fn parse_nextcloud_file_id_listing(xml: &str) -> Result<Vec<ListedFileId>, Provi
                         in_response = false;
                         if !href.trim().is_empty() {
                             let modified = kept_modified.trim();
+                            let etag = kept_etag.trim();
                             found.push(ListedFileId {
                                 href: std::mem::take(&mut href),
                                 file_id: kept_id.trim().to_string(),
                                 size: kept_size.trim().parse::<u64>().ok(),
                                 modified: (!modified.is_empty()).then(|| modified.to_string()),
+                                etag: (!etag.is_empty()).then(|| etag.to_string()),
                             });
                         }
                     }
@@ -1260,6 +1272,8 @@ fn parse_nextcloud_file_id_listing(xml: &str) -> Result<Vec<ListedFileId>, Provi
                         staged_size.push_str(&raw);
                     } else if tag == "getlastmodified" && in_propstat {
                         staged_modified.push_str(&raw);
+                    } else if tag == "getetag" && in_propstat {
+                        staged_etag.push_str(&raw);
                     }
                 }
             }
@@ -1270,6 +1284,8 @@ fn parse_nextcloud_file_id_listing(xml: &str) -> Result<Vec<ListedFileId>, Provi
                             href.push_str(&ch);
                         } else if tag == "fileid" && in_propstat {
                             staged_id.push_str(&ch);
+                        } else if tag == "getetag" && in_propstat {
+                            staged_etag.push_str(&ch);
                         }
                     }
                 }
@@ -3269,6 +3285,7 @@ impl WebDavProvider {
                 file_id: row.file_id,
                 size: row.size.unwrap_or(0),
                 modified: row.modified,
+                etag: row.etag,
             }),
             (None, _) => Err(ProviderError::NotFound(format!(
                 "{path} has no Nextcloud file id: it has no versions"
@@ -3498,8 +3515,10 @@ impl WebDavProvider {
 
     /// The "current" row: the file's contents, written to `local_path` only
     /// when the path held the file the row was listed from (`listed`) both
-    /// before and after the body was read. A replacement in between leaves
-    /// the destination as it was (unless the user asked for `--inplace`).
+    /// before and after the body was read, and the body is read only while
+    /// the path still has the ETag answered with the id. A replacement in
+    /// between leaves the destination as it was (unless the user asked for
+    /// `--inplace`).
     async fn nextcloud_download_current(
         &mut self,
         path: &str,
@@ -3512,15 +3531,28 @@ impl WebDavProvider {
                  now {now}): list its versions again"
             ))
         };
-        let before = self.nextcloud_file_id_of(path).await?;
+        let file = self.nextcloud_file_of(path).await?;
+        let before = file.file_id;
         if let Some(listed) = listed.filter(|listed| *listed != before) {
             return Err(replaced(listed, &before));
         }
+        // The read is conditional on the ETag answered with the id: a file
+        // swapped in and back out while the body was read (the id checks
+        // before and after would both pass) answers 412, not its bytes.
         let resp = self
-            .send_replaying_digest(|| self.request(Method::GET, path))
+            .send_replaying_digest(|| {
+                let request = self.request(Method::GET, path);
+                match &file.etag {
+                    Some(etag) => request.header(reqwest::header::IF_MATCH, etag.as_str()),
+                    None => request,
+                }
+            })
             .await?;
         if resp.status() == StatusCode::NOT_FOUND {
             return Err(ProviderError::NotFound(path.to_string()));
+        }
+        if resp.status() == StatusCode::PRECONDITION_FAILED {
+            return Err(replaced(&before, "another file"));
         }
         let staged = super::stage_version_body(resp, local_path, "Version download failed").await?;
         let after = self.nextcloud_file_id_of(path).await?;
@@ -7350,14 +7382,32 @@ mod tests {
             }
         }
         use axum::response::IntoResponse;
-        let app = axum::Router::new().fallback(axum::routing::any(|| async {
-            (
-                axum::http::StatusCode::FORBIDDEN,
-                [("set-cookie", "oc_session=COOKIE-SECRET-1")],
-                "token=BODY-SECRET-2",
-            )
-                .into_response()
-        }));
+        // The file id lookup answers, so the current-version download
+        // reaches its own GET; every GET is refused with a cookie and an
+        // echoed credential.
+        let gets = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counted = std::sync::Arc::clone(&gets);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method| {
+                let counted = std::sync::Arc::clone(&counted);
+                async move {
+                    if method.as_str() == "PROPFIND" {
+                        return (
+                            axum::http::StatusCode::MULTI_STATUS,
+                            r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns"><d:response><d:href>/remote.php/dav/files/user/a.txt</d:href><d:propstat><d:prop><oc:fileid>60</oc:fileid><d:getcontentlength>4</d:getcontentlength><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>"#,
+                        )
+                            .into_response();
+                    }
+                    counted.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    (
+                        axum::http::StatusCode::FORBIDDEN,
+                        [("set-cookie", "oc_session=COOKIE-SECRET-1")],
+                        "token=BODY-SECRET-2",
+                    )
+                        .into_response()
+                }
+            },
+        ));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         let server = tokio::spawn(async move {
@@ -7378,11 +7428,21 @@ mod tests {
         let to = local.path().join("a.txt");
         let to = to.to_str().unwrap();
         assert!(provider.download("/a.txt", to, None).await.is_err());
-        assert!(provider
+        let current = provider
             .download_version("/a.txt", super::super::CURRENT_VERSION_ID, to)
-            .await
-            .is_err());
+            .await;
         server.abort();
+        let shown = format!("{current:?}");
+        assert!(current.is_err(), "{shown}");
+        assert!(
+            !shown.contains("COOKIE-SECRET-1") && !shown.contains("BODY-SECRET-2"),
+            "{shown}"
+        );
+        assert_eq!(
+            gets.load(std::sync::atomic::Ordering::SeqCst),
+            2,
+            "the plain GET and the current-version GET"
+        );
         let log = String::from_utf8(capture.0.lock().unwrap().clone()).unwrap();
         assert!(log.contains("download non-success: status=403"), "{log}");
         assert!(log.contains("set-cookie"), "{log}");
@@ -7966,7 +8026,15 @@ mod tests {
                         .and_then(|v| v.to_str().ok())
                         .map(|d| format!(" -> {d}"))
                         .unwrap_or_default();
-                    seen.lock().unwrap().push(format!("{method} {path}{destination}"));
+                    let if_match = req
+                        .headers()
+                        .get(reqwest::header::IF_MATCH)
+                        .and_then(|v| v.to_str().ok())
+                        .map(|v| format!(" if-match {v}"))
+                        .unwrap_or_default();
+                    seen.lock()
+                        .unwrap()
+                        .push(format!("{method} {path}{destination}{if_match}"));
                     let reply = |status: u16, body: &str| {
                         axum::response::Response::builder()
                             .status(status)
@@ -8037,6 +8105,10 @@ mod tests {
                             reply(207, &" ".repeat(super::NEXTCLOUD_VERSIONS_MAX_BYTES as usize + 1))
                         }
                         ("PROPFIND", "/remote.php/dav/versions/user/versions/99/") => reply(207, ""),
+                        // huge/h.txt answers its own lookup with more than the cap.
+                        ("PROPFIND", "/remote.php/dav/files/user/huge/h.txt") => {
+                            reply(207, &" ".repeat(super::NEXTCLOUD_VERSIONS_MAX_BYTES as usize + 1))
+                        }
                         ("PROPFIND", "/remote.php/dav/versions/user/versions/46/") => reply(
                             207,
                             r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:">
@@ -8059,6 +8131,22 @@ mod tests {
                             )
                         }
                         ("GET", "/remote.php/dav/files/user/swap/e.txt") => reply(200, "e of 48"),
+                        // swapback/k.txt answers file 51 (ETag "e51") at every
+                        // lookup, but file 52 ("e52") is at the path while its
+                        // body is read: a read conditional on "e51" is refused.
+                        ("PROPFIND", "/remote.php/dav/files/user/swapback/k.txt") => reply(
+                            207,
+                            r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns">
+<d:response><d:href>/remote.php/dav/files/user/swapback/k.txt</d:href><d:propstat><d:prop><oc:fileid>51</oc:fileid><d:getcontentlength>9</d:getcontentlength><d:getetag>&quot;e51&quot;</d:getetag><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
+</d:multistatus>"#,
+                        ),
+                        ("GET", "/remote.php/dav/files/user/swapback/k.txt") => {
+                            if if_match.is_empty() || if_match == " if-match \"e52\"" {
+                                reply(200, "k of 52")
+                            } else {
+                                reply(412, "")
+                            }
+                        }
                         // gone/g.txt has file id 49 at the lookup and is gone
                         // at the next one; its versions route answers 404.
                         ("PROPFIND", "/remote.php/dav/files/user/gone/g.txt") => {
@@ -8221,6 +8309,36 @@ mod tests {
             .count();
         assert_eq!(gets, 1, "the refused second download reads no body");
         assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
+
+    /// File 51 moved away, file 52 put at the path while the body is read,
+    /// and 51 back before the second lookup: both id checks pass. The read is
+    /// conditional on the ETag answered with the id, so the server refuses
+    /// it (412) instead of sending 52's bytes, and the destination stays.
+    #[tokio::test]
+    async fn a_current_row_swapped_out_and_back_during_the_read_is_not_downloaded() {
+        let (base, log, server) = serve_nextcloud_versions().await;
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("k.txt");
+        std::fs::write(&local, "mine").unwrap();
+        let mut provider = nextcloud_versions_provider(&base);
+        let outcome = provider
+            .download_version("/swapback/k.txt", "51:current", local.to_str().unwrap())
+            .await;
+        server.abort();
+        assert!(
+            matches!(&outcome, Err(ProviderError::NotFound(m)) if m.contains("list its versions again")),
+            "{outcome:?}"
+        );
+        assert_eq!(std::fs::read_to_string(&local).unwrap(), "mine");
+        assert!(
+            log.lock()
+                .unwrap()
+                .iter()
+                .any(|l| l == "GET /remote.php/dav/files/user/swapback/k.txt if-match \"e51\""),
+            "{:?}",
+            log.lock().unwrap()
+        );
     }
 
     /// An author with an entity in it arrives as Text pieces around a
@@ -8394,6 +8512,38 @@ mod tests {
             matches!(&outcome, Err(ProviderError::TransferFailed(m)) if m.contains("too large")),
             "{outcome:?}"
         );
+    }
+
+    /// A file lookup answered with more than the cap decides nothing: no
+    /// version is read or moved, and nothing is written locally.
+    #[tokio::test]
+    async fn an_oversized_nextcloud_file_lookup_reaches_no_version() {
+        let (base, log, server) = serve_nextcloud_versions().await;
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("h-old.txt");
+        let mut provider = nextcloud_versions_provider(&base);
+        let download = provider
+            .download_version("/huge/h.txt", "53:1700000000", local.to_str().unwrap())
+            .await;
+        let restore = provider
+            .restore_version("/huge/h.txt", "53:1700000000")
+            .await;
+        server.abort();
+        for outcome in [&download, &restore] {
+            assert!(
+                matches!(outcome, Err(ProviderError::TransferFailed(m)) if m.contains("too large")),
+                "{outcome:?}"
+            );
+        }
+        assert!(!local.exists());
+        let log = log.lock().unwrap();
+        assert!(
+            log.iter().all(|l| !l.contains("/remote.php/dav/versions/")),
+            "{log:?}"
+        );
+        assert!(log
+            .iter()
+            .any(|l| l.starts_with("PROPFIND /remote.php/dav/files/user/huge/h.txt")));
     }
 
     #[tokio::test]

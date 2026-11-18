@@ -4047,6 +4047,16 @@ mod tests {
             return None;
         }
         let head = revisions.last()?;
+        // Drive gives no head revision id to a Docs, Sheets or Slides file
+        // (the doubles' ids starting with G).
+        if url
+            .path()
+            .rsplit('/')
+            .next()
+            .is_some_and(|id| id.starts_with('G'))
+        {
+            return Some(serde_json::json!({ "modifiedTime": head["modifiedTime"] }));
+        }
         Some(
             serde_json::json!({ "headRevisionId": head["id"], "size": head["size"],
             "modifiedTime": head["modifiedTime"] }),
@@ -4284,16 +4294,18 @@ mod tests {
     }
 
     /// A Google Docs file has no revision Drive sends: its revisions are
-    /// listed (as before), their download and restore refused with the way
-    /// to the editor's history, and nothing is fetched or uploaded.
+    /// listed, the latest first as its current contents although its head
+    /// names no revision id, their download and restore refused with the
+    /// way to the editor's history, and nothing is fetched or uploaded.
     #[tokio::test]
     async fn a_google_docs_file_offers_no_revision_to_fetch() {
         let (mut p, changes) = provider_on_drive(&[("G1", "notes.gdoc", "root")]).await;
         let local = tempfile::tempdir().unwrap();
         let local = local.path().join("v").to_string_lossy().into_owned();
         let docs = |r: Result<(), ProviderError>| matches!(r, Err(ProviderError::NotSupported(m)) if m.contains("Version history"));
-        let listed = p.list_versions("/notes.gdoc").await;
-        assert!(listed.is_ok(), "{listed:?}");
+        let listed = p.list_versions("/notes.gdoc").await.expect("revisions");
+        let rows: Vec<&str> = listed.iter().map(|v| v.id.as_str()).collect();
+        assert_eq!(rows, ["r2", "r1"], "{listed:?}");
         assert!(docs(p.download_version("/notes.gdoc", "r1", &local).await));
         assert!(docs(p.restore_version("/notes.gdoc", "r1").await));
         assert!(changes.lock().unwrap().is_empty());

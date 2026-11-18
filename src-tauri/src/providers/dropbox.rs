@@ -2707,7 +2707,7 @@ fn revisions_in_dialog_order(
     }
     let list: RevisionList = serde_json::from_str(body)
         .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
-    Ok(super::versions_current_first(
+    super::versions_current_first(
         list.entries
             .into_iter()
             .map(|r| super::FileVersion {
@@ -2724,7 +2724,7 @@ fn revisions_in_dialog_order(
         // revision is labelled Current.
         || current,
         |v| super::version_time_millis(v.modified.as_deref()),
-    )?)
+    )
 }
 
 #[cfg(test)]

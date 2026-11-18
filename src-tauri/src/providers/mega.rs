@@ -1512,9 +1512,7 @@ impl StorageProvider for MegaCmdProvider {
         // MEGAcmd lists the current one first; its time can be older than an
         // earlier version's (a restore uploads old contents with their old
         // time), so the place tells it, not the time.
-        Ok(mega_versions_current_first(parse_mega_ls_version_handles(
-            &output, &abs_path,
-        )?)?)
+        mega_versions_current_first(parse_mega_ls_version_handles(&output, &abs_path)?)
     }
 
     async fn download_version(
@@ -4101,6 +4099,11 @@ mod tests {
             matches!(&outcome, Err(ProviderError::TransferFailed(m)) if m.contains("someone else")),
             "{outcome:?}"
         );
+        assert_eq!(stand_in_log(&dir, "put.log"), ["/v.txt"]);
+        // MEGAcmd has no conditional put: the race is reported, and the other
+        // client's version stays in the chain, not lost.
+        let chain = provider.list_versions("/v.txt").await.expect("versions");
+        assert!(chain.iter().any(|v| v.id == "H:vAAAAAA5"), "{chain:?}");
         assert_eq!(stand_in_log(&dir, "put.log"), ["/v.txt"]);
     }
 
