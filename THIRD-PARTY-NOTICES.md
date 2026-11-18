@@ -505,7 +505,7 @@ All bundled components are distributed in accordance with their respective licen
 | libsqlite3-sys | 0.30.1 | MIT | [Link](https://github.com/rusqlite/rusqlite) |
 | libssh2-sys | 0.3.4 | MIT OR Apache-2.0 | [Link](https://github.com/alexcrichton/ssh2-rs) |
 | libunftp | 0.24.0 | Apache-2.0 | [Link](https://github.com/bolcom/libunftp) |
-| libz-sys | 1.1.31 | MIT OR Apache-2.0 | [Link](https://github.com/rust-lang/libz-sys) |
+| libz-sys | 1.1.33 | MIT OR Apache-2.0 | [Link](https://github.com/rust-lang/libz-sys) |
 | line-clipping | 0.3.8 | MIT OR Apache-2.0 | [Link](https://github.com/ratatui/line-clipping) |
 | linux-raw-sys | 0.12.1 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | [Link](https://github.com/sunfishcode/linux-raw-sys) |
 | litemap | 0.8.3 | Unicode-3.0 | [Link](https://github.com/unicode-org/icu4x) |
@@ -4489,7 +4489,7 @@ DEALINGS IN THE SOFTWARE.
 - `libssh2-sys@0.3.4` (cargo, file: `LICENSE-APACHE`)
   - Copyright (C) Ted Unangst <tedu@openbsd.org> (in a source header under MIT)
 - `libunftp@0.24.0` (cargo, file: `LICENSE`)
-- `libz-sys@1.1.31` (cargo, file: `LICENSE-APACHE`)
+- `libz-sys@1.1.33` (cargo, file: `LICENSE-APACHE`)
 - `linux-raw-sys@0.12.1` (cargo, file: `LICENSE-APACHE`)
 - `lock_api@0.4.14` (cargo, file: `LICENSE-APACHE`)
 - `log@0.4.35` (cargo, file: `LICENSE-APACHE`)
@@ -19011,7 +19011,7 @@ DEALINGS IN THE SOFTWARE.
 **Used by component(s):**
 - `error-code@3.4.0` (cargo, file: `LICENSE`)
   - No copyright notice is shipped in the package
-- `libz-sys@1.1.31` (cargo, file: `src/zlib/contrib/dotzlib/LICENSE_1_0.txt`)
+- `libz-sys@1.1.33` (cargo, file: `src/zlib/contrib/dotzlib/LICENSE_1_0.txt`)
 - `ryu@1.0.23` (cargo, file: `LICENSE-BOOST`)
   - Copyright 2018 Ulf Adams (src/common.rs)
 - `ryu-js@1.0.3` (cargo, file: `LICENSE-BOOST`)
@@ -26840,7 +26840,7 @@ limitations under the License.
 ### Notice Entry 352
 
 **Used by component(s):**
-- `libz-sys@1.1.31` (cargo, file: `LICENSE-MIT`)
+- `libz-sys@1.1.33` (cargo, file: `LICENSE-MIT`)
 
 ```text
 Copyright (c) 2014 Alex Crichton
@@ -26874,7 +26874,7 @@ DEALINGS IN THE SOFTWARE.
 ### Notice Entry 353
 
 **Used by component(s):**
-- `libz-sys@1.1.31` (cargo, file: `src/zlib-ng/LICENSE.md`)
+- `libz-sys@1.1.33` (cargo, file: `src/zlib-ng/LICENSE.md`)
   - Copyright (C) 1995-2003, 2010, 2014, 2016 Jean-loup Gailly, Mark Adler. (src/zlib-ng/uncompr.c)
   - Copyright (C) 1995-2005, 2014, 2016 Jean-loup Gailly, Mark Adler (src/zlib-ng/compress.c)
   - Copyright (C) 1995-2006, 2010, 2011, 2012 Mark Adler (src/zlib-ng/arch/arm/crc32_armv8.c)
@@ -26954,7 +26954,7 @@ freely, subject to the following restrictions:
 ### Notice Entry 354
 
 **Used by component(s):**
-- `libz-sys@1.1.31` (cargo, file: `src/zlib/LICENSE`)
+- `libz-sys@1.1.33` (cargo, file: `src/zlib/LICENSE`)
   - Copyright (C) 1995-2003, 2010 Mark Adler (src/zlib/inffast.h)
   - Copyright (C) 1995-2011, 2016 Mark Adler (src/zlib/adler32.c)
   - Copyright (C) 1995-2019 Mark Adler (src/zlib/inflate.h)
@@ -26995,7 +26995,7 @@ Copyright notice:
 ### Notice Entry 355
 
 **Used by component(s):**
-- `libz-sys@1.1.31` (cargo, file: `src/zlib/contrib/minizip/LICENSE.Info-Zip`)
+- `libz-sys@1.1.33` (cargo, file: `src/zlib/contrib/minizip/LICENSE.Info-Zip`)
 
 ```text
 This is version 2009-Jan-02 of the Info-ZIP license. The definitive version of
