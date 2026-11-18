@@ -24,6 +24,7 @@ import {
   formatDiff,
   findPackageCopyrightNotices,
   hasCopyrightHolderInFiles,
+  namesCopyrightHolder,
   findBundledCodeUnderOtherLicenses,
   licenseTermsOf,
   vendoredFolders,
@@ -1160,6 +1161,127 @@ test('bundled code: a header license goes through the GPL-3.0 policy, however it
     assert.throws(() => findBundledCodeUnderOtherLicenses(make(), known), /under 'SSPL-1\.0', and no choice of it is compatible/);
     // The permissive texts libssh2 ships beside its code stay accepted.
     for (const id of ['FSFULLR', 'curl', 'SAX-PD-2.0']) assert.strictEqual(isGplCompatible(id), true, id);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('bundled code: a known typo is dropped term by term, the other terms of its choice still go through the policy', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'typo-conjunction-fixture-'));
+  try {
+    const write = (rel, content) => {
+      fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, rel), content);
+    };
+    write('LICENSE', 'MIT License\n\nCopyright (c) 2020 Wrapper Author\n\nPermission is hereby granted, free of charge.');
+    const make = () => ({ name: 'typo-and-pkg', version: '1.0.0', license: 'MIT', source: 'cargo', packageDir: tmpDir, authors: [], ...readPackageFiles(tmpDir, 'typo-and-pkg@1.0.0') });
+    const known = new Set(Object.keys(JSON.parse(fs.readFileSync(SPDX_STANDARD_LICENSES_FILE, 'utf8'))));
+    // The typo hid the mandatory GPL-2.0-only term: the whole choice was dropped before the policy.
+    write('src/menu.rs', '// Copyright 2022 Typo Author\n// SPDX-License-Identifier: Apache-2.inner AND GPL-2.0-only\n');
+    assert.throws(() => findBundledCodeUnderOtherLicenses(make(), known), /typo-and-pkg@1\.0\.0 bundles src\/menu\.rs under 'Apache-2\.inner AND GPL-2\.0-only', and no choice of it is compatible with GPL-3\.0/);
+    // A compatible term beside the typo is the header's license.
+    write('src/menu.rs', '// Copyright 2022 Typo Author\n// SPDX-License-Identifier: Apache-2.inner AND MIT\n');
+    assert.deepStrictEqual(findBundledCodeUnderOtherLicenses(make(), known).map((b) => [b.license, b.notices, b.declared]), [['MIT', ['Copyright 2022 Typo Author'], true]]);
+    // A header whose only license is the typo keeps its holder under the raw tag, as before.
+    write('src/menu.rs', '// Copyright 2022 Typo Author\n// SPDX-License-Identifier: Apache-2.inner\n');
+    assert.deepStrictEqual(findBundledCodeUnderOtherLicenses(make(), known).map((b) => [b.license, b.notices, b.declared]), [['Apache-2.inner', ['Copyright 2022 Typo Author'], true]]);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('bundled code: a block comment is found however far its opener is from the tag, and an opener in a string is code', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'long-block-fixture-'));
+  try {
+    const write = (rel, content) => {
+      fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, rel), content);
+    };
+    write('LICENSE', 'MIT License\n\nCopyright (c) 2020 Wrapper Author\n\nPermission is hereby granted.');
+    const terms = 'Redistribution and use in source and binary forms, with or without modification, are permitted provided that this notice is kept and the Long clause is honoured.';
+    // 120 lines of unstarred text between the opener and the tag.
+    const filler = Array.from({ length: 120 }, (_, n) => `Clause ${n + 1} of the long header.`).join('\n');
+    write('vendor/long.c', `int before;\n/* Copyright (c) 2001 Adjacent Holder */\n/*\nCopyright (c) 2019 Long Vendor\n\n${terms}\n${filler}\n\nSPDX-License-Identifier: BSD-2-Clause\n*/\nint x;\n/* Copyright (c) 2002 After Holder */\n`);
+    // A line-comment header below code whose string holds `/*`, and a later block comment.
+    write('vendor/glob.c', 'const char *glob = "src/*";\n// Copyright (c) 2004 Line Vendor\n// SPDX-License-Identifier: BSD-3-Clause\nint y;\n/* Copyright (c) 2003 Later Holder */\n');
+    // A quoted glob inside the comment does not hide the comment's own opener.
+    write('vendor/glob-comment.c', 'int z;\n/* Copyright 2020 Glob Vendor; matches "src/*".\n * SPDX-License-Identifier: ISC\n */\n');
+    const comp = { name: 'long-block-pkg', version: '1.0.0', license: 'MIT', source: 'cargo', packageDir: tmpDir, authors: ['Wrapper Author'], ...readPackageFiles(tmpDir, 'long-block-pkg@1.0.0') };
+    const known = new Set(Object.keys(JSON.parse(fs.readFileSync(SPDX_STANDARD_LICENSES_FILE, 'utf8'))));
+    const found = findBundledCodeUnderOtherLicenses(comp, known);
+    assert.deepStrictEqual(found.map((b) => [b.license, b.notices, b.files]), [
+      ['BSD-2-Clause', ['Copyright (c) 2019 Long Vendor'], ['vendor/long.c']],
+      ['BSD-3-Clause', ['Copyright (c) 2004 Line Vendor'], ['vendor/glob.c']],
+      ['ISC', ['Copyright 2020 Glob Vendor; matches "src/*".'], ['vendor/glob-comment.c']],
+    ]);
+    assert.strictEqual(found[0].headers[0].text, `Copyright (c) 2019 Long Vendor\n\n${terms}\n${filler}\n\nSPDX-License-Identifier: BSD-2-Clause`);
+    const md = generateNoticesMarkdown([comp], []);
+    const bsd = md.slice(md.indexOf('### Bundled Code: BSD-2-Clause'));
+    assert.ok(bsd.includes(terms), 'the shipped permission text is reproduced');
+    assert.doesNotMatch(md, /Adjacent Holder|After Holder|Later Holder|No copyright line in the header/);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('bundled code: a run of line comments ends where the comment style changes, however long it is', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'line-run-fixture-'));
+  try {
+    const write = (rel, content) => {
+      fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, rel), content);
+    };
+    write('LICENSE', 'MIT License\n\nCopyright (c) 2020 Wrapper Author\n\nPermission is hereby granted.');
+    // A `//` header above a crate attribute (`#` is also a comment leader) and `//!` docs.
+    write('src/lib.rs', '// Copyright 2020 Rust Vendor\n// SPDX-License-Identifier: BSD-3-Clause\n#![allow(dead_code)]\n//! Copyright 2021 Doc Example, quoted in the crate docs.\n');
+    // A `//` header with its holder 100 lines above the tag.
+    const clauses = Array.from({ length: 100 }, (_, n) => `// Clause ${n + 1} of the long line header.`).join('\n');
+    write('src/long.rs', `// Copyright 2018 Long Line Vendor\n${clauses}\n// SPDX-License-Identifier: BSD-2-Clause\n#include <stdio.h>\n// Copyright 2017 After Include\n`);
+    const comp = { name: 'line-run-pkg', version: '1.0.0', license: 'MIT', source: 'cargo', packageDir: tmpDir, authors: ['Wrapper Author'], ...readPackageFiles(tmpDir, 'line-run-pkg@1.0.0') };
+    const known = new Set(Object.keys(JSON.parse(fs.readFileSync(SPDX_STANDARD_LICENSES_FILE, 'utf8'))));
+    assert.deepStrictEqual(findBundledCodeUnderOtherLicenses(comp, known).map((b) => [b.license, b.notices, b.files]), [
+      ['BSD-2-Clause', ['Copyright 2018 Long Line Vendor'], ['src/long.rs']],
+      ['BSD-3-Clause', ['Copyright 2020 Rust Vendor'], ['src/lib.rs']],
+    ]);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('bundled code: a copyright line that states a condition is a term, only attribution lines leave the comparison', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'copyright-condition-fixture-'));
+  try {
+    const write = (rel, content) => {
+      fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, rel), content);
+    };
+    const standard = JSON.parse(fs.readFileSync(SPDX_STANDARD_LICENSES_FILE, 'utf8'));
+    write('LICENSE', standard['MIT'].replace(/Copyright \(c\) <year> <copyright holders>/, 'Copyright (c) 2020 Wrapper Author'));
+    const mitTerms = standard['MIT'].split('\n').filter((l) => !/^(?:MIT License|Copyright)/.test(l));
+    const condition = 'Copyright notices must remain visible in the user interface.';
+    const header = (holder, extra) => `/*\n * Copyright (c) ${holder}\n${[...mitTerms, ...extra].map((l) => (l ? ` * ${l}` : ' *')).join('\n')}\n * SPDX-License-Identifier: MIT\n */\n`;
+    write('lib/visible.js', header('2018 Visible Vendor', ['', condition]));
+    const shouted = 'Copyright MUST remain visible in the user interface.';
+    write('lib/shouted.js', header('2018 Shouted Vendor', ['', shouted]));
+    write('lib/std.js', header('2019 Standard Vendor', []));
+    assert.strictEqual(namesCopyrightHolder(condition), false);
+    assert.strictEqual(namesCopyrightHolder('Copyright (c) 2018 Visible Vendor'), true);
+    assert.strictEqual(namesCopyrightHolder(shouted), false, 'a condition in capitals names nobody');
+    assert.strictEqual(namesCopyrightHolder('Copyright Visible Vendor'), true, 'a capitalized holder is still one');
+    // A modal in Title Case is a first name, not a condition.
+    for (const holder of ['Copyright Will Smith', 'Copyright Will Smith 2020', 'Copyright May Lee']) assert.strictEqual(namesCopyrightHolder(holder), true, holder);
+    for (const cond of ['Copyright must remain visible', 'Copyright MUST remain visible', 'Copyright may not be removed']) assert.strictEqual(namesCopyrightHolder(cond), false, cond);
+    assert.ok(licenseTermsOf(`Copyright (c) 2018 Visible Vendor\n${condition}\nPermission is hereby granted.`).includes(condition));
+    const comp = { name: 'condition-pkg', version: '1.0.0', license: 'MIT', source: 'npm', packageDir: tmpDir, authors: ['Wrapper Author'], ...readPackageFiles(tmpDir, 'condition-pkg@1.0.0') };
+    const md = generateNoticesMarkdown([comp], []);
+    const section = md.slice(md.indexOf('## Source Headers With Their Own Terms'));
+    assert.ok(md.includes('## Source Headers With Their Own Terms'), 'the section exists');
+    assert.match(section, /ships a header tagged `MIT` whose permission text differs from it, in `lib\/visible\.js`/);
+    assert.ok(section.includes(condition), 'the condition is reproduced');
+    assert.match(section, /in `lib\/shouted\.js`/);
+    assert.ok(section.includes(shouted), 'the condition in capitals is reproduced');
+    // The standard terms under another holder are still the package's text.
+    assert.doesNotMatch(section, /lib\/std\.js/, 'a header with the standard terms is not repeated');
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

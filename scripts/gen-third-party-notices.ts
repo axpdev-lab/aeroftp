@@ -1084,6 +1084,37 @@ const COMMENT_CLOSER_AT_END = new RegExp(`${COMMENT_CLOSER_ALTERNATIVES}\\s*$`);
 const FROM_COMMENT_CLOSER = new RegExp(`\\s*${COMMENT_CLOSER_ALTERNATIVES}.*$`);
 const BLOCK_OPENER_AT_START = new RegExp(`^\\s*(?:${COMMENT_BLOCKS.map(([open]) => escapeRegExp(open)).join('|')})`);
 
+// The C block comments a line opens, read left to right: a `/*` inside a
+// string literal of code (`"src/*.c"`) or after `//` opens nothing, and one
+// inside a comment the line already opened is text (`/* matches "src/*" */`).
+// `last` is the last opener, `open` whether a comment is still open at the end.
+function cCommentOpeners(line: string): { last: number; open: boolean } {
+  let last = -1;
+  let inComment = false;
+  let quote = '';
+  for (let k = 0; k < line.length; k++) {
+    const c = line[k];
+    if (inComment) {
+      if (c === '*' && line[k + 1] === '/') {
+        inComment = false;
+        k++;
+      }
+    } else if (quote) {
+      if (c === '\\') k++;
+      else if (c === quote) quote = '';
+    } else if (c === '"' || c === "'" || c === '`') {
+      quote = c;
+    } else if (c === '/' && line[k + 1] === '/') {
+      break;
+    } else if (c === '/' && line[k + 1] === '*') {
+      last = k;
+      inComment = true;
+      k++;
+    }
+  }
+  return { last, open: inComment };
+}
+
 /**
  * Whether a line that carries an SPDX-License-Identifier tag at `at` is a
  * license header: a comment line in a source file (its leader decides, not
@@ -1177,7 +1208,12 @@ export function findBundledCodeUnderOtherLicenses(
             `${comp.name}@${comp.version} has a malformed SPDX-License-Identifier in ${entryRel}: '${m[1]}'. If the line only mentions the tag, add ${JSON.stringify(mentionKey)} with the reason to KNOWN_SPDX_TAG_MENTIONS`
           );
         }
-        const nonTypo = parsed.filter((terms) => !terms.some((t) => t.split(' WITH ')[0] in UNREPRODUCIBLE_HEADER_IDS));
+        // A known upstream typo is dropped from its choice term by term, and
+        // the other terms of that choice still go through the policy:
+        // `Apache-2.inner AND GPL-2.0-only` requires GPL-2.0-only. A choice
+        // made only of typos leaves no term to check.
+        const isTypo = (t: string) => t.split(' WITH ')[0] in UNREPRODUCIBLE_HEADER_IDS;
+        const nonTypo = parsed.map((terms) => terms.filter((t) => !isTypo(t))).filter((terms) => terms.length > 0);
         // Bundled code is distributed with AeroFTP like the package that ships
         // it, so a header's license goes through the policy main applies to a
         // package's declared license, whichever way it is covered (declared,
@@ -1234,17 +1270,27 @@ export function findBundledCodeUnderOtherLicenses(
         // The whole comment block around the identifier, up to its start and
         // end, never into the next header.
         // Inside a block comment the block runs from its opening to its
-        // closing delimiter, whether or not its lines are starred. A C opener
-        // may follow code on its line; the others open a line, since `(*` and
-        // `{-` also occur in code (`f(*p)`).
+        // closing delimiter, whether or not its lines are starred, however
+        // far apart they are. A C opener may follow code on its line, but not
+        // inside a string literal of that code (`"src/*.c"`), nor inside the
+        // comment it opens (cCommentOpeners); the others open a line, since
+        // `(*` and `{-` also occur in code (`f(*p)`).
         let open = -1;
+        let openAt = -1;
         let pair: [string, string] = COMMENT_BLOCKS[0];
         for (const [opener, closer] of COMMENT_BLOCKS) {
-          const opensHere = (l: string) => (opener === '/*' ? l.includes(opener) : l.trimStart().startsWith(opener));
-          for (let k = i; k >= 0 && k > i - 80; k--) {
-            if (opensHere(lines[k]) && (k === i || !lines[k].slice(lines[k].lastIndexOf(opener)).includes(closer))) {
+          const openerOf = (l: string) => {
+            if (opener === '/*') return cCommentOpeners(l);
+            if (!l.trimStart().startsWith(opener)) return { last: -1, open: false };
+            const last = l.lastIndexOf(opener);
+            return { last, open: !l.slice(last).includes(closer) };
+          };
+          for (let k = i; k >= 0; k--) {
+            const opens = openerOf(lines[k]);
+            if (opens.last !== -1 && (k === i || opens.open)) {
               if (k > open) {
                 open = k;
+                openAt = opens.last;
                 pair = [opener, closer];
               }
               break;
@@ -1255,8 +1301,8 @@ export function findBundledCodeUnderOtherLicenses(
         let close = -1;
         if (open !== -1) {
           const [opener, closer] = pair;
-          for (let k = i; k < lines.length && k < i + 80; k++) {
-            if ((k === open ? lines[k].slice(lines[k].lastIndexOf(opener) + opener.length) : lines[k]).includes(closer)) {
+          for (let k = i; k < lines.length; k++) {
+            if ((k === open ? lines[k].slice(openAt + opener.length) : lines[k]).includes(closer)) {
               close = k;
               break;
             }
@@ -1266,21 +1312,26 @@ export function findBundledCodeUnderOtherLicenses(
         // them is one header (`(* Copyright ... *)` above `(* SPDX ... *)`),
         // as a run of line comments is.
         const wholeLine = (l: string) => BLOCK_OPENER_AT_START.test(l) && COMMENT_CLOSER_AT_END.test(l);
+        // A run of line comments ends where the comment style changes, at
+        // any length: `//` above `#![attr]` and `//!` docs, a `//` header
+        // above `#include`. A whole-line comment joins any run.
+        const leaderOf = (l: string) => (l.match(COMMENT_LEADER)?.[0] ?? '').trim();
+        const tagLeader = leaderOf(line);
+        const inRun = (l: string) => isCommentLine(l) && (tagLeader === '' || wholeLine(l) || leaderOf(l) === tagLeader);
         let start = i;
         let end = i;
         if (open !== -1 && close !== -1 && !(open === i && close === i && wholeLine(lines[i]))) {
           start = open;
           end = close;
         } else {
-          while (start > 0 && start > i - 80 && (wholeLine(lines[start]) || !BLOCK_OPENER_AT_START.test(lines[start])) && isCommentLine(lines[start - 1])) {
+          while (start > 0 && (wholeLine(lines[start]) || !BLOCK_OPENER_AT_START.test(lines[start])) && inRun(lines[start - 1])) {
             if (COMMENT_CLOSER.test(lines[start - 1]) && !wholeLine(lines[start - 1])) break;
             start--;
           }
           while (
             (wholeLine(lines[end]) || !COMMENT_CLOSER.test(lines[end])) &&
             end + 1 < lines.length &&
-            end < i + 80 &&
-            isCommentLine(lines[end + 1]) &&
+            inRun(lines[end + 1]) &&
             (wholeLine(lines[end + 1]) || !BLOCK_OPENER_AT_START.test(lines[end + 1]))
           ) {
             end++;
@@ -1294,7 +1345,7 @@ export function findBundledCodeUnderOtherLicenses(
           let text = raw.trim();
           const spdxText = text.match(/^SPDX-FileCopyrightText:\s*(\S.*)$/);
           if (spdxText) text = /^(?:copyright\b|\(c\)|©)/i.test(spdxText[1]) ? spdxText[1] : `Copyright ${spdxText[1]}`;
-          if (/^(?:copyright\b|\(c\)|©)/i.test(text) && hasCopyrightHolderInFiles({ licenseFiles: [{ filename: 'header', content: text }], noticeFiles: [] } as unknown as ComponentInfo)) {
+          if (/^(?:copyright\b|\(c\)|©)/i.test(text) && namesCopyrightHolder(text)) {
             notices.push(text);
           }
         }
@@ -1332,11 +1383,23 @@ export function findBundledCodeUnderOtherLicenses(
   });
 }
 
-/** The permission text of a license or header, without copyright lines, the SPDX tag or line breaks. */
+/**
+ * An attribution line: a copyright line that names a holder, a template slot
+ * for one ("Copyright (c) <year> <copyright holders>"), or a bare marker whose
+ * holder follows on the next line. A line that starts with the word but states
+ * a condition ("Copyright notices must remain visible in the user interface")
+ * is a term.
+ */
+function isAttributionLine(line: string): boolean {
+  if (!/^\s*copyright\b/i.test(line)) return false;
+  return TEMPLATE_NOTICE.test(line) || /^\s*copyrights?\s*(?:\(c\)|©)?\s*$/i.test(line) || namesCopyrightHolder(line);
+}
+
+/** The permission text of a license or header, without its attribution lines, the SPDX tag or line breaks. */
 export function licenseTermsOf(text: string): string {
   return text
     .split('\n')
-    .filter((l) => !/^\s*(?:copyright\b|all rights reserved|spdx-license-identifier:)/i.test(l))
+    .filter((l) => !isAttributionLine(l) && !/^\s*(?:all rights reserved|spdx-license-identifier:)/i.test(l))
     .join(' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -1359,30 +1422,48 @@ export function assertNoTermsPlaceholders(licKey: string, licText: string): void
 const LICENSE_PROSE_START =
   /^\s*(?:permission\b|redistribution\b|all rights\b|this\b|the\b|licensed\b|you may\b|subject to\b|everyone\b|in no event\b|use of\b|provided\b)/i;
 
-export function hasCopyrightHolderInFiles(comp: ComponentInfo): boolean {
-  const boilerplateRegex =
-    /above copyright|copyright holders|copyright notice|copyright owner|copyright license/i;
-  // A keyword followed by a year (after an optional (c) or ©), anywhere on the line.
-  const datedRegex = /(?:copyrights?|\(c\)|©)\s*(?:\(c\)|©)?\s*[`'"\[\(<]*[0-9]{4}/i;
-  // Without a year, the keyword must begin the line (after a comment leader)
-  // and be followed by a name: any name after an explicit (c) or ©
-  // ("Copyright (c) zune-image developers", "Copyright (c) .NET Foundation"),
-  // a capitalized one after the bare keyword, which keeps prose such as
-  // "Copyright has been waived" out. A bare "(c)" at the start
-  // of a line is a list item in license texts (Apache-2.0 4(c) "(c) You must
-  // retain ..."), so it counts only with a year, above.
-  const lead = String.raw`^\s*(?:${COMMENT_LEADER_ALTERNATIVES}\s*)?`;
-  const namedRegex = new RegExp(
-    lead +
-      String.raw`(?:[Pp]ortions(?:\s+of)?\s+|[Oo]riginal\s+[Ww]ork:?\s*)?(?:(?:[Cc]opyrights?|COPYRIGHTS?)\s*(?:\([cC]\)|©)\s*[\x60'"\[\(<]*[A-Za-z0-9.]|(?:[Cc]opyrights?|COPYRIGHTS?|©|SPDX-FileCopyrightText:|PackageCopyrightText:)\s*[\x60'"\[\(<]*[A-Z0-9])`
-  );
-  // Statements that name the holders without a name after the keyword.
-  const statementRegex = new RegExp(
-    lead +
-      String.raw`(?:(?:\d+[.)]\s+)?all\s+copyrights?\s+to\s|copyrights?\s+in\s.+\s(?:are|is)\s+(?:retained|owned|held)\s+by\s)`,
-    'i'
-  );
+const HOLDER_BOILERPLATE =
+  /above copyright|copyright holders|copyright notice|copyright owner|copyright license/i;
+// A keyword followed by a year (after an optional (c) or ©), anywhere on the line.
+const HOLDER_DATED = /(?:copyrights?|\(c\)|©)\s*(?:\(c\)|©)?\s*[`'"\[\(<]*[0-9]{4}/i;
+// Without a year, the keyword must begin the line (after a comment leader)
+// and be followed by a name: any name after an explicit (c) or ©
+// ("Copyright (c) zune-image developers", "Copyright (c) .NET Foundation"),
+// a capitalized one after the bare keyword, which keeps prose such as
+// "Copyright has been waived" out. A bare "(c)" at the start
+// of a line is a list item in license texts (Apache-2.0 4(c) "(c) You must
+// retain ..."), so it counts only with a year, above.
+const HOLDER_LEAD = String.raw`^\s*(?:${COMMENT_LEADER_ALTERNATIVES}\s*)?`;
+const HOLDER_NAMED = new RegExp(
+  HOLDER_LEAD +
+    String.raw`(?:[Pp]ortions(?:\s+of)?\s+|[Oo]riginal\s+[Ww]ork:?\s*)?(?:(?:[Cc]opyrights?|COPYRIGHTS?)\s*(?:\([cC]\)|©)\s*[\x60'"\[\(<]*[A-Za-z0-9.]|(?:[Cc]opyrights?|COPYRIGHTS?|©|SPDX-FileCopyrightText:|PackageCopyrightText:)\s*[\x60'"\[\(<]*[A-Z0-9])`
+);
+// A condition the keyword starts ("Copyright MUST remain visible", "Copyright
+// may not be removed") names nobody. The word after the keyword is a
+// condition only in lower case or in capitals: in Title Case it is a name
+// ("Copyright Will Smith").
+const CONDITION_WORDS = ['must', 'shall', 'should', 'will', 'cannot', 'is', 'are', 'remain', 'remains', 'may not', 'may be'];
+const HOLDER_CONDITION = new RegExp(
+  HOLDER_LEAD +
+    String.raw`(?:[Cc]opyrights?|COPYRIGHTS?)\s+(?:${[...CONDITION_WORDS, ...CONDITION_WORDS.map((w) => w.toUpperCase())].map((w) => w.replace(' ', String.raw`\s+`)).join('|')})\b`
+);
+// Statements that name the holders without a name after the keyword.
+const HOLDER_STATEMENT = new RegExp(
+  HOLDER_LEAD +
+    String.raw`(?:(?:\d+[.)]\s+)?all\s+copyrights?\s+to\s|copyrights?\s+in\s.+\s(?:are|is)\s+(?:retained|owned|held)\s+by\s)`,
+  'i'
+);
 
+/**
+ * Whether one line names a copyright holder. A template line ("Copyright (c)
+ * <year> <owner>") names nobody, nor does prose about notices ("the above
+ * copyright notice").
+ */
+export function namesCopyrightHolder(line: string): boolean {
+  return !HOLDER_BOILERPLATE.test(line) && !HOLDER_CONDITION.test(line) && !TEMPLATE_NOTICE.test(line) && (HOLDER_DATED.test(line) || HOLDER_NAMED.test(line) || HOLDER_STATEMENT.test(line));
+}
+
+export function hasCopyrightHolderInFiles(comp: ComponentInfo): boolean {
   // A notice broken after its marker ("..., Copyright (c)" then "2015 The Rust
   // Project Developers") is read with the line that continues it.
   const joinBrokenNotices = (content: string) =>
@@ -1396,13 +1477,7 @@ export function hasCopyrightHolderInFiles(comp: ComponentInfo): boolean {
   // The holders of vendored code are not the package's holders.
   return [...comp.licenseFiles, ...comp.noticeFiles].filter((f) => !f.vendored).some((f) =>
     joinBrokenNotices(f.content)
-      .some(
-        (l) =>
-          // A template line ("Copyright (c) <year> <owner>") names nobody.
-          !boilerplateRegex.test(l) &&
-          !TEMPLATE_NOTICE.test(l) &&
-          (datedRegex.test(l) || namedRegex.test(l) || statementRegex.test(l))
-      )
+      .some(namesCopyrightHolder)
   );
 }
 
