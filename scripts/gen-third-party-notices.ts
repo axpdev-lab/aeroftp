@@ -688,6 +688,21 @@ const TEMPLATE_NOTICE =
  * for copyright notices. Deduplicates notices and returns them sorted deterministically.
  * Excludes files already collected by readPackageFiles.
  */
+// A notice made only of its marker and years, with no holder.
+const HOLDERLESS_NOTICE = /^(?:copyright\s*)?(?:(?:\([cC]\)|©)\s*)?[0-9][0-9,\-\s]*$/i;
+// The first words of license prose, which never continue a holder.
+const HOLDER_CONTINUATION_PROSE = /^(?:this|the|these|permission|licensed|all rights|redistribution|you|see|under|written|portions|based|it|use|any)\b/i;
+
+// A notice that ends at its years continues with its holder on the next line
+// of the same comment ("Copyright (C) 1987,88,...,2006" then "Free Software
+// Foundation, Inc."); the license prose after it is no holder.
+function withHolderContinuation(notice: string, nextLine: string | undefined): string {
+  if (!HOLDERLESS_NOTICE.test(notice) || nextLine === undefined) return notice;
+  const next = nextLine.trim();
+  if (!/^[A-Z]/.test(next) || /^(?:copyright\b|\(c\)|©)/i.test(next) || HOLDER_CONTINUATION_PROSE.test(next)) return notice;
+  return `${notice} ${next}`;
+}
+
 export function findPackageCopyrightNotices(
   packageDir?: string,
   excludedFiles: string[] = [],
@@ -738,7 +753,8 @@ export function findPackageCopyrightNotices(
     // that continue it.
     const isCopyrightFormat = /(?:^|\/)(?:\.reuse\/dep5|debian\/copyright)$/.test(f.rel);
     let inCopyrightField = false;
-    for (const rawLine of lines) {
+    for (let li = 0; li < lines.length; li++) {
+      const rawLine = lines[li];
       const field = isCopyrightFormat ? rawLine.match(/^Copyright:\s*(.*)$/i) : null;
       const continued = inCopyrightField && /^\s+\S/.test(rawLine) ? rawLine.trim() : null;
       inCopyrightField = field !== null || continued !== null;
@@ -776,6 +792,7 @@ export function findPackageCopyrightNotices(
         cleaned = cleaned.replace(/\s*\([A-Za-z0-9\.\s\-]+ [Ll]icense\)\.?$/, '');
         cleaned = cleaned.replace(/\s+See the\b.*/i, '');
         cleaned = cleaned.trim();
+        cleaned = withHolderContinuation(cleaned, lines[li + 1]?.replace(COMMENT_LEADER, '').replace(COMMENT_CLOSER_AT_END, ''));
         if (cleaned.length > 0 && !TEMPLATE_NOTICE.test(cleaned) && !seenNotice.has(cleaned)) {
           seenNotice.add(cleaned);
           notices.push({ notice: cleaned, file: f.rel });
@@ -1450,10 +1467,11 @@ export function findBundledCodeUnderOtherLicenses(
         // Only a line that names a holder is a notice: "copyright notice and
         // this permission notice appear in all copies" is license prose.
         const notices: string[] = [];
-        for (const raw of block) {
-          let text = raw.trim();
+        for (let bi = 0; bi < block.length; bi++) {
+          let text = block[bi].trim();
           const spdxText = text.match(/^SPDX-FileCopyrightText:\s*(\S.*)$/);
           if (spdxText) text = /^(?:copyright\b|\(c\)|©)/i.test(spdxText[1]) ? spdxText[1] : `Copyright ${spdxText[1]}`;
+          text = withHolderContinuation(text, block[bi + 1]);
           if (/^(?:copyright\b|\(c\)|©)/i.test(text) && namesCopyrightHolder(text)) {
             notices.push(text);
           }
@@ -1687,13 +1705,15 @@ export function renderNotices(
   lines.push('');
   lines.push('This application incorporates third-party software components licensed under open-source and respective third-party terms.');
   lines.push('This document provides the required copyright notices, permission notices, and license texts');
-  lines.push('for all production dependencies bundled with AeroFTP distribution packages:');
+  lines.push('for the Rust (Cargo) and Node.js (npm) production dependencies that AeroFTP distribution packages include:');
   lines.push('- **Linux packages:** deb, rpm, AppImage, snap');
   lines.push('- **macOS & Windows packages:** DMG, MSI (bundled resources)');
   lines.push('- *(Flatpak packaging is maintained separately in the FlatPark repository; `/app/share/doc/...` is available when installed)*');
   lines.push('');
   lines.push('AeroFTP is licensed under the **GNU General Public License v3.0 or later** (GPL-3.0-or-later).');
-  lines.push('All bundled components are distributed in accordance with their respective licensing terms.');
+  lines.push('The components listed here are distributed in accordance with their respective licensing terms.');
+  lines.push('System libraries that are not Cargo or npm dependencies (for example WebKitGTK, which the AppImage bundles as a');
+  lines.push('fallback) are not covered by this document.');
   lines.push('');
 
   const allComponents = [...sortedCargoDeps, ...sortedNpmDeps];
@@ -1764,7 +1784,7 @@ export function renderNotices(
   lines.push('');
   lines.push(`- **Rust (Cargo) Production Crates:** ${sortedCargoDeps.length}`);
   lines.push(`- **Node.js / Web (npm) Production Packages:** ${sortedNpmDeps.length}`);
-  lines.push(`- **Total Bundled Components:** ${sortedCargoDeps.length + sortedNpmDeps.length}`);
+  lines.push(`- **Total Listed Components:** ${sortedCargoDeps.length + sortedNpmDeps.length}`);
   lines.push('');
   lines.push('---');
   lines.push('');
@@ -1817,6 +1837,19 @@ export function renderNotices(
     return `${fence}${lang}\n${content}\n${fence}`;
   }
 
+  // A file carries a license when it holds the standard text of a license its
+  // component declares, or grants permission itself; a file that only names
+  // the licenses (siphasher's COPYING) takes no anchor, which then goes to the
+  // standard texts reproduced for the component below.
+  const carriesALicense = (c: LicenseTextGroup['components'][number], text: string) => {
+    if (PERMISSION_TEXT.test(text)) return true;
+    const comp = compMap.get(`${c.source}:${c.name}@${c.version}`);
+    if (!comp) return true;
+    const standard = readStandardLicenses();
+    return extractSpdxLicenseIds(comp.license)
+      .map((id) => id.replace(/^LGPL-2\.1\+$/, 'LGPL-2.1-or-later'))
+      .some((id) => id in standard && uncoveredLicenseTerms([[id]], [text], standard).length === 0);
+  };
   const seenAnchorIds = new Set<string>();
   let groupIndex = 1;
   for (const group of groupedTexts) {
@@ -1831,7 +1864,7 @@ export function renderNotices(
     // library's license: a package whose only license text is vendored
     // (whisper-rs-sys, whisper.cpp/LICENSE) is anchored at the standard text
     // of the license it declares.
-    for (const comp of group.components.filter((c) => c.isLicenseText && !c.vendored)) {
+    for (const comp of group.components.filter((c) => c.isLicenseText && !c.vendored && carriesALicense(c, group.text))) {
       const anchorId = `notice-${comp.name.replace(/_/g, '-')}`;
       if (!seenAnchorIds.has(anchorId)) {
         seenAnchorIds.add(anchorId);

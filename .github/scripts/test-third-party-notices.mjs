@@ -909,6 +909,33 @@ test('anchors: a licensing exception links to its vendored text, the package anc
   }
 });
 
+test('anchors: a file that only names the licenses takes no anchor, which goes to a full license text', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pointer-anchor-fixture-'));
+  try {
+    const write = (rel, content) => {
+      fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, rel), content);
+    };
+    const standard = JSON.parse(fs.readFileSync(SPDX_STANDARD_LICENSES_FILE, 'utf8'));
+    // siphasher: its only license file, COPYING, names MIT and Apache-2.0 and
+    // holds neither text, so the anchor goes to the standard texts.
+    write('pointer/COPYING', 'Copyright 2016-2026 Pointer Author.\n\nLicensed under the MIT license or the Apache License, Version 2.0, at your option.');
+    // typenum: LICENSE only names the choice, LICENSE-APACHE holds the text.
+    write('split/LICENSE', 'MIT OR Apache-2.0');
+    write('split/LICENSE-APACHE', standard['Apache-2.0']);
+    const pointer = { name: 'pointer_pkg', version: '1.0.0', license: 'MIT/Apache-2.0', source: 'cargo', packageDir: path.join(tmpDir, 'pointer'), authors: ['Pointer Author'], ...readPackageFiles(path.join(tmpDir, 'pointer'), 'pointer_pkg@1.0.0') };
+    const split = { name: 'split-pkg', version: '1.0.0', license: 'MIT OR Apache-2.0', source: 'cargo', packageDir: path.join(tmpDir, 'split'), authors: ['Split Author'], ...readPackageFiles(path.join(tmpDir, 'split'), 'split-pkg@1.0.0') };
+    const md = generateNoticesMarkdown([pointer, split], []);
+    const textAfter = (id) => md.slice(md.indexOf(`<a id="${id}"></a>`)).split('\n```text\n')[1].split('\n')[0];
+    assert.strictEqual(md.split('<a id="notice-pointer-pkg"></a>').length - 1, 1);
+    assert.match(md.slice(md.indexOf('<a id="notice-pointer-pkg"></a>')), /^<a id="notice-pointer-pkg"><\/a>\n\n### Standard License: /);
+    assert.notStrictEqual(textAfter('notice-pointer-pkg'), 'Copyright 2016-2026 Pointer Author.');
+    assert.strictEqual(textAfter('notice-split-pkg'), standard['Apache-2.0'].split('\n')[0]);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
 test('bundled code headers: the copyright may follow the identifier or be an SPDX field, and a NOTICE or license file does not hide it', () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bundled-header-fixture-'));
   try {
@@ -1130,6 +1157,51 @@ test('standard-license fallback: choices come from the parsed expression, a conj
     () => generateNoticesMarkdown([fallback('test-unknown-exc', 'Apache-2.0 WITH Unknown-exception')], []),
     /test-unknown-exc@1\.0\.0 requires standard license text for 'Unknown-exception'/
   );
+});
+
+test('scope: the introduction claims only the Cargo and npm dependencies it lists, and names the system libraries it does not cover', () => {
+  const md = generateNoticesMarkdown([], []);
+  const intro = md.slice(0, md.indexOf('\n---\n'));
+  assert.match(intro, /license texts\nfor the Rust \(Cargo\) and Node\.js \(npm\) production dependencies that AeroFTP distribution packages include:/);
+  assert.match(intro, /System libraries that are not Cargo or npm dependencies \(for example WebKitGTK, which the AppImage bundles as a\nfallback\) are not covered by this document\./);
+  assert.doesNotMatch(md, /all production dependencies|All bundled components|Total Bundled Components/);
+  assert.match(md, /- \*\*Total Listed Components:\*\* 0/);
+});
+
+test('wrapped notices: a notice that ends at its years keeps the holder on its next line, never the license prose after it', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wrapped-notice-fixture-'));
+  try {
+    const write = (rel, content) => {
+      fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, rel), content);
+    };
+    // The xz getopt headers of lzma-sys: the holder is indented by a tab in
+    // getopt.c, by the comment's own indent in getopt_int.h.
+    write('lib/getopt.c', '/* Getopt for GNU.\n   Copyright (C) 1987,88,89,2006\n\tFree Software Foundation, Inc.\n   This file is part of the GNU C Library.\n*/\n');
+    write('lib/getopt_int.h', '/* Internal declarations for getopt.\n   Copyright (C) 1989-1994,2004\n   Free Software Foundation, Inc.\n   This file is part of the GNU C Library.\n*/\n');
+    // A notice with its holder on the line is unchanged, and prose after a
+    // holder-less notice is not taken as a holder.
+    write('lib/named.c', '/* Copyright (C) 2001 Named Holder\n   Free Software Foundation, Inc.\n*/\n');
+    write('lib/prose.c', '/* Copyright (C) 1999\n   This program is free software.\n*/\n');
+    const notices = findPackageCopyrightNotices(tmpDir).map((n) => `${n.notice} (${n.file})`);
+    assert.deepStrictEqual(notices, [
+      'Copyright (C) 1987,88,89,2006 Free Software Foundation, Inc. (lib/getopt.c)',
+      'Copyright (C) 1989-1994,2004 Free Software Foundation, Inc. (lib/getopt_int.h)',
+      'Copyright (C) 1999 (lib/prose.c)',
+      'Copyright (C) 2001 Named Holder (lib/named.c)',
+    ]);
+
+    // A bundled header keeps the wrapped holder too.
+    fs.rmSync(path.join(tmpDir, 'lib'), { recursive: true });
+    write('LICENSE', 'Permission to use, copy, modify, and/or distribute this software for any purpose is hereby granted.');
+    write('vendor/getopt.c', '/* Copyright (C) 1987,2006\n   Free Software Foundation, Inc.\n   SPDX-License-Identifier: BSD-2-Clause */\n');
+    const comp = { name: 'wrapped-pkg', version: '1.0.0', license: 'ISC', source: 'cargo', packageDir: tmpDir, authors: ['Wrapper Author'], ...readPackageFiles(tmpDir, 'wrapped-pkg@1.0.0') };
+    const known = new Set(Object.keys(JSON.parse(fs.readFileSync(SPDX_STANDARD_LICENSES_FILE, 'utf8'))));
+    const bundled = findBundledCodeUnderOtherLicenses(comp, known);
+    assert.deepStrictEqual(bundled.find((b) => b.license === 'BSD-2-Clause')?.notices, ['Copyright (C) 1987,2006 Free Software Foundation, Inc.']);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
 });
 
 test('findPackageCopyrightNotices: a template copyright line is no notice, a license text keeps its placeholders', () => {

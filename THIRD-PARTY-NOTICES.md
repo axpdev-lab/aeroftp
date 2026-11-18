@@ -2,13 +2,15 @@
 
 This application incorporates third-party software components licensed under open-source and respective third-party terms.
 This document provides the required copyright notices, permission notices, and license texts
-for all production dependencies bundled with AeroFTP distribution packages:
+for the Rust (Cargo) and Node.js (npm) production dependencies that AeroFTP distribution packages include:
 - **Linux packages:** deb, rpm, AppImage, snap
 - **macOS & Windows packages:** DMG, MSI (bundled resources)
 - *(Flatpak packaging is maintained separately in the FlatPark repository; `/app/share/doc/...` is available when installed)*
 
 AeroFTP is licensed under the **GNU General Public License v3.0 or later** (GPL-3.0-or-later).
-All bundled components are distributed in accordance with their respective licensing terms.
+The components listed here are distributed in accordance with their respective licensing terms.
+System libraries that are not Cargo or npm dependencies (for example WebKitGTK, which the AppImage bundles as a
+fallback) are not covered by this document.
 
 ---
 
@@ -22,7 +24,7 @@ All bundled components are distributed in accordance with their respective licen
 
 - **Rust (Cargo) Production Crates:** 1161
 - **Node.js / Web (npm) Production Packages:** 131
-- **Total Bundled Components:** 1292
+- **Total Listed Components:** 1292
 
 ---
 
@@ -2049,10 +2051,10 @@ THE SOFTWARE.
 **Used by component(s):**
 - `acl-sys@1.2.2` (cargo, file: `LICENSE`)
 - `lzma-sys@0.1.20` (cargo, file: `xz-5.2/COPYING.LGPLv2.1`)
-  - Copyright (C) 1987,88,89,90,91,92,93,94,95,96,98,99,2000,2001,2002,2003,2004,2006 (xz-5.2/lib/getopt.c)
-  - Copyright (C) 1987,88,89,90,91,92,93,94,96,97,98,2004,2006 (xz-5.2/lib/getopt1.c)
-  - Copyright (C) 1989-1994,1996-1999,2001,2003,2004 (xz-5.2/lib/getopt_int.h)
-  - Copyright (C) 1989-1994,1996-1999,2001,2003,2004,2005,2006,2007 (xz-5.2/lib/getopt.in.h)
+  - Copyright (C) 1987,88,89,90,91,92,93,94,95,96,98,99,2000,2001,2002,2003,2004,2006 Free Software Foundation, Inc. (xz-5.2/lib/getopt.c)
+  - Copyright (C) 1987,88,89,90,91,92,93,94,96,97,98,2004,2006 Free Software Foundation, Inc. (xz-5.2/lib/getopt1.c)
+  - Copyright (C) 1989-1994,1996-1999,2001,2003,2004 Free Software Foundation, Inc. (xz-5.2/lib/getopt_int.h)
+  - Copyright (C) 1989-1994,1996-1999,2001,2003,2004,2005,2006,2007 Free Software Foundation, Inc. (xz-5.2/lib/getopt.in.h)
   - Copyright (C) 1992, 1993 Jean-loup Gailly (xz-5.2/src/scripts/xzmore.in)
   - Copyright (C) 1993 Jean-loup Gailly (xz-5.2/src/scripts/xzdiff.in)
   - Copyright (C) 1994-1996, 1999-2002, 2004-2016 Free Software (xz-5.2/INSTALL.generic)
@@ -6094,8 +6096,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-<a id="notice-android-system-properties"></a>
-
 ### Notice Entry 38
 
 **Used by component(s):**
@@ -6116,6 +6116,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ```
+
+<a id="notice-android-system-properties"></a>
 
 ### Notice Entry 39
 
@@ -19360,8 +19362,6 @@ the BSD 1-Clause License <LICENSE-BSD-1> or
 <https://spdx.org/licenses/BSD-1-Clause.html>, at your option.
 ```
 
-<a id="notice-fiat-crypto"></a>
-
 ### Notice Entry 225
 
 **Used by component(s):**
@@ -19386,6 +19386,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ```
+
+<a id="notice-fiat-crypto"></a>
 
 ### Notice Entry 226
 
@@ -36751,8 +36753,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-<a id="notice-ring"></a>
-
 ### Notice Entry 500
 
 **Used by component(s):**
@@ -36769,6 +36769,8 @@ license. In each case, the license info is at the top of the file.
 See src/polyfill/once_cell/LICENSE-APACHE and src/polyfill/once_cell/LICENSE-MIT
 for the license to code that was sourced from the once_cell project.
 ```
+
+<a id="notice-ring"></a>
 
 ### Notice Entry 501
 
@@ -38036,8 +38038,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-<a id="notice-serial2"></a>
-
 ### Notice Entry 529
 
 **Used by component(s):**
@@ -38058,6 +38058,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ```
+
+<a id="notice-serial2"></a>
 
 ### Notice Entry 530
 
@@ -38604,8 +38606,6 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-<a id="notice-shlex"></a>
-
 ### Notice Entry 540
 
 **Used by component(s):**
@@ -38627,6 +38627,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ```
+
+<a id="notice-shlex"></a>
 
 ### Notice Entry 541
 
@@ -38799,8 +38801,6 @@ OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
 TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 ```
-
-<a id="notice-siphasher"></a>
 
 ### Notice Entry 547
 
@@ -39780,8 +39780,6 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-<a id="notice-tagptr"></a>
-
 ### Notice Entry 567
 
 **Used by component(s):**
@@ -39802,6 +39800,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ```
+
+<a id="notice-tagptr"></a>
 
 ### Notice Entry 568
 
@@ -41683,8 +41683,6 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-<a id="notice-typenum"></a>
-
 ### Notice Entry 602
 
 **Used by component(s):**
@@ -41693,6 +41691,8 @@ DEALINGS IN THE SOFTWARE.
 ```text
 MIT OR Apache-2.0
 ```
+
+<a id="notice-typenum"></a>
 
 ### Notice Entry 603
 
@@ -44905,6 +44905,7 @@ provided below. Authors are listed as declared in package manifests or reviewed 
 <a id="notice-russh-util"></a>
 <a id="notice-rustls-platform-verifier-android"></a>
 <a id="notice-sigstore-protobuf-specs"></a>
+<a id="notice-siphasher"></a>
 <a id="notice-suppaftp"></a>
 <a id="notice-tauri-plugin"></a>
 <a id="notice-unftp-core"></a>
