@@ -35,6 +35,7 @@ import {
   renderNotices,
   parseMode,
   writeNoticesFile,
+  npmInstallsHere,
 } from '../../scripts/gen-third-party-notices.ts';
 
 // The committed notices with the blocks the generator reproduces as shipped,
@@ -315,6 +316,51 @@ test('npm collection: the installed package must be the locked package and versi
   }
 });
 
+test('npm collection: a locked package missing from the install stops the generation and is named, optional ones included', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'npm-missing-fixture-'));
+  try {
+    const lockPath = path.join(tmpDir, 'package-lock.json');
+    const lockWith = (entry) => fs.writeFileSync(lockPath, JSON.stringify({ lockfileVersion: 3, packages: { '': {}, 'node_modules/opt': { version: '1.0.0', license: 'MIT', ...entry } } }));
+    // Required and missing: the install is incomplete.
+    lockWith({});
+    assert.throws(() => collectNpmDependencies(lockPath, tmpDir), /node_modules\/opt is not installed, but package-lock\.json locks opt@1\.0\.0: run npm ci/);
+    // Optional and missing where npm would install it: --omit=optional, named as such.
+    lockWith({ optional: true });
+    assert.throws(() => collectNpmDependencies(lockPath, tmpDir), /locks the optional opt@1\.0\.0, which is not installed: .*npm ci without --omit=optional/);
+    lockWith({ devOptional: true, os: [process.platform] });
+    assert.throws(() => collectNpmDependencies(lockPath, tmpDir), /locks the optional opt@1\.0\.0, which is not installed/);
+    // Optional for another platform: this platform cannot read its files, and the generation says so.
+    const elsewhere = process.platform === 'aix' ? 'sunos' : 'aix';
+    lockWith({ optional: true, os: [elsewhere] });
+    assert.throws(() => collectNpmDependencies(lockPath, tmpDir), new RegExp(`locks the optional opt@1\\.0\\.0, which npm installs only for os ${elsewhere}, so this platform cannot read its license files`));
+    lockWith({ optional: true, cpu: [`!${process.arch}`] });
+    assert.throws(() => collectNpmDependencies(lockPath, tmpDir), /which npm installs only for cpu !.*, so this platform cannot read/);
+    // Installed, an optional package is collected like any other.
+    lockWith({ optional: true });
+    fs.mkdirSync(path.join(tmpDir, 'node_modules/opt'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, 'node_modules/opt/LICENSE'), 'MIT License opt');
+    fs.writeFileSync(path.join(tmpDir, 'node_modules/opt/package.json'), JSON.stringify({ name: 'opt', version: '1.0.0' }));
+    assert.deepStrictEqual(collectNpmDependencies(lockPath, tmpDir).map((d) => `${d.name}@${d.version}`), ['opt@1.0.0']);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('npm collection: os and cpu lists are read the way npm reads them', () => {
+  assert.strictEqual(npmInstallsHere(undefined, 'linux'), true);
+  assert.strictEqual(npmInstallsHere([], 'linux'), true);
+  assert.strictEqual(npmInstallsHere(['linux'], 'linux'), true);
+  assert.strictEqual(npmInstallsHere(['darwin', 'win32'], 'linux'), false);
+  assert.strictEqual(npmInstallsHere(['!win32'], 'linux'), true);
+  assert.strictEqual(npmInstallsHere(['!win32'], 'win32'), false);
+});
+
+test('npm collection: no locked production package is limited to some platforms, so any platform reads every license file', () => {
+  const lock = JSON.parse(fs.readFileSync(path.join(ROOT, 'package-lock.json'), 'utf8'));
+  const limited = Object.entries(lock.packages).filter(([p, info]) => p !== '' && !info.dev && (info.os || info.cpu)).map(([p]) => p);
+  assert.deepStrictEqual(limited, [], 'a production package installed only on some platforms needs a reviewed source for its license files on the others');
+});
+
 test('directory order: the same package contents give the same notices in any enumeration order', () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dir-order-fixture-'));
   const original = fs.readdirSync;
@@ -384,6 +430,29 @@ test('readPackageFiles: resolves declared nested license_file and fails fast if 
       () => readPackageFiles(tmpDir, 'custom-crate@1.0.0', 'legal/missing-file.txt'),
       /Crate custom-crate@1\.0\.0 declared license_file "legal\/missing-file\.txt" but the file does not exist/
     );
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('readPackageFiles: a declared license_file outside the crate directory is refused before it is read', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'crate-license-outside-fixture-'));
+  try {
+    const crate = path.join(tmpDir, 'crate');
+    fs.mkdirSync(path.join(crate, 'legal'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, 'LICENSE'), 'Workspace terms the crate does not ship');
+    fs.writeFileSync(path.join(crate, 'LICENSE-MIT'), 'MIT License');
+    fs.symlinkSync(path.join(tmpDir, 'LICENSE'), path.join(crate, 'LINKED-LICENSE'));
+    const outside = /declared license_file ".*", which is outside the crate directory/;
+    for (const declared of ['../LICENSE', path.join(tmpDir, 'LICENSE'), 'LINKED-LICENSE', 'legal/../../LICENSE']) {
+      assert.throws(() => readPackageFiles(crate, 'shared-crate@1.0.0', declared), outside, declared);
+    }
+    // A directory at the declared path is no license text.
+    assert.throws(() => readPackageFiles(crate, 'shared-crate@1.0.0', 'legal'), /declared license_file "legal", which is not a file/);
+    // A path inside the crate, also one that passes through `..`, is still read.
+    const inside = readPackageFiles(crate, 'shared-crate@1.0.0', 'legal/../LICENSE-MIT');
+    assert.deepStrictEqual(inside.licenseFiles.map((f) => [f.filename, f.content]), [['LICENSE-MIT', 'MIT License']]);
+    assert.deepStrictEqual(readPackageFiles(crate, 'shared-crate@1.0.0', path.join(crate, 'LICENSE-MIT')).licenseFiles.map((f) => f.filename), ['LICENSE-MIT']);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

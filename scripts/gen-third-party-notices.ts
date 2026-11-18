@@ -580,6 +580,21 @@ export function readPackageFiles(
         `Crate ${componentId} declared license_file "${declaredLicenseFile}" but the file does not exist at ${declaredPath}`
       );
     }
+    // The declared file is the crate's own text, so it must be inside the
+    // crate: `cargo package` copies a license-file from outside the package
+    // into its root, so a registry crate always has it there. A path that
+    // leaves the crate (`../LICENSE`, an absolute path, a symlink to
+    // elsewhere) would read a text the crate does not ship; it fails, and a
+    // license shared by a workspace is copied into the crate as cargo does.
+    const inside = path.relative(fs.realpathSync(dir), fs.realpathSync(declaredPath));
+    if (inside === '..' || inside.startsWith(`..${path.sep}`) || path.isAbsolute(inside)) {
+      throw new Error(
+        `Crate ${componentId} declared license_file "${declaredLicenseFile}", which is outside the crate directory ${dir}: copy the license into the crate, as cargo package does, instead of reading it from elsewhere`
+      );
+    }
+    if (!fs.statSync(declaredPath).isFile()) {
+      throw new Error(`Crate ${componentId} declared license_file "${declaredLicenseFile}", which is not a file at ${declaredPath}`);
+    }
     const filename = path.basename(declaredLicenseFile);
     const content = fs.readFileSync(declaredPath, 'utf8').replace(/\r\n/g, '\n').trim();
     licenseFiles.push({ filename, content });
@@ -877,6 +892,16 @@ export function collectCargoDependencies(): ComponentInfo[] {
   return results.sort((a, b) => compareStrings(a.name, b.name) || compareStrings(a.version, b.version));
 }
 
+// Whether npm installs a package whose `os` or `cpu` list is `allowed` on
+// `value` (process.platform, process.arch): an entry names what it supports,
+// `!name` what it excludes, and no list supports everything.
+export function npmInstallsHere(allowed: string[] | undefined, value: string): boolean {
+  if (!allowed || allowed.length === 0) return true;
+  if (allowed.includes(`!${value}`)) return false;
+  const named = allowed.filter((a) => !a.startsWith('!'));
+  return named.length === 0 || named.includes(value);
+}
+
 export function collectNpmDependencies(
   pkgLockPath = path.join(ROOT, 'package-lock.json'),
   baseDir = ROOT
@@ -900,18 +925,32 @@ export function collectNpmDependencies(
     // An alias is installed under its own directory name, so the installed
     // manifest is checked against the locked package name, not the directory.
     const installedManifest = path.join(depDir, 'package.json');
-    if (fs.existsSync(depDir)) {
-      if (!fs.existsSync(installedManifest)) {
+    // Every locked production package ships on some platform, and its license
+    // files exist only in the install: the lockfile records the license id,
+    // not the texts or the holders. A package missing from the install stops
+    // the generation and is named, never dropped. npm leaves out an optional
+    // one under --omit=optional or when its os/cpu do not match this platform.
+    if (!fs.existsSync(depDir)) {
+      if (pkgInfo.optional || pkgInfo.devOptional) {
+        const only = [pkgInfo.os && `os ${pkgInfo.os.join(', ')}`, pkgInfo.cpu && `cpu ${pkgInfo.cpu.join(', ')}`].filter(Boolean);
         throw new Error(
-          `${pkgPath} has no package.json, but package-lock.json locks ${name}@${version}: run npm ci, then generate the notices again`
+          !npmInstallsHere(pkgInfo.os, process.platform) || !npmInstallsHere(pkgInfo.cpu, process.arch)
+            ? `${pkgPath} locks the optional ${componentId}, which npm installs only for ${only.join(' and ')}, so this platform cannot read its license files: the notices cover every platform's packages, so the package needs a reviewed source for them before it ships`
+            : `${pkgPath} locks the optional ${componentId}, which is not installed: the notices cover every platform's packages, so install it (npm ci without --omit=optional), then generate the notices again`
         );
       }
-      const installed = JSON.parse(fs.readFileSync(installedManifest, 'utf8').replace(/^\uFEFF/, ''));
-      if (installed.name !== name || installed.version !== version) {
-        throw new Error(
-          `${pkgPath} is installed as ${installed.name}@${installed.version}, but package-lock.json locks ${name}@${version}: run npm ci, then generate the notices again`
-        );
-      }
+      throw new Error(`${pkgPath} is not installed, but package-lock.json locks ${componentId}: run npm ci, then generate the notices again`);
+    }
+    if (!fs.existsSync(installedManifest)) {
+      throw new Error(
+        `${pkgPath} has no package.json, but package-lock.json locks ${name}@${version}: run npm ci, then generate the notices again`
+      );
+    }
+    const installed = JSON.parse(fs.readFileSync(installedManifest, 'utf8').replace(/^\uFEFF/, ''));
+    if (installed.name !== name || installed.version !== version) {
+      throw new Error(
+        `${pkgPath} is installed as ${installed.name}@${installed.version}, but package-lock.json locks ${name}@${version}: run npm ci, then generate the notices again`
+      );
     }
     const { licenseFiles, noticeFiles } = readPackageFiles(depDir, componentId);
 
