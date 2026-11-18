@@ -2238,15 +2238,51 @@ export function renderNotices(
   return { output, verbatimBlocks };
 }
 
-function main() {
-  const args = process.argv.slice(2);
+/**
+ * The mode of one run: exactly one of --check and --write. Both together
+ * (`npm run check:licenses -- --write`) would write a stale file over and
+ * report success without checking it, so they are refused, before any
+ * dependency is collected.
+ */
+export function parseMode(args: string[]): 'check' | 'write' {
   const isCheck = args.includes('--check');
   const isWrite = args.includes('--write');
+  if (isCheck === isWrite) {
+    throw new Error('Usage: gen-third-party-notices.ts [--check | --write] (exactly one of them)');
+  }
+  return isCheck ? 'check' : 'write';
+}
 
-  if (!isCheck && !isWrite) {
-    console.error('Usage: gen-third-party-notices.ts [--check | --write]');
+/**
+ * Writes the notices through a temporary file in the same directory, renamed
+ * over the target only once the write has succeeded: a failed write (a full
+ * disk) leaves the previous notices whole and removes the temporary file.
+ */
+export function writeNoticesFile(
+  target: string,
+  content: string,
+  write: (file: string, data: string) => void = (file, data) => fs.writeFileSync(file, data, 'utf8')
+): void {
+  const tmp = path.join(path.dirname(target), `.${path.basename(target)}.${process.pid}.tmp`);
+  try {
+    write(tmp, content);
+    fs.renameSync(tmp, target);
+  } catch (err) {
+    fs.rmSync(tmp, { force: true });
+    throw err;
+  }
+}
+
+function main() {
+  let mode: 'check' | 'write';
+  try {
+    mode = parseMode(process.argv.slice(2));
+  } catch (err: any) {
+    console.error(err.message);
     process.exit(1);
   }
+  const isCheck = mode === 'check';
+  const isWrite = mode === 'write';
 
   const cargoDeps = collectCargoDependencies();
   const npmDeps = collectNpmDependencies();
@@ -2270,7 +2306,7 @@ function main() {
   const generated = generateNoticesMarkdown(cargoDeps, npmDeps);
 
   if (isWrite) {
-    fs.writeFileSync(NOTICES_FILE, generated, 'utf8');
+    writeNoticesFile(NOTICES_FILE, generated);
     console.log(`Successfully written ${cargoDeps.length} Cargo and ${npmDeps.length} npm notices to ${NOTICES_FILE}`);
   } else if (isCheck) {
     if (!fs.existsSync(NOTICES_FILE)) {

@@ -33,6 +33,8 @@ import {
   holdersOf,
   assertNoGeneratedPlaceholders,
   renderNotices,
+  parseMode,
+  writeNoticesFile,
 } from '../../scripts/gen-third-party-notices.ts';
 
 // The committed notices with the blocks the generator reproduces as shipped,
@@ -1796,6 +1798,45 @@ test('standard SPDX texts: fails fast if spdx-standard-licenses.json is missing 
     () => generateNoticesMarkdown([dummyComponent], [], '/tmp/nonexistent-spdx-file.json'),
     /Standard SPDX licenses file is required but missing at \/tmp\/nonexistent-spdx-file\.json/
   );
+});
+
+test('CLI mode: exactly one of --check and --write, and both together are refused before anything is collected or written', () => {
+  assert.strictEqual(parseMode(['--check']), 'check');
+  assert.strictEqual(parseMode(['--write']), 'write');
+  assert.throws(() => parseMode([]), /exactly one of them/);
+  assert.throws(() => parseMode(['--check', '--write']), /exactly one of them/);
+  // `npm run check:licenses -- --write`: the run fails and the committed file is untouched.
+  const noticesFile = path.join(ROOT, 'THIRD-PARTY-NOTICES.md');
+  const before = fs.readFileSync(noticesFile);
+  const mtime = fs.statSync(noticesFile).mtimeMs;
+  assert.throws(
+    () => execFileSync('npx', ['tsx', 'scripts/gen-third-party-notices.ts', '--check', '--write'], { cwd: ROOT, encoding: 'utf8', stdio: 'pipe' }),
+    (err) => err.status === 1 && /exactly one of them/.test(String(err.stderr))
+  );
+  assert.ok(fs.readFileSync(noticesFile).equals(before));
+  assert.strictEqual(fs.statSync(noticesFile).mtimeMs, mtime);
+});
+
+test('writing the notices: a failed write keeps the previous file whole and leaves no temporary file', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'notices-write-fixture-'));
+  try {
+    const target = path.join(tmpDir, 'THIRD-PARTY-NOTICES.md');
+    fs.writeFileSync(target, 'previous notices\n');
+    // A full disk: part of the content is written, then the write fails.
+    const failing = (file, data) => {
+      fs.writeFileSync(file, data.slice(0, 3));
+      throw Object.assign(new Error('ENOSPC: no space left on device'), { code: 'ENOSPC' });
+    };
+    assert.throws(() => writeNoticesFile(target, 'new notices\n', failing), /ENOSPC/);
+    assert.strictEqual(fs.readFileSync(target, 'utf8'), 'previous notices\n');
+    assert.deepStrictEqual(fs.readdirSync(tmpDir), ['THIRD-PARTY-NOTICES.md']);
+    // A write that succeeds replaces the file and leaves only it.
+    writeNoticesFile(target, 'new notices\n');
+    assert.strictEqual(fs.readFileSync(target, 'utf8'), 'new notices\n');
+    assert.deepStrictEqual(fs.readdirSync(tmpDir), ['THIRD-PARTY-NOTICES.md']);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
 });
 
 test('THIRD-PARTY-NOTICES.md exists and is up to date with lockfiles', () => {
