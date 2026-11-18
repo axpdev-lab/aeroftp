@@ -12991,6 +12991,7 @@ mod abandoned_command_tests {
         // dropped while it waits for the passive-mode reply.
         let passive = until_any_sent(&log, &["PASV", "EPSV"]);
         tokio::select! {
+            biased;
             _ = provider.list("/") => panic!("the server never answers the passive-mode request"),
             _ = passive => {}
         }
@@ -13111,6 +13112,7 @@ mod abandoned_command_tests {
             let (port, log, release) = server(Passive::LateDele).await;
             let mut provider = connected(port).await;
             tokio::select! {
+                biased;
                 _ = provider.delete("/a.txt") => panic!("the DELE reply comes after the client gave up"),
                 _ = until_sent(&log, "DELE") => {}
             }
@@ -13130,11 +13132,19 @@ mod abandoned_command_tests {
                 // reading its own reply would end here.
                 let second = provider.delete("/b.txt");
                 tokio::pin!(second);
+                // `biased`: the delete is polled first on every wake, so a
+                // delete already done cannot lose the race to the log check.
                 tokio::select! {
+                    biased;
                     ended = &mut second => {
                         panic!("{order:?}: the delete ended before its reply came: {ended:?}")
                     }
                     _ = until_sent(&log, "DELE /b.txt") => {}
+                }
+                // And once more right before the release: a zero timeout
+                // polls the delete first.
+                if let Ok(ended) = tokio::time::timeout(Duration::ZERO, &mut second).await {
+                    panic!("{order:?}: the delete ended before its reply came: {ended:?}");
                 }
                 release.notify_one();
                 tokio::time::timeout(Duration::from_secs(5), second)
@@ -13165,6 +13175,7 @@ mod abandoned_command_tests {
             let mut provider = connected(port).await;
             let passive = until_any_sent(&log, &["PASV", "EPSV"]);
             tokio::select! {
+                biased;
                 _ = provider.list("/") => panic!("the passive-mode reply comes after the client gave up"),
                 _ = passive => {}
             }

@@ -1692,8 +1692,9 @@ pub(crate) mod exists_tests {
                 let navigating = ftp.receipt_is_file("/backup/item");
                 tokio::pin!(navigating);
                 tokio::select! {
-                    _ = entered.notified() => {},
+                    biased;
                     result = &mut navigating => panic!("PWD must remain pending: {result:?}"),
+                    _ = entered.notified() => {},
                 }
                 // Drop the caller future like a navigation timeout/cancellation.
             }
@@ -2665,6 +2666,7 @@ mod abandoned_login_tests {
             let mut manager = FtpManager::new();
             manager.connect(&format!("127.0.0.1:{port}")).await.unwrap();
             tokio::select! {
+                biased;
                 _ = manager.login("u", "p") => panic!("the server never answers {silent}"),
                 _ = until_sent(&log, silent) => {}
             }
