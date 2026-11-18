@@ -8,7 +8,7 @@
     "source": "https://spdx.org/licenses/CDLA-Permissive-2.0.html",
     "terms": "Community Data License Agreement - Permissive - Version 2.0\n\nThis is the Community Data License Agreement - Permissive, Version 2.0 (the \"agreement\"). Data Provider(s) and Data Recipient(s) agree as follows:\n\n1. Provision of the Data\n\n1.1. A Data Recipient may use, modify, and share the Data made available by Data Provider(s) under this agreement if that Data Recipient follows the terms of this agreement.\n\n1.2. This agreement does not impose any restriction on a Data Recipient's use, modification, or sharing of any portions of the Data that are in the public domain or that may be used, modified, or shared under any other legal exception or limitation.\n\n2. Conditions for Sharing Data\n\n2.1. A Data Recipient may share Data, with or without modifications, so long as the Data Recipient makes available the text of this agreement with the shared Data.\n\n3. No Restrictions on Results\n\n3.1. This agreement does not impose any restriction or obligations with respect to the use, modification, or sharing of Results.\n\n4. No Warranty; Limitation of Liability\n\n4.1. All Data Recipients receive the Data subject to the following terms:\n\nTHE DATA IS PROVIDED ON AN \"AS IS\" BASIS, WITHOUT REPRESENTATIONS, WARRANTIES OR CONDITIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED INCLUDING, WITHOUT LIMITATION, ANY WARRANTIES OR CONDITIONS OF TITLE, NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.\n\nNO DATA PROVIDER SHALL HAVE ANY LIABILITY FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING WITHOUT LIMITATION LOST PROFITS), HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE DATA OR RESULTS, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.\n\n5. Definitions\n\n5.1. \"Data\" means the material received by a Data Recipient under this agreement.\n\n5.2. \"Data Provider\" means any person who is the source of Data provided under this agreement and in reliance on a Data Recipient's agreement to its terms.\n\n5.3. \"Data Recipient\" means any person who receives Data directly or indirectly from a Data Provider and agrees to the terms of this agreement.\n\n5.4. \"Results\" means any outcome obtained by computational analysis of Data, including for example machine learning models and models' insights.\n"
   },
-  "_notices": "A copyright notice that may continue on its next line (no holder after the years, an open parenthesis, a trailing comma, and, of or by) is never joined by a guess: the generation fails unless the notice is reviewed here with every line it continues on (following), each matched upstream, and the whole notice read at its source.",
+  "_notices": "A copyright notice that may continue on its next line (no holder after the years, an open parenthesis, a trailing comma, and, of or by) is never joined by a guess: the generation fails unless the notice is reviewed here with every line it continues on (following), each matched upstream, and the whole notice read at its source. A reviewed line that is an example value in documentation, not anyone's notice, is marked \"example\": true with an empty notice, and gives no attribution.",
   "notices": [
     {
       "line": "Copyright (C) 1987,88,89,90,91,92,93,94,95,96,98,99,2000,2001,2002,2003,2004,2006",
@@ -81,7 +81,8 @@
       "following": [
         "..."
       ],
-      "notice": "Copyright © 2016",
+      "notice": "",
+      "example": true,
       "source": "tauri-winres 0.3.6 README.md:86 (an example value; the next line is an ellipsis)"
     },
     {
@@ -89,7 +90,8 @@
       "following": [
         "```"
       ],
-      "notice": "Copyright © 2016",
+      "notice": "",
+      "example": true,
       "source": "tauri-winres 0.3.6 src/lib.rs:127 (an example value in a doc comment; the next line ends the code block)"
     }
   ],

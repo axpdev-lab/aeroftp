@@ -772,7 +772,7 @@ function noticeWithNextLine(notice: string, lineAfter: (k: number) => string | u
   const reviewed = reviewedNotices().find(
     (r) => r.line === notice && r.following.length > 0 && r.following.every((f, k) => (lineAfter(k) ?? '').trim() === f)
   );
-  if (reviewed) return reviewed.notice;
+  if (reviewed) return reviewed.example ? '' : reviewed.notice;
   const following: string[] = [];
   for (let k = 0; k < 4; k++) {
     const l = (lineAfter(k) ?? '').trim();
@@ -1277,7 +1277,9 @@ export function carriesWholeStandardText(id: string, standardText: string, fileT
 // license (a truncated text, an identifier mentioned beside another license)
 // carries no terms.
 export const REVIEWED_LICENSE_TERMS_FILE = path.join(__dirname, 'reviewed-license-terms.json');
-type ReviewedNotice = { line: string; following: string[]; notice: string; source: string };
+// `example`: the reviewed line is an example value in documentation, not a
+// notice of anyone: it gives no attribution.
+type ReviewedNotice = { line: string; following: string[]; notice: string; source: string; example?: boolean };
 let reviewedFile: Record<string, unknown> | undefined;
 const reviewedEntries = () => (reviewedFile ??= JSON.parse(fs.readFileSync(REVIEWED_LICENSE_TERMS_FILE, 'utf8')) as Record<string, unknown>);
 export function reviewedLicenseTerms(): Record<string, string> {

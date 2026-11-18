@@ -40997,7 +40997,6 @@ SOFTWARE.
 
 **Used by component(s):**
 - `tauri-winres@0.3.6` (cargo, file: `LICENSE`)
-  - Copyright © 2016 (README.md)
 
 ```text
 The MIT License (MIT)

@@ -1858,11 +1858,34 @@ test('wrapped notices: a notice that may go on with its next line is joined only
   }
 });
 
+test('reviewed notices: a reviewed example value gives no attribution, a reviewed wrapped holder still does', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'reviewed-example-fixture-'));
+  try {
+    fs.writeFileSync(path.join(tmpDir, 'README.md'), '```toml\nCopyright © 2016\n...\n```\n');
+    fs.mkdirSync(path.join(tmpDir, 'src'));
+    fs.writeFileSync(path.join(tmpDir, 'src/lib.rs'), '/// ```\n/// Copyright © 2016\n/// ```\nfn a() {}\n');
+    assert.deepStrictEqual(findPackageCopyrightNotices(tmpDir), []);
+    // The control: a reviewed notice whose holder is on the next line keeps it.
+    const wrapped = reviewedNotices().find((r) => !r.example && r.following.length === 1);
+    fs.writeFileSync(path.join(tmpDir, 'src/lib.rs'), `// ${wrapped.line}\n// ${wrapped.following[0]}\nfn a() {}\n`);
+    assert.deepStrictEqual(findPackageCopyrightNotices(tmpDir).map((n) => n.notice), [wrapped.notice]);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
 test('reviewed notices and tag mentions: each entry names its source and the whole notice starts with its line', () => {
   for (const r of reviewedNotices()) {
-    assert.ok(r.source && r.line && Array.isArray(r.following) && r.following.length > 0 && r.following.every((f) => typeof f === 'string' && f.trim() === f && f) && r.notice, JSON.stringify(r));
-    assert.ok(r.notice.startsWith(r.line.replace(/,$/, '')), r.line);
+    assert.ok(r.source && r.line && Array.isArray(r.following) && r.following.length > 0 && r.following.every((f) => typeof f === 'string' && f.trim() === f && f), JSON.stringify(r));
+    // An example value gives no notice; any other entry gives the whole one.
+    if (r.example === true) assert.strictEqual(r.notice, '', r.line);
+    else {
+      assert.ok(r.example === undefined && r.notice, JSON.stringify(r));
+      assert.ok(r.notice.startsWith(r.line.replace(/,$/, '')), r.line);
+    }
   }
+  // The two tauri-winres examples are reviewed as examples, not notices.
+  assert.deepStrictEqual(reviewedNotices().filter((r) => r.example).map((r) => r.source.split(' (')[0]), ['tauri-winres 0.3.6 README.md:86', 'tauri-winres 0.3.6 src/lib.rs:127']);
   for (const [key, reason] of Object.entries(reviewedTagMentions())) assert.ok(/^[^@]+@[^:]+:[^:]+:/.test(key) && reason, key);
 });
 
