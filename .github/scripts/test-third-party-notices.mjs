@@ -40,6 +40,7 @@ import {
   holderOfNotice,
   npmAuthors,
   namesLicense,
+  standardTextId,
 } from '../../scripts/gen-third-party-notices.ts';
 
 // The committed notices with the blocks the generator reproduces as shipped,
@@ -664,6 +665,61 @@ test('license names: an identifier counts as a word, a reviewed title names a li
   assert.strictEqual(namesLicense('CDLA-Permissive-2.0', '# Community Data License Agreement - Permissive - Version 2.0'), true);
   assert.strictEqual(namesLicense('CDLA-Permissive-2.0', 'Community Data License Agreement - Sharing - Version 1.0'), false);
   assert.strictEqual(namesLicense('bzip2-1.0.6', 'This program, "custom-zip", is free software.'), false);
+});
+
+test('standard SPDX texts: LGPL-2.1, LGPL-2.1-only and LGPL-2.1+ share the LGPL-2.1 document and keep the grant they declare', () => {
+  // SPDX: the deprecated LGPL-2.1 means LGPL-2.1-only, LGPL-2.1+ means
+  // LGPL-2.1-or-later; the license document is one text.
+  assert.strictEqual(standardTextId('LGPL-2.1'), 'LGPL-2.1-or-later');
+  assert.strictEqual(standardTextId('LGPL-2.1-only'), 'LGPL-2.1-or-later');
+  assert.strictEqual(standardTextId('LGPL-2.1+'), 'LGPL-2.1-or-later');
+  assert.strictEqual(standardTextId('LGPL-2.1-or-later'), 'LGPL-2.1-or-later');
+  assert.strictEqual(standardTextId('MIT'), 'MIT');
+  assert.strictEqual(isGplCompatible('LGPL-2.1-only'), true);
+  assert.strictEqual(isGplCompatible('LGPL-2.1'), true);
+  const tmpDirs = [];
+  const make = (name, license, files = {}) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lgpl-label-fixture-'));
+    tmpDirs.push(dir);
+    for (const [rel, content] of Object.entries(files)) {
+      fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(dir, rel), content);
+    }
+    return { name, version: '1.0.0', license, source: 'cargo', packageDir: dir, authors: [`${name} Author`], ...readPackageFiles(dir, `${name}@1.0.0`) };
+  };
+  const document = 'Version 2.1, February 1999';
+  const count = (md, s) => md.split(s).length - 1;
+  try {
+    // No own files: one section names every grant, the document appears once,
+    // and each package keeps the identifier it declares.
+    let md = generateNoticesMarkdown([make('bare-lgpl', 'LGPL-2.1'), make('only-lgpl', 'LGPL-2.1-only'), make('plus-lgpl', 'LGPL-2.1+'), make('later-lgpl', 'LGPL-2.1-or-later')], []);
+    assert.match(md, /\n### Standard License: LGPL-2\.1, LGPL-2\.1\+, LGPL-2\.1-only, LGPL-2\.1-or-later\n/);
+    assert.strictEqual(count(md, document), 1, 'the LGPL-2.1 document appears once');
+    for (const [name, id] of [['bare-lgpl', 'LGPL-2.1'], ['only-lgpl', 'LGPL-2.1-only'], ['plus-lgpl', 'LGPL-2.1+'], ['later-lgpl', 'LGPL-2.1-or-later']]) {
+      assert.ok(md.includes(`- \`${name}@1.0.0\` - SPDX: \`${id}\``), `${name} keeps ${id}`);
+    }
+    // A bare LGPL-2.1 alone is never labelled as an or-later grant.
+    md = generateNoticesMarkdown([make('bare-alone', 'LGPL-2.1')], []);
+    assert.match(md, /\n### Standard License: LGPL-2\.1\n/);
+    assert.doesNotMatch(md, /### Standard License: [^\n]*or-later/);
+    // An own LGPL-2.1 text covers the bare and the -only grant (acl-sys).
+    md = generateNoticesMarkdown([make('own-lgpl', 'LGPL-2.1-only', { LICENSE: STANDARD_TEXTS['LGPL-2.1-or-later'] })], []);
+    assert.doesNotMatch(md, /### Standard License:/);
+    assert.strictEqual(count(md, document), 1);
+    // A bundled header under LGPL-2.1-only has its text, under its own label,
+    // and two spellings of the same grant share one section.
+    md = generateNoticesMarkdown([make('bundling-lgpl', 'MIT', {
+      LICENSE: shippedLicense('MIT License\n\nCopyright (c) 2020 bundling-lgpl Author', 'MIT'),
+      'src/a.c': '/* Copyright 2001 Only Header Author\n * SPDX-License-Identifier: LGPL-2.1-only */\nint a;\n',
+      'src/b.c': '/* Copyright 2002 Bare Header Author\n * SPDX-License-Identifier: LGPL-2.1 */\nint b;\n',
+    })], []);
+    assert.match(md, /\n### Bundled Code: LGPL-2\.1, LGPL-2\.1-only\n/);
+    assert.ok(md.includes('bundles code under LGPL-2.1-only in `src/a.c`'));
+    assert.ok(md.includes('bundles code under LGPL-2.1 in `src/b.c`'));
+    assert.strictEqual(count(md, document), 1);
+  } finally {
+    for (const d of tmpDirs) fs.rmSync(d, { recursive: true, force: true });
+  }
 });
 
 test('standard SPDX texts: every term of the chosen license needs its text, an own file covers only the terms whose text it carries', () => {

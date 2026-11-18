@@ -278,6 +278,23 @@ export function formatDiff(expected: string, actual: string, maxLines = 40): str
   return out.join('\n');
 }
 
+/**
+ * Identifiers whose license document is the standard text of another one:
+ * LGPL-2.1-only and LGPL-2.1-or-later grant the same document, the version
+ * choice is the grant (SPDX: the deprecated LGPL-2.1 means LGPL-2.1-only,
+ * LGPL-2.1+ means LGPL-2.1-or-later). The text is looked up through this
+ * table and shared, the declared identifier is kept as the label.
+ */
+export const SHARED_STANDARD_TEXTS: Record<string, string> = {
+  'LGPL-2.1': 'LGPL-2.1-or-later',
+  'LGPL-2.1-only': 'LGPL-2.1-or-later',
+  'LGPL-2.1+': 'LGPL-2.1-or-later',
+};
+/** The key of the standard text for an identifier. */
+export const standardTextId = (id: string): string => SHARED_STANDARD_TEXTS[id] ?? id;
+/** The standard-text key of a term, its exception kept (`X WITH Y`). */
+const standardTextKey = (term: string): string => term.split(' WITH ').map(standardTextId).join(' WITH ');
+
 // Known individual licenses compatible with GPL-3.0-or-later distribution
 export const COMPATIBLE_SPDX_ATOMS = new Set([
   'MIT',
@@ -307,6 +324,7 @@ export const COMPATIBLE_SPDX_ATOMS = new Set([
   'curl',
   'SAX-PD-2.0',
   'LGPL-2.1',
+  'LGPL-2.1-only',
   'LGPL-2.1-or-later',
   'LGPL-2.1+',
   'LGPL-3.0',
@@ -1193,8 +1211,11 @@ function uncoveredLicenseTerms(
   const similar = (id: string, file: Set<string>) =>
     shareOf(standard.get(id)!, file) >= LICENSE_TEXT_SHARE &&
     (!seams.has(id) || shareOf(seams.get(id)!, file) >= 0.5);
+  // A term is looked up by the key of its text (LGPL-2.1-only shares the
+  // LGPL-2.1-or-later document); a term with no text keeps its identifier.
+  const hasText = (id: string) => standard.has(standardTextId(id));
   const carriesAt = (id: string, i: number) =>
-    similar(id, files[i]) && carriesWholeStandardText(id, standardLicenses[id], ownTexts[i]);
+    similar(standardTextId(id), files[i]) && carriesWholeStandardText(standardTextId(id), standardLicenses[standardTextId(id)], ownTexts[i]);
   // A term with no standard text is covered by a file that grants permission
   // itself and names that license. A version of a standard text with a clause
   // removed is still that text, never a grant of its own.
@@ -1207,7 +1228,7 @@ function uncoveredLicenseTerms(
   // naming both is left to the term no other file names.
   const left = choices.map((terms) => {
     const own = terms.flatMap((term, ti) =>
-      term.split(' WITH ').filter((id) => !standard.has(id)).map((id) => ({ ti, files: ownTexts.map((text, k) => k).filter((k) => grantsOwn[k] && namesLicense(id, ownTexts[k])) }))
+      term.split(' WITH ').filter((id) => !hasText(id)).map((id) => ({ ti, files: ownTexts.map((text, k) => k).filter((k) => grantsOwn[k] && namesLicense(id, ownTexts[k])) }))
     );
     const fileOf = new Map<number, number>();
     const assign = (n: number, seen: Set<number>): boolean => {
@@ -1223,13 +1244,13 @@ function uncoveredLicenseTerms(
     };
     const unmatched = new Set(own.map((_, n) => n).filter((n) => !assign(n, new Set())).map((n) => own[n].ti));
     return terms.filter(
-      (term, ti) => unmatched.has(ti) || !term.split(' WITH ').every((id) => !standard.has(id) || files.some((_, i) => carriesAt(id, i)))
+      (term, ti) => unmatched.has(ti) || !term.split(' WITH ').every((id) => !hasText(id) || files.some((_, i) => carriesAt(id, i)))
     );
   });
   if (left.some((terms) => terms.length === 0)) return [];
   const reproducible = left
     .map((terms, i) => i)
-    .filter((i) => left[i].every((term) => term.split(' WITH ').every((id) => standard.has(id))));
+    .filter((i) => left[i].every((term) => term.split(' WITH ').every((id) => hasText(id))));
   const pool = reproducible.length > 0 ? reproducible : left.map((_, i) => i);
   const most = Math.max(...pool.map((i) => choices[i].length - left[i].length));
   return pool.filter((i) => choices[i].length - left[i].length === most).map((i) => left[i]);
@@ -1987,7 +2008,6 @@ export function renderNotices(
   // Every term of the chosen license needs its text: a package whose own files
   // carry only some of them (MIT AND Apache-2.0 with LICENSE-MIT alone) gets the
   // standard text of the others.
-  const mapTerm = (term: string) => term.replace(/^LGPL-2\.1\+?(?= WITH |$)/, 'LGPL-2.1-or-later');
   const compatibleChoices = (choices: string[][]) => {
     const compat = choices.filter((terms) => isGplCompatible(terms.join(' AND ')));
     return compat.length > 0 ? compat : choices;
@@ -1999,7 +2019,7 @@ export function renderNotices(
     const alternatives = spdxAlternatives(comp.license);
     if (!alternatives) continue;
     const left = uncoveredLicenseTerms(
-      compatibleChoices(alternatives).map((terms) => terms.map(mapTerm)),
+      compatibleChoices(alternatives),
       ownTexts,
       readStandardLicenses()
     );
@@ -2014,18 +2034,25 @@ export function renderNotices(
   // enough: MIT OR Apache-2.0 with LICENSE-MIT alone carries no Apache text.
   const textCarried = (comp: ComponentInfo, term: string) => {
     const standard = readStandardLicenses();
-    const mapped = mapTerm(term);
     const ownTexts = comp.licenseFiles.filter((f) => !f.vendored && f.content.trim().length > 0).map((f) => f.content);
-    if (ownTexts.length > 0 && uncoveredLicenseTerms([[mapped]], ownTexts, standard).length === 0) return true;
+    if (ownTexts.length > 0 && uncoveredLicenseTerms([[term]], ownTexts, standard).length === 0) return true;
     const alternatives = spdxAlternatives(comp.license);
     if (!alternatives) return false;
-    const added = ownTexts.length > 0 ? (standardTextTerms.get(comp) ?? []) : compatibleChoices(alternatives).map((terms) => terms.map(mapTerm));
-    const ids = new Set(added.filter((terms) => terms.every((x) => x.split(' WITH ').every((id) => standard[id]))).flat().flatMap((x) => x.split(' WITH ')));
-    return mapped.split(' WITH ').every((id) => ids.has(id));
+    const added = ownTexts.length > 0 ? (standardTextTerms.get(comp) ?? []) : compatibleChoices(alternatives);
+    const ids = new Set(
+      added
+        .filter((terms) => terms.every((x) => x.split(' WITH ').every((id) => standard[standardTextId(id)])))
+        .flat()
+        .flatMap((x) => x.split(' WITH ').map(standardTextId))
+    );
+    return term.split(' WITH ').every((id) => ids.has(standardTextId(id)));
   };
   const bundledOf = (comp: ComponentInfo) => {
     if (!comp.packageDir) return [];
-    if (!knownLicenseIds) knownLicenseIds = new Set(Object.keys(readStandardLicenses()));
+    if (!knownLicenseIds) {
+      const standard = readStandardLicenses();
+      knownLicenseIds = new Set([...Object.keys(standard), ...Object.keys(SHARED_STANDARD_TEXTS).filter((id) => standard[standardTextId(id)])]);
+    }
     if (!bundledCache.has(comp)) {
       bundledCache.set(comp, findBundledCodeUnderOtherLicenses(comp, knownLicenseIds, KNOWN_SPDX_TAG_MENTIONS, (term) => textCarried(comp, term)));
     }
@@ -2133,9 +2160,9 @@ export function renderNotices(
     const comp = compMap.get(`${c.source}:${c.name}@${c.version}`);
     if (!comp) return true;
     const standard = readStandardLicenses();
-    return extractSpdxLicenseIds(comp.license)
-      .map((id) => id.replace(/^LGPL-2\.1\+$/, 'LGPL-2.1-or-later'))
-      .some((id) => id in standard && uncoveredLicenseTerms([[id]], [text], standard).length === 0);
+    return extractSpdxLicenseIds(comp.license).some(
+      (id) => standardTextId(id) in standard && uncoveredLicenseTerms([[id]], [text], standard).length === 0
+    );
   };
   const seenAnchorIds = new Set<string>();
   let groupIndex = 1;
@@ -2279,6 +2306,7 @@ export function renderNotices(
 
     // Map each component to its required standard license texts using exact parsed SPDX identifiers
     const licenseToComponents = new Map<string, ComponentInfo[]>();
+    const standardLabels = new Map<string, Set<string>>();
     for (const comp of componentsWithStandardTexts) {
       const key = `${comp.name}@${comp.version}`;
       if (!authorsOf(comp)) {
@@ -2302,9 +2330,9 @@ export function renderNotices(
         throw new Error(`Component ${key} has a license expression that does not parse: '${comp.license}'`);
       }
       const missingTexts = (terms: string[]) =>
-        terms.flatMap((term) => term.split(' WITH ')).filter((id) => !standardLicenses[id]);
+        terms.flatMap((term) => term.split(' WITH ')).filter((id) => !standardLicenses[standardTextId(id)]);
       // A package with own files needs only the terms they leave out.
-      const mapped = standardTextTerms.get(comp) ?? compatibleChoices(alternatives).map((terms) => terms.map(mapTerm));
+      const mapped = standardTextTerms.get(comp) ?? compatibleChoices(alternatives);
       const reproducible = mapped.filter((terms) => missingTexts(terms).length === 0);
       if (reproducible.length === 0) {
         throw new Error(
@@ -2313,11 +2341,16 @@ export function renderNotices(
       }
       const idsToInclude = [...new Set(reproducible.flat())];
 
+      // One section per text: the identifiers that share it (LGPL-2.1-only,
+      // LGPL-2.1-or-later) are named together, as each package declares it.
       for (const id of idsToInclude) {
-        if (!licenseToComponents.has(id)) {
-          licenseToComponents.set(id, []);
+        const key = standardTextKey(id);
+        if (!licenseToComponents.has(key)) {
+          licenseToComponents.set(key, []);
+          standardLabels.set(key, new Set());
         }
-        licenseToComponents.get(id)!.push(comp);
+        standardLabels.get(key)!.add(id);
+        if (!licenseToComponents.get(key)!.includes(comp)) licenseToComponents.get(key)!.push(comp);
       }
     }
 
@@ -2340,7 +2373,7 @@ export function renderNotices(
         lines.push(standardAnchors.join('\n'));
         lines.push('');
       }
-      lines.push(`### Standard License: ${licKey}`);
+      lines.push(`### Standard License: ${[...standardLabels.get(licKey)!].sort(compareStrings).join(', ')}`);
       lines.push('');
       lines.push('Authors for the following components as listed in package manifests or reviewed attributions:');
       for (const comp of comps) {
@@ -2426,6 +2459,7 @@ export function renderNotices(
     const standardTexts = readStandardLicenses();
     const byLicense = new Map<string, string[]>();
     const holdersByLicense = new Map<string, string[]>();
+    const bundledLabels = new Map<string, Set<string>>();
     const noHolder = 'No copyright line in the header that declares this license';
     const ownTermHeaders: string[] = [];
     for (const comp of bundledComponents) {
@@ -2436,7 +2470,7 @@ export function renderNotices(
         // package (its own and the ones shipped beside vendored code) is
         // reproduced below.
         if (b.declared) {
-          const standardTerms = licenseTermsOf(standardTexts[b.license.split(' WITH ')[0]] ?? '');
+          const standardTerms = licenseTermsOf(standardTexts[standardTextId(b.license.split(' WITH ')[0])] ?? '');
           const ownTerms = new Set(comp.licenseFiles.map((f) => licenseTermsOf(f.content)));
           for (const h of b.headers) {
             const terms = licenseTermsOf(h.text);
@@ -2450,17 +2484,21 @@ export function renderNotices(
           }
           continue;
         }
-        if (!byLicense.has(b.license)) byLicense.set(b.license, []);
-        if (!holdersByLicense.has(b.license)) holdersByLicense.set(b.license, []);
-        holdersByLicense.get(b.license)!.push(...(b.notices.length > 0 ? b.notices : [noHolder]).map((n) => `${n} (${comp.name})`));
-        byLicense.get(b.license)!.push(
+        // One section per text, named by every identifier that shares it.
+        const key = standardTextKey(b.license);
+        if (!byLicense.has(key)) byLicense.set(key, []);
+        if (!holdersByLicense.has(key)) holdersByLicense.set(key, []);
+        if (!bundledLabels.has(key)) bundledLabels.set(key, new Set());
+        bundledLabels.get(key)!.add(b.license);
+        holdersByLicense.get(key)!.push(...(b.notices.length > 0 ? b.notices : [noHolder]).map((n) => `${n} (${comp.name})`));
+        byLicense.get(key)!.push(
           `- \`${comp.name}@${comp.version}\` (${comp.source}, SPDX: \`${comp.license}\`) bundles code under ${b.license} in ${b.files.map((f) => `\`${f}\``).join(', ')}`,
           ...(b.notices.length > 0 ? b.notices.map((n) => `  - ${n}`) : [`  - ${noHolder}`])
         );
         // A header is reproduced only when its terms differ from the standard text's.
-        const standardTerms = licenseTermsOf(standardTexts[b.license.split(' WITH ')[0]] ?? '');
+        const standardTerms = licenseTermsOf(standardTexts[standardTextId(b.license.split(' WITH ')[0])] ?? '');
         for (const h of b.headers.filter((x) => licenseTermsOf(x.text) !== standardTerms)) {
-          byLicense.get(b.license)!.push('', `  Header with its own terms, as shipped in ${h.files.map((f) => `\`${f}\``).join(', ')}:`, '', makeVerbatimBlock(h.text), '');
+          byLicense.get(key)!.push('', `  Header with its own terms, as shipped in ${h.files.map((f) => `\`${f}\``).join(', ')}:`, '', makeVerbatimBlock(h.text), '');
         }
       }
     }
@@ -2470,7 +2508,7 @@ export function renderNotices(
       lines.push('These components bundle code from another project under a license they do not declare themselves. The bundled files name that license in their SPDX-License-Identifier header. The standard text is reproduced with the copyright lines of the header, and the header itself when its permission text differs from the standard text.');
       lines.push('');
       for (const licKey of [...byLicense.keys()].sort(compareStrings)) {
-        lines.push(`### Bundled Code: ${licKey}`);
+        lines.push(`### Bundled Code: ${[...bundledLabels.get(licKey)!].sort(compareStrings).join(', ')}`);
         lines.push('');
         lines.push(...byLicense.get(licKey)!);
         lines.push('');
