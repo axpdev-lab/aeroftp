@@ -5161,6 +5161,9 @@ fn private_account_delete(
     match user_id {
         Some(user) if private_token_type(credential_id).is_some() => {
             let conn = open_or_init_cli()?;
+            // A delete is a write: the owner it is checked against is
+            // recorded, so a later change of admins does not move it.
+            nonprofile_secret_owner(&conn)?;
             Ok(vault_copy_is_another_accounts(&conn, user, credential_id)?.then_some(user))
         }
         _ => Ok(None),

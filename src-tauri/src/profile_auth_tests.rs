@@ -1856,14 +1856,44 @@ async fn a_purge_reports_the_accounts_own_token(
     let purge = || crate::purge_profile_secrets("purge-target".into(), Some("dropbox".into()));
     users::cli_set_active_user(store, private_id).unwrap();
     store.store(key, "owners-token").unwrap();
+    // No owner recorded yet: the delete records the one it checks against.
+    let conn = users::open_or_init_cli().unwrap();
+    conn.execute(
+        "DELETE FROM global_state WHERE key = 'legacy_credential_owner_id'",
+        [],
+    )
+    .unwrap();
+    // The account's own delete, with no read before it.
+    users::delete_credential_dual_as(store, Some(private_id), key).unwrap();
+    let recorded: Option<String> = conn
+        .query_row(
+            "SELECT value FROM global_state WHERE key = 'legacy_credential_owner_id'",
+            [],
+            |row| row.get(0),
+        )
+        .ok();
     let without_a_row = purge().await;
-    store.store(key, "owners-token").unwrap();
+    let after_the_first = store.get(key).ok();
+    // A change of admins after it does not hand the owner's key to another.
+    let set_admin = |id: i64, admin: i64| {
+        conn.execute(
+            "UPDATE users SET is_admin = ?2 WHERE id = ?1",
+            rusqlite::params![id, admin],
+        )
+        .unwrap();
+    };
+    set_admin(private_id, 1);
+    set_admin(legacy_id, 0);
     users::store_credential_for_user_dual(store, private_id, key, "own-token").unwrap();
     let with_its_row = purge().await;
+    set_admin(legacy_id, 1);
+    set_admin(private_id, 0);
     users::cli_set_active_user(store, legacy_id).unwrap();
+    assert_eq!(recorded, Some(legacy_id.to_string()));
     assert!(!without_a_row.unwrap().iter().any(|removed| removed == key));
     assert!(with_its_row.unwrap().iter().any(|removed| removed == key));
     // Neither purge took the owner's vault key of the same name.
+    assert_eq!(after_the_first.as_deref(), Some("owners-token"));
     assert_eq!(store.get(key).unwrap(), "owners-token");
     let conn = users::open_or_init_cli().unwrap();
     let root = store.derive_user_partition_wrapping_key();

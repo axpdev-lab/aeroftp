@@ -665,10 +665,15 @@ impl JottacloudProvider {
             let key = (owner, account);
             // Per key: a key left unwritten still holds the chain Jotta
             // consumed, whatever happened to the others.
-            if outcome.written.contains(&key.1) || outcome.replaced.contains(&key.1) {
-                // Written, or holding a chain written from outside since,
-                // which wins: either way nothing is pending for it.
+            if outcome.written.contains(&key.1) {
                 pending.remove(&key);
+                continue;
+            }
+            if outcome.replaced.contains(&key.1) {
+                // Holding a chain written from outside since, which wins:
+                // nothing is filed for this connection. A rotation pending
+                // there may be the newer chain's own; the next load drops it
+                // when the key no longer holds its base.
                 continue;
             }
             // Jotta has consumed the stored chain: the rotated one is the
@@ -751,6 +756,12 @@ impl JottacloudProvider {
             if store.store(account, &json).is_err() {
                 return false;
             }
+            #[cfg(test)]
+            if tests::MIRROR_REFUSED.load(std::sync::atomic::Ordering::SeqCst)
+                && account != "jottacloud_refresh"
+            {
+                return false;
+            }
             // MUV-4: mirror into the active user's partition (per-profile only).
             account == "jottacloud_refresh"
                 || match self.credential_user {
@@ -778,17 +789,17 @@ impl JottacloudProvider {
                     continue;
                 }
                 // What the key holds now, read as `load_refresh_chain` reads it.
-                let now = match self.credential_user {
-                    Some(user) => crate::user_partitions::resolve_credential_for_user_owner_aware(
-                        store, user, account,
-                    ),
-                    None => crate::user_partitions::resolve_active_credential_owner_aware(
-                        store, account,
-                    ),
-                }
-                .ok()
-                .map(|json| stored_refresh_token(json.as_deref().map(|j| j.as_str())));
-                if let Some(now) = now {
+                let read_now = || Self::stored_token_now(store, self.credential_user, account);
+                let Some(now) = read_now() else {
+                    // Nothing to compare with: not written, as a load hands
+                    // out nothing while the read is refused.
+                    jotta_log(&format!(
+                        "Refresh token not written to {}: the key could not be read",
+                        account
+                    ));
+                    continue;
+                };
+                {
                     let known = self.stored_tokens.lock().unwrap_or_else(|e| e.into_inner());
                     let replaced = known
                         .get(*account)
@@ -805,11 +816,15 @@ impl JottacloudProvider {
                         outcome.replaced.push((*account).clone());
                         continue;
                     }
-                    outcome
-                        .read
-                        .insert((*account).clone(), zeroize::Zeroizing::new(now));
                 }
-                if write(store, account) {
+                outcome
+                    .read
+                    .insert((*account).clone(), zeroize::Zeroizing::new(now));
+                let written = write(store, account);
+                // A write that failed half way (the vault copy written, its
+                // mirror refused) leaves the key reading the new token: this
+                // connection's own, not one written from outside.
+                if written || read_now().is_some_and(|now| now == new_token) {
                     self.stored_tokens
                         .lock()
                         .unwrap_or_else(|e| e.into_inner())
@@ -817,6 +832,8 @@ impl JottacloudProvider {
                             (*account).clone(),
                             zeroize::Zeroizing::new(new_token.clone()),
                         );
+                }
+                if written {
                     outcome.written.push((*account).clone());
                 }
             }
@@ -847,6 +864,28 @@ impl JottacloudProvider {
         outcome
     }
 
+    /// The refresh token `account` holds for `user` (the bound account, `None`
+    /// the active one), read owner-aware as [`Self::load_refresh_chain`] reads
+    /// it: empty for no key, `None` when the read is refused.
+    fn stored_token_now(
+        store: &crate::credential_store::CredentialStore,
+        user: Option<i64>,
+        account: &str,
+    ) -> Option<String> {
+        #[cfg(test)]
+        if tests::READ_REFUSED.load(std::sync::atomic::Ordering::SeqCst) {
+            return None;
+        }
+        match user {
+            Some(user) => crate::user_partitions::resolve_credential_for_user_owner_aware(
+                store, user, account,
+            ),
+            None => crate::user_partitions::resolve_active_credential_owner_aware(store, account),
+        }
+        .ok()
+        .map(|json| stored_refresh_token(json.as_deref().map(|j| j.as_str())))
+    }
+
     /// Read one refresh chain: the active user's partition, falling back to the
     /// shared vault only for the legacy owner (owner-aware).
     /// `user`: the bound account (see `credential_user`), `None` the active one.
@@ -863,11 +902,14 @@ impl JottacloudProvider {
         // An owner that was never read reads nothing: the stored chain may be
         // the one a pending rotation replaced, which Jotta has consumed.
         let owner = owner?;
-        let pending = PENDING_ROTATIONS
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .get(&(owner, account.to_string()))
-            .cloned();
+        let read_pending = || {
+            PENDING_ROTATIONS
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .get(&(owner, account.to_string()))
+                .cloned()
+        };
+        let mut pending = read_pending();
         let parse = |json: String| -> Option<(String, String, String)> {
             let v: serde_json::Value = serde_json::from_str(&json).ok()?;
             let rt = v["refresh_token"].as_str()?.to_string();
@@ -883,19 +925,31 @@ impl JottacloudProvider {
         // The owner-aware read checks the account first (it exists, it is
         // unlocked): a pending rotation is that account's secret too, and is
         // not handed out while the read is refused. It stays for later.
-        let stored = match user {
+        let read_stored = || match user {
             Some(user) => crate::user_partitions::resolve_credential_for_user_owner_aware(
                 &store, user, account,
             ),
             None => crate::user_partitions::resolve_active_credential_owner_aware(&store, account),
+        };
+        let mut stored = read_stored().ok()?;
+        // A rotation filed or replaced between the two reads is read with
+        // the key as it is now, not with the key as it was.
+        for _ in 0..3 {
+            let now = read_pending();
+            if now.as_ref().map(|p| p.as_str()) == pending.as_ref().map(|p| p.as_str()) {
+                break;
+            }
+            pending = now;
+            stored = read_stored().ok()?;
         }
-        .ok()?;
         let stored_token = stored_refresh_token(stored.as_deref().map(|j| j.as_str()));
         if let Some(json) = pending {
             let base = serde_json::from_str::<serde_json::Value>(&json)
                 .ok()
                 .and_then(|v| v[PENDING_BASE].as_str().map(str::to_string));
-            if base.as_ref().is_some_and(|base| *base != stored_token) {
+            // A key with no chain is not a replacement: its delete drops the
+            // rotation itself (`delete_refresh_chain`).
+            if stored.is_some() && base.as_ref().is_some_and(|base| *base != stored_token) {
                 // The key was written from outside since the rotation was
                 // filed (an import, a restore): that chain wins, and the
                 // rotation is dropped unless a newer one replaced it.
@@ -936,6 +990,24 @@ impl JottacloudProvider {
                 te
             ));
 
+            {
+                // What this connection knows the keys hold, read before the
+                // exchange: the one it loaded, and the profile's own key when
+                // the chain came from another (empty when it has none), so a
+                // chain imported into either meanwhile is not written over.
+                let mut known = self.stored_tokens.lock().unwrap_or_else(|e| e.into_inner());
+                known.clear();
+                known.insert(account.clone(), zeroize::Zeroizing::new(stored_token));
+                if account != own {
+                    let own_now =
+                        crate::credential_store::CredentialStore::from_cache().and_then(|store| {
+                            Self::stored_token_now(&store, self.credential_user, &own)
+                        });
+                    if let Some(own_now) = own_now {
+                        known.insert(own.clone(), zeroize::Zeroizing::new(own_now));
+                    }
+                }
+            }
             // J1 root cause: Jotta's OIDC rejects uppercase `REFRESH_TOKEN`
             // as `unsupported_grant_type`. Use the RFC 6749 lowercase form.
             let form_body = format!(
@@ -1031,12 +1103,6 @@ impl JottacloudProvider {
             self.token_endpoint = te;
             let expires_in = token_resp.expires_in.unwrap_or(3600);
             self.token_expiry = Instant::now() + std::time::Duration::from_secs(expires_in);
-            {
-                // What this connection knows the keys hold: the one it read.
-                let mut known = self.stored_tokens.lock().unwrap_or_else(|e| e.into_inner());
-                known.clear();
-                known.insert(account.clone(), zeroize::Zeroizing::new(stored_token));
-            }
             self.refresh_source_account = if account == own { None } else { Some(account) };
 
             self.persist_refresh_token();
@@ -1874,6 +1940,12 @@ impl StorageProvider for JottacloudProvider {
         let used_refresh = refresh_or_login_token(self.try_connect_with_refresh().await)?;
 
         if !used_refresh {
+            // A login starts a chain of its own: what an exchange that failed
+            // read of the stored keys is not what this chain replaces.
+            self.stored_tokens
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clear();
             // Step 1: Decode login token
             let login_token = Self::decode_login_token(self.config.login_token.expose_secret())?;
             let username = login_token.username.unwrap_or_default();
@@ -4355,6 +4427,212 @@ mod tests {
         server.abort();
         drop(runtime);
         CredentialStore::clear_cache();
+    }
+
+    /// The owner-aware read refuses (test only).
+    pub(super) static READ_REFUSED: std::sync::atomic::AtomicBool =
+        std::sync::atomic::AtomicBool::new(false);
+    /// The partition mirror of a vault write refuses (test only).
+    pub(super) static MIRROR_REFUSED: std::sync::atomic::AtomicBool =
+        std::sync::atomic::AtomicBool::new(false);
+
+    /// What a rotation leaves alone, and what it knows is its own: a pending
+    /// rotation over a key with no chain is still read; a chain imported into
+    /// the profile's key while the singleton's chain is exchanged is not
+    /// written over; a rotation another connection filed over an import
+    /// stays; a key a half-finished write left reading this connection's
+    /// token is written again; a key that cannot be read is not written.
+    #[test]
+    fn a_rotation_keeps_what_others_filed_and_knows_its_own_writes() {
+        use crate::credential_store::CredentialStore;
+        use crate::user_partitions as partitions;
+        use std::sync::atomic::Ordering::SeqCst;
+        use std::sync::{Arc, Mutex};
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::jottacloud::tests::a_rotation_keeps_what_others_filed_and_knows_its_own_writes",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = partitions::test_lock();
+        let temporary = tempfile::TempDir::new().expect("temporary config");
+        std::env::set_var("XDG_CONFIG_HOME", temporary.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("jotta-own-test-pass").expect("bootstrap");
+        CredentialStore::unlock_with_master("jotta-own-test-pass", None).expect("unlock");
+        let store = CredentialStore::from_cache().expect("cached vault");
+        partitions::init_or_migrate_cli(&store).expect("init partitions");
+        let conn = partitions::open_or_init_cli().expect("partition DB");
+        let first = partitions::get_active_user(&conn)
+            .expect("active user")
+            .expect("first account")
+            .id;
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .unwrap();
+        // A chain to import into a key while an exchange is in flight.
+        let import_during: Arc<Mutex<Option<(String, String)>>> = Arc::new(Mutex::new(None));
+        let calls = Arc::new(Mutex::new(0usize));
+        let (endpoint, server) = runtime.block_on(async {
+            let import_during = import_during.clone();
+            let calls = calls.clone();
+            let app = axum::Router::new().route(
+                "/token",
+                axum::routing::post(move |_body: String| {
+                    let import_during = import_during.clone();
+                    let calls = calls.clone();
+                    async move {
+                        if let Some((key, json)) = import_during.lock().unwrap().take() {
+                            let store = CredentialStore::from_cache().unwrap();
+                            partitions::store_imported_credential_for_user(
+                                &store,
+                                first,
+                                &key,
+                                Some("jottacloud_refresh"),
+                                &json,
+                            )
+                            .expect("import during the exchange");
+                        }
+                        let call = {
+                            let mut calls = calls.lock().unwrap();
+                            *calls += 1;
+                            *calls
+                        };
+                        axum::Json(serde_json::json!({
+                            "access_token": format!("access-{call}"),
+                            "refresh_token": format!("rotated-{call}"),
+                            "expires_in": 3600,
+                        }))
+                    }
+                }),
+            );
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let endpoint = format!("http://{}/token", listener.local_addr().unwrap());
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            (endpoint, server)
+        });
+        let chain = |token: &str| {
+            serde_json::json!({
+                "refresh_token": token, "token_endpoint": endpoint, "username": "jotta-user",
+            })
+            .to_string()
+        };
+        let stored = |key: &str| {
+            partitions::resolve_credential_for_user(&store, first, key)
+                .unwrap()
+                .map(|value| value.to_string())
+                .unwrap_or_default()
+        };
+        let pending_of = |key: &str| {
+            PENDING_ROTATIONS
+                .lock()
+                .unwrap()
+                .get(&(None, key.to_string()))
+                .map(|json| json.to_string())
+        };
+        let bound = |profile: &str| {
+            let mut provider = JottacloudProvider::new(JottacloudConfig {
+                login_token: SecretString::from(String::new()),
+                device: "Jotta".into(),
+                mountpoint: "Archive".into(),
+                initial_path: None,
+            })
+            .with_profile_id(profile);
+            provider.set_credential_user(Some(first));
+            provider
+        };
+
+        // A pending rotation over a key with no chain is still that key's chain.
+        let absent = "jottacloud_refresh_absent";
+        let mut filed: serde_json::Value = serde_json::from_str(&chain("pending-absent")).unwrap();
+        filed[PENDING_BASE] = "consumed".into();
+        PENDING_ROTATIONS.lock().unwrap().insert(
+            (None, absent.to_string()),
+            zeroize::Zeroizing::new(filed.to_string()),
+        );
+        let absent_loaded = JottacloudProvider::load_refresh_chain(Some(first), Some(None), absent)
+            .map(|((rt, _, _), _)| rt);
+
+        // The profile's key is empty and the singleton's chain is exchanged;
+        // a chain imported into the profile's key meanwhile stays.
+        let own = "jottacloud_refresh_single";
+        store
+            .store("jottacloud_refresh", &chain("singleton-chain"))
+            .unwrap();
+        *import_during.lock().unwrap() = Some((own.to_string(), chain("imported-own")));
+        let mut live = bound("single");
+        assert!(runtime.block_on(live.try_connect_with_refresh()).unwrap());
+        let own_after_connect = stored(own);
+        let singleton_after_connect = store.get("jottacloud_refresh").unwrap_or_default();
+
+        // Another connection consumed that import and filed its successor:
+        // this connection's next rotation leaves it there.
+        let mut successor: serde_json::Value =
+            serde_json::from_str(&chain("successor-of-import")).unwrap();
+        successor[PENDING_BASE] = "imported-own".into();
+        PENDING_ROTATIONS.lock().unwrap().insert(
+            (None, own.to_string()),
+            zeroize::Zeroizing::new(successor.to_string()),
+        );
+        live.token_expiry = Instant::now();
+        runtime.block_on(live.refresh_if_needed()).expect("refresh");
+        let successor_kept = pending_of(own) == Some(successor.to_string());
+        drop(live);
+
+        // The vault copy is written and its mirror refused: the key reads
+        // this connection's token, and its next rotation is written.
+        let half = "jottacloud_refresh_half";
+        store.store(half, &chain("half-a")).unwrap();
+        let mut halfway = bound("half");
+        MIRROR_REFUSED.store(true, SeqCst);
+        assert!(runtime
+            .block_on(halfway.try_connect_with_refresh())
+            .unwrap());
+        MIRROR_REFUSED.store(false, SeqCst);
+        halfway.token_expiry = Instant::now();
+        runtime
+            .block_on(halfway.refresh_if_needed())
+            .expect("refresh");
+        let half_after = stored(half);
+        let half_sent = halfway.refresh_token.expose_secret().to_string();
+
+        // A key that cannot be read is not written.
+        READ_REFUSED.store(true, SeqCst);
+        halfway.token_expiry = Instant::now();
+        runtime
+            .block_on(halfway.refresh_if_needed())
+            .expect("refresh");
+        READ_REFUSED.store(false, SeqCst);
+        let half_after_refused = stored(half);
+        let refused_pending = pending_of(half).is_some();
+        drop(halfway);
+
+        server.abort();
+        drop(runtime);
+        PENDING_ROTATIONS.lock().unwrap().clear();
+        CredentialStore::clear_cache();
+        assert_eq!(absent_loaded.as_deref(), Some("pending-absent"));
+        assert!(
+            own_after_connect.contains("imported-own"),
+            "{own_after_connect}"
+        );
+        assert!(
+            singleton_after_connect.contains("rotated-1"),
+            "{singleton_after_connect}"
+        );
+        assert!(successor_kept, "{:?}", pending_of(own));
+        assert!(
+            half_after.contains(&format!("\"{half_sent}\"")),
+            "{half_after} / {half_sent}"
+        );
+        assert_eq!(half_after_refused, half_after);
+        assert!(
+            refused_pending,
+            "the unwritten rotation is kept for the process"
+        );
     }
 
     /// A chain imported while a rotation is pending wins: the next connection
