@@ -1,0 +1,35 @@
+# Commit signing policy read by the Chainguard GitHub App
+# ("Enforce - Commit Signing" check). A commit passes when it satisfies
+# ANY one of the authorities below. The app reads this file from the
+# default branch, so it takes effect once merged into main.
+#
+# Docs: https://www.chainguard.dev/docs/chainguard/guardener/github/commit-verification
+
+spec:
+  authorities:
+    # Keyless Sigstore signatures made with gitsign by the maintainer,
+    # logged in with GitHub under the noreply address (the same one used
+    # as commit author and in Signed-off-by). The certificate and the
+    # signature are recorded in the public Rekor transparency log. To
+    # admit another signer, add one more identity entry below.
+    - keyless:
+        url: https://fulcio.sigstore.dev
+        identities:
+          - issuer: https://github.com/login/oauth
+            subject: 45786925+axpnet@users.noreply.github.com
+      ctlog:
+        url: https://rekor.sigstore.dev
+
+    # The maintainer's GPG signing keys, one per workstation (L1, L2),
+    # as published on the GitHub account. This is the day-to-day path:
+    # gpg-agent caches the passphrase, so agents can sign without a
+    # browser login. Deleting a key from the GitHub account removes it
+    # from here.
+    - key:
+        kms: https://github.com/axpnet.gpg
+
+    # Commits GitHub creates and signs itself: the squash commit of a
+    # merged pull request, and edits made in the web editor. Rebase
+    # merges are not signed by GitHub.
+    - key:
+        kms: https://github.com/web-flow.gpg
