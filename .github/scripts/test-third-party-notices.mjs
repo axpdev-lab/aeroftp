@@ -1561,7 +1561,7 @@ test('comment closers: inside a block comment a closer ends it whatever leads th
   }
 });
 
-test('source notices: a package whose license names a holder still lists the other holders of its sources, each once', () => {
+test('source notices: a package whose license names a holder still lists the other notices of its sources, each once, another year included', () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'extra-holder-fixture-'));
   try {
     const write = (rel, content) => {
@@ -1573,13 +1573,19 @@ test('source notices: a package whose license names a holder still lists the oth
     // A second, untagged holder in the sources, in two files: listed once.
     write('src/lib.rs', '// Copyright (c) 2021 Contributor Two\nfn a() {}\n');
     write('src/two.rs', '// Copyright (c) 2021 Contributor Two\nfn b() {}\n');
-    // The holder the license names, with other years and spellings: not listed again.
+    // The holder the license names with other years is another notice: listed.
     write('src/own.rs', '// Copyright (c) 2022 Wrapper Author.\n');
     write('README.md', '(c) 2015 - Present - The Wrapper Author\n');
+    // The very notice the license carries, in another spelling: not listed again.
+    write('src/same.rs', '// COPYRIGHT © 2020  Wrapper Author.\n');
     const comp = { name: 'extra-holder', version: '1.0.0', license: 'MIT', source: 'cargo', packageDir: tmpDir, authors: ['Wrapper Author'], ...readPackageFiles(tmpDir, 'extra-holder@1.0.0') };
     const md = generateNoticesMarkdown([comp], []);
     const entry = md.slice(md.indexOf('`extra-holder@1.0.0`'), md.indexOf('```', md.indexOf('`extra-holder@1.0.0`')));
-    assert.deepStrictEqual(entry.match(/^ {2}- .*$/gm), ['  - Copyright (c) 2021 Contributor Two (src/lib.rs)']);
+    assert.deepStrictEqual(entry.match(/^ {2}- .*$/gm), [
+      '  - (c) 2015 - Present - The Wrapper Author (README.md)',
+      '  - Copyright (c) 2021 Contributor Two (src/lib.rs)',
+      '  - Copyright (c) 2022 Wrapper Author. (src/own.rs)',
+    ]);
     assert.strictEqual(md.split('Copyright (c) 2020 Wrapper Author').length - 1, 1, 'the license text, with its holder, is reproduced once');
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });

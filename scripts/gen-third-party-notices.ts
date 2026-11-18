@@ -1517,6 +1517,33 @@ export function holderKey(holder: string): string {
 }
 
 /**
+ * A whole copyright notice compared without case, spacing, the spelling of
+ * its sign or a trailing period, and without an SPDX tag that follows it on
+ * the same line: the years and the scope stay, so the same holder with other
+ * years is another notice.
+ */
+export function noticeKey(notice: string): string {
+  return notice
+    .replace(COMMENT_LEADER, '')
+    .replace(/^SPDX-FileCopyrightText:\s*/i, 'Copyright ')
+    .replace(/\s*SPDX-License-Identifier:.*$/i, '')
+    .replace(/\(c\)|©/gi, '(c)')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .replace(/[.,;\s]+$/, '')
+    .trim();
+}
+
+/** The copyright notices a text carries, as noticeKey gives them. */
+export function noticesOf(text: string): string[] {
+  return text
+    .split('\n')
+    .map((raw) => raw.replace(COMMENT_LEADER, '').replace(/^SPDX-FileCopyrightText:\s*/i, 'Copyright ').trim())
+    .filter((l) => /^(?:copyright\b|\(c\)|©)/i.test(l))
+    .map(noticeKey);
+}
+
+/**
  * The holders a text names, as holderKey gives them: from its copyright lines,
  * and from a credits list that puts the notice after the name ("- Intel
  * Corporation (Copyright 2012-2021)", aws-lc's LICENSE).
@@ -2484,14 +2511,21 @@ export function renderNotices(
             lines.push(`  - ${n} (in a source header under ${licenses.sort(compareStrings).join(', ')})`);
           }
           // The files name a holder, and the sources may name others (an
-          // untagged src/lib.rs by a second contributor): each of their
-          // notices is listed once, leaving out the holders the files name
-          // and those of the bundled headers, listed above or with the
-          // bundled code under their own license.
-          const named = new Set([...ownHolders, ...bundledOf(fullComp).flatMap((b) => b.notices).map((n) => holderKey(holderOfNotice(n)))]);
+          // untagged src/lib.rs by a second contributor) or the same holder
+          // with other years: each notice is listed once, leaving out only
+          // the notices the files carry and those of the bundled headers,
+          // listed above or with the bundled code under their own license.
+          // Whole notices are compared, so another year is not dropped.
+          const listed = new Set([
+            ...fullComp.licenseFiles.filter((f) => !f.vendored).flatMap((f) => noticesOf(f.content)),
+            ...bundledOf(fullComp).flatMap((b) => b.notices).map(noticeKey),
+          ]);
           const excluded = [...fullComp.licenseFiles, ...fullComp.noticeFiles].map((f) => f.filename);
           for (const n of findPackageCopyrightNotices(fullComp.packageDir, excluded, vendoredFolders(fullComp))) {
-            if (!named.has(holderKey(holderOfNotice(n.notice)))) lines.push(`  - ${n.notice} (${n.file})`);
+            const key = noticeKey(n.notice);
+            if (listed.has(key)) continue;
+            listed.add(key);
+            lines.push(`  - ${n.notice} (${n.file})`);
           }
         }
       }

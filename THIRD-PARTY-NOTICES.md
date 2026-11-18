@@ -1452,6 +1452,7 @@ SOFTWARE.
 **Used by component(s):**
 - `@tauri-apps/api@2.11.0` (npm, file: `LICENSE_APACHE-2.0`)
   - Copyright 2019-2024 Tauri Programme within The Commons Conservancy (in a source header under Apache-2.0, MIT)
+  - (c) 2019 - 2021 - The Tauri Programme within The Commons Conservancy. (README.md)
   - Copyright (c) Microsoft Corporation. (external/tslib/tslib.es6.cjs)
 - `arboard@3.7.0` (cargo, file: `LICENSE-APACHE.txt`)
 - `fdeflate@0.3.7` (cargo, file: `LICENSE-APACHE`)
@@ -1492,38 +1493,54 @@ SOFTWARE.
 - `tauri@2.11.0` (cargo, file: `LICENSE_APACHE-2.0`)
   - Copyright 2019-2024 Tauri Programme within The Commons Conservancy (in a source header under Apache-2.0, MIT)
   - Copyright 2018-2023 the Deno authors. All rights reserved. MIT license. (in a source header under Apache-2.0, MIT)
+  - (c) 2019 - 2021 - The Tauri Programme within The Commons Conservancy. (README.md)
 - `tauri-build@2.6.3` (cargo, file: `LICENSE_APACHE-2.0`)
   - Copyright 2019-2024 Tauri Programme within The Commons Conservancy (in a source header under Apache-2.0, MIT)
+  - (c) 2021 - The Tauri Programme within The Commons Conservancy. (README.md)
 - `tauri-codegen@2.6.3` (cargo, file: `LICENSE_APACHE-2.0`)
   - Copyright 2019-2024 Tauri Programme within The Commons Conservancy (in a source header under Apache-2.0, MIT)
+  - (c) 2021 - The Tauri Programme within The Commons Conservancy. (README.md)
 - `tauri-macros@2.6.3` (cargo, file: `LICENSE_APACHE-2.0`)
   - Copyright 2019-2024 Tauri Programme within The Commons Conservancy (in a source header under Apache-2.0, MIT)
+  - (c) 2021 - The Tauri Programme within The Commons Conservancy. (README.md)
 - `tauri-plugin-autostart@2.5.1` (cargo, file: `LICENSE_APACHE-2.0`)
   - Copyright 2019-2023 Tauri Programme within The Commons Conservancy (in a source header under Apache-2.0, MIT)
+  - (c) 2015 - Present - The Tauri Programme within The Commons Conservancy. (README.md)
 - `tauri-plugin-dialog@2.7.3` (cargo, file: `LICENSE_APACHE-2.0`)
   - Copyright 2019-2023 Tauri Programme within The Commons Conservancy (in a source header under Apache-2.0, MIT)
+  - (c) 2015 - Present - The Tauri Programme within The Commons Conservancy. (README.md)
 - `tauri-plugin-fs@2.5.2` (cargo, file: `LICENSE_APACHE-2.0`)
   - Copyright 2019-2023 Tauri Programme within The Commons Conservancy (in a source header under Apache-2.0, MIT)
   - Copyright 2018-2023 the Deno authors. (in a source header under Apache-2.0, MIT)
+  - (c) 2015 - Present - The Tauri Programme within The Commons Conservancy. (README.md)
 - `tauri-plugin-log@2.9.2` (cargo, file: `LICENSE_APACHE-2.0`)
   - Copyright 2019-2023 Tauri Programme within The Commons Conservancy (in a source header under Apache-2.0, MIT)
+  - (c) 2015 - Present - The Tauri Programme within The Commons Conservancy. (README.md)
 - `tauri-plugin-notification@2.4.0` (cargo, file: `LICENSE_APACHE-2.0`)
   - Copyright 2019-2023 Tauri Programme within The Commons Conservancy (in a source header under Apache-2.0, MIT)
+  - (c) 2015 - Present - The Tauri Programme within The Commons Conservancy. (README.md)
 - `tauri-plugin-shell@2.3.6` (cargo, file: `LICENSE_APACHE-2.0`)
   - Copyright 2019-2023 Tauri Programme within The Commons Conservancy (in a source header under Apache-2.0, MIT)
+  - (c) 2015 - Present - The Tauri Programme within The Commons Conservancy. (README.md)
 - `tauri-plugin-single-instance@2.4.5` (cargo, file: `LICENSE_APACHE-2.0`)
   - Copyright 2019-2023 Tauri Programme within The Commons Conservancy (in a source header under Apache-2.0, MIT)
+  - (c) 2015 - Present - The Tauri Programme within The Commons Conservancy. (README.md)
 - `tauri-plugin-window-state@2.4.1` (cargo, file: `LICENSE_APACHE-2.0`)
   - Copyright 2019-2023 Tauri Programme within The Commons Conservancy (in a source header under Apache-2.0, MIT)
+  - (c) 2015 - Present - The Tauri Programme within The Commons Conservancy. (README.md)
 - `tauri-runtime@2.11.3` (cargo, file: `LICENSE_APACHE-2.0`)
   - Copyright 2019-2024 Tauri Programme within The Commons Conservancy (in a source header under Apache-2.0, MIT)
+  - (c) 2021 - The Tauri Programme within The Commons Conservancy. (README.md)
 - `tauri-runtime-wry@2.11.4` (cargo, file: `LICENSE_APACHE-2.0`)
   - Copyright 2019-2024 Tauri Programme within The Commons Conservancy (in a source header under Apache-2.0, MIT)
+  - (c) 2021 - The Tauri Programme within The Commons Conservancy. (README.md)
 - `tauri-utils@2.9.3` (cargo, file: `LICENSE_APACHE-2.0`)
   - Copyright 2019-2024 Tauri Programme within The Commons Conservancy (in a source header under Apache-2.0, MIT)
+  - (c) 2021 - The Tauri Programme within The Commons Conservancy. (README.md)
 - `tauri-winrt-notification@0.7.3` (cargo, file: `LICENSE_APACHE-2.0`)
   - Copyright 2017-2022 allenbenz <allenbenz@users.noreply.github.com> (in a source header under Apache-2.0, MIT)
   - Copyright 2022-2022 Tauri Programme within The Commons Conservancy (in a source header under Apache-2.0, MIT)
+  - Copyright 2022-2025 Tauri Programme within The Commons Conservancy (examples/unpackaged_app.rs)
 - `time@0.3.55` (cargo, file: `LICENSE-Apache`)
 - `time-core@0.1.9` (cargo, file: `LICENSE-Apache`)
 - `time-macros@0.2.32` (cargo, file: `LICENSE-Apache`)
@@ -2994,6 +3011,9 @@ limitations under the License.
 - `concurrent-queue@2.5.0` (cargo, file: `LICENSE-MIT`)
   - No copyright notice is shipped in the package
 - `ctrlc@3.5.2` (cargo, file: `LICENSE-MIT`)
+  - Copyright (c) 2015 CtrlC developers (examples/readme_example.rs)
+  - Copyright (c) 2017 CtrlC developers (src/lib.rs)
+  - Copyright (c) 2023 CtrlC developers (tests/main/harness.rs)
 - `curve25519-dalek-derive@0.1.1` (cargo, file: `LICENSE-MIT`)
   - No copyright notice is shipped in the package
 - `displaydoc@0.2.7` (cargo, file: `LICENSE-MIT`)
@@ -4450,7 +4470,9 @@ DEALINGS IN THE SOFTWARE.
 - `base64@0.23.1` (cargo, file: `LICENSE-APACHE`)
 - `bcrypt-pbkdf@0.11.0` (cargo, file: `LICENSE-APACHE`)
 - `bitflags@1.3.2` (cargo, file: `LICENSE-APACHE`)
+  - Copyright 2014 The Rust Project Developers. (src/lib.rs)
 - `bitflags@2.13.2` (cargo, file: `LICENSE-APACHE`)
+  - Copyright 2014 The Rust Project Developers. (src/lib.rs)
 - `blocking@1.7.0` (cargo, file: `LICENSE-APACHE`)
   - No copyright notice is shipped in the package
 - `bstr@1.13.1` (cargo, file: `LICENSE-APACHE`)
@@ -4467,6 +4489,7 @@ DEALINGS IN THE SOFTWARE.
 - `cap-std@4.0.3` (cargo, file: `LICENSE-APACHE`)
 - `cc@1.4.5` (cargo, file: `LICENSE-APACHE`)
 - `cexpr@0.6.0` (cargo, file: `LICENSE-APACHE`)
+  - Copyright 2016 Jethro G. Beekman (src/expr.rs)
 - `cfg-if@1.0.4` (cargo, file: `LICENSE-APACHE`)
 - `cmake@0.1.58` (cargo, file: `LICENSE-APACHE`)
 - `concurrent-queue@2.5.0` (cargo, file: `LICENSE-APACHE`)
@@ -4495,6 +4518,7 @@ DEALINGS IN THE SOFTWARE.
 - `core_detect@1.0.0` (cargo, file: `LICENSE-APACHE`)
 - `critical-section@1.2.0` (cargo, file: `LICENSE-APACHE`)
 - `crossbeam-channel@0.5.17` (cargo, file: `LICENSE-APACHE`)
+  - Copyright (c) 2009 The Go Authors (tests/golang.rs)
   - Copyright 2013-2014 The Rust Project Developers (tests/mpsc.rs)
 - `crossbeam-epoch@0.9.21` (cargo, file: `LICENSE-APACHE`)
 - `crossbeam-utils@0.8.23` (cargo, file: `LICENSE-APACHE`)
@@ -4528,12 +4552,15 @@ DEALINGS IN THE SOFTWARE.
   - Copyright 2013 The Rust Project Developers. (src/bufreader.rs)
 - `fnv@1.0.7` (cargo, file: `LICENSE-APACHE`)
 - `form_urlencoded@1.2.2` (cargo, file: `LICENSE-APACHE`)
+  - Copyright 2013-2016 The rust-url developers. (src/lib.rs)
 - `fs-set-times@0.20.3` (cargo, file: `LICENSE-APACHE`)
 - `futures-lite@2.6.1` (cargo, file: `LICENSE-APACHE`)
 - `gethostname@1.1.0` (cargo, file: `LICENSE`)
   - Copyright Sebastian Wiesner <sebastian@swsnr.de> (README.md)
 - `gif@0.14.2` (cargo, file: `LICENSE-APACHE`)
 - `glob@0.3.4` (cargo, file: `LICENSE-APACHE`)
+  - Copyright 2013-2014 The Rust Project Developers. (tests/glob-std.rs)
+  - Copyright 2014 The Rust Project Developers. (src/lib.rs)
 - `group@0.13.0` (cargo, file: `LICENSE-APACHE`)
 - `group@0.14.0` (cargo, file: `LICENSE-APACHE`)
 - `hash32@0.2.1` (cargo, file: `LICENSE-APACHE`)
@@ -4548,12 +4575,19 @@ DEALINGS IN THE SOFTWARE.
 - `hermit-abi@0.5.3` (cargo, file: `LICENSE-APACHE`)
   - No copyright notice is shipped in the package
 - `html5ever@0.38.0` (cargo, file: `LICENSE-APACHE`)
+  - Copyright 2014-2017 The html5ever Project Developers. (examples/arena.rs)
+  - Copyright 2014-2025 The html5ever Project Developers. (src/encoding.rs)
 - `httparse@1.10.1` (cargo, file: `LICENSE-APACHE`)
 - `hyper-rustls@0.27.9` (cargo, file: `LICENSE-APACHE`)
 - `hyper-tls@0.6.0` (cargo, file: `LICENSE-APACHE`)
 - `idna@1.1.0` (cargo, file: `LICENSE-APACHE`)
+  - Copyright 2013 The rust-url developers. (src/punycode.rs)
+  - Copyright 2013-2014 The rust-url developers. (src/deprecated.rs)
+  - Copyright 2016 The rust-url developers. (src/lib.rs)
+  - Copyright The rust-url developers. (src/uts46.rs)
   - © 2024 Unicode®, Inc. (tests/IdnaTestV2.txt)
 - `idna_adapter@1.2.2` (cargo, file: `LICENSE-APACHE`)
+  - Copyright The rust-url developers. (src/lib.rs)
 - `image_hasher@3.1.1` (cargo, file: `LICENSE-APACHE`)
 - `indexmap@1.9.3` (cargo, file: `LICENSE-APACHE`)
 - `indexmap@2.14.2` (cargo, file: `LICENSE-APACHE`)
@@ -4581,23 +4615,37 @@ DEALINGS IN THE SOFTWARE.
   - Copyright 2016 Amanieu d'Antras (src/rwlock.rs)
   - Copyright 2018 Amanieu d'Antras (src/lib.rs)
 - `log@0.4.35` (cargo, file: `LICENSE-APACHE`)
+  - Copyright 2014-2015 The Rust Project Developers. (src/macros.rs)
+  - Copyright 2015 The Rust Project Developers. (src/lib.rs)
 - `lzma-sys@0.1.20` (cargo, file: `LICENSE-APACHE`)
 - `markup5ever@0.38.0` (cargo, file: `LICENSE-APACHE`)
+  - Copyright 2014-2017 The html5ever Project Developers. (interface/mod.rs)
 - `mime@0.3.17` (cargo, file: `LICENSE-APACHE`)
 - `muda@0.19.3` (cargo, file: `LICENSE-APACHE`)
   - Copyright 2014-2021 The winit contributors (in a source header under Apache-2.0)
 - `multimap@0.10.1` (cargo, file: `LICENSE-APACHE`)
 - `num@0.4.3` (cargo, file: `LICENSE-APACHE`)
+  - Copyright 2014-2016 The Rust Project Developers. (src/lib.rs)
 - `num-bigint@0.4.8` (cargo, file: `LICENSE-APACHE`)
+  - Copyright (c) 2013-2014 The Rust Project Developers (benches/shootout-pidigits.rs)
+  - Copyright 2013-2014 The Rust Project Developers. (src/lib.rs)
 - `num-bigint@0.5.1` (cargo, file: `LICENSE-APACHE`)
+  - Copyright (c) 2013-2014 The Rust Project Developers (benches/shootout-pidigits.rs)
+  - Copyright 2013-2014 The Rust Project Developers. (src/lib.rs)
 - `num-bigint-dig@0.8.6` (cargo, file: `LICENSE-APACHE`)
+  - Copyright 2013-2014 The Rust Project Developers. (src/lib.rs)
   - Copyright 2018 Friedel Ziegelmayer (src/lib.rs)
   - Copyright 2018 Stichting Organism (src/lib.rs)
 - `num-complex@0.4.6` (cargo, file: `LICENSE-APACHE`)
+  - Copyright 2013 The Rust Project Developers. (src/lib.rs)
 - `num-integer@0.1.47` (cargo, file: `LICENSE-APACHE`)
+  - Copyright 2013-2014 The Rust Project Developers. (src/lib.rs)
 - `num-iter@0.1.46` (cargo, file: `LICENSE-APACHE`)
+  - Copyright 2013-2014 The Rust Project Developers. (src/lib.rs)
 - `num-rational@0.4.2` (cargo, file: `LICENSE-APACHE`)
+  - Copyright 2013-2014 The Rust Project Developers. (src/lib.rs)
 - `num-traits@0.2.19` (cargo, file: `LICENSE-APACHE`)
+  - Copyright 2013-2014 The Rust Project Developers. (src/lib.rs)
 - `oauth2@5.0.0` (cargo, file: `LICENSE-APACHE`)
 - `oid-registry@0.8.1` (cargo, file: `LICENSE-APACHE`)
 - `once_cell@1.21.4` (cargo, file: `LICENSE-APACHE`)
@@ -4617,6 +4665,7 @@ DEALINGS IN THE SOFTWARE.
 - `parking_lot_core@0.9.12` (cargo, file: `LICENSE-APACHE`)
   - Copyright 2016 Amanieu d'Antras (src/lib.rs)
 - `percent-encoding@2.3.2` (cargo, file: `LICENSE-APACHE`)
+  - Copyright 2013-2016 The rust-url developers. (src/ascii_set.rs)
 - `petgraph@0.8.3` (cargo, file: `LICENSE-APACHE`)
 - `pgp@0.21.0` (cargo, file: `LICENSE-APACHE`)
   - Copyright (C) 2017 Damien Goutte-Gattat (tests/openpgp/trust-pgp/common.scm)
@@ -4692,6 +4741,7 @@ DEALINGS IN THE SOFTWARE.
   - Copyright 2015 The Rust Project Developers. (src/lib.rs)
 - `ssh2@0.9.7` (cargo, file: `LICENSE-APACHE`)
 - `stable_deref_trait@1.2.1` (cargo, file: `LICENSE-APACHE`)
+  - Copyright 2017 Robert Grosse (src/lib.rs)
 - `string_cache@0.9.0` (cargo, file: `LICENSE-APACHE`)
   - Copyright 2014 The Servo Project Developers. (src/atom.rs)
 - `string_cache_codegen@0.6.1` (cargo, file: `LICENSE-APACHE`)
@@ -4718,14 +4768,30 @@ DEALINGS IN THE SOFTWARE.
 - `tray-icon@0.23.1` (cargo, file: `LICENSE-APACHE`)
 - `unicase@2.9.0` (cargo, file: `LICENSE-APACHE`)
 - `unicode-normalization@0.1.26` (cargo, file: `LICENSE-APACHE`)
+  - Copyright 2011-2018 The Rust Project Developers. (scripts/unicode.py)
+  - Copyright 2012-2015 The Rust Project Developers. (src/decompose.rs)
+  - Copyright 2012-2018 The Rust Project Developers. (scripts/unicode.py)
+  - Copyright 2019 The Rust Project Developers. (src/lookups.rs)
 - `unicode-segmentation@1.13.3` (cargo, file: `LICENSE-APACHE`)
+  - Copyright 2012-2014 The Rust Project Developers. (src/grapheme.rs)
+  - Copyright 2012-2015 The Rust Project Developers. (src/lib.rs)
+  - Copyright 2012-2018 The Rust Project Developers. (src/tables.rs)
 - `unicode-truncate@2.0.1` (cargo, file: `LICENSE-APACHE`)
+  - Copyright 2019 Aetf <aetf at unlimitedcodeworks dot xyz>. (src/lib.rs)
 - `unicode-width@0.2.2` (cargo, file: `LICENSE-APACHE`)
+  - Copyright 2011-2025 The Rust Project Developers. (scripts/unicode.py)
+  - Copyright 2012-2025 The Rust Project Developers. (benches/benches.rs)
   - © 2025 Unicode®, Inc. (tests/emoji-test.txt)
 - `unicode-xid@0.2.6` (cargo, file: `LICENSE-APACHE`)
+  - Copyright 2012-2024 The Rust Project Developers. (src/lib.rs)
 - `url@2.5.8` (cargo, file: `LICENSE-APACHE`)
+  - Copyright 2013-2014 The rust-url developers. (tests/unit.rs)
+  - Copyright 2013-2015 The rust-url developers. (src/lib.rs)
+  - Copyright 2013-2016 The rust-url developers. (src/host.rs)
+  - Copyright 2016 The rust-url developers. (src/origin.rs)
 - `uuid@1.29.2` (cargo, file: `LICENSE-APACHE`)
   - Copyright (c) 2018-2024 The rust-random Project Developers (src/rng.rs)
+  - Copyright 2013-2014 The Rust Project Developers. (src/builder.rs)
   - Copyright 2018 The Uuid Project Developers. (src/builder.rs)
 - `vcpkg@0.2.15` (cargo, file: `LICENSE-APACHE`)
 - `version_check@0.9.5` (cargo, file: `LICENSE-APACHE`)
@@ -4740,8 +4806,10 @@ DEALINGS IN THE SOFTWARE.
 - `wasm-bindgen-shared@0.2.128` (cargo, file: `LICENSE-APACHE`)
 - `web-sys@0.3.105` (cargo, file: `LICENSE-APACHE`)
 - `web_atoms@0.2.6` (cargo, file: `LICENSE-APACHE`)
+  - Copyright 2014-2017 The html5ever Project Developers. (build.rs)
 - `weezl@0.1.12` (cargo, file: `LICENSE-APACHE`)
 - `window-vibrancy@0.6.0` (cargo, file: `LICENSE-APACHE`)
+  - Copyright 2022-2022 Tauri Programme within The Commons Conservancy (.github/workflows/audit.yml)
 - `wit-bindgen@0.57.1` (cargo, file: `LICENSE-APACHE`)
   - No copyright notice is shipped in the package
 - `wmi@0.18.4` (cargo, file: `LICENSE-APACHE`)
@@ -4753,6 +4821,7 @@ DEALINGS IN THE SOFTWARE.
 - `xattr@1.6.1` (cargo, file: `LICENSE-APACHE`)
 - `xz2@0.1.7` (cargo, file: `LICENSE-APACHE`)
 - `yasna@0.6.0` (cargo, file: `LICENSE-APACHE`)
+  - Copyright 2016 Masaki Hara (src/deserializer/mod.rs)
   - Copyright 2017 Fortanix, Inc. (src/models/der.rs)
   - Copyright 2017,2019 Fortanix, Inc. (src/reader/mod.rs)
   - Copyright 2019 Fortanix, Inc. (src/writer/mod.rs)
@@ -8866,6 +8935,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 **Used by component(s):**
 - `bao-tree@0.16.1` (cargo, file: `LICENSE-APACHE`)
 - `iroh-util@0.6.0` (cargo, file: `LICENSE-APACHE`)
+  - Copyright 2026 N0, INC. (README.md)
 - `n0-dns-resolver@0.1.0` (cargo, file: `LICENSE-APACHE`)
 - `n0-mainline@0.5.0` (cargo, file: `LICENSE-APACHE`)
 - `sorted-index-buffer@0.2.1` (cargo, file: `LICENSE-APACHE`)
@@ -9415,7 +9485,11 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 **Used by component(s):**
 - `bit-set@0.8.0` (cargo, file: `LICENSE-APACHE`)
+  - Copyright 2012-2014 The Rust Project Developers. (src/lib.rs)
+  - Copyright 2012-2024 The Rust Project Developers. (benches/bench.rs)
 - `bit-vec@0.8.0` (cargo, file: `LICENSE-APACHE`)
+  - Copyright 2012-2014 The Rust Project Developers. (benches/bench.rs)
+  - Copyright 2012-2023 The Rust Project Developers. (src/lib.rs)
 - `cfg-expr@0.15.8` (cargo, file: `LICENSE-APACHE`)
 - `diatomic-waker@0.2.3` (cargo, file: `LICENSE-APACHE`)
 - `downcast-rs@1.2.1` (cargo, file: `LICENSE-APACHE`)
@@ -12489,6 +12563,7 @@ DEALINGS IN THE SOFTWARE.
   - Copyright (C) 2017 Ruud van Asseldonk (examples/rms.rs)
   - Copyright 2018 Ruud van Asseldonk (examples/append.rs)
 - `identity-hash@0.1.0` (cargo, file: `LICENSE-APACHE`)
+  - Copyright 2018-2020 Parity Technologies (UK) Ltd. (src/lib.rs)
 - `lru-slab@0.1.2` (cargo, file: `LICENSE-APACHE`)
 - `lzma-rust2@0.22.0` (cargo, file: `LICENSE`)
   - No copyright notice is shipped in the package
@@ -12500,12 +12575,15 @@ DEALINGS IN THE SOFTWARE.
 - `olpc-cjson@0.1.4` (cargo, file: `LICENSE-APACHE`)
 - `range-collections@0.4.6` (cargo, file: `LICENSE-APACHE2.md`)
 - `redb@3.1.3` (cargo, file: `LICENSE-APACHE`)
+  - Copyright (c) 2022 Christopher Berner (src/tree_store/page_store/xxh3.rs)
 - `redb@4.2.0` (cargo, file: `LICENSE-APACHE`)
+  - Copyright (c) 2022 Christopher Berner (src/tree_store/page_store/xxh3.rs)
 - `russh-sftp@2.4.0` (cargo, file: `LICENSE`)
   - No copyright notice is shipped in the package
 - `rustls-platform-verifier@0.7.0` (cargo, file: `LICENSE-APACHE`)
 - `secrecy@0.10.3` (cargo, file: `LICENSE-APACHE`)
 - `secrecy@0.8.0` (cargo, file: `LICENSE-APACHE`)
+  - Copyright © 2019-2021 iqlusion (README.md)
 - `self_cell@1.3.0` (cargo, file: `LICENSE-APACHE`)
 - `serdect@0.2.0` (cargo, file: `LICENSE-APACHE`)
 - `serdect@0.3.0` (cargo, file: `LICENSE-APACHE`)
@@ -12525,6 +12603,7 @@ DEALINGS IN THE SOFTWARE.
 - `static_assertions@1.1.0` (cargo, file: `LICENSE-APACHE`)
 - `tinyvec@1.13.2` (cargo, file: `LICENSE-APACHE.md`)
 - `tough@0.22.0` (cargo, file: `LICENSE-APACHE`)
+  - Copyright 2020 Amazon.com, Inc. or its affiliates. All Rights Reserved. (tests/rotated_root.rs)
 - `utf8_iter@1.0.4` (cargo, file: `LICENSE-APACHE`)
 - `x11rb@0.13.2` (cargo, file: `LICENSE-APACHE`)
   - Copyright (C) 2001-2002 Bart Massey and Jamey Sharp and is licensed under (examples/hypnomoire.rs)
@@ -15912,8 +15991,14 @@ DEALINGS IN THE SOFTWARE.
 
 **Used by component(s):**
 - `curve25519-dalek@4.1.3` (cargo, file: `LICENSE`)
+  - Copyright (c) 2016-2018 Henry de Valence (src/backend/serial/u64/mod.rs)
   - Copyright (c) 2016-2018 Isis Lovecruft, Henry de Valence (src/backend/serial/fiat_u32/field.rs)
+  - Copyright (c) 2016-2019 Henry de Valence (src/backend/mod.rs)
+  - Copyright (c) 2016-2020 Henry de Valence (src/edwards.rs)
+  - Copyright (c) 2016-2021 isis agora lovecruft (src/field.rs)
   - Copyright (c) 2016-2021 isis lovecruft (src/backend/mod.rs)
+  - Copyright (c) 2018-2019 Henry de Valence (src/backend/vector/ifma/constants.rs)
+  - Copyright (c) 2019 Henry de Valence. (src/backend/serial/scalar_mul/precomputed_straus.rs)
   - Copyright (c) 2019 Oleg Andreev (src/backend/serial/scalar_mul/pippenger.rs)
   - Copyright 2017 Brian Smith (src/scalar.rs)
 
@@ -15990,9 +16075,15 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 **Used by component(s):**
 - `curve25519-dalek@5.0.0` (cargo, file: `LICENSE`)
   - Copyright (c) 2012 The Go Authors. All rights reserved. (ACKNOWLEDGEMENTS.md)
+  - Copyright (c) 2016-2018 Henry de Valence (src/backend/serial/u64.rs)
   - Copyright (c) 2016-2018 Isis Lovecruft, Henry de Valence (src/backend/serial/fiat_u32.rs)
+  - Copyright (c) 2016-2019 Henry de Valence (src/backend.rs)
+  - Copyright (c) 2016-2020 Henry de Valence (src/edwards.rs)
+  - Copyright (c) 2016-2021 isis agora lovecruft (src/field.rs)
   - Copyright (c) 2016-2021 isis lovecruft (src/backend.rs)
+  - Copyright (c) 2018-2019 Henry de Valence (src/backend/vector/ifma.rs)
   - Copyright (c) 2019 Bas Westerbaan (ACKNOWLEDGEMENTS.md)
+  - Copyright (c) 2019 Henry de Valence. (src/backend/serial/scalar_mul/precomputed_straus.rs)
   - Copyright (c) 2019 Oleg Andreev (src/backend/serial/scalar_mul/pippenger.rs)
   - Copyright 2017 Brian Smith (src/scalar.rs)
 
@@ -20842,6 +20933,7 @@ SOFTWARE.
 - `getrandom@0.4.3` (cargo, file: `LICENSE-APACHE`)
 - `rand_chacha@0.3.1` (cargo, file: `LICENSE-APACHE`)
   - Copyright 2019 The CryptoCorrosion Contributors (src/guts.rs)
+  - Copyright 2020 Developers of the Rand project. (src/guts.rs)
 
 ```text
 Apache License
@@ -21762,6 +21854,7 @@ DEALINGS IN THE SOFTWARE.
   - Copyright 2015-2022 Benjamin Fry <benjaminfry@me.com> (src/dnssec/algorithm.rs)
   - Copyright 2015-2023 Benjamin Fry <benjaminfry@me.com> (src/dnssec/mod.rs)
   - Copyright 2017 Brian Smith <brian@briansmith.org> (src/dnssec/ec_public_key.rs)
+  - Copyright 2017 Google LLC. (src/lib.rs)
   - Copyright 2024 Brian Taber <btaber@zsd.systems> (src/rr/rdata/cert.rs)
 
 ```text
@@ -23743,6 +23836,7 @@ DEALINGS IN THE SOFTWARE.
 
 **Used by component(s):**
 - `ipnet@2.12.2` (cargo, file: `LICENSE-APACHE`)
+  - Copyright (c) 2017, Juniper Networks, Inc. All rights reserved. (README.md)
 
 ```text
 Apache License
@@ -24015,6 +24109,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 - `iroh-blobs@0.103.1` (cargo, file: `LICENSE-APACHE`)
 - `iroh-gossip@0.101.0` (cargo, file: `LICENSE-APACHE`)
 - `n0-future@0.3.2` (cargo, file: `LICENSE-APACHE`)
+  - Copyright 2024 N0, INC. (README.md)
 - `nested_enum_utils@0.2.3` (cargo, file: `LICENSE-APACHE`)
 
 ```text
@@ -24627,6 +24722,7 @@ SOFTWARE.
 
 **Used by component(s):**
 - `javascriptcore-rs@1.1.2` (cargo, file: `LICENSE`)
+  - Copyright 2013-2017, The Gtk-rs Project Developers. (src/lib.rs)
 
 ```text
 The MIT License (MIT)
@@ -24662,6 +24758,7 @@ SOFTWARE.
 **Used by component(s):**
 - `javascriptcore-rs-sys@1.1.1` (cargo, file: `LICENSE`)
 - `soup3@0.5.0` (cargo, file: `LICENSE`)
+  - Copyright 2013-2017, The Gtk-rs Project Developers. (src/lib.rs)
 - `soup3-sys@0.5.0` (cargo, file: `LICENSE`)
 
 ```text
@@ -24751,6 +24848,7 @@ SOFTWARE.
 
 **Used by component(s):**
 - `js-tokens@4.0.0` (npm, file: `LICENSE`)
+  - Copyright 2014, 2015, 2016, 2017, 2018 Simon Lydell (index.js)
 
 ```text
 The MIT License (MIT)
@@ -27249,6 +27347,7 @@ the above disclaimer and the following restrictions:
 
 **Used by component(s):**
 - `line-clipping@0.3.8` (cargo, file: `LICENSE-APACHE`)
+  - Copyright (c) Josh McKinney (README.md)
 
 ```text
 Apache License
@@ -30195,6 +30294,7 @@ Please refer to the LICENSE-APACHE file for more details on the Apache License 2
   - Copyright (c) 2007-2018 Einar Lielmanis, Liam Newman, and contributors. (esm/external/vscode-css-languageservice/lib/esm/beautify/beautify-css.js)
   - Copyright (c) 2011-2024, Christopher Jeffrey. (MIT Licensed) (esm/vs/base/common/marked/marked.js)
   - Copyright (c) 2013, Nick Fitzgerald (esm/external/vscode-json-languageservice/lib/esm/utils/glob.js)
+  - Copyright (c) Microsoft Corporation. All rights reserved. (dev/vs/assets/ts.worker-C2JmUdEW.js)
   - Copyright Joyent, Inc. and other Node contributors. (esm/vs/base/common/path.js)
 
 ```text
@@ -31357,6 +31457,8 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 **Used by component(s):**
 - `noq@1.3.0` (cargo, file: `LICENSE-APACHE`)
+  - Copyright 2025 N0, INC. (README.md)
+  - Copyright 2025 The quinn developers (README.md)
 - `noq-proto@1.3.0` (cargo, file: `LICENSE-APACHE`)
 - `noq-udp@1.3.0` (cargo, file: `LICENSE-APACHE`)
 
@@ -33600,7 +33702,11 @@ DEALINGS IN THE SOFTWARE.
 
 **Used by component(s):**
 - `pem@3.0.6` (cargo, file: `LICENSE.md`)
+  - Copyright 2016-2017 Jonathan Creekmore (src/lib.rs)
+  - Copyright 2017 Jonathan Creekmore (src/errors.rs)
 - `pem@4.0.0` (cargo, file: `LICENSE.md`)
+  - Copyright 2016-2017 Jonathan Creekmore (src/lib.rs)
+  - Copyright 2017 Jonathan Creekmore (src/errors.rs)
 
 ```text
 The MIT License (MIT)
@@ -35876,15 +35982,42 @@ SOFTWARE.
 
 **Used by component(s):**
 - `rand@0.10.3` (cargo, file: `COPYRIGHT`)
+  - Copyright 2013-2017 The Rust Project Developers. (src/distr/distribution.rs)
+  - Copyright 2017 The Rust Project Developers. (src/distr/uniform.rs)
+  - Copyright 2018-2020 Developers of the Rand project. (src/distr/uniform.rs)
+  - Copyright 2018-2023 Developers of the Rand project. (src/seq/coin_flipper.rs)
+  - Copyright 2018-2024 Developers of the Rand project. (src/seq/iterator.rs)
+  - Copyright 2021 Developers of the Rand project. (src/distr/slice.rs)
 - `rand@0.8.8` (cargo, file: `COPYRIGHT`)
+  - Copyright 2013 The Rust Project Developers. (src/rngs/adapter/read.rs)
+  - Copyright 2013-2017 The Rust Project Developers. (src/distributions/distribution.rs)
+  - Copyright 2017 The Rust Project Developers. (src/distributions/uniform.rs)
+  - Copyright 2018-2020 Developers of the Rand project. (src/distributions/uniform.rs)
+  - Copyright 2021 Developers of the Rand project. (src/distributions/slice.rs)
 - `rand@0.9.5` (cargo, file: `COPYRIGHT`)
+  - Copyright 2013 The Rust Project Developers. (src/rngs/reseeding.rs)
+  - Copyright 2013-2017 The Rust Project Developers. (src/distr/distribution.rs)
+  - Copyright 2017 The Rust Project Developers. (src/distr/uniform.rs)
+  - Copyright 2018-2020 Developers of the Rand project. (src/distr/uniform.rs)
+  - Copyright 2018-2023 Developers of the Rand project. (src/seq/coin_flipper.rs)
+  - Copyright 2018-2024 Developers of the Rand project. (src/seq/iterator.rs)
+  - Copyright 2021 Developers of the Rand project. (src/distr/slice.rs)
 - `rand_chacha@0.3.1` (cargo, file: `COPYRIGHT`)
 - `rand_chacha@0.9.0` (cargo, file: `COPYRIGHT`)
   - Copyright 2019 The CryptoCorrosion Contributors (src/guts.rs)
+  - Copyright 2020 Developers of the Rand project. (src/guts.rs)
 - `rand_core@0.6.4` (cargo, file: `COPYRIGHT`)
+  - Copyright 2017-2018 The Rust Project Developers. (src/lib.rs)
+  - Copyright 2019 Developers of the Rand project. (src/os.rs)
 - `rand_core@0.9.5` (cargo, file: `COPYRIGHT`)
+  - Copyright 2017-2018 The Rust Project Developers. (src/lib.rs)
+  - Copyright 2019 Developers of the Rand project. (src/os.rs)
 - `rand_pcg@0.10.2` (cargo, file: `COPYRIGHT`)
+  - Copyright 2014-2017 Melissa O'Neill and PCG Project contributors (src/pcg128.rs)
+  - Copyright 2014-2017, 2019 Melissa O'Neill and PCG Project contributors (src/pcg128cm.rs)
   - Copyright 2017 Paul Dicker. (src/pcg128.rs)
+  - Copyright 2018-2021 Developers of the Rand project. (src/pcg128cm.rs)
+  - Copyright 2018-2023 Developers of the Rand project. (src/lib.rs)
 
 ```text
 Copyrights in the Rand project are retained by their contributors. No
@@ -37442,16 +37575,47 @@ SOFTWARE.
   - Copyright 2014 The BoringSSL Authors (crypto/crypto.c)
   - Copyright 2014-2016 The OpenSSL Project Authors. All Rights Reserved. (crypto/constant_time_test.c)
   - Copyright 2014-2020 The OpenSSL Project Authors. All Rights Reserved. (crypto/fipsmodule/aes/asm/ghashv8-armx.pl)
+  - Copyright 2015 Brian Smith. (src/bssl.rs)
   - Copyright 2015 The BoringSSL Authors (crypto/curve25519/asm/x25519-asm-arm.S)
+  - Copyright 2015-2016 Brian Smith. (build.rs)
   - Copyright 2015-2016 The OpenSSL Project Authors. All Rights Reserved. (crypto/fipsmodule/aes/asm/vpaes-armv7.pl)
+  - Copyright 2015-2017 Brian Smith. (src/agreement.rs)
+  - Copyright 2015-2019 Brian Smith. (src/digest.rs)
   - Copyright 2015-2020 The OpenSSL Project Authors. All Rights Reserved. (crypto/fipsmodule/ec/asm/p256-armv8-asm.pl)
+  - Copyright 2015-2021 Brian Smith. (src/aead/algorithm.rs)
+  - Copyright 2015-2022 Brian Smith. (src/arithmetic/n0.rs)
+  - Copyright 2015-2023 Brian Smith. (src/arithmetic/bigint.rs)
+  - Copyright 2015-2024 Brian Smith. (src/aead.rs)
+  - Copyright 2016 Brian Smith. (crypto/fipsmodule/bn/montgomery_inv.c)
   - Copyright 2016 David Judd. (src/limb.rs)
   - Copyright 2016 Simon Sapin. (src/digest/sha1.rs)
   - Copyright 2016 The OpenSSL Project Authors. All Rights Reserved. (crypto/chacha/asm/chacha-armv4.pl)
+  - Copyright 2016-2017 Brian Smith. (crypto/limbs/limbs.c)
+  - Copyright 2016-2019 Brian Smith. (src/c.rs)
+  - Copyright 2016-2021 Brian Smith. (src/cpu/intel.rs)
+  - Copyright 2016-2023 Brian Smith. (src/ec/suite_b/ops/p256.rs)
+  - Copyright 2016-2024 Brian Smith. (src/cpu/arm.rs)
+  - Copyright 2016-2025 Brian Smith. (src/aead/chacha/ffi.rs)
+  - Copyright 2017 Brian Smith. (src/ec/suite_b/ops/elem.rs)
+  - Copyright 2017-2023 Brian Smith. (src/arithmetic.rs)
+  - Copyright 2017-2025 Brian Smith. (src/arithmetic/montgomery.rs)
+  - Copyright 2018 Brian Smith. (src/aead/gcm/ffi.rs)
   - Copyright 2018 Trent Clarke. (src/debug.rs)
+  - Copyright 2018-2024 Brian Smith. (src/aead/aes.rs)
+  - Copyright 2018-2025 Brian Smith. (src/aead/gcm/vclmulavx2.rs)
+  - Copyright 2019-2024 Brian Smith. (src/digest/sha2/mod.rs)
+  - Copyright 2019-2025 Brian Smith. (src/digest/sha2/fallback.rs)
+  - Copyright 2020 Brian Smith. (include/ring-core/check.h)
   - Copyright 2020 The BoringSSL Authors (crypto/curve25519/curve25519.c)
+  - Copyright 2020-2024 Brian Smith. (src/aead/gcm/fallback.rs)
+  - Copyright 2021 Brian Smith. (src/aead/chacha/fallback.rs)
+  - Copyright 2022 Brian Smith. (src/polyfill/unwrap_const.rs)
+  - Copyright 2023 Brian Smith. (src/polyfill/array_split_map.rs)
   - Copyright 2023 The BoringSSL Authors (crypto/curve25519/curve25519_64_adx.c)
+  - Copyright 2024 Brian Smith. (src/aead/overlapping/array.rs)
   - Copyright 2024 The BoringSSL Authors (crypto/fipsmodule/aes/asm/aes-gcm-avx2-x86_64.pl)
+  - Copyright 2024-2025 Brian Smith. (src/arithmetic/ffi.rs)
+  - Copyright 2025 Brian Smith. (src/arithmetic/inout.rs)
 
 ```text
 *ring* uses an "ISC" license, like BoringSSL used to use, for new code
@@ -38198,6 +38362,9 @@ SOFTWARE.
 
 **Used by component(s):**
 - `rustls-webpki@0.103.16` (cargo, file: `LICENSE`)
+  - Copyright 2015-2016 Brian Smith. (src/time.rs)
+  - Copyright 2015-2020 Brian Smith. (src/subject_name/dns_name.rs)
+  - Copyright 2015-2021 Brian Smith. (src/end_entity.rs)
   - Copyright 2022 Rafael Fernández López. (src/subject_name/mod.rs)
   - Copyright 2023 Daniel McCarney. (src/crl/mod.rs)
 
@@ -39179,6 +39346,7 @@ DEALINGS IN THE SOFTWARE.
 
 **Used by component(s):**
 - `shell-words@1.1.1` (cargo, file: `LICENSE-APACHE`)
+  - Copyright 2018 Tomasz Miąsko (src/lib.rs)
 
 ```text
 Apache License
@@ -39617,6 +39785,8 @@ THIS SOFTWARE.
 
 **Used by component(s):**
 - `siphasher@1.0.3` (cargo, file: `COPYING`)
+  - Copyright 2012-2015 The Rust Project Developers. (src/sip.rs)
+  - Copyright 2014 The Rust Project Developers. (src/tests.rs)
 
 ```text
 Copyright 2012-2016 The Rust Project Developers.
@@ -43195,7 +43365,11 @@ DEALINGS IN THE SOFTWARE.
 
 **Used by component(s):**
 - `untrusted@0.7.1` (cargo, file: `LICENSE.txt`)
+  - Copyright 2015-2019 Brian Smith. (tests/tests.rs)
 - `untrusted@0.9.0` (cargo, file: `LICENSE.txt`)
+  - Copyright 2015-2019 Brian Smith. (tests/tests.rs)
+  - Copyright 2015-2021 Brian Smith. (src/input.rs)
+  - Copyright 2020 Brian Smith. (mk/cargo.sh)
 
 ```text
 // Copyright 2015-2016 Brian Smith.
@@ -43249,6 +43423,7 @@ THE SOFTWARE.
 
 **Used by component(s):**
 - `urlpattern@0.3.0` (cargo, file: `LICENSE`)
+  - Copyright 2018-2021 the Deno authors. All rights reserved. MIT license. (.rustfmt.toml)
 
 ```text
 MIT License
@@ -44680,8 +44855,17 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 **Used by component(s):**
 - `winreg@0.10.1` (cargo, file: `LICENSE`)
+  - Copyright 2015, Igor Shaula (examples/basic_usage.rs)
+  - Copyright 2017, Igor Shaula (examples/installed_apps.rs)
+  - Copyright 2020, Igor Shaula (examples/map_key_serialization.rs)
+  - Copyright 2021, Igor Shaula (examples/load_app_key.rs)
 - `winreg@0.55.0` (cargo, file: `LICENSE`)
+  - Copyright 2017, Igor Shaula (src/encoder/serialization_serde.rs)
+  - Copyright 2023, Igor Shaula (examples/basic_usage.rs)
 - `winreg@0.56.0` (cargo, file: `LICENSE`)
+  - Copyright 2017, Igor Shaula (src/encoder/serialization_serde.rs)
+  - Copyright 2023, Igor Shaula (examples/basic_usage.rs)
+  - Copyright 2026, Igor Shaula (src/enum_keys.rs)
 
 ```text
 Copyright (c) 2015 Igor Shaula
@@ -44836,7 +45020,10 @@ DEALINGS IN THE SOFTWARE.
 
 **Used by component(s):**
 - `x25519-dalek@2.0.1` (cargo, file: `LICENSE`)
+  - Copyright (c) 2017-2019 isis agora lovecruft (benches/x25519.rs)
   - Copyright (c) 2017-2021 isis lovecruft (src/lib.rs)
+  - Copyright (c) 2019 DebugSteven (benches/x25519.rs)
+  - Copyright (c) 2019-2021 DebugSteven (src/lib.rs)
   - copyright © Amy Wibowo (@sailorhg) (README.md)
 
 ```text
@@ -45020,7 +45207,10 @@ DEALINGS IN THE SOFTWARE.
 
 **Used by component(s):**
 - `zerocopy@0.8.63` (cargo, file: `LICENSE-APACHE`)
+  - Copyright 2026 The Fuchsia Authors (benches/ref_type_bytes_dynamic_padding.rs)
 - `zerocopy-derive@0.8.63` (cargo, file: `LICENSE-APACHE`)
+  - Copyright 2024 The Fuchsia Authors (src/output_tests/mod.rs)
+  - Copyright 2025 The Fuchsia Authors (tests/issue_2835.rs)
 
 ```text
 Apache License
