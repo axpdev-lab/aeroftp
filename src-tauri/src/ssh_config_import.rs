@@ -300,7 +300,9 @@ fn parse_match(words: &[String]) -> Result<Vec<(bool, Criterion)>, String> {
             return Err(format!("gives the `Match` condition `{name}` a value"));
         }
         let criterion = match name.as_str() {
-            "all" if criteria.is_empty() && words.len() > 1 => {
+            // Nothing may follow `all` (`ssh -G`: `Match final all host x`
+            // is refused, `Match host x all` is not).
+            "all" if !rest.as_slice().is_empty() => {
                 return Err("combines `Match all` with another condition".to_string())
             }
             "all" => Criterion::All,
@@ -723,6 +725,10 @@ const PROFILE_KEYS: [&str; 6] = [
     "proxycommand",
 ];
 
+/// The keys that decide whether ssh reads the file again, or asks DNS for
+/// the host, before it settles the values of [`PROFILE_KEYS`].
+const RESOLUTION_KEYS: [&str; 2] = ["canonicalizehostname", "canonicaldomains"];
+
 /// The two keys ssh reads as one setting: the first of them obtained wins.
 const PROXY_KEYS: [&str; 2] = ["proxyjump", "proxycommand"];
 
@@ -743,17 +749,23 @@ const PROXY_KEYS: [&str; 2] = ["proxyjump", "proxycommand"];
 /// then match the host name read so far, lowercase, and `canonical` and
 /// `final` hold (`ssh -G`: `Host a` / `HostName real.example.com` with a
 /// `Host real.example.com` / `Port 2345` and an empty `Match final` gives
-/// port 2345). With `CanonicalDomains` too, ssh may rename the host through
-/// DNS before that reading, which the import cannot know: the host is
-/// skipped. The file's `Include` lines are not read.
+/// port 2345); the host name is the one read in the first, and a `Match` on
+/// a condition known only when ssh runs that may turn this reading on skips
+/// the host. With `CanonicalDomains` too, or a host name ending in `.`, ssh
+/// may rename the host through DNS before that reading, which the import
+/// cannot know: the host is skipped. The file's `Include` lines are not read.
 fn host_values(config: &SshConfig, alias: &str) -> Result<HashMap<String, String>, String> {
     let mut values: HashMap<String, String> = HashMap::new();
     read_pass(config, &mut values, alias, alias, false)?;
     let canonicalize = values
         .get("canonicalizehostname")
         .is_some_and(|v| v.eq_ignore_ascii_case("yes") || v.eq_ignore_ascii_case("always"));
-    if canonicalize && values.contains_key("canonicaldomains") {
-        return Err("ssh may rename its host through DNS (`CanonicalizeHostname` with `CanonicalDomains`) and read the file again for the new name, which this import cannot know; set the full host name in `HostName` and turn `CanonicalizeHostname` off for it to import it".to_string());
+    // A name ending in `.` is looked up too, domains or not (`ssh -vvv`:
+    // "name is fully qualified", then `localhost.` => `localhost`).
+    if canonicalize
+        && (values.contains_key("canonicaldomains") || match_host(&values, alias).ends_with('.'))
+    {
+        return Err("ssh may rename its host through DNS (`CanonicalizeHostname` with `CanonicalDomains`, or a host name ending in `.`) and read the file again for the new name, which this import cannot know; set the full host name in `HostName` and turn `CanonicalizeHostname` off for it to import it".to_string());
     }
     if canonicalize || config.second_pass {
         let host = match_host(&values, alias);
@@ -778,8 +790,10 @@ fn read_pass(
             Scope::Match(line) => match match_holds(line, values, alias, second) {
                 Some(holds) => holds,
                 None => {
-                    let unset = PROFILE_KEYS.iter().find(|key| {
-                        block.kv.contains_key(**key)
+                    // ssh settles `HostName` before the second reading.
+                    let unset = PROFILE_KEYS.iter().chain(&RESOLUTION_KEYS).find(|key| {
+                        !(second && **key == "hostname")
+                            && block.kv.contains_key(**key)
                             && !values.contains_key(**key)
                             && !(PROXY_KEYS.contains(*key)
                                 && PROXY_KEYS.iter().any(|k| values.contains_key(*k)))
@@ -796,6 +810,12 @@ fn read_pass(
         };
         if applies {
             for (key, value) in &block.kv {
+                // ssh fixes the host name before the second reading: a
+                // `HostName` there does not change it (`ssh -G`: `Host a`,
+                // then `Match final` / `HostName b`, keeps `a`).
+                if second && key == "hostname" {
+                    continue;
+                }
                 if PROXY_KEYS.contains(&key.as_str())
                     && PROXY_KEYS.iter().any(|k| values.contains_key(*k))
                 {
@@ -964,7 +984,9 @@ fn map_host_block(config: &SshConfig, index: usize) -> Result<ServerProfileExpor
         .filter(|c| !c.eq_ignore_ascii_case("none"))
     {
         let _ = command;
-        return Err("ssh reaches it through a `ProxyCommand`, which AeroFTP does not run; use `ProxyJump` for a jump host and import again".to_string());
+        return Err(
+            "ssh reaches it through a `ProxyCommand`, which AeroFTP does not run".to_string(),
+        );
     }
     if let Some(proxy) = kv
         .get("proxyjump")
@@ -2149,10 +2171,12 @@ Host roundtrip
              Host pk\n  ProxyCommand none # c\n\
              Host pe\n  ProxyCommand \"\"\n\
              Host pn\n  ProxyCommand =NoNe\n  ProxyJump j3\n\
-             Host ua\n  HostName ÄB.De\n",
+             Host ua\n  HostName ÄB.De\n\
+             Host td\n  CanonicalizeHostname yes\n  HostName localhost.\n",
         )
         .unwrap();
         let result = import_ssh_config(&proxy).unwrap();
+        let dns = "ssh may rename its host through DNS (`CanonicalizeHostname` with `CanonicalDomains`, or a host name ending in `.`) and read the file again for the new name, which this import cannot know; set the full host name in `HostName` and turn `CanonicalizeHostname` off for it to import it";
         let skipped: Vec<(&str, &str)> = result
             .skipped
             .iter()
@@ -2161,11 +2185,24 @@ Host roundtrip
         assert_eq!(
             skipped,
             [
-                ("pc", "ssh reaches it through a `ProxyCommand`, which AeroFTP does not run; use `ProxyJump` for a jump host and import again"),
-                ("cn", "ssh may rename its host through DNS (`CanonicalizeHostname` with `CanonicalDomains`) and read the file again for the new name, which this import cannot know; set the full host name in `HostName` and turn `CanonicalizeHostname` off for it to import it"),
-                ("pq", "ssh reaches it through a `ProxyCommand`, which AeroFTP does not run; use `ProxyJump` for a jump host and import again"),
-                ("pk", "ssh reaches it through a `ProxyCommand`, which AeroFTP does not run; use `ProxyJump` for a jump host and import again"),
-                ("pe", "ssh reaches it through a `ProxyCommand`, which AeroFTP does not run; use `ProxyJump` for a jump host and import again"),
+                (
+                    "pc",
+                    "ssh reaches it through a `ProxyCommand`, which AeroFTP does not run"
+                ),
+                ("cn", dns),
+                (
+                    "pq",
+                    "ssh reaches it through a `ProxyCommand`, which AeroFTP does not run"
+                ),
+                (
+                    "pk",
+                    "ssh reaches it through a `ProxyCommand`, which AeroFTP does not run"
+                ),
+                (
+                    "pe",
+                    "ssh reaches it through a `ProxyCommand`, which AeroFTP does not run"
+                ),
+                ("td", dns),
             ]
         );
         let proxy_got: Vec<(&str, &str, u32, &str, &str, &str)> = result
@@ -2200,7 +2237,9 @@ Host roundtrip
         assert_eq!(proxy_got, proxy_want);
 
         // `Match` conditions the file decides, and the second reading a
-        // `Match final` asks for; `ProxyCommand none` and `ProxyJump none`.
+        // `Match final` asks for, which keeps the host name of the first
+        // (`plain` and `none` stay themselves); `ProxyCommand none` and
+        // `ProxyJump none`.
         let decided = dir.path().join("decided");
         std::fs::write(
             &decided,
@@ -2220,8 +2259,9 @@ Host roundtrip
              Host ub\n  HostName ÄB.De\n\
              Match host äb.de\n  User wrong\n\
              Match host Äb.DE\n  User ub\n\
+             Match host nomatch all\n  User never\n\
              Host *\n  ProxyJump j2\n\
-             Match final\n",
+             Match final\n  HostName prod.example.com\n",
         )
         .unwrap();
         let result = import_ssh_config(&decided).unwrap();
@@ -2269,7 +2309,10 @@ Host roundtrip
         let unevaluated = dir.path().join("unevaluated");
         std::fs::write(
             &unevaluated,
-            "Host e\n  HostName e.example.com\n  User eown\n  Port 2202\n\
+            "Host lab\n  HostName lab.example\n  Port 2201\n\
+             Match originalhost lab* exec \"true\"\n  CanonicalizeHostname yes\n\
+             Host lab.example\n  Port 2222\n\
+             Host e\n  HostName e.example.com\n  User eown\n  Port 2202\n\
              Host f\n  HostName f.example.com\n  Port 2204\n\
              Match host f.example.com exec \"false\"\n  User mf\n\
              Match host nomatch exec \"x\"\n  User never\n\
@@ -2293,8 +2336,11 @@ Host roundtrip
         assert_eq!(
             skipped,
             [
-                ("f", reason(8, "user").as_str()),
-                ("g", reason(12, "port").as_str())
+                // It may make ssh read the file again, for `lab.example`.
+                ("lab", reason(4, "canonicalizehostname").as_str()),
+                ("lab.example", reason(4, "canonicalizehostname").as_str()),
+                ("f", reason(15, "user").as_str()),
+                ("g", reason(19, "port").as_str())
             ]
         );
 
@@ -2690,6 +2736,11 @@ Host roundtrip
             ),
             (
                 "Host fine\n  HostName f.example.com\nMatch all host x\n  Port 1\n",
+                3,
+                "combines `Match all` with another condition",
+            ),
+            (
+                "Host fine\n  HostName f.example.com\nMatch final all host x\n  Port 1\n",
                 3,
                 "combines `Match all` with another condition",
             ),
