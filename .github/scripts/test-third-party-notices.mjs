@@ -1537,6 +1537,12 @@ test('comment closers: inside a block comment a closer ends it whatever leads th
       const label = `${open} ... ${other} ... ${close}`;
       assert.ok(findPackageCopyrightNotices(tmp).map((n) => n.notice).includes(`Copyright (c) 2021 Inner Holder, for src/${other}generated`), label);
       assert.deepEqual(findBundledCodeUnderOtherLicenses(comp, known).map((b) => b.license), ['BSD-2-Clause'], label);
+      // The header reproduced from one block keeps the other style's closer
+      // in its clause, whole.
+      const clause = `Redistribution and use of the files under src/${other}generated are permitted provided that this notice is kept.`;
+      fs.writeFileSync(path.join(tmp, 'gen', 'other.src'), `${open}\n Copyright (c) 2021 Block Holder\n ${clause}\n SPDX-License-Identifier: BSD-2-Clause\n ${close}\nint x;\n`);
+      const headers = findBundledCodeUnderOtherLicenses({ ...comp, ...readPackageFiles(tmp, 'other-pkg@1.0.0') }, known).flatMap((b) => b.headers.map((h) => h.text));
+      assert.deepEqual(headers, [`Copyright (c) 2021 Block Holder\n${clause}\nSPDX-License-Identifier: BSD-2-Clause`], label);
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
@@ -1773,7 +1779,7 @@ test('wrapped notices: a notice that may go on with its next line is joined only
       return () => findPackageCopyrightNotices(tmpDir).map((n) => `${n.notice} (${n.file})`);
     };
     // The xz getopt header of lzma-sys, reviewed at its source: joined.
-    assert.ok(reviewedNotices().some((r) => r.line === 'Copyright (C) 1989-1994,1996-1999,2001,2003,2004' && r.next === 'Free Software Foundation, Inc.'));
+    assert.ok(reviewedNotices().some((r) => r.line === 'Copyright (C) 1989-1994,1996-1999,2001,2003,2004' && r.following.length === 1 && r.following[0] === 'Free Software Foundation, Inc.'));
     assert.deepStrictEqual(scanOnly('lib/getopt_int.h', '/* Internal declarations for getopt.\n   Copyright (C) 1989-1994,1996-1999,2001,2003,2004\n   Free Software Foundation, Inc.\n   This file is part of the GNU C Library.\n*/\n')(), [
       'Copyright (C) 1989-1994,1996-1999,2001,2003,2004 Free Software Foundation, Inc. (lib/getopt_int.h)',
     ]);
@@ -1791,6 +1797,16 @@ test('wrapped notices: a notice that may go on with its next line is joined only
       const scan = scanOnly(rel, content);
       assert.throws(scan, new RegExp(`${rel.replace('.', '\\.')}:1 may continue on its next line, and the generation does not guess`), rel);
     }
+    // A reviewed notice that continues on more than one line is used only
+    // while every one of those lines is unchanged upstream: the clap_derive
+    // header joins its three lines, and the same header with only its third
+    // line changed fails instead of giving the stale reviewed holders.
+    const clap = ['Copyright 2018 Guillaume Pinot (@TeXitoi) <texitoi@texitoi.eu>,', 'Kevin Knapp (@kbknapp) <kbknapp@gmail.com>, and'];
+    const clapReviewed = reviewedNotices().find((r) => r.line === clap[0]);
+    assert.deepStrictEqual(clapReviewed?.following, [clap[1], 'Ana Hobden (@hoverbear) <operator@hoverbear.org>']);
+    assert.deepStrictEqual(scanOnly('lib/clap.rs', `// ${clap[0]}\n// ${clap[1]}\n// Ana Hobden (@hoverbear) <operator@hoverbear.org>\n//\n// Licensed under MIT\n`)(), [`${clapReviewed.notice} (lib/clap.rs)`]);
+    assert.throws(scanOnly('lib/clap.rs', `// ${clap[0]}\n// ${clap[1]}\n// Another Author <another@example.org>\n//\n// Licensed under MIT\n`), /lib\/clap\.rs:1 may continue on its next line, and the generation does not guess/);
+    assert.throws(scanOnly('lib/clap.rs', `// ${clap[0]}\n// ${clap[1]}\n`), /lib\/clap\.rs:1 may continue on its next line/);
     // A notice with its holder on the line takes nothing from the next one.
     assert.deepStrictEqual(scanOnly('lib/named.c', '/* Copyright (C) 2001 Named Holder\n   Free Software Foundation, Inc.\n*/\n')(), ['Copyright (C) 2001 Named Holder (lib/named.c)']);
     // A bundled header follows the same rule.
@@ -1802,6 +1818,12 @@ test('wrapped notices: a notice that may go on with its next line is joined only
     assert.deepStrictEqual(findBundledCodeUnderOtherLicenses(comp(), known).find((b) => b.license === 'BSD-2-Clause')?.notices, ['Copyright (C) 1989-1994,1996-1999,2001,2003,2004 Free Software Foundation, Inc.']);
     write('vendor/getopt.c', '/* Copyright (C) 1987,2006\n   Free Software Foundation, Inc.\n   SPDX-License-Identifier: BSD-2-Clause */\n');
     assert.throws(() => findBundledCodeUnderOtherLicenses(comp(), known), /wrapped-pkg@1\.0\.0 vendor\/getopt\.c:1 may continue on its next line/);
+    // The header scanner checks every reviewed following line too.
+    fs.rmSync(path.join(tmpDir, 'vendor'), { recursive: true, force: true });
+    write('vendor/clap.rs', `// ${clap[0]}\n// ${clap[1]}\n// Ana Hobden (@hoverbear) <operator@hoverbear.org>\n// SPDX-License-Identifier: BSD-2-Clause\n`);
+    assert.deepStrictEqual(findBundledCodeUnderOtherLicenses(comp(), known).find((b) => b.license === 'BSD-2-Clause')?.notices, [clapReviewed.notice]);
+    write('vendor/clap.rs', `// ${clap[0]}\n// ${clap[1]}\n// Another Author <another@example.org>\n// SPDX-License-Identifier: BSD-2-Clause\n`);
+    assert.throws(() => findBundledCodeUnderOtherLicenses(comp(), known), /wrapped-pkg@1\.0\.0 vendor\/clap\.rs:1 may continue on its next line/);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
@@ -1809,7 +1831,7 @@ test('wrapped notices: a notice that may go on with its next line is joined only
 
 test('reviewed notices and tag mentions: each entry names its source and the whole notice starts with its line', () => {
   for (const r of reviewedNotices()) {
-    assert.ok(r.source && r.line && r.next && r.notice, JSON.stringify(r));
+    assert.ok(r.source && r.line && Array.isArray(r.following) && r.following.length > 0 && r.following.every((f) => typeof f === 'string' && f.trim() === f && f) && r.notice, JSON.stringify(r));
     assert.ok(r.notice.startsWith(r.line.replace(/,$/, '')), r.line);
   }
   for (const [key, reason] of Object.entries(reviewedTagMentions())) assert.ok(/^[^@]+@[^:]+:[^:]+:/.test(key) && reason, key);
@@ -2344,6 +2366,9 @@ test('isSpdxHeaderLine: a comment line is a header whatever precedes the tag, pr
     '$! SPDX-License-Identifier: BSD-3-Clause',
     'REM -- SPDX-License-Identifier: Apache-2.0 OR ISC',
     'SPDX-License-Identifier: Apache-2.0 OR MIT',
+    // A C block comment opened after code on the line.
+    'int x; /* SPDX-License-Identifier: MIT */',
+    'static int y = 0; /* "quoted" words, SPDX-License-Identifier: ISC */',
   ]) {
     assert.ok(header(l), l);
   }
@@ -2355,8 +2380,34 @@ test('isSpdxHeaderLine: a comment line is a header whatever precedes the tag, pr
     ['* SPDX-License-Identifier: MIT', 'README.md'],
     ['1. SPDX-License-Identifier: MIT', 'README.rst'],
     ['const S: &str = "// SPDX-License-Identifier: MIT";', 'src/html.rs'],
+    // A comment opener inside a string literal opens nothing, and a closed
+    // comment before the tag leaves it in code.
+    ['const char *s = "/* SPDX-License-Identifier: MIT */";', 'src/s.c'],
+    ['int x; /* note */ const char *s = "SPDX-License-Identifier: MIT";', 'src/t.c'],
   ]) {
     assert.ok(!header(l, rel), l);
+  }
+});
+
+test('bundled code: a tag in a block comment after code is a header read from its comment, the same text in a string literal fails', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'inline-spdx-fixture-'));
+  try {
+    const write = (rel, content) => {
+      fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, rel), content);
+    };
+    write('LICENSE', 'MIT License\n\nCopyright (c) 2020 Wrapper Author\n\nPermission is hereby granted.');
+    write('vendor/inline.c', 'int x; /* Copyright (c) 2019 Inline Holder. SPDX-License-Identifier: BSD-2-Clause */\n');
+    const comp = () => ({ name: 'inline-pkg', version: '1.0.0', license: 'MIT', source: 'cargo', packageDir: tmpDir, authors: ['Wrapper Author'], ...readPackageFiles(tmpDir, 'inline-pkg@1.0.0') });
+    const known = new Set(Object.keys(JSON.parse(fs.readFileSync(SPDX_STANDARD_LICENSES_FILE, 'utf8'))));
+    const bundled = findBundledCodeUnderOtherLicenses(comp(), known);
+    assert.deepEqual(bundled.map((b) => [b.license, b.files]), [['BSD-2-Clause', ['vendor/inline.c']]]);
+    // Read from its comment: the code before the opener is no part of the header.
+    assert.deepEqual(bundled[0].notices, ['Copyright (c) 2019 Inline Holder. SPDX-License-Identifier: BSD-2-Clause']);
+    write('vendor/inline.c', 'const char *s = "/* SPDX-License-Identifier: BSD-2-Clause */";\n');
+    assert.throws(() => findBundledCodeUnderOtherLicenses(comp(), known), /inline-pkg@1\.0\.0 has an SPDX-License-Identifier in vendor\/inline\.c outside a comment the scanner knows/);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
 

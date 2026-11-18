@@ -8,65 +8,87 @@
     "source": "https://spdx.org/licenses/CDLA-Permissive-2.0.html",
     "terms": "Community Data License Agreement - Permissive - Version 2.0\n\nThis is the Community Data License Agreement - Permissive, Version 2.0 (the \"agreement\"). Data Provider(s) and Data Recipient(s) agree as follows:\n\n1. Provision of the Data\n\n1.1. A Data Recipient may use, modify, and share the Data made available by Data Provider(s) under this agreement if that Data Recipient follows the terms of this agreement.\n\n1.2. This agreement does not impose any restriction on a Data Recipient's use, modification, or sharing of any portions of the Data that are in the public domain or that may be used, modified, or shared under any other legal exception or limitation.\n\n2. Conditions for Sharing Data\n\n2.1. A Data Recipient may share Data, with or without modifications, so long as the Data Recipient makes available the text of this agreement with the shared Data.\n\n3. No Restrictions on Results\n\n3.1. This agreement does not impose any restriction or obligations with respect to the use, modification, or sharing of Results.\n\n4. No Warranty; Limitation of Liability\n\n4.1. All Data Recipients receive the Data subject to the following terms:\n\nTHE DATA IS PROVIDED ON AN \"AS IS\" BASIS, WITHOUT REPRESENTATIONS, WARRANTIES OR CONDITIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED INCLUDING, WITHOUT LIMITATION, ANY WARRANTIES OR CONDITIONS OF TITLE, NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.\n\nNO DATA PROVIDER SHALL HAVE ANY LIABILITY FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING WITHOUT LIMITATION LOST PROFITS), HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE DATA OR RESULTS, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.\n\n5. Definitions\n\n5.1. \"Data\" means the material received by a Data Recipient under this agreement.\n\n5.2. \"Data Provider\" means any person who is the source of Data provided under this agreement and in reliance on a Data Recipient's agreement to its terms.\n\n5.3. \"Data Recipient\" means any person who receives Data directly or indirectly from a Data Provider and agrees to the terms of this agreement.\n\n5.4. \"Results\" means any outcome obtained by computational analysis of Data, including for example machine learning models and models' insights.\n"
   },
-  "_notices": "A copyright notice that may continue on its next line (no holder after the years, an open parenthesis, a trailing comma, and, of or by) is never joined by a guess: the generation fails unless the pair of lines is reviewed here, with the whole notice read at its source.",
+  "_notices": "A copyright notice that may continue on its next line (no holder after the years, an open parenthesis, a trailing comma, and, of or by) is never joined by a guess: the generation fails unless the notice is reviewed here with every line it continues on (following), each matched upstream, and the whole notice read at its source.",
   "notices": [
     {
       "line": "Copyright (C) 1987,88,89,90,91,92,93,94,95,96,98,99,2000,2001,2002,2003,2004,2006",
-      "next": "Free Software Foundation, Inc.",
+      "following": [
+        "Free Software Foundation, Inc."
+      ],
       "notice": "Copyright (C) 1987,88,89,90,91,92,93,94,95,96,98,99,2000,2001,2002,2003,2004,2006 Free Software Foundation, Inc.",
       "source": "lzma-sys 0.1.20 xz-5.2/lib/getopt.c:5"
     },
     {
       "line": "Copyright (C) 1989-1994,1996-1999,2001,2003,2004,2005,2006,2007",
-      "next": "Free Software Foundation, Inc.",
+      "following": [
+        "Free Software Foundation, Inc."
+      ],
       "notice": "Copyright (C) 1989-1994,1996-1999,2001,2003,2004,2005,2006,2007 Free Software Foundation, Inc.",
       "source": "lzma-sys 0.1.20 xz-5.2/lib/getopt.in.h:2"
     },
     {
       "line": "Copyright (C) 1987,88,89,90,91,92,93,94,96,97,98,2004,2006",
-      "next": "Free Software Foundation, Inc.",
+      "following": [
+        "Free Software Foundation, Inc."
+      ],
       "notice": "Copyright (C) 1987,88,89,90,91,92,93,94,96,97,98,2004,2006 Free Software Foundation, Inc.",
       "source": "lzma-sys 0.1.20 xz-5.2/lib/getopt1.c:2"
     },
     {
       "line": "Copyright (C) 1989-1994,1996-1999,2001,2003,2004",
-      "next": "Free Software Foundation, Inc.",
+      "following": [
+        "Free Software Foundation, Inc."
+      ],
       "notice": "Copyright (C) 1989-1994,1996-1999,2001,2003,2004 Free Software Foundation, Inc.",
       "source": "lzma-sys 0.1.20 xz-5.2/lib/getopt_int.h:2"
     },
     {
       "line": "Copyright © 2021 World Wide Web Consortium, (Massachusetts Institute of Technology, European",
-      "next": "Research Consortium for Informatics and Mathematics, Keio University, Beihang). All Rights",
+      "following": [
+        "Research Consortium for Informatics and Mathematics, Keio University, Beihang). All Rights",
+        "Reserved. This work is distributed under the W3C® Software License [1] in the hope that it will"
+      ],
       "notice": "Copyright © 2021 World Wide Web Consortium, (Massachusetts Institute of Technology, European Research Consortium for Informatics and Mathematics, Keio University, Beihang). All Rights Reserved.",
       "source": "tao 0.35.3 src/keyboard.rs:66-68"
     },
     {
       "line": "Copyright 2018 Guillaume Pinot (@TeXitoi) <texitoi@texitoi.eu>,",
-      "next": "Kevin Knapp (@kbknapp) <kbknapp@gmail.com>, and",
+      "following": [
+        "Kevin Knapp (@kbknapp) <kbknapp@gmail.com>, and",
+        "Ana Hobden (@hoverbear) <operator@hoverbear.org>"
+      ],
       "notice": "Copyright 2018 Guillaume Pinot (@TeXitoi) <texitoi@texitoi.eu>, Kevin Knapp (@kbknapp) <kbknapp@gmail.com>, and Ana Hobden (@hoverbear) <operator@hoverbear.org>",
       "source": "clap_derive 4.6.7 src/lib.rs:1-3 and 7 other files with the same header"
     },
     {
       "line": "(C) 2005-02-02 David A. Wheeler; released under the D-Bus licenses,",
-      "next": "GNU GPL version 2 (or greater) and AFL 1.1 (or greater)",
+      "following": [
+        "GNU GPL version 2 (or greater) and AFL 1.1 (or greater)"
+      ],
       "notice": "(C) 2005-02-02 David A. Wheeler; released under the D-Bus licenses, GNU GPL version 2 (or greater) and AFL 1.1 (or greater)",
       "source": "libdbus-sys 0.2.7 vendor/dbus/doc/introspect.dtd:2-3"
     },
     {
       "line": "Copyright 2023 Mara Bos,",
-      "next": "ISBN: 978-1-098-11944-7",
+      "following": [
+        "ISBN: 978-1-098-11944-7"
+      ],
       "notice": "Copyright 2023 Mara Bos",
       "source": "moka 0.12.16 src/common/concurrent/arc.rs:5-6 (a book citation: the next line is its ISBN)"
     },
     {
       "line": "Copyright © 2016",
-      "next": "...",
+      "following": [
+        "..."
+      ],
       "notice": "Copyright © 2016",
       "source": "tauri-winres 0.3.6 README.md:86 (an example value; the next line is an ellipsis)"
     },
     {
       "line": "Copyright © 2016",
-      "next": "```",
+      "following": [
+        "```"
+      ],
       "notice": "Copyright © 2016",
       "source": "tauri-winres 0.3.6 src/lib.rs:127 (an example value in a doc comment; the next line ends the code block)"
     }
