@@ -739,7 +739,6 @@ pub struct ZohoShareLinkAttributes {
 /// Version resource from WorkDrive API
 #[derive(Debug, Deserialize)]
 struct VersionResource {
-    id: String,
     attributes: VersionAttributes,
 }
 
@@ -816,8 +815,27 @@ fn version_parts(label: &str) -> Option<Vec<u64>> {
 /// ([`super::versions_current_first`]). Zoho lists the current version too,
 /// as the highest `version_number`, and promises no order: the highest
 /// number first, then the others by number, newest first. A row's id is its
-/// version number, the one download and restore take.
-fn versions_in_dialog_order(mut data: Vec<VersionResource>) -> Vec<FileVersion> {
+/// version number bound to the file it was listed from
+/// ([`super::bind_version_to_file`]): download and restore take the number,
+/// and only from that file. A row without a number has nothing either takes
+/// (the resource id is not a version number): the listing is refused.
+fn versions_in_dialog_order(
+    file_id: &str,
+    mut data: Vec<VersionResource>,
+) -> Result<Vec<FileVersion>, ProviderError> {
+    if data.iter().any(|v| {
+        v.attributes
+            .version_number
+            .as_deref()
+            .and_then(version_label)
+            .is_none()
+    }) {
+        return Err(ProviderError::ParseError(
+            "WorkDrive listed a version without its version number: it cannot be \
+             downloaded or restored"
+                .into(),
+        ));
+    }
     let number = |v: &VersionResource| {
         v.attributes
             .version_number
@@ -837,7 +855,8 @@ fn versions_in_dialog_order(mut data: Vec<VersionResource>) -> Vec<FileVersion> 
             .cmp(&number(a))
             .then(millis(b).total_cmp(&millis(a)))
     });
-    data.into_iter()
+    Ok(data
+        .into_iter()
         .map(|v| {
             let attributes = v.attributes;
             let modified = attributes
@@ -846,30 +865,36 @@ fn versions_in_dialog_order(mut data: Vec<VersionResource>) -> Vec<FileVersion> 
                 .and_then(json_number)
                 .and_then(|ms| chrono::DateTime::from_timestamp_millis(ms as i64))
                 .map(|at| at.format("%Y-%m-%d %H:%M:%SZ").to_string());
-            let size = attributes
-                .file_size
-                .as_ref()
-                .or(attributes.size_in_bytes.as_ref())
-                .and_then(json_number)
-                .map(|bytes| bytes as u64)
-                .unwrap_or(0);
+            // `file_size` is bytes; the fallback `size_in_bytes` can carry
+            // its unit (`"90.0 KB"` in Zoho's sample).
+            let size = match attributes.file_size.as_ref() {
+                Some(bytes) => json_number(bytes).map(|bytes| bytes as u64),
+                None => attributes
+                    .size_in_bytes
+                    .as_ref()
+                    .and_then(parse_byte_amount_value),
+            }
+            .unwrap_or(0);
             let modified_by = match attributes.created_by {
                 Some(serde_json::Value::String(name)) if !name.trim().is_empty() => Some(name),
                 _ => None,
             };
             FileVersion {
-                id: attributes
-                    .version_number
-                    .as_deref()
-                    .and_then(version_label)
-                    .unwrap_or(v.id),
+                id: super::bind_version_to_file(
+                    file_id,
+                    &attributes
+                        .version_number
+                        .as_deref()
+                        .and_then(version_label)
+                        .unwrap_or_default(),
+                ),
                 modified,
                 size,
                 modified_by,
                 deleted: false,
             }
         })
-        .collect()
+        .collect())
 }
 
 /// The documented restore body: `revert_to` is the version number, the file
@@ -4349,7 +4374,9 @@ impl StorageProvider for ZohoWorkdriveProvider {
             .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         let status = resp.status();
-        let body = resp.text().await;
+        let body =
+            super::version_listing_text_with(resp, |e| body_broke_off("List versions failed", e))
+                .await;
 
         if !status.is_success() {
             return Err(ProviderError::Other(format!(
@@ -4358,7 +4385,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
                 sanitize_api_error(&body.unwrap_or_default())
             )));
         }
-        let body = body.map_http_err(|e| body_broke_off("List versions failed", e))?;
+        let body = body?;
 
         debug!(
             "Zoho WorkDrive versions response ({} bytes): {}",
@@ -4375,7 +4402,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
                 ))
             })?;
 
-        Ok(versions_in_dialog_order(parsed.data))
+        versions_in_dialog_order(&file_id, parsed.data)
     }
 
     async fn download_version(
@@ -4385,13 +4412,14 @@ impl StorageProvider for ZohoWorkdriveProvider {
         local_path: &str,
     ) -> Result<(), ProviderError> {
         let file_id = self.resolve_file_id(path).await?;
+        let label = super::version_label_of_file(version_id, &file_id, path)?;
 
         // Download specific version via download domain with version parameter
         let download_url = format!(
             "{}/v1/workdrive/download/{}?version={}",
             self.download_base(),
             file_id,
-            urlencoding::encode(version_id)
+            urlencoding::encode(label)
         );
         info!("Zoho WorkDrive download version: GET {}", download_url);
 
@@ -4416,6 +4444,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
 
         use futures_util::StreamExt;
 
+        super::require_whole_version_body(&resp, "Download version failed")?;
         let mut stream = resp.bytes_stream();
         let mut atomic = super::atomic_write::AtomicFile::new(local_path)
             .await
@@ -4440,8 +4469,9 @@ impl StorageProvider for ZohoWorkdriveProvider {
     }
 
     async fn restore_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
-        super::refuse_a_restore_that_changes_nothing(self, path, version_id).await?;
+        let selected = super::refuse_a_restore_that_changes_nothing(self, path, version_id).await?;
         let file_id = self.resolve_file_id(path).await?;
+        let label = super::version_label_of_file(version_id, &file_id, path)?;
 
         // The documented route: POST /versions, `revert_to` the version number.
         let url = format!("{}/versions", self.api_base());
@@ -4455,7 +4485,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
                 CONTENT_TYPE,
                 HeaderValue::from_static("application/vnd.api+json"),
             )
-            .body(restore_version_body(&file_id, version_id))
+            .body(restore_version_body(&file_id, label))
             .send()
             .await
             .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
@@ -4471,7 +4501,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
         }
 
         info!("Restored version {} of {}", version_id, path);
-        Ok(())
+        super::confirm_version_restored(self, path, selected.as_ref()).await
     }
 
     fn supports_versions(&self) -> bool {
@@ -7369,10 +7399,17 @@ mod tests {
         p.current_folder_id = "PS".into();
         p.folder_cache.insert("/".into(), "PS".into());
 
-        p.restore_version("/f.txt", "2.0").await.expect("restore");
+        let restored = p.restore_version("/f.txt", "FILE9:2.0").await;
+        // The double lists the earlier current contents after the restore it
+        // answered with success: the request went out, and the restore is not
+        // reported done.
+        assert!(
+            matches!(&restored, Err(ProviderError::TransferFailed(m)) if m.contains("list its versions again")),
+            "{restored:?}"
+        );
         let dir = tempfile::tempdir().unwrap();
         let out = dir.path().join("f.txt");
-        p.download_version("/f.txt", "2.0", out.to_str().unwrap())
+        p.download_version("/f.txt", "FILE9:2.0", out.to_str().unwrap())
             .await
             .expect("download");
         server.abort();
@@ -7464,10 +7501,17 @@ mod tests {
         p.download_version("/f.txt", &minor, out.to_str().unwrap())
             .await
             .expect("download");
-        p.restore_version("/f.txt", &minor).await.expect("restore");
+        let restored = p.restore_version("/f.txt", &minor).await;
+        // The double lists the earlier current contents after the restore it
+        // answered with success: the request went out, and the restore is not
+        // reported done.
+        assert!(
+            matches!(&restored, Err(ProviderError::TransferFailed(m)) if m.contains("list its versions again")),
+            "{restored:?}"
+        );
         server.abort();
-        assert_eq!(listed[0].id, "2.0");
-        assert_eq!(minor, "1.10");
+        assert_eq!(listed[0].id, "FILE9:2.0");
+        assert_eq!(minor, "FILE9:1.10");
         assert_eq!(std::fs::read_to_string(&out).unwrap(), "ten");
         let calls = calls.lock().unwrap().clone();
         assert!(
@@ -7497,10 +7541,10 @@ mod tests {
         );
         let parsed: super::JsonApiListResponse<super::VersionResource> =
             serde_json::from_str(&body).expect("the live answer parses");
-        let versions = super::versions_in_dialog_order(parsed.data);
+        let versions = super::versions_in_dialog_order("F1", parsed.data).expect("numbered");
         let rows: Vec<(&str, u64)> = versions.iter().map(|v| (v.id.as_str(), v.size)).collect();
-        // The id is the version number, the one download and restore take.
-        assert_eq!(rows, [("3.0", 16), ("2.0", 11), ("1.0", 7)]);
+        // The id is the version number, bound to the file it was listed from.
+        assert_eq!(rows, [("F1:3.0", 16), ("F1:2.0", 11), ("F1:1.0", 7)]);
         assert_eq!(
             versions[1].modified.as_deref(),
             Some("2026-11-16 20:08:22Z")
@@ -7521,9 +7565,9 @@ mod tests {
             ]}"#,
         )
         .expect("string numbers parse");
-        let versions = super::versions_in_dialog_order(parsed.data);
+        let versions = super::versions_in_dialog_order("F1", parsed.data).expect("numbered");
         let rows: Vec<(&str, u64)> = versions.iter().map(|v| (v.id.as_str(), v.size)).collect();
-        assert_eq!(rows, [("3.0", 16), ("2.0", 11), ("1.0", 7)]);
+        assert_eq!(rows, [("F1:3.0", 16), ("F1:2.0", 11), ("F1:1.0", 7)]);
         assert!(versions
             .iter()
             .all(|v| v.modified.is_some() && v.modified_by.is_none()));
@@ -7544,10 +7588,104 @@ mod tests {
             );
             let parsed: super::JsonApiListResponse<super::VersionResource> =
                 serde_json::from_str(&body).expect("versions parse");
-            let versions = super::versions_in_dialog_order(parsed.data);
+            let versions = super::versions_in_dialog_order("F1", parsed.data).expect("numbered");
             let rows: Vec<(&str, u64)> = versions.iter().map(|v| (v.id.as_str(), v.size)).collect();
-            assert_eq!(rows, [("1.10", 10), ("1.9", 9), ("1.2", 2)], "{ten}");
+            assert_eq!(
+                rows,
+                [("F1:1.10", 10), ("F1:1.9", 9), ("F1:1.2", 2)],
+                "{ten}"
+            );
         }
+    }
+
+    /// The fallback `size_in_bytes` carries its unit in Zoho's sample
+    /// (`"90.0 KB"`): read with it, a numeric string as bytes; `file_size`
+    /// stays authoritative when present. A row without a version number has
+    /// nothing a download or a restore takes: the listing is refused.
+    #[test]
+    fn zoho_version_sizes_read_their_unit_and_a_row_without_a_number_is_refused() {
+        let parsed: super::JsonApiListResponse<super::VersionResource> = serde_json::from_str(
+            r#"{"data":[
+                {"id":"r2","attributes":{"version_number":"2.0","size_in_bytes":"90.0 KB"}},
+                {"id":"r1","attributes":{"version_number":"1.0","size_in_bytes":"11"}},
+                {"id":"r3","attributes":{"version_number":"3.0","file_size":5,"size_in_bytes":"90.0 KB"}}
+            ]}"#,
+        )
+        .unwrap();
+        let versions = super::versions_in_dialog_order("F1", parsed.data).expect("numbered");
+        let sizes: Vec<u64> = versions.iter().map(|v| v.size).collect();
+        assert_eq!(sizes, [5, 92_160, 11]);
+        let parsed: super::JsonApiListResponse<super::VersionResource> = serde_json::from_str(
+            r#"{"data":[
+                {"id":"r2","attributes":{"version_number":"2.0","file_size":3}},
+                {"id":"r1","attributes":{"file_size":2}}
+            ]}"#,
+        )
+        .unwrap();
+        let refused = super::versions_in_dialog_order("F1", parsed.data);
+        assert!(
+            matches!(&refused, Err(ProviderError::ParseError(m)) if m.contains("without its version number")),
+            "{refused:?}"
+        );
+    }
+
+    /// A version is listed bound to its file: once another file holds the
+    /// path (a replacement that also has a `2.0`), a download or a restore
+    /// of the listed `2.0` is refused before any request reaches the new
+    /// file, and an id that was never listed bound is refused too.
+    #[tokio::test]
+    async fn a_zoho_version_of_a_replaced_file_is_refused() {
+        use std::sync::{Arc, Mutex};
+        let calls: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&calls);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method, uri: axum::http::Uri| {
+                seen.lock().unwrap().push(format!("{method} {}", uri.path()));
+                async move {
+                    match uri.path() {
+                        // The path now holds NEWFILE, listed earlier as FILE9.
+                        "/workdrive/api/v1/privatespace/PS/files" => (
+                            axum::http::StatusCode::OK,
+                            r#"{"data":[{"id":"NEWFILE","attributes":{"name":"f.txt","type":"file"}}]}"#,
+                        ),
+                        "/workdrive/api/v1/files/NEWFILE/versions" => (
+                            axum::http::StatusCode::OK,
+                            r#"{"data":[
+                                {"id":"n20","attributes":{"version_number":2.0,"file_size":3}},
+                                {"id":"n30","attributes":{"version_number":3.0,"file_size":5}}
+                            ]}"#,
+                        ),
+                        _ => (axum::http::StatusCode::OK, "{}"),
+                    }
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut p = ZohoWorkdriveProvider::new(config("com"));
+        p.endpoint_override = Some(format!("http://{addr}"));
+        p.test_access_token = Some("test-token".into());
+        p.connected = true;
+        p.privatespace_id = Some("PS".into());
+        p.current_folder_id = "PS".into();
+        p.folder_cache.insert("/".into(), "PS".into());
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("f.txt");
+        let out = out.to_str().unwrap();
+        for id in ["FILE9:2.0", "2.0"] {
+            assert!(p.download_version("/f.txt", id, out).await.is_err(), "{id}");
+            assert!(p.restore_version("/f.txt", id).await.is_err(), "{id}");
+        }
+        server.abort();
+        let calls = calls.lock().unwrap().clone();
+        assert!(
+            !calls
+                .iter()
+                .any(|c| c.starts_with("POST ") || c.contains("/download/")),
+            "{calls:?}"
+        );
+        assert!(!std::path::Path::new(out).exists());
     }
 
     /// The documented restore body: `revert_to` carries the version number.

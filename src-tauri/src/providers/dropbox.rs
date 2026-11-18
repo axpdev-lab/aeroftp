@@ -2059,17 +2059,16 @@ impl StorageProvider for DropboxProvider {
             .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
-            let text = response.text().await.unwrap_or_default();
+            let text = super::version_listing_text(response)
+                .await
+                .unwrap_or_default();
             return Err(ProviderError::Other(format!(
                 "List revisions failed: {}",
                 sanitize_api_error(&text)
             )));
         }
 
-        let body = response
-            .text()
-            .await
-            .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+        let body = super::version_listing_text(response).await?;
         // The current revision is the file's own `rev`. A deleted file keeps
         // revisions it can be restored from: its metadata is asked with
         // include_deleted (without it the call answers not_found), and row 0
@@ -2100,18 +2099,14 @@ impl StorageProvider for DropboxProvider {
         revisions_in_dialog_order(&body, current)
     }
 
+    /// A revision id names one revision of one file, whatever the path holds
+    /// now: the download is of the file it was listed from.
     async fn download_version(
         &mut self,
-        path: &str,
+        _path: &str,
         version_id: &str,
         local_path: &str,
     ) -> Result<(), ProviderError> {
-        let full_path = if path.starts_with('/') {
-            self.normalize_path(path)
-        } else {
-            self.normalize_path(&format!("{}/{}", self.current_path, path))
-        };
-
         let arg = serde_json::json!({
             "path": format!("rev:{}", version_id)
         });
@@ -2135,21 +2130,11 @@ impl StorageProvider for DropboxProvider {
             )));
         }
 
-        let bytes = response
-            .bytes()
-            .await
-            .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-
-        let _ = full_path; // Used for path resolution
-        tokio::fs::write(local_path, &bytes)
-            .await
-            .map_err(ProviderError::IoError)?;
-
-        Ok(())
+        super::save_version_body(response, local_path, "Download version failed").await
     }
 
     async fn restore_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
-        super::refuse_a_restore_that_changes_nothing(self, path, version_id).await?;
+        let selected = super::refuse_a_restore_that_changes_nothing(self, path, version_id).await?;
         let full_path = if path.starts_with('/') {
             self.normalize_path(path)
         } else {
@@ -2163,7 +2148,7 @@ impl StorageProvider for DropboxProvider {
 
         let _: serde_json::Value = self.rpc_call("files/restore", &body).await?;
         info!("Restored {} to revision {}", path, version_id);
-        Ok(())
+        super::confirm_version_restored(self, path, selected.as_ref()).await
     }
 
     fn supports_thumbnails(&self) -> bool {
@@ -2732,7 +2717,7 @@ fn revisions_in_dialog_order(
         // revision is labelled Current.
         || current,
         |v| super::version_time_millis(v.modified.as_deref()),
-    ))
+    )?)
 }
 
 #[cfg(test)]
@@ -3573,7 +3558,13 @@ mod tests {
             matches!(&refused, Err(ProviderError::NotSupported(m)) if m.contains("already the current")),
             "{refused:?}"
         );
-        assert!(restored.is_ok(), "{restored:?}");
+        // The double lists the earlier current contents after the restore it
+        // answered with success: the request went out, and the restore is not
+        // reported done.
+        assert!(
+            matches!(&restored, Err(ProviderError::TransferFailed(m)) if m.contains("list its versions again")),
+            "{restored:?}"
+        );
         assert_eq!(*restores.lock().unwrap(), ["r1"]);
     }
 

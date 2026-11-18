@@ -1794,9 +1794,10 @@ impl StorageProvider for KoofrProvider {
 
         let resp = self.get(&url).await?;
         let resp = Self::check_response(resp).await?;
-        let versions: KoofrVersionsResponse = resp.json().await.map_http_err(|e| {
-            ProviderError::ServerError(format!("Failed to parse versions: {}", e))
-        })?;
+        let versions: KoofrVersionsResponse =
+            serde_json::from_str(&super::version_listing_text(resp).await?).map_err(|e| {
+                ProviderError::ServerError(format!("Failed to parse versions: {}", e))
+            })?;
 
         let file = self.stat(path).await?;
         Ok(versions_in_dialog_order(versions.versions, &file))
@@ -1843,6 +1844,7 @@ impl StorageProvider for KoofrProvider {
             return Err(Self::parse_error(resp).await);
         }
 
+        super::require_whole_version_body(&resp, "Download version failed")?;
         use futures_util::StreamExt;
 
         let mut stream = Box::pin(crate::transfer_dag::throttle::throttle_stream(
@@ -1887,9 +1889,10 @@ impl StorageProvider for KoofrProvider {
             urlencoding::encode(version_id)
         );
 
+        let selected = super::refuse_a_restore_that_changes_nothing(self, path, version_id).await?;
         let resp = self.post_json(&url, &serde_json::json!({})).await?;
         Self::check_response(resp).await?;
-        Ok(())
+        super::confirm_version_restored(self, path, selected.as_ref()).await
     }
 
     fn supports_delta_sync(&self) -> bool {

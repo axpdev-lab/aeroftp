@@ -735,6 +735,17 @@ const NEXTCLOUD_FILE_ID_PROPFIND: &str = r#"<?xml version="1.0" encoding="utf-8"
     </d:prop>
 </d:propfind>"#;
 
+/// Depth-0 lookup of one file for its versions: the id and the current
+/// contents' size and time, in one answer.
+const NEXTCLOUD_FILE_PROPFIND: &str = r#"<?xml version="1.0" encoding="utf-8"?>
+<d:propfind xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns">
+    <d:prop>
+        <oc:fileid/>
+        <d:getcontentlength/>
+        <d:getlastmodified/>
+    </d:prop>
+</d:propfind>"#;
+
 /// One propstat's fields. A 404 propstat is staged here and kept only when
 /// its status is missing or 200, so a later "not found" block cannot replace
 /// the file id or the original location.
@@ -904,6 +915,19 @@ fn nextcloud_parent_and_name(path: &str) -> Option<(String, String)> {
 struct ListedFileId {
     href: String,
     file_id: String,
+    /// `getcontentlength` and `getlastmodified`, when the PROPFIND asked for
+    /// them: read in the same answer as the id they belong to.
+    size: Option<u64>,
+    modified: Option<String>,
+}
+
+/// One Nextcloud file as a single Depth-0 PROPFIND answered: its id and the
+/// size and time of its current contents, so the "current" row of a version
+/// listing cannot pair one file's id with another file's metadata.
+struct NextcloudFile {
+    file_id: String,
+    size: u64,
+    modified: Option<String>,
 }
 
 /// quick-xml yields `Eof` when the body stops, even if an element is still
@@ -1026,8 +1050,12 @@ fn parse_nextcloud_versions_listing(xml: &str) -> Result<Vec<ListedVersion>, Pro
                 }
             }
             Ok(Event::Empty(ref event)) => {
-                if in_propstat && event.local_name().as_ref() == "collection" {
-                    staged.is_collection = true;
+                match event.local_name().as_ref() {
+                    // `<d:multistatus/>`, the empty document spelled short, as
+                    // the trash and the ordinary listing parsers accept it.
+                    "multistatus" if depth == 0 => saw_multistatus_end = true,
+                    "collection" if in_propstat => staged.is_collection = true,
+                    _ => {}
                 }
             }
             // An element's text arrives as Text pieces around GeneralRef ones
@@ -1137,6 +1165,10 @@ fn parse_nextcloud_file_id_listing(xml: &str) -> Result<Vec<ListedFileId>, Provi
     let mut href = String::new();
     let mut staged_id = String::new();
     let mut kept_id = String::new();
+    let mut staged_size = String::new();
+    let mut kept_size = String::new();
+    let mut staged_modified = String::new();
+    let mut kept_modified = String::new();
     let mut propstat_status = String::new();
     let mut depth = 0u32;
     let mut saw_multistatus_end = false;
@@ -1158,12 +1190,16 @@ fn parse_nextcloud_file_id_listing(xml: &str) -> Result<Vec<ListedFileId>, Provi
                         href.clear();
                         staged_id.clear();
                         kept_id.clear();
+                        kept_size.clear();
+                        kept_modified.clear();
                         propstat_status.clear();
                         current_tag = None;
                     }
                     "propstat" if in_response => {
                         in_propstat = true;
                         staged_id.clear();
+                        staged_size.clear();
+                        staged_modified.clear();
                         propstat_status.clear();
                     }
                     _ if in_response => current_tag = Some(tag),
@@ -1179,20 +1215,28 @@ fn parse_nextcloud_file_id_listing(xml: &str) -> Result<Vec<ListedFileId>, Provi
                 match tag.as_str() {
                     "propstat" if in_propstat => {
                         in_propstat = false;
-                        if trash_propstat_succeeded(&propstat_status)
-                            && kept_id.is_empty()
-                            && !staged_id.is_empty()
-                        {
-                            kept_id.push_str(&staged_id);
+                        if trash_propstat_succeeded(&propstat_status) {
+                            for (kept, staged) in [
+                                (&mut kept_id, &staged_id),
+                                (&mut kept_size, &staged_size),
+                                (&mut kept_modified, &staged_modified),
+                            ] {
+                                if kept.is_empty() && !staged.is_empty() {
+                                    kept.push_str(staged);
+                                }
+                            }
                         }
                         current_tag = None;
                     }
                     "response" if in_response => {
                         in_response = false;
                         if !href.trim().is_empty() {
+                            let modified = kept_modified.trim();
                             found.push(ListedFileId {
                                 href: std::mem::take(&mut href),
                                 file_id: kept_id.trim().to_string(),
+                                size: kept_size.trim().parse::<u64>().ok(),
+                                modified: (!modified.is_empty()).then(|| modified.to_string()),
                             });
                         }
                     }
@@ -1212,6 +1256,10 @@ fn parse_nextcloud_file_id_listing(xml: &str) -> Result<Vec<ListedFileId>, Provi
                         href.push_str(&raw);
                     } else if tag == "fileid" && in_propstat && !raw.trim().is_empty() {
                         staged_id.push_str(&raw);
+                    } else if tag == "getcontentlength" && in_propstat {
+                        staged_size.push_str(&raw);
+                    } else if tag == "getlastmodified" && in_propstat {
+                        staged_modified.push_str(&raw);
                     }
                 }
             }
@@ -3183,23 +3231,50 @@ impl WebDavProvider {
         self.is_nextcloud_for_dav() && !owncloud
     }
 
-    /// `oc:fileid` of `path`, read from a listing of its parent. Versions are
+    /// `oc:fileid` of `path` ([`Self::nextcloud_file_of`]). Versions are
     /// kept per file id, not per path.
     async fn nextcloud_file_id_of(&mut self, path: &str) -> Result<String, ProviderError> {
-        let (parent, name) = nextcloud_parent_and_name(path)
-            .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
-        let ids: Vec<String> = self
-            .nextcloud_list_file_ids(&parent)
-            .await?
+        Ok(self.nextcloud_file_of(path).await?.file_id)
+    }
+
+    /// `path` as one Depth-0 PROPFIND answers it: its id with the size and
+    /// time of its current contents. A folder, or an answer without an id,
+    /// has no versions to list.
+    async fn nextcloud_file_of(&mut self, path: &str) -> Result<NextcloudFile, ProviderError> {
+        let resp = self
+            .send_replaying_digest(|| {
+                self.request(webdav_methods::propfind(), path)
+                    .header("Depth", "0")
+                    .header("Content-Type", "application/xml")
+                    .body(NEXTCLOUD_FILE_PROPFIND)
+            })
+            .await?;
+        let status = resp.status();
+        if status == StatusCode::NOT_FOUND {
+            return Err(ProviderError::NotFound(path.to_string()));
+        }
+        if !matches!(status, StatusCode::OK | StatusCode::MULTI_STATUS) {
+            return Err(ProviderError::ServerError(format!(
+                "File id PROPFIND failed: HTTP {status}"
+            )));
+        }
+        let body = super::response_bytes_with_limit(resp, NEXTCLOUD_VERSIONS_MAX_BYTES).await?;
+        let xml = String::from_utf8(body)
+            .map_err(|e| ProviderError::ParseError(format!("File id answer is not UTF-8: {e}")))?;
+        let mut rows = parse_nextcloud_file_id_listing(&xml)?
             .into_iter()
-            .filter(|(leaf, _)| *leaf == name)
-            .map(|(_, id)| id)
-            .collect();
-        match ids.as_slice() {
-            [id] => Ok(id.clone()),
-            [] => Err(ProviderError::NotFound(path.to_string())),
-            _ => Err(ProviderError::ServerError(format!(
-                "Two entries are named {path}: its versions cannot be told apart"
+            .filter(|row| !row.file_id.is_empty());
+        match (rows.next(), rows.next()) {
+            (Some(row), None) => Ok(NextcloudFile {
+                file_id: row.file_id,
+                size: row.size.unwrap_or(0),
+                modified: row.modified,
+            }),
+            (None, _) => Err(ProviderError::NotFound(format!(
+                "{path} has no Nextcloud file id: it has no versions"
+            ))),
+            (Some(_), Some(_)) => Err(ProviderError::ServerError(format!(
+                "The file id answer for {path} names more than one entry"
             ))),
         }
     }
@@ -3270,7 +3345,9 @@ impl WebDavProvider {
         path: &str,
     ) -> Result<Vec<super::FileVersion>, ProviderError> {
         let root = self.nextcloud_versions_root()?;
-        let file_id = self.nextcloud_file_id_of(path).await?;
+        // The id and the current contents' size and time, from one answer.
+        let current = self.nextcloud_file_of(path).await?;
+        let file_id = current.file_id.clone();
         let url = format!(
             "{}versions/{}/",
             root,
@@ -3286,7 +3363,18 @@ impl WebDavProvider {
             .await?;
         let status = resp.status();
         if status == StatusCode::NOT_FOUND {
-            return Err(ProviderError::NotSupported(NEXTCLOUD_VERSIONS_OFF.into()));
+            // The versions route answers 404 both when the Versions app is
+            // off and when the file id no longer resolves (the file removed
+            // or replaced after the lookup): the file, looked up again, tells.
+            return Err(match self.nextcloud_file_id_of(path).await {
+                Ok(now) if now == file_id => {
+                    ProviderError::NotSupported(NEXTCLOUD_VERSIONS_OFF.into())
+                }
+                _ => ProviderError::NotFound(format!(
+                    "{path} was removed or replaced while its versions were listed: \
+                     list its versions again"
+                )),
+            });
         }
         if !status.is_success() && status != StatusCode::MULTI_STATUS {
             return Err(ProviderError::ServerError(format!(
@@ -3302,17 +3390,9 @@ impl WebDavProvider {
         // that row becomes the file itself (downloaded from the file, never
         // from the versions endpoint, which may hold no body for it).
         // Nextcloud 25 leaves them out, and the file itself becomes row 0.
-        let current = self.stat(path).await?;
-        // The file read by stat must still be the one whose versions were
-        // listed: replaced meanwhile, its metadata would head another file's
-        // history.
-        let now = self.nextcloud_file_id_of(path).await?;
-        if now != file_id {
-            return Err(ProviderError::NotFound(format!(
-                "{path} was replaced while its versions were listed (file id {file_id}, \
-                 now {now}): list its versions again"
-            )));
-        }
+        // Its id is bound to the file id too, so a download of it refuses
+        // another file that took the path since.
+        let current_id = nextcloud_bound_version_id(&file_id, super::CURRENT_VERSION_ID);
         let mtime = super::version_time_millis(current.modified.as_deref()) / 1000;
         let versions: Vec<super::FileVersion> = parse_nextcloud_versions_listing(&xml)?
             .into_iter()
@@ -3321,7 +3401,7 @@ impl WebDavProvider {
                 let version = nextcloud_version_id_of_href(&row.href, &url)?;
                 let epoch = version.parse::<i64>().unwrap_or(0);
                 let id = if mtime > 0 && epoch == mtime {
-                    super::CURRENT_VERSION_ID.to_string()
+                    current_id.clone()
                 } else {
                     nextcloud_bound_version_id(&file_id, &version)
                 };
@@ -3342,10 +3422,10 @@ impl WebDavProvider {
         };
         let versions = super::versions_current_first(
             versions,
-            |v| v.id == super::CURRENT_VERSION_ID,
+            |v| v.id == current_id,
             || {
                 Some(super::FileVersion {
-                    id: super::CURRENT_VERSION_ID.to_string(),
+                    id: current_id.clone(),
                     modified: current.modified.clone(),
                     size: current.size,
                     modified_by: None,
@@ -3353,13 +3433,13 @@ impl WebDavProvider {
                 })
             },
             |v| {
-                if v.id == super::CURRENT_VERSION_ID {
+                if v.id == current_id {
                     i64::MAX
                 } else {
                     epoch(v)
                 }
             },
-        );
+        )?;
         Ok(versions)
     }
 
@@ -3371,8 +3451,11 @@ impl WebDavProvider {
         version_id: &str,
         local_path: &str,
     ) -> Result<(), ProviderError> {
-        if version_id == super::CURRENT_VERSION_ID {
-            return self.download(path, local_path, None).await;
+        let (bound_to, version) = nextcloud_split_version_id(version_id);
+        if version == super::CURRENT_VERSION_ID {
+            return self
+                .nextcloud_download_current(path, bound_to, local_path)
+                .await;
         }
         let url = self.nextcloud_version_url(path, version_id).await?;
         let resp = self
@@ -3413,6 +3496,40 @@ impl WebDavProvider {
         atomic.commit().await.map_err(ProviderError::IoError)
     }
 
+    /// The "current" row: the file's contents, written to `local_path` only
+    /// when the path held the file the row was listed from (`listed`) both
+    /// before and after the body was read. A replacement in between leaves
+    /// the destination as it was (unless the user asked for `--inplace`).
+    async fn nextcloud_download_current(
+        &mut self,
+        path: &str,
+        listed: Option<&str>,
+        local_path: &str,
+    ) -> Result<(), ProviderError> {
+        let replaced = |listed: &str, now: &str| {
+            ProviderError::NotFound(format!(
+                "{path} is no longer the file whose versions were listed (file id {listed}, \
+                 now {now}): list its versions again"
+            ))
+        };
+        let before = self.nextcloud_file_id_of(path).await?;
+        if let Some(listed) = listed.filter(|listed| *listed != before) {
+            return Err(replaced(listed, &before));
+        }
+        let resp = self
+            .send_replaying_digest(|| self.request(Method::GET, path))
+            .await?;
+        if resp.status() == StatusCode::NOT_FOUND {
+            return Err(ProviderError::NotFound(path.to_string()));
+        }
+        let staged = super::stage_version_body(resp, local_path, "Version download failed").await?;
+        let after = self.nextcloud_file_id_of(path).await?;
+        if after != before {
+            return Err(replaced(&before, &after));
+        }
+        staged.commit().await.map_err(ProviderError::IoError)
+    }
+
     /// Nextcloud versions: permanently delete one earlier version. A server
     /// that does not allow it (403, 405, 501) answers NotSupported.
     async fn nextcloud_delete_version(
@@ -3420,7 +3537,7 @@ impl WebDavProvider {
         path: &str,
         version_id: &str,
     ) -> Result<(), ProviderError> {
-        if version_id == super::CURRENT_VERSION_ID {
+        if nextcloud_split_version_id(version_id).1 == super::CURRENT_VERSION_ID {
             return Err(ProviderError::NotSupported(
                 "The current version is the file itself: delete the file instead".into(),
             ));
@@ -3452,12 +3569,16 @@ impl WebDavProvider {
         path: &str,
         version_id: &str,
     ) -> Result<(), ProviderError> {
-        if version_id == super::CURRENT_VERSION_ID {
+        if nextcloud_split_version_id(version_id).1 == super::CURRENT_VERSION_ID {
             return Err(ProviderError::NotSupported(
                 "This is already the current version".into(),
             ));
         }
         let url = self.nextcloud_version_url(path, version_id).await?;
+        // Nextcloud answers the MOVE 201 even when its rollback failed
+        // (RestoreFolder::moveInto drops the rollback's result): the file is
+        // checked after it.
+        let selected = super::refuse_a_restore_that_changes_nothing(self, path, version_id).await?;
         let dest = format!("{}restore/target", self.nextcloud_versions_root()?);
         let resp = self
             .send_replaying_digest(|| {
@@ -3478,7 +3599,7 @@ impl WebDavProvider {
                 "Version restore failed: HTTP {status}"
             )));
         }
-        Ok(())
+        super::confirm_version_restored(self, path, selected.as_ref()).await
     }
 
     /// Original location of `path` as Nextcloud recorded it: the decoded
@@ -3560,10 +3681,9 @@ impl WebDavProvider {
                 response.status()
             )));
         }
-        let xml = response
-            .text()
-            .await
-            .map_http_err(|error| ProviderError::ParseError(error.to_string()))?;
+        let body = super::response_bytes_with_limit(response, NEXTCLOUD_VERSIONS_MAX_BYTES).await?;
+        let xml = String::from_utf8(body)
+            .map_err(|e| ProviderError::ParseError(format!("File id listing is not UTF-8: {e}")))?;
         let mut found = Vec::new();
         for hit in parse_nextcloud_file_id_listing(&xml)? {
             let file_id = hit.file_id.trim();
@@ -5295,29 +5415,21 @@ impl StorageProvider for WebDavProvider {
             }
             StatusCode::NOT_FOUND => Err(ProviderError::NotFound(remote_path.to_string())),
             status => {
-                // S4-T01 partner diagnostic: surface response headers + body
-                // snippet so server-side errors (HTTP 5xx in particular) carry
-                // enough context to file a partner ticket. Keep at INFO so
-                // CI / production sees it without bumping log level.
-                let headers_dump: String = response
+                // S4-T01 partner diagnostic: the status, the URL and the
+                // names of the headers, never their values or the body (a
+                // refusal can carry a session cookie or echo a credential).
+                // Kept at INFO so CI and production see it.
+                let header_names: String = response
                     .headers()
-                    .iter()
-                    .map(|(k, v)| format!("{}={}", k, v.to_str().unwrap_or("<binary>")))
+                    .keys()
+                    .map(|name| name.as_str())
                     .collect::<Vec<_>>()
                     .join(", ");
-                let body_snippet = response
-                    .text()
-                    .await
-                    .unwrap_or_default()
-                    .chars()
-                    .take(512)
-                    .collect::<String>();
                 tracing::info!(
-                    "[WEBDAV] download non-success: status={} url={} headers=[{}] body=\"{}\"",
+                    "[WEBDAV] download non-success: status={} url={} headers=[{}]",
                     status,
                     self.build_url(remote_path),
-                    headers_dump,
-                    body_snippet
+                    header_names
                 );
                 Err(ProviderError::TransferFailed(format!(
                     "Download failed with status: {}",
@@ -7148,6 +7260,136 @@ mod tests {
         );
     }
 
+    /// The File Versions commands act only on the connection the dialog was
+    /// opened on, as the trash commands do: with another generation nothing
+    /// reaches the server (a purge cannot be undone), and the refusal is the
+    /// changed-connection one. The control is the live generation, whose
+    /// listing does reach it.
+    #[tokio::test]
+    async fn the_version_commands_act_only_on_the_connection_they_were_opened_on() {
+        use axum::response::IntoResponse;
+        let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let log = seen.clone();
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method, uri: axum::http::Uri| {
+                let log = log.clone();
+                async move {
+                    log.lock().unwrap().push(format!("{method} {}", uri.path()));
+                    axum::http::StatusCode::NOT_FOUND.into_response()
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+        let mut provider = WebDavProvider::new(test_config(&format!(
+            "http://{addr}/remote.php/dav/files/user/"
+        )))
+        .unwrap();
+        provider.connected = true;
+        let state = crate::provider_commands::ProviderState::new();
+        *state.provider.lock().await = Some(Box::new(provider));
+        let live = 0;
+        let stale = live + 1;
+        let local = tempfile::tempdir().unwrap();
+        let to = local.path().join("v.txt");
+        let to = to.to_string_lossy();
+        use crate::provider_commands::{
+            delete_version_of, download_version_of, list_versions_of, restore_version_of,
+        };
+        let refusals = [
+            list_versions_of(&state, "/a.txt", stale).await.map(|_| ()),
+            download_version_of(&state, "/a.txt", "42:1700000000", &to, stale)
+                .await
+                .map(|_| ()),
+            restore_version_of(&state, "/a.txt", "42:1700000000", stale).await,
+            delete_version_of(&state, "/a.txt", "42:1700000000", stale).await,
+        ];
+        for outcome in &refusals {
+            assert!(
+                matches!(outcome, Err(e) if e.starts_with(crate::provider_commands::CONNECTION_CHANGED_MARKER)),
+                "{outcome:?}"
+            );
+        }
+        assert!(
+            seen.lock().unwrap().is_empty(),
+            "{:?}",
+            seen.lock().unwrap()
+        );
+        let _ = list_versions_of(&state, "/a.txt", live).await;
+        server.abort();
+        assert!(
+            !seen.lock().unwrap().is_empty(),
+            "the live generation reaches the server"
+        );
+    }
+
+    /// A refused download, the plain one and the Nextcloud current-version
+    /// one that goes through it, logs the status and the header names only:
+    /// a session cookie in a header and a credential echoed in the body stay
+    /// out of the log.
+    #[tokio::test]
+    async fn a_refused_download_logs_no_header_value_and_no_body() {
+        #[derive(Clone, Default)]
+        struct Capture(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+        impl std::io::Write for Capture {
+            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(buf);
+                Ok(buf.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        impl<'writer> tracing_subscriber::fmt::MakeWriter<'writer> for Capture {
+            type Writer = Capture;
+            fn make_writer(&'writer self) -> Self::Writer {
+                self.clone()
+            }
+        }
+        use axum::response::IntoResponse;
+        let app = axum::Router::new().fallback(axum::routing::any(|| async {
+            (
+                axum::http::StatusCode::FORBIDDEN,
+                [("set-cookie", "oc_session=COOKIE-SECRET-1")],
+                "token=BODY-SECRET-2",
+            )
+                .into_response()
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+        let capture = Capture::default();
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::INFO)
+            .with_writer(capture.clone())
+            .finish();
+        let _guard = tracing::subscriber::set_default(subscriber);
+        let mut provider = WebDavProvider::new(test_config(&format!(
+            "http://{addr}/remote.php/dav/files/user/"
+        )))
+        .unwrap();
+        provider.connected = true;
+        let local = tempfile::tempdir().unwrap();
+        let to = local.path().join("a.txt");
+        let to = to.to_str().unwrap();
+        assert!(provider.download("/a.txt", to, None).await.is_err());
+        assert!(provider
+            .download_version("/a.txt", super::super::CURRENT_VERSION_ID, to)
+            .await
+            .is_err());
+        server.abort();
+        let log = String::from_utf8(capture.0.lock().unwrap().clone()).unwrap();
+        assert!(log.contains("download non-success: status=403"), "{log}");
+        assert!(log.contains("set-cookie"), "{log}");
+        assert!(!log.contains("COOKIE-SECRET-1"), "{log}");
+        assert!(!log.contains("BODY-SECRET-2"), "{log}");
+    }
+
     #[test]
     fn sync_owner_excludes_actual_bridge_presets_and_generic_loopback() {
         for id in [
@@ -7704,11 +7946,17 @@ mod tests {
         let base = format!("http://{}", listener.local_addr().unwrap());
         let log: std::sync::Arc<std::sync::Mutex<Vec<String>>> = Default::default();
         let swap_listings: std::sync::Arc<std::sync::atomic::AtomicUsize> = Default::default();
+        let gone_listings: std::sync::Arc<std::sync::atomic::AtomicUsize> = Default::default();
+        // r.txt (file 50) holds 20 bytes until its 8-byte version is moved
+        // to the restore target, then those 8.
+        let restored_r: std::sync::Arc<std::sync::atomic::AtomicBool> = Default::default();
         let seen = log.clone();
         let app =
             axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
                 let seen = seen.clone();
                 let swap_listings = swap_listings.clone();
+                let gone_listings = gone_listings.clone();
+                let restored_r = restored_r.clone();
                 async move {
                     let method = req.method().to_string();
                     let path = req.uri().path().to_string();
@@ -7748,11 +7996,42 @@ mod tests {
                         ),
                         ("PROPFIND", "/remote.php/dav/files/user/a.txt") => reply(
                             207,
-                            r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:">
-<d:response><d:href>/remote.php/dav/files/user/a.txt</d:href><d:propstat><d:prop><d:getcontentlength>20</d:getcontentlength><d:getlastmodified>Wed, 15 Nov 2023 10:00:00 GMT</d:getlastmodified><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
+                            r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns">
+<d:response><d:href>/remote.php/dav/files/user/a.txt</d:href><d:propstat><d:prop><oc:fileid>42</oc:fileid><d:getcontentlength>20</d:getcontentlength><d:getlastmodified>Wed, 15 Nov 2023 10:00:00 GMT</d:getlastmodified><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
 </d:multistatus>"#,
                         ),
                         ("GET", "/remote.php/dav/files/user/a.txt") => reply(200, "the body of now"),
+                        ("PROPFIND", "/remote.php/dav/files/user/r.txt") => {
+                            let size = if restored_r.load(std::sync::atomic::Ordering::SeqCst) { 8 } else { 20 };
+                            reply(
+                                207,
+                                &format!(r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns">
+<d:response><d:href>/remote.php/dav/files/user/r.txt</d:href><d:propstat><d:prop><oc:fileid>50</oc:fileid><d:getcontentlength>{size}</d:getcontentlength><d:getlastmodified>Wed, 15 Nov 2023 10:00:00 GMT</d:getlastmodified><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
+</d:multistatus>"#),
+                            )
+                        }
+                        ("PROPFIND", "/remote.php/dav/versions/user/versions/50/") => reply(
+                            207,
+                            r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:">
+<d:response><d:href>/remote.php/dav/versions/user/versions/50/1700000000</d:href><d:propstat><d:prop><d:getcontentlength>8</d:getcontentlength><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
+</d:multistatus>"#,
+                        ),
+                        ("MOVE", "/remote.php/dav/versions/user/versions/50/1700000000") => {
+                            restored_r.store(true, std::sync::atomic::Ordering::SeqCst);
+                            reply(201, "")
+                        }
+                        ("PROPFIND", "/remote.php/dav/files/user/off.txt") => reply(
+                            207,
+                            r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns">
+<d:response><d:href>/remote.php/dav/files/user/off.txt</d:href><d:propstat><d:prop><oc:fileid>44</oc:fileid></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
+</d:multistatus>"#,
+                        ),
+                        ("PROPFIND", "/remote.php/dav/files/user/big.txt") => reply(
+                            207,
+                            r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns">
+<d:response><d:href>/remote.php/dav/files/user/big.txt</d:href><d:propstat><d:prop><oc:fileid>45</oc:fileid></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
+</d:multistatus>"#,
+                        ),
                         ("GET", "/remote.php/dav/files/user/b.txt") => reply(200, "b as it is now"),
                         ("PROPFIND", "/remote.php/dav/versions/user/versions/45/") => {
                             reply(207, &" ".repeat(super::NEXTCLOUD_VERSIONS_MAX_BYTES as usize + 1))
@@ -7767,15 +8046,31 @@ mod tests {
 <d:response><d:href>/remote.php/dav/versions/other/versions/46/1700000200</d:href><d:propstat><d:prop><d:getcontentlength>8</d:getcontentlength><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
 </d:multistatus>"#,
                         ),
-                        ("PROPFIND", "/remote.php/dav/files/user/swap/") => {
+                        // swap/e.txt is file 47 at its first two lookups and
+                        // file 48 from the third on.
+                        ("PROPFIND", "/remote.php/dav/files/user/swap/e.txt") => {
                             let n = swap_listings.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                            let id = if n == 0 { 47 } else { 48 };
+                            let id = if n < 2 { 47 } else { 48 };
                             reply(
                                 207,
                                 &format!(r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns">
-<d:response><d:href>/remote.php/dav/files/user/swap/e.txt</d:href><d:propstat><d:prop><oc:fileid>{id}</oc:fileid></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
+<d:response><d:href>/remote.php/dav/files/user/swap/e.txt</d:href><d:propstat><d:prop><oc:fileid>{id}</oc:fileid><d:getcontentlength>9</d:getcontentlength><d:getlastmodified>Wed, 15 Nov 2023 10:00:00 GMT</d:getlastmodified><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
 </d:multistatus>"#),
                             )
+                        }
+                        ("GET", "/remote.php/dav/files/user/swap/e.txt") => reply(200, "e of 48"),
+                        // gone/g.txt has file id 49 at the lookup and is gone
+                        // at the next one; its versions route answers 404.
+                        ("PROPFIND", "/remote.php/dav/files/user/gone/g.txt") => {
+                            let n = gone_listings.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                            if n == 0 {
+                                reply(
+                                    207,
+                                    r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns"><d:response><d:href>/remote.php/dav/files/user/gone/g.txt</d:href><d:propstat><d:prop><oc:fileid>49</oc:fileid></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>"#,
+                                )
+                            } else {
+                                reply(404, "")
+                            }
                         }
                         ("PROPFIND", "/remote.php/dav/versions/user/versions/47/") => reply(
                             207,
@@ -7783,16 +8078,10 @@ mod tests {
 <d:response><d:href>/remote.php/dav/versions/user/versions/47/1700000100</d:href><d:propstat><d:prop><d:getcontentlength>5</d:getcontentlength><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
 </d:multistatus>"#,
                         ),
-                        ("PROPFIND", "/remote.php/dav/files/user/swap/e.txt") => reply(
-                            207,
-                            r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:">
-<d:response><d:href>/remote.php/dav/files/user/swap/e.txt</d:href><d:propstat><d:prop><d:getcontentlength>9</d:getcontentlength><d:getlastmodified>Wed, 15 Nov 2023 10:00:00 GMT</d:getlastmodified><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
-</d:multistatus>"#,
-                        ),
                         ("PROPFIND", "/remote.php/dav/files/user/d.txt") => reply(
                             207,
-                            r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:">
-<d:response><d:href>/remote.php/dav/files/user/d.txt</d:href><d:propstat><d:prop><d:getcontentlength>6</d:getcontentlength><d:getlastmodified>Wed, 15 Nov 2023 10:00:00 GMT</d:getlastmodified><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
+                            r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns">
+<d:response><d:href>/remote.php/dav/files/user/d.txt</d:href><d:propstat><d:prop><oc:fileid>46</oc:fileid><d:getcontentlength>6</d:getcontentlength><d:getlastmodified>Wed, 15 Nov 2023 10:00:00 GMT</d:getlastmodified><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
 </d:multistatus>"#,
                         ),
                         ("MOVE", "/remote.php/dav/versions/user/versions/42/1700000500") => {
@@ -7800,8 +8089,8 @@ mod tests {
                         }
                         ("PROPFIND", "/remote.php/dav/files/user/b.txt") => reply(
                             207,
-                            r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:">
-<d:response><d:href>/remote.php/dav/files/user/b.txt</d:href><d:propstat><d:prop><d:getcontentlength>12</d:getcontentlength><d:getlastmodified>Tue, 14 Nov 2023 22:21:40 GMT</d:getlastmodified><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
+                            r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns">
+<d:response><d:href>/remote.php/dav/files/user/b.txt</d:href><d:propstat><d:prop><oc:fileid>43</oc:fileid><d:getcontentlength>12</d:getcontentlength><d:getlastmodified>Tue, 14 Nov 2023 22:21:40 GMT</d:getlastmodified><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
 </d:multistatus>"#,
                         ),
                         ("PROPFIND", "/remote.php/dav/versions/user/versions/43/") => reply(
@@ -7885,25 +8174,53 @@ mod tests {
         let versions = provider.list_versions("/d.txt").await.expect("versions");
         server.abort();
         let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
-        assert_eq!(ids, ["current", "46:1700000100"]);
+        assert_eq!(ids, ["46:current", "46:1700000100"]);
     }
 
-    /// A file replaced between the versions answer and the stat of its
-    /// current contents: the listing would head file 47's history with 48's
-    /// metadata. It fails and asks for a new listing.
+    /// The "current" row is the file the listing read (file 47), bound to its
+    /// id like the past rows: replaced while its body is read, or before the
+    /// download starts, the path holds file 48, and the download refuses it
+    /// and leaves the destination as it was. The listing reads the id and the
+    /// current size and time from one answer, so it cannot pair 47's id with
+    /// 48's metadata.
     #[tokio::test]
-    async fn a_file_replaced_while_its_versions_are_listed_fails_the_listing() {
-        let (base, _log, server) = serve_nextcloud_versions().await;
+    async fn the_current_row_downloads_only_the_file_it_was_listed_from() {
+        let (base, log, server) = serve_nextcloud_versions().await;
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("e.txt");
+        std::fs::write(&local, "mine").unwrap();
+        let to = local.to_str().unwrap();
         let mut provider = nextcloud_versions_provider(&base);
-        let err = provider
+        let versions = provider
             .list_versions("/swap/e.txt")
             .await
-            .expect_err("replaced");
+            .expect("versions");
+        assert_eq!(versions[0].id, "47:current");
+        assert_eq!(versions[0].size, 9);
+        // 47 before the body, 48 after it.
+        let during = provider
+            .download_version("/swap/e.txt", &versions[0].id, to)
+            .await;
+        // 48 before any body.
+        let after = provider
+            .download_version("/swap/e.txt", &versions[0].id, to)
+            .await;
         server.abort();
-        assert!(
-            matches!(&err, ProviderError::NotFound(m) if m.contains("replaced") && m.contains("47") && m.contains("48")),
-            "{err:?}"
-        );
+        for outcome in [&during, &after] {
+            assert!(
+                matches!(outcome, Err(ProviderError::NotFound(m)) if m.contains("list its versions again")),
+                "{outcome:?}"
+            );
+        }
+        assert_eq!(std::fs::read_to_string(&local).unwrap(), "mine");
+        let gets = log
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|l| l.starts_with("GET /remote.php/dav/files/user/swap/e.txt"))
+            .count();
+        assert_eq!(gets, 1, "the refused second download reads no body");
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
     }
 
     /// An author with an entity in it arrives as Text pieces around a
@@ -7928,7 +8245,7 @@ mod tests {
         let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
         // The file as it is now first, as the versions dialog reads the list.
         // Past versions are bound to the file id they were listed from.
-        assert_eq!(ids, ["current", "42:1700000500", "42:1700000000"]);
+        assert_eq!(ids, ["42:current", "42:1700000500", "42:1700000000"]);
         assert_eq!(versions[0].size, 20);
         assert!(versions[0].modified.is_some());
         assert_eq!(versions[1].size, 12);
@@ -7954,6 +8271,21 @@ mod tests {
         assert!(super::NEXTCLOUD_VERSIONS_OFF.contains("not enabled"));
     }
 
+    /// The versions route also answers 404 when the file id no longer
+    /// resolves: a file removed after its lookup is reported gone, not as a
+    /// disabled Versions app.
+    #[tokio::test]
+    async fn a_nextcloud_file_gone_after_its_lookup_is_not_a_disabled_versions_app() {
+        let (base, _log, server) = serve_nextcloud_versions().await;
+        let mut provider = nextcloud_versions_provider(&base);
+        let outcome = provider.list_versions("/gone/g.txt").await;
+        server.abort();
+        assert!(
+            matches!(&outcome, Err(ProviderError::NotFound(m)) if m.contains("removed or replaced")),
+            "{outcome:?}"
+        );
+    }
+
     #[tokio::test]
     async fn a_listed_current_nextcloud_version_is_row_zero_and_no_row_is_added() {
         let (base, _log, server) = serve_nextcloud_versions().await;
@@ -7963,7 +8295,7 @@ mod tests {
         let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
         // 1700000500 is the file's mtime: the current contents, first, as
         // the file itself.
-        assert_eq!(ids, ["current", "43:1700000000"]);
+        assert_eq!(ids, ["43:current", "43:1700000000"]);
         assert_eq!(versions[0].size, 12);
     }
 
@@ -8019,8 +8351,8 @@ mod tests {
         assert!(!local.exists());
     }
 
-    /// A row of another folder with the same leaf name (`other/c.txt` in the
-    /// answer for `/`) is not `/c.txt`: no file id, no versions of file 99.
+    /// `/c.txt` does not exist (only `other/c.txt` does, file 99): no file
+    /// id, no versions of file 99.
     #[tokio::test]
     async fn a_file_id_is_taken_only_from_a_direct_child_of_the_listed_folder() {
         let (base, log, server) = serve_nextcloud_versions().await;
@@ -8101,6 +8433,38 @@ mod tests {
             ),
             "{log:?}"
         );
+    }
+
+    /// Nextcloud answers the restore MOVE 201 even when its rollback failed
+    /// (RestoreFolder::moveInto drops the rollback's result). Here the MOVE
+    /// of version 1700000000 (8 bytes) is answered 201 and the file still
+    /// holds its 20 bytes: the restore is not reported done.
+    #[tokio::test]
+    async fn a_nextcloud_restore_the_file_does_not_show_is_not_reported_done() {
+        let (base, log, server) = serve_nextcloud_versions().await;
+        let mut provider = nextcloud_versions_provider(&base);
+        let outcome = provider.restore_version("/a.txt", "42:1700000000").await;
+        server.abort();
+        assert!(
+            matches!(&outcome, Err(ProviderError::TransferFailed(m)) if m.contains("20 bytes") && m.contains("list its versions again")),
+            "{outcome:?}"
+        );
+        let log = log.lock().unwrap().clone();
+        assert!(
+            log.iter().any(|l| l.starts_with("MOVE /remote.php/dav/versions/user/versions/42/1700000000")),
+            "{log:?}"
+        );
+    }
+
+    /// Positive control: the file shows the restored version's 8 bytes after
+    /// the MOVE, and the restore is reported done.
+    #[tokio::test]
+    async fn a_nextcloud_restore_the_file_shows_is_reported_done() {
+        let (base, _log, server) = serve_nextcloud_versions().await;
+        let mut provider = nextcloud_versions_provider(&base);
+        let outcome = provider.restore_version("/r.txt", "50:1700000000").await;
+        server.abort();
+        assert!(outcome.is_ok(), "{outcome:?}");
     }
 
     #[tokio::test]
@@ -8190,6 +8554,22 @@ mod tests {
         let xml = r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:">
 <d:response><d:href>/remote.php/dav/versions/u/versions/42/1700000000</d:href>"#;
         assert!(parse_nextcloud_versions_listing(xml).is_err());
+    }
+
+    /// An empty versions collection is complete in both spellings, the
+    /// self-closing one included; an unclosed root stays an error.
+    #[test]
+    fn an_empty_versions_listing_is_complete_in_both_spellings() {
+        for xml in [
+            r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:"></d:multistatus>"#,
+            r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:"/>"#,
+        ] {
+            assert!(parse_nextcloud_versions_listing(xml).expect(xml).is_empty());
+        }
+        assert!(parse_nextcloud_versions_listing(
+            r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:">"#
+        )
+        .is_err());
     }
 
     fn test_config(url: &str) -> WebDavConfig {
@@ -10777,23 +11157,37 @@ mod tests {
             .into_boxed_str(),
         );
 
-        let (url, hits) = spawn_http_stub(vec![file_ids, ROTATED_401, CREATED_201]).await;
+        // The listing before the restore is answered 404: it decides nothing,
+        // so the restore goes on and nothing is listed after it.
+        const GONE_404: &str =
+            "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+        let (url, hits) = spawn_http_stub(vec![file_ids, GONE_404, ROTATED_401, CREATED_201]).await;
         let mut provider = digest_provider(&format!("{url}/remote.php/dav/files/user/"));
         provider
             .restore_version("/a.txt", "42:1700000000")
             .await
             .expect("one rotation is survived");
-        assert_eq!(hits.load(Ordering::SeqCst), 3, "file ids, MOVE, one replay");
+        assert_eq!(
+            hits.load(Ordering::SeqCst),
+            4,
+            "file id, listing, MOVE, one replay"
+        );
 
-        let (url, hits) =
-            spawn_http_stub(vec![file_ids, ROTATED_401, ROTATED_AGAIN_401, CREATED_201]).await;
+        let (url, hits) = spawn_http_stub(vec![
+            file_ids,
+            GONE_404,
+            ROTATED_401,
+            ROTATED_AGAIN_401,
+            CREATED_201,
+        ])
+        .await;
         let mut provider = digest_provider(&format!("{url}/remote.php/dav/files/user/"));
         let outcome = provider.restore_version("/a.txt", "42:1700000000").await;
         assert!(
             matches!(&outcome, Err(ProviderError::ServerError(m)) if m.contains("401")),
             "{outcome:?}"
         );
-        assert_eq!(hits.load(Ordering::SeqCst), 3, "no second replay");
+        assert_eq!(hits.load(Ordering::SeqCst), 4, "no second replay");
     }
 
     const TOO_EARLY_425: &str =

@@ -326,9 +326,10 @@ impl MegaCmdProvider {
             {
                 // A failed get can leave a file at its local target, where
                 // MEGAcmd would not write again (it writes a "(1)" sibling):
-                // removed first, as `download` does before the first attempt.
+                // removed first, only when the target is a file AeroFTP made
+                // for this get, never a file someone saved there meanwhile.
                 if cmd == "mega-get" {
-                    if let Some(target) = args.last() {
+                    if let Some(target) = args.last().filter(|t| is_own_mega_target(t)) {
                         if std::fs::symlink_metadata(target).is_ok_and(|m| m.file_type().is_file())
                         {
                             let _ = std::fs::remove_file(target);
@@ -952,41 +953,73 @@ impl StorageProvider for MegaCmdProvider {
 
         // MEGAcmd's `mega-get` does NOT overwrite an existing local target: it
         // writes to a ` (1)`-suffixed sibling and leaves the original file
-        // untouched. Callers that pre-create the destination (a NamedTempFile
-        // in the speed test, an atomic temp, a plain re-download) would then
-        // read stale or empty bytes from the original path while the real data
-        // sits next to it. Remove a pre-existing regular file at the target so
-        // MEGAcmd writes exactly where the caller asked, matching the
-        // overwrite-on-download semantics every other provider already has. A
-        // directory target is left alone (valid MEGAcmd "into dir" usage).
-        if let Ok(meta) = std::fs::symlink_metadata(l) {
-            if meta.file_type().is_file() || meta.file_type().is_symlink() {
-                if let Err(e) = std::fs::remove_file(l) {
-                    self.log_debug(&format!(
-                        "[MEGAcmd] Could not remove pre-existing target '{}': {}",
-                        l, e
-                    ));
+        // untouched. The download goes to a new staging name beside the
+        // destination, renamed over it once mega-get has finished, so a failed
+        // or cut transfer leaves the file already there as it was, and a
+        // retry clears only that staging file (never a file someone saved at
+        // the destination meanwhile). With --inplace the user asked for writes
+        // in place: a pre-existing regular file at the target is removed so
+        // MEGAcmd writes exactly there, and the get is not replayed (a replay
+        // would have to clear the destination). A directory target is left
+        // alone (valid MEGAcmd "into dir" usage).
+        let inplace = super::atomic_write::inplace_active();
+        let staging = (!inplace).then(|| {
+            super::VersionTempFile(crate::util::temp_name::sibling(
+                std::path::Path::new(l),
+                &format!(
+                    ".{}{MEGA_STAGING_SUFFIX}",
+                    &uuid::Uuid::new_v4().simple().to_string()[..8]
+                ),
+            ))
+        });
+        if inplace {
+            if let Ok(meta) = std::fs::symlink_metadata(l) {
+                if meta.file_type().is_file() || meta.file_type().is_symlink() {
+                    if let Err(e) = std::fs::remove_file(l) {
+                        self.log_debug(&format!(
+                            "[MEGAcmd] Could not remove pre-existing target '{}': {}",
+                            l, e
+                        ));
+                    }
                 }
             }
         }
+        let target = staging
+            .as_ref()
+            .map_or_else(|| l.to_string(), |s| s.0.to_string_lossy().to_string());
 
         // Download file (--resume removed: not supported by all MEGAcmd versions)
         // Issue #263: normalize `/` → `\` on Windows so the verbatim-path
         // resolution inside MEGAcmd does not produce `\\?\C:/...` (invalid).
-        let local_arg = Self::normalize_local_path_for_cli(l);
+        let local_arg = Self::normalize_local_path_for_cli(&target);
         let on_percent = |percent: f64| {
             if let Some((size, bar)) = &tracked {
                 bar.report((*size as f64 * percent / 100.0) as u64);
             }
         };
-        match self
-            .run_mega_transfer_with_reauth(
+        let fetched = if inplace {
+            self.run_mega_transfer_once_with_reauth(
                 "mega-get",
                 &[&remote_address, &local_arg],
                 Some(&on_percent),
             )
             .await
-        {
+        } else {
+            self.run_mega_transfer_with_reauth(
+                "mega-get",
+                &[&remote_address, &local_arg],
+                Some(&on_percent),
+            )
+            .await
+        };
+        let fetched = match (fetched, &staging) {
+            (Ok(out), Some(staging)) => tokio::fs::rename(&staging.0, l)
+                .await
+                .map(|()| out)
+                .map_err(ProviderError::IoError),
+            (outcome, _) => outcome,
+        };
+        match fetched {
             Ok(out) => {
                 self.log_debug(&format!("[MEGAcmd] Download output: {}", out));
                 match (&tracked, &progress) {
@@ -1479,16 +1512,9 @@ impl StorageProvider for MegaCmdProvider {
         // MEGAcmd lists the current one first; its time can be older than an
         // earlier version's (a restore uploads old contents with their old
         // time), so the place tells it, not the time.
-        let rows = parse_mega_ls_version_handles(&output);
-        let head = rows.first().map(|(v, _)| v.id.clone());
-        let times: std::collections::HashMap<String, i64> =
-            rows.iter().map(|(v, time)| (v.id.clone(), *time)).collect();
-        Ok(super::versions_current_first(
-            rows.into_iter().map(|(v, _)| v).collect(),
-            |v| Some(&v.id) == head.as_ref(),
-            || None,
-            |v| times.get(&v.id).copied().unwrap_or(0),
-        ))
+        Ok(mega_versions_current_first(parse_mega_ls_version_handles(
+            &output, &abs_path,
+        )?)?)
     }
 
     async fn download_version(
@@ -1501,7 +1527,7 @@ impl StorageProvider for MegaCmdProvider {
         // Rename into place, or copy where the temp folder is on another
         // file system; the guard removes whatever is left.
         if tokio::fs::rename(&temp.0, local_path).await.is_err() {
-            copy_version_into_place(&temp.0, local_path).await?;
+            super::copy_version_into_place(&temp.0, local_path).await?;
         }
         Ok(())
     }
@@ -1525,6 +1551,16 @@ impl StorageProvider for MegaCmdProvider {
                 now.as_deref().unwrap_or("none")
             )));
         }
+        // With versioning off MEGA drops the version a put replaces
+        // (measured 2026-11-18: gone from the chain, the Rubbish Bin and a
+        // search): the restore would lose the current version, so it is
+        // refused before the put, and when the setting cannot be read.
+        let versioning = self
+            .run_mega_cmd_with_reauth("mega-userattr", &["^!dv"])
+            .await;
+        if mega_versioning_off(versioning)? {
+            return Err(ProviderError::NotSupported(MEGA_VERSIONING_OFF.into()));
+        }
         let local_arg = Self::normalize_local_path_for_cli(&temp.0.to_string_lossy());
         self.run_mega_transfer_once_with_reauth(
             "mega-put",
@@ -1544,7 +1580,7 @@ impl StorageProvider for MegaCmdProvider {
                 &["-l", "--versions", "--show-handles", &abs_path],
             )
             .await?;
-        let after: Vec<FileVersion> = parse_mega_ls_version_handles(&output)
+        let after: Vec<FileVersion> = parse_mega_ls_version_handles(&output, &abs_path)?
             .into_iter()
             .map(|(v, _)| v)
             .collect();
@@ -1562,13 +1598,23 @@ impl StorageProvider for MegaCmdProvider {
         }
         // The put exited 0, and neither the chain nor a size proves what is
         // current: MEGA adds no version for the bytes the current one already
-        // holds (measured 2026-11-18), keeps no chain with versioning off, and
-        // another client can write the same length. The file's bytes decide.
-        if !self.current_bytes_match(&abs_path, &temp.0).await? {
-            return Err(ProviderError::TransferFailed(format!(
+        // holds (measured 2026-11-18), and another client can write the same
+        // length. The bytes of the version now on top decide, read by its
+        // handle (a write at the path meanwhile does not change them), and
+        // that version must still be on top after the read.
+        let not_taken = || {
+            ProviderError::TransferFailed(format!(
                 "{path} does not hold the restored version after the upload: MEGA did not \
                  take it, or someone else wrote it meanwhile; list its versions again"
-            )));
+            ))
+        };
+        let top = after.first().map(|v| v.id.clone()).ok_or_else(not_taken)?;
+        if !self.version_bytes_match(&top, &temp.0).await? {
+            return Err(not_taken());
+        }
+        let still = self.list_versions(path).await?;
+        if still.first().map(|v| v.id.as_str()) != Some(top.as_str()) {
+            return Err(not_taken());
         }
         Ok(())
     }
@@ -1850,11 +1896,15 @@ impl MegaCmdProvider {
         self.run_mega_transfer_with_reauth("mega-get", &[version_id, &temp_arg], Some(&|_| {}))
             .await?;
         // MEGAcmd can exit with its failure on stdout, which reads as a
-        // success: a version is taken only whole, at the size it was listed
-        // with, or a restore would upload the cut file over the current one.
-        // A size the listing did not give (0) checks nothing.
-        let written = std::fs::metadata(&temp.0).map(|m| m.len()).unwrap_or(0);
-        if size > 0 && written != size {
+        // success: a version is taken only whole, as a regular file at the
+        // size it was listed with (an empty version included), or a restore
+        // would upload the cut file over the current one.
+        let written = std::fs::symlink_metadata(&temp.0)
+            .ok()
+            .filter(|m| m.file_type().is_file())
+            .map(|m| m.len());
+        if written != Some(size) {
+            let written = written.unwrap_or(0);
             return Err(ProviderError::TransferFailed(format!(
                 "MEGA sent {written} of the {size} bytes of version {version_id} of {path}: \
                  nothing was changed, try again"
@@ -1863,17 +1913,17 @@ impl MegaCmdProvider {
         Ok((temp, head))
     }
 
-    /// Whether the file at `abs_path` holds exactly the bytes of `local`:
+    /// Whether the version `handle` holds exactly the bytes of `local`:
     /// fetched to a temp file of its own (removed on every exit) and compared
     /// a block at a time.
-    async fn current_bytes_match(
+    async fn version_bytes_match(
         &mut self,
-        abs_path: &str,
+        handle: &str,
         local: &std::path::Path,
     ) -> Result<bool, ProviderError> {
         let current = MegaTempFile::new("aeroftp_mega_check");
         let current_arg = Self::normalize_local_path_for_cli(&current.0.to_string_lossy());
-        self.run_mega_transfer_with_reauth("mega-get", &[abs_path, &current_arg], Some(&|_| {}))
+        self.run_mega_transfer_with_reauth("mega-get", &[handle, &current_arg], Some(&|_| {}))
             .await
             .map_err(|e| {
                 ProviderError::TransferFailed(format!(
@@ -2103,6 +2153,18 @@ fn mega_wildcard(path: &str) -> bool {
 /// A local temp path MEGAcmd writes to ([`super::VersionTempFile`]).
 type MegaTempFile = super::VersionTempFile;
 
+/// The suffix of the staging name a download writes beside its destination.
+const MEGA_STAGING_SUFFIX: &str = ".aeromegatmp";
+
+/// Whether `target` is a local file AeroFTP made for a mega-get (a temp of
+/// its own or a download's staging name), the only kind a retry may clear.
+fn is_own_mega_target(target: &str) -> bool {
+    std::path::Path::new(target)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.starts_with("aeroftp_mega") || name.ends_with(MEGA_STAGING_SUFFIX))
+}
+
 /// The image type of a thumbnail MEGA returned, from its first bytes; `None`
 /// when the bytes are no image (an empty file for a node without one).
 fn thumbnail_mime(bytes: &[u8]) -> Option<&'static str> {
@@ -2115,25 +2177,9 @@ fn thumbnail_mime(bytes: &[u8]) -> Option<&'static str> {
     }
 }
 
-/// Copy a fetched version over `to` the way a download writes: beside it
-/// first, renamed over it once whole, so a copy cut short (a full disk, a
-/// read error) leaves the file already there untouched.
-async fn copy_version_into_place(from: &std::path::Path, to: &str) -> Result<(), ProviderError> {
-    let mut source = tokio::fs::File::open(from)
-        .await
-        .map_err(ProviderError::IoError)?;
-    let mut atomic = super::atomic_write::AtomicFile::new(to)
-        .await
-        .map_err(ProviderError::IoError)?;
-    tokio::io::copy(&mut source, atomic.file_mut())
-        .await
-        .map_err(ProviderError::IoError)?;
-    atomic.commit().await.map_err(ProviderError::IoError)
-}
-
 /// Whether the files at `a` and `b` hold the same bytes, read a block at a
 /// time (a version can be large).
-fn same_bytes(a: &std::path::Path, b: &std::path::Path) -> std::io::Result<bool> {
+pub(crate) fn same_bytes(a: &std::path::Path, b: &std::path::Path) -> std::io::Result<bool> {
     use std::io::Read;
     if std::fs::metadata(a)?.len() != std::fs::metadata(b)?.len() {
         return Ok(false);
@@ -2174,7 +2220,7 @@ fn refuse_mega_wildcard_name(path: &str) -> Result<(), ProviderError> {
 /// The one handle a `--show-handles` listing gives for `name`, or why not.
 /// Whether `id` is a MEGAcmd handle address (`H:` and the handle's
 /// base64url letters), so nothing else rides on the `mega-get` argument.
-fn is_mega_handle(id: &str) -> bool {
+pub(crate) fn is_mega_handle(id: &str) -> bool {
     id.strip_prefix("H:").is_some_and(|handle| {
         !handle.is_empty()
             && handle
@@ -2183,16 +2229,79 @@ fn is_mega_handle(id: &str) -> bool {
     })
 }
 
-/// The rows of `mega-ls -l --versions --show-handles` after its
+/// The rows of [`parse_mega_ls_version_handles`] in the order every
+/// `list_versions` answers in: MEGAcmd lists the current one first, and its
+/// time can be older than an earlier version's (a restore uploads old
+/// contents with their old time), so the place tells it, not the time.
+pub(crate) fn mega_versions_current_first(
+    rows: Vec<(FileVersion, i64)>,
+) -> Result<Vec<FileVersion>, ProviderError> {
+    let head = rows.first().map(|(v, _)| v.id.clone());
+    let times: std::collections::HashMap<String, i64> =
+        rows.iter().map(|(v, time)| (v.id.clone(), *time)).collect();
+    super::versions_current_first(
+        rows.into_iter().map(|(v, _)| v).collect(),
+        |v| Some(&v.id) == head.as_ref(),
+        || None,
+        |v| times.get(&v.id).copied().unwrap_or(0),
+    )
+}
+
+/// Why a restore is refused on an account with file versioning off.
+pub(crate) const MEGA_VERSIONING_OFF: &str = "File versioning is off on this MEGA account: a \
+     restore would replace the current version without keeping it. Turn file versioning on \
+     in MEGA's settings, then restore again";
+
+/// Whether the account has file versioning off, from `mega-userattr ^!dv`
+/// (DISABLE_VERSIONS): `= 1` off, `= 0` or no attribute (never set) on,
+/// measured on 2.6.0 (2026-11-18). An answer that says neither is an error:
+/// a restore does not guess.
+pub(crate) fn mega_versioning_off(
+    answer: Result<String, ProviderError>,
+) -> Result<bool, ProviderError> {
+    let unread = |detail: &str| {
+        ProviderError::Other(format!(
+            "Could not read whether MEGA keeps versions ({detail}): nothing was changed"
+        ))
+    };
+    match answer {
+        Ok(text) if text.contains("(^!dv) = 1") => Ok(true),
+        Ok(text) if text.contains("(^!dv) = 0") || text.contains("Not found") => Ok(false),
+        Ok(text) => Err(unread(text.trim())),
+        Err(ProviderError::NotFound(_)) => Ok(false),
+        Err(e) => Err(unread(&e.to_string())),
+    }
+}
+
+/// The rows of `mega-ls -l --versions --show-handles <abs_path>` after its
 /// `Versions of` line (flags, versions, size, date, time, handle,
 /// `name#<time>`), each with the time of its name, as MEGAcmd 2.6.0 lists
 /// them (measured 2026-11-17). The handle is the version id.
-fn parse_mega_ls_version_handles(output: &str) -> Vec<(FileVersion, i64)> {
+///
+/// The section is named by the file's path from MEGAcmd's folder
+/// (`Versions of d1/a.txt:` for `/d1/a.txt`, measured 2026-11-18). A folder
+/// lists a section for each versioned child instead: a section of another
+/// path refuses the whole listing, so no child's version passes for one of
+/// the folder's. A row without a numeric size is skipped: a version is taken
+/// only at the size it was listed with, an empty one included.
+pub(crate) fn parse_mega_ls_version_handles(
+    output: &str,
+    abs_path: &str,
+) -> Result<Vec<(FileVersion, i64)>, ProviderError> {
     let mut rows = Vec::new();
     let mut in_versions = false;
     for raw in output.lines() {
         let trimmed = raw.trim_start();
-        if trimmed.starts_with("Versions of ") {
+        if let Some(section) = trimmed.strip_prefix("Versions of ") {
+            let section = section.trim_end().trim_end_matches(':');
+            let of_this_file = !section.is_empty()
+                && (abs_path == format!("/{section}")
+                    || abs_path.ends_with(&format!("/{section}")));
+            if !of_this_file {
+                return Err(ProviderError::NotSupported(format!(
+                    "{abs_path} is a folder: MEGA keeps versions of files only"
+                )));
+            }
             in_versions = true;
             continue;
         }
@@ -2203,6 +2312,9 @@ fn parse_mega_ls_version_handles(output: &str) -> Vec<(FileVersion, i64)> {
         if parts.len() < 7 || !is_mega_handle(parts[5]) {
             continue;
         }
+        let Ok(size) = parts[2].parse::<u64>() else {
+            continue;
+        };
         let name = parts[6..].join(" ");
         let time = name
             .rsplit_once('#')
@@ -2212,14 +2324,14 @@ fn parse_mega_ls_version_handles(output: &str) -> Vec<(FileVersion, i64)> {
             FileVersion {
                 id: parts[5].to_string(),
                 modified: Some(format!("{} {}", parts[3], parts[4])),
-                size: parts[2].parse::<u64>().unwrap_or(0),
+                size,
                 modified_by: None,
                 deleted: false,
             },
             time,
         ));
     }
-    rows
+    Ok(rows)
 }
 
 fn unique_handle_for(listing: &str, name: &str) -> Result<String, ProviderError> {
@@ -2334,12 +2446,21 @@ mod tests {
     use super::*;
 
     /// The copy a version takes where the temp folder is on another file
-    /// system: a read that fails after the destination was opened leaves the
-    /// file already there as it was (a plain copy truncates it first), and a
-    /// whole copy replaces it.
+    /// system: by default a read that fails after the destination was opened
+    /// leaves the file already there as it was (a plain copy truncates it
+    /// first), and a whole copy replaces it. With --inplace the copy writes
+    /// the destination directly, as every download then does: cut, the
+    /// destination holds what was written, and no staging name is made.
     #[cfg(target_os = "linux")]
     #[tokio::test]
     async fn a_cut_version_copy_leaves_the_file_already_there_untouched() {
+        use crate::providers::copy_version_into_place_in;
+        async fn copy_version_into_place(
+            from: &std::path::Path,
+            to: &str,
+        ) -> Result<(), crate::providers::ProviderError> {
+            copy_version_into_place_in(from, to, false).await
+        }
         let dir = tempfile::tempdir().unwrap();
         let destination = dir.path().join("kept.txt");
         std::fs::write(&destination, "the file the user kept").unwrap();
@@ -2370,6 +2491,22 @@ mod tests {
             std::fs::read_to_string(&destination).unwrap(),
             "the version"
         );
+
+        // --inplace: written in place, cut or whole, never staged beside.
+        assert!(copy_version_into_place_in(failing, to, true).await.is_err());
+        assert_eq!(std::fs::read_to_string(&destination).unwrap(), "");
+        copy_version_into_place_in(&version, to, true)
+            .await
+            .unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&destination).unwrap(),
+            "the version"
+        );
+        let names: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(names.len(), 2, "{names:?}");
     }
     use crate::providers::MegaConnectionMode;
 
@@ -3423,15 +3560,21 @@ mod tests {
         assert!(out.contains("mega-ls") || out.ends_with("mega-ls"));
     }
 
-    /// A provider whose `mega-ls`, `mega-get`, `mega-put` and
-    /// `mega-thumbnail` are links to the stand-in, plus the folder that
+    /// A provider whose `mega-ls`, `mega-get`, `mega-put`, `mega-thumbnail`
+    /// and `mega-userattr` are links to the stand-in, plus the folder that
     /// keeps the links and the stand-in's get.log and put.log.
     #[cfg(unix)]
     fn provider_with_stand_in_versions() -> (MegaCmdProvider, tempfile::TempDir) {
         let dir = tempfile::tempdir().expect("tempdir");
         let shim =
             std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/megacmd_shim.sh");
-        for name in ["mega-ls", "mega-get", "mega-put", "mega-thumbnail"] {
+        for name in [
+            "mega-ls",
+            "mega-get",
+            "mega-put",
+            "mega-thumbnail",
+            "mega-userattr",
+        ] {
             std::os::unix::fs::symlink(&shim, dir.path().join(name)).unwrap();
         }
         let mut provider = test_provider();
@@ -3567,8 +3710,9 @@ mod tests {
             .restore_version("/v.txt", "H:vAAAAAA2")
             .await
             .expect("restore");
-        // The version, then the file's bytes after the put, which decide.
-        assert_eq!(stand_in_log(&dir, "get.log"), ["H:vAAAAAA2", "/v.txt"]);
+        // The version, then the bytes of the version on top after the put,
+        // read by its handle, which decide.
+        assert_eq!(stand_in_log(&dir, "get.log"), ["H:vAAAAAA2", "H:vAAAAAA4"]);
         assert_eq!(stand_in_log(&dir, "put.log"), ["/v.txt"]);
         let versions = provider.list_versions("/v.txt").await.unwrap();
         let rows: Vec<(&str, u64)> = versions.iter().map(|v| (v.id.as_str(), v.size)).collect();
@@ -3625,19 +3769,98 @@ mod tests {
 
     /// A past version with the current version's bytes: MEGA adds no version
     /// for them and exits 0 (measured 2026-11-18 on a live account: the
-    /// handle stayed, only its time moved), so no new version on top at the
-    /// current size is a success (w.txt's current H:wAAAAAA3 and the old
-    /// H:wAAAAAA1 are both 8 bytes).
+    /// handle stayed, only its time moved), so the unchanged current version
+    /// holding those bytes is a success. The fixture seeds w.txt's current
+    /// H:wAAAAAA3 with H:wAAAAAA1's bytes and the put changes nothing; the
+    /// same put over different current bytes of the same size is a failure.
     #[cfg(unix)]
     #[tokio::test]
     async fn a_megacmd_restore_of_a_past_version_with_the_current_bytes_succeeds() {
         let (mut provider, dir) = provider_with_stand_in_versions();
         std::fs::write(dir.path().join("put-same-bytes"), "").unwrap();
+        std::fs::write(dir.path().join("w-current-holds-w1"), "").unwrap();
         provider
             .restore_version("/w.txt", "H:wAAAAAA1")
             .await
             .expect("the current version already holds those bytes");
         assert_eq!(stand_in_log(&dir, "put.log"), ["/w.txt"]);
+        let (mut provider, dir) = provider_with_stand_in_versions();
+        std::fs::write(dir.path().join("put-same-bytes"), "").unwrap();
+        let outcome = provider.restore_version("/w.txt", "H:wAAAAAA1").await;
+        assert!(
+            matches!(&outcome, Err(ProviderError::TransferFailed(m)) if m.contains("does not hold")),
+            "{outcome:?}"
+        );
+    }
+
+    /// A put MEGA ignored, then another client writing the restored bytes at
+    /// the path before the check: the bytes are read by the handle on top
+    /// (the old current version, unchanged), not by the path, so the restore
+    /// is not reported as done by someone else's write.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_foreign_write_of_the_restored_bytes_is_not_this_restore() {
+        let (mut provider, dir) = provider_with_stand_in_versions();
+        std::fs::write(dir.path().join("put-ignored"), "").unwrap();
+        std::fs::write(dir.path().join("foreign-writes-put-bytes"), "").unwrap();
+        let outcome = provider.restore_version("/v.txt", "H:vAAAAAA2").await;
+        assert!(
+            matches!(&outcome, Err(ProviderError::TransferFailed(m)) if m.contains("does not hold")),
+            "{outcome:?}"
+        );
+        assert!(stand_in_log(&dir, "get.log").contains(&"H:vAAAAAA3".to_string()));
+    }
+
+    /// A folder lists a versions part for each versioned child: none of them
+    /// is taken for a version of the folder, and nothing is fetched or put.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_megacmd_folder_has_no_versions_of_its_children() {
+        let (mut provider, dir) = provider_with_stand_in_versions();
+        let listed = provider.list_versions("/docs").await;
+        assert!(
+            matches!(&listed, Err(ProviderError::NotSupported(m)) if m.contains("is a folder")),
+            "{listed:?}"
+        );
+        let local = dir.path().join("out.bin");
+        let local = local.to_str().unwrap();
+        assert!(provider
+            .download_version("/docs", "H:dAAAAAA1", local)
+            .await
+            .is_err());
+        assert!(provider
+            .restore_version("/docs", "H:dAAAAAA1")
+            .await
+            .is_err());
+        assert!(stand_in_log(&dir, "get.log").is_empty());
+        assert!(stand_in_log(&dir, "put.log").is_empty());
+        let versions = provider.list_versions("/v.txt").await.expect("a file");
+        assert_eq!(versions.len(), 3);
+    }
+
+    /// An empty past version is taken at its size, zero: an empty download
+    /// is written, a non-empty answer for it is refused.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn an_empty_megacmd_version_is_taken_only_empty() {
+        let (mut provider, dir) = provider_with_stand_in_versions();
+        let local = dir.path().join("z.out");
+        let local_str = local.to_str().unwrap();
+        provider
+            .download_version("/z.txt", "H:zAAAAAA1", local_str)
+            .await
+            .expect("an empty version");
+        assert_eq!(std::fs::metadata(&local).unwrap().len(), 0);
+        std::fs::remove_file(&local).unwrap();
+        std::fs::write(dir.path().join("z-get-three"), "").unwrap();
+        let outcome = provider
+            .download_version("/z.txt", "H:zAAAAAA1", local_str)
+            .await;
+        assert!(
+            matches!(&outcome, Err(ProviderError::TransferFailed(m)) if m.contains("0 bytes")),
+            "{outcome:?}"
+        );
+        assert!(!local.exists());
     }
 
     /// The check reads the chain in MEGA's order, not by time: w.txt's
@@ -3656,18 +3879,42 @@ mod tests {
         assert_eq!(versions[0].size, 13);
     }
 
-    /// With versioning turned off MEGA keeps no chain: the listing after the
-    /// put is the file's one row, outside any "Versions of" part, and the
-    /// file's bytes, the restored ones, make it a success.
+    /// With versioning turned off MEGA drops the version a put replaces
+    /// (measured 2026-11-18): the restore is refused before the put, the
+    /// current version stays, and an answer that does not say the setting
+    /// refuses as well. With versioning on the same restore goes through.
     #[cfg(unix)]
     #[tokio::test]
-    async fn a_megacmd_restore_with_versioning_off_succeeds() {
+    async fn a_megacmd_restore_with_versioning_off_is_refused_before_the_put() {
+        for marker in ["versioning-off", "versioning-unreadable"] {
+            let (mut provider, dir) = provider_with_stand_in_versions();
+            std::fs::write(dir.path().join(marker), "").unwrap();
+            let outcome = provider.restore_version("/v.txt", "H:vAAAAAA2").await;
+            assert!(outcome.is_err(), "{marker}: {outcome:?}");
+            assert!(!dir.path().join("put.log").exists(), "{marker}");
+            let versions = provider.list_versions("/v.txt").await.unwrap();
+            assert_eq!(versions[0].id, "H:vAAAAAA3", "{marker}");
+        }
         let (mut provider, dir) = provider_with_stand_in_versions();
         std::fs::write(dir.path().join("versioning-off"), "").unwrap();
+        let outcome = provider.restore_version("/v.txt", "H:vAAAAAA2").await;
+        assert!(
+            matches!(&outcome, Err(ProviderError::NotSupported(m)) if m == super::MEGA_VERSIONING_OFF),
+            "{outcome:?}"
+        );
+        assert!(matches!(
+            super::mega_versioning_off(Ok("\tDISABLE_VERSIONS (^!dv) = 0".into())),
+            Ok(false)
+        ));
+        assert!(matches!(
+            super::mega_versioning_off(Err(ProviderError::NotFound("^!dv".into()))),
+            Ok(false)
+        ));
+        let (mut provider, _dir) = provider_with_stand_in_versions();
         provider
             .restore_version("/v.txt", "H:vAAAAAA2")
             .await
-            .expect("restore");
+            .expect("versioning on");
     }
 
     /// A put that added nothing, then another client's write: a new version
@@ -3770,6 +4017,35 @@ mod tests {
             .expect("download after a transient failure");
         assert_eq!(std::fs::metadata(&target).unwrap().len(), 1000);
         assert!(!local.path().join("down.txt (1)").exists());
+        assert_eq!(std::fs::read_dir(local.path()).unwrap().count(), 1);
+    }
+
+    /// A download writes beside its destination: when every attempt fails,
+    /// the file already there (the user's, or one saved there meanwhile)
+    /// keeps its bytes, and no staging file is left. The retry clears only
+    /// the staging file it wrote, never the destination.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_failed_megacmd_download_leaves_the_destination_as_it_was() {
+        let (mut provider, dir) = provider_with_stand_in_versions();
+        std::fs::write(dir.path().join("get-always-try-again"), "").unwrap();
+        let local = tempfile::tempdir().expect("tempdir");
+        let target = local.path().join("report.pdf");
+        std::fs::write(&target, "saved by the editor").unwrap();
+        let outcome = provider
+            .download("/f.dat", target.to_str().unwrap(), None)
+            .await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        assert_eq!(
+            std::fs::read_to_string(&target).unwrap(),
+            "saved by the editor"
+        );
+        assert_eq!(std::fs::read_dir(local.path()).unwrap().count(), 1);
+        assert!(
+            stand_in_log(&dir, "get.log").len() > 1,
+            "the get was retried"
+        );
+        assert!(!super::is_own_mega_target(target.to_str().unwrap()));
     }
 
     /// mega-put resolves the path when it runs: a version another client put

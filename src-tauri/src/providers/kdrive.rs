@@ -169,10 +169,16 @@ struct KDriveVersion {
 /// kDrive lists only past versions (live 2026-11-16: three uploads, two
 /// versions), oldest first; the versions dialog reads row 0 as the current
 /// one, so the file comes first, then the versions newest first.
+/// Each id is bound to the file id it was listed from
+/// ([`super::bind_version_to_file`]): a version id is an integer the API
+/// scopes by file in its URL, so a bare one sent after another file took the
+/// path could reach that file's version of the same number.
 fn versions_in_dialog_order(
     mut versions: Vec<KDriveVersion>,
     file: &RemoteEntry,
+    file_id: i64,
 ) -> Vec<FileVersion> {
+    let file_id = file_id.to_string();
     versions.sort_by_key(|v| std::cmp::Reverse(v.created_at.unwrap_or(0)));
     let past = versions.iter().map(|v| {
         let modified = v.created_at.map(|ts| {
@@ -182,16 +188,18 @@ fn versions_in_dialog_order(
                 .to_string()
         });
         FileVersion {
-            id: v.id.to_string(),
+            id: super::bind_version_to_file(&file_id, &v.id.to_string()),
             modified,
             size: v.size.unwrap_or(0).max(0) as u64,
             modified_by: v.version_number.map(|n| format!("v{}", n)),
             deleted: false,
         }
     });
-    std::iter::once(super::current_version_of(file))
-        .chain(past)
-        .collect()
+    let current = FileVersion {
+        id: super::bind_version_to_file(&file_id, super::CURRENT_VERSION_ID),
+        ..super::current_version_of(file)
+    };
+    std::iter::once(current).chain(past).collect()
 }
 
 // KD-010: Trash types: ready for use when StorageProvider trait adds trash methods.
@@ -1599,49 +1607,8 @@ impl StorageProvider for KDriveProvider {
             .await?
             .ok_or_else(|| ProviderError::NotFound(format!("'{}' not found", filename)))?;
 
-        let url = self.api_url_v3(&format!("/files/{}", file_id));
-        let resp = self.get_with_retry(&url).await?;
-
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let body = resp.text().await.unwrap_or_default();
-            return Err(api_failure("Stat failed", Some(status), &body));
-        }
-
-        let api_resp: ApiResponse<KDriveFile> = resp.json().await.map_http_err(|e| {
-            ProviderError::ServerError(format!("Parse stat response failed: {}", e))
-        })?;
-
-        let file = api_resp.data.ok_or_else(|| {
-            ProviderError::ParseError(format!(
-                "Missing metadata for '{}' after a successful lookup",
-                filename
-            ))
-        })?;
-
-        let is_dir = file.file_type.as_deref() == Some("dir");
-        let size = file.size.unwrap_or(0).max(0) as u64;
-        let modified = file.last_modified.map(|ts| {
-            chrono::DateTime::from_timestamp(ts, 0)
-                .unwrap_or_default()
-                .format("%Y-%m-%d %H:%M:%SZ")
-                .to_string()
-        });
-
-        Ok(RemoteEntry {
-            name: file.name.unwrap_or_else(|| filename.to_string()),
-            path: resolved,
-            is_dir,
-            size,
-            modified,
-            permissions: None,
-            owner: None,
-            group: None,
-            is_symlink: false,
-            link_target: None,
-            metadata: HashMap::new(),
-            mime_type: None,
-        })
+        self.entry_of_file_id(file_id, filename, resolved.clone())
+            .await
     }
 
     async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
@@ -1940,18 +1907,25 @@ impl StorageProvider for KDriveProvider {
 
         if !resp.status().is_success() {
             let status = resp.status();
-            let body = resp.text().await.unwrap_or_default();
+            let body = super::version_listing_text(resp).await.unwrap_or_default();
             return Err(api_failure("List versions failed", Some(status), &body));
         }
 
-        let api_resp: ApiResponse<Vec<KDriveVersion>> = resp.json().await.map_http_err(|e| {
-            ProviderError::ServerError(format!("Parse versions response failed: {}", e))
-        })?;
+        let text = super::version_listing_text(resp).await?;
+        let api_resp: ApiResponse<Vec<KDriveVersion>> =
+            serde_json::from_str(&text).map_err(|e| {
+                ProviderError::ServerError(format!("Parse versions response failed: {}", e))
+            })?;
 
-        let file = self.stat(path).await?;
+        // The current row is the file whose versions were listed, read by
+        // its id, not the path read again.
+        let file = self
+            .entry_of_file_id(file_id, filename, resolved.clone())
+            .await?;
         Ok(versions_in_dialog_order(
             api_resp.data.unwrap_or_default(),
             &file,
+            file_id,
         ))
     }
 
@@ -1973,10 +1947,19 @@ impl StorageProvider for KDriveProvider {
             .await?
             .ok_or_else(|| ProviderError::NotFound(format!("'{}' not found", filename)))?;
 
-        let url = self.api_url_v3(&format!(
-            "/files/{}/versions/{}/download",
-            file_id, version_id
-        ));
+        let label = super::version_label_of_file(version_id, &file_id.to_string(), path)?;
+        if label == super::CURRENT_VERSION_ID {
+            // The listed current row: the file it was listed from, by its id.
+            let url = self.api_url_v2(&format!("/files/{}/download", file_id));
+            let resp = self.get_with_retry(&url).await?;
+            if !resp.status().is_success() {
+                let status = resp.status();
+                let body = super::version_listing_text(resp).await.unwrap_or_default();
+                return Err(api_failure("Download failed", Some(status), &body));
+            }
+            return super::save_version_body(resp, local_path, "Download failed").await;
+        }
+        let url = self.api_url_v3(&format!("/files/{}/versions/{}/download", file_id, label));
         let resp = self.get_with_retry(&url).await?;
 
         if !resp.status().is_success() {
@@ -1988,6 +1971,7 @@ impl StorageProvider for KDriveProvider {
         // Stream version download to file
         use futures_util::StreamExt;
 
+        super::require_whole_version_body(&resp, "Download version failed")?;
         let mut stream = resp.bytes_stream();
         let mut atomic = super::atomic_write::AtomicFile::new(local_path)
             .await
@@ -2024,10 +2008,14 @@ impl StorageProvider for KDriveProvider {
             .await?
             .ok_or_else(|| ProviderError::NotFound(format!("'{}' not found", filename)))?;
 
-        let url = self.api_url_v3(&format!(
-            "/files/{}/versions/{}/restore",
-            file_id, version_id
-        ));
+        let label = super::version_label_of_file(version_id, &file_id.to_string(), path)?;
+        if label == super::CURRENT_VERSION_ID {
+            return Err(ProviderError::NotSupported(
+                "This is already the current version".into(),
+            ));
+        }
+        let url = self.api_url_v3(&format!("/files/{}/versions/{}/restore", file_id, label));
+        let selected = super::refuse_a_restore_that_changes_nothing(self, path, version_id).await?;
         let resp = self
             .post_with_retry(&url, "application/json", vec![])
             .await?;
@@ -2038,7 +2026,7 @@ impl StorageProvider for KDriveProvider {
             return Err(api_failure("Restore version failed", Some(status), &body));
         }
 
-        Ok(())
+        super::confirm_version_restored(self, path, selected.as_ref()).await
     }
 
     // ─── KD-010: Trash management via kDrive trash API ────────────────
@@ -2056,6 +2044,61 @@ impl StorageProvider for KDriveProvider {
 // =============================================================================
 
 impl KDriveProvider {
+    /// The entry of the file `file_id` (`GET /files/{id}`), named `filename`
+    /// at `resolved`: read by id, so it is the file a lookup found and not
+    /// whatever the path holds by the time of the read.
+    async fn entry_of_file_id(
+        &self,
+        file_id: i64,
+        filename: &str,
+        resolved: String,
+    ) -> Result<RemoteEntry, ProviderError> {
+        let url = self.api_url_v3(&format!("/files/{}", file_id));
+        let resp = self.get_with_retry(&url).await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = super::version_listing_text(resp).await.unwrap_or_default();
+            return Err(api_failure("Stat failed", Some(status), &body));
+        }
+
+        let text = super::version_listing_text(resp).await?;
+        let api_resp: ApiResponse<KDriveFile> = serde_json::from_str(&text).map_err(|e| {
+            ProviderError::ServerError(format!("Parse stat response failed: {}", e))
+        })?;
+
+        let file = api_resp.data.ok_or_else(|| {
+            ProviderError::ParseError(format!(
+                "Missing metadata for '{}' after a successful lookup",
+                filename
+            ))
+        })?;
+
+        let is_dir = file.file_type.as_deref() == Some("dir");
+        let size = file.size.unwrap_or(0).max(0) as u64;
+        let modified = file.last_modified.map(|ts| {
+            chrono::DateTime::from_timestamp(ts, 0)
+                .unwrap_or_default()
+                .format("%Y-%m-%d %H:%M:%SZ")
+                .to_string()
+        });
+
+        Ok(RemoteEntry {
+            name: file.name.unwrap_or_else(|| filename.to_string()),
+            path: resolved,
+            is_dir,
+            size,
+            modified,
+            permissions: None,
+            owner: None,
+            group: None,
+            is_symlink: false,
+            link_target: None,
+            metadata: HashMap::new(),
+            mime_type: None,
+        })
+    }
+
     /// List items in the kDrive trash.
     pub async fn list_trash(&mut self) -> Result<Vec<RemoteEntry>, ProviderError> {
         if !self.connected {
@@ -2696,10 +2739,32 @@ mod tests {
         assert_eq!(seen.lock().unwrap().len(), before, "{seen:?}");
 
         provider
-            .download_version("/a.txt", "2", out)
+            .download_version("/a.txt", "11:2", out)
             .await
             .expect("a past version downloads by its id");
         assert_eq!(std::fs::read_to_string(out).unwrap(), "two");
+        // The listed current row is file 11 by its id.
+        provider
+            .download_version("/a.txt", "11:current", out)
+            .await
+            .expect("the listed current row downloads file 11");
+        assert_eq!(std::fs::read_to_string(out).unwrap(), "live");
+        // Listed from file 12, or not bound at all: refused before any
+        // request on a version, and the destination keeps its bytes.
+        let before = seen.lock().unwrap().len();
+        for id in ["12:2", "12:current", "2"] {
+            let outcome = provider.download_version("/a.txt", id, out).await;
+            assert!(outcome.is_err(), "{id}: {outcome:?}");
+            let restored = provider.restore_version("/a.txt", id).await;
+            assert!(restored.is_err(), "{id}: {restored:?}");
+        }
+        assert_eq!(std::fs::read_to_string(out).unwrap(), "live");
+        assert!(
+            seen.lock().unwrap()[before..]
+                .iter()
+                .all(|p| !p.contains("/versions/") && !p.contains("/download")),
+            "{seen:?}"
+        );
     }
 
     /// kDrive's move names no conflict behaviour, so the destination is
@@ -3368,7 +3433,7 @@ mod tests {
             matches!(removed, Err(ProviderError::NotFound(_))),
             "{removed:?}"
         );
-        let restored = provider.restore_version("/a.txt", "7").await;
+        let restored = provider.restore_version("/a.txt", "10:7").await;
         assert!(
             matches!(restored, Err(ProviderError::NotFound(_))),
             "{restored:?}"
@@ -3539,9 +3604,9 @@ mod tests {
         let mut file = super::RemoteEntry::directory("v.txt".into(), "/v.txt".into());
         file.is_dir = false;
         file.size = 20;
-        let versions = super::versions_in_dialog_order(listed, &file);
+        let versions = super::versions_in_dialog_order(listed, &file, 7);
         let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
-        assert_eq!(ids, [super::super::CURRENT_VERSION_ID, "3", "2", "1"]);
+        assert_eq!(ids, ["7:current", "7:3", "7:2", "7:1"]);
         assert_eq!(versions[0].size, 20);
     }
 }

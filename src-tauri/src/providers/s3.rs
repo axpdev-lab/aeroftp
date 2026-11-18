@@ -8021,7 +8021,9 @@ impl StorageProvider for S3Provider {
 
             let status = response.status();
             if !status.is_success() {
-                let body = response.text().await.unwrap_or_default();
+                let body = super::version_listing_text(response)
+                    .await
+                    .unwrap_or_default();
                 return Err(ProviderError::ServerError(format!(
                     "ListObjectVersions failed ({}): {}",
                     status,
@@ -8029,10 +8031,7 @@ impl StorageProvider for S3Provider {
                 )));
             }
 
-            let xml_str = response
-                .text()
-                .await
-                .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
+            let xml_str = super::version_listing_text(response).await?;
             let page_encoded = self.filen_listing_is_encoded(&xml_str);
 
             debug!("S3 ListObjectVersions response, {} bytes", xml_str.len());
@@ -8268,7 +8267,7 @@ impl StorageProvider for S3Provider {
             |v| latest_ids.contains(&v.id),
             || None,
             |v| super::version_time_millis(v.modified.as_deref()),
-        ))
+        )?)
     }
 
     async fn download_version(
@@ -8338,7 +8337,7 @@ impl StorageProvider for S3Provider {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
-        super::refuse_a_restore_that_changes_nothing(self, path, version_id).await?;
+        let selected = super::refuse_a_restore_that_changes_nothing(self, path, version_id).await?;
         self.ensure_fresh_credentials().await?;
 
         let key = path.trim_start_matches('/');
@@ -8381,7 +8380,7 @@ impl StorageProvider for S3Provider {
         match response.status() {
             StatusCode::OK | StatusCode::CREATED | StatusCode::NO_CONTENT => {
                 info!("Restored '{}' to version '{}'", key, version_id);
-                Ok(())
+                super::confirm_version_restored(self, path, selected.as_ref()).await
             }
             status => {
                 let body = response.text().await.unwrap_or_default();
@@ -15292,7 +15291,13 @@ mod tests {
         );
         assert_eq!(copies(&log), 0);
         let restored = provider.restore_version("/docs/a.txt", "v1").await;
-        assert!(restored.is_ok(), "{restored:?}");
+        // The double lists the earlier current contents after the restore it
+        // answered with success: the request went out, and the restore is not
+        // reported done.
+        assert!(
+            matches!(&restored, Err(ProviderError::TransferFailed(m)) if m.contains("list its versions again")),
+            "{restored:?}"
+        );
         assert_eq!(copies(&log), 1);
     }
 
@@ -20822,11 +20827,11 @@ mod tests {
     /// opaque token and is still trimmed.
     #[tokio::test]
     async fn version_listings_follow_markers_exactly_across_pages() {
-        const FIRST: &str = "<ListVersionsResult><IsTruncated>true</IsTruncated><NextKeyMarker>doc.txt </NextKeyMarker><NextVersionIdMarker> v2 </NextVersionIdMarker><Version><Key>doc.txt </Key><VersionId>v2</VersionId><IsLatest>false</IsLatest><Size>2</Size></Version></ListVersionsResult>";
+        const FIRST: &str = "<ListVersionsResult><IsTruncated>true</IsTruncated><NextKeyMarker>doc.txt </NextKeyMarker><NextVersionIdMarker> v2 </NextVersionIdMarker><Version><Key>doc.txt </Key><VersionId>v3</VersionId><IsLatest>true</IsLatest><Size>3</Size></Version><Version><Key>doc.txt </Key><VersionId>v2</VersionId><IsLatest>false</IsLatest><Size>2</Size></Version></ListVersionsResult>";
         const SECOND: &str = "<ListVersionsResult><IsTruncated>false</IsTruncated><Version><Key>doc.txt </Key><VersionId>v1</VersionId><IsLatest>false</IsLatest><Size>1</Size></Version></ListVersionsResult>";
         // A key can be a single space: the marker is whitespace only, and the
         // parser and both listings must still carry it to the next request.
-        const SPACE_FIRST: &str = "<ListVersionsResult><IsTruncated>true</IsTruncated><NextKeyMarker> </NextKeyMarker><NextVersionIdMarker>v2</NextVersionIdMarker><Version><Key> </Key><VersionId>v2</VersionId><IsLatest>false</IsLatest><Size>2</Size></Version></ListVersionsResult>";
+        const SPACE_FIRST: &str = "<ListVersionsResult><IsTruncated>true</IsTruncated><NextKeyMarker> </NextKeyMarker><NextVersionIdMarker>v2</NextVersionIdMarker><Version><Key> </Key><VersionId>v3</VersionId><IsLatest>true</IsLatest><Size>3</Size></Version><Version><Key> </Key><VersionId>v2</VersionId><IsLatest>false</IsLatest><Size>2</Size></Version></ListVersionsResult>";
         const SPACE_SECOND: &str = "<ListVersionsResult><IsTruncated>false</IsTruncated><Version><Key> </Key><VersionId>v1</VersionId><IsLatest>false</IsLatest><Size>1</Size></Version></ListVersionsResult>";
         for (path, key_marker, pages) in [
             ("/doc.txt ", "doc.txt ", vec![FIRST, SECOND]),
@@ -20835,9 +20840,16 @@ mod tests {
             for (name, prefix, outcome, seen) in both_version_listings(path, pages.clone()).await {
                 // Both pages, in order: a loop that fetched the first page
                 // twice would also return two versions.
+                // v3 is the current version: the history lists it first, the
+                // trash (non-current versions only) leaves it out.
+                let expected: &[&str] = if name == "list_versions" {
+                    &["v3", "v2", "v1"]
+                } else {
+                    &["v2", "v1"]
+                };
                 assert_eq!(
                     outcome.ok(),
-                    Some(vec!["v2".to_string(), "v1".to_string()]),
+                    Some(expected.iter().map(|v| v.to_string()).collect::<Vec<_>>()),
                     "{name} {path:?}"
                 );
                 assert_eq!(seen.len(), 2, "{name} {path:?}: {seen:?}");

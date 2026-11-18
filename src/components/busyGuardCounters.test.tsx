@@ -9,6 +9,7 @@ import english from '../i18n/locales/en.json';
 import { PluginBrowser } from './AISettings/PluginBrowser';
 import { GitHubActionsBrowser } from './GitHubActionsBrowser';
 import { FileVersionsDialog } from './FileVersionsDialog';
+import { pickSave } from '../utils/pickPath';
 import { VersionBrowser } from './Sync/VersionBrowser';
 import { FileCommentsDialog } from './FileCommentsDialog';
 import { BoxCollaboratorsDialog } from './BoxCollaboratorsDialog';
@@ -141,7 +142,7 @@ it('FileVersionsDialog: the guard stays busy until every version operation finis
         return d.promise;
     });
     const onClose = vi.fn();
-    await render(createElement(FileVersionsDialog, { filePath: '/f.txt', fileName: 'f.txt', onClose }));
+    await render(createElement(FileVersionsDialog, { generation: 7, filePath: '/f.txt', fileName: 'f.txt', onClose }));
     await flush();
     const restores = [...host.querySelectorAll<HTMLButtonElement>('button[title*="Restore"], button[title*="restore"]')];
     expect(restores.length).toBe(2);
@@ -160,6 +161,40 @@ it('FileVersionsDialog: the guard stays busy until every version operation finis
     await flush();
     await click(closeButton()!);
     expect(onClose).toHaveBeenCalledTimes(1);
+});
+
+it('FileVersionsDialog: every command carries the generation it was opened on, and a refused action is shown', async () => {
+    const calls: Array<[string, Record<string, unknown>]> = [];
+    vi.mocked(pickSave).mockResolvedValueOnce('/tmp/f_v1.txt');
+    vi.mocked(invoke).mockImplementation(async (cmd, args) => {
+        calls.push([cmd, args as Record<string, unknown>]);
+        if (cmd === 'provider_list_versions') return [
+            { id: 'v1', modified: null, size: 1, modified_by: null },
+            { id: 'v2', modified: null, size: 1, modified_by: null },
+        ];
+        throw `refused ${cmd}`;
+    });
+    await render(createElement(FileVersionsDialog, { generation: 7, filePath: '/f.txt', fileName: 'f.txt', onClose: vi.fn() }));
+    await flush();
+    const alert = () => host.querySelector('[role="alert"]')?.textContent ?? null;
+    const rows = () => host.querySelectorAll('tbody tr').length;
+    await click(host.querySelector<HTMLButtonElement>('button[title*="Download"]')!);
+    await flush();
+    expect(alert()).toBe('refused provider_download_version');
+    expect(rows()).toBe(2);
+    await click(host.querySelector<HTMLButtonElement>('button[title*="Restore"]')!);
+    await flush();
+    expect(alert()).toBe('refused provider_restore_version');
+    expect(rows()).toBe(2);
+    await click(host.querySelector<HTMLButtonElement>('button[title*="Permanently"]')!);
+    const confirm = [...host.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].pop()!;
+    await click(confirm);
+    await flush();
+    expect(alert()).toBe('refused provider_delete_version');
+    expect(rows()).toBe(2);
+    const sent = calls.map(([cmd]) => cmd);
+    expect(sent).toEqual(['provider_list_versions', 'provider_download_version', 'provider_restore_version', 'provider_delete_version']);
+    for (const [cmd, args] of calls) expect([cmd, args.generation]).toEqual([cmd, 7]);
 });
 
 it('VersionBrowser: the guard stays busy until every restore finishes', async () => {
@@ -396,7 +431,7 @@ it('FileVersionsDialog: a deleted marker on top is Deleted, with no download and
         ];
         return {};
     });
-    await render(createElement(FileVersionsDialog, { filePath: '/f.txt', fileName: 'f.txt', onClose: vi.fn() }));
+    await render(createElement(FileVersionsDialog, { generation: 7, filePath: '/f.txt', fileName: 'f.txt', onClose: vi.fn() }));
     await flush();
     const rows = [...host.querySelectorAll('tbody tr')];
     expect(rows).toHaveLength(3);

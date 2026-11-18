@@ -101,11 +101,17 @@ fn runner_part_size(total_size: u64) -> u64 {
 
 const DRIVE_FOLDER_MIME: &str = "application/vnd.google-apps.folder";
 
+/// A Google Docs, Sheets or Slides file (or another Workspace type).
+fn is_workspace_file(file: &DriveFile) -> bool {
+    file.mime_type.starts_with("application/vnd.google-apps.")
+}
+
 /// A Google Docs, Sheets or Slides file has no revision Drive can send
 /// (`revisions.get?alt=media` answers fileNotDownloadable): its history lives
-/// in the editor. Its versions are refused before any revision request.
+/// in the editor. Its revisions are listed; their download and restore are
+/// refused before any revision request.
 fn refuse_workspace_revisions(file: &DriveFile, path: &str) -> Result<(), ProviderError> {
-    if file.mime_type.starts_with("application/vnd.google-apps.") {
+    if is_workspace_file(file) {
         return Err(ProviderError::NotSupported(format!(
             "{path} is a Google Docs, Sheets or Slides file: Drive keeps its versions in the \
              editor (File > Version history), open it there to restore one"
@@ -210,15 +216,33 @@ fn drive_retry_marker_tail(status: u16, body: &str, retry_header: Option<&str>) 
 const DRIVE_UPLOAD_CLOSED: &str = "drive-upload-closed";
 
 /// Bytes a resumable upload session has taken, from the `Range: bytes=0-N`
-/// of its 308 answer (N + 1); none when the header is missing.
-fn drive_acknowledged_bytes(headers: &reqwest::header::HeaderMap) -> u64 {
-    headers
-        .get("range")
-        .and_then(|value| value.to_str().ok())
+/// of its 308 answer (N + 1); none when the header is missing (Drive has
+/// kept no byte yet). A range that does not start at 0, or whose end is not
+/// a number, is not a count of bytes taken: refused, never read as one.
+fn drive_acknowledged_bytes(headers: &reqwest::header::HeaderMap) -> Result<u64, ProviderError> {
+    let Some(value) = headers.get("range") else {
+        return Ok(0);
+    };
+    let malformed = || {
+        ProviderError::TransferFailed(
+            "Google Drive answered an upload range that is not bytes=0-N: upload it again"
+                .to_string(),
+        )
+    };
+    let (start, last) = value
+        .to_str()
+        .ok()
         .and_then(|value| value.trim().strip_prefix("bytes="))
         .and_then(|range| range.split_once('-'))
-        .and_then(|(_, last)| last.trim().parse::<u64>().ok())
-        .map_or(0, |last| last.saturating_add(1))
+        .ok_or_else(malformed)?;
+    if start.trim() != "0" {
+        return Err(malformed());
+    }
+    last.trim()
+        .parse::<u64>()
+        .ok()
+        .and_then(|last| last.checked_add(1))
+        .ok_or_else(malformed)
 }
 
 /// Build a `ProviderError::Other` from a Drive HTTP error response, appending
@@ -1471,7 +1495,7 @@ impl GoogleDriveProvider {
             .await
             .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
         if !head.status().is_success() {
-            let text = head.text().await.unwrap_or_default();
+            let text = super::version_listing_text(head).await.unwrap_or_default();
             return Err(ProviderError::Other(format!(
                 "Reading the head revision failed: {}",
                 sanitize_api_error(&text)
@@ -1484,10 +1508,8 @@ impl GoogleDriveProvider {
             modified_time: Option<String>,
             size: Option<String>,
         }
-        let head: Head = head
-            .json()
-            .await
-            .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+        let head: Head = serde_json::from_str(&super::version_listing_text(head).await?)
+            .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
         Ok(head.head_revision_id.map(|id| super::FileVersion {
             id,
             modified: head.modified_time,
@@ -1533,6 +1555,7 @@ impl GoogleDriveProvider {
                 sanitize_api_error(&text)
             )));
         }
+        super::require_whole_version_body(&response, "Download revision failed")?;
         Ok(response)
     }
 
@@ -1711,7 +1734,13 @@ impl GoogleDriveProvider {
                 // 308 is "incomplete": it must have taken every byte sent so
                 // far, and the last chunk must be answered 200 or 201.
                 if status == 308 {
-                    let taken = drive_acknowledged_bytes(chunk_response.headers());
+                    let taken = match drive_acknowledged_bytes(chunk_response.headers()) {
+                        Ok(taken) => taken,
+                        Err(error) => {
+                            let _ = self.client.delete(&session_uri).send().await;
+                            return Err(error);
+                        }
+                    };
                     if end == total_size || taken != end {
                         let _ = self.client.delete(&session_uri).send().await;
                         return Err(ProviderError::TransferFailed(format!(
@@ -2671,7 +2700,8 @@ impl StorageProvider for GoogleDriveProvider {
             .find_by_name(file_name, &parent_id)
             .await?
             .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
-        refuse_workspace_revisions(&file, path)?;
+        // A Docs, Sheets or Slides file lists its revisions too; only their
+        // download and restore are refused ([`refuse_workspace_revisions`]).
 
         // Every page: Drive answers at most `pageSize` revisions per call
         // (200 when it is not set), with a `nextPageToken` while more remain.
@@ -2696,16 +2726,15 @@ impl StorageProvider for GoogleDriveProvider {
                 .await
                 .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
             if !response.status().is_success() {
-                let text = response.text().await.unwrap_or_default();
+                let text = super::version_listing_text(response)
+                    .await
+                    .unwrap_or_default();
                 return Err(ProviderError::Other(format!(
                     "List revisions failed: {}",
                     sanitize_api_error(&text)
                 )));
             }
-            let body = response
-                .text()
-                .await
-                .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+            let body = super::version_listing_text(response).await?;
             let (page, next) = revision_page(&body)?;
             versions.extend(page);
             match next {
@@ -2722,8 +2751,17 @@ impl StorageProvider for GoogleDriveProvider {
         // the others, oldest first). It is read after the list, so a file
         // uploaded in between has a head the list does not hold: its size
         // and time come with it, for that row.
-        let head = self.head_revision(&file.id).await?;
-        Ok(revisions_in_dialog_order(versions, head))
+        let head = match self.head_revision(&file.id).await? {
+            // Drive gives a head revision id to files with binary content
+            // only: a Docs, Sheets or Slides file lists its revisions in
+            // order, the last one its current contents.
+            None if is_workspace_file(&file) => versions
+                .iter()
+                .max_by_key(|v| super::version_time_millis(v.modified.as_deref()))
+                .cloned(),
+            head => head,
+        };
+        revisions_in_dialog_order(versions, head)
     }
 
     async fn download_version(
@@ -2754,6 +2792,7 @@ impl StorageProvider for GoogleDriveProvider {
         // revision downloads is left alone, the revision goes back to its own
         // file.
         let file = self.revision_file(path).await?;
+        let selected = super::refuse_a_restore_that_changes_nothing(self, path, version_id).await?;
         // The head revision is the file itself: sending it again would only
         // add a copy of the current contents on top.
         if self
@@ -2779,7 +2818,8 @@ impl StorageProvider for GoogleDriveProvider {
         Self::write_revision(response, &mut out).await?;
         drop(out);
         let local = temp.0.to_string_lossy().into_owned();
-        self.upload_into(&local, path, Some(file.id), None).await
+        self.upload_into(&local, path, Some(file.id), None).await?;
+        super::confirm_version_restored(self, path, selected.as_ref()).await
     }
 
     fn supports_thumbnails(&self) -> bool {
@@ -3339,7 +3379,7 @@ impl StorageProvider for GoogleDriveProvider {
         // (the same rule as the sequential upload in `upload_into`).
         let last = end == meta.total;
         if status == 308 {
-            let taken = drive_acknowledged_bytes(resp.headers());
+            let taken = drive_acknowledged_bytes(resp.headers())?;
             if last || taken != end {
                 return Err(ProviderError::TransferFailed(format!(
                     "Google Drive took {taken} of {end} bytes sent and did not complete \
@@ -3461,7 +3501,7 @@ fn revision_page(body: &str) -> Result<(Vec<super::FileVersion>, Option<String>)
 fn revisions_in_dialog_order(
     versions: Vec<super::FileVersion>,
     head: Option<super::FileVersion>,
-) -> Vec<super::FileVersion> {
+) -> Result<Vec<super::FileVersion>, ProviderError> {
     let head_id = head.as_ref().map(|h| h.id.clone());
     super::versions_current_first(
         versions,
@@ -3473,6 +3513,33 @@ fn revisions_in_dialog_order(
 
 #[cfg(test)]
 mod tests {
+    fn range(value: Option<&str>) -> reqwest::header::HeaderMap {
+        let mut headers = reqwest::header::HeaderMap::new();
+        if let Some(value) = value {
+            headers.insert("range", value.parse().unwrap());
+        }
+        headers
+    }
+
+    /// Missing: nothing kept yet (0). `bytes=0-N`: N + 1. A range that does
+    /// not start at 0, an end that is not a number, or one past u64: refused,
+    /// not read as a count.
+    #[test]
+    fn only_a_range_from_zero_counts_the_bytes_taken() {
+        let taken = |value| super::drive_acknowledged_bytes(&range(value));
+        assert_eq!(taken(None).unwrap(), 0);
+        assert_eq!(taken(Some("bytes=0-99")).unwrap(), 100);
+        for bad in [
+            "bytes=5-99",
+            "bytes=0-x",
+            "bytes=0-",
+            "items=0-99",
+            "bytes=0-18446744073709551615",
+        ] {
+            assert!(taken(Some(bad)).is_err(), "{bad}");
+        }
+    }
+
     #[tokio::test]
     async fn probe_contract_drive_root_is_not_a_missing_child() {
         let (mut provider, _) = provider_on_drive(&[]).await;
@@ -4158,15 +4225,17 @@ mod tests {
         );
     }
 
-    /// A Google Docs file has no revision Drive sends: its versions are
-    /// refused for list, download and restore, and nothing is uploaded.
+    /// A Google Docs file has no revision Drive sends: its revisions are
+    /// listed (as before), their download and restore refused with the way
+    /// to the editor's history, and nothing is fetched or uploaded.
     #[tokio::test]
     async fn a_google_docs_file_offers_no_revision_to_fetch() {
         let (mut p, changes) = provider_on_drive(&[("G1", "notes.gdoc", "root")]).await;
         let local = tempfile::tempdir().unwrap();
         let local = local.path().join("v").to_string_lossy().into_owned();
         let docs = |r: Result<(), ProviderError>| matches!(r, Err(ProviderError::NotSupported(m)) if m.contains("Version history"));
-        assert!(docs(p.list_versions("/notes.gdoc").await.map(|_| ())));
+        let listed = p.list_versions("/notes.gdoc").await;
+        assert!(listed.is_ok(), "{listed:?}");
         assert!(docs(p.download_version("/notes.gdoc", "r1", &local).await));
         assert!(docs(p.restore_version("/notes.gdoc", "r1").await));
         assert!(changes.lock().unwrap().is_empty());
@@ -4302,6 +4371,83 @@ mod tests {
         );
         let left: Vec<_> = std::fs::read_dir(dir.path()).unwrap().collect();
         assert_eq!(left.len(), 1, "{left:?}");
+    }
+
+    /// A revision body answered 206 with a Content-Length that matches what
+    /// it sent is still part of the revision: the download leaves the
+    /// destination as it was, and the restore uploads nothing.
+    #[tokio::test]
+    async fn a_partial_revision_answer_is_neither_saved_nor_restored() {
+        use axum::response::IntoResponse;
+        use std::sync::{Arc, Mutex};
+        let writes: Arc<Mutex<Vec<String>>> = Arc::default();
+        let log = Arc::clone(&writes);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |req: axum::extract::Request| {
+                let log = Arc::clone(&log);
+                async move {
+                    let url = reqwest::Url::parse(&format!("http://h{}", req.uri())).unwrap();
+                    if req.method() != axum::http::Method::GET {
+                        log.lock().unwrap().push(format!("{} {}", req.method(), url.path()));
+                    }
+                    if url.query_pairs().any(|(k, v)| k == "alt" && v == "media") {
+                        return (
+                            axum::http::StatusCode::PARTIAL_CONTENT,
+                            [("content-range", "bytes 0-3/20")],
+                            "frag",
+                        )
+                            .into_response();
+                    }
+                    if url.path().ends_with("/files/F1") {
+                        return axum::Json(serde_json::json!({
+                            "headRevisionId": "r2", "modifiedTime": "2026-01-02T00:00:00Z", "size": "9"
+                        }))
+                        .into_response();
+                    }
+                    if url.path().ends_with("/revisions") {
+                        return axum::Json(serde_json::json!({ "revisions": [
+                            { "id": "r1", "modifiedTime": "2026-01-01T00:00:00Z", "size": "20" },
+                            { "id": "r2", "modifiedTime": "2026-01-02T00:00:00Z", "size": "9" }
+                        ]}))
+                        .into_response();
+                    }
+                    axum::Json(serde_json::json!({ "files": [
+                        { "id": "F1", "name": "a.txt", "mimeType": "text/plain", "parents": ["root"], "headRevisionId": "r2" }
+                    ]}))
+                    .into_response()
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let dir = tempfile::tempdir().unwrap();
+        let destination = dir.path().join("a.txt");
+        std::fs::write(&destination, "the file the user kept").unwrap();
+        let mut provider = test_provider();
+        provider.connected = true;
+        provider.api_origin_override = Some(base);
+        provider.test_access_token = Some("t".to_string());
+        let downloaded = provider
+            .download_version("/a.txt", "r1", &destination.to_string_lossy())
+            .await;
+        let restored = provider.restore_version("/a.txt", "r1").await;
+        server.abort();
+        for outcome in [&downloaded, &restored] {
+            assert!(
+                matches!(outcome, Err(ProviderError::TransferFailed(m)) if m.contains("not the whole version")),
+                "{outcome:?}"
+            );
+        }
+        assert_eq!(
+            std::fs::read_to_string(&destination).unwrap(),
+            "the file the user kept"
+        );
+        assert!(
+            writes.lock().unwrap().is_empty(),
+            "{:?}",
+            writes.lock().unwrap()
+        );
     }
 
     /// A resumable upload took any 308 as progress: a last chunk answered
@@ -5147,7 +5293,7 @@ mod tests {
         head: Option<super::super::FileVersion>,
     ) -> Result<Vec<super::super::FileVersion>, super::ProviderError> {
         let (versions, _) = super::revision_page(body)?;
-        Ok(super::revisions_in_dialog_order(versions, head))
+        super::revisions_in_dialog_order(versions, head)
     }
 
     /// The head revision as the file's metadata names it (id only: a listed
@@ -5181,9 +5327,13 @@ mod tests {
         let versions = in_dialog_order(body, Some(r3)).expect("parse");
         let rows: Vec<(&str, u64)> = versions.iter().map(|v| (v.id.as_str(), v.size)).collect();
         assert_eq!(rows, [("r3", 16), ("r2", 12), ("r1", 8)]);
-        // A file with no head revision (none named) has no current row made up.
-        let versions = in_dialog_order(body, None).expect("parse");
-        let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
-        assert_eq!(ids, ["r2", "r1"]);
+        // A file with no head revision named: no row is made up as current,
+        // and none is labelled current by its place (r2 is not the head
+        // because it is the newest listed); the list is refused.
+        let refused = in_dialog_order(body, None);
+        assert!(
+            matches!(&refused, Err(super::ProviderError::ServerError(m)) if m == super::super::CURRENT_VERSION_UNKNOWN),
+            "{refused:?}"
+        );
     }
 }

@@ -951,7 +951,10 @@ const App: React.FC = () => {
   const [remoteSearchResults, setRemoteSearchResults] = useState<RemoteFile[] | null>(null);
   const [showRemoteSearchBar, setShowRemoteSearchBar] = useState(false);
   // File versions dialog
-  const [versionsDialog, setVersionsDialog] = useState<{ path: string; name: string } | null>(null);
+  // The connection the File Versions dialog was opened on: its commands carry
+  // that generation, and the dialog shows only while its session is active.
+  const [versionsDialog, setVersionsDialog] = useState<{ path: string; name: string; sessionId: string | null; generation: number } | null>(null);
+  const versionsOpenSeqRef = useRef(0);
   // Share permissions dialog
   const [sharePermissionsDialog, setSharePermissionsDialog] = useState<{ path: string; name: string } | null>(null);
   // WebDAV file locks
@@ -17808,7 +17811,25 @@ const App: React.FC = () => {
       items.push({
         label: t('versions.menu') || 'File Versions',
         icon: <History size={14} />,
-        action: () => setVersionsDialog({ path: file.path, name: file.name }),
+        action: async () => {
+          // Read only while the backend serves this tab, as the trash does: the
+          // generation must be the connection clicked from, still live.
+          const notServing = () => notify.error(t('common.failed'), t('toast.remoteTargetChanged'));
+          if (!backendServesLiveTab()) { notServing(); return; }
+          const target = snapshotQueuedTarget();
+          const sessionId = activeSessionId;
+          const seq = ++versionsOpenSeqRef.current;
+          let generation: number;
+          try {
+            generation = await invoke<number>('provider_connection_generation');
+          } catch (e) {
+            if (seq === versionsOpenSeqRef.current) notify.error(t('common.failed'), String(e));
+            return;
+          }
+          if (seq !== versionsOpenSeqRef.current) return;
+          if (queuedTargetProblem(target)) { notServing(); return; }
+          setVersionsDialog({ path: file.path, name: file.name, sessionId, generation });
+        },
       });
     }
 
@@ -20682,8 +20703,10 @@ const App: React.FC = () => {
           fileName={permissionsDialog?.file.name || ''}
           currentPermissions={permissionsDialog?.file.permissions || undefined}
         />
-        {versionsDialog && (
+        {versionsDialog && versionsDialog.sessionId === activeSessionId && (
           <FileVersionsDialog
+            key={versionsDialog.generation}
+            generation={versionsDialog.generation}
             filePath={versionsDialog.path}
             fileName={versionsDialog.name}
             onClose={() => setVersionsDialog(null)}

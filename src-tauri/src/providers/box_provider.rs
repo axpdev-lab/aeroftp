@@ -118,6 +118,40 @@ fn box_retry_marker_tail(status: u16, retry_header: Option<&str>) -> Option<Stri
     ))
 }
 
+impl BoxProvider {
+    /// The file `file_id` as `GET /files/{id}` answers it, named for `path`.
+    async fn file_entry_of_id(
+        &mut self,
+        file_id: &str,
+        path: &str,
+    ) -> Result<RemoteEntry, ProviderError> {
+        let token = self.get_token().await?;
+        let resp = self
+            .client
+            .get(format!(
+                "{}/files/{}?fields=name,type,size,modified_at",
+                self.api_base(),
+                file_id
+            ))
+            .header(AUTHORIZATION, Self::bearer_header(&token)?)
+            .send()
+            .await
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        let resp = box_lookup_response(resp, path).await?;
+        let text = super::version_listing_text(resp).await?;
+        let item: BoxItem =
+            serde_json::from_str(&text).map_err(|e| ProviderError::ParseError(e.to_string()))?;
+        let mut entry = RemoteEntry::directory(
+            crate::restricted_chars::decode_leaf(ProviderType::Box, &item.name),
+            Self::normalize_path(path),
+        );
+        entry.is_dir = false;
+        entry.size = item.size.unwrap_or(0);
+        entry.modified = item.modified_at;
+        Ok(entry)
+    }
+}
+
 /// Build a `ProviderError::Other` from a failed Box HTTP response,
 /// appending the Retry-After marker when the response is a throttle
 /// signal. The `context_prefix` is prepended verbatim.
@@ -260,11 +294,16 @@ struct BoxVersionCollection {
 /// A `GET /files/:id/versions` answer in the order every `list_versions`
 /// answers in ([`super::versions_current_first`]): Box lists only the past
 /// versions, so the file as it is now becomes row 0.
+/// Past version ids are Box's own, one per version of every file; the current
+/// row is bound to the file id it was listed from
+/// ([`super::bind_version_to_file`]), so its download refuses another file
+/// that took the path since.
 fn versions_in_dialog_order(
     versions: BoxVersionCollection,
     file: &RemoteEntry,
+    file_id: &str,
 ) -> Vec<FileVersion> {
-    super::versions_after_the_file(
+    let mut rows = super::versions_after_the_file(
         versions
             .entries
             .into_iter()
@@ -277,7 +316,24 @@ fn versions_in_dialog_order(
             })
             .collect(),
         file,
-    )
+    );
+    for row in rows
+        .iter_mut()
+        .filter(|row| row.id == super::CURRENT_VERSION_ID)
+    {
+        row.id = super::bind_version_to_file(file_id, super::CURRENT_VERSION_ID);
+    }
+    rows
+}
+
+/// The listed current row of `file_id` (`<file id>:current`): `Some(true)`
+/// when it was listed from that file, `Some(false)` when from another one,
+/// `None` for any other version id.
+fn box_current_row_of(version_id: &str, file_id: &str) -> Option<bool> {
+    match version_id.split_once(':') {
+        Some((listed, super::CURRENT_VERSION_ID)) => Some(listed == file_id),
+        _ => None,
+    }
 }
 
 /// Box trash item (includes trashed_at)
@@ -2797,13 +2853,14 @@ impl StorageProvider for BoxProvider {
             )));
         }
 
-        let versions: BoxVersionCollection = resp
-            .json()
-            .await
-            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
+        let text = super::version_listing_text(resp).await?;
+        let versions: BoxVersionCollection =
+            serde_json::from_str(&text).map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
-        let file = self.stat(path).await?;
-        Ok(versions_in_dialog_order(versions, &file))
+        // The current row is the file whose versions were listed, read by
+        // its id, not the path looked up again.
+        let file = self.file_entry_of_id(&file_id, path).await?;
+        Ok(versions_in_dialog_order(versions, &file, &file_id))
     }
 
     async fn download_version(
@@ -2816,14 +2873,27 @@ impl StorageProvider for BoxProvider {
             return self.download(path, local_path, None).await;
         }
         let file_id = self.resolve_file_id(path).await?;
+        let current = match box_current_row_of(version_id, &file_id) {
+            Some(false) => {
+                return Err(ProviderError::NotFound(format!(
+                    "{path} is now another file (file id {file_id}): list its versions again"
+                )))
+            }
+            current => current.is_some(),
+        };
         let token = self.get_token().await?;
 
-        let url = format!(
-            "{}/files/{}/content?version={}",
-            self.api_base(),
-            file_id,
-            version_id
-        );
+        // The listed current row is the file it was listed from, by its id.
+        let url = if current {
+            format!("{}/files/{}/content", self.api_base(), file_id)
+        } else {
+            format!(
+                "{}/files/{}/content?version={}",
+                self.api_base(),
+                file_id,
+                version_id
+            )
+        };
         let resp = self
             .client
             .get(&url)
@@ -2839,24 +2909,18 @@ impl StorageProvider for BoxProvider {
             )));
         }
 
-        let bytes = resp
-            .bytes()
-            .await
-            .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-
-        tokio::fs::write(local_path, &bytes)
-            .await
-            .map_err(ProviderError::IoError)?;
-
-        Ok(())
+        super::save_version_body(resp, local_path, "Download version failed").await
     }
 
     async fn restore_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
-        if version_id == super::CURRENT_VERSION_ID {
+        if version_id == super::CURRENT_VERSION_ID
+            || version_id.ends_with(&format!(":{}", super::CURRENT_VERSION_ID))
+        {
             return Err(ProviderError::NotSupported(
                 "This is already the current version".into(),
             ));
         }
+        let selected = super::refuse_a_restore_that_changes_nothing(self, path, version_id).await?;
         let file_id = self.resolve_file_id(path).await?;
         let token = self.get_token().await?;
 
@@ -2880,7 +2944,7 @@ impl StorageProvider for BoxProvider {
                 resp.status()
             )));
         }
-        Ok(())
+        super::confirm_version_restored(self, path, selected.as_ref()).await
     }
 
     fn supports_find(&self) -> bool {
@@ -3594,6 +3658,34 @@ mod tests {
             .await
             .expect("a past version downloads by its id");
         assert_eq!(std::fs::read_to_string(out).unwrap(), "twelve");
+
+        // The listed current row: file 55 by its id; listed from file 56,
+        // it is refused before any content request and restores nothing.
+        provider
+            .download_version("/a.txt", "55:current", out)
+            .await
+            .expect("the listed current row downloads file 55");
+        assert_eq!(std::fs::read_to_string(out).unwrap(), "live");
+        let before = calls.lock().unwrap().len();
+        let refused = provider.download_version("/a.txt", "56:current", out).await;
+        assert!(
+            matches!(&refused, Err(ProviderError::NotFound(m)) if m.contains("list its versions again")),
+            "{refused:?}"
+        );
+        for id in ["55:current", "56:current"] {
+            let restored = provider.restore_version("/a.txt", id).await;
+            assert!(
+                matches!(restored, Err(ProviderError::NotSupported(_))),
+                "{restored:?}"
+            );
+        }
+        assert_eq!(std::fs::read_to_string(out).unwrap(), "live");
+        assert!(
+            calls.lock().unwrap()[before..]
+                .iter()
+                .all(|c| !c.contains("/content")),
+            "{calls:?}"
+        );
     }
 
     /// One item of [`provider_on_box`]: id, name, parent id, `file` or `folder`.
@@ -5138,9 +5230,9 @@ mod tests {
         let mut file = super::RemoteEntry::directory("v.txt".into(), "/v.txt".into());
         file.is_dir = false;
         file.size = 16;
-        let versions = super::versions_in_dialog_order(listed, &file);
+        let versions = super::versions_in_dialog_order(listed, &file, "55");
         let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
-        assert_eq!(ids, [super::super::CURRENT_VERSION_ID, "12", "11"]);
+        assert_eq!(ids, ["55:current", "12", "11"]);
         assert_eq!(versions[0].size, 16);
     }
 }

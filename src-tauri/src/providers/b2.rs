@@ -2387,14 +2387,11 @@ impl B2Provider {
         })?;
         let status = resp.status();
         if !status.is_success() {
-            let text = resp.text().await.unwrap_or_default();
+            let text = super::version_listing_text(resp).await.unwrap_or_default();
             return Err(map_b2_status(status, &text, "b2_list_file_versions"));
         }
-        resp.json::<ListFileVersionsResponse>()
-            .await
-            .map_http_err(|e| {
-                ProviderError::ServerError(format!("list_file_versions parse: {}", e))
-            })
+        serde_json::from_str::<ListFileVersionsResponse>(&super::version_listing_text(resp).await?)
+            .map_err(|e| ProviderError::ServerError(format!("list_file_versions parse: {}", e)))
     }
 
     /// Streaming download of a specific version by `fileId` via
@@ -3807,7 +3804,7 @@ impl StorageProvider for B2Provider {
         if versions.is_empty() {
             return Err(ProviderError::NotFound(format!("file {}", abs)));
         }
-        Ok(super::versions_latest_first(versions))
+        super::versions_latest_first(versions)
     }
 
     async fn download_version(
@@ -3841,23 +3838,20 @@ impl StorageProvider for B2Provider {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
-        super::refuse_a_restore_that_changes_nothing(self, path, version_id).await?;
+        let selected = super::refuse_a_restore_that_changes_nothing(self, path, version_id).await?;
         let abs = self.resolved_path(path);
         let key = self.b2_key(&abs);
         // B2 has no "restore" verb: we replay the chosen version as a fresh
         // upload via b2_copy_file (server-side, no client byte transfer). The
         // copy becomes the new latest version with the original fileName.
         match self.copy_file_to(version_id, &key).await {
-            Ok(_) => Ok(()),
-            Err(e) if is_b2_token_failure(&e) => {
-                if self.maybe_reauth(&e).await {
-                    self.copy_file_to(version_id, &key).await.map(|_| ())
-                } else {
-                    Err(e)
-                }
+            Ok(_) => {}
+            Err(e) if is_b2_token_failure(&e) && self.maybe_reauth(&e).await => {
+                self.copy_file_to(version_id, &key).await?;
             }
-            Err(e) => Err(e),
+            Err(e) => return Err(e),
         }
+        super::confirm_version_restored(self, path, selected.as_ref()).await
     }
 
     // ─── Share links ───────────────────────────────────────────────────────
@@ -7640,7 +7634,13 @@ mod tests {
             after_refusal.iter().all(|p| !p.ends_with("b2_copy_file")),
             "{after_refusal:?}"
         );
-        assert!(restored.is_ok(), "{restored:?}");
+        // The double lists the earlier current contents after the restore it
+        // answered with success: the request went out, and the restore is not
+        // reported done.
+        assert!(
+            matches!(&restored, Err(ProviderError::TransferFailed(m)) if m.contains("list its versions again")),
+            "{restored:?}"
+        );
         assert!(
             seen.lock()
                 .unwrap()

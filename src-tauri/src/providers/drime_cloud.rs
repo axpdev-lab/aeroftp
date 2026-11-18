@@ -2394,16 +2394,16 @@ impl StorageProvider for DrimeCloudProvider {
             .await?;
 
         if !resp.status().is_success() {
-            let body = resp.text().await.unwrap_or_default();
+            let body = super::version_listing_text(resp).await.unwrap_or_default();
             return Err(ProviderError::ServerError(format!(
                 "List versions failed: {}",
                 sanitize_api_error(&body)
             )));
         }
 
-        let backup_resp: DrimeBackupResponse = resp.json().await.map_http_err(|e| {
-            ProviderError::ServerError(format!("Parse backup response: {}", e))
-        })?;
+        let backup_resp: DrimeBackupResponse =
+            serde_json::from_str(&super::version_listing_text(resp).await?)
+                .map_err(|e| ProviderError::ServerError(format!("Parse backup response: {}", e)))?;
 
         let versions = backup_resp
             .pagination

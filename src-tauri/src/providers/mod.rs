@@ -381,6 +381,151 @@ pub const MAX_DOWNLOAD_TO_BYTES: u64 = 500 * 1024 * 1024;
 /// as the file and refuses to restore or delete it.
 pub const CURRENT_VERSION_ID: &str = "current";
 
+/// The cap on one answer a version listing reads (a page of versions, the
+/// lookup of the file they belong to): download and restore read the listing
+/// first, so an endless answer must end in an error, not in memory growth.
+pub const VERSION_LISTING_MAX_BYTES: u64 = 8 * 1024 * 1024;
+
+/// A version listing answer as text, read up to [`VERSION_LISTING_MAX_BYTES`].
+pub async fn version_listing_text(resp: reqwest::Response) -> Result<String, ProviderError> {
+    version_listing_text_with(resp, |e| {
+        http_send_error(e, |e| ProviderError::TransferFailed(e.to_string()))
+    })
+    .await
+}
+
+/// [`version_listing_text`] with the provider's own mapping of a body that
+/// broke off.
+pub(crate) async fn version_listing_text_with(
+    resp: reqwest::Response,
+    body_error: impl FnOnce(reqwest::Error) -> ProviderError,
+) -> Result<String, ProviderError> {
+    let body = body_bytes_with_limit(resp, VERSION_LISTING_MAX_BYTES, body_error).await?;
+    String::from_utf8(body)
+        .map_err(|e| ProviderError::ParseError(format!("Version listing is not UTF-8: {e}")))
+}
+
+/// Copy a fetched version over `to` the way every download writes it
+/// ([`atomic_write::AtomicFile`]): by default beside it first, renamed over it
+/// once whole, so a copy cut short (a full disk, a read error) leaves the
+/// file already there untouched. With --inplace the user asked for writes in
+/// place: the copy writes `to` directly, as every download then does.
+pub(crate) async fn copy_version_into_place(
+    from: &std::path::Path,
+    to: &str,
+) -> Result<(), ProviderError> {
+    copy_version_into_place_in(from, to, atomic_write::inplace_active()).await
+}
+
+/// [`copy_version_into_place`] with the in-place mode given.
+pub(crate) async fn copy_version_into_place_in(
+    from: &std::path::Path,
+    to: &str,
+    inplace: bool,
+) -> Result<(), ProviderError> {
+    let mut source = tokio::fs::File::open(from)
+        .await
+        .map_err(ProviderError::IoError)?;
+    let mut atomic = atomic_write::AtomicFile::new_in(to, inplace)
+        .await
+        .map_err(ProviderError::IoError)?;
+    tokio::io::copy(&mut source, atomic.file_mut())
+        .await
+        .map_err(ProviderError::IoError)?;
+    atomic.commit().await.map_err(ProviderError::IoError)
+}
+
+/// A request for a version's whole body is answered 200 only: a 206 or
+/// another 2xx carries part of it, or none, even with a Content-Length that
+/// matches what it sent. Checked after the provider's own refusal handling.
+pub fn require_whole_version_body(
+    resp: &reqwest::Response,
+    what: &str,
+) -> Result<(), ProviderError> {
+    match resp.status() {
+        reqwest::StatusCode::OK => Ok(()),
+        status => Err(ProviderError::TransferFailed(format!(
+            "{what}: the server answered HTTP {status}, not the whole version"
+        ))),
+    }
+}
+
+/// Write a version's whole body (checked by [`require_whole_version_body`])
+/// to `local_path` the way a download does: through an
+/// [`atomic_write::AtomicFile`], committed only once every byte the answer
+/// announced has arrived.
+pub async fn save_version_body(
+    resp: reqwest::Response,
+    local_path: &str,
+    what: &str,
+) -> Result<(), ProviderError> {
+    stage_version_body(resp, local_path, what)
+        .await?
+        .commit()
+        .await
+        .map_err(ProviderError::IoError)
+}
+
+/// [`save_version_body`] up to the commit: the whole body written to the
+/// staged file, which the caller commits once it has checked what the body
+/// belongs to (dropped, it leaves the destination as it was, unless the user
+/// asked for `--inplace`).
+pub async fn stage_version_body(
+    resp: reqwest::Response,
+    local_path: &str,
+    what: &str,
+) -> Result<atomic_write::AtomicFile, ProviderError> {
+    use futures_util::StreamExt;
+    require_whole_version_body(&resp, what)?;
+    let expected = resp.content_length();
+    let mut stream = resp.bytes_stream();
+    let mut atomic = atomic_write::AtomicFile::new(local_path)
+        .await
+        .map_err(ProviderError::IoError)?;
+    let mut written: u64 = 0;
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| ProviderError::TransferFailed(format!("{what}: {e}")))?;
+        atomic
+            .write_all(&chunk)
+            .await
+            .map_err(ProviderError::IoError)?;
+        written += chunk.len() as u64;
+    }
+    if let Some(expected) = expected.filter(|expected| *expected != written) {
+        return Err(ProviderError::TransferFailed(format!(
+            "{what}: cut short, received {written} of {expected} bytes"
+        )));
+    }
+    Ok(atomic)
+}
+
+/// The id a listed version carries where the provider names versions by a
+/// label of the file (`1.0`, `2.0`): the file id with it, so an action sent
+/// after another file took the path cannot reach that file's `2.0`.
+pub fn bind_version_to_file(file_id: &str, label: &str) -> String {
+    format!("{file_id}:{label}")
+}
+
+/// The label of a version id from [`bind_version_to_file`], refused when the
+/// path now holds another file than the one it was listed from, or when the
+/// id was not listed bound.
+pub fn version_label_of_file<'a>(
+    version_id: &'a str,
+    file_id: &str,
+    path: &str,
+) -> Result<&'a str, ProviderError> {
+    match version_id.split_once(':') {
+        Some((listed, label)) if listed == file_id && !label.is_empty() => Ok(label),
+        Some((listed, _)) => Err(ProviderError::NotFound(format!(
+            "{path} is now another file (file id {file_id}, listed {listed}): \
+             list its versions again"
+        ))),
+        None => Err(ProviderError::InvalidPath(format!(
+            "{version_id} is not a version id listed for {path}: list its versions again"
+        ))),
+    }
+}
+
 /// Put a version list in the order every `list_versions` answers in, the one
 /// the versions dialog reads (FileVersionsDialog.tsx labels row 0 Current and
 /// offers no Restore on it): the current version first, then the others
@@ -390,26 +535,36 @@ pub const CURRENT_VERSION_ID: &str = "current";
 /// revision id, an mtime), never by its place in the API's answer, whose
 /// order most APIs leave unspecified. When no row is current, `current` (the
 /// file as it is now, or `None` for a file with no current state) becomes
-/// row 0.
+/// row 0. With neither, the list is refused: the dialog would label the
+/// newest past version Current by its place alone.
 pub fn versions_current_first(
     versions: Vec<FileVersion>,
     is_current: impl Fn(&FileVersion) -> bool,
     current: impl FnOnce() -> Option<FileVersion>,
     newest: impl Fn(&FileVersion) -> i64,
-) -> Vec<FileVersion> {
+) -> Result<Vec<FileVersion>, ProviderError> {
     let (mut head, mut rest): (Vec<_>, Vec<_>) = versions.into_iter().partition(|v| is_current(v));
     head.sort_by_key(|v| std::cmp::Reverse(newest(v)));
     let mut head = head.into_iter();
     let first = head.next().or_else(current);
     rest.extend(head);
+    if first.is_none() && !rest.is_empty() {
+        return Err(ProviderError::ServerError(CURRENT_VERSION_UNKNOWN.into()));
+    }
     rest.sort_by_key(|v| std::cmp::Reverse(newest(v)));
-    first.into_iter().chain(rest).collect()
+    Ok(first.into_iter().chain(rest).collect())
 }
+
+/// Why a version list whose current version cannot be told is refused.
+pub const CURRENT_VERSION_UNKNOWN: &str = "The server listed versions of this file without \
+     saying which one is current, so none can be shown as current: list its versions again";
 
 /// [`versions_current_first`] for an API whose current version is, by its
 /// own definition, the latest one written (B2: a download by name serves the
 /// most recent upload); `modified` is the server's upload time.
-pub fn versions_latest_first(versions: Vec<FileVersion>) -> Vec<FileVersion> {
+pub fn versions_latest_first(
+    versions: Vec<FileVersion>,
+) -> Result<Vec<FileVersion>, ProviderError> {
     let time = |v: &FileVersion| version_time_millis(v.modified.as_deref());
     let latest = versions.iter().map(time).max();
     versions_current_first(versions, |v| Some(time(v)) == latest, || None, time)
@@ -418,13 +573,14 @@ pub fn versions_latest_first(versions: Vec<FileVersion>) -> Vec<FileVersion> {
 /// [`versions_current_first`] for an API that lists only the versions a
 /// change replaced: the file as it is now becomes row 0, under
 /// [`CURRENT_VERSION_ID`], and the listed ones follow newest first.
-pub fn versions_after_the_file(versions: Vec<FileVersion>, file: &RemoteEntry) -> Vec<FileVersion> {
-    versions_current_first(
-        versions,
-        |_| false,
-        || Some(current_version_of(file)),
-        |v| version_time_millis(v.modified.as_deref()),
-    )
+pub fn versions_after_the_file(
+    mut versions: Vec<FileVersion>,
+    file: &RemoteEntry,
+) -> Vec<FileVersion> {
+    versions.sort_by_key(|v| std::cmp::Reverse(version_time_millis(v.modified.as_deref())));
+    std::iter::once(current_version_of(file))
+        .chain(versions)
+        .collect()
 }
 
 /// A local temp path a version passes through (a MEGAcmd download, a Drive
@@ -468,6 +624,151 @@ thread_local! {
 impl Drop for VersionTempFile {
     fn drop(&mut self) {
         let _ = std::fs::remove_file(&self.0);
+    }
+}
+
+/// Class guards over every provider's version code, read from the sources:
+/// a provider added later meets them without a test of its own.
+#[cfg(test)]
+mod version_class_guards {
+    /// The body of the first `fn <name>` in `source`, up to the next item of
+    /// the same impl.
+    fn body<'a>(source: &'a str, name: &str) -> &'a str {
+        let start = source
+            .find(&format!("fn {name}("))
+            .unwrap_or_else(|| panic!("no fn {name}"));
+        let rest = &source[start..];
+        let end = [
+            "\n    async fn ",
+            "\n    fn ",
+            "\n    pub async fn ",
+            "\n    pub fn ",
+            "\n}\n",
+        ]
+        .iter()
+        .filter_map(|next| rest[1..].find(next))
+        .min()
+        .unwrap_or(rest.len() - 1);
+        &rest[..=end]
+    }
+
+    /// A version's whole body is accepted on 200 only (a 206 with a matching
+    /// Content-Length is still a part): each `download_version` that reads
+    /// the body itself checks it, in its own body or in the one helper named.
+    #[test]
+    fn every_version_body_is_accepted_on_200_only() {
+        const WHOLE: [&str; 3] = [
+            "require_whole_version_body",
+            "save_version_body",
+            "StatusCode::OK =>",
+        ];
+        for (file, source, reader) in [
+            (
+                "box_provider.rs",
+                include_str!("box_provider.rs"),
+                "download_version",
+            ),
+            ("dropbox.rs", include_str!("dropbox.rs"), "download_version"),
+            ("koofr.rs", include_str!("koofr.rs"), "download_version"),
+            ("kdrive.rs", include_str!("kdrive.rs"), "download_version"),
+            (
+                "zoho_workdrive.rs",
+                include_str!("zoho_workdrive.rs"),
+                "download_version",
+            ),
+            (
+                "onedrive.rs",
+                include_str!("onedrive.rs"),
+                "download_version",
+            ),
+            (
+                "google_drive.rs",
+                include_str!("google_drive.rs"),
+                "revision_response",
+            ),
+            ("s3.rs", include_str!("s3.rs"), "download_version"),
+            (
+                "webdav.rs",
+                include_str!("webdav.rs"),
+                "nextcloud_download_version",
+            ),
+        ] {
+            let code = body(source, reader);
+            assert!(
+                WHOLE.iter().any(|check| code.contains(check)),
+                "{file}: {reader} accepts a version body without requiring 200"
+            );
+            assert!(
+                !code.contains("tokio::fs::write(local_path"),
+                "{file}: {reader} writes a version over the destination, not through AtomicFile"
+            );
+        }
+    }
+    /// A version listing is a preflight of every download and restore, so
+    /// none reads a body unbounded: each listing read, and each helper of
+    /// one named here, goes through [`super::version_listing_text`] or
+    /// [`super::response_bytes_with_limit`].
+    #[test]
+    fn every_version_listing_reads_a_bounded_body() {
+        const UNBOUNDED: [&str; 4] = [".text()", ".json()", ".json::<", ".bytes()"];
+        for (file, source, reader) in [
+            ("b2.rs", include_str!("b2.rs"), "list_file_versions_page"),
+            (
+                "box_provider.rs",
+                include_str!("box_provider.rs"),
+                "list_versions",
+            ),
+            (
+                "box_provider.rs",
+                include_str!("box_provider.rs"),
+                "file_entry_of_id",
+            ),
+            (
+                "drime_cloud.rs",
+                include_str!("drime_cloud.rs"),
+                "list_versions",
+            ),
+            ("dropbox.rs", include_str!("dropbox.rs"), "list_versions"),
+            (
+                "google_drive.rs",
+                include_str!("google_drive.rs"),
+                "list_versions",
+            ),
+            (
+                "google_drive.rs",
+                include_str!("google_drive.rs"),
+                "head_revision",
+            ),
+            ("kdrive.rs", include_str!("kdrive.rs"), "list_versions"),
+            ("kdrive.rs", include_str!("kdrive.rs"), "entry_of_file_id"),
+            ("koofr.rs", include_str!("koofr.rs"), "list_versions"),
+            ("onedrive.rs", include_str!("onedrive.rs"), "list_versions"),
+            ("s3.rs", include_str!("s3.rs"), "list_versions"),
+            (
+                "webdav.rs",
+                include_str!("webdav.rs"),
+                "nextcloud_list_versions",
+            ),
+            ("webdav.rs", include_str!("webdav.rs"), "nextcloud_file_of"),
+            (
+                "webdav.rs",
+                include_str!("webdav.rs"),
+                "nextcloud_list_file_ids",
+            ),
+            (
+                "zoho_workdrive.rs",
+                include_str!("zoho_workdrive.rs"),
+                "list_versions",
+            ),
+        ] {
+            let code = body(source, reader);
+            for read in UNBOUNDED {
+                assert!(
+                    !code.contains(read),
+                    "{file}: {reader} reads a body with {read}, not bounded"
+                );
+            }
+        }
     }
 }
 
@@ -527,13 +828,15 @@ pub async fn refuse_a_deleted_version<P: StorageProvider + ?Sized>(
 /// the server in its own words). A deleted file's row 0 is its deletion, so
 /// its last contents below stay restorable. A listing that fails decides
 /// nothing, as there.
+/// The listed row of `version_id` comes back (`None` when the listing failed
+/// or does not hold it), for [`confirm_version_restored`].
 pub async fn refuse_a_restore_that_changes_nothing<P: StorageProvider + ?Sized>(
     provider: &mut P,
     path: &str,
     version_id: &str,
-) -> Result<(), ProviderError> {
+) -> Result<Option<FileVersion>, ProviderError> {
     let Ok(versions) = provider.list_versions(path).await else {
-        return Ok(());
+        return Ok(None);
     };
     refuse_a_listed_marker(&versions, version_id)?;
     if versions
@@ -544,7 +847,42 @@ pub async fn refuse_a_restore_that_changes_nothing<P: StorageProvider + ?Sized>(
             "This is already the current version".into(),
         ));
     }
-    Ok(())
+    Ok(versions.into_iter().find(|v| v.id == version_id))
+}
+
+/// After a restore the server answered with success: the file's current
+/// version, listed again, must hold what the selected one held, as far as a
+/// listing tells (its size, and not a deletion). Most restore answers prove
+/// nothing (204, `{}`, an empty 201), and a 200 can still carry a failure
+/// (S3 CopyObject). `selected` `None` (the listing before the restore failed
+/// or did not hold the id) decides nothing, as in
+/// [`refuse_a_restore_that_changes_nothing`]; a listing that fails now does
+/// not confirm the restore.
+pub async fn confirm_version_restored<P: StorageProvider + ?Sized>(
+    provider: &mut P,
+    path: &str,
+    selected: Option<&FileVersion>,
+) -> Result<(), ProviderError> {
+    let Some(selected) = selected else {
+        return Ok(());
+    };
+    let not_restored = |held: String| {
+        ProviderError::TransferFailed(format!(
+            "The server answered the restore of {path}, but its current version {held}, not \
+             the {} bytes of the restored one: list its versions again",
+            selected.size
+        ))
+    };
+    let versions = provider
+        .list_versions(path)
+        .await
+        .map_err(|e| not_restored(format!("could not be read ({e})")))?;
+    match versions.first() {
+        Some(current) if !current.deleted && current.size == selected.size => Ok(()),
+        Some(current) if current.deleted => Err(not_restored("is a deletion".into())),
+        Some(current) => Err(not_restored(format!("holds {} bytes", current.size))),
+        None => Err(not_restored("is not listed".into())),
+    }
 }
 
 fn refuse_a_listed_marker(versions: &[FileVersion], version_id: &str) -> Result<(), ProviderError> {
@@ -593,8 +931,23 @@ mod versions_order_tests {
     #[test]
     fn the_current_version_is_told_by_metadata_not_by_its_place() {
         let listed = vec![row("old", 10), row("head", 30), row("mid", 20)];
-        let ordered = versions_current_first(listed, |v| v.id == "head", || None, newest);
+        let ordered = versions_current_first(listed, |v| v.id == "head", || None, newest).unwrap();
         assert_eq!(ids(&ordered), ["head", "mid", "old"]);
+    }
+
+    /// No row is current and the file's own state is unknown: the newest past
+    /// version would be labelled Current by its place. The list is refused;
+    /// an empty one stays empty.
+    #[test]
+    fn a_list_whose_current_version_is_unknown_is_refused() {
+        let listed = vec![row("v1", 10), row("v2", 20)];
+        let refused = versions_current_first(listed, |_| false, || None, newest);
+        assert!(
+            matches!(&refused, Err(ProviderError::ServerError(m)) if m == CURRENT_VERSION_UNKNOWN),
+            "{refused:?}"
+        );
+        let empty = versions_current_first(Vec::new(), |_| false, || None, newest).unwrap();
+        assert!(empty.is_empty());
     }
 
     #[test]
@@ -605,7 +958,8 @@ mod versions_order_tests {
             |_| false,
             || Some(row(CURRENT_VERSION_ID, 40)),
             newest,
-        );
+        )
+        .unwrap();
         assert_eq!(ids(&ordered), [CURRENT_VERSION_ID, "v2", "v1"]);
     }
 
@@ -617,14 +971,18 @@ mod versions_order_tests {
             |v| v.id == "head",
             || panic!("the listed current row is enough"),
             newest,
-        );
+        )
+        .unwrap();
         assert_eq!(ids(&ordered), ["head", "v1"]);
     }
 
     #[test]
     fn a_list_holding_the_current_version_puts_the_latest_first() {
         let listed = vec![row("v1", 10), row("v3", 30), row("v2", 20)];
-        assert_eq!(ids(&versions_latest_first(listed)), ["v3", "v2", "v1"]);
+        assert_eq!(
+            ids(&versions_latest_first(listed).unwrap()),
+            ["v3", "v2", "v1"]
+        );
     }
 
     #[test]
@@ -658,7 +1016,10 @@ mod versions_order_tests {
             at("older", "2026-11-16T19:54:44.100+00:00"),
             at("newer", "2026-11-16T19:54:44.900+00:00"),
         ];
-        assert_eq!(ids(&versions_latest_first(listed)), ["newer", "older"]);
+        assert_eq!(
+            ids(&versions_latest_first(listed).unwrap()),
+            ["newer", "older"]
+        );
     }
 
     #[test]

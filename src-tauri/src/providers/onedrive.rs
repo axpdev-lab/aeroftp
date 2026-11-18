@@ -2496,7 +2496,9 @@ impl StorageProvider for OneDriveProvider {
             .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
-            let text = response.text().await.unwrap_or_default();
+            let text = super::version_listing_text(response)
+                .await
+                .unwrap_or_default();
             return Err(ProviderError::Other(format!(
                 "List versions failed: {}",
                 sanitize_api_error(&text)
@@ -2525,20 +2527,20 @@ impl StorageProvider for OneDriveProvider {
             value: Vec<Version>,
         }
 
-        let list: VersionList = response
-            .json()
-            .await
-            .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+        let body = super::version_listing_text(response).await?;
+        let list: VersionList = serde_json::from_str(&body)
+            .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
 
         // Graph documents the list newest first, the current version on top,
         // and refuses `$orderby`: its order is row 0 as every `list_versions`
         // answers. A sort by time would put a past version above a current
-        // one that has no time or shares it.
+        // one that has no time or shares it. Graph names versions by a label
+        // of the item (`1.0`, `2.0`): each id is bound to the item listed.
         Ok(list
             .value
             .iter()
             .map(|v| super::FileVersion {
-                id: v.id.clone(),
+                id: super::bind_version_to_file(&item_id, &v.id),
                 modified: v.last_modified_date_time.clone(),
                 size: v.size.unwrap_or(0),
                 modified_by: v
@@ -2558,10 +2560,11 @@ impl StorageProvider for OneDriveProvider {
         local_path: &str,
     ) -> Result<(), ProviderError> {
         let item_id = self.resolve_path(path).await?;
+        let label = super::version_label_of_file(version_id, &item_id, path)?;
         let url = format!(
             "{}/versions/{}/content",
             self.api_item(&item_id),
-            version_id
+            urlencoding::encode(label)
         );
 
         let response = self
@@ -2580,25 +2583,17 @@ impl StorageProvider for OneDriveProvider {
             )));
         }
 
-        let bytes = response
-            .bytes()
-            .await
-            .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-
-        tokio::fs::write(local_path, &bytes)
-            .await
-            .map_err(ProviderError::IoError)?;
-
-        Ok(())
+        super::save_version_body(response, local_path, "Download version failed").await
     }
 
     async fn restore_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
-        super::refuse_a_restore_that_changes_nothing(self, path, version_id).await?;
+        let selected = super::refuse_a_restore_that_changes_nothing(self, path, version_id).await?;
         let item_id = self.resolve_path(path).await?;
+        let label = super::version_label_of_file(version_id, &item_id, path)?;
         let url = format!(
             "{}/versions/{}/restoreVersion",
             self.api_item(&item_id),
-            version_id
+            urlencoding::encode(label)
         );
 
         let response = self
@@ -2618,7 +2613,7 @@ impl StorageProvider for OneDriveProvider {
         }
 
         info!("Restored {} to version {}", path, version_id);
-        Ok(())
+        super::confirm_version_restored(self, path, selected.as_ref()).await
     }
 
     fn supports_thumbnails(&self) -> bool {
@@ -3409,10 +3404,10 @@ mod tests {
             .into_iter()
             .map(|v| v.id)
             .collect();
-        assert_eq!(rows, ["3.0", "2.0"]);
-        let refused = provider.restore_version("/f.txt", "3.0").await;
+        assert_eq!(rows, ["F1:3.0", "F1:2.0"]);
+        let refused = provider.restore_version("/f.txt", "F1:3.0").await;
         let after_refusal = seen.lock().unwrap().clone();
-        let restored = provider.restore_version("/f.txt", "2.0").await;
+        let restored = provider.restore_version("/f.txt", "F1:2.0").await;
         server.abort();
         assert!(
             matches!(&refused, Err(ProviderError::NotSupported(m)) if m.contains("already the current")),
@@ -3422,7 +3417,13 @@ mod tests {
             after_refusal.iter().all(|r| r.starts_with("GET ")),
             "{after_refusal:?}"
         );
-        assert!(restored.is_ok(), "{restored:?}");
+        // The double lists the earlier current contents after the restore it
+        // answered with success: the request went out, and the restore is not
+        // reported done.
+        assert!(
+            matches!(&restored, Err(ProviderError::TransferFailed(m)) if m.contains("list its versions again")),
+            "{restored:?}"
+        );
         assert!(
             seen.lock()
                 .unwrap()
@@ -3430,6 +3431,84 @@ mod tests {
             "{:?}",
             seen.lock().unwrap()
         );
+    }
+
+    /// A OneDrive version is a label of its item (`2.0`): listed bound to
+    /// item F1, it is refused once the path names item F2 (a replacement
+    /// with its own `2.0`), before any request for F2's versions. A version
+    /// body answered 206 is not the whole version: the destination keeps its
+    /// bytes. The 200 answer is written whole.
+    #[tokio::test]
+    async fn a_onedrive_version_is_bound_to_its_item_and_needs_its_whole_body() {
+        use axum::response::IntoResponse;
+        use std::sync::{Arc, Mutex};
+        let seen: Arc<Mutex<Vec<String>>> = Arc::default();
+        let log = Arc::clone(&seen);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method, uri: axum::http::Uri| {
+                let log = Arc::clone(&log);
+                async move {
+                    log.lock().unwrap().push(format!("{method} {}", uri.path()));
+                    match uri.path() {
+                        "/v1.0/me/drive/items/F1/versions/2.0/content" => {
+                            (axum::http::StatusCode::OK, "whole").into_response()
+                        }
+                        "/v1.0/me/drive/items/F3/versions/2.0/content" => (
+                            axum::http::StatusCode::PARTIAL_CONTENT,
+                            [("content-range", "bytes 0-1/5")],
+                            "wh",
+                        )
+                            .into_response(),
+                        _ => axum::http::StatusCode::NOT_FOUND.into_response(),
+                    }
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = test_provider();
+        provider.connected = true;
+        provider.api_origin_override = Some(format!("http://{addr}"));
+        provider.test_access_token = Some("t".to_string());
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("f.txt");
+        std::fs::write(&out, "mine").unwrap();
+        let to = out.to_str().unwrap();
+        provider
+            .path_cache
+            .insert("f.txt".to_string(), "F2".to_string());
+        assert!(provider
+            .download_version("/f.txt", "F1:2.0", to)
+            .await
+            .is_err());
+        assert!(provider
+            .download_version("/f.txt", "2.0", to)
+            .await
+            .is_err());
+        assert!(
+            seen.lock().unwrap().is_empty(),
+            "{:?}",
+            seen.lock().unwrap()
+        );
+        provider
+            .path_cache
+            .insert("f.txt".to_string(), "F3".to_string());
+        let partial = provider.download_version("/f.txt", "F3:2.0", to).await;
+        assert!(
+            matches!(&partial, Err(ProviderError::TransferFailed(m)) if m.contains("not the whole version")),
+            "{partial:?}"
+        );
+        assert_eq!(std::fs::read_to_string(&out).unwrap(), "mine");
+        provider
+            .path_cache
+            .insert("f.txt".to_string(), "F1".to_string());
+        provider
+            .download_version("/f.txt", "F1:2.0", to)
+            .await
+            .expect("the whole version");
+        server.abort();
+        assert_eq!(std::fs::read_to_string(&out).unwrap(), "whole");
     }
 
     /// Graph refuses a move onto a taken name with 409 `nameAlreadyExists`,

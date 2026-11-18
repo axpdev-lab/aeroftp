@@ -177,122 +177,155 @@ fn mega_cmd_failure(label: &str, output: &std::process::Output) -> ProviderError
     }
 }
 
-/// Parse `mega-ls -l --versions <path>` output into the file's version chain.
-///
-/// MEGAcmd prints the file once, then a `Versions of <name>:` section whose
-/// lines mirror the `-l` columns (`FLAGS VERS SIZE DATE TIME NAME`) with a
-/// `#<epoch>` suffix on the name; that epoch is the addressable version id
-/// (`mega-get "<path>#<epoch>"`). A file with no retained history (VERS 1) has
-/// no section, so the chain comes back empty.
-pub(crate) fn parse_mega_ls_versions(output: &str) -> Vec<FileVersion> {
-    let mut out = Vec::new();
-    let mut in_versions = false;
-    for raw in output.lines() {
-        let trimmed = raw.trim_start();
-        if trimmed.starts_with("Versions of ") {
-            in_versions = true;
-            continue;
-        }
-        if !in_versions || trimmed.is_empty() {
-            continue;
-        }
-        // flags, vers, size, date, time, name(+#epoch)
-        let parts: Vec<&str> = raw.split_whitespace().collect();
-        if parts.len() < 6 {
-            continue;
-        }
-        let name = parts[5..].join(" ");
-        let version_id = match name.rsplit_once('#') {
-            Some((_, epoch)) if !epoch.is_empty() && epoch.bytes().all(|b| b.is_ascii_digit()) => {
-                epoch.to_string()
-            }
-            _ => continue,
-        };
-        let size = parts[2].parse::<u64>().unwrap_or(0);
-        let modified = format!("{} {}", parts[3], parts[4]);
-        out.push(FileVersion {
-            id: version_id,
-            modified: Some(modified),
-            size,
-            modified_by: None,
-            deleted: false,
-        });
-    }
-    out
-}
-
-/// List the retained versions of a MEGA file via `mega-ls -l --versions`.
-pub async fn mega_list_versions(remote_path: &str) -> Result<Vec<FileVersion>, ProviderError> {
-    let path = mega_abs_path(remote_path);
-    let output = run_mega_cmd_capture("mega-ls", &["-l", "--versions", &path]).await?;
+/// The version chain of the MEGA file at `path`, current first, as the
+/// native MEGAcmd provider lists it: each id is the version's handle
+/// (`H:...`), which names that one node. The `<path>#<time>` address the
+/// bridge used before names the first version of a second, and two versions
+/// written in one second share it (measured 2026-11-18): the older one could
+/// not be fetched.
+async fn mega_version_rows(path: &str) -> Result<Vec<FileVersion>, ProviderError> {
+    let output =
+        run_mega_cmd_capture("mega-ls", &["-l", "--versions", "--show-handles", path]).await?;
     if !output.status.success() {
         return Err(mega_cmd_failure("mega-ls --versions", &output));
     }
     let stdout = String::from_utf8_lossy(&output.stdout);
-    Ok(parse_mega_ls_versions(&stdout))
+    Ok(super::mega::mega_versions_current_first(
+        super::mega::parse_mega_ls_version_handles(&stdout, path)?,
+    )?)
 }
 
-/// Fetch a specific MEGA version to a fresh temp file and return its path.
-///
-/// `mega-get` refuses to overwrite an existing local target (it appends
-/// " (NUM)"), so we always download to a unique, non-existent temp path and let
-/// the caller place it where it belongs.
-async fn mega_fetch_version_to_temp(
-    remote_path: &str,
+/// List the retained versions of a MEGA file (`mega-ls -l --versions
+/// --show-handles`).
+pub async fn mega_list_versions(remote_path: &str) -> Result<Vec<FileVersion>, ProviderError> {
+    mega_version_rows(&mega_abs_path(remote_path)).await
+}
+
+/// The listed size of `version_id` among `listed`, the versions of `path`:
+/// a handle names any node, so one that is not in the file's chain is
+/// refused, as is an id that is not a handle.
+fn listed_version_size(
+    listed: &[FileVersion],
+    path: &str,
     version_id: &str,
-) -> Result<std::path::PathBuf, ProviderError> {
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let temp = std::env::temp_dir().join(format!("aeroftp-megaver-{}-{}.tmp", version_id, nanos));
-    let versioned = format!("{}#{}", mega_abs_path(remote_path), version_id);
-    let temp_str = temp.to_string_lossy().to_string();
-    match run_mega_cmd_capture("mega-get", &[&versioned, &temp_str]).await {
-        Ok(output) if output.status.success() => Ok(temp),
-        Ok(output) => {
-            let _ = std::fs::remove_file(&temp);
-            Err(mega_cmd_failure("mega-get version", &output))
-        }
-        Err(e) => {
-            let _ = std::fs::remove_file(&temp);
-            Err(e)
-        }
+) -> Result<u64, ProviderError> {
+    if !super::mega::is_mega_handle(version_id) {
+        return Err(ProviderError::InvalidPath(format!(
+            "'{version_id}' is not a MEGA version id: list its versions again"
+        )));
     }
+    listed
+        .iter()
+        .find(|v| v.id == version_id)
+        .map(|v| v.size)
+        .ok_or_else(|| ProviderError::NotFound(format!("{path} has no version {version_id}")))
 }
 
-/// Download a specific MEGA version to `local_path` via `mega-get "<path>#<id>"`.
+/// Fetch one version of `path` (`mega-get H:<handle>`) to a fresh temp file
+/// (removed when the guard goes), taken only whole: a regular file at the
+/// size it was listed with. Returns the handle listed current with it.
+async fn mega_fetch_version_to_temp(
+    path: &str,
+    version_id: &str,
+) -> Result<(super::VersionTempFile, Option<String>), ProviderError> {
+    let listed = mega_version_rows(path).await?;
+    let size = listed_version_size(&listed, path, version_id)?;
+    let temp = super::VersionTempFile::new("aeroftp_megaver");
+    let temp_str = temp.0.to_string_lossy().to_string();
+    let output = run_mega_cmd_capture("mega-get", &[version_id, &temp_str]).await?;
+    if !output.status.success() {
+        return Err(mega_cmd_failure("mega-get version", &output));
+    }
+    let written = std::fs::symlink_metadata(&temp.0)
+        .ok()
+        .filter(|m| m.file_type().is_file())
+        .map(|m| m.len());
+    if written != Some(size) {
+        return Err(ProviderError::TransferFailed(format!(
+            "MEGA sent {} of the {size} bytes of version {version_id} of {path}: nothing was \
+             changed, try again",
+            written.unwrap_or(0)
+        )));
+    }
+    Ok((temp, listed.first().map(|v| v.id.clone())))
+}
+
+/// Download a specific MEGA version to `local_path`, written as every
+/// download writes ([`super::copy_version_into_place`] where a rename across
+/// file systems is not possible).
 pub async fn mega_download_version(
     remote_path: &str,
     version_id: &str,
     local_path: &str,
 ) -> Result<(), ProviderError> {
-    let temp = mega_fetch_version_to_temp(remote_path, version_id).await?;
-    // Move into place, overwriting any existing destination (rename is atomic on
-    // the same filesystem; fall back to copy across mounts / on Windows).
-    if std::fs::rename(&temp, local_path).is_err() {
-        let copy = std::fs::copy(&temp, local_path);
-        let _ = std::fs::remove_file(&temp);
-        copy.map_err(ProviderError::IoError)?;
+    let path = mega_abs_path(remote_path);
+    let (temp, _) = mega_fetch_version_to_temp(&path, version_id).await?;
+    if tokio::fs::rename(&temp.0, local_path).await.is_err() {
+        super::copy_version_into_place(&temp.0, local_path).await?;
     }
     Ok(())
 }
 
-/// Restore a MEGA file to a previous version. MEGAcmd has no restore verb, so we
-/// download the chosen version and re-upload it: MEGA records the re-upload as
-/// the new current version while preserving the existing chain.
+/// Restore a MEGA file to a previous version. MEGAcmd has no restore verb, so
+/// the chosen version is fetched and uploaded over the file, which MEGA keeps
+/// as the new current version with the chain intact; refused for the current
+/// version and, before the put, when the account has versioning off (MEGA
+/// would drop the current version). The bytes of the version then on top,
+/// read by its handle, must be the restored ones.
 pub async fn mega_restore_version(
     remote_path: &str,
     version_id: &str,
 ) -> Result<(), ProviderError> {
-    let temp = mega_fetch_version_to_temp(remote_path, version_id).await?;
-    let temp_str = temp.to_string_lossy().to_string();
     let path = mega_abs_path(remote_path);
-    let put = run_mega_cmd_capture("mega-put", &[&temp_str, &path]).await;
-    let _ = std::fs::remove_file(&temp);
-    let output = put?;
+    let (temp, head) = mega_fetch_version_to_temp(&path, version_id).await?;
+    if head.as_deref() == Some(version_id) {
+        return Err(ProviderError::NotSupported(
+            "This is already the current version".into(),
+        ));
+    }
+    let versioning = run_mega_cmd_capture("mega-userattr", &["^!dv"])
+        .await
+        .map(|output| {
+            format!(
+                "{}{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            )
+        });
+    if super::mega::mega_versioning_off(versioning)? {
+        return Err(ProviderError::NotSupported(
+            super::mega::MEGA_VERSIONING_OFF.into(),
+        ));
+    }
+    let temp_str = temp.0.to_string_lossy().to_string();
+    let output = run_mega_cmd_capture("mega-put", &[&temp_str, &path]).await?;
     if !output.status.success() {
         return Err(mega_cmd_failure("mega-put restore", &output));
+    }
+    let not_taken = || {
+        ProviderError::TransferFailed(format!(
+            "{path} does not hold the restored version after the upload: list its versions \
+             again"
+        ))
+    };
+    let top = mega_version_rows(&path)
+        .await?
+        .first()
+        .map(|v| v.id.clone())
+        .ok_or_else(not_taken)?;
+    let check = super::VersionTempFile::new("aeroftp_megacheck");
+    let check_str = check.0.to_string_lossy().to_string();
+    let output = run_mega_cmd_capture("mega-get", &[&top, &check_str]).await?;
+    if !output.status.success() {
+        return Err(not_taken());
+    }
+    let (fetched, local) = (check.0.clone(), temp.0.clone());
+    let same = tokio::task::spawn_blocking(move || super::mega::same_bytes(&fetched, &local))
+        .await
+        .map_err(|e| ProviderError::Other(e.to_string()))?
+        .map_err(ProviderError::IoError)?;
+    if !same {
+        return Err(not_taken());
     }
     Ok(())
 }
@@ -793,44 +826,42 @@ Total size taken up by file versions:     31457280 bytes (30.0 MB)
         assert_eq!(parse_mega_webdav_url("[err: Not logged in.]"), None);
     }
 
+    /// The bridge takes the chain as the native provider does: by handle.
+    /// Three versions written in one second (measured 2026-11-18, all
+    /// `#1795020505`) keep three ids, each fetched as itself; a handle that
+    /// is not in the file's chain, or an epoch id, is refused.
     #[test]
-    fn parses_version_chain_from_mega_ls() {
-        // Real `mega-ls -l --versions` output for a two-version file.
+    fn versions_of_one_second_keep_distinct_ids_on_the_bridge() {
         let output = "\
-FLAGS VERS      SIZE            DATE       NAME
-----    2     31457280 15May2026 16:56:46 report.bin
+FLAGS VERS      SIZE            DATE          HANDLE NAME
+----    3           16 18Nov2026 17:48:25 H:7uoGxRAR d1/a.txt
 
-Versions of report.bin:
-----    2     31457280 15May2026 16:56:46 report.bin#1778857006
-----    1     31457280 15May2026 16:56:38 report.bin#1778856998
+Versions of d1/a.txt:
+----    3           16 18Nov2026 17:48:25 H:7uoGxRAR a.txt#1795020505
+----    2           17 18Nov2026 17:48:25 H:zq4y3ZYY a.txt#1795020505
+----    1           18 18Nov2026 17:48:25 H:GmoGXB5Q a.txt#1795020505
 ";
-        let versions = parse_mega_ls_versions(output);
-        assert_eq!(versions.len(), 2);
-        assert_eq!(versions[0].id, "1778857006");
-        assert_eq!(versions[0].size, 31_457_280);
-        assert_eq!(versions[0].modified.as_deref(), Some("15May2026 16:56:46"));
-        assert_eq!(versions[1].id, "1778856998");
-        assert_eq!(versions[1].modified.as_deref(), Some("15May2026 16:56:38"));
-    }
-
-    #[test]
-    fn single_version_file_has_empty_chain() {
-        // VERS 1 prints no "Versions of" section.
-        let output = "\
-FLAGS VERS      SIZE            DATE       NAME
-----    1          102 28Apr2026 19:21:25 test_readable.txt
+        let listed = super::super::mega::mega_versions_current_first(
+            super::super::mega::parse_mega_ls_version_handles(output, "/d1/a.txt").unwrap(),
+        )
+        .unwrap();
+        let ids: Vec<&str> = listed.iter().map(|v| v.id.as_str()).collect();
+        assert_eq!(ids, ["H:7uoGxRAR", "H:zq4y3ZYY", "H:GmoGXB5Q"]);
+        assert_eq!(
+            listed_version_size(&listed, "/d1/a.txt", "H:zq4y3ZYY").unwrap(),
+            17
+        );
+        assert_eq!(
+            listed_version_size(&listed, "/d1/a.txt", "H:GmoGXB5Q").unwrap(),
+            18
+        );
+        assert!(listed_version_size(&listed, "/d1/a.txt", "H:other111").is_err());
+        assert!(listed_version_size(&listed, "/d1/a.txt", "1795020505").is_err());
+        // A folder's listing: no child's chain passes for the folder's.
+        let folder = "\
+Versions of d1/a.txt:
+----    2           17 18Nov2026 17:48:25 H:zq4y3ZYY a.txt#1795020505
 ";
-        assert!(parse_mega_ls_versions(output).is_empty());
-    }
-
-    #[test]
-    fn version_names_with_spaces_keep_the_epoch_id() {
-        let output = "\
-Versions of my report.bin:
-----    2     10 08Jun2026 16:56:46 my report.bin#1778857006
-";
-        let versions = parse_mega_ls_versions(output);
-        assert_eq!(versions.len(), 1);
-        assert_eq!(versions[0].id, "1778857006");
+        assert!(super::super::mega::parse_mega_ls_version_handles(folder, "/d1").is_err());
     }
 }

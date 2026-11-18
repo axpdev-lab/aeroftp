@@ -2362,6 +2362,7 @@ impl StorageProvider for FileLuProvider {
                 "This is the current version: it is the file itself".into(),
             ));
         }
+        let selected = super::refuse_a_restore_that_changes_nothing(self, path, version_id).await?;
         let (norm, entry) = self.version_of(path, version_id).await?;
         let url = self.api_url_with(
             "file/version_restore",
@@ -2375,7 +2376,12 @@ impl StorageProvider for FileLuProvider {
         let resp = self.get_after_refusal(&url).await;
         // The file's code changes on success; the cache would keep the old one.
         self.path_cache.remove(&norm);
-        Self::ensure_api_ok(resp?).await
+        Self::ensure_api_ok(resp?).await?;
+        let confirmed = super::confirm_version_restored(self, path, selected.as_ref()).await;
+        // The check listed the file again: no code it cached outlives the
+        // restore either.
+        self.path_cache.remove(&norm);
+        confirmed
     }
 
     /// Deletes one earlier version for good. The endpoint is undocumented and

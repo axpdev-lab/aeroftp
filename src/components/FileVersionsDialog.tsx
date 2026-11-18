@@ -11,6 +11,7 @@ import { useDraggableModal } from '../hooks/useDraggableModal';
 import { useGuardedClose } from '../hooks/useGuardedClose';
 import { useInFlight } from '../hooks/useInFlight';
 import { GuardedCloseConfirm } from './GuardedCloseConfirm';
+import { versionDownloadName } from '../utils/versionDownloadName';
 
 interface FileVersion {
   id: string;
@@ -22,18 +23,24 @@ interface FileVersion {
 }
 
 interface Props {
+  /** The backend connection generation the dialog was opened on: every
+   * command carries it, so nothing runs on a connection switched to since. */
+  generation: number;
   filePath: string;
   fileName: string;
   onClose: () => void;
   onRestore?: () => void;
 }
 
-export function FileVersionsDialog({ filePath, fileName, onClose, onRestore }: Props) {
+export function FileVersionsDialog({ generation, filePath, fileName, onClose, onRestore }: Props) {
   const t = useTranslation();
   const modalDrag = useDraggableModal();
   const [versions, setVersions] = useState<FileVersion[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // The refusal of a Download, Restore or Purge (a file changed since the
+  // listing, a connection switched): shown above the list, which stays.
+  const [actionError, setActionError] = useState<string | null>(null);
   const ops = useInFlight<string>();
   const [pendingPurge, setPendingPurge] = useState<FileVersion | null>(null);
   // Operations on different versions can overlap: the guard counts every
@@ -43,13 +50,13 @@ export function FileVersionsDialog({ filePath, fileName, onClose, onRestore }: P
 
   useEffect(() => {
     loadVersions();
-  }, [filePath]);
+  }, [filePath, generation]);
 
   const loadVersions = async () => {
     setLoading(true);
     setError(null);
     try {
-      const result = await invoke<FileVersion[]>('provider_list_versions', { path: filePath });
+      const result = await invoke<FileVersion[]>('provider_list_versions', { path: filePath, generation });
       setVersions(result);
     } catch (err) {
       setError(String(err));
@@ -59,35 +66,37 @@ export function FileVersionsDialog({ filePath, fileName, onClose, onRestore }: P
   };
 
   const handleDownload = async (version: FileVersion) => {
-    const ext = fileName.includes('.') ? '.' + fileName.split('.').pop() : '';
-    const defaultName = `${fileName.replace(ext, '')}_v${version.id.slice(0, 8)}${ext}`;
-    const savePath = await pickSave({ defaultPath: defaultName });
+    const savePath = await pickSave({ defaultPath: versionDownloadName(fileName, version.id) });
     if (!savePath) return;
 
+    setActionError(null);
     ops.begin(version.id);
     try {
       await invoke('provider_download_version', {
         path: filePath,
         versionId: version.id,
         localPath: savePath,
+        generation,
       });
     } catch (err) {
-      console.error('Download version failed:', err);
+      setActionError(String(err));
     } finally {
       ops.end(version.id);
     }
   };
 
   const handleRestore = async (version: FileVersion) => {
+    setActionError(null);
     ops.begin(version.id);
     try {
       await invoke('provider_restore_version', {
         path: filePath,
         versionId: version.id,
+        generation,
       });
       onRestore?.();
     } catch (err) {
-      console.error('Restore version failed:', err);
+      setActionError(String(err));
     } finally {
       ops.end(version.id);
     }
@@ -95,16 +104,17 @@ export function FileVersionsDialog({ filePath, fileName, onClose, onRestore }: P
 
   const handlePurge = async (version: FileVersion) => {
     setPendingPurge(null);
+    setActionError(null);
     ops.begin(version.id);
     try {
       await invoke('provider_delete_version', {
         path: filePath,
         versionId: version.id,
+        generation,
       });
       await loadVersions();
     } catch (err) {
-      console.error('Purge version failed:', err);
-      setError(String(err));
+      setActionError(String(err));
     } finally {
       ops.end(version.id);
     }
@@ -132,6 +142,12 @@ export function FileVersionsDialog({ filePath, fileName, onClose, onRestore }: P
         <div className="px-5 py-2 text-xs text-gray-500 dark:text-gray-400 truncate border-b border-gray-100 dark:border-gray-700">
           {fileName}
         </div>
+
+        {actionError && (
+          <div role="alert" className="px-5 py-2 text-xs text-red-500 border-b border-gray-100 dark:border-gray-700 break-words">
+            {actionError}
+          </div>
+        )}
 
         {/* Content */}
         <div className="flex-1 overflow-auto">

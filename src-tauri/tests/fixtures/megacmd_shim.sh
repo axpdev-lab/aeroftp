@@ -118,6 +118,31 @@ case "$(basename "$0")" in
             echo '----    1            5 16Nov2026 15:52:00 H:yAAAAAA1 y.txt#1794840720'
             exit 0
         fi
+        if [ "$1" = "-l" ] && [ "$2" = "--versions" ] && [ "$3" = "--show-handles" ] && [ "$4" = "/docs" ]; then
+            # A folder: MEGAcmd 2.6 lists its children and a versions part
+            # for each versioned child, named by the child's path.
+            echo 'FLAGS VERS      SIZE            DATE          HANDLE NAME'
+            echo '----    2            6 16Nov2026 15:53:00 H:dAAAAAA2 a.txt'
+            echo ''
+            echo 'Versions of docs/a.txt:'
+            echo '----    2            6 16Nov2026 15:53:00 H:dAAAAAA2 a.txt#1794840780'
+            echo '----    1            4 16Nov2026 15:52:00 H:dAAAAAA1 a.txt#1794840720'
+            echo ''
+            echo 'Versions of docs/b.txt:'
+            echo '----    2            7 16Nov2026 15:53:00 H:dBBBBBB2 b.txt#1794840780'
+            echo '----    1            5 16Nov2026 15:52:00 H:dBBBBBB1 b.txt#1794840720'
+            exit 0
+        fi
+        if [ "$1" = "-l" ] && [ "$2" = "--versions" ] && [ "$3" = "--show-handles" ] && [ "$4" = "/z.txt" ]; then
+            # An empty past version (0 bytes).
+            echo 'FLAGS VERS      SIZE            DATE          HANDLE NAME'
+            echo '----    2            4 16Nov2026 15:53:00 H:zAAAAAA2 z.txt'
+            echo ''
+            echo 'Versions of z.txt:'
+            echo '----    2            4 16Nov2026 15:53:00 H:zAAAAAA2 z.txt#1794840780'
+            echo '----    1            0 16Nov2026 15:52:00 H:zAAAAAA1 z.txt#1794840720'
+            exit 0
+        fi
         if [ "$1" = "-l" ] && [ "$2" = "/" ]; then
             echo 'FLAGS VERS SIZE DATE TIME NAME'
             echo '----  1  3  15Jan2026  14:30 a.txt'
@@ -154,6 +179,18 @@ case "$(basename "$0")" in
     mega-mv)
         echo "$1 $2" >> "$here/mv.log"
         ;;
+    mega-userattr)
+        # The DISABLE_VERSIONS attribute as MEGAcmd 2.6 prints it (measured
+        # 2026-11-18): 1 with versioning-off, else 0; versioning-unreadable
+        # answers neither.
+        if [ -f "$here/versioning-unreadable" ]; then
+            echo "Unexpected answer"
+        elif [ -f "$here/versioning-off" ]; then
+            printf '\tDISABLE_VERSIONS (^!dv) = 1\n'
+        else
+            printf '\tDISABLE_VERSIONS (^!dv) = 0\n'
+        fi
+        ;;
     mega-put)
         # Progress lines as MEGAcmd 2.6 writes them through a pipe: on
         # stderr, each ended by a NUL and a carriage return, at 10, 50 and 90
@@ -186,15 +223,20 @@ case "$(basename "$0")" in
         fi
         if [ -f "$here/put-same-bytes" ]; then
             # The bytes the current version already holds: MEGA adds no
-            # version and says it is done (measured 2026-11-18).
+            # version and says it is done (measured 2026-11-18). Nothing
+            # changes: the current bytes are what they were.
             echo "$2" >> "$here/put.log"
-            cp "$1" "$here/put-bytes-$(basename "$2")"
             printf '\nUpload finished: %s\n' "$2"
             exit 0
         fi
         if [ -f "$here/put-ignored" ]; then
-            # Done by its exit and its words, with nothing changed.
+            # Done by its exit and its words, with nothing changed. With
+            # foreign-writes-put-bytes another client then writes the same
+            # bytes at the path, with no version in the listing yet.
             echo "$2" >> "$here/put.log"
+            if [ -f "$here/foreign-writes-put-bytes" ]; then
+                cp "$1" "$here/put-bytes-$(basename "$2")"
+            fi
             printf '\nUpload finished: %s\n' "$2"
             exit 0
         fi
@@ -239,6 +281,12 @@ case "$(basename "$0")" in
             echo "Download failed: Write error" >&2
             exit 2
         fi
+        if [ -f "$here/get-always-try-again" ]; then
+            # Every attempt: 500 bytes at the target, then a transient failure.
+            dd if=/dev/zero of="$2" bs=500 count=1 2>/dev/null
+            echo "Download failed: Temporarily unavailable, try again"
+            exit 1
+        fi
         if [ -f "$here/get-partial-try-again" ] && [ ! -f "$here/get-retried" ]; then
             # Once: 500 bytes at the target, then a transient failure on
             # stdout; every attempt is in get.log above.
@@ -258,9 +306,26 @@ case "$(basename "$0")" in
         n=1000
         fill=''
         case "$1" in
+            H:vAAAAAA4|H:wAAAAAA4)
+                # The version a put added holds what was put.
+                name=$(printf '%s' "$1" | cut -c3).txt
+                cp "$here/put-bytes-$name" "$out"
+                printf '\nDownload finished: %s\n' "$out"
+                exit 0
+                ;;
+            H:vAAAAAA5)
+                # Another client's version: its size and bytes as a path get
+                # of foreign-<name> gives them.
+                n=$(cat "$here/foreign-size" 2>/dev/null || echo 21)
+                fill=5
+                ;;
             H:*)
                 n=$(awk -v h="$1" 'index($0, " " h " ") { print $4; exit }' "$0")
                 fill=$(printf '%s' "$1" | tail -c 1)
+                # w-current-holds-w1: the current w.txt has H:wAAAAAA1's bytes.
+                if [ "$1" = H:wAAAAAA3 ] && [ -f "$here/w-current-holds-w1" ]; then
+                    fill=1
+                fi
                 ;;
             /*)
                 name=$(basename "$1")
@@ -298,6 +363,10 @@ case "$(basename "$0")" in
         for p in 10.00 50.00 90.00; do
             printf 'TRANSFERRING ||####..........||(9/30 MB:  %s %%) \000\r' "$p" >&2
         done
+        # z-get-three: the empty version arrives as 3 bytes.
+        if [ "$1" = H:zAAAAAA1 ] && [ -f "$here/z-get-three" ]; then
+            n=3
+        fi
         if [ -n "$fill" ]; then
             head -c "$n" /dev/zero | tr '\0' "$fill" > "$out"
         else
