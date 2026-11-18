@@ -584,12 +584,23 @@ fn format_s3_error(
     body: &str,
     retry_header: Option<&str>,
 ) -> String {
-    let detail = s3_error_code_and_message(body).unwrap_or_else(|| body.to_string());
-    let mut msg = format!("{} ({}): {}", prefix, status, sanitize_api_error(&detail));
+    let mut msg = format!("{} ({}): {}", prefix, status, s3_error_text(body));
     if let Some(tail) = s3_retry_marker_tail(status.as_u16(), body, retry_header) {
         msg.push_str(&tail);
     }
     msg
+}
+
+/// What an error may show of an S3 error reply: its `Code: Message`,
+/// sanitized, or only its length. The rest of the reply can name the request
+/// (`<Resource>` is the bucket and key path, `<Key>` the object), so it stays
+/// out of the error.
+fn s3_error_text(body: &str) -> String {
+    match s3_error_code_and_message(body) {
+        Some(detail) => sanitize_api_error(&detail),
+        None if body.is_empty() => "no message".to_string(),
+        None => format!("a reply of {} bytes with no S3 error code", body.len()),
+    }
 }
 
 /// `Code: Message` of an S3 XML error body, or `None` when it has neither.
@@ -860,6 +871,24 @@ impl Drop for DeltaHold {
     }
 }
 
+/// True when `endpoint` names a user or a password. Read from the parsed URL,
+/// which skips the extra slashes a browser also skips (`https:///u:p@host`
+/// is `u:p` at `host`); an endpoint that does not parse counts an `@` in
+/// the authority it would have, after any leading slashes.
+fn endpoint_has_userinfo(endpoint: &str) -> bool {
+    match url::Url::parse(endpoint) {
+        Ok(url) => !url.username().is_empty() || url.password().is_some(),
+        Err(_) => endpoint
+            .split_once("://")
+            .map_or(endpoint, |(_, rest)| rest)
+            .trim_start_matches(['/', '\\'])
+            .split(['/', '\\'])
+            .next()
+            .unwrap_or("")
+            .contains('@'),
+    }
+}
+
 impl S3Provider {
     fn baseline_path(&self) -> Option<std::path::PathBuf> {
         #[cfg(test)]
@@ -1059,12 +1088,11 @@ impl S3Provider {
         // Credentials go in the signed headers, never in the URL, so a user
         // name or password in the endpoint is not used by S3; it would only
         // ride along in every request URL and in every error that names one.
-        if config.endpoint.as_deref().is_some_and(|endpoint| {
-            let after_scheme = endpoint
-                .split_once("://")
-                .map_or(endpoint, |(_, rest)| rest);
-            after_scheme.split('/').next().unwrap_or("").contains('@')
-        }) {
+        if config
+            .endpoint
+            .as_deref()
+            .is_some_and(endpoint_has_userinfo)
+        {
             return Err(ProviderError::InvalidConfig(
                 "The S3 endpoint must not contain a user name or a password (user:password@): \
                  S3 signs every request with the access key, so remove everything up to the @"
@@ -2726,7 +2754,7 @@ impl S3Provider {
                 return Err(ProviderError::ServerError(format!(
                     "FileLu safe rename write failed ({}): {}",
                     put_status,
-                    sanitize_api_error(&put_body)
+                    s3_error_text(&put_body)
                 )));
             }
         }
@@ -5988,7 +6016,7 @@ impl StorageProvider for S3Provider {
                                 let retry_body = retry.text().await.unwrap_or_default();
                                 Err(ProviderError::AuthenticationFailed(format!(
                                     "S3 auth error: {}",
-                                    sanitize_api_error(&extract_s3_error(&retry_body))
+                                    s3_error_text(&retry_body)
                                 )))
                             }
                         };
@@ -5997,7 +6025,7 @@ impl StorageProvider for S3Provider {
 
                 Err(ProviderError::AuthenticationFailed(format!(
                     "S3 auth error: {}",
-                    sanitize_api_error(&error_msg)
+                    s3_error_text(&body)
                 )))
             }
             StatusCode::NOT_FOUND => Err(ProviderError::NotFound(format!(
@@ -6006,11 +6034,15 @@ impl StorageProvider for S3Provider {
             ))),
             status => {
                 let body = response.text().await.unwrap_or_default();
-                debug!("[S3] connect() failed with status={} body={}", status, body);
+                debug!(
+                    "[S3] connect() failed with status={} and a reply of {} bytes",
+                    status,
+                    body.len()
+                );
                 Err(ProviderError::ConnectionFailed(format!(
                     "S3 error ({}): {}",
                     status,
-                    sanitize_api_error(&body)
+                    s3_error_text(&body)
                 )))
             }
         }
@@ -6082,19 +6114,8 @@ impl StorageProvider for S3Provider {
                         .await
                         .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
-                    // Debug: Log raw XML response (truncated for readability).
-                    // Must NOT use `&xml[..2000]`: a byte slice that lands
-                    // inside a multi-byte UTF-8 codepoint (emoji in an
-                    // object key, non-ASCII bucket/prefix) panics with
-                    // "end byte index is not a char boundary". Iterate on
-                    // chars + head cap instead.
-                    let xml_preview = if xml.len() > 2000 {
-                        let head: String = xml.chars().take(2000).collect();
-                        format!("{head}... [truncated, total {} bytes]", xml.len())
-                    } else {
-                        xml.clone()
-                    };
-                    debug!("S3 LIST response XML:\n{}", xml_preview);
+                    // The size only: the listing names every key.
+                    debug!("S3 LIST response, {} bytes", xml.len());
 
                     if let Some(error) = Self::bucket_addressing_error(&xml) {
                         return Err(error);
@@ -6117,27 +6138,10 @@ impl StorageProvider for S3Provider {
                 status => {
                     let body = response.text().await.unwrap_or_default();
 
-                    // Extract error message from XML if present
-                    let error_msg = if body.contains("<Message>") {
-                        body.split("<Message>")
-                            .nth(1)
-                            .and_then(|s| s.split("</Message>").next())
-                            .unwrap_or(&body)
-                            .to_string()
-                    } else if body.contains("<Code>") {
-                        // Try to get the error code
-                        body.split("<Code>")
-                            .nth(1)
-                            .and_then(|s| s.split("</Code>").next())
-                            .unwrap_or(&body)
-                            .to_string()
-                    } else {
-                        body
-                    };
                     return Err(ProviderError::ServerError(format!(
                         "List failed ({}): {}",
                         status,
-                        sanitize_api_error(&error_msg)
+                        s3_error_text(&body)
                     )));
                 }
             }
@@ -7432,7 +7436,7 @@ impl StorageProvider for S3Provider {
                 let body = response.text().await.unwrap_or_default();
                 return Err(ProviderError::ServerError(format!(
                     "Search failed: {}",
-                    sanitize_api_error(&body)
+                    s3_error_text(&body)
                 )));
             }
 
@@ -8097,7 +8101,7 @@ impl StorageProvider for S3Provider {
                 return Err(ProviderError::ServerError(format!(
                     "ListObjectVersions failed ({}): {}",
                     status,
-                    sanitize_api_error(&body)
+                    s3_error_text(&body)
                 )));
             }
 
@@ -8378,7 +8382,7 @@ impl StorageProvider for S3Provider {
                 Err(ProviderError::TransferFailed(format!(
                     "Download version failed ({}): {}",
                     status,
-                    sanitize_api_error(&body)
+                    s3_error_text(&body)
                 )))
             }
         }
@@ -8438,7 +8442,7 @@ impl StorageProvider for S3Provider {
                 Err(ProviderError::ServerError(format!(
                     "Restore version failed ({}): {}",
                     status,
-                    sanitize_api_error(&body)
+                    s3_error_text(&body)
                 )))
             }
         }
@@ -8476,7 +8480,7 @@ impl StorageProvider for S3Provider {
                 Err(ProviderError::ServerError(format!(
                     "Delete version failed ({}): {}",
                     status,
-                    sanitize_api_error(&body)
+                    s3_error_text(&body)
                 )))
             }
         }
@@ -8533,7 +8537,7 @@ impl StorageProvider for S3Provider {
                 return Err(ProviderError::ServerError(format!(
                     "ListObjectVersions failed ({}): {}",
                     status,
-                    sanitize_api_error(&body)
+                    s3_error_text(&body)
                 )));
             }
 
@@ -8774,7 +8778,7 @@ impl S3Provider {
                 Err(ProviderError::ServerError(format!(
                     "Change storage class failed ({}): {}",
                     status,
-                    sanitize_api_error(&body)
+                    s3_error_text(&body)
                 )))
             }
         }
@@ -8858,7 +8862,7 @@ impl S3Provider {
                 Err(ProviderError::ServerError(format!(
                     "Glacier restore failed ({}): {}",
                     status,
-                    sanitize_api_error(&body)
+                    s3_error_text(&body)
                 )))
             }
         }
@@ -8898,7 +8902,7 @@ impl S3Provider {
             return Err(ProviderError::ServerError(format!(
                 "GetObjectTagging failed ({}): {}",
                 status,
-                sanitize_api_error(&body)
+                s3_error_text(&body)
             )));
         }
 
@@ -9060,7 +9064,7 @@ impl S3Provider {
                 Err(ProviderError::ServerError(format!(
                     "PutObjectTagging failed ({}): {}",
                     status,
-                    sanitize_api_error(&body)
+                    s3_error_text(&body)
                 )))
             }
         }
@@ -9098,7 +9102,7 @@ impl S3Provider {
                 Err(ProviderError::ServerError(format!(
                     "DeleteObjectTagging failed ({}): {}",
                     status,
-                    sanitize_api_error(&body)
+                    s3_error_text(&body)
                 )))
             }
         }
@@ -9213,7 +9217,7 @@ impl S3Provider {
                     return Err(ProviderError::ServerError(format!(
                         "List recursive failed ({}): {}",
                         status,
-                        sanitize_api_error(&body)
+                        s3_error_text(&body)
                     )));
                 }
             }
@@ -10499,8 +10503,14 @@ mod tests {
                     let Ok(mut stream) = acceptor.accept(stream).await else {
                         return;
                     };
+                    // Count a request, not a handshake: schannel (Windows)
+                    // checks the certificate after the handshake completes,
+                    // so a refusing client still lets `accept` finish and
+                    // then sends nothing.
                     let mut chunk = [0u8; 8192];
-                    let _ = stream.read(&mut chunk).await;
+                    if !matches!(stream.read(&mut chunk).await, Ok(n) if n > 0) {
+                        return;
+                    }
                     counted.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                     let body = "<ErrorResponse><Error><Code>AccessDenied</Code>\
                                 <Message>test</Message></Error></ErrorResponse>";
@@ -11348,6 +11358,9 @@ mod tests {
             "https://user:hunter2@gateway.example/s3",
             "https://hunter2@gateway.example",
             "http://u:hunter2@127.0.0.1:1800",
+            "https:///u:hunter2@gateway.example/s3",
+            "HTTPS://u:hunter2@gateway.example",
+            "https:\\\\u:hunter2@gateway.example",
         ] {
             for (path_style, bucket) in [(true, ""), (true, "b"), (false, "b")] {
                 let mut config = make_provider(Some("https://gateway.example/s3"))
@@ -19882,7 +19895,29 @@ mod tests {
             "upstream down",
             None,
         );
-        assert_eq!(plain, "GET failed (502 Bad Gateway): upstream down");
+        // A reply with no S3 error code is shown by its size: a proxy page or
+        // a gateway text can carry the request path or a token.
+        assert_eq!(
+            plain,
+            "GET failed (502 Bad Gateway): a reply of 13 bytes with no S3 error code"
+        );
+        let empty = format_s3_error("GET failed", reqwest::StatusCode::BAD_GATEWAY, "", None);
+        assert_eq!(empty, "GET failed (502 Bad Gateway): no message");
+    }
+
+    /// The error keeps `Code: Message` and nothing else of the reply:
+    /// `<Resource>` and `<Key>` name the bucket and the object path.
+    #[test]
+    fn an_s3_error_never_shows_the_resource_it_names() {
+        let body = "<Error><Code>NoSuchKey</Code><Message>The specified key does not exist.</Message><Key>private/tax-2026.pdf</Key><Resource>/bucket/private/tax-2026.pdf</Resource><RequestId>4442587FB7D0A2F9</RequestId></Error>";
+        let msg = format_s3_error("GET failed", reqwest::StatusCode::NOT_FOUND, body, None);
+        assert_eq!(
+            msg,
+            "GET failed (404 Not Found): NoSuchKey: The specified key does not exist."
+        );
+        let bare = "<Error><Resource>/bucket/private/tax-2026.pdf</Resource></Error>";
+        let msg = format_s3_error("GET failed", reqwest::StatusCode::NOT_FOUND, bare, None);
+        assert!(!msg.contains("tax-2026"), "{msg}");
     }
 
     #[test]

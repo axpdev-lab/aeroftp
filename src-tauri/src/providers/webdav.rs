@@ -466,6 +466,42 @@ impl std::fmt::Display for InsecureRedirect {
 
 impl std::error::Error for InsecureRedirect {}
 
+/// What an error may show of a WebDAV server's reply: its message element
+/// (Sabre `<s:message>`, OCS `<message>`, a JSON `"message"`), sanitized and
+/// with the profile's base path replaced by `<base>`, or only its length.
+/// The rest of a reply can echo the request (an href, the form, a path below
+/// a base URL that holds a token, as MEGAcmd's does).
+fn server_message(body: &str, base_url: &str) -> String {
+    static ELEMENT: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(r"<(?:[A-Za-z0-9_]+:)?message(?:\s[^>]*)?>([^<]*)</").unwrap()
+    });
+    static JSON: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(r#""message"\s*:\s*"((?:[^"\\]|\\.)*)""#).unwrap()
+    });
+    let message = ELEMENT
+        .captures(body)
+        .or_else(|| JSON.captures(body))
+        .and_then(|found| found.get(1))
+        .map(|found| found.as_str().trim())
+        .filter(|message| !message.is_empty());
+    let Some(message) = message else {
+        return if body.is_empty() {
+            "no message".to_string()
+        } else {
+            format!("a reply of {} bytes with no message", body.len())
+        };
+    };
+    let mut shown = message.to_string();
+    if let Ok(url) = url::Url::parse(base_url) {
+        let path = url.path().trim_end_matches('/');
+        if path.len() > 1 {
+            let decoded = percent_decode_str(path).decode_utf8_lossy().into_owned();
+            shown = shown.replace(path, "<base>").replace(&decoded, "<base>");
+        }
+    }
+    sanitize_api_error(&shown)
+}
+
 /// The value of a response header as the download diagnostic logs it. A
 /// `Location` or `Content-Location` names a URL whose path or query can carry
 /// a secret (the MEGAcmd path token), so only its origin is kept; a
@@ -2775,7 +2811,7 @@ impl WebDavProvider {
                 return Err(ProviderError::ServerError(format!(
                     "OCS share failed: HTTP {} - {}{}",
                     status2,
-                    &shown[..shown.floor_char_boundary(200)],
+                    server_message(&shown, &self.config.url),
                     lookup
                 )));
             }
@@ -2801,7 +2837,7 @@ impl WebDavProvider {
             return Err(ProviderError::ServerError(format!(
                 "OCS share failed: HTTP {} - {}",
                 status,
-                &text[..text.floor_char_boundary(200)]
+                server_message(&text, &self.config.url)
             )));
         }
         let json: serde_json::Value = serde_json::from_str(&text)
@@ -3086,7 +3122,7 @@ impl WebDavProvider {
             return Err(ProviderError::ServerError(format!(
                 "Restore failed: HTTP {}: {}",
                 status,
-                &body[..body.floor_char_boundary(200)]
+                server_message(&body, &self.config.url)
             )));
         }
         Ok(())
@@ -4403,9 +4439,9 @@ impl StorageProvider for WebDavProvider {
                             // Log the response body for debugging
                             let body = response2.text().await.unwrap_or_default();
                             tracing::warn!(
-                                "[WebDAV] Digest auth failed ({}): {}",
+                                "[WebDAV] Digest auth failed ({}): a reply of {} bytes",
                                 retry_status,
-                                &body[..body.floor_char_boundary(200)]
+                                body.len()
                             );
                             self.digest_auth = None;
                             Err(ProviderError::AuthenticationFailed(
@@ -4591,7 +4627,6 @@ impl StorageProvider for WebDavProvider {
                 let xml = response.text().await.map_http_err(body_read_error)?;
 
                 tracing::debug!("[WebDAV] Response XML length: {} bytes", xml.len());
-                tracing::debug!("[WebDAV] Full XML response:\n{}", xml);
 
                 let entries = self.parse_propfind_response(&xml, &list_path)?;
                 tracing::debug!("[WebDAV] Parsed {} entries", entries.len());
@@ -4967,20 +5002,14 @@ impl StorageProvider for WebDavProvider {
                     .map(|(k, v)| format!("{}={}", k, diagnostic_header_value(k, v)))
                     .collect::<Vec<_>>()
                     .join(", ");
-                let body_snippet = response
-                    .text()
-                    .await
-                    .unwrap_or_default()
-                    .chars()
-                    .take(512)
-                    .collect::<String>();
+                let body_len = response.text().await.map_or(0, |body| body.len());
                 tracing::info!(
-                    "[WEBDAV] download non-success: status={} origin={} path={} headers=[{}] body=\"{}\"",
+                    "[WEBDAV] download non-success: status={} origin={} path={} headers=[{}] body={} bytes",
                     status,
                     crate::local_bridge::url_origin(&self.config.url),
                     remote_path,
                     headers_dump,
-                    body_snippet
+                    body_len
                 );
                 Err(ProviderError::TransferFailed(format!(
                     "Download failed with status: {}",
@@ -5828,7 +5857,7 @@ impl StorageProvider for WebDavProvider {
             return Err(ProviderError::ServerError(format!(
                 "LOCK failed ({}): {}",
                 status,
-                sanitize_api_error(&text)
+                server_message(&text, &self.config.url)
             )));
         }
 
@@ -5869,7 +5898,7 @@ impl StorageProvider for WebDavProvider {
                 Err(ProviderError::ServerError(format!(
                     "UNLOCK failed ({}): {}",
                     status,
-                    sanitize_api_error(&text)
+                    server_message(&text, &self.config.url)
                 )))
             }
         }
@@ -6038,7 +6067,7 @@ impl StorageProvider for WebDavProvider {
                     "MKCOL uploads/{} failed: {} {}",
                     transfer_id,
                     status,
-                    sanitize_api_error(&body)
+                    server_message(&body, &self.config.url)
                 )));
             }
         }
@@ -6133,7 +6162,7 @@ impl StorageProvider for WebDavProvider {
                     "Nextcloud chunk {} upload failed: {} {}",
                     part_number,
                     status,
-                    sanitize_api_error(&body)
+                    server_message(&body, &self.config.url)
                 )))
             }
         }
@@ -6199,7 +6228,7 @@ impl StorageProvider for WebDavProvider {
                 Err(ProviderError::TransferFailed(format!(
                     "Nextcloud assemble failed: {} {}",
                     status,
-                    sanitize_api_error(&body)
+                    server_message(&body, &self.config.url)
                 )))
             }
         }
@@ -6239,7 +6268,10 @@ impl StorageProvider for WebDavProvider {
                 }
             }
             Err(e) => {
-                tracing::warn!("[WEBDAV] Nextcloud chunked abort network error: {}", e);
+                tracing::warn!(
+                    "[WEBDAV] Nextcloud chunked abort network error: {}",
+                    describe_reqwest_error(e)
+                );
             }
         }
         Ok(())
@@ -10134,6 +10166,56 @@ mod filen_bridge_certificate_tests {
         );
     }
 
+    /// `storage_info` asks the Koofr quota API only of a Koofr profile: a
+    /// local URL whose path names app.koofr.net sends one PROPFIND to its own
+    /// server and nothing to Koofr, while a profile on app.koofr.net tries the
+    /// API and then the PROPFIND (two tunnels to app.koofr.net, both refused
+    /// by the recording proxy). In a child process, because the proxy
+    /// variables are process-wide.
+    #[tokio::test]
+    async fn the_koofr_quota_api_is_asked_only_of_a_koofr_profile() {
+        if !crate::local_bridge::proxied::in_child(
+            "providers::webdav::filen_bridge_certificate_tests::the_koofr_quota_api_is_asked_only_of_a_koofr_profile",
+        ) {
+            return;
+        }
+        let proxy = crate::local_bridge::proxied::RecordingProxy::start().await;
+        let mut local = WebDavProvider::new(config(
+            "http://127.0.0.1:9/app.koofr.net/dav".to_string(),
+            None,
+        ))
+        .unwrap();
+        local.connected = true;
+        let _ = local.storage_info().await;
+        let lines = proxy.lines();
+        assert!(
+            !lines.iter().any(|line| line.contains("app.koofr.net:443")),
+            "a URL that only names Koofr in its path reached Koofr: {lines:?}"
+        );
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert!(
+            lines[0].starts_with("PROPFIND http://127.0.0.1:9/"),
+            "{lines:?}"
+        );
+
+        let mut koofr =
+            WebDavProvider::new(config("https://app.koofr.net/dav/Koofr".to_string(), None))
+                .unwrap();
+        koofr.connected = true;
+        let _ = koofr.storage_info().await;
+        let tunnels = proxy
+            .lines()
+            .iter()
+            .filter(|line| line.starts_with("CONNECT app.koofr.net:443"))
+            .count();
+        assert_eq!(
+            tunnels,
+            2,
+            "the quota API, then the PROPFIND: {:?}",
+            proxy.lines()
+        );
+    }
+
     /// The trust needs a loopback IP written as such: a name is resolved by
     /// DNS, which may point anywhere.
     #[test]
@@ -10667,6 +10749,24 @@ pub(crate) mod collection_redirect_tests {
         ] {
             assert!(!refused.contains(secret), "{secret} in {refused}");
         }
+    }
+
+    /// An error shows the server's message element, never the rest of the
+    /// reply, and never the profile's base path, which can hold a token.
+    #[test]
+    fn a_server_reply_shows_only_its_message_without_the_base_path() {
+        let base = "http://127.0.0.1:4443/TOKEN123/Cloud%20Drive";
+        let sabre = r#"<?xml version="1.0"?><d:error xmlns:d="DAV:" xmlns:s="http://sabredav.org/ns"><s:exception>NotFound</s:exception><s:message>No such file: /TOKEN123/Cloud Drive/a.txt</s:message><d:href>/TOKEN123/Cloud%20Drive/a.txt</d:href></d:error>"#;
+        let shown = server_message(sabre, base);
+        assert_eq!(shown, "No such file: <base>/a.txt");
+        let ocs = r#"{"ocs":{"meta":{"status":"failure","message":"Wrong share password"}}}"#;
+        assert_eq!(server_message(ocs, base), "Wrong share password");
+        let html = "<html><body>/TOKEN123/Cloud%20Drive forbidden</body></html>";
+        assert_eq!(
+            server_message(html, base),
+            format!("a reply of {} bytes with no message", html.len())
+        );
+        assert_eq!(server_message("", base), "no message");
     }
 
     /// The download diagnostic keeps a header's value, except a Location or

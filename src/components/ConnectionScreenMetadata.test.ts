@@ -718,8 +718,20 @@ describe('a preset text names the controls its form renders', () => {
             Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(endpoint, 'http://local.s3.filen.io:1801');
             endpoint.dispatchEvent(new Event('input', { bubbles: true }));
         });
-        // What Fetch and connect send: the connection's endpoint, as typed.
+        // What connect sends: the connection's endpoint, as typed.
         expect(handedUp?.options?.endpoint).toBe('http://local.s3.filen.io:1801');
+        // What Fetch sends: the same scheme and port, not the preset default.
+        const previous = mocks.invoke.getMockImplementation()!;
+        mocks.invoke.mockImplementation(async (command: string, args?: any) =>
+            command === 'provider_discover_targets' ? [] : previous(command, args));
+        const fetch = [...container.querySelectorAll('button')]
+            .find(element => element.textContent?.includes(label('connection.discovery.fetch')))!;
+        await act(async () => fetch.click());
+        const discovery = mocks.invoke.mock.calls
+            .filter(([command]) => command === 'provider_discover_targets')
+            .map(([, args]) => (args as { params: { endpoint?: string } }).params);
+        expect(discovery).toHaveLength(1);
+        expect(discovery[0].endpoint).toBe('http://local.s3.filen.io:1801');
     });
 
     it('takes a custom Filen WebDAV port in the field its setup text names', async () => {
