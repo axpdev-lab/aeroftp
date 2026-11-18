@@ -23,40 +23,55 @@ export const LINUX_NOTICE_PATHS = [
   '/app/share/doc/aeroftp/THIRD-PARTY-NOTICES.md',
 ];
 
-/** The folder beside the exes where a portable update stages its documents (src-tauri/src/portable_docs.rs). */
-export const PENDING_DOCS_DIR = '.aeroftp-pending-docs';
+/**
+ * The running exe's pending notices, from the backend: a portable update
+ * leaves them beside the exes while an editor holds the installed ones, and
+ * the backend returns them only when their exe key is the running exe's, so
+ * the notices of another exe are never opened. Null outside a portable
+ * Windows app or with nothing pending.
+ */
+export async function getOwnPendingNotices(): Promise<string | null> {
+  try {
+    const info = await invoke<{ pending_notices?: string | null }>('portable_info');
+    return typeof info?.pending_notices === 'string' && info.pending_notices ? info.pending_notices : null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Returns candidate paths for THIRD-PARTY-NOTICES.md.
  * No relative paths are included to avoid CWD-dependent resolution.
- * Tauri's resource directory on Windows is the running executable's own
- * folder (tauri-utils resource_dir returns current_exe().parent() there).
- * There a portable update stages the new notices in PENDING_DOCS_DIR until
- * the new app has installed them: an editor holding the installed file keeps
- * them pending, so that copy, the one of the running version, comes first.
+ * The running exe's pending notices of a portable update come first (see
+ * getOwnPendingNotices), the copy of the running version while an editor
+ * keeps the installed file.
  * Then the Tauri-resolved bundled resource ('../THIRD-PARTY-NOTICES.md'),
- * then the file at the resource root, where the Windows portable ZIP puts it
+ * then the file at the resource root: Tauri's resource directory on Windows
+ * is the running executable's own folder (tauri-utils resource_dir returns
+ * current_exe().parent() there), where the Windows portable ZIP puts it
  * beside AeroFTP.exe. Tauri's executableDir is not that folder: it is
  * unsupported on Windows and the XDG bin directory on Linux.
  * Subsequent candidates are standard Linux package install locations.
  */
 export async function getCandidateNoticePaths(
   resourceResolver: (path: string) => Promise<string> = resolveResource,
-  resourceDirGetter: () => Promise<string> = resourceDir
+  resourceDirGetter: () => Promise<string> = resourceDir,
+  pendingNoticesGetter: () => Promise<string | null> = getOwnPendingNotices
 ): Promise<string[]> {
   const candidates: string[] = [];
-  let beside: string[] = [];
+  const pending = await pendingNoticesGetter().catch(() => null);
+  if (pending) candidates.push(pending);
+  let beside: string | null = null;
   try {
     const dir = await resourceDirGetter();
     if (dir && typeof dir === 'string') {
       const sep = dir.includes('\\') ? '\\' : '/';
       const root = dir.endsWith(sep) ? dir : `${dir}${sep}`;
-      beside = [`${root}${PENDING_DOCS_DIR}${sep}THIRD-PARTY-NOTICES.md`, `${root}THIRD-PARTY-NOTICES.md`];
+      beside = `${root}THIRD-PARTY-NOTICES.md`;
     }
   } catch {
     // Resource dir error or web environment
   }
-  if (beside.length > 0) candidates.push(beside[0]);
   try {
     const resPath = await resourceResolver('../THIRD-PARTY-NOTICES.md');
     if (resPath && typeof resPath === 'string') {
@@ -65,8 +80,8 @@ export async function getCandidateNoticePaths(
   } catch {
     // Resource resolver error or running outside packaged Tauri app
   }
-  if (beside.length > 1 && !candidates.includes(beside[1])) {
-    candidates.push(beside[1]);
+  if (beside && !candidates.includes(beside)) {
+    candidates.push(beside);
   }
   candidates.push(...LINUX_NOTICE_PATHS);
   return candidates;

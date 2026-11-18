@@ -11,7 +11,7 @@
 //!   for the update it is about to hand to the helper, before the exes swap;
 //! - the current batch (`.aeroftp-pending-docs`): the running exe's documents
 //!   not installed yet (one an editor held). The About dialog opens its
-//!   notices first.
+//!   notices first, and only when its key is the running exe's.
 //!
 //! Staging writes the next batch only, under a temporary name renamed into
 //! place, so it is whole or absent, and never touches the current batch. At
@@ -20,16 +20,19 @@
 //! that exact path that Windows refuses while another process holds the file
 //! and that never writes into a directory with the document's name. A
 //! document still held stays in the current batch: the held ones share one
-//! retry budget, and what is left is installed at a later start. A batch of
-//! another exe is removed (an update whose swap failed, a folder replaced by
-//! hand), except a next batch the running app staged itself: its update is
-//! waiting for the swap. Staging, discarding and each install pass hold one
+//! retry budget, and what is left is installed at a later start. A current
+//! batch of another exe is removed (a folder replaced by hand, an older
+//! exe's). A next batch of another exe is never removed at start, by any
+//! process: an update another process hands over may be waiting for its
+//! swap. A failed swap drops it (the helper's discard), a discarded update
+//! drops it, and the next staging replaces it. Staging, discarding and each
+//! install pass hold one
 //! lock per exe folder, so none of them sees another half done. Every
 //! outcome is logged as what it is.
 
 use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::OnceLock;
 use std::time::Duration;
 
 /// The running exe's batch, beside the exes.
@@ -102,25 +105,6 @@ pub(crate) fn exe_key(exe: &Path) -> io::Result<String> {
     let mut hasher = Sha256::new();
     io::copy(&mut file, &mut hasher)?;
     Ok(hex::encode(hasher.finalize()))
-}
-
-/// The exe folders this process staged a next batch in: their next batch
-/// belongs to the update this process hands over, not to a failed swap.
-static STAGED_HERE: Mutex<Vec<PathBuf>> = Mutex::new(Vec::new());
-
-fn staged_here(exe_dir: &Path) -> bool {
-    STAGED_HERE
-        .lock()
-        .map(|dirs| dirs.iter().any(|d| d == exe_dir))
-        .unwrap_or(false)
-}
-
-fn mark_staged_here(exe_dir: &Path) {
-    if let Ok(mut dirs) = STAGED_HERE.lock() {
-        if !dirs.iter().any(|d| d == exe_dir) {
-            dirs.push(exe_dir.to_path_buf());
-        }
-    }
 }
 
 /// A name for the lock of one exe folder, the same in every process.
@@ -269,7 +253,6 @@ fn stage_with(
     let fail = |e: io::Error| format!("Failed to stage the portable documents: {e}");
     let key = exe_key(new_exe).map_err(fail)?;
     let _lock = lock_batches(exe_dir).map_err(fail)?;
-    mark_staged_here(exe_dir);
     remove_staging_leftovers(exe_dir);
     let next = exe_dir.join(NEXT_DIR);
     if matches!(slot(&next), Slot::Key(k) if k == key) {
@@ -340,9 +323,11 @@ fn install_pass(
                 source = next.clone();
             }
         }
-        // The update this process staged, waiting for the swap.
-        Slot::Key(_) if staged_here(exe_dir) => {}
-        Slot::Key(_) | Slot::Invalid => stale |= remove_any(&next),
+        // Another exe's: an update, of this process or another, may be
+        // waiting for its swap. It is never read here; a failed swap, a
+        // discard or the next staging removes it.
+        Slot::Key(_) => {}
+        Slot::Invalid => stale |= remove_any(&next),
     }
     match slot(&source) {
         Slot::Missing => {
@@ -468,10 +453,45 @@ pub(crate) fn outcome_line(name: &str, outcome: &Outcome) -> String {
     }
 }
 
-/// The pending notices beside `exe_dir`, which the About dialog opens first.
-#[cfg(test)]
-pub(crate) fn pending_notices(exe_dir: &Path) -> PathBuf {
-    exe_dir.join(PENDING_DIR).join("THIRD-PARTY-NOTICES.md")
+/// The pending notices of the exe whose key `own_key` gives, which the
+/// About dialog opens first: those of the next batch when its key is that
+/// exe's (a pass installs from it when the current batch of an older exe
+/// could not be removed), else those of the current batch when its key is.
+/// A batch of another exe is never exposed, and `own_key` is asked only when
+/// a batch holds notices.
+pub(crate) fn own_pending_notices(
+    exe_dir: &Path,
+    own_key: impl FnOnce() -> Option<String>,
+) -> Option<PathBuf> {
+    let held: Vec<(PathBuf, String)> = [NEXT_DIR, PENDING_DIR]
+        .iter()
+        .filter_map(|name| {
+            let dir = exe_dir.join(name);
+            let notices = dir.join("THIRD-PARTY-NOTICES.md");
+            match slot(&dir) {
+                Slot::Key(k) if notices.is_file() => Some((notices, k)),
+                _ => None,
+            }
+        })
+        .collect();
+    if held.is_empty() {
+        return None;
+    }
+    let own = own_key()?;
+    held.into_iter()
+        .find(|(_, k)| *k == own)
+        .map(|(notices, _)| notices)
+}
+
+/// The key of the running exe, read once.
+pub(crate) fn running_exe_key() -> Option<String> {
+    static KEY: OnceLock<Option<String>> = OnceLock::new();
+    KEY.get_or_init(|| {
+        std::env::current_exe()
+            .ok()
+            .and_then(|exe| exe_key(&exe).ok())
+    })
+    .clone()
 }
 
 #[cfg(test)]
@@ -550,8 +570,9 @@ mod tests {
             "old THIRD-PARTY-NOTICES.md"
         );
         assert_eq!(read(dir.path(), "README.txt"), "new README.txt");
-        assert!(
-            pending_notices(dir.path()).is_file(),
+        assert_eq!(
+            own_pending_notices(dir.path(), || Some(KEY.to_string())),
+            Some(dir.path().join(PENDING_DIR).join("THIRD-PARTY-NOTICES.md")),
             "About opens the pending notices meanwhile"
         );
         busy.borrow_mut().clear();
@@ -818,15 +839,30 @@ mod tests {
             assert!(!dir.path().join(PENDING_DIR).exists(), "{key:?}");
             assert_eq!(read(dir.path(), "README.txt"), "old README.txt");
         }
-        // A next batch of another exe that this process did not stage.
+        // A next batch without a key, or that is a file, is no batch.
         let dir = tempfile::tempdir().unwrap();
         std::fs::create_dir(dir.path().join(NEXT_DIR)).unwrap();
-        std::fs::write(dir.path().join(NEXT_DIR).join(KEY_FILE), "other-exe").unwrap();
+        std::fs::write(dir.path().join(NEXT_DIR).join("README.txt"), "no key").unwrap();
         assert_eq!(
             install_pending_docs(dir.path(), KEY, rename),
             Pending::Stale
         );
         assert!(!dir.path().join(NEXT_DIR).exists());
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join(NEXT_DIR), b"not a folder").unwrap();
+        assert_eq!(
+            install_pending_docs(dir.path(), KEY, rename),
+            Pending::Stale
+        );
+        assert!(!dir.path().join(NEXT_DIR).exists());
+        // A next batch of another exe is kept for its update, and never read.
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join(NEXT_DIR)).unwrap();
+        std::fs::write(dir.path().join(NEXT_DIR).join(KEY_FILE), "other-exe").unwrap();
+        std::fs::write(dir.path().join(NEXT_DIR).join("README.txt"), "other").unwrap();
+        assert_eq!(install_pending_docs(dir.path(), KEY, rename), Pending::None);
+        assert_eq!(read(&dir.path().join(NEXT_DIR), "README.txt"), "other");
+        assert!(!dir.path().join("README.txt").exists());
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join(PENDING_DIR), b"not a folder").unwrap();
         assert_eq!(
@@ -849,11 +885,6 @@ mod tests {
         .unwrap();
         let key = exe_key(&exe).unwrap();
         (stage, exe, key, readme)
-    }
-
-    /// A fresh process: it staged nothing in `exe_dir`.
-    fn forget_staged(exe_dir: &Path) {
-        STAGED_HERE.lock().unwrap().retain(|d| d != exe_dir);
     }
 
     #[test]
@@ -945,7 +976,6 @@ mod tests {
         let dir = folder(Some(KEY));
         let (_stage, exe_b, key_b, readme_b) = new_exe(b"B");
         stage_pending_docs(dir.path(), &exe_b, &[(&readme_b, "README.txt")], "s").unwrap();
-        forget_staged(dir.path());
         assert_eq!(
             install_pending_docs(dir.path(), &key_b, rename),
             Pending::Docs(vec![("README.txt", Outcome::Installed)])
@@ -959,18 +989,110 @@ mod tests {
     }
 
     #[test]
-    fn after_a_failed_swap_the_old_exe_drops_the_update_s_batch_and_installs_its_own() {
+    fn an_old_exe_started_in_another_process_keeps_the_update_s_batch_and_installs_its_own() {
+        // A stages B's batch for its update; a second A process starts before
+        // the swap. It runs in a process of its own, so nothing of the
+        // staging process can tell it whose batch that is.
         let dir = folder(Some(KEY));
-        let (_stage, exe_b, _key_b, readme_b) = new_exe(b"B");
+        let (_stage, exe_b, key_b, readme_b) = new_exe(b"B");
         stage_pending_docs(dir.path(), &exe_b, &[(&readme_b, "README.txt")], "f").unwrap();
-        // A starts again in a new process: the swap never happened.
-        forget_staged(dir.path());
-        assert_eq!(
-            install_pending_docs(dir.path(), KEY, rename),
-            Pending::Docs(DOCS.iter().map(|n| (*n, Outcome::Installed)).collect())
-        );
-        assert!(!dir.path().join(NEXT_DIR).exists());
+        let child = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "portable_docs::tests::child_install_pass",
+                "--ignored",
+                "--nocapture",
+            ])
+            .env(CHILD_DIR, dir.path())
+            .env(CHILD_KEY, KEY)
+            .output()
+            .unwrap();
+        let out = String::from_utf8_lossy(&child.stdout);
+        assert!(child.status.success(), "{out}");
+        assert!(out.contains("child pass: Docs("), "{out}");
+        // A's documents are installed, B's batch waits for its swap, whole.
         assert_eq!(read(dir.path(), "README.txt"), "new README.txt");
+        assert_eq!(read(&dir.path().join(NEXT_DIR), KEY_FILE), key_b);
+        assert_eq!(
+            read(&dir.path().join(NEXT_DIR), "README.txt"),
+            "readme of B"
+        );
+        // The swap then fails: the helper's discard drops B's batch, and A
+        // starts again with nothing left of it.
+        discard_pending_docs(dir.path());
+        assert!(!dir.path().join(NEXT_DIR).exists());
+        assert_eq!(install_pending_docs(dir.path(), KEY, rename), Pending::None);
+        // A batch of another exe a crash left is replaced by the next staging.
+        stage_pending_docs(dir.path(), &exe_b, &[(&readme_b, "README.txt")], "g").unwrap();
+        let (_stage_c, exe_c, key_c, readme_c) = new_exe(b"C");
+        stage_pending_docs(dir.path(), &exe_c, &[(&readme_c, "README.txt")], "h").unwrap();
+        assert_eq!(read(&dir.path().join(NEXT_DIR), KEY_FILE), key_c);
+        assert_eq!(
+            read(&dir.path().join(NEXT_DIR), "README.txt"),
+            "readme of C"
+        );
+    }
+
+    const CHILD_DIR: &str = "AEROFTP_TEST_PORTABLE_DOCS_DIR";
+    const CHILD_KEY: &str = "AEROFTP_TEST_PORTABLE_DOCS_KEY";
+
+    /// The second process of the test above: one install pass, nothing else.
+    #[test]
+    #[ignore = "run by an_old_exe_started_in_another_process_keeps_the_update_s_batch_and_installs_its_own"]
+    fn child_install_pass() {
+        let (Some(dir), Some(key)) = (std::env::var_os(CHILD_DIR), std::env::var(CHILD_KEY).ok())
+        else {
+            return;
+        };
+        let found = install_pending_docs(Path::new(&dir), &key, rename);
+        println!("child pass: {found:?}");
+    }
+
+    #[test]
+    fn the_about_dialog_gets_only_the_pending_notices_of_the_running_exe() {
+        let notices = |dir: &Path, name: &str, key: &str, text: &str| {
+            let batch = dir.join(name);
+            std::fs::create_dir_all(&batch).unwrap();
+            std::fs::write(batch.join("THIRD-PARTY-NOTICES.md"), text).unwrap();
+            std::fs::write(batch.join(KEY_FILE), key).unwrap();
+        };
+        let own = || Some(KEY.to_string());
+        // No batch: the key is not even read.
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(
+            own_pending_notices(dir.path(), || panic!("no batch, no hash")),
+            None
+        );
+        // The current batch is the running exe's.
+        notices(dir.path(), PENDING_DIR, KEY, "own");
+        assert_eq!(
+            own_pending_notices(dir.path(), own),
+            Some(dir.path().join(PENDING_DIR).join("THIRD-PARTY-NOTICES.md"))
+        );
+        // An editor held an older exe's current batch, so the promotion
+        // failed and the pass installs from the next batch: the older exe's
+        // notices are never offered, the next batch's are.
+        let dir = tempfile::tempdir().unwrap();
+        notices(dir.path(), PENDING_DIR, "older-exe", "older");
+        notices(dir.path(), NEXT_DIR, KEY, "own");
+        assert_eq!(
+            own_pending_notices(dir.path(), own),
+            Some(dir.path().join(NEXT_DIR).join("THIRD-PARTY-NOTICES.md"))
+        );
+        // Once its notices are installed, nothing pending is offered, though
+        // the older batch is still there.
+        std::fs::remove_dir_all(dir.path().join(NEXT_DIR)).unwrap();
+        assert_eq!(own_pending_notices(dir.path(), own), None);
+        // A next batch staged for an update, not yet swapped, is the new
+        // exe's: the running one never offers it.
+        let dir = tempfile::tempdir().unwrap();
+        notices(dir.path(), NEXT_DIR, "new-exe", "new");
+        assert_eq!(own_pending_notices(dir.path(), own), None);
+        // A batch without a key is nobody's.
+        let dir = tempfile::tempdir().unwrap();
+        notices(dir.path(), PENDING_DIR, KEY, "own");
+        std::fs::remove_file(dir.path().join(PENDING_DIR).join(KEY_FILE)).unwrap();
+        assert_eq!(own_pending_notices(dir.path(), own), None);
     }
 
     #[test]
@@ -1027,5 +1149,9 @@ mod tests {
             exe_key(&exe).unwrap(),
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
         );
+        // The running exe's key is the same hash, read once.
+        let running = exe_key(&std::env::current_exe().unwrap()).unwrap();
+        assert_eq!(running_exe_key().as_deref(), Some(running.as_str()));
+        assert_eq!(running_exe_key().as_deref(), Some(running.as_str()));
     }
 }

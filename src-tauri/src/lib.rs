@@ -3381,6 +3381,10 @@ struct PortableInfo {
     webview_data_dir: Option<String>,
     credential_store_dir: Option<String>,
     shared_legacy_present: bool,
+    /// The notices a portable update installs and an editor still holds,
+    /// when they belong to the running exe: the About dialog opens them
+    /// first. Never those of another exe.
+    pending_notices: Option<String>,
 }
 
 #[tauri::command]
@@ -3409,7 +3413,26 @@ fn portable_info_blocking() -> PortableInfo {
         webview_data_dir: portable::webview_data_dir().map(|p| p.display().to_string()),
         credential_store_dir: portable::credential_store_dir().map(|p| p.display().to_string()),
         shared_legacy_present: portable::shared_webview_data_present(),
+        pending_notices: if is_portable {
+            own_pending_notices()
+        } else {
+            None
+        },
     }
+}
+
+/// The running exe's pending notices beside it (`portable_docs`).
+#[cfg(windows)]
+fn own_pending_notices() -> Option<String> {
+    let exe = std::env::current_exe().ok()?;
+    portable_docs::own_pending_notices(exe.parent()?, portable_docs::running_exe_key)
+        .map(|p| p.display().to_string())
+}
+
+/// Portable updates install documents on Windows only.
+#[cfg(not(windows))]
+fn own_pending_notices() -> Option<String> {
+    None
 }
 
 #[tauri::command]

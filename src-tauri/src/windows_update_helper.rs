@@ -804,12 +804,12 @@ pub fn install_pending_docs_at_start() {
         return;
     }
     let rename = |from: &Path, to: &Path| std::fs::rename(from, to);
-    let first = portable_docs::exe_key(&exe)
+    let first = portable_docs::running_exe_key()
         .map(|own_key| {
             let first = portable_docs::install_pending_docs(&exe_dir, &own_key, rename);
             (own_key, first)
         })
-        .map_err(|e| e.to_string());
+        .ok_or_else(|| "its key could not be computed".to_string());
     std::thread::spawn(move || {
         // The app log is set up by then.
         std::thread::sleep(Duration::from_secs(2));
@@ -1266,8 +1266,12 @@ mod tests {
         assert_eq!(read(&fx, "THIRD-PARTY-NOTICES.md"), b"old notices");
         assert_eq!(read(&fx, "README.txt"), b"new readme");
         assert_eq!(read(&fx, "LICENSE.txt"), b"new license");
+        let pending = portable_docs::own_pending_notices(&fx.app, || {
+            portable_docs::exe_key(&fx.current).ok()
+        })
+        .expect("the About dialog gets the new exe's pending notices");
         assert_eq!(
-            std::fs::read(portable_docs::pending_notices(&fx.app)).expect("pending notices"),
+            std::fs::read(pending).expect("pending notices"),
             b"new notices"
         );
         drop(held);
@@ -1280,6 +1284,55 @@ mod tests {
         );
         assert_eq!(read(&fx, "THIRD-PARTY-NOTICES.md"), b"new notices");
         assert!(!fx.app.join(portable_docs::PENDING_DIR).exists());
+    }
+
+    /// The old exe's own notices are still pending, and an editor holds
+    /// them without delete sharing: the new app cannot remove that batch, so
+    /// it installs from its next batch. The About dialog never gets the old
+    /// exe's notices: it gets the new exe's while they wait, and the
+    /// installed ones once they are installed.
+    #[test]
+    fn old_pending_notices_held_across_the_promotion_are_never_offered() {
+        for installed_held in [false, true] {
+            let mut fx = fixture();
+            with_docs(&mut fx, |_| true);
+            let old_key = portable_docs::exe_key(&fx.current).expect("old key");
+            let current = fx.app.join(portable_docs::PENDING_DIR);
+            std::fs::create_dir(&current).expect("current batch");
+            std::fs::write(current.join("THIRD-PARTY-NOTICES.md"), b"old exe's notices")
+                .expect("old pending notices");
+            std::fs::write(current.join("exe.key"), &old_key).expect("old key file");
+            let script = script_for(&fx);
+            let held_old = hold(&current.join("THIRD-PARTY-NOTICES.md"));
+            let held_installed =
+                installed_held.then(|| hold(&fx.app.join("THIRD-PARTY-NOTICES.md")));
+            run(&fx, &runnable(&script));
+            assert_eq!(read(&fx, "AeroFTP.exe"), NEW_EXE);
+            let new_key = portable_docs::exe_key(&fx.current).expect("new key");
+            start_new_app(&fx);
+            assert!(
+                current.join("THIRD-PARTY-NOTICES.md").is_file(),
+                "the editor keeps the old batch"
+            );
+            let offered = portable_docs::own_pending_notices(&fx.app, || Some(new_key.clone()));
+            if installed_held {
+                let offered = offered.expect("the new notices wait in the next batch");
+                assert_eq!(std::fs::read(&offered).expect("offered"), b"new notices");
+                assert_eq!(read(&fx, "THIRD-PARTY-NOTICES.md"), b"old notices");
+            } else {
+                assert_eq!(offered, None, "the new notices are installed");
+                assert_eq!(read(&fx, "THIRD-PARTY-NOTICES.md"), b"new notices");
+            }
+            drop(held_installed);
+            drop(held_old);
+            start_new_app(&fx);
+            assert_eq!(read(&fx, "THIRD-PARTY-NOTICES.md"), b"new notices");
+            assert_eq!(
+                portable_docs::own_pending_notices(&fx.app, || Some(new_key.clone())),
+                None
+            );
+            assert!(!current.exists(), "the old batch goes once released");
+        }
     }
 
     /// A directory with a document's name, empty or not, is left as it is:
