@@ -4296,21 +4296,28 @@ mod vault_lock_tests {
             !refresh.contains("\n        self.store_tokens("),
             "oauth2 refresh_tokens"
         );
+        // `inner` is the call without its arguments, so renaming an argument
+        // keeps the property: only the wrapper makes the call.
         for (source, signature, inner) in [
             (
                 include_str!("providers/jottacloud.rs"),
                 "fn persist_refresh_token(&self) {",
-                "persist_refresh_token_now(&accounts)",
+                "self.persist_refresh_token_now(",
             ),
             (
                 include_str!("providers/mega_native.rs"),
                 "fn persist_session(&self) -> Result<(), ProviderError> {",
-                "persist_session_now()",
+                "self.persist_session_now(",
             ),
         ] {
             let wrapper = body(source, signature);
             assert!(wrapper.contains("off_async_worker("), "{signature}");
-            assert!(wrapper.contains(inner), "{signature}");
+            // The call is the closure handed to the worker, not a call made
+            // before it on the async thread.
+            assert!(
+                wrapper.contains(&format!("off_async_worker(|| {inner}")),
+                "{signature}"
+            );
             assert_eq!(
                 source.matches(inner).count(),
                 1,
@@ -4318,9 +4325,13 @@ mod vault_lock_tests {
             );
         }
         let proton = include_str!("providers/proton_native/vault.rs");
-        assert!(
-            body(proton, "fn save(&self, tokens: &SessionTokens) {").contains("off_async_worker(")
-        );
+        let save = body(proton, "fn save(&self, tokens: &SessionTokens) {");
+        // The write is inside the closure handed to the worker, never before it.
+        let (before, after) = save
+            .split_once("off_async_worker(||")
+            .expect("proton save goes through off_async_worker");
+        assert!(!before.contains("save_refreshed("), "proton save");
+        assert!(after.contains("save_refreshed("), "proton save");
     }
 
     #[test]
