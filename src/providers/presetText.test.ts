@@ -58,6 +58,10 @@ describe('preset text references', () => {
         expect(resolvePresetText('Enter it in {field:password}', provider, t)).toBe('Enter it in WebDAV token');
         // A broken reference stays visible instead of vanishing.
         expect(resolvePresetText('in {field:nope}', provider, t)).toBe('in {field:nope}');
+        // So does a control whose key has no translation: `t` hands back the key.
+        const missing = (key: string) => (key === 'connection.missing' ? key : `<${key}>`);
+        expect(resolvePresetText('press {ui:connection.missing}', provider, missing)).toBe('press {ui:connection.missing}');
+        expect(resolvePresetText('press {ui:connection.missing}', provider, () => '')).toBe('press {ui:connection.missing}');
     });
 
     it('resolves every reference of the registry in every language', () => {

@@ -447,6 +447,22 @@ fn plan_copy_parts(
 /// cross a network segment other machines share, so "I trust this certificate"
 /// and "nobody else can read this" are different questions with different
 /// answers. Do not merge the two predicates.
+/// #389: the Filen Desktop S3 bridge protocol (HTTP vs HTTPS) is a user
+/// setting in the Filen app, independent of the scheme saved in the profile.
+/// Reconcile the endpoint against the live bridge (scheme + loopback IP) so a
+/// request survives either choice. The client already trusts loopback /
+/// local.s3.filen.io self-signed certs (is_local_s3_endpoint). Both ways in
+/// run it: the connect, and the bucket discovery that runs before one.
+pub(crate) async fn reconcile_bridge_endpoint(config: &mut S3Config) {
+    if let Some(ep) = config.endpoint.clone() {
+        let fixed = crate::local_bridge::reconcile_local_bridge_url(&ep).await;
+        if fixed != ep {
+            tracing::info!("[S3] Filen bridge endpoint reconciled {} -> {}", ep, fixed);
+            config.endpoint = Some(fixed);
+        }
+    }
+}
+
 fn is_local_s3_endpoint(endpoint: &str) -> bool {
     // The host the request reaches (#1506 Requested 188): a split string kept
     // `?` and `#`, so a schemeless `evil.com?.local` read as an mDNS name.
@@ -5742,18 +5758,7 @@ impl StorageProvider for S3Provider {
     }
 
     async fn connect(&mut self) -> Result<(), ProviderError> {
-        // #389: the Filen Desktop S3 bridge protocol (HTTP vs HTTPS) is a user
-        // setting in the Filen app, independent of the scheme saved in this
-        // profile. Reconcile the endpoint against the live bridge (scheme +
-        // loopback IP) so the connect survives either choice. The client already
-        // trusts loopback / local.s3.filen.io self-signed certs (is_local_s3_endpoint).
-        if let Some(ep) = self.config.endpoint.clone() {
-            let fixed = crate::local_bridge::reconcile_local_bridge_url(&ep).await;
-            if fixed != ep {
-                tracing::info!("[S3] Filen bridge endpoint reconciled {} -> {}", ep, fixed);
-                self.config.endpoint = Some(fixed);
-            }
-        }
+        reconcile_bridge_endpoint(&mut self.config).await;
         // After the bridge reconciliation above, which can change the scheme, and
         // before the STS exchange below, which is the first signed request of a
         // session: nothing is signed until the endpoint is known to be one worth

@@ -2533,8 +2533,11 @@ pub async fn provider_discover_targets(
     let discovery = async {
         Ok::<Vec<ConnectionTarget>, String>(match config.provider_type {
             ProviderType::S3 => {
-                let s3_config = crate::providers::S3Config::from_provider_config(&config)
+                let mut s3_config = crate::providers::S3Config::from_provider_config(&config)
                     .map_err(|error| error.to_string())?;
+                // A Fetch comes before any connect: the bridge scheme is
+                // reconciled here too, or an HTTP bridge is asked over HTTPS.
+                crate::providers::s3::reconcile_bridge_endpoint(&mut s3_config).await;
                 crate::providers::S3Provider::new(s3_config)
                     .map_err(|error| error.to_string())?
                     .discover_buckets()
@@ -19456,6 +19459,57 @@ mod tests {
         );
         let s3 = crate::providers::types::S3Config::from_provider_config(&config).expect("s3");
         assert!(s3.allow_cleartext_endpoint);
+    }
+
+    /// A Fetch runs before any connect, so it must find a Filen Desktop S3
+    /// bridge that serves plain HTTP while the preset starts from HTTPS. The
+    /// bridge port is fixed (1800), as only a known bridge is reconciled.
+    #[tokio::test]
+    async fn a_fetch_lists_the_buckets_of_a_bridge_on_plain_http() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:1800")
+            .await
+            .expect("port 1800 is taken (a Filen Desktop S3 bridge running here?)");
+        let server = tokio::spawn(async move {
+            loop {
+                let Ok((mut stream, _)) = listener.accept().await else {
+                    return;
+                };
+                tokio::spawn(async move {
+                    let mut request = Vec::new();
+                    let mut buffer = [0u8; 4096];
+                    while !request.windows(4).any(|w| w == b"\r\n\r\n") {
+                        match stream.read(&mut buffer).await {
+                            Ok(0) | Err(_) => return,
+                            Ok(n) => request.extend_from_slice(&buffer[..n]),
+                        }
+                    }
+                    let body = "<ListAllMyBucketsResult><Buckets><Bucket><Name>Documents</Name></Bucket></Buckets></ListAllMyBucketsResult>";
+                    let reply = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: application/xml\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    );
+                    let _ = stream.write_all(reply.as_bytes()).await;
+                });
+            }
+        });
+        let mut params = s3_params(None);
+        params.provider_id = Some("filen-desktop-s3".to_string());
+        params.server = "https://127.0.0.1:1800".to_string();
+        params.port = Some(1800);
+        params.endpoint = Some("https://127.0.0.1:1800".to_string());
+        params.region = Some("filen".to_string());
+        params.username = "admin".to_string();
+        params.password = "admin".to_string();
+        params.path_style = Some(true);
+        params.verify_cert = Some(false);
+        let targets = provider_discover_targets(params).await;
+        server.abort();
+        let targets = targets.expect("the Fetch must reach the HTTP bridge");
+        assert_eq!(
+            targets.iter().map(|t| t.value.as_str()).collect::<Vec<_>>(),
+            ["Documents"]
+        );
     }
 
     fn s3_params(path_style: Option<bool>) -> ProviderConnectionParams {

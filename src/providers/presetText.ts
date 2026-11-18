@@ -43,7 +43,11 @@ export const resolvePresetText = (
     t: (key: string) => string,
 ): string =>
     text.replace(REFERENCE, (reference, kind: string, key: string) => {
-        if (kind === 'ui') return t(key);
+        if (kind === 'ui') {
+            // `t` answers a missing key with the key itself.
+            const label = t(key);
+            return label && label !== key ? label : reference;
+        }
         return provider?.fields?.find((field) => field.key === key)?.label || reference;
     });
 

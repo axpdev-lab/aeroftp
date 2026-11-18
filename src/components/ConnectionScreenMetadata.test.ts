@@ -601,6 +601,13 @@ describe('Puter WebDAV credential guidance and Advanced Server override', () => 
 });
 
 describe('a preset text names the controls its form renders', () => {
+    // A label that is not its key: a text left unresolved, or resolved to a
+    // key with no translation, cannot pass for the label the form shows.
+    const label = (key: string) => `[${key}]`;
+    const identity = mocks.t;
+    beforeEach(() => { mocks.t = label; });
+    afterEach(() => { mocks.t = identity; });
+
     async function renderPreset(provider: ProviderConfig) {
         function Harness() {
             const [params, setParams] = useState<ConnectionParams>({
@@ -633,7 +640,7 @@ describe('a preset text names the controls its form renders', () => {
         for (const expander of container.querySelectorAll<HTMLButtonElement>('button[aria-expanded="false"]')) {
             await act(async () => expander.click());
         }
-        for (const name of ['protocol.advanced', 'common.edit', 'protocol.advancedUnlock']) {
+        for (const name of ['protocol.advanced', 'common.edit', 'protocol.advancedUnlock'].map(label)) {
             look();
             const found = [...container.querySelectorAll('button')].find(b => b.textContent?.trim() === name);
             if (found) await act(async () => found.click());
@@ -657,26 +664,52 @@ describe('a preset text names the controls its form renders', () => {
         // Each control a text names is one this form shows, under that name.
         for (const { where, text } of presetTexts(provider)) {
             for (const reference of presetTextReferences(text)) {
-                const name = resolvePresetText(`{${reference.kind}:${reference.key}}`, provider, mocks.t);
+                const name = resolvePresetText(`{${reference.kind}:${reference.key}}`, provider, label);
                 expect(controls.some(control => control.includes(name)), `${provider.id} ${where}: ${name}`).toBe(true);
             }
         }
         // The setup steps are all shown, resolved (a field's help can be
         // replaced by the form's own, as the Filen bridges do).
         for (const step of provider.setupInstructions || []) {
-            expect(shown).toContain(resolvePresetText(step, provider, mocks.t));
+            expect(shown).toContain(resolvePresetText(step, provider, label));
         }
+    });
+
+    it('unlocks the S3Drive endpoint with the steps its setup text gives', async () => {
+        const s3drive = PROVIDERS.find(provider => provider.id === 's3drive')!;
+        await renderPreset(s3drive);
+        await act(async () => button(label('protocol.advanced')).click());
+        const endpoint = [...container.querySelectorAll('label')]
+            .find(element => element.textContent?.trim() === label('protocol.s3Endpoint'))!
+            .closest('div')!.parentElement!.querySelector<HTMLInputElement>('input')!;
+        expect(endpoint.disabled).toBe(true);
+        await act(async () => button(label('common.edit')).click());
+        await act(async () => button(label('protocol.advancedUnlock')).click());
+        expect(endpoint.disabled).toBe(false);
+        await act(async () => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(endpoint, 'gateway.storjshare.io');
+            endpoint.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        expect(endpoint.value).toBe('gateway.storjshare.io');
+    });
+
+    it('asks for the Filen S3 bucket with the Fetch button the form shows', async () => {
+        const filen = PROVIDERS.find(provider => provider.id === 'filen-desktop-s3')!;
+        await renderPreset(filen);
+        const placeholders = [...container.querySelectorAll('input')].map(input => input.placeholder);
+        expect(placeholders).toContain(`Press ${label('connection.discovery.fetch')} to list your folders`);
+        expect([...container.querySelectorAll('button')].some(b => b.textContent?.includes(label('connection.discovery.fetch')))).toBe(true);
     });
 
     it('sends Puter token auth to the field the WebDAV form labels Endpoint URL, behind Advanced', async () => {
         const puter = PROVIDERS.find(provider => provider.id === 'puter-webdav')!;
         await renderPreset(puter);
-        const help = resolvePresetText(puter.fields!.find(field => field.key === 'password')!.helpText!, puter, mocks.t);
+        const help = resolvePresetText(puter.fields!.find(field => field.key === 'password')!.helpText!, puter, label);
         expect(container.textContent).toContain(help);
-        expect(help).toContain('set connection.endpointUrl to https://dav.puter.com/<username> under protocol.advanced (common.edit, then protocol.advancedUnlock)');
-        await act(async () => button('protocol.advanced').click());
+        expect(help).toContain('set [connection.endpointUrl] to https://dav.puter.com/<username> under [protocol.advanced] ([common.edit], then [protocol.advancedUnlock])');
+        await act(async () => button(label('protocol.advanced')).click());
         const server = container.querySelector<HTMLInputElement>('input[placeholder="https://dav.puter.com/{username}"]')!;
-        expect(server.closest('div')!.querySelector('label')!.textContent).toBe('connection.endpointUrl');
+        expect(server.closest('div')!.querySelector('label')!.textContent).toBe(label('connection.endpointUrl'));
     });
 });
 
