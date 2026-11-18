@@ -1837,11 +1837,12 @@ test('reviewed notices and tag mentions: each entry names its source and the who
   for (const [key, reason] of Object.entries(reviewedTagMentions())) assert.ok(/^[^@]+@[^:]+:[^:]+:/.test(key) && reason, key);
 });
 
-test('third-party license files: the package\'s own covers its license and is shown as a notice, a vendored one never covers it', () => {
+test('third-party license files: reproduced as notices, a package\'s own only when it declares the file, never by its name', () => {
   const tmpDirs = [];
   const bzip2 = `Copyright (C) 1996-2010 Julian R Seward.\n\n${reviewedLicenseTerms()['bzip2-1.0.6']}`;
   const mitText = shippedLicense('Copyright (c) 2020 Third Party Author', 'MIT');
-  const fixture = (files) => {
+  const vendorMit = shippedLicense('Copyright (c) 2015 Vendored Library Author', 'MIT');
+  const fixture = (files, license, declared) => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'third-party-license-fixture-'));
     tmpDirs.push(tmpDir);
     for (const [rel, content] of Object.entries(files)) {
@@ -1849,25 +1850,35 @@ test('third-party license files: the package\'s own covers its license and is sh
       fs.writeFileSync(path.join(tmpDir, rel), content);
     }
     const id = `third-${tmpDirs.length}`;
-    return { name: id, version: '1.0.0', license: 'MIT AND bzip2-1.0.6', source: 'cargo', packageDir: tmpDir, authors: ['Third Party Author'], ...readPackageFiles(tmpDir, `${id}@1.0.0`) };
+    return { name: id, version: '1.0.0', license, source: 'cargo', packageDir: tmpDir, authors: ['Third Party Author'], ...readPackageFiles(tmpDir, `${id}@1.0.0`, declared) };
   };
+  const STANDARD = /## Standard License Texts for Dependencies that Need Them/;
   try {
     for (const rel of ['LICENSES/THIRD-PARTY-LICENSE.txt', 'THIRD_PARTY_LICENSE.txt']) {
-      const comp = fixture({ 'LICENSE-MIT': mitText, [rel]: bzip2 });
-      assert.deepStrictEqual(comp.noticeFiles.map((f) => f.filename), [rel], 'shown as a notice');
-      const md = generateNoticesMarkdown([comp], []);
-      assert.strictEqual(md.split('The name of the author may not be used').length - 1, 1, `${rel}: the bzip2 terms appear once, from the package's file`);
-      assert.doesNotMatch(md, /## Standard License Texts for Dependencies that Need Them/);
+      // An anthology of the code the package bundles, at the root or in
+      // LICENSES/, with the whole text of the package's license: reproduced,
+      // and the package still gets the standard text of its own license.
+      const anthology = `This package bundles Vendored Library under the MIT License:\n\n${vendorMit}`;
+      const vendorOnly = fixture({ [rel]: anthology }, 'MIT');
+      assert.deepStrictEqual(vendorOnly.noticeFiles.map((f) => f.filename), [rel], 'shown as a notice');
+      const md = generateNoticesMarkdown([vendorOnly], []);
+      assert.ok(md.includes('This package bundles Vendored Library under the MIT License'), `${rel}: the anthology is reproduced`);
+      assert.match(md, STANDARD, `${rel}: the anthology does not replace the package's standard entry`);
+      // A license with no standard text is not covered by an anthology either.
+      const withBzip2 = fixture({ 'LICENSE-MIT': mitText, [rel]: bzip2 }, 'MIT AND bzip2-1.0.6');
+      assert.throws(() => generateNoticesMarkdown([withBzip2], []), new RegExp(`Component ${withBzip2.name}@1\\.0\\.0 requires standard license text for 'bzip2-1\\.0\\.6'`), rel);
     }
-    // Its only text: the anchor of the package leads to it.
-    const only = fixture({ 'LICENSES/THIRD-PARTY-LICENSE.txt': `${mitText}\n\n${bzip2}` });
-    const md = generateNoticesMarkdown([only], []);
-    const anchor = md.indexOf(`<a id="notice-${only.name}"></a>`);
-    assert.ok(anchor >= 0, 'anchored');
-    assert.ok(md.indexOf('LICENSES/THIRD-PARTY-LICENSE.txt', anchor) > anchor);
-    assert.doesNotMatch(md, /## Standard License Texts for Dependencies that Need Them/);
+    // The license_file the package declares is its own, whatever its name.
+    const declared = fixture({ 'LICENSE-MIT': mitText, 'THIRD_PARTY_LICENSE.txt': bzip2 }, 'MIT AND bzip2-1.0.6', 'THIRD_PARTY_LICENSE.txt');
+    const md = generateNoticesMarkdown([declared], []);
+    assert.strictEqual(md.split('The name of the author may not be used').length - 1, 1, 'the bzip2 terms appear once, from the declared file');
+    assert.doesNotMatch(md, STANDARD);
+    const only = fixture({ 'THIRD_PARTY_LICENSE.txt': `${mitText}\n\n${bzip2}` }, 'MIT AND bzip2-1.0.6', 'THIRD_PARTY_LICENSE.txt');
+    const onlyMd = generateNoticesMarkdown([only], []);
+    assert.ok(onlyMd.indexOf(`<a id="notice-${only.name}"></a>`) >= 0, 'its declared file takes the anchor');
+    assert.doesNotMatch(onlyMd, STANDARD);
     // A vendored library's file describes that library, not the package.
-    const vendored = fixture({ 'LICENSE-MIT': mitText, 'vendor/lib/THIRD-PARTY-LICENSE.txt': bzip2 });
+    const vendored = fixture({ 'LICENSE-MIT': mitText, 'vendor/lib/THIRD-PARTY-LICENSE.txt': bzip2 }, 'MIT AND bzip2-1.0.6');
     assert.ok(vendored.noticeFiles.every((f) => f.vendored));
     assert.throws(() => generateNoticesMarkdown([vendored], []), new RegExp(`Component ${vendored.name}@1\\.0\\.0 requires standard license text for 'bzip2-1\\.0\\.6'`));
   } finally {
@@ -3019,7 +3030,9 @@ const alwaysGates = (jobText, command) => {
   const [header, stepsText] = jobText.split(/\n {4}steps:\n/);
   if (stepsText === undefined || /\n {4}(?:if|continue-on-error):/.test(header)) return false;
   const escaped = command.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const runs = new RegExp(`(?:^ {6}- | {8})run: ${escaped}\\s*$`, 'm');
+  // The step's own `run` key, at the step's indentation: a deeper line of a
+  // script that reads `run: ...` (a heredoc) is text of another step.
+  const runs = new RegExp(`^(?: {6}- | {8})run: ${escaped}\\s*$`, 'm');
   return stepsText
     .split(/\n(?= {6}- )/)
     .filter((step) => runs.test(step))
@@ -3075,6 +3088,9 @@ test('release workflow: every publish job requires a job that checks the notices
     ['', `${check}        continue-on-error: true\n`],
     ['', "      - if: ${{ !startsWith(github.ref, 'refs/tags/') }}\n        run: npm run check:licenses\n"],
     ['', '      - name: Third-party license notices match the lockfiles\n        run: npm run check:licenses || true\n'],
+    // A script that only writes the line, in a heredoc, runs nothing.
+    ['', "      - name: Write a later step\n        run: |\n          cat >> steps.yml <<'EOF'\n          run: npm run check:licenses\n          EOF\n"],
+    ['', "      - name: Write a later step\n        run: |\n          echo 'x'\n            run: npm run check:licenses\n"],
     ["    if: github.event_name == 'pull_request'\n", check],
     ['    continue-on-error: true\n', check],
     ['', ''],

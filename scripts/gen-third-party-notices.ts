@@ -565,17 +565,14 @@ const VENDORED_LICENSE_FILE =
 // uds_windows' THIRDPARTYNOTICES, security-framework's THIRD_PARTY). Each is
 // reproduced whole: its terms are those of the code it names.
 const NOTICE_FILE = /^(?:notice|copyright|(?:third|3rd)[-_]?party)/i;
-// The files that can cover a package's own license: its license files and
-// the third-party license file it keeps at its root or in LICENSES/
-// (LICENSES/THIRD-PARTY-LICENSE.txt), never a vendored file. Such a file is
-// shown as a notice, since it may name other code too, and like any file it
-// covers a license only with the whole text (uncoveredLicenseTerms).
-const THIRD_PARTY_FILE = /^(?:third|3rd)[-_]?party/i;
-export const ownLicenseFiles = (comp: Pick<ComponentInfo, 'licenseFiles' | 'noticeFiles'>) =>
-  [...comp.licenseFiles, ...comp.noticeFiles.filter((f) => THIRD_PARTY_FILE.test(path.posix.basename(f.filename)))].filter(
-    (f) => !f.vendored && f.content.trim().length > 0
-  );
-export const ownLicenseTexts = (comp: Pick<ComponentInfo, 'licenseFiles' | 'noticeFiles'>): string[] =>
+// The files that can cover a package's own license: its license files,
+// with the license_file it declares (whatever its name), never a vendored
+// one. A third-party notices file (THIRD_PARTY_LICENSE.txt) is reproduced as
+// a notice but covers nothing by its name: it describes the code the package
+// bundles, and only the package's declaration says it is the package's own.
+export const ownLicenseFiles = (comp: Pick<ComponentInfo, 'licenseFiles'>) =>
+  comp.licenseFiles.filter((f) => !f.vendored && f.content.trim().length > 0);
+export const ownLicenseTexts = (comp: Pick<ComponentInfo, 'licenseFiles'>): string[] =>
   ownLicenseFiles(comp).map((f) => f.content.replace(/\r\n/g, '\n'));
 // A source or data file by its extension: never a license or notice text.
 const SOURCE_FILE = /\.(?:[cm]?[jt]sx?|rs|c|h|cc|cpp|hpp|py|rb|go|java|kt|swift|sh|pl|pm|php|json|ya?ml|toml|lock|css|map)$/i;
@@ -2372,14 +2369,13 @@ export function renderNotices(
   // licenses (siphasher's COPYING) or holds part of a grant takes no anchor,
   // which then goes to the whole text, or to the standard texts reproduced
   // for the component below.
-  // A notice (`notice`) takes it only with a whole standard or reviewed text.
-  const carriesALicense = (c: LicenseTextGroup['components'][number], text: string, notice = false) => {
+  const carriesALicense = (c: LicenseTextGroup['components'][number], text: string) => {
     const comp = compMap.get(`${c.source}:${c.name}@${c.version}`);
-    if (!comp) return !notice;
+    if (!comp) return true;
     const standard = readStandardLicenses();
     const reviewed = reviewedLicenseTerms();
     const referenced = extractSpdxLicenseIds(comp.license).filter((id) => standardTextId(id) in standard || id in reviewed);
-    if (referenced.length === 0) return !notice && PERMISSION_TEXT.test(text);
+    if (referenced.length === 0) return PERMISSION_TEXT.test(text);
     return referenced.some((id) => uncoveredLicenseTerms([[id]], [text], standard).length === 0);
   };
   const seenAnchorIds = new Set<string>();
@@ -2410,12 +2406,8 @@ export function renderNotices(
     // document or a notice that only names the license, nor to a vendored
     // library's license: a package whose only license text is vendored
     // (whisper-rs-sys, whisper.cpp/LICENSE) is anchored at the standard text
-    // of the license it declares. A third-party license file of the package
-    // (ownLicenseFiles) takes it only with a whole standard or reviewed text.
-    const anchored = (c: LicenseTextGroup['components'][number]) =>
-      !c.vendored &&
-      (c.isLicenseText ? carriesALicense(c, group.text) : THIRD_PARTY_FILE.test(path.posix.basename(c.filename)) && carriesALicense(c, group.text, true));
-    for (const comp of group.components.filter(anchored)) {
+    // of the license it declares.
+    for (const comp of group.components.filter((c) => c.isLicenseText && !c.vendored && carriesALicense(c, group.text))) {
       const anchorId = `notice-${comp.name.replace(/_/g, '-')}`;
       if (!seenAnchorIds.has(anchorId)) {
         seenAnchorIds.add(anchorId);
