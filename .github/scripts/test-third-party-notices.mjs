@@ -56,6 +56,12 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT = path.resolve(__dirname, '..', '..');
 
+// A license file as packages ship it: its first lines, then the standard terms
+// without their placeholder line. A file must carry the text to cover a term.
+const STANDARD_TEXTS = JSON.parse(fs.readFileSync(SPDX_STANDARD_LICENSES_FILE, 'utf8'));
+const shippedLicense = (lead, id) =>
+  [lead, STANDARD_TEXTS[id].replace(/^.*<(?:year|copyright holders?)>.*\n+/im, '')].filter(Boolean).join('\n\n');
+
 test('SPDX parser: tokenizer handles operators, parentheses, slashes, and identifiers', () => {
   assert.deepStrictEqual(tokenizeSpdx('MIT'), ['MIT']);
   assert.deepStrictEqual(tokenizeSpdx('Apache-2.0 / MIT'), ['Apache-2.0', 'OR', 'MIT']);
@@ -393,6 +399,68 @@ test('standard SPDX texts: accepts OR branch present in standard licenses withou
   assert.match(md, /dual-licensed-crate@1\.0\.0/);
 });
 
+test('standard SPDX texts: every term of the chosen license needs its text, an own file covers only the terms whose text it carries', () => {
+  const mit = shippedLicense('MIT License\n\nCopyright (c) 2020 Term Holder', 'MIT');
+  const apache = shippedLicense('', 'Apache-2.0');
+  const comp = (name, license, files) => ({
+    name,
+    version: '1.0.0',
+    license,
+    source: 'cargo',
+    authors: ['Term Author'],
+    licenseFiles: files.map(([filename, content]) => ({ filename, content })),
+    noticeFiles: [],
+  });
+  const standardFor = (c) => [...generateNoticesMarkdown([c], []).matchAll(/^### Standard License: (.+)$/gm)].map((m) => m[1]);
+  // A conjunction with one text shipped gets the standard text of the other.
+  assert.deepStrictEqual(standardFor(comp('test-and-one', 'MIT AND Apache-2.0', [['LICENSE-MIT', mit]])), ['Apache-2.0']);
+  // Controls: both texts shipped, or the single license shipped, add nothing.
+  assert.deepStrictEqual(standardFor(comp('test-and-both', 'MIT AND Apache-2.0', [['LICENSE-MIT', mit], ['LICENSE-APACHE', apache]])), []);
+  assert.deepStrictEqual(standardFor(comp('test-mit', 'MIT', [['LICENSE', mit]])), []);
+  // A choice the files cover is enough: no Apache-2.0 text for MIT OR Apache-2.0.
+  assert.deepStrictEqual(standardFor(comp('test-or', 'MIT OR Apache-2.0', [['LICENSE-MIT', mit]])), []);
+  // A file that names the licenses without their texts carries none (siphasher's COPYING).
+  const pointer = 'Copyright 2016 Pointer Holder.\n\nLicensed under the Apache License, Version 2.0 or the MIT license, at your option.';
+  assert.deepStrictEqual(standardFor(comp('test-pointer', 'MIT OR Apache-2.0', [['COPYING', pointer]])), ['Apache-2.0', 'MIT']);
+  // A text inside a longer one is not the longer one, and the longer one is not it.
+  assert.deepStrictEqual(standardFor(comp('test-mit-in-mit0', 'MIT', [['LICENSE', shippedLicense('', 'MIT-0')]])), ['MIT']);
+  assert.deepStrictEqual(standardFor(comp('test-mit0-in-mit', 'MIT-0', [['LICENSE', mit]])), ['MIT-0']);
+  // An exception is a term of its own: the Apache-2.0 text alone does not carry it.
+  assert.deepStrictEqual(standardFor(comp('test-with', 'Apache-2.0 WITH LLVM-exception', [['LICENSE-APACHE', apache]])), ['Apache-2.0 WITH LLVM-exception']);
+  assert.deepStrictEqual(standardFor(comp('test-with-both', 'Apache-2.0 WITH LLVM-exception', [['LICENSE-APACHE', `${apache}\n\n${shippedLicense('', 'LLVM-exception')}`]])), []);
+  // A term with no standard text is carried by a file that carries none of the
+  // standard texts; without one the generation fails with the package and the term.
+  const custom = 'This program, "custom-zip", is free software. Redistribution and use in source and binary forms are permitted provided this notice is kept.';
+  assert.deepStrictEqual(standardFor(comp('test-custom', 'MIT AND bzip2-1.0.6', [['LICENSE-MIT', mit], ['LICENSE', custom]])), []);
+  // A file that only names the licenses carries no terms of its own.
+  for (const files of [[['LICENSE-MIT', mit]], [['LICENSE-MIT', mit], ['COPYING', pointer]]]) {
+    assert.throws(
+      () => generateNoticesMarkdown([comp('test-custom', 'MIT AND bzip2-1.0.6', files)], []),
+      /Component test-custom@1\.0\.0 requires standard license text for 'bzip2-1\.0\.6'/
+    );
+  }
+  // A choice whose missing texts exist wins over a better covered one that
+  // needs a text nobody has.
+  assert.deepStrictEqual(standardFor(comp('test-reproducible', '(MIT AND bzip2-1.0.6) OR Apache-2.0', [['LICENSE-MIT', mit]])), ['Apache-2.0']);
+  assert.deepStrictEqual(standardFor(comp('test-reproducible', '(MIT AND bzip2-1.0.6) OR Apache-2.0', [['LICENSE-MIT', mit], ['LICENSE', custom]])), []);
+  // Without manifest authors the holders the package's own files name are its
+  // authors; with neither, a reviewed attribution is still required.
+  const holderOnly = { ...comp('test-holder-only', 'MIT AND Apache-2.0', [['LICENSE-MIT', mit]]), authors: [] };
+  assert.match(generateNoticesMarkdown([holderOnly], []), /- `test-holder-only@1\.0\.0` - SPDX: `MIT AND Apache-2\.0` \(authors: named in its license files\)\n {2}- The copyright notices it ships are in its license files, reproduced above \(`LICENSE-MIT`\)\n/);
+  assert.throws(
+    () => generateNoticesMarkdown([{ ...comp('test-no-holder', 'MIT AND Apache-2.0', [['LICENSE-MIT', shippedLicense('', 'MIT')]]), authors: [] }], []),
+    /Component test-no-holder@1\.0\.0 has no manifest authors and is missing reviewed attribution/
+  );
+  // A standard text with a holder slot takes a reviewed holder, never one
+  // guessed from the files of another license.
+  assert.throws(
+    () => generateNoticesMarkdown([comp('slot-pkg', 'MIT AND BSD-3-Clause', [['LICENSE-MIT', mit]])], []),
+    /Component slot-pkg@1\.0\.0 requires an entry in PINNED_FALLBACK_ATTRIBUTIONS/
+  );
+  // The section says what is missing: the text of a declared license, not every license file.
+  assert.match(generateNoticesMarkdown([comp('test-and-one', 'MIT AND Apache-2.0', [['LICENSE-MIT', mit]])], []), /without bundling\nthe text of each of those licenses in their published crate archives\./);
+});
+
 test('markdown formatting: uses extended code fences when notice content contains embedded backticks', () => {
   const dummyComponent = {
     name: 'nested-backticks-crate',
@@ -406,6 +474,7 @@ test('markdown formatting: uses extended code fences when notice content contain
       },
     ],
     noticeFiles: [],
+    authors: ['Fence Author'],
   };
 
   const md = generateNoticesMarkdown([dummyComponent], []);
@@ -540,7 +609,7 @@ test('an anchor leads to license text: an SPDX document or a notice file is no l
     const withNotice = path.join(tmpDir, 'with-notice');
     fs.mkdirSync(withNotice);
     fs.writeFileSync(path.join(withNotice, 'COPYRIGHT'), 'Copyright 2020 Notice Holder. See LICENSE-MIT.');
-    fs.writeFileSync(path.join(withNotice, 'LICENSE-MIT'), 'MIT License\n\nCopyright (c) 2020 Notice Holder\n\nPermission is hereby granted.');
+    fs.writeFileSync(path.join(withNotice, 'LICENSE-MIT'), shippedLicense('MIT License\n\nCopyright (c) 2020 Notice Holder', 'MIT'));
     const component = (name, dir) => ({
       name,
       version: '1.0.0',
@@ -577,7 +646,7 @@ test('bundled code under a license the package does not declare: its header lice
       fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
       fs.writeFileSync(path.join(tmpDir, rel), content);
     };
-    write('LICENSE', 'ISC License\n\nCopyright (c) 2015 Wrapper Author\n\nPermission to use, copy, modify.');
+    write('LICENSE', shippedLicense('ISC License\n\nCopyright (c) 2015 Wrapper Author', 'ISC'));
     write('lib/index.js', '/**\n * @license QR Code generator library\n * Copyright (c) Project Nayuki.\n * SPDX-License-Identifier: MIT\n */\nvar a;\n/**\n * Copyright (c) Wrapper Author\n * SPDX-License-Identifier: ISC\n */\n');
     write('lib/either.js', '// SPDX-License-Identifier: ISC OR MIT\n');
     write('lib/typo.js', '// SPDX-License-Identifier: Apache-2.inner\n');
@@ -627,10 +696,10 @@ test('vendored license files: they keep their text but neither cover the package
     write('only-vendored/LICENSE.spdx', 'SPDXVersion: SPDX-2.1\nPackageSupplier: Organization: Own Supplier\nPackageCopyrightText: <text>2019 First Holder\n2020 Second Holder</text>\n');
     // "Abc/" sorts before "LICENSE.spdx": a vendored document must not name the package's supplier.
     write('only-vendored/Abc/LICENSE.spdx', 'SPDXVersion: SPDX-2.1\nPackageSupplier: Organization: Vendored Supplier\nPackageCopyrightText: 2001 Vendored Holder\n');
-    write('own-and-vendored/LICENSE-MIT', 'MIT License\n\nCopyright (c) 2020 Own Holder\n\nPermission is hereby granted.');
+    write('own-and-vendored/LICENSE-MIT', shippedLicense('MIT License\n\nCopyright (c) 2020 Own Holder', 'MIT'));
     // "Abc/" sorts before "LICENSE-MIT", so its group comes first.
     write('own-and-vendored/Abc/COPYING', 'Copyright (c) 2004 Vendored Holder\nRedistribution and use in source and binary forms, vendored.');
-    write('holder-free-own/LICENSE', 'Permission is hereby granted, free of charge, to any person.');
+    write('holder-free-own/LICENSE', shippedLicense('', 'MIT'));
     write('holder-free-own/Abc/COPYING', 'Copyright (c) 2004 Vendored Holder\nRedistribution and use in source and binary forms, again.');
     write('holder-free-own/src/lib.rs', '// Copyright 2024 Own Source Holder\n');
     const component = (name) => ({
@@ -1041,7 +1110,7 @@ test('bundled code: a license text in the package LICENSES/ covers its own heade
       fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
       fs.writeFileSync(path.join(tmpDir, rel), content);
     };
-    write('LICENSE', 'MIT License\n\nCopyright (c) 2020 Wrapper Author\n\nPermission is hereby granted.');
+    write('LICENSE', shippedLicense('MIT License\n\nCopyright (c) 2020 Wrapper Author', 'MIT'));
     write('LICENSES/SAX-PD-2.0.txt', 'SAX 2.0 is free and in the public domain.');
     write('src/y.c', '/* SPDX-License-Identifier: SAX-PD-2.0 */\n');
     const comp = { name: 'root-reuse', version: '1.0.0', license: 'MIT', source: 'cargo', packageDir: tmpDir, authors: [], ...readPackageFiles(tmpDir, 'root-reuse@1.0.0') };
@@ -1074,7 +1143,7 @@ test('declared header holders: a holder is named by the package only when it is 
       fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
       fs.writeFileSync(path.join(tmpDir, rel), content);
     };
-    write('LICENSE', 'MIT License\n\nCopyright (c) 2020 Alice Smith\n\n  - Intel Corporation (Copyright 2012-2021)\n\nPermission is hereby granted, free of charge.');
+    write('LICENSE', shippedLicense('MIT License\n\nCopyright (c) 2020 Alice Smith\n\n  - Intel Corporation (Copyright 2012-2021)', 'MIT'));
     write('src/a.c', '/* Copyright (c) 2021 Alice\n * SPDX-License-Identifier: MIT */\n');
     write('src/b.c', '/* Copyright (C) 2019 Alice Smith.\n * SPDX-License-Identifier: MIT */\n');
     write('src/c.c', '/* Copyright (c) 2014, Intel Corporation. All Rights Reserved.\n * SPDX-License-Identifier: MIT */\n');
@@ -1097,7 +1166,7 @@ test('bundled code: a header whose only license is a known typo keeps a holder t
       fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
       fs.writeFileSync(path.join(tmpDir, rel), content);
     };
-    write('LICENSE', 'MIT License\n\nCopyright (c) 2020 Wrapper Author\n\nPermission is hereby granted, free of charge.');
+    write('LICENSE', shippedLicense('MIT License\n\nCopyright (c) 2020 Wrapper Author', 'MIT'));
     write('src/menu.rs', '// Copyright 2022-2022 Typo Header Author\n// SPDX-License-Identifier: Apache-2.inner\n');
     write('src/items.rs', '// Copyright 2020 Wrapper Author\n// SPDX-License-Identifier: Apache-2.inner\n');
     write('src/bare.rs', '// SPDX-License-Identifier: Apache-2.inner\n');
@@ -1119,7 +1188,7 @@ test('bundled code: an OCaml or Haskell header ends at its closer, as a C one do
       fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
       fs.writeFileSync(path.join(tmpDir, rel), content);
     };
-    write('LICENSE', 'MIT License\n\nCopyright (c) 2020 Wrapper Author\n\nPermission is hereby granted, free of charge.');
+    write('LICENSE', shippedLicense('MIT License\n\nCopyright (c) 2020 Wrapper Author', 'MIT'));
     write('lib/one.ml', '(* Copyright (c) 2019 OCaml Line Author *)\n(* SPDX-License-Identifier: BSD-2-Clause *)\nlet x = 1\n');
     write('lib/block.ml', '(*\n Copyright (c) 2019 OCaml Block Author\n SPDX-License-Identifier: BSD-2-Clause\n*)\nlet y = (*p*) 2\n');
     write('lib/b.hs', '{- Copyright (c) 2018 Haskell Author\n   SPDX-License-Identifier: BSD-2-Clause -}\nmodule B where\n');
@@ -1197,7 +1266,7 @@ test('bundled code: a block comment is found however far its opener is from the 
       fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
       fs.writeFileSync(path.join(tmpDir, rel), content);
     };
-    write('LICENSE', 'MIT License\n\nCopyright (c) 2020 Wrapper Author\n\nPermission is hereby granted.');
+    write('LICENSE', shippedLicense('MIT License\n\nCopyright (c) 2020 Wrapper Author', 'MIT'));
     const terms = 'Redistribution and use in source and binary forms, with or without modification, are permitted provided that this notice is kept and the Long clause is honoured.';
     // 120 lines of unstarred text between the opener and the tag.
     const filler = Array.from({ length: 120 }, (_, n) => `Clause ${n + 1} of the long header.`).join('\n');

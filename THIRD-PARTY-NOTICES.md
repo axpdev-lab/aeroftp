@@ -44844,7 +44844,7 @@ freely, subject to the following restrictions:
 ## Standard License Texts for Components without Dedicated License Files
 
 The following crates declare standard open-source licenses in their crate manifests without bundling
-a dedicated physical license text file in their published crate archives.
+the text of each of those licenses in their published crate archives.
 In accordance with licensing requirements, the standard verbatim text for each applicable license is
 provided below. Authors are listed as declared in package manifests or reviewed attributions; copyright notices, where available, reproduce upstream repository declarations.
 
@@ -44972,6 +44972,8 @@ Authors for the following components as listed in package manifests or reviewed 
   - No copyright notice is shipped in the package
 - `inplace-vec-builder@0.1.1` - SPDX: `MIT OR Apache-2.0` (authors: Rüdiger Klaehn <rklaehn@protonmail.com>)
   - No copyright notice is shipped in the package
+- `iroh@1.2.0` - SPDX: `MIT OR Apache-2.0` (authors: dignifiedquire <me@dignifiedquire.com>, n0 team)
+  - The copyright notices it ships are in its license files, reproduced above (`LICENSE-BSD3`)
 - `iroh-base@1.2.0` - SPDX: `MIT OR Apache-2.0` (authors: n0 team)
   - No copyright notice is shipped in the package
 - `iroh-dns@1.3.0` - SPDX: `MIT OR Apache-2.0` (authors: n0 team)
@@ -44982,6 +44984,8 @@ Authors for the following components as listed in package manifests or reviewed 
   - Copyright 2025 N0, INC. (README.md)
 - `iroh-metrics-derive@1.0.1` - SPDX: `MIT OR Apache-2.0` (authors: Frando <franz@n0.computer>, n0 team)
   - No copyright notice is shipped in the package
+- `iroh-relay@1.2.0` - SPDX: `MIT OR Apache-2.0` (authors: n0 team)
+  - The copyright notices it ships are in its license files, reproduced above (`LICENSE-BSD3`)
 - `irpc-derive@0.17.0` - SPDX: `Apache-2.0/MIT` (authors: Rüdiger Klaehn <rklaehn@protonmail.com>)
   - No copyright notice is shipped in the package
 - `jni@0.22.4` - SPDX: `MIT OR Apache-2.0` (authors: jni team)
@@ -45062,6 +45066,9 @@ Authors for the following components as listed in package manifests or reviewed 
   - No copyright notice is shipped in the package
 - `sigstore_protobuf_specs@0.5.2` - SPDX: `Apache-2.0` (authors: Sigstore Authors <sigstore-dev@googlegroups.com>)
   - No copyright notice is shipped in the package
+- `siphasher@1.0.3` - SPDX: `MIT/Apache-2.0` (authors: Frank Denis <github@pureftpd.org>)
+  - Copyright 2012-2015 The Rust Project Developers. (src/sip.rs)
+  - Copyright 2014 The Rust Project Developers. (src/tests.rs)
 - `suppaftp@12.2.1` - SPDX: `MIT OR Apache-2.0` (authors: Christian Visintin <christian.visintin@veeso.dev>)
   - No copyright notice is shipped in the package
 - `tauri-plugin@2.6.3` - SPDX: `Apache-2.0 OR MIT` (authors: Tauri Programme within The Commons Conservancy)
@@ -45962,6 +45969,8 @@ Authors for the following components as listed in package manifests or reviewed 
   - No copyright notice is shipped in the package
 - `inplace-vec-builder@0.1.1` - SPDX: `MIT OR Apache-2.0` (authors: Rüdiger Klaehn <rklaehn@protonmail.com>)
   - No copyright notice is shipped in the package
+- `iroh@1.2.0` - SPDX: `MIT OR Apache-2.0` (authors: dignifiedquire <me@dignifiedquire.com>, n0 team)
+  - The copyright notices it ships are in its license files, reproduced above (`LICENSE-BSD3`)
 - `iroh-base@1.2.0` - SPDX: `MIT OR Apache-2.0` (authors: n0 team)
   - No copyright notice is shipped in the package
 - `iroh-dns@1.3.0` - SPDX: `MIT OR Apache-2.0` (authors: n0 team)
@@ -45972,6 +45981,8 @@ Authors for the following components as listed in package manifests or reviewed 
   - Copyright 2025 N0, INC. (README.md)
 - `iroh-metrics-derive@1.0.1` - SPDX: `MIT OR Apache-2.0` (authors: Frando <franz@n0.computer>, n0 team)
   - No copyright notice is shipped in the package
+- `iroh-relay@1.2.0` - SPDX: `MIT OR Apache-2.0` (authors: n0 team)
+  - The copyright notices it ships are in its license files, reproduced above (`LICENSE-BSD3`)
 - `irpc-derive@0.17.0` - SPDX: `Apache-2.0/MIT` (authors: Rüdiger Klaehn <rklaehn@protonmail.com>)
   - No copyright notice is shipped in the package
 - `jni@0.22.4` - SPDX: `MIT OR Apache-2.0` (authors: jni team)
@@ -46056,6 +46067,9 @@ Authors for the following components as listed in package manifests or reviewed 
   - No copyright notice is shipped in the package
 - `sigchld@0.2.5` - SPDX: `MIT` (authors: Jack O'Connor)
   - No copyright notice is shipped in the package
+- `siphasher@1.0.3` - SPDX: `MIT/Apache-2.0` (authors: Frank Denis <github@pureftpd.org>)
+  - Copyright 2012-2015 The Rust Project Developers. (src/sip.rs)
+  - Copyright 2014 The Rust Project Developers. (src/tests.rs)
 - `suppaftp@12.2.1` - SPDX: `MIT OR Apache-2.0` (authors: Christian Visintin <christian.visintin@veeso.dev>)
   - No copyright notice is shipped in the package
 - `tauri-plugin@2.6.3` - SPDX: `Apache-2.0 OR MIT` (authors: Tauri Programme within The Commons Conservancy)
