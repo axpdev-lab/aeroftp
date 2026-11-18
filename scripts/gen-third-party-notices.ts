@@ -1879,8 +1879,11 @@ export function findBundledCodeUnderOtherLicenses(
           return null;
         };
         if (within !== null && (closedAt === -1 || closedAt > m.index!)) {
+          // Back to the line that opens this comment: the first line not
+          // inside one, or a line that closes the comment before it and
+          // opens this one after the closer (`*/ /*`).
           let k = i;
-          while (k > 0 && inside[k] !== null) k--;
+          while (k > 0 && inside[k] !== null && !(k < i && lines[k].includes(within))) k--;
           pair = COMMENT_BLOCKS.find(([, c]) => c === within)!;
           open = k;
           openAt = pair[0] === '/*' ? cCommentOpeners(lines[k]).last : lines[k].lastIndexOf(pair[0]);

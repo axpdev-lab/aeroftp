@@ -2498,6 +2498,32 @@ test('bundled code: a tag in a block comment after code is a header read from it
   }
 });
 
+test('bundled code: a header ends its backward search at the opener of its own comment, also when the previous comment closes on that line', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'adjacent-blocks-fixture-'));
+  try {
+    const write = (rel, content) => {
+      fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, rel), content);
+    };
+    write('LICENSE', 'MIT License\n\nCopyright (c) 2020 Wrapper Author\n\nPermission is hereby granted.');
+    const comp = () => ({ name: 'adjacent-pkg', version: '1.0.0', license: 'MIT', source: 'cargo', packageDir: tmpDir, authors: ['Wrapper Author'], ...readPackageFiles(tmpDir, 'adjacent-pkg@1.0.0') });
+    const known = new Set(Object.keys(JSON.parse(fs.readFileSync(SPDX_STANDARD_LICENSES_FILE, 'utf8'))));
+    // The first comment closes and the second opens on the same line: only
+    // the second declares BSD-2-Clause, so only its holder is listed.
+    write('vendor/adjacent.c', '/*\n * Copyright (c) 2018 First Holder\n */ /*\n * Copyright (c) 2019 Second Holder\n * SPDX-License-Identifier: BSD-2-Clause\n */\nint x;\n');
+    let bundled = findBundledCodeUnderOtherLicenses(comp(), known);
+    assert.deepEqual(bundled.map((b) => [b.license, b.files]), [['BSD-2-Clause', ['vendor/adjacent.c']]]);
+    assert.ok(bundled[0].notices.some((n) => n.includes('Second Holder')), bundled[0].notices.join('|'));
+    assert.ok(!bundled[0].notices.some((n) => n.includes('First Holder')), bundled[0].notices.join('|'));
+    // The same two comments on separate lines: the same result.
+    write('vendor/adjacent.c', '/*\n * Copyright (c) 2018 First Holder\n */\n/*\n * Copyright (c) 2019 Second Holder\n * SPDX-License-Identifier: BSD-2-Clause\n */\nint x;\n');
+    bundled = findBundledCodeUnderOtherLicenses(comp(), known);
+    assert.ok(bundled[0].notices.some((n) => n.includes('Second Holder')) && !bundled[0].notices.some((n) => n.includes('First Holder')), bundled[0].notices.join('|'));
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
 test('bundled code: a header expression made of SPDX tokens that does not parse fails, a mention in prose or code does not', () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'malformed-spdx-fixture-'));
   try {
