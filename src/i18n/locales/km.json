@@ -1880,7 +1880,9 @@
                 "osKeyring": "បណ្តុំសោរបស់ប្រព័ន្ធប្រតិបត្តិការ",
                 "vaultFormat": "ទម្រង់ឃ្លាំងសុវត្ថិភាព",
                 "zipArchives": "បណ្ណសារ ZIP"
-            }
+            },
+            "thirdPartyLicenses": "អាជ្ញាប័ណ្ណភាគីទីបី",
+            "thirdPartyLicensesOpenFailed": "មិនអាចបើកការជូនដំណឹងអំពីអាជ្ញាប័ណ្ណបានទេ។ អ្នកអាចមើលវាតាមអ៊ីនធឺណិតនៅ {url}"
         },
         "support": {
             "title": "គាំទ្រ AeroFTP",

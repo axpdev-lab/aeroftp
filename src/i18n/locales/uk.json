@@ -1880,7 +1880,9 @@
                 "osKeyring": "Зв'язка ключів ОС",
                 "vaultFormat": "Формат сховища",
                 "zipArchives": "Архіви ZIP"
-            }
+            },
+            "thirdPartyLicenses": "Ліцензії стороннього ПЗ",
+            "thirdPartyLicensesOpenFailed": "Не вдалося відкрити повідомлення про ліцензії. Вони доступні онлайн за адресою {url}"
         },
         "support": {
             "title": "Підтримати AeroFTP",

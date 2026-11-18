@@ -1880,7 +1880,9 @@
                 "osKeyring": "Trousseau du système",
                 "vaultFormat": "Format du coffre",
                 "zipArchives": "Archives ZIP"
-            }
+            },
+            "thirdPartyLicenses": "Licences tierces",
+            "thirdPartyLicensesOpenFailed": "Impossible d'ouvrir les avis de licence. Ils sont disponibles en ligne à l'adresse {url}"
         },
         "support": {
             "title": "Soutenir AeroFTP",

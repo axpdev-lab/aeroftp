@@ -1880,7 +1880,9 @@
                 "osKeyring": "Breloc de chei al sistemului",
                 "vaultFormat": "Format seif",
                 "zipArchives": "Arhive ZIP"
-            }
+            },
+            "thirdPartyLicenses": "Licențe terțe",
+            "thirdPartyLicensesOpenFailed": "Nu s-au putut deschide notificările de licență. Sunt disponibile online la {url}"
         },
         "support": {
             "title": "Susțineți AeroFTP",

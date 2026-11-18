@@ -1880,7 +1880,9 @@
                 "osKeyring": "Sistem anahtarlığı",
                 "vaultFormat": "Kasa biçimi",
                 "zipArchives": "ZIP arşivleri"
-            }
+            },
+            "thirdPartyLicenses": "Üçüncü Taraf Lisansları",
+            "thirdPartyLicensesOpenFailed": "Lisans bildirimleri açılamadı. Çevrimiçi olarak {url} adresinde bulunabilir"
         },
         "support": {
             "title": "AeroFTP'yi Destekle",

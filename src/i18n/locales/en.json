@@ -76,7 +76,9 @@
                 "osKeyring": "OS Keyring",
                 "vaultFormat": "Vault format",
                 "zipArchives": "ZIP archives"
-            }
+            },
+            "thirdPartyLicenses": "Third-Party Licenses",
+            "thirdPartyLicensesOpenFailed": "Could not open the license notices. They are online at {url}"
         },
         "activity": {
             "connect_error": "Connection to {server} failed. Check credentials.",
