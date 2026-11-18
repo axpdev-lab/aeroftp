@@ -62,10 +62,15 @@ describe('thirdPartyLicenses', () => {
       const mockResourceDir = vi.fn().mockResolvedValue('C:\\Tools\\AeroFTP');
       const paths = await getCandidateNoticePaths(mockResolver, mockResourceDir);
 
-      expect(paths.slice(0, 2)).toEqual(['C:\\Tools\\AeroFTP\\_up_\\THIRD-PARTY-NOTICES.md', 'C:\\Tools\\AeroFTP\\THIRD-PARTY-NOTICES.md']);
+      expect(paths.slice(0, 3)).toEqual([
+        'C:\\Tools\\AeroFTP\\.aeroftp-pending-docs\\THIRD-PARTY-NOTICES.md',
+        'C:\\Tools\\AeroFTP\\_up_\\THIRD-PARTY-NOTICES.md',
+        'C:\\Tools\\AeroFTP\\THIRD-PARTY-NOTICES.md',
+      ]);
       expect(mockResourceDir).toHaveBeenCalled();
       // A trailing separator is not doubled.
-      expect((await getCandidateNoticePaths(mockResolver, vi.fn().mockResolvedValue('C:\\Tools\\AeroFTP\\')))[1]).toBe('C:\\Tools\\AeroFTP\\THIRD-PARTY-NOTICES.md');
+      const trailing = await getCandidateNoticePaths(mockResolver, vi.fn().mockResolvedValue('C:\\Tools\\AeroFTP\\'));
+      expect([trailing[0], trailing[2]]).toEqual(['C:\\Tools\\AeroFTP\\.aeroftp-pending-docs\\THIRD-PARTY-NOTICES.md', 'C:\\Tools\\AeroFTP\\THIRD-PARTY-NOTICES.md']);
     });
 
     it('by default asks Tauri for the resource directory, never for executableDir', async () => {
@@ -75,9 +80,24 @@ describe('thirdPartyLicenses', () => {
       tauriPath.executableDir.mockResolvedValueOnce('/home/user/.local/bin');
       const paths = await getCandidateNoticePaths();
 
-      expect(paths[1]).toBe('C:\\Tools\\AeroFTP\\THIRD-PARTY-NOTICES.md');
+      expect(paths[2]).toBe('C:\\Tools\\AeroFTP\\THIRD-PARTY-NOTICES.md');
       expect(paths.some((p) => p.includes('.local/bin'))).toBe(false);
       expect(tauriPath.executableDir).not.toHaveBeenCalled();
+    });
+
+    it('opens the pending notices of a portable update first, while an editor keeps the installed ones', async () => {
+      const pending = 'C:\\Tools\\AeroFTP\\.aeroftp-pending-docs\\THIRD-PARTY-NOTICES.md';
+      const installed = 'C:\\Tools\\AeroFTP\\THIRD-PARTY-NOTICES.md';
+      const candidates = () =>
+        getCandidateNoticePaths(
+          vi.fn().mockRejectedValue(new Error('no bundled resource')),
+          vi.fn().mockResolvedValue('C:\\Tools\\AeroFTP')
+        );
+      const opener = vi.fn((path: string) => (path === pending || path === installed ? Promise.resolve() : Promise.reject(new Error('not found'))));
+      expect(await openThirdPartyLicenses(candidates, opener, vi.fn())).toEqual({ success: true, target: pending });
+      // Once installed, the pending copy is gone and the installed one opens.
+      const afterInstall = vi.fn((path: string) => (path === installed ? Promise.resolve() : Promise.reject(new Error('not found'))));
+      expect(await openThirdPartyLicenses(candidates, afterInstall, vi.fn())).toEqual({ success: true, target: installed });
     });
 
     it('opens the notices of an extracted Windows portable ZIP with the network unavailable', async () => {
@@ -100,7 +120,12 @@ describe('thirdPartyLicenses', () => {
         vi.fn().mockResolvedValue('/usr/lib/AeroFTP/_up_/THIRD-PARTY-NOTICES.md'),
         vi.fn().mockResolvedValue('/usr/lib/AeroFTP')
       );
-      expect(paths).toEqual(['/usr/lib/AeroFTP/_up_/THIRD-PARTY-NOTICES.md', '/usr/lib/AeroFTP/THIRD-PARTY-NOTICES.md', ...LINUX_NOTICE_PATHS]);
+      expect(paths).toEqual([
+        '/usr/lib/AeroFTP/.aeroftp-pending-docs/THIRD-PARTY-NOTICES.md',
+        '/usr/lib/AeroFTP/_up_/THIRD-PARTY-NOTICES.md',
+        '/usr/lib/AeroFTP/THIRD-PARTY-NOTICES.md',
+        ...LINUX_NOTICE_PATHS,
+      ]);
       expect(paths.some((p) => p.includes('/.local/bin/'))).toBe(false);
     });
   });

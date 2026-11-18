@@ -841,6 +841,8 @@ pub mod user_partitions;
 // Re-export the partition DEK type so the (public) peer_identity storage facade
 // can name it in its signatures without widening the whole user_crypto module.
 pub use user_crypto::SecretKey;
+#[cfg(any(windows, test))]
+mod portable_docs;
 #[cfg(windows)]
 pub mod windows_update_helper;
 // `pub` transitively so integration tests can construct `RsyncStats`

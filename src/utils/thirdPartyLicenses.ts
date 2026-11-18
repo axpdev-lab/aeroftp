@@ -23,15 +23,21 @@ export const LINUX_NOTICE_PATHS = [
   '/app/share/doc/aeroftp/THIRD-PARTY-NOTICES.md',
 ];
 
+/** The folder beside the exes where a portable update stages its documents (src-tauri/src/portable_docs.rs). */
+export const PENDING_DOCS_DIR = '.aeroftp-pending-docs';
+
 /**
  * Returns candidate paths for THIRD-PARTY-NOTICES.md.
  * No relative paths are included to avoid CWD-dependent resolution.
- * First candidate is the Tauri-resolved bundled resource ('../THIRD-PARTY-NOTICES.md').
- * The Windows portable ZIP ships the file beside AeroFTP.exe: Tauri's resource
- * directory on Windows is the running executable's own folder (tauri-utils
- * resource_dir returns current_exe().parent() there), so the file is looked
- * up at its root. Tauri's executableDir is not that folder: it is unsupported
- * on Windows and the XDG bin directory on Linux.
+ * Tauri's resource directory on Windows is the running executable's own
+ * folder (tauri-utils resource_dir returns current_exe().parent() there).
+ * There a portable update stages the new notices in PENDING_DOCS_DIR until
+ * the new app has installed them: an editor holding the installed file keeps
+ * them pending, so that copy, the one of the running version, comes first.
+ * Then the Tauri-resolved bundled resource ('../THIRD-PARTY-NOTICES.md'),
+ * then the file at the resource root, where the Windows portable ZIP puts it
+ * beside AeroFTP.exe. Tauri's executableDir is not that folder: it is
+ * unsupported on Windows and the XDG bin directory on Linux.
  * Subsequent candidates are standard Linux package install locations.
  */
 export async function getCandidateNoticePaths(
@@ -39,6 +45,18 @@ export async function getCandidateNoticePaths(
   resourceDirGetter: () => Promise<string> = resourceDir
 ): Promise<string[]> {
   const candidates: string[] = [];
+  let beside: string[] = [];
+  try {
+    const dir = await resourceDirGetter();
+    if (dir && typeof dir === 'string') {
+      const sep = dir.includes('\\') ? '\\' : '/';
+      const root = dir.endsWith(sep) ? dir : `${dir}${sep}`;
+      beside = [`${root}${PENDING_DOCS_DIR}${sep}THIRD-PARTY-NOTICES.md`, `${root}THIRD-PARTY-NOTICES.md`];
+    }
+  } catch {
+    // Resource dir error or web environment
+  }
+  if (beside.length > 0) candidates.push(beside[0]);
   try {
     const resPath = await resourceResolver('../THIRD-PARTY-NOTICES.md');
     if (resPath && typeof resPath === 'string') {
@@ -47,17 +65,8 @@ export async function getCandidateNoticePaths(
   } catch {
     // Resource resolver error or running outside packaged Tauri app
   }
-  try {
-    const dir = await resourceDirGetter();
-    if (dir && typeof dir === 'string') {
-      const sep = dir.includes('\\') ? '\\' : '/';
-      const besideExe = dir.endsWith(sep) ? `${dir}THIRD-PARTY-NOTICES.md` : `${dir}${sep}THIRD-PARTY-NOTICES.md`;
-      if (!candidates.includes(besideExe)) {
-        candidates.push(besideExe);
-      }
-    }
-  } catch {
-    // Resource dir error or web environment
+  if (beside.length > 1 && !candidates.includes(beside[1])) {
+    candidates.push(beside[1]);
   }
   candidates.push(...LINUX_NOTICE_PATHS);
   return candidates;
