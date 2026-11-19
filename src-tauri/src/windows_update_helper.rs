@@ -1170,22 +1170,30 @@ mod tests {
 
     const CHILD_DISCARD_EXE: &str = "AEROFTP_TEST_DISCARD_EXE";
     const CHILD_DISCARD_KEY: &str = "AEROFTP_TEST_DISCARD_KEY";
+    const CHILD_DISCARD_ENTERED: &str = "AEROFTP_TEST_DISCARD_ENTERED";
+    const CHILD_DISCARD_DONE: &str = "AEROFTP_TEST_DISCARD_DONE";
 
     /// Child process helper invoked by `runnable` in place of the fake 15-byte
-    /// `AeroFTP.exe --discard-pending-docs <key>`, running the real
+    /// `AeroFTP.exe --discard-pending-docs <token>`, running the real
     /// `portable_docs::discard_pending_docs` under the real Windows batch lock.
     #[test]
     #[ignore = "invoked by failed-swap helper tests via runnable()"]
     fn child_discard_pending_docs() {
-        let (Some(exe), Some(key)) = (
+        let (Some(exe), Some(token)) = (
             std::env::var_os(CHILD_DISCARD_EXE),
             std::env::var(CHILD_DISCARD_KEY).ok(),
         ) else {
             return;
         };
+        if let Some(entered) = std::env::var_os(CHILD_DISCARD_ENTERED) {
+            let _ = std::fs::write(entered, b"entered");
+        }
         let exe_path = PathBuf::from(exe);
         if let Some(exe_dir) = exe_path.parent() {
-            portable_docs::discard_pending_docs(exe_dir, &key);
+            portable_docs::discard_pending_docs(exe_dir, &token);
+        }
+        if let Some(done) = std::env::var_os(CHILD_DISCARD_DONE) {
+            let _ = std::fs::write(done, b"done");
         }
     }
 
@@ -1669,14 +1677,15 @@ mod tests {
         );
         let b_notices = fx.root.path().join("b-notices.md");
         std::fs::write(&b_notices, b"notices of B").expect("b notices");
-        let key_b = portable_docs::stage_pending_docs(
+        let key_b = portable_docs::exe_key(&fx.current).expect("key b");
+        portable_docs::stage_pending_docs(
             &fx.app,
             &fx.current,
             &[(&b_notices, "THIRD-PARTY-NOTICES.md")],
             "b",
         )
         .expect("stage b")
-        .expect("key b");
+        .expect("token b");
         let prev = fx.app.join(portable_docs::PREV_DIR);
         std::fs::rename(fx.app.join(portable_docs::NEXT_DIR), &prev).expect("set aside to prev");
         assert!(!fx.app.join(portable_docs::PENDING_DIR).exists());
@@ -1699,20 +1708,24 @@ mod tests {
 
     /// A failed swap deletes the next batch only while it is the one this
     /// update staged: a batch another process staged there since, with
-    /// another key, stays whole.
+    /// another ownership token, stays whole.
     #[test]
     fn a_failed_swap_keeps_a_batch_another_update_staged_since() {
         let mut fx = fixture();
         with_docs(&mut fx, |_| true);
         let script = script_for(&fx);
         let next = fx.app.join(portable_docs::NEXT_DIR);
-        let own = std::fs::read_to_string(next.join(portable_docs::KEY_FILE)).expect("key");
+        let own_token =
+            std::fs::read_to_string(next.join(portable_docs::STAGING_ID_FILE)).expect("token");
         assert!(
-            script.contains(&format!("{DISCARD_DOCS_FLAG} {own}")),
+            script.contains(&format!("{DISCARD_DOCS_FLAG} {own_token}")),
             "{script}"
         );
         let other_key = "ab".repeat(32);
+        let other_token = "ef".repeat(16);
         std::fs::write(next.join(portable_docs::KEY_FILE), &other_key).expect("other key");
+        std::fs::write(next.join(portable_docs::STAGING_ID_FILE), &other_token)
+            .expect("other token");
         std::fs::write(next.join("README.txt"), b"other readme").expect("other readme");
         std::fs::remove_file(beside_path(&fx.current)).expect("staged exe");
         run(&fx, &runnable(&script));
@@ -1727,10 +1740,12 @@ mod tests {
         );
     }
 
-    /// The failed-swap cleanup runs under the same batch mutex as staging: if
-    /// another update holds the lock and publishes a replacement batch while
-    /// the failed helper is running cleanup, the helper waits for the lock,
-    /// sees the new key, and leaves the replacement batch intact.
+    /// The failed-swap cleanup runs under the same batch mutex as staging:
+    /// deterministically observe the discard child enter and block on the held
+    /// batch mutex (no fixed sleep), publish a replacement batch while still
+    /// holding the lock, assert cleanup completes only after releasing the
+    /// lock, and verify the replacement batch survives. Control: an unblocked
+    /// failed swap with no replacement removes the staged batch.
     #[test]
     fn a_failed_swap_that_races_with_a_newer_staging_keeps_the_replacement_batch() {
         let mut fx = fixture();
@@ -1739,28 +1754,49 @@ mod tests {
         let next = fx.app.join(portable_docs::NEXT_DIR);
         std::fs::remove_file(beside_path(&fx.current)).expect("staged exe");
         let lines = runnable(&script);
+        let entered = fx.root.path().join("discard-entered.marker");
+        let done = fx.root.path().join("discard-done.marker");
         let lock = portable_docs::lock_batches(&fx.app).expect("hold batch lock");
         let script_path = fx.root.path().join("race-helper.cmd");
         std::fs::write(&script_path, lines.concat()).expect("write script");
         let mut child = std::process::Command::new("cmd.exe")
             .args(["/d", "/c", &script_path.to_string_lossy()])
+            .env(CHILD_DISCARD_ENTERED, &entered)
+            .env(CHILD_DISCARD_DONE, &done)
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .spawn()
             .expect("spawn helper");
-        // Give the helper time to enter `:replace_failed` and block on the
-        // batch mutex inside `--discard-pending-docs`.
-        std::thread::sleep(Duration::from_millis(300));
+        // Deterministically wait until the child reaches the discard call
+        // right before acquiring the batch mutex.
+        let deadline = std::time::Instant::now() + Duration::from_secs(15);
+        while !entered.exists() {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "helper never reached --discard-pending-docs"
+            );
+            std::thread::yield_now();
+        }
+        // If discard skipped the lock, it would delete NEXT_DIR and write
+        // `done` immediately while we still hold `lock`.
         assert!(
-            child.try_wait().expect("poll").is_none(),
-            "helper cleanup must wait for the batch mutex"
+            !done.exists() && child.try_wait().expect("poll").is_none(),
+            "discard step must block while the batch mutex is held"
         );
-        // Publish a replacement batch while holding the lock.
+        // Publish a replacement batch while still holding the lock.
         let other_key = "cd".repeat(32);
+        let other_token = "ef".repeat(16);
         std::fs::write(next.join(portable_docs::KEY_FILE), &other_key).expect("replacement key");
+        std::fs::write(next.join(portable_docs::STAGING_ID_FILE), &other_token)
+            .expect("replacement token");
         std::fs::write(next.join("README.txt"), b"replacement readme").expect("replacement readme");
+        assert!(
+            !done.exists(),
+            "discard step must remain blocked until the mutex is released"
+        );
         drop(lock);
         let _ = child.wait().expect("helper finishes");
+        assert!(done.exists(), "discard step completes after lock release");
         assert_eq!(
             std::fs::read_to_string(next.join(portable_docs::KEY_FILE)).expect("kept"),
             other_key
@@ -1769,6 +1805,24 @@ mod tests {
             std::fs::read(next.join("README.txt")).expect("kept"),
             b"replacement readme"
         );
+        // Control: when no lock/replacement intervenes, the same discard path
+        // removes the batch and writes `done`.
+        let mut fx2 = fixture();
+        with_docs(&mut fx2, |_| true);
+        let script2 = script_for(&fx2);
+        let entered2 = fx2.root.path().join("discard-entered-ctrl.marker");
+        let done2 = fx2.root.path().join("discard-done-ctrl.marker");
+        std::fs::remove_file(beside_path(&fx2.current)).expect("staged exe");
+        run_env(
+            &fx2,
+            &runnable(&script2),
+            &[
+                (CHILD_DISCARD_ENTERED, &entered2.to_string_lossy()),
+                (CHILD_DISCARD_DONE, &done2.to_string_lossy()),
+            ],
+        );
+        assert!(entered2.exists() && done2.exists());
+        assert!(!fx2.app.join(portable_docs::NEXT_DIR).exists());
     }
 
     #[test]

@@ -55,7 +55,11 @@ pub(crate) const KEY_FILE: &str = "exe.key";
 /// The identity of a staging folder: a random value a staging writes in the
 /// folder it creates and keeps in its record, so the record names that very
 /// folder and never a folder created later at the same path.
-const STAGING_ID_FILE: &str = "staging.id";
+pub(crate) const STAGING_ID_FILE: &str = "staging.id";
+/// The durable ledger of AeroFTP-owned batch identities kept beside the
+/// batches inside `exe_dir` so ownership survives temp cleanup and moving a
+/// portable folder; removed automatically once empty.
+const OWNED_RECORD_FILE: &str = ".aeroftp-pending-docs.owned";
 /// The key of a batch superseded while one of its documents could not be
 /// removed (an editor holds it): no exe has it (an exe key is hex), so the
 /// batch is never installed or offered, and any later pass removes it.
@@ -429,19 +433,25 @@ fn begin_staging(exe_dir: &Path, name: &str) -> io::Result<String> {
     Ok(id)
 }
 
-/// The record of batch identities (`STAGING_ID_FILE`) that AeroFTP staged for
-/// `exe_dir`, kept outside `exe_dir` beside `staging_record`: a folder at
-/// `PENDING_DIR` or `PREV_DIR` is retired only when its `staging.id` is in
-/// this record, so an unrelated folder that happens to carry an `exe.key` is
-/// never modified or removed.
-fn batch_record(exe_dir: &Path) -> PathBuf {
+/// The durable ownership record of batch identities (`STAGING_ID_FILE`) that
+/// AeroFTP staged for `exe_dir`, stored beside the batches inside `exe_dir`
+/// so it survives temp-folder cleanup and moving a portable installation;
+/// removed automatically once empty.
+fn owned_batch_record(exe_dir: &Path) -> PathBuf {
+    exe_dir.join(OWNED_RECORD_FILE)
+}
+
+/// Secondary mirror of batch identities in `temp_dir()`, so even an
+/// in-place deletion of `.aeroftp-pending-docs.owned` does not lose
+/// ownership of existing AeroFTP batches.
+fn temp_batch_record(exe_dir: &Path) -> PathBuf {
     use sha2::{Digest, Sha256};
     let exact = hex::encode(Sha256::digest(exe_dir.to_string_lossy().as_bytes()));
     std::env::temp_dir().join(format!("aeroftp-pending-docs-{exact}.batches"))
 }
 
-fn recorded_batches(exe_dir: &Path) -> Vec<String> {
-    std::fs::read_to_string(batch_record(exe_dir))
+fn read_ids_from(path: &Path) -> Vec<String> {
+    std::fs::read_to_string(path)
         .map(|text| {
             text.lines()
                 .map(str::trim)
@@ -452,18 +462,69 @@ fn recorded_batches(exe_dir: &Path) -> Vec<String> {
         .unwrap_or_default()
 }
 
-fn write_batches(exe_dir: &Path, ids: &[String]) -> io::Result<()> {
-    let record = batch_record(exe_dir);
+fn recorded_batches(exe_dir: &Path) -> Vec<String> {
+    let mut ids = read_ids_from(&owned_batch_record(exe_dir));
+    for id in read_ids_from(&temp_batch_record(exe_dir)) {
+        if !ids.iter().any(|existing| existing == &id) {
+            ids.push(id);
+        }
+    }
+    ids
+}
+
+fn replace_record_file(tmp: &Path, target: &Path) -> io::Result<()> {
+    #[cfg(windows)]
+    {
+        use windows::core::HSTRING;
+        use windows::Win32::Storage::FileSystem::{MoveFileExW, MOVEFILE_REPLACE_EXISTING};
+        let from = HSTRING::from(tmp.as_os_str());
+        let to = HSTRING::from(target.as_os_str());
+        // SAFETY: both paths are valid UTF-16 HSTRINGs in the same directory.
+        unsafe { MoveFileExW(&from, &to, MOVEFILE_REPLACE_EXISTING) }.map_err(io::Error::other)
+    }
+    #[cfg(not(windows))]
+    {
+        std::fs::rename(tmp, target)
+    }
+}
+
+/// Atomically replaces `record` with `ids` (or deletes `record` when empty):
+/// writes to a sibling temporary file in the same directory via `write_tmp`
+/// and replaces the live file only after the write succeeds, so a write
+/// failure never truncates or loses previously recorded IDs.
+fn write_batches_with(
+    record: &Path,
+    ids: &[String],
+    write_tmp: impl FnOnce(&Path, &str) -> io::Result<()>,
+) -> io::Result<()> {
     if ids.is_empty() {
-        return match std::fs::remove_file(&record) {
+        return match std::fs::remove_file(record) {
             Err(e) if e.kind() != io::ErrorKind::NotFound => Err(e),
             _ => Ok(()),
         };
     }
-    std::fs::write(
-        record,
-        ids.iter().map(|id| format!("{id}\n")).collect::<String>(),
-    )
+    let content: String = ids.iter().map(|id| format!("{id}\n")).collect();
+    let parent = record
+        .parent()
+        .ok_or_else(|| io::Error::other("ownership record has no parent directory"))?;
+    let name = record
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(OWNED_RECORD_FILE);
+    let tmp = parent.join(format!("{name}.tmp-{:016x}", rand::random::<u64>()));
+    if let Err(e) = write_tmp(&tmp, &content) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e);
+    }
+    if let Err(e) = replace_record_file(&tmp, record) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e);
+    }
+    Ok(())
+}
+
+fn write_batches_to(record: &Path, ids: &[String]) -> io::Result<()> {
+    write_batches_with(record, ids, |path, content| std::fs::write(path, content))
 }
 
 fn record_batch(exe_dir: &Path, id: &str) -> io::Result<()> {
@@ -471,15 +532,19 @@ fn record_batch(exe_dir: &Path, id: &str) -> io::Result<()> {
     if !ids.iter().any(|existing| existing == id) {
         ids.push(id.to_string());
     }
-    write_batches(exe_dir, &ids)
+    write_batches_to(&owned_batch_record(exe_dir), &ids)?;
+    let _ = write_batches_to(&temp_batch_record(exe_dir), &ids);
+    Ok(())
 }
 
-fn forget_batch(exe_dir: &Path, id: &str) {
+fn forget_batch(exe_dir: &Path, id: &str) -> io::Result<()> {
     let ids: Vec<String> = recorded_batches(exe_dir)
         .into_iter()
         .filter(|existing| existing != id)
         .collect();
-    let _ = write_batches(exe_dir, &ids);
+    let primary = write_batches_to(&owned_batch_record(exe_dir), &ids);
+    let _ = write_batches_to(&temp_batch_record(exe_dir), &ids);
+    primary
 }
 
 fn batch_id(path: &Path) -> Option<String> {
@@ -492,8 +557,8 @@ fn batch_id(path: &Path) -> Option<String> {
 }
 
 /// Whether `path` is a batch folder that AeroFTP itself staged for `exe_dir`:
-/// a real folder carrying `KEY_FILE` and a `STAGING_ID_FILE` recorded in
-/// `batch_record(exe_dir)`.
+/// a real folder carrying `KEY_FILE` and a `STAGING_ID_FILE` recorded in the
+/// durable ownership record (`owned_batch_record` or `temp_batch_record`).
 fn is_owned_batch(exe_dir: &Path, path: &Path) -> bool {
     is_batch(path)
         && batch_id(path).is_some_and(|id| recorded_batches(exe_dir).iter().any(|r| r == &id))
@@ -583,7 +648,7 @@ fn retire_batch(exe_dir: &Path, path: &Path) -> bool {
     if removed && std::fs::symlink_metadata(path).is_ok() {
         let _ = std::fs::write(path.join(KEY_FILE), RETIRED_KEY);
     } else if let Some(id) = id {
-        forget_batch(exe_dir, &id);
+        let _ = forget_batch(exe_dir, &id);
     }
     removed
 }
@@ -624,18 +689,37 @@ fn stage_with(
     remove_staging_leftovers(exe_dir);
     let next = exe_dir.join(NEXT_DIR);
     let prev = exe_dir.join(PREV_DIR);
-    if matches!(slot(&next), Slot::Key(k) if k == key)
+    if is_owned_batch(exe_dir, &next)
+        && matches!(slot(&next), Slot::Key(k) if k == key)
         && docs.iter().all(|(_, name)| next.join(name).is_file())
     {
-        // Already staged for this exe, with every document asked for. One
-        // that lacks a document (a discard that could not remove them all)
-        // is staged again, and the update stops before its swap if it
-        // cannot be.
-        return Ok(Some(key));
+        // Already staged by AeroFTP for this exe, with every document asked
+        // for. Transfer ownership under the lock to a fresh per-attempt token
+        // so cleanup from an earlier failed attempt of the same exe cannot
+        // delete the batch this retry relies on.
+        let old_id = batch_id(&next);
+        let new_id = format!("{:032x}", rand::random::<u128>());
+        record_batch(exe_dir, &new_id).map_err(fail)?;
+        let id_path = next.join(STAGING_ID_FILE);
+        let id_tmp = next.join(format!(
+            "{STAGING_ID_FILE}.tmp-{:016x}",
+            rand::random::<u64>()
+        ));
+        let transfer =
+            std::fs::write(&id_tmp, &new_id).and_then(|()| replace_record_file(&id_tmp, &id_path));
+        if let Err(e) = transfer {
+            let _ = std::fs::remove_file(&id_tmp);
+            let _ = forget_batch(exe_dir, &new_id);
+            return Err(fail(e));
+        }
+        if let Some(old_id) = old_id {
+            let _ = forget_batch(exe_dir, &old_id);
+        }
+        return Ok(Some(new_id));
     }
-    if std::fs::symlink_metadata(&next).is_ok() && !is_batch(&next) {
+    if std::fs::symlink_metadata(&next).is_ok() && !is_owned_batch(exe_dir, &next) {
         return Err(format!(
-            "Failed to stage the portable documents: {} is not an update batch (it has no {KEY_FILE}), so it is left as it is; move it away and update again",
+            "Failed to stage the portable documents: {} is not an update batch owned by AeroFTP, so it is left as it is; move it away and update again",
             next.display()
         ));
     }
@@ -665,7 +749,7 @@ fn stage_with(
         record_batch(exe_dir, &staging_id)?;
         let published = publish(&tmp, &next);
         if published.is_err() {
-            forget_batch(exe_dir, &staging_id);
+            let _ = forget_batch(exe_dir, &staging_id);
             if aside && std::fs::symlink_metadata(&next).is_err() {
                 // Nothing replaced the batch set aside: it is back in its place.
                 let _ = std::fs::rename(&prev, &next);
@@ -684,21 +768,23 @@ fn stage_with(
     if std::fs::symlink_metadata(&tmp).is_err() {
         forget_staging(exe_dir, &tmp_name);
     }
-    staged.map(|()| Some(key)).map_err(fail)
+    staged.map(|()| Some(staging_id)).map_err(fail)
 }
 
 /// Makes room at `next` for the batch of the exe `key`. A batch of another
 /// exe there (one whose documents an editor held, of the exe that runs) is
-/// set aside at `prev`, retiring a previous AeroFTP-owned batch there so that
-/// exe still installs from it until an update replaces it. If `prev` is still
-/// occupied (an unowned folder or a held retired batch) or the rename cannot
-/// complete, returns an error without touching `next`, so the running exe
-/// never loses its pending documents. A batch of this exe (part of one, a
-/// failed attempt left) or a retired one is removed. Returns whether a batch
-/// was set aside.
+/// set aside at `prev`, cleaning up only an already-retired AeroFTP batch
+/// there: a live (non-retired) batch in `prev` may still belong to the
+/// running exe (an earlier update C stopped before swapping) and is never
+/// removed or re-keyed here. If `prev` is still occupied or the rename
+/// cannot complete, returns an error without touching `next` or `prev`. A
+/// batch of this exe (part of one, a failed attempt left) or a retired one
+/// is removed. Returns whether a batch was set aside.
 fn make_room(exe_dir: &Path, next: &Path, prev: &Path, key: &str) -> io::Result<bool> {
     if matches!(slot(next), Slot::Key(k) if k != key && k != RETIRED_KEY) {
-        retire_batch(exe_dir, prev);
+        if matches!(slot(prev), Slot::Key(k) if k == RETIRED_KEY) {
+            retire_batch(exe_dir, prev);
+        }
         if std::fs::symlink_metadata(prev).is_err() {
             std::fs::rename(next, prev)?;
             return Ok(true);
@@ -717,30 +803,27 @@ fn make_room(exe_dir: &Path, next: &Path, prev: &Path, key: &str) -> io::Result<
     remove_batch(next);
     if std::fs::symlink_metadata(next).is_err() {
         if let Some(id) = id {
-            forget_batch(exe_dir, &id);
+            forget_batch(exe_dir, &id)?;
         }
     }
     Ok(false)
 }
 
-/// Removes the next batch of `exe_dir` when it is the one the failed update
-/// staged (its key is `key`, the update's new exe), and any staging
-/// leftover: the update did not go through. The current batch stays, and so
-/// does a next batch of another exe: an earlier update whose exe runs now may
-/// still be waiting there to install its documents.
-pub(crate) fn discard_pending_docs(exe_dir: &Path, key: &str) {
+/// Removes the next batch of `exe_dir` only when it is an AeroFTP-owned
+/// batch whose per-attempt token (`STAGING_ID_FILE`) matches `token`, plus
+/// any staging leftover: the update attempt did not go through. An unowned
+/// folder (even with a matching key), a batch whose ownership was
+/// transferred to a same-exe retry, or another exe's batch stays whole.
+pub(crate) fn discard_pending_docs(exe_dir: &Path, token: &str) {
     let Ok(_lock) = lock_batches(exe_dir) else {
         return;
     };
     remove_staging_leftovers(exe_dir);
     let next = exe_dir.join(NEXT_DIR);
-    if matches!(slot(&next), Slot::Key(k) if k == key) {
-        let id = batch_id(&next);
+    if is_owned_batch(exe_dir, &next) && batch_id(&next).as_deref() == Some(token) {
         remove_batch(&next);
         if std::fs::symlink_metadata(&next).is_err() {
-            if let Some(id) = id {
-                forget_batch(exe_dir, &id);
-            }
+            let _ = forget_batch(exe_dir, token);
         }
     }
     // The AeroFTP-owned batch the staging set aside goes back to its place:
@@ -879,7 +962,7 @@ fn install_pass(
         remove_batch(&source);
         if std::fs::symlink_metadata(&source).is_err() {
             if let Some(id) = id {
-                forget_batch(exe_dir, &id);
+                let _ = forget_batch(exe_dir, &id);
             }
         }
     }
@@ -1766,9 +1849,11 @@ mod tests {
             assert_eq!(read(&pending, name), format!("new {name}"));
         }
         // Staging and a discard leave them as they are too.
-        let (_stage, exe_b, key_b, readme_b) = new_exe(b"B");
-        stage_pending_docs(dir.path(), &exe_b, &[(&readme_b, "README.txt")], "b").unwrap();
-        discard_pending_docs(dir.path(), &key_b);
+        let (_stage, exe_b, _key_b, readme_b) = new_exe(b"B");
+        let token_b = stage_pending_docs(dir.path(), &exe_b, &[(&readme_b, "README.txt")], "b")
+            .unwrap()
+            .unwrap();
+        discard_pending_docs(dir.path(), &token_b);
         assert!(!dir.path().join(NEXT_DIR).exists());
         assert_eq!(read(&unrelated.join("sub"), "deep.txt"), "mine too");
         assert_eq!(read(&pending, "user.txt"), "kept");
@@ -1788,7 +1873,7 @@ mod tests {
         assert_eq!(read(&taken, "own.txt"), "not ours");
         assert_eq!(read(&taken, "README.txt"), "not ours");
         // A later sweep leaves the folders that are not stagings whole.
-        discard_pending_docs(dir.path(), &key_b);
+        discard_pending_docs(dir.path(), &token_b);
         assert_eq!(read(&taken, "README.txt"), "not ours");
         assert_eq!(read(&unrelated, "README.txt"), "my readme");
         assert_eq!(read(&keyed, KEY_FILE), "my key");
@@ -1861,22 +1946,43 @@ mod tests {
         );
     }
 
-    /// The key staging returns is the one its batch carries, so a failed
-    /// update discards exactly that batch; no documents, no batch, no key.
+    /// Each staging attempt gets a distinct per-attempt ownership token; a
+    /// same-exe retry that reuses the staged bytes transfers ownership under
+    /// the lock to a new token so cleanup from the earlier attempt cannot
+    /// delete the batch, while cleanup with the current token still removes
+    /// it. No documents -> no batch, no token.
     #[test]
-    fn staging_returns_the_key_its_batch_carries() {
+    fn staging_returns_a_unique_attempt_token_and_transfers_ownership_on_reuse() {
         let dir = folder(None);
         let (_stage, exe_b, key_b, readme_b) = new_exe(b"B");
-        let staged =
-            stage_pending_docs(dir.path(), &exe_b, &[(&readme_b, "README.txt")], "k").unwrap();
-        assert_eq!(staged.as_deref(), Some(key_b.as_str()));
-        assert_eq!(
-            std::fs::read_to_string(dir.path().join(NEXT_DIR).join(KEY_FILE)).unwrap(),
-            key_b
+        let next = dir.path().join(NEXT_DIR);
+        let first_token = stage_pending_docs(dir.path(), &exe_b, &[(&readme_b, "README.txt")], "k")
+            .unwrap()
+            .expect("first token");
+        assert_eq!(read(&next, KEY_FILE), key_b);
+        assert_eq!(read(&next, STAGING_ID_FILE), first_token);
+        // Same-exe retry reuses the complete staged bytes and transfers
+        // ownership to a distinct token.
+        let retry_token = stage_pending_docs(dir.path(), &exe_b, &[(&readme_b, "README.txt")], "l")
+            .unwrap()
+            .expect("retry token");
+        assert_ne!(
+            retry_token, first_token,
+            "retry gets a distinct ownership token"
         );
-        let again =
-            stage_pending_docs(dir.path(), &exe_b, &[(&readme_b, "README.txt")], "l").unwrap();
-        assert_eq!(again, staged, "a batch already staged gives its key");
+        assert_eq!(read(&next, STAGING_ID_FILE), retry_token);
+        assert_eq!(read(&next, KEY_FILE), key_b);
+        // Earlier attempt's cleanup sees the old token no longer owns NEXT_DIR.
+        discard_pending_docs(dir.path(), &first_token);
+        assert!(
+            next.is_dir(),
+            "reused batch survives earlier attempt's cleanup"
+        );
+        assert_eq!(read(&next, "README.txt"), "readme of B");
+        // Control: cleanup with the current attempt's token (no later retry)
+        // removes the batch cleanly.
+        discard_pending_docs(dir.path(), &retry_token);
+        assert!(!next.exists(), "current owner's discard removes the batch");
         assert_eq!(
             stage_pending_docs(dir.path(), &exe_b, &[], "m").unwrap(),
             None
@@ -2104,12 +2210,11 @@ mod tests {
         stage_pending_docs(dir.path(), &exe_b, &docs, "a").unwrap();
         let next = dir.path().join(NEXT_DIR);
         std::fs::remove_file(next.join("README.txt")).unwrap();
-        assert_eq!(
-            stage_pending_docs(dir.path(), &exe_b, &docs, "b")
-                .unwrap()
-                .as_deref(),
-            Some(key_b.as_str())
-        );
+        let restaged = stage_pending_docs(dir.path(), &exe_b, &docs, "b")
+            .unwrap()
+            .expect("restaged token");
+        assert_eq!(read(&next, KEY_FILE), key_b);
+        assert_eq!(read(&next, STAGING_ID_FILE), restaged);
         assert_eq!(read(&next, "README.txt"), "readme of B");
         assert_eq!(read(&next, "LICENSE.txt"), "license of B");
         // A document that cannot be removed (here a folder at its name): the
@@ -2176,9 +2281,11 @@ mod tests {
         b_installs(dir.path(), &key_b);
         // C staged, then the update failed before the swap.
         let (dir, key_b) = setup();
-        stage_pending_docs(dir.path(), &exe_c, &[(&notices_c, NOTICES)], "c").unwrap();
+        let token_c = stage_pending_docs(dir.path(), &exe_c, &[(&notices_c, NOTICES)], "c")
+            .unwrap()
+            .unwrap();
         assert_eq!(read(&dir.path().join(PREV_DIR), KEY_FILE), key_b);
-        discard_pending_docs(dir.path(), &key_c);
+        discard_pending_docs(dir.path(), &token_c);
         assert!(!dir.path().join(PREV_DIR).exists());
         b_installs(dir.path(), &key_b);
         // C staged, and B still runs: B installs from the batch set aside.
@@ -2432,22 +2539,26 @@ mod tests {
     #[test]
     fn discard_waits_for_the_lock_and_keeps_a_replacement_batch_published_before_it_runs() {
         let dir = tempfile::tempdir().unwrap();
-        let (_stage_a, exe_a, key_a, readme_a) = new_exe(b"A");
-        stage_pending_docs(dir.path(), &exe_a, &[(&readme_a, "README.txt")], "a").unwrap();
+        let (_stage_a, exe_a, _key_a, readme_a) = new_exe(b"A");
+        let token_a = stage_pending_docs(dir.path(), &exe_a, &[(&readme_a, "README.txt")], "a")
+            .unwrap()
+            .unwrap();
         let next = dir.path().join(NEXT_DIR);
         let lock = lock_batches(dir.path()).unwrap();
         let discard_dir = dir.path().to_path_buf();
-        let key_a_clone = key_a.clone();
+        let token_a_clone = token_a.clone();
         let (done_tx, done_rx) = std::sync::mpsc::channel();
         let discarder = std::thread::spawn(move || {
-            discard_pending_docs(&discard_dir, &key_a_clone);
+            discard_pending_docs(&discard_dir, &token_a_clone);
             let _ = done_tx.send(());
         });
         // While the lock is held, discard_pending_docs cannot proceed.
         assert!(done_rx.recv_timeout(Duration::from_millis(80)).is_err());
         // Another update publishes a replacement batch while holding the lock.
         let replacement_key = "ab".repeat(32);
+        let replacement_id = "ef".repeat(16);
         std::fs::write(next.join(KEY_FILE), &replacement_key).unwrap();
+        std::fs::write(next.join(STAGING_ID_FILE), &replacement_id).unwrap();
         std::fs::write(next.join("README.txt"), "replacement readme").unwrap();
         drop(lock);
         done_rx
@@ -2456,6 +2567,154 @@ mod tests {
         discarder.join().unwrap();
         assert_eq!(read(&next, KEY_FILE), replacement_key);
         assert_eq!(read(&next, "README.txt"), "replacement readme");
+    }
+
+    /// `discard_pending_docs` requires `is_owned_batch` before deleting: an
+    /// unowned folder at `NEXT_DIR` with a matching `exe.key` (and even a
+    /// matching unrecorded `staging.id`) stays untouched, while a real
+    /// registered AeroFTP batch is removed.
+    #[test]
+    fn discard_refuses_an_unowned_folder_even_with_matching_key_and_removes_owned_batch() {
+        let dir = tempfile::tempdir().unwrap();
+        let (_stage, exe_b, key_b, readme_b) = new_exe(b"B");
+        let next = dir.path().join(NEXT_DIR);
+        let unrecorded_id = "11".repeat(16);
+        std::fs::create_dir(&next).unwrap();
+        std::fs::write(next.join(KEY_FILE), &key_b).unwrap();
+        std::fs::write(next.join(STAGING_ID_FILE), &unrecorded_id).unwrap();
+        std::fs::write(next.join("README.txt"), "user readme").unwrap();
+        discard_pending_docs(dir.path(), &unrecorded_id);
+        discard_pending_docs(dir.path(), &key_b);
+        assert_eq!(read(&next, "README.txt"), "user readme");
+        assert_eq!(read(&next, KEY_FILE), key_b);
+        // Control: a real registered AeroFTP batch is removed by its token.
+        std::fs::remove_dir_all(&next).unwrap();
+        let token = stage_pending_docs(dir.path(), &exe_b, &[(&readme_b, "README.txt")], "b")
+            .unwrap()
+            .unwrap();
+        discard_pending_docs(dir.path(), &token);
+        assert!(!next.exists());
+    }
+
+    /// Ownership evidence lives durably beside the batches inside `exe_dir`:
+    /// deleting the temp-dir mirror or moving the entire portable folder to a
+    /// new directory never makes an existing AeroFTP batch lose ownership or
+    /// block future updates.
+    #[test]
+    fn batch_ownership_survives_temp_cleanup_and_moving_the_portable_folder() {
+        const NOTICES: &str = "THIRD-PARTY-NOTICES.md";
+        let root = tempfile::tempdir().unwrap();
+        let orig = root.path().join("portable-a");
+        std::fs::create_dir(&orig).unwrap();
+        std::fs::write(orig.join(NOTICES), "installed").unwrap();
+        let (stage_b, exe_b, key_b, _) = new_exe(b"B");
+        let notices_b = stage_b.path().join(NOTICES);
+        std::fs::write(&notices_b, "notices of B").unwrap();
+        stage_pending_docs(&orig, &exe_b, &[(&notices_b, NOTICES)], "b").unwrap();
+        let (stage_c, exe_c, key_c, _) = new_exe(b"C");
+        let notices_c = stage_c.path().join(NOTICES);
+        std::fs::write(&notices_c, "notices of C").unwrap();
+        stage_pending_docs(&orig, &exe_c, &[(&notices_c, NOTICES)], "c").unwrap();
+        assert_eq!(read(&orig.join(PREV_DIR), KEY_FILE), key_b);
+        // Wipe the temp-dir mirror AND move the entire portable folder.
+        let _ = std::fs::remove_file(temp_batch_record(&orig));
+        let moved = root.path().join("portable-moved");
+        std::fs::rename(&orig, &moved).unwrap();
+        assert!(is_owned_batch(&moved, &moved.join(PREV_DIR)));
+        assert!(is_owned_batch(&moved, &moved.join(NEXT_DIR)));
+        // C promotes in the moved folder and retires B's set-aside batch.
+        assert_eq!(
+            install_pending_docs(&moved, &key_c, rename),
+            Pending::Docs(vec![(NOTICES, Outcome::Installed)])
+        );
+        assert_eq!(read(&moved, NOTICES), "notices of C");
+        assert!(!moved.join(PREV_DIR).exists());
+        assert!(!owned_batch_record(&moved).exists());
+        // A later staging in the moved folder succeeds cleanly.
+        let (stage_d, exe_d, key_d, _) = new_exe(b"D");
+        let notices_d = stage_d.path().join(NOTICES);
+        std::fs::write(&notices_d, "notices of D").unwrap();
+        stage_pending_docs(&moved, &exe_d, &[(&notices_d, NOTICES)], "d").unwrap();
+        assert_eq!(read(&moved.join(NEXT_DIR), KEY_FILE), key_d);
+    }
+
+    /// Rewriting the ownership record is atomic via a sibling temp file: a
+    /// write failure keeps the previously recorded IDs intact so live batches
+    /// stay owned, and a retry completes cleanly.
+    #[test]
+    fn a_failed_record_rewrite_keeps_previous_ids_owned_and_allows_retry() {
+        let dir = tempfile::tempdir().unwrap();
+        let (_stage, exe_b, _key_b, readme_b) = new_exe(b"B");
+        let token_b = stage_pending_docs(dir.path(), &exe_b, &[(&readme_b, "README.txt")], "b")
+            .unwrap()
+            .unwrap();
+        let record = owned_batch_record(dir.path());
+        assert!(is_owned_batch(dir.path(), &dir.path().join(NEXT_DIR)));
+        // Inject a write failure when updating the record.
+        let err = write_batches_with(&record, &[token_b.clone(), "ff".repeat(16)], |tmp, _| {
+            std::fs::write(tmp, "partial")?;
+            Err(io::Error::other("disk full"))
+        });
+        assert!(err.is_err());
+        // Previous ID remains in the live record and the batch stays owned.
+        assert_eq!(read_ids_from(&record), vec![token_b.clone()]);
+        assert!(is_owned_batch(dir.path(), &dir.path().join(NEXT_DIR)));
+        // Retry succeeds cleanly.
+        let next_id = "ff".repeat(16);
+        write_batches_to(&record, &[token_b.clone(), next_id.clone()]).unwrap();
+        assert_eq!(read_ids_from(&record), vec![token_b, next_id]);
+    }
+
+    /// Scenario: B's held batch moves to `PREV_DIR` when C stages, C stops
+    /// before its swap (so B still runs), and D stages. `make_room` must not
+    /// retire or re-key B's live `PREV_DIR` batch; B keeps its notices and
+    /// installs them once released. Control: when C succeeds and replaces B,
+    /// C's promotion retires B's `PREV_DIR` batch.
+    #[test]
+    fn staging_d_after_aborted_c_keeps_running_exes_set_aside_batch_intact() {
+        const NOTICES: &str = "THIRD-PARTY-NOTICES.md";
+        let notices_of = |stage: &tempfile::TempDir, who: &str| {
+            let path = stage.path().join(NOTICES);
+            std::fs::write(&path, format!("notices of {who}")).unwrap();
+            path
+        };
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join(NOTICES), "installed").unwrap();
+        let (stage_b, exe_b, key_b, _) = new_exe(b"B");
+        let notices_b = notices_of(&stage_b, "B");
+        stage_pending_docs(dir.path(), &exe_b, &[(&notices_b, NOTICES)], "b").unwrap();
+        // C stages -> moves B's batch to PREV_DIR, then C stops before swap.
+        let (stage_c, exe_c, key_c, _) = new_exe(b"C");
+        let notices_c = notices_of(&stage_c, "C");
+        stage_pending_docs(dir.path(), &exe_c, &[(&notices_c, NOTICES)], "c").unwrap();
+        let prev = dir.path().join(PREV_DIR);
+        assert_eq!(read(&prev, KEY_FILE), key_b);
+        // D tries to stage while B is still running with its batch in PREV_DIR.
+        let (stage_d, exe_d, _key_d, _) = new_exe(b"D");
+        let notices_d = notices_of(&stage_d, "D");
+        assert!(stage_pending_docs(dir.path(), &exe_d, &[(&notices_d, NOTICES)], "d").is_err());
+        // B's batch in PREV_DIR is completely intact (neither removed nor re-keyed).
+        assert_eq!(read(&prev, KEY_FILE), key_b);
+        assert_eq!(read(&prev, NOTICES), "notices of B");
+        // Once the hold clears, B installs its notices from PREV_DIR.
+        assert_eq!(
+            install_pending_docs(dir.path(), &key_b, rename),
+            Pending::Docs(vec![(NOTICES, Outcome::Installed)])
+        );
+        assert_eq!(read(dir.path(), NOTICES), "notices of B");
+        assert!(!prev.exists());
+        // Control: when C does replace B, C's promotion retires B's PREV_DIR batch.
+        let dir2 = tempfile::tempdir().unwrap();
+        std::fs::write(dir2.path().join(NOTICES), "installed").unwrap();
+        stage_pending_docs(dir2.path(), &exe_b, &[(&notices_b, NOTICES)], "b2").unwrap();
+        stage_pending_docs(dir2.path(), &exe_c, &[(&notices_c, NOTICES)], "c2").unwrap();
+        assert_eq!(read(&dir2.path().join(PREV_DIR), KEY_FILE), key_b);
+        assert_eq!(
+            install_pending_docs(dir2.path(), &key_c, rename),
+            Pending::Docs(vec![(NOTICES, Outcome::Installed)])
+        );
+        assert_eq!(read(dir2.path(), NOTICES), "notices of C");
+        assert!(!dir2.path().join(PREV_DIR).exists());
     }
 
     /// The next batch of the exe B that runs (its key is there) stays when a
@@ -2478,9 +2737,11 @@ mod tests {
     #[test]
     fn a_discarded_update_drops_its_next_batch_and_keeps_the_current_one() {
         let dir = folder(Some(KEY));
-        let (_stage, exe_b, key_b, readme_b) = new_exe(b"B");
-        stage_pending_docs(dir.path(), &exe_b, &[(&readme_b, "README.txt")], "d").unwrap();
-        discard_pending_docs(dir.path(), &key_b);
+        let (_stage, exe_b, _key_b, readme_b) = new_exe(b"B");
+        let token_b = stage_pending_docs(dir.path(), &exe_b, &[(&readme_b, "README.txt")], "d")
+            .unwrap()
+            .unwrap();
+        discard_pending_docs(dir.path(), &token_b);
         assert!(!dir.path().join(NEXT_DIR).exists());
         assert_eq!(
             install_pending_docs(dir.path(), KEY, rename),
@@ -2532,7 +2793,9 @@ mod tests {
         // staging process can tell it whose batch that is.
         let dir = folder(Some(KEY));
         let (_stage, exe_b, key_b, readme_b) = new_exe(b"B");
-        stage_pending_docs(dir.path(), &exe_b, &[(&readme_b, "README.txt")], "f").unwrap();
+        let token_b = stage_pending_docs(dir.path(), &exe_b, &[(&readme_b, "README.txt")], "f")
+            .unwrap()
+            .unwrap();
         let child = std::process::Command::new(std::env::current_exe().unwrap())
             .args([
                 "--exact",
@@ -2556,7 +2819,7 @@ mod tests {
         );
         // The swap then fails: the helper's discard drops B's batch, and A
         // starts again with nothing left of it.
-        discard_pending_docs(dir.path(), &key_b);
+        discard_pending_docs(dir.path(), &token_b);
         assert!(!dir.path().join(NEXT_DIR).exists());
         assert_eq!(install_pending_docs(dir.path(), KEY, rename), Pending::None);
         // A batch of another exe a crash left is replaced by the next staging.
@@ -2592,6 +2855,9 @@ mod tests {
             std::fs::create_dir_all(&batch).unwrap();
             std::fs::write(batch.join("THIRD-PARTY-NOTICES.md"), text).unwrap();
             std::fs::write(batch.join(KEY_FILE), key).unwrap();
+            let id = format!("{:032x}", rand::random::<u128>());
+            std::fs::write(batch.join(STAGING_ID_FILE), &id).unwrap();
+            record_batch(dir, &id).unwrap();
         };
         let own = || Some(KEY.to_string());
         // No batch: the key is not even read.
