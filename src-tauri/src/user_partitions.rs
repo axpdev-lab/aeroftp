@@ -4830,6 +4830,44 @@ pub(crate) fn profile_credential_owner_ids(
         .map_err(|e| format!("Read credential owner row: {e}"))
 }
 
+/// Whether an account other than `user` may hold the native Proton session
+/// `uid`: one of its rows holds that session, or it has a saved session this
+/// process cannot read (an account locked by its passphrase), which may be
+/// that one. A row that holds no session is no copy.
+pub(crate) fn another_account_may_hold_session(
+    store: &CredentialStore,
+    user: Option<i64>,
+    uid: &str,
+) -> Result<bool, String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    let rows = conn
+        .prepare(
+            "SELECT user_id, credential_id FROM user_credentials
+             WHERE ?1 IS NULL OR user_id <> ?1 ORDER BY user_id, credential_id",
+        )
+        .and_then(|mut statement| {
+            statement
+                .query_map(params![user], |row| {
+                    Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()
+        })
+        .map_err(|e| format!("Read saved sessions: {e}"))?;
+    let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
+    let root_secret = user_crypto::secret_key_from_bytes(&root_key);
+    for (other, key) in rows.iter().filter(|(_, key)| is_proton_session_key(key)) {
+        match with_user_dek(&conn, &root_secret, *other, |id, dek| {
+            read_credential_with_dek(&conn, id, dek, key)
+        }) {
+            Ok(None) => {}
+            Ok(Some(raw)) if proton_session_uid(&raw).as_deref() != Some(uid) => {}
+            _ => return Ok(true),
+        }
+    }
+    Ok(false)
+}
+
 /// The account that owns legacy unbound/global secrets, for one-time reads
 /// of sessions saved before native Proton had explicit user ownership.
 pub(crate) fn legacy_credential_owner_id() -> Result<Option<i64>, String> {

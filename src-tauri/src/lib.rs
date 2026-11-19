@@ -26016,7 +26016,8 @@ pub(crate) struct SharedImportSecrets {
     /// Profiles whose custom OAuth app was not written, the provider's stored
     /// app being another one.
     pub(crate) kept_oauth_apps: std::collections::HashSet<String>,
-    /// Profiles whose shared secret or native session could not be written.
+    /// Profiles whose shared secret or native session could not be written,
+    /// or whose native session another account on this device may hold.
     pub(crate) failed: std::collections::HashSet<String>,
 }
 
@@ -26134,9 +26135,11 @@ pub(crate) fn restore_shared_import_secrets(
         // Native Proton Drive session, under the key the native provider reads,
         // mirrored into the user's partition with the type the provider writes
         // it with. The fault can be in the file, where a retry could never fix it.
+        // A session another account on this device may hold is not imported:
+        // a sign-out here would revoke it there.
         if let Some(v) = &secrets.proton_native_session {
             #[cfg(feature = "proton-native")]
-            let result = providers::proton_native::vault::restore_session_blocking(
+            let result = providers::proton_native::vault::import_session_blocking(
                 native_owner,
                 profile_id,
                 v,
@@ -26149,10 +26152,20 @@ pub(crate) fn restore_shared_import_secrets(
                 &format!("proton_native_session_{profile_id}"),
                 "proton_native_session",
                 v,
-            );
-            if let Err(e) = result {
-                log::warn!("Import: {profile_id} proton session not restored: {e}");
-                shared.failed.insert(profile_id.clone());
+            )
+            .map(|()| true);
+            match result {
+                Ok(true) => {}
+                Ok(false) => {
+                    log::info!(
+                        "Import: {profile_id} proton session not restored: another account on this device may hold it"
+                    );
+                    shared.failed.insert(profile_id.clone());
+                }
+                Err(e) => {
+                    log::warn!("Import: {profile_id} proton session not restored: {e}");
+                    shared.failed.insert(profile_id.clone());
+                }
             }
         }
     }

@@ -98,6 +98,26 @@ fn session_writes() -> std::sync::MutexGuard<'static, ()> {
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
+/// What the tests observe of this module from outside it.
+#[cfg(test)]
+pub(crate) mod test_seams {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static REVOKES: AtomicUsize = AtomicUsize::new(0);
+
+    /// How many sign-outs on Proton this process has made.
+    pub(crate) fn revokes() -> usize {
+        REVOKES.load(Ordering::SeqCst)
+    }
+
+    /// Counts a sign-out on Proton in place of sending it, so a test never
+    /// reaches Proton's host. Always true: the sign-out is done.
+    pub(super) fn revoke_counted() -> bool {
+        REVOKES.fetch_add(1, Ordering::SeqCst);
+        true
+    }
+}
+
 /// A non-expiring OS lock for a vault key, including a key not created yet.
 /// Keep the file after unlocking: unlinking it could let a second inode be
 /// locked while another process still holds the first one. A crash releases
@@ -608,6 +628,20 @@ pub async fn restore_session(
     profile_id: &str,
     raw: &str,
 ) -> Result<(), ProviderError> {
+    restore(owner, profile_id, raw, false).await.map(|_| ())
+}
+
+/// [`restore_session`]; for an `import`, only into the one account that may
+/// hold the session. A copy another account holds, which a sign-out of this
+/// one would revoke, or a saved session this process cannot read, which may
+/// be that copy, keeps it out: `Ok(false)`, nothing written, and the profile
+/// signs in again. A duplicate stays inside the account its source is in.
+async fn restore(
+    owner: SessionOwner,
+    profile_id: &str,
+    raw: &str,
+    import: bool,
+) -> Result<bool, ProviderError> {
     let mut session = parse(raw)?;
     let store = open_store()?;
     let key = owner.key(Some(profile_id));
@@ -632,6 +666,9 @@ pub async fn restore_session(
     {
         return Err(takeover_changed());
     }
+    if import && held_by_another_account(&store, owner, &session.tokens.uid)? {
+        return Ok(false);
+    }
     let same = match current.filter(|saved| saved.tokens.uid == session.tokens.uid) {
         Some(saved) => Some(saved),
         None => saved_sessions(&store, owner)?
@@ -642,16 +679,57 @@ pub async fn restore_session(
     if let Some(saved) = same {
         session.tokens = saved.tokens;
     }
-    store_session(owner, Some(profile_id), &session)
+    store_session(owner, Some(profile_id), &session)?;
+    Ok(true)
 }
 
-/// Synchronous profile import/duplicate callers keep their existing atomic
+/// Whether an account other than `owner` may hold the session `uid`, as far
+/// as this process can tell: for an account other than the legacy owner, a
+/// vault key (the legacy owner's) that holds it; for any account, a row of
+/// another account that holds it, or one it cannot read.
+fn held_by_another_account(
+    store: &CredentialStore,
+    owner: SessionOwner,
+    uid: &str,
+) -> Result<bool, ProviderError> {
+    if private_account(owner)?.is_some()
+        && vault_sessions(|| store.list_accounts(), |key| store.get(key))?
+            .iter()
+            .any(|(_, saved)| saved.tokens.uid == uid)
+    {
+        return Ok(true);
+    }
+    crate::user_partitions::another_account_may_hold_session(store, owner.user_id, uid)
+        .map_err(ProviderError::Other)
+}
+
+/// Synchronous profile duplicate callers keep their existing atomic
 /// user-selection scope while the async key and UID leases are acquired.
 pub fn restore_session_blocking(
     owner: SessionOwner,
     profile_id: &str,
     raw: &str,
 ) -> Result<(), ProviderError> {
+    restore_blocking(owner, profile_id, raw, false).map(|_| ())
+}
+
+/// The restore of a session an import carries, for a synchronous caller:
+/// `Ok(false)` when another account may hold it, so the profile signs in
+/// again (see [`restore`]).
+pub fn import_session_blocking(
+    owner: SessionOwner,
+    profile_id: &str,
+    raw: &str,
+) -> Result<bool, ProviderError> {
+    restore_blocking(owner, profile_id, raw, true)
+}
+
+fn restore_blocking(
+    owner: SessionOwner,
+    profile_id: &str,
+    raw: &str,
+    import: bool,
+) -> Result<bool, ProviderError> {
     let profile_id = profile_id.to_string();
     let raw = Zeroizing::new(raw.to_string());
     std::thread::spawn(move || {
@@ -659,7 +737,7 @@ pub fn restore_session_blocking(
             .enable_all()
             .build()
             .map_err(|error| ProviderError::Other(format!("Proton session runtime: {error}")))?;
-        runtime.block_on(restore_session(owner, &profile_id, &raw))
+        runtime.block_on(restore(owner, &profile_id, &raw, import))
     })
     .join()
     .map_err(|_| ProviderError::Other("Proton session restore stopped unexpectedly".into()))?
@@ -770,6 +848,10 @@ pub async fn revoke_saved_session(owner: SessionOwner, profile_id: Option<&str>)
         log::info!("Proton: session kept, another saved profile uses it");
         return;
     }
+    #[cfg(test)]
+    if test_seams::revoke_counted() {
+        return;
+    }
     let api = ProtonApi::new(super::app_version::app_version());
     api.set_tokens(Some(session.tokens)).await;
     match tokio::time::timeout(REVOKE_TIMEOUT, super::auth::sign_out(&api)).await {
@@ -877,8 +959,8 @@ impl SessionKeys for VaultKeys {
             )
             .map_err(ProviderError::Other);
         }
-        // Determine owners before writing the global fallback. An identically
-        // named key in another partition can hold a different session.
+        // Determine the owner before writing the global fallback. An
+        // identically named key in its partition can hold a different session.
         let mut owners = if let Some(profile) = key.strip_prefix(SESSION_KEY_PREFIX) {
             crate::user_partitions::profile_credential_owner_ids(&self.store, profile, key)
                 .unwrap_or_else(|error| {
@@ -896,6 +978,15 @@ impl SessionKeys for VaultKeys {
         if key == self.own_key {
             owners.extend(self.owner.user_id);
         }
+        // The vault key is the legacy owner's, and so is the one row this write
+        // carries the pair to. Another account's row of the same name and
+        // session is that account's own copy: a matching session does not
+        // make it the legacy owner's.
+        let legacy = crate::user_partitions::legacy_credential_owner_id().unwrap_or_else(|error| {
+            log::warn!("Proton: the legacy owner could not be read: {error}");
+            None
+        });
+        owners.retain(|user| Some(*user) == legacy);
         owners.sort_unstable();
         owners.dedup();
         let owners: Vec<i64> = owners
@@ -910,8 +1001,8 @@ impl SessionKeys for VaultKeys {
         self.store
             .store(key, &raw)
             .map_err(|error| ProviderError::Other(error.to_string()))?;
-        // Every owner: one that fails, such as a locked account, must not leave the
-        // others on the old session.
+        // Every owner the key names: one that fails, such as a locked
+        // account, must not leave the others on the old session.
         let mut first_failure = None;
         for user in owners {
             if let Err(e) = crate::user_partitions::mirror_credential_for_user_typed(

@@ -336,19 +336,38 @@ fn a_native_session_keeps_to_its_account() {
     // A sign-out revokes on Proton only when no other profile of the same
     // account holds the session; another account's copy does not count. The
     // sign-out of a shared copy leaves the other profile signed in.
+    // The revokes are counted, never sent: a test does not reach Proton.
     assert!(vault::another_profile_holds(store, owner, &key("dup-a"), "shared-uid").unwrap());
-    tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .unwrap()
-        .block_on(vault::end_session(owner, Some("dup-b")))
-        .unwrap();
+    let sign_out = |id: &str| {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(vault::end_session(owner, Some(id)))
+            .unwrap()
+    };
+    let revokes = vault::test_seams::revokes();
+    sign_out("dup-b");
+    assert_eq!(
+        vault::test_seams::revokes(),
+        revokes,
+        "the sign-out of a shared copy sends no revoke"
+    );
     assert_eq!(loaded(owner, "dup-b"), None);
     assert_eq!(loaded(owner, "dup-a").as_deref(), Some("r2"));
     assert!(in_vault("dup-b"));
     store.delete(&key("dup-a")).unwrap();
     store.delete(&key("dup-b")).unwrap();
     assert!(!vault::another_profile_holds(store, owner, &key("dup-a"), "shared-uid").unwrap());
+    // The sign-out of a session no other profile holds revokes it.
+    seed("solo", "solo-uid");
+    sign_out("solo");
+    assert_eq!(
+        vault::test_seams::revokes(),
+        revokes + 1,
+        "the sign-out of a session no other profile holds revokes it"
+    );
+    assert_eq!(loaded(owner, "solo"), None);
 
     // A Copy into another account does not carry the session: the target is
     // told the profile asks to sign in again, and the source keeps it. The
@@ -452,4 +471,154 @@ fn an_unreadable_row_does_not_stop_a_refresh_of_the_other_copies() {
         Some("r2"),
         "a copy the refresh can read takes the rotated pair"
     );
+}
+
+/// A refresh of the legacy owner's session writes the legacy owner's copies
+/// (its vault key and its row) and never the row another account holds of
+/// the same profile id and session: a matching session does not make the
+/// row the legacy owner's.
+#[test]
+fn a_refresh_of_the_legacy_owner_stays_in_its_account() {
+    if !in_isolated_child("a_refresh_of_the_legacy_owner_stays_in_its_account") {
+        return;
+    }
+    let accounts = Accounts::open();
+    let (owner, owners_owner) = (accounts.owner(), accounts.owners_owner());
+    // The source's one-time alignment runs at its first read, before it holds
+    // a copy, so the copy below stays.
+    assert_eq!(loaded(owner, "owners-shared"), None);
+    accounts.add_profile(accounts.legacy, "owners-shared");
+    vault::store_session(
+        owners_owner,
+        Some("owners-shared"),
+        &session("owners-shared-uid", "r1"),
+    )
+    .unwrap();
+    accounts.add_profile(accounts.source.id, "owners-shared");
+    set_user_credential_for(
+        &accounts.conn,
+        &accounts.root_key,
+        accounts.source.id,
+        &key("owners-shared"),
+        "proton_native_session",
+        &raw(&session("owners-shared-uid", "r1")),
+    )
+    .unwrap();
+    assert_eq!(loaded(owner, "owners-shared").as_deref(), Some("r1"));
+    vault::VaultSession::new(
+        owners_owner,
+        Some("owners-shared"),
+        &session("owners-shared-uid", "r1"),
+    )
+    .save(&session("owners-shared-uid", "r2").tokens);
+    assert_eq!(loaded(owners_owner, "owners-shared").as_deref(), Some("r2"));
+    assert_eq!(
+        loaded(owner, "owners-shared").as_deref(),
+        Some("r1"),
+        "the legacy owner's refresh does not write another account's row"
+    );
+}
+
+/// An import brings a native Proton session into an account only when no
+/// other account on this device may hold it: a copy another account holds,
+/// in the vault or in its rows, or a saved session of an account this process
+/// cannot read, keeps it out, and the profile is reported to sign in again.
+/// Its sign-out then sends no revoke, and the account that holds the session
+/// stays signed in.
+#[test]
+fn an_import_brings_no_session_another_account_may_hold() {
+    if !in_isolated_child("an_import_brings_no_session_another_account_may_hold") {
+        return;
+    }
+    let accounts = Accounts::open();
+    let (owner, owners_owner) = (accounts.owner(), accounts.owners_owner());
+    let (legacy, source, target) = (accounts.legacy, accounts.source.id, accounts.target.id);
+    // Whether the import of profile `id` with session `uid` into `user`
+    // reported the profile, which then signs in again.
+    let import = |user: i64, id: &str, uid: &str| {
+        let server = crate::profile_export::ServerProfileExport {
+            id: id.into(),
+            name: id.into(),
+            protocol: Some("proton".into()),
+            options: Some(json!({"proton_mode":"native"})),
+            ..Default::default()
+        };
+        let secrets = HashMap::from([(
+            id.to_string(),
+            crate::profile_export::ProviderSecrets {
+                proton_native_session: Some(raw(&session(uid, "r1"))),
+                ..Default::default()
+            },
+        )]);
+        crate::restore_shared_import_secrets(
+            &accounts.store,
+            user,
+            &[server],
+            &secrets,
+            &HashMap::new(),
+        )
+        .failed
+        .contains(id)
+    };
+
+    // The legacy owner holds the session, and the same export is imported
+    // into the source.
+    accounts.add_profile(legacy, "imported");
+    vault::store_session(
+        owners_owner,
+        Some("imported"),
+        &session("imported-uid", "r1"),
+    )
+    .unwrap();
+    accounts.add_profile(source, "imported");
+    let revokes = vault::test_seams::revokes();
+    assert!(
+        import(source, "imported", "imported-uid"),
+        "the profile is reported to sign in again"
+    );
+    assert_eq!(
+        loaded(owner, "imported"),
+        None,
+        "an import does not bring a session another account holds"
+    );
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(vault::end_session(owner, Some("imported")))
+        .unwrap();
+    assert_eq!(
+        vault::test_seams::revokes(),
+        revokes,
+        "the sign-out of the importing account sends no revoke"
+    );
+    assert_eq!(loaded(owners_owner, "imported").as_deref(), Some("r1"));
+
+    // Nor the other way: the legacy owner does not import a session the
+    // source holds.
+    accounts.seed("source-held", "source-held-uid");
+    accounts.add_profile(legacy, "source-held-copy");
+    assert!(import(legacy, "source-held-copy", "source-held-uid"));
+    assert_eq!(loaded(owners_owner, "source-held-copy"), None);
+    assert_eq!(loaded(owner, "source-held").as_deref(), Some("r1"));
+
+    // A locked account with a saved session may hold any session: while it
+    // does, no session is imported.
+    set_user_credential_with_dek(
+        &accounts.conn,
+        target,
+        &accounts.target_dek,
+        &key("target-held"),
+        "proton_native_session",
+        &raw(&session("target-held-uid", "r1")),
+    )
+    .unwrap();
+    accounts.add_profile(source, "fresh");
+    assert!(import(source, "fresh", "fresh-uid"));
+    assert_eq!(loaded(owner, "fresh"), None);
+
+    // No other account may hold it: the session is imported.
+    delete_user_credential_for(&accounts.conn, target, &key("target-held")).unwrap();
+    assert!(!import(source, "fresh", "fresh-uid"));
+    assert_eq!(loaded(owner, "fresh").as_deref(), Some("r1"));
 }

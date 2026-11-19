@@ -1710,6 +1710,10 @@ async fn native_session_ownership(store: &CredentialStore, active_id: i64, selec
         count(active_id, &vault::session_key(Some("native-gui-copy"))),
         0
     );
+    // An import brings no session another account may hold
+    // (`an_import_brings_no_session_another_account_may_hold`): the legacy
+    // owner's copy goes first, so the account's own export brings it back.
+    vault::delete_session(active, Some("native-shared")).unwrap();
     let directory = tempfile::tempdir().unwrap();
     let file = directory.path().join("native.aeroftp");
     let metadata = crate::export_server_profiles_core(
