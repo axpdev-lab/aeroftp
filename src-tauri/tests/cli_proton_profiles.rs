@@ -122,6 +122,83 @@ fn profile_add_saves_the_client_and_sign_in_reads_it_back() {
     }
 }
 
+/// An rclone import restores the session of a `protondrive` remote in the
+/// active account only while no other account on this device holds it:
+/// imported again into a second account, the profile is reported to sign in
+/// again and holds no session, and the first account keeps its own. Nothing
+/// reaches Proton: no sign-in, no sign-out.
+#[cfg(feature = "proton-native")]
+#[test]
+fn an_rclone_import_into_a_second_account_leaves_the_session_to_the_first() {
+    let root = isolated_cli::root();
+    let root = root.path();
+    let conf = root.join("rclone.conf");
+    std::fs::write(
+        &conf,
+        "[pd]\ntype = protondrive\nusername = someone@example.test\n\
+         client_uid = rclone-uid\nclient_access_token = access-1\n\
+         client_refresh_token = refresh-1\nclient_salted_key_pass = a2V5LXBhc3N3b3JkLTE=\n",
+    )
+    .unwrap();
+    let import = || {
+        let out = cli(
+            root,
+            &[
+                "import",
+                "rclone",
+                conf.to_str().unwrap(),
+                "--apply",
+                "--json",
+            ],
+        );
+        assert_eq!(out.status.code(), Some(0), "{}", describe(&out));
+        let imported = json(&out);
+        let id = imported["servers"][0]["id"]
+            .as_str()
+            .expect("id")
+            .to_string();
+        (id, imported)
+    };
+    let signed_in = |id: &str| {
+        let out = cli(root, &["--json", "proton", "status", id]);
+        assert_eq!(out.status.code(), Some(0), "{}", describe(&out));
+        json(&out)["signed_in"].clone()
+    };
+    let switch = |user: &str| {
+        let out = cli(root, &["users", "switch", user]);
+        assert_eq!(out.status.code(), Some(0), "{}", describe(&out));
+    };
+
+    let (first_id, _) = import();
+    assert_eq!(signed_in(&first_id), serde_json::json!(true), "imported");
+    let listed = json(&cli(root, &["--json", "users", "list"]));
+    let first_user = listed["users"][0]["name"]
+        .as_str()
+        .expect("the account that imported first")
+        .to_string();
+    let added = cli(root, &["users", "add", "second"]);
+    assert_eq!(added.status.code(), Some(0), "{}", describe(&added));
+    switch("second");
+
+    let (second_id, imported) = import();
+    let warnings = imported["appliedSummary"]["signInWarnings"].clone();
+    assert!(
+        warnings
+            .as_array()
+            .is_some_and(|warnings| warnings.iter().any(|warning| warning
+                .as_str()
+                .is_some_and(|warning| warning.contains(&second_id)))),
+        "the profile is reported to sign in again: {imported}"
+    );
+    assert_eq!(
+        signed_in(&second_id),
+        serde_json::json!(false),
+        "an rclone import does not bring a session another account holds"
+    );
+    switch(&first_user);
+    assert_eq!(signed_in(&first_id), serde_json::json!(true));
+}
+
 #[test]
 fn proton_mode_and_sign_in_refuse_what_is_not_a_proton_profile() {
     let root = isolated_cli::root();

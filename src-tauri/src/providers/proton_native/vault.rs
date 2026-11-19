@@ -837,6 +837,11 @@ pub fn restore_session_blocking(
     restore_blocking(owner, profile_id, raw, false).map(|_| ())
 }
 
+/// Why an import left a profile without the session it carried: another
+/// account on this device may hold it (see [`import_session_blocking`]).
+pub const IMPORT_WITHHELD: &str =
+    "another account on this device may hold its Proton session, so it signs in again";
+
 /// The restore of a session an import carries, for a synchronous caller:
 /// `Ok(false)` when another account may hold it, so the profile signs in
 /// again (see [`restore`]).

@@ -309,21 +309,28 @@ fn store_rclone_provider_secrets(
                 }
             }
         }
-        // The cached session of an rclone `protondrive` remote, under the key
-        // the native Proton Drive client reads.
+        // The cached session of an rclone `protondrive` remote, restored for
+        // the active account as an `.aeroftp` import restores one: never into
+        // an account while another on this device may hold it, since a
+        // sign-out here would revoke it there.
+        #[cfg(feature = "proton-native")]
         if let Some(ref session_json) = secrets.proton_native_session {
             if protocol == "proton" {
-                if let Err(e) = crate::user_partitions::store_active_credential_typed_dual(
-                    &store,
-                    &format!("proton_native_session_{}", profile_id),
-                    "proton_native_session",
-                    session_json,
-                ) {
-                    log::warn!("rclone bridge: proton session store failed for {profile_id}: {e}");
-                    failures.push((
-                        profile_id.clone(),
-                        format!("its Proton session was not stored: {e}"),
-                    ));
+                use crate::providers::proton_native::vault;
+                match vault::SessionOwner::current().and_then(|owner| {
+                    vault::import_session_blocking(owner, profile_id, session_json)
+                }) {
+                    Ok(true) => {}
+                    Ok(false) => failures.push((profile_id.clone(), vault::IMPORT_WITHHELD.into())),
+                    Err(e) => {
+                        log::warn!(
+                            "rclone bridge: proton session store failed for {profile_id}: {e}"
+                        );
+                        failures.push((
+                            profile_id.clone(),
+                            format!("its Proton session was not stored: {e}"),
+                        ));
+                    }
                 }
             }
         }

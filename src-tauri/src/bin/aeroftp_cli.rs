@@ -42331,6 +42331,7 @@ fn rclone_import_json(
             "profilesAppended": summary.profiles_appended,
             "profilesRenamed": summary.profiles_renamed,
             "oauthAppWarnings": summary.oauth_app_warnings,
+            "signInWarnings": summary.sign_in_warnings,
             "security": summary.security,
         });
     }
@@ -42476,6 +42477,9 @@ struct RcloneApplySummary {
     profiles_renamed: Vec<ftp_client_gui_lib::util::profile_name::RenamedProfile>,
     /// One line per profile whose OAuth app was not kept.
     oauth_app_warnings: Vec<String>,
+    /// One line per profile that signs in again: the session it carried was
+    /// not restored.
+    sign_in_warnings: Vec<String>,
     /// The security-relaxing options of the stored remotes: reset to their
     /// safe state, or kept with --keep-insecure-options (#1506 Requested 198).
     security: Vec<ftp_client_gui_lib::profile_import_plan::ImportedSecurity>,
@@ -42604,6 +42608,10 @@ async fn apply_rclone_import_to_vault(
             .find(|s| s.id == id)
             .map(|s| s.protocol.clone().unwrap_or_default().to_lowercase())
     };
+    // The native Proton sessions of the profiles the list takes, restored once
+    // it has taken them.
+    #[cfg(feature = "proton-native")]
+    let mut proton_sessions = Vec::new();
     // Secrets and list as one operation: a failure leaves neither, and a save made
     // meanwhile is kept. Existing entries are preserved; ids that already exist in
     // the list are skipped, with their secrets, to keep the operation idempotent.
@@ -42616,8 +42624,11 @@ async fn apply_rclone_import_to_vault(
                 profiles_appended: 0,
                 profiles_renamed: Vec::new(),
                 oauth_app_warnings: Vec::new(),
+                sign_in_warnings: Vec::new(),
                 security: Vec::new(),
             };
+            #[cfg(feature = "proton-native")]
+            proton_sessions.clear();
             // Ids are minted per parse, so one is held only if the list took it since.
             // It then keeps its secrets, as a skipped `.aeroftp` profile does.
             let held = |id: &str| {
@@ -42666,13 +42677,10 @@ async fn apply_rclone_import_to_vault(
                 }
                 // The cached session of an rclone `protondrive` remote, under the
                 // key the native Proton Drive client reads.
+                #[cfg(feature = "proton-native")]
                 if let Some(ref session_json) = secrets.proton_native_session {
                     if protocol == "proton" {
-                        writes.push(SecretWrite::new(
-                            format!("proton_native_session_{profile_id}"),
-                            Some("proton_native_session"),
-                            session_json,
-                        ));
+                        proton_sessions.push((profile_id, session_json));
                     }
                 }
             }
@@ -42724,14 +42732,37 @@ async fn apply_rclone_import_to_vault(
             }
         }
     }
+    // As the GUI and an `.aeroftp` import restore one: never into an account
+    // while another on this device may hold it, since a sign-out here would
+    // revoke it there.
+    #[cfg(feature = "proton-native")]
+    let sign_in_warnings: Vec<String> = {
+        use ftp_client_gui_lib::providers::proton_native::vault;
+        let owner = vault::SessionOwner::for_user(Some(target.id));
+        proton_sessions
+            .into_iter()
+            .filter_map(|(profile_id, session_json)| {
+                match vault::import_session_blocking(owner, profile_id, session_json) {
+                    Ok(true) => None,
+                    Ok(false) => Some(format!("'{profile_id}': {}", vault::IMPORT_WITHHELD)),
+                    Err(e) => Some(format!(
+                        "the Proton session of '{profile_id}' was not stored, so it signs in again: {e}"
+                    )),
+                }
+            })
+            .collect()
+    };
+    #[cfg(not(feature = "proton-native"))]
+    let sign_in_warnings: Vec<String> = Vec::new();
     // Read from the list stored: only the write knows which profile had a
     // name first (an older list may hold two of one name).
-    for warning in &oauth_app_warnings {
+    for warning in oauth_app_warnings.iter().chain(&sign_in_warnings) {
         eprintln!("Warning: {}", sanitize_filename(warning));
     }
     Ok(RcloneApplySummary {
         profiles_renamed: renamed_by_write(&profiles, &stored),
         oauth_app_warnings,
+        sign_in_warnings,
         ..summary
     })
 }

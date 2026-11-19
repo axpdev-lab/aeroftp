@@ -634,6 +634,100 @@ fn an_import_brings_no_session_another_account_may_hold() {
     assert_eq!(loaded(owner, "fresh").as_deref(), Some("r1"));
 }
 
+/// An rclone import brings the session of a `protondrive` remote into the
+/// active account under the rule of an `.aeroftp` import: when the legacy
+/// owner already holds it, the import into another account leaves it out and
+/// reports the profile to sign in again, whose sign-out then sends no revoke,
+/// and the legacy owner stays signed in.
+#[test]
+fn an_rclone_import_brings_no_session_another_account_holds() {
+    if !in_isolated_child("an_rclone_import_brings_no_session_another_account_holds") {
+        return;
+    }
+    let accounts = Accounts::open();
+    let (owner, owners_owner) = (accounts.owner(), accounts.owners_owner());
+    let conf = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(
+        conf.path(),
+        "[pd]\ntype = protondrive\nusername = someone@example.test\n\
+         client_uid = rclone-uid\nclient_access_token = access-1\n\
+         client_refresh_token = refresh-1\nclient_salted_key_pass = a2V5LXBhc3N3b3JkLTE=\n",
+    )
+    .unwrap();
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    // The imported profile's id, and the reasons the import gave for it.
+    let import = || {
+        let imported = runtime
+            .block_on(crate::bridge_commands::import_bridge_config(
+                "rclone".into(),
+                conf.path().to_string_lossy().into_owned(),
+                None,
+            ))
+            .unwrap();
+        let reasons: Vec<String> = imported["warnings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|warning| warning["reason"].as_str().map(str::to_string))
+            .collect();
+        (
+            imported["servers"][0]["id"].as_str().unwrap().to_string(),
+            reasons,
+        )
+    };
+    let uid_of = |owner: vault::SessionOwner, id: &str| {
+        vault::load_session(owner, Some(id))
+            .unwrap()
+            .map(|session| session.tokens.uid)
+    };
+
+    // The legacy owner, the active account, imports the remote.
+    let (owners_id, _) = import();
+    assert_eq!(
+        uid_of(owners_owner, &owners_id).as_deref(),
+        Some("rclone-uid")
+    );
+
+    // The same file, imported into the source once it is the active account,
+    // unlocked as the window holds it.
+    cli_set_active_user(&accounts.store, accounts.source.id).unwrap();
+    unlock_user_transient(
+        &accounts.conn,
+        &accounts.root_key,
+        accounts.source.id,
+        Some(SOURCE_PASSWORD),
+    )
+    .unwrap();
+    let (id, reasons) = import();
+    assert!(
+        reasons
+            .iter()
+            .any(|reason| reason == vault::IMPORT_WITHHELD),
+        "the profile is reported to sign in again: {reasons:?}"
+    );
+    assert_eq!(
+        uid_of(owner, &id),
+        None,
+        "an rclone import does not bring a session another account holds"
+    );
+    let revokes = vault::test_seams::revokes();
+    runtime
+        .block_on(vault::end_session(owner, Some(&id)))
+        .unwrap();
+    assert_eq!(
+        vault::test_seams::revokes(),
+        revokes,
+        "the sign-out of the importing account sends no revoke"
+    );
+    assert_eq!(
+        uid_of(owners_owner, &owners_id).as_deref(),
+        Some("rclone-uid")
+    );
+}
+
 /// A refresh writes a copy of its session only while the copy still holds
 /// it, and never creates one: the alignment drops an account's copy of a
 /// session the legacy owner holds without the session's lease, and when it
