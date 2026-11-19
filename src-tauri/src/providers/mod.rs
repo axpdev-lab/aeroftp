@@ -588,20 +588,73 @@ pub(crate) fn unescape_xml_entities(s: &str) -> String {
     if !s.contains('&') {
         return s.to_string();
     }
-    s.replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&quot;", "\"")
-        .replace("&#34;", "\"")
-        .replace("&#x22;", "\"")
-        .replace("&#X22;", "\"")
-        .replace("&apos;", "'")
-        .replace("&#39;", "'")
-        .replace("&#x27;", "'")
-        .replace("&#X27;", "'")
-        .replace("&#38;", "&")
-        .replace("&#x26;", "&")
-        .replace("&#X26;", "&")
-        .replace("&amp;", "&")
+    // One pass over every reference, as XML decodes it: the five named
+    // entities and any decimal or hexadecimal one, zero padded or not
+    // (`&#034;`, `&#x0022;`). A list of spellings always missed one, and a
+    // quote that stayed encoded let a credential scrub stop short.
+    static REFERENCE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(r"&(?:#([0-9]{1,10})|#[xX]([0-9A-Fa-f]{1,8})|(lt|gt|quot|apos|amp));")
+            .unwrap()
+    });
+    REFERENCE
+        .replace_all(s, |found: &regex::Captures| {
+            let number = match (found.get(1), found.get(2)) {
+                (Some(decimal), _) => decimal.as_str().parse::<u32>().ok(),
+                (_, Some(hex)) => u32::from_str_radix(hex.as_str(), 16).ok(),
+                _ => None,
+            };
+            let decoded = match (number, found.get(3).map(|name| name.as_str())) {
+                (Some(code), _) => char::from_u32(code)
+                    // A control character stays encoded: decoded, an escape
+                    // sequence would reach a terminal through the CLI.
+                    .filter(|c| !c.is_control() || matches!(c, '\t' | '\n' | '\r'))
+                    .map(String::from),
+                (None, Some("lt")) => Some("<".to_string()),
+                (None, Some("gt")) => Some(">".to_string()),
+                (None, Some("quot")) => Some("\"".to_string()),
+                (None, Some("apos")) => Some("'".to_string()),
+                (None, Some("amp")) => Some("&".to_string()),
+                _ => None,
+            };
+            decoded.unwrap_or_else(|| found[0].to_string())
+        })
+        .into_owned()
+}
+
+/// `s` decoded until no reference is left (at most a few rounds), for text
+/// that is scrubbed for credentials and then shown. A server can escape a
+/// value twice (`&amp;quot;`); scrubbing the once-decoded text would leave a
+/// quote encoded and the value after it unmatched.
+pub(crate) fn fully_unescaped(s: &str) -> String {
+    let mut text = s.to_string();
+    for _ in 0..4 {
+        let next = unescape_xml_entities(&text);
+        if next == text {
+            break;
+        }
+        text = next;
+    }
+    text
+}
+
+/// `text` with every value a session sent a server replaced by
+/// `[REDACTED]`, as sent and percent-encoded. A server can only reflect what
+/// it received, so a value is caught in any syntax around it. Values shorter
+/// than eight bytes are left to the caller: replacing them would garble
+/// ordinary words.
+pub(crate) fn without_sent_values(text: &str, sent: &[String]) -> String {
+    let mut forms: Vec<String> = sent
+        .iter()
+        .filter(|value| value.len() >= 8)
+        .flat_map(|value| [value.clone(), urlencoding::encode(value).into_owned()])
+        .collect();
+    forms.sort_by_key(|form| std::cmp::Reverse(form.len()));
+    forms.dedup();
+    let mut shown = text.to_string();
+    for form in forms {
+        shown = shown.replace(&form, "[REDACTED]");
+    }
+    shown
 }
 
 /// The start of an error response's body, for a message. At most `max`
@@ -4952,6 +5005,16 @@ mod tests {
         assert_eq!(unescape_xml_entities("&lt;tag&gt;"), "<tag>");
         assert_eq!(unescape_xml_entities("say &quot;hi&quot;"), "say \"hi\"");
         assert_eq!(unescape_xml_entities("&#39;x&#39;"), "'x'");
+        // Any numeric reference, zero padded or not, decimal or hexadecimal.
+        assert_eq!(unescape_xml_entities("&#034;a&#x0022;b&#X22;"), "\"a\"b\"");
+        // One pass, as XML: a twice-escaped quote decodes once.
+        assert_eq!(unescape_xml_entities("&amp;quot;"), "&quot;");
+        assert_eq!(fully_unescaped("&amp;quot;x&amp;#034;"), "\"x\"");
+        // A control character stays encoded; an unknown name is kept.
+        assert_eq!(
+            unescape_xml_entities("&#27;[31m &nbsp;"),
+            "&#27;[31m &nbsp;"
+        );
         // No ampersand: returns input unchanged (no-op for plain/JSON errors).
         assert_eq!(unescape_xml_entities("plain error"), "plain error");
     }

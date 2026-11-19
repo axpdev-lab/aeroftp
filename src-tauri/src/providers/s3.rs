@@ -583,8 +583,9 @@ fn format_s3_error(
     status: reqwest::StatusCode,
     body: &str,
     retry_header: Option<&str>,
+    sent: &[String],
 ) -> String {
-    let mut msg = format!("{} ({}): {}", prefix, status, s3_error_text(body));
+    let mut msg = format!("{} ({}): {}", prefix, status, s3_error_text(body, sent));
     if let Some(tail) = s3_retry_marker_tail(status.as_u16(), body, retry_header) {
         msg.push_str(&tail);
     }
@@ -595,60 +596,28 @@ fn format_s3_error(
 /// message before it reaches `sanitize_api_error`. Ordinary S3 error messages
 /// stay intact.
 fn scrub_s3_reflected_credentials(text: &str) -> String {
-    static RULES: std::sync::LazyLock<Vec<(regex::Regex, &'static str)>> = std::sync::LazyLock::new(
-        || {
+    // A credential field, its name bare or quoted (`x-amz-security-token:`,
+    // `"SessionToken": `), then its value. The text is fully decoded first,
+    // so these two rules see every quote as a quote.
+    const FIELD: &str = r#"(?i)(["']?\b(?:x-amz-(?:security-token|credential|signature|server-side-encryption-customer-key)|AWSAccessKeyId|SessionToken|SecurityToken|Credential|Signature)["']?\s*[:=]\s*)"#;
+    static RULES: std::sync::LazyLock<[(regex::Regex, &'static str); 2]> =
+        std::sync::LazyLock::new(|| {
             [
-                // Quoted header/parameter reflections first so quotes are preserved
-                // and inner spaces are scrubbed cleanly.
+                // A quoted value, spaces and all.
                 (
-                    r#"(?i)(x-amz-(?:security-token|credential|signature|server-side-encryption-customer-key)\s*[:=]\s*['"])[^'"]+(['"])"#,
-                    "$1[REDACTED]$2",
+                    regex::Regex::new(&format!(r#"{FIELD}(["'])[^"']*(["'])"#)).unwrap(),
+                    "$1$2[REDACTED]$3",
                 ),
+                // A bare value, up to the next delimiter.
                 (
-                    r#"(?i)((?:AWSAccessKeyId|SessionToken|SecurityToken)\s*[:=]\s*['"])[^'"]+(['"])"#,
-                    "$1[REDACTED]$2",
-                ),
-                // Entity-quoted header/parameter reflections (e.g. double-escaped &amp;quot;...&amp;quot;)
-                (
-                    r"(?i)(x-amz-(?:security-token|credential|signature|server-side-encryption-customer-key)\s*[:=]\s*)(?:&(?:quot|apos|#34|#39|#x22|#x27);)[^\s<>]+",
-                    "$1[REDACTED]",
-                ),
-                (
-                    r"(?i)((?:AWSAccessKeyId|SessionToken|SecurityToken)\s*[:=]\s*)(?:&(?:quot|apos|#34|#39|#x22|#x27);)[^\s<>]+",
-                    "$1[REDACTED]",
-                ),
-                // Unquoted colon-delimited header reflections (may contain `&` if double-escaped)
-                (
-                    r"(?i)(x-amz-(?:security-token|credential|signature|server-side-encryption-customer-key)\s*:\s*)[^\s,;'\x22<>)\]}]+",
-                    "$1[REDACTED]",
-                ),
-                (
-                    r"(?i)((?:AWSAccessKeyId|SessionToken|SecurityToken)\s*:\s*)[^\s,;'\x22<>)\]}]+",
-                    "$1[REDACTED]",
-                ),
-                // Unquoted equals-delimited query/parameter reflections (`&` terminates a param)
-                (
-                    r"(?i)(x-amz-(?:security-token|credential|signature|server-side-encryption-customer-key)\s*=\s*)[^\s,;'\x22&<>)\]}]+",
-                    "$1[REDACTED]",
-                ),
-                (
-                    r"(?i)((?:AWSAccessKeyId|SessionToken|SecurityToken)\s*=\s*)[^\s,;'\x22&<>)\]}]+",
-                    "$1[REDACTED]",
-                ),
-                // SigV4 Credential=... / Signature=... fragments
-                (
-                    r"(?i)(\b(?:Credential|Signature)\s*=\s*)[^\s,;'\x22&<>)\]}]+",
+                    regex::Regex::new(&format!(r#"{FIELD}([^\s,;'"&<>)\]}}]+)"#)).unwrap(),
                     "$1[REDACTED]",
                 ),
             ]
-            .into_iter()
-            .map(|(pattern, replacement)| (regex::Regex::new(pattern).unwrap(), replacement))
-            .collect()
-        },
-    );
+        });
     let mut out = text.to_string();
-    for (re, replacement) in RULES.iter() {
-        out = re.replace_all(&out, *replacement).into_owned();
+    for (rule, replacement) in RULES.iter() {
+        out = rule.replace_all(&out, *replacement).into_owned();
     }
     out
 }
@@ -657,13 +626,18 @@ fn scrub_s3_reflected_credentials(text: &str) -> String {
 /// sanitized, or only its length. The rest of the reply can name the request
 /// (`<Resource>` is the bucket and key path, `<Key>` the object), so it stays
 /// out of the error.
-fn s3_error_text(body: &str) -> String {
+///
+/// `sent` is what this session sent the server as a secret (its session
+/// token): an echo of it is removed in any syntax, before the field rules.
+fn s3_error_text(body: &str, sent: &[String]) -> String {
     match s3_error_code_and_message(body) {
         Some(detail) => {
-            // Decode XML entities once before scrubbing so escaped quotes or
-            // numeric character references cannot bypass credential redaction.
-            let decoded = super::unescape_xml_entities(&detail);
-            super::sanitize_plain_error(&scrub_s3_reflected_credentials(&decoded))
+            // Fully decoded first, so no escaped quote or reference can stop
+            // a rule short of the value.
+            let decoded = super::fully_unescaped(&detail);
+            let scrubbed =
+                scrub_s3_reflected_credentials(&super::without_sent_values(&decoded, sent));
+            super::sanitize_plain_error(&scrubbed)
         }
         None if body.is_empty() => "no message".to_string(),
         None => format!("a reply of {} bytes with no S3 error code", body.len()),
@@ -1502,7 +1476,13 @@ impl S3Provider {
             status: status.as_u16(),
             code: self.extract_xml_tag(body, "Code"),
             operation,
-            message: format_s3_error(operation.name(), status, body, retry_after),
+            message: format_s3_error(
+                operation.name(),
+                status,
+                body,
+                retry_after,
+                &self.sent_secrets(),
+            ),
         }
     }
 
@@ -1673,6 +1653,30 @@ impl S3Provider {
     /// expire, so long operations (and slow multipart uploads) never sign with
     /// a token that lapses mid-flight. 5 minutes mirrors the AWS SDK default.
     const STS_REFRESH_THRESHOLD_SECS: i64 = 300;
+
+    /// The secrets this session sends a server: the session token, base or
+    /// STS-issued. An S3 error built from a reply never repeats them.
+    fn sent_secrets(&self) -> Vec<String> {
+        let mut sent: Vec<String> = self
+            .config
+            .session_token
+            .iter()
+            .map(|token| token.expose_secret().to_string())
+            .collect();
+        let temporary = self
+            .temp_credentials
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if let Some(credentials) = temporary.as_ref() {
+            sent.push(credentials.session_token.expose_secret().to_string());
+        }
+        sent
+    }
+
+    /// `s3_error_text` with this session's secrets.
+    fn reply_text(&self, body: &str) -> String {
+        s3_error_text(body, &self.sent_secrets())
+    }
 
     /// A consistent snapshot of the credentials the data-plane signers must
     /// use: the STS-issued temporary credentials when a role has been assumed
@@ -2810,7 +2814,7 @@ impl S3Provider {
                     return Err(ProviderError::ServerError(format!(
                         "FileLu safe rename write failed ({}): {}",
                         put_status,
-                        s3_error_text(&put_body)
+                        self.reply_text(&put_body)
                     )));
                 }
             }
@@ -2818,7 +2822,7 @@ impl S3Provider {
                 return Err(ProviderError::ServerError(format!(
                     "FileLu safe rename write failed ({}): {}",
                     put_status,
-                    s3_error_text(&put_body)
+                    self.reply_text(&put_body)
                 )));
             }
         }
@@ -3297,7 +3301,13 @@ impl S3Provider {
             if let Some(message) = self.fastly_region_mismatch_hint(status.as_u16(), &body) {
                 return Err(ProviderError::InvalidConfig(message));
             }
-            let message = format_s3_error("ListBuckets failed", status, &body, None);
+            let message = format_s3_error(
+                "ListBuckets failed",
+                status,
+                &body,
+                None,
+                &self.sent_secrets(),
+            );
             return if matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN) {
                 Err(ProviderError::AuthenticationFailed(message))
             } else {
@@ -4636,7 +4646,7 @@ impl S3Provider {
                         error: ProviderError::ServerError(format!(
                             "Copy failed ({}): {}",
                             status,
-                            s3_error_text(&body)
+                            self.reply_text(&body)
                         )),
                         // A 200 carries no verdict on the request headers.
                         status: None,
@@ -4653,6 +4663,7 @@ impl S3Provider {
                     status,
                     &body,
                     retry_header.as_deref(),
+                    &self.sent_secrets(),
                 )),
                 status: Some(status),
                 code: body
@@ -6075,7 +6086,7 @@ impl StorageProvider for S3Provider {
                                 let retry_body = retry.text().await.unwrap_or_default();
                                 Err(ProviderError::AuthenticationFailed(format!(
                                     "S3 auth error: {}",
-                                    s3_error_text(&retry_body)
+                                    self.reply_text(&retry_body)
                                 )))
                             }
                         };
@@ -6084,7 +6095,7 @@ impl StorageProvider for S3Provider {
 
                 Err(ProviderError::AuthenticationFailed(format!(
                     "S3 auth error: {}",
-                    s3_error_text(&body)
+                    self.reply_text(&body)
                 )))
             }
             StatusCode::NOT_FOUND => Err(ProviderError::NotFound(format!(
@@ -6101,7 +6112,7 @@ impl StorageProvider for S3Provider {
                 Err(ProviderError::ConnectionFailed(format!(
                     "S3 error ({}): {}",
                     status,
-                    s3_error_text(&body)
+                    self.reply_text(&body)
                 )))
             }
         }
@@ -6200,7 +6211,7 @@ impl StorageProvider for S3Provider {
                     return Err(ProviderError::ServerError(format!(
                         "List failed ({}): {}",
                         status,
-                        s3_error_text(&body)
+                        self.reply_text(&body)
                     )));
                 }
             }
@@ -6875,6 +6886,7 @@ impl StorageProvider for S3Provider {
                 status,
                 &body,
                 retry_header.as_deref(),
+                &self.sent_secrets(),
             )));
         };
 
@@ -6914,6 +6926,7 @@ impl StorageProvider for S3Provider {
                     status,
                     &body,
                     retry_header.as_deref(),
+                    &self.sent_secrets(),
                 )))
             }
         }
@@ -7495,7 +7508,7 @@ impl StorageProvider for S3Provider {
                 let body = response.text().await.unwrap_or_default();
                 return Err(ProviderError::ServerError(format!(
                     "Search failed: {}",
-                    s3_error_text(&body)
+                    self.reply_text(&body)
                 )));
             }
 
@@ -8160,7 +8173,7 @@ impl StorageProvider for S3Provider {
                 return Err(ProviderError::ServerError(format!(
                     "ListObjectVersions failed ({}): {}",
                     status,
-                    s3_error_text(&body)
+                    self.reply_text(&body)
                 )));
             }
 
@@ -8441,7 +8454,7 @@ impl StorageProvider for S3Provider {
                 Err(ProviderError::TransferFailed(format!(
                     "Download version failed ({}): {}",
                     status,
-                    s3_error_text(&body)
+                    self.reply_text(&body)
                 )))
             }
         }
@@ -8501,7 +8514,7 @@ impl StorageProvider for S3Provider {
                 Err(ProviderError::ServerError(format!(
                     "Restore version failed ({}): {}",
                     status,
-                    s3_error_text(&body)
+                    self.reply_text(&body)
                 )))
             }
         }
@@ -8539,7 +8552,7 @@ impl StorageProvider for S3Provider {
                 Err(ProviderError::ServerError(format!(
                     "Delete version failed ({}): {}",
                     status,
-                    s3_error_text(&body)
+                    self.reply_text(&body)
                 )))
             }
         }
@@ -8596,7 +8609,7 @@ impl StorageProvider for S3Provider {
                 return Err(ProviderError::ServerError(format!(
                     "ListObjectVersions failed ({}): {}",
                     status,
-                    s3_error_text(&body)
+                    self.reply_text(&body)
                 )));
             }
 
@@ -8837,7 +8850,7 @@ impl S3Provider {
                 Err(ProviderError::ServerError(format!(
                     "Change storage class failed ({}): {}",
                     status,
-                    s3_error_text(&body)
+                    self.reply_text(&body)
                 )))
             }
         }
@@ -8921,7 +8934,7 @@ impl S3Provider {
                 Err(ProviderError::ServerError(format!(
                     "Glacier restore failed ({}): {}",
                     status,
-                    s3_error_text(&body)
+                    self.reply_text(&body)
                 )))
             }
         }
@@ -8961,7 +8974,7 @@ impl S3Provider {
             return Err(ProviderError::ServerError(format!(
                 "GetObjectTagging failed ({}): {}",
                 status,
-                s3_error_text(&body)
+                self.reply_text(&body)
             )));
         }
 
@@ -9123,7 +9136,7 @@ impl S3Provider {
                 Err(ProviderError::ServerError(format!(
                     "PutObjectTagging failed ({}): {}",
                     status,
-                    s3_error_text(&body)
+                    self.reply_text(&body)
                 )))
             }
         }
@@ -9161,7 +9174,7 @@ impl S3Provider {
                 Err(ProviderError::ServerError(format!(
                     "DeleteObjectTagging failed ({}): {}",
                     status,
-                    s3_error_text(&body)
+                    self.reply_text(&body)
                 )))
             }
         }
@@ -9276,7 +9289,7 @@ impl S3Provider {
                     return Err(ProviderError::ServerError(format!(
                         "List recursive failed ({}): {}",
                         status,
-                        s3_error_text(&body)
+                        self.reply_text(&body)
                     )));
                 }
             }
@@ -19945,6 +19958,7 @@ mod tests {
             reqwest::StatusCode::FORBIDDEN,
             body,
             None,
+            &[],
         );
         assert_eq!(
             msg,
@@ -19955,6 +19969,7 @@ mod tests {
             reqwest::StatusCode::BAD_GATEWAY,
             "upstream down",
             None,
+            &[],
         );
         // A reply with no S3 error code is shown by its size: a proxy page or
         // a gateway text can carry the request path or a token.
@@ -19962,7 +19977,13 @@ mod tests {
             plain,
             "GET failed (502 Bad Gateway): a reply of 13 bytes with no S3 error code"
         );
-        let empty = format_s3_error("GET failed", reqwest::StatusCode::BAD_GATEWAY, "", None);
+        let empty = format_s3_error(
+            "GET failed",
+            reqwest::StatusCode::BAD_GATEWAY,
+            "",
+            None,
+            &[],
+        );
         assert_eq!(empty, "GET failed (502 Bad Gateway): no message");
     }
 
@@ -19971,16 +19992,34 @@ mod tests {
     #[test]
     fn an_s3_error_never_shows_the_resource_it_names() {
         let body = "<Error><Code>NoSuchKey</Code><Message>The specified key does not exist.</Message><Key>private/tax-2026.pdf</Key><Resource>/bucket/private/tax-2026.pdf</Resource><RequestId>4442587FB7D0A2F9</RequestId></Error>";
-        let msg = format_s3_error("GET failed", reqwest::StatusCode::NOT_FOUND, body, None);
+        let msg = format_s3_error(
+            "GET failed",
+            reqwest::StatusCode::NOT_FOUND,
+            body,
+            None,
+            &[],
+        );
         assert_eq!(
             msg,
             "GET failed (404 Not Found): NoSuchKey: The specified key does not exist."
         );
         let unclosed = "<Error><Code>AccessDenied</Code><Message>denied<Resource>/mount/opaque-capability</Resource></Error>";
-        let msg = format_s3_error("GET failed", reqwest::StatusCode::FORBIDDEN, unclosed, None);
+        let msg = format_s3_error(
+            "GET failed",
+            reqwest::StatusCode::FORBIDDEN,
+            unclosed,
+            None,
+            &[],
+        );
         assert_eq!(msg, "GET failed (403 Forbidden): AccessDenied");
         let bare = "<Error><Resource>/bucket/private/tax-2026.pdf</Resource></Error>";
-        let msg = format_s3_error("GET failed", reqwest::StatusCode::NOT_FOUND, bare, None);
+        let msg = format_s3_error(
+            "GET failed",
+            reqwest::StatusCode::NOT_FOUND,
+            bare,
+            None,
+            &[],
+        );
         assert!(!msg.contains("tax-2026"), "{msg}");
     }
 
@@ -19995,6 +20034,7 @@ mod tests {
             reqwest::StatusCode::BAD_REQUEST,
             reflected,
             None,
+            &[],
         );
         assert!(!msg.contains("FwoGZXIvYXdzEBAaDK9988776655"), "{msg}");
         assert!(msg.contains("InvalidToken"), "{msg}");
@@ -20006,6 +20046,7 @@ mod tests {
             reqwest::StatusCode::BAD_REQUEST,
             quoted,
             None,
+            &[],
         );
         assert!(!msg.contains("FwoGZXIvYXdzEBAaDKquoted123"), "{msg}");
         assert!(!msg.contains("AKIAIOSFODNN7EXAMPLE"), "{msg}");
@@ -20018,6 +20059,7 @@ mod tests {
             reqwest::StatusCode::BAD_REQUEST,
             xml_quoted,
             None,
+            &[],
         );
         assert!(!msg.contains("DUMMYSESSION123"), "{msg}");
         assert!(msg.contains("[REDACTED]"), "{msg}");
@@ -20028,6 +20070,7 @@ mod tests {
             reqwest::StatusCode::BAD_REQUEST,
             numeric_quoted,
             None,
+            &[],
         );
         assert!(!msg.contains("NUMSESSION456"), "{msg}");
         assert!(!msg.contains("HEXSIG789"), "{msg}");
@@ -20038,11 +20081,69 @@ mod tests {
             reqwest::StatusCode::BAD_REQUEST,
             double_escaped,
             None,
+            &[],
         );
         assert!(!msg.contains("DBLSESSION000"), "{msg}");
 
+        // Zero-padded decimal and hexadecimal references, and a quoted field
+        // name (JSON), reach the field rules fully decoded.
+        for (reflected, secret) in [
+            (
+                "x-amz-security-token: &#034;PADDEDDEC111&#034;",
+                "PADDEDDEC111",
+            ),
+            (
+                "x-amz-security-token: &#x0022;PADDEDHEX222&#x0022;",
+                "PADDEDHEX222",
+            ),
+            (
+                "{&quot;x-amz-security-token&quot;:&quot;JSONFIELD333&quot;}",
+                "JSONFIELD333",
+            ),
+            (r#"{"SessionToken": "JSON SPACED 444"}"#, "SPACED 444"),
+        ] {
+            let body =
+                format!("<Error><Code>InvalidToken</Code><Message>{reflected}</Message></Error>");
+            let msg = format_s3_error(
+                "List failed",
+                reqwest::StatusCode::BAD_REQUEST,
+                &body,
+                None,
+                &[],
+            );
+            assert!(!msg.contains(secret), "{secret} in {msg}");
+            assert!(msg.contains("[REDACTED]"), "{msg}");
+        }
+
+        // The token this session sent is removed in any syntax, as sent or
+        // percent-encoded, with no field name next to it.
+        let sent = vec!["FQoGZXIvYXdzE+sent/token==".to_string()];
+        for echoed in [
+            "FQoGZXIvYXdzE+sent/token==",
+            "FQoGZXIvYXdzE%2Bsent%2Ftoken%3D%3D",
+        ] {
+            let body = format!("<Error><Code>ExpiredToken</Code><Message>token [{echoed}] expired</Message></Error>");
+            let msg = format_s3_error(
+                "List failed",
+                reqwest::StatusCode::BAD_REQUEST,
+                &body,
+                None,
+                &sent,
+            );
+            assert_eq!(
+                msg,
+                "List failed (400 Bad Request): ExpiredToken: token [[REDACTED]] expired"
+            );
+        }
+
         let ordinary = "<Error><Code>NoSuchKey</Code><Message>The specified key does not exist.</Message></Error>";
-        let msg = format_s3_error("GET failed", reqwest::StatusCode::NOT_FOUND, ordinary, None);
+        let msg = format_s3_error(
+            "GET failed",
+            reqwest::StatusCode::NOT_FOUND,
+            ordinary,
+            None,
+            &[],
+        );
         assert_eq!(
             msg,
             "GET failed (404 Not Found): NoSuchKey: The specified key does not exist."
@@ -20100,6 +20201,7 @@ mod tests {
             reqwest::StatusCode::TOO_MANY_REQUESTS,
             "",
             Some("45"),
+            &[],
         );
         assert!(msg.contains("UploadPart 3 failed"));
         assert!(msg.contains("429"));
@@ -20113,6 +20215,7 @@ mod tests {
             reqwest::StatusCode::NOT_FOUND,
             "key gone",
             Some("45"),
+            &[],
         );
         assert!(msg.contains("404"));
         assert!(!msg.contains("retry-after-secs"));

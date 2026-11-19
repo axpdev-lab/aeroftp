@@ -491,9 +491,9 @@ fn server_message(body: &str, base_url: &str) -> String {
             format!("a reply of {} bytes with no message", body.len())
         };
     };
-    // Decode XML character references once before scrubbing so entity-escaped
-    // path or query credentials (e.g. `AB&amp;CD` for `AB%26CD`) match.
-    let mut shown = super::unescape_xml_entities(message);
+    // Fully decoded before scrubbing, so an entity-escaped path or query
+    // value (`AB&amp;CD` for `AB%26CD`) matches.
+    let mut shown = super::fully_unescaped(message);
     if let Ok(url) = url::Url::parse(base_url) {
         let path = url.path().trim_end_matches('/');
         // Every leading part of the base path, longest first: a server can
@@ -552,45 +552,22 @@ fn server_message(body: &str, base_url: &str) -> String {
             for secret in secrets {
                 shown = shown.replace(&secret, "<redacted>");
             }
-            // Short standalone query values (1-3 chars, e.g. `?token=abc`) are
-            // redacted only on non-alphanumeric token boundaries so ordinary
-            // words like "abstract" stay intact.
-            short_secrets.sort_by(|a, b| b.len().cmp(&a.len()).then_with(|| a.cmp(b)));
-            short_secrets.dedup();
-            for short in short_secrets {
-                shown = replace_bounded_token(&shown, &short, "<redacted>");
+            // A short value (1-3 bytes, `?token=abc`) cannot be cut out of a
+            // word without guessing where it ends (`abc123`), and replacing
+            // every occurrence would garble ordinary words. A message that
+            // contains one anywhere is withheld: only its size is shown.
+            if short_secrets
+                .iter()
+                .any(|short| shown.contains(short.as_str()))
+            {
+                return format!(
+                    "a server message of {} bytes, withheld: it contains a value of the saved address",
+                    message.len()
+                );
             }
         }
     }
     super::sanitize_plain_error(&shown)
-}
-
-/// Replace occurrences of `needle` in `haystack` that are bounded on both sides
-/// by start/end of string or non-ASCII-alphanumeric characters.
-fn replace_bounded_token(haystack: &str, needle: &str, replacement: &str) -> String {
-    if needle.is_empty() || !haystack.contains(needle) {
-        return haystack.to_string();
-    }
-    let bytes = haystack.as_bytes();
-    let mut out = String::with_capacity(haystack.len());
-    let mut cursor = 0;
-    while let Some(rel) = haystack[cursor..].find(needle) {
-        let start = cursor + rel;
-        let end = start + needle.len();
-        let left_ok = start == 0 || !bytes[start - 1].is_ascii_alphanumeric();
-        let right_ok = end == bytes.len() || !bytes[end].is_ascii_alphanumeric();
-        if left_ok && right_ok {
-            out.push_str(&haystack[cursor..start]);
-            out.push_str(replacement);
-            cursor = end;
-        } else {
-            let next_char_len = haystack[start..].chars().next().map_or(1, char::len_utf8);
-            out.push_str(&haystack[cursor..start + next_char_len]);
-            cursor = start + next_char_len;
-        }
-    }
-    out.push_str(&haystack[cursor..]);
-    out
 }
 
 /// The value of a response header as the download diagnostic logs it. A
@@ -10880,7 +10857,19 @@ pub(crate) mod collection_redirect_tests {
                 if path.ends_with("/entity") {
                     return (
                         StatusCode::LOCKED,
-                        "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<d:error xmlns:d=\"DAV:\" xmlns:s=\"http://sabredav.org/ns\">\n<s:message>Rejected AB&amp;CD and short credential abc</s:message>\n</d:error>",
+                        "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<d:error xmlns:d=\"DAV:\" xmlns:s=\"http://sabredav.org/ns\">\n<s:message>Rejected AB&amp;CD</s:message>\n</d:error>",
+                    );
+                }
+                if path.ends_with("/adjacent") {
+                    return (
+                        StatusCode::LOCKED,
+                        "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<d:error xmlns:d=\"DAV:\" xmlns:s=\"http://sabredav.org/ns\">\n<s:message>Rejected credential: abc123</s:message>\n</d:error>",
+                    );
+                }
+                if path.ends_with("/decoded") {
+                    return (
+                        StatusCode::LOCKED,
+                        "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<d:error xmlns:d=\"DAV:\" xmlns:s=\"http://sabredav.org/ns\">\n<s:message>PIN x+1z refused</s:message>\n</d:error>",
                     );
                 }
                 (
@@ -10891,7 +10880,7 @@ pub(crate) mod collection_redirect_tests {
         ));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!(
-            "http://{}/root/?access_token=DUMMY%20SECRET&token=TOPSECRET&amp_tok=AB%26CD&short=abc",
+            "http://{}/root/?access_token=DUMMY%20SECRET&token=TOPSECRET&amp_tok=AB%26CD&short=abc&pin=x%2B1",
             listener.local_addr().unwrap()
         );
         let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
@@ -10923,11 +10912,19 @@ pub(crate) mod collection_redirect_tests {
             .await
             .unwrap_err()
             .to_string();
-        for secret in ["AB&CD", "AB&amp;CD", "abc"] {
+        for secret in ["AB&CD", "AB&amp;CD"] {
             assert!(!entity.contains(secret), "{secret} leaked in {entity}");
         }
         assert!(entity.contains("Rejected <redacted>"), "{entity}");
-        assert!(entity.contains("short credential <redacted>"), "{entity}");
+
+        // A short value cannot be cut out of the word it touches (`abc123`),
+        // as sent or percent-decoded (`x%2B1` is `x+1`): the message is
+        // withheld and only its size is shown.
+        for (path, secret) in [("/adjacent", "abc"), ("/decoded", "x+1")] {
+            let shown = provider.lock_file(path, 60).await.unwrap_err().to_string();
+            assert!(!shown.contains(secret), "{secret} leaked in {shown}");
+            assert!(shown.contains("withheld"), "{shown}");
+        }
 
         let ordinary = provider
             .lock_file("/ordinary", 60)
