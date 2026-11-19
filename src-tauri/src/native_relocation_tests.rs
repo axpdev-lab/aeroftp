@@ -622,3 +622,59 @@ fn an_import_brings_no_session_another_account_may_hold() {
     assert!(!import(source, "fresh", "fresh-uid"));
     assert_eq!(loaded(owner, "fresh").as_deref(), Some("r1"));
 }
+
+/// A refresh writes a copy of its session only while the copy still holds
+/// it, and never creates one: the alignment drops an account's copy of a
+/// session the legacy owner holds without the session's lease, and when it
+/// does so between a refresh's look and its write (in another process), the
+/// refresh does not bring the copy back.
+#[test]
+fn a_refresh_does_not_bring_back_a_copy_the_alignment_dropped() {
+    if !in_isolated_child("a_refresh_does_not_bring_back_a_copy_the_alignment_dropped") {
+        return;
+    }
+    let accounts = Accounts::open();
+    let (owner, owners_owner) = (accounts.owner(), accounts.owners_owner());
+    // The source's alignment has run, so the copy below is left for now.
+    assert_eq!(loaded(owner, "aligned"), None);
+    accounts.add_profile(accounts.legacy, "aligned");
+    vault::store_session(owners_owner, Some("aligned"), &session("aligned-uid", "r1")).unwrap();
+    accounts.add_profile(accounts.source.id, "aligned");
+    set_user_credential_for(
+        &accounts.conn,
+        &accounts.root_key,
+        accounts.source.id,
+        &key("aligned"),
+        "proton_native_session",
+        &raw(&session("aligned-uid", "r1")),
+    )
+    .unwrap();
+    assert_eq!(loaded(owner, "aligned").as_deref(), Some("r1"));
+    let source = accounts.source.id;
+    vault::test_seams::before_next_refresh_write(move |_| {
+        let store = CredentialStore::from_cache().unwrap();
+        let conn = open_or_init_cli().unwrap();
+        conn.execute(
+            "DELETE FROM global_state WHERE key = ?1",
+            params![format!("{PRIVATE_TOKENS_ALIGNED_PREFIX}{source}")],
+        )
+        .unwrap();
+        init_or_migrate_cli(&store).unwrap();
+        assert!(private_tokens_aligned(&conn, source).unwrap());
+        let root_key = store.derive_user_partition_wrapping_key();
+        assert!(
+            get_user_credential_for(&conn, &root_key, source, &key("aligned"))
+                .unwrap()
+                .is_none(),
+            "the alignment dropped the copy"
+        );
+    });
+    vault::VaultSession::new(owner, Some("aligned"), &session("aligned-uid", "r1"))
+        .save(&session("aligned-uid", "r2").tokens);
+    assert_eq!(
+        loaded(owner, "aligned"),
+        None,
+        "a refresh does not bring back a copy the alignment dropped"
+    );
+    assert_eq!(loaded(owners_owner, "aligned").as_deref(), Some("r1"));
+}

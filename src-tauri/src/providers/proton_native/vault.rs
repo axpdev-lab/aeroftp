@@ -102,8 +102,31 @@ fn session_writes() -> std::sync::MutexGuard<'static, ()> {
 #[cfg(test)]
 pub(crate) mod test_seams {
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Mutex;
 
     static REVOKES: AtomicUsize = AtomicUsize::new(0);
+
+    type RefreshWriteHook = Box<dyn FnOnce(&str) + Send>;
+    static BEFORE_REFRESH_WRITE: Mutex<Option<RefreshWriteHook>> = Mutex::new(None);
+
+    /// Runs `hook` once, with the key, just before the next write of a
+    /// refreshed pair: another process's change between the refresh's look
+    /// and its write.
+    pub(crate) fn before_next_refresh_write(hook: impl FnOnce(&str) + Send + 'static) {
+        *BEFORE_REFRESH_WRITE
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(Box::new(hook));
+    }
+
+    pub(super) fn refresh_write(key: &str) {
+        let hook = BEFORE_REFRESH_WRITE
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .take();
+        if let Some(hook) = hook {
+            hook(key);
+        }
+    }
 
     /// How many sign-outs on Proton this process has made.
     pub(crate) fn revokes() -> usize {
@@ -945,78 +968,86 @@ impl SessionKeys for VaultKeys {
     }
 
     fn write(&self, key: &str, session: &ProtonSession) -> Result<(), ProviderError> {
+        #[cfg(test)]
+        test_seams::refresh_write(key);
         let raw = Zeroizing::new(
             serde_json::to_string(&StoredSession::from(session))
                 .map_err(|error| ProviderError::Other(error.to_string()))?,
         );
+        // Each copy is written only while it still holds the session, and a
+        // copy that is gone is not created: a sign-in, a sign-out, a Move or
+        // the alignment changed or removed it since the refresh looked, in
+        // this process or another, with the session's lease or without it.
+        let uid = &session.tokens.uid;
+        let same_session =
+            |current: &str| parse(current).is_ok_and(|saved| saved.tokens.uid == *uid);
         if let Some(user) = self.private {
-            return crate::user_partitions::store_credential_for_user(
+            return crate::user_partitions::refresh_user_credential(
                 &self.store,
                 user,
                 key,
                 PARTITION_TYPE,
+                &same_session,
                 &raw,
             )
+            .map(|_| ())
             .map_err(ProviderError::Other);
         }
-        // Determine the owner before writing the global fallback. An
-        // identically named key in its partition can hold a different session.
-        let mut owners = if let Some(profile) = key.strip_prefix(SESSION_KEY_PREFIX) {
-            crate::user_partitions::profile_credential_owner_ids(&self.store, profile, key)
-                .unwrap_or_else(|error| {
-                    log::warn!("Proton: shared session owners could not be read: {error}");
-                    Vec::new()
-                })
-        } else if let Some(user) = key
-            .strip_prefix(USER_UNBOUND_PREFIX)
-            .and_then(|user| user.parse::<i64>().ok())
-        {
-            vec![user]
-        } else {
-            Vec::new()
-        };
-        if key == self.own_key {
-            owners.extend(self.owner.user_id);
-        }
-        // The vault key is the legacy owner's, and so is the one row this write
-        // carries the pair to. Another account's row of the same name and
-        // session is that account's own copy: a matching session does not
+        // The vault key is the legacy owner's, and so is the one row this
+        // write carries the pair to. Another account's row of the same name
+        // and session is that account's own copy: a matching session does not
         // make it the legacy owner's.
-        let legacy = crate::user_partitions::legacy_credential_owner_id().unwrap_or_else(|error| {
-            log::warn!("Proton: the legacy owner could not be read: {error}");
-            None
-        });
-        owners.retain(|user| Some(*user) == legacy);
-        owners.sort_unstable();
-        owners.dedup();
-        let owners: Vec<i64> = owners
-            .into_iter()
-            .filter(|user| {
-                read(&self.store, SessionOwner::for_user(Some(*user)), key)
-                    .ok()
-                    .flatten()
-                    .is_some_and(|saved| saved.tokens.uid == session.tokens.uid)
+        replace_vault_session(&self.store, key, &same_session, &raw)?;
+        let legacy = self
+            .owner
+            .user_id
+            .map_or_else(crate::user_partitions::legacy_credential_owner_id, |user| {
+                Ok(Some(user))
             })
-            .collect();
-        self.store
-            .store(key, &raw)
-            .map_err(|error| ProviderError::Other(error.to_string()))?;
-        // Every owner the key names: one that fails, such as a locked
-        // account, must not leave the others on the old session.
-        let mut first_failure = None;
-        for user in owners {
-            if let Err(e) = crate::user_partitions::mirror_credential_for_user_typed(
+            .map_err(ProviderError::Other)?;
+        match legacy {
+            Some(user) => crate::user_partitions::refresh_user_credential(
                 &self.store,
                 user,
                 key,
                 PARTITION_TYPE,
+                &same_session,
                 &raw,
-            ) {
-                first_failure.get_or_insert(ProviderError::Other(e));
-            }
+            )
+            .map(|_| ())
+            .map_err(ProviderError::Other),
+            None => Ok(()),
         }
-        first_failure.map_or(Ok(()), Err)
     }
+}
+
+/// The vault key `key` replaced by `raw` only while it holds a value
+/// `still_holds` accepts, and never created: the read, the comparison and the
+/// write share the vault's write lock. A key rewritten in the same session at
+/// every attempt is left as it is.
+fn replace_vault_session(
+    store: &CredentialStore,
+    key: &str,
+    still_holds: &dyn Fn(&str) -> bool,
+    raw: &str,
+) -> Result<bool, ProviderError> {
+    for _ in 0..3 {
+        let current = match store.get(key) {
+            Ok(current) => Zeroizing::new(current),
+            Err(CredentialError::NotFound(_)) => return Ok(false),
+            Err(error) => return Err(ProviderError::Other(error.to_string())),
+        };
+        if !still_holds(&current) {
+            return Ok(false);
+        }
+        if store
+            .replace_secret_if_unchanged(key, &current, raw)
+            .map_err(|error| ProviderError::Other(error.to_string()))?
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 /// Writes refreshed `tokens` to every other key that holds the same session.
@@ -1029,8 +1060,10 @@ impl SessionKeys for VaultKeys {
 /// it, and writing the looked-at copy would bring the old session back over
 /// the new one. Those hold the session's lease while they change the key
 /// (see [`lease_of_saved`]), and the refresh holds it too; inside a process
-/// [`SESSION_WRITES`] keeps the look again and the write together. `between`
-/// runs after the first look, for a test to change a key there.
+/// [`SESSION_WRITES`] keeps the look again and the write together, and the
+/// write itself is a compare-and-write on the session, so a change made
+/// without the lease (the alignment, another process) is not undone either.
+/// `between` runs after the first look, for a test to change a key there.
 fn share_with(
     keys: &dyn SessionKeys,
     own_key: &str,

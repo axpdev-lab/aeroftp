@@ -3337,6 +3337,34 @@ pub(crate) fn replace_user_credential_if_unchanged(
     update: (&str, &str),
     require_active_user: bool,
 ) -> Result<bool, String> {
+    use subtle::ConstantTimeEq;
+    replace_user_credential_where(
+        conn,
+        root_key,
+        user_id,
+        credential_id,
+        credential_type,
+        &|current| bool::from(current.as_bytes().ct_eq(update.0.as_bytes())),
+        update.1,
+        require_active_user,
+    )
+}
+
+/// [`replace_user_credential_if_unchanged`] for a row that must still hold a
+/// value `still_holds` accepts, not one exact value: the row is replaced by
+/// `replacement` only then, read and written in one IMMEDIATE transaction,
+/// and a missing row is never created.
+#[allow(clippy::too_many_arguments)]
+fn replace_user_credential_where(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+    credential_id: &str,
+    credential_type: &str,
+    still_holds: &dyn Fn(&str) -> bool,
+    replacement: &str,
+    require_active_user: bool,
+) -> Result<bool, String> {
     if credential_id.is_empty() || credential_type.is_empty() {
         return Err("CREDENTIAL_ID_AND_TYPE_REQUIRED".to_owned());
     }
@@ -3349,18 +3377,52 @@ pub(crate) fn replace_user_credential_if_unchanged(
             return Err(ACCOUNT_CHANGED.to_owned());
         }
         let current = read_credential_with_dek(&tx, user_id, dek, credential_id)?;
-        use subtle::ConstantTimeEq;
-        if !current
-            .as_ref()
-            .is_some_and(|secret| bool::from(secret.as_bytes().ct_eq(update.0.as_bytes())))
-        {
+        if !current.as_ref().is_some_and(|secret| still_holds(secret)) {
             return Ok(false);
         }
-        set_user_credential_with_dek(&tx, user_id, dek, credential_id, credential_type, update.1)?;
+        set_user_credential_with_dek(
+            &tx,
+            user_id,
+            dek,
+            credential_id,
+            credential_type,
+            replacement,
+        )?;
         tx.commit()
             .map_err(|e| format!("Commit conditional credential refresh: {e}"))?;
         Ok(true)
     })
+}
+
+/// A refreshed secret written to `user_id`'s row only while the row holds a
+/// value `still_holds` accepts ([`replace_user_credential_where`]); a missing
+/// row is never created, nor its account's key asked for. The migrations run
+/// first, as for [`store_credential_for_user`], so a copy their alignment
+/// drops is gone before the look.
+pub(crate) fn refresh_user_credential(
+    store: &CredentialStore,
+    user_id: i64,
+    credential_id: &str,
+    credential_type: &str,
+    still_holds: &dyn Fn(&str) -> bool,
+    replacement: &str,
+) -> Result<bool, String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    if !partition_row_exists(&conn, user_id, credential_id)? {
+        return Ok(false);
+    }
+    let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
+    replace_user_credential_where(
+        &conn,
+        &root_key,
+        user_id,
+        credential_id,
+        credential_type,
+        still_holds,
+        replacement,
+        false,
+    )
 }
 
 /// Replace the copy of `credential_id` that [`resolve_credential_for_user_owner_aware`]
