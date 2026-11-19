@@ -196,7 +196,7 @@ const REVIEWED: &[Reviewed] = &[
     ("providers/webdav.rs", "format", "Nextcloud assemble failed: {} {}", ", status, server_message(&body, &self.config.url, &self.sent_secrets())", SERVER_MESSAGE),
     ("providers/s3.rs", "format", "{} ({}): {}", ", prefix, status, s3_error_text(body, sent)", S3_MESSAGE),
     ("providers/s3.rs", "format", "a reply of {} bytes with no S3 error code", ", body.len()", "a length"),
-    ("providers/s3.rs", "format", "a reply of {} bytes, withheld: a session token it may repeat is no longer known", ", body.len()", "a length"),
+    ("providers/s3.rs", "format", "a reply of {reply_bytes} bytes, withheld: a session token it may repeat is no longer known", "", "a length"),
     ("providers/s3.rs", "format", "HEAD on rename source returned status {}", ", resp.status()", "a status code"),
     ("providers/s3.rs", "format", "FileLu safe rename write failed ({}): {}", ", put_status, self.reply_text(&put_body)", S3_MESSAGE),
     ("providers/s3.rs", "format", "Copy failed ({}): {}", ", status, self.reply_text(&body)", S3_MESSAGE),

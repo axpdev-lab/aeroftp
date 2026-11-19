@@ -665,28 +665,32 @@ fn scrub_s3_reflected_credentials(text: &str) -> String {
 /// When a token that can still sign is no longer known (`SentSecrets`), the
 /// reply is shown by its size only.
 fn s3_error_text(body: &str, sent: &SentSecrets) -> String {
-    if sent.missing_token && !body.is_empty() {
-        return format!(
-            "a reply of {} bytes, withheld: a session token it may repeat is no longer known",
-            body.len()
-        );
-    }
     match s3_error_code_and_message(body) {
-        Some(detail) => {
-            // Fully decoded first, so no escaped quote or reference can stop
-            // a rule short of the value.
-            let Some(decoded) = super::fully_unescaped(&detail) else {
-                return super::deeply_escaped_reply(body.len());
-            };
-            let Some(shown) = super::without_sent_values(&decoded, &sent.values) else {
-                return super::reply_with_a_sent_value(body.len());
-            };
-            let scrubbed = scrub_s3_reflected_credentials(&shown);
-            super::sanitize_plain_error(&scrubbed)
-        }
+        Some(detail) => s3_server_text(&detail, body.len(), sent),
         None if body.is_empty() => "no message".to_string(),
+        None if sent.missing_token => s3_server_text(body, body.len(), sent),
         None => format!("a reply of {} bytes with no S3 error code", body.len()),
     }
+}
+
+/// What an error may show of `text`, a field an S3 server wrote in a reply
+/// of `reply_bytes` bytes: sanitized, with this session's secrets removed,
+/// or only the reply's size when it may hold a secret no rule can cut out.
+fn s3_server_text(text: &str, reply_bytes: usize, sent: &SentSecrets) -> String {
+    if sent.missing_token {
+        return format!(
+            "a reply of {reply_bytes} bytes, withheld: a session token it may repeat is no longer known"
+        );
+    }
+    // Fully decoded first, so no escaped quote or reference can stop a rule
+    // short of the value.
+    let Some(decoded) = super::fully_unescaped(text) else {
+        return super::deeply_escaped_reply(reply_bytes);
+    };
+    let Some(shown) = super::without_sent_values(&decoded, &sent.values) else {
+        return super::reply_with_a_sent_value(reply_bytes);
+    };
+    super::sanitize_plain_error(&scrub_s3_reflected_credentials(&shown))
 }
 
 /// `Code: Message` of an S3 XML error body, or `None` when it has neither.
@@ -8858,7 +8862,17 @@ impl S3Provider {
                     .text()
                     .await
                     .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
-                failures.extend(parse_batch_delete_errors(&body));
+                // Key and Code are the server's words: shown as an error
+                // reply is, without this session's secrets.
+                let sent = self.sent_secrets();
+                failures.extend(parse_batch_delete_errors(&body).into_iter().map(
+                    |(key, reason)| {
+                        (
+                            s3_server_text(&key, body.len(), &sent),
+                            s3_server_text(&reason, body.len(), &sent),
+                        )
+                    },
+                ));
             } else {
                 // Fall back to sequential delete if the batch call itself fails,
                 // recording every key whose individual DELETE errors.
@@ -13347,6 +13361,54 @@ mod tests {
             .await
             .unwrap();
         server.abort();
+    }
+
+    /// A batch delete answered 200 with per-key errors, after five refreshes
+    /// on a sibling clone: the token that signed the request, echoed in the
+    /// `Key` and the `Code`, is not in the error.
+    #[tokio::test]
+    async fn a_batch_delete_reply_never_shows_the_token_that_signed_it() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let provider = make_provider(Some(&format!("http://{addr}")));
+        let with_token = |token: String| sts::TempCredentials {
+            session_token: secrecy::SecretString::from(token),
+            ..temp_creds(Some(Utc::now() + chrono::Duration::hours(1)))
+        };
+        provider.install_temp_credentials(with_token("BatchDeleteSigner01".to_string()));
+        let sibling = provider.clone();
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |req: axum::extract::Request| {
+                let sibling = sibling.clone();
+                async move {
+                    assert_eq!(req.method(), Method::POST);
+                    let signed = req
+                        .headers()
+                        .get("x-amz-security-token")
+                        .and_then(|v| v.to_str().ok())
+                        .unwrap_or_default()
+                        .to_string();
+                    for n in 1..=5 {
+                        sibling.install_temp_credentials(with_token(format!("BatchDeleteNext{n:04}")));
+                    }
+                    format!(
+                        "<DeleteResult><Error><Key>obj {signed}</Key><Code>{signed}</Code></Error></DeleteResult>"
+                    )
+                }
+            },
+        ));
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let error = provider
+            .batch_delete_objects(&[("obj".into(), None)])
+            .await
+            .unwrap_err()
+            .to_string();
+        server.abort();
+        assert!(error.contains("1 of 1"), "{error}");
+        assert!(!error.contains("BatchDeleteSigner01"), "{error}");
+        assert!(error.contains("obj [REDACTED] ([REDACTED])"), "{error}");
     }
 
     /// An S3 double for renaming the folder `src` (the marker `src/` and
