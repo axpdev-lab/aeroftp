@@ -2021,6 +2021,19 @@ fn private_tokens_keep_to_their_account(store: &CredentialStore, legacy_id: i64,
     users::store_credential_for_user_dual(store, private_id, "server_copy-target", "server")
         .unwrap();
     assert_eq!(store.get("server_copy-target").unwrap(), "server");
+    // The row itself, not a reader that falls back to the vault.
+    assert_eq!(
+        users::get_user_credential_for(
+            &users::open_or_init_cli().unwrap(),
+            &store.derive_user_partition_wrapping_key(),
+            private_id,
+            "server_copy-target",
+        )
+        .unwrap()
+        .map(|value| value.to_string())
+        .as_deref(),
+        Some("server")
+    );
     users::unmirror_credential_for_user_best_effort_any(private_id, "server_copy-target");
     store.delete("server_copy-target").unwrap();
 

@@ -4130,6 +4130,19 @@ mod tests {
         .unwrap();
         assert_eq!(store.get("server_srv_drive").unwrap(), "password");
         assert_eq!(effective("server_srv_drive").as_deref(), Some("password"));
+        // The row itself, not a reader that falls back to the vault.
+        assert_eq!(
+            crate::user_partitions::get_user_credential_for(
+                &read_only(),
+                &root,
+                other.id,
+                "server_srv_drive"
+            )
+            .unwrap()
+            .map(|v| v.to_string())
+            .as_deref(),
+            Some("password")
+        );
     }
 
     /// A Full backup of another machine (another vault key) restored here: the
