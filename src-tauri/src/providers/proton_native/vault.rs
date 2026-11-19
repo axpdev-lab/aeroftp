@@ -969,8 +969,10 @@ pub fn end_session_blocking(
 
 /// Revokes on Proton the session saved for `profile_id`, best effort, before
 /// a profile delete (or a new sign-in) replaces the key. A session that
-/// another key on this device also holds is left alive. Never fails the
-/// caller: errors are logged.
+/// another key on this device also holds is left alive: another profile of
+/// the account, or another account that may hold it (a copy saved before
+/// sessions kept to one account, or an account this process cannot read).
+/// Never fails the caller: errors are logged.
 pub async fn revoke_saved_session(owner: SessionOwner, profile_id: Option<&str>) {
     let store = match open_store() {
         Ok(store) => store,
@@ -1001,6 +1003,19 @@ pub async fn revoke_saved_session(owner: SessionOwner, profile_id: Option<&str>)
     if shared {
         log::info!("Proton: session kept, another saved profile uses it");
         return;
+    }
+    match held_by_another_account(&store, owner, &session.tokens.uid) {
+        Ok(false) => {}
+        Ok(true) => {
+            log::info!("Proton: session kept, another account on this device may hold it");
+            return;
+        }
+        Err(error) => {
+            log::warn!(
+                "Proton: saved session not revoked, the other accounts could not be read: {error}"
+            );
+            return;
+        }
     }
     #[cfg(test)]
     if test_seams::revoke_counted() {

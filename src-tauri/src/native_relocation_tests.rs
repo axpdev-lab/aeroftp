@@ -364,7 +364,9 @@ fn a_native_session_keeps_to_its_account() {
     store.delete(&key("dup-a")).unwrap();
     store.delete(&key("dup-b")).unwrap();
     assert!(!vault::another_profile_holds(store, owner, &key("dup-a"), "shared-uid").unwrap());
-    // The sign-out of a session no other profile holds revokes it.
+    // The sign-out of a session no other profile holds revokes it, once no
+    // other account may hold it: the locked target's row could be that one.
+    delete_user_credential_for(conn, accounts.target.id, &key("target-copy")).unwrap();
     seed("solo", "solo-uid");
     sign_out("solo");
     assert_eq!(
@@ -726,6 +728,83 @@ fn an_rclone_import_brings_no_session_another_account_holds() {
         uid_of(owners_owner, &owners_id).as_deref(),
         Some("rclone-uid")
     );
+}
+
+/// A sign-out revokes a session on Proton only when no other account on this
+/// device may hold it. A copy two accounts hold from before sessions kept to
+/// one account, or a saved session of an account this process cannot read,
+/// leaves it alive there: the sign-out drops the copy here and sends no
+/// revoke. A session one account alone holds is still revoked.
+#[test]
+fn a_sign_out_revokes_no_session_another_account_may_hold() {
+    if !in_isolated_child("a_sign_out_revokes_no_session_another_account_may_hold") {
+        return;
+    }
+    let accounts = Accounts::open();
+    let (owner, owners_owner) = (accounts.owner(), accounts.owners_owner());
+    let sign_out = |owner: vault::SessionOwner, id: &str| {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(vault::end_session(owner, Some(id)))
+            .unwrap()
+    };
+    let revokes = vault::test_seams::revokes();
+
+    // The legacy owner and the source hold one session, each under a profile
+    // of its own.
+    accounts.add_profile(accounts.legacy, "owners-copy");
+    vault::store_session(owners_owner, Some("owners-copy"), &session("two-uid", "r1")).unwrap();
+    accounts.seed("source-copy", "two-uid");
+    sign_out(owners_owner, "owners-copy");
+    assert_eq!(
+        vault::test_seams::revokes(),
+        revokes,
+        "the sign-out of a session another account's row holds sends no revoke"
+    );
+    assert_eq!(loaded(owners_owner, "owners-copy"), None);
+    assert_eq!(loaded(owner, "source-copy").as_deref(), Some("r1"));
+    vault::store_session(owners_owner, Some("owners-copy"), &session("two-uid", "r1")).unwrap();
+    sign_out(owner, "source-copy");
+    assert_eq!(
+        vault::test_seams::revokes(),
+        revokes,
+        "the sign-out of a session the legacy owner's vault holds sends no revoke"
+    );
+    assert_eq!(loaded(owner, "source-copy"), None);
+    assert_eq!(loaded(owners_owner, "owners-copy").as_deref(), Some("r1"));
+    vault::delete_session(owners_owner, Some("owners-copy")).unwrap();
+
+    // The locked target holds a saved session this process cannot read.
+    set_user_credential_with_dek(
+        &accounts.conn,
+        accounts.target.id,
+        &accounts.target_dek,
+        &key("target-held"),
+        "proton_native_session",
+        &raw(&session("target-uid", "r1")),
+    )
+    .unwrap();
+    accounts.seed("alone", "alone-uid");
+    sign_out(owner, "alone");
+    assert_eq!(
+        vault::test_seams::revokes(),
+        revokes,
+        "the sign-out sends no revoke while a locked account may hold the session"
+    );
+    assert_eq!(loaded(owner, "alone"), None);
+
+    // No other account may hold it: the sign-out revokes it.
+    delete_user_credential_for(&accounts.conn, accounts.target.id, &key("target-held")).unwrap();
+    accounts.seed("alone", "alone-uid");
+    sign_out(owner, "alone");
+    assert_eq!(
+        vault::test_seams::revokes(),
+        revokes + 1,
+        "the sign-out of a session one account alone holds revokes it"
+    );
+    assert_eq!(loaded(owner, "alone"), None);
 }
 
 /// A refresh writes a copy of its session only while the copy still holds
