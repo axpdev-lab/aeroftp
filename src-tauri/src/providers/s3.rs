@@ -1679,7 +1679,7 @@ impl S3Provider {
         if let Some(credentials) = temporary.as_ref() {
             sent.push(credentials.session_token.expose_secret().to_string());
         }
-        drop(temporary);
+        // Still under the credentials lock, see `install_temp_credentials`.
         sent.extend(
             self.retired_session_tokens
                 .lock()
@@ -1687,6 +1687,7 @@ impl S3Provider {
                 .iter()
                 .map(|token| token.expose_secret().to_string()),
         );
+        drop(temporary);
         sent
     }
 
@@ -1851,13 +1852,17 @@ impl S3Provider {
 
     /// Make `creds` the session's credentials and keep the token they replace
     /// among the retired ones, for an answer to a request it signed.
+    ///
+    /// The old token is retired before the credentials lock is released, and
+    /// `sent_secrets` reads both under that lock (always credentials first,
+    /// then the retired list): a reader sees a token as current or as
+    /// retired, never in neither place.
     fn install_temp_credentials(&self, creds: sts::TempCredentials) {
-        let replaced = self
+        let mut current = self
             .temp_credentials
             .write()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .replace(creds);
-        if let Some(old) = replaced {
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if let Some(old) = current.replace(creds) {
             let mut retired = self
                 .retired_session_tokens
                 .lock()
@@ -16549,6 +16554,56 @@ mod tests {
                 "{token}"
             );
         }
+    }
+
+    /// A reply that lands while a sibling clone refreshes: whatever token a
+    /// request signed with, the error snapshot taken after it still holds
+    /// that token, current or retired. Run against many refreshes so the
+    /// window between replacing and retiring, if it existed, is hit.
+    #[test]
+    fn a_reply_during_a_refresh_still_removes_the_signed_token() {
+        use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+        let provider = make_provider(Some("http://localhost:9000"));
+        let with_token = |n: usize| sts::TempCredentials {
+            session_token: secrecy::SecretString::from(format!("RefreshRaceToken{n:06}")),
+            ..temp_creds(Some(Utc::now() + chrono::Duration::hours(1)))
+        };
+        provider.install_temp_credentials(with_token(0));
+        let refresher = provider.clone();
+        // Counted before each refresh starts, so a reader can tell how many
+        // could have run between its signing and its snapshot.
+        let started = Arc::new(AtomicUsize::new(0));
+        let done = Arc::new(AtomicBool::new(false));
+        let (count, stop) = (started.clone(), done.clone());
+        let writer = std::thread::spawn(move || {
+            for n in 1..50_000 {
+                count.fetch_add(1, Ordering::SeqCst);
+                refresher.install_temp_credentials(with_token(n));
+            }
+            stop.store(true, Ordering::SeqCst);
+        });
+        let mut checked = 0usize;
+        while !done.load(Ordering::SeqCst) {
+            let before = started.load(Ordering::SeqCst);
+            let signed = provider
+                .effective_credentials()
+                .session_token
+                .map(|token| token.expose_secret().to_string())
+                .unwrap();
+            let sent = provider.sent_secrets();
+            let overlapping = started.load(Ordering::SeqCst) - before + 1;
+            // More refreshes than the retired list keeps can evict the token
+            // by design; that is not the window this test is about.
+            if overlapping <= S3Provider::RETIRED_TOKENS_KEPT {
+                assert!(
+                    sent.contains(&signed),
+                    "{signed} was neither current nor retired ({overlapping} refreshes overlapped)"
+                );
+                checked += 1;
+            }
+        }
+        writer.join().unwrap();
+        assert!(checked > 0);
     }
 
     #[test]
