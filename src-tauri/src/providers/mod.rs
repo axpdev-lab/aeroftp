@@ -788,9 +788,10 @@ pub(crate) fn sanitize_plain_error(body: &str) -> String {
 }
 
 pub fn sanitize_api_error(body: &str) -> String {
-    // Decode XML entities once before scrubbing so escaped quotes or ampersands
-    // cannot bypass redaction rules.
-    sanitize_plain_error(&unescape_xml_entities(body))
+    // Fully decoded before scrubbing: decoded once, a twice-escaped
+    // separator (`&amp;amp;key=`) stays `&amp;key=` and no rule sees the
+    // `&` in front of the parameter.
+    sanitize_plain_error(&fully_unescaped(body))
 }
 
 /// Transfer optimization hints: per-provider capability advertisement
@@ -5026,6 +5027,20 @@ mod tests {
         let out = sanitize_api_error("The key &apos;003d90ca&apos; is not valid");
         assert_eq!(out, "The key '003d90ca' is not valid");
         assert!(!out.contains("&apos;"));
+    }
+
+    /// A parameter behind a twice-escaped `&` is still a parameter: the
+    /// scrub runs on the fully decoded text.
+    #[test]
+    fn sanitize_api_error_scrubs_behind_a_twice_escaped_separator() {
+        for body in [
+            "rejected https://api.example/v1?a=1&amp;amp;key=AIzaSyTWICE000",
+            "rejected https://api.example/v1?a=1&amp;#038;key=AIzaSyTWICE000",
+        ] {
+            let out = sanitize_api_error(body);
+            assert!(!out.contains("AIzaSyTWICE000"), "{out}");
+            assert!(out.contains("[REDACTED]"), "{out}");
+        }
     }
 
     /// Row 4: an over-long first line is clipped near the 200-char cap with an
