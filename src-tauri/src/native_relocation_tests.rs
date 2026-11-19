@@ -787,7 +787,9 @@ fn a_refresh_does_not_bring_back_a_copy_the_alignment_dropped() {
 /// A Move holds the source's session key from before it looks whether the
 /// source holds a session until it has removed it: a sign-in of the profile
 /// that ends meanwhile waits for the Move, instead of saving a session the
-/// Move has looked past, which would stay in the source account.
+/// Move has looked past. Once the Move is done, the sign-in saves nothing in
+/// the account the profile left, while a sign-in of a profile not saved yet,
+/// or of the moved one saved there again, still saves.
 #[test]
 fn a_sign_in_waits_for_the_move_of_its_profile() {
     if !in_isolated_child("a_sign_in_waits_for_the_move_of_its_profile") {
@@ -832,9 +834,31 @@ fn a_sign_in_waits_for_the_move_of_its_profile() {
         waited.get(),
         "a sign-in that ends during the Move of its profile waits for the Move"
     );
-    let signing_in = sign_in.borrow_mut().take().unwrap();
-    signing_in.join().unwrap().unwrap();
-    vault::delete_session(owner, Some("late-sign-in")).unwrap();
+    let signed_in = sign_in.borrow_mut().take().unwrap().join().unwrap();
+    assert_eq!(
+        loaded(owner, "late-sign-in"),
+        None,
+        "a sign-in that ends after the Move saves no session in the account the profile left"
+    );
+    let refused = signed_in.unwrap_err().to_string();
+    assert!(refused.contains("moved to another account"), "{refused}");
+
+    let sign_in = |id: &str| {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(vault::replace_session(
+                owner,
+                Some(id),
+                &session(&format!("{id}-uid"), "r1"),
+            ))
+    };
+    sign_in("not-saved-yet").unwrap();
+    assert_eq!(loaded(owner, "not-saved-yet").as_deref(), Some("r1"));
+    accounts.add_profile(accounts.source.id, "late-sign-in");
+    sign_in("late-sign-in").unwrap();
+    assert_eq!(loaded(owner, "late-sign-in").as_deref(), Some("r1"));
 }
 
 /// A Move takes the source session's refresh lease before it commits: while a

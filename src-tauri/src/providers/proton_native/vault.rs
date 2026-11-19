@@ -695,6 +695,7 @@ pub async fn bind_unbound_session(
     let mut keys = mutation_keys(owner, None)?;
     keys.push(owner.key(Some(profile_id)));
     let _keys = lock_keys(keys).await?;
+    refuse_moved_away(&store, owner, Some(profile_id))?;
     let source_key = saved_key(&store, owner, None)?;
     let _lease = lease_of_saved(owner, &source_key).await?;
     let _writes = session_writes();
@@ -733,6 +734,7 @@ pub async fn replace_session(
 ) -> Result<(), ProviderError> {
     let store = open_store()?;
     let _keys = lock_keys(mutation_keys(owner, profile_id)?).await?;
+    refuse_moved_away(&store, owner, profile_id)?;
     let previous_key = saved_key(&store, owner, profile_id)?;
     let _lease = lease_of_saved(owner, &previous_key).await?;
     revoke_saved_session(owner, profile_id).await;
@@ -741,6 +743,29 @@ pub async fn replace_session(
         remove_saved(&store, owner, &previous_key)?;
     }
     store_session(owner, profile_id, session)
+}
+
+/// Refuses a sign-in's save for a profile a Move took out of the account
+/// while the sign-in was open: the Move held the profile's key until it had
+/// marked the id, so a sign-in that ends after it sees the mark under the
+/// same key lock.
+fn refuse_moved_away(
+    store: &CredentialStore,
+    owner: SessionOwner,
+    profile_id: Option<&str>,
+) -> Result<(), ProviderError> {
+    let (Some(user), Some(profile_id)) = (owner.user_id, profile_id) else {
+        return Ok(());
+    };
+    if crate::user_partitions::profile_moved_away(store, user, profile_id)
+        .map_err(ProviderError::Other)?
+    {
+        return Err(ProviderError::Other(
+            "this profile was moved to another account, so its sign-in is not saved here; sign in from that account"
+                .into(),
+        ));
+    }
+    Ok(())
 }
 
 /// Import or duplicate a session without revoking it. This is a mutation of

@@ -2762,6 +2762,13 @@ fn relocate_server_profile_and_credentials(
         if relocation.moved {
             delete_user_credential_for(&tx, source_user_id, &source_key)?;
         }
+        // A sign-in of the profile still open when the Move commits ends after
+        // it, under the key the Move holds until it returns: marked with the
+        // list it leaves, the id is refused that sign-in's save.
+        #[cfg(feature = "proton-native")]
+        if relocation.moved {
+            mark_moved_away(&tx, source_user_id, profile_id)?;
+        }
         tx.commit()
             .map_err(|error| format!("Commit profile relocation: {error}"))?;
         Ok(relocation)
@@ -2808,6 +2815,64 @@ fn relocate_server_profile_and_credentials(
         })?;
     }
     Ok(relocation)
+}
+
+/// Marks a profile id a Move took out of an account ([`profile_moved_away`]).
+#[cfg(feature = "proton-native")]
+const MOVED_AWAY_PREFIX: &str = "proton_profile_moved_away_";
+
+#[cfg(feature = "proton-native")]
+fn moved_away_key(user_id: i64, profile_id: &str) -> String {
+    format!("{MOVED_AWAY_PREFIX}{user_id}_{profile_id}")
+}
+
+#[cfg(feature = "proton-native")]
+fn mark_moved_away(conn: &Connection, user_id: i64, profile_id: &str) -> Result<(), String> {
+    conn.execute(
+        "INSERT INTO global_state(key, value, updated_at)
+         VALUES (?1, '1', ?2)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+        params![moved_away_key(user_id, profile_id), now_ms()],
+    )
+    .map_err(|e| format!("Write moved profile marker: {e}"))?;
+    Ok(())
+}
+
+/// Whether a Move took profile `profile_id` out of account `user` and the
+/// account has not saved it again since: a sign-in begun before the Move and
+/// ended after it would save a session for a profile the account no longer
+/// has. An id the account never had is not marked, so a sign-in of a profile
+/// not saved yet goes ahead. The mark goes once the account lists the id.
+#[cfg(feature = "proton-native")]
+pub(crate) fn profile_moved_away(
+    store: &CredentialStore,
+    user: i64,
+    profile_id: &str,
+) -> Result<bool, String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    let key = moved_away_key(user, profile_id);
+    let marked = conn
+        .query_row(
+            "SELECT 1 FROM global_state WHERE key = ?1",
+            params![key],
+            |_| Ok(()),
+        )
+        .optional()
+        .map_err(|e| format!("Read moved profile marker: {e}"))?
+        .is_some();
+    if !marked {
+        return Ok(false);
+    }
+    let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
+    let listed = list_server_profiles_for(&conn, &root_key, user)?
+        .iter()
+        .any(|profile| value_str(profile, &["id", "uid", "profileUid"]) == Some(profile_id));
+    if listed {
+        conn.execute("DELETE FROM global_state WHERE key = ?1", params![key])
+            .map_err(|e| format!("Clear moved profile marker: {e}"))?;
+    }
+    Ok(!listed)
 }
 
 #[cfg(test)]
