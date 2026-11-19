@@ -120,6 +120,11 @@ struct SshTokens<'a> {
 /// among them, cannot hold the memory of the import.
 const MAX_EXPANDED: usize = 64 * 1024;
 
+/// The longest variable name a skip reason repeats: far longer than any
+/// environment variable's, and short enough that a reason kept for each of
+/// thousands of hosts stays small.
+const MAX_REPORTED_NAME: usize = 64;
+
 /// A value read from an ssh config, with its `%` tokens and, where ssh reads
 /// them (`dollar`), its `${VAR}` references expanded the way ssh does, so the
 /// profile holds the literal value ssh would use. `allowed` lists the tokens
@@ -160,10 +165,15 @@ fn ssh_expand(
         if c == '$' && dollar && chars.peek() == Some(&'{') {
             chars.next();
             let mut name = String::new();
+            // Each byte read is work the file decides, repeated for every host
+            // a global line applies to.
             let closed = loop {
                 match chars.next() {
                     Some('}') => break true,
-                    Some(c) => name.push(c),
+                    Some(c) => {
+                        tokens.steps.charge(c.len_utf8() as u64);
+                        name.push(c)
+                    }
                     None => break false,
                 }
             };
@@ -171,8 +181,14 @@ fn ssh_expand(
                 return Err(format!("its {field} holds a `${{` that is never closed"));
             }
             if !SSH_IMPORT_ENV.contains(&name.as_str()) {
+                // The reason is kept for every host the line applies to, so a
+                // name longer than any variable's is not repeated in it.
+                let named = match name.len() <= MAX_REPORTED_NAME {
+                    true => format!("the environment variable `{name}`"),
+                    false => format!("an environment variable whose name is longer than {MAX_REPORTED_NAME} bytes"),
+                };
                 return Err(format!(
-                    "its {field} reads the environment variable `{name}`, which an import does not read; only {} are expanded",
+                    "its {field} reads {named}, which an import does not read; only {} are expanded",
                     SSH_IMPORT_ENV.join(", ")
                 ));
             }
@@ -2769,6 +2785,47 @@ Host roundtrip
     /// with `-`, and an earlier `ssh://` hop holding `%` are refused, and
     /// the command ssh runs for each exported one holds the names as the
     /// profile holds them (`ssh -vvv` on 10.2p1).
+    /// A variable name a global line reads is kept out of the reason every
+    /// host it applies to is skipped with, past a short length, and reading
+    /// it is charged to the step budget for each host.
+    #[test]
+    fn a_variable_name_is_not_copied_into_every_reason() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("config");
+        let name = "V".repeat(256 * 1024);
+        let config = |hosts: usize| {
+            let mut text = format!("User ${{{name}}}\n");
+            for i in 0..hosts {
+                text.push_str(&format!("Host h{i}\n  HostName h{i}.example.com\n"));
+            }
+            text
+        };
+        std::fs::write(&file, config(100)).unwrap();
+        let result = import_ssh_config(&file).unwrap();
+        assert_eq!(result.skipped.len(), 100);
+        assert!(result.servers.is_empty());
+        for skip in &result.skipped {
+            assert_eq!(
+                skip.reason,
+                format!("its user name reads an environment variable whose name is longer than {MAX_REPORTED_NAME} bytes, which an import does not read; only {} are expanded", SSH_IMPORT_ENV.join(", "))
+            );
+        }
+        // Past the budget, the file is refused whole.
+        std::fs::write(&file, config(800)).unwrap();
+        let result = import_ssh_config(&file).unwrap();
+        assert!(result.servers.is_empty());
+        assert_eq!(result.skipped.len(), 800);
+        assert!(
+            result.skipped.iter().all(|s| s.reason.contains("steps")),
+            "{:?}",
+            result.skipped.first().map(|s| &s.reason)
+        );
+        // A short name is still named.
+        std::fs::write(&file, "User ${NOT_READ}\nHost h\n").unwrap();
+        let result = import_ssh_config(&file).unwrap();
+        assert!(result.skipped[0].reason.contains("`NOT_READ`"));
+    }
+
     #[test]
     fn a_jump_host_never_reaches_a_shell() {
         let refused = [
