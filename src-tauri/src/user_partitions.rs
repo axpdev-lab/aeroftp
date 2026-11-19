@@ -5093,6 +5093,24 @@ fn partition_row_exists(
     .map_err(|e| format!("Read credential row: {e}"))
 }
 
+/// Whether `user_id` holds `credential_id` where it reads it, decrypting
+/// nothing: its row, which a locked account has too and a delete by key
+/// removes, or else the vault copy when that is one it reads.
+pub(crate) fn holds_credential(
+    store: &CredentialStore,
+    user_id: i64,
+    credential_id: &str,
+) -> Result<bool, String> {
+    let conn = open_or_init_cli()?;
+    if partition_row_exists(&conn, user_id, credential_id)? {
+        return Ok(true);
+    }
+    if vault_copy_is_another_accounts(&conn, user_id, credential_id)? {
+        return Ok(false);
+    }
+    Ok(get_optional_secret(store, credential_id)?.is_some_and(|v| !v.is_empty()))
+}
+
 /// Best-effort removal of one secret from `user_id`'s partition, whatever its
 /// key. No DEK is needed (DELETE by key); errors are swallowed because the
 /// vault delete is the part that matters during the dual-write rollout. This

@@ -24271,12 +24271,10 @@ async fn purge_profile_secrets(
     Ok(purge_profile_secret_keys(
         &profile_id,
         protocol.as_deref(),
-        // Where the account reads it: another account's token is its row alone.
+        // Where the account reads it: another account's token is its row
+        // alone, which a locked account holds too.
         |key| match user_id {
-            Some(user) => user_partitions::resolve_credential_for_user(&store, user, key)
-                .ok()
-                .flatten()
-                .is_some_and(|v| !v.is_empty()),
+            Some(user) => user_partitions::holds_credential(&store, user, key).unwrap_or(false),
             None => store.get(key).map(|v| !v.is_empty()).unwrap_or(false),
         },
         |key| {

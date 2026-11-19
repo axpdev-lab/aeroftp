@@ -1905,6 +1905,38 @@ async fn a_purge_reports_the_accounts_own_token(
         users::get_user_credential_for(&conn, &root, private_id, key).unwrap(),
         None
     );
+    // What the purge reports for a locked account: its row, seen by its key
+    // without the account's key, never the owner's vault copy of the same name.
+    let locked = {
+        let mut conn = users::open_or_init_cli().unwrap();
+        users::create_user(
+            &mut conn,
+            &root,
+            "Locked purge",
+            None,
+            None,
+            Some("purge pass"),
+        )
+        .unwrap()
+    };
+    users::cli_unlock_user(store, locked.id, Some("purge pass")).unwrap();
+    users::store_credential_for_user_dual(store, locked.id, key, "locked-token").unwrap();
+    users::clear_user_session();
+    let with_its_row = users::holds_credential(store, locked.id, key);
+    users::delete_user_credential_for(&conn, locked.id, key).unwrap();
+    let without_it = users::holds_credential(store, locked.id, key);
+    users::delete_user(&mut users::open_or_init_cli().unwrap(), locked.id).unwrap();
+    assert_eq!(
+        with_its_row,
+        Ok(true),
+        "a locked account's row was not seen"
+    );
+    assert_eq!(
+        without_it,
+        Ok(false),
+        "the owner's vault copy was counted as a locked account's"
+    );
+    assert_eq!(store.get(key).unwrap(), "owners-token");
     let _ = store.delete(key);
 }
 
