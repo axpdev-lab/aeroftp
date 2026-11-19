@@ -582,9 +582,9 @@ fn s3_retry_marker_tail(status: u16, body: &str, retry_header: Option<&str>) -> 
 #[derive(Debug, Default)]
 struct SentSecrets {
     values: Vec<String>,
-    /// A replaced token that can still sign was dropped to bound the list:
-    /// a reply could repeat a token that `values` does not hold.
-    missing_live_token: bool,
+    /// A replaced token was dropped to bound the list: a reply could repeat
+    /// a token that `values` does not hold.
+    missing_token: bool,
 }
 
 impl SentSecrets {
@@ -592,18 +592,17 @@ impl SentSecrets {
     fn of(values: &[&str]) -> Self {
         Self {
             values: values.iter().map(|value| value.to_string()).collect(),
-            missing_live_token: false,
+            missing_token: false,
         }
     }
 }
 
-/// Session tokens a provider replaced and that can still sign a request.
+/// Session tokens a provider replaced, oldest first.
 #[derive(Default)]
 struct RetiredTokens {
-    /// Each token with when it stops being accepted, oldest first.
-    kept: std::collections::VecDeque<(secrecy::SecretString, Option<DateTime<Utc>>)>,
-    /// Until when a token dropped for room is still accepted.
-    lost_until: Option<DateTime<Utc>>,
+    kept: std::collections::VecDeque<secrecy::SecretString>,
+    /// One was dropped for room: from then on a reply is withheld.
+    lost: bool,
 }
 
 fn format_s3_error(
@@ -666,7 +665,7 @@ fn scrub_s3_reflected_credentials(text: &str) -> String {
 /// When a token that can still sign is no longer known (`SentSecrets`), the
 /// reply is shown by its size only.
 fn s3_error_text(body: &str, sent: &SentSecrets) -> String {
-    if sent.missing_live_token && !body.is_empty() {
+    if sent.missing_token && !body.is_empty() {
         return format!(
             "a reply of {} bytes, withheld: a session token it may repeat is no longer known",
             body.len()
@@ -742,6 +741,10 @@ pub struct S3Provider {
     /// reproduced byte for byte.
     #[cfg(test)]
     fixed_now: Option<DateTime<Utc>>,
+    /// Runs inside `install_temp_credentials` once the new credentials are
+    /// in place and before the old token is retired, the lock still held.
+    #[cfg(test)]
+    between_replace_and_retire: Option<Arc<dyn Fn() + Send + Sync>>,
     /// Override for multipart upload part size (default: 5 MB)
     upload_chunk_override: Option<usize>,
     /// Number of concurrent Range streams for multi-thread download (1 = disabled).
@@ -1293,6 +1296,8 @@ impl S3Provider {
             clock_offset_secs: 0,
             #[cfg(test)]
             fixed_now: None,
+            #[cfg(test)]
+            between_replace_and_retire: None,
             upload_chunk_override: None,
             download_time: Default::default(),
             multi_thread_streams: 1,
@@ -1733,16 +1738,14 @@ impl S3Provider {
             retired
                 .kept
                 .iter()
-                .map(|(token, _)| token.expose_secret().to_string()),
+                .map(|token| token.expose_secret().to_string()),
         );
-        let missing_live_token = retired
-            .lost_until
-            .is_some_and(|until| self.now_adjusted() < until);
+        let missing_token = retired.lost;
         drop(retired);
         drop(temporary);
         SentSecrets {
             values: sent,
-            missing_live_token,
+            missing_token,
         }
     }
 
@@ -1901,51 +1904,42 @@ impl S3Provider {
         Ok(())
     }
 
-    /// How many replaced, still accepted session tokens an error removes.
-    /// A token is refreshed minutes before it expires, so a few are live at
-    /// once; past this many, a dropped live token withholds replies instead.
-    const RETIRED_TOKENS_KEPT: usize = 64;
+    /// How many replaced session tokens an error removes. A response can
+    /// arrive any time after its token was replaced (the read timeout bounds
+    /// a stall, not a response), and an expired token is still a credential,
+    /// so none is dropped for age. A refresh comes at most every 600 seconds
+    /// (a 900 second minimum STS lifetime, renewed 300 seconds early), so
+    /// this many cover at least a week of one session; past them, replies
+    /// are withheld.
+    const RETIRED_TOKENS_KEPT: usize = 1024;
 
-    /// How long past its stated expiry a token is still treated as accepted:
-    /// the server's clock can run behind the adjusted one.
-    const RETIRED_TOKEN_GRACE_SECS: i64 = 900;
-
-    /// Make `creds` the session's credentials and keep the token they replace
-    /// among the retired ones, for an answer to a request it signed, for as
-    /// long as that token is accepted. A token dropped for room while still
-    /// accepted is not forgotten: until it lapses, `sent_secrets` reports it
-    /// missing and S3 error replies are withheld.
+    /// Make `creds` the session's credentials and keep the token they
+    /// replace among the retired ones, for an answer to a request it signed,
+    /// however late. A token dropped for room is not forgotten: from then on
+    /// `sent_secrets` reports one missing and S3 error replies are withheld.
     ///
     /// The old token is retired before the credentials lock is released, and
     /// `sent_secrets` reads both under that lock (always credentials first,
     /// then the retired list): a reader sees a token as current or as
     /// retired, never in neither place.
     fn install_temp_credentials(&self, creds: sts::TempCredentials) {
-        let now = self.now_adjusted();
-        let accepted_until = |expiration: Option<DateTime<Utc>>| {
-            expiration.map_or(DateTime::<Utc>::MAX_UTC, |at| {
-                at + chrono::Duration::seconds(Self::RETIRED_TOKEN_GRACE_SECS)
-            })
-        };
         let mut current = self
             .temp_credentials
             .write()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         if let Some(old) = current.replace(creds) {
+            #[cfg(test)]
+            if let Some(between) = &self.between_replace_and_retire {
+                between();
+            }
             let mut retired = self
                 .retired_session_tokens
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
-            retired.kept.push_back((old.session_token, old.expiration));
-            retired
-                .kept
-                .retain(|(_, expiration)| now < accepted_until(*expiration));
-            while retired.kept.len() > Self::RETIRED_TOKENS_KEPT {
-                if let Some((_, expiration)) = retired.kept.pop_front() {
-                    let until = accepted_until(expiration);
-                    retired.lost_until =
-                        Some(retired.lost_until.map_or(until, |was| was.max(until)));
-                }
+            retired.kept.push_back(old.session_token);
+            if retired.kept.len() > Self::RETIRED_TOKENS_KEPT {
+                retired.kept.pop_front();
+                retired.lost = true;
             }
         }
     }
@@ -16632,9 +16626,10 @@ mod tests {
         }
     }
 
-    /// A reply that answers after many refreshes, as a long upload can: the
-    /// token that signed its request is still removed from the error, and
-    /// past the bound on kept tokens the reply is withheld, never shown.
+    /// A reply that answers after many refreshes, as a long upload can, and
+    /// after its token expired: the token that signed its request is still
+    /// removed from the error, and past the bound on kept tokens the reply is
+    /// withheld, never shown.
     #[test]
     fn a_late_reply_never_shows_the_token_that_signed_it() {
         let with_token = |token: String, expires: DateTime<Utc>| sts::TempCredentials {
@@ -16649,8 +16644,8 @@ mod tests {
         let mut provider = make_provider(Some("http://localhost:9000"));
         let now = Utc::now();
         provider.fixed_now = Some(now);
-        let hour = now + chrono::Duration::hours(1);
-        provider.install_temp_credentials(with_token("LateReplySigner00".to_string(), hour));
+        let soon = now + chrono::Duration::minutes(15);
+        provider.install_temp_credentials(with_token("LateReplySigner00".to_string(), soon));
         let signed = provider
             .effective_credentials()
             .session_token
@@ -16659,40 +16654,73 @@ mod tests {
 
         // Five replacements between signing and the reply.
         for n in 1..=5 {
-            provider.install_temp_credentials(with_token(format!("LateReplyNext{n:04}"), hour));
+            provider.install_temp_credentials(with_token(format!("LateReplyNext{n:04}"), soon));
         }
         assert_eq!(
             provider.reply_text(&echo(&signed)),
             "ExpiredToken: token [REDACTED] expired"
         );
 
-        // More live tokens than are kept: the dropped signer is not known,
-        // so the reply is withheld whole.
-        for n in 6..=S3Provider::RETIRED_TOKENS_KEPT + 1 {
-            provider.install_temp_credentials(with_token(format!("LateReplyNext{n:04}"), hour));
-        }
-        let late = provider.reply_text(&echo(&signed));
-        assert!(!late.contains(&signed), "{late}");
-        assert!(late.contains("withheld"), "{late}");
-
-        // Once the dropped token can no longer sign, replies show again.
-        provider.fixed_now =
-            Some(hour + chrono::Duration::seconds(S3Provider::RETIRED_TOKEN_GRACE_SECS + 1));
+        // A day later, long after it expired, and after another refresh.
+        provider.fixed_now = Some(now + chrono::Duration::days(1));
+        provider.install_temp_credentials(with_token(
+            "LateReplyNextDay".to_string(),
+            now + chrono::Duration::days(2),
+        ));
         assert_eq!(
-            provider.reply_text("<Error><Code>NoSuchKey</Code><Message>gone</Message></Error>"),
-            "NoSuchKey: gone"
+            provider.reply_text(&echo(&signed)),
+            "ExpiredToken: token [REDACTED] expired"
         );
 
-        // A token past its expiry and the grace is not kept, and its loss
-        // withholds nothing: it no longer signs anything.
-        let mut fresh = make_provider(Some("http://localhost:9000"));
-        fresh.fixed_now = Some(now);
-        let lapsed = now - chrono::Duration::seconds(S3Provider::RETIRED_TOKEN_GRACE_SECS + 1);
-        fresh.install_temp_credentials(with_token("LapsedToken000".to_string(), lapsed));
-        fresh.install_temp_credentials(with_token("FreshToken0001".to_string(), hour));
-        let sent = fresh.sent_secrets();
-        assert!(!sent.values.contains(&"LapsedToken000".to_string()));
-        assert!(!sent.missing_live_token);
+        // More tokens than are kept: the dropped signer is not known, so the
+        // reply is withheld whole, and stays withheld.
+        for n in 6..=S3Provider::RETIRED_TOKENS_KEPT {
+            provider.install_temp_credentials(with_token(format!("LateReplyNext{n:04}"), soon));
+        }
+        for reply in [
+            echo(&signed),
+            "<Error><Code>NoSuchKey</Code><Message>gone</Message></Error>".to_string(),
+        ] {
+            let late = provider.reply_text(&reply);
+            assert!(!late.contains(&signed), "{late}");
+            assert!(late.contains("withheld"), "{late}");
+        }
+    }
+
+    /// The moment between installing new credentials and retiring the old
+    /// token, forced: no reader can take a snapshot there, so the token that
+    /// just left `temp_credentials` is never in neither place.
+    #[test]
+    fn no_snapshot_falls_between_replacing_and_retiring_a_token() {
+        let mut provider = make_provider(Some("http://localhost:9000"));
+        let cell = provider.temp_credentials.clone();
+        let paused = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let reader_blocked = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let (was_paused, blocked) = (paused.clone(), reader_blocked.clone());
+        provider.between_replace_and_retire = Some(Arc::new(move || {
+            was_paused.store(true, std::sync::atomic::Ordering::SeqCst);
+            blocked.store(
+                cell.try_read().is_err(),
+                std::sync::atomic::Ordering::SeqCst,
+            );
+        }));
+        let with_token = |token: &str| sts::TempCredentials {
+            session_token: secrecy::SecretString::from(token.to_string()),
+            ..temp_creds(Some(Utc::now() + chrono::Duration::hours(1)))
+        };
+        provider.install_temp_credentials(with_token("OverlapSigner0001"));
+        provider.install_temp_credentials(with_token("OverlapNext000002"));
+        assert!(paused.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(
+            reader_blocked.load(std::sync::atomic::Ordering::SeqCst),
+            "a snapshot could be taken with the old token retired nowhere"
+        );
+        assert_eq!(
+            provider.reply_text(
+                "<Error><Code>ExpiredToken</Code><Message>token OverlapSigner0001 expired</Message></Error>"
+            ),
+            "ExpiredToken: token [REDACTED] expired"
+        );
     }
 
     /// A reply that lands while a sibling clone refreshes: whatever token a
