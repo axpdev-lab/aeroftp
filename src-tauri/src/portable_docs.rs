@@ -1261,6 +1261,7 @@ fn installed_app_keys(exe_dir: &Path) -> Option<Vec<String>> {
     installed_app_keys_with_liveness(exe_dir, exe_key, process_is_alive)
 }
 
+#[cfg(test)]
 fn installed_app_keys_with(
     exe_dir: &Path,
     hash_exe: impl Fn(&Path) -> io::Result<String>,
