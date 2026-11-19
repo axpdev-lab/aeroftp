@@ -31,7 +31,7 @@ import {
   PINNED_CRATE_LICENSES,
   KNOWN_NON_FREE_EXCEPTIONS,
   PINNED_FALLBACK_ATTRIBUTIONS,
-  formatDiff,
+  firstDifferingLine,
   findPackageCopyrightNotices,
   hasCopyrightHolderInFiles,
   namesCopyrightHolder,
@@ -1255,7 +1255,6 @@ test('bundled code under a license the package does not declare: its header lice
     write('LICENSE', shippedLicense('ISC License\n\nCopyright (c) 2015 Wrapper Author', 'ISC'));
     write('lib/index.js', '/**\n * @license QR Code generator library\n * Copyright (c) Project Nayuki.\n * SPDX-License-Identifier: MIT\n */\nvar a;\n/**\n * Copyright (c) Wrapper Author\n * SPDX-License-Identifier: ISC\n */\n');
     write('lib/either.js', '// SPDX-License-Identifier: ISC OR MIT\n');
-    write('lib/typo.js', '// SPDX-License-Identifier: Apache-2.inner\n');
     write('libbar/COPYING', 'Copyright (c) 2004 Bar Project\nRedistribution and use in source and binary forms.');
     write('libbar/src/bar.c', '/* Copyright (c) 2004 Bar Project\n * SPDX-License-Identifier: BSD-3-Clause */\n');
     write('tests/fixture.js', '// SPDX-License-Identifier: BSD-3-Clause\n');
@@ -2165,10 +2164,17 @@ test('component links: credentials and query values never reach the notices, an 
   assert.strictEqual(publicLink('not a url'), undefined);
   assert.strictEqual(publicLink(undefined), undefined);
   const dep = (name, repository) => ({ name, version: '1.0.0', license: 'MIT', source: 'cargo', repository, authors: ['A'], licenseFiles: [], noticeFiles: [] });
-  const { output } = renderNotices([dep('linked', 'https://user:s3cret-token@git.example.com/org/repo?token=s3cret-token'), dep('plain', 'https://github.com/org/plain')], []);
+  const { output } = renderNotices([
+    dep('linked', 'https://user:s3cret-token@git.example.com/org/repo?token=s3cret-token'),
+    dep('plain', 'https://github.com/org/plain'),
+    dep('parenthesis', 'https://git.example.com/docs/Foo).html'),
+    dep('balanced', 'https://git.example.com/docs/Foo(bar).html'),
+  ], []);
   assert.doesNotMatch(output, /s3cret-token/);
   assert.match(output, /\| linked \| 1\.0\.0 \| MIT \| \[Link\]\(https:\/\/git\.example\.com\/org\/repo\) \|/);
   assert.match(output, /\| plain \| 1\.0\.0 \| MIT \| \[Link\]\(https:\/\/github\.com\/org\/plain\) \|/);
+  assert.match(output, /\| parenthesis \| 1\.0\.0 \| MIT \| \[Link\]\(https:\/\/git\.example\.com\/docs\/Foo%29\.html\) \|/);
+  assert.match(output, /\| balanced \| 1\.0\.0 \| MIT \| \[Link\]\(https:\/\/git\.example\.com\/docs\/Foo%28bar%29\.html\) \|/);
 });
 
 test('reviewed notices: a citation applies in a package folder written with Windows separators', () => {
@@ -2209,7 +2215,10 @@ test('reviewed notices and tag mentions: each entry names its source and the who
     }
   }
   // The two tauri-winres examples are reviewed as examples scoped to their files, not notices.
-  assert.deepStrictEqual(reviewedNotices().filter((r) => r.example).map((r) => r.source.split(' (')[0]), ['tauri-winres 0.3.6 README.md:86', 'tauri-winres 0.3.6 src/lib.rs:127']);
+  const reviewedExamples = reviewedNotices().filter((r) => r.example).map((r) => r.source.split(' (')[0]);
+  for (const required of ['tauri-winres 0.3.6 README.md:86', 'tauri-winres 0.3.6 src/lib.rs:127']) {
+    assert.ok(reviewedExamples.includes(required), `missing reviewed example ${required}`);
+  }
   // Example suppression applies only in the two reviewed tauri-winres@0.3.6 files,
   // never in an unrelated package carrying the same pair of lines.
   const exTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'example-scope-fixture-'));
@@ -2227,7 +2236,8 @@ test('reviewed notices and tag mentions: each entry names its source and the who
     fs.rmSync(exTmp, { recursive: true, force: true });
   }
   // The moka book citation is reviewed as a citation, not a notice of moka.
-  assert.deepStrictEqual(reviewedNotices().filter((r) => r.citation).map((r) => r.source.split(' (')[0]), ['moka 0.12.16 src/common/concurrent/arc.rs:5-6']);
+  const reviewedCitations = reviewedNotices().filter((r) => r.citation).map((r) => r.source.split(' (')[0]);
+  assert.ok(reviewedCitations.includes('moka 0.12.16 src/common/concurrent/arc.rs:5-6'));
   for (const [key, reason] of Object.entries(reviewedTagMentions())) assert.ok(/^[^@]+@[^:]+:[^:]+:/.test(key) && reason, key);
 });
 
@@ -2271,6 +2281,16 @@ test('third-party license files: reproduced as notices, a package\'s own only wh
     const onlyMd = generateNoticesMarkdown([only], []);
     assert.ok(onlyMd.indexOf(`<a id="notice-${only.name}"></a>`) >= 0, 'its declared file takes the anchor');
     assert.doesNotMatch(onlyMd, STANDARD);
+    // The same declared file inside LICENSES/ is read once, not rediscovered as a notice.
+    const nestedDeclared = fixture(
+      { 'LICENSE-MIT': mitText, 'LICENSES/THIRD-PARTY-LICENSE.txt': bzip2 },
+      'MIT AND bzip2-1.0.6',
+      'LICENSES/THIRD-PARTY-LICENSE.txt'
+    );
+    assert.deepStrictEqual(nestedDeclared.noticeFiles, []);
+    assert.deepStrictEqual(nestedDeclared.licenseFiles.map((f) => f.filename), ['LICENSE-MIT', 'LICENSES/THIRD-PARTY-LICENSE.txt']);
+    const nestedMd = generateNoticesMarkdown([nestedDeclared], []);
+    assert.strictEqual(nestedMd.split('The name of the author may not be used').length - 1, 1);
     // A vendored library's file describes that library, not the package.
     const vendored = fixture({ 'LICENSE-MIT': mitText, 'vendor/lib/THIRD-PARTY-LICENSE.txt': bzip2 }, 'MIT AND bzip2-1.0.6');
     assert.ok(vendored.noticeFiles.every((f) => f.vendored));
@@ -2744,14 +2764,19 @@ test('bundled code: a header whose only license is a known typo keeps a holder t
     };
     write('LICENSE', shippedLicense('MIT License\n\nCopyright (c) 2020 Wrapper Author', 'MIT'));
     write('src/menu.rs', '// Copyright 2022-2022 Typo Header Author\n// SPDX-License-Identifier: Apache-2.inner\n');
-    write('src/items.rs', '// Copyright 2020 Wrapper Author\n// SPDX-License-Identifier: Apache-2.inner\n');
-    write('src/bare.rs', '// SPDX-License-Identifier: Apache-2.inner\n');
-    const comp = { name: 'typo-holder', version: '1.0.0', license: 'MIT', source: 'cargo', packageDir: tmpDir, authors: [], ...readPackageFiles(tmpDir, 'typo-holder@1.0.0') };
+    write('src/items/mod.rs', '// Copyright 2020 Wrapper Author\n// SPDX-License-Identifier: Apache-2.inner\n');
+    write('src/items/bare.rs', '// SPDX-License-Identifier: Apache-2.inner\n');
+    const comp = { name: 'muda', version: '0.19.3', license: 'MIT', source: 'cargo', packageDir: tmpDir, authors: [], ...readPackageFiles(tmpDir, 'muda@0.19.3') };
     const known = new Set(Object.keys(JSON.parse(fs.readFileSync(SPDX_STANDARD_LICENSES_FILE, 'utf8'))));
-    assert.deepStrictEqual(findBundledCodeUnderOtherLicenses(comp, known).map((b) => [b.license, b.notices, b.files, b.headers.length, b.declared]), [['Apache-2.inner', ['Copyright 2020 Wrapper Author', 'Copyright 2022-2022 Typo Header Author'], ['src/items.rs', 'src/menu.rs'], 0, true]]);
+    assert.deepStrictEqual(findBundledCodeUnderOtherLicenses(comp, known).map((b) => [b.license, b.notices, b.files, b.headers.length, b.declared]), [['Apache-2.inner', ['Copyright 2020 Wrapper Author', 'Copyright 2022-2022 Typo Header Author'], ['src/items/mod.rs', 'src/menu.rs'], 0, true]]);
     const md = generateNoticesMarkdown([comp], []);
     assert.match(md, /^ {2}- Copyright 2022-2022 Typo Header Author \(in a source header under Apache-2\.inner\)$/m);
     assert.doesNotMatch(md, /Copyright 2020 Wrapper Author \(in a source header/, 'the package names this holder itself');
+    assert.throws(
+      () => findBundledCodeUnderOtherLicenses({ ...comp, name: 'unrelated', version: '1.0.0' }, known),
+      /unrelated@1\.0\.0.*Apache-2\.inner/,
+      'the reviewed typo exception must not apply to another package'
+    );
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
@@ -2873,11 +2898,11 @@ test('bundled code: a known typo is dropped term by term, the other terms of its
       fs.writeFileSync(path.join(tmpDir, rel), content);
     };
     write('LICENSE', 'MIT License\n\nCopyright (c) 2020 Wrapper Author\n\nPermission is hereby granted, free of charge.');
-    const make = () => ({ name: 'typo-and-pkg', version: '1.0.0', license: 'MIT', source: 'cargo', packageDir: tmpDir, authors: [], ...readPackageFiles(tmpDir, 'typo-and-pkg@1.0.0') });
+    const make = () => ({ name: 'muda', version: '0.19.3', license: 'MIT', source: 'cargo', packageDir: tmpDir, authors: [], ...readPackageFiles(tmpDir, 'muda@0.19.3') });
     const known = new Set(Object.keys(JSON.parse(fs.readFileSync(SPDX_STANDARD_LICENSES_FILE, 'utf8'))));
     // The typo hid the mandatory GPL-2.0-only term: the whole choice was dropped before the policy.
     write('src/menu.rs', '// Copyright 2022 Typo Author\n// SPDX-License-Identifier: Apache-2.inner AND GPL-2.0-only\n');
-    assert.throws(() => findBundledCodeUnderOtherLicenses(make(), known), /typo-and-pkg@1\.0\.0 bundles src\/menu\.rs under 'Apache-2\.inner AND GPL-2\.0-only', and no choice of it is compatible with GPL-3\.0/);
+    assert.throws(() => findBundledCodeUnderOtherLicenses(make(), known), /muda@0\.19\.3 bundles src\/menu\.rs under 'Apache-2\.inner AND GPL-2\.0-only', and no choice of it is compatible with GPL-3\.0/);
     // A compatible term beside the typo is the header's license.
     write('src/menu.rs', '// Copyright 2022 Typo Author\n// SPDX-License-Identifier: Apache-2.inner AND MIT\n');
     assert.deepStrictEqual(findBundledCodeUnderOtherLicenses(make(), known).map((b) => [b.license, b.notices, b.declared]), [['MIT', ['Copyright 2022 Typo Author'], true]]);
@@ -2977,6 +3002,8 @@ test('bundled code: a copyright line that states a condition is a term, only att
     const shouted = 'Copyright MUST remain visible in the user interface.';
     write('lib/shouted.js', header('2018 Shouted Vendor', ['', shouted]));
     write('lib/std.js', header('2019 Standard Vendor', []));
+    const reservedCondition = 'All rights reserved. Commercial distribution is prohibited.';
+    write('lib/reserved.js', header('2020 Reserved Vendor', ['', reservedCondition]));
     assert.strictEqual(namesCopyrightHolder(condition), false);
     assert.strictEqual(namesCopyrightHolder('Copyright (c) 2018 Visible Vendor'), true);
     assert.strictEqual(namesCopyrightHolder(shouted), false, 'a condition in capitals names nobody');
@@ -2993,6 +3020,9 @@ test('bundled code: a copyright line that states a condition is a term, only att
     assert.ok(section.includes(condition), 'the condition is reproduced');
     assert.match(section, /in `lib\/shouted\.js`/);
     assert.ok(section.includes(shouted), 'the condition in capitals is reproduced');
+    assert.match(section, /in `lib\/reserved\.js`/);
+    assert.ok(section.includes(reservedCondition), 'a condition beside All rights reserved is reproduced');
+    assert.strictEqual(licenseTermsOf('All rights reserved.\nPermission is hereby granted.'), 'Permission is hereby granted.');
     // The standard terms under another holder are still the package's text.
     assert.doesNotMatch(section, /lib\/std\.js/, 'a header with the standard terms is not repeated');
   } finally {
@@ -3180,12 +3210,17 @@ test('bundled code: a header expression made of SPDX tokens that does not parse 
     // A reviewed mention with > MAX_SPDX_ALTERNATIVES distinct choices is
     // skipped before expansion, while an unreviewed header above the cap fails.
     const hugeExpr = Array.from({ length: 11 }, (_, idx) => `(LicenseA-${idx} OR LicenseB-${idx})`).join(' AND ');
-    const mentionLine = `const BIG = "SPDX-License-Identifier: ${hugeExpr}";`;
+    const mentionLine = `// Example: SPDX-License-Identifier: ${hugeExpr}`;
     write('lib/huge_mention.c', `${mentionLine}\n`);
     const hugeMentionMap = { [`malformed-pkg@1.0.0:lib/huge_mention.c:${mentionLine}`]: 'reviewed test mention' };
     assert.deepStrictEqual(
       findBundledCodeUnderOtherLicenses(comp, known, { ...listed, ...hugeMentionMap }).filter((b) => !b.declared).map((b) => [b.license, b.files]),
       [['BSD-2-Clause', ['lib/arm.S', 'lib/one.c', 'lib/valid.c']]]
+    );
+    assert.throws(
+      () => findBundledCodeUnderOtherLicenses(comp, known, listed),
+      new RegExp(`exceeds ${MAX_SPDX_ALTERNATIVES} distinct alternatives`),
+      'without the review record the same tokenizable mention must hit the expansion cap'
     );
     fs.rmSync(path.join(tmpDir, 'lib/huge_mention.c'));
     write('lib/huge_header.c', `// SPDX-License-Identifier: ${hugeExpr}\n`);
@@ -3434,14 +3469,27 @@ test('THIRD-PARTY-NOTICES.md and the exception pages exist and are up to date wi
   assert.match(content, new RegExp(`- \\*\\*Node\\.js / Web \\(npm\\) Production Packages:\\*\\* ${realTree().npm.length}\\n`));
 });
 
-test('check:licenses diff reporting: prints unified diff with line numbers on mismatch', () => {
-  const existing = 'line 1\nline 2\nline 3\n';
-  const generated = 'line 1\nline 2 modified\nline 3\n';
-  const diff = formatDiff(existing, generated);
-  assert.match(diff, /--- existing \(line 2\)/);
-  assert.match(diff, /\+\+\+ generated \(line 2\)/);
-  assert.match(diff, /-line 2/);
-  assert.match(diff, /\+line 2 modified/);
+test('check:licenses drift reporting: nonzero with a line location, never notice contents', () => {
+  assert.strictEqual(firstDifferingLine('line 1\nline 2\n', 'line 1\nchanged\n'), 2);
+  assert.strictEqual(firstDifferingLine('same\n', 'same\n'), null);
+  const file = path.join(ROOT, 'docs/UNRAR-LICENSE.md');
+  const before = fs.readFileSync(file);
+  const dummyCredential = 'dummy-credential-for-ci-log-test';
+  const tsxCli = createRequire(path.join(ROOT, 'package.json')).resolve('tsx/cli');
+  try {
+    fs.writeFileSync(file, `${before.toString('utf8')}\n${dummyCredential}\n`);
+    const run = spawnSync(process.execPath, [tsxCli, 'scripts/gen-third-party-notices.ts', '--check'], {
+      cwd: ROOT,
+      encoding: 'utf8',
+      stdio: 'pipe',
+    });
+    const output = `${run.stdout}${run.stderr}`;
+    assert.notStrictEqual(run.status, 0, output);
+    assert.match(output, /First difference at line \d+\./);
+    assert.ok(!output.includes(dummyCredential), 'drift diagnostics must not reproduce notice contents');
+  } finally {
+    fs.writeFileSync(file, before);
+  }
 });
 
 test('determinism: shuffled dependencies and CRLF/LF line endings produce identical markdown', () => {
@@ -3503,7 +3551,7 @@ test('licensing exceptions: each exception gets a standalone page with the text 
   assert.ok(page.startsWith('# Nonfree License\n'));
   assert.ok(page.includes('The nonfree facts.'));
   assert.ok(page.includes('`nonfree-crate@1.0.0` ships in `vendor/x/license.txt`'));
-  assert.ok(page.includes('(../THIRD-PARTY-NOTICES.md#exception-nonfree-crate)'));
+  assert.ok(page.includes('(../THIRD-PARTY-NOTICES.md?raw=1)'));
   assert.strictEqual(fencedBlockAfter(page, '# Nonfree License'), fencedBlockAfter(output, '<a id="exception-nonfree-crate"></a>'));
   assert.strictEqual(fencedBlockAfter(page, '# Nonfree License'), nonFreeText.replace(/\n$/, ''));
   // The backlink is computed from the page's own folder: a nested page and
@@ -3514,7 +3562,7 @@ test('licensing exceptions: each exception gets a standalone page with the text 
   ]) {
     const nested = renderNotices([comp], [], SPDX_STANDARD_LICENSES_FILE, [{ ...exception, document }]).documents[0];
     assert.strictEqual(nested.file, document);
-    assert.ok(nested.content.includes(`(${link}#exception-nonfree-crate)`), document);
+    assert.ok(nested.content.includes(`(${link}?raw=1)`), document);
     assert.strictEqual(path.posix.normalize(path.posix.join(path.posix.dirname(document), link)), 'THIRD-PARTY-NOTICES.md');
   }
   assert.strictEqual(noticesLinkFrom('docs/UNRAR-LICENSE.md'), '../THIRD-PARTY-NOTICES.md');
@@ -4053,11 +4101,10 @@ test('README.md notice links resolve outside fenced text, and the UnRAR terms ha
   const destinations = anchorIdsOutsideFences(noticesContent);
   const links = linksOutsideFences(readmeContent);
 
-  const anchors = links.filter((l) => l.startsWith('THIRD-PARTY-NOTICES.md#')).map((l) => l.slice('THIRD-PARTY-NOTICES.md#'.length));
-  assert.ok(anchors.length > 0, 'README.md must contain at least one link to a THIRD-PARTY-NOTICES.md anchor');
-  for (const anchor of anchors) {
-    assert.ok(destinations.has(anchor), `Anchor #${anchor} linked in README.md must be an anchor of THIRD-PARTY-NOTICES.md outside fenced text`);
-  }
+  assert.ok(
+    links.includes('THIRD-PARTY-NOTICES.md?raw=1'),
+    'README.md must link to the raw full notices without requiring an anchor on an unrendered file'
+  );
 
   // GitHub does not display the notices (over 2 MB): each licensing exception
   // has its own page, linked from the README, with the same text as the
@@ -4066,6 +4113,7 @@ test('README.md notice links resolve outside fenced text, and the UnRAR terms ha
     assert.ok(links.includes(exc.document), `README.md must link to ${exc.document}`);
     const page = lf(fs.readFileSync(path.join(ROOT, exc.document), 'utf8'));
     assert.ok(page.length < 64 * 1024, `${exc.document} stays small enough for GitHub to display`);
+    assert.ok(page.includes(`](${noticesLinkFrom(exc.document)}?raw=1)`), 'the standalone page links to readable raw notices');
     assert.ok(page.startsWith(`# ${exc.licenseName}\n`));
     const id = `exception-${exc.crateName.replace(/_/g, '-')}`;
     const anchorTag = `<a id="${id}"></a>`;
@@ -4241,7 +4289,7 @@ test('anchor validation: excludes fenced code blocks from duplicate anchor detec
   // embedded triple-backtick fences (causing makeCodeBlock to use 4-backtick outer fences)
   // and an embedded <a id="..."> matching the component anchor.
   const out = generateNoticesMarkdown([compA], [], SPDX_STANDARD_LICENSES_FILE, []);
-  assert.match(out, /<a id="notice-crate-with-id-in-license"><\/a>/);
+  assert.ok(anchorIdsOutsideFences(out).has('notice-crate-with-id-in-license'));
 });
 
 test('alloc-stdlib: copyright line matches upstream license and separates author from copyright holder', () => {
@@ -4270,6 +4318,30 @@ test('findPackageCopyrightNotices: extracts header notices, deduplicates, and ig
     assert.strictEqual(notices.length, 1, 'Identical notices across files must be deduplicated');
     assert.strictEqual(notices[0].notice, 'Copyright (c) 2024 Test Author.');
     assert.strictEqual(notices[0].file, 'README.md');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('findPackageCopyrightNotices: untagged source retains a yearless named holder, not a bare marker', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'untagged-yearless-fixture-'));
+  try {
+    fs.mkdirSync(path.join(tmpDir, 'src'));
+    fs.writeFileSync(path.join(tmpDir, 'LICENSE'), 'MIT License\n\nPermission is hereby granted, free of charge...\n');
+    fs.writeFileSync(path.join(tmpDir, 'src', 'lib.rs'), '// © Alice Example\n// ©\n');
+    assert.deepStrictEqual(findPackageCopyrightNotices(tmpDir).map((n) => n.notice), ['© Alice Example']);
+    const comp = {
+      name: 'untagged-yearless',
+      version: '1.0.0',
+      source: 'cargo',
+      license: 'MIT',
+      authors: ['Manifest Author'],
+      packageDir: tmpDir,
+      ...readPackageFiles(tmpDir, 'untagged-yearless@1.0.0'),
+    };
+    const out = generateNoticesMarkdown([comp], []);
+    assert.match(out, /- © Alice Example \(src\/lib\.rs\)/);
+    assert.doesNotMatch(out, /- © \(src\/lib\.rs\)/);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

@@ -10732,17 +10732,29 @@ impl From<AimdTomlClassWindow> for ftp_client_gui_lib::transfer_dag::AimdClassWi
     }
 }
 
-/// Default TOML path used when `--aimd-config` is unset. Returns
-/// `<XDG_CONFIG_HOME>/aeroftp/aimd.toml` (or `~/.config/aeroftp/aimd.toml`),
-/// or `None` when neither environment variable resolves.
-fn default_aimd_config_path() -> Option<PathBuf> {
-    if !ftp_client_gui_lib::portable::is_confirmed_installed() {
-        return ftp_client_gui_lib::portable::aeroftp_data_root().map(|d| d.join("aimd.toml"));
+/// Default TOML path used when `--aimd-config` is unset. Pending portable
+/// detection is an operator-retryable error, never a fallback to host paths or
+/// default AIMD overrides.
+fn default_aimd_config_path() -> Result<Option<PathBuf>, String> {
+    if ftp_client_gui_lib::portable::is_confirmed_installed() {
+        return Ok(dirs::config_dir().or_else(dirs::home_dir).map(|base| {
+            base.join(ftp_client_gui_lib::portable::aeroftp_data_leaf_for_debug(
+                cfg!(debug_assertions),
+            ))
+            .join("aimd.toml")
+        }));
     }
-    let leaf = ftp_client_gui_lib::portable::aeroftp_data_leaf_for_debug(cfg!(debug_assertions));
-    dirs::config_dir()
-        .or_else(dirs::home_dir)
-        .map(|base| base.join(leaf).join("aimd.toml"))
+    default_aimd_config_path_for(ftp_client_gui_lib::portable::aeroftp_data_root())
+}
+
+fn default_aimd_config_path_for(portable_root: Option<PathBuf>) -> Result<Option<PathBuf>, String> {
+    portable_root
+        .map(|root| root.join("aimd.toml"))
+        .map(Some)
+        .ok_or_else(|| {
+            "Portable mode detection is pending; retry the command once startup finishes"
+                .to_string()
+        })
 }
 
 /// Load per-class AIMD window overrides from a TOML file. Returns
@@ -10825,7 +10837,7 @@ fn build_aimd_runtime_config(
     let file_overrides = match &cli.aimd_config {
         Some(explicit) => load_aimd_overrides_from_file(explicit)?
             .ok_or_else(|| format!("AIMD config file not found: {}", explicit.display()))?,
-        None => match default_aimd_config_path() {
+        None => match default_aimd_config_path()? {
             Some(default_path) => {
                 load_default_aimd_overrides_from_file(&default_path)?.unwrap_or_default()
             }
@@ -90333,6 +90345,16 @@ mod tests {
         assert_eq!(cfg.cooldown, baseline.cooldown);
         assert_eq!(cfg.healthy_window, baseline.healthy_window);
         assert_eq!(cfg.recovery_window, baseline.recovery_window);
+    }
+
+    #[test]
+    fn test_default_aimd_config_pending_is_an_error_and_portable_path_is_preserved() {
+        let pending = default_aimd_config_path_for(None).unwrap_err();
+        assert!(pending.contains("retry the command"));
+        assert_eq!(
+            default_aimd_config_path_for(Some(PathBuf::from("/portable/data"))).unwrap(),
+            Some(PathBuf::from("/portable/data/aimd.toml"))
+        );
     }
 
     #[test]

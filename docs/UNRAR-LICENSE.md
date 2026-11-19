@@ -4,7 +4,7 @@
 
 RAR extraction uses the UnRAR source code by Alexander Roshal (through the unrar crate, vendored unrar_sys), distributed under its own license, which allows it to be used and redistributed but forbids using it to re-create the RAR compression algorithm. AeroFTP only extracts RAR archives and never creates them. The UnRAR license is not a free-software license, and it is not GPL-compatible.
 
-This is the license text that `unrar_sys@0.5.8` ships in `vendor/unrar/license.txt`, written from the same file as the text reproduced in [THIRD-PARTY-NOTICES.md](../THIRD-PARTY-NOTICES.md#exception-unrar-sys), the notices AeroFTP packages ship. `npm run check:licenses` fails when this page no longer matches that text.
+This is the license text that `unrar_sys@0.5.8` ships in `vendor/unrar/license.txt`, written from the same file as the text reproduced in [THIRD-PARTY-NOTICES.md](../THIRD-PARTY-NOTICES.md?raw=1), the notices AeroFTP packages ship. `npm run check:licenses` fails when this page no longer matches that text.
 
 ```text
 ******    *****   ******   UnRAR - free utility for RAR archives

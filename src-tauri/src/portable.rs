@@ -108,6 +108,24 @@ fn portable_root_status_from_exe<'a>(
     resolve_portable_root_status(cache, &dir, own_key, wait)
 }
 
+#[cfg(any(not(windows), test))]
+fn marker_root_status_from_metadata<'a>(
+    cache: &'a OnceLock<Option<PathBuf>>,
+    dir: &Path,
+    metadata: impl FnOnce(&Path) -> std::io::Result<std::fs::Metadata>,
+) -> PortableRootStatus<'a> {
+    if let Some(cached) = cache.get() {
+        return status_from_cached(cached);
+    }
+    let root = match metadata(&dir.join(MARKER_FILENAME)) {
+        Ok(meta) if meta.is_file() => Some(dir.to_path_buf()),
+        Ok(_) => None,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(_) => return PortableRootStatus::Pending,
+    };
+    status_from_cached(cache.get_or_init(|| root))
+}
+
 /// Resolve the portable root status for the running executable, keeping
 /// `Pending` distinct from confirmed `Installed` mode and bounding lock waits
 /// so GUI startup and `portable_info` never block indefinitely.
@@ -134,13 +152,7 @@ pub(crate) fn portable_root_status() -> PortableRootStatus<'static> {
         let Some(dir) = exe_dir() else {
             return PortableRootStatus::Pending;
         };
-        status_from_cached(PORTABLE_ROOT.get_or_init(|| {
-            if dir.join(MARKER_FILENAME).is_file() {
-                Some(dir)
-            } else {
-                None
-            }
-        }))
+        marker_root_status_from_metadata(&PORTABLE_ROOT, &dir, |p| std::fs::metadata(p))
     }
 }
 
@@ -1154,6 +1166,7 @@ fn wait_for_startup_webview_data_dir_with(
                 }
                 return Ok(dir);
             }
+            Err(e) if e != PORTABLE_PENDING_ERR => return Err(e),
             Err(e) => {
                 last_err = e;
                 if attempt < max_retries {
@@ -1182,9 +1195,13 @@ pub(crate) fn report_startup_portable_error(err: &str) {
         use windows::core::HSTRING;
         use windows::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR, MB_OK};
         let title = HSTRING::from("AeroFTP Startup Delayed");
-        let body = HSTRING::from(format!(
-            "AeroFTP could not confirm portable vs installed mode in time, so it stopped rather than opening the wrong data directory.\n\n{err}"
-        ));
+        let body = HSTRING::from(if err.starts_with(PORTABLE_PENDING_ERR) {
+            format!(
+                "AeroFTP could not confirm portable vs installed mode in time, so it stopped rather than opening the wrong data directory.\n\n{err}"
+            )
+        } else {
+            format!("AeroFTP could not prepare its WebView data directory.\n\n{err}")
+        });
         // SAFETY: both HSTRINGs are valid null-terminated UTF-16 strings; None
         // owner displays a standard modal error box on the desktop.
         let _ = unsafe { MessageBoxW(None, &body, &title, MB_OK | MB_ICONERROR) };
@@ -3097,12 +3114,12 @@ mod secval_b_tests {
         // Bounded probe runs on a worker thread while the lock stays held so a
         // regression to an unbounded wait fails via `recv_timeout` rather than
         // hanging the test. Always release `holder` before asserting/joining.
-        let cache = OnceLock::new();
+        let cache = std::sync::Arc::new(OnceLock::new());
         let probe_dir = dir.path().to_path_buf();
         let probe_key = key.clone();
         let (probe_tx, probe_rx) = std::sync::mpsc::channel();
+        let worker_cache = std::sync::Arc::clone(&cache);
         let probe_worker = std::thread::spawn(move || {
-            let worker_cache = OnceLock::new();
             let s = resolve_portable_root_status(
                 &worker_cache,
                 &probe_dir,
@@ -3496,5 +3513,60 @@ mod secval_b_tests {
             |_| {},
         );
         assert!(res3.unwrap_err().contains("relaunch AeroFTP"));
+    }
+
+    #[test]
+    fn marker_metadata_error_is_pending_then_recovers_without_caching_installed() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = OnceLock::new();
+        assert_eq!(
+            marker_root_status_from_metadata(&cache, dir.path(), |_| {
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    "injected metadata error",
+                ))
+            }),
+            PortableRootStatus::Pending
+        );
+        assert!(cache.get().is_none());
+        std::fs::write(dir.path().join(MARKER_FILENAME), b"portable").unwrap();
+        assert_eq!(
+            marker_root_status_from_metadata(&cache, dir.path(), |p| std::fs::metadata(p)),
+            PortableRootStatus::Portable(dir.path())
+        );
+
+        let missing = tempfile::tempdir().unwrap();
+        let missing_cache = OnceLock::new();
+        assert_eq!(
+            marker_root_status_from_metadata(
+                &missing_cache,
+                missing.path(),
+                |p| std::fs::metadata(p)
+            ),
+            PortableRootStatus::Installed
+        );
+        assert_eq!(missing_cache.get(), Some(&None));
+    }
+
+    #[test]
+    fn startup_webview_directory_error_is_not_retried_as_pending_mode() {
+        let mut probes = 0u32;
+        let sleeps = std::cell::Cell::new(0u32);
+        let error = wait_for_startup_webview_data_dir_with(
+            6,
+            std::time::Duration::ZERO,
+            || {
+                probes += 1;
+                Err("Failed to create /portable/data/webview: read-only filesystem".to_string())
+            },
+            || panic!("must not migrate on a portable directory error"),
+            |_| sleeps.set(sleeps.get() + 1),
+        )
+        .unwrap_err();
+        assert_eq!(probes, 1);
+        assert_eq!(sleeps.get(), 0);
+        assert!(error.contains("/portable/data/webview"));
+        assert!(error.contains("read-only filesystem"));
+        assert!(!error.contains("relaunch AeroFTP"));
     }
 }

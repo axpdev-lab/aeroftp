@@ -128,11 +128,23 @@ pub fn install_with_helper(
         prepared.release_handoff_lock();
     }
 
-    if let Err(e) = spawn_detached(&script) {
-        if let Some(prepared) = &portable {
-            prepared.discard(&exe_path, downloaded_path);
+    let mut helper = match spawn_detached(&script) {
+        Ok(helper) => helper,
+        Err(e) => {
+            if let Some(prepared) = &portable {
+                prepared.discard(&exe_path, downloaded_path);
+            }
+            return Err(e);
         }
-        return Err(e);
+    };
+    if let Some(prepared) = portable.as_mut() {
+        if let Err(e) = prepared.handoff.transfer_to(helper.id()) {
+            let _ = helper.kill();
+            let _ = helper.wait();
+            prepared.discard(&exe_path, downloaded_path);
+            return Err(format!("Failed to record the helper handoff owner: {e}"));
+        }
+        prepared.persist_handoff();
     }
 
     // Notify frontend before we drop the AppHandle. Same phase emitted by
@@ -389,23 +401,21 @@ fn update_handoff_lock_path(exe_dir: &Path) -> PathBuf {
     exe_dir.join(UPDATE_HANDOFF_LOCK_FILE)
 }
 
-/// Acquires the exclusive installation-wide update handoff lock (`share_mode(0)`
-/// with `FILE_FLAG_DELETE_ON_CLOSE`). Held during `stage_update_with` /
-/// `prepare_portable` so concurrent update attempts (even from processes with
-/// different `TMP` directories) cannot write sidecars or stage/retire documents
-/// while another update is preparing or while a helper's `:run_swap` holds the
-/// same file open.
+/// Acquires the exclusive installation-wide update handoff lock (`share_mode(0)`).
+/// Held during `stage_update_with` / `prepare_portable` so concurrent update
+/// attempts (even from processes with different `TMP` directories) cannot write
+/// sidecars or stage/retire documents while another update is preparing or while
+/// a helper's `:run_swap` holds the same file open. The lock entry is persistent:
+/// opening it never takes ownership of, or deletes, a pre-existing user file.
 fn acquire_update_handoff_lock(exe_dir: &Path) -> Result<std::fs::File, String> {
     use std::os::windows::fs::OpenOptionsExt;
     const ERROR_SHARING_VIOLATION: i32 = 32;
-    const FILE_FLAG_DELETE_ON_CLOSE: u32 = 0x0400_0000;
     let path = update_handoff_lock_path(exe_dir);
     std::fs::OpenOptions::new()
         .write(true)
         .create(true)
         .truncate(false)
         .share_mode(0)
-        .custom_flags(FILE_FLAG_DELETE_ON_CLOSE)
         .open(&path)
         .map_err(|e| {
             if e.raw_os_error() == Some(ERROR_SHARING_VIOLATION) {
@@ -422,6 +432,19 @@ struct StagedUpdate {
     attempt_id: String,
     docs_key: Option<String>,
     update_lock: std::fs::File,
+    handoff: portable_docs::UpdateHandoffReservation,
+}
+
+#[cfg(test)]
+impl StagedUpdate {
+    fn persist_handoff(&mut self) {
+        self.handoff.persist();
+    }
+
+    fn interrupt_handoff(&mut self) {
+        self.handoff.transfer_to(u32::MAX).expect("dead owner");
+        self.handoff.persist();
+    }
 }
 
 /// Stages every exe of the update next to the one it replaces: the app exe
@@ -448,6 +471,8 @@ fn stage_update_with(
         .parent()
         .ok_or_else(|| "Cannot resolve current exe parent dir".to_string())?;
     let update_lock = acquire_update_handoff_lock(exe_dir)?;
+    let handoff = portable_docs::reserve_update_handoff(exe_dir, attempt_id)
+        .map_err(|e| format!("Failed to reserve portable update handoff: {e}"))?;
     stage_beside(&staged.new_exe, current_exe, attempt_id)?;
     let mut cli = Vec::new();
     for name in companion_exes(current_exe) {
@@ -496,6 +521,7 @@ fn stage_update_with(
             attempt_id: attempt_id.to_string(),
             docs_key,
             update_lock,
+            handoff,
         }),
         Err(e) => {
             // The staging published nothing: it removed its own leftovers.
@@ -635,11 +661,15 @@ struct PreparedPortable {
     /// Exclusive installation handoff lock held until released for helper spawn
     /// or dropped after failure cleanup.
     update_lock: Option<std::fs::File>,
+    handoff: portable_docs::UpdateHandoffReservation,
 }
 
 impl PreparedPortable {
     fn release_handoff_lock(&mut self) {
         self.update_lock.take();
+    }
+    fn persist_handoff(&mut self) {
+        self.handoff.persist();
     }
     /// The helper was not launched: removes everything the update left, as
     /// a failure inside `prepare_portable` does. Uses a bounded wait on the
@@ -730,6 +760,7 @@ fn prepare_portable_with(
             attempt_id: staged_update.attempt_id,
             docs_key: staged_update.docs_key,
             update_lock: Some(staged_update.update_lock),
+            handoff: staged_update.handoff,
         }),
         Err(e) => {
             discard_staged(
@@ -864,13 +895,12 @@ setlocal enableextensions disabledelayedexpansion
 rem AeroFTP portable in-place update helper. The updater has already
 rem copied the new exes, whole, next to the installed ones. This helper
 rem holds the installation-scoped handoff lock across the app and CLI swaps
-rem (`call :run_swap 9>>...`), releases and deletes the lock before relaunching
-rem the new exe (so the relaunched app never inherits the lock handle), and
-rem wipes the staged ZIP and extraction dir (issue #176).
+rem (`call :run_swap 9>>...`), then releases the persistent lock entry before
+rem relaunching the new exe (so the relaunched app never inherits the handle),
+rem and wipes the staged ZIP and extraction dir (issue #176).
 
 call :run_swap 9>>{handoff_lock}
-if errorlevel 1 goto finish_failed
-del /F /Q {handoff_lock} >nul 2>&1
+if errorlevel 1 goto replace_failed
 
 rem Launch the new exe with cleanup arg pointing at the .old file.
 start "" {current} --post-update-cleanup {old}
@@ -878,8 +908,7 @@ start "" {current} --post-update-cleanup {old}
 del /F /Q "%~f0" & exit /b 0
 
 :finish_failed
-del /F /Q {handoff_lock} >nul 2>&1
-rem One line: cmd has read it whole before the script is gone.
+rem Both handoff rejection and swap failure reach this terminal block once.
 del /F /Q "%~f0" & exit /b 1
 
 :run_swap
@@ -907,7 +936,7 @@ rem and this script go too, as after an update that went through (#176).
 {discard_block}del /F /Q {zip} >nul 2>&1
 del /F /Q {sigstore} >nul 2>&1
 rmdir /S /Q {stage} >nul 2>&1
-exit /b 1
+goto finish_failed
 
 :replace_done
 rem The app exe is the new one: replace the CLI exes.
@@ -956,7 +985,7 @@ exit /b 0
 /// The parent (AeroFTP) exits within milliseconds anyway, so true detachment
 /// is not required: the child outlives the parent once the parent's console
 /// handle is closed.
-fn spawn_detached(script: &Path) -> Result<(), String> {
+fn spawn_detached(script: &Path) -> Result<std::process::Child, String> {
     use std::os::windows::process::CommandExt;
 
     const CREATE_NO_WINDOW: u32 = 0x08000000;
@@ -969,7 +998,6 @@ fn spawn_detached(script: &Path) -> Result<(), String> {
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .spawn()
-        .map(|_| ())
         .map_err(|e| format!("Failed to spawn helper: {e}"))
 }
 
@@ -1402,16 +1430,12 @@ mod tests {
 
     const CHILD_DISCARD_EXE: &str = "AEROFTP_TEST_DISCARD_EXE";
     const CHILD_DISCARD_KEY: &str = "AEROFTP_TEST_DISCARD_KEY";
-    const CHILD_DISCARD_PROBE_TIMEOUT_MS: &str = "AEROFTP_TEST_DISCARD_PROBE_TIMEOUT_MS";
-    const CHILD_DISCARD_BLOCKED: &str = "AEROFTP_TEST_DISCARD_BLOCKED";
     const CHILD_DISCARD_DONE: &str = "AEROFTP_TEST_DISCARD_DONE";
 
     /// Child process helper invoked by `runnable` in place of the fake 15-byte
-    /// `AeroFTP.exe --discard-pending-docs <token>`, running the real
-    /// `portable_docs::discard_pending_docs` under the real Windows batch lock.
-    /// When `CHILD_DISCARD_PROBE_TIMEOUT_MS` is set, first probes the real lock
-    /// with that bounded timeout and writes `CHILD_DISCARD_BLOCKED` only on an
-    /// actual lock timeout before blocking on the unbounded discard call.
+    /// `AeroFTP.exe --discard-pending-docs <token>`, running the real unbounded
+    /// `portable_docs::discard_pending_docs`. Its test-only lock instrumentation
+    /// writes the timeout marker from that very call, only for `TimedOut`.
     #[test]
     #[ignore = "invoked by failed-swap helper tests via runnable()"]
     fn child_discard_pending_docs() {
@@ -1423,24 +1447,7 @@ mod tests {
         };
         let exe_path = PathBuf::from(exe);
         if let Some(exe_dir) = exe_path.parent() {
-            let mut ran = false;
-            if let Some(ms) = std::env::var(CHILD_DISCARD_PROBE_TIMEOUT_MS)
-                .ok()
-                .and_then(|v| v.parse::<u64>().ok())
-            {
-                if portable_docs::discard_pending_docs_within(
-                    exe_dir,
-                    &token,
-                    Some(Duration::from_millis(ms)),
-                ) {
-                    ran = true;
-                } else if let Some(blocked) = std::env::var_os(CHILD_DISCARD_BLOCKED) {
-                    let _ = std::fs::write(blocked, b"blocked");
-                }
-            }
-            if !ran {
-                portable_docs::discard_pending_docs(exe_dir, &token);
-            }
+            portable_docs::discard_pending_docs(exe_dir, &token);
         }
         if let Some(done) = std::env::var_os(CHILD_DISCARD_DONE) {
             let _ = std::fs::write(done, b"done");
@@ -2000,8 +2007,8 @@ mod tests {
     }
 
     /// The failed-swap cleanup runs under the same batch mutex as staging:
-    /// deterministically observe the discard child time out on the real held
-    /// Windows batch mutex (no pre-lock marker gap and no fixed sleep), publish
+    /// deterministically observe the real unbounded discard time out internally
+    /// on the held Windows batch mutex (no separate probe or fixed sleep), publish
     /// a replacement batch while still holding the lock, assert cleanup
     /// completes only after releasing the lock, and verify the replacement
     /// batch survives. Control: an unblocked failed swap with no replacement
@@ -2022,16 +2029,15 @@ mod tests {
         let mut child = std::process::Command::new("cmd.exe")
             .args(["/D", "/C", "call"])
             .arg(&script_path)
-            .env(CHILD_DISCARD_PROBE_TIMEOUT_MS, "200")
-            .env(CHILD_DISCARD_BLOCKED, &blocked)
+            .env("AEROFTP_TEST_DISCARD_LOCK_TIMEOUT", &blocked)
             .env(CHILD_DISCARD_DONE, &done)
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .spawn()
             .expect("spawn helper");
-        // Wait until `discard_pending_docs_within` actually hits WAIT_TIMEOUT
-        // on the held Windows batch mutex. A lock-bypassing implementation
-        // would never write `blocked` and exits immediately, failing here.
+        // Wait until the real unbounded `discard_pending_docs` observes a
+        // TimedOut lock attempt on the held Windows batch mutex. A lock-bypassing
+        // implementation never writes `blocked` and exits, failing here.
         let deadline = std::time::Instant::now() + Duration::from_secs(15);
         while !blocked.exists() {
             assert!(
@@ -2074,8 +2080,8 @@ mod tests {
             std::fs::read(next.join("README.txt")).expect("kept"),
             b"replacement readme"
         );
-        // Control: when no lock/replacement intervenes, the bounded probe
-        // acquires the lock directly without timing out, removes the batch,
+        // Control: when no lock/replacement intervenes, the same unbounded
+        // discard acquires the lock without timing out, removes the batch,
         // and writes `done`.
         let mut fx2 = fixture();
         with_docs(&mut fx2, |_| true);
@@ -2087,8 +2093,10 @@ mod tests {
             &fx2,
             &runnable(&script2),
             &[
-                (CHILD_DISCARD_PROBE_TIMEOUT_MS, "200"),
-                (CHILD_DISCARD_BLOCKED, &blocked2.to_string_lossy()),
+                (
+                    "AEROFTP_TEST_DISCARD_LOCK_TIMEOUT",
+                    &blocked2.to_string_lossy(),
+                ),
                 (CHILD_DISCARD_DONE, &done2.to_string_lossy()),
             ],
         );
@@ -2938,6 +2946,137 @@ mod tests {
         assert!(!zip2.exists());
     }
 
+    #[test]
+    fn handoff_lock_preserves_a_preexisting_file_and_still_excludes_another_attempt() {
+        let root = tempfile::tempdir().expect("temp dir");
+        let app = root.path().join("app");
+        std::fs::create_dir(&app).expect("app");
+        let path = update_handoff_lock_path(&app);
+        std::fs::write(&path, b"user sentinel").expect("sentinel");
+        let lock = acquire_update_handoff_lock(&app).expect("acquire existing lock entry");
+        let error = acquire_update_handoff_lock(&app).expect_err("concurrent acquisition");
+        assert!(error.contains("already in progress"), "{error}");
+        drop(lock);
+        assert_eq!(std::fs::read(&path).expect("sentinel"), b"user sentinel");
+    }
+
+    #[test]
+    fn helper_rejected_by_held_handoff_lock_cleans_its_attempt() {
+        let mut fx = fixture();
+        with_docs(&mut fx, |_| true);
+        let (script, staged) = script_for_attempt(&fx, "handoffheld01");
+        drop(staged);
+        let lock = acquire_update_handoff_lock(&fx.app).expect("hold handoff lock");
+        let status = run(&fx, &runnable(&script));
+        assert!(
+            !status.success(),
+            "helper must reject the held handoff lock"
+        );
+        assert!(!has_staged_exe(&fx.app, "AeroFTP.exe"));
+        assert!(!fx.app.join(portable_docs::NEXT_DIR).exists());
+        assert_eq!(read(&fx, "AeroFTP.exe"), OLD_EXE);
+        drop(lock);
+    }
+
+    #[test]
+    fn published_batch_survives_the_handoff_gap_and_failed_later_attempt() {
+        let mut fx_b = fixture();
+        with_docs(&mut fx_b, |_| true);
+        let attempt_b = "bbbb1111bbbb2222";
+        let (script_b, staged_b) = script_for_attempt(&fx_b, attempt_b);
+        let key_b = portable_docs::exe_key(&fx_b.staged.new_exe).expect("key B");
+        staged_b.persist_handoff();
+        drop(staged_b);
+
+        let stage_c = fx_b.root.path().join("stage-c-handoff");
+        std::fs::create_dir_all(&stage_c).expect("stage C");
+        let exe_c = stage_c.join("AeroFTP.exe");
+        let notices_c = stage_c.join("THIRD-PARTY-NOTICES.md");
+        std::fs::write(&exe_c, b"exe C").expect("exe C");
+        std::fs::write(&notices_c, b"notices C").expect("notices C");
+        let staged_c = StagedPortable {
+            new_exe: exe_c,
+            new_marker: None,
+            new_readme: None,
+            new_license: None,
+            new_notices: Some(notices_c),
+            stage_dir: stage_c,
+        };
+        let attempt_c = "cccc3333cccc4444";
+        let staged_c = stage_update_with(&staged_c, &fx_b.current, attempt_c, None)
+            .expect("C stages in the handoff gap");
+        assert_eq!(
+            std::fs::read_to_string(
+                fx_b.app
+                    .join(portable_docs::PREV_DIR)
+                    .join(portable_docs::KEY_FILE)
+            )
+            .expect("B set aside, not retired"),
+            key_b
+        );
+        discard_staged(
+            &fx_b.current,
+            attempt_c,
+            &staged_c.cli,
+            staged_c.docs_key.as_deref(),
+        );
+        drop(staged_c);
+        assert_eq!(
+            std::fs::read_to_string(
+                fx_b.app
+                    .join(portable_docs::NEXT_DIR)
+                    .join(portable_docs::KEY_FILE)
+            )
+            .expect("B restored"),
+            key_b
+        );
+
+        run(&fx_b, &runnable(&script_b));
+        assert_eq!(read(&fx_b, "AeroFTP.exe"), NEW_EXE);
+        start_new_app(&fx_b);
+        assert_eq!(read(&fx_b, "THIRD-PARTY-NOTICES.md"), b"new notices");
+    }
+
+    #[test]
+    fn interrupted_sidecars_without_live_owner_do_not_block_a_later_update() {
+        let mut fx = fixture();
+        with_docs(&mut fx, |_| true);
+        let mut staged_b =
+            stage_update_with(&fx.staged, &fx.current, "bbbb1111bbbb2222", None).expect("stage B");
+        let sidecar_b = beside_path(&fx.current, "bbbb1111bbbb2222");
+        staged_b.interrupt_handoff();
+        drop(staged_b);
+        assert!(sidecar_b.is_file(), "interrupted B leaves its real sidecar");
+
+        std::fs::write(&fx.staged.new_exe, b"exe C").expect("exe C");
+        let mut staged_c = stage_update_with(&fx.staged, &fx.current, "cccc3333cccc4444", None)
+            .expect("C reclaims dead B");
+        let sidecar_c = beside_path(&fx.current, "cccc3333cccc4444");
+        staged_c.interrupt_handoff();
+        drop(staged_c);
+        assert!(sidecar_c.is_file(), "interrupted C leaves its real sidecar");
+
+        std::fs::write(&fx.staged.new_exe, b"exe D").expect("exe D");
+        let key_d = portable_docs::exe_key(&fx.staged.new_exe).expect("key D");
+        let staged_d = stage_update_with(&fx.staged, &fx.current, "dddd5555dddd6666", None)
+            .expect("D must stage after interrupted B and C");
+        assert_eq!(
+            std::fs::read_to_string(
+                fx.app
+                    .join(portable_docs::NEXT_DIR)
+                    .join(portable_docs::KEY_FILE)
+            )
+            .expect("D batch"),
+            key_d
+        );
+        discard_staged(
+            &fx.current,
+            "dddd5555dddd6666",
+            &staged_d.cli,
+            staged_d.docs_key.as_deref(),
+        );
+    }
+
     /// Verifies the real `cmd.exe` handoff lock pattern used by
     /// `portable_helper_script`: while `:run_swap` holds handle 9 on the
     /// installation-scoped `.aeroftp-update.lock`, a concurrent
@@ -2957,7 +3096,6 @@ mod tests {
             "@echo off\r\n\
              setlocal enableextensions disabledelayedexpansion\r\n\
              call :run_swap 9>>{lock}\r\n\
-             del /F /Q {lock} >nul 2>&1\r\n\
              start \"\" /B cmd.exe /C \"ping 127.0.0.1 -n 4 >nul\"\r\n\
              exit /b 0\r\n\
              :run_swap\r\n\

@@ -92,8 +92,8 @@ const ERROR_LOCK_VIOLATION: i32 = 33;
 pub(crate) enum Outcome {
     /// The new document replaced the installed one (or created it).
     Installed,
-    /// A directory has the document's name: nothing was written into it,
-    /// and the pending copy is dropped.
+    /// A directory has the document's name: nothing was written into it.
+    /// The pending copy is dropped, except for the mode-defining marker.
     Directory,
     /// Another process holds the installed document: it is kept, and the
     /// new one stays pending.
@@ -543,6 +543,93 @@ fn temp_batch_record(exe_dir: &Path) -> PathBuf {
     ))
 }
 
+const UPDATE_HANDOFF_PREFIX: &str = ".aeroftp-update-handoff-";
+
+#[cfg(windows)]
+pub(crate) struct UpdateHandoffReservation {
+    path: PathBuf,
+    persist: bool,
+}
+
+#[cfg(windows)]
+impl UpdateHandoffReservation {
+    pub(crate) fn transfer_to(&self, pid: u32) -> io::Result<()> {
+        std::fs::write(&self.path, pid.to_string())
+    }
+
+    pub(crate) fn persist(&mut self) {
+        self.persist = true;
+    }
+}
+
+#[cfg(windows)]
+impl Drop for UpdateHandoffReservation {
+    fn drop(&mut self) {
+        if !self.persist {
+            let _ = std::fs::remove_file(&self.path);
+        }
+    }
+}
+
+#[cfg(windows)]
+pub(crate) fn reserve_update_handoff(
+    exe_dir: &Path,
+    attempt_id: &str,
+) -> io::Result<UpdateHandoffReservation> {
+    if attempt_id.is_empty() || !attempt_id.bytes().all(|b| b.is_ascii_alphanumeric()) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "invalid portable update attempt id",
+        ));
+    }
+    let path = exe_dir.join(format!("{UPDATE_HANDOFF_PREFIX}{attempt_id}"));
+    std::fs::write(&path, std::process::id().to_string())?;
+    Ok(UpdateHandoffReservation {
+        path,
+        persist: false,
+    })
+}
+
+#[cfg(windows)]
+fn process_is_alive(pid: u32) -> bool {
+    use windows::core::BOOL;
+    use windows::Win32::Foundation::{CloseHandle, WAIT_TIMEOUT};
+    use windows::Win32::System::Threading::{
+        OpenProcess, WaitForSingleObject, PROCESS_QUERY_LIMITED_INFORMATION, SYNCHRONIZE,
+    };
+    // SAFETY: the handle, when returned, is owned here and closed before return.
+    let handle = match unsafe {
+        OpenProcess(
+            PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE,
+            BOOL::from(false),
+            pid,
+        )
+    } {
+        Ok(handle) => handle,
+        Err(e) if e.raw_os_error() == Some(87) => return false,
+        Err(_) => return true,
+    };
+    // SAFETY: a zero wait only queries whether the process handle is signaled.
+    let alive = unsafe { WaitForSingleObject(handle, 0) } == WAIT_TIMEOUT;
+    // SAFETY: this function owns the handle.
+    let _ = unsafe { CloseHandle(handle) };
+    alive
+}
+
+#[cfg(not(windows))]
+fn process_is_alive(pid: u32) -> bool {
+    let Ok(pid) = i32::try_from(pid) else {
+        return false;
+    };
+    if pid <= 0 {
+        return false;
+    }
+    // SAFETY: signal zero only checks process existence and permissions.
+    unsafe {
+        libc::kill(pid, 0) == 0 || io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
+    }
+}
+
 const CANCEL_MARKER_PREFIX: &str = ".aeroftp-pending-docs-cancel-";
 
 fn cancel_marker_path(exe_dir: &Path, token: &str) -> PathBuf {
@@ -550,34 +637,37 @@ fn cancel_marker_path(exe_dir: &Path, token: &str) -> PathBuf {
 }
 
 /// Persists an installation-scoped, token-keyed cancellation marker inside
-/// `exe_dir` (independent of `TMP`/`%TEMP%`) when a bounded
-/// `discard_pending_docs_within` times out waiting for the batch lock.
+/// `exe_dir` (independent of `TMP`/`%TEMP%`) before
+/// `discard_pending_docs_within` waits for the batch lock.
 /// Survives process exit and different temp directories so the next locked pass
 /// discards the failed attempt's batch and restores any set-aside batch.
-fn record_cancelled_batch(exe_dir: &Path, token: &str) {
+fn record_cancelled_batch(exe_dir: &Path, token: &str) -> io::Result<()> {
     if is_valid_batch_id(token) {
-        let _ = std::fs::write(cancel_marker_path(exe_dir, token), b"");
+        std::fs::write(cancel_marker_path(exe_dir, token), b"")?;
     }
+    Ok(())
+}
+
+#[derive(Default)]
+struct CancellationState {
+    unfinished: bool,
+    identity_unresolved: bool,
 }
 
 /// Applies persisted token-scoped cancellation markers in `exe_dir` while the
-/// caller holds the batch lock.
-///
-/// Returns `true` when every cancellation finished or did not apply, and
-/// `false` when a cancellation could not complete yet (for example `staging.id`
-/// was temporarily unreadable or a document could not be deleted): in that case
-/// the marker stays active so callers defer consuming `NEXT_DIR` instead of
-/// installing or exposing a cancelled batch.
+/// caller holds the batch lock. An unfinished confirmed cancellation masks only
+/// `NEXT_DIR`; an unreadable identity also keeps portable detection `Pending`
+/// unless another valid marker proves portable mode.
 fn apply_cancelled_batches_with(
     exe_dir: &Path,
     read_id: &impl Fn(&Path) -> io::Result<String>,
-) -> bool {
+) -> CancellationState {
     let Ok(entries) = std::fs::read_dir(exe_dir) else {
-        return true;
+        return CancellationState::default();
     };
     let next = exe_dir.join(NEXT_DIR);
     let prev = exe_dir.join(PREV_DIR);
-    let mut all_resolved = true;
+    let mut state = CancellationState::default();
     for entry in entries.flatten() {
         let name = entry.file_name();
         let name_str = name.to_string_lossy();
@@ -594,9 +684,10 @@ fn apply_cancelled_batches_with(
         }
         match batch_ownership_with(exe_dir, &next, read_id) {
             BatchOwnership::Unreadable => {
-                // Keep marker active and prevent callers from consuming NEXT_DIR
-                // until `staging.id` / ledger become readable again.
-                all_resolved = false;
+                // The token match is unresolved: preserve cancellation and do
+                // not let detection conclude installed mode from this slot.
+                state.unfinished = true;
+                state.identity_unresolved = true;
                 continue;
             }
             BatchOwnership::Unowned => {
@@ -609,7 +700,8 @@ fn apply_cancelled_batches_with(
         let current_token = match read_id(&id_path) {
             Ok(raw) => raw.trim().to_string(),
             Err(_) => {
-                all_resolved = false;
+                state.unfinished = true;
+                state.identity_unresolved = true;
                 continue;
             }
         };
@@ -629,13 +721,13 @@ fn apply_cancelled_batches_with(
         } else {
             // Partial cleanup (for example a document is held): keep the marker
             // active so no pass installs or exposes the cancelled batch.
-            all_resolved = false;
+            state.unfinished = true;
         }
     }
-    all_resolved
+    state
 }
 
-fn apply_cancelled_batches(exe_dir: &Path) -> bool {
+fn apply_cancelled_batches(exe_dir: &Path) -> CancellationState {
     apply_cancelled_batches_with(exe_dir, &|p| std::fs::read_to_string(p))
 }
 
@@ -889,7 +981,7 @@ pub(crate) fn probe_portable_marker_within(
         exe_dir,
         own_key,
         wait,
-        |p| std::fs::symlink_metadata(p),
+        |p| std::fs::metadata(p),
         |p| std::fs::read_to_string(p),
     )
 }
@@ -938,10 +1030,9 @@ fn probe_portable_marker_full(
     let Ok(_lock) = lock_batches_within(exe_dir, wait) else {
         return PortableMarkerState::Pending;
     };
-    if !apply_cancelled_batches_with(exe_dir, &read_id) {
-        return PortableMarkerState::Pending;
-    }
-    let mut any_unreadable = false;
+    let cancellations = apply_cancelled_batches_with(exe_dir, &read_id);
+    let cancelled_next = cancellations.unfinished;
+    let mut any_unreadable = cancellations.identity_unresolved;
     match metadata_fn(&exe_dir.join("portable.marker")) {
         Ok(m) if m.is_file() => return PortableMarkerState::Present,
         Ok(_) => {}
@@ -950,6 +1041,9 @@ fn probe_portable_marker_full(
     }
     let mut staged_candidates: Vec<String> = Vec::new();
     for name in [NEXT_DIR, PENDING_DIR, PREV_DIR] {
+        if cancelled_next && name == NEXT_DIR {
+            continue;
+        }
         let dir = exe_dir.join(name);
         match metadata_fn(&dir) {
             Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
@@ -1127,20 +1221,73 @@ pub(crate) fn stage_pending_docs_within(
 
 /// Keys of all installed app executables in `exe_dir` (`AeroFTP.exe`,
 /// `aeroftp-app.exe`, and `std::env::current_exe()` when it resides in
-/// `exe_dir`): a batch matching any of these may still belong to a running
-/// executable and is never reclaimed as an abandoned update.
+/// `exe_dir`) and sidecars with a live handoff reservation: a batch matching
+/// any of these belongs to a running executable or a helper waiting to swap.
+/// Sidecars left by a dead attempt do not block later updates.
 ///
 /// Returns `None` when an executable that exists in `exe_dir` fails to hash
 /// (a transient read or sharing error): an incomplete inventory must never
 /// reclaim a batch by key mismatch. Missing executables (`NotFound`) are
 /// simply absent and keep the inventory complete.
 fn installed_app_keys(exe_dir: &Path) -> Option<Vec<String>> {
-    installed_app_keys_with(exe_dir, exe_key)
+    installed_app_keys_with_liveness(exe_dir, exe_key, process_is_alive)
 }
 
 fn installed_app_keys_with(
     exe_dir: &Path,
     hash_exe: impl Fn(&Path) -> io::Result<String>,
+) -> Option<Vec<String>> {
+    installed_app_keys_with_liveness(exe_dir, hash_exe, process_is_alive)
+}
+
+fn add_active_handoff_keys(
+    exe_dir: &Path,
+    hash_exe: &impl Fn(&Path) -> io::Result<String>,
+    process_alive: &impl Fn(u32) -> bool,
+    keys: &mut Vec<String>,
+) -> io::Result<()> {
+    for entry in std::fs::read_dir(exe_dir)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        let Some(attempt) = name.strip_prefix(UPDATE_HANDOFF_PREFIX) else {
+            continue;
+        };
+        if attempt.is_empty() || !attempt.bytes().all(|b| b.is_ascii_alphanumeric()) {
+            continue;
+        }
+        let pid = match std::fs::read_to_string(entry.path()) {
+            Ok(raw) => match raw.trim().parse::<u32>() {
+                Ok(pid) => pid,
+                Err(_) => continue,
+            },
+            Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
+            Err(e) => return Err(e),
+        };
+        if !process_alive(pid) {
+            let _ = std::fs::remove_file(entry.path());
+            continue;
+        }
+        for app in ["AeroFTP.exe", "aeroftp-app.exe"] {
+            let sidecar = exe_dir.join(format!("{app}.{attempt}.new"));
+            match hash_exe(&sidecar) {
+                Ok(k) => {
+                    if !keys.contains(&k) {
+                        keys.push(k);
+                    }
+                }
+                Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
+                Err(e) => return Err(e),
+            }
+        }
+    }
+    Ok(())
+}
+
+fn installed_app_keys_with_liveness(
+    exe_dir: &Path,
+    hash_exe: impl Fn(&Path) -> io::Result<String>,
+    process_alive: impl Fn(u32) -> bool,
 ) -> Option<Vec<String>> {
     let mut keys = Vec::new();
     for name in ["AeroFTP.exe", "aeroftp-app.exe"] {
@@ -1159,6 +1306,9 @@ fn installed_app_keys_with(
             Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
             Err(_) => return None,
         }
+    }
+    if add_active_handoff_keys(exe_dir, &hash_exe, &process_alive, &mut keys).is_err() {
+        return None;
     }
     if let Ok(cur) = std::env::current_exe() {
         let same_dir = cur.parent().is_some_and(|p| {
@@ -1226,7 +1376,7 @@ fn stage_with_commit(
     let fail = |e: io::Error| format!("Failed to stage the portable documents: {e}");
     let key = exe_key(new_exe).map_err(fail)?;
     let _lock = lock_batches_within(exe_dir, wait).map_err(fail)?;
-    if !apply_cancelled_batches(exe_dir) {
+    if apply_cancelled_batches(exe_dir).unfinished {
         return Err(
             "Failed to stage the portable documents: a cancelled previous batch could not finish cleanup yet"
                 .to_string(),
@@ -1327,10 +1477,6 @@ fn stage_with_commit(
                 // Nothing replaced the batch set aside: restore it to NEXT_DIR.
                 let _ = std::fs::rename(&prev, &next);
             }
-        } else if matches!(room, RoomOutcome::SetAsideSameKey) {
-            // The replacement batch for the same executable is committed:
-            // retire the superseded previous batch that was kept recoverable.
-            retire_batch(exe_dir, &prev);
         }
         committed
     })();
@@ -1365,8 +1511,9 @@ enum RoomOutcome {
 /// `prev` (including when `next` has the same key as `key`, so a running build's
 /// live batch stays recoverable if replacement publication fails), reclaiming
 /// `prev` only when it is already `RETIRED_KEY` or provably an abandoned update
-/// (complete inventory with key mismatch). If `prev` is still occupied or the
-/// rename cannot complete, returns an error without touching `next` or `prev`.
+/// (complete inventory with key mismatch). When `prev` already protects the
+/// original same-exe batch, a repeated restage replaces only the intermediate
+/// `next`. Other occupied `prev` states or a failed rename return an error.
 fn make_room(
     exe_dir: &Path,
     next: &Path,
@@ -1393,6 +1540,21 @@ fn make_room(
                 return Err(io::Error::new(
                     io::ErrorKind::AlreadyExists,
                     format!("cannot remove abandoned batch {}", next.display()),
+                ));
+            }
+            if next_key == key
+                && is_owned_batch(exe_dir, prev)
+                && matches!(slot(prev), Slot::Key(k) if k == key)
+            {
+                // The original same-exe batch is already recoverable in PREV_DIR.
+                // Replace only the intermediate NEXT_DIR on another restage.
+                retire_batch(exe_dir, next);
+                if std::fs::symlink_metadata(next).is_err() {
+                    return Ok(RoomOutcome::Cleared);
+                }
+                return Err(io::Error::new(
+                    io::ErrorKind::AlreadyExists,
+                    format!("cannot replace intermediate batch {}", next.display()),
                 ));
             }
             let prev_reclaimable = match slot(prev) {
@@ -1442,35 +1604,69 @@ pub(crate) fn discard_pending_docs(exe_dir: &Path, token: &str) {
     let _ = discard_pending_docs_within(exe_dir, token, None);
 }
 
+#[cfg(test)]
+const DISCARD_LOCK_TIMEOUT_MARKER_ENV: &str = "AEROFTP_TEST_DISCARD_LOCK_TIMEOUT";
+
+fn lock_for_discard(exe_dir: &Path, wait: Option<Duration>) -> io::Result<BatchLock> {
+    #[cfg(test)]
+    if wait.is_none() && std::env::var_os(DISCARD_LOCK_TIMEOUT_MARKER_ENV).is_some() {
+        loop {
+            match lock_batches_within(exe_dir, Some(Duration::from_millis(200))) {
+                Ok(lock) => return Ok(lock),
+                Err(e) if e.kind() == io::ErrorKind::TimedOut => {
+                    if let Some(path) = std::env::var_os(DISCARD_LOCK_TIMEOUT_MARKER_ENV) {
+                        std::fs::write(path, b"timeout")?;
+                    }
+                }
+                Err(e) => return Err(e),
+            }
+        }
+    }
+    lock_batches_within(exe_dir, wait)
+}
+
 /// Same as `discard_pending_docs`, waiting at most `wait` for the batch lock
-/// (`None` waits unboundedly). Returns `true` when the lock was acquired and
-/// cleanup ran, or `false` if the lock could not be acquired within `wait`.
+/// (`None` waits unboundedly). Cancellation is persisted before any lock wait,
+/// closing the timeout/install race. Returns `false` when that marker cannot be
+/// written, the lock fails, or a bounded wait times out.
 pub(crate) fn discard_pending_docs_within(
     exe_dir: &Path,
     token: &str,
     wait: Option<Duration>,
 ) -> bool {
-    let Ok(_lock) = lock_batches_within(exe_dir, wait) else {
-        // Persist token-scoped cancellation in `exe_dir` so a later locked pass
-        // cleans up this failed attempt even if this process exits first or
-        // runs with a different temp directory.
-        record_cancelled_batch(exe_dir, token);
+    if let Err(e) = record_cancelled_batch(exe_dir, token) {
+        log::warn!("Could not persist portable batch cancellation for {token}: {e}");
         return false;
+    }
+    let _lock = match lock_for_discard(exe_dir, wait) {
+        Ok(lock) => lock,
+        Err(e) => {
+            if e.kind() != io::ErrorKind::TimedOut {
+                log::warn!("Could not lock portable document batches for discard: {e}");
+            }
+            return false;
+        }
     };
     let _ = apply_cancelled_batches(exe_dir);
     remove_staging_leftovers(exe_dir);
     let next = exe_dir.join(NEXT_DIR);
     let mut cleaned_target = true;
-    if is_owned_batch(exe_dir, &next) && batch_id(&next).as_deref() == Some(token) {
-        remove_batch(&next);
-        if std::fs::symlink_metadata(&next).is_err() {
-            let _ = forget_batch(exe_dir, token);
-        } else {
-            // Partial cleanup: keep the cancellation marker active until a
-            // later pass can finish removing the batch.
-            record_cancelled_batch(exe_dir, token);
-            cleaned_target = false;
-        }
+    match batch_ownership(exe_dir, &next) {
+        BatchOwnership::Owned => match batch_id(&next) {
+            Some(id) if id == token => {
+                remove_batch(&next);
+                if std::fs::symlink_metadata(&next).is_err() {
+                    let _ = forget_batch(exe_dir, token);
+                } else {
+                    // The pre-recorded marker stays until a later pass finishes.
+                    cleaned_target = false;
+                }
+            }
+            Some(_) => {}
+            None => cleaned_target = false,
+        },
+        BatchOwnership::Unreadable => cleaned_target = false,
+        BatchOwnership::Unowned => {}
     }
     if cleaned_target {
         let _ = std::fs::remove_file(cancel_marker_path(exe_dir, token));
@@ -1533,12 +1729,7 @@ fn install_pass_with_promote(
         Ok(lock) => lock,
         Err(e) => return Pending::Unavailable(e.to_string()),
     };
-    if !apply_cancelled_batches_with(exe_dir, &read_id) {
-        return Pending::Unavailable(format!(
-            "a cancelled batch in {} could not finish cleanup yet",
-            exe_dir.display()
-        ));
-    }
+    let cancelled_next = apply_cancelled_batches_with(exe_dir, &read_id).unfinished;
     remove_staging_leftovers(exe_dir);
     let current = exe_dir.join(PENDING_DIR);
     let next = exe_dir.join(NEXT_DIR);
@@ -1569,7 +1760,12 @@ fn install_pass_with_promote(
         }
     };
     let mut source = current.clone();
-    match owned_slot(&next) {
+    let next_slot = if cancelled_next {
+        Slot::Invalid
+    } else {
+        owned_slot(&next)
+    };
+    match next_slot {
         Slot::Missing => {}
         Slot::Key(k) if k == own_key => {
             // This exe's documents supersede an older exe's, and the batch
@@ -1668,7 +1864,9 @@ fn install_pass_with_promote(
                 Err(e) => classify(&target, &e),
             }
         };
-        if matches!(outcome, Outcome::Directory | Outcome::Failed(_)) {
+        if matches!(outcome, Outcome::Failed(_))
+            || (matches!(outcome, Outcome::Directory) && name != "portable.marker")
+        {
             let _ = std::fs::remove_file(&pending);
         }
         outcomes.push((name, outcome));
@@ -1842,11 +2040,10 @@ pub(crate) fn own_pending_notices(
     // A stalled process that holds the lock does not keep About waiting:
     // past the wait, no pending notices, and About opens the installed ones.
     let _lock = lock_batches_within(exe_dir, Some(NOTICES_LOCK_WAIT)).ok()?;
-    if !apply_cancelled_batches(exe_dir) {
-        return None;
-    }
+    let cancelled_next = apply_cancelled_batches(exe_dir).unfinished;
     let held: Vec<(PathBuf, String)> = [NEXT_DIR, PENDING_DIR, PREV_DIR]
         .iter()
+        .filter(|name| !(cancelled_next && **name == NEXT_DIR))
         .filter_map(|name| {
             let dir = exe_dir.join(name);
             if !is_owned_batch(exe_dir, &dir) {
@@ -3073,10 +3270,12 @@ mod tests {
         assert_eq!(read(&next, STAGING_ID_FILE), restaged);
         assert_eq!(read(&next, "README.txt"), "readme of B");
         assert_eq!(read(&next, "LICENSE.txt"), "license of B");
-        // A document that cannot be removed (here a folder at its name): when
-        // PREV_DIR is free, same-key restaging sets the old batch aside at
-        // PREV_DIR (preserving the user's folder untouched) and publishes the
-        // installable replacement at NEXT_DIR.
+        // A document that cannot be removed (here a folder at its name): with
+        // a fresh fixture PREV_DIR is free, so same-key restaging sets the old
+        // batch aside and publishes the installable replacement at NEXT_DIR.
+        let dir = FixtureDir::new();
+        stage_pending_docs(dir.path(), &exe_b, &docs, "held-a").unwrap();
+        let next = dir.path().join(NEXT_DIR);
         std::fs::remove_file(next.join("README.txt")).unwrap();
         std::fs::remove_file(next.join("LICENSE.txt")).unwrap();
         std::fs::create_dir(next.join("LICENSE.txt")).unwrap();
@@ -3753,9 +3952,20 @@ mod tests {
         let next = dir.path().join(NEXT_DIR);
         std::fs::remove_file(next.join("README.txt")).unwrap();
         // Make NEXT_DIR read-only so removing exe.key fails; staging.id must stay too.
+        // A runner with CAP_DAC_OVERRIDE can still delete files: use a real probe
+        // and exercise only the successful-cleanup control in that environment.
+        let probe = next.join("permission-probe");
+        std::fs::write(&probe, b"probe").unwrap();
         std::fs::set_permissions(&next, std::fs::Permissions::from_mode(0o555)).unwrap();
+        if std::fs::remove_file(&probe).is_ok() {
+            std::fs::set_permissions(&next, std::fs::Permissions::from_mode(0o755)).unwrap();
+            discard_pending_docs(dir.path(), &token_b);
+            assert!(!next.exists());
+            return;
+        }
         discard_pending_docs(dir.path(), &token_b);
         std::fs::set_permissions(&next, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::remove_file(probe).unwrap();
         assert!(next.join(KEY_FILE).is_file());
         assert!(next.join(STAGING_ID_FILE).is_file());
         assert!(is_owned_batch(dir.path(), &next));
@@ -4622,6 +4832,59 @@ mod tests {
     }
 
     #[test]
+    fn marker_directory_conflict_keeps_owned_staged_marker_and_recovers_after_clearing() {
+        let dir = FixtureDir::new();
+        let src = tempfile::tempdir().unwrap();
+        let exe = src.path().join("AeroFTP.exe");
+        let marker = src.path().join("portable.marker");
+        std::fs::write(&exe, b"portable exe").unwrap();
+        std::fs::write(&marker, b"portable").unwrap();
+        let key = exe_key(&exe).unwrap();
+        stage_pending_docs(dir.path(), &exe, &[(&marker, "portable.marker")], "start").unwrap();
+        let target = dir.path().join("portable.marker");
+        std::fs::create_dir(&target).unwrap();
+        std::fs::write(target.join("sentinel"), b"untouched").unwrap();
+        assert_eq!(
+            install_pending_docs(dir.path(), &key, rename),
+            Pending::Docs(vec![("portable.marker", Outcome::Directory)])
+        );
+        assert!(dir
+            .path()
+            .join(PENDING_DIR)
+            .join("portable.marker")
+            .is_file());
+        assert_eq!(read(&target, "sentinel"), "untouched");
+        assert_eq!(
+            probe_portable_marker_within(dir.path(), || Some(key.clone()), None),
+            PortableMarkerState::Present
+        );
+
+        std::fs::remove_dir_all(&target).unwrap();
+        assert_eq!(
+            install_pending_docs(dir.path(), &key, rename),
+            Pending::Docs(vec![("portable.marker", Outcome::Installed)])
+        );
+        assert!(target.is_file());
+        assert_eq!(
+            probe_portable_marker_within(dir.path(), || Some(key), None),
+            PortableMarkerState::Present
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn probe_portable_marker_follows_symlink_to_regular_file_without_pending_batch() {
+        let dir = FixtureDir::new();
+        let target = dir.path().join("actual-marker");
+        std::fs::write(&target, b"portable").unwrap();
+        std::os::unix::fs::symlink(&target, dir.path().join("portable.marker")).unwrap();
+        assert_eq!(
+            probe_portable_marker_within(dir.path(), || None, Some(Duration::from_secs(1))),
+            PortableMarkerState::Present
+        );
+    }
+
+    #[test]
     fn a_held_document_keeps_retrying_when_another_staging_moves_its_batch_after_the_pass() {
         let dir = FixtureDir::new();
         let src = tempfile::tempdir().unwrap();
@@ -4885,11 +5148,11 @@ mod tests {
         )
         .unwrap()
         .unwrap();
-        record_cancelled_batch(dir2.path(), &token_b2);
+        record_cancelled_batch(dir2.path(), &token_b2).unwrap();
         let blocked = install_pass_with(dir2.path(), &key_b, None, rename, |_| {
             Err(io::Error::new(io::ErrorKind::PermissionDenied, "locked id"))
         });
-        assert!(matches!(blocked, Pending::Unavailable(_)));
+        assert_eq!(blocked, Pending::None);
         assert!(
             cancel_marker_path(dir2.path(), &token_b2).is_file(),
             "unreadable staging.id must keep cancel marker active"
@@ -4929,11 +5192,11 @@ mod tests {
         let blocker = next3.join("THIRD-PARTY-NOTICES.md");
         std::fs::remove_file(&blocker).unwrap();
         std::fs::create_dir(&blocker).unwrap();
-        record_cancelled_batch(dir3.path(), &token_b3);
-        assert!(matches!(
+        record_cancelled_batch(dir3.path(), &token_b3).unwrap();
+        assert_eq!(
             install_pending_docs(dir3.path(), &key_b, rename),
-            Pending::Unavailable(_)
-        ));
+            Pending::None
+        );
         assert!(
             cancel_marker_path(dir3.path(), &token_b3).is_file(),
             "partial cleanup must keep cancel marker active"
@@ -4950,6 +5213,119 @@ mod tests {
         );
         assert!(!cancel_marker_path(dir3.path(), &token_b3).exists());
         assert!(!next3.exists());
+    }
+
+    #[test]
+    fn cancellation_with_unreadable_identity_keeps_probe_pending_until_token_is_known() {
+        let dir = FixtureDir::new();
+        let src = tempfile::tempdir().unwrap();
+        let exe = src.path().join("AeroFTP.exe");
+        let marker = src.path().join("portable.marker");
+        std::fs::write(&exe, b"exe B").unwrap();
+        std::fs::write(&marker, b"portable").unwrap();
+        let key_b = exe_key(&exe).unwrap();
+        let token_b = stage_pending_docs(dir.path(), &exe, &[(&marker, "portable.marker")], "b")
+            .unwrap()
+            .unwrap();
+        let token_a = "00".repeat(16);
+        assert_ne!(token_a, token_b);
+        record_cancelled_batch(dir.path(), &token_a).unwrap();
+        assert_eq!(
+            probe_portable_marker_with_read_id(
+                dir.path(),
+                || Some(key_b.clone()),
+                None,
+                |_| Err(io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    "unreadable id"
+                )),
+            ),
+            PortableMarkerState::Pending
+        );
+        assert!(cancel_marker_path(dir.path(), &token_a).is_file());
+        assert_eq!(
+            probe_portable_marker_within(dir.path(), || Some(key_b.clone()), None),
+            PortableMarkerState::Present,
+            "once readable, token A does not cancel B's owned marker"
+        );
+
+        record_cancelled_batch(dir.path(), &token_b).unwrap();
+        assert_eq!(
+            probe_portable_marker_within(dir.path(), || Some(key_b), None),
+            PortableMarkerState::Absent,
+            "confirmed cancellation of B removes the staged marker"
+        );
+    }
+
+    #[test]
+    fn discard_preserves_batch_when_cancellation_marker_cannot_be_written() {
+        let dir = FixtureDir::new();
+        let (_stage, exe, _key, readme) = new_exe(b"B");
+        let token = stage_pending_docs(dir.path(), &exe, &[(&readme, "README.txt")], "b")
+            .unwrap()
+            .unwrap();
+        let marker = cancel_marker_path(dir.path(), &token);
+        std::fs::create_dir(&marker).unwrap();
+        assert!(!discard_pending_docs_within(
+            dir.path(),
+            &token,
+            Some(Duration::from_secs(1))
+        ));
+        assert!(dir.path().join(NEXT_DIR).join("README.txt").is_file());
+
+        std::fs::remove_dir(&marker).unwrap();
+        assert!(discard_pending_docs_within(
+            dir.path(),
+            &token,
+            Some(Duration::from_secs(1))
+        ));
+        assert!(!dir.path().join(NEXT_DIR).exists());
+    }
+
+    #[test]
+    fn unfinished_cancellation_defers_only_next_and_lets_set_aside_owner_recover() {
+        let dir = FixtureDir::new();
+        let (_stage_a, exe_a, key_a, notice_a) = new_exe(b"A");
+        let (_stage_b, exe_b, key_b, notice_b) = new_exe(b"B");
+        stage_pending_docs(
+            dir.path(),
+            &exe_a,
+            &[(&notice_a, "THIRD-PARTY-NOTICES.md")],
+            "a",
+        )
+        .unwrap();
+        let token_b = stage_pending_docs(
+            dir.path(),
+            &exe_b,
+            &[(&notice_b, "THIRD-PARTY-NOTICES.md")],
+            "b",
+        )
+        .unwrap()
+        .unwrap();
+        let next = dir.path().join(NEXT_DIR);
+        let blocker = next.join("THIRD-PARTY-NOTICES.md");
+        std::fs::remove_file(&blocker).unwrap();
+        std::fs::create_dir(&blocker).unwrap();
+        record_cancelled_batch(dir.path(), &token_b).unwrap();
+
+        let offered = own_pending_notices(dir.path(), || Some(key_a.clone()))
+            .expect("A's unaffected set-aside notices remain readable");
+        assert_eq!(std::fs::read_to_string(offered).unwrap(), "readme of A");
+        assert_eq!(
+            install_pending_docs(dir.path(), &key_a, rename),
+            Pending::Docs(vec![("THIRD-PARTY-NOTICES.md", Outcome::Installed)])
+        );
+        assert_eq!(read(dir.path(), "THIRD-PARTY-NOTICES.md"), "readme of A");
+        assert!(cancel_marker_path(dir.path(), &token_b).is_file());
+        assert!(next.is_dir());
+
+        std::fs::remove_dir(&blocker).unwrap();
+        assert_eq!(
+            install_pending_docs(dir.path(), &key_b, rename),
+            Pending::None
+        );
+        assert!(!next.exists());
+        assert!(!cancel_marker_path(dir.path(), &token_b).exists());
     }
 
     #[test]
@@ -5104,13 +5480,44 @@ mod tests {
             "original notices of B"
         );
 
-        // Control: stage original again, then a successful same-key retry
-        // installs the corrected notices and retires the superseded PREV_DIR.
+        // A helper-handoff failure after publication discards the replacement
+        // and restores the original batch, which was not retired prematurely.
         stage_pending_docs(
             dir.path(),
             &exe_b,
             &[(&orig_notices, "THIRD-PARTY-NOTICES.md")],
             "b-orig-2",
+        )
+        .unwrap();
+        let fixed_token = stage_pending_docs(
+            dir.path(),
+            &exe_b,
+            &[(&fixed_notices, "THIRD-PARTY-NOTICES.md")],
+            "b-fixed-fails-handoff",
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            read(&dir.path().join(PREV_DIR), "THIRD-PARTY-NOTICES.md"),
+            "original notices of B"
+        );
+        discard_pending_docs(dir.path(), &fixed_token);
+        assert_eq!(
+            read(&dir.path().join(NEXT_DIR), "THIRD-PARTY-NOTICES.md"),
+            "original notices of B"
+        );
+        assert_eq!(
+            install_pending_docs(dir.path(), &key_b, rename),
+            Pending::Docs(vec![("THIRD-PARTY-NOTICES.md", Outcome::Installed)])
+        );
+
+        // Control: a successful same-key update installs the corrected notices
+        // and only then retires the superseded PREV_DIR batch.
+        stage_pending_docs(
+            dir.path(),
+            &exe_b,
+            &[(&orig_notices, "THIRD-PARTY-NOTICES.md")],
+            "b-orig-3",
         )
         .unwrap();
         stage_pending_docs(
@@ -5120,10 +5527,7 @@ mod tests {
             "b-fixed",
         )
         .unwrap();
-        assert!(
-            !dir.path().join(PREV_DIR).exists(),
-            "successful same-key restage must retire the superseded PREV_DIR batch"
-        );
+        assert!(dir.path().join(PREV_DIR).is_dir());
         assert_eq!(
             install_pending_docs(dir.path(), &key_b, rename),
             Pending::Docs(vec![("THIRD-PARTY-NOTICES.md", Outcome::Installed)])
@@ -5132,6 +5536,7 @@ mod tests {
             read(dir.path(), "THIRD-PARTY-NOTICES.md"),
             "corrected notices of B"
         );
+        assert!(!dir.path().join(PREV_DIR).exists());
     }
 
     #[test]

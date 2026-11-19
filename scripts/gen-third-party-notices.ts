@@ -256,41 +256,14 @@ export const PINNED_FALLBACK_ATTRIBUTIONS: Record<string, FallbackAttribution> =
   },
 };
 
-/**
- * Formats a unified-style diff highlighting the first divergence between expected and actual text.
- */
-export function formatDiff(expected: string, actual: string, maxLines = 40): string {
+/** The one-based location of the first drift, without reproducing either text. */
+export function firstDifferingLine(expected: string, actual: string): number | null {
   const expLines = expected.split('\n');
   const actLines = actual.split('\n');
-  let firstDiff = -1;
-  const maxLen = Math.max(expLines.length, actLines.length);
-  for (let i = 0; i < maxLen; i++) {
-    if (expLines[i] !== actLines[i]) {
-      firstDiff = i;
-      break;
-    }
+  for (let i = 0; i < Math.max(expLines.length, actLines.length); i++) {
+    if (expLines[i] !== actLines[i]) return i + 1;
   }
-  if (firstDiff === -1) return '';
-
-  const start = Math.max(0, firstDiff - 2);
-  const end = Math.min(maxLen, firstDiff + maxLines);
-  const out: string[] = [];
-  out.push(`--- existing (line ${firstDiff + 1})`);
-  out.push(`+++ generated (line ${firstDiff + 1})`);
-  for (let i = start; i < end; i++) {
-    const e = expLines[i];
-    const a = actLines[i];
-    if (e === a) {
-      out.push(` ${e ?? ''}`);
-    } else {
-      if (e !== undefined) out.push(`-${e}`);
-      if (a !== undefined) out.push(`+${a}`);
-    }
-  }
-  if (end < maxLen) {
-    out.push('... (diff truncated)');
-  }
-  return out.join('\n');
+  return null;
 }
 
 /**
@@ -735,7 +708,11 @@ export function readPackageFiles(
       try {
         const subEntries = readDirSorted(subDir);
         for (const sub of subEntries) {
-          if (sub.isFile() && isLicenseDirText(sub.name)) {
+          if (
+            sub.isFile() &&
+            isLicenseDirText(sub.name) &&
+            !(declaredLicenseFile && path.resolve(subDir, sub.name) === path.resolve(dir, declaredLicenseFile))
+          ) {
             const fullPath = path.join(subDir, sub.name);
             const filename = `${entry.name}/${sub.name}`;
             const content = fs.readFileSync(fullPath, 'utf8').replace(/\r\n/g, '\n').trim();
@@ -964,7 +941,7 @@ export function findPackageCopyrightNotices(
       // ("/*! regenerator-runtime -- Copyright (c) 2014-present, Facebook").
       const match =
         line.match(/^SPDX-FileCopyrightText:\s*\S.*/) ??
-        line.match(/^(?:(?:\([cC]\)|©)\s+[0-9]{4}|[Cc]opyright\s+(?:\([cC]\)|©|[0-9]{4}|by\s+[A-Z]|[A-Z])).*/) ??
+        line.match(/^(?:©\s+\S.*|\([cC]\)\s+[0-9]{4}|[Cc]opyright\s+(?:\([cC]\)|©|[0-9]{4}|by\s+[A-Z]|[A-Z])).*/) ??
         line.match(/(?:copyright\s*(?:\([cC]\)|©)\s*[0-9]{4}|copyright\s+[0-9]{4}|\([cC]\)\s*[0-9]{4}|©\s*[0-9]{4})\s*\S.*/i);
       if (match) {
         // A notice inside a minified line ends where its comment does.
@@ -1336,7 +1313,7 @@ function termTokens(text: string, markersRemoved = false): { words: string[]; bo
   const lines = text
     .replace(URL_TEXT, ' ')
     .split('\n')
-    .filter((l) => !isAttributionLine(l) && !/^\s*(?:all rights reserved|spdx-license-identifier:)/i.test(l))
+    .filter((l) => !isAttributionLine(l) && !/^\s*(?:all rights reserved\.?\s*$|spdx-license-identifier:)/i.test(l))
     // A heading (`## License`, or a title over a `----` or `====` line) and a
     // rule end a paragraph: "ISC License\n-----------\nPermission to use".
     .map((l) => (/^[ \t]*(?:[-=*_][ \t]*){3,}$/.test(l) ? '' : /^[ \t]*#{1,6}[ \t]/.test(l) ? `${l}\n` : l))
@@ -2240,7 +2217,12 @@ export function findBundledCodeUnderOtherLicenses(
         // the other terms of that choice still go through the policy:
         // `Apache-2.inner AND GPL-2.0-only` requires GPL-2.0-only. A choice
         // made only of typos leaves no term to check.
-        const isTypo = (t: string) => hasEntry(UNREPRODUCIBLE_HEADER_IDS, t.split(' WITH ')[0]);
+        const reviewedTypoFile =
+          comp.name === 'muda' &&
+          comp.version === '0.19.3' &&
+          (entryRel === 'src/menu.rs' || /^src\/items\/[^/]+$/.test(entryRel));
+        const isTypo = (t: string) =>
+          reviewedTypoFile && hasEntry(UNREPRODUCIBLE_HEADER_IDS, t.split(' WITH ')[0]);
         const nonTypo = parsed.map((terms) => terms.filter((t) => !isTypo(t))).filter((terms) => terms.length > 0);
         // Bundled code is distributed with AeroFTP like the package that ships
         // it, so a header's license goes through the policy main applies to a
@@ -2512,7 +2494,7 @@ function isAttributionLine(line: string): boolean {
 export function licenseTermsOf(text: string): string {
   return text
     .split('\n')
-    .filter((l) => !isAttributionLine(l) && !/^\s*(?:all rights reserved|spdx-license-identifier:)/i.test(l))
+    .filter((l) => !isAttributionLine(l) && !/^\s*(?:all rights reserved\.?\s*$|spdx-license-identifier:)/i.test(l))
     .join(' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -2863,7 +2845,7 @@ export function renderNotices(
   lines.push('|---|---|---|---|');
   for (const dep of sortedCargoDeps) {
     const link = publicLink(dep.repository);
-    const repo = link ? `[Link](${link})` : 'n/a';
+    const repo = link ? `[Link](${link.replace(/\(/g, '%28').replace(/\)/g, '%29')})` : 'n/a';
     lines.push(`| ${dep.name} | ${dep.version} | ${dep.license} | ${repo} |`);
   }
   lines.push('');
@@ -2875,7 +2857,7 @@ export function renderNotices(
   lines.push('|---|---|---|---|');
   for (const dep of sortedNpmDeps) {
     const link = publicLink(dep.repository);
-    const repo = link ? `[Link](${link})` : 'n/a';
+    const repo = link ? `[Link](${link.replace(/\(/g, '%28').replace(/\)/g, '%29')})` : 'n/a';
     lines.push(`| ${dep.name} | ${dep.version} | ${dep.license} | ${repo} |`);
   }
   lines.push('');
@@ -2940,7 +2922,7 @@ export function renderNotices(
           '',
           exc.facts,
           '',
-          `This is the license text that \`${exc.crateName}@${exc.version}\` ships in \`${exc.sourceFile}\`, written from the same file as the text reproduced in [THIRD-PARTY-NOTICES.md](${noticesLinkFrom(exc.document)}#${exceptionAnchorId(exc)}), the notices AeroFTP packages ship. \`npm run check:licenses\` fails when this page no longer matches that text.`,
+          `This is the license text that \`${exc.crateName}@${exc.version}\` ships in \`${exc.sourceFile}\`, written from the same file as the text reproduced in [THIRD-PARTY-NOTICES.md](${noticesLinkFrom(exc.document)}?raw=1), the notices AeroFTP packages ship. \`npm run check:licenses\` fails when this page no longer matches that text.`,
           '',
           makeCodeBlock(group.text),
           '',
@@ -2987,7 +2969,9 @@ export function renderNotices(
           .map((d) => d.slice(dir.length + 1));
         const seenVendored = new Set<string>();
         for (const n of findPackageCopyrightNotices(path.join(fullComp.packageDir, dir), inDir, nested)) {
-          seenVendored.add(noticeKey(n.notice));
+          const key = noticeKey(n.notice);
+          if (seenVendored.has(key)) continue;
+          seenVendored.add(key);
           lines.push(`  - ${n.notice} (${dir}/${n.file})`);
         }
         bundledOf(fullComp);
@@ -3509,7 +3493,9 @@ function main() {
       const existing = fs.existsSync(file) ? fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n') : undefined;
       if (existing !== doc.content) {
         console.error(`ERROR: ${file} is ${existing === undefined ? 'missing' : 'out of date'}.`);
-        if (existing !== undefined) console.error(formatDiff(existing, doc.content, 40));
+        if (existing !== undefined) {
+          console.error(`First difference at line ${firstDifferingLine(existing, doc.content)}.`);
+        }
         console.error(`Run 'npm run gen:licenses' to update it.`);
         process.exit(1);
       }
@@ -3521,7 +3507,7 @@ function main() {
     const existing = fs.readFileSync(NOTICES_FILE, 'utf8').replace(/\r\n/g, '\n');
     if (existing !== generated) {
       console.error(`ERROR: ${NOTICES_FILE} is out of date.`);
-      console.error(formatDiff(existing, generated, 40));
+      console.error(`First difference at line ${firstDifferingLine(existing, generated)}.`);
       console.error(`Run 'npm run gen:licenses' to update it.`);
       process.exit(1);
     }
