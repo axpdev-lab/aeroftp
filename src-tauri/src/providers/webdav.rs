@@ -507,6 +507,45 @@ fn server_message(body: &str, base_url: &str) -> String {
             let decoded = percent_decode_str(prefix).decode_utf8_lossy().into_owned();
             shown = shown.replace(prefix, "<base>").replace(&decoded, "<base>");
         }
+        if let Some(query) = url.query().filter(|q| !q.is_empty()) {
+            // Remove the saved URL's query and its parameter values (raw and
+            // percent-decoded), longest first, so a server echoing `?token=...`
+            // or a query value inside `<message>` cannot leak a query secret.
+            let mut secrets: Vec<String> = Vec::new();
+            let decoded_query = percent_decode_str(query).decode_utf8_lossy().into_owned();
+            secrets.push(query.to_string());
+            if decoded_query != query {
+                secrets.push(decoded_query);
+            }
+            for raw_pair in query.split('&').filter(|p| !p.is_empty()) {
+                secrets.push(raw_pair.to_string());
+                let decoded_pair = percent_decode_str(raw_pair)
+                    .decode_utf8_lossy()
+                    .into_owned();
+                if decoded_pair != raw_pair {
+                    secrets.push(decoded_pair);
+                }
+                if let Some((_, raw_val)) = raw_pair.split_once('=') {
+                    if raw_val.len() >= 4 {
+                        secrets.push(raw_val.to_string());
+                    }
+                    let decoded_val = percent_decode_str(raw_val).decode_utf8_lossy().into_owned();
+                    if decoded_val.len() >= 4 && decoded_val != raw_val {
+                        secrets.push(decoded_val);
+                    }
+                }
+            }
+            for (_, decoded_val) in url.query_pairs() {
+                if decoded_val.len() >= 4 {
+                    secrets.push(decoded_val.into_owned());
+                }
+            }
+            secrets.sort_by(|a, b| b.len().cmp(&a.len()).then_with(|| a.cmp(b)));
+            secrets.dedup();
+            for secret in secrets {
+                shown = shown.replace(&secret, "<redacted>");
+            }
+        }
     }
     sanitize_api_error(&shown)
 }
@@ -10779,6 +10818,68 @@ pub(crate) mod collection_redirect_tests {
             format!("a reply of {} bytes with no message", html.len())
         );
         assert_eq!(server_message("", base), "no message");
+    }
+
+    /// A failed WebDAV call (`lock_file`) scrubs configured query credentials
+    /// (raw and percent-encoded) echoed in a multi-line XML `<message>`, while
+    /// preserving ordinary server error messages.
+    #[tokio::test]
+    async fn a_webdav_error_redacts_saved_query_secrets_and_keeps_ordinary_messages() {
+        let app = axum::Router::new().fallback(axum::routing::any(
+            |request: axum::extract::Request| async move {
+                let path = request.uri().path().to_string();
+                if path.ends_with("/ordinary") {
+                    return (
+                        StatusCode::LOCKED,
+                        "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<d:error xmlns:d=\"DAV:\" xmlns:s=\"http://sabredav.org/ns\">\n<s:message>Resource is locked by another user</s:message>\n</d:error>",
+                    );
+                }
+                (
+                    StatusCode::LOCKED,
+                    "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<d:error xmlns:d=\"DAV:\" xmlns:s=\"http://sabredav.org/ns\">\n<s:message>Cannot lock /root/secret?access_token=DUMMY%20SECRET&amp;token=TOPSECRET (decoded DUMMY SECRET)</s:message>\n</d:error>",
+                )
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!(
+            "http://{}/root/?access_token=DUMMY%20SECRET&token=TOPSECRET",
+            listener.local_addr().unwrap()
+        );
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        let mut provider = WebDavProvider::new(WebDavConfig {
+            url: base,
+            username: "user".to_string(),
+            password: secrecy::SecretString::from("pass".to_string()),
+            initial_path: None,
+            provider_id: None,
+            verify_cert: true,
+            anonymous: false,
+        })
+        .unwrap();
+        provider.connected = true;
+
+        let leaked = provider
+            .lock_file("/secret", 60)
+            .await
+            .unwrap_err()
+            .to_string();
+        for secret in ["DUMMY%20SECRET", "DUMMY SECRET", "TOPSECRET"] {
+            assert!(!leaked.contains(secret), "{secret} leaked in {leaked}");
+        }
+        assert!(leaked.contains("<redacted>"), "{leaked}");
+
+        let ordinary = provider
+            .lock_file("/ordinary", 60)
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(
+            ordinary.contains("Resource is locked by another user"),
+            "{ordinary}"
+        );
+
+        server.abort();
     }
 
     /// The download diagnostic keeps a header's value, except a Location or

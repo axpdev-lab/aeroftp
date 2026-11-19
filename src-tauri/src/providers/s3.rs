@@ -591,13 +591,57 @@ fn format_s3_error(
     msg
 }
 
+/// Remove reflected S3/AWS credential headers or parameters from an error
+/// message before it reaches `sanitize_api_error`. Ordinary S3 error messages
+/// stay intact.
+fn scrub_s3_reflected_credentials(text: &str) -> String {
+    static RULES: std::sync::LazyLock<Vec<(regex::Regex, &'static str)>> = std::sync::LazyLock::new(
+        || {
+            [
+                // Quoted header/parameter reflections first so quotes are preserved
+                // and inner spaces are scrubbed cleanly.
+                (
+                    r#"(?i)(x-amz-(?:security-token|credential|signature|server-side-encryption-customer-key)\s*[:=]\s*['"])[^'"]+(['"])"#,
+                    "$1[REDACTED]$2",
+                ),
+                (
+                    r#"(?i)((?:AWSAccessKeyId|SessionToken|SecurityToken)\s*[:=]\s*['"])[^'"]+(['"])"#,
+                    "$1[REDACTED]$2",
+                ),
+                // Unquoted header/parameter reflections
+                (
+                    r"(?i)(x-amz-(?:security-token|credential|signature|server-side-encryption-customer-key)\s*[:=]\s*)[^\s,;'\x22&<>)\]}]+",
+                    "$1[REDACTED]",
+                ),
+                (
+                    r"(?i)((?:AWSAccessKeyId|SessionToken|SecurityToken)\s*[:=]\s*)[^\s,;'\x22&<>)\]}]+",
+                    "$1[REDACTED]",
+                ),
+                // SigV4 Credential=... / Signature=... fragments
+                (
+                    r"(?i)(\b(?:Credential|Signature)\s*=\s*)[^\s,;'\x22&<>)\]}]+",
+                    "$1[REDACTED]",
+                ),
+            ]
+            .into_iter()
+            .map(|(pattern, replacement)| (regex::Regex::new(pattern).unwrap(), replacement))
+            .collect()
+        },
+    );
+    let mut out = text.to_string();
+    for (re, replacement) in RULES.iter() {
+        out = re.replace_all(&out, *replacement).into_owned();
+    }
+    out
+}
+
 /// What an error may show of an S3 error reply: its `Code: Message`,
 /// sanitized, or only its length. The rest of the reply can name the request
 /// (`<Resource>` is the bucket and key path, `<Key>` the object), so it stays
 /// out of the error.
 fn s3_error_text(body: &str) -> String {
     match s3_error_code_and_message(body) {
-        Some(detail) => sanitize_api_error(&detail),
+        Some(detail) => sanitize_api_error(&scrub_s3_reflected_credentials(&detail)),
         None if body.is_empty() => "no message".to_string(),
         None => format!("a reply of {} bytes with no S3 error code", body.len()),
     }
@@ -19931,6 +19975,40 @@ mod tests {
         let bare = "<Error><Resource>/bucket/private/tax-2026.pdf</Resource></Error>";
         let msg = format_s3_error("GET failed", reqwest::StatusCode::NOT_FOUND, bare, None);
         assert!(!msg.contains("tax-2026"), "{msg}");
+    }
+
+    /// Reflected S3 credential values (session tokens, SigV4 credentials,
+    /// signatures) are scrubbed from `Message`, while ordinary error messages
+    /// stay visible.
+    #[test]
+    fn an_s3_error_redacts_reflected_session_tokens_and_keeps_ordinary_messages() {
+        let reflected = "<Error><Code>InvalidToken</Code><Message>Malformed header x-amz-security-token: FwoGZXIvYXdzEBAaDK9988776655</Message></Error>";
+        let msg = format_s3_error(
+            "List failed",
+            reqwest::StatusCode::BAD_REQUEST,
+            reflected,
+            None,
+        );
+        assert!(!msg.contains("FwoGZXIvYXdzEBAaDK9988776655"), "{msg}");
+        assert!(msg.contains("InvalidToken"), "{msg}");
+        assert!(msg.contains("[REDACTED]"), "{msg}");
+
+        let quoted = r#"<Error><Code>InvalidToken</Code><Message>Rejected x-amz-security-token: "FwoGZXIvYXdzEBAaDKquoted123" and X-Amz-Credential=AKIAIOSFODNN7EXAMPLE/20261119/us-east-1/s3/aws4_request</Message></Error>"#;
+        let msg = format_s3_error(
+            "List failed",
+            reqwest::StatusCode::BAD_REQUEST,
+            quoted,
+            None,
+        );
+        assert!(!msg.contains("FwoGZXIvYXdzEBAaDKquoted123"), "{msg}");
+        assert!(!msg.contains("AKIAIOSFODNN7EXAMPLE"), "{msg}");
+
+        let ordinary = "<Error><Code>NoSuchKey</Code><Message>The specified key does not exist.</Message></Error>";
+        let msg = format_s3_error("GET failed", reqwest::StatusCode::NOT_FOUND, ordinary, None);
+        assert_eq!(
+            msg,
+            "GET failed (404 Not Found): NoSuchKey: The specified key does not exist."
+        );
     }
 
     #[test]
