@@ -907,7 +907,7 @@ const SMALLER_FILE: &str = "import a copy of the file that keeps the hosts you n
 /// reason the file has more than [`MAX_HOSTS`] blocks.
 #[cfg(test)]
 fn parse_ssh_config(content: &str) -> (Vec<HostBlock>, Option<String>) {
-    let (blocks, error, _) = parse_ssh_config_with(content, &Services::default());
+    let (blocks, error, _) = parse_ssh_config_with(content, &Services::default(), true);
     (blocks, error)
 }
 
@@ -917,6 +917,7 @@ fn parse_ssh_config(content: &str) -> (Vec<HostBlock>, Option<String>) {
 fn parse_ssh_config_with(
     content: &str,
     services: &Services,
+    includes: bool,
 ) -> (Vec<HostBlock>, Option<String>, u64) {
     let mut parser = Parser {
         blocks: Vec::new(),
@@ -928,6 +929,7 @@ fn parse_ssh_config_with(
         cost: 0,
         home: None,
         accounts: HashMap::new(),
+        includes,
     };
     parser.read(content, Place::File, 0, None);
     (parser.blocks, parser.error, parser.cost)
@@ -992,12 +994,17 @@ struct Parser<'a> {
     /// looked up once ([`Parser::resolve`]); `None` for one this system
     /// does not have.
     accounts: HashMap<String, Option<String>>,
+    /// Whether the file is the account's own ssh config, the one file whose
+    /// `Include` paths the import opens ([`import_ssh_config`]).
+    includes: bool,
 }
 
 #[cfg(test)]
 thread_local! {
     /// How many accounts an `Include` looked up, for the tests.
     static ACCOUNT_LOOKUPS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    /// How many paths an `Include` opened, for the tests.
+    static INCLUDE_OPENS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
 impl Parser<'_> {
@@ -1171,6 +1178,22 @@ impl Parser<'_> {
         if words.is_empty() {
             return refuse(self, "names no file after `Include`");
         }
+        // A file the account chose to import may name any path it can
+        // read: the import opens the paths of an `Include` only in the
+        // account's own ssh config, which ssh reads on every connection,
+        // and the files it includes. Elsewhere the words are still checked
+        // as ssh checks them, and the hosts the line applies to skipped.
+        if !self.includes {
+            for word in words {
+                if let Err(Unread::Refused(why)) = include_pattern(word) {
+                    return refuse(self, why);
+                }
+            }
+            self.blocks[gate]
+                .unread
+                .get_or_insert_with(|| (at.to_string(), Unknown::NotOwnConfig));
+            return;
+        }
         // OpenSSH for Windows reads `Include` with its own rules for path
         // separators and file permissions, which the import does not check:
         // the hosts the line applies to are skipped, not read with other
@@ -1230,6 +1253,8 @@ impl Parser<'_> {
                 use std::os::unix::fs::OpenOptionsExt;
                 options.custom_flags(libc::O_NONBLOCK);
             }
+            #[cfg(test)]
+            INCLUDE_OPENS.with(|n| n.set(n.get() + 1));
             let Ok(file) = options.open(&path) else {
                 return refuse(self, "includes a file that cannot be read");
             };
@@ -1357,6 +1382,9 @@ enum Unknown {
     NoHome,
     /// A system where the import does not read `Include` (Windows).
     NotOnThisSystem,
+    /// A file other than the account's own ssh config, whose `Include`
+    /// paths the import does not open.
+    NotOwnConfig,
 }
 
 impl Unknown {
@@ -1373,6 +1401,7 @@ impl Unknown {
                 "names its files from the home folder, which could not be read".to_string()
             }
             Unknown::NotOnThisSystem => "is read by OpenSSH for Windows with rules for paths and file permissions that the import does not check on this system".to_string(),
+            Unknown::NotOwnConfig => "is in a file other than the account's own ssh config, and the import opens the files an `Include` names only from that one, which ssh reads on every connection".to_string(),
         }
     }
 }
@@ -2698,11 +2727,29 @@ pub struct SshImportResult {
 }
 
 /// Import all concrete `Host` blocks from an OpenSSH client config file.
+/// The paths an `Include` names are opened only when `path` is the
+/// account's own ssh config ([`default_ssh_config_path`]), a symbolic link
+/// to it too.
 pub fn import_ssh_config(path: &Path) -> Result<SshImportResult, String> {
+    let own = default_ssh_config_path().is_some_and(|own| same_file(path, &own));
+    import_file(path, own)
+}
+
+/// Whether `a` and `b` name the same file, through symbolic links too.
+fn same_file(a: &Path, b: &Path) -> bool {
+    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => false,
+    }
+}
+
+/// [`import_ssh_config`], opening the paths of an `Include` when
+/// `includes`.
+fn import_file(path: &Path, includes: bool) -> Result<SshImportResult, String> {
     let content = std::fs::read_to_string(path).map_err(|e| format!("read ssh config: {e}"))?;
 
     let services = Services::default();
-    let (blocks, error, cost) = parse_ssh_config_with(&content, &services);
+    let (blocks, error, cost) = parse_ssh_config_with(&content, &services, includes);
     let config = SshConfig::with(blocks, services);
     config.steps.charge(cost);
     let error = error.or_else(|| config.too_much_work());
@@ -3259,7 +3306,7 @@ Host web-?
             crate::bridge_shared::uuid_v4()
         ));
         std::fs::write(&tmp, FIXTURE).unwrap();
-        let result = import_ssh_config(&tmp).expect("should parse");
+        let result = import_own(&tmp).expect("should parse");
         std::fs::remove_file(&tmp).ok();
 
         assert_eq!(result.total_remotes, 4);
@@ -3324,7 +3371,7 @@ Host roundtrip
             crate::bridge_shared::uuid_v4()
         ));
         std::fs::write(&tmp_in, original).unwrap();
-        let imported = import_ssh_config(&tmp_in).expect("import");
+        let imported = import_own(&tmp_in).expect("import");
         std::fs::remove_file(&tmp_in).ok();
         assert_eq!(imported.servers.len(), 1);
 
@@ -3349,7 +3396,7 @@ Host roundtrip
             export_ssh_config(&export_servers, &HashMap::new(), &tmp_out).expect("export");
         assert_eq!(exported.exported, 1);
 
-        let reimported = import_ssh_config(&tmp_out).expect("reimport");
+        let reimported = import_own(&tmp_out).expect("reimport");
         std::fs::remove_file(&tmp_out).ok();
         assert_eq!(reimported.servers.len(), 1);
 
@@ -3642,7 +3689,7 @@ Host roundtrip
         }
         // The import reads each value back as the profile holds it; a host
         // reached through a jump is skipped, as for any file.
-        let back = import_ssh_config(&path).unwrap();
+        let back = import_own(&path).unwrap();
         let by = |name: &str| back.servers.iter().find(|s| s.name == name);
         assert_eq!(by("addr").map(|s| s.host.as_str()), Some("fe80::1%eth0"));
         assert_eq!(
@@ -3703,7 +3750,7 @@ Host roundtrip
             ]
         );
         assert_eq!(outcome.exported, 1);
-        let back = import_ssh_config(&path).unwrap();
+        let back = import_own(&path).unwrap();
         let read: Vec<(&str, u32)> = back
             .servers
             .iter()
@@ -3746,7 +3793,7 @@ Host roundtrip
         let outcome = export_ssh_config(&[server], &HashMap::new(), &path).unwrap();
         assert_eq!(outcome.exported, 1, "{:?}", outcome.skipped);
         assert_eq!(
-            key(&import_ssh_config(&path).unwrap()),
+            key(&import_own(&path).unwrap()),
             serde_json::json!("/keys/lab ")
         );
         if std::process::Command::new("ssh").arg("-V").output().is_ok() {
@@ -3762,7 +3809,7 @@ Host roundtrip
             );
             let outcome = export_ssh_config(&[server], &HashMap::new(), &path).unwrap();
             assert_eq!(outcome.exported, 1, "{:?}", outcome.skipped);
-            let read = import_ssh_config(&path).unwrap();
+            let read = import_own(&path).unwrap();
             let options = read.servers[0].options.as_ref();
             assert_eq!(
                 options
@@ -3931,7 +3978,7 @@ Host roundtrip
         for (text, imported, skipped) in cases {
             let file = dir.path().join("config");
             std::fs::write(&file, &text).unwrap();
-            let result = import_ssh_config(&file).unwrap();
+            let result = import_own(&file).unwrap();
             let read: Vec<(&str, u32, &str)> = result
                 .servers
                 .iter()
@@ -4508,6 +4555,95 @@ Host roundtrip
         }
     }
 
+    /// A file other than the account's own ssh config may name any path the
+    /// account can read: the import opens no path its `Include` names,
+    /// still refuses the file for a word ssh refuses, and skips the hosts
+    /// the line applies to, with the reason. The same file read as the
+    /// account's own config reads the included file.
+    #[test]
+    fn an_include_in_another_file_is_never_opened() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        let included = d.join("lab.conf");
+        std::fs::write(&included, "Host lab\n  Port 2200\n").unwrap();
+        let file = d.join("other");
+        let text = format!(
+            "Include {}\nHost lab\n  HostName lab.example.com\nHost web\n  HostName web.example.com\n",
+            included.display()
+        );
+        std::fs::write(&file, &text).unwrap();
+        INCLUDE_OPENS.with(|n| n.set(0));
+        let other = import_ssh_config(&file).unwrap();
+        assert_eq!(INCLUDE_OPENS.with(|n| n.get()), 0);
+        assert!(other.servers.is_empty(), "{:?}", reasons(&other));
+        let why = include_reason(
+            &("line 1 of the file".to_string(), Unknown::NotOwnConfig),
+            "applies to it",
+        );
+        assert_eq!(
+            reasons(&other),
+            [("lab", why.as_str()), ("web", why.as_str())]
+        );
+        std::fs::write(&file, "Include \"\"\nHost lab\n").unwrap();
+        let refused = import_ssh_config(&file).unwrap();
+        assert!(refused.servers.is_empty());
+        assert!(
+            reasons(&refused)[0]
+                .1
+                .contains("so ssh refuses the whole file"),
+            "{:?}",
+            reasons(&refused)
+        );
+        #[cfg(unix)]
+        {
+            std::fs::write(&file, &text).unwrap();
+            INCLUDE_OPENS.with(|n| n.set(0));
+            let own = import_own(&file).unwrap();
+            assert!(INCLUDE_OPENS.with(|n| n.get()) > 0);
+            let lab = own.servers.iter().find(|s| s.name == "lab");
+            assert_eq!(lab.map(|s| s.port), Some(2200), "{:?}", reasons(&own));
+        }
+    }
+
+    /// A symbolic link to the account's own ssh config, as a dotfiles
+    /// manager makes one, is that file; another file is not.
+    #[cfg(unix)]
+    #[test]
+    fn a_link_to_the_own_config_is_the_own_config() {
+        let dir = tempfile::tempdir().unwrap();
+        let real = dir.path().join("config");
+        std::fs::write(&real, "").unwrap();
+        let link = dir.path().join("link");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        let other = dir.path().join("other");
+        std::fs::write(&other, "").unwrap();
+        assert!(same_file(&link, &real));
+        assert!(same_file(&real, &real));
+        assert!(!same_file(&other, &real));
+        assert!(!same_file(&dir.path().join("missing"), &real));
+    }
+
+    /// The shell that runs a jump command in these tests finds the stand-in
+    /// for ssh alone on `PATH`: one that cannot run makes the read fail, and
+    /// no ssh further on `PATH` runs in its place.
+    #[cfg(unix)]
+    #[test]
+    fn a_stand_in_that_cannot_run_reaches_no_other_ssh() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config");
+        std::fs::write(
+            &path,
+            "Host hop\n  HostName h.example.com\n  ProxyJump u@j.example.com:1\n",
+        )
+        .unwrap();
+        let Some(read) = ssh_jump_command_with(&path, "hop", 0o755) else {
+            return;
+        };
+        assert!(read.is_ok(), "{read:?}");
+        let failed = ssh_jump_command_with(&path, "hop", 0o644).unwrap();
+        assert!(failed.is_err(), "{failed:?}");
+    }
+
     /// The jump command is read with a `-F` path that is one shell word, so
     /// a temporary folder with a space in its name (`TMPDIR`) does not split
     /// it: ssh writes that path into the command unquoted.
@@ -4690,7 +4826,7 @@ Host roundtrip
             (0..3)
                 .map(|_| {
                     let start = std::time::Instant::now();
-                    let result = import_ssh_config(&file).unwrap();
+                    let result = import_own(&file).unwrap();
                     assert_eq!(result.servers.len(), 1000, "{:?}", reasons(&result).first());
                     start.elapsed()
                 })
@@ -4728,7 +4864,7 @@ Host roundtrip
             text
         };
         std::fs::write(&file, config(100)).unwrap();
-        let result = import_ssh_config(&file).unwrap();
+        let result = import_own(&file).unwrap();
         assert_eq!(result.skipped.len(), 100);
         assert!(result.servers.is_empty());
         for skip in &result.skipped {
@@ -4739,7 +4875,7 @@ Host roundtrip
         }
         // Past the budget, the file is refused whole.
         std::fs::write(&file, config(800)).unwrap();
-        let result = import_ssh_config(&file).unwrap();
+        let result = import_own(&file).unwrap();
         assert!(result.servers.is_empty());
         assert_eq!(result.skipped.len(), 800);
         assert!(
@@ -4749,7 +4885,7 @@ Host roundtrip
         );
         // A short name is still named.
         std::fs::write(&file, "User ${NOT_READ}\nHost h\n").unwrap();
-        let result = import_ssh_config(&file).unwrap();
+        let result = import_own(&file).unwrap();
         assert!(result.skipped[0].reason.contains("`NOT_READ`"));
     }
 
@@ -4867,7 +5003,7 @@ Host roundtrip
                 .exported,
             1
         );
-        let imported = import_ssh_config(&first).unwrap();
+        let imported = import_own(&first).unwrap();
         assert_eq!(imported.servers.len(), 1);
         let key = imported.servers[0]
             .options
@@ -5191,7 +5327,7 @@ Host roundtrip
              Host b\n  Port 2400\n",
         )
         .unwrap();
-        let result = import_ssh_config(&config).unwrap();
+        let result = import_own(&config).unwrap();
         let me = local_account().0.unwrap_or_default();
         let me = me.as_str();
         let skipped: Vec<(&str, &str)> = result
@@ -5246,7 +5382,7 @@ Host roundtrip
              Match all\n  HostName storage.example.com\n  Port 2222\n",
         )
         .unwrap();
-        let result = import_ssh_config(&match_all).unwrap();
+        let result = import_own(&match_all).unwrap();
         let hosts: Vec<(&str, &str, u32)> = result
             .servers
             .iter()
@@ -5280,7 +5416,7 @@ Host roundtrip
              Host td\n  CanonicalizeHostname yes\n  HostName localhost.\n",
         )
         .unwrap();
-        let result = import_ssh_config(&proxy).unwrap();
+        let result = import_own(&proxy).unwrap();
         let dns = "ssh may rename its host through DNS (`CanonicalizeHostname` with `CanonicalDomains` or `CanonicalizePermittedCNAMEs`, or a host name ending in `.`) and read the file again for the new name, which this import cannot know; to import it, import a copy of the file that holds only a `Host` block for it, with its full host name in `HostName` and the `Port`, `User` and `IdentityFile` ssh uses for it, and no `CanonicalizeHostname`, `CanonicalDomains` or `CanonicalizePermittedCNAMEs` line";
         let skipped: Vec<(&str, &str)> = result
             .skipped
@@ -5370,7 +5506,7 @@ Host roundtrip
              Match final\n  HostName prod.example.com\n",
         )
         .unwrap();
-        let result = import_ssh_config(&decided).unwrap();
+        let result = import_own(&decided).unwrap();
         let skipped: Vec<(&str, &str)> = result
             .skipped
             .iter()
@@ -5428,7 +5564,7 @@ Host roundtrip
              Match command=\n  Compression yes\n",
         )
         .unwrap();
-        let result = import_ssh_config(&unevaluated).unwrap();
+        let result = import_own(&unevaluated).unwrap();
         let names: Vec<&str> = result.servers.iter().map(|s| s.name.as_str()).collect();
         assert_eq!(names, ["e"]);
         let skipped: Vec<(&str, &str)> = result
@@ -5534,7 +5670,7 @@ Host roundtrip
              Host ?\n  HostName one-byte.example.com\n",
         )
         .unwrap();
-        let result = import_ssh_config(&config).unwrap();
+        let result = import_own(&config).unwrap();
         let me = local_account().0.unwrap_or_default();
         let me = me.as_str();
         let dns = "ssh may rename its host through DNS (`CanonicalizeHostname` with `CanonicalDomains` or `CanonicalizePermittedCNAMEs`, or a host name ending in `.`) and read the file again for the new name, which this import cannot know; to import it, import a copy of the file that holds only a `Host` block for it, with its full host name in `HostName` and the `Port`, `User` and `IdentityFile` ssh uses for it, and no `CanonicalizeHostname`, `CanonicalDomains` or `CanonicalizePermittedCNAMEs` line";
@@ -5593,7 +5729,7 @@ Host roundtrip
              Host real.example.com\n  Port 2201\n",
         )
         .unwrap();
-        let result = import_ssh_config(&truthy).unwrap();
+        let result = import_own(&truthy).unwrap();
         assert_eq!(result.servers[0].name, "t");
         assert_eq!(result.servers[0].port, 2201);
 
@@ -5610,7 +5746,7 @@ Host roundtrip
             }
             let file = dir.path().join("work");
             std::fs::write(&file, work).unwrap();
-            let result = import_ssh_config(&file).unwrap();
+            let result = import_own(&file).unwrap();
             let reason = format!("the file reads each of its 2001 hosts against {rules} `Match` and wildcard `Host` blocks, more than one import resolves; {SMALLER_FILE}");
             assert_eq!(
                 result.servers.len(),
@@ -5633,7 +5769,7 @@ Host roundtrip
         big.push_str("Host early\n  Port 2222\n");
         let capped = dir.path().join("capped");
         std::fs::write(&capped, big).unwrap();
-        let result = import_ssh_config(&capped).unwrap();
+        let result = import_own(&capped).unwrap();
         assert!(result.servers.is_empty());
         assert_eq!(result.skipped.len(), MAX_HOSTS);
         assert!(result.skipped.iter().all(|s| s.reason == format!("the file has more than {MAX_HOSTS} `Host` and `Match` blocks, more than one import reads; {SMALLER_FILE}")));
@@ -5678,7 +5814,7 @@ Host roundtrip
             "Host a\n  HostName h.example.com\n  IdentityFile %d/id_%u_%r\n\nHost t\n  HostName h.example.com\n  IdentityFile ~/k\n\nHost e\n  HostName h.example.com\n  User ${USER}\n  IdentityFile ${HOME}/k\n\nHost tl\n  HostName h.example.com\n  IdentityFile ${LOGNAME}/k\n",
         )
         .unwrap();
-        let result = import_ssh_config(&source).unwrap();
+        let result = import_own(&source).unwrap();
         let reasons: Vec<_> = result.skipped.iter().map(|s| &s.reason).collect();
         assert_eq!(result.servers.len(), 3, "{reasons:?}");
         // A `~` a variable gives is not a home folder to ssh: `ssh -vvv`
@@ -5853,7 +5989,7 @@ Host roundtrip
             "Host al\n  HostName %h.example.com\n  Port 2200\n  User %n-x\n  IdentityFile %d/id_%h_%r_%%\n\nHost tok\n  HostName h.example.com\n  IdentityFile /keys/%C\n\nHost secret\n  HostName h.example.com\n  User ${AEROFTP_SSH_TEST_SECRET}\n\nHost open\n  HostName h.example.com\n  IdentityFile /keys/${HOME\n",
         )
         .unwrap();
-        let result = import_ssh_config(&source).unwrap();
+        let result = import_own(&source).unwrap();
         let skipped: Vec<(&str, &str)> = result
             .skipped
             .iter()
@@ -5974,7 +6110,7 @@ Host roundtrip
              Host m\n  HostName m.example.com\nMatch all\n  User matched\n",
         )
         .unwrap();
-        let result = import_ssh_config(&good).unwrap();
+        let result = import_own(&good).unwrap();
         assert_eq!(
             result.skipped.len(),
             0,
@@ -6008,7 +6144,7 @@ Host roundtrip
         assert_eq!(jump("pc"), "none # c");
         let jumps_file = dir.path().join("jumps");
         std::fs::write(&jumps_file, jumps).unwrap();
-        let result = import_ssh_config(&jumps_file).unwrap();
+        let result = import_own(&jumps_file).unwrap();
         assert!(result.servers.is_empty());
         let reasons: Vec<&str> = result.skipped.iter().map(|s| s.reason.as_str()).collect();
         assert_eq!(reasons, [JUMP; 4]);
@@ -6140,7 +6276,7 @@ Host roundtrip
         let bad = dir.path().join("bad");
         for (config, line, reason) in refused {
             std::fs::write(&bad, config).unwrap();
-            let result = import_ssh_config(&bad).unwrap();
+            let result = import_own(&bad).unwrap();
             assert_eq!(result.servers.len(), 0, "{config:?}");
             assert!(
                 result.skipped.iter().any(|s| s.name == "fine"),
@@ -6167,7 +6303,7 @@ Host roundtrip
             "Port ssh\nHost fine\n  HostName f.example.com\nHost svc\n",
         ] {
             std::fs::write(&bad, config).unwrap();
-            let result = import_ssh_config(&bad).unwrap();
+            let result = import_own(&bad).unwrap();
             let ports: Vec<(&str, u32)> = result
                 .servers
                 .iter()
@@ -6181,7 +6317,7 @@ Host roundtrip
             "Host fine\n  HostName f.example.com\n  Port +22\nHost z\n  Port 022\n",
         )
         .unwrap();
-        let result = import_ssh_config(&bad).unwrap();
+        let result = import_own(&bad).unwrap();
         assert_eq!(
             result.servers.len(),
             2,
@@ -6382,6 +6518,14 @@ Host roundtrip
     /// command does not pass on `BatchMode` or `ConnectTimeout`). `None` where
     /// the stand-in cannot be put in its place.
     fn ssh_jump_command(file: &Path, host: &str) -> Option<String> {
+        ssh_jump_command_with(file, host, 0o755).map(|read| read.unwrap_or_else(|e| panic!("{e}")))
+    }
+
+    /// [`ssh_jump_command`] with the stand-in's mode `mode`: `Err` when the
+    /// stand-in did not run, as for one that cannot. The command's shell
+    /// finds the stand-in alone on `PATH`, so a stand-in that cannot run
+    /// never lets it reach a real ssh further on.
+    fn ssh_jump_command_with(file: &Path, host: &str, mode: u32) -> Option<Result<String, String>> {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -6400,12 +6544,11 @@ Host roundtrip
             let script = stand_in.path().join("ssh");
             std::fs::write(
                 &script,
-                "#!/bin/sh\n: > \"$AEROFTP_SSH_TEST_RAN\"\nexit 1\n",
+                "#!/bin/sh\nprintf '%s' \"$PATH\" > \"$AEROFTP_SSH_TEST_RAN\"\nexit 1\n",
             )
             .unwrap();
-            std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
-            let mut dirs = vec![stand_in.path().to_path_buf()];
-            dirs.extend(std::env::split_paths(&path));
+            std::fs::set_permissions(&script, std::fs::Permissions::from_mode(mode)).unwrap();
+            let dirs = [stand_in.path().to_path_buf()];
             // A test that forks while the script is still open for writing
             // makes its exec fail for a moment (ETXTBSY): run again then.
             let mut log = String::new();
@@ -6435,14 +6578,22 @@ Host roundtrip
                         .map(|(_, c)| c.to_string())
                 });
                 if ran.exists() {
-                    return Some(command.unwrap_or_else(|| panic!("{host}: {log}")));
+                    let seen = std::fs::read_to_string(&ran).unwrap();
+                    assert_eq!(
+                        Path::new(&seen),
+                        stand_in.path(),
+                        "{host}: the jump command's PATH holds more than the stand-in"
+                    );
+                    return Some(command.ok_or_else(|| format!("{host}: {log}")));
                 }
             }
-            panic!("{host}: the stand-in for ssh never ran: {log}");
+            Some(Err(format!(
+                "{host}: the stand-in for ssh never ran: {log}"
+            )))
         }
         #[cfg(not(unix))]
         {
-            let _ = (file, host);
+            let _ = (file, host, mode);
             None
         }
     }
@@ -6546,7 +6697,7 @@ Host roundtrip
         for (line, reason) in REFUSED_BY_10 {
             let text = format!("Host fine\n  HostName f.example.com\n{line}\n");
             std::fs::write(&file, &text).unwrap();
-            let result = import_ssh_config(&file).unwrap();
+            let result = import_own(&file).unwrap();
             assert!(result.servers.is_empty(), "{line:?}");
             let line_no = 2 + line.lines().count();
             for skip in &result.skipped {
@@ -6563,7 +6714,7 @@ Host roundtrip
         for line in READ_BY_10 {
             let text = format!("Host fine\n  HostName f.example.com\n{line}\n");
             std::fs::write(&file, &text).unwrap();
-            let result = import_ssh_config(&file).unwrap();
+            let result = import_own(&file).unwrap();
             // Only a Unix system has a passwd entry to read `~root` from
             // ([`passwd_home`]): elsewhere the host is skipped, as ssh stops.
             if cfg!(not(unix)) && line.contains("~root") {
@@ -6606,7 +6757,7 @@ Host roundtrip
         // skips the host.
         let text = "Host fine\n  HostName f.example.com\n  IdentityFile ~no-such-account-c4f1/k\n";
         std::fs::write(&file, text).unwrap();
-        let result = import_ssh_config(&file).unwrap();
+        let result = import_own(&file).unwrap();
         assert!(result.servers.is_empty());
         assert_eq!(result.skipped[0].reason, "its key file path starts with `~` and the name of an account this system does not have, and ssh stops there");
         if ssh {
@@ -6633,16 +6784,22 @@ Host roundtrip
             ),
         ] {
             std::fs::write(&file, text).unwrap();
-            let report = serde_json::to_string(&import_ssh_config(&file).unwrap()).unwrap();
+            let report = serde_json::to_string(&import_own(&file).unwrap()).unwrap();
             assert!(!report.to_lowercase().contains("sentinel-c4f1"), "{report}");
             assert!(report.contains(reason), "{report}");
         }
     }
 
+    /// [`import_ssh_config`] for a file read as the account's own ssh
+    /// config, whose `Include` paths are opened.
+    fn import_own(path: &Path) -> Result<SshImportResult, String> {
+        import_file(path, true)
+    }
+
     fn import_text(dir: &Path, text: &str) -> SshImportResult {
         let file = dir.join("config");
         std::fs::write(&file, text).unwrap();
-        import_ssh_config(&file).unwrap()
+        import_own(&file).unwrap()
     }
 
     fn reasons(result: &SshImportResult) -> Vec<(&str, &str)> {
@@ -6845,11 +7002,11 @@ Host roundtrip
         let file = dir.path().join("config");
         std::fs::write(&file, text).unwrap();
         assert_eq!(
-            import_ssh_config(&file).err(),
+            import_own(&file).err(),
             Some(format!("the file has more than {MAX_HOSTS} `Host` and `Match` blocks, more than one import reads; {SMALLER_FILE}"))
         );
         std::fs::write(&file, "Port 2\nMatch final bogus\n").unwrap();
-        assert!(import_ssh_config(&file)
+        assert!(import_own(&file)
             .err()
             .is_some_and(|e| e.starts_with("line 2 of the file gives `Match` a condition")));
         let empty = import_text(dir.path(), "");
