@@ -2126,6 +2126,12 @@ const RESOLUTION_KEYS: [&str; 5] = [
     "canonicalizemaxdots",
 ];
 
+/// The [`RESOLUTION_KEYS`] ssh reads only when it canonicalizes the host
+/// name: unknown, they skip a host only then (`ssh -G` on 10.2p1: with
+/// `CanonicalizeHostname no`, `CanonicalizeFallbackLocal no` connects to
+/// `storage`).
+const FALLBACK_KEYS: [&str; 2] = ["canonicalizefallbacklocal", "canonicalizemaxdots"];
+
 /// The two keys ssh reads as one setting: the first of them obtained wins.
 const PROXY_KEYS: [&str; 2] = ["proxyjump", "proxycommand"];
 
@@ -2155,7 +2161,7 @@ const PROXY_KEYS: [&str; 2] = ["proxyjump", "proxycommand"];
 fn host_values(config: &SshConfig, alias: &str) -> Result<HashMap<String, String>, String> {
     let mut values: HashMap<String, String> = HashMap::new();
     let mut identities = Identities::default();
-    read_pass(config, &mut values, &mut identities, alias, alias, false)?;
+    let late = read_pass(config, &mut values, &mut identities, alias, alias, false)?;
     // `true` is `yes` to ssh (`ssh -G`: `CanonicalizeHostname true` reads
     // the file again for the host name).
     let canonicalize = values.get("canonicalizehostname").is_some_and(|v| {
@@ -2163,6 +2169,9 @@ fn host_values(config: &SshConfig, alias: &str) -> Result<HashMap<String, String
             .iter()
             .any(|on| v.eq_ignore_ascii_case(on))
     });
+    if let Some(why) = late.filter(|_| canonicalize) {
+        return Err(why);
+    }
     // A name ending in `.` is looked up too, domains or not (`ssh -vvv`:
     // "name is fully qualified", then `localhost.` => `localhost`), and a
     // CNAME the rules permit is followed (`ssh -G`: `www.github.com` with
@@ -2284,7 +2293,9 @@ impl Identities {
 }
 
 /// One reading of the file for `alias`, with `Host` patterns matched against
-/// `name` (the alias, then the host name in the second reading).
+/// `name` (the alias, then the host name in the second reading). `Ok` holds
+/// the reason to skip the host if ssh canonicalizes its name: a `Match` on a
+/// condition known only when ssh runs may set one of [`FALLBACK_KEYS`].
 /// Whether a block applies to the host read ([`read_pass`]): `Maybe` on a
 /// condition known only when ssh runs, with where its `Match` line is.
 #[derive(Clone)]
@@ -2328,8 +2339,9 @@ fn read_pass(
     name: &str,
     alias: &str,
     second: bool,
-) -> Result<(), String> {
+) -> Result<Option<String>, String> {
     let mut decided: HashMap<usize, Decision> = HashMap::new();
+    let mut late = None;
     for (index, block, own) in config.candidates(name) {
         if let Some(reason) = config.over_budget() {
             return Err(reason);
@@ -2368,6 +2380,7 @@ fn read_pass(
                     // nothing in it.
                     let unset = PROFILE_KEYS.iter().chain(&RESOLUTION_KEYS).find(|key| {
                         !(second && (**key == "hostname" || RESOLUTION_KEYS.contains(*key)))
+                            && !FALLBACK_KEYS.contains(*key)
                             && block.kv.contains_key(**key)
                             && !values.contains_key(**key)
                             && !(PROXY_KEYS.contains(*key)
@@ -2376,9 +2389,16 @@ fn read_pass(
                     // A value set after that line would come too late:
                     // the first one ssh reads wins.
                     if let Some(key) = unset {
-                        return Err(format!(
-                            "the `Match` block on {at} may set its `{key}`, on a condition known only when ssh runs; give the host its `{key}` in a `Host` block above that line and import again"
-                        ));
+                        return Err(unset_by_match(&at, key));
+                    }
+                    // These act only when ssh canonicalizes the host name,
+                    // which is known once the reading is over: the caller
+                    // decides.
+                    if !second && late.is_none() {
+                        late = FALLBACK_KEYS
+                            .iter()
+                            .find(|key| block.kv.contains_key(**key) && !values.contains_key(**key))
+                            .map(|key| unset_by_match(&at, key));
                     }
                     // Its keys count when it applies, whichever key the
                     // host tries first.
@@ -2441,7 +2461,15 @@ fn read_pass(
             }
         }
     }
-    Ok(())
+    Ok(late)
+}
+
+/// Why a host is skipped when a `Match` on a condition known only when ssh
+/// runs may set its `key`.
+fn unset_by_match(at: &str, key: &str) -> String {
+    format!(
+        "the `Match` block on {at} may set its `{key}`, on a condition known only when ssh runs; give the host its `{key}` in a `Host` block above that line and import again"
+    )
 }
 
 /// The host name a `Match host` compares: the `HostName` read so far with
@@ -4295,7 +4323,9 @@ Host roundtrip
             );
             let lab = reasons(&result).into_iter().find(|r| r.0 == "lab");
             assert!(
-                lab.is_some_and(|r| r.1.contains("may hold a `Match final`")),
+                lab.is_some_and(|r| r.1.contains("may hold a `Match final`")
+                    && r.1.ends_with("import a copy of the file that holds only a `Host` block for it, with the `HostName`, `Port`, `User`, `IdentityFile` and `ProxyJump` you know it connects with, and no `Include`")
+                    && !r.1.contains("ssh -G")),
                 "{:?}",
                 reasons(&result)
             );
@@ -5149,6 +5179,38 @@ Host roundtrip
                 .strip_prefix("exec ssh ")
                 .unwrap_or_else(|| panic!("{name}: {command}"));
             assert!(command.starts_with(args), "{name}: {command}");
+        }
+    }
+
+    /// `CanonicalizeFallbackLocal` and `CanonicalizeMaxDots` under a `Match`
+    /// known only when ssh runs skip a host only when ssh canonicalizes its
+    /// name: with `CanonicalizeHostname no` they change nothing for it.
+    #[test]
+    fn a_fallback_set_at_run_time_skips_only_a_canonicalized_host() {
+        let dir = tempfile::tempdir().unwrap();
+        for line in ["CanonicalizeMaxDots 2", "CanonicalizeFallbackLocal no"] {
+            for (canonicalize, imported) in [("no", true), ("yes", false)] {
+                let text = format!(
+                    "CanonicalizeHostname {canonicalize}\nHost lab\n  HostName lab.example.com\nMatch exec \"true\"\n  {line}\n"
+                );
+                let result = import_text(dir.path(), &text);
+                assert_eq!(
+                    result.servers.len(),
+                    usize::from(imported),
+                    "{text}: {:?}",
+                    reasons(&result)
+                );
+                if !imported {
+                    let key = line.split(' ').next().unwrap().to_ascii_lowercase();
+                    assert!(
+                        result.skipped[0]
+                            .reason
+                            .contains(&format!("may set its `{key}`")),
+                        "{text}: {:?}",
+                        reasons(&result)
+                    );
+                }
+            }
         }
     }
 
