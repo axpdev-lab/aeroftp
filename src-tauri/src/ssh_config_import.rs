@@ -1159,6 +1159,16 @@ impl Parser<'_> {
         if words.is_empty() {
             return refuse(self, "names no file after `Include`");
         }
+        // OpenSSH for Windows reads `Include` with its own rules for path
+        // separators and file permissions, which the import does not check:
+        // the hosts the line applies to are skipped, not read with other
+        // rules.
+        if cfg!(not(unix)) {
+            self.blocks[gate]
+                .unread
+                .get_or_insert_with(|| (at.to_string(), Unknown::NotOnThisSystem));
+            return;
+        }
         let mut paths = Vec::new();
         for word in words {
             let pattern = match include_pattern(word) {
@@ -1302,6 +1312,8 @@ enum Unknown {
     NotRead,
     /// The home folder, which could not be read.
     NoHome,
+    /// A system where the import does not read `Include` (Windows).
+    NotOnThisSystem,
 }
 
 impl Unknown {
@@ -1317,6 +1329,7 @@ impl Unknown {
             Unknown::NoHome => {
                 "names its files from the home folder, which could not be read".to_string()
             }
+            Unknown::NotOnThisSystem => "is read by OpenSSH for Windows with rules for paths and file permissions that the import does not check on this system".to_string(),
         }
     }
 }
@@ -1466,23 +1479,43 @@ fn own_group(gid: u32, uid: u32) -> bool {
     true
 }
 
+/// The steps a look-up in the file system is charged ([`include_glob`]): a
+/// file holding only paths that do not exist stops long before it is read
+/// to the budget in bytes.
+const FS_LOOKUP_STEPS: u64 = 1000;
+
 /// The paths a pattern matches (`glob` in libc): each part between `/`
-/// with `*`, `?` or `[` is matched against the names in its folder
-/// ([`glob_part`]), the others are kept as they are; a path that does not
-/// exist is dropped. Each name read and matched is charged to `cost`;
+/// with an unescaped `*`, `?` or `[` is matched against the names in its
+/// folder ([`Glob`]), the others are kept with their `\` escapes removed
+/// (`ssh -G`: `Include d/lab\.conf` reads `d/lab.conf`); a path that does
+/// not exist is dropped, and a folder that cannot be listed matches
+/// nothing, as for ssh (`ssh -G` reads nothing for `Include d/*.conf` with
+/// `d` not readable, and reads `Include d/lab.conf`). Each look-up in the
+/// file system, each part read and each name matched is charged to `cost`;
 /// `None` past the budget, where the reading stops.
 fn include_glob(pattern: &str, cost: &mut u64) -> Option<Vec<PathBuf>> {
+    let charge = |cost: &mut u64, steps: u64| {
+        *cost = cost.saturating_add(steps);
+        *cost <= MAX_MATCH_STEPS
+    };
     let root = if pattern.starts_with('/') { "/" } else { "" };
     let mut found = vec![PathBuf::from(root)];
     for part in pattern.split('/').filter(|p| !p.is_empty()) {
-        if !part.contains(['*', '?', '[']) {
+        if let Some(literal) = glob_literal(part) {
             for path in &mut found {
-                path.push(part);
+                path.push(&literal);
             }
             continue;
         }
+        let (glob, steps) = Glob::new(part);
+        if !charge(cost, steps) {
+            return None;
+        }
         let mut next = Vec::new();
         for dir in &found {
+            if !charge(cost, FS_LOOKUP_STEPS) {
+                return None;
+            }
             let Ok(entries) = std::fs::read_dir(dir) else {
                 continue;
             };
@@ -1492,59 +1525,161 @@ fn include_glob(pattern: &str, cost: &mut u64) -> Option<Vec<PathBuf>> {
                     continue;
                 };
                 // A part matches a name in at most one pass over the two.
-                *cost = cost.saturating_add(1 + (name.len() * part.len()) as u64);
-                if *cost > MAX_MATCH_STEPS {
+                if !charge(cost, 1 + (name.len() * glob.items.len()) as u64) {
                     return None;
                 }
-                if glob_part(part, name) {
+                if glob.matches(name) {
                     next.push(dir.join(name));
                 }
             }
         }
         found = next;
     }
-    found.retain(|path| path.exists());
-    Some(found)
+    let mut kept = Vec::with_capacity(found.len());
+    for path in found {
+        if !charge(cost, FS_LOOKUP_STEPS) {
+            return None;
+        }
+        if path.exists() {
+            kept.push(path);
+        }
+    }
+    Some(kept)
 }
 
-/// Whether a name matches one part of a `glob` pattern: `*` any run of
-/// bytes, `?` one byte, `[...]` one byte of a set (`!` or `^` first to
-/// negate it, `a-z` a range, `[:digit:]` and the other POSIX classes, in
-/// ASCII), `\` the byte after it, anything else itself; a name starting
-/// with `.` only when the pattern does too (`ssh -G`: `Include d/*.conf`
-/// does not read `d/.h.conf`, and `Include d/[[:digit:]].conf` reads
-/// `d/1.conf`).
-fn glob_part(pattern: &str, name: &str) -> bool {
-    let (p, n) = (pattern.as_bytes(), name.as_bytes());
-    if n.first() == Some(&b'.') && p.first() != Some(&b'.') {
-        return false;
-    }
-    let (mut pi, mut ni) = (0, 0);
-    let mut star: Option<(usize, usize)> = None;
-    while ni < n.len() {
-        if pi < p.len() && p[pi] == b'*' {
-            star = Some((pi, ni));
-            pi += 1;
-            continue;
+/// A part of a pattern with no `*`, `?` or `[` that `\` does not escape, as
+/// the name it stands for: its escapes removed. `None` for a part to match.
+fn glob_literal(part: &str) -> Option<String> {
+    let mut out = String::with_capacity(part.len());
+    let mut chars = part.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '*' | '?' | '[' => return None,
+            '\\' => out.push(chars.next().unwrap_or('\\')),
+            c => out.push(c),
         }
-        if pi < p.len() {
-            let (matched, next) = glob_one(p, pi, n[ni]);
+    }
+    Some(out)
+}
+
+/// One item of a part of a `glob` pattern ([`Glob`]).
+enum GlobItem {
+    /// `*`: any run of bytes.
+    Star,
+    /// `?`: one byte.
+    Any,
+    /// `[...]`: one byte of the set.
+    Set(Box<[bool; 256]>),
+    /// Any other byte, or one `\` escapes: itself.
+    Byte(u8),
+}
+
+/// One part of a `glob` pattern, read once: `*` any run of bytes, `?` one
+/// byte, `[...]` one byte of a set (`!` or `^` first to negate it, `a-z` a
+/// range, `[:digit:]` and the other POSIX classes, in ASCII), `\` the byte
+/// after it, anything else itself; a name starting with `.` only when the
+/// pattern does too (`ssh -G`: `Include d/*.conf` does not read
+/// `d/.h.conf`, and `Include d/[[:digit:]].conf` reads `d/1.conf`). Each
+/// item is a step to match against one byte, whatever its set holds.
+struct Glob {
+    items: Vec<GlobItem>,
+    dot: bool,
+}
+
+/// The longest POSIX class name, `xdigit`: a `[:` is read as a class only
+/// that far, so no byte of a pattern is read more than a few times.
+const MAX_CLASS_NAME: usize = 6;
+
+impl Glob {
+    /// The part `pattern` read, and the steps reading it took.
+    fn new(pattern: &str) -> (Self, u64) {
+        let p = pattern.as_bytes();
+        let mut steps = 0u64;
+        let mut items = Vec::new();
+        // A `[` past the last `]` opens no set.
+        let last_close = p.iter().rposition(|&b| b == b']');
+        let mut i = 0;
+        while i < p.len() {
+            steps += 1;
+            match p[i] {
+                b'*' => {
+                    items.push(GlobItem::Star);
+                    i += 1;
+                }
+                b'?' => {
+                    items.push(GlobItem::Any);
+                    i += 1;
+                }
+                b'\\' if i + 1 < p.len() => {
+                    items.push(GlobItem::Byte(p[i + 1]));
+                    i += 2;
+                }
+                b'[' => match last_close
+                    .filter(|&close| close > i + 1)
+                    .and_then(|_| glob_set(p, i, &mut steps))
+                {
+                    Some((set, next)) => {
+                        items.push(GlobItem::Set(set));
+                        i = next;
+                    }
+                    None => {
+                        // No closing `]`: the `[` stands for itself.
+                        items.push(GlobItem::Byte(b'['));
+                        i += 1;
+                    }
+                },
+                c => {
+                    items.push(GlobItem::Byte(c));
+                    i += 1;
+                }
+            }
+        }
+        let dot = p.first() == Some(&b'.');
+        (Self { items, dot }, steps)
+    }
+
+    /// Whether `name` matches the part.
+    fn matches(&self, name: &str) -> bool {
+        let (p, n) = (&self.items, name.as_bytes());
+        if n.first() == Some(&b'.') && !self.dot {
+            return false;
+        }
+        let (mut pi, mut ni) = (0, 0);
+        let mut star: Option<(usize, usize)> = None;
+        while ni < n.len() {
+            if let Some(GlobItem::Star) = p.get(pi) {
+                star = Some((pi, ni));
+                pi += 1;
+                continue;
+            }
+            let matched = match p.get(pi) {
+                Some(GlobItem::Any) => true,
+                Some(GlobItem::Set(set)) => set[usize::from(n[ni])],
+                Some(GlobItem::Byte(b)) => *b == n[ni],
+                Some(GlobItem::Star) | None => false,
+            };
             if matched {
-                pi = next;
+                pi += 1;
                 ni += 1;
                 continue;
             }
-        }
-        match star {
-            Some((sp, sn)) => {
-                pi = sp + 1;
-                ni = sn + 1;
-                star = Some((sp, sn + 1));
+            match star {
+                Some((sp, sn)) => {
+                    pi = sp + 1;
+                    ni = sn + 1;
+                    star = Some((sp, sn + 1));
+                }
+                None => return false,
             }
-            None => return false,
         }
+        p[pi..].iter().all(|item| matches!(item, GlobItem::Star))
     }
-    p[pi..].iter().all(|&b| b == b'*')
+}
+
+/// Whether a name matches one part of a `glob` pattern ([`Glob`]).
+#[cfg(test)]
+fn glob_part(pattern: &str, name: &str) -> bool {
+    Glob::new(pattern).0.matches(name)
 }
 
 /// Whether the byte `b` is in the POSIX class `name` (`[:digit:]`), in
@@ -1567,48 +1702,55 @@ fn glob_class(name: &[u8], b: u8) -> Option<bool> {
     })
 }
 
-/// Whether the pattern item at `pi` matches the byte `b`, and where the
-/// next item starts ([`glob_part`]).
-fn glob_one(p: &[u8], pi: usize, b: u8) -> (bool, usize) {
-    match p[pi] {
-        b'?' => (true, pi + 1),
-        b'[' => {
-            let mut i = pi + 1;
-            let negate = i < p.len() && (p[i] == b'!' || p[i] == b'^');
-            if negate {
-                i += 1;
-            }
-            let mut matched = false;
-            let mut first = true;
-            while i < p.len() && (first || p[i] != b']') {
-                first = false;
-                if p[i] == b'[' && p.get(i + 1) == Some(&b':') {
-                    let end = p[i + 2..].windows(2).position(|w| w == b":]");
-                    if let Some(class) =
-                        end.and_then(|e| glob_class(&p[i + 2..i + 2 + e], b).map(|m| (m, e)))
-                    {
-                        matched |= class.0;
-                        i += 2 + class.1 + 2;
-                        continue;
-                    }
-                }
-                if i + 2 < p.len() && p[i + 1] == b'-' && p[i + 2] != b']' {
-                    matched |= p[i] <= b && b <= p[i + 2];
-                    i += 3;
-                } else {
-                    matched |= p[i] == b;
-                    i += 1;
-                }
-            }
-            if i >= p.len() {
-                // No closing `]`: the `[` stands for itself.
-                return (b == b'[', pi + 1);
-            }
-            (matched != negate, i + 1)
-        }
-        b'\\' if pi + 1 < p.len() => (p[pi + 1] == b, pi + 2),
-        c => (c == b, pi + 1),
+/// The set a `[` at `start` opens, and where the item after it starts;
+/// `None` with no closing `]`. Each byte read is a step in `steps`.
+fn glob_set(p: &[u8], start: usize, steps: &mut u64) -> Option<(Box<[bool; 256]>, usize)> {
+    let mut set = Box::new([false; 256]);
+    let mut i = start + 1;
+    let negate = i < p.len() && (p[i] == b'!' || p[i] == b'^');
+    if negate {
+        i += 1;
     }
+    let mut first = true;
+    while i < p.len() && (first || p[i] != b']') {
+        *steps += 1;
+        first = false;
+        if p[i] == b'[' && p.get(i + 1) == Some(&b':') {
+            let end = (i + 2 + MAX_CLASS_NAME + 2).min(p.len());
+            let close = p[i + 2..end].windows(2).position(|w| w == b":]");
+            *steps += (end - i) as u64;
+            if let Some(e) = close {
+                let name = &p[i + 2..i + 2 + e];
+                if glob_class(name, 0).is_some() {
+                    for b in 0..=255u8 {
+                        set[usize::from(b)] |= glob_class(name, b) == Some(true);
+                    }
+                    *steps += 256;
+                    i += 2 + e + 2;
+                    continue;
+                }
+            }
+        }
+        if i + 2 < p.len() && p[i + 1] == b'-' && p[i + 2] != b']' {
+            for b in p[i]..=p[i + 2] {
+                set[usize::from(b)] = true;
+            }
+            *steps += 256;
+            i += 3;
+        } else {
+            set[usize::from(p[i])] = true;
+            i += 1;
+        }
+    }
+    if i >= p.len() {
+        return None;
+    }
+    if negate {
+        for member in set.iter_mut() {
+            *member = !*member;
+        }
+    }
+    Some((set, i + 1))
 }
 
 /// Whether `name` matches one ssh pattern: `*` stands for any run of
@@ -1708,6 +1850,9 @@ struct SshConfig {
     others: Vec<usize>,
     /// Whether a `Match` line names `final`, so ssh reads the file twice.
     second_pass: bool,
+    /// The first `Include` the import cannot read, in any block: its files
+    /// may hold a `Match final` ([`host_values`]).
+    unread: Option<(String, Unknown)>,
     /// The blocks that decide whether others apply ([`Gate`]).
     gates: std::collections::HashSet<usize>,
     /// The local account, read once for the whole import.
@@ -1756,11 +1901,13 @@ impl SshConfig {
             .iter()
             .filter_map(|b| b.gate.as_ref().map(|g| g.block))
             .collect();
+        let unread = blocks.iter().find_map(|b| b.unread.clone());
         Self {
             blocks,
             by_name,
             others,
             second_pass,
+            unread,
             gates,
             account: local_account(),
             services,
@@ -1898,6 +2045,20 @@ fn host_values(config: &SshConfig, alias: &str) -> Result<HashMap<String, String
     if canonicalize || config.second_pass {
         let host = ssh_host_name(&match_host(&values, alias, config));
         read_pass(config, &mut values, &mut identities, &host, alias, true)?;
+    } else if let Some((at, why)) = &config.unread {
+        // ssh acts on a `Match final` wherever it stands, in a block that
+        // does not apply too (`ssh -G`: `Host never` / `Include d/%n.conf`,
+        // with `Match final` in `d/lab.conf`, reads the file again for
+        // `lab`): the host is imported only when that second reading would
+        // give it the same values.
+        let host = ssh_host_name(&match_host(&values, alias, config));
+        let (mut again, mut keys) = (values.clone(), identities.clone());
+        let same = read_pass(config, &mut again, &mut keys, &host, alias, true).is_ok()
+            && again == values
+            && keys == identities;
+        if !same {
+            return Err(format!("the `Include` on {at} {}, and its files may hold a `Match final`, which makes ssh read the file a second time even from a block that does not apply, and that reading gives the host other values; import a copy of the file with the included lines in place of the `Include`", why.text()));
+        }
     }
     Ok(values)
 }
@@ -1906,7 +2067,7 @@ fn host_values(config: &SshConfig, alias: &str) -> Result<HashMap<String, String
 /// keys of the blocks that apply (`certain`), and those of `Match` blocks
 /// on a condition known only when ssh runs, which may apply too (`maybe`,
 /// with the line of the first such block).
-#[derive(Default)]
+#[derive(Clone, Default, PartialEq)]
 struct Identities {
     certain: Vec<u32>,
     maybe: Vec<u32>,
@@ -2902,9 +3063,10 @@ fn ssh_host_lines(server: &SshExportServer) -> Result<String, String> {
     let user = user.map(|u| ssh_word("user name", u, true)).transpose()?;
     // A key file path keeps the spaces at its ends: they are part of the
     // file's name (`IdentityFile "/keys/lab "` loads `/keys/lab `), and the
-    // import keeps them.
+    // import keeps them; a name of spaces alone is a name too, as the
+    // connection reads it. Only an empty one is no key.
     let key_file = raw("private_key_path")
-        .filter(|k| !k.trim().is_empty())
+        .filter(|k| !k.is_empty())
         .map(|k| ssh_path("key file path", k))
         .transpose()?;
     // `ProxyJump` alone also ends its value at a `#` inside it (`ssh -G`:
@@ -3531,6 +3693,32 @@ Host roundtrip
         if std::process::Command::new("ssh").arg("-V").output().is_ok() {
             assert_eq!(ssh_g(&path, "lab")["identityfile"], "/keys/lab ");
         }
+        // A name of spaces alone is a name; an empty one is no key.
+        for (key, written) in [(" ", Some(" ")), ("", None)] {
+            let server = sftp(
+                "lab",
+                "lab.example.com",
+                "u",
+                serde_json::json!({ "private_key_path": key }),
+            );
+            let outcome = export_ssh_config(&[server], &HashMap::new(), &path).unwrap();
+            assert_eq!(outcome.exported, 1, "{:?}", outcome.skipped);
+            let read = import_ssh_config(&path).unwrap();
+            let options = read.servers[0].options.as_ref();
+            assert_eq!(
+                options
+                    .and_then(|o| o.get("private_key_path"))
+                    .and_then(|k| k.as_str()),
+                written,
+                "{key:?}"
+            );
+            if std::process::Command::new("ssh").arg("-V").output().is_ok() && written.is_some() {
+                assert!(
+                    ssh_g(&path, "lab")["identityfile"].ends_with(' '),
+                    "{key:?}"
+                );
+            }
+        }
     }
 
     /// ssh fails a pattern list with an entry of 1023 bytes or more after
@@ -3562,6 +3750,7 @@ Host roundtrip
 
     /// Writes `text` at `name` under `dir`, its folders made, and returns its
     /// path for an `Include` line.
+    #[cfg(unix)]
     fn put(dir: &Path, name: &str, text: &str) -> String {
         let path = dir.join(name);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -3570,6 +3759,7 @@ Host roundtrip
     }
 
     /// Whether `ssh -G` reads `lab` in `file` at all.
+    #[cfg(unix)]
     fn ssh_accepts(file: &Path) -> bool {
         std::process::Command::new("ssh")
             .args(["-G", "-F"])
@@ -3583,6 +3773,7 @@ Host roundtrip
 
     /// Each imported host's host name, port and user, as `ssh -G` reads them
     /// from the same file, when this machine has an ssh.
+    #[cfg(unix)]
     fn same_as_ssh(file: &Path, result: &SshImportResult) {
         if std::process::Command::new("ssh")
             .arg("-V")
@@ -3608,6 +3799,7 @@ Host roundtrip
     /// the top of the user's), the block goes on after its `Include`, and a
     /// `Match` known only when ssh runs skips only the hosts it may apply to.
     /// Every imported value is the one `ssh -G` reads.
+    #[cfg(unix)]
     #[test]
     fn an_include_is_read_where_it_stands() {
         let dir = tempfile::tempdir().unwrap();
@@ -3710,6 +3902,7 @@ Host roundtrip
     /// block that does not apply too (`ssh -G` on 10.2p1; 8.9 reads a `${`
     /// never closed as a path). One whose files are named through a variable
     /// the import does not read skips the hosts it applies to.
+    #[cfg(unix)]
     #[test]
     fn an_include_ssh_refuses_refuses_the_file() {
         let dir = tempfile::tempdir().unwrap();
@@ -3779,20 +3972,30 @@ Host roundtrip
         }
     }
 
-    /// An `Include` word reads as ssh reads it (`ssh -G` on 10.2p1): `%%` is
-    /// a `%`; a token ssh expands for each host (`%h`) leaves the files
+    /// An `Include` word reads as ssh reads it (`ssh -G` on 10.2p1; 8.9 and
+    /// 9.6 do not expand `%%` there, so the comparison waits for 10): `%%`
+    /// is a `%`; a token ssh expands for each host (`%h`) leaves the files
     /// unknown, and the hosts it applies to are skipped; a path of 4095
-    /// bytes is read and a longer one reads nothing, however it is built.
+    /// bytes is read and a longer one reads nothing, however it is built; a
+    /// part with no pattern loses its `\` escapes; a folder that cannot be
+    /// listed matches no pattern, and its files are still read by name.
+    #[cfg(unix)]
     #[test]
     fn an_include_word_reads_as_ssh_reads_it() {
         let dir = tempfile::tempdir().unwrap();
         let d = dir.path();
+        let ssh = ssh_major().is_some_and(|major| major >= 10);
+        let compare = |result: &SshImportResult| {
+            if ssh {
+                same_as_ssh(&d.join("config"), result);
+            }
+        };
         put(d, "a%b", "Host lab\n  Port 2203\n");
         put(d, "lab", "Host lab\n  Port 2201\n");
         let host = "Host lab\n  HostName lab.example.com\n";
         let result = import_text(d, &format!("Include {}/a%%b\n{host}", d.display()));
         assert_eq!(result.servers[0].port, 2203, "{:?}", reasons(&result));
-        same_as_ssh(&d.join("config"), &result);
+        compare(&result);
         let result = import_text(d, &format!("Include {}/%h\n{host}", d.display()));
         assert!(result.servers.is_empty());
         assert_eq!(
@@ -3811,17 +4014,189 @@ Host roundtrip
             let slashes = "/".repeat(len - base.len() - "lab".len());
             let result = import_text(d, &format!("Include {base}{slashes}lab\n{host}"));
             assert_eq!(result.servers[0].port, port, "{len}");
-            same_as_ssh(&d.join("config"), &result);
+            compare(&result);
         }
         // `glob` keeps `~nosuch` as it is: a path that matches nothing.
         let result = import_text(d, &format!("Include ~aeroftp_no_such_user/lab\n{host}"));
         assert_eq!(result.servers[0].port, 22, "{:?}", reasons(&result));
-        same_as_ssh(&d.join("config"), &result);
+        compare(&result);
+        // `l\ab` is `lab`, as `\*` is `*`.
+        put(d, "e/x*", "Host lab\n  Port 2204\n");
+        for (word, port) in [("l\\ab", 2201), ("e/x\\*", 2204)] {
+            let result = import_text(d, &format!("Include {base}/{word}\n{host}"));
+            assert_eq!(result.servers[0].port, port, "{word}");
+            compare(&result);
+        }
+        // A folder its owner can enter and not list.
+        {
+            use std::os::unix::fs::PermissionsExt;
+            put(d, "closed/lab.conf", "Host lab\n  Port 2205\n");
+            let closed = d.join("closed");
+            std::fs::set_permissions(&closed, std::fs::Permissions::from_mode(0o311)).unwrap();
+            // Root lists it anyway.
+            if std::fs::read_dir(&closed).is_err() {
+                for (word, port) in [("closed/*.conf", 22), ("closed/lab.conf", 2205)] {
+                    let result = import_text(d, &format!("Include {base}/{word}\n{host}"));
+                    assert_eq!(result.servers[0].port, port, "{word}");
+                    compare(&result);
+                }
+            }
+            std::fs::set_permissions(&closed, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
         // A variable makes the word long too: nothing past the limit is built.
         let home = std::env::var("HOME").unwrap_or_default();
         if !home.is_empty() {
             let word = "${HOME}".repeat(MAX_INCLUDE_PATH / home.len() + 2);
             assert!(matches!(include_pattern(&word), Ok(None)));
+        }
+    }
+
+    /// ssh acts on a `Match final` in an included file wherever the
+    /// `Include` stands, in a block that does not apply too, and reads the
+    /// file a second time (`ssh -G` on 10.2p1: `Host never` / `Include
+    /// d/%n.conf`, with `Match final` in `d/lab.conf`, gives `lab` the port
+    /// of `Host lab.example.com`, 2200, and 22 without it). An `Include` the
+    /// import cannot read may hold one: a host that second reading would
+    /// change is skipped, one it would not is imported.
+    #[cfg(unix)]
+    #[test]
+    fn an_include_the_import_cannot_read_may_ask_for_a_second_reading() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        let ssh = std::process::Command::new("ssh").arg("-V").output().is_ok();
+        let text = |second: &str| {
+            format!(
+                "Host never\n  Include {}/x/%n.conf\nHost lab\n  HostName lab.example.com\n{second}",
+                d.display()
+            )
+        };
+        let changes = text("Host lab.example.com\n  Port 2200\n");
+        for (final_line, port) in [(true, "2200"), (false, "22")] {
+            let _ = std::fs::remove_dir_all(d.join("x"));
+            if final_line {
+                put(d, "x/lab.conf", "Match final\n");
+            }
+            let result = import_text(d, &changes);
+            assert!(
+                !result.servers.iter().any(|s| s.name == "lab"),
+                "{final_line}"
+            );
+            let lab = reasons(&result).into_iter().find(|r| r.0 == "lab");
+            assert!(
+                lab.is_some_and(|r| r.1.contains("may hold a `Match final`")),
+                "{:?}",
+                reasons(&result)
+            );
+            if ssh {
+                assert_eq!(
+                    ssh_g(&d.join("config"), "lab")["port"],
+                    port,
+                    "{final_line}"
+                );
+            }
+        }
+        let result = import_text(d, &text("Match host other.example.com\n  Port 2200\n"));
+        let lab = result.servers.iter().find(|s| s.name == "lab");
+        assert_eq!(lab.map(|s| s.port), Some(22), "{:?}", reasons(&result));
+        same_as_ssh(&d.join("config"), &result);
+    }
+
+    /// OpenSSH for Windows reads `Include` with rules the import does not
+    /// check there: a host the line applies to is skipped, with the reason.
+    #[cfg(not(unix))]
+    #[test]
+    fn an_include_on_windows_skips_the_hosts_it_applies_to() {
+        let dir = tempfile::tempdir().unwrap();
+        let result = import_text(
+            dir.path(),
+            "Include conf.d/*\nHost lab\n  HostName lab.example.com\n",
+        );
+        assert_eq!(
+            reasons(&result),
+            [(
+                "lab",
+                include_reason(
+                    &("line 1 of the file".to_string(), Unknown::NotOnThisSystem),
+                    "applies to it"
+                )
+                .as_str()
+            )]
+        );
+    }
+
+    /// Each look-up in the file system an `Include` makes is charged to the
+    /// step budget, a path that does not exist too: a file of such paths
+    /// stops before it makes more than the budget allows.
+    #[cfg(unix)]
+    #[test]
+    fn looking_up_include_paths_counts_against_the_budget() {
+        let dir = tempfile::tempdir().unwrap();
+        let limit = (MAX_MATCH_STEPS / FS_LOOKUP_STEPS) as usize;
+        // A path to probe, and a folder to list.
+        for word in ["/aeroftp-no-such/x", "/aeroftp-no-such/*"] {
+            for (times, read) in [(limit / 2, true), (limit * 3 / 2, false)] {
+                let text = format!(
+                    "Include {}\nHost lab\n  HostName lab.example.com\n",
+                    vec![word; times].join(" ")
+                );
+                let result = import_text(dir.path(), &text);
+                assert_eq!(result.servers.len(), usize::from(read), "{word} {times}");
+            }
+        }
+    }
+
+    /// Reading a pattern part is charged to the step budget, each POSIX class
+    /// at the 256 bytes it is checked against: a file of such patterns stops
+    /// before it reads more than the budget allows, though its bytes and
+    /// look-ups alone would not.
+    #[cfg(unix)]
+    #[test]
+    fn reading_an_include_pattern_counts_against_the_budget() {
+        let dir = tempfile::tempdir().unwrap();
+        let word = format!("/aeroftp-no-such/{}", "[[:alpha:]]".repeat(360));
+        assert!(word.len() <= MAX_INCLUDE_PATH);
+        let (_, steps) = Glob::new(&word["/aeroftp-no-such/".len()..]);
+        assert!(steps > 256 * 360, "{steps}");
+        for (times, read) in [(1000, true), (3000, false)] {
+            let text = format!(
+                "Include {}\nHost lab\n  HostName lab.example.com\n",
+                vec![word.as_str(); times].join(" ")
+            );
+            let result = import_text(dir.path(), &text);
+            assert_eq!(result.servers.len(), usize::from(read), "{times}");
+        }
+    }
+
+    /// Reading a pattern part costs at most a few steps for each byte, and
+    /// matching it a step for each item and byte, whatever its brackets: a
+    /// part of `[:` never closed, or of `[` past its last `]`, takes no longer
+    /// than one of letters of the same length, where reading each `[` to the
+    /// end would take the square of it for each name.
+    #[test]
+    fn matching_a_bracket_costs_no_more_than_a_letter() {
+        let name = "y".repeat(255);
+        let time = |part: &str| {
+            let start = std::time::Instant::now();
+            for _ in 0..20 {
+                assert!(!glob_part(part, &name));
+            }
+            start.elapsed()
+        };
+        let letters = format!("*{}x", "ab".repeat(1000));
+        let early = time(&letters);
+        for brackets in [
+            format!("*{}x", "[:".repeat(1000)),
+            format!("*{}]x", "[:".repeat(1000)),
+            format!("*]{}x", "[".repeat(2000)),
+        ] {
+            let late = time(&brackets);
+            eprintln!("brackets {late:?}, letters {early:?}");
+            assert!(
+                late < early * 3 + std::time::Duration::from_millis(50),
+                "{late:?} against {early:?}"
+            );
+            let (_, steps) = Glob::new(&brackets);
+            assert!(steps <= 8 * brackets.len() as u64, "{steps}");
         }
     }
 
@@ -3867,6 +4242,7 @@ Host roundtrip
     /// Each name a pattern reads and matches is charged to the step budget:
     /// a file whose patterns would match more than [`MAX_MATCH_STEPS`] steps
     /// is refused, its reading stopped there.
+    #[cfg(unix)]
     #[test]
     fn matching_an_include_pattern_counts_against_the_budget() {
         let dir = tempfile::tempdir().unwrap();
@@ -3921,6 +4297,7 @@ Host roundtrip
     /// ssh reads a file included 16 deep and refuses the whole file for one
     /// at 17 ("Too many recursive configuration includes"), and so does the
     /// import.
+    #[cfg(unix)]
     #[test]
     fn an_include_past_16_deep_refuses_the_file() {
         let ssh = std::process::Command::new("ssh").arg("-V").output().is_ok();
@@ -3957,6 +4334,7 @@ Host roundtrip
 
     /// A relative `Include` and one with `~` are read from `HOME`, as `glob`
     /// reads them for ssh: `Include config.d/lab` is `HOME/.ssh/config.d/lab`.
+    #[cfg(unix)]
     #[test]
     fn a_relative_include_reads_from_home() {
         let dir = tempfile::tempdir().unwrap();
@@ -4021,6 +4399,7 @@ Host roundtrip
     /// Every file and byte an `Include` reads is charged to the step budget:
     /// a file that includes more than [`MAX_MATCH_STEPS`] bytes is refused
     /// before it reads them.
+    #[cfg(unix)]
     #[test]
     fn the_bytes_an_include_reads_count_against_the_budget() {
         let dir = tempfile::tempdir().unwrap();
@@ -5775,12 +6154,17 @@ Host roundtrip
             let real = std::env::split_paths(&path)
                 .map(|dir| dir.join("ssh"))
                 .find(|ssh| ssh.is_file())?;
-            let stand_in = tempfile::tempdir().unwrap();
+            // A folder with a space and an apostrophe, as `TMPDIR` may hold:
+            // the marker's path reaches the script as data, not as source.
+            let stand_in = tempfile::Builder::new()
+                .prefix("stand in 'ssh")
+                .tempdir()
+                .unwrap();
             let ran = stand_in.path().join("ran");
             let script = stand_in.path().join("ssh");
             std::fs::write(
                 &script,
-                format!("#!/bin/sh\n: > '{}'\nexit 1\n", ran.display()),
+                "#!/bin/sh\n: > \"$AEROFTP_SSH_TEST_RAN\"\nexit 1\n",
             )
             .unwrap();
             std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
@@ -5796,6 +6180,7 @@ Host roundtrip
                     .arg0("ssh")
                     .current_dir(file.parent().unwrap())
                     .env("PATH", std::env::join_paths(&dirs).unwrap())
+                    .env("AEROFTP_SSH_TEST_RAN", &ran)
                     .args(["-vvv", "-F"])
                     .arg(file.file_name().unwrap())
                     .args([
