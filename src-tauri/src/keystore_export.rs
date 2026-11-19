@@ -899,7 +899,8 @@ fn build_user_partition_transport(
 
 /// After an import overwrote `user_partitions.db` with the backup's copy,
 /// re-key the passphrase-less partitions to THIS machine's local root_key
-/// (using the transport sidecar) and report what could not be recovered.
+/// (using the transport sidecar), tag their profiles with it, and report
+/// what could not be recovered.
 /// `transport` is `None` for old backups; the pass then degrades to
 /// detect-and-report with no re-keying.
 fn rekey_imported_user_partitions(
@@ -937,7 +938,13 @@ fn rekey_imported_user_partitions(
         &salt,
         &kdf_params,
         &wrapped,
-    );
+    )
+    .and_then(|report| {
+        // The profile tags are keyed by the root too: the holder lookups
+        // must see the same accounts here as on the machine of the backup.
+        crate::user_partitions::retag_restored_profiles(&conn, &local_root_key, &report)?;
+        Ok(report)
+    });
     local_root_key.zeroize();
     result
 }
@@ -3985,6 +3992,91 @@ mod tests {
         write_profile_secret(&store, Some(&db), "server_srv_drive", Some("password")).unwrap();
         assert_eq!(store.get("server_srv_drive").unwrap(), "password");
         assert_eq!(effective("server_srv_drive").as_deref(), Some("password"));
+    }
+
+    /// A Full backup of another machine (another vault key) restored here: the
+    /// profile tags of its partition were made with that machine's key, and a
+    /// holder lookup made with this one's would find nobody. The restore tags
+    /// them again with this machine's key, so the alignment that runs after it
+    /// still sees that the legacy owner holds the profile id the other account
+    /// holds too: the owner's token stays in the vault, and the other account
+    /// gets no copy of it.
+    #[test]
+    fn a_restore_from_another_machine_keeps_a_shared_profiles_token_with_its_owner() {
+        let _guard = crate::user_partitions::test_lock();
+        crate::user_partitions::clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let source_path = dir.path().join("source-vault.db");
+        crate::credential_store::CredentialStore::write_test_vault(&source_path, &[0x29; 32]);
+        let source =
+            crate::credential_store::CredentialStore::from_verified_key(&source_path, &[0x29; 32]);
+        let source_cfg = dir.path().join("source");
+        let shared = serde_json::json!({"id": "srv_shared", "name": "Shared",
+            "protocol": "dropbox", "host": "", "port": 0, "username": "u@example.test"});
+        partition_with(&source, &source_cfg, std::slice::from_ref(&shared));
+        let source_root = source.derive_user_partition_wrapping_key();
+        let mut conn = rusqlite::Connection::open(source_cfg.join("user_partitions.db")).unwrap();
+        let other = crate::user_partitions::create_passphrase_less_user(
+            &mut conn,
+            &source_root,
+            "Other",
+            None,
+            None,
+        )
+        .unwrap();
+        crate::user_partitions::replace_server_profiles_for(
+            &mut conn,
+            &source_root,
+            other.id,
+            std::slice::from_ref(&shared),
+        )
+        .unwrap();
+        // The restore writes the active account's list again: the owner's
+        // rows keep the tags the other machine made.
+        crate::user_partitions::set_active_user(&conn, other.id).unwrap();
+        drop(conn);
+        crate::user_partitions::clear_user_session();
+        let key = "oauth_dropbox_srv_shared";
+        source.store(key, "owners-token").unwrap();
+        let backup = dir.path().join("full.aeroftp-keystore");
+        export_keystore_with_store(
+            &source,
+            PASSWORD_736,
+            &backup,
+            ExportMode::Full,
+            KeystoreScope::AllUsers,
+            Some(&source_cfg),
+            None,
+        )
+        .unwrap();
+
+        let store = throwaway_store(dir.path(), "vault.db");
+        let cfg = dir.path().join("config");
+        std::fs::create_dir_all(&cfg).unwrap();
+        let result = import_keystore_with_store(
+            &store,
+            PASSWORD_736,
+            &backup,
+            "overwrite",
+            ImportSections::default(),
+            Some(&cfg),
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(result.user_partitions_rekeyed, 2);
+        assert!(result.security_reset.is_empty());
+        let root = store.derive_user_partition_wrapping_key();
+        let conn = rusqlite::Connection::open(cfg.join("user_partitions.db")).unwrap();
+        crate::user_partitions::migrate_credentials_eager_all(&conn, &store, &root).unwrap();
+        assert_eq!(
+            crate::user_partitions::get_user_credential_for(&conn, &root, other.id, key)
+                .unwrap()
+                .map(|v| v.to_string()),
+            None,
+            "the other account got the owner's token"
+        );
+        assert_eq!(store.get(key).unwrap(), "owners-token");
     }
 
     #[test]

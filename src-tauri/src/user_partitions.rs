@@ -2183,7 +2183,126 @@ fn insert_profile_rows(
         )
         .map_err(|e| format!("Insert profile: {e}"))?;
     }
+    // Every tag of this list is now this machine's.
+    tx.execute(
+        "DELETE FROM global_state WHERE key = ?1",
+        params![profile_tags_pending_key(user_id)],
+    )
+    .map_err(|e| format!("Clear pending profile tags: {e}"))?;
     Ok(())
+}
+
+/// Marks an account whose profile tags may have been made with another
+/// machine's key (a keystore restore of another machine's partition): until
+/// its list is written here again, a holder lookup does not see its profiles.
+const PROFILE_TAGS_PENDING_PREFIX: &str = "profile_tags_pending_";
+
+fn profile_tags_pending_key(user_id: i64) -> String {
+    format!("{PROFILE_TAGS_PENDING_PREFIX}{user_id}")
+}
+
+/// Whether an existing account's profile tags are still pending: a lookup of
+/// who holds a profile id cannot be trusted until they are rebuilt.
+fn profile_tags_pending(conn: &Connection) -> Result<bool, String> {
+    conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM global_state g JOIN users u
+         ON g.key = ?1 || u.id)",
+        params![PROFILE_TAGS_PENDING_PREFIX],
+        |row| row.get(0),
+    )
+    .map_err(|e| format!("Read pending profile tags: {e}"))
+}
+
+/// After a keystore restore wrote `user_partitions.db` whole: the profile
+/// tags (`profile_uid`, `dedup_key`) are keyed by the root of the machine the
+/// backup was made on, and the transport re-key only re-wraps the DEKs. Every
+/// account this machine's key opens gets its list written again, which tags
+/// it with this machine's root; an account it cannot open now (a passphrase
+/// account, or one with no usable transport DEK) is marked pending, and is
+/// tagged by the first write of its list or at its unlock
+/// ([`migrate_credentials_for_user`]). While any is pending, the passes that
+/// infer from the tags which profiles another account holds wait. A restore
+/// of this machine's own partition (an account already opened by this key,
+/// none re-keyed or unreadable) has this machine's tags and is left alone.
+/// Returns the accounts left pending.
+pub fn retag_restored_profiles(
+    conn: &Connection,
+    local_root_key: &[u8; 32],
+    rekey: &TransportRekeyReport,
+) -> Result<usize, String> {
+    if rekey.already_local > 0 && rekey.rekeyed == 0 && rekey.unreadable == 0 {
+        return Ok(0);
+    }
+    let root_secret = user_crypto::secret_key_from_bytes(local_root_key);
+    let mut pending = 0;
+    for user in list_users(conn)? {
+        let tx =
+            rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
+                .map_err(|e| format!("Start profile tags: {e}"))?;
+        let row = read_user_key_row(&tx, user.id)?;
+        let opened = if row.has_passphrase {
+            None
+        } else {
+            unwrap_user_dek_with_key(&row, &root_secret).ok()
+        };
+        let listed = opened.and_then(|dek| {
+            read_profiles_with_dek(&tx, user.id, &dek)
+                .ok()
+                .map(|profiles| (profiles, dek))
+        });
+        match listed {
+            Some((profiles, dek)) => {
+                insert_profile_rows(&tx, &root_secret, user.id, &dek, &profiles)?
+            }
+            None => {
+                upsert_global_state(&tx, &profile_tags_pending_key(user.id), "1", now_ms())?;
+                pending += 1;
+            }
+        }
+        tx.commit()
+            .map_err(|e| format!("Commit profile tags: {e}"))?;
+    }
+    Ok(pending)
+}
+
+/// A pending account's list tagged with this machine's root, now that its
+/// DEK is reachable. Nothing to do when its tags are not pending, or while
+/// the account is locked or waits for a security reset.
+fn retag_own_profiles_if_pending(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+) -> Result<(), String> {
+    let pending = conn
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM global_state WHERE key = ?1)",
+            params![profile_tags_pending_key(user_id)],
+            |row| row.get::<_, bool>(0),
+        )
+        .map_err(|e| format!("Read pending profile tags: {e}"))?;
+    if !pending {
+        return Ok(());
+    }
+    let root_secret = user_crypto::secret_key_from_bytes(root_key);
+    let retagged = with_user_dek(conn, &root_secret, user_id, |uid, dek| {
+        let tx =
+            rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
+                .map_err(|e| format!("Start profile tags: {e}"))?;
+        let profiles = read_profiles_with_dek(&tx, uid, dek)?;
+        insert_profile_rows(&tx, &root_secret, uid, dek, &profiles)?;
+        tx.commit().map_err(|e| format!("Commit profile tags: {e}"))
+    });
+    match retagged {
+        Err(e) if e == "USER_LOCKED" || e == "SECURITY_RESET_PENDING" => Ok(()),
+        other => other,
+    }
+}
+
+/// An account other than the legacy owner whose passes read from the tags
+/// which profiles the others hold waits while any account's tags are
+/// pending ([`retag_restored_profiles`]).
+fn waits_for_profile_tags(conn: &Connection, user_id: i64) -> Result<bool, String> {
+    Ok(nonprofile_secret_owner_unpersisted(conn)? != Some(user_id) && profile_tags_pending(conn)?)
 }
 
 /// Puts right the profile lists of a partition database written whole rather
@@ -4266,6 +4385,10 @@ fn migrate_user_credentials_inner(
         return Ok(0);
     }
     let owns_global_secrets = nonprofile_secret_owner(conn)? == Some(user_id);
+    // Which profile ids another account holds is read from the tags.
+    if !owns_global_secrets && profile_tags_pending(conn)? {
+        return Ok(0);
+    }
     let root_secret = user_crypto::secret_key_from_bytes(root_key);
     let outcome = with_user_dek(conn, &root_secret, user_id, |uid, dek| {
         copy_user_secrets_with_dek(
@@ -4373,6 +4496,11 @@ fn align_private_tokens_inner(
         let tx =
             rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
                 .map_err(|e| format!("Start private token alignment: {e}"))?;
+        // The holders below are read from tags: one made with another
+        // machine's key would hide its account, so the pass waits for them.
+        if profile_tags_pending(&tx)? {
+            return Ok(None);
+        }
         let profiles = read_profiles_with_dek(&tx, uid, dek)?;
         let mut sole = Vec::new();
         for id in profiles
@@ -4450,10 +4578,11 @@ fn align_private_tokens_inner(
         }
         tx.commit()
             .map_err(|e| format!("Commit private token alignment: {e}"))?;
-        Ok(sole)
+        Ok(Some(sole))
     });
     let moved = match outcome {
-        Ok(moved) => moved,
+        Ok(Some(moved)) => moved,
+        Ok(None) => return Ok(0),
         Err(e) if e == "USER_LOCKED" => return Ok(0),
         Err(e) => return Err(e),
     };
@@ -4496,7 +4625,7 @@ fn read_credential_with_fallback_inner(
 /// is done; a locked passphrase user is intentionally NOT "eager-pending".
 fn has_eager_pending_users(conn: &Connection) -> Result<bool, String> {
     for user in list_users(conn)? {
-        if credentials_settled(conn, user.id)? {
+        if credentials_settled(conn, user.id)? || waits_for_profile_tags(conn, user.id)? {
             continue;
         }
         if !user.has_passphrase || session_user_id() == Some(user.id) {
@@ -4517,7 +4646,7 @@ pub fn migrate_credentials_eager_all(
     let users = list_users(conn)?;
     let mut pending = Vec::new();
     for user in &users {
-        if credentials_settled(conn, user.id)? {
+        if credentials_settled(conn, user.id)? || waits_for_profile_tags(conn, user.id)? {
             continue;
         }
         if !user.has_passphrase || session_user_id() == Some(user.id) {
@@ -4560,6 +4689,7 @@ pub fn migrate_credentials_for_user(
     root_key: &[u8; 32],
     user_id: i64,
 ) -> Result<usize, String> {
+    retag_own_profiles_if_pending(conn, root_key, user_id)?;
     if credentials_settled(conn, user_id)? {
         return Ok(0);
     }
@@ -9793,6 +9923,76 @@ mod tests {
         );
         assert!(deleted.borrow().is_empty());
         assert!(private_tokens_aligned(&conn, other.id).unwrap());
+    }
+
+    /// A partition restored from another machine: its profile tags are keyed
+    /// by that machine's root. The accounts this machine opens get their lists
+    /// tagged again; a passphrase account is pending until it is unlocked
+    /// here, and until then another account's alignment waits, since the
+    /// holders it reads would miss the pending account. Once that account is
+    /// tagged, the profile id both hold keeps its vault copy.
+    #[test]
+    fn a_restored_partitions_tags_are_rebuilt_before_the_alignment_reads_them() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let (source, here) = (test_root(), [9u8; 32]);
+        let owner = nonprofile_secret_owner(&conn).unwrap().unwrap();
+        let profile = json!({"id": "p", "name": "p", "protocol": "dropbox", "host": "",
+                             "port": 0, "username": "p@example.test"});
+        let locked = create_user(&mut conn, &source, "Locked", None, None, Some("pass")).unwrap();
+        unlock_user(&conn, &source, locked.id, Some("pass")).unwrap();
+        replace_server_profiles_for(
+            &mut conn,
+            &source,
+            locked.id,
+            std::slice::from_ref(&profile),
+        )
+        .unwrap();
+        let other = create_passphrase_less_user(&mut conn, &source, "Other", None, None).unwrap();
+        replace_server_profiles_for(&mut conn, &source, other.id, std::slice::from_ref(&profile))
+            .unwrap();
+        clear_user_session();
+        let transport = export_transport_deks(&conn, &source, "backup password")
+            .unwrap()
+            .unwrap();
+        let rekey = rekey_transport_deks(
+            &conn,
+            &here,
+            "backup password",
+            &transport.salt,
+            &transport.kdf_params,
+            &transport.wrapped_deks,
+        )
+        .unwrap();
+        assert_eq!(rekey.rekeyed, 2);
+        assert_eq!(retag_restored_profiles(&conn, &here, &rekey).unwrap(), 1);
+        mark_creds_migrated(&conn, owner).unwrap();
+        mark_private_tokens_aligned(&conn, owner).unwrap();
+        let (keys, read) = fake_vault(&[("oauth_dropbox_p", "token")]);
+        let deleted = RefCell::new(Vec::<String>::new());
+        let delete = |key: &str| {
+            deleted.borrow_mut().push(key.to_string());
+            Ok(())
+        };
+
+        assert_eq!(
+            align_private_tokens_inner(&conn, &here, other.id, &keys, &read, &delete).unwrap(),
+            0
+        );
+        assert!(!private_tokens_aligned(&conn, other.id).unwrap());
+        assert!(!has_eager_pending_users(&conn).unwrap());
+
+        unlock_user(&conn, &here, locked.id, Some("pass")).unwrap();
+        retag_own_profiles_if_pending(&conn, &here, locked.id).unwrap();
+        clear_user_session();
+        assert!(has_eager_pending_users(&conn).unwrap());
+        align_private_tokens_inner(&conn, &here, other.id, &keys, &read, &delete).unwrap();
+        assert!(private_tokens_aligned(&conn, other.id).unwrap());
+        assert!(deleted.borrow().is_empty(), "{:?}", deleted.borrow());
+        assert_eq!(
+            get_user_credential_for(&conn, &here, other.id, "oauth_dropbox_p").unwrap(),
+            None
+        );
     }
 
     /// The migration of an account other than the legacy owner takes the
