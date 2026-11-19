@@ -833,13 +833,18 @@ struct VaultKeys {
 
 impl SessionKeys for VaultKeys {
     fn keys(&self) -> Vec<String> {
-        // A private account's copies are its own rows.
-        if self.private.is_some() {
-            return saved_sessions(&self.store, self.owner)
-                .unwrap_or_default()
-                .into_iter()
-                .map(|(key, _)| key)
-                .collect();
+        // A private account's copies are its own rows, listed without
+        // decrypting them: one it cannot decrypt is left out when it is read,
+        // and the others still take the refreshed pair.
+        if let Some(user) = self.private {
+            return crate::user_partitions::open_or_init_cli()
+                .and_then(|conn| {
+                    crate::user_partitions::user_credential_ids_of_type(&conn, user, PARTITION_TYPE)
+                })
+                .unwrap_or_else(|error| {
+                    log::warn!("Proton: the account's saved sessions could not be listed: {error}");
+                    Vec::new()
+                });
         }
         self.store
             .list_accounts()

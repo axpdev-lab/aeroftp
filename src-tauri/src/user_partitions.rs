@@ -5077,9 +5077,30 @@ fn partition_credential_type(
     .map_err(|e| format!("Read credential type: {e}"))
 }
 
+/// The keys of `user_id`'s rows of one `credential_type`, read without
+/// decrypting any of them: a caller that reads each row on its own is not
+/// stopped by one it cannot decrypt.
+pub fn user_credential_ids_of_type(
+    conn: &Connection,
+    user_id: i64,
+    credential_type: &str,
+) -> Result<Vec<String>, String> {
+    conn.prepare(
+        "SELECT credential_id FROM user_credentials
+         WHERE user_id = ?1 AND credential_type = ?2 ORDER BY credential_id",
+    )
+    .and_then(|mut statement| {
+        statement
+            .query_map(params![user_id, credential_type], |row| row.get(0))?
+            .collect::<rusqlite::Result<Vec<String>>>()
+    })
+    .map_err(|e| format!("Read user credentials: {e}"))
+}
+
 /// Every row of `user_id` of one `credential_type`, decrypted, by key: all the
 /// copies an account holds of one kind of token, for a caller that must see
-/// each of them (the profiles sharing one native Proton session).
+/// each of them (the profiles sharing one native Proton session). One row it
+/// cannot decrypt is an error.
 pub fn user_credentials_of_type(
     store: &CredentialStore,
     user_id: i64,
@@ -5087,17 +5108,7 @@ pub fn user_credentials_of_type(
 ) -> Result<Vec<(String, Zeroizing<String>)>, String> {
     init_or_migrate_cli(store)?;
     let conn = open_or_init_cli()?;
-    let ids = conn
-        .prepare(
-            "SELECT credential_id FROM user_credentials
-             WHERE user_id = ?1 AND credential_type = ?2 ORDER BY credential_id",
-        )
-        .and_then(|mut statement| {
-            statement
-                .query_map(params![user_id, credential_type], |row| row.get(0))?
-                .collect::<rusqlite::Result<Vec<String>>>()
-        })
-        .map_err(|e| format!("Read user credentials: {e}"))?;
+    let ids = user_credential_ids_of_type(&conn, user_id, credential_type)?;
     let mut root_key = store.derive_user_partition_wrapping_key();
     let mut rows = Vec::with_capacity(ids.len());
     let mut failure = None;

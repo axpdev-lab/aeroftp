@@ -1,6 +1,6 @@
 //! Synthetic, isolated regressions: a native Proton Drive session belongs to
-//! one account, on the production save, refresh, sign-out and copy-user /
-//! move-user paths.
+//! one account, on the production save, refresh, sign-out, import and
+//! copy-user / move-user paths.
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
@@ -13,8 +13,6 @@ use crate::providers::proton_native::{
 use secrecy::SecretString;
 use serde_json::json;
 
-const TEST: &str =
-    "user_partitions::native_relocation_tests::a_native_session_keeps_to_its_account";
 const MODE: &str = "AEROFTP_NATIVE_RELOCATION_FIXTURE";
 const SOURCE_PASSWORD: &str = "synthetic source password";
 const TARGET_PASSWORD: &str = "synthetic target password";
@@ -47,116 +45,210 @@ fn generation(raw: &str) -> String {
     generation
 }
 
-#[test]
-fn a_native_session_keeps_to_its_account() {
-    if std::env::var(MODE).as_deref() != Ok("suite") {
-        // Isolate the real encrypted vault and partition DB from both the
-        // owner's credentials and parallel lib tests, as the auth fixture does.
-        let executable = std::env::current_exe().unwrap();
-        let root = tempfile::Builder::new()
-            .prefix("native-relocation-")
-            .tempdir_in(executable.parent().unwrap())
-            .unwrap();
-        let child = root.path().join(format!(
-            "native-relocation-test{}",
-            std::env::consts::EXE_SUFFIX
-        ));
-        std::fs::hard_link(&executable, &child)
-            .or_else(|_| std::fs::copy(&executable, &child).map(|_| ()))
-            .unwrap();
-        std::fs::write(root.path().join("portable.marker"), b"").unwrap();
-        let empty_path = root.path().join("no-external-tools");
-        std::fs::create_dir(&empty_path).unwrap();
-        let output = std::process::Command::new(child)
-            .args(["--exact", TEST, "--nocapture", "--test-threads=1"])
-            .env(MODE, "suite")
-            .env("PATH", empty_path)
-            .env("AEROFTP_MASTER_PASSWORD", "synthetic native fixture master")
-            .env("XDG_CONFIG_HOME", root.path().join("config"))
-            .env("XDG_DATA_HOME", root.path().join("data"))
-            .env("XDG_CACHE_HOME", root.path().join("cache"))
-            .env(
-                "DBUS_SESSION_BUS_ADDRESS",
-                "unix:path=/nonexistent-native-relocation",
-            )
-            .output()
-            .unwrap();
-        assert!(
-            output.status.success(),
-            "{}\n{}",
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
-        );
-        return;
-    }
-    let _test = test_lock();
-    CredentialStore::init().unwrap();
-    let store = CredentialStore::from_cache().unwrap();
-    init_or_migrate_cli(&store).unwrap();
-    let mut conn = open_or_init_cli().unwrap();
-    let root_key = store.derive_user_partition_wrapping_key();
-    let legacy = active_user_id(&conn).unwrap().unwrap();
-    let source = create_user(
-        &mut conn,
-        &root_key,
-        "Source",
-        None,
-        None,
-        Some(SOURCE_PASSWORD),
-    )
-    .unwrap();
-    let target = create_user(
-        &mut conn,
-        &root_key,
-        "Target",
-        None,
-        None,
-        Some(TARGET_PASSWORD),
-    )
-    .unwrap();
-    unlock_user_transient(&conn, &root_key, source.id, Some(SOURCE_PASSWORD)).unwrap();
-    let root_secret = user_crypto::secret_key_from_bytes(&root_key);
-    let target_dek =
-        resolve_user_dek_scoped(&conn, &root_secret, target.id, Some(TARGET_PASSWORD)).unwrap();
-    let owner = vault::SessionOwner::for_user(Some(source.id));
-    let owners_owner = vault::SessionOwner::for_user(Some(legacy));
-    let key = |id: &str| vault::session_key(Some(id));
+fn key(id: &str) -> String {
+    vault::session_key(Some(id))
+}
 
-    let add_profile = |user: i64, id: &str| {
+/// The generation of the session `owner` loads for profile `id`.
+fn loaded(owner: vault::SessionOwner, id: &str) -> Option<String> {
+    vault::load_session(owner, Some(id))
+        .unwrap()
+        .map(|session| generation(&raw(&session)))
+}
+
+/// Whether this is the child process the test `name` runs in. Outside it, the
+/// test runs again there and its result is checked: the real encrypted vault
+/// and partition DB are isolated from the owner's credentials and from
+/// parallel lib tests, as the auth fixture does.
+fn in_isolated_child(name: &str) -> bool {
+    if std::env::var(MODE).as_deref() == Ok("suite") {
+        return true;
+    }
+    let executable = std::env::current_exe().unwrap();
+    let root = tempfile::Builder::new()
+        .prefix("native-relocation-")
+        .tempdir_in(executable.parent().unwrap())
+        .unwrap();
+    let child = root.path().join(format!(
+        "native-relocation-test{}",
+        std::env::consts::EXE_SUFFIX
+    ));
+    std::fs::hard_link(&executable, &child)
+        .or_else(|_| std::fs::copy(&executable, &child).map(|_| ()))
+        .unwrap();
+    std::fs::write(root.path().join("portable.marker"), b"").unwrap();
+    let empty_path = root.path().join("no-external-tools");
+    std::fs::create_dir(&empty_path).unwrap();
+    let test = format!("user_partitions::native_relocation_tests::{name}");
+    let output = std::process::Command::new(child)
+        .args(["--exact", &test, "--nocapture", "--test-threads=1"])
+        .env(MODE, "suite")
+        .env("PATH", empty_path)
+        .env("AEROFTP_MASTER_PASSWORD", "synthetic native fixture master")
+        .env("XDG_CONFIG_HOME", root.path().join("config"))
+        .env("XDG_DATA_HOME", root.path().join("data"))
+        .env("XDG_CACHE_HOME", root.path().join("cache"))
+        .env(
+            "DBUS_SESSION_BUS_ADDRESS",
+            "unix:path=/nonexistent-native-relocation",
+        )
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    false
+}
+
+/// The legacy owner, a source account unlocked in this process and a target
+/// account protected by a passphrase and locked, in the child's vault.
+struct Accounts {
+    _test: TestLock,
+    store: CredentialStore,
+    conn: Connection,
+    root_key: [u8; 32],
+    legacy: i64,
+    source: UserMetadata,
+    target: UserMetadata,
+    target_dek: SecretKey,
+}
+
+impl Accounts {
+    fn open() -> Self {
+        let test = test_lock();
+        CredentialStore::init().unwrap();
+        let store = CredentialStore::from_cache().unwrap();
+        init_or_migrate_cli(&store).unwrap();
+        let mut conn = open_or_init_cli().unwrap();
+        let root_key = store.derive_user_partition_wrapping_key();
+        let legacy = active_user_id(&conn).unwrap().unwrap();
+        let source = create_user(
+            &mut conn,
+            &root_key,
+            "Source",
+            None,
+            None,
+            Some(SOURCE_PASSWORD),
+        )
+        .unwrap();
+        let target = create_user(
+            &mut conn,
+            &root_key,
+            "Target",
+            None,
+            None,
+            Some(TARGET_PASSWORD),
+        )
+        .unwrap();
+        unlock_user_transient(&conn, &root_key, source.id, Some(SOURCE_PASSWORD)).unwrap();
+        let root_secret = user_crypto::secret_key_from_bytes(&root_key);
+        let target_dek =
+            resolve_user_dek_scoped(&conn, &root_secret, target.id, Some(TARGET_PASSWORD)).unwrap();
+        Self {
+            _test: test,
+            store,
+            conn,
+            root_key,
+            legacy,
+            source,
+            target,
+            target_dek,
+        }
+    }
+
+    /// The source account.
+    fn owner(&self) -> vault::SessionOwner {
+        vault::SessionOwner::for_user(Some(self.source.id))
+    }
+
+    fn owners_owner(&self) -> vault::SessionOwner {
+        vault::SessionOwner::for_user(Some(self.legacy))
+    }
+
+    fn add_profile(&self, user: i64, id: &str) {
         let mut db = open_or_init_cli().unwrap();
-        let mut profiles = list_server_profiles_for(&db, &root_key, user).unwrap();
+        let mut profiles = list_server_profiles_for(&db, &self.root_key, user).unwrap();
         profiles.push(
             json!({"id":id,"name":id,"protocol":"proton","host":"drive.proton.me",
             "port":443,"username":format!("{id}@example.test"),"options":{"proton_mode":"native"}}),
         );
-        replace_server_profiles_for(&mut db, &root_key, user, &profiles).unwrap();
-    };
-    let seed = |id: &str, uid: &str| {
-        add_profile(source.id, id);
-        vault::store_session(owner, Some(id), &session(uid, "r1")).unwrap();
-    };
-    let loaded = |owner: vault::SessionOwner, id: &str| {
-        vault::load_session(owner, Some(id))
+        replace_server_profiles_for(&mut db, &self.root_key, user, &profiles).unwrap();
+    }
+
+    fn profile_ids(&self, user: i64) -> Vec<String> {
+        let db = open_or_init_cli().unwrap();
+        list_server_profiles_for(&db, &self.root_key, user)
             .unwrap()
-            .map(|session| generation(&raw(&session)))
-    };
-    let target_row = |id: &str| {
-        read_credential_with_dek(&conn, target.id, &target_dek, &key(id))
+            .iter()
+            .filter_map(|profile| profile["id"].as_str().map(str::to_string))
+            .collect()
+    }
+
+    /// A source profile signed in with session `uid`.
+    fn seed(&self, id: &str, uid: &str) {
+        self.add_profile(self.source.id, id);
+        vault::store_session(self.owner(), Some(id), &session(uid, "r1")).unwrap();
+    }
+
+    fn target_row(&self, id: &str) -> Option<String> {
+        read_credential_with_dek(&self.conn, self.target.id, &self.target_dek, &key(id))
             .unwrap()
             .map(|raw| generation(&raw))
-    };
-    let in_vault = |id: &str| store.get(&key(id)).is_ok();
+    }
+
+    fn in_vault(&self, id: &str) -> bool {
+        self.store.get(&key(id)).is_ok()
+    }
+
+    fn relocate(&self, from: i64, id: &str, new_id: &str, moved: bool) -> ProfileRelocation {
+        relocation(&self.store, self.target.id, from, id, new_id, moved).unwrap()
+    }
+}
+
+/// A Copy or a Move of profile `id` of `from` into `target`, on a thread of
+/// its own when the caller needs one (a connection is not shared).
+fn relocation(
+    store: &CredentialStore,
+    target: i64,
+    from: i64,
+    id: &str,
+    new_id: &str,
+    moved: bool,
+) -> Result<ProfileRelocation, String> {
+    cli_relocate_server_profile(
+        store,
+        from,
+        target,
+        id,
+        new_id,
+        Some(TARGET_PASSWORD),
+        moved,
+    )
+}
+
+#[test]
+fn a_native_session_keeps_to_its_account() {
+    if !in_isolated_child("a_native_session_keeps_to_its_account") {
+        return;
+    }
+    let accounts = Accounts::open();
+    let (store, conn, legacy, source) = (
+        &accounts.store,
+        &accounts.conn,
+        accounts.legacy,
+        &accounts.source,
+    );
+    let (owner, owners_owner) = (accounts.owner(), accounts.owners_owner());
+    let add_profile = |user: i64, id: &str| accounts.add_profile(user, id);
+    let seed = |id: &str, uid: &str| accounts.seed(id, uid);
+    let target_row = |id: &str| accounts.target_row(id);
+    let in_vault = |id: &str| accounts.in_vault(id);
+    let target = accounts.target.id;
     let relocate = |from: i64, id: &str, new_id: &str, moved: bool| {
-        cli_relocate_server_profile(
-            &store,
-            from,
-            target.id,
-            id,
-            new_id,
-            Some(TARGET_PASSWORD),
-            moved,
-        )
-        .unwrap()
+        relocation(store, target, from, id, new_id, moved).unwrap()
     };
 
     // An account other than the legacy owner saves its session in its own
@@ -179,9 +271,9 @@ fn a_native_session_keeps_to_its_account() {
     // copy another account holds of the same UID.
     seed("dup-b", "shared-uid");
     set_user_credential_with_dek(
-        &conn,
-        target.id,
-        &target_dek,
+        conn,
+        accounts.target.id,
+        &accounts.target_dek,
         &key("target-copy"),
         "proton_native_session",
         &raw(&session("shared-uid", "r1")),
@@ -244,7 +336,7 @@ fn a_native_session_keeps_to_its_account() {
     // A sign-out revokes on Proton only when no other profile of the same
     // account holds the session; another account's copy does not count. The
     // sign-out of a shared copy leaves the other profile signed in.
-    assert!(vault::another_profile_holds(&store, owner, &key("dup-a"), "shared-uid").unwrap());
+    assert!(vault::another_profile_holds(store, owner, &key("dup-a"), "shared-uid").unwrap());
     tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -256,7 +348,7 @@ fn a_native_session_keeps_to_its_account() {
     assert!(in_vault("dup-b"));
     store.delete(&key("dup-a")).unwrap();
     store.delete(&key("dup-b")).unwrap();
-    assert!(!vault::another_profile_holds(&store, owner, &key("dup-a"), "shared-uid").unwrap());
+    assert!(!vault::another_profile_holds(store, owner, &key("dup-a"), "shared-uid").unwrap());
 
     // A Copy into another account does not carry the session: the target is
     // told the profile asks to sign in again, and the source keeps it. The
@@ -325,4 +417,39 @@ fn a_native_session_keeps_to_its_account() {
     assert!(relocate(source.id, "no-session", "no-session-copy", false)
         .secrets_not_copied
         .is_empty());
+}
+
+/// A row of the account that cannot be decrypted does not keep a refresh from
+/// the other copies of the session: they are listed without decrypting any
+/// row and read one by one, so only the unreadable one is left out.
+#[test]
+fn an_unreadable_row_does_not_stop_a_refresh_of_the_other_copies() {
+    if !in_isolated_child("an_unreadable_row_does_not_stop_a_refresh_of_the_other_copies") {
+        return;
+    }
+    let accounts = Accounts::open();
+    let owner = accounts.owner();
+    accounts.seed("unreadable-a", "unreadable-uid");
+    accounts.seed("unreadable-b", "unreadable-uid");
+    accounts.seed("unreadable-c", "unreadable-other-uid");
+    accounts
+        .conn
+        .execute(
+            "UPDATE user_credentials SET encrypted_blob = X'00'
+             WHERE user_id = ?1 AND credential_id = ?2",
+            params![accounts.source.id, key("unreadable-c")],
+        )
+        .unwrap();
+    vault::VaultSession::new(
+        owner,
+        Some("unreadable-a"),
+        &session("unreadable-uid", "r1"),
+    )
+    .save(&session("unreadable-uid", "r2").tokens);
+    assert_eq!(loaded(owner, "unreadable-a").as_deref(), Some("r2"));
+    assert_eq!(
+        loaded(owner, "unreadable-b").as_deref(),
+        Some("r2"),
+        "a copy the refresh can read takes the rotated pair"
+    );
 }
