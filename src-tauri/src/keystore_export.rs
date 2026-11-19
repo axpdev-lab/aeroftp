@@ -13,7 +13,7 @@ use std::path::{Component, Path, PathBuf};
 use zeroize::{Zeroize, Zeroizing};
 
 use crate::keystore_profile_plan::{
-    self, PlanInputs, ProfileDecisionInput, ProfileListSource, ProfilePreview,
+    self, PlanInputs, ProfileDecisionInput, ProfileListSource, ProfilePreview, Receiver,
 };
 
 // File format version:
@@ -1331,27 +1331,27 @@ fn read_effective_secret(
 ) -> Result<Option<Zeroizing<String>>, KeystoreExportError> {
     if let Some(conn) = conn {
         if let Ok(Some(user_id)) = crate::user_partitions::active_user_id(conn) {
-            let private =
+            let unread = |e: String| {
+                KeystoreExportError::Encryption(format!(
+                    "Read {key} from this device's partition: {e}"
+                ))
+            };
+            // The row first, as the app reads it: whose the vault copy is
+            // matters only when there is none to read.
+            let private = || {
                 crate::user_partitions::vault_copy_is_another_accounts(conn, user_id, key)
-                    .map_err(|e| {
-                        KeystoreExportError::Encryption(format!(
-                            "Read {key} from this device's partition: {e}"
-                        ))
-                    })?;
+                    .map_err(&unread)
+            };
             match crate::user_partitions::get_user_credential_for(conn, root_key, user_id, key) {
                 Ok(Some(value)) => return Ok(Some(value)),
-                Ok(None) if private => return Ok(None),
+                Ok(None) if private()? => return Ok(None),
                 Ok(None) => {}
                 // A locked passphrase account: the app falls back to the vault
                 // too (`read_credential_with_fallback_inner`), and so does this,
                 // except for a private token, which only the partition holds.
-                Err(e) if e == "USER_LOCKED" && !private => {}
+                Err(e) if e == "USER_LOCKED" && !private()? => {}
                 // Anything else the app would report, so the plan stops too.
-                Err(e) => {
-                    return Err(KeystoreExportError::Encryption(format!(
-                        "Read {key} from this device's partition: {e}"
-                    )))
-                }
+                Err(e) => return Err(unread(e)),
             }
         }
     }
@@ -1362,11 +1362,28 @@ fn read_effective_secret(
     }
 }
 
-/// Store (`Some`) or delete (`None`) one per-profile secret where the app
-/// reads it: the vault and the active user's row in the partition database at
-/// `db`. `store_active_credential_dual` would not do: it mirrors only
-/// `server_*` and `ai_apikey_*`, and a partition row left behind for any other
-/// key would shadow the vault value just written.
+/// The account `conn`'s partition writes go to: its active one.
+fn receiver_in(conn: &rusqlite::Connection) -> Result<Option<Receiver>, String> {
+    let Some(user_id) = crate::user_partitions::active_user_id(conn)? else {
+        return Ok(None);
+    };
+    Ok(Some(Receiver {
+        user_id,
+        legacy_owner: crate::user_partitions::is_legacy_owner(conn, user_id)?,
+    }))
+}
+
+/// Whether `receiver` reads the vault copy of a private token: the legacy
+/// owner, or anyone on an install without accounts.
+fn reads_vault_tokens(receiver: Option<Receiver>) -> bool {
+    receiver.is_none_or(|r| r.legacy_owner)
+}
+
+/// Store (`Some`) or delete (`None`) one per-profile secret where `receiver`
+/// reads it: the vault and its row in the partition database at `db`.
+/// `store_active_credential_dual` would not do: it mirrors only `server_*` and
+/// `ai_apikey_*`, and a partition row left behind for any other key would
+/// shadow the vault value just written.
 ///
 /// A private token of an account other than the legacy owner goes to that
 /// account's row alone: the vault key of that name is the owner's and keeps
@@ -1374,26 +1391,34 @@ fn read_effective_secret(
 fn write_profile_secret(
     store: &crate::credential_store::CredentialStore,
     db: Option<&Path>,
+    receiver: Option<Receiver>,
     key: &str,
     value: Option<&str>,
 ) -> Result<(), String> {
-    if let Some(db) = db {
-        let conn =
-            rusqlite::Connection::open(db).map_err(|e| format!("open {}: {e}", db.display()))?;
-        if let Some(user_id) = crate::user_partitions::active_user_id(&conn)? {
-            if crate::user_partitions::vault_copy_is_another_accounts(&conn, user_id, key)? {
-                let Some(v) = value else {
-                    return crate::user_partitions::delete_active_user_credential(&conn, key);
-                };
-                let kind = crate::user_partitions::private_token_type(key).unwrap_or("oauth");
-                let mut root_key = store.derive_user_partition_wrapping_key();
-                let written = crate::user_partitions::set_active_user_credential(
-                    &conn, &root_key, key, kind, v,
+    if let (Some(db), Some(receiver)) = (db, receiver) {
+        if crate::user_partitions::private_token_type(key).is_some() && !receiver.legacy_owner {
+            let conn = rusqlite::Connection::open(db)
+                .map_err(|e| format!("open {}: {e}", db.display()))?;
+            let Some(v) = value else {
+                return crate::user_partitions::delete_user_credential_for(
+                    &conn,
+                    receiver.user_id,
+                    key,
                 );
-                root_key.zeroize();
-                // No vault copy to fall back on: a locked account is reported.
-                return written.map_err(|e| format!("partition row not written: {e}"));
-            }
+            };
+            let kind = crate::user_partitions::private_token_type(key).unwrap_or("oauth");
+            let mut root_key = store.derive_user_partition_wrapping_key();
+            let written = crate::user_partitions::set_user_credential_for(
+                &conn,
+                &root_key,
+                receiver.user_id,
+                key,
+                kind,
+                v,
+            );
+            root_key.zeroize();
+            // No vault copy to fall back on: a locked account is reported.
+            return written.map_err(|e| format!("partition row not written: {e}"));
         }
     }
     match value {
@@ -1403,16 +1428,16 @@ fn write_profile_secret(
             Err(e) => return Err(e.to_string()),
         },
     }
-    let Some(db) = db else { return Ok(()) };
-    let conn = rusqlite::Connection::open(db).map_err(|e| format!("open {}: {e}", db.display()))?;
-    if crate::user_partitions::active_user_id(&conn)?.is_none() {
+    let (Some(db), Some(receiver)) = (db, receiver) else {
         return Ok(());
-    }
+    };
+    let conn = rusqlite::Connection::open(db).map_err(|e| format!("open {}: {e}", db.display()))?;
     if let Some(v) = value {
         let mut root_key = store.derive_user_partition_wrapping_key();
-        let written = crate::user_partitions::set_active_user_credential(
+        let written = crate::user_partitions::set_user_credential_for(
             &conn,
             &root_key,
+            receiver.user_id,
             key,
             crate::user_partitions::relocate_secret_kind(key),
             v,
@@ -1431,7 +1456,7 @@ fn write_profile_secret(
             Err(e) => return Err(format!("partition row not written: {e}")),
         }
     }
-    crate::user_partitions::delete_active_user_credential(&conn, key)
+    crate::user_partitions::delete_user_credential_for(&conn, receiver.user_id, key)
 }
 
 /// This device's active profile list and where it came from: the partition
@@ -1506,20 +1531,20 @@ fn profile_plan_inputs(
     let mut backup_unreadable = false;
     if sections.sqlite_dbs {
         if let Some(db) = payload.sqlite_dumps.get("user_partitions.db") {
-            match open_backup_partition(
+            // Kept when its list cannot be read: it still names the account
+            // the restore leaves active.
+            let opened = open_backup_partition(
                 store,
                 db,
                 payload.user_partition_transport.as_ref(),
                 password,
-            )
-            .and_then(|bp| {
-                let list = crate::user_partitions::read_active_profiles_from_db(store, &bp.path)?;
-                Ok((bp, list))
+            );
+            match opened.as_ref().map_err(String::clone).and_then(|bp| {
+                crate::user_partitions::read_active_profiles_from_db(store, &bp.path)
             }) {
-                Ok((bp, list)) => {
+                Ok(list) => {
                     backup = Some(list);
                     source = ProfileListSource::Partition;
-                    backup_partition = Some(bp);
                 }
                 Err(e) => {
                     tracing::warn!(
@@ -1528,6 +1553,7 @@ fn profile_plan_inputs(
                     backup_unreadable = true;
                 }
             }
+            backup_partition = opened.ok();
         }
     }
     if backup.is_none() && sections.vault {
@@ -1571,17 +1597,62 @@ fn profile_plan_inputs(
     };
     let local_conn = partition_db(config_dir).and_then(|db| open_ro(&db));
     let backup_conn = backup_partition.as_ref().and_then(|bp| open_ro(&bp.path));
+    // The account the profile step writes to: the restored partition's
+    // active one when the import restores the backup's partition, this
+    // device's otherwise. The import refuses the step if another one is
+    // active when it writes.
+    let restores_partition = config_dir.is_some()
+        && sections.sqlite_dbs
+        && payload.sqlite_dumps.contains_key("user_partitions.db")
+        && !(merge_strategy == "skip_existing" && backup_unreadable);
+    let account_of = |conn: Option<&rusqlite::Connection>| {
+        conn.map(receiver_in)
+            .transpose()
+            .map(Option::flatten)
+            .map_err(|e| KeystoreExportError::Encryption(format!("Read the import's account: {e}")))
+    };
+    let here = account_of(local_conn.as_ref())?;
+    let (receiver, backup_conn) = if restores_partition {
+        (account_of(backup_conn.as_ref())?, backup_conn)
+    } else {
+        (here, None)
+    };
     let mut root_key = store.derive_user_partition_wrapping_key();
 
     let mut local_secrets = HashMap::new();
     let mut backup_secrets = HashMap::new();
+    let mut local_vault = HashMap::new();
     let mut failure = None;
     'keys: for profile in local.iter().chain(backup.iter().flatten()) {
         for key in keystore_profile_plan::secret_keys(profile) {
             if local_secrets.contains_key(&key) {
                 continue;
             }
-            match read_effective_secret(store, local_conn.as_ref(), &root_key, &key) {
+            let private = crate::user_partitions::private_token_type(&key).is_some();
+            if private {
+                match store.get(&key) {
+                    Ok(v) => local_vault.insert(key.clone(), Some(Zeroizing::new(v))),
+                    Err(crate::credential_store::CredentialError::NotFound(_)) => {
+                        local_vault.insert(key.clone(), None)
+                    }
+                    Err(e) => {
+                        failure = Some(from_store_error(e));
+                        break 'keys;
+                    }
+                };
+            }
+            // This device's value for the receiver: what this device's
+            // account reads, when it is the receiver. A private token of
+            // another account is not the receiver's: it has the vault's when
+            // it reads the vault, nothing otherwise.
+            let local_value = if private && receiver != here {
+                Ok(reads_vault_tokens(receiver)
+                    .then(|| local_vault.get(&key).cloned().flatten())
+                    .flatten())
+            } else {
+                read_effective_secret(store, local_conn.as_ref(), &root_key, &key)
+            };
+            match local_value {
                 Ok(v) => {
                     local_secrets.insert(key.clone(), v);
                 }
@@ -1590,19 +1661,17 @@ fn profile_plan_inputs(
                     break 'keys;
                 }
             }
-            // The backup's value as the app will read it after the import:
-            // its partition row, else its vault entry (vault section only).
-            let from_partition = backup_conn.as_ref().and_then(|conn| {
-                let user_id = crate::user_partitions::active_user_id(conn)
-                    .ok()
-                    .flatten()?;
-                crate::user_partitions::get_user_credential_for(conn, &root_key, user_id, &key)
+            // The backup's value as the receiver will read it after the
+            // import: its row in the restored partition, else the backup's
+            // vault entry (vault section only), which is a private token's
+            // only when the receiver reads the vault.
+            let from_partition = backup_conn.as_ref().zip(receiver).and_then(|(conn, r)| {
+                crate::user_partitions::get_user_credential_for(conn, &root_key, r.user_id, &key)
                     .ok()
                     .flatten()
             });
             let value = from_partition.or_else(|| {
-                sections
-                    .vault
+                (sections.vault && (!private || reads_vault_tokens(receiver)))
                     .then(|| payload.vault_entries.get(&key))
                     .flatten()
                     .map(|v| Zeroizing::new(v.clone()))
@@ -1627,6 +1696,8 @@ fn profile_plan_inputs(
         keep_local_by_default: merge_strategy == "skip_existing",
         local_secrets,
         backup_secrets,
+        receiver,
+        local_vault,
         security_reset,
     })
 }
@@ -1654,7 +1725,11 @@ pub struct ProfileChoices<'a> {
 /// list come from the plan; the legacy blob is read by the import before its
 /// vault commit.
 struct ProfileStepSnapshot {
+    receiver: Option<Receiver>,
     secrets: Vec<(String, Option<Zeroizing<String>>)>,
+    /// The vault keys the receiver's writes leave alone (another account's
+    /// private tokens), as they were: the vault section may have replaced them.
+    vault: Vec<(String, Option<Zeroizing<String>>)>,
     list: Vec<serde_json::Value>,
     blob: Option<String>,
 }
@@ -1703,8 +1778,21 @@ fn restore_profile_step(
 ) -> Vec<String> {
     let mut failures = Vec::new();
     for (key, value) in &snapshot.secrets {
-        if let Err(e) = write_profile_secret(store, db, key, value.as_ref().map(|v| v.as_str())) {
+        let value = value.as_ref().map(|v| v.as_str());
+        if let Err(e) = write_profile_secret(store, db, snapshot.receiver, key, value) {
             failures.push(format!("{key}: {e}"));
+        }
+    }
+    for (key, value) in &snapshot.vault {
+        let restored = match value {
+            Some(v) => store.store(key, v).map_err(|e| e.to_string()),
+            None => match store.delete(key) {
+                Ok(_) | Err(crate::credential_store::CredentialError::NotFound(_)) => Ok(()),
+                Err(e) => Err(e.to_string()),
+            },
+        };
+        if let Err(e) = restored {
+            failures.push(format!("{key} (vault): {e}"));
         }
     }
     // Into the partition the app loads now, which may be the backup's.
@@ -1753,6 +1841,18 @@ fn apply_profile_decisions(
         &mut new_profile_id,
     )?;
     let db = partition_db(config_dir);
+    // Written for the account the plan was made for, or not at all: the
+    // restore may have left another one active (a partition that was not
+    // published keeps this device's).
+    let active = match db.as_deref() {
+        Some(db) => rusqlite::Connection::open(db)
+            .map_err(|e| format!("open {}: {e}", db.display()))
+            .and_then(|conn| receiver_in(&conn))?,
+        None => None,
+    };
+    if active != inputs.receiver {
+        return Err(crate::user_partitions::ACCOUNT_CHANGED.to_string());
+    }
     let mut touched: Vec<String> = outcome.secret_ops.iter().map(|(k, _)| k.clone()).collect();
     touched.sort();
     touched.dedup();
@@ -1760,7 +1860,16 @@ fn apply_profile_decisions(
     // now: the import has already replaced it with the backup's version, even
     // for a profile the user kept from this device. A key the plan did not
     // read belongs to a new copy, which did not exist then.
+    let vault = if reads_vault_tokens(inputs.receiver) {
+        Vec::new()
+    } else {
+        touched
+            .iter()
+            .filter_map(|key| Some((key.clone(), inputs.local_vault.get(key)?.clone())))
+            .collect()
+    };
     let snapshot = ProfileStepSnapshot {
+        receiver: inputs.receiver,
         secrets: touched
             .into_iter()
             .map(|key| {
@@ -1768,6 +1877,7 @@ fn apply_profile_decisions(
                 (key, before)
             })
             .collect(),
+        vault,
         list: inputs.local.clone(),
         blob: blob_before_import,
     };
@@ -1777,6 +1887,7 @@ fn apply_profile_decisions(
             write_profile_secret(
                 store,
                 db.as_deref(),
+                inputs.receiver,
                 key,
                 value.as_ref().map(|v| v.as_str()),
             )
@@ -3995,14 +4106,28 @@ mod tests {
                 .map(|v| v.to_string())
         };
         assert_eq!(effective(key), None);
-        write_profile_secret(&store, Some(&db), key, Some("others-token")).unwrap();
+        write_profile_secret(
+            &store,
+            Some(&db),
+            active_receiver(&db),
+            key,
+            Some("others-token"),
+        )
+        .unwrap();
         assert_eq!(store.get(key).unwrap(), "owners-token");
         assert_eq!(effective(key).as_deref(), Some("others-token"));
-        write_profile_secret(&store, Some(&db), key, None).unwrap();
+        write_profile_secret(&store, Some(&db), active_receiver(&db), key, None).unwrap();
         assert_eq!(store.get(key).unwrap(), "owners-token");
         assert_eq!(effective(key), None);
 
-        write_profile_secret(&store, Some(&db), "server_srv_drive", Some("password")).unwrap();
+        write_profile_secret(
+            &store,
+            Some(&db),
+            active_receiver(&db),
+            "server_srv_drive",
+            Some("password"),
+        )
+        .unwrap();
         assert_eq!(store.get("server_srv_drive").unwrap(), "password");
         assert_eq!(effective("server_srv_drive").as_deref(), Some("password"));
     }
@@ -4152,6 +4277,346 @@ mod tests {
         assert!(store.get(key).is_err());
     }
 
+    /// The account a profile write at `db` goes to now.
+    fn active_receiver(db: &Path) -> Option<Receiver> {
+        receiver_in(&rusqlite::Connection::open(db).unwrap()).unwrap()
+    }
+
+    fn dropbox(id: &str, name: &str) -> serde_json::Value {
+        serde_json::json!({"id": id, "name": name, "protocol": "dropbox", "host": "",
+                           "port": 0, "username": "u@example.test"})
+    }
+
+    /// A vault restore with review, run by an account other than the legacy
+    /// owner: the backup's vault entry of a private token is the owner's, so
+    /// accepting the profile gives this account no copy of it, and the
+    /// alignment after the import gives it none either.
+    #[test]
+    fn an_accepted_profile_gives_another_account_no_vault_token_of_the_backup() {
+        let _guard = crate::user_partitions::test_lock();
+        crate::user_partitions::clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let cfg = dir.path().join("config");
+        partition_with(&store, &cfg, &[]);
+        let root = store.derive_user_partition_wrapping_key();
+        let mut conn = rusqlite::Connection::open(cfg.join("user_partitions.db")).unwrap();
+        let other = crate::user_partitions::create_passphrase_less_user(
+            &mut conn, &root, "Other", None, None,
+        )
+        .unwrap();
+        crate::user_partitions::set_active_user(&conn, other.id).unwrap();
+        crate::user_partitions::migrate_credentials_eager_all(&conn, &store, &root).unwrap();
+        let key = "oauth_dropbox_srv_new";
+        let mut payload = ExportPayload::default();
+        payload.vault_entries.insert(
+            "config_server_profiles".to_string(),
+            serde_json::to_string(&vec![dropbox("srv_new", "New")]).unwrap(),
+        );
+        payload
+            .vault_entries
+            .insert(key.to_string(), "owners-token".to_string());
+        let backup = dir.path().join("vault.aeroftp-keystore");
+        seal_backup(&backup, PASSWORD_736, &payload);
+        let sections = ImportSections {
+            vault: true,
+            sqlite_dbs: false,
+            files: false,
+            local_storage: false,
+        };
+        let fingerprint = preview_keystore_import_with_store(
+            &store,
+            PASSWORD_736,
+            &backup,
+            "overwrite",
+            sections,
+            Some(&cfg),
+        )
+        .unwrap()
+        .fingerprint;
+        let decisions = [ProfileDecisionInput {
+            id: "srv_new".into(),
+            decision: keystore_profile_plan::ProfileDecision::Accept,
+            copy_name: None,
+        }];
+        let result = import_keystore_with_store(
+            &store,
+            PASSWORD_736,
+            &backup,
+            "overwrite",
+            sections,
+            Some(&cfg),
+            None,
+            Some(ProfileChoices {
+                decisions: &decisions,
+                fingerprint: &fingerprint,
+            }),
+        )
+        .unwrap();
+        assert_eq!(result.profile_decisions_error, None);
+        crate::user_partitions::migrate_credentials_eager_all(&conn, &store, &root).unwrap();
+        assert_eq!(
+            crate::user_partitions::get_user_credential_for(&conn, &root, other.id, key)
+                .unwrap()
+                .map(|v| v.to_string()),
+            None,
+            "the other account got the owner's token from the backup"
+        );
+        assert_eq!(store.get(key).unwrap(), "owners-token");
+    }
+
+    /// This device, the legacy owner active, reads the owner's token from the
+    /// vault; the backup's partition leaves another account active. A failed
+    /// profile step puts the token back where it was, the owner's vault key,
+    /// and gives the other account no copy of it; the message says so only
+    /// because it is so.
+    #[test]
+    fn a_failed_step_puts_a_token_back_in_the_account_that_held_it() {
+        let _guard = crate::user_partitions::test_lock();
+        crate::user_partitions::clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let cfg = dir.path().join("config");
+        partition_with(&store, &cfg, &[dropbox("srv_drive", "Drive")]);
+        let key = "oauth_dropbox_srv_drive";
+        store.store(key, "owners-token").unwrap();
+        let source_cfg = dir.path().join("source");
+        partition_with(&store, &source_cfg, &[dropbox("srv_drive", "Drive")]);
+        let root = store.derive_user_partition_wrapping_key();
+        let source_db = source_cfg.join("user_partitions.db");
+        let mut conn = rusqlite::Connection::open(&source_db).unwrap();
+        let other = crate::user_partitions::create_passphrase_less_user(
+            &mut conn, &root, "Other", None, None,
+        )
+        .unwrap();
+        let backup_list = vec![dropbox("srv_drive", "Drive B")];
+        crate::user_partitions::replace_server_profiles_for(
+            &mut conn,
+            &root,
+            other.id,
+            &backup_list,
+        )
+        .unwrap();
+        crate::user_partitions::set_user_credential_for(
+            &conn,
+            &root,
+            other.id,
+            key,
+            "oauth",
+            "others-token",
+        )
+        .unwrap();
+        crate::user_partitions::set_active_user(&conn, other.id).unwrap();
+        // The copy "keep both" makes cannot be written (a new id is
+        // `srv_<digits>_...`): the step fails after its first writes.
+        conn.execute_batch(
+            "CREATE TRIGGER refuse_copy BEFORE INSERT ON user_credentials
+             WHEN NEW.credential_id GLOB 'oauth_dropbox_srv_[0-9]*'
+             BEGIN SELECT RAISE(ABORT, 'disk full'); END;",
+        )
+        .unwrap();
+        drop(conn);
+        let mut payload = ExportPayload::default();
+        payload.vault_entries.insert(
+            "config_server_profiles".to_string(),
+            serde_json::to_string(&backup_list).unwrap(),
+        );
+        payload
+            .vault_entries
+            .insert(key.to_string(), "backup-vault-token".to_string());
+        payload.sqlite_dumps.insert(
+            "user_partitions.db".to_string(),
+            snapshot_sqlite_db(&source_db).unwrap().unwrap(),
+        );
+        let backup = dir.path().join("full.aeroftp-keystore");
+        seal_backup(&backup, PASSWORD_736, &payload);
+
+        let decisions = [ProfileDecisionInput {
+            id: "srv_drive".into(),
+            decision: keystore_profile_plan::ProfileDecision::Both,
+            copy_name: Some("Drive (backup)".into()),
+        }];
+        let fingerprint = previewed(&store, &cfg, &backup, "overwrite");
+        let result = import_keystore_with_store(
+            &store,
+            PASSWORD_736,
+            &backup,
+            "overwrite",
+            ImportSections::default(),
+            Some(&cfg),
+            None,
+            Some(ProfileChoices {
+                decisions: &decisions,
+                fingerprint: &fingerprint,
+            }),
+        )
+        .unwrap();
+
+        let error = result
+            .profile_decisions_error
+            .expect("the profile step did not fail");
+        assert!(error.contains("disk full"), "{error}");
+        assert!(!error.contains("also failed"), "{error}");
+        let conn = rusqlite::Connection::open(cfg.join("user_partitions.db")).unwrap();
+        assert_eq!(
+            crate::user_partitions::get_user_credential_for(&conn, &root, other.id, key)
+                .unwrap()
+                .map(|v| v.to_string()),
+            None,
+            "the owner's token was put back into another account's row"
+        );
+        assert_eq!(
+            store.get(key).unwrap(),
+            "owners-token",
+            "the owner's vault key was left replaced"
+        );
+    }
+
+    /// The profile step writes to the account its plan was made for. When the
+    /// restore leaves another one active, here because the backup's partition
+    /// could not be published and this device's stays, the step is refused
+    /// before it writes, and this device's account keeps its own token.
+    #[test]
+    fn decisions_for_another_account_are_refused_before_they_write() {
+        let _guard = crate::user_partitions::test_lock();
+        crate::user_partitions::clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let cfg = dir.path().join("config");
+        partition_with(&store, &cfg, &[dropbox("srv_drive", "Drive")]);
+        let key = "oauth_dropbox_srv_drive";
+        store.store(key, "owners-token").unwrap();
+        let source_cfg = dir.path().join("source");
+        partition_with(
+            &store,
+            &source_cfg,
+            &[dropbox("srv_drive", "Drive"), relaxed("srv_lab", "Lab")],
+        );
+        let root = store.derive_user_partition_wrapping_key();
+        let source_db = source_cfg.join("user_partitions.db");
+        let mut conn = rusqlite::Connection::open(&source_db).unwrap();
+        let other = crate::user_partitions::create_passphrase_less_user(
+            &mut conn, &root, "Other", None, None,
+        )
+        .unwrap();
+        let backup_list = vec![dropbox("srv_drive", "Drive B")];
+        crate::user_partitions::replace_server_profiles_for(
+            &mut conn,
+            &root,
+            other.id,
+            &backup_list,
+        )
+        .unwrap();
+        crate::user_partitions::set_user_credential_for(
+            &conn,
+            &root,
+            other.id,
+            key,
+            "oauth",
+            "others-token",
+        )
+        .unwrap();
+        crate::user_partitions::set_active_user(&conn, other.id).unwrap();
+        // The security reset of the owner's relaxed profile cannot be written:
+        // the backup's partition is not published.
+        conn.execute_batch(
+            "CREATE TRIGGER fail_reset BEFORE INSERT ON server_profiles
+             BEGIN SELECT RAISE(FAIL, 'forced reset failure'); END;",
+        )
+        .unwrap();
+        drop(conn);
+        let mut payload = ExportPayload::default();
+        payload.sqlite_dumps.insert(
+            "user_partitions.db".to_string(),
+            snapshot_sqlite_db(&source_db).unwrap().unwrap(),
+        );
+        let backup = dir.path().join("full.aeroftp-keystore");
+        seal_backup(&backup, PASSWORD_736, &payload);
+
+        let decisions = [ProfileDecisionInput {
+            id: "srv_drive".into(),
+            decision: keystore_profile_plan::ProfileDecision::Accept,
+            copy_name: None,
+        }];
+        let fingerprint = previewed(&store, &cfg, &backup, "overwrite");
+        let result = import_keystore_with_store(
+            &store,
+            PASSWORD_736,
+            &backup,
+            "overwrite",
+            ImportSections::default(),
+            Some(&cfg),
+            None,
+            Some(ProfileChoices {
+                decisions: &decisions,
+                fingerprint: &fingerprint,
+            }),
+        )
+        .unwrap();
+
+        assert_eq!(
+            result.sqlite_dbs_failed,
+            vec!["user_partitions.db".to_string()]
+        );
+        assert_eq!(
+            store.get(key).unwrap(),
+            "owners-token",
+            "another account's token was written for this device's"
+        );
+        assert_eq!(
+            effective_secret(&store, &cfg, key).as_deref(),
+            Some("owners-token")
+        );
+        let error = result
+            .profile_decisions_error
+            .expect("the decisions were applied");
+        assert!(error.starts_with("ACCOUNT_CHANGED"), "{error}");
+    }
+
+    /// The preview reads this device's row of a token before it asks whose
+    /// the vault copy is: a legacy owner it cannot read stops it only where
+    /// there is no row to read.
+    #[test]
+    fn a_readable_row_is_read_before_whose_the_vault_copy_is() {
+        let _guard = crate::user_partitions::test_lock();
+        crate::user_partitions::clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let cfg = dir.path().join("config");
+        partition_with(&store, &cfg, &[]);
+        let root = store.derive_user_partition_wrapping_key();
+        let mut conn = rusqlite::Connection::open(cfg.join("user_partitions.db")).unwrap();
+        let other = crate::user_partitions::create_passphrase_less_user(
+            &mut conn, &root, "Other", None, None,
+        )
+        .unwrap();
+        crate::user_partitions::set_active_user(&conn, other.id).unwrap();
+        crate::user_partitions::set_user_credential_for(
+            &conn,
+            &root,
+            other.id,
+            "oauth_dropbox_srv_row",
+            "oauth",
+            "own-token",
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT OR REPLACE INTO global_state(key, value, updated_at)
+             VALUES ('legacy_credential_owner_id', 'not a number', 0)",
+            [],
+        )
+        .unwrap();
+        let read = |key: &str| read_effective_secret(&store, Some(&conn), &root, key);
+        assert_eq!(
+            read("oauth_dropbox_srv_row")
+                .unwrap()
+                .map(|v| v.to_string())
+                .as_deref(),
+            Some("own-token")
+        );
+        assert!(read("oauth_dropbox_srv_none").is_err());
+    }
+
     #[test]
     fn the_preview_reads_the_backup_partition_and_writes_nothing() {
         let dir = tempfile::tempdir().unwrap();
@@ -4256,6 +4721,7 @@ mod tests {
         write_profile_secret(
             &store,
             Some(&db),
+            active_receiver(&db),
             "server_srv_drive",
             Some("backup-password"),
         )
@@ -4263,6 +4729,7 @@ mod tests {
         write_profile_secret(
             &store,
             Some(&db),
+            active_receiver(&db),
             "server_srv_photos",
             Some("photos-password"),
         )
@@ -4298,6 +4765,7 @@ mod tests {
         write_profile_secret(
             &store,
             Some(&db),
+            active_receiver(&db),
             "server_srv_drive",
             Some("local-password"),
         )
@@ -4589,6 +5057,7 @@ mod tests {
         let written = write_profile_secret(
             &other_key,
             Some(&cfg.join("user_partitions.db")),
+            active_receiver(&cfg.join("user_partitions.db")),
             "server_srv_drive",
             Some("backup-password"),
         );

@@ -6075,6 +6075,13 @@ pub fn private_token_type(credential_id: &str) -> Option<&'static str> {
         .then_some("oauth")
 }
 
+/// Whether `user_id` is the legacy owner, whose private tokens are also the
+/// vault's ([`vault_copy_is_another_accounts`]); answered on a read-only
+/// connection too.
+pub(crate) fn is_legacy_owner(conn: &Connection, user_id: i64) -> Result<bool, String> {
+    Ok(nonprofile_secret_owner_unpersisted(conn)? == Some(user_id))
+}
+
 /// Whether the vault copy of `credential_id` is someone else's for
 /// `user_id`: a private token ([`private_token_type`]) and an account other
 /// than the legacy owner, whose key of that name it is. Such an account reads

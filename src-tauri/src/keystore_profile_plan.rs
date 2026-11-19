@@ -133,6 +133,17 @@ pub struct ProfileDecisionInput {
     pub copy_name: Option<String>,
 }
 
+/// The account an import writes its profile step to, chosen with the plan:
+/// the active account of the partition the import restores, or of this
+/// device's when it restores none. The legacy owner's private tokens are the
+/// vault's too; another account's are its partition row alone
+/// (`user_partitions::vault_copy_is_another_accounts`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Receiver {
+    pub user_id: i64,
+    pub legacy_owner: bool,
+}
+
 /// The two lists and the secrets the plan works on.
 pub struct PlanInputs {
     pub local: Vec<Value>,
@@ -153,6 +164,13 @@ pub struct PlanInputs {
     pub local_secrets: HashMap<String, Option<Zeroizing<String>>>,
     /// The backup's value for the same keys. Absent keys are not in the map.
     pub backup_secrets: HashMap<String, Zeroizing<String>>,
+    /// The account the secrets are read for and written to; `None` on an
+    /// install without accounts.
+    pub receiver: Option<Receiver>,
+    /// The vault's own value of every private token key the plan read, before
+    /// the import wrote anything: what a failed step puts back in the vault
+    /// when the receiver's writes leave it alone.
+    pub local_vault: HashMap<String, Option<Zeroizing<String>>>,
     /// What bringing the backup's profiles to their safe state reset: a
     /// restore takes no relaxing option from the backup (CodeRabbit on #1524).
     pub security_reset: Vec<crate::profile_security::ProfileReset>,
@@ -415,12 +433,13 @@ pub fn fingerprint(inputs: &PlanInputs) -> String {
     };
     field(
         format!(
-            "{:?}|{:?}|{}|{}|{}",
+            "{:?}|{:?}|{}|{}|{}|{:?}",
             inputs.source,
             inputs.local_source,
             inputs.replaces_list,
             inputs.keep_local_by_default,
-            inputs.backup_unreadable
+            inputs.backup_unreadable,
+            inputs.receiver
         )
         .as_bytes(),
     );
@@ -673,6 +692,8 @@ mod tests {
                 ("server_srv_b", "pw-b-backup"),
                 ("server_srv_d", "pw-d"),
             ]),
+            receiver: None,
+            local_vault: HashMap::new(),
             security_reset: Vec::new(),
         }
     }
