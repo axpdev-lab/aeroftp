@@ -161,13 +161,44 @@ struct KDriveVersion {
     version_number: Option<i64>,
 }
 
-/// One page of the v3 versions listing: `cursor` and `has_more` sit beside
-/// `data` at the top level of the envelope, as in the trash listing.
+/// One page of the v3 versions listing. `cursor` and `has_more` sit beside
+/// `data` at the top level of the envelope, as in the trash listing; the
+/// files listing also answers them nested (`data: {data, has_more, cursor}`,
+/// [`FilesPayload`]), and the versions endpoint is not documented, so both
+/// shapes are read and neither cuts the listing at its first page.
 #[derive(Debug, Deserialize)]
 struct VersionsPage {
-    data: Option<Vec<KDriveVersion>>,
+    data: Option<VersionsData>,
     has_more: Option<bool>,
     cursor: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum VersionsData {
+    Flat(Vec<KDriveVersion>),
+    Nested {
+        #[serde(default)]
+        data: Vec<KDriveVersion>,
+        has_more: Option<bool>,
+        cursor: Option<String>,
+    },
+}
+
+impl VersionsPage {
+    /// The versions of the page, whether more follow, and the cursor to
+    /// them, from whichever shape the page has (the nested one first).
+    fn into_parts(self) -> (Vec<KDriveVersion>, Option<bool>, Option<String>) {
+        match self.data {
+            Some(VersionsData::Flat(data)) => (data, self.has_more, self.cursor),
+            Some(VersionsData::Nested {
+                data,
+                has_more,
+                cursor,
+            }) => (data, has_more.or(self.has_more), cursor.or(self.cursor)),
+            None => (Vec::new(), self.has_more, self.cursor),
+        }
+    }
 }
 
 /// A versions answer in the order every `list_versions` answers in
@@ -685,17 +716,30 @@ impl KDriveProvider {
     /// in the folder the server just returned.
     async fn resolve_folder(&mut self, path: &str, other_case: bool) -> Result<i64, ProviderError> {
         let normalized = Self::normalize_path(path);
-        let (id, cached) = self.walk_folder(&normalized, other_case).await?;
-        let Some((cached_id, at)) = cached else {
-            return Ok(id);
-        };
-        if self.folder_is_at(cached_id, at.as_deref()).await? {
-            return Ok(id);
+        if normalized == "/" {
+            return Ok(self.root_file_id);
         }
-        super::forget_cached_ancestors(&mut self.dir_cache, &normalized);
-        self.walk_folder(&normalized, other_case)
-            .await
-            .map(|(id, _)| id)
+        let parts: Vec<&str> = normalized.split('/').filter(|s| !s.is_empty()).collect();
+        // The deepest folder on the way with a cached id is confirmed before
+        // anything is looked up or cached below it, so a child of a folder
+        // moved away is never taken (or cached with the moved folder's path)
+        // for one at the path. A folder not where it was forgets the ids on
+        // the way, and the path is walked from the root.
+        let deepest = (1..=parts.len()).rev().find_map(|depth| {
+            let prefix = format!("/{}", parts[..depth].join("/"));
+            self.dir_cache
+                .get(&prefix)
+                .map(|info| (info.id, info.at.clone(), depth))
+        });
+        let (start_id, start) = match deepest {
+            Some((id, at, depth)) if self.folder_is_at(id, at.as_deref()).await? => (id, depth),
+            Some(_) => {
+                super::forget_cached_ancestors(&mut self.dir_cache, &normalized);
+                (self.root_file_id, 0)
+            }
+            None => (self.root_file_id, 0),
+        };
+        self.walk_folder(&parts, start, start_id, other_case).await
     }
 
     /// Whether kDrive gives the folder `folder_id` the path `at` now. A
@@ -723,37 +767,25 @@ impl KDriveProvider {
         }))
     }
 
-    /// The walk behind [`Self::resolve_folder`], and the deepest folder it
-    /// took from the cache, with the path kDrive gave for it then.
+    /// The walk behind [`Self::resolve_folder`]: from `start_id`, the
+    /// folder of the first `start` parts, each later part is looked up live
+    /// in the folder kDrive just returned.
     async fn walk_folder(
         &mut self,
-        normalized: &str,
+        parts: &[&str],
+        start: usize,
+        start_id: i64,
         other_case: bool,
-    ) -> Result<(i64, Option<(i64, Option<String>)>), ProviderError> {
-        if normalized == "/" {
-            return Ok((self.root_file_id, None));
-        }
-
-        // Check cache
-        if let Some(info) = self.dir_cache.get(normalized) {
-            return Ok((info.id, Some((info.id, info.at.clone()))));
-        }
-
-        // Walk path components
-        let parts: Vec<&str> = normalized.split('/').filter(|s| !s.is_empty()).collect();
-        let mut current_id = self.root_file_id;
+    ) -> Result<i64, ProviderError> {
+        let mut current_id = start_id;
         let mut current_path = String::new();
-        let mut exact_so_far = true;
-        let mut cached = None;
-
-        for part in &parts {
+        for part in &parts[..start] {
             current_path = format!("{}/{}", current_path, part);
+        }
+        let mut exact_so_far = true;
 
-            if let Some(info) = self.dir_cache.get(&current_path) {
-                current_id = info.id;
-                cached = Some((info.id, info.at.clone()));
-                continue;
-            }
+        for part in &parts[start..] {
+            current_path = format!("{}/{}", current_path, part);
 
             // KD-011: List children with pagination to handle directories with >200 entries
             let base_url = self.api_url_v3(&format!("/files/{}/files", current_id));
@@ -842,7 +874,7 @@ impl KDriveProvider {
             }
         }
 
-        Ok((current_id, cached))
+        Ok(current_id)
     }
 
     /// Find a file by name in a given folder, returns (file_id, is_dir)
@@ -2011,8 +2043,9 @@ impl StorageProvider for KDriveProvider {
             let page: VersionsPage = serde_json::from_str(&text).map_err(|e| {
                 ProviderError::ServerError(format!("Parse versions response failed: {}", e))
             })?;
-            listed.extend(page.data.unwrap_or_default());
-            match (page.has_more, page.cursor) {
+            let (data, has_more, next) = page.into_parts();
+            listed.extend(data);
+            match (has_more, next) {
                 (Some(true), Some(next)) if !next.is_empty() && seen.insert(next.clone()) => {
                     cursor = Some(next)
                 }
@@ -2474,6 +2507,27 @@ mod api_failure_tests {
 
 #[cfg(test)]
 mod tests {
+    /// A versions page is read in both envelope shapes, with `has_more` and
+    /// `cursor` beside `data` or nested inside it, so neither stops the
+    /// listing at its first page.
+    #[test]
+    fn a_versions_page_is_read_flat_or_nested() {
+        let version = r#"{"id":7,"file_id":42,"size":3,"created_at":1700000000}"#;
+        for body in [
+            format!(r#"{{"result":"success","data":[{version}],"has_more":true,"cursor":"c2"}}"#),
+            format!(
+                r#"{{"result":"success","data":{{"data":[{version}],"has_more":true,"cursor":"c2"}}}}"#
+            ),
+        ] {
+            let page: super::VersionsPage = serde_json::from_str(&body).expect(&body);
+            let (data, has_more, cursor) = page.into_parts();
+            assert_eq!(data.len(), 1, "{body}");
+            assert_eq!(data[0].id, 7);
+            assert_eq!(has_more, Some(true), "{body}");
+            assert_eq!(cursor.as_deref(), Some("c2"), "{body}");
+        }
+    }
+
     #[tokio::test]
     async fn probe_contract_kdrive_root_is_not_a_missing_child() {
         let (mut provider, _) = provider_on_kdrive_root(false, None).await;
@@ -2920,7 +2974,9 @@ mod tests {
 
     /// A kDrive double for the cache tests: `/docs` is folder 60 now,
     /// holding `a.txt` (11); folder 50 was cached as `/docs` and moved to
-    /// `/archive/docs`, holding another `a.txt` (99). Every request is
+    /// `/archive/docs`, holding another `a.txt` (99). Each holds a folder
+    /// `sub` (61 at the path, 51 in the moved one) with its own `a.txt` (12,
+    /// 98). Every request is
     /// recorded as `METHOD target`.
     async fn kdrive_with_a_moved_folder() -> (
         KDriveProvider,
@@ -2942,6 +2998,9 @@ mod tests {
                     let dir = |id: i64, path: &str| {
                         serde_json::json!({ "id": id, "name": "docs", "type": "dir", "path": path })
                     };
+                    let sub = |id: i64, path: &str| {
+                        serde_json::json!({ "id": id, "name": "sub", "type": "dir", "path": path })
+                    };
                     let body = match (method.as_str(), target.as_str()) {
                         ("GET", "/3/drive/987654/files/1/files?with=path") => {
                             serde_json::json!({ "result": "success", "data": [dir(60, "/docs")] })
@@ -2956,6 +3015,28 @@ mod tests {
                         }
                         ("GET", "/3/drive/987654/files/50/files") => {
                             serde_json::json!({ "result": "success", "data": [file(99)] })
+                        }
+                        // `sub`: 61 in the folder at the path, 51 in the moved one.
+                        ("GET", "/3/drive/987654/files/60/files?with=path") => serde_json::json!({
+                            "result": "success", "data": [sub(61, "/docs/sub")] }),
+                        ("GET", "/3/drive/987654/files/50/files?with=path") => serde_json::json!({
+                            "result": "success", "data": [sub(51, "/archive/docs/sub")] }),
+                        ("GET", "/3/drive/987654/files/61/files?with=path")
+                        | ("GET", "/3/drive/987654/files/51/files?with=path") => {
+                            serde_json::json!({ "result": "success", "data": [] })
+                        }
+                        ("GET", "/3/drive/987654/files/61?with=path") => serde_json::json!({
+                            "result": "success", "data": sub(61, "/docs/sub") }),
+                        ("GET", "/3/drive/987654/files/51?with=path") => serde_json::json!({
+                            "result": "success", "data": sub(51, "/archive/docs/sub") }),
+                        ("GET", "/3/drive/987654/files/61/files") => {
+                            serde_json::json!({ "result": "success", "data": [file(12)] })
+                        }
+                        ("GET", "/3/drive/987654/files/51/files") => {
+                            serde_json::json!({ "result": "success", "data": [file(98)] })
+                        }
+                        ("DELETE", "/2/drive/987654/files/12") | ("DELETE", "/2/drive/987654/files/98") => {
+                            serde_json::json!({ "result": "success", "data": true })
                         }
                         ("GET", "/2/drive/987654/files/11/download") => return "new".into_response(),
                         ("GET", "/2/drive/987654/files/99/download") => return "moved".into_response(),
@@ -3016,6 +3097,36 @@ mod tests {
             !seen
                 .iter()
                 .any(|l| l.contains("/files/50/") || l.contains("/files/99")),
+            "the moved folder was acted in: {seen:?}"
+        );
+    }
+
+    /// A lookup under a cached `/docs` that moved away confirms `/docs`
+    /// before it looks in it: a lookup that fails below it caches nothing of
+    /// the moved folder (its `sub` with the moved path), so a later delete of
+    /// `/docs/sub/a.txt` deletes the file at the path, not the moved one.
+    #[tokio::test]
+    async fn a_failed_lookup_under_a_moved_folder_caches_nothing_of_it() {
+        let (mut provider, seen) = kdrive_with_a_moved_folder().await;
+        cache_docs_as(&mut provider, 50);
+        let missing = provider.stat("/docs/sub/missing/x.txt").await;
+        assert!(
+            matches!(missing, Err(ProviderError::NotFound(_))),
+            "{missing:?}"
+        );
+        provider
+            .delete("/docs/sub/a.txt")
+            .await
+            .expect("the file at the path is deleted");
+        let seen = seen.lock().unwrap();
+        assert!(
+            seen.iter().any(|l| l == "DELETE /2/drive/987654/files/12"),
+            "{seen:?}"
+        );
+        assert!(
+            !seen.iter().any(|l| l.contains("/files/50/")
+                || l.contains("/files/51")
+                || l.contains("/files/98")),
             "the moved folder was acted in: {seen:?}"
         );
     }

@@ -953,11 +953,7 @@ impl TwakeProvider {
                     .into_iter()
                     .filter(|d| d.id != TRASH_DIR_ID && !d.attributes.trashed.unwrap_or(false)),
             );
-            next = page
-                .links
-                .next
-                .filter(|n| n.starts_with('/'))
-                .map(|n| ensure_page_limit(&n));
+            next = next_page_path(page.links.next)?;
         }
         Ok(docs)
     }
@@ -993,6 +989,24 @@ impl TwakeProvider {
 }
 
 /// `links.next` carries only the cursor; keep the page size on every page.
+/// The path of the next page, sent to the instance with its bearer token.
+/// Twake names it relative to the instance (`/files/...`); a link to any
+/// other origin (absolute, or protocol-relative `//host`) is refused before
+/// a request, rather than followed with the token or dropped, which would
+/// end the listing early and read the entries after it as deleted.
+fn next_page_path(next: Option<String>) -> Result<Option<String>, ProviderError> {
+    match next {
+        None => Ok(None),
+        Some(next) if next.starts_with('/') && !next.starts_with("//") => {
+            Ok(Some(ensure_page_limit(&next)))
+        }
+        Some(_) => Err(ProviderError::ServerError(
+            "Twake listing: the next page is outside the configured API, so it was not requested"
+                .into(),
+        )),
+    }
+}
+
 fn ensure_page_limit(next: &str) -> String {
     if next.contains("page%5Blimit%5D") || next.contains("page[limit]") {
         next.to_string()
@@ -1933,6 +1947,27 @@ mod tests {
             ensure_page_limit(page.links.next.as_deref().unwrap()),
             "/files/root?page[cursor]=abc&page%5Blimit%5D=100"
         );
+    }
+
+    /// The bearer token goes only to the instance: a next page on another
+    /// origin is refused, never followed and never silently dropped.
+    #[test]
+    fn a_next_page_outside_the_instance_is_refused() {
+        assert_eq!(next_page_path(None).unwrap(), None);
+        assert_eq!(
+            next_page_path(Some("/files/root?page[cursor]=abc".into())).unwrap(),
+            Some("/files/root?page[cursor]=abc&page%5Blimit%5D=100".into())
+        );
+        for next in [
+            "https://evil.example/files/root?page[cursor]=abc",
+            "//evil.example/files/root",
+            "files/root",
+        ] {
+            assert!(
+                matches!(next_page_path(Some(next.into())), Err(ProviderError::ServerError(ref m)) if m.contains("outside the configured API")),
+                "{next}"
+            );
+        }
     }
 
     #[test]

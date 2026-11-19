@@ -895,3 +895,107 @@ fn nothing_trims_the_initial_folder() {
     expected.sort();
     assert_eq!(excused, expected);
 }
+
+/// What marks a provider line as reading a URL out of a server's answer: a
+/// page link (`@odata.nextLink`, `next_link`, `links.next`, a `next` URL
+/// field), a redirect (`Location`), or an upload or download URL or `href`
+/// an answer names.
+const SERVER_URL_MARKERS: &[&str] = &[
+    "@odata.nextLink",
+    "next_link",
+    "next_url",
+    "nextUrl",
+    "next: Option<String>",
+    "links.next",
+    "\"location\"",
+    "\"Location\"",
+    "header::LOCATION",
+    ".href",
+    "upload_url",
+    "download_url",
+    "upload_link",
+    "download_link",
+];
+
+/// Every provider file that reads a server-given URL, by marker, and why
+/// the token or key it holds cannot go to a host the answer names. A page
+/// URL followed with the account's credential must stay on the configured
+/// API's origin ([`super::next_page_on_api_origin`]); every other kind is
+/// said here.
+const SERVER_URL_SITES: &[(&str, &str, &str)] = &[
+    ("b2.rs", "download_url", "returned by b2_authorize_account at the fixed auth endpoint: it is the configured download origin"),
+    ("b2.rs", "upload_url", "b2_get_upload_url hands each upload its URL with an upload token valid for that URL only, not the account token"),
+    ("cloudinary.rs", "download_url", "built from the configured cloud, checked by validate_download_url, fetched without the API secret"),
+    ("cloudinary.rs", "upload_url", "built from the configured API base, never read from an answer"),
+    ("filelu.rs", "upload_url", "the upload server FileLu names, sent the upload session id the same answer issued, never the API key"),
+    ("google_drive.rs", "\"location\"", "the resumable session URI is its own credential: the chunks go to it without the bearer token"),
+    ("google_photos.rs", "download_url", "a media baseUrl, fetched without the bearer token"),
+    ("google_photos.rs", "upload_url", "built from PHOTOS_API_BASE, never read from an answer"),
+    ("imagekit.rs", "download_url", "checked by validate_download_url, fetched without the private key"),
+    ("imagekit.rs", "upload_url", "a fixed endpoint, never read from an answer"),
+    ("immich.rs", "upload_url", "built from the configured server, never read from an answer"),
+    ("internxt.rs", "next: Option<String>", "a page cursor, sent to the configured API, never a URL"),
+    ("internxt.rs", "upload_url", "a presigned part URL, sent without the account token"),
+    ("jottacloud.rs", "upload_url", "built from the configured API base, never read from an answer"),
+    ("mega_native.rs", "download_url", "a MEGA storage URL, fetched without credentials (the content is encrypted)"),
+    ("mega_native.rs", "upload_url", "a MEGA storage URL, sent without credentials (the content is encrypted)"),
+    ("onedrive.rs", "\"Location\"", "a pre-authenticated download URL, fetched without the bearer token"),
+    ("onedrive.rs", "@odata.nextLink", "followed with the bearer token: next_page_on_api_origin keeps it on Graph"),
+    ("onedrive.rs", "download_url", "@microsoft.graph.downloadUrl is pre-authenticated, fetched without the bearer token"),
+    ("onedrive.rs", "next_link", "followed with the bearer token: next_page_on_api_origin keeps it on Graph"),
+    ("onedrive.rs", "upload_url", "an upload session URL is pre-authenticated, sent without the bearer token"),
+    ("opendrive.rs", "download_link", "kept as metadata or returned as a share link, never requested"),
+    ("pcloud.rs", "download_url", "built from the getfilelink host and path, fetched without the auth token"),
+    ("redirect_policy.rs", "header::LOCATION", "the redirect policy's own test double"),
+    ("s3.rs", "next: Option<String>", "a continuation token, sent to the configured endpoint, never a URL"),
+    ("swift.rs", "\"location\"", "a Keystone redirect, followed only on its origin (keystone_redirect_target)"),
+    ("twake.rs", "links.next", "followed with the bearer token only as a path on the instance (next_page_path)"),
+    ("twake.rs", "next: Option<String>", "followed with the bearer token only as a path on the instance (next_page_path)"),
+    ("uploadcare.rs", "next: Option<String>", "followed with the secret key: validate_uploadcare_api_url keeps it on the API origin"),
+    ("webdav.rs", ".href", "only the path of an href is used, joined to the configured base; its authority is dropped"),
+    ("yandex_disk.rs", ".href", "operation URLs are followed with the OAuth token only on cloud-api.yandex.net (yandex_operation_url); upload and download hrefs are presigned, sent without it, host-checked by validate_yd_url"),
+    ("zoho_workdrive.rs", "download_url", "built from the configured download base, never read from an answer"),
+    ("zoho_workdrive.rs", "next: Option<String>", "only its page[next] cursor is read and sent to the configured API base"),
+    ("zoho_workdrive.rs", "upload_url", "built from the configured upload host, never read from an answer"),
+];
+
+/// The scan behind the F9 review: every provider line that reads a URL out
+/// of an answer is in [`SERVER_URL_SITES`] with its reason. A provider that
+/// starts following a server-given URL fails here until it says why its
+/// credential stays on the configured API, and a listed site that no longer
+/// exists fails too, so the list stays the code's.
+#[test]
+fn every_server_given_url_is_listed_with_why_its_credential_stays_home() {
+    let mut found = std::collections::BTreeSet::new();
+    for (file, source) in provider_sources() {
+        for line in production_part(&source).lines() {
+            if line.trim_start().starts_with("//") {
+                continue;
+            }
+            for marker in SERVER_URL_MARKERS {
+                if line.contains(marker) {
+                    found.insert((file.clone(), marker.to_string()));
+                }
+            }
+        }
+    }
+    let listed: std::collections::BTreeSet<(String, String)> = SERVER_URL_SITES
+        .iter()
+        .map(|(file, marker, _)| (file.to_string(), marker.to_string()))
+        .collect();
+    assert_eq!(
+        listed.len(),
+        SERVER_URL_SITES.len(),
+        "a site is listed twice"
+    );
+    assert!(
+        SERVER_URL_SITES.iter().all(|(_, _, why)| !why.is_empty()),
+        "every site says why"
+    );
+    let unlisted: Vec<_> = found.difference(&listed).collect();
+    let gone: Vec<_> = listed.difference(&found).collect();
+    assert!(
+        unlisted.is_empty() && gone.is_empty(),
+        "server-given URL sites not listed with a reason: {unlisted:?}; listed but no longer in the code: {gone:?}"
+    );
+}

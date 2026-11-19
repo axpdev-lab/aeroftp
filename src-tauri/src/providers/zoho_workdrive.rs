@@ -2890,17 +2890,15 @@ impl ZohoWorkdriveProvider {
             // Match the root namespace used by stat/list/navigation: team
             // names win over private-space children. Team-only accounts also
             // accept a discovered ID, never an unknown child of the team ID.
-            let team = self
-                .team_folders
-                .iter()
-                .find(|(_, folder)| folder == name)
-                .or_else(|| {
-                    self.privatespace_id
-                        .is_none()
-                        .then(|| self.team_folders.iter().find(|(id, _)| id == name))
-                        .flatten()
-                })
-                .map(|(id, _)| id.clone());
+            let team = match self.confirmed_team_folder(name).await? {
+                Some(id) => Some(id),
+                None => self
+                    .privatespace_id
+                    .is_none()
+                    .then(|| self.team_folders.iter().find(|(id, _)| id == name))
+                    .flatten()
+                    .map(|(id, _)| id.clone()),
+            };
             if let Some(id) = team {
                 self.list_folder(&id).await?;
                 return Ok((resolved.id, Some(FileResource::discovered_folder(id, name))));
@@ -2954,7 +2952,11 @@ impl ZohoWorkdriveProvider {
         }
 
         let parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
-        if let Some(id) = self.confirmed_cached_folder(&parts).await? {
+        let team = self.confirmed_team_folder(parts[0]).await?;
+        if let Some(id) = self
+            .confirmed_cached_folder(&parts, team.as_deref())
+            .await?
+        {
             return Ok(FolderResolution {
                 id,
                 listing: None,
@@ -2967,12 +2969,7 @@ impl ZohoWorkdriveProvider {
 
         let mut legacy_root = false;
         let mut target_listing = None;
-        let mut current_id = if let Some((tf_id, _)) = self
-            .team_folders
-            .iter()
-            .find(|(_, name)| name.as_str() == first)
-        {
-            let id = tf_id.clone();
+        let mut current_id = if let Some(id) = team {
             self.folder_cache.insert(current_path.clone(), id.clone());
             id
         } else {
@@ -3043,6 +3040,79 @@ impl ZohoWorkdriveProvider {
         })
     }
 
+    /// The id of the team folder named `name`, read back by id first
+    /// (`GET /files/{id}`: its name and an active status): another client may
+    /// have renamed the folder discovery found under this name, and made a
+    /// new one with it. On a mismatch the team folders are discovered again
+    /// and the new id read back the same way; a name that discovery no
+    /// longer returns is not a team folder (`None`), and one that cannot be
+    /// confirmed refuses the operation instead of acting in another folder.
+    async fn confirmed_team_folder(&mut self, name: &str) -> Result<Option<String>, ProviderError> {
+        let named = |p: &Self| {
+            p.team_folders
+                .iter()
+                .find(|(_, folder)| folder == name)
+                .map(|(id, _)| id.clone())
+        };
+        let Some(id) = named(self) else {
+            return Ok(None);
+        };
+        if self.team_folder_is(&id, name).await? {
+            return Ok(Some(id));
+        }
+        let unconfirmed = || {
+            ProviderError::ServerError(format!(
+                "The team folder /{name} could not be confirmed (renamed or replaced since it \
+                 was found), so nothing was done in it: try again"
+            ))
+        };
+        let Some(team) = self.team_id.clone() else {
+            return Err(unconfirmed());
+        };
+        let discovered = std::mem::take(&mut self.team_folders);
+        self.discover_team_folders(&team).await;
+        if self.team_folders.is_empty() {
+            // Discovery answered nothing: no new mapping to trust.
+            self.team_folders = discovered;
+            return Err(unconfirmed());
+        }
+        match named(self) {
+            None => Ok(None),
+            Some(fresh) if self.team_folder_is(&fresh, name).await? => Ok(Some(fresh)),
+            Some(_) => Err(unconfirmed()),
+        }
+    }
+
+    /// Whether WorkDrive reads the folder `id` as the active folder `name`.
+    async fn team_folder_is(&self, id: &str, name: &str) -> Result<bool, ProviderError> {
+        let url = format!("{}/files/{}", self.api_base(), id);
+        let resp = self
+            .send_api(None, Resend::RefusedOrFailed, |auth| {
+                self.client.get(&url).header(AUTHORIZATION, auth)
+            })
+            .await?;
+        let status = resp.status();
+        if status == reqwest::StatusCode::NOT_FOUND {
+            return Ok(false);
+        }
+        if !status.is_success() {
+            return Err(ProviderError::ServerError(format!(
+                "Zoho WorkDrive team folder lookup failed: HTTP {status}"
+            )));
+        }
+        let text = super::version_listing_text(resp).await?;
+        let Ok(detail) = serde_json::from_str::<serde_json::Value>(&text) else {
+            return Ok(false);
+        };
+        let attributes = &detail["data"]["attributes"];
+        let active = match &attributes["status"] {
+            serde_json::Value::Number(n) => n.as_u64() == Some(1),
+            serde_json::Value::String(s) => s == "1",
+            _ => false,
+        };
+        Ok(active && attributes["name"].as_str() == Some(name))
+    }
+
     /// The id cached for the folder at `parts`, once WorkDrive confirmed
     /// that it is still there: each folder on the way, from the deepest up,
     /// read back by id (`GET /files/{id}`), its name the one asked for and
@@ -3055,6 +3125,7 @@ impl ZohoWorkdriveProvider {
     async fn confirmed_cached_folder(
         &mut self,
         parts: &[&str],
+        team: Option<&str>,
     ) -> Result<Option<String>, ProviderError> {
         #[derive(Deserialize)]
         struct Placed {
@@ -3083,12 +3154,8 @@ impl ZohoWorkdriveProvider {
             };
             ids.push(id.clone());
         }
-        let team = self
-            .team_folders
-            .iter()
-            .find(|(_, name)| name.as_str() == parts[0])
-            .map(|(id, _)| id.clone());
-        // A team folder's own id is the one discovery returned.
+        // A team folder's own id is the one WorkDrive just confirmed
+        // ([`Self::confirmed_team_folder`]).
         let (first, mut in_place) = match team {
             Some(team) => (1, team == ids[0]),
             None => (0, true),
@@ -4019,17 +4086,15 @@ impl StorageProvider for ZohoWorkdriveProvider {
         if parent_path.is_empty() && (path_str_is_absolute || self.current_path == "/") {
             // Match actual names first, as resolve_path does; only then may
             // a discovered ID stand for a legacy imported root.
-            let root = self
-                .team_folders
-                .iter()
-                .find(|(_, name)| name == file_name)
-                .or_else(|| {
-                    self.privatespace_id
-                        .is_none()
-                        .then(|| self.team_folders.iter().find(|(id, _)| id == file_name))
-                        .flatten()
-                })
-                .map(|(id, _)| id.clone());
+            let root = match self.confirmed_team_folder(file_name).await? {
+                Some(id) => Some(id),
+                None => self
+                    .privatespace_id
+                    .is_none()
+                    .then(|| self.team_folders.iter().find(|(id, _)| id == file_name))
+                    .flatten()
+                    .map(|(id, _)| id.clone()),
+            };
             if let Some(id) = root {
                 self.list_folder(&id).await?;
                 return Ok(RemoteEntry::directory(
@@ -4755,6 +4820,16 @@ mod tests {
         );
     }
 
+    /// WorkDrive's answer to `GET /files/REAL` for the active team folder `Team`.
+    const TEAM_REAL_TEAM: &str =
+        r#"{"data":{"id":"REAL","attributes":{"name":"Team","status":1}}}"#;
+    /// WorkDrive's answer to `GET /files/REAL` for the active team folder `WS`.
+    const TEAM_REAL_WS: &str = r#"{"data":{"id":"REAL","attributes":{"name":"WS","status":1}}}"#;
+    /// WorkDrive's answer to `GET /files/WS` for the active team folder `Team`.
+    const TEAM_WS_TEAM: &str = r#"{"data":{"id":"WS","attributes":{"name":"Team","status":1}}}"#;
+    /// WorkDrive's answer to `GET /files/REAL` once the team folder is renamed `new`.
+    const TEAM_REAL_NEW: &str = r#"{"data":{"id":"REAL","attributes":{"name":"new","status":1}}}"#;
+
     fn config(region: &str) -> ZohoWorkdriveConfig {
         ZohoWorkdriveConfig::new("cid", "csec", region)
     }
@@ -4845,6 +4920,8 @@ mod tests {
             seen.lock().unwrap().push(uri.path().to_string());
             async move {
                 let body = match uri.path() {
+                    "/workdrive/api/v1/files/WS" => TEAM_WS_TEAM,
+                    "/workdrive/api/v1/files/REAL" => TEAM_REAL_WS,
                     "/workdrive/api/v1/files/WS/files" => {
                         r#"{"data":[{"id":"DOCS","attributes":{"name":"docs","type":"folder"}}]}"#
                     }
@@ -5023,8 +5100,11 @@ mod tests {
         let served = readable.clone();
         let app = axum::Router::new().fallback(axum::routing::get(move |uri: axum::http::Uri| {
             let allowed = !uri.path().contains("/files/WS/") || served.load(Ordering::SeqCst);
+            let detail = uri.path() == "/workdrive/api/v1/files/WS";
             async move {
-                if allowed {
+                if detail {
+                    (axum::http::StatusCode::OK, TEAM_WS_TEAM)
+                } else if allowed {
                     (axum::http::StatusCode::OK, r#"{"data":[]}"#)
                 } else {
                     (axum::http::StatusCode::FORBIDDEN, "access revoked")
@@ -5099,6 +5179,11 @@ mod tests {
         provider.current_folder_id = "TEAM".into();
         provider.folder_cache.insert("/".into(), "TEAM".into());
         provider.team_folders.push(("WS".into(), "Team".into()));
+        PLACED.with(|placed| {
+            placed
+                .borrow_mut()
+                .insert("WS".into(), ("Team".into(), "TEAM".into()))
+        });
         provider.cd("/Team/docs").await.unwrap();
         assert_eq!(provider.current_folder_id, "DOCS");
         let before = requests.lock().unwrap().len();
@@ -5190,6 +5275,8 @@ mod tests {
             served.lock().unwrap().push(uri.path().to_string());
             async move {
                 match uri.path() {
+                    "/workdrive/api/v1/files/WS" => (axum::http::StatusCode::OK, TEAM_WS_TEAM),
+                    "/workdrive/api/v1/files/REAL" => (axum::http::StatusCode::OK, TEAM_REAL_WS),
                     "/workdrive/api/v1/files/REAL/files" => (axum::http::StatusCode::OK, r#"{"data":[{"id":"FILE","attributes":{"name":"keep.txt","type":"file"}}]}"#),
                     "/workdrive/api/v1/privatespace/PS/files" => (axum::http::StatusCode::OK, r#"{"data":[{"id":"PRIVATE_CHILD","attributes":{"name":"WS","type":"folder"}}]}"#),
                     _ => (axum::http::StatusCode::FORBIDDEN, "wrong root selected"),
@@ -5217,7 +5304,8 @@ mod tests {
             .lock()
             .unwrap()
             .iter()
-            .all(|path| path == "/workdrive/api/v1/files/REAL/files"));
+            .all(|path| path == "/workdrive/api/v1/files/REAL/files"
+                || path == "/workdrive/api/v1/files/REAL"));
         server.abort();
     }
 
@@ -5232,6 +5320,7 @@ mod tests {
             recorded.lock().unwrap().push(uri.path().to_string());
             async move {
                 match uri.path() {
+                    "/workdrive/api/v1/files/REAL" => (axum::http::StatusCode::OK, TEAM_REAL_TEAM),
                     "/workdrive/api/v1/files/REAL/files" | "/workdrive/api/v1/files/REAL/links" => {
                         (axum::http::StatusCode::OK, r#"{"data":[]}"#)
                     }
@@ -5264,7 +5353,7 @@ mod tests {
             .lock()
             .unwrap()
             .iter()
-            .all(|path| path.contains("/REAL/")));
+            .all(|path| path.contains("/REAL/") || path == "/workdrive/api/v1/files/REAL"));
         server.abort();
     }
 
@@ -5281,6 +5370,7 @@ mod tests {
                     move |method: axum::http::Method, uri: axum::http::Uri| {
                         let recorded = recorded.clone();
                         async move {
+                            let renamed = !recorded.lock().unwrap().is_empty();
                             if method != axum::http::Method::GET {
                                 recorded.lock().unwrap().push((method.to_string(), uri.path().to_string()));
                                 return if uri.path() == "/workdrive/api/v1/files/REAL" {
@@ -5288,6 +5378,9 @@ mod tests {
                                 } else { (axum::http::StatusCode::FORBIDDEN, "wrong mutation target") };
                             }
                             match uri.path() {
+                                "/workdrive/api/v1/files/WS" => (axum::http::StatusCode::OK, TEAM_WS_TEAM),
+                                "/workdrive/api/v1/files/REAL" if renamed => (axum::http::StatusCode::OK, TEAM_REAL_NEW),
+                                "/workdrive/api/v1/files/REAL" => (axum::http::StatusCode::OK, TEAM_REAL_WS),
                                 "/workdrive/api/v1/files/REAL/files" =>
                                     (axum::http::StatusCode::OK, r#"{"data":[]}"#),
                                 "/workdrive/api/v1/privatespace/PS/files" =>
@@ -5331,18 +5424,31 @@ mod tests {
     #[tokio::test]
     async fn team_only_id_rename_updates_the_discovered_root_name() {
         for source in ["/REAL", "/Team"] {
+            let renamed = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
             let app = axum::Router::new().fallback(axum::routing::any(
-                |method: axum::http::Method, uri: axum::http::Uri| async move {
-                    if method == axum::http::Method::PATCH
-                        && uri.path() == "/workdrive/api/v1/files/REAL"
-                    {
-                        return (axum::http::StatusCode::OK, r#"{"data":[]}"#);
-                    }
-                    match uri.path() {
-                        "/workdrive/api/v1/files/REAL/files" => {
-                            (axum::http::StatusCode::OK, r#"{"data":[]}"#)
+                move |method: axum::http::Method, uri: axum::http::Uri| {
+                    let seen = renamed.clone();
+                    async move {
+                        if method == axum::http::Method::PATCH
+                            && uri.path() == "/workdrive/api/v1/files/REAL"
+                        {
+                            seen.store(true, std::sync::atomic::Ordering::SeqCst);
+                            return (axum::http::StatusCode::OK, r#"{"data":[]}"#);
                         }
-                        _ => (axum::http::StatusCode::FORBIDDEN, "team ID is not a folder"),
+                        match uri.path() {
+                            "/workdrive/api/v1/files/REAL" => (
+                                axum::http::StatusCode::OK,
+                                if seen.load(std::sync::atomic::Ordering::SeqCst) {
+                                    TEAM_REAL_NEW
+                                } else {
+                                    TEAM_REAL_TEAM
+                                },
+                            ),
+                            "/workdrive/api/v1/files/REAL/files" => {
+                                (axum::http::StatusCode::OK, r#"{"data":[]}"#)
+                            }
+                            _ => (axum::http::StatusCode::FORBIDDEN, "team ID is not a folder"),
+                        }
                     }
                 },
             ));
@@ -5394,6 +5500,9 @@ mod tests {
                             return (axum::http::StatusCode::OK, r#"{"data":[]}"#);
                         }
                         match uri.path() {
+                            "/workdrive/api/v1/files/REAL" => {
+                                (axum::http::StatusCode::OK, TEAM_REAL_TEAM)
+                            }
                             "/workdrive/api/v1/files/REAL/files"
                             | "/workdrive/api/v1/teamfolders/REAL/trashedfiles" => {
                                 (axum::http::StatusCode::OK, r#"{"data":[]}"#)
@@ -7837,6 +7946,56 @@ mod tests {
         );
         assert_eq!(listings_of(&requests, "B2"), 1);
         assert_eq!(p.folder_cache.get("/a").map(String::as_str), Some("A2"));
+    }
+
+    /// The team folder discovery found as `Docs` (T1) was renamed by another
+    /// client and a new `Docs` (T2) made: T1 read back by id no longer says
+    /// `Docs`, the team folders are discovered again, and the path resolves
+    /// to T2. An unchanged team folder costs its one read; when discovery
+    /// gives no mapping to confirm, the operation is refused.
+    #[tokio::test]
+    async fn a_renamed_team_folder_is_never_acted_in() {
+        // Discovery answers the two folders once, then nothing.
+        let (mut p, _requests, server) = listing_fixture(|id, _, nth| {
+            let body = match id {
+                "TEAM" if nth == 0 => r#"{"data":[{"id":"T1","attributes":{"name":"Archive"}},{"id":"T2","attributes":{"name":"Docs"}}]}"#.to_string(),
+                "TEAM" => r#"{"data":[]}"#.to_string(),
+                _ => listing_json(&[], Some((false, None))),
+            };
+            (200, vec![], body)
+        })
+        .await;
+        p.team_id = Some("TEAM".into());
+        let place = |id: &str, name: &str| {
+            PLACED.with(|placed| {
+                placed
+                    .borrow_mut()
+                    .insert(id.into(), (name.into(), "TEAM".into()))
+            })
+        };
+        p.team_folders = vec![("T2".into(), "Docs".into())];
+        place("T2", "Docs");
+        assert_eq!(p.resolve_path("/Docs").await.unwrap(), "T2");
+        assert_eq!(read_by_id(), ["T2"]);
+
+        p.team_folders = vec![("T1".into(), "Docs".into())];
+        place("T1", "Archive");
+        assert_eq!(p.resolve_path("/Docs").await.unwrap(), "T2");
+        assert_eq!(
+            p.team_folders,
+            vec![
+                ("T1".into(), "Archive".into()),
+                ("T2".into(), "Docs".into())
+            ]
+        );
+
+        p.team_folders = vec![("T1".into(), "Docs".into())];
+        let unconfirmed = p.resolve_path("/Docs").await;
+        server.abort();
+        assert!(
+            matches!(&unconfirmed, Err(ProviderError::ServerError(m)) if m.contains("could not be confirmed")),
+            "{unconfirmed:?}"
+        );
     }
 
     /// `/docs` cached, then moved away by another client and

@@ -2116,10 +2116,25 @@ impl StorageProvider for DropboxProvider {
             self.normalize_path(&format!("{}/{}", self.current_path, path))
         };
 
-        let body = serde_json::json!({
-            "path": full_path,
-            "limit": 100
-        });
+        // The current revision is the file's own `rev`. A deleted file keeps
+        // revisions it can be restored from: its metadata is asked with
+        // include_deleted (without it the call answers not_found), and row 0
+        // is then the deletion, so no earlier revision reads as current.
+        let by_path = serde_json::json!({ "path": full_path, "include_deleted": true });
+        let mut meta: DropboxMetadata = self.version_metadata(&by_path).await?;
+        // A live file's history is asked by its id (mode `id`): by path,
+        // Dropbox answers the revisions of every file that had the path, so
+        // a path deleted and made again reads as several files. A deleted
+        // file has no live id, and its history is asked by path.
+        let live_id = if meta.tag == "deleted" {
+            None
+        } else {
+            meta.id.clone()
+        };
+        let request = match &live_id {
+            Some(id) => serde_json::json!({ "path": id, "mode": "id", "limit": 100 }),
+            None => serde_json::json!({ "path": full_path, "limit": 100 }),
+        };
 
         let url = format!("{}/files/list_revisions", self.rpc_api_base());
 
@@ -2128,7 +2143,7 @@ impl StorageProvider for DropboxProvider {
             .post(&url)
             .header(AUTHORIZATION, self.auth_header().await?)
             .header(CONTENT_TYPE, "application/json")
-            .body(body.to_string())
+            .body(request.to_string())
             .send()
             .await
             .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
@@ -2144,16 +2159,6 @@ impl StorageProvider for DropboxProvider {
         }
 
         let body = super::version_listing_text(response).await?;
-        // The current revision is the file's own `rev`. A deleted file keeps
-        // revisions it can be restored from: its metadata is asked with
-        // include_deleted (without it the call answers not_found), and row 0
-        // is then the deletion, so no earlier revision reads as current.
-        let meta: DropboxMetadata = self
-            .version_metadata(&serde_json::json!({ "path": full_path, "include_deleted": true }))
-            .await?;
-        // The revisions and the metadata must describe one file: a file put
-        // at the path between the two calls has another id, and its head
-        // would sit above the history of the file it replaced.
         #[derive(Deserialize)]
         struct ListedRevision {
             id: Option<String>,
@@ -2166,16 +2171,28 @@ impl StorageProvider for DropboxProvider {
         }
         let listed: Listed = serde_json::from_str(&body)
             .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
-        if let Some(file_id) = &meta.id {
+        if let Some(file_id) = &live_id {
+            // The history and the path must still describe one file: the
+            // path is read again after the history, and a file put there in
+            // between (another id) is refused, as is a history entry of
+            // another file.
+            let replaced = || {
+                ProviderError::NotFound(format!(
+                    "{full_path} was replaced while its versions were read: list its versions again"
+                ))
+            };
             if listed
                 .entries
                 .iter()
                 .any(|r| r.id.as_ref().is_some_and(|id| id != file_id))
             {
-                return Err(ProviderError::NotFound(format!(
-                    "{full_path} was replaced while its versions were read: list its versions again"
-                )));
+                return Err(replaced());
             }
+            let after: DropboxMetadata = self.version_metadata(&by_path).await?;
+            if after.tag == "deleted" || after.id.as_ref() != Some(file_id) {
+                return Err(replaced());
+            }
+            meta = after;
         }
         let current = if meta.tag == "deleted" {
             Some(super::FileVersion {
@@ -3793,6 +3810,70 @@ mod tests {
         }
         assert_eq!(calls.lock().unwrap().len(), before);
         assert!(!out.exists());
+    }
+
+    /// A live file's history is asked by its id: by path Dropbox also answers
+    /// the revisions of an earlier file that had the path (deleted, then made
+    /// again), which is no concurrent change and lists. A file put at the
+    /// path while the history was read (another id after it) is refused.
+    #[tokio::test]
+    async fn a_reused_dropbox_path_lists_by_id_and_a_replacement_meanwhile_is_refused() {
+        use axum::{routing::post, Json, Router};
+        use serde_json::{json, Value};
+        let reads = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let seen = reads.clone();
+        let app = Router::new()
+            .route(
+                "/files/list_revisions",
+                post(|Json(request): Json<Value>| async move {
+                    let rev = |id: &str, rev: &str| {
+                        json!({"id":id,"rev":rev,"size":3,"server_modified":"2026-09-01T00:00:00Z"})
+                    };
+                    match (request["mode"].as_str(), request["path"].as_str().unwrap_or("")) {
+                        (Some("id"), id) => Json(json!({"is_deleted":false,"entries":[rev(id, "n2"), rev(id, "n1")]})),
+                        // By path: the earlier file's revisions as well.
+                        _ => Json(json!({"is_deleted":false,"entries":[rev("id:F", "n2"), rev("id:OLD", "o1")]})),
+                    }
+                }),
+            )
+            .route(
+                "/files/get_metadata",
+                post(move |Json(request): Json<Value>| {
+                    let seen = seen.clone();
+                    async move {
+                        let path = request["path"].as_str().unwrap_or("").to_string();
+                        let n = {
+                            let mut reads = seen.lock().unwrap();
+                            reads.push(path.clone());
+                            reads.iter().filter(|p| **p == path).count()
+                        };
+                        // /swap.txt names id:G from its second read on.
+                        let id = if path == "/swap.txt" && n > 1 { "id:G" } else { "id:F" };
+                        Json(json!({".tag":"file","name":"f.txt","id":id,"rev":"n2","size":3,
+                            "server_modified":"2026-09-01T00:00:00Z"}))
+                    }
+                }),
+            );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let mut provider = fixture_connected();
+        provider.content_base_override = Some(format!("http://{addr}"));
+        let reused = provider.list_versions("/f.txt").await;
+        let swapped = provider.list_versions("/swap.txt").await;
+        server.abort();
+        let ids: Vec<String> = reused
+            .expect("a reused path lists")
+            .into_iter()
+            .map(|v| v.id)
+            .collect();
+        assert_eq!(ids, ["n2", "n1"]);
+        assert!(
+            matches!(&swapped, Err(ProviderError::NotFound(m)) if m.contains("list its versions again")),
+            "{swapped:?}"
+        );
     }
 
     /// files/list_revisions answers at most 100 revisions: one it leaves out

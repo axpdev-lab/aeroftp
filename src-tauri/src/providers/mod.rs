@@ -405,6 +405,37 @@ pub(crate) async fn version_listing_text_with(
         .map_err(|e| ProviderError::ParseError(format!("Version listing is not UTF-8: {e}")))
 }
 
+/// The next page URL a server named, accepted only on the origin of the API
+/// the provider is configured for: same scheme, host and port, and no user
+/// information. The caller sends its token or signature with the request
+/// that follows, so an answer that names another origin (a tampered or
+/// misbehaving server, a proxy that rewrites links) is refused before any
+/// request: the token never leaves the configured API. `what` names the
+/// listing in the error.
+pub(crate) fn next_page_on_api_origin(
+    api_base: &str,
+    next: &str,
+    what: &str,
+) -> Result<String, ProviderError> {
+    let refused = || {
+        ProviderError::ServerError(format!(
+            "{what}: the next page is outside the configured API, so it was not requested"
+        ))
+    };
+    let base = reqwest::Url::parse(api_base).map_err(|_| refused())?;
+    let url = reqwest::Url::parse(next).map_err(|_| refused())?;
+    let same_origin = url.scheme() == base.scheme()
+        && url.host_str() == base.host_str()
+        && url.port_or_known_default() == base.port_or_known_default()
+        && url.username().is_empty()
+        && url.password().is_none();
+    if same_origin {
+        Ok(next.to_string())
+    } else {
+        Err(refused())
+    }
+}
+
 /// Copy a fetched version over `to` the way every download writes it
 /// ([`atomic_write::AtomicFile`]): by default beside it first, renamed over it
 /// once whole, so a copy cut short (a full disk, a read error) leaves the
@@ -1117,15 +1148,25 @@ pub(crate) fn restore_confirmed(
     }
     // Ids bound to a file (`<file>:<label>`, every row of the listing before)
     // must name that file on top after the restore too: another file the
-    // path names now is no restore of the one listed, whatever its size.
+    // path names now is no restore of the one listed, whatever its size, and
+    // neither is a row bound to no file, which cannot be shown to be it.
     let file_of = |id: &str| id.split_once(':').map(|(file, _)| file.to_string());
     if let Some(listed) =
         file_of(&preflight.before.id).filter(|f| file_of(&selected.id).as_ref() == Some(f))
     {
-        if let Some(now) = file_of(&current.id).filter(|now| *now != listed) {
-            return Err(not_restored(format!(
-                "is a version of another file ({now}, not {listed})"
-            )));
+        match file_of(&current.id) {
+            Some(now) if now == listed => {}
+            Some(now) => {
+                return Err(not_restored(format!(
+                    "is a version of another file ({now}, not {listed})"
+                )))
+            }
+            None => {
+                return Err(not_restored(format!(
+                    "is {}, bound to no file, so it cannot be shown to be one of {listed}",
+                    current.id
+                )))
+            }
         }
     }
     let before = &preflight.before;
@@ -1229,6 +1270,30 @@ mod versions_order_tests {
             sized("F1:3.0", 4, "2026-11-18T10:00:00Z"),
         ];
         assert!(restore_confirmed(Ok(restored), "/f.txt", &preflight).is_ok());
+    }
+
+    /// Rows listed bound to file 42: a head bound to no file (`current`, `9`)
+    /// cannot be shown to be 42's restore, and a head of file 43 (its
+    /// `current`, same size, a new time) is another file's, both refused.
+    #[test]
+    fn a_restore_listed_bound_is_not_confirmed_by_an_unbound_or_foreign_head() {
+        let listed = vec![
+            sized("42:current", 4, "2026-11-18T10:00:00Z"),
+            sized("42:1700000000", 4, "2026-11-17T10:00:00Z"),
+        ];
+        let preflight = restore_preflight(&listed, "/a.txt", "42:1700000000").unwrap();
+        for head in ["current", "9", "43:current"] {
+            let after = vec![sized(head, 4, "2026-11-18T10:05:00Z")];
+            assert!(
+                matches!(
+                    restore_confirmed(Ok(after), "/a.txt", &preflight),
+                    Err(ProviderError::TransferFailed(_))
+                ),
+                "{head}"
+            );
+        }
+        let after = vec![sized("42:current", 4, "2026-11-18T10:05:00Z")];
+        assert!(restore_confirmed(Ok(after), "/a.txt", &preflight).is_ok());
     }
 
     #[test]

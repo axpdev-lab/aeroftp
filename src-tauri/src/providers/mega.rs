@@ -929,15 +929,17 @@ impl StorageProvider for MegaCmdProvider {
         let abs_remote = self.resolve_path(r);
         // A folder destination is MEGAcmd's "into dir": the file is the child
         // of its name there, written like any file destination.
-        let into_folder = std::fs::metadata(l)
-            .is_ok_and(|meta| meta.is_dir())
-            .then(|| {
-                let leaf = abs_remote.rsplit('/').next().unwrap_or_default();
+        let into_folder = if std::fs::metadata(l).is_ok_and(|meta| meta.is_dir()) {
+            let leaf = local_leaf_of(&abs_remote)?;
+            Some(
                 std::path::Path::new(l)
                     .join(leaf)
                     .to_string_lossy()
-                    .into_owned()
-            });
+                    .into_owned(),
+            )
+        } else {
+            None
+        };
         let l = into_folder.as_deref().unwrap_or(l);
         self.log_debug(&format!(
             "[MEGAcmd] Downloading '{}' to '{}'",
@@ -2478,6 +2480,21 @@ fn name_after_columns(line: &str, columns: usize) -> &str {
     rest.strip_prefix(' ')
         .unwrap_or(rest)
         .trim_end_matches(['\r', '\n'])
+}
+
+/// The name a file downloaded into a local folder takes there: the last
+/// segment of its remote path, which must be one plain name. A remote name is
+/// the server's, and one that is empty, `.` or `..`, or holds a separator
+/// (`\` on Windows, NUL anywhere) would put the file outside the folder or
+/// over it, so it is refused before anything is written.
+fn local_leaf_of(remote: &str) -> Result<&str, ProviderError> {
+    let leaf = remote.rsplit('/').next().unwrap_or_default();
+    if leaf.is_empty() || leaf == "." || leaf == ".." || leaf.contains(['\\', '\0']) {
+        return Err(ProviderError::InvalidPath(format!(
+            "{remote} cannot be saved into a local folder under its own name"
+        )));
+    }
+    Ok(leaf)
 }
 
 #[cfg(test)]
@@ -4078,6 +4095,29 @@ mod tests {
         assert_eq!(std::fs::read_dir(local.path()).unwrap().count(), 1);
     }
 
+    /// A remote name that is not one plain local name is refused before a
+    /// download into a folder writes anything.
+    #[test]
+    fn a_remote_name_that_leaves_the_local_folder_is_refused() {
+        assert_eq!(super::local_leaf_of("/a/f.dat").unwrap(), "f.dat");
+        for remote in [
+            "/a/..",
+            "/a/.",
+            "/a/",
+            "/a/..\\outside.txt",
+            "/a/x\\y",
+            "/a/n\0ul",
+        ] {
+            assert!(
+                matches!(
+                    super::local_leaf_of(remote),
+                    Err(ProviderError::InvalidPath(_))
+                ),
+                "{remote}"
+            );
+        }
+    }
+
     /// A download into an existing folder writes the file of that name in
     /// it, as MEGAcmd's "into dir" does, not over the folder.
     #[cfg(unix)]
@@ -4102,6 +4142,17 @@ mod tests {
     #[tokio::test]
     async fn a_megacmd_get_whose_partial_file_stays_is_not_retried() {
         use std::os::unix::fs::PermissionsExt;
+        // The stand-in keeps the partial file by taking write permission off
+        // its folder; with CAP_DAC_OVERRIDE (root) that denies nothing, and
+        // the case cannot be set up.
+        let probe = tempfile::tempdir().expect("tempdir");
+        std::fs::set_permissions(probe.path(), std::fs::Permissions::from_mode(0o555)).unwrap();
+        let enforced = std::fs::write(probe.path().join("x"), "").is_err();
+        std::fs::set_permissions(probe.path(), std::fs::Permissions::from_mode(0o755)).unwrap();
+        if !enforced {
+            eprintln!("skipped: folder permissions are not enforced for this user");
+            return;
+        }
         let (mut provider, dir) = provider_with_stand_in_versions();
         std::fs::write(dir.path().join("get-partial-try-again"), "").unwrap();
         std::fs::write(dir.path().join("get-pins-partial"), "").unwrap();

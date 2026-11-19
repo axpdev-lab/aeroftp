@@ -321,6 +321,12 @@ struct BoxVersionCollection {
     entries: Vec<BoxFileVersion>,
     #[serde(default)]
     total_count: Option<u64>,
+    /// The slot this page starts at, and how many slots it covers: Box
+    /// pages by slot, and a page can hold fewer versions than its `limit`.
+    #[serde(default)]
+    offset: Option<u64>,
+    #[serde(default)]
+    limit: Option<u64>,
 }
 
 /// A `GET /files/:id/versions` answer in the order every `list_versions`
@@ -751,14 +757,29 @@ impl BoxProvider {
     /// looked up in the folder the server just returned.
     async fn resolve_folder_id(&mut self, path: &str) -> Result<String, ProviderError> {
         let normalized = Self::normalize_path(path);
-        let (id, cached) = self.walk_folder_id(&normalized, path).await?;
-        if !cached || self.folder_is_at(&id, &normalized).await? {
-            return Ok(id);
-        }
-        super::forget_cached_ancestors(&mut self.id_cache, &normalized);
-        self.walk_folder_id(&normalized, path)
-            .await
-            .map(|(id, _)| id)
+        let parts: Vec<&str> = normalized.split('/').filter(|s| !s.is_empty()).collect();
+        // The deepest folder on the way with a cached id is confirmed before
+        // anything is looked up or cached below it: Box's answer lists its
+        // whole path, so one request confirms every folder above it too. A
+        // folder moved away since (or a path that no longer leads to it)
+        // forgets the ids on the way, and the path is walked from the root.
+        let deepest = (1..=parts.len()).rev().find_map(|depth| {
+            let prefix = format!("/{}", parts[..depth].join("/"));
+            self.id_cache
+                .get(&prefix)
+                .map(|id| (id.clone(), depth, prefix))
+        });
+        let (mut current_id, start) = match deepest {
+            Some((id, depth, prefix)) if self.folder_is_at(&id, &prefix).await? => (id, depth),
+            Some(_) => {
+                super::forget_cached_ancestors(&mut self.id_cache, &normalized);
+                ("0".to_string(), 0)
+            }
+            None => ("0".to_string(), 0),
+        };
+        self.walk_folder_id(&parts, start, &mut current_id, path)
+            .await?;
+        Ok(current_id)
     }
 
     /// Whether the folder `folder_id` is at `normalized` now: its own name
@@ -820,52 +841,39 @@ impl BoxProvider {
         Ok(found.map(str::to_string).eq(wanted))
     }
 
-    /// The walk behind [`Self::resolve_folder_id`], and whether it took an
-    /// id from the cache (the root aside).
+    /// The walk behind [`Self::resolve_folder_id`]: from `current_id`, the
+    /// folder of the first `start` parts, each later part is looked up live
+    /// in the folder Box just returned, and its id cached.
     async fn walk_folder_id(
         &mut self,
-        normalized: &str,
+        parts: &[&str],
+        start: usize,
+        current_id: &mut String,
         path: &str,
-    ) -> Result<(String, bool), ProviderError> {
-        if let Some(id) = self.id_cache.get(normalized) {
-            return Ok((id.clone(), normalized != "/"));
-        }
-
-        // Walk the path from root
-        let parts: Vec<&str> = normalized.split('/').filter(|s| !s.is_empty()).collect();
-        let mut current_id = "0".to_string();
-        let mut built_path = String::new();
-        let mut cached = false;
-
-        for part in parts {
-            built_path = format!("{}/{}", built_path, part);
-
-            if let Some(id) = self.id_cache.get(&built_path) {
-                current_id = id.clone();
-                cached = true;
-                continue;
-            }
-
+    ) -> Result<(), ProviderError> {
+        for (depth, &part) in parts.iter().enumerate().skip(start) {
+            let built_path = format!("/{}", parts[..=depth].join("/"));
             // Box returns names in their stored ENCODED form (a name a user
             // could not otherwise create round-trips via reversible encoding),
             // so match the encoded leaf. The `id_cache` and error text keep the
             // user's original spelling.
             let encoded_part = crate::restricted_chars::encode_leaf(ProviderType::Box, part);
-            let items = self.lookup_items(&current_id, path, &encoded_part).await?;
+            let items = self
+                .lookup_items(current_id.as_str(), path, &encoded_part)
+                .await?;
             let found = items
                 .iter()
                 .find(|item| item.name == encoded_part && item.item_type == "folder");
 
             match found {
                 Some(folder) => {
-                    current_id = folder.id.clone();
-                    self.id_cache.insert(built_path.clone(), current_id.clone());
+                    *current_id = folder.id.clone();
+                    self.id_cache.insert(built_path, current_id.clone());
                 }
                 None => return Err(ProviderError::NotFound(part.to_string())),
             }
         }
-
-        Ok((current_id, cached))
+        Ok(())
     }
 
     /// Resolve a file path to its ID
@@ -2960,9 +2968,12 @@ impl StorageProvider for BoxProvider {
         let mut versions = BoxVersionCollection {
             entries: Vec::new(),
             total_count: None,
+            offset: None,
+            limit: None,
         };
+        let mut offset: u64 = 0;
         loop {
-            let url = match versions.entries.len() {
+            let url = match offset {
                 0 => base.clone(),
                 offset => format!("{base}?offset={offset}"),
             };
@@ -2984,19 +2995,22 @@ impl StorageProvider for BoxProvider {
             let text = super::version_listing_text(resp).await?;
             let page: BoxVersionCollection = serde_json::from_str(&text)
                 .map_err(|e| ProviderError::ParseError(e.to_string()))?;
-            let empty = page.entries.is_empty();
+            // The next page starts after the slots this one covers (its
+            // offset plus its limit), not after the versions it held: a short
+            // or empty page still moves on. A page that does not move on is
+            // refused.
+            let next =
+                page.offset.unwrap_or(offset) + page.limit.unwrap_or(page.entries.len() as u64);
             versions.entries.extend(page.entries);
-            let remaining = page
-                .total_count
-                .is_some_and(|total| (versions.entries.len() as u64) < total);
-            if !remaining {
+            if !page.total_count.is_some_and(|total| next < total) {
                 break;
             }
-            if empty {
+            if next <= offset {
                 return Err(ProviderError::ParseError(
                     "Box versions pagination did not advance".into(),
                 ));
             }
+            offset = next;
         }
 
         // The current row is the file whose versions were listed, read by
@@ -3091,15 +3105,21 @@ impl StorageProvider for BoxProvider {
         // The answer is the version the promotion made: the file's current
         // version must then be that one, not a write of the same size by
         // someone else meanwhile.
+        // An answer that cannot be read leaves the promotion accepted but
+        // unconfirmed: sending it again would promote twice.
         let promoted = super::version_listing_text(resp)
             .await
             .ok()
             .and_then(|body| serde_json::from_str::<serde_json::Value>(&body).ok())
             .and_then(|answer| answer.get("id")?.as_str().map(str::to_string));
-        super::confirm_version_restored(self, path, Some(&selected)).await?;
         let Some(promoted) = promoted else {
-            return Ok(());
+            return Err(ProviderError::TransferFailed(format!(
+                "Box accepted the restore of version {version_id} of {path}, but its answer could \
+                 not be read, so the restore is not confirmed: list its versions again before \
+                 restoring again"
+            )));
         };
+        super::confirm_version_restored(self, path, Some(&selected)).await?;
         let now = self.current_version_of_id(&file_id, path).await?;
         if now.as_deref() != Some(promoted.as_str()) {
             return Err(ProviderError::TransferFailed(format!(
@@ -3747,7 +3767,7 @@ mod tests {
     }
 
     /// A Box double for the cache tests: `/docs` is folder NEW now, holding
-    /// `a.txt` (77); OLD is the folder once cached as `/docs`, moved to
+    /// `a.txt` (77) and folder `sub` (SUB, holding `a.txt`, 88); OLD is the folder once cached as `/docs`, moved to
     /// `/archive/docs`, holding another `a.txt` (66). Every request is
     /// recorded as `METHOD /path`.
     async fn box_with_a_moved_folder(
@@ -3787,9 +3807,14 @@ mod tests {
                             {"type": "folder", "id": "0", "name": "All Files"},
                             {"type": "folder", "id": "ARC", "name": "archive"}
                         ])),
-                        ("GET", "/folders/NEW/items") => items(
-                            serde_json::json!([{"type": "file", "id": "77", "name": "a.txt"}]),
+                        ("GET", "/folders/NEW/items") => items(serde_json::json!([
+                            {"type": "file", "id": "77", "name": "a.txt"},
+                            {"type": "folder", "id": "SUB", "name": "sub"}
+                        ])),
+                        ("GET", "/folders/SUB/items") => items(
+                            serde_json::json!([{"type": "file", "id": "88", "name": "a.txt"}]),
                         ),
+                        ("GET", "/files/88/content") => "in sub".into_response(),
                         ("GET", "/folders/OLD/items") => items(
                             serde_json::json!([{"type": "file", "id": "66", "name": "a.txt"}]),
                         ),
@@ -3838,6 +3863,27 @@ mod tests {
                 .iter()
                 .any(|c| c.contains("/OLD/") || c.contains("/66")),
             "the moved folder was acted in: {calls:?}"
+        );
+    }
+
+    /// Only the folder made again under the name holds `sub`: the cached
+    /// `/docs` is confirmed before `sub` is looked up in it, so the moved
+    /// folder's missing `sub` is never read as the path not being there.
+    #[tokio::test]
+    async fn a_cached_folder_is_confirmed_before_anything_below_it_is_looked_up() {
+        let (mut provider, calls) = box_with_a_moved_folder().await;
+        provider.id_cache.insert("/docs".into(), "OLD".into());
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("a.txt");
+        provider
+            .download("/docs/sub/a.txt", local.to_str().unwrap(), None)
+            .await
+            .expect("the file under the folder at the path is read");
+        assert_eq!(std::fs::read_to_string(&local).unwrap(), "in sub");
+        let calls = calls.lock().unwrap();
+        assert!(
+            !calls.iter().any(|c| c.contains("/OLD/")),
+            "the moved folder was looked in: {calls:?}"
         );
     }
 
@@ -3900,9 +3946,14 @@ mod tests {
                         ("GET", "/folders/0/items") => items(
                             serde_json::json!([{"type": "folder", "id": "NEW", "name": "docs"}]),
                         ),
-                        ("GET", "/folders/NEW/items") => items(
-                            serde_json::json!([{"type": "file", "id": "77", "name": "a.txt"}]),
+                        ("GET", "/folders/NEW/items") => items(serde_json::json!([
+                            {"type": "file", "id": "77", "name": "a.txt"},
+                            {"type": "folder", "id": "SUB", "name": "sub"}
+                        ])),
+                        ("GET", "/folders/SUB/items") => items(
+                            serde_json::json!([{"type": "file", "id": "88", "name": "a.txt"}]),
                         ),
+                        ("GET", "/files/88/content") => "in sub".into_response(),
                         ("GET", "/folders/OLD/items") => items(
                             serde_json::json!([{"type": "file", "id": "66", "name": "a.txt"}]),
                         ),
@@ -4027,6 +4078,70 @@ mod tests {
         );
     }
 
+    /// Box pages its versions by slot: a page holds up to `limit` versions
+    /// from `offset`, maybe fewer, maybe none. The next page starts at
+    /// offset plus limit, so a short page and an empty one both lead on to
+    /// the older version on the page after.
+    #[tokio::test]
+    async fn a_short_or_empty_box_version_page_leads_on_to_the_next() {
+        use axum::response::IntoResponse;
+        type Pages = fn(&str) -> serde_json::Value;
+        let version = |id: &str, at: &str| serde_json::json!({"type": "file_version", "id": id, "size": 4, "modified_at": at});
+        let older = serde_json::json!({
+            "entries": [version("13", "2026-01-03T00:00:00Z")],
+            "offset": 2, "limit": 2, "total_count": 3
+        });
+        let empty_first: Pages =
+            |_| serde_json::json!({"entries": [], "offset": 0, "limit": 2, "total_count": 3});
+        let short_first: Pages = |_| {
+            serde_json::json!({
+                "entries": [{"type": "file_version", "id": "14", "size": 4, "modified_at": "2026-01-04T00:00:00Z"}],
+                "offset": 0, "limit": 2, "total_count": 3
+            })
+        };
+        for (first, expected) in [
+            (empty_first, vec!["55:current", "13"]),
+            (short_first, vec!["55:current", "14", "13"]),
+        ] {
+            let older = older.clone();
+            let app =
+                axum::Router::new().fallback(axum::routing::any(move |uri: axum::http::Uri| {
+                    let older = older.clone();
+                    async move {
+                        match (uri.path(), uri.query().unwrap_or("")) {
+                            ("/folders/0/items", _) => axum::Json(serde_json::json!({
+                                "entries": [{"type": "file", "id": "55", "name": "a.txt"}],
+                                "offset": 0, "limit": 1000, "total_count": 1
+                            }))
+                            .into_response(),
+                            ("/files/55", _) => axum::Json(serde_json::json!({
+                                "type": "file", "id": "55", "name": "a.txt", "size": 9,
+                                "modified_at": "2026-01-05T00:00:00Z",
+                                "file_version": {"type": "file_version", "id": "11"}
+                            }))
+                            .into_response(),
+                            ("/files/55/versions", "") => axum::Json(first("")).into_response(),
+                            ("/files/55/versions", "offset=2") => axum::Json(older).into_response(),
+                            _ => axum::http::StatusCode::NOT_FOUND.into_response(),
+                        }
+                    }
+                }));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+            let mut provider = fixture_connected();
+            provider.api_base_override = Some(format!("http://{addr}"));
+            let listed = provider.list_versions("/a.txt").await;
+            server.abort();
+            let ids: Vec<String> = listed
+                .expect("versions")
+                .into_iter()
+                .map(|v| v.id)
+                .collect();
+            assert_eq!(ids, expected);
+        }
+    }
+
     /// The bare `current` id reads the file as its bound row does: a 206
     /// fragment is refused and the destination stays as it was.
     #[tokio::test]
@@ -4070,12 +4185,18 @@ mod tests {
 
     /// Box answers a promotion with the version it made: a restore is done
     /// when that version is the file's current one, and not when another
-    /// version of the same size took its place meanwhile.
+    /// version of the same size took its place meanwhile, nor when the
+    /// answer naming it cannot be read (accepted, not confirmed).
     #[tokio::test]
     async fn a_box_restore_is_confirmed_by_the_version_the_promotion_made() {
         use std::sync::atomic::{AtomicBool, Ordering};
         use std::sync::Arc;
-        for (current_after, confirmed) in [("14", true), ("15", false)] {
+        // (current version after, promotion answer readable, confirmed)
+        for (current_after, readable, confirmed) in [
+            ("14", true, true),
+            ("15", true, false),
+            ("14", false, false),
+        ] {
             let restored = Arc::new(AtomicBool::new(false));
             let done = Arc::clone(&restored);
             let app = axum::Router::new().fallback(axum::routing::any(
@@ -4107,6 +4228,10 @@ mod tests {
                             .into_response(),
                             ("POST", "/files/55/versions/current") => {
                                 done.store(true, Ordering::SeqCst);
+                                if !readable {
+                                    // Accepted, the answer cut short.
+                                    return r#"{"type":"file_ver"#.into_response();
+                                }
                                 axum::Json(version("14")).into_response()
                             }
                             _ => axum::http::StatusCode::NOT_FOUND.into_response(),
@@ -4122,9 +4247,14 @@ mod tests {
             let outcome = provider.restore_version("/a.txt", "12").await;
             if confirmed {
                 outcome.expect("the promoted version is current");
-            } else {
+            } else if readable {
                 assert!(
                     matches!(&outcome, Err(ProviderError::TransferFailed(m)) if m.contains("list its versions again")),
+                    "{outcome:?}"
+                );
+            } else {
+                assert!(
+                    matches!(&outcome, Err(ProviderError::TransferFailed(m)) if m.contains("accepted the restore") && m.contains("not confirmed")),
                     "{outcome:?}"
                 );
             }

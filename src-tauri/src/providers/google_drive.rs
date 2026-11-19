@@ -2910,7 +2910,15 @@ impl StorageProvider for GoogleDriveProvider {
         let made = self
             .upload_into(&local, path, Some(file.id.clone()), None)
             .await?;
-        let selected = selected.made_current(made);
+        // Without the revision it made, a later write of the same length
+        // would read as this restore: the upload is reported, unconfirmed.
+        let Some(made) = made else {
+            return Err(ProviderError::TransferFailed(format!(
+                "Revision {version_id} of {path} was uploaded as a new revision, but Drive's answer \
+                 did not name it, so the restore is not confirmed: list its versions again"
+            )));
+        };
+        let selected = selected.made_current(Some(made));
         let after = self.revisions_of(&file).await;
         super::restore_confirmed(after, path, &selected)
     }
@@ -4167,7 +4175,9 @@ mod tests {
                         seen.lock()
                             .unwrap()
                             .push(format!("{id} {}", String::from_utf8_lossy(&body)));
-                        return axum::Json(serde_json::json!({ "id": id })).into_response();
+                        // The upload made r3, the head the history shows after it.
+                        return axum::Json(serde_json::json!({ "id": id, "headRevisionId": "r3" }))
+                            .into_response();
                     }
                     if method == "POST" {
                         seen.lock().unwrap().push(format!("POST {}", url.path()));
@@ -4389,7 +4399,7 @@ mod tests {
 
     /// A Drive double for a restore of r1 (13 bytes listed) of a.txt (F1,
     /// head r2): r1 answers `body`; the upload answers that it made
-    /// `made`; after it the history holds r3 on top, and r4 (13 bytes, by
+    /// `made` (an empty one: no head named); after it the history holds r3 on top, and r4 (13 bytes, by
     /// someone else) above it when `later`. Each PATCH is recorded.
     async fn drive_restore_double(
         made: &'static str,
@@ -4415,8 +4425,13 @@ mod tests {
                     if method == axum::http::Method::PATCH {
                         log.lock().unwrap().push(format!("PATCH {}", url.path()));
                         patched.store(true, Ordering::SeqCst);
-                        return axum::Json(serde_json::json!({"id": "F1", "headRevisionId": made}))
-                            .into_response();
+                        // An empty `made`: the answer names no head.
+                        let answer = if made.is_empty() {
+                            serde_json::json!({"id": "F1"})
+                        } else {
+                            serde_json::json!({"id": "F1", "headRevisionId": made})
+                        };
+                        return axum::Json(answer).into_response();
                     }
                     if url.query_pairs().any(|(k, v)| k == "alt" && v == "media") {
                         return body.into_response();
@@ -4479,6 +4494,16 @@ mod tests {
             "{later:?}"
         );
 
+        // An upload answer that names no head, then a 13-byte head by
+        // someone else: unconfirmed, never success by its size.
+        let (mut provider, patches) = drive_restore_double("", true, "content of r1").await;
+        let unnamed = provider.restore_version("/a.txt", "r1").await;
+        assert!(
+            matches!(&unnamed, Err(ProviderError::TransferFailed(m)) if m.contains("did not name it")),
+            "{unnamed:?}"
+        );
+        assert_eq!(patches.lock().unwrap().len(), 1, "the upload was sent");
+
         let (mut provider, patches) = drive_restore_double("r3", false, "four").await;
         let short = provider.restore_version("/a.txt", "r1").await;
         assert!(
@@ -4540,7 +4565,8 @@ mod tests {
                         seen.lock()
                             .unwrap()
                             .push(format!("{id} name sent: {sent_name}"));
-                        return axum::Json(serde_json::json!({ "id": id })).into_response();
+                        return axum::Json(serde_json::json!({ "id": id, "headRevisionId": "r3" }))
+                            .into_response();
                     }
                     if url.query_pairs().any(|(k, v)| k == "alt" && v == "media") {
                         return "content of r1".into_response();
