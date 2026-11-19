@@ -11,6 +11,8 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { createRequire, syncBuiltinESMExports } from 'node:module';
 import { createHash } from 'node:crypto';
 import {
+  citationApplies,
+  CARGO_TREE_ARGS,
   isGplCompatible,
   tokenizeSpdx,
   extractSpdxLicenseIds,
@@ -1971,6 +1973,31 @@ test('reviewed notices: a reviewed citation gives no attribution in the file it 
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
+});
+
+test('reviewed notices: a citation applies in a package folder written with Windows separators', () => {
+  const c = { package: 'moka', version: '0.12.16', file: 'src/common/concurrent/arc.rs' };
+  assert.ok(citationApplies(c, '/home/r/.cargo/registry/src/idx/moka-0.12.16/src/common/concurrent/arc.rs:5'));
+  assert.ok(citationApplies(c, 'C:\\Users\\r\\.cargo\\registry\\src\\idx\\moka-0.12.16/src/common/concurrent/arc.rs:5'));
+  assert.ok(!citationApplies(c, 'C:\\Users\\r\\.cargo\\registry\\src\\idx\\other-1.0.0/src/common/concurrent/arc.rs:5'));
+  assert.ok(!citationApplies(c, 'C:\\Users\\r\\.cargo\\registry\\src\\idx\\moka-0.12.16/src/other.rs:5'));
+});
+
+test('cargo inventory: a line that is neither a package row, a heading nor a blank stops the run', () => {
+  const pkg = { name: 'twin', version: '1.0.0', id: 'registry+https://github.com/rust-lang/crates.io-index#twin@1.0.0', source: 'registry+https://github.com/rust-lang/crates.io-index' };
+  assert.deepStrictEqual([...activeCargoPackageIds('\n[build-dependencies]\ntwin v1.0.0\n', [pkg])], [pkg.id]);
+  for (const line of ['twin 1.0.0', 'twin v1.0.0-git (ssh://user:secret@host/x)x', '<twin v1.0.0>']) {
+    assert.throws(() => activeCargoPackageIds(`${line}\n`, [pkg]), (e) => /does not read/.test(e.message) && !e.message.includes('secret'), line);
+  }
+});
+
+test('cargo inventory: the tree is read without color, so CARGO_TERM_COLOR=always in CI does not wrap its marks', () => {
+  const at = CARGO_TREE_ARGS.indexOf('--color');
+  assert.ok(at > 0 && CARGO_TREE_ARGS[at + 1] === 'never', CARGO_TREE_ARGS.join(' '));
+  // The colored form cargo prints for a repeated package is no row the reader takes.
+  const pkg = { name: 'proc-macro2', version: '1.0.107', id: 'registry+https://github.com/rust-lang/crates.io-index#proc-macro2@1.0.107', source: 'registry+https://github.com/rust-lang/crates.io-index' };
+  assert.throws(() => activeCargoPackageIds('proc-macro2 v1.0.107 \u001b[33m\u001b[2m(*)\u001b[39m\u001b[22m\n', [pkg]), /in a form this generator does not read/);
+  assert.deepStrictEqual([...activeCargoPackageIds('proc-macro2 v1.0.107 (*)\n', [pkg])], [pkg.id]);
 });
 
 test('reviewed notices and tag mentions: each entry names its source and the whole notice starts with its line', () => {

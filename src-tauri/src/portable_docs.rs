@@ -41,6 +41,10 @@ pub(crate) const PENDING_DIR: &str = ".aeroftp-pending-docs";
 pub(crate) const NEXT_DIR: &str = ".aeroftp-pending-docs.next";
 /// The key of the exe a batch belongs to.
 const KEY_FILE: &str = "exe.key";
+/// The identity of a staging folder: a random value a staging writes in the
+/// folder it creates and keeps in its record, so the record names that very
+/// folder and never a folder created later at the same path.
+const STAGING_ID_FILE: &str = "staging.id";
 /// The key of a batch superseded while one of its documents could not be
 /// removed (an editor holds it): no exe has it (an exe key is hex), so the
 /// batch is never installed or offered, and any later pass removes it.
@@ -57,7 +61,14 @@ pub(crate) const DOCS: [&str; 4] = [
 /// Every file a staging writes in a batch: the documents and the key. Read
 /// by the Windows update helper only.
 #[cfg(windows)]
-pub(crate) const BATCH_FILES: [&str; 5] = [DOCS[0], DOCS[1], DOCS[2], DOCS[3], KEY_FILE];
+pub(crate) const BATCH_FILES: [&str; 6] = [
+    DOCS[0],
+    DOCS[1],
+    DOCS[2],
+    DOCS[3],
+    KEY_FILE,
+    STAGING_ID_FILE,
+];
 
 /// Windows error codes of a rename refused because another process holds
 /// the target (`ERROR_SHARING_VIOLATION`, `ERROR_LOCK_VIOLATION`) or because
@@ -280,7 +291,7 @@ fn is_batch(path: &Path) -> bool {
 }
 
 /// The record of the staging folders a staging created in `exe_dir`, one
-/// name a line, kept outside the folder (in the temporary folder, as the
+/// name and its identity (STAGING_ID_FILE) a line, kept outside the folder (in the temporary folder, as the
 /// lock of other systems is): a folder is a staging's only when a staging
 /// created it, which nothing in the folder itself can prove. A record that
 /// is lost (a cleaned temporary folder) leaves a stopped staging where it
@@ -295,18 +306,21 @@ fn staging_record(exe_dir: &Path) -> PathBuf {
     std::env::temp_dir().join(format!("aeroftp-pending-docs-{exact}.staging"))
 }
 
-fn recorded_stagings(exe_dir: &Path) -> Vec<String> {
+fn recorded_stagings(exe_dir: &Path) -> Vec<(String, String)> {
     std::fs::read_to_string(staging_record(exe_dir))
         .map(|text| {
             text.lines()
-                .filter(|name| name.starts_with(TMP_PREFIX) && !name.contains(['/', '\\']))
-                .map(str::to_string)
+                .filter_map(|line| line.split_once(' '))
+                .filter(|(name, id)| {
+                    name.starts_with(TMP_PREFIX) && !name.contains(['/', '\\']) && !id.is_empty()
+                })
+                .map(|(name, id)| (name.to_string(), id.to_string()))
                 .collect()
         })
         .unwrap_or_default()
 }
 
-fn write_stagings(exe_dir: &Path, names: &[String]) -> io::Result<()> {
+fn write_stagings(exe_dir: &Path, names: &[(String, String)]) -> io::Result<()> {
     let record = staging_record(exe_dir);
     if names.is_empty() {
         return match std::fs::remove_file(&record) {
@@ -316,47 +330,67 @@ fn write_stagings(exe_dir: &Path, names: &[String]) -> io::Result<()> {
     }
     std::fs::write(
         record,
-        names.iter().map(|n| format!("{n}\n")).collect::<String>(),
+        names
+            .iter()
+            .map(|(name, id)| format!("{name} {id}\n"))
+            .collect::<String>(),
     )
 }
 
-/// Records `name`, a folder this staging just created. Under the lock.
-fn record_staging(exe_dir: &Path, name: &str) -> io::Result<()> {
+/// Records `name`, a folder this staging just created, with a new identity,
+/// then writes that identity in the folder. Under the lock. A staging
+/// stopped between the two leaves an empty folder, which the sweep removes
+/// (only an empty folder: `remove_dir`).
+fn begin_staging(exe_dir: &Path, name: &str) -> io::Result<()> {
+    let id = format!("{:032x}", rand::random::<u128>());
     let mut names = recorded_stagings(exe_dir);
-    if !names.iter().any(|n| n == name) {
-        names.push(name.to_string());
-    }
-    write_stagings(exe_dir, &names)
+    names.retain(|(n, _)| n != name);
+    names.push((name.to_string(), id.clone()));
+    write_stagings(exe_dir, &names)?;
+    std::fs::write(exe_dir.join(name).join(STAGING_ID_FILE), id)
 }
 
 /// Drops `name` from the record once its folder is gone. Under the lock.
 fn forget_staging(exe_dir: &Path, name: &str) {
-    let names: Vec<String> = recorded_stagings(exe_dir)
+    let names: Vec<(String, String)> = recorded_stagings(exe_dir)
         .into_iter()
-        .filter(|n| n != name)
+        .filter(|(n, _)| n != name)
         .collect();
     let _ = write_stagings(exe_dir, &names);
 }
 
 /// Removes the staging folders a stopped update left: only the ones the
-/// record names, which a staging created. Called under the lock only, so no
-/// staging is in progress. In them only what a staging writes is removed
-/// (remove_batch), then the folder once empty; a folder that merely has a
-/// staging's name, whatever it holds (a key file and a README too), is not
-/// in the record and stays whole.
+/// record names, which a staging created, and only while the folder still
+/// holds the identity the record keeps: a folder created later at that path
+/// (the record outlived its folder: a staging stopped after its publishing
+/// rename) is not that staging's, and stays whole. Called under the lock
+/// only, so no staging is in progress. In a staging's folder only what a
+/// staging writes is removed (remove_batch, by name), then the folder once
+/// empty; a folder that merely has a staging's name, whatever it holds (a
+/// key file and a README too), is not in the record and stays whole.
 fn remove_staging_leftovers(exe_dir: &Path) {
     let names = recorded_stagings(exe_dir);
     if names.is_empty() {
         return;
     }
-    let left: Vec<String> = names
+    let left: Vec<(String, String)> = names
         .into_iter()
-        .filter(|name| {
+        .filter(|(name, id)| {
             let path = exe_dir.join(name);
-            remove_batch(&path);
-            // Empty when the staging stopped before it wrote its key.
+            let id_file = path.join(STAGING_ID_FILE);
+            let ours = std::fs::symlink_metadata(&path).is_ok_and(|m| m.is_dir())
+                && std::fs::read_to_string(&id_file).is_ok_and(|found| found == *id);
+            if ours {
+                remove_batch(&path);
+                if !is_batch(&path) {
+                    // Stopped before its key: the identity is all it wrote.
+                    let _ = std::fs::remove_file(&id_file);
+                }
+            }
+            // Empty when the staging stopped before it wrote its identity;
+            // an empty folder holds nothing to lose, whoever made it.
             let _ = std::fs::remove_dir(&path);
-            std::fs::symlink_metadata(&path).is_ok()
+            ours && std::fs::symlink_metadata(&path).is_ok()
         })
         .collect();
     let _ = write_stagings(exe_dir, &left);
@@ -379,6 +413,7 @@ fn remove_batch(path: &Path) -> bool {
         .iter()
         .all(|name| std::fs::symlink_metadata(path.join(name)).is_err())
     {
+        let _ = std::fs::remove_file(path.join(STAGING_ID_FILE));
         let _ = std::fs::remove_file(path.join(KEY_FILE));
         let _ = std::fs::remove_dir(path);
     }
@@ -449,8 +484,11 @@ fn stage_with(
     // created it is recorded, so a staging stopped at any point is found
     // again by the sweep of leftovers, and only then.
     std::fs::create_dir(&tmp).map_err(fail)?;
-    if let Err(e) = record_staging(exe_dir, &tmp_name) {
-        let _ = std::fs::remove_dir(&tmp);
+    if let Err(e) = begin_staging(exe_dir, &tmp_name) {
+        let _ = std::fs::remove_file(tmp.join(STAGING_ID_FILE));
+        if std::fs::remove_dir(&tmp).is_ok() {
+            forget_staging(exe_dir, &tmp_name);
+        }
         return Err(fail(e));
     }
     let staged = (|| -> io::Result<()> {
@@ -463,7 +501,10 @@ fn stage_with(
     })();
     if staged.is_err() {
         remove_batch(&tmp);
-        // Empty when the key itself could not be written.
+        // Only the identity is left when the key itself could not be written.
+        if !is_batch(&tmp) {
+            let _ = std::fs::remove_file(tmp.join(STAGING_ID_FILE));
+        }
         let _ = std::fs::remove_dir(&tmp);
     }
     if std::fs::symlink_metadata(&tmp).is_err() {
@@ -1418,7 +1459,7 @@ mod tests {
         // and recorded, with documents and key.
         let stopped = dir.path().join(format!("{TMP_PREFIX}stopped"));
         std::fs::create_dir(&stopped).unwrap();
-        record_staging(dir.path(), &format!("{TMP_PREFIX}stopped")).unwrap();
+        begin_staging(dir.path(), &format!("{TMP_PREFIX}stopped")).unwrap();
         std::fs::write(stopped.join("README.txt"), "half staged").unwrap();
         std::fs::write(stopped.join(KEY_FILE), "some-exe").unwrap();
         // A current batch that lost its key, with a file nobody staged in it.
@@ -1922,6 +1963,40 @@ mod tests {
         assert_eq!(read(&exe_dir, "README.txt"), "whole");
     }
 
+    /// The record outlives its folder (a staging stopped after its publishing
+    /// rename, before it dropped the entry), and a folder is created later at
+    /// that path, with a key file and a README as a staging writes: it is not
+    /// that staging's folder (it lacks the identity the record keeps), so it
+    /// stays whole and the entry goes. A folder the staging left empty (it
+    /// stopped before writing its identity) is removed.
+    #[test]
+    fn a_folder_created_later_at_a_recorded_staging_path_stays_whole() {
+        let dir = folder(Some(KEY));
+        let name = format!("{TMP_PREFIX}gone");
+        let path = dir.path().join(&name);
+        std::fs::create_dir(&path).unwrap();
+        begin_staging(dir.path(), &name).unwrap();
+        // Published: the folder is renamed away, the entry stays.
+        std::fs::rename(&path, dir.path().join("published")).unwrap();
+        assert_eq!(recorded_stagings(dir.path()).len(), 1);
+        std::fs::create_dir(&path).unwrap();
+        std::fs::write(path.join(KEY_FILE), "my key").unwrap();
+        std::fs::write(path.join("README.txt"), "my readme").unwrap();
+        // Another recorded staging that stopped before its identity.
+        let empty_name = format!("{TMP_PREFIX}empty");
+        let empty = dir.path().join(&empty_name);
+        std::fs::create_dir(&empty).unwrap();
+        begin_staging(dir.path(), &empty_name).unwrap();
+        std::fs::remove_file(empty.join(STAGING_ID_FILE)).unwrap();
+        let Pending::Docs(_) = install_pending_docs(dir.path(), KEY, rename) else {
+            panic!("docs")
+        };
+        assert_eq!(read(&path, KEY_FILE), "my key");
+        assert_eq!(read(&path, "README.txt"), "my readme");
+        assert!(!empty.exists(), "an empty recorded folder goes");
+        assert!(recorded_stagings(dir.path()).is_empty(), "and the entries");
+    }
+
     #[test]
     fn a_staging_folder_a_stopped_update_left_is_removed_and_never_read() {
         let dir = folder(Some(KEY));
@@ -1929,7 +2004,7 @@ mod tests {
         // and recorded, with a partial document and its key.
         let tmp = dir.path().join(format!("{TMP_PREFIX}c"));
         std::fs::create_dir(&tmp).unwrap();
-        record_staging(dir.path(), &format!("{TMP_PREFIX}c")).unwrap();
+        begin_staging(dir.path(), &format!("{TMP_PREFIX}c")).unwrap();
         std::fs::write(tmp.join("README.txt"), b"partial").unwrap();
         std::fs::write(tmp.join(KEY_FILE), KEY).unwrap();
         let Pending::Docs(_) = install_pending_docs(dir.path(), KEY, rename) else {

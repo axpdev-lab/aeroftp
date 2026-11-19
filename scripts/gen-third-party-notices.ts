@@ -797,7 +797,10 @@ const mayContinue = (notice: string) =>
 // <file>:<line>") is the file a citation was reviewed in. The same lines in
 // another package or file may credit code taken from the work cited, so
 // they are read as a notice there.
-function citationApplies(c: { package: string; version: string; file: string }, where: string): boolean {
+export function citationApplies(c: { package: string; version: string; file: string }, where: string): boolean {
+  // The package folder is a native path: on Windows its separators are
+  // backslashes, while the file inside it is always written with slashes.
+  where = where.replace(/\\/g, '/');
   const at = where.lastIndexOf(`${c.file}:`);
   if (at <= 0) return false;
   const before = where.slice(0, at);
@@ -975,10 +978,13 @@ export function activeCargoPackageIds(treeRaw: string, packages: any[]): Set<str
   const ids = new Set<string>();
   for (const raw of treeRaw.split('\n')) {
     const line = raw.trim();
-    // A package row: its name and version, then what cargo adds. Other lines
-    // (a "[build-dependencies]" heading, a blank) are no package.
+    // A package row: its name and version, then what cargo adds. A blank or
+    // a "[build-dependencies]" heading is no package; any other line is a row
+    // in a form this reader does not know, and stops the run rather than
+    // leave a dependency out (its text is not shown: it may name a source).
+    if (line === '' || /^\[[a-z-]+\]$/.test(line)) continue;
     const row = line.match(/^([a-zA-Z0-9_\-]+) v([0-9][0-9.\-+a-zA-Z]*)(.*)$/);
-    if (!row) continue;
+    if (!row) throw new Error('cargo tree prints a line this generator does not read as a package');
     const [, name, version] = row;
     let rest = row[3];
     // The marks cargo appends after the source: a repeated package, a proc macro.
@@ -1000,13 +1006,20 @@ export function activeCargoPackageIds(treeRaw: string, packages: any[]): Set<str
   return ids;
 }
 
+/**
+ * The `cargo tree` call of the production inventory. `--color never`: with
+ * CARGO_TERM_COLOR=always (set by CI workflows) cargo wraps its marks, such as
+ * `(*)`, in escape codes, and a row is then in no form the reader takes.
+ */
+export const CARGO_TREE_ARGS = ['tree', '--locked', '--color', 'never', '--prefix', 'none', '--target', 'all', '-e', 'normal,build', '--format', '{p}'];
+
 export function collectCargoDependencies(): ComponentInfo[] {
   const cargoToml = path.join(ROOT, 'src-tauri', 'Cargo.toml');
 
   // Exact active production graph (normal + build dependencies across all target platforms)
   const treeRaw = execFileSync(
     'cargo',
-    ['tree', '--locked', '--prefix', 'none', '--target', 'all', '-e', 'normal,build', '--format', '{p}', '--manifest-path', cargoToml],
+    [...CARGO_TREE_ARGS, '--manifest-path', cargoToml],
     { maxBuffer: 64 * 1024 * 1024, encoding: 'utf8' }
   );
 
