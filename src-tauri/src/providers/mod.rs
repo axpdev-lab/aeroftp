@@ -654,16 +654,27 @@ pub(crate) fn fully_unescaped(s: &str) -> Option<String> {
 }
 
 /// `text` with every value a session sent a server replaced by
-/// `[REDACTED]`. A server can only reflect what it received, so a value is
-/// caught in any syntax around it. Values shorter than eight bytes are left
-/// to the caller: replacing them would garble ordinary words.
-pub(crate) fn without_sent_values(text: &str, sent: &[String]) -> String {
-    let long: Vec<String> = sent
+/// `[REDACTED]`, or `None` when it holds a value shorter than eight bytes.
+/// A server can only reflect what it received, so a value is caught in any
+/// syntax around it. A short value (a short profile password) cannot be cut
+/// out of the word it touches, and replacing every occurrence would garble
+/// ordinary words, so text that holds one is not shown at all.
+pub(crate) fn without_sent_values(text: &str, sent: &[String]) -> Option<String> {
+    let (long, short): (Vec<String>, Vec<String>) = sent
         .iter()
-        .filter(|value| value.len() >= 8)
+        .filter(|value| !value.is_empty())
         .cloned()
-        .collect();
-    redact_values(text, &long, "[REDACTED]")
+        .partition(|value| value.len() >= 8);
+    if contains_any_spelling(text, &short) {
+        return None;
+    }
+    Some(redact_values(text, &long, "[REDACTED]"))
+}
+
+/// What an error shows of a reply that holds a short value this session
+/// sent: its size only.
+pub(crate) fn reply_with_a_sent_value(bytes: usize) -> String {
+    format!("a reply of {bytes} bytes, withheld: it contains a value this session sent")
 }
 
 /// `text` with each of `values` replaced by `placeholder`, in every spelling
@@ -5158,19 +5169,25 @@ mod tests {
             "FQoGZXIvYXdzE%2Bsent%2ftoken%3D%3d",
         ] {
             assert_eq!(
-                without_sent_values(&format!("token [{echo}] expired"), &sent),
-                "token [[REDACTED]] expired"
+                without_sent_values(&format!("token [{echo}] expired"), &sent).as_deref(),
+                Some("token [[REDACTED]] expired")
             );
         }
         let entity = vec!["opaque&amp;token42".to_string()];
         let echoed = fully_unescaped("token opaque&amp;amp;token42 expired").unwrap();
         assert_eq!(
-            without_sent_values(&echoed, &entity),
-            "token [REDACTED] expired"
+            without_sent_values(&echoed, &entity).as_deref(),
+            Some("token [REDACTED] expired")
         );
+        // A short value is not cut out: text holding it, in any spelling,
+        // is not shown; text without it is.
+        let short = vec!["p@ss w7".to_string()];
+        for echo in ["code p@ss w7", "code p%40ss%20w7", "code xp@ss w7y"] {
+            assert_eq!(without_sent_values(echo, &short), None, "{echo}");
+        }
         assert_eq!(
-            without_sent_values("code abc", &["abc".to_string()]),
-            "code abc"
+            without_sent_values("code accepted", &short).as_deref(),
+            Some("code accepted")
         );
     }
 

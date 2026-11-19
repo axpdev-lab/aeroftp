@@ -500,7 +500,9 @@ fn server_message(body: &str, base_url: &str, sent: &[String]) -> String {
     let Some(decoded) = super::fully_unescaped(message) else {
         return super::deeply_escaped_reply(body.len());
     };
-    let mut shown = super::without_sent_values(&decoded, sent);
+    let Some(mut shown) = super::without_sent_values(&decoded, sent) else {
+        return super::reply_with_a_sent_value(body.len());
+    };
     if let Ok(url) = url::Url::parse(base_url) {
         let path = url.path().trim_end_matches('/');
         // Every leading part of the base path, longest first: a server can
@@ -10916,6 +10918,22 @@ pub(crate) mod collection_redirect_tests {
         assert_eq!(
             server_message(echoed, base, &sent),
             "Bad credentials [REDACTED]"
+        );
+        // A password shorter than eight bytes cannot be cut out of the words
+        // around it: a message that echoes it is shown by its size only.
+        let short = vec!["s3cr&t7".to_string()];
+        let echoed = "<d:error><s:message>Bad credentials for s3cr&amp;t7</s:message></d:error>";
+        assert_eq!(
+            server_message(echoed, base, &short),
+            crate::providers::reply_with_a_sent_value(echoed.len())
+        );
+        assert_eq!(
+            server_message(
+                "<d:error><s:message>Bad credentials</s:message></d:error>",
+                base,
+                &short
+            ),
+            "Bad credentials"
         );
     }
 

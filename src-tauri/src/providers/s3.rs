@@ -643,8 +643,10 @@ fn s3_error_text(body: &str, sent: &[String]) -> String {
             let Some(decoded) = super::fully_unescaped(&detail) else {
                 return super::deeply_escaped_reply(body.len());
             };
-            let scrubbed =
-                scrub_s3_reflected_credentials(&super::without_sent_values(&decoded, sent));
+            let Some(shown) = super::without_sent_values(&decoded, sent) else {
+                return super::reply_with_a_sent_value(body.len());
+            };
+            let scrubbed = scrub_s3_reflected_credentials(&shown);
             super::sanitize_plain_error(&scrubbed)
         }
         None if body.is_empty() => "no message".to_string(),
