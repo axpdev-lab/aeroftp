@@ -2489,7 +2489,16 @@ fn name_after_columns(line: &str, columns: usize) -> &str {
 /// over it, so it is refused before anything is written.
 fn local_leaf_of(remote: &str) -> Result<&str, ProviderError> {
     let leaf = remote.rsplit('/').next().unwrap_or_default();
-    if leaf.is_empty() || leaf == "." || leaf == ".." || leaf.contains(['\\', '\0']) {
+    // One plain name on this system too: on Windows `C:x` is a drive
+    // prefix that a join would follow out of the folder.
+    let one_name = {
+        let mut parts = std::path::Path::new(leaf).components();
+        matches!(
+            (parts.next(), parts.next()),
+            (Some(std::path::Component::Normal(_)), None)
+        )
+    };
+    if !one_name || leaf == "." || leaf == ".." || leaf.contains(['\\', '\0']) {
         return Err(ProviderError::InvalidPath(format!(
             "{remote} cannot be saved into a local folder under its own name"
         )));
@@ -4107,6 +4116,8 @@ mod tests {
             "/a/..\\outside.txt",
             "/a/x\\y",
             "/a/n\0ul",
+            #[cfg(windows)]
+            "/a/C:outside.txt",
         ] {
             assert!(
                 matches!(

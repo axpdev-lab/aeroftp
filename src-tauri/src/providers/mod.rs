@@ -386,6 +386,19 @@ pub const CURRENT_VERSION_ID: &str = "current";
 /// first, so an endless answer must end in an error, not in memory growth.
 pub const VERSION_LISTING_MAX_BYTES: u64 = 8 * 1024 * 1024;
 
+/// The most pages a version listing follows: a server that keeps naming a
+/// new page past it gets an error, never a history cut short.
+pub const VERSION_LISTING_MAX_PAGES: usize = 200;
+
+/// The error of a version listing still announcing pages at
+/// [`VERSION_LISTING_MAX_PAGES`].
+pub(crate) fn version_listing_too_long(path: &str) -> ProviderError {
+    ProviderError::TransferFailed(format!(
+        "The versions of {path} did not end within {VERSION_LISTING_MAX_PAGES} pages, so none \
+         are shown: try again later"
+    ))
+}
+
 /// A version listing answer as text, read up to [`VERSION_LISTING_MAX_BYTES`].
 pub async fn version_listing_text(resp: reqwest::Response) -> Result<String, ProviderError> {
     version_listing_text_with(resp, |e| {
@@ -1023,17 +1036,21 @@ pub async fn refuse_a_restore_that_changes_nothing<P: StorageProvider + ?Sized>(
 
 /// [`refuse_a_restore_that_changes_nothing`] for S3 and B2 only, where the
 /// right to list versions is granted apart from the right to copy one, and
-/// a key that may restore can be denied the listing: there a listing that
-/// fails decides nothing (`None`), and the copy names its target itself.
+/// a key that may restore can be denied the listing: there a listing
+/// denied (`PermissionDenied`) decides nothing (`None`), and the copy names
+/// its target itself. Any other failure (a listing cut short, refused as
+/// too long, malformed) refuses the restore like
+/// [`refuse_a_restore_that_changes_nothing`].
 pub async fn refuse_a_restore_that_changes_nothing_when_listed<P: StorageProvider + ?Sized>(
     provider: &mut P,
     path: &str,
     version_id: &str,
 ) -> Result<Option<RestorePreflight>, ProviderError> {
-    let Ok(versions) = provider.list_versions(path).await else {
-        return Ok(None);
-    };
-    restore_preflight(&versions, path, version_id).map(Some)
+    match provider.list_versions(path).await {
+        Ok(versions) => restore_preflight(&versions, path, version_id).map(Some),
+        Err(ProviderError::PermissionDenied(_)) => Ok(None),
+        Err(e) => Err(restore_needs_its_listing(path, e)),
+    }
 }
 
 /// The error of a restore whose version listing failed: a file gone or
@@ -7694,7 +7711,7 @@ mod http_timeout_class_tests {
         // Logs and moves on; the upload it follows has already succeeded.
         ("onedrive.rs", "purge_old_versions"),
         // Optional discovery: the listing goes on without team folders.
-        ("zoho_workdrive.rs", "discover_team_folders"),
+        ("zoho_workdrive.rs", "fetch_team_folders"),
         // A probe: on any failure the v2 sign-in runs and reports its own.
         ("swift.rs", "detect_auth_version"),
         // An opportunistic probe: the provider's own download reports.

@@ -109,6 +109,14 @@ impl ZohoWorkdriveConfig {
 // ── JSON:API response structures ──────────────────────────────────────────
 
 /// JSON:API wrapper for a single resource
+/// Which listing gave the team folders: WorkDrive's team folders, or its
+/// workspaces read as team folders when that listing gives none.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TeamFolderSource {
+    TeamFolders,
+    Workspaces,
+}
+
 #[derive(Debug, Deserialize)]
 struct JsonApiResponse<T> {
     data: T,
@@ -1018,6 +1026,8 @@ pub struct ZohoWorkdriveProvider {
     team_user_id: Option<String>,
     /// Team folders discovered during connect: (id, name)
     team_folders: Vec<(String, String)>,
+    /// The listing [`Self::team_folders`] was read from.
+    team_folders_source: Option<TeamFolderSource>,
     /// Team folders removed from the live root whose trash can still be scanned.
     trashed_team_folders: Vec<(String, String)>,
     /// Server profile identifier owning these OAuth tokens. Empty when the
@@ -1096,6 +1106,7 @@ impl ZohoWorkdriveProvider {
             account_email: None,
             team_user_id: None,
             team_folders: Vec::new(),
+            team_folders_source: None,
             trashed_team_folders: Vec::new(),
             profile_id: String::new(),
             retry: HttpRetryConfig::default(),
@@ -2062,10 +2073,39 @@ impl ZohoWorkdriveProvider {
         })
     }
 
-    /// Discover team folders.
+    /// Discover team folders and keep them as the root's team folders.
+    async fn discover_team_folders(&mut self, team_id: &str) {
+        if let Some((source, found)) = self.fetch_team_folders(team_id).await {
+            self.keep_team_folders(source, found);
+        }
+    }
+
+    /// Keep `found` (from `source`) as the team folders, in place of the
+    /// ones kept before, whose cached root paths go with them.
+    fn keep_team_folders(&mut self, source: TeamFolderSource, found: Vec<(String, String)>) {
+        for (id, name) in std::mem::take(&mut self.team_folders) {
+            let key = format!("/{name}");
+            if self.folder_cache.get(&key) == Some(&id) {
+                self.folder_cache.remove(&key);
+            }
+        }
+        for (id, name) in &found {
+            self.folder_cache.insert(format!("/{name}"), id.clone());
+        }
+        self.team_folders = found;
+        self.team_folders_source = Some(source);
+    }
+
+    /// The team folders of `team_id` and where they were read, changing
+    /// nothing kept (a refresh dropped half way leaves the mapping as it
+    /// was), or `None` when no listing answered.
     /// Primary: GET /teams/{teamID}/teamfolders (documented endpoint)
     /// Fallback: GET /teams/{teamID}/workspaces (workspaces as virtual folders)
-    async fn discover_team_folders(&mut self, team_id: &str) {
+    async fn fetch_team_folders(
+        &self,
+        team_id: &str,
+    ) -> Option<(TeamFolderSource, Vec<(String, String)>)> {
+        let mut found = Vec::new();
         // Primary: GET /teams/{teamId}/teamfolders
         let tf_url = format!("{}/teams/{}/teamfolders", self.api_base(), team_id);
         info!("Zoho WorkDrive: GET {}", tf_url);
@@ -2074,7 +2114,7 @@ impl ZohoWorkdriveProvider {
             Ok(h) => h,
             Err(e) => {
                 info!("Zoho WorkDrive: auth error for team folders: {}", e);
-                return;
+                return None;
             }
         };
 
@@ -2088,7 +2128,7 @@ impl ZohoWorkdriveProvider {
             Ok(r) => r,
             Err(e) => {
                 info!("Zoho WorkDrive: team folders request failed: {}", e);
-                return;
+                return None;
             }
         };
 
@@ -2106,16 +2146,11 @@ impl ZohoWorkdriveProvider {
                         "Zoho WorkDrive team folder: {} ({})",
                         tf.attributes.name, tf.id
                     );
-                    self.folder_cache
-                        .insert(format!("/{}", tf.attributes.name), tf.id.clone());
-                    self.team_folders.push((tf.id, tf.attributes.name));
+                    found.push((tf.id, tf.attributes.name));
                 }
-                if !self.team_folders.is_empty() {
-                    info!(
-                        "Zoho WorkDrive discovered {} team folders",
-                        self.team_folders.len()
-                    );
-                    return;
+                if !found.is_empty() {
+                    info!("Zoho WorkDrive discovered {} team folders", found.len());
+                    return Some((TeamFolderSource::TeamFolders, found));
                 }
             }
         } else {
@@ -2137,7 +2172,7 @@ impl ZohoWorkdriveProvider {
 
         let auth = match self.auth_header().await {
             Ok(h) => h,
-            Err(_) => return,
+            Err(_) => return None,
         };
 
         let resp = match self
@@ -2150,7 +2185,7 @@ impl ZohoWorkdriveProvider {
             Ok(r) => r,
             Err(e) => {
                 info!("Zoho WorkDrive: workspaces request failed: {}", e);
-                return;
+                return None;
             }
         };
 
@@ -2162,7 +2197,7 @@ impl ZohoWorkdriveProvider {
                 status,
                 log_preview(&text, 300)
             );
-            return;
+            return None;
         }
 
         let body = resp.text().await.unwrap_or_default();
@@ -2179,16 +2214,15 @@ impl ZohoWorkdriveProvider {
                     "Zoho WorkDrive workspace as team folder: {} ({})",
                     ws.attributes.name, ws.id
                 );
-                self.folder_cache
-                    .insert(format!("/{}", ws.attributes.name), ws.id.clone());
-                self.team_folders.push((ws.id, ws.attributes.name));
+                found.push((ws.id, ws.attributes.name));
             }
         }
 
         info!(
             "Zoho WorkDrive discovered {} team folders (via workspaces)",
-            self.team_folders.len()
+            found.len()
         );
+        Some((TeamFolderSource::Workspaces, found))
     }
 
     /// Send one WorkDrive request at the pace WorkDrive accepts. `listing` is
@@ -3069,13 +3103,17 @@ impl ZohoWorkdriveProvider {
         let Some(team) = self.team_id.clone() else {
             return Err(unconfirmed());
         };
-        let discovered = std::mem::take(&mut self.team_folders);
-        self.discover_team_folders(&team).await;
-        if self.team_folders.is_empty() {
-            // Discovery answered nothing: no new mapping to trust.
-            self.team_folders = discovered;
+        // Read the mapping again without touching the one kept: dropped
+        // half way, the refresh leaves it whole. A mapping read from the
+        // other listing (team folders or workspaces) or empty is no answer
+        // about this one.
+        let Some((source, found)) = self.fetch_team_folders(&team).await else {
+            return Err(unconfirmed());
+        };
+        if found.is_empty() || self.team_folders_source != Some(source) {
             return Err(unconfirmed());
         }
+        self.keep_team_folders(source, found);
         match named(self) {
             None => Ok(None),
             Some(fresh) if self.team_folder_is(&fresh, name).await? => Ok(Some(fresh)),
@@ -4605,6 +4643,9 @@ impl StorageProvider for ZohoWorkdriveProvider {
                 .map_err(|e| ProviderError::ParseError(format!("Versions of {path}: {e}")))?;
             data.extend(page.data);
             match cursor {
+                Some(_) if seen.len() + 1 >= super::VERSION_LISTING_MAX_PAGES => {
+                    return Err(super::version_listing_too_long(path))
+                }
                 Some(cursor) if seen.insert(cursor.clone()) => next = Some(cursor),
                 Some(_) => {
                     return Err(ProviderError::ParseError(
@@ -7955,10 +7996,10 @@ mod tests {
     /// gives no mapping to confirm, the operation is refused.
     #[tokio::test]
     async fn a_renamed_team_folder_is_never_acted_in() {
-        // Discovery answers the two folders once, then nothing.
+        // Discovery answers the two folders twice, then nothing.
         let (mut p, _requests, server) = listing_fixture(|id, _, nth| {
             let body = match id {
-                "TEAM" if nth == 0 => r#"{"data":[{"id":"T1","attributes":{"name":"Archive"}},{"id":"T2","attributes":{"name":"Docs"}}]}"#.to_string(),
+                "TEAM" if nth <= 1 => r#"{"data":[{"id":"T1","attributes":{"name":"Archive"}},{"id":"T2","attributes":{"name":"Docs"}}]}"#.to_string(),
                 "TEAM" => r#"{"data":[]}"#.to_string(),
                 _ => listing_json(&[], Some((false, None))),
             };
@@ -7974,12 +8015,24 @@ mod tests {
             })
         };
         p.team_folders = vec![("T2".into(), "Docs".into())];
+        p.team_folders_source = Some(TeamFolderSource::TeamFolders);
         place("T2", "Docs");
         assert_eq!(p.resolve_path("/Docs").await.unwrap(), "T2");
         assert_eq!(read_by_id(), ["T2"]);
 
+        // A mapping read from the workspaces is not confirmed by the team
+        // folders listing: refused, and kept as it was.
         p.team_folders = vec![("T1".into(), "Docs".into())];
+        p.team_folders_source = Some(TeamFolderSource::Workspaces);
         place("T1", "Archive");
+        let other_listing = p.resolve_path("/Docs").await;
+        assert!(
+            matches!(&other_listing, Err(ProviderError::ServerError(m)) if m.contains("could not be confirmed")),
+            "{other_listing:?}"
+        );
+        assert_eq!(p.team_folders, vec![("T1".into(), "Docs".into())]);
+        p.team_folders_source = Some(TeamFolderSource::TeamFolders);
+
         assert_eq!(p.resolve_path("/Docs").await.unwrap(), "T2");
         assert_eq!(
             p.team_folders,
@@ -7996,6 +8049,50 @@ mod tests {
             matches!(&unconfirmed, Err(ProviderError::ServerError(m)) if m.contains("could not be confirmed")),
             "{unconfirmed:?}"
         );
+    }
+
+    /// A refresh of the team folders dropped half way (the caller gave up
+    /// while the listing was read) leaves the mapping kept as it was, so a
+    /// later operation never reads the team folder's name as a private
+    /// folder of that name.
+    #[tokio::test]
+    async fn a_refresh_dropped_half_way_keeps_the_team_folders() {
+        let app =
+            axum::Router::new().fallback(axum::routing::any(|uri: axum::http::Uri| async move {
+                match uri.path() {
+                    "/workdrive/api/v1/files/T1" => (
+                        axum::http::StatusCode::OK,
+                        r#"{"data":{"id":"T1","attributes":{"name":"Archive","status":1}}}"#,
+                    ),
+                    path if path.ends_with("/teamfolders") || path.ends_with("/workspaces") => {
+                        tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+                        (axum::http::StatusCode::OK, r#"{"data":[]}"#)
+                    }
+                    _ => (axum::http::StatusCode::NOT_FOUND, "unexpected endpoint"),
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut p = ZohoWorkdriveProvider::new(config("com"));
+        p.endpoint_override = Some(format!("http://{addr}"));
+        p.test_access_token = Some("test-token".into());
+        p.connected = true;
+        p.privatespace_id = Some("PS".into());
+        p.current_folder_id = "PS".into();
+        p.folder_cache.insert("/".into(), "PS".into());
+        p.team_id = Some("TEAM".into());
+        p.team_folders = vec![("T1".into(), "Docs".into())];
+        p.team_folders_source = Some(TeamFolderSource::TeamFolders);
+        let dropped =
+            tokio::time::timeout(std::time::Duration::from_secs(2), p.resolve_path("/Docs")).await;
+        server.abort();
+        assert!(
+            dropped.is_err(),
+            "the refresh was still reading: {dropped:?}"
+        );
+        assert_eq!(p.team_folders, vec![("T1".into(), "Docs".into())]);
+        assert_eq!(p.team_folders_source, Some(TeamFolderSource::TeamFolders));
     }
 
     /// `/docs` cached, then moved away by another client and
@@ -8183,6 +8280,57 @@ mod tests {
             calls.iter().filter(|c| c.starts_with("POST ")).count(),
             1,
             "{calls:?}"
+        );
+    }
+
+    /// A versions listing that still names a new page at the page limit is
+    /// refused, not shown cut short, and does not page on for ever.
+    #[tokio::test]
+    async fn a_version_listing_past_the_page_limit_is_refused() {
+        let app = axum::Router::new().fallback(axum::routing::any(|uri: axum::http::Uri| async move {
+            let query = uri.query().unwrap_or_default().to_string();
+            match uri.path() {
+                "/workdrive/api/v1/privatespace/PS/files" => (
+                    axum::http::StatusCode::OK,
+                    r#"{"data":[{"id":"FILE9","attributes":{"name":"f.txt","type":"file"}}]}"#.to_string(),
+                ),
+                "/workdrive/api/v1/files/FILE9/versions" => {
+                    let n: u64 = query
+                        .split_once("page%5Bnext%5D=p")
+                        .and_then(|(_, n)| n.parse().ok())
+                        .unwrap_or(0);
+                    (
+                        axum::http::StatusCode::OK,
+                        format!(
+                            r#"{{"data":[{{"id":"r{n}","attributes":{{"version_number":"{n}.0","created_time_in_milliseconds":{},"file_size":3}}}}],"links":{{"cursor":{{"has_next":true,"next":"https://workdrive.example/api/v1/files/FILE9/versions?page%5Bnext%5D=p{}"}}}}}}"#,
+                            1794841300000 + n,
+                            n + 1
+                        ),
+                    )
+                }
+                _ => (axum::http::StatusCode::NOT_FOUND, "unexpected endpoint".to_string()),
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut p = ZohoWorkdriveProvider::new(config("com"));
+        p.endpoint_override = Some(format!("http://{addr}"));
+        p.test_access_token = Some("test-token".into());
+        p.connected = true;
+        p.privatespace_id = Some("PS".into());
+        p.current_folder_id = "PS".into();
+        p.folder_cache.insert("/".into(), "PS".into());
+        let listed = tokio::time::timeout(
+            std::time::Duration::from_secs(60),
+            p.list_versions("/f.txt"),
+        )
+        .await
+        .expect("the listing ends");
+        server.abort();
+        assert!(
+            matches!(&listed, Err(ProviderError::TransferFailed(m)) if m.contains("did not end within")),
+            "{listed:?}"
         );
     }
 

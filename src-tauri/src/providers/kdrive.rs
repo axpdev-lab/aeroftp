@@ -2047,6 +2047,9 @@ impl StorageProvider for KDriveProvider {
             listed.extend(data);
             match (has_more, next) {
                 (Some(true), Some(next)) if !next.is_empty() && seen.insert(next.clone()) => {
+                    if seen.len() >= super::VERSION_LISTING_MAX_PAGES {
+                        return Err(super::version_listing_too_long(path));
+                    }
                     cursor = Some(next)
                 }
                 (Some(true), _) => {
@@ -3293,6 +3296,51 @@ mod tests {
             seen.iter()
                 .any(|l| l == "POST /3/drive/987654/files/11/versions/2/restore"),
             "{seen:?}"
+        );
+    }
+
+    /// A versions listing that still names a new page at the page limit is
+    /// refused, not shown cut short, and does not page on for ever.
+    #[tokio::test]
+    async fn a_version_listing_past_the_page_limit_is_refused() {
+        use axum::response::IntoResponse;
+        let app = axum::Router::new().fallback(axum::routing::any(|uri: axum::http::Uri| async move {
+            let target = uri.to_string();
+            let file = serde_json::json!({ "id": 11, "name": "a.txt", "type": "file",
+                "size": 4, "last_modified_at": 1_700_000_500 });
+            let body = if target == "/3/drive/987654/files/1/files" {
+                serde_json::json!({ "result": "success", "data": [file] })
+            } else if target == "/3/drive/987654/files/11" {
+                serde_json::json!({ "result": "success", "data": file })
+            } else if target.starts_with("/3/drive/987654/files/11/versions") {
+                let n: i64 = target
+                    .split_once("cursor=c")
+                    .and_then(|(_, n)| n.parse().ok())
+                    .unwrap_or(0);
+                serde_json::json!({ "result": "success",
+                    "data": [{ "id": n + 1, "file_id": 11, "size": 3, "created_at": 1_700_000_000 + n }],
+                    "has_more": true, "cursor": format!("c{}", n + 1) })
+            } else {
+                return axum::http::StatusCode::NOT_FOUND.into_response();
+            };
+            axum::Json(body).into_response()
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = test_provider();
+        provider.connected = true;
+        provider.api_base_override = Some(format!("http://{addr}"));
+        let listed = tokio::time::timeout(
+            std::time::Duration::from_secs(60),
+            provider.list_versions("/a.txt"),
+        )
+        .await
+        .expect("the listing ends");
+        server.abort();
+        assert!(
+            matches!(&listed, Err(ProviderError::TransferFailed(m)) if m.contains("did not end within")),
+            "{listed:?}"
         );
     }
 

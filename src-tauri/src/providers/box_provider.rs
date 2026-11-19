@@ -2999,8 +2999,15 @@ impl StorageProvider for BoxProvider {
             // offset plus its limit), not after the versions it held: a short
             // or empty page still moves on. A page that does not move on is
             // refused.
-            let next =
-                page.offset.unwrap_or(offset) + page.limit.unwrap_or(page.entries.len() as u64);
+            // A page answered at another offset than asked would skip or
+            // repeat slots: refused.
+            if page.offset.is_some_and(|answered| answered != offset) {
+                return Err(ProviderError::ParseError(format!(
+                    "Box answered the versions page at offset {} for offset {offset}",
+                    page.offset.unwrap_or_default()
+                )));
+            }
+            let next = offset + page.limit.unwrap_or(page.entries.len() as u64);
             versions.entries.extend(page.entries);
             if !page.total_count.is_some_and(|total| next < total) {
                 break;
@@ -3120,7 +3127,18 @@ impl StorageProvider for BoxProvider {
             )));
         };
         super::confirm_version_restored(self, path, Some(&selected)).await?;
-        let now = self.current_version_of_id(&file_id, path).await?;
+        // The promotion is accepted by now: a failed read of the head must
+        // not read as a restore to send again.
+        let now = self
+            .current_version_of_id(&file_id, path)
+            .await
+            .map_err(|e| {
+                ProviderError::TransferFailed(format!(
+                    "Box accepted the restore of version {version_id} of {path}, but its current \
+                     version could not be read ({e}), so the restore is not confirmed: list its \
+                     versions again before restoring again"
+                ))
+            })?;
         if now.as_deref() != Some(promoted.as_str()) {
             return Err(ProviderError::TransferFailed(format!(
                 "Box promoted version {promoted} of {path}, but its current version is now {}: \
@@ -4099,9 +4117,17 @@ mod tests {
                 "offset": 0, "limit": 2, "total_count": 3
             })
         };
+        // A first page answered at offset 1: slot 0 would be skipped.
+        let wrong_first: Pages = |_| {
+            serde_json::json!({
+                "entries": [{"type": "file_version", "id": "14", "size": 4, "modified_at": "2026-01-04T00:00:00Z"}],
+                "offset": 1, "limit": 2, "total_count": 3
+            })
+        };
         for (first, expected) in [
-            (empty_first, vec!["55:current", "13"]),
-            (short_first, vec!["55:current", "14", "13"]),
+            (empty_first, Some(vec!["55:current", "13"])),
+            (short_first, Some(vec!["55:current", "14", "13"])),
+            (wrong_first, None),
         ] {
             let older = older.clone();
             let app =
@@ -4133,6 +4159,13 @@ mod tests {
             provider.api_base_override = Some(format!("http://{addr}"));
             let listed = provider.list_versions("/a.txt").await;
             server.abort();
+            let Some(expected) = expected else {
+                assert!(
+                    matches!(&listed, Err(ProviderError::ParseError(m)) if m.contains("offset 1 for offset 0")),
+                    "{listed:?}"
+                );
+                continue;
+            };
             let ids: Vec<String> = listed
                 .expect("versions")
                 .into_iter()
@@ -4191,17 +4224,21 @@ mod tests {
     async fn a_box_restore_is_confirmed_by_the_version_the_promotion_made() {
         use std::sync::atomic::{AtomicBool, Ordering};
         use std::sync::Arc;
-        // (current version after, promotion answer readable, confirmed)
-        for (current_after, readable, confirmed) in [
-            ("14", true, true),
-            ("15", true, false),
-            ("14", false, false),
+        // (current version after, promotion answer readable, confirmed,
+        // the head read after the promotion fails)
+        for (current_after, readable, confirmed, head_fails) in [
+            ("14", true, true, false),
+            ("15", true, false, false),
+            ("14", false, false, false),
+            ("14", true, false, true),
         ] {
             let restored = Arc::new(AtomicBool::new(false));
             let done = Arc::clone(&restored);
+            let reads_after = Arc::new(std::sync::atomic::AtomicUsize::new(0));
             let app = axum::Router::new().fallback(axum::routing::any(
                 move |method: axum::http::Method, uri: axum::http::Uri| {
                     let done = Arc::clone(&done);
+                    let reads_after = Arc::clone(&reads_after);
                     async move {
                         use axum::response::IntoResponse;
                         let after = done.load(Ordering::SeqCst);
@@ -4215,6 +4252,13 @@ mod tests {
                                 "offset": 0, "limit": 1000, "total_count": 1
                             }))
                             .into_response(),
+                            ("GET", "/files/55")
+                                if after
+                                    && head_fails
+                                    && reads_after.fetch_add(1, Ordering::SeqCst) > 0 =>
+                            {
+                                axum::http::StatusCode::INTERNAL_SERVER_ERROR.into_response()
+                            }
                             ("GET", "/files/55") => axum::Json(serde_json::json!({
                                 "type": "file", "id": "55", "name": "a.txt",
                                 "size": if after { 2 } else { 9 },
@@ -4247,6 +4291,11 @@ mod tests {
             let outcome = provider.restore_version("/a.txt", "12").await;
             if confirmed {
                 outcome.expect("the promoted version is current");
+            } else if head_fails {
+                assert!(
+                    matches!(&outcome, Err(ProviderError::TransferFailed(m)) if m.contains("accepted the restore") && m.contains("could not be read")),
+                    "{outcome:?}"
+                );
             } else if readable {
                 assert!(
                     matches!(&outcome, Err(ProviderError::TransferFailed(m)) if m.contains("list its versions again")),

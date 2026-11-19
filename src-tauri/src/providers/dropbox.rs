@@ -2171,16 +2171,24 @@ impl StorageProvider for DropboxProvider {
         }
         let listed: Listed = serde_json::from_str(&body)
             .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+        let replaced = || {
+            ProviderError::NotFound(format!(
+                "{full_path} was replaced while its versions were read: list its versions again"
+            ))
+        };
+        if meta.tag == "deleted" {
+            // A deleted file's history is read by path: a file put there
+            // while it was read would be overwritten by a restore of it.
+            let after: DropboxMetadata = self.version_metadata(&by_path).await?;
+            if after.tag != "deleted" {
+                return Err(replaced());
+            }
+        }
         if let Some(file_id) = &live_id {
             // The history and the path must still describe one file: the
             // path is read again after the history, and a file put there in
             // between (another id) is refused, as is a history entry of
             // another file.
-            let replaced = || {
-                ProviderError::NotFound(format!(
-                    "{full_path} was replaced while its versions were read: list its versions again"
-                ))
-            };
             if listed
                 .entries
                 .iter()
@@ -3847,6 +3855,11 @@ mod tests {
                             reads.push(path.clone());
                             reads.iter().filter(|p| **p == path).count()
                         };
+                        // /back.txt is deleted at its first read and a file
+                        // again after its history.
+                        if path == "/back.txt" && n == 1 {
+                            return Json(json!({".tag":"deleted","name":"back.txt"}));
+                        }
                         // /swap.txt names id:G from its second read on.
                         let id = if path == "/swap.txt" && n > 1 { "id:G" } else { "id:F" };
                         Json(json!({".tag":"file","name":"f.txt","id":id,"rev":"n2","size":3,
@@ -3863,6 +3876,7 @@ mod tests {
         provider.content_base_override = Some(format!("http://{addr}"));
         let reused = provider.list_versions("/f.txt").await;
         let swapped = provider.list_versions("/swap.txt").await;
+        let back = provider.list_versions("/back.txt").await;
         server.abort();
         let ids: Vec<String> = reused
             .expect("a reused path lists")
@@ -3873,6 +3887,10 @@ mod tests {
         assert!(
             matches!(&swapped, Err(ProviderError::NotFound(m)) if m.contains("list its versions again")),
             "{swapped:?}"
+        );
+        assert!(
+            matches!(&back, Err(ProviderError::NotFound(m)) if m.contains("list its versions again")),
+            "{back:?}"
         );
     }
 

@@ -7618,6 +7618,62 @@ mod tests {
         (provider, seen)
     }
 
+    /// A key without listFiles is denied the listing only: its restore still
+    /// copies by id, and the copy names this bucket as its destination.
+    #[tokio::test]
+    async fn a_restore_denied_the_listing_copies_into_this_bucket() {
+        use axum::response::IntoResponse;
+        use std::sync::{Arc, Mutex};
+        let seen: Arc<Mutex<Vec<String>>> = Arc::default();
+        let log = Arc::clone(&seen);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |uri: axum::http::Uri, body: String| {
+                let log = Arc::clone(&log);
+                async move {
+                    log.lock().unwrap().push(format!("{} {body}", uri.path()));
+                    if uri.path().ends_with("b2_list_file_versions") {
+                        return (
+                            axum::http::StatusCode::UNAUTHORIZED,
+                            r#"{"status":401,"code":"unauthorized","message":"no listFiles"}"#,
+                        )
+                            .into_response();
+                    }
+                    serde_json::json!({
+                        "fileId": "up-3", "fileName": "v.txt",
+                        "action": "upload", "contentLength": 5
+                    })
+                    .to_string()
+                    .into_response()
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = empty_provider();
+        provider.api_url = address.clone();
+        provider.download_url = address;
+        provider.auth_token = SecretString::new("master-token".into());
+        provider.bucket_id = "bucket".into();
+        provider.connected = true;
+        provider
+            .restore_version("/v.txt", "up-1")
+            .await
+            .expect("the restore copies by id");
+        let copies: Vec<String> = seen
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|c| c.starts_with("/b2api/v4/b2_copy_file"))
+            .cloned()
+            .collect();
+        assert_eq!(copies.len(), 1, "{copies:?}");
+        assert!(
+            copies[0].contains(r#""destinationBucketId":"bucket""#),
+            "{copies:?}"
+        );
+    }
+
     /// History lists finished uploads only, so an unfinished large upload is
     /// never row 0; and the version reader takes a whole body only: a 206
     /// fragment leaves the destination as it was, a 200 replaces it.
@@ -7648,9 +7704,9 @@ mod tests {
 
     /// A listing that answers the same cursor again ends with an error
     /// instead of reading pages for ever; a download by id still goes out,
-    /// and a restore's copy names this bucket as its destination.
+    /// and a restore is refused: only a listing denied decides nothing.
     #[tokio::test]
-    async fn a_repeated_b2_cursor_ends_the_listing_and_keeps_the_by_id_paths() {
+    async fn a_repeated_b2_cursor_ends_the_listing_and_refuses_the_restore() {
         let (mut provider, seen) = b2_version_reader_double(true).await;
         let listed = provider.list_versions("/v.txt").await;
         assert!(
@@ -7673,21 +7729,21 @@ mod tests {
             .expect("the download by id does not need the listing");
         assert_eq!(std::fs::read_to_string(&out).unwrap(), "whole");
 
-        provider
-            .restore_version("/v.txt", "up-1")
-            .await
-            .expect("the restore copies by id");
-        let copies: Vec<String> = seen
-            .lock()
-            .unwrap()
-            .iter()
-            .filter(|c| c.starts_with("/b2api/v4/b2_copy_file"))
-            .cloned()
-            .collect();
-        assert_eq!(copies.len(), 1, "{copies:?}");
+        // A listing that broke off is not a listing denied: the restore
+        // cannot show it would change anything, and no copy is sent.
+        let restored = provider.restore_version("/v.txt", "up-1").await;
         assert!(
-            copies[0].contains(r#""destinationBucketId":"bucket""#),
-            "{copies:?}"
+            matches!(&restored, Err(ProviderError::TransferFailed(m)) if m.contains("no restore was sent")),
+            "{restored:?}"
+        );
+        assert!(
+            !seen
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|c| c.starts_with("/b2api/v4/b2_copy_file")),
+            "{:?}",
+            seen.lock().unwrap()
         );
     }
 

@@ -8024,11 +8024,20 @@ impl StorageProvider for S3Provider {
                 let body = super::version_listing_text(response)
                     .await
                     .unwrap_or_default();
-                return Err(ProviderError::ServerError(format!(
+                let message = format!(
                     "ListObjectVersions failed ({}): {}",
                     status,
                     sanitize_api_error(&body)
-                )));
+                );
+                // A key without s3:ListBucketVersions is denied the listing
+                // only: a restore by version id may still go on.
+                return Err(
+                    if matches!(status, StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED) {
+                        ProviderError::PermissionDenied(message)
+                    } else {
+                        ProviderError::ServerError(message)
+                    },
+                );
             }
 
             let xml_str = super::version_listing_text(response).await?;
@@ -15511,9 +15520,10 @@ mod tests {
     /// not: the marker check does not turn a refused listing into a refused
     /// download.
     /// A listing longer than the cap, sent chunked, is refused while it is
-    /// read, never buffered whole. Download and restore then go on as when
-    /// the listing is denied: a listing that cannot be read decides nothing
-    /// before the action, which acts by the version id named.
+    /// read, never buffered whole. A download still goes by the version id
+    /// named, but a restore is refused: only a listing denied decides
+    /// nothing, and one refused as too long cannot show the restore would
+    /// change anything.
     #[tokio::test]
     async fn an_oversized_version_listing_is_refused_and_decides_nothing() {
         let config = TigrisDoubleConfig {
@@ -15536,10 +15546,11 @@ mod tests {
             std::fs::read_to_string(&target).unwrap(),
             "docs/a.txt at v2"
         );
-        provider
-            .restore_version("/docs/a.txt", "v2")
-            .await
-            .expect("restore by version id");
+        let restored = provider.restore_version("/docs/a.txt", "v2").await;
+        assert!(
+            matches!(&restored, Err(ProviderError::TransferFailed(m)) if m.contains("no restore was sent")),
+            "{restored:?}"
+        );
         let seen = log.lock().unwrap();
         assert!(seen
             .iter()
@@ -15549,7 +15560,7 @@ mod tests {
             .filter(|s| s.method == "GET" && s.uri.contains("versions"))
             .count();
         assert_eq!(listings, 3, "list, download preflight, restore preflight");
-        assert!(seen
+        assert!(!seen
             .iter()
             .any(|s| s.method == "PUT" && s.headers.contains_key("x-amz-copy-source")));
     }

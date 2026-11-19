@@ -486,7 +486,8 @@ impl KoofrProvider {
     /// Parse error from response body
     async fn parse_error(resp: reqwest::Response) -> ProviderError {
         let status = resp.status().as_u16();
-        let body = resp.text().await.unwrap_or_default();
+        // Read under the listing cap: a refusal is never buffered whole.
+        let body = super::version_listing_text(resp).await.unwrap_or_default();
         Self::classify_koofr_error(status, &body)
     }
 
@@ -2393,6 +2394,36 @@ mod tests {
             Box::new(provider)
         })
         .await;
+    }
+
+    /// A refusal is read under the listing cap: an answer longer than the
+    /// cap is not buffered whole, and none of it reaches the error.
+    #[tokio::test]
+    async fn an_oversized_refusal_is_not_buffered_into_the_error() {
+        let message = "x".repeat(9 * 1024 * 1024);
+        let body = format!(r#"{{"error":{{"code":"Forbidden","message":"{message}"}}}}"#);
+        let app = axum::Router::new().fallback(axum::routing::any(move || {
+            let body = body.clone();
+            async move { (axum::http::StatusCode::FORBIDDEN, body) }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = KoofrProvider::new(KoofrConfig {
+            email: "u@example.com".to_string(),
+            password: secrecy::SecretString::from("p".to_string()),
+            initial_path: None,
+        });
+        provider.connected = true;
+        provider.mount_id = "M".to_string();
+        provider.api_base_override = Some(format!("http://{addr}"));
+        provider.content_base_override = Some(format!("http://{addr}"));
+        let err = provider.list_versions("/f.txt").await.expect_err("refused");
+        assert!(
+            err.to_string().len() < 4096,
+            "{} bytes",
+            err.to_string().len()
+        );
     }
 
     /// Koofr has no file id: a history read while the file at the path
