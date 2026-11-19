@@ -608,7 +608,17 @@ fn ssh_line_error(key: &str, words: &[String], services: &Services) -> Option<St
         None
     } else if first.is_empty() && words.len() <= 1 {
         Some(format!("gives `{key}` no value"))
-    } else if words.len() > 1 && (IMPORTED_KEYS.contains(&key) || key == "canonicalizehostname") {
+    } else if key == "host" && words.iter().any(String::is_empty) {
+        // `ssh -G` on 10.2p1: `Host "" lab` and `Host lab ""` are "keyword
+        // host empty argument".
+        Some("gives `host` an empty pattern".to_string())
+    } else if words.len() > 1
+        && (IMPORTED_KEYS.contains(&key)
+            || matches!(
+                key,
+                "canonicalizehostname" | "canonicalizefallbacklocal" | "canonicalizemaxdots"
+            ))
+    {
         Some(format!("gives `{key}` more than one value"))
     } else if key == "port" {
         // A services file that cannot be read skips the host instead.
@@ -623,6 +633,18 @@ fn ssh_line_error(key: &str, words: &[String], services: &Services) -> Option<St
             .iter()
             .any(|v| first.eq_ignore_ascii_case(v)))
         .then(|| "gives `canonicalizehostname` a value ssh does not take".to_string())
+    } else if key == "canonicalizefallbacklocal" {
+        // `ssh -G`: `false` and `NO` are `no`, `maybe` is refused.
+        (!["yes", "no", "true", "false"]
+            .iter()
+            .any(|v| first.eq_ignore_ascii_case(v)))
+        .then(|| "gives `canonicalizefallbacklocal` a value ssh does not take".to_string())
+    } else if key == "canonicalizemaxdots" {
+        // `ssh -G`: `+2` is read, `x`, `-1` and 2147483648 are refused.
+        (!first.parse::<u32>().is_ok_and(|n| n <= i32::MAX as u32)).then(|| {
+            "gives `canonicalizemaxdots` a value that is not a number from 0 to 2147483647"
+                .to_string()
+        })
     } else if matches!(key, "canonicaldomains" | "canonicalizepermittedcnames")
         && words.len() > 1
         && words.iter().any(|w| w.eq_ignore_ascii_case("none"))
@@ -1066,7 +1088,7 @@ impl Parser<'_> {
                     if !self.capped {
                         log::warn!("ssh config import: refused past the {MAX_HOSTS}-block cap");
                         self.error.get_or_insert(format!(
-                            "the file has more than {MAX_HOSTS} `Host` and `Match` blocks, more than one import reads; {SMALLER_FILE}"
+                            "the file has more than {MAX_HOSTS} `Host`, `Match` and `Include` blocks, more than one import reads; {SMALLER_FILE}"
                         ));
                     }
                     self.capped = true;
@@ -1094,6 +1116,22 @@ impl Parser<'_> {
                     gate: outer.map(|block| Gate { block, same: false }),
                 });
             } else if key == "include" {
+                // The file is refused already: nothing more is read, and no
+                // block kept, so a file of such lines holds no memory.
+                if self.error.is_some() {
+                    continue;
+                }
+                // Each `Include` keeps a block, counted with the `Host` and
+                // `Match` ones.
+                if self.hosts >= MAX_HOSTS {
+                    log::warn!("ssh config import: refused past the {MAX_HOSTS}-block cap");
+                    self.error.get_or_insert(format!(
+                        "the file has more than {MAX_HOSTS} `Host`, `Match` and `Include` blocks, more than one import reads; {SMALLER_FILE}"
+                    ));
+                    self.capped = true;
+                    continue;
+                }
+                self.hosts += 1;
                 let Some(block) = current.take() else {
                     continue;
                 };
@@ -1819,15 +1857,20 @@ fn glob_set(p: &[u8], start: usize, steps: &mut u64) -> Option<(Box<[bool; 256]>
                 }
             }
         }
-        if i + 2 < p.len() && p[i + 1] == b'-' && p[i + 2] != b']' {
-            for b in p[i]..=p[i + 2] {
+        // A `\` makes the byte after it a member, never the `-` of a
+        // range or the closing `]` (`ssh -G` on 10.2p1: `[a\-c]` reads `a`,
+        // `-` and `c`, and `[b\]]` reads `b`).
+        let (low, after) = glob_set_byte(p, i);
+        if after + 1 < p.len() && p[after] == b'-' && p[after + 1] != b']' {
+            let (high, next) = glob_set_byte(p, after + 1);
+            for b in low..=high {
                 set[usize::from(b)] = true;
             }
             *steps += 256;
-            i += 3;
+            i = next;
         } else {
-            set[usize::from(p[i])] = true;
-            i += 1;
+            set[usize::from(low)] = true;
+            i = after;
         }
     }
     if i >= p.len() {
@@ -1839,6 +1882,16 @@ fn glob_set(p: &[u8], start: usize, steps: &mut u64) -> Option<(Box<[bool; 256]>
         }
     }
     Some((set, i + 1))
+}
+
+/// The member of a set at `i`, a `\` taking the byte after it, and where
+/// the next one starts.
+fn glob_set_byte(p: &[u8], i: usize) -> (u8, usize) {
+    if p[i] == b'\\' && i + 1 < p.len() {
+        (p[i + 1], i + 2)
+    } else {
+        (p[i], i + 1)
+    }
 }
 
 /// Whether `name` matches one ssh pattern: `*` stands for any run of
@@ -2065,10 +2118,12 @@ const PROFILE_KEYS: [&str; 6] = [
 
 /// The keys that decide whether ssh reads the file again, or asks DNS for
 /// the host, before it settles the values of [`PROFILE_KEYS`].
-const RESOLUTION_KEYS: [&str; 3] = [
+const RESOLUTION_KEYS: [&str; 5] = [
     "canonicalizehostname",
     "canonicaldomains",
     "canonicalizepermittedcnames",
+    "canonicalizefallbacklocal",
+    "canonicalizemaxdots",
 ];
 
 /// The two keys ssh reads as one setting: the first of them obtained wins.
@@ -2130,6 +2185,9 @@ fn host_values(config: &SshConfig, alias: &str) -> Result<HashMap<String, String
         // drop what the second reading gives the host: the advice keeps it.
         return Err("ssh may rename its host through DNS (`CanonicalizeHostname` with `CanonicalDomains` or `CanonicalizePermittedCNAMEs`, or a host name ending in `.`) and read the file again for the new name, which this import cannot know; to import it, import a copy of the file that holds only a `Host` block for it, with its full host name in `HostName` and the `Port`, `User` and `IdentityFile` ssh uses for it, and no `CanonicalizeHostname`, `CanonicalDomains` or `CanonicalizePermittedCNAMEs` line".to_string());
     }
+    if canonicalize && ssh_stops_at_short_name(&values, &match_host(&values, alias, config)) {
+        return Err("ssh does not connect to it: `CanonicalizeHostname` is on, no `CanonicalDomains` completes its short host name, and `CanonicalizeFallbackLocal` is `no`, so ssh stops with \"Could not resolve host\"; correct the file so that ssh connects to the host, and import again".to_string());
+    }
     if canonicalize || config.second_pass {
         let host = ssh_host_name(&match_host(&values, alias, config));
         read_pass(config, &mut values, &mut identities, &host, alias, true)?;
@@ -2145,10 +2203,43 @@ fn host_values(config: &SshConfig, alias: &str) -> Result<HashMap<String, String
             && again == values
             && keys == identities;
         if !same {
-            return Err(format!("the `Include` on {at} {}, and its files may hold a `Match final`, which makes ssh read the file a second time even from a block that does not apply, and that reading gives the host other values; import a copy of the file that holds only a `Host` block for it, with the `HostName`, `Port`, `User`, `IdentityFile` and `ProxyJump` that `ssh -G` prints for it, and no `Include`", why.text()));
+            return Err(format!("the `Include` on {at} {}, and its files may hold a `Match final`, which makes ssh read the file a second time even from a block that does not apply, and that reading gives the host other values; import a copy of the file that holds only a `Host` block for it, with the `HostName`, `Port`, `User`, `IdentityFile` and `ProxyJump` you know it connects with, and no `Include`", why.text()));
         }
     }
     Ok(values)
+}
+
+/// Whether ssh, canonicalizing with no domain to try, stops at the host
+/// name `name` (`resolve_canonicalize` in ssh.c): `CanonicalizeFallbackLocal`
+/// is `no`, the name is not an address and has no more dots than
+/// `CanonicalizeMaxDots` (1 when unset), and the host is reached directly,
+/// or `CanonicalizeHostname` is `always`. `ssh -G` on 10.2p1, with
+/// `CanonicalizeHostname yes` and `CanonicalizeFallbackLocal no`: `storage`
+/// exits with "Could not resolve host", and so does `s.e.x` with
+/// `CanonicalizeMaxDots 2`; `s.e.x`, `127.1`, `::1`, a `ProxyJump` or a
+/// `ProxyCommand` connect as written, a `ProxyJump none` does not, and with
+/// `always` a `ProxyJump` does not either.
+fn ssh_stops_at_short_name(values: &HashMap<String, String>, name: &str) -> bool {
+    let is = |key: &str, words: &[&str]| {
+        values
+            .get(key)
+            .is_some_and(|v| words.iter().any(|w| v.eq_ignore_ascii_case(w)))
+    };
+    let direct = PROXY_KEYS.iter().all(|key| {
+        values
+            .get(*key)
+            .is_none_or(|v| v.eq_ignore_ascii_case("none"))
+    });
+    let max_dots = values
+        .get("canonicalizemaxdots")
+        .and_then(|v| v.parse::<u32>().ok())
+        .unwrap_or(1);
+    let host = ssh_host_name(name);
+    let dots = host.bytes().filter(|b| *b == b'.').count();
+    is("canonicalizefallbacklocal", &["no", "false"])
+        && (direct || is("canonicalizehostname", &["always"]))
+        && ssh_address(&host).is_none()
+        && dots <= max_dots as usize
 }
 
 /// The `IdentityFile` lines that apply to a host, as ssh counts them: the
@@ -2227,7 +2318,7 @@ impl Decision {
 /// skipped: the values its files set for the host, a jump host among them,
 /// are unknown ([`Parser::include`]).
 fn include_reason((at, why): &(String, Unknown), how: &str) -> String {
-    format!("the `Include` on {at} {how}, and {}, so its files may set the host's values, a jump host among them; import a copy of the file that holds only a `Host` block for it, with the `HostName`, `Port`, `User`, `IdentityFile` and `ProxyJump` that `ssh -G` prints for it, and no `Include`", why.text())
+    format!("the `Include` on {at} {how}, and {}, so its files may set the host's values, a jump host among them; import a copy of the file that holds only a `Host` block for it, with the `HostName`, `Port`, `User`, `IdentityFile` and `ProxyJump` you know it connects with, and no `Include`", why.text())
 }
 
 fn read_pass(
@@ -2980,6 +3071,14 @@ fn ssh_jump_word(value: &str) -> Result<String, String> {
     let hops = value
         .split(',')
         .map(|hop| match hop.strip_prefix("ssh://") {
+            // ssh drops what follows a `;` in the user part (`ssh -G`:
+            // `ssh://u;fp=x@j` is `u@j`), so the file would hold a value
+            // ssh never reads.
+            Some(uri) if uri.split_once('@').is_some_and(|(user, _)| user.contains(';')) => {
+                Err(refused(
+                    "holds `;` in the user part of an `ssh://` hop, and ssh drops what follows it up to the `@`",
+                ))
+            }
             Some(uri) if uri.contains("%25") => Err(refused(
                 "encodes `%` as `%25`, which ssh decodes and then reads as a token in the command it runs for the jump",
             )),
@@ -3116,6 +3215,12 @@ fn ssh_no_dollar(field: &str, value: &str, dollar: bool) -> Result<(), String> {
 /// holding `${` is refused ([`ssh_no_dollar`]).
 fn ssh_path(field: &str, value: &str) -> Result<String, String> {
     crate::bridge_shared::export_line_value(field, value)?;
+    // `ssh -G`: `IdentityFile none`, `NONE` and `"none"` are no key at all.
+    if value.eq_ignore_ascii_case("none") {
+        return Err(format!(
+            "its {field} is a file called `none`, which ssh reads as no file at all; rename the file and export again"
+        ));
+    }
     if value.contains('"') {
         return Err(format!(
             "its {field} holds a double quote, which this export does not write, since ssh would read it only as an escape; rename the file and export again"
@@ -4401,7 +4506,7 @@ Host roundtrip
         assert!(skipped.servers.is_empty());
         let reasons = reasons(&skipped);
         assert!(
-            reasons[0].1.ends_with("import a copy of the file that holds only a `Host` block for it, with the `HostName`, `Port`, `User`, `IdentityFile` and `ProxyJump` that `ssh -G` prints for it, and no `Include`"),
+            reasons[0].1.ends_with("import a copy of the file that holds only a `Host` block for it, with the `HostName`, `Port`, `User`, `IdentityFile` and `ProxyJump` you know it connects with, and no `Include`"),
             "{reasons:?}"
         );
         let user = if ssh_major().is_some_and(|major| major >= 10) {
@@ -4763,9 +4868,71 @@ Host roundtrip
             ("[![:alpha:]]x", "ax", false),
             ("[[:upper:]_]x", "_x", true),
             ("[[:space:]]x", " x", true),
+            ("[a\\-c]x", "-x", true),
+            ("[a\\-c]x", "bx", false),
+            ("[a\\-c]x", "cx", true),
+            ("[\\a]x", "ax", true),
+            ("[!\\a]x", "ax", false),
+            ("[b\\]]x", "bx", true),
+            ("[\\a-c]x", "bx", true),
         ] {
             assert_eq!(glob_part(pattern, name), matches, "{pattern} {name}");
         }
+    }
+
+    /// A `\` inside brackets makes the byte after it a member, as ssh reads
+    /// it: the files `Include d/[a\-c].conf` reads are the ones `ssh -G`
+    /// reads, `-.conf` among them and `b.conf` not.
+    #[cfg(unix)]
+    #[test]
+    fn an_escape_inside_brackets_selects_the_files_ssh_selects() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        let ssh = ssh_major().is_some_and(|major| major >= 10);
+        for (name, port) in [("-", 2201), ("a", 2202), ("b", 2203), ("c", 2204)] {
+            put(
+                d,
+                &format!("d/{name}.conf"),
+                &format!("Host lab\n  Port {port}\n"),
+            );
+        }
+        // The first file read gives the port: `-.conf` sorts first.
+        for (pattern, port) in [("[a\\-c]", 2201), ("[a-c]", 2202), ("[!\\a-]", 2203)] {
+            let text = format!(
+                "Include {}/d/{pattern}.conf\nHost lab\n  HostName lab.example.com\n",
+                d.display()
+            );
+            let result = import_text(d, &text);
+            assert_eq!(
+                result.servers.first().map(|s| s.port),
+                Some(port),
+                "{pattern} {:?}",
+                reasons(&result)
+            );
+            if ssh {
+                assert_eq!(
+                    ssh_g(&d.join("config"), "lab")["port"],
+                    port.to_string(),
+                    "{pattern}"
+                );
+            }
+        }
+    }
+
+    /// Each `Include` keeps a block, counted with the `Host` and `Match`
+    /// ones, and none is kept once the file is refused: a file of many
+    /// `Include` lines holds at most [`MAX_HOSTS`] blocks, whether its
+    /// words are refused or unknown.
+    #[test]
+    fn many_include_lines_keep_a_bounded_number_of_blocks() {
+        for line in ["Include \"\"\n", "Include %h\n"] {
+            let text = format!("{}Host lab\n", line.repeat(MAX_HOSTS * 2));
+            let (blocks, error) = parse_ssh_config(&text);
+            assert!(blocks.len() <= MAX_HOSTS + 1, "{line} {}", blocks.len());
+            assert!(error.is_some(), "{line}");
+        }
+        let (blocks, _) = parse_ssh_config(&"Include \"\"\n".repeat(MAX_HOSTS * 2));
+        assert!(blocks.len() <= 2, "{}", blocks.len());
     }
 
     /// Every file and byte an `Include` reads is charged to the step budget:
@@ -4913,6 +5080,8 @@ Host roundtrip
             "ssh://%2DoX@j.example.com",
             "u$(id)@a.example.com,b.example.com",
             "ssh://u;x=y@a.example.com,b.example.com",
+            "ssh://u;x=y@127.0.0.1:1",
+            "a.example.com,ssh://u;fp=x@127.0.0.1:1",
             "ssh://u%2B@a.example.com,b.example.com",
             "u@j[ab].example.com",
             "[::1]x",
@@ -4925,7 +5094,6 @@ Host roundtrip
         let exported = [
             ("plain", "u@127.0.0.1:1", "-l u -p 1 "),
             ("uri", "ssh://u%2B@127.0.0.1:1", "-l u+ -p 1 "),
-            ("params", "ssh://u;x=y@127.0.0.1:1", "-l u -p 1 "),
             (
                 "earlier",
                 "a.example.com,ssh://c%2Bd@127.0.0.1:2",
@@ -4981,6 +5149,127 @@ Host roundtrip
                 .strip_prefix("exec ssh ")
                 .unwrap_or_else(|| panic!("{name}: {command}"));
             assert!(command.starts_with(args), "{name}: {command}");
+        }
+    }
+
+    /// An `ssh://` jump host with `;` parameters in its user part is refused
+    /// at export: ssh drops them, so the file would hold a value it never
+    /// reads. Neither the file nor the reason holds the value.
+    #[test]
+    fn a_jump_host_with_uri_parameters_is_not_written() {
+        let servers = [
+            sftp(
+                "params",
+                "127.0.0.1",
+                "u",
+                serde_json::json!({ "proxyJump": "ssh://u;fp=SENTINEL7@j.example.com:22" }),
+            ),
+            sftp("plain", "127.0.0.1", "u", serde_json::json!({})),
+        ];
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config");
+        let outcome = export_ssh_config(&servers, &HashMap::new(), &path).unwrap();
+        assert_eq!(outcome.exported, 1);
+        assert_eq!(outcome.skipped.len(), 1, "{:?}", outcome.skipped);
+        assert_eq!(outcome.skipped[0].name, "params");
+        assert!(outcome.skipped[0].reason.contains("`;`"));
+        assert!(!outcome.skipped[0].reason.contains("SENTINEL7"));
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(!text.contains("SENTINEL7"), "{text}");
+        assert!(!text.contains("Host params"), "{text}");
+    }
+
+    /// A key file called `none`, in any case, is refused at export: ssh
+    /// reads `IdentityFile none`, `NONE` and `"none"` as no key at all.
+    #[test]
+    fn a_key_file_called_none_is_not_written() {
+        for key in ["none", "NONE", "None"] {
+            let servers = [sftp(
+                "lab",
+                "h.example.com",
+                "u",
+                serde_json::json!({ "private_key_path": key }),
+            )];
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("config");
+            let outcome = export_ssh_config(&servers, &HashMap::new(), &path).unwrap();
+            assert_eq!(outcome.exported, 0, "{key}");
+            assert!(
+                outcome.skipped[0].reason.contains("called `none`"),
+                "{key}: {:?}",
+                outcome.skipped
+            );
+        }
+        // A file whose name only holds `none` is written.
+        let servers = [sftp(
+            "lab",
+            "h.example.com",
+            "u",
+            serde_json::json!({ "private_key_path": "/k/none" }),
+        )];
+        let dir = tempfile::tempdir().unwrap();
+        let outcome =
+            export_ssh_config(&servers, &HashMap::new(), &dir.path().join("config")).unwrap();
+        assert_eq!(outcome.exported, 1, "{:?}", outcome.skipped);
+    }
+
+    /// A host ssh stops at, canonicalizing a short name with no domain to
+    /// try and no fallback, is skipped with the reason; every other one
+    /// imports. Each case is compared with what `ssh -G` does on 10.2p1.
+    #[test]
+    fn a_host_ssh_cannot_resolve_without_fallback_is_skipped() {
+        let cases: [(&str, &str, &str, &str, bool); 16] = [
+            ("yes", "no", "storage", "", false),
+            ("yes", "false", "storage", "", false),
+            ("true", "NO", "storage", "", false),
+            ("yes", "yes", "storage", "", true),
+            ("no", "no", "storage", "", true),
+            ("yes", "no", "example.com", "", false),
+            ("yes", "no", "storage.example.com", "", true),
+            ("yes", "no", "192.0.2.1", "", true),
+            ("yes", "no", "127.1", "", true),
+            ("yes", "no", "::1", "", true),
+            ("yes", "no", "storage", "  ProxyJump j.example.com\n", true),
+            (
+                "always",
+                "no",
+                "storage",
+                "  ProxyJump j.example.com\n",
+                false,
+            ),
+            ("yes", "no", "storage", "  ProxyJump none\n", false),
+            ("yes", "no", "s.e.x", "  CanonicalizeMaxDots 2\n", false),
+            ("yes", "no", "storage", "  CanonicalizeMaxDots 0\n", false),
+            ("yes", "no", "a.b", "  CanonicalizeMaxDots 0\n", true),
+        ];
+        let ssh = ssh_major().is_some_and(|major| major >= 10);
+        let dir = tempfile::tempdir().unwrap();
+        for (canonicalize, fallback, host, extra, imported) in cases {
+            let text = format!(
+                "Host lab\n  CanonicalizeHostname {canonicalize}\n  CanonicalizeFallbackLocal {fallback}\n  HostName {host}\n{extra}"
+            );
+            let result = import_text(dir.path(), &text);
+            let stops = result
+                .skipped
+                .iter()
+                .any(|s| s.reason.contains("Could not resolve host"));
+            assert_eq!(stops, !imported, "{text}: {:?}", reasons(&result));
+            // A host behind a jump host is skipped for that reason instead.
+            if !extra.contains("ProxyJump j") {
+                assert_eq!(result.servers.len(), usize::from(imported), "{text}");
+            }
+            if ssh {
+                let connects = std::process::Command::new("ssh")
+                    .args(["-G", "-F"])
+                    .arg(dir.path().join("config"))
+                    .arg("lab")
+                    .stdin(std::process::Stdio::null())
+                    .output()
+                    .unwrap()
+                    .status
+                    .success();
+                assert_eq!(connects, imported, "ssh: {text}");
+            }
         }
     }
 
@@ -5772,7 +6061,7 @@ Host roundtrip
         let result = import_own(&capped).unwrap();
         assert!(result.servers.is_empty());
         assert_eq!(result.skipped.len(), MAX_HOSTS);
-        assert!(result.skipped.iter().all(|s| s.reason == format!("the file has more than {MAX_HOSTS} `Host` and `Match` blocks, more than one import reads; {SMALLER_FILE}")));
+        assert!(result.skipped.iter().all(|s| s.reason == format!("the file has more than {MAX_HOSTS} `Host`, `Match` and `Include` blocks, more than one import reads; {SMALLER_FILE}")));
     }
     /// `%u`, `%d` and a `%r` with no `User` are the local account's, read
     /// from its passwd entry as ssh does, whatever `USER` and `HOME` say;
@@ -6440,7 +6729,14 @@ Host roundtrip
     /// applies to no host to import, with the reason the import gives
     /// (`ssh -G` on 10.2p1; older clients read some of them differently, so
     /// the comparison with the local ssh runs only on 10 or later).
-    const REFUSED_BY_10: [(&str, &str); 34] = [
+    const REFUSED_BY_10: [(&str, &str); 41] = [
+        ("Host \"\" lab", "gives `host` an empty pattern"),
+        ("Host lab \"\"", "gives `host` an empty pattern"),
+        ("Host o\n  CanonicalizeFallbackLocal maybe", "gives `canonicalizefallbacklocal` a value ssh does not take"),
+        ("Host o\n  CanonicalizeFallbackLocal no x", "gives `canonicalizefallbacklocal` more than one value"),
+        ("Host o\n  CanonicalizeMaxDots x", "gives `canonicalizemaxdots` a value that is not a number from 0 to 2147483647"),
+        ("Host o\n  CanonicalizeMaxDots -1", "gives `canonicalizemaxdots` a value that is not a number from 0 to 2147483647"),
+        ("Host o\n  CanonicalizeMaxDots 2147483648", "gives `canonicalizemaxdots` a value that is not a number from 0 to 2147483647"),
         ("Match host \"#lab\"", "gives the `Match` condition `host` no value"),
         ("Match host=#lab", "gives the `Match` condition `host` no value"),
         ("Match user \"#x\"", "gives the `Match` condition `user` no value"),
@@ -6479,7 +6775,10 @@ Host roundtrip
 
     /// The same lines that ssh 10.2p1 reads: the file imports, and the host
     /// `fine` gets the port, the user and the first key ssh uses for it.
-    const READ_BY_10: [&str; 29] = [
+    const READ_BY_10: [&str; 32] = [
+        "  CanonicalizeMaxDots +2",
+        "  CanonicalizeFallbackLocal NO",
+        "  CanonicalizeFallbackLocal false",
         "  Port \" 2200\"",
         "  Port \"\t+2200\"",
         "  User \"*buildsvc\"\nMatch user *svc\n  Port 2200",
@@ -7003,7 +7302,7 @@ Host roundtrip
         std::fs::write(&file, text).unwrap();
         assert_eq!(
             import_own(&file).err(),
-            Some(format!("the file has more than {MAX_HOSTS} `Host` and `Match` blocks, more than one import reads; {SMALLER_FILE}"))
+            Some(format!("the file has more than {MAX_HOSTS} `Host`, `Match` and `Include` blocks, more than one import reads; {SMALLER_FILE}"))
         );
         std::fs::write(&file, "Port 2\nMatch final bogus\n").unwrap();
         assert!(import_own(&file)
