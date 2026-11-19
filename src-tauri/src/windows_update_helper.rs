@@ -1515,6 +1515,12 @@ mod tests {
         names
     }
 
+    fn with_handoff_lock(mut names: Vec<String>) -> Vec<String> {
+        names.push(UPDATE_HANDOFF_LOCK_FILE.to_string());
+        names.sort();
+        names
+    }
+
     /// The helper can be stopped between any two of its lines (killed, logged
     /// off, power lost). Each run below stops it after one more line. At every
     /// point the launch path has to hold a whole exe, the old one or the new
@@ -1589,7 +1595,7 @@ mod tests {
         );
         let mut expected: Vec<String> = THREE_EXES.iter().map(|n| n.to_string()).collect();
         expected.push("portable.marker".to_string());
-        assert_eq!(names_in(&fx.app), expected);
+        assert_eq!(names_in(&fx.app), with_handoff_lock(expected));
         assert!(!fx.zip.exists());
         assert!(!fx.staged.stage_dir.exists());
         assert!(!fx.log.exists(), "nothing to log");
@@ -2335,7 +2341,10 @@ mod tests {
         assert_eq!(read(&fx, "AeroFTP.exe"), OLD_EXE);
         assert_eq!(read(&fx, "aeroftp-cli.exe"), b"old cli");
         assert_eq!(read(&fx, "aeroftp-dispatch.exe"), b"old dispatch");
-        assert_eq!(names_in(&fx.app), THREE_EXES.map(String::from).to_vec());
+        assert_eq!(
+            names_in(&fx.app),
+            with_handoff_lock(THREE_EXES.map(String::from).to_vec())
+        );
         assert!(!fx.zip.exists(), "the download is left");
         assert!(!sigstore_sidecar(&fx.zip).exists(), "the sidecar is left");
         assert!(!fx.staged.stage_dir.exists(), "the stage is left");
@@ -2372,7 +2381,10 @@ mod tests {
             .expect("refused");
         assert!(refused.contains("aeroftp-dispatch.exe"), "{refused}");
         std::fs::remove_dir(&blocker).expect("blocker");
-        assert_eq!(names_in(&app), THREE_EXES.map(String::from).to_vec());
+        assert_eq!(
+            names_in(&app),
+            with_handoff_lock(THREE_EXES.map(String::from).to_vec())
+        );
         assert_eq!(std::fs::read(&current).expect("exe"), OLD_EXE);
         assert_eq!(names_in(&work), Vec::<String>::new());
         assert!(!zip.exists(), "the download is left");
@@ -2472,7 +2484,7 @@ mod tests {
         start_new_app(&fx);
         let mut expected: Vec<String> = THREE_EXES.iter().map(|n| n.to_string()).collect();
         expected.push("portable.marker".to_string());
-        assert_eq!(names_in(&fx.app), expected);
+        assert_eq!(names_in(&fx.app), with_handoff_lock(expected));
         assert_eq!(read(&fx, "AeroFTP.exe"), NEW_EXE);
     }
 
@@ -2628,7 +2640,10 @@ mod tests {
             stage_update_with(&fx.staged, &fx.current, attempt, None).expect_err("refused");
         assert!(refused.contains("aeroftp-dispatch.exe"), "{refused}");
         std::fs::remove_dir(&blocker).expect("blocker");
-        assert_eq!(names_in(&fx.app), THREE_EXES.map(String::from).to_vec());
+        assert_eq!(
+            names_in(&fx.app),
+            with_handoff_lock(THREE_EXES.map(String::from).to_vec())
+        );
         assert_eq!(read(&fx, "AeroFTP.exe"), OLD_EXE);
     }
 
@@ -2983,7 +2998,7 @@ mod tests {
         let mut fx_b = fixture();
         with_docs(&mut fx_b, |_| true);
         let attempt_b = "bbbb1111bbbb2222";
-        let (script_b, staged_b) = script_for_attempt(&fx_b, attempt_b);
+        let (script_b, mut staged_b) = script_for_attempt(&fx_b, attempt_b);
         let key_b = portable_docs::exe_key(&fx_b.staged.new_exe).expect("key B");
         staged_b.persist_handoff();
         drop(staged_b);

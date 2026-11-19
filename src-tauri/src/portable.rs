@@ -3516,6 +3516,67 @@ mod secval_b_tests {
     }
 
     #[test]
+    fn marker_directory_conflict_selects_portable_data_root_before_and_after_recovery() {
+        let dir = tempfile::tempdir().unwrap();
+        let _guard = crate::portable_docs::FolderArtifactsGuard::new(dir.path());
+        let src = tempfile::tempdir().unwrap();
+        let exe = src.path().join("AeroFTP.exe");
+        let marker = src.path().join("portable.marker");
+        std::fs::write(&exe, b"portable exe").unwrap();
+        std::fs::write(&marker, b"portable").unwrap();
+        let key = crate::portable_docs::exe_key(&exe).unwrap();
+        crate::portable_docs::stage_pending_docs(
+            dir.path(),
+            &exe,
+            &[(&marker, "portable.marker")],
+            "startup-conflict",
+        )
+        .unwrap();
+        let target = dir.path().join(MARKER_FILENAME);
+        std::fs::create_dir(&target).unwrap();
+        assert!(matches!(
+            crate::portable_docs::install_pending_docs(dir.path(), &key, |a, b| {
+                std::fs::rename(a, b)
+            }),
+            crate::portable_docs::Pending::Docs(_)
+        ));
+        let cache = OnceLock::new();
+        let expected = dir.path().join("data").join("aeroftp");
+        let during = resolve_portable_root_status(
+            &cache,
+            dir.path(),
+            || Some(key.clone()),
+            Some(PORTABLE_PROBE_LOCK_WAIT),
+        );
+        assert_eq!(during, PortableRootStatus::Portable(dir.path()));
+        assert_eq!(
+            aeroftp_data_root_for(during, "aeroftp", || {
+                Some(PathBuf::from("/host-config-must-not-be-used"))
+            }),
+            Some(expected.clone())
+        );
+
+        std::fs::remove_dir(&target).unwrap();
+        assert!(matches!(
+            crate::portable_docs::install_pending_docs(dir.path(), &key, |a, b| {
+                std::fs::rename(a, b)
+            }),
+            crate::portable_docs::Pending::Docs(_)
+        ));
+        let after = resolve_portable_root_status(
+            &cache,
+            dir.path(),
+            || Some(key),
+            Some(PORTABLE_PROBE_LOCK_WAIT),
+        );
+        assert_eq!(after, PortableRootStatus::Portable(dir.path()));
+        assert_eq!(
+            aeroftp_data_root_for(after, "aeroftp", || None),
+            Some(expected)
+        );
+    }
+
+    #[test]
     fn marker_metadata_error_is_pending_then_recovers_without_caching_installed() {
         let dir = tempfile::tempdir().unwrap();
         let cache = OnceLock::new();

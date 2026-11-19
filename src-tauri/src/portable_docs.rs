@@ -546,6 +546,7 @@ fn temp_batch_record(exe_dir: &Path) -> PathBuf {
 const UPDATE_HANDOFF_PREFIX: &str = ".aeroftp-update-handoff-";
 
 #[cfg(windows)]
+#[derive(Debug)]
 pub(crate) struct UpdateHandoffReservation {
     path: PathBuf,
     persist: bool,
@@ -554,7 +555,16 @@ pub(crate) struct UpdateHandoffReservation {
 #[cfg(windows)]
 impl UpdateHandoffReservation {
     pub(crate) fn transfer_to(&self, pid: u32) -> io::Result<()> {
-        std::fs::write(&self.path, pid.to_string())
+        let tmp = self.path.with_file_name(format!(
+            ".aeroftp-handoff-owner.tmp-{:016x}",
+            rand::random::<u64>()
+        ));
+        let result = std::fs::write(&tmp, pid.to_string())
+            .and_then(|()| replace_record_file(&tmp, &self.path));
+        if result.is_err() {
+            let _ = std::fs::remove_file(&tmp);
+        }
+        result
     }
 
     pub(crate) fn persist(&mut self) {
@@ -592,22 +602,32 @@ pub(crate) fn reserve_update_handoff(
 
 #[cfg(windows)]
 fn process_is_alive(pid: u32) -> bool {
-    use windows::core::BOOL;
-    use windows::Win32::Foundation::{CloseHandle, WAIT_TIMEOUT};
+    use windows::Win32::Foundation::{CloseHandle, BOOL, WAIT_TIMEOUT};
     use windows::Win32::System::Threading::{
-        OpenProcess, WaitForSingleObject, PROCESS_QUERY_LIMITED_INFORMATION, SYNCHRONIZE,
+        OpenProcess, WaitForSingleObject, PROCESS_QUERY_LIMITED_INFORMATION,
+        SYNCHRONIZATION_SYNCHRONIZE,
     };
     // SAFETY: the handle, when returned, is owned here and closed before return.
     let handle = match unsafe {
         OpenProcess(
-            PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE,
+            PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZATION_SYNCHRONIZE,
             BOOL::from(false),
             pid,
         )
     } {
         Ok(handle) => handle,
-        Err(e) if e.raw_os_error() == Some(87) => return false,
-        Err(_) => return true,
+        Err(e) => {
+            let code = e.code().0 as u32;
+            let raw = if code & 0xFFFF_0000 == 0x8007_0000 {
+                code & 0xFFFF
+            } else {
+                code
+            };
+            if raw == 87 {
+                return false;
+            }
+            return true;
+        }
     };
     // SAFETY: a zero wait only queries whether the process handle is signaled.
     let alive = unsafe { WaitForSingleObject(handle, 0) } == WAIT_TIMEOUT;
@@ -4829,6 +4849,31 @@ mod tests {
             ),
             PortableMarkerState::Absent
         );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn handoff_pid_transfer_is_atomic_for_concurrent_inventory_reads() {
+        let dir = FixtureDir::new();
+        let sidecar = dir.path().join("AeroFTP.exe.atomic01.new");
+        std::fs::write(&sidecar, b"exe B").unwrap();
+        let key = exe_key(&sidecar).unwrap();
+        let reservation = reserve_update_handoff(dir.path(), "atomic01").unwrap();
+        std::thread::scope(|scope| {
+            let writer = &reservation;
+            scope.spawn(move || {
+                for pid in 1..=500u32 {
+                    writer.transfer_to(pid).unwrap();
+                }
+            });
+            scope.spawn(|| {
+                for _ in 0..500 {
+                    let keys = installed_app_keys_with_liveness(dir.path(), exe_key, |_| true)
+                        .expect("complete inventory");
+                    assert!(keys.contains(&key), "reader observed a partial PID write");
+                }
+            });
+        });
     }
 
     #[test]
