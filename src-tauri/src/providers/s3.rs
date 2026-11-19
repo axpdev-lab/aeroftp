@@ -578,12 +578,40 @@ fn s3_retry_marker_tail(status: u16, body: &str, retry_header: Option<&str>) -> 
 /// The `prefix` is prepended verbatim; the standard tail
 /// `<status>: <sanitised body>` is appended; the optional marker
 /// ` [retry-after-secs=NN]` is appended last.
+/// The secrets a session sent, for an error built from a reply.
+#[derive(Debug, Default)]
+struct SentSecrets {
+    values: Vec<String>,
+    /// A replaced token that can still sign was dropped to bound the list:
+    /// a reply could repeat a token that `values` does not hold.
+    missing_live_token: bool,
+}
+
+impl SentSecrets {
+    #[cfg(test)]
+    fn of(values: &[&str]) -> Self {
+        Self {
+            values: values.iter().map(|value| value.to_string()).collect(),
+            missing_live_token: false,
+        }
+    }
+}
+
+/// Session tokens a provider replaced and that can still sign a request.
+#[derive(Default)]
+struct RetiredTokens {
+    /// Each token with when it stops being accepted, oldest first.
+    kept: std::collections::VecDeque<(secrecy::SecretString, Option<DateTime<Utc>>)>,
+    /// Until when a token dropped for room is still accepted.
+    lost_until: Option<DateTime<Utc>>,
+}
+
 fn format_s3_error(
     prefix: &str,
     status: reqwest::StatusCode,
     body: &str,
     retry_header: Option<&str>,
-    sent: &[String],
+    sent: &SentSecrets,
 ) -> String {
     let mut msg = format!("{} ({}): {}", prefix, status, s3_error_text(body, sent));
     if let Some(tail) = s3_retry_marker_tail(status.as_u16(), body, retry_header) {
@@ -635,7 +663,15 @@ fn scrub_s3_reflected_credentials(text: &str) -> String {
 ///
 /// `sent` is what this session sent the server as a secret (its session
 /// token): an echo of it is removed in any syntax, before the field rules.
-fn s3_error_text(body: &str, sent: &[String]) -> String {
+/// When a token that can still sign is no longer known (`SentSecrets`), the
+/// reply is shown by its size only.
+fn s3_error_text(body: &str, sent: &SentSecrets) -> String {
+    if sent.missing_live_token && !body.is_empty() {
+        return format!(
+            "a reply of {} bytes, withheld: a session token it may repeat is no longer known",
+            body.len()
+        );
+    }
     match s3_error_code_and_message(body) {
         Some(detail) => {
             // Fully decoded first, so no escaped quote or reference can stop
@@ -643,7 +679,7 @@ fn s3_error_text(body: &str, sent: &[String]) -> String {
             let Some(decoded) = super::fully_unescaped(&detail) else {
                 return super::deeply_escaped_reply(body.len());
             };
-            let Some(shown) = super::without_sent_values(&decoded, sent) else {
+            let Some(shown) = super::without_sent_values(&decoded, &sent.values) else {
                 return super::reply_with_a_sent_value(body.len());
             };
             let scrubbed = scrub_s3_reflected_credentials(&shown);
@@ -765,11 +801,11 @@ pub struct S3Provider {
     /// the base credentials are used directly. Behind `Arc<RwLock>` so the
     /// clones spawned for parallel multipart parts share one refreshing cell.
     temp_credentials: Arc<std::sync::RwLock<Option<sts::TempCredentials>>>,
-    /// Session tokens this provider replaced, newest last, shared by its
-    /// clones. A request signed with one can answer after a sibling clone
-    /// refreshed the credentials, so its error must still remove it.
-    retired_session_tokens:
-        Arc<std::sync::Mutex<std::collections::VecDeque<secrecy::SecretString>>>,
+    /// Session tokens this provider replaced and that are still accepted,
+    /// shared by its clones. A request signed with one can answer after a
+    /// sibling clone refreshed the credentials, however late (a long upload),
+    /// so its error must still remove it.
+    retired_session_tokens: Arc<std::sync::Mutex<RetiredTokens>>,
     /// Serializes STS refreshes so concurrent multipart parts re-assume the
     /// role once instead of stampeding the STS endpoint near expiry.
     sts_refresh_lock: Arc<tokio::sync::Mutex<()>>,
@@ -1269,9 +1305,7 @@ impl S3Provider {
             acl_override: None,
             storage_class_override: None,
             temp_credentials: Arc::new(std::sync::RwLock::new(None)),
-            retired_session_tokens: Arc::new(std::sync::Mutex::new(
-                std::collections::VecDeque::new(),
-            )),
+            retired_session_tokens: Arc::new(std::sync::Mutex::new(RetiredTokens::default())),
             sts_refresh_lock: Arc::new(tokio::sync::Mutex::new(())),
             cleartext_warned: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             tigris_rename_state: Arc::new(std::sync::atomic::AtomicU8::new(TIGRIS_RENAME_UNKNOWN)),
@@ -1673,9 +1707,10 @@ impl S3Provider {
     const STS_REFRESH_THRESHOLD_SECS: i64 = 300;
 
     /// The secrets this session sends a server: the session token, base or
-    /// STS-issued, and the STS tokens it replaced (an answer can outlive a
-    /// refresh). An S3 error built from a reply never repeats them.
-    fn sent_secrets(&self) -> Vec<String> {
+    /// STS-issued, and the STS tokens it replaced that are still accepted (an
+    /// answer can outlive a refresh). An S3 error built from a reply never
+    /// repeats them.
+    fn sent_secrets(&self) -> SentSecrets {
         let mut sent: Vec<String> = self
             .config
             .session_token
@@ -1690,15 +1725,25 @@ impl S3Provider {
             sent.push(credentials.session_token.expose_secret().to_string());
         }
         // Still under the credentials lock, see `install_temp_credentials`.
+        let retired = self
+            .retired_session_tokens
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         sent.extend(
-            self.retired_session_tokens
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner())
+            retired
+                .kept
                 .iter()
-                .map(|token| token.expose_secret().to_string()),
+                .map(|(token, _)| token.expose_secret().to_string()),
         );
+        let missing_live_token = retired
+            .lost_until
+            .is_some_and(|until| self.now_adjusted() < until);
+        drop(retired);
         drop(temporary);
-        sent
+        SentSecrets {
+            values: sent,
+            missing_live_token,
+        }
     }
 
     /// `s3_error_text` with this session's secrets.
@@ -1856,18 +1901,32 @@ impl S3Provider {
         Ok(())
     }
 
-    /// How many replaced session tokens an error still removes: more than a
-    /// response can outlive, a refresh being minutes apart.
-    const RETIRED_TOKENS_KEPT: usize = 4;
+    /// How many replaced, still accepted session tokens an error removes.
+    /// A token is refreshed minutes before it expires, so a few are live at
+    /// once; past this many, a dropped live token withholds replies instead.
+    const RETIRED_TOKENS_KEPT: usize = 64;
+
+    /// How long past its stated expiry a token is still treated as accepted:
+    /// the server's clock can run behind the adjusted one.
+    const RETIRED_TOKEN_GRACE_SECS: i64 = 900;
 
     /// Make `creds` the session's credentials and keep the token they replace
-    /// among the retired ones, for an answer to a request it signed.
+    /// among the retired ones, for an answer to a request it signed, for as
+    /// long as that token is accepted. A token dropped for room while still
+    /// accepted is not forgotten: until it lapses, `sent_secrets` reports it
+    /// missing and S3 error replies are withheld.
     ///
     /// The old token is retired before the credentials lock is released, and
     /// `sent_secrets` reads both under that lock (always credentials first,
     /// then the retired list): a reader sees a token as current or as
     /// retired, never in neither place.
     fn install_temp_credentials(&self, creds: sts::TempCredentials) {
+        let now = self.now_adjusted();
+        let accepted_until = |expiration: Option<DateTime<Utc>>| {
+            expiration.map_or(DateTime::<Utc>::MAX_UTC, |at| {
+                at + chrono::Duration::seconds(Self::RETIRED_TOKEN_GRACE_SECS)
+            })
+        };
         let mut current = self
             .temp_credentials
             .write()
@@ -1877,9 +1936,16 @@ impl S3Provider {
                 .retired_session_tokens
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
-            retired.push_back(old.session_token);
-            while retired.len() > Self::RETIRED_TOKENS_KEPT {
-                retired.pop_front();
+            retired.kept.push_back((old.session_token, old.expiration));
+            retired
+                .kept
+                .retain(|(_, expiration)| now < accepted_until(*expiration));
+            while retired.kept.len() > Self::RETIRED_TOKENS_KEPT {
+                if let Some((_, expiration)) = retired.kept.pop_front() {
+                    let until = accepted_until(expiration);
+                    retired.lost_until =
+                        Some(retired.lost_until.map_or(until, |was| was.max(until)));
+                }
             }
         }
     }
@@ -16566,6 +16632,69 @@ mod tests {
         }
     }
 
+    /// A reply that answers after many refreshes, as a long upload can: the
+    /// token that signed its request is still removed from the error, and
+    /// past the bound on kept tokens the reply is withheld, never shown.
+    #[test]
+    fn a_late_reply_never_shows_the_token_that_signed_it() {
+        let with_token = |token: String, expires: DateTime<Utc>| sts::TempCredentials {
+            session_token: secrecy::SecretString::from(token),
+            ..temp_creds(Some(expires))
+        };
+        let echo = |token: &str| {
+            format!(
+                "<Error><Code>ExpiredToken</Code><Message>token {token} expired</Message></Error>"
+            )
+        };
+        let mut provider = make_provider(Some("http://localhost:9000"));
+        let now = Utc::now();
+        provider.fixed_now = Some(now);
+        let hour = now + chrono::Duration::hours(1);
+        provider.install_temp_credentials(with_token("LateReplySigner00".to_string(), hour));
+        let signed = provider
+            .effective_credentials()
+            .session_token
+            .map(|token| token.expose_secret().to_string())
+            .unwrap();
+
+        // Five replacements between signing and the reply.
+        for n in 1..=5 {
+            provider.install_temp_credentials(with_token(format!("LateReplyNext{n:04}"), hour));
+        }
+        assert_eq!(
+            provider.reply_text(&echo(&signed)),
+            "ExpiredToken: token [REDACTED] expired"
+        );
+
+        // More live tokens than are kept: the dropped signer is not known,
+        // so the reply is withheld whole.
+        for n in 6..=S3Provider::RETIRED_TOKENS_KEPT + 1 {
+            provider.install_temp_credentials(with_token(format!("LateReplyNext{n:04}"), hour));
+        }
+        let late = provider.reply_text(&echo(&signed));
+        assert!(!late.contains(&signed), "{late}");
+        assert!(late.contains("withheld"), "{late}");
+
+        // Once the dropped token can no longer sign, replies show again.
+        provider.fixed_now =
+            Some(hour + chrono::Duration::seconds(S3Provider::RETIRED_TOKEN_GRACE_SECS + 1));
+        assert_eq!(
+            provider.reply_text("<Error><Code>NoSuchKey</Code><Message>gone</Message></Error>"),
+            "NoSuchKey: gone"
+        );
+
+        // A token past its expiry and the grace is not kept, and its loss
+        // withholds nothing: it no longer signs anything.
+        let mut fresh = make_provider(Some("http://localhost:9000"));
+        fresh.fixed_now = Some(now);
+        let lapsed = now - chrono::Duration::seconds(S3Provider::RETIRED_TOKEN_GRACE_SECS + 1);
+        fresh.install_temp_credentials(with_token("LapsedToken000".to_string(), lapsed));
+        fresh.install_temp_credentials(with_token("FreshToken0001".to_string(), hour));
+        let sent = fresh.sent_secrets();
+        assert!(!sent.values.contains(&"LapsedToken000".to_string()));
+        assert!(!sent.missing_live_token);
+    }
+
     /// A reply that lands while a sibling clone refreshes: whatever token a
     /// request signed with, the error snapshot taken after it still holds
     /// that token, current or retired. Run against many refreshes so the
@@ -16609,7 +16738,7 @@ mod tests {
             // by design; that is not the window this test is about.
             if overlapping <= S3Provider::RETIRED_TOKENS_KEPT {
                 assert!(
-                    sent.contains(&signed),
+                    sent.values.contains(&signed),
                     "{signed} was neither current nor retired ({overlapping} refreshes overlapped)"
                 );
                 checked += 1;
@@ -20100,7 +20229,7 @@ mod tests {
             reqwest::StatusCode::FORBIDDEN,
             body,
             None,
-            &[],
+            &SentSecrets::default(),
         );
         assert_eq!(
             msg,
@@ -20111,7 +20240,7 @@ mod tests {
             reqwest::StatusCode::BAD_GATEWAY,
             "upstream down",
             None,
-            &[],
+            &SentSecrets::default(),
         );
         // A reply with no S3 error code is shown by its size: a proxy page or
         // a gateway text can carry the request path or a token.
@@ -20124,7 +20253,7 @@ mod tests {
             reqwest::StatusCode::BAD_GATEWAY,
             "",
             None,
-            &[],
+            &SentSecrets::default(),
         );
         assert_eq!(empty, "GET failed (502 Bad Gateway): no message");
     }
@@ -20139,7 +20268,7 @@ mod tests {
             reqwest::StatusCode::NOT_FOUND,
             body,
             None,
-            &[],
+            &SentSecrets::default(),
         );
         assert_eq!(
             msg,
@@ -20151,7 +20280,7 @@ mod tests {
             reqwest::StatusCode::FORBIDDEN,
             unclosed,
             None,
-            &[],
+            &SentSecrets::default(),
         );
         assert_eq!(msg, "GET failed (403 Forbidden): AccessDenied");
         let bare = "<Error><Resource>/bucket/private/tax-2026.pdf</Resource></Error>";
@@ -20160,7 +20289,7 @@ mod tests {
             reqwest::StatusCode::NOT_FOUND,
             bare,
             None,
-            &[],
+            &SentSecrets::default(),
         );
         assert!(!msg.contains("tax-2026"), "{msg}");
     }
@@ -20176,7 +20305,7 @@ mod tests {
             reqwest::StatusCode::BAD_REQUEST,
             reflected,
             None,
-            &[],
+            &SentSecrets::default(),
         );
         assert!(!msg.contains("FwoGZXIvYXdzEBAaDK9988776655"), "{msg}");
         assert!(msg.contains("InvalidToken"), "{msg}");
@@ -20188,7 +20317,7 @@ mod tests {
             reqwest::StatusCode::BAD_REQUEST,
             quoted,
             None,
-            &[],
+            &SentSecrets::default(),
         );
         assert!(!msg.contains("FwoGZXIvYXdzEBAaDKquoted123"), "{msg}");
         assert!(!msg.contains("AKIAIOSFODNN7EXAMPLE"), "{msg}");
@@ -20201,7 +20330,7 @@ mod tests {
             reqwest::StatusCode::BAD_REQUEST,
             xml_quoted,
             None,
-            &[],
+            &SentSecrets::default(),
         );
         assert!(!msg.contains("DUMMYSESSION123"), "{msg}");
         assert!(msg.contains("[REDACTED]"), "{msg}");
@@ -20212,7 +20341,7 @@ mod tests {
             reqwest::StatusCode::BAD_REQUEST,
             numeric_quoted,
             None,
-            &[],
+            &SentSecrets::default(),
         );
         assert!(!msg.contains("NUMSESSION456"), "{msg}");
         assert!(!msg.contains("HEXSIG789"), "{msg}");
@@ -20223,7 +20352,7 @@ mod tests {
             reqwest::StatusCode::BAD_REQUEST,
             double_escaped,
             None,
-            &[],
+            &SentSecrets::default(),
         );
         assert!(!msg.contains("DBLSESSION000"), "{msg}");
 
@@ -20263,7 +20392,7 @@ mod tests {
                 reqwest::StatusCode::BAD_REQUEST,
                 &body,
                 None,
-                &[],
+                &SentSecrets::default(),
             );
             assert!(!msg.contains(secret), "{secret} in {msg}");
             assert!(msg.contains("[REDACTED]"), "{msg}");
@@ -20279,7 +20408,7 @@ mod tests {
             reqwest::StatusCode::BAD_REQUEST,
             &body,
             None,
-            &[],
+            &SentSecrets::default(),
         );
         assert!(!msg.contains("DEEP000"), "{msg}");
         assert!(
@@ -20289,7 +20418,7 @@ mod tests {
 
         // The token this session sent is removed in any syntax, as sent or
         // percent-encoded, with no field name next to it.
-        let sent = vec!["FQoGZXIvYXdzE+sent/token==".to_string()];
+        let sent = SentSecrets::of(&["FQoGZXIvYXdzE+sent/token=="]);
         for echoed in [
             "FQoGZXIvYXdzE+sent/token==",
             "FQoGZXIvYXdzE%2Bsent%2Ftoken%3D%3D",
@@ -20314,7 +20443,7 @@ mod tests {
             reqwest::StatusCode::NOT_FOUND,
             ordinary,
             None,
-            &[],
+            &SentSecrets::default(),
         );
         assert_eq!(
             msg,
@@ -20373,7 +20502,7 @@ mod tests {
             reqwest::StatusCode::TOO_MANY_REQUESTS,
             "",
             Some("45"),
-            &[],
+            &SentSecrets::default(),
         );
         assert!(msg.contains("UploadPart 3 failed"));
         assert!(msg.contains("429"));
@@ -20387,7 +20516,7 @@ mod tests {
             reqwest::StatusCode::NOT_FOUND,
             "key gone",
             Some("45"),
-            &[],
+            &SentSecrets::default(),
         );
         assert!(msg.contains("404"));
         assert!(!msg.contains("retry-after-secs"));
