@@ -2138,6 +2138,9 @@ fn import_keystore_with_store(
     }
 
     let imported = committed.len() as u32;
+    let restored_private_tokens = committed
+        .iter()
+        .any(|account| crate::user_partitions::private_token_type(account).is_some());
     zeroize_staged_entries(&mut staged);
     zeroize_optional_string_map_values(&mut originals);
     // CLAUDE-AV-018: zeroize the decrypted secrets themselves; `payload`'s map
@@ -2417,6 +2420,16 @@ fn import_keystore_with_store(
             if let Err(e) = adopt_restored_list(store, &db, profiles_after_decisions.is_some()) {
                 tracing::error!("Keystore import: restored server list not stored: {e}");
                 profile_decisions_error = Some(e);
+            }
+        }
+    }
+
+    // A backup made before tokens were kept to their account can have put
+    // another account's back under the key the legacy owner reads.
+    if restored_private_tokens {
+        if let Some(db) = partition_db(config_dir) {
+            if let Err(e) = crate::user_partitions::realign_private_tokens_after_restore(&db) {
+                tracing::warn!("Keystore import: restored tokens not realigned: {e}");
             }
         }
     }
@@ -4077,6 +4090,66 @@ mod tests {
             "the other account got the owner's token"
         );
         assert_eq!(store.get(key).unwrap(), "owners-token");
+    }
+
+    /// A vault restore of a backup made before tokens were kept to their
+    /// account: its vault carries another account's token under the key the
+    /// legacy owner reads. The alignment runs again after the import, so that
+    /// account gets its token in its partition and the vault lets go of it.
+    #[test]
+    fn a_vault_restore_realigns_the_tokens_it_put_back() {
+        let _guard = crate::user_partitions::test_lock();
+        crate::user_partitions::clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let cfg = dir.path().join("config");
+        partition_with(&store, &cfg, &[]);
+        let root = store.derive_user_partition_wrapping_key();
+        let mut conn = rusqlite::Connection::open(cfg.join("user_partitions.db")).unwrap();
+        let other = crate::user_partitions::create_passphrase_less_user(
+            &mut conn, &root, "Other", None, None,
+        )
+        .unwrap();
+        let mine = serde_json::json!({"id": "srv_mine", "name": "Mine", "protocol": "dropbox",
+            "host": "", "port": 0, "username": "u@example.test"});
+        crate::user_partitions::replace_server_profiles_for(&mut conn, &root, other.id, &[mine])
+            .unwrap();
+        crate::user_partitions::clear_user_session();
+        crate::user_partitions::migrate_credentials_eager_all(&conn, &store, &root).unwrap();
+        let key = "oauth_dropbox_srv_mine";
+        let mut payload = ExportPayload::default();
+        payload
+            .vault_entries
+            .insert(key.to_string(), "others-token".to_string());
+        let backup = dir.path().join("vault.aeroftp-keystore");
+        seal_backup(&backup, PASSWORD_736, &payload);
+
+        import_keystore_with_store(
+            &store,
+            PASSWORD_736,
+            &backup,
+            "overwrite",
+            ImportSections {
+                vault: true,
+                sqlite_dbs: false,
+                files: false,
+                local_storage: false,
+            },
+            Some(&cfg),
+            None,
+            None,
+        )
+        .unwrap();
+        crate::user_partitions::migrate_credentials_eager_all(&conn, &store, &root).unwrap();
+        assert_eq!(
+            crate::user_partitions::get_user_credential_for(&conn, &root, other.id, key)
+                .unwrap()
+                .map(|v| v.to_string())
+                .as_deref(),
+            Some("others-token"),
+            "the restored token was left in the vault"
+        );
+        assert!(store.get(key).is_err());
     }
 
     #[test]
