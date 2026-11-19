@@ -1170,12 +1170,16 @@ mod tests {
 
     const CHILD_DISCARD_EXE: &str = "AEROFTP_TEST_DISCARD_EXE";
     const CHILD_DISCARD_KEY: &str = "AEROFTP_TEST_DISCARD_KEY";
-    const CHILD_DISCARD_ENTERED: &str = "AEROFTP_TEST_DISCARD_ENTERED";
+    const CHILD_DISCARD_PROBE_TIMEOUT_MS: &str = "AEROFTP_TEST_DISCARD_PROBE_TIMEOUT_MS";
+    const CHILD_DISCARD_BLOCKED: &str = "AEROFTP_TEST_DISCARD_BLOCKED";
     const CHILD_DISCARD_DONE: &str = "AEROFTP_TEST_DISCARD_DONE";
 
     /// Child process helper invoked by `runnable` in place of the fake 15-byte
     /// `AeroFTP.exe --discard-pending-docs <token>`, running the real
     /// `portable_docs::discard_pending_docs` under the real Windows batch lock.
+    /// When `CHILD_DISCARD_PROBE_TIMEOUT_MS` is set, first probes the real lock
+    /// with that bounded timeout and writes `CHILD_DISCARD_BLOCKED` only on an
+    /// actual lock timeout before blocking on the unbounded discard call.
     #[test]
     #[ignore = "invoked by failed-swap helper tests via runnable()"]
     fn child_discard_pending_docs() {
@@ -1185,12 +1189,26 @@ mod tests {
         ) else {
             return;
         };
-        if let Some(entered) = std::env::var_os(CHILD_DISCARD_ENTERED) {
-            let _ = std::fs::write(entered, b"entered");
-        }
         let exe_path = PathBuf::from(exe);
         if let Some(exe_dir) = exe_path.parent() {
-            portable_docs::discard_pending_docs(exe_dir, &token);
+            let mut ran = false;
+            if let Some(ms) = std::env::var(CHILD_DISCARD_PROBE_TIMEOUT_MS)
+                .ok()
+                .and_then(|v| v.parse::<u64>().ok())
+            {
+                if portable_docs::discard_pending_docs_within(
+                    exe_dir,
+                    &token,
+                    Some(Duration::from_millis(ms)),
+                ) {
+                    ran = true;
+                } else if let Some(blocked) = std::env::var_os(CHILD_DISCARD_BLOCKED) {
+                    let _ = std::fs::write(blocked, b"blocked");
+                }
+            }
+            if !ran {
+                portable_docs::discard_pending_docs(exe_dir, &token);
+            }
         }
         if let Some(done) = std::env::var_os(CHILD_DISCARD_DONE) {
             let _ = std::fs::write(done, b"done");
@@ -1741,11 +1759,12 @@ mod tests {
     }
 
     /// The failed-swap cleanup runs under the same batch mutex as staging:
-    /// deterministically observe the discard child enter and block on the held
-    /// batch mutex (no fixed sleep), publish a replacement batch while still
-    /// holding the lock, assert cleanup completes only after releasing the
-    /// lock, and verify the replacement batch survives. Control: an unblocked
-    /// failed swap with no replacement removes the staged batch.
+    /// deterministically observe the discard child time out on the real held
+    /// Windows batch mutex (no pre-lock marker gap and no fixed sleep), publish
+    /// a replacement batch while still holding the lock, assert cleanup
+    /// completes only after releasing the lock, and verify the replacement
+    /// batch survives. Control: an unblocked failed swap with no replacement
+    /// acquires the lock immediately without timing out and removes the batch.
     #[test]
     fn a_failed_swap_that_races_with_a_newer_staging_keeps_the_replacement_batch() {
         let mut fx = fixture();
@@ -1754,7 +1773,7 @@ mod tests {
         let next = fx.app.join(portable_docs::NEXT_DIR);
         std::fs::remove_file(beside_path(&fx.current)).expect("staged exe");
         let lines = runnable(&script);
-        let entered = fx.root.path().join("discard-entered.marker");
+        let blocked = fx.root.path().join("discard-blocked.marker");
         let done = fx.root.path().join("discard-done.marker");
         let lock = portable_docs::lock_batches(&fx.app).expect("hold batch lock");
         let script_path = fx.root.path().join("race-helper.cmd");
@@ -1762,27 +1781,35 @@ mod tests {
         let mut child = std::process::Command::new("cmd.exe")
             .args(["/D", "/C", "call"])
             .arg(&script_path)
-            .env(CHILD_DISCARD_ENTERED, &entered)
+            .env(CHILD_DISCARD_PROBE_TIMEOUT_MS, "200")
+            .env(CHILD_DISCARD_BLOCKED, &blocked)
             .env(CHILD_DISCARD_DONE, &done)
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .spawn()
             .expect("spawn helper");
-        // Deterministically wait until the child reaches the discard call
-        // right before acquiring the batch mutex.
+        // Wait until `discard_pending_docs_within` actually hits WAIT_TIMEOUT
+        // on the held Windows batch mutex. A lock-bypassing implementation
+        // would never write `blocked` and exits immediately, failing here.
         let deadline = std::time::Instant::now() + Duration::from_secs(15);
-        while !entered.exists() {
+        while !blocked.exists() {
+            assert!(
+                child.try_wait().expect("poll").is_none() || blocked.exists(),
+                "discard helper exited without blocking on the held batch mutex"
+            );
             assert!(
                 std::time::Instant::now() < deadline,
-                "helper never reached --discard-pending-docs"
+                "helper never observed a batch mutex timeout in --discard-pending-docs"
             );
             std::thread::yield_now();
         }
-        // If discard skipped the lock, it would delete NEXT_DIR and write
-        // `done` immediately while we still hold `lock`.
         assert!(
             !done.exists() && child.try_wait().expect("poll").is_none(),
-            "discard step must block while the batch mutex is held"
+            "discard step must stay blocked while the batch mutex is held"
+        );
+        assert!(
+            next.join("README.txt").is_file(),
+            "staged batch must remain intact while discard is blocked on the mutex"
         );
         // Publish a replacement batch while still holding the lock.
         let other_key = "cd".repeat(32);
@@ -1806,23 +1833,25 @@ mod tests {
             std::fs::read(next.join("README.txt")).expect("kept"),
             b"replacement readme"
         );
-        // Control: when no lock/replacement intervenes, the same discard path
-        // removes the batch and writes `done`.
+        // Control: when no lock/replacement intervenes, the bounded probe
+        // acquires the lock directly without timing out, removes the batch,
+        // and writes `done`.
         let mut fx2 = fixture();
         with_docs(&mut fx2, |_| true);
         let script2 = script_for(&fx2);
-        let entered2 = fx2.root.path().join("discard-entered-ctrl.marker");
+        let blocked2 = fx2.root.path().join("discard-blocked-ctrl.marker");
         let done2 = fx2.root.path().join("discard-done-ctrl.marker");
         std::fs::remove_file(beside_path(&fx2.current)).expect("staged exe");
         run_env(
             &fx2,
             &runnable(&script2),
             &[
-                (CHILD_DISCARD_ENTERED, &entered2.to_string_lossy()),
+                (CHILD_DISCARD_PROBE_TIMEOUT_MS, "200"),
+                (CHILD_DISCARD_BLOCKED, &blocked2.to_string_lossy()),
                 (CHILD_DISCARD_DONE, &done2.to_string_lossy()),
             ],
         );
-        assert!(entered2.exists() && done2.exists());
+        assert!(!blocked2.exists() && done2.exists());
         assert!(!fx2.app.join(portable_docs::NEXT_DIR).exists());
     }
 

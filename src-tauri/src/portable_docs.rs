@@ -730,7 +730,38 @@ pub(crate) fn stage_pending_docs(
     })
 }
 
-/// `stage_pending_docs` with the publishing rename given.
+/// Keys of all installed app executables in `exe_dir` (`AeroFTP.exe`,
+/// `aeroftp-app.exe`, and `std::env::current_exe()` when it resides in
+/// `exe_dir`): a batch matching any of these may still belong to a running
+/// executable and is never reclaimed as an abandoned update.
+fn installed_app_keys(exe_dir: &Path) -> Vec<String> {
+    let mut keys = Vec::new();
+    for name in ["AeroFTP.exe", "aeroftp-app.exe"] {
+        if let Ok(k) = exe_key(&exe_dir.join(name)) {
+            if !keys.contains(&k) {
+                keys.push(k);
+            }
+        }
+    }
+    if let Ok(cur) = std::env::current_exe() {
+        let same_dir = cur.parent().is_some_and(|p| {
+            p == exe_dir
+                || std::fs::canonicalize(p)
+                    .ok()
+                    .zip(std::fs::canonicalize(exe_dir).ok())
+                    .is_some_and(|(a, b)| a == b)
+        });
+        if same_dir {
+            if let Ok(k) = exe_key(&cur) {
+                if !keys.contains(&k) {
+                    keys.push(k);
+                }
+            }
+        }
+    }
+    keys
+}
+
 fn stage_with(
     exe_dir: &Path,
     new_exe: &Path,
@@ -809,13 +840,13 @@ fn stage_with(
             return Err(fail(e));
         }
     };
-    let installed_key = exe_key(&exe_dir.join("AeroFTP.exe")).ok();
+    let installed_keys = installed_app_keys(exe_dir);
     let staged = (|| -> io::Result<()> {
         std::fs::write(tmp.join(KEY_FILE), &key)?;
         for (source, name) in docs {
             std::fs::copy(source, tmp.join(name))?;
         }
-        let aside = make_room(exe_dir, &next, &prev, &key, installed_key.as_deref())?;
+        let aside = make_room(exe_dir, &next, &prev, &key, &installed_keys)?;
         record_batch(exe_dir, &staging_id)?;
         let published = publish(&tmp, &next);
         if published.is_err() {
@@ -841,24 +872,27 @@ fn stage_with(
     staged.map(|()| Some(staging_id)).map_err(fail)
 }
 
-/// Makes room at `next` for the batch of the exe `key`. If `installed_key` is
-/// known (`exe_dir/AeroFTP.exe`) and `next` belongs to an abandoned update
-/// (`next_key != installed_key`), removes `next` directly without disturbing
-/// `prev`. Otherwise sets `next` aside at `prev`, reclaiming `prev` only when
-/// it is already `RETIRED_KEY` or provably an abandoned update (not the
-/// running exe). If `prev` is still occupied or the rename cannot complete,
-/// returns an error without touching `next` or `prev`. Returns whether a batch
-/// was set aside.
+/// Makes room at `next` for the batch of the exe `key`. If `installed_keys`
+/// is non-empty (any installed `AeroFTP.exe` / `aeroftp-app.exe` / running
+/// exe in `exe_dir`) and `next` does not match any of them, `next` belongs
+/// to an abandoned update that never swapped and is removed directly without
+/// disturbing `prev`. Otherwise sets `next` aside at `prev`, reclaiming
+/// `prev` only when it is already `RETIRED_KEY` or provably an abandoned
+/// update (not matching any installed exe). If `prev` is still occupied or
+/// the rename cannot complete, returns an error without touching `next` or
+/// `prev`. Returns whether a batch was set aside.
 fn make_room(
     exe_dir: &Path,
     next: &Path,
     prev: &Path,
     key: &str,
-    installed_key: Option<&str>,
+    installed_keys: &[String],
 ) -> io::Result<bool> {
+    let is_abandoned =
+        |k: &str| !installed_keys.is_empty() && !installed_keys.iter().any(|cur| cur == k);
     if let Slot::Key(next_key) = slot(next) {
         if next_key != key && next_key != RETIRED_KEY {
-            if installed_key.is_some_and(|cur| cur != next_key) {
+            if is_abandoned(&next_key) {
                 retire_batch(exe_dir, next);
                 if std::fs::symlink_metadata(next).is_err() {
                     return Ok(false);
@@ -870,7 +904,7 @@ fn make_room(
             }
             let prev_reclaimable = match slot(prev) {
                 Slot::Key(k) if k == RETIRED_KEY => true,
-                Slot::Key(k) => installed_key.is_some_and(|cur| cur != k),
+                Slot::Key(k) => is_abandoned(&k),
                 _ => false,
             };
             if prev_reclaimable {
@@ -907,8 +941,19 @@ fn make_room(
 /// folder (even with a matching key), a batch whose ownership was
 /// transferred to a same-exe retry, or another exe's batch stays whole.
 pub(crate) fn discard_pending_docs(exe_dir: &Path, token: &str) {
-    let Ok(_lock) = lock_batches(exe_dir) else {
-        return;
+    let _ = discard_pending_docs_within(exe_dir, token, None);
+}
+
+/// Same as `discard_pending_docs`, waiting at most `wait` for the batch lock
+/// (`None` waits unboundedly). Returns `true` when the lock was acquired and
+/// cleanup ran, or `false` if the lock could not be acquired within `wait`.
+pub(crate) fn discard_pending_docs_within(
+    exe_dir: &Path,
+    token: &str,
+    wait: Option<Duration>,
+) -> bool {
+    let Ok(_lock) = lock_batches_within(exe_dir, wait) else {
+        return false;
     };
     remove_staging_leftovers(exe_dir);
     let next = exe_dir.join(NEXT_DIR);
@@ -927,6 +972,7 @@ pub(crate) fn discard_pending_docs(exe_dir: &Path, token: &str) {
     {
         let _ = std::fs::rename(&prev, &next);
     }
+    true
 }
 
 /// The outcome of a failed replace of `target`.
@@ -3258,6 +3304,88 @@ mod tests {
         assert_eq!(read(dir.path(), "README.txt"), "new README.txt");
         assert!(!tmp.exists());
         assert!(recorded_stagings(dir.path()).is_empty());
+    }
+
+    #[test]
+    fn a_running_companion_at_aeroftp_app_exe_keeps_its_batch_when_aeroftp_exe_is_older() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = tempfile::tempdir().unwrap();
+        let exe_a = dir.path().join("AeroFTP.exe");
+        let exe_b = dir.path().join("aeroftp-app.exe");
+        let exe_c = src.path().join("c.exe");
+        let exe_x = src.path().join("x.exe");
+        std::fs::write(&exe_a, b"exe A (older primary)").unwrap();
+        std::fs::write(&exe_b, b"exe B (running companion)").unwrap();
+        std::fs::write(&exe_c, b"exe C (new update)").unwrap();
+        std::fs::write(&exe_x, b"exe X (abandoned update)").unwrap();
+        let key_b = exe_key(&exe_b).unwrap();
+        let key_c = exe_key(&exe_c).unwrap();
+
+        let doc_b = src.path().join("b-readme.txt");
+        let doc_c = src.path().join("c-readme.txt");
+        let doc_x = src.path().join("x-readme.txt");
+        std::fs::write(&doc_b, "docs of B").unwrap();
+        std::fs::write(&doc_c, "docs of C").unwrap();
+        std::fs::write(&doc_x, "docs of X").unwrap();
+
+        // Companion B has a staged batch in NEXT_DIR while AeroFTP.exe still
+        // holds older A. Staging C must treat B as live (setting B aside to
+        // PREV_DIR), not delete it as abandoned.
+        stage_pending_docs(dir.path(), &exe_b, &[(&doc_b, "README.txt")], "b").unwrap();
+        let token_c = stage_pending_docs(dir.path(), &exe_c, &[(&doc_c, "README.txt")], "c")
+            .unwrap()
+            .expect("token C");
+        assert_eq!(read(&dir.path().join(NEXT_DIR), KEY_FILE), key_c);
+        assert_eq!(read(&dir.path().join(PREV_DIR), KEY_FILE), key_b);
+        assert_eq!(read(&dir.path().join(PREV_DIR), "README.txt"), "docs of B");
+
+        // If C's swap fails and discards its batch, B's batch returns to
+        // NEXT_DIR and B can still install its documents.
+        discard_pending_docs(dir.path(), &token_c);
+        assert_eq!(read(&dir.path().join(NEXT_DIR), KEY_FILE), key_b);
+        assert!(!dir.path().join(PREV_DIR).exists());
+        let Pending::Docs(outcomes) = install_pending_docs(dir.path(), &key_b, rename) else {
+            panic!("B installs its docs");
+        };
+        assert_eq!(outcomes, vec![("README.txt", Outcome::Installed)]);
+        assert_eq!(read(dir.path(), "README.txt"), "docs of B");
+
+        // By contrast, an abandoned batch X matching neither AeroFTP.exe nor
+        // aeroftp-app.exe is still reclaimed directly without occupying PREV_DIR.
+        stage_pending_docs(dir.path(), &exe_x, &[(&doc_x, "README.txt")], "x").unwrap();
+        stage_pending_docs(dir.path(), &exe_c, &[(&doc_c, "README.txt")], "c2").unwrap();
+        assert_eq!(read(&dir.path().join(NEXT_DIR), KEY_FILE), key_c);
+        assert!(!dir.path().join(PREV_DIR).exists());
+    }
+
+    #[test]
+    fn discard_pending_docs_within_times_out_while_lock_is_held_and_runs_after_release() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = tempfile::tempdir().unwrap();
+        let exe = src.path().join("new.exe");
+        let doc = src.path().join("README.txt");
+        std::fs::write(&exe, b"new exe").unwrap();
+        std::fs::write(&doc, "new readme").unwrap();
+        let token = stage_pending_docs(dir.path(), &exe, &[(&doc, "README.txt")], "t")
+            .unwrap()
+            .expect("token");
+
+        let lock = lock_batches(dir.path()).unwrap();
+        assert!(
+            !discard_pending_docs_within(dir.path(), &token, Some(Duration::from_millis(50))),
+            "discard must return false when the batch lock is held"
+        );
+        assert!(
+            dir.path().join(NEXT_DIR).join("README.txt").is_file(),
+            "batch must stay intact on lock timeout"
+        );
+        drop(lock);
+
+        assert!(
+            discard_pending_docs_within(dir.path(), &token, Some(Duration::from_millis(200))),
+            "discard must succeed once the batch lock is released"
+        );
+        assert!(!dir.path().join(NEXT_DIR).exists());
     }
 
     #[test]
