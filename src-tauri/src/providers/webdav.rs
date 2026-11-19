@@ -471,7 +471,11 @@ impl std::error::Error for InsecureRedirect {}
 /// with the profile's base path replaced by `<base>`, or only its length.
 /// The rest of a reply can echo the request (an href, the form, a path below
 /// a base URL that holds a token, as MEGAcmd's does).
-fn server_message(body: &str, base_url: &str) -> String {
+///
+/// `sent` is what the request sent as a secret (the account password, a
+/// generated share password): an echo of it is removed in any spelling once
+/// the message is decoded, see `without_sent_values`.
+fn server_message(body: &str, base_url: &str, sent: &[String]) -> String {
     static ELEMENT: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
         regex::Regex::new(r"<(?:[A-Za-z0-9_]+:)?message(?:\s[^>]*)?>([^<]*)</").unwrap()
     });
@@ -493,7 +497,10 @@ fn server_message(body: &str, base_url: &str) -> String {
     };
     // Fully decoded before scrubbing, so an entity-escaped path or query
     // value (`AB&amp;CD` for `AB%26CD`) matches.
-    let mut shown = super::fully_unescaped(message);
+    let Some(decoded) = super::fully_unescaped(message) else {
+        return super::deeply_escaped_reply(body.len());
+    };
+    let mut shown = super::without_sent_values(&decoded, sent);
     if let Ok(url) = url::Url::parse(base_url) {
         let path = url.path().trim_end_matches('/');
         // Every leading part of the base path, longest first: a server can
@@ -554,11 +561,9 @@ fn server_message(body: &str, base_url: &str) -> String {
             // word without guessing where it ends (`abc123`), and replacing
             // every occurrence would garble ordinary words. A message that
             // contains one anywhere is withheld: only its size is shown.
-            if short_secrets
-                .iter()
-                .flat_map(|short| [short.clone(), super::fully_unescaped(short)])
-                .any(|short| !short.is_empty() && shown.contains(short.as_str()))
-            {
+            // Every spelling `redact_values` knows: as saved, decoded and
+            // percent-encoded (`a+b` decodes to `a b`, echoed as `a%20b`).
+            if super::contains_any_spelling(&shown, &short_secrets) {
                 return format!(
                     "a server message of {} bytes, withheld: it contains a value of the saved address",
                     message.len()
@@ -2869,16 +2874,15 @@ impl WebDavProvider {
                 } else {
                     ""
                 };
-                // A server may echo the form, password included: it is masked
-                // before the body reaches the error (CodeRabbit, #1520).
-                let encoded = urlencoding::encode(&password).into_owned();
-                let shown = text2
-                    .replace(&password, "[password]")
-                    .replace(&encoded, "[password]");
+                // A server may echo the form, password included, in any
+                // spelling: it is removed after the message is decoded
+                // (CodeRabbit, #1520 and #1598).
+                let mut sent = self.sent_secrets();
+                sent.push(password.clone());
                 return Err(ProviderError::ServerError(format!(
                     "OCS share failed: HTTP {} - {}{}",
                     status2,
-                    server_message(&shown, &self.config.url),
+                    server_message(&text2, &self.config.url, &sent),
                     lookup
                 )));
             }
@@ -2904,7 +2908,7 @@ impl WebDavProvider {
             return Err(ProviderError::ServerError(format!(
                 "OCS share failed: HTTP {} - {}",
                 status,
-                server_message(&text, &self.config.url)
+                server_message(&text, &self.config.url, &self.sent_secrets())
             )));
         }
         let json: serde_json::Value = serde_json::from_str(&text)
@@ -2925,6 +2929,16 @@ impl WebDavProvider {
     }
 
     /// Generate a random 16-char password for share links.
+    /// The secrets this session sends a server: its account password, unless
+    /// it connects anonymously. An error built from a reply never repeats them.
+    fn sent_secrets(&self) -> Vec<String> {
+        if self.config.anonymous {
+            Vec::new()
+        } else {
+            vec![self.config.password.expose_secret().to_string()]
+        }
+    }
+
     fn generate_share_password() -> String {
         use rand::Rng;
         let mut rng = rand::thread_rng();
@@ -3189,7 +3203,7 @@ impl WebDavProvider {
             return Err(ProviderError::ServerError(format!(
                 "Restore failed: HTTP {}: {}",
                 status,
-                server_message(&body, &self.config.url)
+                server_message(&body, &self.config.url, &self.sent_secrets())
             )));
         }
         Ok(())
@@ -5924,7 +5938,7 @@ impl StorageProvider for WebDavProvider {
             return Err(ProviderError::ServerError(format!(
                 "LOCK failed ({}): {}",
                 status,
-                server_message(&text, &self.config.url)
+                server_message(&text, &self.config.url, &self.sent_secrets())
             )));
         }
 
@@ -5965,7 +5979,7 @@ impl StorageProvider for WebDavProvider {
                 Err(ProviderError::ServerError(format!(
                     "UNLOCK failed ({}): {}",
                     status,
-                    server_message(&text, &self.config.url)
+                    server_message(&text, &self.config.url, &self.sent_secrets())
                 )))
             }
         }
@@ -6134,7 +6148,7 @@ impl StorageProvider for WebDavProvider {
                     "MKCOL uploads/{} failed: {} {}",
                     transfer_id,
                     status,
-                    server_message(&body, &self.config.url)
+                    server_message(&body, &self.config.url, &self.sent_secrets())
                 )));
             }
         }
@@ -6229,7 +6243,7 @@ impl StorageProvider for WebDavProvider {
                     "Nextcloud chunk {} upload failed: {} {}",
                     part_number,
                     status,
-                    server_message(&body, &self.config.url)
+                    server_message(&body, &self.config.url, &self.sent_secrets())
                 )))
             }
         }
@@ -6295,7 +6309,7 @@ impl StorageProvider for WebDavProvider {
                 Err(ProviderError::TransferFailed(format!(
                     "Nextcloud assemble failed: {} {}",
                     status,
-                    server_message(&body, &self.config.url)
+                    server_message(&body, &self.config.url, &self.sent_secrets())
                 )))
             }
         }
@@ -7284,6 +7298,63 @@ mod tests {
         assert!(!err.contains(&*urlencoding::encode(&password)), "{err}");
         assert!(!err.contains("SECRET1234"), "{err}");
         assert!(err.contains("could not be read"), "{err}");
+    }
+
+    /// A refused retry whose message echoes the generated share password as
+    /// XML references still names no password; the rest of the message stays.
+    #[tokio::test]
+    async fn a_refused_share_names_no_password_echoed_as_references() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let sent = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+        let seen = sent.clone();
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let seen = seen.clone();
+                async move {
+                    if req.uri().path().ends_with("/cloud/capabilities") {
+                        return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, String::new());
+                    }
+                    let body = axum::body::to_bytes(req.into_body(), 1 << 16)
+                        .await
+                        .unwrap();
+                    let body = String::from_utf8_lossy(&body).to_string();
+                    let Some(password) = body
+                        .split("&password=")
+                        .nth(1)
+                        .map(|p| urlencoding::decode(p).unwrap().into_owned())
+                    else {
+                        return (axum::http::StatusCode::FORBIDDEN, String::new());
+                    };
+                    *seen.lock().unwrap() = password.clone();
+                    let escaped: String = password
+                        .chars()
+                        .map(|c| match c {
+                            '&' => "&amp;".to_string(),
+                            c if c.is_ascii_alphanumeric() => c.to_string(),
+                            c => format!("&#x{:X};", c as u32),
+                        })
+                        .collect();
+                    (
+                        axum::http::StatusCode::FORBIDDEN,
+                        format!("<?xml version=\"1.0\"?><ocs><meta><status>failure</status><message>Password {escaped} is too weak</message></meta></ocs>"),
+                    )
+                }
+            }));
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut provider =
+            WebDavProvider::new(test_config(&format!("{base}/remote.php/dav/files/user/")))
+                .unwrap();
+        let err = provider
+            .nextcloud_create_share("/report.pdf", ShareLinkOptions::default())
+            .await
+            .expect_err("refused twice")
+            .to_string();
+        server.abort();
+        let password = sent.lock().unwrap().clone();
+        assert!(!password.is_empty(), "the retry carried a password");
+        assert!(!err.contains(&password), "{err}");
+        assert!(err.contains("Password [REDACTED] is too weak"), "{err}");
     }
 
     /// Without the capability a 403 is the answer: no second POST.
@@ -10824,19 +10895,28 @@ pub(crate) mod collection_redirect_tests {
     fn a_server_reply_shows_only_its_message_without_the_base_path() {
         let base = "http://127.0.0.1:4443/TOKEN123/Cloud%20Drive";
         let sabre = r#"<?xml version="1.0"?><d:error xmlns:d="DAV:" xmlns:s="http://sabredav.org/ns"><s:exception>NotFound</s:exception><s:message>No such file: /TOKEN123/Cloud Drive/a.txt</s:message><d:href>/TOKEN123/Cloud%20Drive/a.txt</d:href></d:error>"#;
-        let shown = server_message(sabre, base);
+        let shown = server_message(sabre, base, &[]);
         assert_eq!(shown, "No such file: <base>/a.txt");
         let ocs = r#"{"ocs":{"meta":{"status":"failure","message":"Wrong share password"}}}"#;
-        assert_eq!(server_message(ocs, base), "Wrong share password");
+        assert_eq!(server_message(ocs, base, &[]), "Wrong share password");
         // Only the first segment echoed: it is the handle, so it goes too.
         let partial = "<d:error><s:message>Cannot access /TOKEN123</s:message></d:error>";
-        assert_eq!(server_message(partial, base), "Cannot access <base>");
+        assert_eq!(server_message(partial, base, &[]), "Cannot access <base>");
         let html = "<html><body>/TOKEN123/Cloud%20Drive forbidden</body></html>";
         assert_eq!(
-            server_message(html, base),
+            server_message(html, base, &[]),
             format!("a reply of {} bytes with no message", html.len())
         );
-        assert_eq!(server_message("", base), "no message");
+        assert_eq!(server_message("", base, &[]), "no message");
+        // A secret the request sent, echoed with entities and references,
+        // is removed once the message is decoded.
+        let sent = vec!["Acc0unt&Pass!word".to_string()];
+        let echoed =
+            "<d:error><s:message>Bad credentials Acc0unt&amp;Pass&#x21;word</s:message></d:error>";
+        assert_eq!(
+            server_message(echoed, base, &sent),
+            "Bad credentials [REDACTED]"
+        );
     }
 
     /// A failed WebDAV call (`lock_file`) scrubs configured query credentials
@@ -10865,6 +10945,12 @@ pub(crate) mod collection_redirect_tests {
                         "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<d:error xmlns:d=\"DAV:\" xmlns:s=\"http://sabredav.org/ns\">\n<s:message>Rejected QZ&amp;amp;RT</s:message>\n</d:error>",
                     );
                 }
+                if path.ends_with("/encoded") {
+                    return (
+                        StatusCode::LOCKED,
+                        "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<d:error xmlns:d=\"DAV:\" xmlns:s=\"http://sabredav.org/ns\">\n<s:message>Rejected a%20b123</s:message>\n</d:error>",
+                    );
+                }
                 if path.ends_with("/adjacent") {
                     return (
                         StatusCode::LOCKED,
@@ -10885,7 +10971,7 @@ pub(crate) mod collection_redirect_tests {
         ));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!(
-            "http://{}/root/?access_token=DUMMY%20SECRET&token=TOPSECRET&amp_tok=AB%26CD&short=abc&pin=x%2B1&lit=QZ%26amp%3BRT",
+            "http://{}/root/?access_token=DUMMY%20SECRET&token=TOPSECRET&amp_tok=AB%26CD&short=abc&pin=x%2B1&lit=QZ%26amp%3BRT&plus=a+b",
             listener.local_addr().unwrap()
         );
         let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
@@ -10937,7 +11023,11 @@ pub(crate) mod collection_redirect_tests {
         // A short value cannot be cut out of the word it touches (`abc123`),
         // as sent or percent-decoded (`x%2B1` is `x+1`): the message is
         // withheld and only its size is shown.
-        for (path, secret) in [("/adjacent", "abc"), ("/decoded", "x+1")] {
+        for (path, secret) in [
+            ("/adjacent", "abc"),
+            ("/decoded", "x+1"),
+            ("/encoded", "a%20b"),
+        ] {
             let shown = provider.lock_file(path, 60).await.unwrap_err().to_string();
             assert!(!shown.contains(secret), "{secret} leaked in {shown}");
             assert!(shown.contains("withheld"), "{shown}");

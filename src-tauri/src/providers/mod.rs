@@ -593,14 +593,15 @@ pub(crate) fn unescape_xml_entities(s: &str) -> String {
     // (`&#034;`, `&#x0022;`). A list of spellings always missed one, and a
     // quote that stayed encoded let a credential scrub stop short.
     static REFERENCE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
-        regex::Regex::new(r"&(?:#([0-9]{1,10})|#[xX]([0-9A-Fa-f]{1,8})|(lt|gt|quot|apos|amp));")
-            .unwrap()
+        regex::Regex::new(r"&(?:#([0-9]+)|#[xX]([0-9A-Fa-f]+)|(lt|gt|quot|apos|amp));").unwrap()
     });
     REFERENCE
         .replace_all(s, |found: &regex::Captures| {
+            // Any number of leading zeros; a value past the last code point
+            // is no character and stays as written.
             let number = match (found.get(1), found.get(2)) {
-                (Some(decimal), _) => decimal.as_str().parse::<u32>().ok(),
-                (_, Some(hex)) => u32::from_str_radix(hex.as_str(), 16).ok(),
+                (Some(decimal), _) => decimal_or_hex(decimal.as_str(), 10),
+                (_, Some(hex)) => decimal_or_hex(hex.as_str(), 16),
                 _ => None,
             };
             let decoded = match (number, found.get(3).map(|name| name.as_str())) {
@@ -621,20 +622,35 @@ pub(crate) fn unescape_xml_entities(s: &str) -> String {
         .into_owned()
 }
 
-/// `s` decoded until no reference is left (at most a few rounds), for text
-/// that is scrubbed for credentials and then shown. A server can escape a
-/// value twice (`&amp;quot;`); scrubbing the once-decoded text would leave a
-/// quote encoded and the value after it unmatched.
-pub(crate) fn fully_unescaped(s: &str) -> String {
+/// The value of a reference's digits, leading zeros ignored; `None` past `u32`.
+fn decimal_or_hex(digits: &str, radix: u32) -> Option<u32> {
+    let significant = digits.trim_start_matches('0');
+    if significant.is_empty() {
+        return Some(0);
+    }
+    u32::from_str_radix(significant, radix).ok()
+}
+
+/// The most layers of escaping `fully_unescaped` decodes.
+pub(crate) const ESCAPE_LAYERS_DECODED: usize = 8;
+
+/// `s` decoded until no reference is left, for text that is scrubbed for
+/// credentials and then shown, or `None` when it is still decoding after
+/// `ESCAPE_LAYERS_DECODED` passes. A server can escape a value twice
+/// (`&amp;quot;`); scrubbing the once-decoded text would leave a quote
+/// encoded and the value after it unmatched. Text escaped deeper than that is
+/// not shown at all: a bound is needed (a reply of `&amp;amp;amp;...` peels
+/// one layer a pass), and text cut off at it can still hide a separator.
+pub(crate) fn fully_unescaped(s: &str) -> Option<String> {
     let mut text = s.to_string();
-    for _ in 0..4 {
+    for _ in 0..ESCAPE_LAYERS_DECODED {
         let next = unescape_xml_entities(&text);
         if next == text {
-            break;
+            return Some(text);
         }
         text = next;
     }
-    text
+    (unescape_xml_entities(&text) == text).then_some(text)
 }
 
 /// `text` with every value a session sent a server replaced by
@@ -656,30 +672,54 @@ pub(crate) fn without_sent_values(text: &str, sent: &[String]) -> String {
 /// its decoded echo). A percent escape matches in either letter case (`%2F`,
 /// `%2f`); everything else matches exactly. Longest spelling first.
 pub(crate) fn redact_values(text: &str, values: &[String], placeholder: &str) -> String {
+    match spellings_of(values) {
+        Some(Ok(spellings)) => spellings
+            .replace_all(text, regex::NoExpand(placeholder))
+            .into_owned(),
+        Some(Err(_)) => placeholder.to_string(),
+        None => text.to_string(),
+    }
+}
+
+/// Whether `text` holds any of `values` in any spelling `redact_values`
+/// would remove. An unbuildable pattern counts as present, so a caller that
+/// withholds on a match withholds.
+pub(crate) fn contains_any_spelling(text: &str, values: &[String]) -> bool {
+    match spellings_of(values) {
+        Some(Ok(spellings)) => spellings.is_match(text),
+        Some(Err(_)) => true,
+        None => false,
+    }
+}
+
+/// One regex for every spelling of `values`, longest first; `None` when
+/// there is no value.
+fn spellings_of(values: &[String]) -> Option<Result<regex::Regex, regex::Error>> {
     let mut forms: Vec<String> = values
         .iter()
         .filter(|value| !value.is_empty())
         .flat_map(|value| {
             [
-                value.clone(),
-                urlencoding::encode(value).into_owned(),
+                Some(value.clone()),
+                Some(urlencoding::encode(value).into_owned()),
                 fully_unescaped(value),
             ]
+            .into_iter()
+            .flatten()
         })
         .collect();
     forms.sort_by_key(|form| std::cmp::Reverse(form.len()));
     forms.dedup();
     if forms.is_empty() {
-        return text.to_string();
+        return None;
     }
     let alternatives: Vec<String> = forms.iter().map(|form| spelling_pattern(form)).collect();
-    match regex::Regex::new(&format!("(?:{})", alternatives.join("|"))) {
-        Ok(spellings) => spellings
-            .replace_all(text, regex::NoExpand(placeholder))
-            .into_owned(),
-        // Too large a pattern: say nothing of the text rather than risk it.
-        Err(_) => placeholder.to_string(),
-    }
+    // Too large a pattern is an error: the callers then say nothing of the
+    // text rather than risk it.
+    Some(regex::Regex::new(&format!(
+        "(?:{})",
+        alternatives.join("|")
+    )))
 }
 
 /// A regex matching `form` exactly, except that each `%XX` escape matches in
@@ -838,7 +878,16 @@ pub fn sanitize_api_error(body: &str) -> String {
     // Fully decoded before scrubbing: decoded once, a twice-escaped
     // separator (`&amp;amp;key=`) stays `&amp;key=` and no rule sees the
     // `&` in front of the parameter.
-    sanitize_plain_error(&fully_unescaped(body))
+    match fully_unescaped(body) {
+        Some(decoded) => sanitize_plain_error(&decoded),
+        None => deeply_escaped_reply(body.len()),
+    }
+}
+
+/// What an error shows of a reply escaped deeper than `fully_unescaped`
+/// decodes: its size only.
+pub(crate) fn deeply_escaped_reply(bytes: usize) -> String {
+    format!("a reply of {bytes} bytes, not shown: it is escaped more than {ESCAPE_LAYERS_DECODED} times")
 }
 
 /// Transfer optimization hints: per-provider capability advertisement
@@ -5057,7 +5106,27 @@ mod tests {
         assert_eq!(unescape_xml_entities("&#034;a&#x0022;b&#X22;"), "\"a\"b\"");
         // One pass, as XML: a twice-escaped quote decodes once.
         assert_eq!(unescape_xml_entities("&amp;quot;"), "&quot;");
-        assert_eq!(fully_unescaped("&amp;quot;x&amp;#034;"), "\"x\"");
+        assert_eq!(
+            fully_unescaped("&amp;quot;x&amp;#034;").as_deref(),
+            Some("\"x\"")
+        );
+        // Any number of leading zeros, and any number of layers.
+        assert_eq!(
+            unescape_xml_entities("&#00000000034;&#x000000000022;"),
+            "\"\""
+        );
+        // More layers than four, up to the bound; past it, nothing.
+        let layered = |layers: usize| format!("&{}quot;", "amp;".repeat(layers - 1));
+        assert_eq!(fully_unescaped(&layered(7)).as_deref(), Some("\""));
+        assert_eq!(
+            fully_unescaped(&layered(ESCAPE_LAYERS_DECODED)).as_deref(),
+            Some("\"")
+        );
+        assert_eq!(fully_unescaped(&layered(ESCAPE_LAYERS_DECODED + 1)), None);
+        let deep = format!("key=&{}quot;AIzaLAYER", "amp;".repeat(40));
+        assert_eq!(sanitize_api_error(&deep), deeply_escaped_reply(deep.len()));
+        // Past the last code point: no character, kept as written.
+        assert_eq!(unescape_xml_entities("&#99999999999;"), "&#99999999999;");
         // A control character stays encoded; an unknown name is kept.
         assert_eq!(
             unescape_xml_entities("&#27;[31m &nbsp;"),
@@ -5094,7 +5163,7 @@ mod tests {
             );
         }
         let entity = vec!["opaque&amp;token42".to_string()];
-        let echoed = fully_unescaped("token opaque&amp;amp;token42 expired");
+        let echoed = fully_unescaped("token opaque&amp;amp;token42 expired").unwrap();
         assert_eq!(
             without_sent_values(&echoed, &entity),
             "token [REDACTED] expired"

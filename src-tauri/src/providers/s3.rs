@@ -598,8 +598,10 @@ fn format_s3_error(
 fn scrub_s3_reflected_credentials(text: &str) -> String {
     // A credential field, its name bare or quoted (`x-amz-security-token:`,
     // `"SessionToken": `), then its value. The text is fully decoded first,
-    // so these two rules see every quote as a quote.
-    const FIELD: &str = r#"(?i)(["']?\b(?:x-amz-(?:security-token|credential|signature|server-side-encryption-customer-key)|AWSAccessKeyId|SessionToken|SecurityToken|Credential|Signature)["']?\s*[:=]\s*)"#;
+    // so these two rules see every quote as a quote; a reference that stays
+    // encoded (a control character, a value past the last code point) is
+    // skipped between the separator and the value instead of ending it.
+    const FIELD: &str = r#"(?i)(["']?\b(?:x-amz-(?:security-token|credential|signature|server-side-encryption-customer-key)|AWSAccessKeyId|SessionToken|SecurityToken|Credential|Signature)["']?\s*[:=]\s*(?:&#?[0-9A-Za-z]+;\s*)*)"#;
     static RULES: std::sync::LazyLock<[(regex::Regex, &'static str); 2]> =
         std::sync::LazyLock::new(|| {
             [
@@ -608,9 +610,13 @@ fn scrub_s3_reflected_credentials(text: &str) -> String {
                     regex::Regex::new(&format!(r#"{FIELD}(["'])[^"']*(["'])"#)).unwrap(),
                     "$1$2[REDACTED]$3",
                 ),
-                // A bare value, up to the next delimiter.
+                // A bare value, up to the next delimiter; a reference left
+                // encoded inside it does not end it.
                 (
-                    regex::Regex::new(&format!(r#"{FIELD}([^\s,;'"&<>)\]}}]+)"#)).unwrap(),
+                    regex::Regex::new(&format!(
+                        r#"{FIELD}((?:[^\s,;'"&<>)\]}}]|&#?[0-9A-Za-z]+;)+)"#
+                    ))
+                    .unwrap(),
                     "$1[REDACTED]",
                 ),
             ]
@@ -634,7 +640,9 @@ fn s3_error_text(body: &str, sent: &[String]) -> String {
         Some(detail) => {
             // Fully decoded first, so no escaped quote or reference can stop
             // a rule short of the value.
-            let decoded = super::fully_unescaped(&detail);
+            let Some(decoded) = super::fully_unescaped(&detail) else {
+                return super::deeply_escaped_reply(body.len());
+            };
             let scrubbed =
                 scrub_s3_reflected_credentials(&super::without_sent_values(&decoded, sent));
             super::sanitize_plain_error(&scrubbed)
@@ -16583,7 +16591,10 @@ mod tests {
             stop.store(true, Ordering::SeqCst);
         });
         let mut checked = 0usize;
-        while !done.load(Ordering::SeqCst) {
+        // At least one check after the writer ends, so a writer that
+        // finishes before the first round still leaves one checked reply.
+        loop {
+            let finished = done.load(Ordering::SeqCst);
             let before = started.load(Ordering::SeqCst);
             let signed = provider
                 .effective_credentials()
@@ -16600,6 +16611,9 @@ mod tests {
                     "{signed} was neither current nor retired ({overlapping} refreshes overlapped)"
                 );
                 checked += 1;
+            }
+            if finished {
+                break;
             }
         }
         writer.join().unwrap();
@@ -20227,6 +20241,18 @@ mod tests {
                 "JSONFIELD333",
             ),
             (r#"{"SessionToken": "JSON SPACED 444"}"#, "SPACED 444"),
+            (
+                "x-amz-signature: &#00000000034;LONGPAD555&#00000000034;",
+                "LONGPAD555",
+            ),
+            (
+                "x-amz-signature: &amp;amp;amp;amp;amp;quot;LAYERS666&amp;amp;amp;amp;amp;quot;",
+                "LAYERS666",
+            ),
+            ("x-amz-signature=&#27;CTRLSIG777", "CTRLSIG777"),
+            ("x-amz-signature: &#99999999999;HUGEREF888", "HUGEREF888"),
+            ("x-amz-signature=MID&#27;DLECTRL999", "DLECTRL999"),
+            (r#"x-amz-signature: &#27;"QUOTED REFSIG1010""#, "REFSIG1010"),
         ] {
             let body =
                 format!("<Error><Code>InvalidToken</Code><Message>{reflected}</Message></Error>");
@@ -20240,6 +20266,24 @@ mod tests {
             assert!(!msg.contains(secret), "{secret} in {msg}");
             assert!(msg.contains("[REDACTED]"), "{msg}");
         }
+
+        // Escaped deeper than the decoder goes: only the reply's size.
+        let body = format!(
+            "<Error><Code>InvalidToken</Code><Message>x-amz-signature: &{}quot;DEEP000</Message></Error>",
+            "amp;".repeat(crate::providers::ESCAPE_LAYERS_DECODED)
+        );
+        let msg = format_s3_error(
+            "List failed",
+            reqwest::StatusCode::BAD_REQUEST,
+            &body,
+            None,
+            &[],
+        );
+        assert!(!msg.contains("DEEP000"), "{msg}");
+        assert!(
+            msg.contains(&crate::providers::deeply_escaped_reply(body.len())),
+            "{msg}"
+        );
 
         // The token this session sent is removed in any syntax, as sent or
         // percent-encoded, with no field name next to it.
