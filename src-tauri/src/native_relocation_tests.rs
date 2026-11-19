@@ -192,6 +192,32 @@ impl Accounts {
             .collect()
     }
 
+    fn target_owner(&self) -> vault::SessionOwner {
+        vault::SessionOwner::for_user(Some(self.target.id))
+    }
+
+    /// The target unlocked in this process, which locks the source.
+    fn unlock_target(&self) {
+        unlock_user_transient(
+            &self.conn,
+            &self.root_key,
+            self.target.id,
+            Some(TARGET_PASSWORD),
+        )
+        .unwrap();
+    }
+
+    /// The source unlocked in this process again, which locks the target.
+    fn unlock_source(&self) {
+        unlock_user_transient(
+            &self.conn,
+            &self.root_key,
+            self.source.id,
+            Some(SOURCE_PASSWORD),
+        )
+        .unwrap();
+    }
+
     /// A source profile signed in with session `uid`.
     fn seed(&self, id: &str, uid: &str) {
         self.add_profile(self.source.id, id);
@@ -365,7 +391,8 @@ fn a_native_session_keeps_to_its_account() {
     store.delete(&key("dup-b")).unwrap();
     assert!(!vault::another_profile_holds(store, owner, &key("dup-a"), "shared-uid").unwrap());
     // The sign-out of a session no other profile holds revokes it, once no
-    // other account may hold it: the locked target's row could be that one.
+    // other account may hold it: the locked target's row, saved without the
+    // session index, could be that one.
     delete_user_credential_for(conn, accounts.target.id, &key("target-copy")).unwrap();
     seed("solo", "solo-uid");
     sign_out("solo");
@@ -696,13 +723,7 @@ fn an_rclone_import_brings_no_session_another_account_holds() {
     // The same file, imported into the source once it is the active account,
     // unlocked as the window holds it.
     cli_set_active_user(&accounts.store, accounts.source.id).unwrap();
-    unlock_user_transient(
-        &accounts.conn,
-        &accounts.root_key,
-        accounts.source.id,
-        Some(SOURCE_PASSWORD),
-    )
-    .unwrap();
+    accounts.unlock_source();
     let (id, reasons) = import();
     assert!(
         reasons
@@ -730,81 +751,191 @@ fn an_rclone_import_brings_no_session_another_account_holds() {
     );
 }
 
-/// A sign-out revokes a session on Proton only when no other account on this
-/// device may hold it. A copy two accounts hold from before sessions kept to
-/// one account, or a saved session of an account this process cannot read,
-/// leaves it alive there: the sign-out drops the copy here and sends no
-/// revoke. A session one account alone holds is still revoked.
+/// A sign-out of `id` saved for `owner`, on a runtime of its own.
+fn sign_out(owner: vault::SessionOwner, id: &str) {
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(vault::end_session(owner, Some(id)))
+        .unwrap()
+}
+
+/// A sign-out revokes on Proton a session no other account holds, read from
+/// the session index: a locked account's session of its own, indexed when it
+/// was saved, is told apart without its key.
 #[test]
-fn a_sign_out_revokes_no_session_another_account_may_hold() {
-    if !in_isolated_child("a_sign_out_revokes_no_session_another_account_may_hold") {
+fn a_sign_out_revokes_a_session_no_other_account_holds() {
+    if !in_isolated_child("a_sign_out_revokes_a_session_no_other_account_holds") {
+        return;
+    }
+    let accounts = Accounts::open();
+    let owner = accounts.owner();
+    accounts.unlock_target();
+    vault::store_session(
+        accounts.target_owner(),
+        Some("target-own"),
+        &session("target-uid", "r1"),
+    )
+    .unwrap();
+    accounts.unlock_source();
+    accounts.seed("alone", "alone-uid");
+    let revokes = vault::test_seams::revokes();
+    sign_out(owner, "alone");
+    assert_eq!(
+        vault::test_seams::revokes(),
+        revokes + 1,
+        "the sign-out of a session no other account holds revokes it"
+    );
+    assert_eq!(loaded(owner, "alone"), None);
+    assert_eq!(accounts.target_row("target-own").as_deref(), Some("r1"));
+}
+
+/// A sign-out sends no revoke for a session another account holds, in either
+/// direction between the legacy owner and another account, and while the
+/// account that holds it is locked: the copy here is dropped, and the other
+/// account stays signed in.
+#[test]
+fn a_sign_out_sends_no_revoke_for_a_session_another_account_holds() {
+    if !in_isolated_child("a_sign_out_sends_no_revoke_for_a_session_another_account_holds") {
         return;
     }
     let accounts = Accounts::open();
     let (owner, owners_owner) = (accounts.owner(), accounts.owners_owner());
-    let sign_out = |owner: vault::SessionOwner, id: &str| {
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(vault::end_session(owner, Some(id)))
-            .unwrap()
-    };
     let revokes = vault::test_seams::revokes();
 
-    // The legacy owner and the source hold one session, each under a profile
-    // of its own.
     accounts.add_profile(accounts.legacy, "owners-copy");
     vault::store_session(owners_owner, Some("owners-copy"), &session("two-uid", "r1")).unwrap();
+    accounts.seed("source-copy", "two-uid");
+    sign_out(owner, "source-copy");
+    assert_eq!(
+        vault::test_seams::revokes(),
+        revokes,
+        "the sign-out of a session the legacy owner holds sends no revoke"
+    );
+    assert_eq!(loaded(owner, "source-copy"), None);
+    assert_eq!(loaded(owners_owner, "owners-copy").as_deref(), Some("r1"));
+
     accounts.seed("source-copy", "two-uid");
     sign_out(owners_owner, "owners-copy");
     assert_eq!(
         vault::test_seams::revokes(),
         revokes,
-        "the sign-out of a session another account's row holds sends no revoke"
+        "the legacy owner's sign-out of a session another account holds sends no revoke"
     );
     assert_eq!(loaded(owners_owner, "owners-copy"), None);
     assert_eq!(loaded(owner, "source-copy").as_deref(), Some("r1"));
-    vault::store_session(owners_owner, Some("owners-copy"), &session("two-uid", "r1")).unwrap();
-    sign_out(owner, "source-copy");
+
+    accounts.unlock_target();
+    vault::store_session(
+        accounts.target_owner(),
+        Some("target-copy"),
+        &session("shared-uid", "r1"),
+    )
+    .unwrap();
+    accounts.unlock_source();
+    accounts.seed("shared", "shared-uid");
+    sign_out(owner, "shared");
     assert_eq!(
         vault::test_seams::revokes(),
         revokes,
-        "the sign-out of a session the legacy owner's vault holds sends no revoke"
+        "the sign-out of a session a locked account holds sends no revoke"
     );
-    assert_eq!(loaded(owner, "source-copy"), None);
-    assert_eq!(loaded(owners_owner, "owners-copy").as_deref(), Some("r1"));
-    vault::delete_session(owners_owner, Some("owners-copy")).unwrap();
+    assert_eq!(loaded(owner, "shared"), None);
+    assert_eq!(accounts.target_row("target-copy").as_deref(), Some("r1"));
+}
 
-    // The locked target holds a saved session this process cannot read.
+/// A session row saved before the index keeps every other account's sign-out
+/// from revoking, since it may hold the same session; the unlock of its
+/// account indexes it, and the next sign-out of a session it does not hold
+/// revokes.
+#[test]
+fn a_session_saved_before_the_index_counts_until_its_account_is_unlocked() {
+    if !in_isolated_child("a_session_saved_before_the_index_counts_until_its_account_is_unlocked") {
+        return;
+    }
+    let accounts = Accounts::open();
+    let owner = accounts.owner();
     set_user_credential_with_dek(
         &accounts.conn,
         accounts.target.id,
         &accounts.target_dek,
-        &key("target-held"),
+        &key("target-before-index"),
         "proton_native_session",
-        &raw(&session("target-uid", "r1")),
+        &raw(&session("target-before-index-uid", "r1")),
     )
     .unwrap();
-    accounts.seed("alone", "alone-uid");
-    sign_out(owner, "alone");
+    accounts.seed("first", "first-uid");
+    let revokes = vault::test_seams::revokes();
+    sign_out(owner, "first");
     assert_eq!(
         vault::test_seams::revokes(),
         revokes,
-        "the sign-out sends no revoke while a locked account may hold the session"
+        "a session the index does not describe may be this one: no revoke"
     );
-    assert_eq!(loaded(owner, "alone"), None);
+    assert_eq!(loaded(owner, "first"), None);
 
-    // No other account may hold it: the sign-out revokes it.
-    delete_user_credential_for(&accounts.conn, accounts.target.id, &key("target-held")).unwrap();
-    accounts.seed("alone", "alone-uid");
-    sign_out(owner, "alone");
+    accounts.unlock_target();
+    accounts.unlock_source();
+    accounts.seed("second", "second-uid");
+    sign_out(owner, "second");
     assert_eq!(
         vault::test_seams::revokes(),
         revokes + 1,
-        "the sign-out of a session one account alone holds revokes it"
+        "once its account was unlocked, the row is indexed and the sign-out revokes"
     );
-    assert_eq!(loaded(owner, "alone"), None);
+    assert_eq!(
+        accounts.target_row("target-before-index").as_deref(),
+        Some("r1")
+    );
+}
+
+/// The session index keeps a keyed fingerprint of a session UID and never
+/// the UID: neither in the clear nor as a hash anyone could recompute.
+#[test]
+fn the_session_index_keeps_no_session_uid() {
+    if !in_isolated_child("the_session_index_keeps_no_session_uid") {
+        return;
+    }
+    let accounts = Accounts::open();
+    let uid = "index-plain-uid";
+    accounts.seed("indexed", uid);
+    let entries: Vec<Vec<String>> = accounts
+        .conn
+        .prepare("SELECT * FROM proton_session_index")
+        .and_then(|mut statement| {
+            let columns = statement.column_count();
+            statement
+                .query_map([], |row| {
+                    (0..columns)
+                        .map(|column| {
+                            row.get::<_, rusqlite::types::Value>(column)
+                                .map(|value| format!("{value:?}"))
+                        })
+                        .collect::<rusqlite::Result<Vec<String>>>()
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()
+        })
+        .unwrap_or_default();
+    assert_eq!(
+        entries.len(),
+        1,
+        "the saved session is indexed: {entries:?}"
+    );
+    let unkeyed = hex::encode(Sha256::digest(uid.as_bytes()));
+    for value in entries.iter().flatten() {
+        assert!(!value.contains(uid), "the UID is in the index: {entries:?}");
+        assert!(
+            !value.contains(&unkeyed),
+            "an unkeyed hash of the UID is in the index: {entries:?}"
+        );
+    }
+    assert!(
+        entries[0]
+            .iter()
+            .any(|value| value.contains(&key("indexed"))),
+        "the entry names its row: {entries:?}"
+    );
 }
 
 /// A refresh writes a copy of its session only while the copy still holds

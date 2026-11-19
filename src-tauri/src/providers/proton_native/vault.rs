@@ -482,14 +482,16 @@ pub fn store_session(
             .map_err(|error| ProviderError::Other(format!("session encoding: {error}")))?,
     );
     if let Some(user) = private_account(owner)? {
-        return crate::user_partitions::store_credential_for_user(
+        crate::user_partitions::store_credential_for_user(
             &store,
             user,
             &key,
             PARTITION_TYPE,
             &json,
         )
-        .map_err(ProviderError::Other);
+        .map_err(ProviderError::Other)?;
+        indexed(&store, user, &key);
+        return Ok(());
     }
     store
         .store(&key, &json)
@@ -503,8 +505,19 @@ pub fn store_session(
             &json,
         )
         .map_err(ProviderError::Other)?;
+        indexed(&store, user, &key);
     }
     Ok(())
+}
+
+/// Indexes the row `key` of `user` just written (see
+/// [`crate::user_partitions::other_accounts_holding_session`]). A row left
+/// out of the index keeps every other account's sign-out from revoking it,
+/// until the account's next unlock indexes it: the save itself stands.
+fn indexed(store: &CredentialStore, user: i64, key: &str) {
+    if let Err(error) = crate::user_partitions::index_proton_session(store, user, key) {
+        log::warn!("Proton: the saved session was not indexed: {error}");
+    }
 }
 
 /// Removes the session saved for `profile_id` from the vault and the captured
@@ -970,9 +983,9 @@ pub fn end_session_blocking(
 /// Revokes on Proton the session saved for `profile_id`, best effort, before
 /// a profile delete (or a new sign-in) replaces the key. A session that
 /// another key on this device also holds is left alive: another profile of
-/// the account, or another account that may hold it (a copy saved before
-/// sessions kept to one account, or an account this process cannot read).
-/// Never fails the caller: errors are logged.
+/// the account, or another account the session index says holds it or may
+/// hold it ([`kept_for_another_account`]). Never fails the caller: errors are
+/// logged.
 pub async fn revoke_saved_session(owner: SessionOwner, profile_id: Option<&str>) {
     let store = match open_store() {
         Ok(store) => store,
@@ -1004,15 +1017,15 @@ pub async fn revoke_saved_session(owner: SessionOwner, profile_id: Option<&str>)
         log::info!("Proton: session kept, another saved profile uses it");
         return;
     }
-    match held_by_another_account(&store, owner, &session.tokens.uid) {
-        Ok(false) => {}
-        Ok(true) => {
-            log::info!("Proton: session kept, another account on this device may hold it");
+    match kept_for_another_account(&store, owner, &session.tokens.uid) {
+        Ok(None) => {}
+        Ok(Some(reason)) => {
+            log::info!("Proton: session dropped here and kept on Proton, {reason}");
             return;
         }
         Err(error) => {
             log::warn!(
-                "Proton: saved session not revoked, the other accounts could not be read: {error}"
+                "Proton: saved session not revoked, the other accounts' sessions could not be read: {error}"
             );
             return;
         }
@@ -1028,6 +1041,36 @@ pub async fn revoke_saved_session(owner: SessionOwner, profile_id: Option<&str>)
         Ok(Err(error)) => log::warn!("Proton: session revoke failed: {error}"),
         Err(_) => log::warn!("Proton: session revoke timed out"),
     }
+}
+
+/// Why a sign-out of `owner` leaves the session `uid` alive on Proton for
+/// another account, `None` when no other account holds it: for an account
+/// other than the legacy owner, the legacy owner's vault copy; for any
+/// account, the session index, where another account's fingerprint of the
+/// same UID, or a session of another account the index does not describe,
+/// keeps it. The reason names no UID.
+fn kept_for_another_account(
+    store: &CredentialStore,
+    owner: SessionOwner,
+    uid: &str,
+) -> Result<Option<&'static str>, ProviderError> {
+    use crate::user_partitions::OtherAccounts;
+    if private_account(owner)?.is_some()
+        && vault_sessions(|| store.list_accounts(), |key| store.get(key))?
+            .iter()
+            .any(|(_, saved)| saved.tokens.uid == uid)
+    {
+        return Ok(Some("the legacy owner's vault holds it"));
+    }
+    let others = crate::user_partitions::other_accounts_holding_session(store, owner.user_id, uid)
+        .map_err(ProviderError::Other)?;
+    Ok(match others {
+        OtherAccounts::HoldNone => None,
+        OtherAccounts::HoldIt => Some("another account on this device holds it"),
+        OtherAccounts::MayHoldIt => Some(
+            "another account holds a session saved before the session index, which may be it, until that account is unlocked",
+        ),
+    })
 }
 
 /// The lease slug of a session's refresh: one per session UID, so the
@@ -1127,8 +1170,8 @@ impl SessionKeys for VaultKeys {
         let uid = &session.tokens.uid;
         let same_session =
             |current: &str| parse(current).is_ok_and(|saved| saved.tokens.uid == *uid);
-        if let Some(user) = self.private {
-            return crate::user_partitions::refresh_user_credential(
+        let refreshed = |user: i64| -> Result<(), ProviderError> {
+            let written = crate::user_partitions::refresh_user_credential(
                 &self.store,
                 user,
                 key,
@@ -1136,8 +1179,14 @@ impl SessionKeys for VaultKeys {
                 &same_session,
                 &raw,
             )
-            .map(|_| ())
-            .map_err(ProviderError::Other);
+            .map_err(ProviderError::Other)?;
+            if written {
+                indexed(&self.store, user, key);
+            }
+            Ok(())
+        };
+        if let Some(user) = self.private {
+            return refreshed(user);
         }
         // The vault key is the legacy owner's, and so is the one row this
         // write carries the pair to. Another account's row of the same name
@@ -1151,19 +1200,7 @@ impl SessionKeys for VaultKeys {
                 Ok(Some(user))
             })
             .map_err(ProviderError::Other)?;
-        match legacy {
-            Some(user) => crate::user_partitions::refresh_user_credential(
-                &self.store,
-                user,
-                key,
-                PARTITION_TYPE,
-                &same_session,
-                &raw,
-            )
-            .map(|_| ())
-            .map_err(ProviderError::Other),
-            None => Ok(()),
-        }
+        legacy.map_or(Ok(()), refreshed)
     }
 }
 

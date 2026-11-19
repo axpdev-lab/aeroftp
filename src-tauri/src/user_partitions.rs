@@ -427,7 +427,24 @@ pub fn init_db_schema(conn: &Connection) -> Result<(), String> {
              discovery_mode     TEXT NOT NULL DEFAULT 'both',
              rate_limit_per_min INTEGER NOT NULL DEFAULT 20,
              updated_at         INTEGER NOT NULL
-         );",
+         );
+
+         CREATE TABLE IF NOT EXISTS proton_session_index (
+             user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+             credential_id  TEXT NOT NULL,
+             fingerprint    TEXT NOT NULL,
+             blob_digest    TEXT NOT NULL,
+             key_tag        TEXT NOT NULL,
+             updated_at     INTEGER NOT NULL,
+             PRIMARY KEY(user_id, credential_id)
+         );
+
+         CREATE TRIGGER IF NOT EXISTS proton_session_index_leaves_with_its_row
+             AFTER DELETE ON user_credentials
+         BEGIN
+             DELETE FROM proton_session_index
+             WHERE user_id = OLD.user_id AND credential_id = OLD.credential_id;
+         END;",
     )
     .map_err(|e| format!("User partitions schema init: {e}"))
 }
@@ -5245,6 +5262,226 @@ pub(crate) fn another_account_may_hold_session(
     Ok(false)
 }
 
+/// The credential type of a native Proton session row.
+#[cfg(feature = "proton-native")]
+const PROTON_SESSION_TYPE: &str = "proton_native_session";
+
+/// The key of the native Proton session index: derived from the vault key, so
+/// that every account on this device computes the same fingerprint of a
+/// session without the key of any account's partition, and a copy of the
+/// partition database without the vault cannot confirm a guessed UID.
+#[cfg(feature = "proton-native")]
+fn session_index_key(root_key: &[u8; 32]) -> Zeroizing<[u8; 32]> {
+    let mut key = Zeroizing::new([0u8; 32]);
+    hkdf::Hkdf::<Sha256>::new(None, root_key)
+        .expand(b"aeroftp-proton-session-index-v1", key.as_mut())
+        .expect("HKDF expand");
+    key
+}
+
+#[cfg(feature = "proton-native")]
+fn session_index_mac(key: &[u8; 32], message: &[u8]) -> String {
+    use hmac::Mac;
+    let mut mac = hmac::Hmac::<Sha256>::new_from_slice(key).expect("HMAC takes any key length");
+    mac.update(message);
+    hex::encode(mac.finalize().into_bytes())
+}
+
+/// The fingerprint the index keeps of a session UID: an HMAC under
+/// [`session_index_key`], never the UID or a hash anyone could recompute.
+#[cfg(feature = "proton-native")]
+fn session_fingerprint(key: &[u8; 32], uid: &str) -> String {
+    session_index_mac(key, uid.as_bytes())
+}
+
+/// Which index key an entry was made with: an entry carried to another
+/// device (a backup restore) was made with another vault's key, and its
+/// fingerprint compares to nothing here.
+#[cfg(feature = "proton-native")]
+fn session_index_key_tag(key: &[u8; 32]) -> String {
+    session_index_mac(key, b"aeroftp proton session index key tag")[..16].to_string()
+}
+
+/// Which ciphertext an entry describes: a row rewritten by any writer that did
+/// not index it again no longer matches its entry.
+#[cfg(feature = "proton-native")]
+fn session_blob_digest(blob: &[u8], nonce: &[u8]) -> String {
+    let mut digest = Sha256::new();
+    digest.update(nonce);
+    digest.update(blob);
+    hex::encode(digest.finalize())
+}
+
+/// Indexes the row `credential_id` of `user_id` as it is now: the fingerprint
+/// of the session UID its ciphertext holds, bound to that ciphertext. A row
+/// that is gone, or holds no session, has no entry.
+#[cfg(feature = "proton-native")]
+fn index_session_row(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+    dek: &SecretKey,
+    credential_id: &str,
+) -> Result<(), String> {
+    let row: Option<(Vec<u8>, Vec<u8>)> = conn
+        .query_row(
+            "SELECT encrypted_blob, nonce FROM user_credentials
+             WHERE user_id = ?1 AND credential_id = ?2",
+            params![user_id, credential_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()
+        .map_err(|e| format!("Read saved session: {e}"))?;
+    let uid = row.as_ref().and_then(|(blob, nonce)| {
+        let plaintext = user_crypto::decrypt_blob(dek, nonce, blob).ok()?;
+        proton_session_uid(std::str::from_utf8(&plaintext).ok()?)
+    });
+    match (row, uid) {
+        (Some((blob, nonce)), Some(uid)) => {
+            let key = session_index_key(root_key);
+            conn.execute(
+                "INSERT INTO proton_session_index(
+                     user_id, credential_id, fingerprint, blob_digest, key_tag, updated_at
+                 )
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                 ON CONFLICT(user_id, credential_id) DO UPDATE SET
+                     fingerprint = excluded.fingerprint,
+                     blob_digest = excluded.blob_digest,
+                     key_tag     = excluded.key_tag,
+                     updated_at  = excluded.updated_at",
+                params![
+                    user_id,
+                    credential_id,
+                    session_fingerprint(&key, &uid),
+                    session_blob_digest(&blob, &nonce),
+                    session_index_key_tag(&key),
+                    now_ms()
+                ],
+            )
+            .map_err(|e| format!("Write session index: {e}"))?;
+        }
+        _ => {
+            conn.execute(
+                "DELETE FROM proton_session_index WHERE user_id = ?1 AND credential_id = ?2",
+                params![user_id, credential_id],
+            )
+            .map_err(|e| format!("Clear session index: {e}"))?;
+        }
+    }
+    Ok(())
+}
+
+/// Indexes the native Proton session `user_id` just saved or refreshed under
+/// `credential_id` (see [`other_accounts_holding_session`]).
+#[cfg(feature = "proton-native")]
+pub(crate) fn index_proton_session(
+    store: &CredentialStore,
+    user_id: i64,
+    credential_id: &str,
+) -> Result<(), String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
+    let root_secret = user_crypto::secret_key_from_bytes(&root_key);
+    with_user_dek(&conn, &root_secret, user_id, |id, dek| {
+        index_session_row(&conn, &root_key, id, dek, credential_id)
+    })
+}
+
+/// Indexes every native Proton session `user_id` holds, when the account is
+/// unlocked: the rows saved before the index, or rewritten without it, get
+/// their entry then.
+#[cfg(feature = "proton-native")]
+fn index_account_sessions(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+    dek: &SecretKey,
+) -> Result<(), String> {
+    for credential_id in user_credential_ids_of_type(conn, user_id, PROTON_SESSION_TYPE)? {
+        index_session_row(conn, root_key, user_id, dek, &credential_id)?;
+    }
+    Ok(())
+}
+
+/// What the index tells of the accounts other than one about a session.
+#[cfg(feature = "proton-native")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum OtherAccounts {
+    /// No other account holds it.
+    HoldNone,
+    /// Another account holds a session with the same fingerprint.
+    HoldIt,
+    /// Another account holds a session the index does not describe (saved
+    /// before it, or rewritten since, and not indexed at an unlock yet),
+    /// which may be this one.
+    MayHoldIt,
+}
+
+/// Whether an account other than `user` holds the native Proton session
+/// `uid`, read from the index alone: no account's partition is decrypted,
+/// so a locked account answers as an unlocked one does.
+#[cfg(feature = "proton-native")]
+pub(crate) fn other_accounts_holding_session(
+    store: &CredentialStore,
+    user: Option<i64>,
+    uid: &str,
+) -> Result<OtherAccounts, String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    let key = session_index_key(&store.derive_user_partition_wrapping_key());
+    let (fingerprint, key_tag) = (session_fingerprint(&key, uid), session_index_key_tag(&key));
+    type Row = (
+        String,
+        Vec<u8>,
+        Vec<u8>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+    );
+    let rows: Vec<Row> = conn
+        .prepare(
+            "SELECT c.credential_id, c.encrypted_blob, c.nonce,
+                    i.fingerprint, i.blob_digest, i.key_tag
+             FROM user_credentials c
+             LEFT JOIN proton_session_index i
+                 ON i.user_id = c.user_id AND i.credential_id = c.credential_id
+             WHERE ?1 IS NULL OR c.user_id <> ?1",
+        )
+        .and_then(|mut statement| {
+            statement
+                .query_map(params![user], |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                    ))
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()
+        })
+        .map_err(|e| format!("Read session index: {e}"))?;
+    let mut answer = OtherAccounts::HoldNone;
+    for (_, blob, nonce, entry, digest, tag) in rows
+        .into_iter()
+        .filter(|(credential_id, ..)| is_proton_session_key(credential_id))
+    {
+        let describes_the_row = tag.as_deref() == Some(key_tag.as_str())
+            && digest.as_deref() == Some(session_blob_digest(&blob, &nonce).as_str());
+        match entry {
+            Some(entry) if describes_the_row => {
+                if entry == fingerprint {
+                    return Ok(OtherAccounts::HoldIt);
+                }
+            }
+            _ => answer = OtherAccounts::MayHoldIt,
+        }
+    }
+    Ok(answer)
+}
+
 /// The account that owns legacy unbound/global secrets, for one-time reads
 /// of sessions saved before native Proton had explicit user ownership.
 pub(crate) fn legacy_credential_owner_id() -> Result<Option<i64>, String> {
@@ -6388,6 +6625,12 @@ fn unlock_user_inner(
         } else {
             Vec::new()
         };
+    // The account's sessions saved before the index, or rewritten without
+    // it, are indexed now that its key is at hand.
+    #[cfg(feature = "proton-native")]
+    if let Err(error) = index_account_sessions(conn, root_key, user_id, &dek) {
+        log::warn!("Unlock: the account's Proton sessions were not indexed: {error}");
+    }
     if row.has_passphrase {
         set_user_session(user_id, dek)?;
     }
