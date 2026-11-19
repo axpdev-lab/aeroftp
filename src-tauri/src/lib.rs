@@ -5548,14 +5548,23 @@ pub fn preserve_remote_mtime(local_path: &str, remote_modified: Option<&str>) {
 /// RFC 2822 arm no WebDAV download ever kept its remote mtime, and a later
 /// sync saw every downloaded file as changed.
 pub fn parse_remote_mtime(modified_str: &str) -> Option<i64> {
-    parse_remote_mtime_millis(modified_str).map(|millis| millis.div_euclid(1000))
+    parse_remote_instant(modified_str).map(|at| at.timestamp())
 }
 
 /// [`parse_remote_mtime`] in milliseconds, keeping the fraction a shape carries
 /// (`2026-09-24T19:41:46.250Z`), for the orderings two events within one
 /// second must not tie on (the rows of a version list). Same shapes, same
-/// refusals: this is the single parser, the seconds form floors it.
+/// refusals: both forms read the one parser below.
 pub fn parse_remote_mtime_millis(modified_str: &str) -> Option<i64> {
+    parse_remote_instant(modified_str).map(|at| at.timestamp_millis())
+}
+
+/// The single parser behind [`parse_remote_mtime`] and
+/// [`parse_remote_mtime_millis`]. Each reads its own unit from the instant:
+/// the seconds are not the milliseconds divided, because a leap second
+/// (`23:59:60`) carries its extra second in the fraction, which
+/// `timestamp_millis` adds and `timestamp` does not.
+fn parse_remote_instant(modified_str: &str) -> Option<chrono::DateTime<chrono::Utc>> {
     let trimmed = modified_str.trim();
     // FTP MLSD-derived listings end in `Z` or `UTC` with no offset.
     let clean_str = trimmed
@@ -5566,9 +5575,13 @@ pub fn parse_remote_mtime_millis(modified_str: &str) -> Option<i64> {
         .or_else(|_| chrono::NaiveDateTime::parse_from_str(clean_str, "%Y-%m-%dT%H:%M:%S"))
         .or_else(|_| chrono::NaiveDateTime::parse_from_str(clean_str, "%Y-%m-%dT%H:%M:%S%.f"))
         .or_else(|_| chrono::NaiveDateTime::parse_from_str(clean_str, "%Y-%m-%d %H:%M:%S%.f"))
-        .map(|ndt| ndt.and_utc().timestamp_millis())
-        .or_else(|_| chrono::DateTime::parse_from_rfc3339(trimmed).map(|dt| dt.timestamp_millis()))
-        .or_else(|_| chrono::DateTime::parse_from_rfc2822(trimmed).map(|dt| dt.timestamp_millis()))
+        .map(|ndt| ndt.and_utc())
+        .or_else(|_| {
+            chrono::DateTime::parse_from_rfc3339(trimmed).map(|dt| dt.with_timezone(&chrono::Utc))
+        })
+        .or_else(|_| {
+            chrono::DateTime::parse_from_rfc2822(trimmed).map(|dt| dt.with_timezone(&chrono::Utc))
+        })
         .ok()
 }
 
@@ -5629,6 +5642,26 @@ mod parse_remote_mtime_tests {
         );
         assert_eq!(parse_remote_mtime("1969-12-31T23:59:59.500Z"), Some(-1));
         assert_eq!(parse_remote_mtime_millis("2026-09-24 19:41"), None);
+    }
+
+    /// A leap second keeps the second it is in: `23:59:60` is still
+    /// 1483228799, as before the millisecond form existed. Floored from the
+    /// milliseconds it read one second later, and a downloaded file got a
+    /// time one second after the remote one.
+    #[test]
+    fn a_leap_second_keeps_the_second_it_is_in() {
+        assert_eq!(
+            parse_remote_mtime("2016-12-31T23:59:60Z"),
+            Some(1_483_228_799)
+        );
+        assert_eq!(
+            parse_remote_mtime("2016-12-31 23:59:60"),
+            Some(1_483_228_799)
+        );
+        assert_eq!(
+            parse_remote_mtime("2016-12-31T23:59:59Z"),
+            Some(1_483_228_799)
+        );
     }
 }
 

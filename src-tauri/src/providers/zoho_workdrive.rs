@@ -143,6 +143,14 @@ struct PageCursor {
     next: Option<String>,
 }
 
+/// One page of a file's versions, with the cursor to the next page.
+#[derive(Debug, Deserialize)]
+struct VersionsPage {
+    data: Vec<VersionResource>,
+    #[serde(default)]
+    links: Option<PageLinks>,
+}
+
 /// Team resource
 #[derive(Debug, Deserialize)]
 struct TeamResource {
@@ -789,13 +797,37 @@ fn version_label(raw: &serde_json::value::RawValue) -> Option<String> {
         return None;
     };
     let text = text.trim();
-    if text.is_empty() {
-        None
-    } else if text.contains(['.', 'e', 'E']) {
-        Some(text.to_string())
-    } else {
+    // Dotted whole numbers only (`2.0`, `1.10`): `1e3` or `-1` would be sent
+    // as a `revert_to` no version has.
+    if text.contains('.') {
+        version_parts(text).map(|_| text.to_string())
+    } else if !text.is_empty() && text.bytes().all(|b| b.is_ascii_digit()) {
         Some(format!("{text}.0"))
+    } else {
+        None
     }
+}
+
+/// The version number a restore answer names as made (`data.attributes`,
+/// one resource or the first of a list), as [`version_label`] reads it.
+fn zoho_made_version(body: &str) -> Option<String> {
+    #[derive(Deserialize)]
+    struct One {
+        data: VersionResource,
+    }
+    #[derive(Deserialize)]
+    struct Many {
+        data: Vec<VersionResource>,
+    }
+    let resource = match serde_json::from_str::<One>(body) {
+        Ok(one) => one.data,
+        Err(_) => serde_json::from_str::<Many>(body)
+            .ok()?
+            .data
+            .into_iter()
+            .next()?,
+    };
+    version_label(resource.attributes.version_number.as_deref()?)
 }
 
 /// A version number compared part by part (`1.10` after `1.9`, `2` equal to
@@ -2897,6 +2929,13 @@ impl ZohoWorkdriveProvider {
 
     /// Return an already fetched target listing only to this operation, never
     /// cache it: a later call must recheck access and name/alias precedence.
+    ///
+    /// A cached id is used only once WorkDrive confirmed it
+    /// ([`Self::confirmed_cached_folder`]): another client may have moved a
+    /// cached folder away and made a new one under its name, and an
+    /// operation under the path would then act inside the moved one.
+    /// Otherwise every name is looked up in the folder the server just
+    /// returned.
     async fn resolve_path_with_listing(
         &mut self,
         path: &str,
@@ -2914,26 +2953,21 @@ impl ZohoWorkdriveProvider {
             });
         }
 
-        // Check cache
-        let full_path = format!("/{}", path);
-        if let Some(id) = self.folder_cache.get(&full_path) {
+        let parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+        if let Some(id) = self.confirmed_cached_folder(&parts).await? {
             return Ok(FolderResolution {
-                id: id.clone(),
+                id,
                 listing: None,
                 alias_derived: false,
             });
         }
-
-        let parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
         // First component: check team folders by name, then privatespace contents
         let first = parts[0];
         let mut current_path = format!("/{}", first);
 
         let mut legacy_root = false;
         let mut target_listing = None;
-        let mut current_id = if let Some(cached) = self.folder_cache.get(&current_path) {
-            cached.clone()
-        } else if let Some((tf_id, _)) = self
+        let mut current_id = if let Some((tf_id, _)) = self
             .team_folders
             .iter()
             .find(|(_, name)| name.as_str() == first)
@@ -2988,13 +3022,6 @@ impl ZohoWorkdriveProvider {
         for part in &parts[1..] {
             current_path = format!("{}/{}", current_path, part);
 
-            if !legacy_root {
-                if let Some(cached) = self.folder_cache.get(&current_path) {
-                    current_id = cached.clone();
-                    continue;
-                }
-            }
-
             // The probe lists current_id, so consume it for this first child.
             // It must not be returned as a listing of the resolved child.
             let found = match target_listing.take() {
@@ -3014,6 +3041,103 @@ impl ZohoWorkdriveProvider {
             listing: target_listing,
             alias_derived: legacy_root,
         })
+    }
+
+    /// The id cached for the folder at `parts`, once WorkDrive confirmed
+    /// that it is still there: each folder on the way, from the deepest up,
+    /// read back by id (`GET /files/{id}`), its name the one asked for and
+    /// its parent the folder cached above it (the private space for the
+    /// first, a team folder being found by its discovered name). One request
+    /// a folder and no listing, so the listings of a folder keep their
+    /// window for listings. `None` when a folder on the way is not cached;
+    /// when one is not where the cache has it, the ids on the way are
+    /// forgotten and `None` sends the caller to walk the path.
+    async fn confirmed_cached_folder(
+        &mut self,
+        parts: &[&str],
+    ) -> Result<Option<String>, ProviderError> {
+        #[derive(Deserialize)]
+        struct Placed {
+            name: String,
+            #[serde(default)]
+            parent_id: Option<String>,
+            /// 1 active; a folder in the trash (51) or deleted (61) keeps
+            /// its name and parent.
+            #[serde(default)]
+            status: Option<serde_json::Value>,
+        }
+        #[derive(Deserialize)]
+        struct Item {
+            attributes: Placed,
+        }
+        #[derive(Deserialize)]
+        struct Detail {
+            data: Item,
+        }
+        let mut path = String::new();
+        let mut ids = Vec::with_capacity(parts.len());
+        for part in parts {
+            path = format!("{path}/{part}");
+            let Some(id) = self.folder_cache.get(&path) else {
+                return Ok(None);
+            };
+            ids.push(id.clone());
+        }
+        let team = self
+            .team_folders
+            .iter()
+            .find(|(_, name)| name.as_str() == parts[0])
+            .map(|(id, _)| id.clone());
+        // A team folder's own id is the one discovery returned.
+        let (first, mut in_place) = match team {
+            Some(team) => (1, team == ids[0]),
+            None => (0, true),
+        };
+        let first = if in_place { first } else { ids.len() };
+        for at in (first..ids.len()).rev() {
+            let above = if at == 0 {
+                self.privatespace_id.clone()
+            } else {
+                Some(ids[at - 1].clone())
+            };
+            let url = format!("{}/files/{}", self.api_base(), ids[at]);
+            let resp = self
+                .send_api(None, Resend::RefusedOrFailed, |auth| {
+                    self.client.get(&url).header(AUTHORIZATION, auth)
+                })
+                .await?;
+            let status = resp.status();
+            if status == reqwest::StatusCode::NOT_FOUND {
+                in_place = false;
+                break;
+            }
+            if !status.is_success() {
+                return Err(ProviderError::ServerError(format!(
+                    "Zoho WorkDrive folder lookup failed: HTTP {status}"
+                )));
+            }
+            let text = super::version_listing_text(resp).await?;
+            // An answer in another shape confirms nothing: the walk decides.
+            let Ok(placed) = serde_json::from_str::<Detail>(&text).map(|d| d.data.attributes)
+            else {
+                in_place = false;
+                break;
+            };
+            let active = match &placed.status {
+                Some(serde_json::Value::Number(n)) => n.as_u64() == Some(1),
+                Some(serde_json::Value::String(s)) => s == "1",
+                _ => false,
+            };
+            if !active || placed.name != parts[at] || above.is_none() || placed.parent_id != above {
+                in_place = false;
+                break;
+            }
+        }
+        if in_place {
+            return Ok(ids.pop());
+        }
+        super::forget_cached_ancestors(&mut self.folder_cache, &path);
+        Ok(None)
     }
 
     /// Pin IDs only for one search after checking the alias's name precedence.
@@ -4362,47 +4486,71 @@ impl StorageProvider for ZohoWorkdriveProvider {
     async fn list_versions(&mut self, path: &str) -> Result<Vec<FileVersion>, ProviderError> {
         let file_id = self.resolve_file_id(path).await?;
 
-        let url = format!("{}/files/{}/versions", self.api_base(), file_id);
-        info!("Zoho WorkDrive list versions: GET {}", url);
+        // Every page, as for a folder ([`next_page_cursor`]): a listing cut
+        // at its first page would refuse a restore of an older version as
+        // not listed.
+        let base = format!("{}/files/{}/versions", self.api_base(), file_id);
+        let mut data = Vec::new();
+        let mut next: Option<String> = None;
+        let mut seen = std::collections::HashSet::new();
+        loop {
+            let url = match &next {
+                Some(cursor) => format!("{base}?page%5Bnext%5D={}", urlencoding::encode(cursor)),
+                None => base.clone(),
+            };
+            info!("Zoho WorkDrive list versions: GET {}", url);
 
-        let resp = self
-            .client
-            .get(&url)
-            .header(AUTHORIZATION, self.auth_header().await?)
-            .send()
-            .await
-            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            let resp = self
+                .client
+                .get(&url)
+                .header(AUTHORIZATION, self.auth_header().await?)
+                .send()
+                .await
+                .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
-        let status = resp.status();
-        let body =
-            super::version_listing_text_with(resp, |e| body_broke_off("List versions failed", e))
-                .await;
+            let status = resp.status();
+            let body = super::version_listing_text_with(resp, |e| {
+                body_broke_off("List versions failed", e)
+            })
+            .await;
 
-        if !status.is_success() {
-            return Err(ProviderError::Other(format!(
-                "List versions failed ({}): {}",
-                status,
-                sanitize_api_error(&body.unwrap_or_default())
-            )));
-        }
-        let body = body?;
+            if !status.is_success() {
+                return Err(ProviderError::Other(format!(
+                    "List versions failed ({}): {}",
+                    status,
+                    sanitize_api_error(&body.unwrap_or_default())
+                )));
+            }
+            let body = body?;
 
-        debug!(
-            "Zoho WorkDrive versions response ({} bytes): {}",
-            body.len(),
-            log_preview(&body, 500)
-        );
+            debug!(
+                "Zoho WorkDrive versions response ({} bytes): {}",
+                body.len(),
+                log_preview(&body, 500)
+            );
 
-        let parsed: JsonApiListResponse<VersionResource> =
-            serde_json::from_str(&body).map_err(|e| {
+            let page: VersionsPage = serde_json::from_str(&body).map_err(|e| {
                 ProviderError::ParseError(format!(
                     "Parse versions: {}: body: {}",
                     e,
                     sanitize_api_error(&body)
                 ))
             })?;
+            let cursor = next_page_cursor(page.links.as_ref(), page.data.len())
+                .map_err(|e| ProviderError::ParseError(format!("Versions of {path}: {e}")))?;
+            data.extend(page.data);
+            match cursor {
+                Some(cursor) if seen.insert(cursor.clone()) => next = Some(cursor),
+                Some(_) => {
+                    return Err(ProviderError::ParseError(
+                        "Zoho WorkDrive versions pagination did not advance".into(),
+                    ))
+                }
+                None => break,
+            }
+        }
 
-        versions_in_dialog_order(&file_id, parsed.data)
+        versions_in_dialog_order(&file_id, data)
     }
 
     async fn download_version(
@@ -4501,7 +4649,15 @@ impl StorageProvider for ZohoWorkdriveProvider {
         }
 
         info!("Restored version {} of {}", version_id, path);
-        super::confirm_version_restored(self, path, selected.as_ref()).await
+        // The answer names the version the restore made: that one must be
+        // on top after it, not an upload of the same size by someone else.
+        let made = super::version_listing_text(resp)
+            .await
+            .ok()
+            .and_then(|body| zoho_made_version(&body))
+            .map(|label| super::bind_version_to_file(&file_id, &label));
+        let preflight = selected.made_current(made);
+        super::confirm_version_restored(self, path, Some(&preflight)).await
     }
 
     fn supports_versions(&self) -> bool {
@@ -5484,6 +5640,8 @@ mod tests {
             + Sync
             + 'static,
     ) -> (ZohoWorkdriveProvider, Requests, tokio::task::JoinHandle<()>) {
+        PLACED.with(|placed| placed.borrow_mut().clear());
+        READ_BY_ID.with(|read| read.borrow_mut().clear());
         let requests: Requests = Default::default();
         let seen = requests.clone();
         let app = axum::Router::new().fallback(axum::routing::get(move |uri: axum::http::Uri| {
@@ -5492,6 +5650,9 @@ mod tests {
             async move {
                 let parts: Vec<&str> = uri.path().split('/').collect();
                 let id = parts.get(5).copied().unwrap_or_default().to_string();
+                if parts.len() == 6 && parts[4] == "files" {
+                    return folder_read_by_id(&id);
+                }
                 let query = uri.query().unwrap_or_default().to_string();
                 let nth = {
                     let mut seen = seen.lock().unwrap();
@@ -5500,6 +5661,7 @@ mod tests {
                     nth
                 };
                 let (status, headers, body) = answer(&id, &query, nth);
+                learn_placements(&id, &body);
                 let mut response = axum::http::Response::builder().status(status);
                 for (name, value) in headers {
                     response = response.header(name, value);
@@ -5517,6 +5679,86 @@ mod tests {
         provider.current_folder_id = "ROOT".into();
         provider.folder_cache.insert("/".into(), "ROOT".into());
         (provider, requests, server)
+    }
+
+    thread_local! {
+        /// Where the stand-in of [`listing_fixture`] has each folder: id to
+        /// (name, parent id), from its listings and [`cache_folder`]. The
+        /// stand-in runs on the test's own thread.
+        static PLACED: std::cell::RefCell<HashMap<String, (String, String)>> =
+            std::cell::RefCell::default();
+        /// The ids the stand-in was asked to read (`GET /files/{id}`), in order.
+        static READ_BY_ID: std::cell::RefCell<Vec<String>> = std::cell::RefCell::default();
+    }
+
+    /// The stand-in's answer to `GET /files/{id}`: the folder where it is,
+    /// active, or 404.
+    fn folder_read_by_id(id: &str) -> axum::http::Response<axum::body::Body> {
+        READ_BY_ID.with(|read| read.borrow_mut().push(id.to_string()));
+        let placed = PLACED.with(|placed| placed.borrow().get(id).cloned());
+        let (status, body) = match placed {
+            Some((name, parent)) => (
+                200,
+                serde_json::json!({ "data": { "id": id, "attributes": {
+                    "name": name, "parent_id": parent, "status": 1 } } })
+                .to_string(),
+            ),
+            None => (404, String::new()),
+        };
+        axum::http::Response::builder()
+            .status(status)
+            .body(axum::body::Body::from(body))
+            .unwrap()
+    }
+
+    /// Each child a listing of `folder` shows is placed in it.
+    fn learn_placements(folder: &str, body: &str) {
+        let Ok(listing) = serde_json::from_str::<serde_json::Value>(body) else {
+            return;
+        };
+        for child in listing["data"].as_array().into_iter().flatten() {
+            if let (Some(id), Some(name)) =
+                (child["id"].as_str(), child["attributes"]["name"].as_str())
+            {
+                PLACED.with(|placed| {
+                    placed
+                        .borrow_mut()
+                        .insert(id.to_string(), (name.to_string(), folder.to_string()))
+                });
+            }
+        }
+    }
+
+    /// Cache the folder `id` at `path` (its parent cached first, the private
+    /// space `ROOT` above the first), and place it there in the stand-in.
+    fn cache_folder(p: &mut ZohoWorkdriveProvider, path: &str, id: &str) {
+        let root = p
+            .privatespace_id
+            .get_or_insert_with(|| "ROOT".into())
+            .clone();
+        let (above, name) = path.rsplit_once('/').unwrap();
+        let parent = if above.is_empty() {
+            root
+        } else {
+            p.folder_cache[above].clone()
+        };
+        PLACED.with(|placed| {
+            placed
+                .borrow_mut()
+                .insert(id.to_string(), (name.to_string(), parent))
+        });
+        p.folder_cache.insert(path.to_string(), id.to_string());
+    }
+
+    /// WorkDrive's answer to `GET /files/{id}` for an active folder.
+    fn folder_detail(id: &str, name: &str, parent: &str) -> String {
+        serde_json::json!({ "data": { "id": id, "attributes": {
+            "name": name, "parent_id": parent, "status": 1 } } })
+        .to_string()
+    }
+
+    fn read_by_id() -> Vec<String> {
+        READ_BY_ID.with(|read| read.borrow().clone())
     }
 
     fn listings_of(requests: &Requests, id: &str) -> usize {
@@ -5714,7 +5956,7 @@ mod tests {
             (200, vec![], body)
         })
         .await;
-        provider.folder_cache.insert("/top".into(), "TOP".into());
+        cache_folder(&mut provider, "/top", "TOP");
 
         let top = provider.list("/top").await.unwrap();
         assert_eq!(top.len(), 25);
@@ -5790,10 +6032,8 @@ mod tests {
             (200, vec![], body)
         })
         .await;
-        provider.folder_cache.insert("/docs".into(), "DOCS".into());
-        provider
-            .folder_cache
-            .insert("/docs/sub".into(), "SUB".into());
+        cache_folder(&mut provider, "/docs", "DOCS");
+        cache_folder(&mut provider, "/docs/sub", "SUB");
         provider.current_folder_id = "DOCS".into();
         provider.current_path = "/docs".into();
 
@@ -5833,7 +6073,7 @@ mod tests {
             (200, vec![], body)
         })
         .await;
-        provider.folder_cache.insert("/top".into(), "TOP".into());
+        cache_folder(&mut provider, "/top", "TOP");
 
         let names: Vec<String> = provider
             .list("/top")
@@ -5919,8 +6159,8 @@ mod tests {
             (200, vec![], body)
         })
         .await;
-        provider.folder_cache.insert("/self".into(), "SELF".into());
-        provider.folder_cache.insert("/back".into(), "BACK".into());
+        cache_folder(&mut provider, "/self", "SELF");
+        cache_folder(&mut provider, "/back", "BACK");
         let limit = std::time::Duration::from_secs(10);
 
         for path in ["/self", "/back"] {
@@ -5952,7 +6192,7 @@ mod tests {
             (200, vec![], body)
         })
         .await;
-        provider.folder_cache.insert("/top".into(), "TOP".into());
+        cache_folder(&mut provider, "/top", "TOP");
         let listed = provider.list("/top").await;
         server.abort();
         assert_eq!(listed.unwrap().len(), 1);
@@ -5963,7 +6203,7 @@ mod tests {
     async fn a_listing_body_empty_twice_is_an_error_that_says_so() {
         let (mut provider, requests, server) =
             listing_fixture(|_, _, _| (200, vec![], String::new())).await;
-        provider.folder_cache.insert("/top".into(), "TOP".into());
+        cache_folder(&mut provider, "/top", "TOP");
         let listed = provider.list("/top").await;
         server.abort();
         let error = listed.unwrap_err().to_string();
@@ -6018,8 +6258,10 @@ mod tests {
     #[tokio::test]
     async fn a_listing_body_that_breaks_off_twice_is_an_error_that_says_so() {
         let (mut provider, accepted, server) = raw_fixture(|_| broken_answer()).await;
-        provider.folder_cache.insert("/top".into(), "TOP".into());
-        let listed = provider.list("/top").await;
+        // The current folder, listed by its id: no lookup comes first.
+        provider.current_folder_id = "TOP".into();
+        provider.current_path = "/top".into();
+        let listed = provider.list(".").await;
         server.abort();
         let error = listed.unwrap_err().to_string();
         assert!(
@@ -6072,7 +6314,7 @@ mod tests {
             }
         })
         .await;
-        provider.folder_cache.insert("/top".into(), "TOP".into());
+        cache_folder(&mut provider, "/top", "TOP");
         let started = std::time::Instant::now();
         let listed = provider.list("/top").await;
         let waited = started.elapsed();
@@ -6098,7 +6340,7 @@ mod tests {
             }
         })
         .await;
-        provider.folder_cache.insert("/top".into(), "TOP".into());
+        cache_folder(&mut provider, "/top", "TOP");
         let listed = provider.list("/top").await;
         server.abort();
         assert_eq!(listed.unwrap().len(), 1);
@@ -6191,10 +6433,8 @@ mod tests {
         let mut pace = ZohoPace::new();
         pace.listings = FolderListings::new(1, Duration::from_secs(60));
         provider.pace = std::sync::Arc::new(pace);
-        provider.folder_cache.insert("/top".into(), "TOP".into());
-        provider
-            .folder_cache
-            .insert("/other".into(), "OTHER".into());
+        cache_folder(&mut provider, "/top", "TOP");
+        cache_folder(&mut provider, "/other", "OTHER");
 
         provider.list("/top").await.unwrap();
         let again = tokio::time::timeout(Duration::from_millis(500), provider.list("/top")).await;
@@ -6223,8 +6463,8 @@ mod tests {
             (200, vec![], listing_json(&[], Some((false, None))))
         })
         .await;
-        provider.folder_cache.insert("/a".into(), "A".into());
-        provider.folder_cache.insert("/b".into(), "B".into());
+        cache_folder(&mut provider, "/a", "A");
+        cache_folder(&mut provider, "/b", "B");
         provider.list("/a").await.unwrap();
         provider.list("/b").await.unwrap();
 
@@ -6325,17 +6565,17 @@ mod tests {
 
     /// After `cd /docs`: `/x` and `x` name different folders, `/x` the
     /// root's and `x` the current one's, and a longer path follows the same
-    /// rule. Resolved from the cache alone, so no request is made.
+    /// rule. Resolved from the cache, each folder on the way read back by id
+    /// once, and nothing listed.
     #[tokio::test]
     async fn absolute_paths_resolve_from_the_root_and_relative_ones_from_the_current_folder() {
-        let mut p = ZohoWorkdriveProvider::new(config("com"));
+        let (mut p, requests, server) = listing_fixture(|id, _, _| panic!("listed {id}")).await;
         for (path, id) in [
-            ("/", "ROOT"),
             ("/docs", "DOCS"),
             ("/docs/sub", "DOCS_SUB"),
             ("/sub", "ROOT_SUB"),
         ] {
-            p.folder_cache.insert(path.to_string(), id.to_string());
+            cache_folder(&mut p, path, id);
         }
         p.current_folder_id = "DOCS".to_string();
         p.current_path = "/docs".to_string();
@@ -6344,6 +6584,9 @@ mod tests {
         assert_eq!(p.parent_folder_id(false, "").await.unwrap(), "DOCS");
         assert_eq!(p.parent_folder_id(true, "sub").await.unwrap(), "ROOT_SUB");
         assert_eq!(p.parent_folder_id(false, "sub").await.unwrap(), "DOCS_SUB");
+        server.abort();
+        assert_eq!(read_by_id(), ["ROOT_SUB", "DOCS_SUB", "DOCS"]);
+        assert!(requests.lock().unwrap().is_empty());
     }
 
     /// Upload `file` to a local fixture that answers `status` and `body` on
@@ -6563,6 +6806,11 @@ mod tests {
         let (base, _server) = serve(vec![
             Route::get("/workdrive/api/v1/privatespace/ROOT/files", 200, listing),
             Route::get("/workdrive/api/v1/files/A/files", 200, r#"{"data":[]}"#),
+            Route::get(
+                "/workdrive/api/v1/files/A",
+                200,
+                folder_detail("A", "a", "ROOT"),
+            ),
             Route {
                 method: axum::http::Method::PATCH,
                 path: "/workdrive/api/v1/files/A",
@@ -6878,6 +7126,16 @@ mod tests {
             busy_first: false,
         };
         let (base, _server, received) = serve_logged(vec![
+            Route::get(
+                "/workdrive/api/v1/files/S",
+                200,
+                folder_detail("S", "src", "ROOT"),
+            ),
+            Route::get(
+                "/workdrive/api/v1/files/D",
+                200,
+                folder_detail("D", "dst", "ROOT"),
+            ),
             Route::get("/workdrive/api/v1/files/S/files", 200, a("FA")),
             Route::get("/workdrive/api/v1/files/D/files", 200, a("FA2")),
             patch("/workdrive/api/v1/files/FA"),
@@ -6888,6 +7146,7 @@ mod tests {
         p.endpoint_override = Some(base);
         p.test_access_token = Some("test-token".into());
         p.connected = true;
+        p.privatespace_id = Some("ROOT".into());
         for (path, id) in [("/", "ROOT"), ("/src", "S"), ("/dst", "D")] {
             p.folder_cache.insert(path.to_string(), id.to_string());
         }
@@ -6901,6 +7160,9 @@ mod tests {
             .iter()
             .map(|(path, _)| *path)
             .filter(|path| !path.ends_with("/files") || *path == "/workdrive/api/v1/files")
+            .filter(|path| {
+                !["/workdrive/api/v1/files/S", "/workdrive/api/v1/files/D"].contains(path)
+            })
             .collect();
         assert_eq!(
             changes,
@@ -6924,6 +7186,16 @@ mod tests {
         };
         let (base, _server, received) = serve_logged(vec![
             Route::get(
+                "/workdrive/api/v1/files/S",
+                200,
+                folder_detail("S", "src", "ROOT"),
+            ),
+            Route::get(
+                "/workdrive/api/v1/files/D",
+                200,
+                folder_detail("D", "dst", "ROOT"),
+            ),
+            Route::get(
                 "/workdrive/api/v1/files/S/files",
                 200,
                 r#"{"data":[{"id":"FA","attributes":{"name":"a.txt","type":"file"}}]}"#,
@@ -6937,6 +7209,7 @@ mod tests {
         p.endpoint_override = Some(base);
         p.test_access_token = Some("test-token".into());
         p.connected = true;
+        p.privatespace_id = Some("ROOT".into());
         for (path, id) in [("/", "ROOT"), ("/src", "S"), ("/dst", "D")] {
             p.folder_cache.insert(path.to_string(), id.to_string());
         }
@@ -6949,6 +7222,9 @@ mod tests {
             .iter()
             .map(|(path, _)| *path)
             .filter(|path| !path.ends_with("/files") || *path == "/workdrive/api/v1/files")
+            .filter(|path| {
+                !["/workdrive/api/v1/files/S", "/workdrive/api/v1/files/D"].contains(path)
+            })
             .collect();
         assert_eq!(
             changes,
@@ -6996,6 +7272,14 @@ mod tests {
                 }),
             )
             .route(
+                "/workdrive/api/v1/files/S",
+                axum::routing::get(|| async { folder_detail("S", "src", "ROOT") }),
+            )
+            .route(
+                "/workdrive/api/v1/files/D",
+                axum::routing::get(|| async { folder_detail("D", "dst", "ROOT") }),
+            )
+            .route(
                 "/workdrive/api/v1/files/FA",
                 axum::routing::patch(|| async { (axum::http::StatusCode::FORBIDDEN, "{}") }),
             );
@@ -7006,6 +7290,7 @@ mod tests {
         p.endpoint_override = Some(format!("http://{addr}"));
         p.test_access_token = Some("test-token".into());
         p.connected = true;
+        p.privatespace_id = Some("ROOT".into());
         for (path, id) in [("/", "ROOT"), ("/src", "S"), ("/dst", "D")] {
             p.folder_cache.insert(path.to_string(), id.to_string());
         }
@@ -7350,6 +7635,91 @@ mod tests {
         );
     }
 
+    /// A version label is dotted whole numbers: anything else is no
+    /// `revert_to` a version has.
+    #[test]
+    fn a_zoho_version_label_is_dotted_whole_numbers_only() {
+        let label = |raw: &str| {
+            super::version_label(
+                &serde_json::value::RawValue::from_string(raw.to_string()).unwrap(),
+            )
+        };
+        assert_eq!(label("2.0").as_deref(), Some("2.0"));
+        assert_eq!(label("1.10").as_deref(), Some("1.10"));
+        assert_eq!(label("3").as_deref(), Some("3.0"));
+        assert_eq!(label(r#""4.0""#).as_deref(), Some("4.0"));
+        assert_eq!(label(r#""1.10""#).as_deref(), Some("1.10"));
+        for refused in [
+            "1e3",
+            "-1",
+            "1.5e2",
+            r#""2.""#,
+            r#""1.-2""#,
+            r#""unknown""#,
+            r#""x""#,
+            r#""""#,
+        ] {
+            assert_eq!(label(refused), None, "{refused}");
+        }
+    }
+
+    /// WorkDrive answers a restore with the version it made: the restore is
+    /// done when that version is on top, and not when another upload of the
+    /// same size took its place meanwhile.
+    #[tokio::test]
+    async fn a_zoho_restore_is_confirmed_by_the_version_it_made() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::Arc;
+        for (on_top, confirmed) in [("4.0", true), ("5.0", false)] {
+            let restored = Arc::new(AtomicBool::new(false));
+            let done = Arc::clone(&restored);
+            let app = axum::Router::new().fallback(axum::routing::any(move |uri: axum::http::Uri| {
+                let done = Arc::clone(&done);
+                async move {
+                    let version = |n: &str, at: u64, size: u64| {
+                        format!(r#"{{"id":"r{n}","attributes":{{"version_number":{n},"created_time_in_milliseconds":{at},"file_size":{size}}}}}"#)
+                    };
+                    match uri.path() {
+                        "/workdrive/api/v1/privatespace/PS/files" => {
+                            r#"{"data":[{"id":"FILE9","attributes":{"name":"f.txt","type":"file"}}]}"#.to_string()
+                        }
+                        "/workdrive/api/v1/files/FILE9/versions" => {
+                            let mut rows = vec![version("2.0", 1794841300000, 3), version("3.0", 1794841400000, 5)];
+                            if done.load(Ordering::SeqCst) {
+                                rows.push(version(on_top, 1794841500000, 3));
+                            }
+                            format!(r#"{{"data":[{}]}}"#, rows.join(","))
+                        }
+                        "/workdrive/api/v1/versions" => {
+                            done.store(true, Ordering::SeqCst);
+                            r#"{"data":{"id":"r40","type":"versions","attributes":{"version_number":4.0}}}"#.to_string()
+                        }
+                        _ => String::new(),
+                    }
+                }
+            }));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+            let mut p = ZohoWorkdriveProvider::new(config("com"));
+            p.endpoint_override = Some(format!("http://{addr}"));
+            p.test_access_token = Some("test-token".into());
+            p.connected = true;
+            p.privatespace_id = Some("PS".into());
+            p.current_folder_id = "PS".into();
+            p.folder_cache.insert("/".into(), "PS".into());
+            let outcome = p.restore_version("/f.txt", "FILE9:2.0").await;
+            if confirmed {
+                outcome.expect("the version the restore made is on top");
+            } else {
+                assert!(
+                    matches!(&outcome, Err(ProviderError::TransferFailed(m)) if m.contains("list its versions again")),
+                    "{outcome:?}"
+                );
+            }
+        }
+    }
+
     /// A restore is `POST /versions` with `revert_to` the version number and
     /// `resource_id` the resolved file id (the per-file promote route answers
     /// 404), and a version download asks the file's download with `?version=`
@@ -7427,6 +7797,232 @@ mod tests {
             calls
                 .iter()
                 .any(|c| c == "GET /dl/v1/workdrive/download/FILE9?version=2.0"),
+            "{calls:?}"
+        );
+    }
+
+    /// A cached path costs one read by id a folder on its way and no
+    /// listing; once a folder above it has moved away (and another of its
+    /// name took its place), the read catches it and the path is walked, so
+    /// the listing goes to the folder there now.
+    #[tokio::test]
+    async fn a_cached_path_is_read_back_by_id_and_a_moved_ancestor_is_caught() {
+        let (mut p, requests, server) = listing_fixture(|id, _, _| {
+            let entries = match id {
+                "ROOT" => vec![("A2", "a", true)],
+                "A2" => vec![("B2", "b", true)],
+                _ => vec![],
+            };
+            (200, vec![], listing_json(&entries, Some((false, None))))
+        })
+        .await;
+        cache_folder(&mut p, "/a", "A");
+        cache_folder(&mut p, "/a/b", "B");
+        p.list("/a/b").await.unwrap();
+        assert_eq!(read_by_id(), ["B", "A"]);
+        assert_eq!(listings_of(&requests, "B"), 1);
+        assert_eq!(requests.lock().unwrap().len(), 1, "only b is listed");
+        PLACED.with(|placed| {
+            placed
+                .borrow_mut()
+                .insert("A".into(), ("a".into(), "ARCHIVE".into()))
+        });
+        p.list("/a/b").await.unwrap();
+        server.abort();
+        assert_eq!(read_by_id(), ["B", "A", "B", "A"]);
+        assert_eq!(
+            listings_of(&requests, "B"),
+            1,
+            "the moved b is not listed again"
+        );
+        assert_eq!(listings_of(&requests, "B2"), 1);
+        assert_eq!(p.folder_cache.get("/a").map(String::as_str), Some("A2"));
+    }
+
+    /// `/docs` cached, then moved away by another client and
+    /// made again under the same name. A delete of `/docs/f.txt` trashes
+    /// the file at that path now, never the one in the moved folder.
+    #[tokio::test]
+    async fn a_folder_moved_after_caching_is_never_acted_in() {
+        use std::sync::{Arc, Mutex};
+        let calls: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&calls);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method, uri: axum::http::Uri| {
+                seen.lock().unwrap().push(format!("{method} {}", uri.path()));
+                async move {
+                    let file = |id: &str| format!(r#"{{"data":[{{"id":"{id}","attributes":{{"name":"f.txt","type":"file"}}}}]}}"#);
+                    let body = match (method.as_str(), uri.path()) {
+                        ("GET", "/workdrive/api/v1/privatespace/PS/files") => {
+                            r#"{"data":[{"id":"NEW","attributes":{"name":"docs","type":"folder"}}]}"#.to_string()
+                        }
+                        ("GET", "/workdrive/api/v1/files/NEW/files") => file("FILE9"),
+                        ("GET", "/workdrive/api/v1/files/OLD/files") => file("FILE6"),
+                        // Read by id, the cached folder is now under another parent.
+                        ("GET", "/workdrive/api/v1/files/OLD") => folder_detail("OLD", "docs", "ARCHIVE"),
+                        ("PATCH", "/workdrive/api/v1/files/FILE9") | ("PATCH", "/workdrive/api/v1/files/FILE6") => {
+                            r#"{"data":{"id":"x","attributes":{"status":51}}}"#.to_string()
+                        }
+                        _ => return (axum::http::StatusCode::NOT_FOUND, "unexpected endpoint".to_string()),
+                    };
+                    (axum::http::StatusCode::OK, body)
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut p = ZohoWorkdriveProvider::new(config("com"));
+        p.endpoint_override = Some(format!("http://{addr}"));
+        p.test_access_token = Some("test-token".into());
+        p.connected = true;
+        p.privatespace_id = Some("PS".into());
+        p.current_folder_id = "PS".into();
+        p.folder_cache.insert("/".into(), "PS".into());
+        p.folder_cache.insert("/docs".into(), "OLD".into());
+
+        let outcome = p.delete("/docs/f.txt").await;
+        server.abort();
+        outcome.expect("the file at the path is trashed");
+        let calls = calls.lock().unwrap();
+        assert!(
+            calls
+                .iter()
+                .any(|c| c == "PATCH /workdrive/api/v1/files/FILE9"),
+            "{calls:?}"
+        );
+        assert!(
+            !calls
+                .iter()
+                .any(|c| c.contains("/OLD/") || c.contains("FILE6")),
+            "the moved folder was acted in: {calls:?}"
+        );
+    }
+
+    /// D1: a folder id cached before another client moved the folder away
+    /// (and made a new one under its name) is not trusted by a version
+    /// action: the path is walked again from the root, so the file now at
+    /// the path is the one listed, and the moved folder is never asked.
+    #[tokio::test]
+    async fn a_version_action_walks_again_past_a_folder_moved_after_caching() {
+        use std::sync::{Arc, Mutex};
+        let calls: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&calls);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method, uri: axum::http::Uri| {
+                seen.lock().unwrap().push(format!("{method} {}", uri.path()));
+                async move {
+                    let version = r#"{"id":"r30","attributes":{"version_number":3.0,"created_time_in_milliseconds":1794841400000,"file_size":5}}"#;
+                    let file = |id: &str| format!(r#"{{"data":[{{"id":"{id}","attributes":{{"name":"f.txt","type":"file"}}}}]}}"#);
+                    let body = match uri.path() {
+                        "/workdrive/api/v1/privatespace/PS/files" => {
+                            r#"{"data":[{"id":"NEW","attributes":{"name":"docs","type":"folder"}}]}"#.to_string()
+                        }
+                        "/workdrive/api/v1/files/NEW/files" => file("FILE9"),
+                        "/workdrive/api/v1/files/OLD/files" => file("FILE6"),
+                        "/workdrive/api/v1/files/FILE9/versions" | "/workdrive/api/v1/files/FILE6/versions" => {
+                            format!(r#"{{"data":[{version}],"links":{{"cursor":{{"has_next":false}}}}}}"#)
+                        }
+                        _ => return (axum::http::StatusCode::NOT_FOUND, "unexpected endpoint".to_string()),
+                    };
+                    (axum::http::StatusCode::OK, body)
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut p = ZohoWorkdriveProvider::new(config("com"));
+        p.endpoint_override = Some(format!("http://{addr}"));
+        p.test_access_token = Some("test-token".into());
+        p.connected = true;
+        p.privatespace_id = Some("PS".into());
+        p.current_folder_id = "PS".into();
+        p.folder_cache.insert("/".into(), "PS".into());
+        p.folder_cache.insert("/docs".into(), "OLD".into());
+
+        let versions = p.list_versions("/docs/f.txt").await;
+        server.abort();
+        let ids: Vec<String> = versions
+            .expect("versions")
+            .into_iter()
+            .map(|v| v.id)
+            .collect();
+        assert_eq!(ids, ["FILE9:3.0"], "the file at the path now is listed");
+        let calls = calls.lock().unwrap();
+        assert!(
+            !calls
+                .iter()
+                .any(|c| c.contains("/OLD/") || c.contains("FILE6")),
+            "the moved folder was asked: {calls:?}"
+        );
+    }
+
+    /// The versions listing is read page by page, as a folder is: a version
+    /// on the second page is listed and restored, not refused as missing.
+    #[tokio::test]
+    async fn a_zoho_version_on_a_later_page_is_listed_and_restored() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::{Arc, Mutex};
+        let calls: Arc<Mutex<Vec<String>>> = Arc::default();
+        let restored = Arc::new(AtomicBool::new(false));
+        let (seen, done) = (Arc::clone(&calls), Arc::clone(&restored));
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method, uri: axum::http::Uri| {
+                let query = uri.query().unwrap_or_default().to_string();
+                seen.lock().unwrap().push(format!("{method} {}?{query}", uri.path()));
+                let done = Arc::clone(&done);
+                async move {
+                    let version = |id: &str, n: &str, at: u64, size: u64| {
+                        format!(r#"{{"id":"{id}","attributes":{{"version_number":{n},"created_time_in_milliseconds":{at},"file_size":{size}}}}}"#)
+                    };
+                    let body = match uri.path() {
+                        "/workdrive/api/v1/privatespace/PS/files" => {
+                            r#"{"data":[{"id":"FILE9","attributes":{"name":"f.txt","type":"file"}}]}"#.to_string()
+                        }
+                        "/workdrive/api/v1/files/FILE9/versions" if query.contains("page%5Bnext%5D=p2") => {
+                            format!(r#"{{"data":[{}],"links":{{"cursor":{{"has_next":false}}}}}}"#,
+                                version("r20", "2.0", 1794841300000, 3))
+                        }
+                        "/workdrive/api/v1/files/FILE9/versions" => {
+                            let mut rows = vec![version("r30", "3.0", 1794841400000, 5)];
+                            if done.load(Ordering::SeqCst) {
+                                rows.push(version("r40", "4.0", 1794841500000, 3));
+                            }
+                            format!(r#"{{"data":[{}],"links":{{"cursor":{{"has_next":true,"next":"https://workdrive.example/api/v1/files/FILE9/versions?page%5Bnext%5D=p2"}}}}}}"#,
+                                rows.join(","))
+                        }
+                        "/workdrive/api/v1/versions" => {
+                            done.store(true, Ordering::SeqCst);
+                            "{}".to_string()
+                        }
+                        _ => return (axum::http::StatusCode::NOT_FOUND, "unexpected endpoint".to_string()),
+                    };
+                    (axum::http::StatusCode::OK, body)
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut p = ZohoWorkdriveProvider::new(config("com"));
+        p.endpoint_override = Some(format!("http://{addr}"));
+        p.test_access_token = Some("test-token".into());
+        p.connected = true;
+        p.privatespace_id = Some("PS".into());
+        p.current_folder_id = "PS".into();
+        p.folder_cache.insert("/".into(), "PS".into());
+
+        let versions = p.list_versions("/f.txt").await.expect("versions");
+        let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
+        assert_eq!(ids, ["FILE9:3.0", "FILE9:2.0"]);
+        let outcome = p.restore_version("/f.txt", "FILE9:2.0").await;
+        server.abort();
+        assert!(outcome.is_ok(), "{outcome:?}");
+        let calls = calls.lock().unwrap();
+        assert_eq!(
+            calls.iter().filter(|c| c.starts_with("POST ")).count(),
+            1,
             "{calls:?}"
         );
     }

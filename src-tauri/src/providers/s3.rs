@@ -8337,7 +8337,9 @@ impl StorageProvider for S3Provider {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
-        let selected = super::refuse_a_restore_that_changes_nothing(self, path, version_id).await?;
+        let selected =
+            super::refuse_a_restore_that_changes_nothing_when_listed(self, path, version_id)
+                .await?;
         self.ensure_fresh_credentials().await?;
 
         let key = path.trim_start_matches('/');
@@ -13465,12 +13467,17 @@ mod tests {
                         }
                         "HEAD" | "GET" => match store.get(&key) {
                             Some(data) => {
-                                let length = data.len().to_string();
-                                let data = if method == "GET" {
-                                    data.clone()
-                                } else {
-                                    Vec::new()
+                                // A GET of a version by its id answers that
+                                // version's own bytes, never the current ones,
+                                // so a download that dropped `versionId` shows.
+                                let data = match query.get("versionId") {
+                                    Some(version) if method == "GET" => {
+                                        format!("{key} at {version}").into_bytes()
+                                    }
+                                    _ => data.clone(),
                                 };
+                                let length = data.len().to_string();
+                                let data = if method == "GET" { data } else { Vec::new() };
                                 reply(200, &[("content-length", length)], data)
                             }
                             None => reply(404, &[], Vec::new()),
@@ -15525,12 +15532,18 @@ mod tests {
             .download_version("/docs/a.txt", "v2", target.to_str().unwrap())
             .await
             .expect("download by version id");
-        assert_eq!(std::fs::read_to_string(&target).unwrap(), "A");
+        assert_eq!(
+            std::fs::read_to_string(&target).unwrap(),
+            "docs/a.txt at v2"
+        );
         provider
             .restore_version("/docs/a.txt", "v2")
             .await
             .expect("restore by version id");
         let seen = log.lock().unwrap();
+        assert!(seen
+            .iter()
+            .any(|s| s.method == "GET" && s.uri.contains("versionId=v2")));
         let listings = seen
             .iter()
             .filter(|s| s.method == "GET" && s.uri.contains("versions"))
@@ -15547,7 +15560,7 @@ mod tests {
             versions_denied: true,
             ..Default::default()
         };
-        let (mut provider, _, _) = tigris_double(&[("docs/a.txt", "A")], config).await;
+        let (mut provider, _, log) = tigris_double(&[("docs/a.txt", "A")], config).await;
         assert!(provider.list_versions("/docs/a.txt").await.is_err());
         let local = tempfile::tempdir().unwrap();
         let target = local.path().join("v2");
@@ -15555,7 +15568,15 @@ mod tests {
             .download_version("/docs/a.txt", "v2", target.to_str().unwrap())
             .await
             .expect("download by version id");
-        assert_eq!(std::fs::read_to_string(&target).unwrap(), "A");
+        assert_eq!(
+            std::fs::read_to_string(&target).unwrap(),
+            "docs/a.txt at v2"
+        );
+        assert!(log
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|s| s.method == "GET" && s.uri.contains("versionId=v2")));
     }
 
     #[tokio::test]

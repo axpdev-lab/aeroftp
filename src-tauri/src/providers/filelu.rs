@@ -293,8 +293,11 @@ struct VersionEntry {
 /// FileLu lists only past versions (live 2026-11-16: three uploads, two
 /// versions); the versions dialog reads row 0 as the current one, so the
 /// file comes first, then the versions newest first.
-fn versions_in_dialog_order(versions: Vec<VersionEntry>, file: &RemoteEntry) -> Vec<FileVersion> {
-    let past = versions
+/// The current row is the file the versions were read for, from that same
+/// lookup, bound to its file code ([`super::bind_version_to_file`]): its
+/// download refuses another file that took the path since.
+fn versions_in_dialog_order(versions: Vec<VersionEntry>, entry: &CacheEntry) -> Vec<FileVersion> {
+    let mut past: Vec<FileVersion> = versions
         .into_iter()
         .filter_map(|v| {
             Some(FileVersion {
@@ -306,7 +309,15 @@ fn versions_in_dialog_order(versions: Vec<VersionEntry>, file: &RemoteEntry) -> 
             })
         })
         .collect();
-    super::versions_after_the_file(past, file)
+    past.sort_by_key(|v| std::cmp::Reverse(super::version_time_millis(v.modified.as_deref())));
+    let current = FileVersion {
+        id: super::bind_version_to_file(&entry.file_code, super::CURRENT_VERSION_ID),
+        modified: entry.modified.clone(),
+        size: entry.size,
+        modified_by: None,
+        deleted: false,
+    };
+    std::iter::once(current).chain(past).collect()
 }
 
 /// Folder create response. FileLu inconsistently returns `fld_id` either as a
@@ -1884,8 +1895,44 @@ impl FileLuProvider {
         }
         let url = self.api_url_with("file/versions", &[("file_code", &entry.file_code)]);
         let resp = self.get_with_retry(&url).await?;
-        let result = Self::parse_api::<VersionsResult>(resp).await?;
+        let result = Self::parse_versions_api(resp).await?;
         Ok((norm, entry, result.versions))
+    }
+
+    /// A `file/versions` answer, read up to [`super::VERSION_LISTING_MAX_BYTES`].
+    /// Its errors name the HTTP or API status and where the JSON broke, never
+    /// the body: an error page can echo the request URL, and with it the API
+    /// key, and it reaches the dialog through a restore's readback.
+    async fn parse_versions_api(resp: reqwest::Response) -> Result<VersionsResult, ProviderError> {
+        let status = resp.status();
+        if !status.is_success() {
+            return Err(ProviderError::ServerError(format!(
+                "FileLu versions answer: HTTP {status}"
+            )));
+        }
+        let text = super::version_listing_text_with(resp, |e| {
+            ProviderError::NetworkError(format!(
+                "Failed to read the versions answer: {}",
+                redact_key(&e.without_url().to_string())
+            ))
+        })
+        .await?;
+        let api: ApiResponse<VersionsResult> = serde_json::from_str(&text).map_err(|e| {
+            ProviderError::ParseError(format!(
+                "FileLu versions answer is not the expected JSON ({:?} at line {}, column {})",
+                e.classify(),
+                e.line(),
+                e.column()
+            ))
+        })?;
+        match api.status {
+            Some(s) if s != 200 => Err(ProviderError::ServerError(format!(
+                "FileLu versions answer: API status {s}"
+            ))),
+            _ => api.result.ok_or_else(|| {
+                ProviderError::ParseError("API response missing 'result' field".to_string())
+            }),
+        }
     }
 
     /// [`versions_of`](Self::versions_of), and the one named `version_id`.
@@ -2335,9 +2382,8 @@ impl StorageProvider for FileLuProvider {
     /// The earlier versions, newest first; the current content is the file
     /// itself and is not listed.
     async fn list_versions(&mut self, path: &str) -> Result<Vec<FileVersion>, ProviderError> {
-        let (_, _, versions) = self.versions_of(path).await?;
-        let file = self.stat(path).await?;
-        Ok(versions_in_dialog_order(versions, &file))
+        let (_, entry, versions) = self.versions_of(path).await?;
+        Ok(versions_in_dialog_order(versions, &entry))
     }
 
     async fn download_version(
@@ -2346,8 +2392,29 @@ impl StorageProvider for FileLuProvider {
         version_id: &str,
         local_path: &str,
     ) -> Result<(), ProviderError> {
-        if version_id == super::CURRENT_VERSION_ID {
-            return self.download(path, local_path, None).await;
+        // The current row is the file by its code: the one listed
+        // (`CODE:current`) or, bare, the one at the path now; a file that
+        // took the path since is refused, never saved under the listed name.
+        let (bound_to, label) = match version_id.split_once(':') {
+            Some((code, label)) => (Some(code), label),
+            None => (None, version_id),
+        };
+        if label == super::CURRENT_VERSION_ID {
+            let norm = self.resolve_path(path);
+            let entry = self.resolve_path_entry_with(&norm, false, false).await?;
+            if entry.is_dir || entry.file_code.is_empty() {
+                return Err(ProviderError::InvalidPath(format!(
+                    "{norm} is not a file: only files have versions"
+                )));
+            }
+            if bound_to.is_some_and(|code| code != entry.file_code) {
+                return Err(ProviderError::NotFound(format!(
+                    "{norm} is now another file than the one its versions were listed from: \
+                     list its versions again"
+                )));
+            }
+            let url = self.direct_url_by_code(&entry.file_code).await?;
+            return self.fetch_to_file(&url, local_path, None).await;
         }
         self.version_of(path, version_id).await?;
         let url = self.direct_url_by_code(version_id).await?;
@@ -2357,7 +2424,9 @@ impl StorageProvider for FileLuProvider {
     /// The version becomes the current file, under its own file code, and the
     /// content it replaces becomes a version.
     async fn restore_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
-        if version_id == super::CURRENT_VERSION_ID {
+        if version_id == super::CURRENT_VERSION_ID
+            || version_id.ends_with(&format!(":{}", super::CURRENT_VERSION_ID))
+        {
             return Err(ProviderError::NotSupported(
                 "This is the current version: it is the file itself".into(),
             ));
@@ -2377,7 +2446,14 @@ impl StorageProvider for FileLuProvider {
         // The file's code changes on success; the cache would keep the old one.
         self.path_cache.remove(&norm);
         Self::ensure_api_ok(resp?).await?;
-        let confirmed = super::confirm_version_restored(self, path, selected.as_ref()).await;
+        // FileLu promotes the version under its own code: the file at the
+        // path must then be that code, not only a file of the same size.
+        let made = Some(super::bind_version_to_file(
+            version_id,
+            super::CURRENT_VERSION_ID,
+        ));
+        let preflight = Some(selected.made_current(made));
+        let confirmed = super::confirm_version_restored(self, path, preflight.as_ref()).await;
         // The check listed the file again: no code it cached outlives the
         // restore either.
         self.path_cache.remove(&norm);
@@ -2388,7 +2464,9 @@ impl StorageProvider for FileLuProvider {
     /// takes the code alone, so the versions are read again to confirm the
     /// deletion rather than trusting the OK.
     async fn delete_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
-        if version_id == super::CURRENT_VERSION_ID {
+        if version_id == super::CURRENT_VERSION_ID
+            || version_id.ends_with(&format!(":{}", super::CURRENT_VERSION_ID))
+        {
             return Err(ProviderError::NotSupported(
                 "This is the current version: it is the file itself".into(),
             ));
@@ -3344,12 +3422,18 @@ mod tests {
                 {"code":"old2","size":11,"uploaded":"2026-11-16 10:32:55"}]"#,
         )
         .expect("parse");
-        let mut file = super::RemoteEntry::directory("v.txt".into(), "/v.txt".into());
-        file.is_dir = false;
-        file.size = 16;
+        let file = super::CacheEntry {
+            is_dir: false,
+            fld_id: 0,
+            fld_token: None,
+            file_code: "CUR".into(),
+            size: 16,
+            modified: None,
+            hash: None,
+        };
         let versions = super::versions_in_dialog_order(listed, &file);
         let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
-        assert_eq!(ids, [super::super::CURRENT_VERSION_ID, "old2", "old1"]);
+        assert_eq!(ids, ["CUR:current", "old2", "old1"]);
         assert_eq!(versions[0].size, 16);
     }
 
@@ -6361,6 +6445,84 @@ mod tests {
         .await
     }
 
+    /// The `file/versions` answer is read up to the listing cap, and its
+    /// errors carry the status, never the body: an error page can echo the
+    /// request with its API key, and a restore's readback shows the error.
+    #[tokio::test]
+    async fn a_versions_answer_is_bounded_and_its_errors_show_no_body() {
+        for (answer, shown) in [
+            (
+                "!500 GET /api/file/versions?key=ECHO-SECRET".to_string(),
+                "HTTP 500",
+            ),
+            (
+                " ".repeat(super::super::VERSION_LISTING_MAX_BYTES as usize + 1),
+                "MB",
+            ),
+        ] {
+            let (mut provider, _) = provider_against(move |_, path, query| match path {
+                "/apiv2/folder/list" if query.get("folder_path").map(String::as_str) == Some("/") => {
+                    r#"{"status":200,"result":{"files":[{"name":"f.txt","file_code":"CUR","size":9}],"folders":[]}}"#.to_string()
+                }
+                "/api/file/versions" => answer.clone(),
+                _ => r#"{"status":200,"result":{"files":[],"folders":[]}}"#.to_string(),
+            })
+            .await;
+            let outcome = provider.list_versions("/f.txt").await;
+            let message = format!("{outcome:?}");
+            assert!(outcome.is_err() && message.contains(shown), "{message}");
+            assert!(!message.contains("ECHO-SECRET"), "{message}");
+        }
+    }
+
+    /// FileLu promotes the version under its own code: a restore is done
+    /// only when the file at the path is then that code, not another file of
+    /// the same size uploaded in between.
+    #[tokio::test]
+    async fn a_restore_is_confirmed_by_the_code_of_the_version_promoted() {
+        let restored = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let (mut provider, calls) = provider_against(move |_, path, query| {
+            let done = restored.load(std::sync::atomic::Ordering::SeqCst);
+            match path {
+                "/apiv2/folder/list" if query.get("page").is_some_and(|p| p != "1") => {
+                    r#"{"status":200,"result":{"files":[],"folders":[]}}"#.to_string()
+                }
+                "/apiv2/folder/list" if done => {
+                    r#"{"status":200,"result":{"files":[{"name":"f.txt","file_code":"OTHER","size":9,"uploaded":"2026-11-01 11:40:00"}],"folders":[]}}"#.to_string()
+                }
+                "/apiv2/folder/list" => {
+                    r#"{"status":200,"result":{"files":[{"name":"f.txt","file_code":"CUR","size":9,"uploaded":"2026-11-01 11:32:01"}],"folders":[]}}"#.to_string()
+                }
+                "/api/file/versions" if query.get("file_code").map(String::as_str) == Some("CUR") => {
+                    r#"{"status":200,"msg":"OK","result":{"versions":[{"code":"V1","size":9,"uploaded":"2026-11-01 11:31:51"}]}}"#.to_string()
+                }
+                "/api/file/versions" => {
+                    r#"{"status":200,"msg":"OK","result":{"versions":[]}}"#.to_string()
+                }
+                "/api/file/version_restore" => {
+                    restored.store(true, std::sync::atomic::Ordering::SeqCst);
+                    r#"{"status":200,"msg":"OK"}"#.to_string()
+                }
+                _ => r#"{"status":200,"msg":"OK"}"#.to_string(),
+            }
+        })
+        .await;
+        let outcome = provider.restore_version("/f.txt", "V1").await;
+        assert!(
+            matches!(&outcome, Err(ProviderError::TransferFailed(m)) if m.contains("list its versions again")),
+            "{outcome:?}"
+        );
+        assert!(
+            calls
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|c| c.starts_with("/api/file/version_restore")),
+            "{:?}",
+            calls.lock().unwrap()
+        );
+    }
+
     /// Versions are listed after the file itself, newest first, each by its
     /// own code, with its upload time as a UTC instant.
     #[tokio::test]
@@ -6373,7 +6535,7 @@ mod tests {
             .skip(1)
             .map(|v| (v.id.as_str(), v.modified.as_deref(), v.size))
             .collect();
-        assert_eq!(versions[0].id, super::super::CURRENT_VERSION_ID);
+        assert_eq!(versions[0].id, "CUR:current");
         assert_eq!(versions[0].size, 9);
         assert_eq!(
             listed,
@@ -6403,20 +6565,42 @@ mod tests {
         let seen = calls.lock().unwrap().clone();
         assert!(
             seen.iter()
-                .any(|c| c.starts_with("/apiv2/file/direct_link")),
+                .any(|c| c == "/api/file/direct_link?file_code=CUR"),
             "{seen:?}"
         );
-        assert!(seen.iter().all(|c| !c.starts_with("/api/")), "{seen:?}");
+        assert!(seen.iter().all(|c| !c.contains("versions")), "{seen:?}");
+
+        // The listed current row is file CUR by its code; listed from
+        // another file, it is refused before any link is asked for.
+        let listed = provider.list_versions("/d/f.txt").await.unwrap();
+        assert_eq!(listed[0].id, "CUR:current");
+        let before = calls.lock().unwrap().len();
+        let other = provider
+            .download_version("/d/f.txt", "OTHER:current", out.to_str().unwrap())
+            .await;
+        assert!(
+            matches!(&other, Err(ProviderError::NotFound(m)) if m.contains("list its versions again")),
+            "{other:?}"
+        );
+        assert!(
+            calls.lock().unwrap()[before..]
+                .iter()
+                .all(|c| !c.contains("direct_link")),
+            "{:?}",
+            calls.lock().unwrap()
+        );
 
         let before = calls.lock().unwrap().len();
-        assert!(matches!(
-            provider.restore_version("/d/f.txt", current).await,
-            Err(ProviderError::NotSupported(_))
-        ));
-        assert!(matches!(
-            provider.delete_version("/d/f.txt", current).await,
-            Err(ProviderError::NotSupported(_))
-        ));
+        for id in [current, "CUR:current"] {
+            assert!(matches!(
+                provider.restore_version("/d/f.txt", id).await,
+                Err(ProviderError::NotSupported(_))
+            ));
+            assert!(matches!(
+                provider.delete_version("/d/f.txt", id).await,
+                Err(ProviderError::NotSupported(_))
+            ));
+        }
         assert_eq!(
             calls.lock().unwrap().len(),
             before,

@@ -281,6 +281,10 @@ case "$(basename "$0")" in
         fi
         echo "$1" >> "$here/get.log"
         echo "$2" >> "$here/get-targets.log"
+        # check-get-slow: the read back of the version a put added is slow.
+        if [ "$1" = H:vAAAAAA4 ] && [ -f "$here/check-get-slow" ]; then
+            sleep 3
+        fi
         # foreign-after-check: another client writes /v.txt (H:vAAAAAA6 on
         # top, the size of the put) once the version the put added was read.
         if [ "$1" = H:vAAAAAA4 ] && [ -f "$here/foreign-after-check" ]; then
@@ -309,6 +313,11 @@ case "$(basename "$0")" in
             # stdout; every attempt is in get.log above.
             touch "$here/get-retried"
             dd if=/dev/zero of="$2" bs=500 count=1 2>/dev/null
+            # get-pins-partial: the partial file cannot be removed (its
+            # folder is made read-only).
+            if [ -f "$here/get-pins-partial" ]; then
+                chmod a-w "$(dirname "$2")"
+            fi
             echo "Download failed: Temporarily unavailable, try again"
             exit 1
         fi
@@ -337,7 +346,7 @@ case "$(basename "$0")" in
                 fill=5
                 ;;
             H:*)
-                n=$(awk -v h="$1" 'index($0, " " h " ") { print $4; exit }' "$0")
+                n=$(awk -v h="$1" '$1 == "echo" && $4 ~ /^[0-9]+$/ && index($0, " " h " ") { print $4; exit }' "$0")
                 fill=$(printf '%s' "$1" | tail -c 1)
                 # w-current-holds-w1: the current w.txt has H:wAAAAAA1's bytes.
                 if [ "$1" = H:wAAAAAA3 ] && [ -f "$here/w-current-holds-w1" ]; then
@@ -361,7 +370,7 @@ case "$(basename "$0")" in
                         *) head='' ;;
                     esac
                     if [ -n "$head" ]; then
-                        n=$(awk -v h="$head" 'index($0, " " h " ") { print $4; exit }' "$0")
+                        n=$(awk -v h="$head" '$1 == "echo" && $4 ~ /^[0-9]+$/ && index($0, " " h " ") { print $4; exit }' "$0")
                         fill=$(printf '%s' "$head" | tail -c 1)
                     fi
                 fi

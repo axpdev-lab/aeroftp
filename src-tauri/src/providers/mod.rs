@@ -668,6 +668,7 @@ mod version_class_guards {
                 include_str!("box_provider.rs"),
                 "download_version",
             ),
+            ("b2.rs", include_str!("b2.rs"), "do_download_by_id"),
             ("dropbox.rs", include_str!("dropbox.rs"), "download_version"),
             ("koofr.rs", include_str!("koofr.rs"), "download_version"),
             ("kdrive.rs", include_str!("kdrive.rs"), "download_version"),
@@ -704,6 +705,123 @@ mod version_class_guards {
             );
         }
     }
+    /// A restore is sent only after its version listing was read: only S3
+    /// and B2 (list right apart from the copy right) may go on without it.
+    #[test]
+    fn only_s3_and_b2_restore_without_a_listing() {
+        for (file, source) in [
+            ("box_provider.rs", include_str!("box_provider.rs")),
+            ("dropbox.rs", include_str!("dropbox.rs")),
+            ("filelu.rs", include_str!("filelu.rs")),
+            ("google_drive.rs", include_str!("google_drive.rs")),
+            ("kdrive.rs", include_str!("kdrive.rs")),
+            ("koofr.rs", include_str!("koofr.rs")),
+            ("onedrive.rs", include_str!("onedrive.rs")),
+            ("webdav.rs", include_str!("webdav.rs")),
+            ("zoho_workdrive.rs", include_str!("zoho_workdrive.rs")),
+        ] {
+            assert!(
+                !source.contains("refuse_a_restore_that_changes_nothing_when_listed"),
+                "{file}: a restore goes on without its listing"
+            );
+            assert!(
+                !source.contains("Err(_) => None"),
+                "{file}: a failed listing is dropped before a restore"
+            );
+        }
+    }
+
+    /// A folder id cached before another client moved the folder answers
+    /// the old folder: every version action of a provider that caches
+    /// folder ids by path forgets the ones on the way to its file first, so
+    /// it acts on the file at the path now or on nothing.
+    #[test]
+    fn every_version_action_walks_its_path_again() {
+        for (file, source, marker) in [
+            (
+                "box_provider.rs",
+                include_str!("box_provider.rs"),
+                "forget_cached_ancestors",
+            ),
+            (
+                "kdrive.rs",
+                include_str!("kdrive.rs"),
+                "forget_cached_ancestors",
+            ),
+            (
+                "onedrive.rs",
+                include_str!("onedrive.rs"),
+                "forget_the_way_to",
+            ),
+        ] {
+            for action in ["list_versions", "download_version", "restore_version"] {
+                assert!(
+                    body(source, action).contains(marker),
+                    "{file}: {action} trusts a cached folder id"
+                );
+            }
+        }
+        let onedrive = body(include_str!("onedrive.rs"), "forget_the_way_to");
+        for cache in ["remote_roots", "plain_folders"] {
+            assert!(
+                onedrive.contains(cache),
+                "onedrive.rs keeps a cached {cache}"
+            );
+        }
+    }
+
+    /// Every operation, not only a version action, resolves through one
+    /// function per provider, and none of them answers a cached id without
+    /// the server confirming it: Box and kDrive confirm a walk that used the
+    /// cache with one request on the folder found, Zoho walks every name
+    /// (its API gives no path for an id in a documented shape), and
+    /// OneDrive caches no id at all (a lookup by path is the one request a
+    /// confirmation would cost) and reads each cached shortcut again.
+    #[test]
+    fn no_operation_acts_on_a_cached_id_the_server_did_not_confirm() {
+        let boxp = include_str!("box_provider.rs");
+        assert!(body(boxp, "resolve_folder_id").contains("self.folder_is_at("));
+        let kdrive = include_str!("kdrive.rs");
+        assert!(body(kdrive, "resolve_folder").contains("self.folder_is_at("));
+        let zoho = body(
+            include_str!("zoho_workdrive.rs"),
+            "resolve_path_with_listing",
+        );
+        assert!(
+            !zoho.contains("folder_cache.get(&"),
+            "zoho_workdrive.rs resolves a name from the cache"
+        );
+        let onedrive = include_str!("onedrive.rs");
+        assert!(!onedrive.contains("path_cache"), "onedrive.rs caches ids");
+        for reader in ["get_item", "learn_parents"] {
+            assert!(
+                body(onedrive, reader).contains("self.confirm_cached_shortcuts("),
+                "onedrive.rs {reader} trusts a cached shortcut"
+            );
+        }
+    }
+
+    #[test]
+    fn only_the_path_and_the_folders_on_its_way_are_forgotten() {
+        let mut cache: std::collections::HashMap<String, u8> = [
+            "/",
+            "",
+            "/docs",
+            "/Docs/Sub",
+            "/docs/sub/a.txt",
+            "/docs/subway",
+            "/x",
+            "docs",
+        ]
+        .into_iter()
+        .map(|k| (k.to_string(), 0))
+        .collect();
+        super::forget_cached_ancestors(&mut cache, "/docs/sub/a.txt");
+        let mut kept: Vec<&str> = cache.keys().map(String::as_str).collect();
+        kept.sort_unstable();
+        assert_eq!(kept, ["", "/", "/docs/subway", "/x"]);
+    }
+
     /// A version listing is a preflight of every download and restore, so
     /// none reads a body unbounded: each listing read, and each helper of
     /// one named here, goes through [`super::version_listing_text`] or
@@ -729,6 +847,9 @@ mod version_class_guards {
                 "list_versions",
             ),
             ("dropbox.rs", include_str!("dropbox.rs"), "list_versions"),
+            ("dropbox.rs", include_str!("dropbox.rs"), "version_metadata"),
+            ("filelu.rs", include_str!("filelu.rs"), "parse_versions_api"),
+            ("koofr.rs", include_str!("koofr.rs"), "version_file_info"),
             (
                 "google_drive.rs",
                 include_str!("google_drive.rs"),
@@ -849,12 +970,31 @@ impl RestorePreflight {
 /// the server in its own words). A deleted file's row 0 is its deletion, so
 /// its last contents below stay restorable. A listing that fails decides
 /// nothing, as there; a listing that does not hold the id refuses it before
-/// any call (the path now holds another file, or the id was mistyped). A bare
+/// any call (the path now holds another file, or the id was mistyped), so
+/// the listing must hold every version kept: each page of a paged one, and
+/// a version a capped one leaves out read on its own (Dropbox). A bare
 /// label (`1700000000`) is the listed row bound to a file with that label
 /// (`42:1700000000`), as the providers that bind ids still accept one.
-/// The rows listed come back (`None` when the listing failed), for
-/// [`confirm_version_restored`].
+/// A listing that fails refuses the restore ([`restore_needs_its_listing`]):
+/// without its rows the restore can be checked neither before nor after.
+/// The rows listed come back, for [`confirm_version_restored`].
 pub async fn refuse_a_restore_that_changes_nothing<P: StorageProvider + ?Sized>(
+    provider: &mut P,
+    path: &str,
+    version_id: &str,
+) -> Result<RestorePreflight, ProviderError> {
+    let versions = provider
+        .list_versions(path)
+        .await
+        .map_err(|e| restore_needs_its_listing(path, e))?;
+    restore_preflight(&versions, path, version_id)
+}
+
+/// [`refuse_a_restore_that_changes_nothing`] for S3 and B2 only, where the
+/// right to list versions is granted apart from the right to copy one, and
+/// a key that may restore can be denied the listing: there a listing that
+/// fails decides nothing (`None`), and the copy names its target itself.
+pub async fn refuse_a_restore_that_changes_nothing_when_listed<P: StorageProvider + ?Sized>(
     provider: &mut P,
     path: &str,
     version_id: &str,
@@ -863,6 +1003,21 @@ pub async fn refuse_a_restore_that_changes_nothing<P: StorageProvider + ?Sized>(
         return Ok(None);
     };
     restore_preflight(&versions, path, version_id).map(Some)
+}
+
+/// The error of a restore whose version listing failed: a file gone or
+/// replaced, a disconnect or a provider without versions keep their own
+/// error; any other failure says no restore was sent.
+pub(crate) fn restore_needs_its_listing(path: &str, error: ProviderError) -> ProviderError {
+    match error {
+        e @ (ProviderError::NotFound(_)
+        | ProviderError::NotConnected
+        | ProviderError::NotSupported(_)) => e,
+        e => ProviderError::TransferFailed(format!(
+            "The versions of {path} could not be listed ({e}), so no restore was sent: \
+             list its versions again"
+        )),
+    }
 }
 
 /// [`refuse_a_restore_that_changes_nothing`] on the rows listed.
@@ -893,7 +1048,7 @@ pub(crate) fn restore_preflight(
 
 /// Whether `row` is the version `version_id` names: its own id, or, for a
 /// bare label, the label of a row bound to a file ([`bind_version_to_file`]).
-fn listed_as(row: &FileVersion, version_id: &str) -> bool {
+pub(crate) fn listed_as(row: &FileVersion, version_id: &str) -> bool {
     row.id == version_id
         || (!version_id.contains(':')
             && row
@@ -912,9 +1067,9 @@ fn listed_as(row: &FileVersion, version_id: &str) -> bool {
 /// of the same length by someone else meanwhile is not taken for the
 /// restore. Most restore answers prove nothing (204, `{}`, an empty 201),
 /// and a 200 can still carry a failure (S3 CopyObject). A preflight of
-/// `None` (the listing before the restore failed) decides nothing, as in
-/// [`refuse_a_restore_that_changes_nothing`]; a listing that fails now does
-/// not confirm the restore.
+/// `None` (an S3 or B2 listing denied before the restore,
+/// [`refuse_a_restore_that_changes_nothing_when_listed`]) decides nothing; a
+/// listing that fails now does not confirm the restore.
 pub async fn confirm_version_restored<P: StorageProvider + ?Sized>(
     provider: &mut P,
     path: &str,
@@ -959,6 +1114,19 @@ pub(crate) fn restore_confirmed(
             )));
         }
         return Ok(());
+    }
+    // Ids bound to a file (`<file>:<label>`, every row of the listing before)
+    // must name that file on top after the restore too: another file the
+    // path names now is no restore of the one listed, whatever its size.
+    let file_of = |id: &str| id.split_once(':').map(|(file, _)| file.to_string());
+    if let Some(listed) =
+        file_of(&preflight.before.id).filter(|f| file_of(&selected.id).as_ref() == Some(f))
+    {
+        if let Some(now) = file_of(&current.id).filter(|now| *now != listed) {
+            return Err(not_restored(format!(
+                "is a version of another file ({now}, not {listed})"
+            )));
+        }
     }
     let before = &preflight.before;
     if current.id == before.id
@@ -1039,6 +1207,28 @@ mod versions_order_tests {
         let mut restored = listed.clone();
         restored[0].modified = Some("2026-11-18T10:05:00Z".into());
         assert!(restore_confirmed(Ok(restored), "/a.txt", &preflight).is_ok());
+    }
+
+    /// OneDrive F1 restored, and F2 put at the path before the check with a
+    /// head of the same size: F2 is not F1's restore.
+    #[test]
+    fn a_restore_is_not_confirmed_by_another_file_at_the_path() {
+        let listed = vec![
+            sized("F1:3.0", 4, "2026-11-18T10:00:00Z"),
+            sized("F1:2.0", 4, "2026-11-17T10:00:00Z"),
+        ];
+        let preflight = restore_preflight(&listed, "/f.txt", "F1:2.0").unwrap();
+        let replaced = vec![sized("F2:1.0", 4, "2026-11-18T10:05:00Z")];
+        let outcome = restore_confirmed(Ok(replaced), "/f.txt", &preflight);
+        assert!(
+            matches!(&outcome, Err(ProviderError::TransferFailed(m)) if m.contains("another file")),
+            "{outcome:?}"
+        );
+        let restored = vec![
+            sized("F1:4.0", 4, "2026-11-18T10:05:00Z"),
+            sized("F1:3.0", 4, "2026-11-18T10:00:00Z"),
+        ];
+        assert!(restore_confirmed(Ok(restored), "/f.txt", &preflight).is_ok());
     }
 
     #[test]
@@ -4568,6 +4758,30 @@ pub(crate) fn forget_cached_subtree_ignoring_case<V>(cache: &mut HashMap<String,
         let cached = cached.to_lowercase();
         cached != path && !cached.starts_with(&below)
     });
+}
+
+/// Whether the cache key `cached` names `path` or a folder on the way to
+/// it, under any capitalization, with or without a leading slash. The root
+/// (an empty or `/` key) is never on the way: it is not a folder another
+/// client can move.
+pub(crate) fn is_on_the_way_to(cached: &str, path: &str) -> bool {
+    let cached = cached.trim_matches('/').to_lowercase();
+    let path = path.trim_matches('/').to_lowercase();
+    !cached.is_empty()
+        && (path == cached
+            || path
+                .strip_prefix(cached.as_str())
+                .is_some_and(|rest| rest.starts_with('/')))
+}
+
+/// Forget the cached ids of `path` and of every folder on the way to it,
+/// the root kept. A version action names one file and binds what it does
+/// to the id it finds there: a folder id cached before another client moved
+/// that folder away still answers the old folder, and the file found in it
+/// is no longer the file at the path. So a version action walks its path
+/// again, each name looked up in the folder the server just returned.
+pub(crate) fn forget_cached_ancestors<V>(cache: &mut HashMap<String, V>, path: &str) {
+    cache.retain(|cached, _| !is_on_the_way_to(cached, path));
 }
 
 /// Whether the item `stat(to)` found, named `found_name`, is the source of a

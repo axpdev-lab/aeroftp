@@ -621,6 +621,81 @@ impl DropboxProvider {
         })
     }
 
+    /// Revision `rev` of the file at `full_path`, read by itself
+    /// (`files/get_metadata` of `rev:<rev>`), for a restore of a revision
+    /// the capped listing left out. `None` when Dropbox holds no such
+    /// revision, or holds it for another file.
+    async fn revision_outside_the_listing(
+        &mut self,
+        full_path: &str,
+        rev: &str,
+    ) -> Result<Option<super::FileVersion>, ProviderError> {
+        let revision: DropboxMetadata = match self
+            .version_metadata(&serde_json::json!({ "path": format!("rev:{rev}") }))
+            .await
+        {
+            Ok(revision) => revision,
+            Err(ProviderError::NotFound(_)) => return Ok(None),
+            Err(e) => return Err(e),
+        };
+        let file: DropboxMetadata = self
+            .version_metadata(&serde_json::json!({ "path": full_path, "include_deleted": true }))
+            .await?;
+        // A live file is matched by its id, a deleted one (which has none)
+        // by its path.
+        let of_this_file = match (&file.id, &revision.id) {
+            (Some(file), Some(of)) => file == of,
+            (None, _) => revision
+                .path_lower
+                .as_deref()
+                .is_some_and(|p| p == full_path.to_lowercase()),
+            (Some(_), None) => false,
+        };
+        if revision.tag != "file" || revision.rev.as_deref() != Some(rev) || !of_this_file {
+            return Ok(None);
+        }
+        Ok(Some(super::FileVersion {
+            id: rev.to_string(),
+            modified: revision.server_modified,
+            size: revision.size,
+            modified_by: None,
+            deleted: false,
+        }))
+    }
+
+    /// `files/get_metadata` for the version paths, read up to the listing
+    /// cap like the revision list it is combined with: an endless answer
+    /// ends in an error, not in memory growth.
+    async fn version_metadata(
+        &self,
+        arg: &serde_json::Value,
+    ) -> Result<DropboxMetadata, ProviderError> {
+        let response = self
+            .client
+            .post(format!("{}/files/get_metadata", self.rpc_api_base()))
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .header(CONTENT_TYPE, "application/json")
+            .body(arg.to_string())
+            .send()
+            .await
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+        let status = response.status();
+        let text = super::version_listing_text(response).await;
+        if !status.is_success() {
+            let text = text.unwrap_or_default();
+            if text.contains("path/not_found") {
+                return Err(ProviderError::NotFound(sanitize_api_error(&text)));
+            }
+            return Err(ProviderError::Other(format!(
+                "API error {}: {}",
+                status,
+                sanitize_api_error(&text)
+            )));
+        }
+        serde_json::from_str(&text?)
+            .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))
+    }
+
     fn rpc_api_base(&self) -> &str {
         #[cfg(test)]
         if let Some(ref base) = self.content_base_override {
@@ -2074,15 +2149,39 @@ impl StorageProvider for DropboxProvider {
         // include_deleted (without it the call answers not_found), and row 0
         // is then the deletion, so no earlier revision reads as current.
         let meta: DropboxMetadata = self
-            .rpc_call(
-                "files/get_metadata",
-                &serde_json::json!({ "path": full_path, "include_deleted": true }),
-            )
+            .version_metadata(&serde_json::json!({ "path": full_path, "include_deleted": true }))
             .await?;
+        // The revisions and the metadata must describe one file: a file put
+        // at the path between the two calls has another id, and its head
+        // would sit above the history of the file it replaced.
+        #[derive(Deserialize)]
+        struct ListedRevision {
+            id: Option<String>,
+        }
+        #[derive(Deserialize)]
+        struct Listed {
+            #[serde(default)]
+            entries: Vec<ListedRevision>,
+            server_deleted: Option<String>,
+        }
+        let listed: Listed = serde_json::from_str(&body)
+            .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+        if let Some(file_id) = &meta.id {
+            if listed
+                .entries
+                .iter()
+                .any(|r| r.id.as_ref().is_some_and(|id| id != file_id))
+            {
+                return Err(ProviderError::NotFound(format!(
+                    "{full_path} was replaced while its versions were read: list its versions again"
+                )));
+            }
+        }
         let current = if meta.tag == "deleted" {
             Some(super::FileVersion {
                 id: super::CURRENT_VERSION_ID.to_string(),
-                modified: None,
+                // When Dropbox knows it, the time of the deletion.
+                modified: listed.server_deleted,
                 size: 0,
                 modified_by: None,
                 deleted: true,
@@ -2107,6 +2206,7 @@ impl StorageProvider for DropboxProvider {
         version_id: &str,
         local_path: &str,
     ) -> Result<(), ProviderError> {
+        refuse_the_deletion_row(version_id)?;
         let arg = serde_json::json!({
             "path": format!("rev:{}", version_id)
         });
@@ -2134,12 +2234,27 @@ impl StorageProvider for DropboxProvider {
     }
 
     async fn restore_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
-        let selected = super::refuse_a_restore_that_changes_nothing(self, path, version_id).await?;
+        refuse_the_deletion_row(version_id)?;
         let full_path = if path.starts_with('/') {
             self.normalize_path(path)
         } else {
             self.normalize_path(&format!("{}/{}", self.current_path, path))
         };
+        // files/list_revisions answers at most 100 revisions and has no
+        // cursor: a revision it leaves out is read on its own before the
+        // listing can refuse it. A listing that cannot be read sends no
+        // restore, as for every provider.
+        let mut versions = self
+            .list_versions(path)
+            .await
+            .map_err(|e| super::restore_needs_its_listing(path, e))?;
+        if !versions.iter().any(|v| super::listed_as(v, version_id)) {
+            versions.extend(
+                self.revision_outside_the_listing(&full_path, version_id)
+                    .await?,
+            );
+        }
+        let selected = super::restore_preflight(&versions, path, version_id)?;
 
         let body = serde_json::json!({
             "path": full_path,
@@ -2154,8 +2269,8 @@ impl StorageProvider for DropboxProvider {
             .get("rev")
             .and_then(|rev| rev.as_str())
             .map(str::to_string);
-        let preflight = selected.map(|p| p.made_current(made));
-        super::confirm_version_restored(self, path, preflight.as_ref()).await
+        let preflight = selected.made_current(made);
+        super::confirm_version_restored(self, path, Some(&preflight)).await
     }
 
     fn supports_thumbnails(&self) -> bool {
@@ -2690,6 +2805,18 @@ impl StorageProvider for DropboxProvider {
 /// revision too and leaves the order unspecified; `current`, the file's own
 /// metadata, names the current one, and is row 0 itself when the list does
 /// not hold that revision yet.
+/// The row a deleted file lists on top (`current`) is its deletion, not a
+/// revision: Dropbox has no content for it, so no `rev:current` is asked.
+fn refuse_the_deletion_row(version_id: &str) -> Result<(), ProviderError> {
+    if version_id == super::CURRENT_VERSION_ID {
+        return Err(ProviderError::NotSupported(
+            "This row is the deletion of the file: it has no contents. Use a version below it."
+                .into(),
+        ));
+    }
+    Ok(())
+}
+
 fn revisions_in_dialog_order(
     body: &str,
     current: Option<super::FileVersion>,
@@ -3572,6 +3699,185 @@ mod tests {
             matches!(&restored, Err(ProviderError::TransferFailed(m)) if m.contains("list its versions again")),
             "{restored:?}"
         );
+        assert_eq!(*restores.lock().unwrap(), ["r1"]);
+    }
+
+    /// The version paths of Dropbox: a listing whose revisions belong to
+    /// another file than the metadata is refused; a deleted file's top row
+    /// carries the deletion time Dropbox gave and is refused locally for
+    /// download and restore; an endless metadata answer ends in an error.
+    #[tokio::test]
+    async fn dropbox_versions_describe_one_file_and_read_bounded_metadata() {
+        use axum::{http::StatusCode, routing::post, Json, Router};
+        use serde_json::{json, Value};
+        let calls = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let seen = calls.clone();
+        let app = Router::new()
+            .route(
+                "/files/list_revisions",
+                post(|Json(request): Json<Value>| async move {
+                    match request["path"].as_str().unwrap_or("") {
+                        "/d.txt" => Json(json!({"is_deleted":true,
+                            "server_deleted":"2026-09-06T00:00:00Z",
+                            "entries":[{"rev":"d1","size":3,"server_modified":"2026-09-01T00:00:00Z"}]})),
+                        _ => Json(json!({"is_deleted":false,
+                            "entries":[{"id":"id:OLD","rev":"o1","size":3,"server_modified":"2026-09-01T00:00:00Z"}]})),
+                    }
+                }),
+            )
+            .route(
+                "/files/get_metadata",
+                post(move |Json(request): Json<Value>| {
+                    let seen = seen.clone();
+                    async move {
+                        let path = request["path"].as_str().unwrap_or("").to_string();
+                        seen.lock().unwrap().push(path.clone());
+                        match path.as_str() {
+                            "/d.txt" => (StatusCode::OK, json!({".tag":"deleted","name":"d.txt"}).to_string()),
+                            "/big.txt" => (
+                                StatusCode::OK,
+                                " ".repeat(super::super::VERSION_LISTING_MAX_BYTES as usize + 1),
+                            ),
+                            _ => (
+                                StatusCode::OK,
+                                json!({".tag":"file","name":"r.txt","id":"id:NEW","rev":"n1","size":5,
+                                    "server_modified":"2026-09-02T00:00:00Z"})
+                                .to_string(),
+                            ),
+                        }
+                    }
+                }),
+            );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let mut provider = fixture_connected();
+        provider.content_base_override = Some(format!("http://{addr}"));
+
+        let replaced = provider.list_versions("/r.txt").await;
+        assert!(
+            matches!(&replaced, Err(ProviderError::NotFound(m)) if m.contains("list its versions again")),
+            "{replaced:?}"
+        );
+        let deleted = provider.list_versions("/d.txt").await.expect("history");
+        assert_eq!(deleted[0].id, super::super::CURRENT_VERSION_ID);
+        assert!(deleted[0].deleted);
+        assert_eq!(deleted[0].modified.as_deref(), Some("2026-09-06T00:00:00Z"));
+        let endless = provider.list_versions("/big.txt").await;
+        assert!(
+            matches!(&endless, Err(ProviderError::TransferFailed(m)) if m.contains("MB")),
+            "{endless:?}"
+        );
+
+        let before = calls.lock().unwrap().len();
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("d.txt");
+        let download = provider
+            .download_version(
+                "/d.txt",
+                super::super::CURRENT_VERSION_ID,
+                out.to_str().unwrap(),
+            )
+            .await;
+        let restore = provider
+            .restore_version("/d.txt", super::super::CURRENT_VERSION_ID)
+            .await;
+        server.abort();
+        for refused in [&download, &restore] {
+            assert!(
+                matches!(refused, Err(ProviderError::NotSupported(m)) if m.contains("deletion")),
+                "{refused:?}"
+            );
+        }
+        assert_eq!(calls.lock().unwrap().len(), before);
+        assert!(!out.exists());
+    }
+
+    /// files/list_revisions answers at most 100 revisions: one it leaves out
+    /// is read by itself (`rev:` metadata) and restored when it is a revision
+    /// of this file; a revision of another file, or one Dropbox does not
+    /// hold, is refused before files/restore.
+    #[tokio::test]
+    async fn a_dropbox_revision_outside_the_listed_window_is_restored() {
+        use axum::{http::StatusCode, routing::post, Json, Router};
+        use serde_json::{json, Value};
+        let restores = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let seen = restores.clone();
+        let restored = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let (listed, made) = (restored.clone(), restored.clone());
+        let file = |rev: &str, size: u64, id: &str| {
+            json!({".tag":"file","name":"f.txt","path_lower":"/f.txt","path_display":"/f.txt",
+                "id":id,"rev":rev,"size":size,"server_modified":"2026-01-05T00:00:00Z"})
+        };
+        let app = Router::new()
+            .route(
+                "/files/list_revisions",
+                post(move || {
+                    let listed = listed.clone();
+                    async move {
+                        // The window: r1 is older than the revisions answered.
+                        let mut entries = vec![
+                            json!({"rev":"r2","size":5,"server_modified":"2026-01-02T00:00:00Z"}),
+                            json!({"rev":"r3","size":7,"server_modified":"2026-01-03T00:00:00Z"}),
+                        ];
+                        if listed.load(std::sync::atomic::Ordering::SeqCst) {
+                            entries.push(json!({"rev":"r9","size":3,"server_modified":"2026-01-09T00:00:00Z"}));
+                        }
+                        Json(json!({"is_deleted":false,"entries":entries}))
+                    }
+                }),
+            )
+            .route(
+                "/files/get_metadata",
+                post(move |Json(request): Json<Value>| {
+                    let restored = restored.clone();
+                    async move {
+                        let done = restored.load(std::sync::atomic::Ordering::SeqCst);
+                        match request["path"].as_str().unwrap_or("") {
+                            "/f.txt" if done => (StatusCode::OK, Json(file("r9", 3, "id:F"))),
+                            "/f.txt" => (StatusCode::OK, Json(file("r3", 7, "id:F"))),
+                            "rev:r1" => (StatusCode::OK, Json(file("r1", 3, "id:F"))),
+                            "rev:o1" => (StatusCode::OK, Json(file("o1", 3, "id:OTHER"))),
+                            _ => (
+                                StatusCode::CONFLICT,
+                                Json(json!({"error_summary":"path/not_found/","error":{".tag":"path"}})),
+                            ),
+                        }
+                    }
+                }),
+            )
+            .route(
+                "/files/restore",
+                post(move |Json(request): Json<Value>| {
+                    let (seen, made) = (seen.clone(), made.clone());
+                    async move {
+                        seen.lock().unwrap().push(request["rev"].as_str().unwrap_or("").to_string());
+                        made.store(true, std::sync::atomic::Ordering::SeqCst);
+                        Json(json!({".tag":"file","name":"f.txt","path_display":"/f.txt","rev":"r9","size":3}))
+                    }
+                }),
+            );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let mut provider = fixture_connected();
+        provider.content_base_override = Some(format!("http://{addr}"));
+        let foreign = provider.restore_version("/f.txt", "o1").await;
+        let unknown = provider.restore_version("/f.txt", "r0").await;
+        assert_eq!(*restores.lock().unwrap(), Vec::<String>::new());
+        let outside = provider.restore_version("/f.txt", "r1").await;
+        server.abort();
+        for refused in [&foreign, &unknown] {
+            assert!(
+                matches!(refused, Err(ProviderError::NotFound(m)) if m.contains("list its versions again")),
+                "{refused:?}"
+            );
+        }
+        assert!(outside.is_ok(), "{outside:?}");
         assert_eq!(*restores.lock().unwrap(), ["r1"]);
     }
 

@@ -1792,14 +1792,26 @@ impl StorageProvider for KoofrProvider {
             urlencoding::encode(&resolved)
         );
 
+        // Koofr names a file by its path only: the file is read before and
+        // after its history, and a history read while the path changed
+        // (another type, size, time or hash) is refused, never shown under
+        // the current row of another file.
+        let before = self.version_file_info(&resolved).await?;
         let resp = self.get(&url).await?;
         let resp = Self::check_response(resp).await?;
         let versions: KoofrVersionsResponse =
             serde_json::from_str(&super::version_listing_text(resp).await?).map_err(|e| {
                 ProviderError::ServerError(format!("Failed to parse versions: {}", e))
             })?;
-
-        let file = self.stat(path).await?;
+        let after = self.version_file_info(&resolved).await?;
+        let same_file = |f: &KoofrFile| (f.file_type.clone(), f.size, f.modified, f.hash.clone());
+        if same_file(&before) != same_file(&after) {
+            return Err(ProviderError::NotFound(format!(
+                "{resolved} changed while its versions were read: list its versions again"
+            )));
+        }
+        let (parent, _) = Self::split_path(&resolved);
+        let file = self.file_to_entry(&after, parent);
         Ok(versions_in_dialog_order(versions.versions, &file))
     }
 
@@ -1809,23 +1821,23 @@ impl StorageProvider for KoofrProvider {
         version_id: &str,
         local_path: &str,
     ) -> Result<(), ProviderError> {
-        if version_id == super::CURRENT_VERSION_ID {
-            return self.download(path, local_path, None).await;
-        }
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
 
-        // The Koofr content endpoint supports version downloads
-        // by appending the version query parameter
+        // The Koofr content endpoint supports version downloads by appending
+        // the version query parameter; the current row (`current`) is the
+        // file without it, read the same way: a whole body only.
         let resolved = self.resolve_path(path);
-        let url = format!(
-            "{}/mounts/{}/files/get?path={}&version={}",
+        let mut url = format!(
+            "{}/mounts/{}/files/get?path={}",
             self.content_base(),
             self.mount_id,
             urlencoding::encode(&resolved),
-            urlencoding::encode(version_id)
         );
+        if version_id != super::CURRENT_VERSION_ID {
+            url.push_str(&format!("&version={}", urlencoding::encode(version_id)));
+        }
 
         let request = self
             .client
@@ -1892,7 +1904,7 @@ impl StorageProvider for KoofrProvider {
         let selected = super::refuse_a_restore_that_changes_nothing(self, path, version_id).await?;
         let resp = self.post_json(&url, &serde_json::json!({})).await?;
         Self::check_response(resp).await?;
-        super::confirm_version_restored(self, path, selected.as_ref()).await
+        super::confirm_version_restored(self, path, Some(&selected)).await
     }
 
     fn supports_delta_sync(&self) -> bool {
@@ -2032,6 +2044,24 @@ impl StorageProvider for KoofrProvider {
 // ─── Koofr-specific operations (exposed via Tauri commands) ───
 
 impl KoofrProvider {
+    /// The file at `resolved` for the versions paths: its info answer, read
+    /// up to the listing cap like the history it is combined with.
+    async fn version_file_info(&self, resolved: &str) -> Result<KoofrFile, ProviderError> {
+        let url = format!(
+            "{}/mounts/{}/files/info?path={}",
+            self.api_base(),
+            self.mount_id,
+            urlencoding::encode(resolved)
+        );
+        let resp = self.get(&url).await?;
+        let resp = Self::check_response(resp).await?;
+        let info: KoofrFileInfo = serde_json::from_str(&super::version_listing_text(resp).await?)
+            .map_err(|e| {
+            ProviderError::ServerError(format!("Failed to parse file info: {}", e))
+        })?;
+        Ok(info.file)
+    }
+
     /// List trash items
     pub async fn list_trash(&self) -> Result<Vec<KoofrTrashFile>, ProviderError> {
         let url = format!("{}/trash?pageSize=1000", self.api_base());
@@ -2363,6 +2393,99 @@ mod tests {
             Box::new(provider)
         })
         .await;
+    }
+
+    /// Koofr has no file id: a history read while the file at the path
+    /// changed is refused, a stable file lists its history under itself.
+    #[tokio::test]
+    async fn a_koofr_history_read_while_the_file_changed_is_refused() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let infos = std::sync::Arc::new(AtomicUsize::new(0));
+        let count = infos.clone();
+        let app = axum::Router::new().fallback(axum::routing::any(move |uri: axum::http::Uri| {
+            let count = count.clone();
+            async move {
+                let query = uri.query().unwrap_or("").to_string();
+                match uri.path() {
+                    "/mounts/M/files/versions" => {
+                        r#"{"versions":[{"id":"k1","modified":1794841119000,"size":7}]}"#.to_string()
+                    }
+                    "/mounts/M/files/info" => {
+                        let n = count.fetch_add(1, Ordering::SeqCst);
+                        // `/r.txt` is replaced between the two reads.
+                        let size = if query.contains("r.txt") && n > 0 { 9 } else { 4 };
+                        format!(
+                            r#"{{"name":"x","type":"file","modified":1794841200000,"size":{size},"hash":"h{size}"}}"#
+                        )
+                    }
+                    _ => String::new(),
+                }
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = KoofrProvider::new(KoofrConfig {
+            email: "u@example.com".to_string(),
+            password: secrecy::SecretString::from("p".to_string()),
+            initial_path: None,
+        });
+        provider.connected = true;
+        provider.mount_id = "M".to_string();
+        provider.api_base_override = Some(format!("http://{addr}"));
+        provider.content_base_override = Some(format!("http://{addr}"));
+
+        let replaced = provider.list_versions("/r.txt").await;
+        assert!(
+            matches!(&replaced, Err(ProviderError::NotFound(m)) if m.contains("list its versions again")),
+            "{replaced:?}"
+        );
+        infos.store(0, Ordering::SeqCst);
+        let stable = provider.list_versions("/s.txt").await.expect("history");
+        let rows: Vec<(&str, u64)> = stable.iter().map(|v| (v.id.as_str(), v.size)).collect();
+        assert_eq!(rows, [(super::super::CURRENT_VERSION_ID, 4), ("k1", 7)]);
+        assert_eq!(infos.load(Ordering::SeqCst), 2);
+    }
+
+    /// The bare `current` id reads the file as its bound row does: a 206
+    /// fragment is refused and the destination stays as it was.
+    #[tokio::test]
+    async fn a_partial_answer_for_the_bare_current_row_is_not_saved() {
+        let app =
+            axum::Router::new().fallback(axum::routing::any(|uri: axum::http::Uri| async move {
+                if uri.path() == "/mounts/M/files/get" {
+                    (axum::http::StatusCode::PARTIAL_CONTENT, "li")
+                } else {
+                    (axum::http::StatusCode::NOT_FOUND, "")
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = KoofrProvider::new(KoofrConfig {
+            email: "u@example.com".to_string(),
+            password: secrecy::SecretString::from("p".to_string()),
+            initial_path: None,
+        });
+        provider.connected = true;
+        provider.mount_id = "M".to_string();
+        provider.api_base_override = Some(format!("http://{addr}"));
+        provider.content_base_override = Some(format!("http://{addr}"));
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("a.txt");
+        std::fs::write(&out, "before").unwrap();
+        let partial = provider
+            .download_version(
+                "/a.txt",
+                super::super::CURRENT_VERSION_ID,
+                out.to_str().unwrap(),
+            )
+            .await;
+        assert!(
+            matches!(&partial, Err(ProviderError::TransferFailed(m)) if m.contains("206")),
+            "{partial:?}"
+        );
+        assert_eq!(std::fs::read_to_string(&out).unwrap(), "before");
     }
 
     /// Row 0 of the versions dialog, `current`, is the file itself: its

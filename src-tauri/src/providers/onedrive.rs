@@ -345,8 +345,6 @@ pub struct OneDriveProvider {
     connected: bool,
     current_path: String,
     current_item_id: String,
-    /// Cache: path -> item_id
-    path_cache: HashMap<String, String>,
     /// Shortcuts and shared folders met so far: path (no leading or trailing
     /// slash) -> (drive id, item id) of the folder they stand for. Every
     /// address under one of these paths goes to that drive.
@@ -411,7 +409,6 @@ impl OneDriveProvider {
             connected: false,
             current_path: "/".to_string(),
             current_item_id: "root".to_string(),
-            path_cache: HashMap::new(),
             remote_roots: std::sync::RwLock::new(HashMap::new()),
             plain_folders: std::sync::RwLock::new(std::collections::HashSet::new()),
             account_email: None,
@@ -721,12 +718,29 @@ impl OneDriveProvider {
         }
     }
 
+    /// Forget what this session cached on the way to `path`: the
+    /// shortcuts and the plain folders of the path and of every folder above
+    /// it. A version action reads its file live through them: a shortcut
+    /// cached before another client removed it still sends the path to the
+    /// drive it pointed to, and a folder known to be plain hides a shortcut
+    /// made under its name since.
+    fn forget_the_way_to(&mut self, path: &str) {
+        super::forget_cached_ancestors(
+            self.remote_roots
+                .get_mut()
+                .unwrap_or_else(|e| e.into_inner()),
+            path,
+        );
+        self.plain_folders
+            .get_mut()
+            .unwrap_or_else(|e| e.into_inner())
+            .retain(|folder| !super::is_on_the_way_to(folder, path));
+    }
+
     /// Forget what this session learned about `clean` and everything under
-    /// it, under any capitalization: the cached ids, the shortcuts and the
-    /// plain folders. Called once the item was moved or deleted, so a folder
+    /// it, under any capitalization: the shortcuts and the plain folders. Called once the item was moved or deleted, so a folder
     /// made again under the same name is looked up afresh.
     fn forget_subtree(&mut self, clean: &str) {
-        super::forget_cached_subtree_ignoring_case(&mut self.path_cache, clean);
         super::forget_cached_subtree_ignoring_case(
             self.remote_roots
                 .get_mut()
@@ -831,6 +845,7 @@ impl OneDriveProvider {
         {
             return Err(ProviderError::NotFound(path.to_string()));
         }
+        self.confirm_cached_shortcuts(path).await?;
         match self.fetch_item(path).await {
             // Graph does not follow a path through a shortcut: find the
             // shortcuts among its parents, then address it through them. A
@@ -894,7 +909,51 @@ impl OneDriveProvider {
     /// this drive. Each parent not yet known is looked up once per session;
     /// known ones cost nothing.
     async fn learn_parents(&self, path: &str) -> Result<(), ProviderError> {
+        self.confirm_cached_shortcuts(path).await?;
         self.discover_remote_parents(path).await.map(|_| ())
+    }
+
+    /// Read again each cached shortcut `path` lies under, outermost first:
+    /// another client may have removed one, or made a plain folder under
+    /// its name, since it was learned, and an address built through it
+    /// would name a file in the drive it pointed to. A shortcut still there
+    /// is recorded afresh by the lookup; one gone is forgotten, so the path
+    /// is addressed in this drive. One request per shortcut.
+    async fn confirm_cached_shortcuts(&self, path: &str) -> Result<(), ProviderError> {
+        let clean = path.trim_matches('/');
+        let mut above: Vec<String> = self
+            .remote_roots
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .keys()
+            .filter(|root| {
+                clean
+                    .strip_prefix(root.as_str())
+                    .is_some_and(|rest| rest.starts_with('/'))
+            })
+            .cloned()
+            .collect();
+        above.sort_by_key(String::len);
+        for root in above {
+            let learned = self
+                .remote_roots
+                .write()
+                .unwrap_or_else(|e| e.into_inner())
+                .remove(&root);
+            match self.fetch_item(&root).await {
+                Ok(_) | Err(ProviderError::NotFound(_)) => {}
+                Err(e) => {
+                    if let Some(learned) = learned {
+                        self.remote_roots
+                            .write()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .insert(root, learned);
+                    }
+                    return Err(e);
+                }
+            }
+        }
+        Ok(())
     }
 
     /// `path` as this session addresses it: a relative path is taken from
@@ -1074,22 +1133,6 @@ impl OneDriveProvider {
         object_handle_is_invalid(&response.text().await.unwrap_or_default())
     }
 
-    /// Evict oldest half of cache when it exceeds the maximum size
-    fn trim_cache_if_needed(&mut self) {
-        const MAX_CACHE_SIZE: usize = 10_000;
-        if self.path_cache.len() > MAX_CACHE_SIZE {
-            let keys: Vec<String> = self
-                .path_cache
-                .keys()
-                .take(MAX_CACHE_SIZE / 2)
-                .cloned()
-                .collect();
-            for key in keys {
-                self.path_cache.remove(&key);
-            }
-        }
-    }
-
     /// List items in the recycle bin
     pub async fn list_trash(&mut self) -> Result<Vec<RemoteEntry>, ProviderError> {
         let mut all_entries = Vec::new();
@@ -1146,14 +1189,9 @@ impl OneDriveProvider {
 
     /// KE-B3.1: the sweep after an upload with `--onedrive-no-versions`:
     /// resolve `path` afresh and delete the item's older versions. `stage`
-    /// names the upload path in the warning when the resolve fails. The id
-    /// cached for `path` may name the item from before this upload, so it is
-    /// dropped first, under the key the cache uses, without the slashes at
-    /// either end: removed with its leading slash it stayed, and the sweep
-    /// went to the stale id.
+    /// names the upload path in the warning when the resolve fails.
     async fn purge_versions_after_upload(&mut self, path: &str, stage: &str) {
-        self.path_cache.remove(path.trim_matches('/'));
-        if let Ok(item_id) = self.resolve_path(path).await {
+        if let Ok(item_id) = self.live_item_id(path).await {
             self.purge_old_versions(&item_id).await;
         } else {
             warn!(
@@ -1297,34 +1335,16 @@ impl OneDriveProvider {
     }
 
     /// Resolve path to item ID
-    async fn resolve_path(&mut self, path: &str) -> Result<String, ProviderError> {
-        let path = path.trim_matches('/');
-
-        if path.is_empty() {
-            return Ok("root".to_string());
-        }
-
-        // Check cache
-        if let Some(id) = self.path_cache.get(path) {
-            return Ok(id.clone());
-        }
-
-        self.live_item_id(path).await
-    }
-
-    /// The item id `path` names on the server now, cached afresh. A version
-    /// action is bound to the item its versions were listed from, so it reads
-    /// the path live: a cached id still names an item moved away from the
-    /// path, which the binding check would then accept.
+    /// The item id `path` names on the server now: one lookup by path. No
+    /// id is cached: a cached id still names an item another client moved
+    /// away from the path, and confirming it would cost the same one request
+    /// as this lookup.
     async fn live_item_id(&mut self, path: &str) -> Result<String, ProviderError> {
         let path = path.trim_matches('/');
         if path.is_empty() {
             return Ok("root".to_string());
         }
-        let item = self.get_item(path).await?;
-        self.trim_cache_if_needed();
-        self.path_cache.insert(path.to_string(), item.id.clone());
-        Ok(item.id)
+        Ok(self.get_item(path).await?.id)
     }
 
     /// The id to address what is INSIDE the folder at `path`: for a shortcut
@@ -1332,7 +1352,7 @@ impl OneDriveProvider {
     /// the item itself. Listing, creating and copying or moving into a
     /// folder use this; operations on the item itself use [`Self::resolve_path`].
     async fn resolve_container(&mut self, path: &str) -> Result<String, ProviderError> {
-        let id = self.resolve_path(path).await?;
+        let id = self.live_item_id(path).await?;
         let clean = path.trim_matches('/');
         Ok(match self.remote_root_of(clean) {
             Some((root, drive, target)) if root == clean => format!("{drive}/{target}"),
@@ -1368,7 +1388,7 @@ impl OneDriveProvider {
             return Ok(());
         }
 
-        let item_id = self.resolve_path(&from_path).await?;
+        let item_id = self.live_item_id(&from_path).await?;
         let new_name = to_path.rsplit('/').next().unwrap_or(&to_path);
 
         // Determine source and destination parent paths
@@ -1617,7 +1637,6 @@ impl StorageProvider for OneDriveProvider {
 
     async fn disconnect(&mut self) -> Result<(), ProviderError> {
         self.connected = false;
-        self.path_cache.clear();
         self.remote_roots
             .write()
             .unwrap_or_else(|e| e.into_inner())
@@ -1975,10 +1994,6 @@ impl StorageProvider for OneDriveProvider {
             (self.current_path.clone(), path)
         };
 
-        // A parent removed/recreated outside this connection (or beneath a
-        // deleted ancestor) can keep an obsolete ID in the path cache. Resolve
-        // the live path before this write; never create under a moved cached ID.
-        self.path_cache.remove(parent_path.trim_matches('/'));
         let parent_id = self.resolve_container(&parent_path).await?;
 
         let body = serde_json::json!({
@@ -2024,13 +2039,13 @@ impl StorageProvider for OneDriveProvider {
             format!("{}/{}", self.current_path.trim_end_matches('/'), path)
         };
 
-        // A 404 says the id is gone, not the path. The id may be cached from
-        // before another client trashed the item and made a new one under
-        // the same path: read as done, that 404 left the live item in place
-        // and logged "Deleted". The path is resolved again once, by Graph and
-        // not by the cache, and only a lookup that finds nothing there, or a
-        // second 404, makes this NotFound.
-        let mut item_id = self.resolve_path(&full_path).await?;
+        // A 404 says the id is gone, not the path. Another client may have
+        // trashed the item and made a new one under the same path between
+        // the lookup and the DELETE: read as done, that 404 left the live
+        // item in place and logged "Deleted". The path is resolved again
+        // once, and only a lookup that finds nothing there, or a second 404,
+        // makes this NotFound.
+        let mut item_id = self.live_item_id(&full_path).await?;
         let mut resolved_again = false;
         loop {
             let url = self.api_item(&item_id);
@@ -2051,7 +2066,7 @@ impl StorageProvider for OneDriveProvider {
                     return Err(ProviderError::NotFound(path.to_string()));
                 }
                 resolved_again = true;
-                item_id = self.resolve_path(&full_path).await?;
+                item_id = self.live_item_id(&full_path).await?;
                 continue;
             }
             if !status.is_success() {
@@ -2080,7 +2095,7 @@ impl StorageProvider for OneDriveProvider {
         } else {
             format!("{}/{}", self.current_path.trim_end_matches('/'), path)
         };
-        let item_id = self.resolve_path(&full_path).await?;
+        let item_id = self.live_item_id(&full_path).await?;
         let url = format!("{}?$select=id,eTag,cTag,folder", self.api_item(&item_id));
         let response = self
             .client
@@ -2291,7 +2306,7 @@ impl StorageProvider for OneDriveProvider {
         };
 
         // Resolve path to item ID
-        let item_id = self.resolve_path(&full_path).await?;
+        let item_id = self.live_item_id(&full_path).await?;
 
         // Create a sharing link using Graph API
         // POST /me/drive/items/{item-id}/createLink
@@ -2389,7 +2404,7 @@ impl StorageProvider for OneDriveProvider {
             format!("{}/{}", self.current_path.trim_end_matches('/'), from)
         };
 
-        let from_id = self.resolve_path(&from_path).await?;
+        let from_id = self.live_item_id(&from_path).await?;
 
         // Resolve destination parent and name
         let (to_parent_path, to_name) = copy_destination(&self.current_path, to);
@@ -2495,26 +2510,8 @@ impl StorageProvider for OneDriveProvider {
         &mut self,
         path: &str,
     ) -> Result<Vec<super::FileVersion>, ProviderError> {
+        self.forget_the_way_to(path);
         let item_id = self.live_item_id(path).await?;
-        let url = format!("{}/versions", self.api_item(&item_id));
-
-        let response = self
-            .client
-            .get(&url)
-            .header(AUTHORIZATION, self.auth_header().await?)
-            .send()
-            .await
-            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
-
-        if !response.status().is_success() {
-            let text = super::version_listing_text(response)
-                .await
-                .unwrap_or_default();
-            return Err(ProviderError::Other(format!(
-                "List versions failed: {}",
-                sanitize_api_error(&text)
-            )));
-        }
 
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
@@ -2536,19 +2533,56 @@ impl StorageProvider for OneDriveProvider {
         #[derive(Deserialize)]
         struct VersionList {
             value: Vec<Version>,
+            #[serde(rename = "@odata.nextLink")]
+            next_link: Option<String>,
         }
 
-        let body = super::version_listing_text(response).await?;
-        let list: VersionList = serde_json::from_str(&body)
-            .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+        // Every page: Graph answers a collection a page at a time, with an
+        // `@odata.nextLink` while more remain. A listing cut at its first
+        // page would refuse a restore of an older version as not listed.
+        let mut url = format!("{}/versions", self.api_item(&item_id));
+        let mut value = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        loop {
+            let response = self
+                .client
+                .get(&url)
+                .header(AUTHORIZATION, self.auth_header().await?)
+                .send()
+                .await
+                .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+            if !response.status().is_success() {
+                let text = super::version_listing_text(response)
+                    .await
+                    .unwrap_or_default();
+                return Err(ProviderError::Other(format!(
+                    "List versions failed: {}",
+                    sanitize_api_error(&text)
+                )));
+            }
+
+            let body = super::version_listing_text(response).await?;
+            let page: VersionList = serde_json::from_str(&body)
+                .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+            value.extend(page.value);
+            match page.next_link {
+                Some(next) if seen.insert(next.clone()) => url = next,
+                Some(_) => {
+                    return Err(ProviderError::ParseError(
+                        "OneDrive versions pagination did not advance".into(),
+                    ))
+                }
+                None => break,
+            }
+        }
 
         // Graph documents the list newest first, the current version on top,
         // and refuses `$orderby`: its order is row 0 as every `list_versions`
         // answers. A sort by time would put a past version above a current
         // one that has no time or shares it. Graph names versions by a label
         // of the item (`1.0`, `2.0`): each id is bound to the item listed.
-        Ok(list
-            .value
+        Ok(value
             .iter()
             .map(|v| super::FileVersion {
                 id: super::bind_version_to_file(&item_id, &v.id),
@@ -2570,6 +2604,7 @@ impl StorageProvider for OneDriveProvider {
         version_id: &str,
         local_path: &str,
     ) -> Result<(), ProviderError> {
+        self.forget_the_way_to(path);
         let item_id = self.live_item_id(path).await?;
         let label = super::version_label_of_file(version_id, &item_id, path)?;
         let url = format!(
@@ -2599,6 +2634,7 @@ impl StorageProvider for OneDriveProvider {
 
     async fn restore_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
         let selected = super::refuse_a_restore_that_changes_nothing(self, path, version_id).await?;
+        self.forget_the_way_to(path);
         let item_id = self.live_item_id(path).await?;
         let label = super::version_label_of_file(version_id, &item_id, path)?;
         let url = format!(
@@ -2624,7 +2660,7 @@ impl StorageProvider for OneDriveProvider {
         }
 
         info!("Restored {} to version {}", path, version_id);
-        super::confirm_version_restored(self, path, selected.as_ref()).await
+        super::confirm_version_restored(self, path, Some(&selected)).await
     }
 
     fn supports_thumbnails(&self) -> bool {
@@ -2632,7 +2668,7 @@ impl StorageProvider for OneDriveProvider {
     }
 
     async fn get_thumbnail(&mut self, path: &str) -> Result<String, ProviderError> {
-        let item_id = self.resolve_path(path).await?;
+        let item_id = self.live_item_id(path).await?;
         let url = format!("{}/thumbnails/0/medium/content", self.api_item(&item_id));
 
         let response = self
@@ -2668,7 +2704,7 @@ impl StorageProvider for OneDriveProvider {
         &mut self,
         path: &str,
     ) -> Result<Vec<super::SharePermission>, ProviderError> {
-        let item_id = self.resolve_path(path).await?;
+        let item_id = self.live_item_id(path).await?;
         let url = format!("{}/permissions", self.api_item(&item_id));
 
         let response = self
@@ -2746,7 +2782,7 @@ impl StorageProvider for OneDriveProvider {
         path: &str,
         permission: &super::SharePermission,
     ) -> Result<(), ProviderError> {
-        let item_id = self.resolve_path(path).await?;
+        let item_id = self.live_item_id(path).await?;
         let url = format!("{}/invite", self.api_item(&item_id));
 
         let body = serde_json::json!({
@@ -3410,9 +3446,6 @@ mod tests {
         provider.connected = true;
         provider.api_origin_override = Some(format!("http://{addr}"));
         provider.test_access_token = Some("t".to_string());
-        provider
-            .path_cache
-            .insert("f.txt".to_string(), "F1".to_string());
         let rows: Vec<String> = provider
             .list_versions("/f.txt")
             .await
@@ -3444,6 +3477,153 @@ mod tests {
             seen.lock()
                 .unwrap()
                 .contains(&"POST /v1.0/me/drive/items/F1/versions/2.0/restoreVersion".to_string()),
+            "{:?}",
+            seen.lock().unwrap()
+        );
+    }
+
+    /// D1: a shortcut cached before another client removed it (and made a
+    /// plain folder under its name) is not trusted by a version action: the
+    /// path is read again in this drive, so the file now at the path is the
+    /// one listed, and the drive the shortcut pointed to is never asked.
+    #[tokio::test]
+    async fn a_version_action_reads_again_past_a_shortcut_removed_after_caching() {
+        use axum::response::IntoResponse;
+        use std::sync::{Arc, Mutex};
+        let seen: Arc<Mutex<Vec<String>>> = Arc::default();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let log = Arc::clone(&seen);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method, uri: axum::http::Uri| {
+                let log = Arc::clone(&log);
+                async move {
+                    let target = uri.to_string();
+                    log.lock().unwrap().push(format!("{method} {target}"));
+                    let file = |id: &str, size: u64| {
+                        axum::Json(serde_json::json!({
+                            "id": id, "name": "f.txt", "size": size, "file": {},
+                            "parentReference": { "path": "/drive/root:/Shared" },
+                        }))
+                        .into_response()
+                    };
+                    let versions = || {
+                        axum::Json(serde_json::json!({
+                            "value": [{"id": "1.0", "size": 4, "lastModifiedDateTime": "2026-01-01T00:00:00Z"}]
+                        }))
+                        .into_response()
+                    };
+                    match (method.as_str(), target.as_str()) {
+                        ("GET", "/v1.0/me/drive/root:/Shared/f.txt") => file("MINE", 4),
+                        ("GET", "/v1.0/drives/DRV/items/OLDROOT:/f.txt") => file("THEIRS", 9),
+                        ("GET", "/v1.0/me/drive/items/MINE/versions")
+                        | ("GET", "/v1.0/drives/DRV/items/THEIRS/versions") => versions(),
+                        _ => axum::http::StatusCode::NOT_FOUND.into_response(),
+                    }
+                }
+            },
+        ));
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = test_provider();
+        provider.connected = true;
+        provider.api_origin_override = Some(format!("http://{addr}"));
+        provider.test_access_token = Some("t".to_string());
+        provider
+            .remote_roots
+            .get_mut()
+            .unwrap()
+            .insert("Shared".into(), ("DRV".into(), "OLDROOT".into()));
+
+        let rows = provider.list_versions("/Shared/f.txt").await;
+        server.abort();
+        let rows: Vec<String> = rows.expect("versions").into_iter().map(|v| v.id).collect();
+        assert!(
+            !rows.is_empty() && rows.iter().all(|id| id.starts_with("MINE:")),
+            "the file at the path now is listed: {rows:?}"
+        );
+        let seen = seen.lock().unwrap();
+        assert!(
+            !seen.iter().any(|l| l.contains("/drives/DRV/")),
+            "the drive of the removed shortcut was asked: {seen:?}"
+        );
+    }
+
+    /// Graph answers the versions a page at a time, with an
+    /// `@odata.nextLink`: every page is read, so a version on the second
+    /// page is listed and restored, not refused as missing.
+    #[tokio::test]
+    async fn a_onedrive_version_on_a_later_page_is_listed_and_restored() {
+        use axum::response::IntoResponse;
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::{Arc, Mutex};
+        let seen: Arc<Mutex<Vec<String>>> = Arc::default();
+        let restored = Arc::new(AtomicBool::new(false));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let base = format!("http://{addr}");
+        let (log, done) = (Arc::clone(&seen), Arc::clone(&restored));
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method, uri: axum::http::Uri| {
+                let (log, done, base) = (Arc::clone(&log), Arc::clone(&done), base.clone());
+                async move {
+                    let target = uri.to_string();
+                    log.lock().unwrap().push(format!("{method} {target}"));
+                    let restored = done.load(Ordering::SeqCst);
+                    match (method.as_str(), target.as_str()) {
+                        ("GET", "/v1.0/me/drive/items/F1/versions") => {
+                            let mut value = vec![
+                                serde_json::json!({"id": "3.0", "size": 5, "lastModifiedDateTime": "2026-01-03T00:00:00Z"}),
+                                serde_json::json!({"id": "2.0", "size": 3, "lastModifiedDateTime": "2026-01-02T00:00:00Z"}),
+                            ];
+                            if restored {
+                                value.insert(0, serde_json::json!({"id": "4.0", "size": 2, "lastModifiedDateTime": "2026-01-04T00:00:00Z"}));
+                            }
+                            axum::Json(serde_json::json!({
+                                "value": value,
+                                "@odata.nextLink": format!("{base}/v1.0/me/drive/items/F1/versions?$skiptoken=p2"),
+                            }))
+                            .into_response()
+                        }
+                        ("GET", "/v1.0/me/drive/items/F1/versions?$skiptoken=p2") => {
+                            axum::Json(serde_json::json!({
+                                "value": [{"id": "1.0", "size": 2, "lastModifiedDateTime": "2026-01-01T00:00:00Z"}]
+                            }))
+                            .into_response()
+                        }
+                        ("POST", "/v1.0/me/drive/items/F1/versions/1.0/restoreVersion") => {
+                            done.store(true, Ordering::SeqCst);
+                            axum::http::StatusCode::NO_CONTENT.into_response()
+                        }
+                        ("GET", "/v1.0/me/drive/root:/f.txt") => axum::Json(serde_json::json!({
+                            "id": "F1", "name": "f.txt", "size": if restored { 2 } else { 5 }, "file": {},
+                            "parentReference": { "path": "/drive/root:" },
+                        }))
+                        .into_response(),
+                        _ => axum::http::StatusCode::NOT_FOUND.into_response(),
+                    }
+                }
+            },
+        ));
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = test_provider();
+        provider.connected = true;
+        provider.api_origin_override = Some(format!("http://{addr}"));
+        provider.test_access_token = Some("t".to_string());
+        let rows: Vec<String> = provider
+            .list_versions("/f.txt")
+            .await
+            .expect("versions")
+            .into_iter()
+            .map(|v| v.id)
+            .collect();
+        assert_eq!(rows, ["F1:3.0", "F1:2.0", "F1:1.0"]);
+        let outcome = provider.restore_version("/f.txt", "F1:1.0").await;
+        server.abort();
+        assert!(outcome.is_ok(), "{outcome:?}");
+        assert!(
+            seen.lock()
+                .unwrap()
+                .contains(&"POST /v1.0/me/drive/items/F1/versions/1.0/restoreVersion".to_string()),
             "{:?}",
             seen.lock().unwrap()
         );
@@ -3500,9 +3680,6 @@ mod tests {
         std::fs::write(&out, "mine").unwrap();
         let to = out.to_str().unwrap();
         // Listed from F1, cached as F1; the server now has F2 at the path.
-        provider
-            .path_cache
-            .insert("f.txt".to_string(), "F1".to_string());
         assert!(provider
             .download_version("/f.txt", "F1:2.0", to)
             .await
@@ -3528,10 +3705,6 @@ mod tests {
             0,
             "{:?}",
             seen.lock().unwrap()
-        );
-        assert_eq!(
-            provider.path_cache.get("f.txt").map(String::as_str),
-            Some("F2")
         );
         *at_path.lock().unwrap() = "F3";
         let partial = provider.download_version("/f.txt", "F3:2.0", to).await;
@@ -3561,23 +3734,6 @@ mod tests {
             matches!(outcome, Err(ProviderError::AlreadyExists(_))),
             "{outcome:?}"
         );
-    }
-
-    /// After a replace the id cached for `b.txt` was the item Graph sent to
-    /// the recycle bin, and after a folder rename the ids cached under the
-    /// old path were the moved items: a later delete of `b.txt` or of a new
-    /// `d/x.txt` acted on them. Both paths and their subtrees are forgotten.
-    #[tokio::test]
-    async fn a_rename_or_replace_forgets_the_ids_cached_under_both_paths() {
-        let (mut provider, _) = provider_on_graph(false).await;
-        for (path, id) in [("b.txt", "B"), ("d", "D"), ("d/x.txt", "X"), ("dx", "DX")] {
-            provider.path_cache.insert(path.to_string(), id.to_string());
-        }
-        provider.replace("/a.txt", "/b.txt").await.expect("replace");
-        provider.rename("/d", "/e").await.expect("rename");
-        let mut cached: Vec<&str> = provider.path_cache.keys().map(String::as_str).collect();
-        cached.sort();
-        assert_eq!(cached, ["dx"], "a sibling sharing the prefix stays");
     }
 
     /// Graph answers 409 for other conflicts than a taken name, a missing
@@ -3735,8 +3891,6 @@ mod tests {
         p.test_access_token = Some("fixture".into());
         p.current_path = "/parent".into();
         for path in ["/parent/child", "relative-child"] {
-            p.path_cache
-                .insert("parent".into(), "deleted-parent-id".into());
             p.mkdir(path)
                 .await
                 .expect("mkdir must re-resolve the existing parent");
@@ -4704,38 +4858,111 @@ mod tests {
         }
     }
 
-    // Pre-existing, found by the #960 review: delete dropped only the exact
-    // cache key, so every descendant kept an id that now points into the
-    // recycle bin, and a folder recreated under the same name resolved to it.
+    /// A restore whose versions listing fails sends nothing: without the
+    /// listing the current row cannot be told, and `F1:3.0` may be the
+    /// current version itself.
     #[tokio::test]
-    async fn ehud_delete_forgets_the_cached_subtree() {
-        let (mut p, requests, server) =
-            graph_fixture(|_, _| (axum::http::StatusCode::NO_CONTENT, serde_json::Value::Null))
-                .await;
-        for (path, id) in [
-            ("dir", "id-dir"),
-            ("dir/sub", "id-sub"),
-            ("Dir/Sub", "id-sub"),
-            ("dir/sub/file", "id-file"),
-            ("DIR/sub/file", "id-file"),
-            ("dirx", "id-dirx"),
-            ("Dirx", "id-dirx"),
-        ] {
-            p.path_cache.insert(path.into(), id.into());
-        }
-        p.delete("/dir").await.unwrap();
+    async fn a_restore_whose_listing_fails_sends_no_restore() {
+        use axum::http::{Method, StatusCode};
+        let (mut p, requests, server) = graph_fixture(|method, path| match (method, path) {
+            (&Method::GET, "/v1.0/me/drive/root:/f.txt") => (
+                StatusCode::OK,
+                serde_json::json!({ "id": "F1", "name": "f.txt", "size": 3, "file": {} }),
+            ),
+            (&Method::GET, "/v1.0/me/drive/items/F1/versions") => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                serde_json::json!({ "error": { "code": "generalException" } }),
+            ),
+            _ => (StatusCode::NO_CONTENT, serde_json::Value::Null),
+        })
+        .await;
+        let outcome = p.restore_version("/f.txt", "F1:3.0").await;
+        assert!(
+            matches!(&outcome, Err(ProviderError::TransferFailed(m)) if m.contains("no restore was sent")),
+            "{outcome:?}"
+        );
+        let requests = requests.lock().unwrap();
+        assert!(
+            !requests.iter().any(|r| r.starts_with("POST ")),
+            "{requests:?}"
+        );
+        server.abort();
+    }
+
+    /// A shortcut `Shared` learned earlier, then removed by another client
+    /// and made again as a plain folder: a delete of `/Shared/f.txt` reads
+    /// the shortcut again (one request), finds a plain folder, and deletes
+    /// the file in this drive, never the one in the drive the shortcut
+    /// pointed to.
+    #[tokio::test]
+    async fn a_shortcut_removed_after_caching_is_never_acted_through() {
+        use axum::http::{Method, StatusCode};
+        let (mut p, requests, server) = graph_fixture(|method, path| match (method, path) {
+            (&Method::GET, "/v1.0/me/drive/root:/Shared") => (
+                StatusCode::OK,
+                serde_json::json!({ "id": "SH", "name": "Shared", "folder": {} }),
+            ),
+            (&Method::GET, "/v1.0/me/drive/root:/Shared/f.txt") => (
+                StatusCode::OK,
+                serde_json::json!({ "id": "MINE", "name": "f.txt", "size": 3, "file": {} }),
+            ),
+            (&Method::DELETE, _) => (StatusCode::NO_CONTENT, serde_json::Value::Null),
+            _ => (
+                StatusCode::NOT_FOUND,
+                serde_json::json!({ "error": { "code": "itemNotFound" } }),
+            ),
+        })
+        .await;
+        p.remote_roots
+            .get_mut()
+            .unwrap()
+            .insert("Shared".into(), ("DRV".into(), "OLDROOT".into()));
+        p.delete("/Shared/f.txt").await.expect("delete");
         assert_eq!(
             *requests.lock().unwrap(),
-            ["DELETE /v1.0/me/drive/items/id-dir"]
+            [
+                "GET /v1.0/me/drive/root:/Shared",
+                "GET /v1.0/me/drive/root:/Shared/f.txt",
+                "DELETE /v1.0/me/drive/items/MINE",
+            ]
         );
-        let mut kept: Vec<_> = p.path_cache.keys().cloned().collect();
-        kept.sort();
-        // OneDrive paths ignore case: `Dir/Sub` and `DIR/sub/file` name items
-        // under the deleted folder too, while `Dirx` is still a sibling.
+        server.abort();
+    }
+
+    /// A shortcut still in place costs one request, its own lookup, and the
+    /// file under it is addressed in the drive it points to.
+    #[tokio::test]
+    async fn a_cached_shortcut_still_in_place_costs_one_request() {
+        use axum::http::{Method, StatusCode};
+        let (mut p, requests, server) = graph_fixture(|method, path| match (method, path) {
+            (&Method::GET, "/v1.0/me/drive/root:/Shared") => (
+                StatusCode::OK,
+                serde_json::json!({ "id": "SH", "name": "Shared", "remoteItem": {
+                    "id": "TGT", "folder": {}, "parentReference": { "driveId": "DRV" } } }),
+            ),
+            (&Method::GET, "/v1.0/drives/DRV/items/TGT:/f.txt") => (
+                StatusCode::OK,
+                serde_json::json!({ "id": "THEIRS", "name": "f.txt", "size": 3, "file": {} }),
+            ),
+            (&Method::DELETE, _) => (StatusCode::NO_CONTENT, serde_json::Value::Null),
+            _ => (
+                StatusCode::NOT_FOUND,
+                serde_json::json!({ "error": { "code": "itemNotFound" } }),
+            ),
+        })
+        .await;
+        p.remote_roots
+            .get_mut()
+            .unwrap()
+            .insert("Shared".into(), ("DRV".into(), "TGT".into()));
+        p.delete("/Shared/f.txt").await.expect("delete");
         assert_eq!(
-            kept,
-            ["Dirx", "dirx"],
-            "a sibling sharing the prefix stays cached"
+            *requests.lock().unwrap(),
+            [
+                "GET /v1.0/me/drive/root:/Shared",
+                "GET /v1.0/drives/DRV/items/TGT:/f.txt",
+                "DELETE /v1.0/drives/DRV/items/THEIRS",
+            ]
         );
         server.abort();
     }
@@ -4761,20 +4988,16 @@ mod tests {
             ),
         })
         .await;
-        p.path_cache.insert("docs/a.txt".into(), "OLD".into());
-        p.path_cache.insert("Docs/A.txt".into(), "OLD".into());
         p.delete("/docs/a.txt")
             .await
             .expect("the live item is deleted");
         assert_eq!(
             *requests.lock().unwrap(),
             [
-                "DELETE /v1.0/me/drive/items/OLD",
                 "GET /v1.0/me/drive/root:/docs/a.txt",
                 "DELETE /v1.0/me/drive/items/NEW",
             ]
         );
-        assert!(p.path_cache.is_empty(), "{:?}", p.path_cache);
         server.abort();
     }
 
@@ -4789,7 +5012,6 @@ mod tests {
             )
         })
         .await;
-        p.path_cache.insert("docs/a.txt".into(), "OLD".into());
         let outcome = p.delete("/docs/a.txt").await;
         assert!(
             matches!(outcome, Err(ProviderError::NotFound(_))),
@@ -4799,7 +5021,6 @@ mod tests {
         assert_eq!(
             *requests.lock().unwrap(),
             [
-                "DELETE /v1.0/me/drive/items/OLD",
                 "GET /v1.0/me/drive/root:/docs/a.txt",
                 "GET /v1.0/me/drive/root:/docs",
             ]
@@ -5035,7 +5256,6 @@ mod tests {
         })
         .await;
         p.set_no_versions(true);
-        p.path_cache.insert("a.txt".into(), "OLD".into());
         let file = tempfile::NamedTempFile::new().unwrap();
         std::fs::write(file.path(), b"new").unwrap();
         p.upload(file.path().to_str().unwrap(), "/a.txt", None)

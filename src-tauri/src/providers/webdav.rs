@@ -3281,12 +3281,27 @@ impl WebDavProvider {
             .into_iter()
             .filter(|row| !row.file_id.is_empty());
         match (rows.next(), rows.next()) {
-            (Some(row), None) => Ok(NextcloudFile {
-                file_id: row.file_id,
-                size: row.size.unwrap_or(0),
-                modified: row.modified,
-                etag: row.etag,
-            }),
+            (Some(row), None) => {
+                // The one row must be the file asked for: a lone row for
+                // `/other/a.txt` is not `/a.txt` (decoded segments, as in
+                // `nextcloud_list_file_ids`).
+                let request_path =
+                    Self::dav_path_segments(Self::url_path_component(&self.build_url(path)), &[]);
+                let listing_path =
+                    Self::dav_path_segments(&Self::encode_path(path.trim_start_matches('/')), &[]);
+                let href = Self::dav_path_segments(&row.href, &request_path);
+                if href != request_path && href != listing_path {
+                    return Err(ProviderError::ServerError(format!(
+                        "The file id answer for {path} names another entry"
+                    )));
+                }
+                Ok(NextcloudFile {
+                    file_id: row.file_id,
+                    size: row.size.unwrap_or(0),
+                    modified: row.modified,
+                    etag: row.etag,
+                })
+            }
             (None, _) => Err(ProviderError::NotFound(format!(
                 "{path} has no Nextcloud file id: it has no versions"
             ))),
@@ -3320,6 +3335,16 @@ impl WebDavProvider {
         path: &str,
         version_id: &str,
     ) -> Result<String, ProviderError> {
+        Ok(self.nextcloud_version_target(path, version_id).await?.0)
+    }
+
+    /// [`Self::nextcloud_version_url`] with the file id the URL was built
+    /// for, which a bare label is then bound to.
+    async fn nextcloud_version_target(
+        &mut self,
+        path: &str,
+        version_id: &str,
+    ) -> Result<(String, String), ProviderError> {
         let (bound_to, version) = nextcloud_split_version_id(version_id);
         if !nextcloud_trash_id_is_one_segment(version) {
             return Err(ProviderError::InvalidConfig(format!(
@@ -3334,12 +3359,13 @@ impl WebDavProvider {
                  now {file_id}): list its versions again"
             )));
         }
-        Ok(format!(
+        let url = format!(
             "{}versions/{}/{}",
             root,
             encode_nextcloud_trash_segment(&file_id),
             encode_nextcloud_trash_segment(version)
-        ))
+        );
+        Ok((url, file_id))
     }
 
     /// Nextcloud versions of `path`: the current contents first, under
@@ -3387,10 +3413,12 @@ impl WebDavProvider {
                 Ok(now) if now == file_id => {
                     ProviderError::NotSupported(NEXTCLOUD_VERSIONS_OFF.into())
                 }
-                _ => ProviderError::NotFound(format!(
+                Ok(_) | Err(ProviderError::NotFound(_)) => ProviderError::NotFound(format!(
                     "{path} was removed or replaced while its versions were listed: \
                      list its versions again"
                 )),
+                // A lookup that failed tells neither.
+                Err(e) => e,
             });
         }
         if !status.is_success() && status != StatusCode::MULTI_STATUS {
@@ -3402,6 +3430,22 @@ impl WebDavProvider {
         let xml = String::from_utf8(body).map_err(|e| {
             ProviderError::ParseError(format!("Versions listing is not UTF-8: {e}"))
         })?;
+        // A write between the two PROPFINDs would leave `current` naming the
+        // revision the collection now lists as history: the file is read
+        // again, and another id, validator, size or time asks for a new list.
+        let again = self.nextcloud_file_of(path).await?;
+        if (&again.file_id, &again.etag, again.size, &again.modified)
+            != (
+                &current.file_id,
+                &current.etag,
+                current.size,
+                &current.modified,
+            )
+        {
+            return Err(ProviderError::NotFound(format!(
+                "{path} changed while its versions were listed: list its versions again"
+            )));
+        }
         // Ids are the Unix time each version was written. Nextcloud 26 and
         // later list the current contents too, under the file's own mtime:
         // that row becomes the file itself (downloaded from the file, never
@@ -3539,13 +3583,17 @@ impl WebDavProvider {
         // The read is conditional on the ETag answered with the id: a file
         // swapped in and back out while the body was read (the id checks
         // before and after would both pass) answers 412, not its bytes.
+        // Without an ETag the read could not be bound: it is not sent.
+        let Some(etag) = file.etag else {
+            return Err(ProviderError::TransferFailed(format!(
+                "Nextcloud answered no ETag for {path}: its current contents cannot be read \
+                 bound to the file listed, download the file itself instead"
+            )));
+        };
         let resp = self
             .send_replaying_digest(|| {
-                let request = self.request(Method::GET, path);
-                match &file.etag {
-                    Some(etag) => request.header(reqwest::header::IF_MATCH, etag.as_str()),
-                    None => request,
-                }
+                self.request(Method::GET, path)
+                    .header(reqwest::header::IF_MATCH, etag.as_str())
             })
             .await?;
         if resp.status() == StatusCode::NOT_FOUND {
@@ -3606,11 +3654,22 @@ impl WebDavProvider {
                 "This is already the current version".into(),
             ));
         }
-        let url = self.nextcloud_version_url(path, version_id).await?;
+        let (url, file_id) = self.nextcloud_version_target(path, version_id).await?;
+        // A bare label is the version of the file the URL was built for: the
+        // listing must hold it for that file, and the path must still be
+        // that file when the MOVE goes out.
+        let bound = nextcloud_bound_version_id(&file_id, nextcloud_split_version_id(version_id).1);
         // Nextcloud answers the MOVE 201 even when its rollback failed
         // (RestoreFolder::moveInto drops the rollback's result): the file is
         // checked after it.
-        let selected = super::refuse_a_restore_that_changes_nothing(self, path, version_id).await?;
+        let selected = super::refuse_a_restore_that_changes_nothing(self, path, &bound).await?;
+        let now = self.nextcloud_file_id_of(path).await?;
+        if now != file_id {
+            return Err(ProviderError::NotFound(format!(
+                "{path} is no longer the file whose versions were listed (file id {file_id}, \
+                 now {now}): list its versions again"
+            )));
+        }
         let dest = format!("{}restore/target", self.nextcloud_versions_root()?);
         let resp = self
             .send_replaying_digest(|| {
@@ -3631,7 +3690,7 @@ impl WebDavProvider {
                 "Version restore failed: HTTP {status}"
             )));
         }
-        super::confirm_version_restored(self, path, selected.as_ref()).await
+        super::confirm_version_restored(self, path, Some(&selected)).await
     }
 
     /// Original location of `path` as Nextcloud recorded it: the decoded
@@ -5447,10 +5506,11 @@ impl StorageProvider for WebDavProvider {
             }
             StatusCode::NOT_FOUND => Err(ProviderError::NotFound(remote_path.to_string())),
             status => {
-                // S4-T01 partner diagnostic: the status, the URL and the
-                // names of the headers, never their values or the body (a
-                // refusal can carry a session cookie or echo a credential).
-                // Kept at INFO so CI and production see it.
+                // S4-T01 partner diagnostic: the status, the path asked and
+                // the names of the headers, never their values, the body or
+                // the configured URL (its query or path can hold a
+                // credential, as a refusal can carry a session cookie or
+                // echo one). Kept at INFO so CI and production see it.
                 let header_names: String = response
                     .headers()
                     .keys()
@@ -5458,9 +5518,9 @@ impl StorageProvider for WebDavProvider {
                     .collect::<Vec<_>>()
                     .join(", ");
                 tracing::info!(
-                    "[WEBDAV] download non-success: status={} url={} headers=[{}]",
+                    "[WEBDAV] download non-success: status={} path={} headers=[{}]",
                     status,
-                    self.build_url(remote_path),
+                    remote_path,
                     header_names
                 );
                 Err(ProviderError::TransferFailed(format!(
@@ -7382,8 +7442,8 @@ mod tests {
             }
         }
         use axum::response::IntoResponse;
-        // The file id lookup answers, so the current-version download
-        // reaches its own GET; every GET is refused with a cookie and an
+        // The file id lookup answers with an ETag, so the current-version
+        // download reaches its own GET; every GET is refused with a cookie and an
         // echoed credential.
         let gets = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let counted = std::sync::Arc::clone(&gets);
@@ -7394,7 +7454,7 @@ mod tests {
                     if method.as_str() == "PROPFIND" {
                         return (
                             axum::http::StatusCode::MULTI_STATUS,
-                            r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns"><d:response><d:href>/remote.php/dav/files/user/a.txt</d:href><d:propstat><d:prop><oc:fileid>60</oc:fileid><d:getcontentlength>4</d:getcontentlength><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>"#,
+                            r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns"><d:response><d:href>/remote.php/dav/files/user/a.txt</d:href><d:propstat><d:prop><oc:fileid>60</oc:fileid><d:getetag>"e60"</d:getetag><d:getcontentlength>4</d:getcontentlength><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>"#,
                         )
                             .into_response();
                     }
@@ -7419,8 +7479,9 @@ mod tests {
             .with_writer(capture.clone())
             .finish();
         let _guard = tracing::subscriber::set_default(subscriber);
+        // A credential in the configured URL's query stays out of the log.
         let mut provider = WebDavProvider::new(test_config(&format!(
-            "http://{addr}/remote.php/dav/files/user/"
+            "http://{addr}/remote.php/dav/files/user/?access=URL-SECRET-3"
         )))
         .unwrap();
         provider.connected = true;
@@ -7448,6 +7509,10 @@ mod tests {
         assert!(log.contains("set-cookie"), "{log}");
         assert!(!log.contains("COOKIE-SECRET-1"), "{log}");
         assert!(!log.contains("BODY-SECRET-2"), "{log}");
+        assert!(
+            !log.contains("URL-SECRET-3") && !shown.contains("URL-SECRET-3"),
+            "{log}"
+        );
     }
 
     #[test]
@@ -8007,6 +8072,9 @@ mod tests {
         let log: std::sync::Arc<std::sync::Mutex<Vec<String>>> = Default::default();
         let swap_listings: std::sync::Arc<std::sync::atomic::AtomicUsize> = Default::default();
         let gone_listings: std::sync::Arc<std::sync::atomic::AtomicUsize> = Default::default();
+        let later_lookups: std::sync::Arc<
+            std::sync::Mutex<std::collections::HashMap<String, usize>>,
+        > = Default::default();
         // r.txt (file 50) holds 20 bytes until its 8-byte version is moved
         // to the restore target, then those 8.
         let restored_r: std::sync::Arc<std::sync::atomic::AtomicBool> = Default::default();
@@ -8016,6 +8084,7 @@ mod tests {
                 let seen = seen.clone();
                 let swap_listings = swap_listings.clone();
                 let gone_listings = gone_listings.clone();
+                let later_lookups = later_lookups.clone();
                 let restored_r = restored_r.clone();
                 async move {
                     let method = req.method().to_string();
@@ -8065,7 +8134,7 @@ mod tests {
                         ("PROPFIND", "/remote.php/dav/files/user/a.txt") => reply(
                             207,
                             r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns">
-<d:response><d:href>/remote.php/dav/files/user/a.txt</d:href><d:propstat><d:prop><oc:fileid>42</oc:fileid><d:getcontentlength>20</d:getcontentlength><d:getlastmodified>Wed, 15 Nov 2023 10:00:00 GMT</d:getlastmodified><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
+<d:response><d:href>/remote.php/dav/files/user/a.txt</d:href><d:propstat><d:prop><oc:fileid>42</oc:fileid><d:getetag>&quot;e42&quot;</d:getetag><d:getcontentlength>20</d:getcontentlength><d:getlastmodified>Wed, 15 Nov 2023 10:00:00 GMT</d:getlastmodified><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
 </d:multistatus>"#,
                         ),
                         ("GET", "/remote.php/dav/files/user/a.txt") => reply(200, "the body of now"),
@@ -8118,15 +8187,16 @@ mod tests {
 <d:response><d:href>/remote.php/dav/versions/other/versions/46/1700000200</d:href><d:propstat><d:prop><d:getcontentlength>8</d:getcontentlength><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
 </d:multistatus>"#,
                         ),
-                        // swap/e.txt is file 47 at its first two lookups and
-                        // file 48 from the third on.
+                        // swap/e.txt is file 47 at its first three lookups
+                        // (the listing reads it twice) and file 48 from the
+                        // fourth on.
                         ("PROPFIND", "/remote.php/dav/files/user/swap/e.txt") => {
                             let n = swap_listings.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                            let id = if n < 2 { 47 } else { 48 };
+                            let id = if n < 3 { 47 } else { 48 };
                             reply(
                                 207,
                                 &format!(r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns">
-<d:response><d:href>/remote.php/dav/files/user/swap/e.txt</d:href><d:propstat><d:prop><oc:fileid>{id}</oc:fileid><d:getcontentlength>9</d:getcontentlength><d:getlastmodified>Wed, 15 Nov 2023 10:00:00 GMT</d:getlastmodified><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
+<d:response><d:href>/remote.php/dav/files/user/swap/e.txt</d:href><d:propstat><d:prop><oc:fileid>{id}</oc:fileid><d:getetag>&quot;e{id}&quot;</d:getetag><d:getcontentlength>9</d:getcontentlength><d:getlastmodified>Wed, 15 Nov 2023 10:00:00 GMT</d:getlastmodified><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
 </d:multistatus>"#),
                             )
                         }
@@ -8172,13 +8242,55 @@ mod tests {
 <d:response><d:href>/remote.php/dav/files/user/d.txt</d:href><d:propstat><d:prop><oc:fileid>46</oc:fileid><d:getcontentlength>6</d:getcontentlength><d:getlastmodified>Wed, 15 Nov 2023 10:00:00 GMT</d:getlastmodified><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
 </d:multistatus>"#,
                         ),
+                        // m.txt answers its lookup with a lone row for
+                        // other/m.txt (file 77).
+                        ("PROPFIND", "/remote.php/dav/files/user/m.txt") => reply(
+                            207,
+                            r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns"><d:response><d:href>/remote.php/dav/files/user/other/m.txt</d:href><d:propstat><d:prop><oc:fileid>77</oc:fileid></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>"#,
+                        ),
+                        // u.txt (file 54) gets a new upload, ETag u2, between
+                        // the two lookups of a listing; t.txt (file 53) has
+                        // no versions route and its second lookup fails;
+                        // rb.txt is file 60 at its first lookup and file 61
+                        // after, both holding a version 1700000000; lf.txt
+                        // (file 62) has a versions route that fails.
+                        ("PROPFIND", p @ ("/remote.php/dav/files/user/u.txt"
+                        | "/remote.php/dav/files/user/t.txt"
+                        | "/remote.php/dav/files/user/rb.txt"
+                        | "/remote.php/dav/files/user/lf.txt")) => {
+                            let n = {
+                                let mut seen = later_lookups.lock().unwrap();
+                                let n = seen.entry(p.to_string()).or_insert(0);
+                                *n += 1;
+                                *n - 1
+                            };
+                            let (id, etag) = match p {
+                                "/remote.php/dav/files/user/u.txt" => (54, if n == 0 { "u1" } else { "u2" }),
+                                "/remote.php/dav/files/user/t.txt" if n > 0 => return reply(500, ""),
+                                "/remote.php/dav/files/user/t.txt" => (53, "t1"),
+                                "/remote.php/dav/files/user/rb.txt" => (if n == 0 { 60 } else { 61 }, "r"),
+                                _ => (62, "l"),
+                            };
+                            let leaf = p.rsplit('/').next().unwrap();
+                            reply(
+                                207,
+                                &format!(r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns"><d:response><d:href>/remote.php/dav/files/user/{leaf}</d:href><d:propstat><d:prop><oc:fileid>{id}</oc:fileid><d:getetag>&quot;{etag}&quot;</d:getetag><d:getcontentlength>3</d:getcontentlength><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>"#),
+                            )
+                        }
+                        ("PROPFIND", p @ ("/remote.php/dav/versions/user/versions/54/"
+                        | "/remote.php/dav/versions/user/versions/60/"
+                        | "/remote.php/dav/versions/user/versions/61/")) => reply(
+                            207,
+                            &format!(r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:"><d:response><d:href>{p}1700000000</d:href><d:propstat><d:prop><d:getcontentlength>8</d:getcontentlength><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>"#),
+                        ),
+                        ("PROPFIND", "/remote.php/dav/versions/user/versions/62/") => reply(500, ""),
                         ("MOVE", "/remote.php/dav/versions/user/versions/42/1700000500") => {
                             reply(500, "<error>user=user password=hunter2-pass token=tok-abc123</error>")
                         }
                         ("PROPFIND", "/remote.php/dav/files/user/b.txt") => reply(
                             207,
                             r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns">
-<d:response><d:href>/remote.php/dav/files/user/b.txt</d:href><d:propstat><d:prop><oc:fileid>43</oc:fileid><d:getcontentlength>12</d:getcontentlength><d:getlastmodified>Tue, 14 Nov 2023 22:21:40 GMT</d:getlastmodified><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
+<d:response><d:href>/remote.php/dav/files/user/b.txt</d:href><d:propstat><d:prop><oc:fileid>43</oc:fileid><d:getetag>&quot;e43&quot;</d:getetag><d:getcontentlength>12</d:getcontentlength><d:getlastmodified>Tue, 14 Nov 2023 22:21:40 GMT</d:getlastmodified><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
 </d:multistatus>"#,
                         ),
                         ("PROPFIND", "/remote.php/dav/versions/user/versions/43/") => reply(
@@ -8476,13 +8588,89 @@ mod tests {
         let (base, log, server) = serve_nextcloud_versions().await;
         let mut provider = nextcloud_versions_provider(&base);
         let outcome = provider.list_versions("/c.txt").await;
+        let children = provider.nextcloud_list_file_ids("/").await.expect("ids");
         server.abort();
         assert!(
             matches!(outcome, Err(ProviderError::NotFound(_))),
             "{outcome:?}"
         );
+        assert!(
+            children.contains(&("a.txt".to_string(), "42".to_string())),
+            "{children:?}"
+        );
+        assert!(
+            children
+                .iter()
+                .all(|(leaf, id)| leaf != "c.txt" && id != "99"),
+            "{children:?}"
+        );
         let log = log.lock().unwrap().clone();
         assert!(!log.iter().any(|l| l.contains("/versions/99/")), "{log:?}");
+    }
+
+    /// The Nextcloud version paths check what each answer names: a lookup
+    /// whose lone row is another file (#26), a file written between the two
+    /// reads of a listing (#25), a recheck that fails after a versions 404
+    /// (its own error, not "removed"), a file without an ETag (no current
+    /// download), a bare label whose file is replaced before the preflight
+    /// (no MOVE) and a restore whose listing fails (no MOVE).
+    #[tokio::test]
+    async fn nextcloud_version_paths_check_what_each_answer_names() {
+        let (base, log, server) = serve_nextcloud_versions().await;
+        let mut provider = nextcloud_versions_provider(&base);
+        let other = provider.list_versions("/m.txt").await;
+        let written = provider.list_versions("/u.txt").await;
+        let unknown = provider.list_versions("/t.txt").await;
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("d.txt");
+        let no_etag = provider
+            .download_version("/d.txt", "46:current", local.to_str().unwrap())
+            .await;
+        let replaced = provider.restore_version("/rb.txt", "1700000000").await;
+        let unlisted = provider.restore_version("/lf.txt", "62:1700000000").await;
+        let bare = provider.restore_version("/r.txt", "1700000000").await;
+        server.abort();
+        assert!(
+            matches!(&other, Err(ProviderError::ServerError(m)) if m.contains("another entry")),
+            "{other:?}"
+        );
+        assert!(
+            matches!(&written, Err(ProviderError::NotFound(m)) if m.contains("changed while")),
+            "{written:?}"
+        );
+        assert!(
+            matches!(&unknown, Err(ProviderError::ServerError(_))),
+            "{unknown:?}"
+        );
+        assert!(
+            matches!(&no_etag, Err(ProviderError::TransferFailed(m)) if m.contains("ETag")),
+            "{no_etag:?}"
+        );
+        assert!(!local.exists());
+        assert!(
+            matches!(&replaced, Err(ProviderError::NotFound(m)) if m.contains("list its versions again")),
+            "{replaced:?}"
+        );
+        assert!(
+            matches!(&unlisted, Err(ProviderError::TransferFailed(m)) if m.contains("no restore was sent")),
+            "{unlisted:?}"
+        );
+        bare.expect("a bare label of the unchanged file restores");
+        let log = log.lock().unwrap().clone();
+        for absent in [
+            "/versions/77/",
+            "GET /remote.php/dav/files/user/d.txt",
+            "MOVE /remote.php/dav/versions/user/versions/60/",
+            "MOVE /remote.php/dav/versions/user/versions/61/",
+            "MOVE /remote.php/dav/versions/user/versions/62/",
+        ] {
+            assert!(!log.iter().any(|l| l.contains(absent)), "{absent}: {log:?}");
+        }
+        assert!(
+            log.iter()
+                .any(|l| l.starts_with("MOVE /remote.php/dav/versions/user/versions/50/1700000000")),
+            "{log:?}"
+        );
     }
 
     /// A refused restore says the status and nothing of the body, which may
@@ -11299,20 +11487,47 @@ mod tests {
     async fn a_nextcloud_version_restore_replays_a_rotated_nonce_exactly_once() {
         const CREATED_201: &str =
             "HTTP/1.1 201 Created\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
-        let body = r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns"><d:response><d:href>/remote.php/dav/files/user/a.txt</d:href><d:propstat><d:prop><oc:fileid>42</oc:fileid></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>"#;
-        let file_ids: &'static str = Box::leak(
-            format!(
-                "HTTP/1.1 207 Multi-Status\r\nContent-Type: application/xml\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-                body.len()
+        let multistatus = |responses: String| -> &'static str {
+            let body = format!(
+                r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns">{responses}</d:multistatus>"#
+            );
+            Box::leak(
+                format!(
+                    "HTTP/1.1 207 Multi-Status\r\nContent-Type: application/xml\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .into_boxed_str(),
             )
-            .into_boxed_str(),
-        );
+        };
+        let file = |etag: &str, size: u64, modified: &str| {
+            multistatus(format!(
+                r#"<d:response><d:href>/remote.php/dav/files/user/a.txt</d:href><d:propstat><d:prop><oc:fileid>42</oc:fileid><d:getetag>"{etag}"</d:getetag><d:getcontentlength>{size}</d:getcontentlength><d:getlastmodified>{modified}</d:getlastmodified><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>"#
+            ))
+        };
+        let version = |id: u64, size: u64| {
+            format!(
+                r#"<d:response><d:href>/remote.php/dav/versions/user/versions/42/{id}</d:href><d:propstat><d:prop><d:getcontentlength>{size}</d:getcontentlength><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>"#
+            )
+        };
+        let collection = r#"<d:response><d:href>/remote.php/dav/versions/user/versions/42/</d:href><d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>"#;
+        // a.txt holds 9 bytes over its 8-byte version 1700000000; after the
+        // restore it holds those 8 bytes, the 9 kept as a version.
+        let before = file("e1", 9, "Wed, 15 Nov 2023 00:00:00 GMT");
+        let after = file("e2", 8, "Thu, 16 Nov 2023 00:00:00 GMT");
+        let listed = multistatus(format!("{collection}{}", version(1_700_000_000, 8)));
+        let listed_after = multistatus(format!(
+            "{collection}{}{}",
+            version(1_700_000_000, 8),
+            version(1_700_006_400, 9)
+        ));
+        // The id lookup, the listing (file, versions, file again) and the
+        // file again before the MOVE; then the MOVE, and the listing that
+        // checks it.
+        let until_move = [before, before, listed, before, before];
 
-        // The listing before the restore is answered 404: it decides nothing,
-        // so the restore goes on and nothing is listed after it.
-        const GONE_404: &str =
-            "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
-        let (url, hits) = spawn_http_stub(vec![file_ids, GONE_404, ROTATED_401, CREATED_201]).await;
+        let mut answers = until_move.to_vec();
+        answers.extend([ROTATED_401, CREATED_201, after, listed_after, after]);
+        let (url, hits) = spawn_http_stub(answers).await;
         let mut provider = digest_provider(&format!("{url}/remote.php/dav/files/user/"));
         provider
             .restore_version("/a.txt", "42:1700000000")
@@ -11320,25 +11535,20 @@ mod tests {
             .expect("one rotation is survived");
         assert_eq!(
             hits.load(Ordering::SeqCst),
-            4,
-            "file id, listing, MOVE, one replay"
+            10,
+            "lookups and listing, MOVE, one replay, the check"
         );
 
-        let (url, hits) = spawn_http_stub(vec![
-            file_ids,
-            GONE_404,
-            ROTATED_401,
-            ROTATED_AGAIN_401,
-            CREATED_201,
-        ])
-        .await;
+        let mut answers = until_move.to_vec();
+        answers.extend([ROTATED_401, ROTATED_AGAIN_401, CREATED_201]);
+        let (url, hits) = spawn_http_stub(answers).await;
         let mut provider = digest_provider(&format!("{url}/remote.php/dav/files/user/"));
         let outcome = provider.restore_version("/a.txt", "42:1700000000").await;
         assert!(
             matches!(&outcome, Err(ProviderError::ServerError(m)) if m.contains("401")),
             "{outcome:?}"
         );
-        assert_eq!(hits.load(Ordering::SeqCst), 4, "no second replay");
+        assert_eq!(hits.load(Ordering::SeqCst), 7, "no second replay");
     }
 
     const TOO_EARLY_425: &str =

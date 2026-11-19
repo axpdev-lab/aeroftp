@@ -124,6 +124,15 @@ async fn run_mega_cmd_capture(
     cmd: &str,
     args: &[&str],
 ) -> Result<std::process::Output, ProviderError> {
+    run_mega_cmd_capture_within(cmd, args, MEGA_WEBDAV_TIMEOUT_SECS).await
+}
+
+/// [`run_mega_cmd_capture`] with its own deadline in seconds.
+async fn run_mega_cmd_capture_within(
+    cmd: &str,
+    args: &[&str],
+    secs: u64,
+) -> Result<std::process::Output, ProviderError> {
     let resolved_cmd = resolve_mega_cmd(cmd);
     let mut command = Command::new(&resolved_cmd);
     command.args(args);
@@ -134,18 +143,48 @@ async fn run_mega_cmd_capture(
     {
         command.creation_flags(CREATE_NO_WINDOW);
     }
-    tokio::time::timeout(
-        std::time::Duration::from_secs(MEGA_WEBDAV_TIMEOUT_SECS),
-        command.output(),
-    )
-    .await
-    .map_err(|_| ProviderError::Timeout)?
-    .map_err(|e| {
-        ProviderError::NotSupported(format!(
-            "{} is not available (resolved: {}): {}",
-            cmd, resolved_cmd, e
-        ))
-    })
+    tokio::time::timeout(std::time::Duration::from_secs(secs), command.output())
+        .await
+        .map_err(|_| ProviderError::Timeout)?
+        .map_err(|e| {
+            ProviderError::NotSupported(format!(
+                "{} is not available (resolved: {}): {}",
+                cmd, resolved_cmd, e
+            ))
+        })
+}
+
+/// The deadline of the read back that checks a restore: the command's own
+/// plus a second per 256 KiB of the version, so a large version that is
+/// still arriving is not cut as if MEGA had not answered.
+fn verification_secs(size: u64) -> u64 {
+    #[cfg(test)]
+    if let Some(secs) = TEST_VERIFY_SECS.with(|secs| secs.get()) {
+        return secs;
+    }
+    MEGA_WEBDAV_TIMEOUT_SECS + size / (256 * 1024)
+}
+
+#[cfg(test)]
+thread_local! {
+    /// The verification deadline a test sets on its thread.
+    static TEST_VERIFY_SECS: std::cell::Cell<Option<u64>> = const { std::cell::Cell::new(None) };
+}
+
+/// The version chain of the MEGA file at `path` in MEGAcmd's own order:
+/// the current version, then the one it replaced, and so on (a version
+/// below can be newer in time than the current one).
+async fn mega_version_chain(path: &str) -> Result<Vec<FileVersion>, ProviderError> {
+    let output =
+        run_mega_cmd_capture("mega-ls", &["-l", "--versions", "--show-handles", path]).await?;
+    if !output.status.success() {
+        return Err(mega_cmd_failure("mega-ls --versions", &output));
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    Ok(super::mega::parse_mega_ls_version_handles(&stdout, path)?
+        .into_iter()
+        .map(|(v, _)| v)
+        .collect())
 }
 
 /// MEGA-absolute path for a remote path arriving from the WebDAV bridge (which
@@ -235,13 +274,13 @@ fn listed_version_size(
 
 /// Fetch one version of `path` (`mega-get H:<handle>`) to a fresh temp file
 /// (removed when the guard goes), taken only whole: a regular file at the
-/// size it was listed with. Returns the handle listed current with it.
+/// size `listed` (its version rows) gives it.
 async fn mega_fetch_version_to_temp(
     path: &str,
     version_id: &str,
-) -> Result<(super::VersionTempFile, Option<String>), ProviderError> {
-    let listed = mega_version_rows(path).await?;
-    let size = listed_version_size(&listed, path, version_id)?;
+    listed: &[FileVersion],
+) -> Result<super::VersionTempFile, ProviderError> {
+    let size = listed_version_size(listed, path, version_id)?;
     let temp = super::VersionTempFile::new("aeroftp_megaver");
     let temp_str = temp.0.to_string_lossy().to_string();
     let output = run_mega_cmd_capture("mega-get", &[version_id, &temp_str]).await?;
@@ -259,7 +298,7 @@ async fn mega_fetch_version_to_temp(
             written.unwrap_or(0)
         )));
     }
-    Ok((temp, listed.first().map(|v| v.id.clone())))
+    Ok(temp)
 }
 
 /// Download a specific MEGA version to `local_path`, written as every
@@ -271,7 +310,8 @@ pub async fn mega_download_version(
     local_path: &str,
 ) -> Result<(), ProviderError> {
     let path = mega_abs_path(remote_path);
-    let (temp, _) = mega_fetch_version_to_temp(&path, version_id).await?;
+    let listed = mega_version_rows(&path).await?;
+    let temp = mega_fetch_version_to_temp(&path, version_id, &listed).await?;
     if tokio::fs::rename(&temp.0, local_path).await.is_err() {
         super::copy_version_into_place(&temp.0, local_path).await?;
     }
@@ -289,12 +329,16 @@ pub async fn mega_restore_version(
     version_id: &str,
 ) -> Result<(), ProviderError> {
     let path = mega_abs_path(remote_path);
-    let (temp, head) = mega_fetch_version_to_temp(&path, version_id).await?;
+    // The current version is the file itself: refused before any bytes of
+    // it are fetched.
+    let listed = mega_version_rows(&path).await?;
+    let head = listed.first().map(|v| v.id.clone());
     if head.as_deref() == Some(version_id) {
         return Err(ProviderError::NotSupported(
             "This is already the current version".into(),
         ));
     }
+    let temp = mega_fetch_version_to_temp(&path, version_id, &listed).await?;
     let versioning = run_mega_cmd_capture("mega-userattr", &["^!dv"])
         .await
         .map(|output| {
@@ -335,14 +379,50 @@ pub async fn mega_restore_version(
              it, or someone else wrote it meanwhile; list its versions again"
         ))
     };
-    let (top, top_size) = mega_version_rows(&path)
-        .await?
+    // From here the upload is done: a check that cannot run says so, and
+    // that a new restore is not what is needed.
+    let unverified = |detail: String| {
+        ProviderError::TransferFailed(format!(
+            "The restored version of {path} was uploaded, but reading it back to check it \
+             {detail}: refresh its version history to see which version is current instead of \
+             restoring again"
+        ))
+    };
+    // A new current version that does not sit right above the one listed
+    // current before has another client's write between them, as the
+    // native provider reads the chain.
+    let chain = mega_version_chain(&path)
+        .await
+        .map_err(|e| unverified(format!("failed ({e})")))?;
+    let raced = chain
+        .first()
+        .is_some_and(|top| Some(&top.id) != head.as_ref())
+        && chain
+            .get(1)
+            .is_some_and(|below| Some(&below.id) != head.as_ref());
+    if raced {
+        return Err(ProviderError::TransferFailed(format!(
+            "{path} was also written by someone else during the restore: MEGA keeps every \
+             version, list its versions again and check which one should be current"
+        )));
+    }
+    let (top, top_size) = chain
         .first()
         .map(|v| (v.id.clone(), v.size))
         .ok_or_else(not_taken)?;
     let check = super::VersionTempFile::new("aeroftp_megacheck");
     let check_str = check.0.to_string_lossy().to_string();
-    let output = run_mega_cmd_capture("mega-get", &[&top, &check_str]).await?;
+    let output = match run_mega_cmd_capture_within(
+        "mega-get",
+        &[&top, &check_str],
+        verification_secs(top_size),
+    )
+    .await
+    {
+        Ok(output) => output,
+        Err(ProviderError::Timeout) => return Err(unverified("timed out".into())),
+        Err(e) => return Err(unverified(format!("failed ({e})"))),
+    };
     if !output.status.success() {
         return Err(not_taken());
     }
@@ -928,6 +1008,42 @@ Total size taken up by file versions:     31457280 bytes (30.0 MB)
         mega_restore_version("/v.txt", "H:vAAAAAA2")
             .await
             .expect("restore");
+        assert_eq!(bridge_log(&dir, "put.log"), ["/v.txt"]);
+        TEST_CMD_DIR.with(|cmd_dir| *cmd_dir.borrow_mut() = None);
+    }
+
+    /// The bridge reads the chain as the native provider does: a restore
+    /// raced by another client's write is reported even when the bytes on
+    /// top match; the current version is refused before any mega-get; and
+    /// an upload whose read back times out is reported as uploaded and not
+    /// checked, not as a failed upload.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_bridge_restore_reports_a_race_the_current_row_and_an_unchecked_upload() {
+        let dir = bridge_on_stand_in(&["put-raced"]);
+        let raced = mega_restore_version("/v.txt", "H:vAAAAAA2").await;
+        assert!(
+            matches!(&raced, Err(ProviderError::TransferFailed(m)) if m.contains("someone else")),
+            "{raced:?}"
+        );
+        assert_eq!(bridge_log(&dir, "put.log"), ["/v.txt"]);
+
+        let dir = bridge_on_stand_in(&[]);
+        let current = mega_restore_version("/v.txt", "H:vAAAAAA3").await;
+        assert!(
+            matches!(&current, Err(ProviderError::NotSupported(_))),
+            "{current:?}"
+        );
+        assert!(bridge_log(&dir, "get.log").is_empty());
+
+        let dir = bridge_on_stand_in(&["check-get-slow"]);
+        TEST_VERIFY_SECS.with(|secs| secs.set(Some(1)));
+        let slow = mega_restore_version("/v.txt", "H:vAAAAAA2").await;
+        TEST_VERIFY_SECS.with(|secs| secs.set(None));
+        assert!(
+            matches!(&slow, Err(ProviderError::TransferFailed(m)) if m.contains("was uploaded") && m.contains("timed out")),
+            "{slow:?}"
+        );
         assert_eq!(bridge_log(&dir, "put.log"), ["/v.txt"]);
         TEST_CMD_DIR.with(|cmd_dir| *cmd_dir.borrow_mut() = None);
     }

@@ -1377,6 +1377,9 @@ impl B2Provider {
         let url = format!("{}/b2api/v4/b2_copy_file", self.api_url);
         let body = serde_json::json!({
             "sourceFileId": source_file_id,
+            // The copy lands in this bucket whatever bucket the source id is
+            // in: without it B2 writes beside the source.
+            "destinationBucketId": self.bucket_id,
             "fileName": new_name,
             "metadataDirective": "COPY",
         });
@@ -2423,6 +2426,8 @@ impl B2Provider {
             let body = resp.text().await.unwrap_or_default();
             return Err(map_b2_status(status, &body, "b2_download_file_by_id"));
         }
+        // A 206 is a fragment: it must not replace the destination.
+        super::require_whole_version_body(&resp, "b2_download_file_by_id")?;
         let total = resp.content_length().unwrap_or(0);
         // `<final>.aerotmp`, claimed (see `atomic_write::temp_claim`): the
         // extension used to be replaced, so an extensionless `x` wrote `x.aerotmp`
@@ -3713,6 +3718,7 @@ impl StorageProvider for B2Provider {
         let mut start_name: Option<String> = None;
         let mut start_id: Option<String> = None;
         let mut first_call = true;
+        let mut cursors_seen = std::collections::HashSet::new();
         loop {
             // `b2_list_file_versions` returns versions across every key sharing
             // this prefix; we filter to the exact match. The cursor is
@@ -3772,6 +3778,11 @@ impl StorageProvider for B2Provider {
                     }
                     continue;
                 }
+                // `start` is a large file still uploading (and `folder` a
+                // placeholder): not contents a version can be.
+                if f.action != "upload" {
+                    continue;
+                }
                 if let Some(fid) = &f.file_id {
                     versions.push(FileVersion {
                         id: fid.clone(),
@@ -3793,6 +3804,13 @@ impl StorageProvider for B2Provider {
                     if n > key {
                         // Cursor walked past our key.
                         break;
+                    }
+                    // A cursor answered twice would list the same pages for
+                    // ever.
+                    if !cursors_seen.insert((n.clone(), i.clone())) {
+                        return Err(ProviderError::ServerError(format!(
+                            "b2_list_file_versions answered the cursor {n} {i} twice for {abs}"
+                        )));
                     }
                     start_name = Some(n);
                     start_id = Some(i);
@@ -3837,7 +3855,9 @@ impl StorageProvider for B2Provider {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
-        let selected = super::refuse_a_restore_that_changes_nothing(self, path, version_id).await?;
+        let selected =
+            super::refuse_a_restore_that_changes_nothing_when_listed(self, path, version_id)
+                .await?;
         let abs = self.resolved_path(path);
         let key = self.b2_key(&abs);
         // B2 has no "restore" verb: we replay the chosen version as a fresh
@@ -7530,6 +7550,144 @@ mod tests {
             reported.load(Ordering::SeqCst),
             SIZE as u64,
             "the single-stream fallback must keep reporting progress"
+        );
+    }
+
+    /// A B2 double for the version reader: `b2_list_file_versions` lists an
+    /// unfinished large upload (`start`) above two finished ones, or, with
+    /// `repeat`, answers the same cursor on every page; a download by id
+    /// answers `part` with a 206 fragment and any other id whole; each
+    /// `b2_copy_file` body is recorded.
+    async fn b2_version_reader_double(
+        repeat: bool,
+    ) -> (B2Provider, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
+        use axum::response::IntoResponse;
+        use std::sync::{Arc, Mutex};
+        let seen: Arc<Mutex<Vec<String>>> = Arc::default();
+        let log = Arc::clone(&seen);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |uri: axum::http::Uri, body: String| {
+                let log = Arc::clone(&log);
+                async move {
+                    log.lock().unwrap().push(format!("{} {body}", uri.path()));
+                    if uri.path().ends_with("b2_list_file_versions") {
+                        let (next_name, next_id) = if repeat {
+                            (serde_json::json!("v.txt"), serde_json::json!("up-1"))
+                        } else {
+                            (serde_json::Value::Null, serde_json::Value::Null)
+                        };
+                        return serde_json::json!({
+                            "files": [
+                                {"fileName": "v.txt", "fileId": "start-9", "action": "start",
+                                 "uploadTimestamp": 1_794_841_700_000u64, "contentLength": 0},
+                                {"fileName": "v.txt", "fileId": "up-2", "action": "upload",
+                                 "uploadTimestamp": 1_794_841_545_000u64, "contentLength": 16},
+                                {"fileName": "v.txt", "fileId": "up-1", "action": "upload",
+                                 "uploadTimestamp": 1_794_841_500_000u64, "contentLength": 5}
+                            ],
+                            "nextFileName": next_name,
+                            "nextFileId": next_id
+                        })
+                        .to_string()
+                        .into_response();
+                    }
+                    if uri.path().ends_with("b2_download_file_by_id") {
+                        if uri.query().is_some_and(|q| q.contains("fileId=part")) {
+                            return (axum::http::StatusCode::PARTIAL_CONTENT, "wh").into_response();
+                        }
+                        return "whole".into_response();
+                    }
+                    serde_json::json!({
+                        "fileId": "up-3", "fileName": "v.txt",
+                        "action": "upload", "contentLength": 5
+                    })
+                    .to_string()
+                    .into_response()
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = empty_provider();
+        provider.api_url = address.clone();
+        provider.download_url = address;
+        provider.auth_token = SecretString::new("master-token".into());
+        provider.bucket_id = "bucket".into();
+        provider.connected = true;
+        (provider, seen)
+    }
+
+    /// History lists finished uploads only, so an unfinished large upload is
+    /// never row 0; and the version reader takes a whole body only: a 206
+    /// fragment leaves the destination as it was, a 200 replaces it.
+    #[tokio::test]
+    async fn b2_history_lists_finished_uploads_and_reads_whole_bodies_only() {
+        let (mut provider, _) = b2_version_reader_double(false).await;
+        let versions = provider.list_versions("/v.txt").await.expect("versions");
+        let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
+        assert_eq!(ids, ["up-2", "up-1"]);
+
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("v.txt");
+        std::fs::write(&out, "before").unwrap();
+        let partial = provider
+            .download_version("/v.txt", "part", out.to_str().unwrap())
+            .await;
+        assert!(
+            matches!(&partial, Err(ProviderError::TransferFailed(m)) if m.contains("206")),
+            "{partial:?}"
+        );
+        assert_eq!(std::fs::read_to_string(&out).unwrap(), "before");
+        provider
+            .download_version("/v.txt", "up-1", out.to_str().unwrap())
+            .await
+            .expect("a whole body is saved");
+        assert_eq!(std::fs::read_to_string(&out).unwrap(), "whole");
+    }
+
+    /// A listing that answers the same cursor again ends with an error
+    /// instead of reading pages for ever; a download by id still goes out,
+    /// and a restore's copy names this bucket as its destination.
+    #[tokio::test]
+    async fn a_repeated_b2_cursor_ends_the_listing_and_keeps_the_by_id_paths() {
+        let (mut provider, seen) = b2_version_reader_double(true).await;
+        let listed = provider.list_versions("/v.txt").await;
+        assert!(
+            matches!(&listed, Err(ProviderError::ServerError(m)) if m.contains("twice")),
+            "{listed:?}"
+        );
+        let pages = seen
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|c| c.contains("b2_list_file_versions"))
+            .count();
+        assert_eq!(pages, 2, "{:?}", seen.lock().unwrap());
+
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("v.txt");
+        provider
+            .download_version("/v.txt", "up-1", out.to_str().unwrap())
+            .await
+            .expect("the download by id does not need the listing");
+        assert_eq!(std::fs::read_to_string(&out).unwrap(), "whole");
+
+        provider
+            .restore_version("/v.txt", "up-1")
+            .await
+            .expect("the restore copies by id");
+        let copies: Vec<String> = seen
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|c| c.starts_with("/b2api/v4/b2_copy_file"))
+            .cloned()
+            .collect();
+        assert_eq!(copies.len(), 1, "{copies:?}");
+        assert!(
+            copies[0].contains(r#""destinationBucketId":"bucket""#),
+            "{copies:?}"
         );
     }
 

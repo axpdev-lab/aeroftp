@@ -1655,14 +1655,15 @@ impl GoogleDriveProvider {
     /// Upload `local_path` to `remote_path`: a new revision of `into` when
     /// given (a file id resolved once by the caller, as a restore does, so a
     /// file put at the path meanwhile is left alone), else of the file the
-    /// path names, else a new file.
+    /// path names, else a new file. Answers the head revision the upload
+    /// made, when Drive's answer to it names one ([`drive_made_head`]).
     async fn upload_into(
         &mut self,
         local_path: &str,
         remote_path: &str,
         into: Option<String>,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
-    ) -> Result<(), ProviderError> {
+    ) -> Result<Option<String>, ProviderError> {
         let total_size = tokio::fs::metadata(local_path)
             .await
             .map_err(|e| ProviderError::Other(format!("Read error: {}", e)))?
@@ -1695,6 +1696,7 @@ impl GoogleDriveProvider {
         };
 
         const RESUMABLE_THRESHOLD: u64 = 5 * 1024 * 1024; // 5MB
+        let mut made: Option<String> = None;
 
         if total_size > RESUMABLE_THRESHOLD {
             // Resumable upload for large files: stream from file handle.
@@ -1718,9 +1720,16 @@ impl GoogleDriveProvider {
 
             // Step 1: Initiate resumable upload session
             let init_url = if let Some(ref fid) = existing_file_id {
-                format!("{}/files/{}?uploadType=resumable", self.upload_api(), fid)
+                format!(
+                    "{}/files/{}?uploadType=resumable&{DRIVE_MADE_HEAD_FIELDS}",
+                    self.upload_api(),
+                    fid
+                )
             } else {
-                format!("{}/files?uploadType=resumable", self.upload_api())
+                format!(
+                    "{}/files?uploadType=resumable&{DRIVE_MADE_HEAD_FIELDS}",
+                    self.upload_api()
+                )
             };
 
             let init_request = if existing_file_id.is_some() {
@@ -1759,6 +1768,8 @@ impl GoogleDriveProvider {
                 .await
                 .map_err(|e| ProviderError::Other(format!("Open file error: {}", e)))?;
             let mut offset: u64 = 0;
+            // Chunks in a row Drive answered without taking a byte.
+            let mut stalled = 0u32;
 
             while offset < total_size {
                 use tokio::io::AsyncReadExt;
@@ -1787,7 +1798,10 @@ impl GoogleDriveProvider {
                     .body(chunk)
                     .send()
                     .await
-                    .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+                    // The session URL carries the upload id: never in an error.
+                    .map_http_err(|e| {
+                        ProviderError::ConnectionFailed(e.without_url().to_string())
+                    })?;
 
                 let status = chunk_response.status().as_u16();
                 if status != 200 && status != 201 && status != 308 {
@@ -1797,8 +1811,12 @@ impl GoogleDriveProvider {
                         sanitize_api_error(&text)
                     )));
                 }
-                // 308 is "incomplete": it must have taken every byte sent so
-                // far, and the last chunk must be answered 200 or 201.
+                // 308 is "incomplete": it names the bytes Drive holds. Fewer
+                // than were sent is a short acknowledgement: the next chunk
+                // starts at the first byte it lacks, with a bound on chunks
+                // that take nothing. A 308 to a whole last chunk, or a count
+                // outside the chunk sent, ends the session; the last chunk
+                // must be answered 200 or 201.
                 if status == 308 {
                     let taken = match drive_acknowledged_bytes(chunk_response.headers()) {
                         Ok(taken) => taken,
@@ -1807,13 +1825,32 @@ impl GoogleDriveProvider {
                             return Err(error);
                         }
                     };
-                    if end == total_size || taken != end {
+                    let short = taken >= offset && taken < end;
+                    if short && taken == offset {
+                        stalled += 1;
+                    } else {
+                        stalled = 0;
+                    }
+                    if !(short || taken == end)
+                        || (taken == end && end == total_size)
+                        || stalled > 3
+                    {
                         let _ = self.client.delete(&session_uri).send().await;
                         return Err(ProviderError::TransferFailed(format!(
                             "Google Drive took {taken} of {end} bytes sent and did not \
                              complete the upload: upload it again"
                         )));
                     }
+                    if short {
+                        use tokio::io::AsyncSeekExt;
+                        file.seek(std::io::SeekFrom::Start(taken))
+                            .await
+                            .map_err(|e| ProviderError::Other(format!("Seek error: {}", e)))?;
+                        offset = taken;
+                        continue;
+                    }
+                } else {
+                    made = drive_made_head(chunk_response).await;
                 }
 
                 offset = end;
@@ -1868,9 +1905,16 @@ impl GoogleDriveProvider {
             );
 
             let url = if let Some(ref fid) = existing_file_id {
-                format!("{}/files/{}?uploadType=multipart", self.upload_api(), fid)
+                format!(
+                    "{}/files/{}?uploadType=multipart&{DRIVE_MADE_HEAD_FIELDS}",
+                    self.upload_api(),
+                    fid
+                )
             } else {
-                format!("{}/files?uploadType=multipart", self.upload_api())
+                format!(
+                    "{}/files?uploadType=multipart&{DRIVE_MADE_HEAD_FIELDS}",
+                    self.upload_api()
+                )
             };
 
             let request = if existing_file_id.is_some() {
@@ -1901,12 +1945,29 @@ impl GoogleDriveProvider {
                 )));
             }
 
+            made = drive_made_head(response).await;
             progress.complete();
         }
 
         info!("Uploaded {} to {}", local_path, remote_path);
-        Ok(())
+        Ok(made)
     }
+}
+
+/// The fields an upload asks Drive to answer with: the head revision it made
+/// ([`drive_made_head`]).
+const DRIVE_MADE_HEAD_FIELDS: &str = "fields=id,headRevisionId";
+
+/// The head revision an upload made, from Drive's answer to its last request
+/// (asked with [`DRIVE_MADE_HEAD_FIELDS`]); `None` when the answer does not
+/// name it.
+async fn drive_made_head(response: reqwest::Response) -> Option<String> {
+    let body = super::version_listing_text(response).await.ok()?;
+    serde_json::from_str::<serde_json::Value>(&body)
+        .ok()?
+        .get("headRevisionId")?
+        .as_str()
+        .map(str::to_string)
 }
 
 #[async_trait]
@@ -2209,6 +2270,7 @@ impl StorageProvider for GoogleDriveProvider {
     ) -> Result<(), ProviderError> {
         self.upload_into(local_path, remote_path, None, on_progress)
             .await
+            .map(|_| ())
     }
 
     async fn mkdir(&mut self, path: &str) -> Result<(), ProviderError> {
@@ -2800,11 +2862,12 @@ impl StorageProvider for GoogleDriveProvider {
         // file.
         let file = self.revision_file(path).await?;
         // Listed from that file, before and after, not from the path again:
-        // the revision ids are its own. A listing that fails decides nothing.
-        let selected = match self.revisions_of(&file).await {
-            Ok(listed) => Some(super::restore_preflight(&listed, path, version_id)?),
-            Err(_) => None,
-        };
+        // the revision ids are its own. A listing that fails sends nothing.
+        let listed = self
+            .revisions_of(&file)
+            .await
+            .map_err(|e| super::restore_needs_its_listing(path, e))?;
+        let selected = super::restore_preflight(&listed, path, version_id)?;
         // The head revision is the file itself: sending it again would only
         // add a copy of the current contents on top.
         if self
@@ -2829,16 +2892,27 @@ impl StorageProvider for GoogleDriveProvider {
             .map_err(ProviderError::IoError)?;
         Self::write_revision(response, &mut out).await?;
         drop(out);
-        let local = temp.0.to_string_lossy().into_owned();
-        self.upload_into(&local, path, Some(file.id.clone()), None)
-            .await?;
-        match selected {
-            Some(preflight) => {
-                let after = self.revisions_of(&file).await;
-                super::restore_confirmed(after, path, &preflight)
-            }
-            None => Ok(()),
+        // The bytes must be the revision listed: a 200 of another length
+        // would become the new head, which the check after cannot undo.
+        let staged = tokio::fs::metadata(&temp.0)
+            .await
+            .map_err(ProviderError::IoError)?
+            .len();
+        if staged != selected.selected.size {
+            return Err(ProviderError::TransferFailed(format!(
+                "Revision {version_id} of {path} answered {staged} bytes and its history lists {}: \
+                 nothing was restored",
+                selected.selected.size
+            )));
         }
+        let local = temp.0.to_string_lossy().into_owned();
+        // The head this upload made is the one the check after must find.
+        let made = self
+            .upload_into(&local, path, Some(file.id.clone()), None)
+            .await?;
+        let selected = selected.made_current(made);
+        let after = self.revisions_of(&file).await;
+        super::restore_confirmed(after, path, &selected)
     }
 
     fn supports_thumbnails(&self) -> bool {
@@ -3381,7 +3455,8 @@ impl StorageProvider for GoogleDriveProvider {
             .body(body.into_reqwest_body())
             .send()
             .await
-            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            // The session URL carries the upload id: never in an error.
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.without_url().to_string()))?;
 
         let status = resp.status().as_u16();
         // 308 = Resume Incomplete (every non-final chunk).
@@ -4312,6 +4387,111 @@ mod tests {
         assert!(!std::path::Path::new(&local).exists());
     }
 
+    /// A Drive double for a restore of r1 (13 bytes listed) of a.txt (F1,
+    /// head r2): r1 answers `body`; the upload answers that it made
+    /// `made`; after it the history holds r3 on top, and r4 (13 bytes, by
+    /// someone else) above it when `later`. Each PATCH is recorded.
+    async fn drive_restore_double(
+        made: &'static str,
+        later: bool,
+        body: &'static str,
+    ) -> (
+        GoogleDriveProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        use axum::response::IntoResponse;
+        use std::sync::{atomic::AtomicBool, atomic::Ordering, Arc, Mutex};
+        let seen: Arc<Mutex<Vec<String>>> = Arc::default();
+        let log = Arc::clone(&seen);
+        let patched = Arc::new(AtomicBool::new(false));
+        let app = axum::Router::new().fallback(axum::routing::any(
+            // The body is read whole before answering: an upload answered
+            // while its bytes are still being sent can see its connection
+            // closed under it.
+            move |method: axum::http::Method, uri: axum::http::Uri, _body: axum::body::Bytes| {
+                let (log, patched) = (Arc::clone(&log), Arc::clone(&patched));
+                async move {
+                    let url = reqwest::Url::parse(&format!("http://h{uri}")).unwrap();
+                    if method == axum::http::Method::PATCH {
+                        log.lock().unwrap().push(format!("PATCH {}", url.path()));
+                        patched.store(true, Ordering::SeqCst);
+                        return axum::Json(serde_json::json!({"id": "F1", "headRevisionId": made}))
+                            .into_response();
+                    }
+                    if url.query_pairs().any(|(k, v)| k == "alt" && v == "media") {
+                        return body.into_response();
+                    }
+                    let revision = |id: &str, size: &str, day: u8| {
+                        serde_json::json!({ "id": id, "size": size,
+                            "modifiedTime": format!("2026-11-0{day}T10:00:00Z") })
+                    };
+                    let mut revisions = vec![revision("r1", "13", 1), revision("r2", "5", 2)];
+                    if patched.load(Ordering::SeqCst) {
+                        revisions.push(revision("r3", "13", 3));
+                        if later {
+                            revisions.push(revision("r4", "13", 4));
+                        }
+                    }
+                    let head = revisions.last().unwrap().clone();
+                    match url.path() {
+                        "/drive/v3/files/F1/revisions" => {
+                            axum::Json(serde_json::json!({ "revisions": revisions })).into_response()
+                        }
+                        "/drive/v3/files/F1" => axum::Json(serde_json::json!({
+                            "headRevisionId": head["id"], "size": head["size"],
+                            "modifiedTime": head["modifiedTime"]
+                        }))
+                        .into_response(),
+                        _ => axum::Json(serde_json::json!({ "files": [
+                            { "id": "F1", "name": "a.txt", "mimeType": "text/plain", "parents": ["root"] }
+                        ]}))
+                        .into_response(),
+                    }
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = test_provider();
+        provider.connected = true;
+        provider.api_origin_override = Some(base);
+        provider.test_access_token = Some("t".to_string());
+        (provider, seen)
+    }
+
+    /// A Drive restore is confirmed by the head its upload made: that head
+    /// on top is the restore, a later write of the same size on top is not;
+    /// and a revision answered with another length than its history lists is
+    /// never uploaded.
+    #[tokio::test]
+    async fn a_drive_restore_is_confirmed_by_the_head_its_upload_made() {
+        let (mut provider, _) = drive_restore_double("r3", false, "content of r1").await;
+        provider
+            .restore_version("/a.txt", "r1")
+            .await
+            .expect("the head the upload made is on top");
+
+        let (mut provider, _) = drive_restore_double("r3", true, "content of r1").await;
+        let later = provider.restore_version("/a.txt", "r1").await;
+        assert!(
+            matches!(&later, Err(ProviderError::TransferFailed(m)) if m.contains("list its versions again")),
+            "{later:?}"
+        );
+
+        let (mut provider, patches) = drive_restore_double("r3", false, "four").await;
+        let short = provider.restore_version("/a.txt", "r1").await;
+        assert!(
+            matches!(&short, Err(ProviderError::TransferFailed(m)) if m.contains("answered 4 bytes")),
+            "{short:?}"
+        );
+        assert!(
+            patches.lock().unwrap().is_empty(),
+            "{:?}",
+            patches.lock().unwrap()
+        );
+    }
+
     /// Drive cannot make a revision current: a restore fetches it and sends
     /// it as a new revision of the same file id, and leaves no temp file.
     #[tokio::test]
@@ -4576,6 +4756,123 @@ mod tests {
         server.abort();
         let error = result.expect_err("a 308 on the last chunk is no completed upload");
         assert!(error.to_string().contains("did not complete"), "{error}");
+    }
+
+    /// The session URL carries the upload id, a connection parameter: a
+    /// chunk PUT that fails in transport reports the failure without it.
+    #[tokio::test]
+    async fn a_failed_chunk_put_does_not_report_the_session_url() {
+        use axum::response::IntoResponse;
+        // A port nothing listens on: the PUT to the session fails to connect.
+        let closed = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let dead = format!(
+            "http://{}/session?upload_id=UPLOAD-SECRET-7",
+            closed.local_addr().unwrap()
+        );
+        drop(closed);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let dead = dead.clone();
+                async move {
+                    let _ = axum::body::to_bytes(req.into_body(), 1 << 20).await;
+                    ([("location", dead)], "").into_response()
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("big.bin");
+        std::fs::write(&local, vec![7u8; 6 << 20]).unwrap();
+        let mut provider = test_provider();
+        provider.connected = true;
+        provider.api_origin_override = Some(base);
+        provider.test_access_token = Some("t".to_string());
+        let result = provider
+            .upload_into(
+                &local.to_string_lossy(),
+                "/big.bin",
+                Some("F1".to_string()),
+                None,
+            )
+            .await;
+        server.abort();
+        let shown = format!("{:?}", result.expect_err("the session cannot be reached"));
+        assert!(!shown.contains("UPLOAD-SECRET-7"), "{shown}");
+        assert!(!shown.contains("/session"), "{shown}");
+    }
+
+    /// A 308 that names fewer bytes than were sent is a short
+    /// acknowledgement, not a failure: the next chunk starts at the first
+    /// byte Drive lacks, and the upload completes on its 200.
+    #[tokio::test]
+    async fn a_short_acknowledgement_resumes_at_the_byte_drive_lacks() {
+        use axum::response::IntoResponse;
+        use std::sync::{Arc, Mutex};
+        let ranges: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&ranges);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let seen = Arc::clone(&seen);
+                async move {
+                    let host = req
+                        .headers()
+                        .get("host")
+                        .and_then(|v| v.to_str().ok())
+                        .unwrap_or("")
+                        .to_string();
+                    let method = req.method().as_str().to_string();
+                    let path = req.uri().path().to_string();
+                    let range = req
+                        .headers()
+                        .get("content-range")
+                        .and_then(|v| v.to_str().ok())
+                        .map(str::to_string);
+                    let _ = axum::body::to_bytes(req.into_body(), 16 << 20).await;
+                    if method == "PATCH" {
+                        return ([("location", format!("http://{host}/session"))], "")
+                            .into_response();
+                    }
+                    if method == "PUT" && path == "/session" {
+                        let mut seen = seen.lock().unwrap();
+                        seen.push(range.unwrap_or_default());
+                        if seen.len() == 1 {
+                            return (
+                                axum::http::StatusCode::PERMANENT_REDIRECT,
+                                [("range", "bytes=0-1048575")],
+                                "",
+                            )
+                                .into_response();
+                        }
+                        return axum::Json(serde_json::json!({ "id": "F1" })).into_response();
+                    }
+                    axum::http::StatusCode::NO_CONTENT.into_response()
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("big.bin");
+        std::fs::write(&local, vec![7u8; 6 << 20]).unwrap();
+        let mut provider = test_provider();
+        provider.connected = true;
+        provider.api_origin_override = Some(base);
+        provider.test_access_token = Some("t".to_string());
+        let result = provider
+            .upload_into(
+                &local.to_string_lossy(),
+                "/big.bin",
+                Some("F1".to_string()),
+                None,
+            )
+            .await;
+        server.abort();
+        assert!(result.is_ok(), "{result:?}");
+        assert_eq!(
+            *ranges.lock().unwrap(),
+            ["bytes 0-6291455/6291456", "bytes 1048576-6291455/6291456"]
+        );
     }
 
     /// Drive keeps `photos` beside `Photos` as two folders, and the exact

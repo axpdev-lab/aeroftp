@@ -328,11 +328,19 @@ impl MegaCmdProvider {
                 // MEGAcmd would not write again (it writes a "(1)" sibling):
                 // removed first, only when the target is a file AeroFTP made
                 // for this get, never a file someone saved there meanwhile.
+                // A partial file that cannot be removed would stay where the
+                // retry writes: MEGAcmd would put the retry in a " (1)"
+                // sibling and the partial bytes be taken for the download.
                 if cmd == "mega-get" {
                     if let Some(target) = args.last().filter(|t| is_own_mega_target(t)) {
                         if std::fs::symlink_metadata(target).is_ok_and(|m| m.file_type().is_file())
                         {
-                            let _ = std::fs::remove_file(target);
+                            if let Err(e) = std::fs::remove_file(target) {
+                                return Err(ProviderError::TransferFailed(format!(
+                                    "mega-get failed ({final_err}) and the partial file it \
+                                     left could not be removed ({e}): not retried"
+                                )));
+                            }
                         }
                     }
                 }
@@ -919,6 +927,18 @@ impl StorageProvider for MegaCmdProvider {
         mut progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
         let abs_remote = self.resolve_path(r);
+        // A folder destination is MEGAcmd's "into dir": the file is the child
+        // of its name there, written like any file destination.
+        let into_folder = std::fs::metadata(l)
+            .is_ok_and(|meta| meta.is_dir())
+            .then(|| {
+                let leaf = abs_remote.rsplit('/').next().unwrap_or_default();
+                std::path::Path::new(l)
+                    .join(leaf)
+                    .to_string_lossy()
+                    .into_owned()
+            });
+        let l = into_folder.as_deref().unwrap_or(l);
         self.log_debug(&format!(
             "[MEGAcmd] Downloading '{}' to '{}'",
             abs_remote, l
@@ -4056,6 +4076,63 @@ mod tests {
         assert_eq!(std::fs::metadata(&target).unwrap().len(), 1000);
         assert!(!local.path().join("down.txt (1)").exists());
         assert_eq!(std::fs::read_dir(local.path()).unwrap().count(), 1);
+    }
+
+    /// A download into an existing folder writes the file of that name in
+    /// it, as MEGAcmd's "into dir" does, not over the folder.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_megacmd_download_into_a_folder_writes_the_file_in_it() {
+        let (mut provider, _dir) = provider_with_stand_in_versions();
+        let local = tempfile::tempdir().expect("tempdir");
+        provider
+            .download("/f.dat", local.path().to_str().unwrap(), None)
+            .await
+            .expect("download into the folder");
+        assert_eq!(
+            std::fs::metadata(local.path().join("f.dat")).unwrap().len(),
+            1000
+        );
+        assert_eq!(std::fs::read_dir(local.path()).unwrap().count(), 1);
+    }
+
+    /// A failed get whose partial file cannot be removed is not retried:
+    /// the retry would go beside it and the partial bytes be published.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_megacmd_get_whose_partial_file_stays_is_not_retried() {
+        use std::os::unix::fs::PermissionsExt;
+        let (mut provider, dir) = provider_with_stand_in_versions();
+        std::fs::write(dir.path().join("get-partial-try-again"), "").unwrap();
+        std::fs::write(dir.path().join("get-pins-partial"), "").unwrap();
+        let local = tempfile::tempdir().expect("tempdir");
+        let target = local.path().join("down.txt");
+        std::fs::write(&target, "saved").unwrap();
+        let outcome = provider
+            .download("/f.dat", target.to_str().unwrap(), None)
+            .await;
+        std::fs::set_permissions(local.path(), std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(
+            matches!(&outcome, Err(ProviderError::TransferFailed(m)) if m.contains("not retried")),
+            "{outcome:?}"
+        );
+        assert_eq!(stand_in_log(&dir, "get.log").len(), 1);
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "saved");
+    }
+
+    /// The head of v.txt (13 bytes listed) is read whole: the stand-in takes
+    /// a version's size from its listing row, not from a comment naming it.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn the_stand_in_reads_a_version_at_its_listed_size() {
+        let (mut provider, _dir) = provider_with_stand_in_versions();
+        let local = tempfile::tempdir().expect("tempdir");
+        let out = local.path().join("head.txt");
+        provider
+            .download_version("/v.txt", "H:vAAAAAA3", out.to_str().unwrap())
+            .await
+            .expect("head");
+        assert_eq!(std::fs::read(&out).unwrap(), vec![b'3'; 13]);
     }
 
     /// A download writes beside its destination: when every attempt fails,
