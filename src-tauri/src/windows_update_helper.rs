@@ -1760,7 +1760,8 @@ mod tests {
         let script_path = fx.root.path().join("race-helper.cmd");
         std::fs::write(&script_path, lines.concat()).expect("write script");
         let mut child = std::process::Command::new("cmd.exe")
-            .args(["/d", "/c", &script_path.to_string_lossy()])
+            .args(["/D", "/C", "call"])
+            .arg(&script_path)
             .env(CHILD_DISCARD_ENTERED, &entered)
             .env(CHILD_DISCARD_DONE, &done)
             .stdout(std::process::Stdio::null())
