@@ -467,9 +467,9 @@ struct HostBlock {
     /// text in the file, the same for the same text: a host compares up to
     /// 100 of them for each line, at the same cost whatever their length.
     identities: Vec<u32>,
-    /// Where the block's first `Include` the import cannot read is
-    /// ([`include_reason`]).
-    unread: Option<String>,
+    /// Where the block's first `Include` the import cannot read is, and
+    /// why ([`include_reason`]).
+    unread: Option<(String, Unknown)>,
     /// The block whose reading decides this one's, for a block an
     /// `Include` reads ([`Gate`]).
     gate: Option<Gate>,
@@ -926,7 +926,7 @@ fn parse_ssh_config_with(
         capped: false,
         services,
         cost: 0,
-        home: std::env::var("HOME").ok().filter(|h| !h.is_empty()),
+        home: None,
     };
     parser.read(content, Place::File, 0, None);
     (parser.blocks, parser.error, parser.cost)
@@ -984,10 +984,9 @@ struct Parser<'a> {
     /// budget ([`MAX_MATCH_STEPS`]), and the directory entries a pattern
     /// in them reads.
     cost: u64,
-    /// `HOME`, where `~` and a relative `Include` lead (`glob` with
-    /// `GLOB_TILDE` reads it: `ssh -G` with another `HOME` reads that
-    /// folder's `.ssh`).
-    home: Option<String>,
+    /// The home folder, where `~` and a relative `Include` lead, once read
+    /// ([`Parser::resolve`]).
+    home: Option<Option<String>>,
 }
 
 impl Parser<'_> {
@@ -1132,22 +1131,29 @@ impl Parser<'_> {
 
     /// Reads the files an `Include` line at `at` names, in the block at
     /// `gate`, as ssh does (`Include` in readconf.c, measured with `ssh -G`
-    /// on 10.2p1): each word is a pattern, its `${VAR}` expanded and its
-    /// `%` kept, led by `HOME` for a `~` and by `HOME/.ssh/` when it is
-    /// relative; the paths it matches are read in sorted order, a name
-    /// starting with `.` only for a pattern that does too; a pattern that
-    /// matches nothing, a directory and a variable that is not set read
-    /// nothing. ssh refuses the whole file for an `Include` with no word, a
-    /// `${` never closed, a file it cannot read, one that another account
-    /// owns or that anyone can write, and a file past [`MAX_INCLUDE_DEPTH`], a line it
-    /// refuses in any included file too, even in a block that does not
-    /// apply. A word with a variable the import does not read
-    /// ([`SSH_IMPORT_ENV`]) leaves the files unknown: the block keeps the
-    /// line, and a host it applies to is skipped ([`include_reason`]).
+    /// on 10.2p1): each word is a pattern ([`include_pattern`]), led by the
+    /// home folder for a `~` and by its `.ssh/` when it is relative
+    /// ([`Parser::resolve`]); the paths it matches are read in sorted order,
+    /// a name starting with `.` only for a pattern that does too; a pattern
+    /// that matches nothing, a directory and a variable that is not set
+    /// read nothing. ssh refuses the whole file for an `Include` with no
+    /// word or an empty one, a word it cannot expand, a file it cannot read,
+    /// one it does not trust ([`include_trusted`]), a file past
+    /// [`MAX_INCLUDE_DEPTH`], and a line it refuses in any included file, even
+    /// in a block that does not apply. ssh blocks on a file that is not a
+    /// regular one (a FIFO with no writer), which the import refuses too. A
+    /// word whose files depend on the host, or on a value the import does not
+    /// read, leaves them unknown: the block keeps the line, and a host it
+    /// applies to is skipped ([`include_reason`]).
     fn include(&mut self, words: &[String], at: &str, top: usize, depth: usize, gate: usize) {
         let refuse = |parser: &mut Self, why: &str| {
             parser.error.get_or_insert(format!(
                 "{at} {why}, so ssh refuses the whole file and reads none of its hosts"
+            ));
+        };
+        let over_budget = |parser: &mut Self| {
+            parser.error.get_or_insert(format!(
+                "the files the file includes hold more than {MAX_MATCH_STEPS} bytes, more than one import reads; {SMALLER_FILE}"
             ));
         };
         if words.is_empty() {
@@ -1155,26 +1161,35 @@ impl Parser<'_> {
         }
         let mut paths = Vec::new();
         for word in words {
-            let pattern = match include_pattern(word, self.home.as_deref()) {
+            let pattern = match include_pattern(word) {
                 Ok(Some(pattern)) => pattern,
                 Ok(None) => continue,
-                Err(None) => {
+                Err(Unread::Refused(why)) => return refuse(self, why),
+                Err(Unread::Unknown(why)) => {
                     self.blocks[gate]
                         .unread
-                        .get_or_insert_with(|| at.to_string());
+                        .get_or_insert_with(|| (at.to_string(), why));
                     continue;
                 }
-                Err(Some(why)) => return refuse(self, &why),
             };
-            let mut found = include_glob(&pattern, &mut self.cost);
+            let pattern = match self.resolve(&pattern) {
+                Ok(Some(pattern)) if pattern.len() <= MAX_INCLUDE_PATH => pattern,
+                Ok(_) => continue,
+                Err(()) => {
+                    self.blocks[gate]
+                        .unread
+                        .get_or_insert_with(|| (at.to_string(), Unknown::NoHome));
+                    continue;
+                }
+            };
+            let Some(mut found) = include_glob(&pattern, &mut self.cost) else {
+                return over_budget(self);
+            };
             found.sort();
             paths.extend(found);
         }
         for path in paths {
-            let Ok(meta) = std::fs::metadata(&path) else {
-                continue;
-            };
-            if meta.is_dir() {
+            if std::fs::metadata(&path).is_ok_and(|meta| meta.is_dir()) {
                 continue;
             }
             if depth + 1 > MAX_INCLUDE_DEPTH {
@@ -1183,32 +1198,40 @@ impl Parser<'_> {
                     &format!("reads files included more than {MAX_INCLUDE_DEPTH} deep"),
                 );
             }
+            // Opened without waiting for a writer, then checked on the open
+            // file, so what is read is what was checked.
+            let mut options = std::fs::OpenOptions::new();
+            options.read(true);
             #[cfg(unix)]
             {
-                use std::os::unix::fs::MetadataExt;
-                // Upstream ssh also refuses a file its group can write; the
-                // Debian and Ubuntu builds read it when the group is the
-                // owner's alone (`ssh -G` on Ubuntu reads a `0664` file).
-                // Only what every build refuses is refused here.
-                // SAFETY: `geteuid` reads the process's own id and cannot fail.
-                let me = unsafe { libc::geteuid() };
-                if (meta.uid() != 0 && meta.uid() != me) || meta.mode() & 0o002 != 0 {
-                    return refuse(
-                        self,
-                        "includes a file that another account owns or that anyone can write, which ssh does not read",
-                    );
-                }
+                use std::os::unix::fs::OpenOptionsExt;
+                options.custom_flags(libc::O_NONBLOCK);
             }
-            self.cost = self.cost.saturating_add(1 + meta.len());
-            if self.cost > MAX_MATCH_STEPS {
-                self.error.get_or_insert(format!(
-                    "the files the file includes hold more than {MAX_MATCH_STEPS} bytes, more than one import reads; {SMALLER_FILE}"
-                ));
-                return;
-            }
-            let Ok(bytes) = std::fs::read(&path) else {
+            let Ok(file) = options.open(&path) else {
                 return refuse(self, "includes a file that cannot be read");
             };
+            let Ok(meta) = file.metadata() else {
+                return refuse(self, "includes a file that cannot be read");
+            };
+            if !meta.is_file() {
+                return refuse(self, "includes something that is not a regular file");
+            }
+            if !include_trusted(&meta) {
+                return refuse(
+                    self,
+                    "includes a file that another account owns or can write, which ssh does not read",
+                );
+            }
+            let left = MAX_MATCH_STEPS.saturating_sub(self.cost.saturating_add(1));
+            let mut bytes = Vec::new();
+            use std::io::Read;
+            if file.take(left + 1).read_to_end(&mut bytes).is_err() {
+                return refuse(self, "includes a file that cannot be read");
+            }
+            self.cost = self.cost.saturating_add(1 + bytes.len() as u64);
+            if bytes.len() as u64 > left {
+                return over_budget(self);
+            }
             self.read(
                 &String::from_utf8_lossy(&bytes),
                 Place::Included { top },
@@ -1220,57 +1243,235 @@ impl Parser<'_> {
             }
         }
     }
+
+    /// The path a pattern names: under the home folder for a `~` and under
+    /// its `.ssh/` when it is relative, `~name` under that account's;
+    /// `Ok(None)` for an account this system does not have (`glob` keeps
+    /// `~nosuch` as it is, a path that matches nothing), `Err` when the home
+    /// folder cannot be read. The home folder is `HOME`, or,
+    /// with `HOME` unset or empty, the local account's, as `glob` with
+    /// `GLOB_TILDE` reads it for ssh (`ssh -G` with another `HOME` reads that
+    /// folder's `.ssh`); it is read once, and only for such a pattern.
+    fn resolve(&mut self, pattern: &str) -> Result<Option<String>, ()> {
+        let mut pattern = pattern.to_string();
+        let absolute = pattern.starts_with('/') || Path::new(&pattern).is_absolute();
+        if !absolute && !pattern.starts_with('~') {
+            pattern = format!("~/.ssh/{pattern}");
+        }
+        let Some(after) = pattern.strip_prefix('~') else {
+            return Ok(Some(pattern));
+        };
+        let (user, tail) = after.split_once('/').unwrap_or((after, ""));
+        let dir = if user.is_empty() {
+            self.home
+                .get_or_insert_with(include_home)
+                .clone()
+                .ok_or(())?
+        } else {
+            match passwd_home(user) {
+                Some(dir) => dir,
+                None => return Ok(None),
+            }
+        };
+        Ok(Some(format!("{}/{tail}", dir.trim_end_matches('/'))))
+    }
 }
 
-/// One word of an `Include` as the pattern ssh matches: `Ok(None)` for a
-/// variable that is not set (ssh: "has no value", and reads nothing for the
-/// word), `Err(None)` for a variable the import does not read, `Err(Some)`
-/// for a word ssh refuses the file for.
-fn include_pattern(word: &str, home: Option<&str>) -> Result<Option<String>, Option<String>> {
+/// The home folder a `~` and a relative `Include` lead to ([`Parser::resolve`]).
+fn include_home() -> Option<String> {
+    std::env::var("HOME")
+        .ok()
+        .filter(|home| !home.is_empty())
+        .or_else(|| local_account().1)
+}
+
+/// Why the files of an `Include` word are not read: ssh refuses the whole
+/// file for it, or the import cannot know them, and skips the hosts it
+/// applies to.
+enum Unread {
+    Refused(&'static str),
+    Unknown(Unknown),
+}
+
+/// Why the import cannot know the files of an `Include` ([`include_reason`]).
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Unknown {
+    /// A `%` token, which ssh expands for each host.
+    ByHost,
+    /// An environment variable the import does not read.
+    NotRead,
+    /// The home folder, which could not be read.
+    NoHome,
+}
+
+impl Unknown {
+    fn text(self) -> String {
+        match self {
+            Unknown::ByHost => {
+                "names its files with a `%` token, which ssh expands for each host".to_string()
+            }
+            Unknown::NotRead => format!(
+                "names its files with an environment variable an import does not read (only {} are expanded)",
+                SSH_IMPORT_ENV.join(", ")
+            ),
+            Unknown::NoHome => {
+                "names its files from the home folder, which could not be read".to_string()
+            }
+        }
+    }
+}
+
+/// The longest path an `Include` reads: one of `PATH_MAX` (4096) bytes
+/// with its final NUL (`ssh -G` reads a path of 4095 bytes and nothing for
+/// one of 4096), so a longer word matches nothing, and nothing past it is
+/// built.
+const MAX_INCLUDE_PATH: usize = 4095;
+
+/// The tokens ssh expands in `Include` (`ssh -G` on 10.2p1: `%T` and `%a`
+/// are "unknown key", and the whole file is refused).
+const INCLUDE_TOKENS: &str = "CdhijkLlnpru";
+
+/// One word of an `Include` as the pattern ssh matches, its `${VAR}` and
+/// `%%` expanded: `Ok(None)` when it matches nothing (a variable that is
+/// not set, for which ssh says "has no value" and reads nothing, or one
+/// whose value would make the word longer than [`MAX_INCLUDE_PATH`], which
+/// is not built). ssh reads the whole word before it gives up on it
+/// (`${NOT_SET}${HOME` refuses the file).
+fn include_pattern(word: &str) -> Result<Option<String>, Unread> {
+    if word.is_empty() {
+        return Err(Unread::Refused("names an empty file after `Include`"));
+    }
     let mut out = String::new();
-    let mut rest = word;
-    while let Some(start) = rest.find("${") {
-        out.push_str(&rest[..start]);
-        let after = &rest[start + 2..];
-        let Some(end) = after.find('}') else {
-            return Err(Some("holds a `${` that is never closed".to_string()));
-        };
-        let name = &after[..end];
-        if !SSH_IMPORT_ENV.contains(&name) {
-            return Err(None);
+    let (mut unknown, mut nothing) = (None, false);
+    let mut chars = word.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '%' => match chars.next() {
+                Some('%') => out.push('%'),
+                Some(t) if INCLUDE_TOKENS.contains(t) => {
+                    unknown.get_or_insert(Unknown::ByHost);
+                }
+                _ => {
+                    return Err(Unread::Refused(
+                        "uses a `%` token that `Include` does not take",
+                    ))
+                }
+            },
+            '$' if chars.peek() == Some(&'{') => {
+                chars.next();
+                let mut name = String::new();
+                loop {
+                    match chars.next() {
+                        Some('}') => break,
+                        Some(c) => name.push(c),
+                        None => {
+                            return Err(Unread::Refused("holds a `${` that is never closed"));
+                        }
+                    }
+                }
+                if !SSH_IMPORT_ENV.contains(&name.as_str()) {
+                    unknown.get_or_insert(Unknown::NotRead);
+                    continue;
+                }
+                match std::env::var(&name) {
+                    Ok(value) if out.len() + value.len() <= MAX_INCLUDE_PATH => {
+                        out.push_str(&value)
+                    }
+                    // Not set ("has no value"), or longer than any path.
+                    _ => nothing = true,
+                }
+            }
+            c => out.push(c),
         }
-        match std::env::var(name) {
-            Ok(value) => out.push_str(&value),
-            Err(_) => return Ok(None),
-        }
-        rest = &after[end + 1..];
     }
-    out.push_str(rest);
-    let absolute = out.starts_with('/') || Path::new(&out).is_absolute();
-    if !absolute && !out.starts_with('~') {
-        out = format!("~/.ssh/{out}");
+    if let Some(why) = unknown {
+        return Err(Unread::Unknown(why));
     }
-    let Some(after) = out.strip_prefix('~') else {
-        return Ok(Some(out));
-    };
-    let (user, tail) = after.split_once('/').unwrap_or((after, ""));
-    let dir = if user.is_empty() {
-        home.map(str::to_string).ok_or(None)?
-    } else {
-        // `glob` leaves `~nosuch` as it is: a path that matches nothing.
-        match passwd_home(user) {
-            Some(dir) => dir,
-            None => return Ok(None),
+    if nothing {
+        return Ok(None);
+    }
+    Ok(Some(out))
+}
+
+/// Whether ssh reads an included file of this owner and mode
+/// (`SSHCONF_CHECKPERM` in readconf.c): one the user or root owns, that no
+/// other account can write. Upstream OpenSSH refuses a file its group can
+/// write; the Debian and Ubuntu builds read it when that group is the
+/// owner's alone (`secure_permissions`; `ssh -G` on Ubuntu reads a `0664`
+/// file of the user's own group), and so does the import on those systems.
+fn include_trusted(meta: &std::fs::Metadata) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        // SAFETY: `geteuid` reads the process's own id and cannot fail.
+        let me = unsafe { libc::geteuid() };
+        if meta.uid() != 0 && meta.uid() != me {
+            return false;
         }
-    };
-    Ok(Some(format!("{}/{tail}", dir.trim_end_matches('/'))))
+        if meta.mode() & 0o002 != 0 {
+            return false;
+        }
+        if meta.mode() & 0o020 != 0 {
+            return Path::new("/etc/debian_version").exists() && own_group(meta.gid(), meta.uid());
+        }
+        true
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = meta;
+        true
+    }
+}
+
+/// Whether the group `gid` is the account `uid`'s alone: its primary group,
+/// with no member but that account (Debian's `secure_permissions`).
+#[cfg(unix)]
+fn own_group(gid: u32, uid: u32) -> bool {
+    let mut pwd: libc::passwd = unsafe { std::mem::zeroed() };
+    let mut pbuf = vec![0 as libc::c_char; 16 * 1024];
+    let mut presult: *mut libc::passwd = std::ptr::null_mut();
+    // SAFETY: the buffers outlive the call, and the result is read only
+    // when the call filled it.
+    let found =
+        unsafe { libc::getpwuid_r(uid, &mut pwd, pbuf.as_mut_ptr(), pbuf.len(), &mut presult) }
+            == 0
+            && !presult.is_null();
+    if !found || pwd.pw_gid != gid {
+        return false;
+    }
+    // SAFETY: `pw_name` points into `pbuf`, which is alive and ends it in NUL.
+    let owner = unsafe { std::ffi::CStr::from_ptr(pwd.pw_name) }.to_owned();
+    let mut grp: libc::group = unsafe { std::mem::zeroed() };
+    let mut gbuf = vec![0 as libc::c_char; 64 * 1024];
+    let mut gresult: *mut libc::group = std::ptr::null_mut();
+    // SAFETY: as above.
+    let found =
+        unsafe { libc::getgrgid_r(gid, &mut grp, gbuf.as_mut_ptr(), gbuf.len(), &mut gresult) }
+            == 0
+            && !gresult.is_null();
+    if !found {
+        return false;
+    }
+    let mut member = grp.gr_mem;
+    // SAFETY: `gr_mem` is a NULL-terminated list of NUL-terminated names in
+    // `gbuf`, which is alive.
+    unsafe {
+        while !member.is_null() && !(*member).is_null() {
+            if std::ffi::CStr::from_ptr(*member) != owner.as_c_str() {
+                return false;
+            }
+            member = member.add(1);
+        }
+    }
+    true
 }
 
 /// The paths a pattern matches (`glob` in libc): each part between `/`
 /// with `*`, `?` or `[` is matched against the names in its folder
 /// ([`glob_part`]), the others are kept as they are; a path that does not
-/// exist is dropped. Each name read is charged to `cost`.
-fn include_glob(pattern: &str, cost: &mut u64) -> Vec<PathBuf> {
+/// exist is dropped. Each name read and matched is charged to `cost`;
+/// `None` past the budget, where the reading stops.
+fn include_glob(pattern: &str, cost: &mut u64) -> Option<Vec<PathBuf>> {
     let root = if pattern.starts_with('/') { "/" } else { "" };
     let mut found = vec![PathBuf::from(root)];
     for part in pattern.split('/').filter(|p| !p.is_empty()) {
@@ -1290,7 +1491,11 @@ fn include_glob(pattern: &str, cost: &mut u64) -> Vec<PathBuf> {
                 let Some(name) = name.to_str() else {
                     continue;
                 };
-                *cost = cost.saturating_add(1 + name.len() as u64);
+                // A part matches a name in at most one pass over the two.
+                *cost = cost.saturating_add(1 + (name.len() * part.len()) as u64);
+                if *cost > MAX_MATCH_STEPS {
+                    return None;
+                }
                 if glob_part(part, name) {
                     next.push(dir.join(name));
                 }
@@ -1299,14 +1504,16 @@ fn include_glob(pattern: &str, cost: &mut u64) -> Vec<PathBuf> {
         found = next;
     }
     found.retain(|path| path.exists());
-    found
+    Some(found)
 }
 
 /// Whether a name matches one part of a `glob` pattern: `*` any run of
 /// bytes, `?` one byte, `[...]` one byte of a set (`!` or `^` first to
-/// negate it, `a-z` a range), `\` the byte after it, anything else itself;
-/// a name starting with `.` only when the pattern does too (`ssh -G`:
-/// `Include d/*.conf` does not read `d/.h.conf`).
+/// negate it, `a-z` a range, `[:digit:]` and the other POSIX classes, in
+/// ASCII), `\` the byte after it, anything else itself; a name starting
+/// with `.` only when the pattern does too (`ssh -G`: `Include d/*.conf`
+/// does not read `d/.h.conf`, and `Include d/[[:digit:]].conf` reads
+/// `d/1.conf`).
 fn glob_part(pattern: &str, name: &str) -> bool {
     let (p, n) = (pattern.as_bytes(), name.as_bytes());
     if n.first() == Some(&b'.') && p.first() != Some(&b'.') {
@@ -1340,6 +1547,26 @@ fn glob_part(pattern: &str, name: &str) -> bool {
     p[pi..].iter().all(|&b| b == b'*')
 }
 
+/// Whether the byte `b` is in the POSIX class `name` (`[:digit:]`), in
+/// ASCII; `None` for a name that is not a class.
+fn glob_class(name: &[u8], b: u8) -> Option<bool> {
+    Some(match name {
+        b"alnum" => b.is_ascii_alphanumeric(),
+        b"alpha" => b.is_ascii_alphabetic(),
+        b"blank" => b == b' ' || b == b'\t',
+        b"cntrl" => b.is_ascii_control(),
+        b"digit" => b.is_ascii_digit(),
+        b"graph" => b.is_ascii_graphic(),
+        b"lower" => b.is_ascii_lowercase(),
+        b"print" => b.is_ascii_graphic() || b == b' ',
+        b"punct" => b.is_ascii_punctuation(),
+        b"space" => b.is_ascii_whitespace() || b == 0x0b,
+        b"upper" => b.is_ascii_uppercase(),
+        b"xdigit" => b.is_ascii_hexdigit(),
+        _ => return None,
+    })
+}
+
 /// Whether the pattern item at `pi` matches the byte `b`, and where the
 /// next item starts ([`glob_part`]).
 fn glob_one(p: &[u8], pi: usize, b: u8) -> (bool, usize) {
@@ -1355,6 +1582,16 @@ fn glob_one(p: &[u8], pi: usize, b: u8) -> (bool, usize) {
             let mut first = true;
             while i < p.len() && (first || p[i] != b']') {
                 first = false;
+                if p[i] == b'[' && p.get(i + 1) == Some(&b':') {
+                    let end = p[i + 2..].windows(2).position(|w| w == b":]");
+                    if let Some(class) =
+                        end.and_then(|e| glob_class(&p[i + 2..i + 2 + e], b).map(|m| (m, e)))
+                    {
+                        matched |= class.0;
+                        i += 2 + class.1 + 2;
+                        continue;
+                    }
+                }
                 if i + 2 < p.len() && p[i + 1] == b'-' && p[i + 2] != b']' {
                     matched |= p[i] <= b && b <= p[i + 2];
                     i += 3;
@@ -1738,11 +1975,10 @@ impl Decision {
 }
 
 /// Why a host that an `Include` the import cannot read applies to is
-/// skipped: its files are named through an environment variable the
-/// import does not read, so the values they set for the host, a jump host
-/// among them, are unknown ([`Parser::include`]).
-fn include_reason(at: &str, how: &str) -> String {
-    format!("the `Include` on {at} {how}, and names its files with an environment variable an import does not read (only {} are expanded), so they may set the host's values, a jump host among them; import a copy of the file with the included lines in place of the `Include`", SSH_IMPORT_ENV.join(", "))
+/// skipped: the values its files set for the host, a jump host among them,
+/// are unknown ([`Parser::include`]).
+fn include_reason((at, why): &(String, Unknown), how: &str) -> String {
+    format!("the `Include` on {at} {how}, and {}, so its files may set the host's values, a jump host among them; import a copy of the file with the included lines in place of the `Include`", why.text())
 }
 
 fn read_pass(
@@ -3468,9 +3704,12 @@ Host roundtrip
 
     /// ssh refuses the whole file for an included file it refuses: a line it
     /// refuses there, even in a block that does not apply, a file another
-    /// account can write, an `Include` with no file and a `${` never closed.
-    /// One whose files are named through a variable the import does not read
-    /// skips the hosts it applies to.
+    /// account can write, something that is not a regular file, an `Include`
+    /// with no file or an empty one, a `${` never closed (after a variable
+    /// that is not set too) and a `%` token `Include` does not take, in a
+    /// block that does not apply too (`ssh -G` on 10.2p1; 8.9 reads a `${`
+    /// never closed as a path). One whose files are named through a variable
+    /// the import does not read skips the hosts it applies to.
     #[test]
     fn an_include_ssh_refuses_refuses_the_file() {
         let dir = tempfile::tempdir().unwrap();
@@ -3481,6 +3720,9 @@ Host roundtrip
             (format!("Host zz\n  Include {bad}\n{host}"), "line 2 of a file that the `Include` on line 2 of the file reads "),
             (format!("Include\n{host}"), "line 1 of the file names no file after `Include`, so ssh refuses the whole file"),
             (format!("Include ${{HOME\n{host}"), "line 1 of the file holds a `${` that is never closed, so ssh refuses the whole file"),
+            (format!("Include ${{AEROFTP_SSH_TEST_NOT_SET}}${{HOME\n{host}"), "line 1 of the file holds a `${` that is never closed, so ssh refuses the whole file"),
+            (format!("Include \"\"\n{host}"), "line 1 of the file names an empty file after `Include`, so ssh refuses the whole file"),
+            (format!("Host zz\n  Include {}/%T\n{host}", d.display()), "line 2 of the file uses a `%` token that `Include` does not take, so ssh refuses the whole file"),
         ];
         #[cfg(unix)]
         {
@@ -3489,10 +3731,10 @@ Host roundtrip
             std::fs::set_permissions(&open, std::fs::Permissions::from_mode(0o666)).unwrap();
             cases.push((
                 format!("Include {open}\n{host}"),
-                "line 1 of the file includes a file that another account owns or that anyone can write, which ssh does not read, so ssh refuses the whole file",
+                "line 1 of the file includes a file that another account owns or can write, which ssh does not read, so ssh refuses the whole file",
             ));
         }
-        let ssh = std::process::Command::new("ssh").arg("-V").output().is_ok();
+        let ssh = ssh_major().is_some_and(|major| major >= 10);
         for (text, reason) in cases {
             let result = import_text(d, &text);
             assert!(result.servers.is_empty(), "{text}");
@@ -3514,9 +3756,166 @@ Host roundtrip
             reasons(&result),
             [(
                 "lab",
-                include_reason("line 1 of the file", "applies to it").as_str()
+                include_reason(
+                    &("line 1 of the file".to_string(), Unknown::NotRead),
+                    "applies to it"
+                )
+                .as_str()
             )]
         );
+        // ssh blocks on a FIFO with no writer; the import refuses it.
+        #[cfg(unix)]
+        {
+            let fifo = d.join("fifo");
+            let name = std::ffi::CString::new(fifo.display().to_string()).unwrap();
+            // SAFETY: `name` is a NUL-terminated path that outlives the call.
+            assert_eq!(unsafe { libc::mkfifo(name.as_ptr(), 0o600) }, 0);
+            let result = import_text(d, &format!("Include {}\n{host}", fifo.display()));
+            assert!(result.servers.is_empty());
+            assert_eq!(
+                reasons(&result)[0].1,
+                "line 1 of the file includes something that is not a regular file, so ssh refuses the whole file and reads none of its hosts"
+            );
+        }
+    }
+
+    /// An `Include` word reads as ssh reads it (`ssh -G` on 10.2p1): `%%` is
+    /// a `%`; a token ssh expands for each host (`%h`) leaves the files
+    /// unknown, and the hosts it applies to are skipped; a path of 4095
+    /// bytes is read and a longer one reads nothing, however it is built.
+    #[test]
+    fn an_include_word_reads_as_ssh_reads_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        put(d, "a%b", "Host lab\n  Port 2203\n");
+        put(d, "lab", "Host lab\n  Port 2201\n");
+        let host = "Host lab\n  HostName lab.example.com\n";
+        let result = import_text(d, &format!("Include {}/a%%b\n{host}", d.display()));
+        assert_eq!(result.servers[0].port, 2203, "{:?}", reasons(&result));
+        same_as_ssh(&d.join("config"), &result);
+        let result = import_text(d, &format!("Include {}/%h\n{host}", d.display()));
+        assert!(result.servers.is_empty());
+        assert_eq!(
+            reasons(&result),
+            [(
+                "lab",
+                include_reason(
+                    &("line 1 of the file".to_string(), Unknown::ByHost),
+                    "applies to it"
+                )
+                .as_str()
+            )]
+        );
+        let base = d.display().to_string();
+        for (len, port) in [(MAX_INCLUDE_PATH, 2201), (MAX_INCLUDE_PATH + 1, 22)] {
+            let slashes = "/".repeat(len - base.len() - "lab".len());
+            let result = import_text(d, &format!("Include {base}{slashes}lab\n{host}"));
+            assert_eq!(result.servers[0].port, port, "{len}");
+            same_as_ssh(&d.join("config"), &result);
+        }
+        // `glob` keeps `~nosuch` as it is: a path that matches nothing.
+        let result = import_text(d, &format!("Include ~aeroftp_no_such_user/lab\n{host}"));
+        assert_eq!(result.servers[0].port, 22, "{:?}", reasons(&result));
+        same_as_ssh(&d.join("config"), &result);
+        // A variable makes the word long too: nothing past the limit is built.
+        let home = std::env::var("HOME").unwrap_or_default();
+        if !home.is_empty() {
+            let word = "${HOME}".repeat(MAX_INCLUDE_PATH / home.len() + 2);
+            assert!(matches!(include_pattern(&word), Ok(None)));
+        }
+    }
+
+    /// ssh reads an included file its group can write only where its build
+    /// does (the Debian and Ubuntu ones, for a group that is the owner's
+    /// alone), and so does the import; one only its owner can write is read
+    /// everywhere.
+    #[cfg(unix)]
+    #[test]
+    fn an_include_its_group_can_write_is_read_where_ssh_reads_it() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        let host = "Host lab\n  HostName lab.example.com\n";
+        for mode in [0o644, 0o664] {
+            let file = put(d, &format!("m{mode:o}"), "Host lab\n  Port 2201\n");
+            std::fs::set_permissions(&file, std::fs::Permissions::from_mode(mode)).unwrap();
+            let result = import_text(d, &format!("Include {file}\n{host}"));
+            let read = !result.servers.is_empty();
+            if mode == 0o644 {
+                assert!(read, "{:?}", reasons(&result));
+            }
+            if std::process::Command::new("ssh").arg("-V").output().is_ok() {
+                assert_eq!(read, ssh_accepts(&d.join("config")), "{mode:o}");
+            }
+        }
+    }
+
+    /// The home folder a `~` and a relative `Include` lead to is `HOME`, and
+    /// with `HOME` empty the local account's, as `glob` reads it for ssh.
+    #[test]
+    fn an_include_without_home_reads_the_account_home() {
+        if !in_child_with_env(
+            "an_include_without_home_reads_the_account_home",
+            &[("HOME", "")],
+        ) {
+            return;
+        }
+        assert_eq!(include_home(), local_account().1);
+        assert!(include_home().is_some());
+    }
+
+    /// Each name a pattern reads and matches is charged to the step budget:
+    /// a file whose patterns would match more than [`MAX_MATCH_STEPS`] steps
+    /// is refused, its reading stopped there.
+    #[test]
+    fn matching_an_include_pattern_counts_against_the_budget() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path().join("d");
+        std::fs::create_dir(&d).unwrap();
+        for i in 0..100 {
+            std::fs::write(d.join(format!("{i:03}{}", "y".repeat(252))), "").unwrap();
+        }
+        let part = format!("*{}*", "x".repeat(253));
+        let word = format!("{}/{part}", d.display());
+        for (times, read) in [(20, true), (40, false)] {
+            let text = format!(
+                "Include {}\nHost lab\n  HostName lab.example.com\n",
+                vec![word.as_str(); times].join(" ")
+            );
+            let result = import_text(dir.path(), &text);
+            assert_eq!(result.servers.len(), usize::from(read), "{times}");
+            if !read {
+                assert!(
+                    reasons(&result)[0].1.starts_with(&format!(
+                        "the files the file includes hold more than {MAX_MATCH_STEPS} bytes"
+                    )),
+                    "{:?}",
+                    reasons(&result)
+                );
+            }
+        }
+    }
+
+    /// The jump command is read with a `-F` path that is one shell word, so
+    /// a temporary folder with a space in its name (`TMPDIR`) does not split
+    /// it: ssh writes that path into the command unquoted.
+    #[test]
+    fn the_jump_command_is_read_from_a_folder_with_a_space() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path().join("a b");
+        std::fs::create_dir(&d).unwrap();
+        let path = d.join("config");
+        std::fs::write(
+            &path,
+            "Host hop\n  HostName h.example.com\n  ProxyJump u@j.example.com:1\n",
+        )
+        .unwrap();
+        if let Some(command) = ssh_jump_command(&path, "hop") {
+            assert!(
+                command.starts_with("exec ssh -l u -p 1 -F config "),
+                "{command}"
+            );
+        }
     }
 
     /// ssh reads a file included 16 deep and refuses the whole file for one
@@ -3608,6 +4007,12 @@ Host roundtrip
             ("\\*x", "ax", false),
             ("*a*b", "xxaxxb", true),
             ("*a*b", "xxaxxbx", false),
+            ("[[:digit:]].conf", "1.conf", true),
+            ("[[:digit:]].conf", "a.conf", false),
+            ("[![:alpha:]]x", "1x", true),
+            ("[![:alpha:]]x", "ax", false),
+            ("[[:upper:]_]x", "_x", true),
+            ("[[:space:]]x", " x", true),
         ] {
             assert_eq!(glob_part(pattern, name), matches, "{pattern} {name}");
         }
@@ -5385,11 +5790,14 @@ Host roundtrip
             // makes its exec fail for a moment (ETXTBSY): run again then.
             let mut log = String::new();
             for _ in 0..5 {
+                // ssh writes its `-F` path into the command unquoted: a
+                // name of its folder, which may hold a space, is not.
                 let out = std::process::Command::new(&real)
                     .arg0("ssh")
+                    .current_dir(file.parent().unwrap())
                     .env("PATH", std::env::join_paths(&dirs).unwrap())
                     .args(["-vvv", "-F"])
-                    .arg(file)
+                    .arg(file.file_name().unwrap())
                     .args([
                         "-o",
                         "BatchMode=yes",
