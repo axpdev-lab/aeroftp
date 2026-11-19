@@ -5482,6 +5482,95 @@ pub(crate) fn other_accounts_holding_session(
     Ok(answer)
 }
 
+/// Whether `user_id`'s partition is locked in this process: an account with
+/// a passphrase not entered here. Nothing is decrypted.
+#[cfg(feature = "proton-native")]
+pub(crate) fn partition_locked(store: &CredentialStore, user_id: i64) -> Result<bool, String> {
+    let conn = open_or_init_cli()?;
+    let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
+    let root_secret = user_crypto::secret_key_from_bytes(&root_key);
+    match with_user_dek(&conn, &root_secret, user_id, |_, _| Ok(())) {
+        Ok(()) => Ok(false),
+        Err(error) if error == "USER_LOCKED" => Ok(true),
+        Err(error) => Err(error),
+    }
+}
+
+/// Marks a native Proton session a profile purge left in a locked account,
+/// which cannot read it to end it on Proton ([`defer_proton_revoke`]).
+#[cfg(feature = "proton-native")]
+const DEFERRED_REVOKE_PREFIX: &str = "proton_deferred_revoke_";
+
+#[cfg(feature = "proton-native")]
+fn deferred_revoke_prefix(user_id: i64) -> String {
+    format!("{DEFERRED_REVOKE_PREFIX}{user_id}_")
+}
+
+/// Leaves the native Proton session of the purged profile `profile_id` in
+/// the locked account `user_id`, its row as it is, marked by key, so the
+/// account's next unlock ends it on Proton and removes it
+/// ([`end_deferred_proton_sessions`]): a session is never dropped without
+/// its revoke.
+#[cfg(feature = "proton-native")]
+pub(crate) fn defer_proton_revoke(user_id: i64, profile_id: &str) -> Result<(), String> {
+    let conn = open_or_init_cli()?;
+    conn.execute(
+        "INSERT INTO global_state(key, value, updated_at)
+         VALUES (?1, ?2, ?3)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+        params![
+            format!("{}{profile_id}", deferred_revoke_prefix(user_id)),
+            profile_id,
+            now_ms()
+        ],
+    )
+    .map_err(|e| format!("Write deferred Proton revoke: {e}"))?;
+    Ok(())
+}
+
+/// Ends the sessions a purge left to `user_id`'s unlock: each on Proton
+/// unless another account holds it (the session index decides, as at any
+/// sign-out), then its row and its mark go. One that fails keeps its mark
+/// for the next unlock.
+#[cfg(feature = "proton-native")]
+fn end_deferred_proton_sessions(conn: &Connection, user_id: i64) {
+    use crate::providers::proton_native::vault;
+    let prefix = deferred_revoke_prefix(user_id);
+    let marks: Vec<(String, String)> = match conn
+        .prepare(
+            "SELECT key, value FROM global_state
+             WHERE substr(key, 1, length(?1)) = ?1 ORDER BY key",
+        )
+        .and_then(|mut statement| {
+            statement
+                .query_map(params![prefix], |row| Ok((row.get(0)?, row.get(1)?)))?
+                .collect::<rusqlite::Result<Vec<_>>>()
+        }) {
+        Ok(marks) => marks,
+        Err(error) => {
+            log::warn!("Unlock: the Proton sessions left by a purge could not be listed: {error}");
+            return;
+        }
+    };
+    for (mark, profile_id) in marks {
+        let ended = vault::end_session_blocking(
+            vault::SessionOwner::for_user(Some(user_id)),
+            Some(&profile_id),
+        )
+        .map_err(|error| error.to_string())
+        .and_then(|()| {
+            conn.execute("DELETE FROM global_state WHERE key = ?1", params![mark])
+                .map(|_| ())
+                .map_err(|error| error.to_string())
+        });
+        if let Err(error) = ended {
+            log::warn!(
+                "Unlock: a Proton session left by a purge stays for the next unlock: {error}"
+            );
+        }
+    }
+}
+
 /// The account that owns legacy unbound/global secrets, for one-time reads
 /// of sessions saved before native Proton had explicit user ownership.
 pub(crate) fn legacy_credential_owner_id() -> Result<Option<i64>, String> {
@@ -6634,6 +6723,10 @@ fn unlock_user_inner(
     if row.has_passphrase {
         set_user_session(user_id, dek)?;
     }
+    // Once the account reads its partition, the sessions a purge could not
+    // end while it was locked are ended.
+    #[cfg(feature = "proton-native")]
+    end_deferred_proton_sessions(conn, user_id);
     let mut status = user_unlock_status(conn)?;
     status.security_reset = security_reset;
     Ok(status)

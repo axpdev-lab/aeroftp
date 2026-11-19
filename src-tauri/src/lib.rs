@@ -24245,30 +24245,36 @@ async fn delete_credential_for_active_account(
     .map_err(|e| format!("Failed to delete credential: {}", e))
 }
 
+/// What a profile purge did: the keys it removed, and the account whose next
+/// unlock ends the profile's native Proton session, when the account was
+/// locked and could not read it (`None` otherwise, the usual case).
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PurgedProfileSecrets {
+    removed: Vec<String>,
+    proton_session_ends_at_unlock_of: Option<String>,
+}
+
 /// Remove EVERY vault secret scoped to a saved profile id, so deleting a profile
 /// leaves nothing behind (the user action is complete, no residue). Enumerates
 /// the keys from [`per_profile_vault_keys`] (the single source of truth shared
 /// with export and duplicate). Best-effort per key: a key absent for this
-/// profile kind is a no-op, never an error. Returns the keys that were actually
+/// profile kind is a no-op, never an error. Reports the keys that were actually
 /// present and removed. `protocol` lets the OAuth-token key be derived.
 #[tauri::command]
 async fn purge_profile_secrets(
     profile_id: String,
     protocol: Option<String>,
-) -> Result<Vec<String>, String> {
+) -> Result<PurgedProfileSecrets, String> {
     let store = credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "STORE_NOT_READY".to_string())?;
     let user_id = user_partitions::cli_get_active_user(&store)?.map(|user| user.id);
-    // A native Proton Drive session is ended on Proton before its key goes,
-    // so a deleted profile leaves no live session behind.
     #[cfg(feature = "proton-native")]
-    providers::proton_native::vault::end_session(
-        providers::proton_native::vault::SessionOwner::for_user(user_id),
-        Some(&profile_id),
-    )
-    .await
-    .map_err(|error| error.to_string())?;
-    Ok(purge_profile_secret_keys(
+    let proton_session_ends_at_unlock_of =
+        end_purged_proton_session(&store, user_id, &profile_id).await?;
+    #[cfg(not(feature = "proton-native"))]
+    let proton_session_ends_at_unlock_of = None;
+    let removed = purge_profile_secret_keys(
         &profile_id,
         protocol.as_deref(),
         // Where the account reads it: another account's token is its row
@@ -24291,7 +24297,48 @@ async fn purge_profile_secrets(
                 user_partitions::unmirror_credential_for_user_best_effort_any(user, key);
             }
         },
-    ))
+    );
+    Ok(PurgedProfileSecrets {
+        removed,
+        proton_session_ends_at_unlock_of,
+    })
+}
+
+/// Ends on Proton the native session of the profile a purge removes, before
+/// its key goes, so a deleted profile leaves no live session behind. Only a
+/// profile with a saved session, seen by its key and nothing decrypted,
+/// reaches Proton. A locked account cannot read its session to end it: the
+/// row stays as it is, marked, and the account's next unlock ends it; the
+/// account's name is returned for the window to say so.
+#[cfg(feature = "proton-native")]
+async fn end_purged_proton_session(
+    store: &credential_store::CredentialStore,
+    user_id: Option<i64>,
+    profile_id: &str,
+) -> Result<Option<String>, String> {
+    use providers::proton_native::vault;
+    let key = vault::session_key(Some(profile_id));
+    let saved = match user_id {
+        Some(user) => user_partitions::holds_credential(store, user, &key)?,
+        None => store.get(&key).is_ok_and(|value| !value.is_empty()),
+    };
+    if !saved {
+        return Ok(None);
+    }
+    if let Some(user) = user_id {
+        if user_partitions::partition_locked(store, user)? {
+            user_partitions::defer_proton_revoke(user, profile_id)?;
+            let name = user_partitions::cli_list_users(store)?
+                .into_iter()
+                .find(|account| account.id == user)
+                .map_or_else(|| user.to_string(), |account| account.name);
+            return Ok(Some(name));
+        }
+    }
+    vault::end_session(vault::SessionOwner::for_user(user_id), Some(profile_id))
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(None)
 }
 
 fn purge_profile_secret_keys<Exists, Delete, Unmirror>(

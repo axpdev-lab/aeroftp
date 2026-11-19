@@ -1894,8 +1894,16 @@ async fn a_purge_reports_the_accounts_own_token(
     set_admin(private_id, 0);
     users::cli_set_active_user(store, legacy_id).unwrap();
     assert_eq!(recorded, Some(legacy_id.to_string()));
-    assert!(!without_a_row.unwrap().iter().any(|removed| removed == key));
-    assert!(with_its_row.unwrap().iter().any(|removed| removed == key));
+    assert!(!without_a_row
+        .unwrap()
+        .removed
+        .iter()
+        .any(|removed| removed == key));
+    assert!(with_its_row
+        .unwrap()
+        .removed
+        .iter()
+        .any(|removed| removed == key));
     // Neither purge took the owner's vault key of the same name.
     assert_eq!(after_the_first.as_deref(), Some("owners-token"));
     assert_eq!(store.get(key).unwrap(), "owners-token");

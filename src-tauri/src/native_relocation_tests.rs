@@ -938,6 +938,164 @@ fn the_session_index_keeps_no_session_uid() {
     );
 }
 
+/// The purge of profile `id` of the active account, as the window runs it.
+fn purge(id: &str, protocol: &str) -> Result<crate::PurgedProfileSecrets, String> {
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(crate::purge_profile_secrets(
+            id.into(),
+            Some(protocol.into()),
+        ))
+}
+
+/// How many sessions purges left to an account's next unlock.
+fn deferred_revokes(conn: &Connection) -> i64 {
+    conn.query_row(
+        "SELECT COUNT(*) FROM global_state WHERE key LIKE 'proton_deferred_revoke_%'",
+        [],
+        |row| row.get(0),
+    )
+    .unwrap()
+}
+
+/// Whether `user` has a row under `key`, read without its key.
+fn has_row(conn: &Connection, user: i64, key: &str) -> bool {
+    conn.query_row(
+        "SELECT COUNT(*) FROM user_credentials WHERE user_id = ?1 AND credential_id = ?2",
+        params![user, key],
+        |row| row.get::<_, i64>(0),
+    )
+    .unwrap()
+        > 0
+}
+
+/// The purge of a profile with no native Proton session, in a locked active
+/// account, never goes through Proton's session code, which cannot read a
+/// locked account: its secrets go, and nothing is revoked.
+#[test]
+fn a_locked_accounts_profile_without_a_proton_session_is_purged() {
+    if !in_isolated_child("a_locked_accounts_profile_without_a_proton_session_is_purged") {
+        return;
+    }
+    let accounts = Accounts::open();
+    let target = accounts.target.id;
+    let keys = ["oauth_dropbox_locked-dropbox", "server_locked-dropbox"];
+    for key in keys {
+        set_user_credential_with_dek(
+            &accounts.conn,
+            target,
+            &accounts.target_dek,
+            key,
+            "oauth",
+            "synthetic token",
+        )
+        .unwrap();
+    }
+    cli_set_active_user(&accounts.store, target).unwrap();
+    let revokes = vault::test_seams::revokes();
+    let purged = purge("locked-dropbox", "dropbox");
+    assert!(
+        purged.is_ok(),
+        "a locked account's Dropbox profile is purged: {purged:?}"
+    );
+    assert_eq!(purged.unwrap().proton_session_ends_at_unlock_of, None);
+    for key in keys {
+        assert!(!has_row(&accounts.conn, target, key), "{key} is gone");
+    }
+    assert_eq!(vault::test_seams::revokes(), revokes);
+}
+
+/// The purge of a native Proton profile in a locked active account cannot
+/// read the session to end it on Proton: it keeps the row, marked, removes
+/// the rest, and says the session ends at the account's next unlock, which
+/// revokes it and removes the row and the mark.
+#[test]
+fn a_locked_accounts_proton_session_ends_at_its_next_unlock() {
+    if !in_isolated_child("a_locked_accounts_proton_session_ends_at_its_next_unlock") {
+        return;
+    }
+    let accounts = Accounts::open();
+    let target = accounts.target.id;
+    accounts.unlock_target();
+    vault::store_session(
+        accounts.target_owner(),
+        Some("locked-proton"),
+        &session("locked-proton-uid", "r1"),
+    )
+    .unwrap();
+    accounts.unlock_source();
+    cli_set_active_user(&accounts.store, target).unwrap();
+    let revokes = vault::test_seams::revokes();
+    let purged = purge("locked-proton", "proton");
+    assert!(
+        purged.as_ref().is_ok_and(
+            |purged| purged.proton_session_ends_at_unlock_of.as_deref() == Some("Target")
+        ),
+        "the purge says the session ends at the next unlock of its account: {purged:?}"
+    );
+    assert_eq!(
+        vault::test_seams::revokes(),
+        revokes,
+        "nothing is revoked yet"
+    );
+    assert_eq!(accounts.target_row("locked-proton").as_deref(), Some("r1"));
+    assert_eq!(deferred_revokes(&accounts.conn), 1);
+
+    accounts.unlock_target();
+    assert_eq!(
+        vault::test_seams::revokes(),
+        revokes + 1,
+        "the unlock ends the session on Proton"
+    );
+    assert!(!has_row(&accounts.conn, target, &key("locked-proton")));
+    assert_eq!(deferred_revokes(&accounts.conn), 0);
+}
+
+/// As above, for a session another account also holds: the unlock removes
+/// the locked account's copy and its mark without a revoke, and the other
+/// account stays signed in.
+#[test]
+fn a_locked_accounts_shared_proton_session_is_not_revoked_at_its_unlock() {
+    if !in_isolated_child("a_locked_accounts_shared_proton_session_is_not_revoked_at_its_unlock") {
+        return;
+    }
+    let accounts = Accounts::open();
+    let target = accounts.target.id;
+    accounts.seed("source-shared", "purge-shared-uid");
+    accounts.unlock_target();
+    vault::store_session(
+        accounts.target_owner(),
+        Some("locked-shared"),
+        &session("purge-shared-uid", "r1"),
+    )
+    .unwrap();
+    accounts.unlock_source();
+    cli_set_active_user(&accounts.store, target).unwrap();
+    let revokes = vault::test_seams::revokes();
+    let purged = purge("locked-shared", "proton");
+    assert!(
+        purged
+            .as_ref()
+            .is_ok_and(|purged| purged.proton_session_ends_at_unlock_of.is_some()),
+        "the purge leaves the session to the next unlock: {purged:?}"
+    );
+    accounts.unlock_target();
+    assert_eq!(
+        vault::test_seams::revokes(),
+        revokes,
+        "a session another account holds is not revoked at the unlock"
+    );
+    assert!(!has_row(&accounts.conn, target, &key("locked-shared")));
+    assert_eq!(deferred_revokes(&accounts.conn), 0);
+    accounts.unlock_source();
+    assert_eq!(
+        loaded(accounts.owner(), "source-shared").as_deref(),
+        Some("r1")
+    );
+}
+
 /// A refresh writes a copy of its session only while the copy still holds
 /// it, and never creates one: the alignment drops an account's copy of a
 /// session the legacy owner holds without the session's lease, and when it
