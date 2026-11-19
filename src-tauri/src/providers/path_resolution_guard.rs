@@ -917,6 +917,11 @@ const SERVER_URL_MARKERS: &[&str] = &[
     "download_link",
 ];
 
+/// The same scan by pattern, ignoring case, for the spellings a fixed marker
+/// misses (`nextPage`, `next_page_url`, `odata.nextLink` without `@`, a
+/// `"next"` key): each match is listed by its lowercased text.
+const NEXT_PAGE_PATTERN: &str = r#"(?i)next.?(page|link|url|href)|"next""#;
+
 /// Every provider file that reads a server-given URL, by marker, and why
 /// the token or key it holds cannot go to a host the answer names. A page
 /// URL followed with the account's credential must stay on the configured
@@ -928,20 +933,28 @@ const SERVER_URL_SITES: &[(&str, &str, &str)] = &[
     ("cloudinary.rs", "download_url", "built from the configured cloud, checked by validate_download_url, fetched without the API secret"),
     ("cloudinary.rs", "upload_url", "built from the configured API base, never read from an answer"),
     ("filelu.rs", "upload_url", "the upload server FileLu names, sent the upload session id the same answer issued, never the API key"),
+    ("google_drive.rs", "nextpage", "nextPageToken is asked for in fields: a token sent back to the configured API as pageToken, never a URL"),
+    ("google_drive.rs", "next_page", "next_page_token is sent back to the configured API as pageToken, never a URL"),
     ("google_drive.rs", "\"location\"", "the resumable session URI is its own credential: the chunks go to it without the bearer token"),
     ("google_photos.rs", "download_url", "a media baseUrl, fetched without the bearer token"),
+    ("google_photos.rs", "next_page", "next_page_token is sent back to PHOTOS_API_BASE as pageToken, never a URL"),
     ("google_photos.rs", "upload_url", "built from PHOTOS_API_BASE, never read from an answer"),
     ("imagekit.rs", "download_url", "checked by validate_download_url, fetched without the private key"),
     ("imagekit.rs", "upload_url", "a fixed endpoint, never read from an answer"),
+    ("immich.rs", "next_page", "a page number, parsed as an integer and sent to the configured server"),
     ("immich.rs", "upload_url", "built from the configured server, never read from an answer"),
     ("internxt.rs", "next: Option<String>", "a page cursor, sent to the configured API, never a URL"),
     ("internxt.rs", "upload_url", "a presigned part URL, sent without the account token"),
     ("jottacloud.rs", "upload_url", "built from the configured API base, never read from an answer"),
+    ("mod.rs", "next page", "the refusal message of next_page_on_api_origin"),
+    ("mod.rs", "next_page", "next_page_on_api_origin itself, the origin check"),
     ("mega_native.rs", "download_url", "a MEGA storage URL, fetched without credentials (the content is encrypted)"),
     ("mega_native.rs", "upload_url", "a MEGA storage URL, sent without credentials (the content is encrypted)"),
     ("onedrive.rs", "\"Location\"", "a pre-authenticated download URL, fetched without the bearer token"),
     ("onedrive.rs", "@odata.nextLink", "followed with the bearer token: next_page_on_api_origin keeps it on Graph"),
     ("onedrive.rs", "download_url", "@microsoft.graph.downloadUrl is pre-authenticated, fetched without the bearer token"),
+    ("onedrive.rs", "nextlink", "the serde rename of @odata.nextLink, followed only through next_page_on_api_origin"),
+    ("onedrive.rs", "next_page", "the calls of next_page_on_api_origin that keep nextLink on Graph"),
     ("onedrive.rs", "next_link", "followed with the bearer token: next_page_on_api_origin keeps it on Graph"),
     ("onedrive.rs", "upload_url", "an upload session URL is pre-authenticated, sent without the bearer token"),
     ("opendrive.rs", "download_link", "kept as metadata or returned as a share link, never requested"),
@@ -950,11 +963,15 @@ const SERVER_URL_SITES: &[(&str, &str, &str)] = &[
     ("s3.rs", "next: Option<String>", "a continuation token, sent to the configured endpoint, never a URL"),
     ("swift.rs", "\"location\"", "a Keystone redirect, followed only on its origin (keystone_redirect_target)"),
     ("twake.rs", "links.next", "followed with the bearer token only as a path on the instance (next_page_path)"),
+    ("twake.rs", "next page", "the refusal message of next_page_path"),
+    ("twake.rs", "next_page", "next_page_path, which keeps a link to a path on the instance"),
     ("twake.rs", "next: Option<String>", "followed with the bearer token only as a path on the instance (next_page_path)"),
+    ("uploadcare.rs", "next_page", "the call of next_page_on_api_origin in validate_uploadcare_api_url"),
     ("uploadcare.rs", "next: Option<String>", "followed with the secret key: validate_uploadcare_api_url keeps it on the API origin"),
     ("webdav.rs", ".href", "only the path of an href is used, joined to the configured base; its authority is dropped"),
     ("yandex_disk.rs", ".href", "operation URLs are followed with the OAuth token only on cloud-api.yandex.net (yandex_operation_url); upload and download hrefs are presigned, sent without it, host-checked by validate_yd_url"),
     ("zoho_workdrive.rs", "download_url", "built from the configured download base, never read from an answer"),
+    ("zoho_workdrive.rs", "next_page", "next_page_cursor reads only the page[next] cursor of a link, sent to the configured API base"),
     ("zoho_workdrive.rs", "next: Option<String>", "only its page[next] cursor is read and sent to the configured API base"),
     ("zoho_workdrive.rs", "upload_url", "built from the configured upload host, never read from an answer"),
 ];
@@ -966,11 +983,15 @@ const SERVER_URL_SITES: &[(&str, &str, &str)] = &[
 /// exists fails too, so the list stays the code's.
 #[test]
 fn every_server_given_url_is_listed_with_why_its_credential_stays_home() {
+    let pattern = regex::Regex::new(NEXT_PAGE_PATTERN).expect("the pattern");
     let mut found = std::collections::BTreeSet::new();
     for (file, source) in provider_sources() {
         for line in production_part(&source).lines() {
             if line.trim_start().starts_with("//") {
                 continue;
+            }
+            for hit in pattern.find_iter(line) {
+                found.insert((file.clone(), hit.as_str().to_ascii_lowercase()));
             }
             for marker in SERVER_URL_MARKERS {
                 if line.contains(marker) {
