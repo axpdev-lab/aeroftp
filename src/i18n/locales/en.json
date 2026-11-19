@@ -6095,6 +6095,7 @@
             "backToServers": "Back to servers",
             "addFavorite": "Add to favorites",
             "removeFavorite": "Remove from favorites",
+            "protonSessionEndsAtUnlock": "The profile was removed. Its Proton Drive session will be closed the next time {account} is unlocked.",
             "exportProfile": "Export...",
             "group": {
                 "newGroup": "New group",

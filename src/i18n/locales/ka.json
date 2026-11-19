@@ -5915,7 +5915,8 @@
                 "months": "{count} თვე"
             },
             "demoTabLabel": "დემო: {protocol}",
-            "newTabLabel": "ახალი: {name}"
+            "newTabLabel": "ახალი: {name}",
+            "protonSessionEndsAtUnlock": "პროფილი წაიშალა. მისი Proton Drive-ის სესია დაიხურება, როცა {account} შემდეგ ჯერზე განბლოკდება."
         },
         "gitlab": {
             "projectPath": "პროექტის გზა",

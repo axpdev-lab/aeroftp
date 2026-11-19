@@ -5934,7 +5934,8 @@
                 "months": "{count} mis"
             },
             "demoTabLabel": "Demo: {protocol}",
-            "newTabLabel": "Newydd: {name}"
+            "newTabLabel": "Newydd: {name}",
+            "protonSessionEndsAtUnlock": "Mae'r proffil wedi'i dynnu. Bydd ei sesiwn Proton Drive yn cael ei chau y tro nesaf y caiff {account} ei ddatgloi."
         },
         "gitlab": {
             "projectPath": "Llwybr y prosiect",

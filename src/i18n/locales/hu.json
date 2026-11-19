@@ -5915,7 +5915,8 @@
                 "months": "{count} hó"
             },
             "demoTabLabel": "Bemutató: {protocol}",
-            "newTabLabel": "Új: {name}"
+            "newTabLabel": "Új: {name}",
+            "protonSessionEndsAtUnlock": "A profil el lett távolítva. A Proton Drive-munkamenete a(z) {account} következő feloldásakor lezárul."
         },
         "gitlab": {
             "projectPath": "Projekt útvonal",

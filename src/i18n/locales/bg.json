@@ -5915,7 +5915,8 @@
                 "months": "{count} мес"
             },
             "demoTabLabel": "Демо: {protocol}",
-            "newTabLabel": "Нов: {name}"
+            "newTabLabel": "Нов: {name}",
+            "protonSessionEndsAtUnlock": "Профилът беше премахнат. Сесията му в Proton Drive ще бъде прекратена при следващото отключване на {account}."
         },
         "gitlab": {
             "projectPath": "Път на проекта",

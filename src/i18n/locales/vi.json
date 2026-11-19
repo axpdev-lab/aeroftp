@@ -5915,7 +5915,8 @@
                 "months": "{count} tháng"
             },
             "demoTabLabel": "Dùng thử: {protocol}",
-            "newTabLabel": "Mới: {name}"
+            "newTabLabel": "Mới: {name}",
+            "protonSessionEndsAtUnlock": "Hồ sơ đã bị xóa. Phiên Proton Drive của hồ sơ sẽ được đóng vào lần tới khi {account} được mở khóa."
         },
         "gitlab": {
             "projectPath": "Đường dẫn dự án",

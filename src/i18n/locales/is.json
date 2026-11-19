@@ -5934,7 +5934,8 @@
                 "months": "{count} mán"
             },
             "demoTabLabel": "Sýnishorn: {protocol}",
-            "newTabLabel": "Nýtt: {name}"
+            "newTabLabel": "Nýtt: {name}",
+            "protonSessionEndsAtUnlock": "Prófílnum var eytt. Proton Drive lotu hans verður lokað næst þegar {account} er aflæstur."
         },
         "gitlab": {
             "projectPath": "Verkefnisslóð",

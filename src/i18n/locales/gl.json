@@ -5934,7 +5934,8 @@
                 "months": "{count} mes."
             },
             "demoTabLabel": "Demo: {protocol}",
-            "newTabLabel": "Novo: {name}"
+            "newTabLabel": "Novo: {name}",
+            "protonSessionEndsAtUnlock": "Eliminouse o perfil. A súa sesión de Proton Drive pecharase a próxima vez que se desbloquee {account}."
         },
         "gitlab": {
             "projectPath": "Ruta do proxecto",

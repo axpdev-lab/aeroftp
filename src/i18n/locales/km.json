@@ -5934,7 +5934,8 @@
                 "months": "{count} ខែ"
             },
             "demoTabLabel": "សាកល្បង: {protocol}",
-            "newTabLabel": "ថ្មី: {name}"
+            "newTabLabel": "ថ្មី: {name}",
+            "protonSessionEndsAtUnlock": "ប្រូហ្វាល់ត្រូវបានលុប។ សម័យ Proton Drive របស់វានឹងត្រូវបិទ នៅពេលដែល {account} ត្រូវបានដោះសោលើកក្រោយ។"
         },
         "gitlab": {
             "projectPath": "ផ្លូវគម្រោង",

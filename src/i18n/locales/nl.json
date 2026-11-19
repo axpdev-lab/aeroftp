@@ -5915,7 +5915,8 @@
                 "months": "{count} mnd"
             },
             "demoTabLabel": "Demo: {protocol}",
-            "newTabLabel": "Nieuw: {name}"
+            "newTabLabel": "Nieuw: {name}",
+            "protonSessionEndsAtUnlock": "Het profiel is verwijderd. De Proton Drive-sessie wordt gesloten zodra {account} de volgende keer wordt ontgrendeld."
         },
         "gitlab": {
             "projectPath": "Projectpad",

@@ -5915,7 +5915,8 @@
                 "months": "{count} μήν"
             },
             "demoTabLabel": "Επίδειξη: {protocol}",
-            "newTabLabel": "Νέο: {name}"
+            "newTabLabel": "Νέο: {name}",
+            "protonSessionEndsAtUnlock": "Το προφίλ αφαιρέθηκε. Η συνεδρία του στο Proton Drive θα κλείσει την επόμενη φορά που θα ξεκλειδωθεί ο λογαριασμός {account}."
         },
         "gitlab": {
             "projectPath": "Διαδρομή Έργου",

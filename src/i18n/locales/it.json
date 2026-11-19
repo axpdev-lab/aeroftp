@@ -6120,6 +6120,7 @@
             "backToServers": "Torna ai server",
             "addFavorite": "Aggiungi ai preferiti",
             "removeFavorite": "Rimuovi dai preferiti",
+            "protonSessionEndsAtUnlock": "Il profilo è stato rimosso. La sua sessione Proton Drive verrà chiusa al prossimo sblocco di {account}.",
             "group": {
                 "newGroup": "Nuovo gruppo",
                 "newGroupEllipsis": "Nuovo gruppo...",

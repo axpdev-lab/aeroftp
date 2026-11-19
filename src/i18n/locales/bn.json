@@ -5915,7 +5915,8 @@
                 "months": "{count} মাস"
             },
             "demoTabLabel": "ডেমো: {protocol}",
-            "newTabLabel": "নতুন: {name}"
+            "newTabLabel": "নতুন: {name}",
+            "protonSessionEndsAtUnlock": "প্রোফাইলটি সরানো হয়েছে। পরেরবার {account} আনলক করা হলে এর Proton Drive সেশন বন্ধ করা হবে।"
         },
         "gitlab": {
             "projectPath": "প্রকল্পের পাথ",

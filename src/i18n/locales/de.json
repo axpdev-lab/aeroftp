@@ -5915,7 +5915,8 @@
                 "months": "{count} Mon."
             },
             "demoTabLabel": "Demo: {protocol}",
-            "newTabLabel": "Neu: {name}"
+            "newTabLabel": "Neu: {name}",
+            "protonSessionEndsAtUnlock": "Das Profil wurde entfernt. Seine Proton Drive-Sitzung wird beim nächsten Entsperren von {account} beendet."
         },
         "gitlab": {
             "projectPath": "Projektpfad",

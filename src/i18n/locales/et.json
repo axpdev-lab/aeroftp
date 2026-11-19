@@ -5915,7 +5915,8 @@
                 "months": "{count} k"
             },
             "demoTabLabel": "Demo: {protocol}",
-            "newTabLabel": "Uus: {name}"
+            "newTabLabel": "Uus: {name}",
+            "protonSessionEndsAtUnlock": "Profiil eemaldati. Selle Proton Drive'i seanss suletakse, kui {account} järgmine kord lukust avatakse."
         },
         "gitlab": {
             "projectPath": "Projekti tee",

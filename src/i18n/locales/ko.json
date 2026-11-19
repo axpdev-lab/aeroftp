@@ -5915,7 +5915,8 @@
                 "months": "{count}개월"
             },
             "demoTabLabel": "데모: {protocol}",
-            "newTabLabel": "신규: {name}"
+            "newTabLabel": "신규: {name}",
+            "protonSessionEndsAtUnlock": "프로필이 삭제되었습니다. 다음에 {account} 계정의 잠금을 해제하면 해당 Proton Drive 세션이 종료됩니다."
         },
         "gitlab": {
             "projectPath": "프로젝트 경로",

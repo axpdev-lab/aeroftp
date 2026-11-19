@@ -5915,7 +5915,8 @@
                 "months": "{count} kk"
             },
             "demoTabLabel": "Esittely: {protocol}",
-            "newTabLabel": "Uusi: {name}"
+            "newTabLabel": "Uusi: {name}",
+            "protonSessionEndsAtUnlock": "Profiili poistettiin. Sen Proton Drive -istunto suljetaan, kun {account} avataan seuraavan kerran."
         },
         "gitlab": {
             "projectPath": "Projektipolku",

@@ -5915,7 +5915,8 @@
                 "months": "{count} мес"
             },
             "demoTabLabel": "Демо: {protocol}",
-            "newTabLabel": "Ново: {name}"
+            "newTabLabel": "Ново: {name}",
+            "protonSessionEndsAtUnlock": "Профил је уклоњен. Његова Proton Drive сесија биће затворена следећи пут када се откључа {account}."
         },
         "gitlab": {
             "projectPath": "Путања пројекта",

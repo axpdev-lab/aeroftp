@@ -5915,7 +5915,8 @@
                 "months": "{count} mėn."
             },
             "demoTabLabel": "Demonstracija: {protocol}",
-            "newTabLabel": "Naujas: {name}"
+            "newTabLabel": "Naujas: {name}",
+            "protonSessionEndsAtUnlock": "Profilis pašalintas. Jo Proton Drive sesija bus uždaryta, kai kitą kartą bus atrakinta {account}."
         },
         "gitlab": {
             "projectPath": "Projekto kelias",

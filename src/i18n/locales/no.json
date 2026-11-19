@@ -5934,7 +5934,8 @@
                 "months": "{count} md."
             },
             "demoTabLabel": "Demo: {protocol}",
-            "newTabLabel": "Ny: {name}"
+            "newTabLabel": "Ny: {name}",
+            "protonSessionEndsAtUnlock": "Profilen er fjernet. Proton Drive-økten lukkes neste gang {account} låses opp."
         },
         "gitlab": {
             "projectPath": "Prosjektsti",

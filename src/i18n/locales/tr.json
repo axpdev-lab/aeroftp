@@ -5915,7 +5915,8 @@
                 "months": "{count} ay"
             },
             "demoTabLabel": "Demo: {protocol}",
-            "newTabLabel": "Yeni: {name}"
+            "newTabLabel": "Yeni: {name}",
+            "protonSessionEndsAtUnlock": "Profil kaldırıldı. Proton Drive oturumu, {account} hesabının kilidi bir sonraki açılışında kapatılacak."
         },
         "gitlab": {
             "projectPath": "Proje Yolu",

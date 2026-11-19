@@ -5934,7 +5934,8 @@
                 "months": "{count} buwan"
             },
             "demoTabLabel": "Demo: {protocol}",
-            "newTabLabel": "Bago: {name}"
+            "newTabLabel": "Bago: {name}",
+            "protonSessionEndsAtUnlock": "Inalis ang profile. Isasara ang session nito sa Proton Drive sa susunod na pag-unlock ng {account}."
         },
         "gitlab": {
             "projectPath": "Path ng Project",

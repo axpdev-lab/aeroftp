@@ -5915,7 +5915,8 @@
                 "months": "{count}个月"
             },
             "demoTabLabel": "演示：{protocol}",
-            "newTabLabel": "新建：{name}"
+            "newTabLabel": "新建：{name}",
+            "protonSessionEndsAtUnlock": "配置文件已移除。下次解锁 {account} 时，其 Proton Drive 会话将被关闭。"
         },
         "gitlab": {
             "projectPath": "项目路径",

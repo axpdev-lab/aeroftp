@@ -5915,7 +5915,8 @@
                 "months": "{count} เดือน"
             },
             "demoTabLabel": "สาธิต: {protocol}",
-            "newTabLabel": "ใหม่: {name}"
+            "newTabLabel": "ใหม่: {name}",
+            "protonSessionEndsAtUnlock": "ลบโปรไฟล์แล้ว เซสชัน Proton Drive ของโปรไฟล์นี้จะถูกปิดเมื่อปลดล็อก {account} ครั้งถัดไป"
         },
         "gitlab": {
             "projectPath": "เส้นทางโปรเจกต์",

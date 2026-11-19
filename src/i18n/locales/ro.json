@@ -5915,7 +5915,8 @@
                 "months": "{count} luni"
             },
             "demoTabLabel": "Demo: {protocol}",
-            "newTabLabel": "Nou: {name}"
+            "newTabLabel": "Nou: {name}",
+            "protonSessionEndsAtUnlock": "Profilul a fost eliminat. Sesiunea sa Proton Drive va fi închisă la următoarea deblocare a contului {account}."
         },
         "gitlab": {
             "projectPath": "Calea proiectului",

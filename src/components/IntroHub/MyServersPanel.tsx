@@ -1555,7 +1555,18 @@ export function MyServersPanel({
             const { profiles: currentServers, userId: profilesUserId, revision: profilesRevision } = await readSavedServerProfilesForWrite();
             const updated = currentServers.filter(s => s.id !== deleteTarget.id);
             setServers(await storeSavedServerProfiles(updated, false, profilesUserId, profilesRevision));
-            deleteProfileVaultSecrets(deleteTarget.id, deleteTarget.protocol).catch(() => {});
+            deleteProfileVaultSecrets(deleteTarget.id, deleteTarget.protocol)
+                .then(({ protonSessionEndsAtUnlockOf: account }) => {
+                    if (!account) return;
+                    window.dispatchEvent(new CustomEvent('aeroftp-toast', {
+                        detail: {
+                            type: 'info',
+                            title: t('introHub.protonSessionEndsAtUnlock', { account }),
+                            important: true,
+                        },
+                    }));
+                })
+                .catch(e => logger.warn('Secrets of the deleted profile could not be removed', e));
             // Drop the deleted profile from any group it belonged to (#320).
             pruneServerFromGroups(deleteTarget.id).catch(() => {});
             setGroups(prev => prev.map(g => (

@@ -5915,7 +5915,8 @@
                 "months": "{count} mes."
             },
             "demoTabLabel": "Ukážka: {protocol}",
-            "newTabLabel": "Nový: {name}"
+            "newTabLabel": "Nový: {name}",
+            "protonSessionEndsAtUnlock": "Profil bol odstránený. Jeho relácia Proton Drive sa ukončí pri ďalšom odomknutí účtu {account}."
         },
         "gitlab": {
             "projectPath": "Cesta k projektu",

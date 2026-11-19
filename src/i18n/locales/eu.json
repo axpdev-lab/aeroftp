@@ -5934,7 +5934,8 @@
                 "months": "{count} hil."
             },
             "demoTabLabel": "Demoa: {protocol}",
-            "newTabLabel": "Berria: {name}"
+            "newTabLabel": "Berria: {name}",
+            "protonSessionEndsAtUnlock": "Profila kendu da. Bere Proton Drive saioa itxiko da {account} hurrengoan desblokeatzen denean."
         },
         "gitlab": {
             "projectPath": "Proiektuaren bidea",

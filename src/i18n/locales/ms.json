@@ -5915,7 +5915,8 @@
                 "months": "{count} bln"
             },
             "demoTabLabel": "Demo: {protocol}",
-            "newTabLabel": "Baharu: {name}"
+            "newTabLabel": "Baharu: {name}",
+            "protonSessionEndsAtUnlock": "Profil telah dialih keluar. Sesi Proton Drive-nya akan ditutup pada kali seterusnya {account} dibuka kunci."
         },
         "gitlab": {
             "projectPath": "Laluan Projek",

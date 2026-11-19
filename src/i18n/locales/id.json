@@ -5915,7 +5915,8 @@
                 "months": "{count} bln"
             },
             "demoTabLabel": "Demo: {protocol}",
-            "newTabLabel": "Baru: {name}"
+            "newTabLabel": "Baru: {name}",
+            "protonSessionEndsAtUnlock": "Profil telah dihapus. Sesi Proton Drive-nya akan ditutup saat {account} dibuka kuncinya lagi."
         },
         "gitlab": {
             "projectPath": "Jalur Proyek",

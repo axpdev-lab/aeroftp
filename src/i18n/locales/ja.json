@@ -5915,7 +5915,8 @@
                 "months": "{count}か月"
             },
             "demoTabLabel": "デモ: {protocol}",
-            "newTabLabel": "新規: {name}"
+            "newTabLabel": "新規: {name}",
+            "protonSessionEndsAtUnlock": "プロファイルを削除しました。Proton Driveのセッションは、次に{account}のロックを解除したときに終了します。"
         },
         "gitlab": {
             "projectPath": "プロジェクトパス",

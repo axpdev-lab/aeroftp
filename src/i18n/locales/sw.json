@@ -5915,7 +5915,8 @@
                 "months": "miezi {count}"
             },
             "demoTabLabel": "Onyesho: {protocol}",
-            "newTabLabel": "Mpya: {name}"
+            "newTabLabel": "Mpya: {name}",
+            "protonSessionEndsAtUnlock": "Wasifu umeondolewa. Kipindi chake cha Proton Drive kitafungwa {account} itakapofunguliwa wakati ujao."
         },
         "gitlab": {
             "projectPath": "Njia ya mradi",
