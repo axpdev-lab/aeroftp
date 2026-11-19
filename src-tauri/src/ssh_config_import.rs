@@ -462,8 +462,13 @@ struct HostBlock {
     aliases: Vec<String>,
     kv: HashMap<String, String>,
     /// Every `IdentityFile` line of the block, `none` included, in order:
-    /// ssh counts them ([`MAX_IDENTITY_FILES`]).
-    identities: Vec<String>,
+    /// ssh counts them ([`MAX_IDENTITY_FILES`]). Each is the number of its
+    /// text in the file, the same for the same text: a host compares up to
+    /// 100 of them for each line, at the same cost whatever their length.
+    identities: Vec<u32>,
+    /// The line of the block's first `Include`, which the import does not
+    /// read ([`read_pass`]).
+    include: Option<usize>,
 }
 
 /// One ssh_config line as OpenSSH reads it (`process_config_line` in
@@ -911,12 +916,18 @@ fn parse_ssh_config_with(content: &str, services: &Services) -> (Vec<HostBlock>,
         aliases: Vec::new(),
         kv: HashMap::new(),
         identities: Vec::new(),
+        include: None,
     });
+    let mut texts: HashMap<String, u32> = HashMap::new();
     let mut error: Option<String> = None;
     let mut hosts = 0;
     let mut capped = false;
     let push = |blocks: &mut Vec<HostBlock>, block: HostBlock| {
-        if block.scope != Scope::Global || !block.kv.is_empty() || !block.identities.is_empty() {
+        if block.scope != Scope::Global
+            || !block.kv.is_empty()
+            || !block.identities.is_empty()
+            || block.include.is_some()
+        {
             blocks.push(block);
         }
     };
@@ -978,6 +989,7 @@ fn parse_ssh_config_with(content: &str, services: &Services) -> (Vec<HostBlock>,
                 aliases,
                 kv: HashMap::new(),
                 identities: Vec::new(),
+                include: None,
             });
         } else if let Some(block) = current.as_mut() {
             // `ProxyCommand` and `ProxyJump` are one setting to ssh: the first
@@ -987,6 +999,10 @@ fn parse_ssh_config_with(content: &str, services: &Services) -> (Vec<HostBlock>,
             if PROXY_KEYS.contains(&key.as_str())
                 && PROXY_KEYS.iter().any(|k| block.kv.contains_key(*k))
             {
+                continue;
+            }
+            if key == "include" {
+                block.include.get_or_insert(index + 1);
                 continue;
             }
             let value = match key.as_str() {
@@ -1001,7 +1017,10 @@ fn parse_ssh_config_with(content: &str, services: &Services) -> (Vec<HostBlock>,
             // tries first is its first other one, from any block. It still
             // counts the line.
             if key == "identityfile" {
-                block.identities.push(value.clone());
+                let next = texts.len() as u32;
+                block
+                    .identities
+                    .push(*texts.entry(value.clone()).or_insert(next));
                 if value.eq_ignore_ascii_case("none") {
                     continue;
                 }
@@ -1307,8 +1326,8 @@ fn host_values(config: &SshConfig, alias: &str) -> Result<HashMap<String, String
 /// with the line of the first such block).
 #[derive(Default)]
 struct Identities {
-    certain: Vec<String>,
-    maybe: Vec<String>,
+    certain: Vec<u32>,
+    maybe: Vec<u32>,
     maybe_line: Option<usize>,
 }
 
@@ -1317,26 +1336,26 @@ impl Identities {
     /// counts each key before it drops a repeat, and stops at
     /// [`MAX_IDENTITY_FILES`] (`add_identity_file` in readconf.c). Each key
     /// is a step; the list compared stays at most that long.
-    fn overflow(known: &[&String], keys: &[String], steps: &Steps) -> bool {
+    fn overflow(known: &[u32], keys: &[u32], steps: &Steps) -> bool {
         steps.charge(keys.len() as u64);
         if steps.spent() {
             return false;
         }
-        let mut seen: Vec<&String> = known.to_vec();
+        let mut seen: Vec<u32> = known.to_vec();
         for key in keys {
             if seen.len() >= MAX_IDENTITY_FILES {
                 return true;
             }
-            if !seen.contains(&key) {
-                seen.push(key);
+            if !seen.contains(key) {
+                seen.push(*key);
             }
         }
         false
     }
 
     /// The keys that apply for certain, then those that may.
-    fn all(&self) -> Vec<&String> {
-        let mut all: Vec<&String> = self.certain.iter().collect();
+    fn all(&self) -> Vec<u32> {
+        let mut all = self.certain.clone();
         all.extend(self.maybe.iter().filter(|k| !self.certain.contains(k)));
         all
     }
@@ -1344,6 +1363,16 @@ impl Identities {
 
 /// One reading of the file for `alias`, with `Host` patterns matched against
 /// `name` (the alias, then the host name in the second reading).
+/// Why a host that an `Include` applies to is skipped: ssh reads the
+/// included files there as part of the file (`Include` in readconf.c, and
+/// `ssh -G`: a `ProxyJump bastion` in an included file before `Host lab`
+/// gives `lab` that jump), and the import does not open them, so any value
+/// it reads for the host, a jump host among them, may not be the one ssh
+/// uses. An `Include` in a block that does not apply sets nothing.
+fn include_reason(line: usize, how: &str) -> String {
+    format!("the `Include` on line {line} of the file {how}, and an import does not read the files it names, which may set the host's values, a jump host among them; import a copy of the file with the included lines in place of the `Include`")
+}
+
 fn read_pass(
     config: &SshConfig,
     values: &mut HashMap<String, String>,
@@ -1362,6 +1391,9 @@ fn read_pass(
             Scope::Match(line) => match match_holds(line, values, alias, second, config) {
                 Some(holds) => holds,
                 None => {
+                    if let Some(at) = block.include {
+                        return Err(include_reason(at, "may apply to it"));
+                    }
                     // ssh settles `HostName` before the second reading, and
                     // asks DNS before it: the keys that decide those do
                     // nothing in it.
@@ -1392,7 +1424,7 @@ fn read_pass(
                             if !identities.maybe.contains(key)
                                 && identities.maybe.len() < MAX_IDENTITY_FILES
                             {
-                                identities.maybe.push(key.clone());
+                                identities.maybe.push(*key);
                             }
                         }
                     }
@@ -1401,6 +1433,9 @@ fn read_pass(
             },
         };
         if applies {
+            if let Some(at) = block.include {
+                return Err(include_reason(at, "applies to it"));
+            }
             // ssh counts every line, `none` and repeats included, and keeps
             // a key once (`ssh -G`: 100 lines and a `Match final` fail in
             // the second reading, 150 lines of 50 keys do not). Each line is
@@ -1419,7 +1454,7 @@ fn read_pass(
                     return Err(format!("more than {MAX_IDENTITY_FILES} `IdentityFile` lines apply to it, and ssh refuses to connect with more"));
                 }
                 if !identities.certain.contains(identity) {
-                    identities.certain.push(identity.clone());
+                    identities.certain.push(*identity);
                 }
             }
             for (key, value) in &block.kv {
@@ -1624,9 +1659,19 @@ fn match_holds(
 /// patterns does and none of its `!` patterns does (`ssh -G`: `Match host
 /// a,!a` and `!a,a` hold for no host). `any_case` compares lowercase, as
 /// `Match host` and `originalhost` do.
+/// The length at which ssh fails a pattern list ([`pattern_list_matches`]).
+const MAX_SUBPATTERN: usize = 1023;
+
 fn pattern_list_matches(list: &str, name: &str, any_case: bool, steps: &Steps) -> bool {
     let mut matched = false;
     for pattern in list.split(',') {
+        // ssh copies each subpattern into a 1024-byte buffer and fails the
+        // whole list at one of 1023 bytes or more after its `!` (`sub` in
+        // `match_pattern_list`, match.c; `ssh -G`: `Match originalhost
+        // lab,<1023 x>` does not apply to `lab`, with 1022 it does).
+        if pattern.strip_prefix('!').unwrap_or(pattern).len() >= MAX_SUBPATTERN {
+            return false;
+        }
         match pattern.strip_prefix('!') {
             Some(negated) if ssh_pattern_in(negated, name, any_case, steps) => return false,
             Some(_) => {}
@@ -2025,6 +2070,15 @@ fn ssh_word_checked(field: &str, value: &str, dollar: bool) -> Result<(), String
 fn ssh_jump_word(value: &str) -> Result<String, String> {
     ssh_word_checked("jump host", value, false)?;
     let refused = |why: &str| format!("its jump host {why}; correct the profile and export again");
+    // Each hop before the last reaches one more ssh down the chain, and each
+    // expands the `%` tokens of the command it runs (`ssh -vvv`: `u%%x@a,b`
+    // gives the first `-J u%x@a`, and the second stops at "unknown key %x").
+    let earlier = value.rsplit_once(',').map_or("", |(earlier, _)| earlier);
+    if earlier.contains('%') {
+        return Err(refused(
+            "holds `%` in a hop before the last, which each ssh down the chain reads as a token again",
+        ));
+    }
     let hops = value
         .split(',')
         .map(|hop| match hop.strip_prefix("ssh://") {
@@ -2065,10 +2119,8 @@ fn ssh_jump_word(value: &str) -> Result<String, String> {
 /// (`@` in a user name) and not start with `-`; the last hop's host may be a
 /// whole IPv6 literal `[...]` instead, whose brackets ssh drops; an earlier
 /// hop, written whole into the command, only those and `:/@`, since `[` and
-/// `]` are a shell glob there (`-J [::1]:1`, and `j[ab]` anywhere). An earlier
-/// `ssh://` hop holding `%` is refused too: ssh expands the command's `%`
-/// tokens before the next ssh decodes it (`ssh://u%2B@a,b` fails with
-/// "unknown key %2", and `%%2B` makes ssh refuse the file).
+/// `]` are a shell glob there (`-J [::1]:1`, and `j[ab]` anywhere). A `%` in
+/// an earlier hop never reaches it: [`ssh_jump_word`] refuses it first.
 fn ssh_jump_reaches_no_shell(written: &str) -> bool {
     let plain = |s: &str, extra: &[u8]| {
         !s.is_empty()
@@ -2080,11 +2132,8 @@ fn ssh_jump_reaches_no_shell(written: &str) -> bool {
         Some((earlier, last)) => (Some(earlier), last),
         None => (None, written),
     };
-    let earlier_plain = earlier.is_none_or(|earlier| {
-        earlier
-            .split(',')
-            .all(|hop| plain(hop, b":/@") && !(hop.starts_with("ssh://") && hop.contains('%')))
-    });
+    let earlier_plain =
+        earlier.is_none_or(|earlier| earlier.split(',').all(|hop| plain(hop, b":/@")));
     let (user, rest) = match last.strip_prefix("ssh://") {
         Some(uri) => match uri.split_once('@') {
             Some((user, rest)) => {
@@ -2220,12 +2269,24 @@ fn ssh_host_lines(server: &SshExportServer) -> Result<String, String> {
     let user = Some(server.username.trim()).filter(|s| !s.is_empty());
     let host = host.map(|h| ssh_word("host", h, false)).transpose()?;
     let user = user.map(|u| ssh_word("user name", u, true)).transpose()?;
-    let key_file = opt("private_key_path")
+    // A key file path keeps the spaces at its ends: they are part of the
+    // file's name (`IdentityFile "/keys/lab "` loads `/keys/lab `), and the
+    // import keeps them.
+    let key_file = raw("private_key_path")
+        .filter(|k| !k.trim().is_empty())
         .map(|k| ssh_path("key file path", k))
         .transpose()?;
     // `ProxyJump` alone also ends its value at a `#` inside it (`ssh -G`:
     // `ProxyJump a#b` reads as `a`).
     let proxy = opt("proxyJump").map(ssh_jump_word).transpose()?;
+    // ssh refuses the whole file for a port outside 1 to 65535 (`ssh -G`:
+    // "Bad port '0'", "Bad port '65536'"), and the import with it.
+    if !(1..=65535).contains(&server.port) {
+        return Err(format!(
+            "its port {} is not one from 1 to 65535, and ssh would refuse the whole file; correct the profile and export again",
+            server.port
+        ));
+    }
 
     let mut block = String::new();
     if let Some(host) = host {
@@ -2654,8 +2715,9 @@ Host roundtrip
     /// with ssh (`ssh -G` for the file, the host and the jump; `ssh -vvv` for
     /// the key it loads and the command it runs for a jump) and with the
     /// import: an `ssh://` jump keeps its `%XX` encoding, which ssh decodes
-    /// before it reads tokens, another hop and the other values go out with
-    /// `%%`, and a jump ssh would read otherwise, or refuse, is refused.
+    /// before it reads tokens, a plain last hop and the other values go out
+    /// with `%%`, and a jump ssh would read otherwise, or refuse, is refused,
+    /// a `%` in a hop before the last among them.
     #[test]
     fn every_exported_percent_reads_back_as_the_profile_holds_it() {
         let none = serde_json::json!({});
@@ -2711,6 +2773,7 @@ Host roundtrip
         assert_eq!(
             skipped,
             [
+                ("mixed", "its jump host holds `%` in a hop before the last, which each ssh down the chain reads as a token again; correct the profile and export again"),
                 ("decoded", "its jump host encodes `%` as `%25`, which ssh decodes and then reads as a token in the command it runs for the jump; correct the profile and export again"),
                 ("double", "its jump host is not one ssh reads, and ssh would refuse the whole file; correct the profile and export again"),
                 ("host code", "its jump host is not one ssh reads, and ssh would refuse the whole file; correct the profile and export again"),
@@ -2722,7 +2785,6 @@ Host roundtrip
             "  IdentityFile /keys/id%%u_%%%%\n",
             "  ProxyJump ssh://u%2B@jump.example.com\n",
             "  ProxyJump u%%x@127.0.0.1:1\n",
-            "  ProxyJump a%%b,ssh://c%2Bd@e.example.com\n",
         ] {
             assert!(config.contains(line), "{line:?}\n{config}");
         }
@@ -2741,7 +2803,7 @@ Host roundtrip
             .filter(|s| s.reason == JUMP)
             .map(|s| s.name.as_str())
             .collect();
-        assert_eq!(jumped, ["uri", "hop", "mixed"]);
+        assert_eq!(jumped, ["uri", "hop"]);
         // What ssh 10.2 reads, the reference: an earlier ssh or the Windows
         // port parses jump hosts and logs the command otherwise.
         if !ssh_major().is_some_and(|major| major >= 10) {
@@ -2751,31 +2813,223 @@ Host roundtrip
         let g = |host: &str| ssh_g(&path, host);
         assert_eq!(g("addr")["hostname"], "fe80::1%eth0");
         assert_eq!(g("uri")["proxyjump"], "u+@jump.example.com");
-        assert_eq!(g("mixed")["proxyjump"], "a%%b,c+d@e.example.com");
         assert_eq!(
             ssh_first_key(&path, "key").as_deref(),
             Some("/keys/id%u_%%")
         );
         // The command ssh runs for the jump, its tokens expanded: the user
         // is `u%x`, as the profile holds it.
-        let out = std::process::Command::new("ssh")
-            .args(["-vvv", "-F"])
-            .arg(&path)
-            .args([
-                "-o",
-                "BatchMode=yes",
-                "-o",
-                "ConnectTimeout=5",
-                "hop",
-                "true",
-            ])
-            .output()
-            .unwrap();
-        let log = String::from_utf8_lossy(&out.stderr);
+        if let Some(command) = ssh_jump_command(&path, "hop") {
+            assert!(command.starts_with("exec ssh -l u%x -p 1 "), "{command}");
+        }
+    }
+
+    /// A port outside 1 to 65535 is not written: ssh would refuse the whole
+    /// file for it, its other hosts with it. The other profiles still go
+    /// out, and an export with none left keeps the file at the destination.
+    #[test]
+    fn a_port_ssh_refuses_is_never_written() {
+        let port = |name: &str, port: u32| {
+            let mut server = sftp(name, "h.example.com", "u", serde_json::json!({}));
+            server.port = port;
+            server
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config");
+        let servers = [port("zero", 0), port("ok", 2200), port("big", 65536)];
+        let outcome = export_ssh_config(&servers, &HashMap::new(), &path).unwrap();
+        let skipped: Vec<(&str, &str)> = outcome
+            .skipped
+            .iter()
+            .map(|s| (s.name.as_str(), s.reason.as_str()))
+            .collect();
+        assert_eq!(
+            skipped,
+            [
+                ("zero", "its port 0 is not one from 1 to 65535, and ssh would refuse the whole file; correct the profile and export again"),
+                ("big", "its port 65536 is not one from 1 to 65535, and ssh would refuse the whole file; correct the profile and export again"),
+            ]
+        );
+        assert_eq!(outcome.exported, 1);
+        let back = import_ssh_config(&path).unwrap();
+        let read: Vec<(&str, u32)> = back
+            .servers
+            .iter()
+            .map(|s| (s.name.as_str(), s.port))
+            .collect();
+        assert_eq!(read, [("ok", 2200)], "{:?}", reasons(&back));
+        assert!(back.skipped.is_empty(), "{:?}", reasons(&back));
+        std::fs::write(&path, "mine\n").unwrap();
+        let outcome = export_ssh_config(
+            &[port("zero", 0), port("big", 65536)],
+            &HashMap::new(),
+            &path,
+        )
+        .unwrap();
+        assert_eq!(outcome.exported, 0);
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "mine\n");
+    }
+
+    /// A key file path keeps the whitespace at its ends, part of the file's
+    /// name: `IdentityFile "/keys/lab "` is imported as `/keys/lab `, and
+    /// exported so that ssh, and the import, read `/keys/lab ` again.
+    #[test]
+    fn a_key_file_path_keeps_the_spaces_at_its_ends() {
+        let dir = tempfile::tempdir().unwrap();
+        let key = |result: &SshImportResult| {
+            result.servers[0].options.as_ref().unwrap()["private_key_path"].clone()
+        };
+        let imported = import_text(
+            dir.path(),
+            "Host lab\n  HostName lab.example.com\n  IdentityFile \"/keys/lab \"\n",
+        );
+        assert_eq!(key(&imported), serde_json::json!("/keys/lab "));
+        let server = sftp(
+            "lab",
+            "lab.example.com",
+            "u",
+            serde_json::json!({ "private_key_path": "/keys/lab " }),
+        );
+        let path = dir.path().join("exported");
+        let outcome = export_ssh_config(&[server], &HashMap::new(), &path).unwrap();
+        assert_eq!(outcome.exported, 1, "{:?}", outcome.skipped);
+        assert_eq!(
+            key(&import_ssh_config(&path).unwrap()),
+            serde_json::json!("/keys/lab ")
+        );
+        if std::process::Command::new("ssh").arg("-V").output().is_ok() {
+            assert_eq!(ssh_g(&path, "lab")["identityfile"], "/keys/lab ");
+        }
+    }
+
+    /// ssh fails a pattern list with an entry of 1023 bytes or more after
+    /// its `!`, the entries before it too: `Match originalhost lab,<1022
+    /// bytes>` applies to `lab`, with 1023 it does not, negated or not.
+    #[test]
+    fn a_pattern_ssh_cannot_hold_matches_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let ssh = std::process::Command::new("ssh").arg("-V").output().is_ok();
+        for (len, bang, applies) in [
+            (1022, "", true),
+            (1023, "", false),
+            (1022, "!", true),
+            (1023, "!", false),
+        ] {
+            let text = format!(
+                "Host lab\n  HostName lab.example.com\nMatch originalhost lab,{bang}{}\n  Port 2200\n",
+                "x".repeat(len)
+            );
+            let result = import_text(dir.path(), &text);
+            let port = result.servers[0].port;
+            assert_eq!(port == 2200, applies, "{len}{bang}");
+            if ssh {
+                let read = ssh_g(&dir.path().join("config"), "lab");
+                assert_eq!(read["port"], port.to_string(), "{len}{bang}");
+            }
+        }
+    }
+
+    /// ssh reads the files an `Include` names where the line is, so a
+    /// `ProxyJump` in one reaches the hosts after it (`ssh -G`). The import
+    /// does not open them: it skips every host an `Include` applies to, or
+    /// may apply to, rather than import it with values ssh may not use, a
+    /// direct connection where ssh goes through a jump host. An `Include` in
+    /// a block that does not apply sets nothing.
+    #[test]
+    fn a_host_an_include_applies_to_is_skipped() {
+        let dir = tempfile::tempdir().unwrap();
+        let extra = dir.path().join("extra");
+        std::fs::write(&extra, "ProxyJump bastion.example.com\n").unwrap();
+        let x = extra.display();
+        let host = "Host lab\n  HostName lab.example.com\n";
+        let reason = |line: usize, how: &str| {
+            format!("the `Include` on line {line} of the file {how}, and an import does not read the files it names, which may set the host's values, a jump host among them; import a copy of the file with the included lines in place of the `Include`")
+        };
+        let cases = [
+            (
+                format!("Include {x}\n{host}"),
+                vec![],
+                vec![("lab", reason(1, "applies to it"))],
+            ),
+            (
+                format!("{host}Host *\n  Include {x}\n"),
+                vec![],
+                vec![
+                    ("lab", reason(4, "applies to it")),
+                    ("*", "wildcard host pattern".to_string()),
+                ],
+            ),
+            (
+                format!("{host}Host other\n  Include {x}\n  HostName o.example.com\n"),
+                vec!["lab"],
+                vec![("other", reason(4, "applies to it"))],
+            ),
+            (
+                format!("Match exec true\n  Include {x}\n{host}"),
+                vec![],
+                vec![("lab", reason(2, "may apply to it"))],
+            ),
+            (host.to_string(), vec!["lab"], vec![]),
+        ];
+        for (text, imported, skipped) in cases {
+            let result = import_text(dir.path(), &text);
+            let names: Vec<&str> = result.servers.iter().map(|s| s.name.as_str()).collect();
+            assert_eq!(names, imported, "{text}");
+            let skipped: Vec<(&str, &str)> =
+                skipped.iter().map(|(n, r)| (*n, r.as_str())).collect();
+            assert_eq!(reasons(&result), skipped, "{text}");
+        }
+        if std::process::Command::new("ssh").arg("-V").output().is_ok() {
+            let file = dir.path().join("included");
+            std::fs::write(&file, format!("Include {x}\n{host}")).unwrap();
+            assert_eq!(ssh_g(&file, "lab")["proxyjump"], "bastion.example.com");
+        }
+    }
+
+    /// A host compares its `IdentityFile` keys by number, not by text: a
+    /// file whose keys differ only in their last byte takes no longer than
+    /// one of the same size whose keys differ in their first, where comparing
+    /// the texts would read each of them whole for every pair (98 keys of
+    /// 16 KiB after a short one, for each of 1000 hosts).
+    #[test]
+    fn comparing_keys_costs_the_same_whatever_their_length() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("config");
+        let body = "k".repeat(16 * 1024);
+        let config = |late: bool| {
+            // The first key is short: each host expands the one it keeps.
+            let mut text = String::from("IdentityFile /short\n");
+            for i in 0..98 {
+                let key = if late {
+                    format!("/{body}{i:02}")
+                } else {
+                    format!("/{i:02}{body}")
+                };
+                text.push_str(&format!("IdentityFile {key}\n"));
+            }
+            for i in 0..1000 {
+                text.push_str(&format!("Host h{i}\n  HostName h{i}.example.com\n"));
+            }
+            text
+        };
+        let time = |late: bool| {
+            std::fs::write(&file, config(late)).unwrap();
+            (0..3)
+                .map(|_| {
+                    let start = std::time::Instant::now();
+                    let result = import_ssh_config(&file).unwrap();
+                    assert_eq!(result.servers.len(), 1000, "{:?}", reasons(&result).first());
+                    start.elapsed()
+                })
+                .min()
+                .unwrap()
+        };
+        let early = time(false);
+        let late = time(true);
+        eprintln!("keys differing first: {early:?}, last: {late:?}");
         assert!(
-            log.lines()
-                .any(|l| l.contains("Executing proxy command: exec ssh -l u%x -p 1 ")),
-            "{log}"
+            late < early * 3 + std::time::Duration::from_millis(50),
+            "{late:?} against {early:?}"
         );
     }
 
@@ -2856,6 +3110,8 @@ Host roundtrip
             "[::1]:1,b.example.com",
             "u@[]:1",
             "u@[x]y",
+            "u%x@a.example.com,b.example.com",
+            "a%b.example.com,c.example.com",
         ];
         let exported = [
             ("plain", "u@127.0.0.1:1", "-l u -p 1 "),
@@ -2868,6 +3124,11 @@ Host roundtrip
             ),
             ("ipv6", "u@[::1]:1", "-l u -p 1 "),
             ("bare6", "[::1]", "-F "),
+            (
+                "chain",
+                "a.example.com,u@127.0.0.1:2",
+                "-l u -p 2 -J a.example.com ",
+            ),
         ];
         let mut servers: Vec<_> = refused
             .iter()
@@ -2903,27 +3164,13 @@ Host roundtrip
             return;
         }
         for (name, _, args) in exported {
-            let out = std::process::Command::new("ssh")
-                .args(["-vvv", "-F"])
-                .arg(&path)
-                .args([
-                    "-o",
-                    "BatchMode=yes",
-                    "-o",
-                    "ConnectTimeout=5",
-                    name,
-                    "true",
-                ])
-                .output()
-                .unwrap();
-            let log = String::from_utf8_lossy(&out.stderr);
-            let command = log
-                .lines()
-                .find_map(|l| {
-                    l.split_once("Executing proxy command: exec ssh ")
-                        .map(|(_, c)| c)
-                })
-                .unwrap_or_else(|| panic!("{name}: {log}"));
+            let Some(command) = ssh_jump_command(&path, name) else {
+                eprintln!("SKIPPED: no stand-in for ssh here, so the commands are not read");
+                return;
+            };
+            let command = command
+                .strip_prefix("exec ssh ")
+                .unwrap_or_else(|| panic!("{name}: {command}"));
             assert!(command.starts_with(args), "{name}: {command}");
         }
     }
@@ -4014,7 +4261,13 @@ Host roundtrip
                 .arg("al")
                 .output()
                 .unwrap();
-            String::from_utf8_lossy(&out.stdout)
+            assert!(
+                out.status.success(),
+                "ssh -G {}: {}",
+                config.display(),
+                String::from_utf8_lossy(&out.stderr)
+            );
+            let lines = String::from_utf8_lossy(&out.stdout)
                 .lines()
                 .filter(|l| {
                     l.starts_with("hostname ")
@@ -4022,7 +4275,11 @@ Host roundtrip
                         || (user_tokens && l.starts_with("user "))
                 })
                 .map(str::to_string)
-                .collect::<Vec<_>>()
+                .collect::<Vec<_>>();
+            for key in ["hostname ", "port "] {
+                assert!(lines.iter().any(|l| l.starts_with(key)), "{key}{lines:?}");
+            }
+            lines
         };
         assert_eq!(read(&source), read(&exported));
     }
@@ -4446,6 +4703,68 @@ Host roundtrip
     ];
 
     /// The values `ssh -G` reads for `host` in `file`, by keyword.
+    /// The command ssh runs for the jump host of `host` in `file` (`ssh
+    /// -vvv`: "Executing proxy command: exec ssh ..."), with the `ssh` it
+    /// names a stand-in that exits at once, so no jump is ever opened (the
+    /// command does not pass on `BatchMode` or `ConnectTimeout`). `None` where
+    /// the stand-in cannot be put in its place.
+    fn ssh_jump_command(file: &Path, host: &str) -> Option<String> {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            use std::os::unix::process::CommandExt;
+            let path = std::env::var_os("PATH").unwrap_or_default();
+            let real = std::env::split_paths(&path)
+                .map(|dir| dir.join("ssh"))
+                .find(|ssh| ssh.is_file())?;
+            let stand_in = tempfile::tempdir().unwrap();
+            let ran = stand_in.path().join("ran");
+            let script = stand_in.path().join("ssh");
+            std::fs::write(
+                &script,
+                format!("#!/bin/sh\n: > '{}'\nexit 1\n", ran.display()),
+            )
+            .unwrap();
+            std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+            let mut dirs = vec![stand_in.path().to_path_buf()];
+            dirs.extend(std::env::split_paths(&path));
+            // A test that forks while the script is still open for writing
+            // makes its exec fail for a moment (ETXTBSY): run again then.
+            let mut log = String::new();
+            for _ in 0..5 {
+                let out = std::process::Command::new(&real)
+                    .arg0("ssh")
+                    .env("PATH", std::env::join_paths(&dirs).unwrap())
+                    .args(["-vvv", "-F"])
+                    .arg(file)
+                    .args([
+                        "-o",
+                        "BatchMode=yes",
+                        "-o",
+                        "ConnectTimeout=5",
+                        host,
+                        "true",
+                    ])
+                    .output()
+                    .unwrap();
+                log = String::from_utf8_lossy(&out.stderr).into_owned();
+                let command = log.lines().find_map(|l| {
+                    l.split_once("Executing proxy command: ")
+                        .map(|(_, c)| c.to_string())
+                });
+                if ran.exists() {
+                    return Some(command.unwrap_or_else(|| panic!("{host}: {log}")));
+                }
+            }
+            panic!("{host}: the stand-in for ssh never ran: {log}");
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = (file, host);
+            None
+        }
+    }
+
     fn ssh_g(file: &Path, host: &str) -> HashMap<String, String> {
         let out = std::process::Command::new("ssh")
             .args(["-G", "-F"])
@@ -4453,6 +4772,11 @@ Host roundtrip
             .arg(host)
             .output()
             .unwrap();
+        assert!(
+            out.status.success(),
+            "ssh -G {host}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
         String::from_utf8_lossy(&out.stdout)
             .lines()
             .filter_map(|l| l.split_once(' '))

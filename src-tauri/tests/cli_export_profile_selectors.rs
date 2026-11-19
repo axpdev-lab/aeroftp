@@ -279,6 +279,16 @@ fn an_export_that_writes_no_profile_keeps_the_destination() {
         std::fs::write(&path, MINE).unwrap();
         let out = export(config.path(), format, selector, &path);
         assert_eq!(out.status.code(), Some(4), "{format}: {}", describe(&out));
+        // The exporter refused the profile, by its host: exit 4 alone would
+        // also be an import that skipped it, or a selection of nothing.
+        let summary = stdout_json(&out);
+        let refused = skipped(&summary);
+        assert_eq!(refused.len(), 1, "{format}: {summary}");
+        assert_eq!(refused[0].0, selector, "{format}: {summary}");
+        assert!(
+            refused[0].1.contains("host") && !refused[0].1.contains("no profile matches"),
+            "{format}: {summary}"
+        );
         assert_eq!(
             std::fs::read_to_string(&path).unwrap(),
             MINE,
