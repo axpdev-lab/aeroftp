@@ -30085,7 +30085,6 @@ SOFTWARE.
 
 **Used by component(s):**
 - `moka@0.12.16` (cargo, file: `LICENSE-APACHE`)
-  - Copyright 2023 Mara Bos (src/common/concurrent/arc.rs)
 
 ```text
 Apache License

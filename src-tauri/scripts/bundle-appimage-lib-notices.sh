@@ -30,9 +30,18 @@
 #
 # Run on the system the libraries were bundled from, after the AppDir is
 # final (patch-appimage-lib-fallback.sh moves them to usr/lib/fallback).
+# Every source version listed must be one of the Ubuntu archive, which the
+# written offer names: the .dsc of that exact version is fetched from
+# Launchpad's primary archive and its Source and Version must be the ones
+# dpkg gives. A library from a PPA or another repository, or a version the
+# archive does not have, fails the build and is named. Launchpad not
+# answering (three tries) fails it too, never a silent pass.
+#
 # AEROFTP_DPKG_ADMINDIR, AEROFTP_LDCONFIG_P (a file with the output of
 # ldconfig -p) and AEROFTP_DOC_ROOT replace /var/lib/dpkg, ldconfig and
-# /usr/share/doc, for the tests only.
+# /usr/share/doc, for the tests only; so do AEROFTP_DSC_FETCH (a command run
+# as `<command> <url> <file>` that writes the body to <file> and prints the
+# HTTP status) and AEROFTP_DSC_BACKOFF (seconds, 5 by default) for the fetch.
 
 set -euo pipefail
 
@@ -156,6 +165,61 @@ version_of() {
         awk -F'\t' 'NR == 1 && $1 != "" && $2 != "" && $3 != "" { print $1 " " $2 " " $3 " https://launchpad.net/ubuntu/+source/" $2 "/" $3 }' || true
 }
 
+# The .dsc of a source version at Launchpad, into the file $3. Returns 0
+# when it is there, 1 when Launchpad has no such file, 2 when Launchpad did
+# not answer three times.
+fetch_dsc() {
+    local url="$1" out="$2" code tries=0
+    while :; do
+        tries=$((tries + 1))
+        if [ -n "${AEROFTP_DSC_FETCH:-}" ]; then
+            code="$("$AEROFTP_DSC_FETCH" "$url" "$out")" || code=000
+        else
+            code="$(curl -sSL --max-time 60 -o "$out" -w '%{http_code}' "$url")" || code=000
+        fi
+        case "$code" in
+            200) return 0 ;;
+            404 | 410) return 1 ;;
+        esac
+        [ "$tries" -ge 3 ] && return 2
+        sleep $((tries * ${AEROFTP_DSC_BACKOFF:-5}))
+    done
+}
+
+# Sets DSC_PROBLEM: empty when the source version is the Ubuntu archive's,
+# else why not. Each source version is fetched once (in this shell, not a
+# subshell, so the cache holds).
+declare -A DSC_CHECKED=()
+DSC_PROBLEM=""
+dsc_problem() {
+    local src="$1" srcver="$2" key="$1 $2"
+    if [ -n "${DSC_CHECKED[$key]+x}" ]; then
+        DSC_PROBLEM="${DSC_CHECKED[$key]}"
+        return
+    fi
+    local url="https://launchpad.net/ubuntu/+archive/primary/+sourcefiles/$src/$srcver/${src}_${srcver#*:}.dsc"
+    local body problem="" status=0
+    body="$(mktemp)"
+    fetch_dsc "$url" "$body" || status=$?
+    if [ "$status" -eq 1 ]; then
+        problem="source $src $srcver is not in the Ubuntu archive (Launchpad has no $url): a PPA, another repository, or a version the archive does not have"
+    elif [ "$status" -ne 0 ]; then
+        problem="Launchpad did not answer for $url after three tries; the source of $src $srcver cannot be checked, so the build stops"
+    else
+        local got_src got_ver
+        # The field value is all after the first colon: a version keeps its
+        # epoch ("2:1.7-0ubuntu1").
+        got_src="$(awk 'tolower($0) ~ /^source:/ { sub(/^[^:]*:[ \t]*/, ""); print; exit }' "$body" | tr -d '\r')"
+        got_ver="$(awk 'tolower($0) ~ /^version:/ { sub(/^[^:]*:[ \t]*/, ""); print; exit }' "$body" | tr -d '\r')"
+        if [ "$got_src" != "$src" ] || [ "$got_ver" != "$srcver" ]; then
+            problem="Launchpad's $url is source ${got_src:-?} ${got_ver:-?}, not $src $srcver"
+        fi
+    fi
+    rm -f -- "$body"
+    DSC_CHECKED[$key]="$problem"
+    DSC_PROBLEM="$problem"
+}
+
 mkdir -p "$OUT_DOC"
 missing=()
 declare -A lines=()
@@ -186,6 +250,12 @@ for rel in "${LIBS[@]}"; do
         missing+=("$rel: package $pkg has no version or source version in $ADMINDIR")
         continue
     fi
+    read -r _ src_pkg src_ver _ <<< "$version"
+    dsc_problem "$src_pkg" "$src_ver"
+    if [ -n "$DSC_PROBLEM" ]; then
+        missing+=("$rel: package $pkg: $DSC_PROBLEM")
+        continue
+    fi
     mkdir -p "$OUT_DOC/$pkg"
     cp -L -- "$src" "$OUT_DOC/$pkg/copyright"
     chmod 644 "$OUT_DOC/$pkg/copyright"
@@ -193,14 +263,17 @@ for rel in "${LIBS[@]}"; do
 done
 
 if [ "${#missing[@]}" -gt 0 ]; then
-    echo "ERROR: the AppImage would bundle libraries without their copyright file:" >&2
+    echo "ERROR: the AppImage would bundle libraries without their copyright file, or whose source is not one of the Ubuntu archive:" >&2
     printf '  %s\n' "${missing[@]}" >&2
     exit 1
 fi
 
-# The archive snapshot of the build date (UTC) keeps every version listed
-# when Launchpad no longer serves it.
-SNAPSHOT_DATE="$(date -u +%Y%m%dT000000Z)"
+# The archive snapshot of the build time (UTC) keeps every version listed
+# when Launchpad no longer serves it. The time, not the midnight of that day:
+# a package published earlier that day and installed for the build is not in
+# the midnight snapshot. This runs after the libraries were installed and
+# bundled, so the snapshot at this second already holds each of them.
+SNAPSHOT_DATE="$(date -u +%Y%m%dT%H%M%SZ)"
 {
     echo "Libraries this AppImage bundles. Each line: the library, the Ubuntu package that provides it and its version, then the Ubuntu source package it was built from, its version, and the Launchpad page of that source version."
     echo "The terms of each package are in usr/share/doc/<package>/copyright."

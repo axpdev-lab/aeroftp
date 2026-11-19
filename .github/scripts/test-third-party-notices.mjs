@@ -1615,6 +1615,21 @@ test('standard texts: a slot holds the standard words or a holder the file names
   assert.ok(carriesWholeStandardText('BSD-3-Clause', std, shipped('Example Corp')), 'the holder its copyright line names');
   assert.ok(!carriesWholeStandardText('BSD-3-Clause', std, shipped('Example Corp when used alone')), 'a condition in the slot changes the terms');
   assert.ok(!carriesWholeStandardText('BSD-3-Clause', std, shipped('Other Corp')), 'a name no copyright line of the file gives');
+  // The markers the notice scanner takes: a "©" or "(c)" with a year names the holder too.
+  for (const marker of ['© 2020 Example Corp', '(c) 2020 Example Corp']) {
+    const symbol = shipped('Example Corp').replace('Copyright (c) 2020 Example Corp', marker);
+    assert.ok(carriesWholeStandardText('BSD-3-Clause', std, symbol), marker);
+    assert.ok(!carriesWholeStandardText('BSD-3-Clause', std, symbol.replace('Example Corp nor', 'Example Corp when used alone nor')), `${marker}: still no condition`);
+  }
+});
+
+test('standard texts: a slot name is found in a long attribution, whose names are kept no longer than a slot', { timeout: 30000 }, () => {
+  const std = JSON.parse(fs.readFileSync(SPDX_STANDARD_LICENSES_FILE, 'utf8'))['BSD-3-Clause'];
+  // 3000 words of attribution: every candidate of every length would be
+  // about 4.5 million names of 1000 words on average.
+  const filler = Array.from({ length: 3000 }, (_, i) => `w${i}`).join(' ');
+  const shipped = std.replace('<year> <copyright holders>', `2020 ${filler} Example Corp`).replace('the copyright holder nor', 'Example Corp nor');
+  assert.ok(carriesWholeStandardText('BSD-3-Clause', std, shipped));
 });
 
 test('cargo inventory: a package is active by its id, so a test-only fork with the name and version of a registry crate is not', () => {
@@ -1629,6 +1644,21 @@ test('cargo inventory: a package is active by its id, so a test-only fork with t
   // A line no package matches, or a source of another kind, fails the run.
   assert.throws(() => activeCargoPackageIds('twin v2.0.0\n', pkgs), /names 0 packages/);
   assert.throws(() => activeCargoPackageIds('twin v1.0.0 (https://github.com/y/twin#abcdef01)\n', pkgs), /names 0 packages/);
+  // A path source with parentheses of its own, which cargo does not escape,
+  // also with the marks cargo appends after it.
+  const paren = { id: 'path+file:///w/AeroFTP (test)/peer#paren-helper@0.1.0', name: 'paren-helper', version: '0.1.0', source: null, manifest_path: '/w/AeroFTP (test)/peer/Cargo.toml' };
+  for (const line of ['paren-helper v0.1.0 (/w/AeroFTP (test)/peer)', 'paren-helper v0.1.0 (/w/AeroFTP (test)/peer) (*)', 'paren-helper v0.1.0 (/w/AeroFTP (test)/peer) (proc-macro)']) {
+    assert.deepStrictEqual([...activeCargoPackageIds(`${line}\n`, [...pkgs, paren])], [paren.id], line);
+  }
+  // A package row in a form not read fails, never drops the package.
+  assert.throws(() => activeCargoPackageIds('twin v1.0.0 [something else]\n', pkgs), /twin v1\.0\.0 in a form this generator does not read/);
+  // The error names the package and version, never the source: a Git URL
+  // can carry credentials.
+  const secret = { ...fork, id: 'git+https://user:s3cret-token@github.com/x/twin?rev=r#abcdef0123456789', source: 'git+https://user:s3cret-token@github.com/x/twin?rev=r#abcdef0123456789' };
+  assert.throws(
+    () => activeCargoPackageIds('twin v1.0.0 (https://user:s3cret-token@github.com/x/twin?rev=r#ffffffff)\n', [registry, secret]),
+    (e) => /twin v1\.0\.0, which names 0 packages/.test(e.message) && !e.message.includes('s3cret-token')
+  );
 });
 
 test('source notices: two installed packages with one name and version keep their own holders', () => {
@@ -1791,6 +1821,16 @@ test('bundled code: a declared term counts as covered only when the notices carr
   }
 });
 
+test('standard-license fallback: a holder is inserted literally, a "$&" or "$1" in its name is not expanded', () => {
+  // BSD-3-Clause: its standard text has the holder placeholder line.
+  const comp = { name: 'test-literal-holder', version: '1.0.0', license: 'BSD-3-Clause', source: 'cargo', licenseFiles: [], noticeFiles: [], authors: ['Research $& Development $1'] };
+  const md = generateNoticesMarkdown([comp], []);
+  assert.match(md, /\nNo copyright notice is shipped upstream; authors: Research \$& Development \$1 \(test-literal-holder\)\n/, 'the holder appears as written in the license block');
+  // Control: a plain holder is inserted the same way.
+  const plain = generateNoticesMarkdown([{ ...comp, authors: ['Plain Holder'] }], []);
+  assert.match(plain, /\nNo copyright notice is shipped upstream; authors: Plain Holder \(test-literal-holder\)\n/);
+});
+
 test('standard-license fallback: choices come from the parsed expression, a conjunct is never dropped, an exception keeps its text', () => {
   const fallback = (name, license) => ({ name, version: '1.0.0', license, source: 'cargo', licenseFiles: [], noticeFiles: [], authors: ['Fallback Author'] });
   // A tab-separated AND binds both choices: BSD-3-Clause-Clear has no text, so this fails.
@@ -1906,18 +1946,49 @@ test('reviewed notices: a reviewed example value gives no attribution, a reviewe
   }
 });
 
+test('reviewed notices: a reviewed citation gives no attribution in the file it was reviewed in, the same lines elsewhere are a notice to review', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'reviewed-citation-fixture-'));
+  try {
+    const citation = reviewedNotices().find((r) => r.citation);
+    const wrapped = reviewedNotices().find((r) => !r.example && !r.citation && r.following.length === 1);
+    const { package: pkg, version, file } = citation.citation;
+    // The moka layout: the module's docs cite a book, line by line, in the
+    // package folder cargo unpacks (<name>-<version>).
+    const moka = path.join(tmpDir, `${pkg}-${version}`);
+    fs.mkdirSync(path.dirname(path.join(moka, file)), { recursive: true });
+    const cited = `// This module was written by the developers, referring to the following book:\n// ${citation.line}\n// ${citation.following[0]}\n`;
+    fs.writeFileSync(path.join(moka, file), `${cited}\n// ${wrapped.line}\n// ${wrapped.following[0]}\nfn a() {}\n`);
+    assert.deepStrictEqual(findPackageCopyrightNotices(moka).map((n) => n.notice), [wrapped.notice]);
+    // The same lines in another package, or another file of moka, may
+    // credit code copied from the book: not dropped, they stop the run for
+    // review, as any notice that may continue on its next line.
+    const other = path.join(tmpDir, 'other-1.0.0');
+    fs.mkdirSync(path.join(other, 'src'), { recursive: true });
+    fs.writeFileSync(path.join(other, 'src/arc.rs'), `${cited}fn a() {}\n`);
+    assert.throws(() => findPackageCopyrightNotices(other), /may continue on its next line/);
+    fs.writeFileSync(path.join(moka, 'src/other.rs'), `${cited}fn a() {}\n`);
+    assert.throws(() => findPackageCopyrightNotices(moka), /src\/other\.rs:2 may continue on its next line/);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
 test('reviewed notices and tag mentions: each entry names its source and the whole notice starts with its line', () => {
   for (const r of reviewedNotices()) {
     assert.ok(r.source && r.line && Array.isArray(r.following) && r.following.length > 0 && r.following.every((f) => typeof f === 'string' && f.trim() === f && f), JSON.stringify(r));
-    // An example value gives no notice; any other entry gives the whole one.
-    if (r.example === true) assert.strictEqual(r.notice, '', r.line);
+    // An example value or a citation gives no notice; any other entry gives
+    // the whole one.
+    if (r.citation !== undefined) assert.ok(r.notice === '' && r.example === undefined && ['package', 'version', 'file'].every((k) => typeof r.citation[k] === 'string' && r.citation[k]), r.line);
+    else if (r.example === true) assert.strictEqual(r.notice, '', r.line);
     else {
-      assert.ok(r.example === undefined && r.notice, JSON.stringify(r));
+      assert.ok(r.example === undefined && r.citation === undefined && r.notice, JSON.stringify(r));
       assert.ok(r.notice.startsWith(r.line.replace(/,$/, '')), r.line);
     }
   }
   // The two tauri-winres examples are reviewed as examples, not notices.
   assert.deepStrictEqual(reviewedNotices().filter((r) => r.example).map((r) => r.source.split(' (')[0]), ['tauri-winres 0.3.6 README.md:86', 'tauri-winres 0.3.6 src/lib.rs:127']);
+  // The moka book citation is reviewed as a citation, not a notice of moka.
+  assert.deepStrictEqual(reviewedNotices().filter((r) => r.citation).map((r) => r.source.split(' (')[0]), ['moka 0.12.16 src/common/concurrent/arc.rs:5-6']);
   for (const [key, reason] of Object.entries(reviewedTagMentions())) assert.ok(/^[^@]+@[^:]+:[^:]+:/.test(key) && reason, key);
 });
 
@@ -2020,26 +2091,49 @@ test('AppImage: every bundled library ships the copyright file of the package th
     for (const pkg of Object.keys(packages)) write(`doc/${pkg}/copyright`, `${pkg} terms`);
     dpkg(packages);
     ldcache(['libwebkit2gtk-4.1.so.0', 'libgtk-3.so.0', 'libfoo.so.1']);
+    // Launchpad, without the network: the .dsc of a source version names that
+    // source and version, unless the fixture says otherwise (dsc/<file> its
+    // body, dsc/missing-<file> a 404, dsc/down the number of 502s first).
+    write('fetch-dsc.sh', [
+      '#!/bin/bash',
+      'url="$1"; out="$2"; base="${url##*/}"; dir="$(dirname "$0")/dsc"',
+      'echo "$url" >> "$dir/../fetched"',
+      'if [ -f "$dir/down" ] && [ "$(cat "$dir/down")" -gt 0 ]; then echo $(( $(cat "$dir/down") - 1 )) > "$dir/down"; echo 502; exit 0; fi',
+      'if [ -f "$dir/missing-$base" ]; then echo 404; exit 0; fi',
+      'if [ -f "$dir/$base" ]; then cp "$dir/$base" "$out"; echo 200; exit 0; fi',
+      'rest="${url#*+sourcefiles/}"; src="${rest%%/*}"; rest="${rest#*/}"; ver="${rest%%/*}"',
+      'printf "Format: 3.0 (quilt)\\nSource: %s\\nVersion: %s\\n" "$src" "$ver" > "$out"; echo 200',
+      '',
+    ].join('\n'));
+    fs.chmodSync(path.join(tmpDir, 'fetch-dsc.sh'), 0o755);
+    fs.mkdirSync(path.join(tmpDir, 'dsc'), { recursive: true });
     const run = () =>
       execFileSync('bash', [script, path.join(tmpDir, 'app'), '9.8.7'], {
-        env: { ...process.env, AEROFTP_DPKG_ADMINDIR: path.join(tmpDir, 'dpkg'), AEROFTP_LDCONFIG_P: path.join(tmpDir, 'ldcache'), AEROFTP_DOC_ROOT: path.join(tmpDir, 'doc') },
+        env: { ...process.env, AEROFTP_DPKG_ADMINDIR: path.join(tmpDir, 'dpkg'), AEROFTP_LDCONFIG_P: path.join(tmpDir, 'ldcache'), AEROFTP_DOC_ROOT: path.join(tmpDir, 'doc'), AEROFTP_DSC_FETCH: path.join(tmpDir, 'fetch-dsc.sh'), AEROFTP_DSC_BACKOFF: '0' },
         stdio: 'pipe',
         encoding: 'utf8',
       });
     const fails = (pattern) => assert.throws(run, (e) => pattern.test(String(e.stderr)) || assert.fail(String(e.stderr)));
+    const startedAt = Math.floor(Date.now() / 1000);
     run();
+    const endedAt = Math.ceil(Date.now() / 1000);
     const doc = path.join(tmpDir, 'app/usr/share/doc');
     for (const pkg of ['libwebkit2gtk-4.1-0', 'libgtk-3-0', 'libfoo1', 'foo-plugins']) assert.strictEqual(fs.readFileSync(path.join(doc, pkg, 'copyright'), 'utf8'), `${pkg} terms`);
     assert.ok(!fs.existsSync(path.join(doc, 'some-app')));
     const list = fs.readFileSync(path.join(doc, 'BUNDLED-LIBRARIES.txt'), 'utf8');
     // The written offer of the source, valid three years from the release,
     // at the contact SECURITY.md publishes; no asset is named.
-    // The archive snapshot is named by the UTC build date, so the exact
-    // version stays retrievable when Launchpad no longer serves it.
+    // The archive snapshot is named by the UTC time of the build, to the
+    // second, so the exact version stays retrievable when Launchpad no longer
+    // serves it, also for a package published earlier that day (the midnight
+    // snapshot of the day does not hold it).
     assert.match(
       list,
-      /\nWritten offer: for at least three years from the date of the AeroFTP 9\.8\.7 release, anyone who asks can obtain from us the complete corresponding source code of each library listed here, at the source package version listed, for a charge no more than our cost of providing it\. Ask at dev@aeroftp\.app, the contact published in SECURITY\.md of https:\/\/github\.com\/axpdev-lab\/aeroftp\. Every version listed is a package of the Ubuntu archive, and the archive keeps its source: we fetch that exact version from the Launchpad page listed, or from the archive snapshot of the build date at https:\/\/snapshot\.ubuntu\.com\/ubuntu\/20[0-9]{2}(0[1-9]|1[0-2])(0[1-9]|[12][0-9]|3[01])T000000Z\/ when Launchpad no longer serves it, and send it to you\.\n/,
+      /\nWritten offer: for at least three years from the date of the AeroFTP 9\.8\.7 release, anyone who asks can obtain from us the complete corresponding source code of each library listed here, at the source package version listed, for a charge no more than our cost of providing it\. Ask at dev@aeroftp\.app, the contact published in SECURITY\.md of https:\/\/github\.com\/axpdev-lab\/aeroftp\. Every version listed is a package of the Ubuntu archive, and the archive keeps its source: we fetch that exact version from the Launchpad page listed, or from the archive snapshot of the build date at https:\/\/snapshot\.ubuntu\.com\/ubuntu\/20[0-9]{2}(0[1-9]|1[0-2])(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3])[0-5][0-9][0-5][0-9]Z\/ when Launchpad no longer serves it, and send it to you\.\n/,
     );
+    const [, y, mo, d, h, mi, se] = list.match(/snapshot\.ubuntu\.com\/ubuntu\/(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z\//);
+    const stamp = Date.UTC(+y, +mo - 1, +d, +h, +mi, +se) / 1000;
+    assert.ok(stamp >= startedAt && stamp <= endedAt, `the snapshot is the time of the run (${stamp} not in ${startedAt}..${endedAt}), not the midnight of its day`);
     assert.doesNotMatch(list, /convenience only|whether or not a link still works/);
     assert.doesNotMatch(list, /lib-sources|\.tar\b/);
     const entries = [
@@ -2088,6 +2182,32 @@ test('AppImage: every bundled library ships the copyright file of the package th
     write('dpkg/status', status.split('\n\n').filter((s) => !s.includes('Package: libsoup-3.0-0\n')).join('\n\n'));
     fails(/fallback\/libsoup-3\.0\.so\.0: package libsoup-3\.0-0 has no version or source version/);
     dpkg({ ...packages, 'libsoup-3.0-0': [`${A}/libsoup-3.0.so.0`] });
+    run();
+    // Every source version is checked once against Launchpad's primary
+    // archive, at the exact URL of its .dsc (version without its epoch in the
+    // file name, with it in the folder).
+    fs.rmSync(path.join(tmpDir, 'fetched'), { force: true });
+    run();
+    const fetched = fs.readFileSync(path.join(tmpDir, 'fetched'), 'utf8').trim().split('\n');
+    assert.ok(fetched.includes('https://launchpad.net/ubuntu/+archive/primary/+sourcefiles/foo/2:1.7-0ubuntu1/foo_1.7-0ubuntu1.dsc'), fetched.join('\n'));
+    assert.ok(fetched.includes('https://launchpad.net/ubuntu/+archive/primary/+sourcefiles/gtk+3.0/3.24.33-1ubuntu2/gtk+3.0_3.24.33-1ubuntu2.dsc'));
+    assert.strictEqual(new Set(fetched).size, fetched.length, 'each source version once');
+    // A source Launchpad does not have (a PPA, another repository, a version
+    // the archive lacks) fails the build and is named.
+    write('dsc/missing-foo_1.7-0ubuntu1.dsc', '');
+    fails(/fallback\/libfoo\.so\.1: package libfoo1: source foo 2:1\.7-0ubuntu1 is not in the Ubuntu archive \(Launchpad has no https:\/\/launchpad\.net\/ubuntu\/\+archive\/primary\/\+sourcefiles\/foo\/2:1\.7-0ubuntu1\/foo_1\.7-0ubuntu1\.dsc\)/);
+    fs.rmSync(path.join(tmpDir, 'dsc/missing-foo_1.7-0ubuntu1.dsc'));
+    // A .dsc of another version (a PPA build of the same name) fails too.
+    write('dsc/foo_1.7-0ubuntu1.dsc', 'Format: 3.0 (quilt)\nSource: foo\nVersion: 2:1.7-0ubuntu1~ppa1\n');
+    fails(/package libfoo1: Launchpad's \S+foo_1\.7-0ubuntu1\.dsc is source foo 2:1\.7-0ubuntu1~ppa1, not foo 2:1\.7-0ubuntu1/);
+    fs.rmSync(path.join(tmpDir, 'dsc/foo_1.7-0ubuntu1.dsc'));
+    // Launchpad down: two 502s are retried, three fail the build, never a
+    // silent pass.
+    write('dsc/down', '2');
+    run();
+    write('dsc/down', '1000');
+    fails(/Launchpad did not answer for \S+ after three tries/);
+    fs.rmSync(path.join(tmpDir, 'dsc/down'));
     run();
     // A folder find cannot read fails the build instead of shipping the
     // libraries it did list (as root every folder is readable).
@@ -2377,6 +2497,30 @@ test('bundled code: a Rust header with a nested block comment is read to its out
     write('src/flat.c', `/* SPDX-License-Identifier: BSD-2-Clause\n * /* Aside */\n * Copyright (c) 2021 Flat Holder\n */\nint x;\n`);
     const flat = { ...comp, ...readPackageFiles(tmpDir, 'nested-pkg@1.0.0') };
     assert.deepStrictEqual(findBundledCodeUnderOtherLicenses(flat, known).map((b) => b.notices), [[]]);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('bundled code: in Rust the outer comment decides, past an inner closer before the tag and a quote in a character literal', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rust-tag-fixture-'));
+  try {
+    const write = (rel, content) => {
+      fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, rel), content);
+    };
+    write('LICENSE', shippedLicense('MIT License\n\nCopyright (c) 2020 Wrapper Author', 'MIT'));
+    const grant = (who) => `Permission to use this file is granted, provided that the ${who} clause is kept with every copy of it.`;
+    // An inner comment closed before the tag, on the tag's line.
+    write('src/inner.rs', `/* Copyright (c) 2021 Inner Tag Holder\n * /* note */ SPDX-License-Identifier: BSD-2-Clause\n * ${grant('Inner')}\n */\nfn x() {}\n`);
+    // A character literal holding a double quote before the opener.
+    write('src/chr.rs', `fn c() -> char { '"' } /*\nCopyright (c) 2021 Char Holder\nSPDX-License-Identifier: BSD-2-Clause\n${grant('Char')}\n*/\n`);
+    const comp = { name: 'rust-tag-pkg', version: '1.0.0', license: 'MIT', source: 'cargo', packageDir: tmpDir, authors: [], ...readPackageFiles(tmpDir, 'rust-tag-pkg@1.0.0') };
+    const known = new Set(Object.keys(JSON.parse(fs.readFileSync(SPDX_STANDARD_LICENSES_FILE, 'utf8'))));
+    const bundled = findBundledCodeUnderOtherLicenses(comp, known);
+    assert.deepStrictEqual(bundled.map((b) => [b.license, b.files, b.notices]), [['BSD-2-Clause', ['src/chr.rs', 'src/inner.rs'], ['Copyright (c) 2021 Char Holder', 'Copyright (c) 2021 Inner Tag Holder']]]);
+    const md = generateNoticesMarkdown([comp], []);
+    for (const who of ['Inner', 'Char']) assert.ok(md.includes(`the ${who} clause is kept with every copy of it`), who);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

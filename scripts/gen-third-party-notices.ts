@@ -793,13 +793,28 @@ const mayContinue = (notice: string) =>
 // one, or one whose following lines changed upstream, fails the generation
 // and names the file. `lineAfter(k)` is the comment text of the k-th line
 // after the notice (0 is the next line), undefined past the comment.
+// Whether `where` ("<package dir>/<file>:<line>" or "<name>@<version>
+// <file>:<line>") is the file a citation was reviewed in. The same lines in
+// another package or file may credit code taken from the work cited, so
+// they are read as a notice there.
+function citationApplies(c: { package: string; version: string; file: string }, where: string): boolean {
+  const at = where.lastIndexOf(`${c.file}:`);
+  if (at <= 0) return false;
+  const before = where.slice(0, at);
+  return before.endsWith(`/${c.package}-${c.version}/`) || before === `${c.package}@${c.version} `;
+}
+
 function noticeWithNextLine(notice: string, lineAfter: (k: number) => string | undefined, where: string): string {
   const next = (lineAfter(0) ?? '').trim();
   if (!next || !mayContinue(notice)) return notice;
   const reviewed = reviewedNotices().find(
-    (r) => r.line === notice && r.following.length > 0 && r.following.every((f, k) => (lineAfter(k) ?? '').trim() === f)
+    (r) =>
+      r.line === notice &&
+      r.following.length > 0 &&
+      r.following.every((f, k) => (lineAfter(k) ?? '').trim() === f) &&
+      (!r.citation || citationApplies(r.citation, where))
   );
-  if (reviewed) return reviewed.example ? '' : reviewed.notice;
+  if (reviewed) return reviewed.example || reviewed.citation ? '' : reviewed.notice;
   const following: string[] = [];
   for (let k = 0; k < 4; k++) {
     const l = (lineAfter(k) ?? '').trim();
@@ -960,14 +975,25 @@ export function activeCargoPackageIds(treeRaw: string, packages: any[]): Set<str
   const ids = new Set<string>();
   for (const raw of treeRaw.split('\n')) {
     const line = raw.trim();
-    const match = line.match(/^([a-zA-Z0-9_\-]+) v([0-9.\-+a-zA-Z]+)((?: \([^()]*\))*)$/);
-    if (!match) continue;
-    const [, name, version, rest] = match;
+    // A package row: its name and version, then what cargo adds. Other lines
+    // (a "[build-dependencies]" heading, a blank) are no package.
+    const row = line.match(/^([a-zA-Z0-9_\-]+) v([0-9][0-9.\-+a-zA-Z]*)(.*)$/);
+    if (!row) continue;
+    const [, name, version] = row;
+    let rest = row[3];
+    // The marks cargo appends after the source: a repeated package, a proc macro.
+    while (/ \((?:\*|proc-macro)\)$/.test(rest)) rest = rest.replace(/ \((?:\*|proc-macro)\)$/, '');
+    // The source is the rest, between its outer parentheses, which cargo does
+    // not escape: a path "/work/AeroFTP (test)/peer" keeps its own.
+    if (rest !== '' && !/^ \(.*\)$/.test(rest)) {
+      throw new Error(`cargo tree lists ${name} v${version} in a form this generator does not read`);
+    }
     if (name === 'aeroftp' || name === 'aeroftp-peer-l0') continue;
-    const where = [...rest.matchAll(/ \(([^()]*)\)/g)].map((m) => m[1]).find((x) => x !== '*' && x !== 'proc-macro');
+    const where = rest === '' ? undefined : rest.slice(2, -1);
     const hits = (byNameVersion.get(`${name}@${version}`) ?? []).filter((pkg) => treeSourceIs(pkg, where));
     if (hits.length !== 1) {
-      throw new Error(`cargo tree lists "${line}", which names ${hits.length} packages of cargo metadata, not one`);
+      // Name and version only: a Git source can carry credentials in its URL.
+      throw new Error(`cargo tree lists ${name} v${version}, which names ${hits.length} packages of cargo metadata, not one`);
     }
     ids.add(hits[0].id);
   }
@@ -1301,13 +1327,18 @@ function slotNamesOf(fileText: string): Set<string> {
   const names = new Set([...SLOT_ROLES, ...REVIEWED_SLOT_NAMES].map((s) => termTokens(s, true).words.join(' ')));
   for (const raw of fileText.split('\n')) {
     const line = raw.replace(COMMENT_LEADER, '');
-    if (!isAttributionLine(line)) continue;
+    // The markers the notice scanner takes: "Copyright", or a "(c)" or "©"
+    // followed by a year ("© 2020 Example Corp").
+    if (!isAttributionLine(line) && !/^\s*(?:\(c\)|©)\s*[0-9]{4}/i.test(line)) continue;
     const holder = line
       .replace(/^\s*(?:(?:copyright|\(c\)|©)\s*)+/i, '')
       .replace(/^(?:[0-9]{4}(?:\s*[-,–]\s*(?:[0-9]{4}|present))*[-,–\s]*)+/i, '')
       .replace(/\.?\s*all rights reserved\.?.*$/i, '');
     const words = termTokens(holder, true).words;
-    for (let i = 0; i < words.length; i++) for (let j = i + 1; j <= words.length; j++) names.add(words.slice(i, j).join(' '));
+    // A slot never holds more than SLOT_WORDS words, so no longer name is kept.
+    for (let i = 0; i < words.length; i++) {
+      for (let j = i + 1; j <= Math.min(words.length, i + SLOT_WORDS); j++) names.add(words.slice(i, j).join(' '));
+    }
   }
   return names;
 }
@@ -1382,7 +1413,15 @@ export function carriesWholeStandardText(id: string, standardText: string, fileT
 export const REVIEWED_LICENSE_TERMS_FILE = path.join(__dirname, 'reviewed-license-terms.json');
 // `example`: the reviewed line is an example value in documentation, not a
 // notice of anyone: it gives no attribution.
-type ReviewedNotice = { line: string; following: string[]; notice: string; source: string; example?: boolean };
+type ReviewedNotice = {
+  line: string;
+  following: string[];
+  notice: string;
+  source: string;
+  example?: boolean;
+  // A citation applies only in the file it was reviewed in: `package`, `version`, `file`.
+  citation?: { package: string; version: string; file: string };
+};
 let reviewedFile: Record<string, unknown> | undefined;
 const reviewedEntries = () => (reviewedFile ??= JSON.parse(fs.readFileSync(REVIEWED_LICENSE_TERMS_FILE, 'utf8')) as Record<string, unknown>);
 export function reviewedLicenseTerms(): Record<string, string> {
@@ -1768,9 +1807,9 @@ function linesInsideBlockComments(lines: string[]): (string | null)[] {
 // Rust block comments nest (`/* outer /* inner */ still outer */`): in a
 // `.rs` file a comment ends where its depth returns to zero. `rustLine` reads
 // one line from `depth`, up to `upTo`: the depth after it, and where the last
-// comment opened from depth zero starts. Outside a comment a `"` string and a
-// `//` comment open nothing; a `'` is a lifetime as often as a character, so
-// it is no quote.
+// comment opened from depth zero starts. Outside a comment a `"` string, a
+// character literal ('"') and a `//` comment open nothing; a lifetime or a
+// label ('a) is passed over.
 export const isRustFile = (rel: string) => /\.rs$/i.test(rel);
 function rustLine(line: string, depth: number, upTo = line.length): { depth: number; outerOpen: number } {
   let quote = false;
@@ -1791,6 +1830,12 @@ function rustLine(line: string, depth: number, upTo = line.length): { depth: num
       else if (c === '"') quote = false;
     } else if (c === '"') {
       quote = true;
+    } else if (c === "'") {
+      // A character literal is skipped whole, so the quote it may hold
+      // ('"') opens no string; a lifetime or a label ('a) has no closing
+      // quote and is passed over.
+      const end = rustCharLiteralEnd(line, k);
+      if (end !== -1) k = end;
     } else if (c === '/' && n === '/') {
       break;
     } else if (c === '/' && n === '*') {
@@ -1800,6 +1845,24 @@ function rustLine(line: string, depth: number, upTo = line.length): { depth: num
     }
   }
   return { depth, outerOpen };
+}
+
+// The index of the quote that closes the Rust character literal opened at
+// `k`, or -1 for a lifetime or a label: one character ('x', '"', a character
+// outside the BMP), or an escape ('\n', '\'', '\x7f', '\u{1F600}').
+function rustCharLiteralEnd(line: string, k: number): number {
+  if (line[k + 1] === '\\') {
+    if (line[k + 2] === 'u' && line[k + 3] === '{') {
+      const brace = line.indexOf('}', k + 4);
+      return brace !== -1 && line[brace + 1] === "'" ? brace + 1 : -1;
+    }
+    if (line[k + 2] === 'x') return line[k + 5] === "'" ? k + 5 : -1;
+    return line[k + 3] === "'" ? k + 3 : -1;
+  }
+  const cp = line.codePointAt(k + 1);
+  if (cp === undefined || line[k + 1] === "'") return -1;
+  const after = k + 1 + (cp > 0xffff ? 2 : 1);
+  return line[after] === "'" ? after : -1;
 }
 
 // For each line of a Rust file, its depth at the start (0: outside any comment).
@@ -2064,23 +2127,34 @@ export function findBundledCodeUnderOtherLicenses(
           }
           return null;
         };
-        if (within !== null && (closedAt === -1 || closedAt > m.index!)) {
+        if (depths) {
+          // Rust: the outer comment that holds the tag, by the nesting depth
+          // at the tag itself, so an inner comment closed before the tag on
+          // its line (` * /* note */ SPDX-...`) is no end of it. Opened on
+          // this line, at its last outer opener before the tag; else back to
+          // the line where the depth left zero, at its last outer opener.
+          const atTag = rustLine(line, depths[i], m.index!);
+          if (atTag.depth > 0) {
+            pair = COMMENT_BLOCKS[0];
+            if (atTag.outerOpen !== -1) {
+              open = i;
+              openAt = atTag.outerOpen;
+            } else {
+              let k = i;
+              while (k > 0 && depths[k] > 0) k--;
+              open = k;
+              openAt = rustLine(lines[k], 0).outerOpen;
+            }
+          }
+        } else if (within !== null && (closedAt === -1 || closedAt > m.index!)) {
           // Back to the line that opens this comment: the first line not
           // inside one, or a line that closes the comment before it and
           // opens this one after the closer (`*/ /*`).
           let k = i;
-          if (depths) {
-            // Rust: back to the line where the depth left zero, at the
-            // opener of the outermost comment.
-            while (k > 0 && depths[k] > 0) k--;
-            open = k;
-            openAt = rustLine(lines[k], 0).outerOpen;
-          } else {
-            while (k > 0 && inside[k] !== null && !(k < i && lines[k].includes(within))) k--;
-            open = k;
-          }
+          while (k > 0 && inside[k] !== null && !(k < i && lines[k].includes(within))) k--;
+          open = k;
           pair = COMMENT_BLOCKS.find(([, c]) => c === within)!;
-          if (!depths) openAt = pair[0] === '/*' ? cCommentOpeners(lines[k]).last : lines[k].lastIndexOf(pair[0]);
+          openAt = pair[0] === '/*' ? cCommentOpeners(lines[k]).last : lines[k].lastIndexOf(pair[0]);
         } else {
           const from = within === null ? 0 : closedAt + within.length;
           const found = openerOn(line, from);
@@ -2880,9 +2954,11 @@ export function renderNotices(
             attributionLines.push(`${noNotice}; authors${srcStr}: ${author} (${comp.name})`);
           }
         }
+        // A callback, so a holder is inserted literally: a string replacement
+        // would expand a "$&" or "$1" in a holder's name.
         licText = licText.replace(
           /Copyright \([cC]\) <(?:year|YEAR)> <(?:copyright holders|COPYRIGHT HOLDERS|author|authors|AUTHOR|AUTHORS)>/gi,
-          attributionLines.join('\n')
+          () => attributionLines.join('\n')
         );
       }
       // Any placeholder left in the terms, also one the replacement above does
@@ -2911,7 +2987,7 @@ export function renderNotices(
         // package (its own and the ones shipped beside vendored code) is
         // reproduced below.
         if (b.declared) {
-          const standardTerms = licenseTermsOf(standardTexts[standardTextId(b.license.split(' WITH ')[0])] ?? '');
+          const standardTerms = licenseTermsOf(entryOf(standardTexts, standardTextId(b.license.split(' WITH ')[0])) ?? '');
           const ownTerms = new Set(comp.licenseFiles.map((f) => licenseTermsOf(f.content)));
           for (const h of b.headers) {
             const terms = licenseTermsOf(h.text);
@@ -2937,7 +3013,7 @@ export function renderNotices(
           ...(b.notices.length > 0 ? b.notices.map((n) => `  - ${n}`) : [`  - ${noHolder}`])
         );
         // A header is reproduced only when its terms differ from the standard text's.
-        const standardTerms = licenseTermsOf(standardTexts[standardTextId(b.license.split(' WITH ')[0])] ?? '');
+        const standardTerms = licenseTermsOf(entryOf(standardTexts, standardTextId(b.license.split(' WITH ')[0])) ?? '');
         for (const h of b.headers.filter((x) => licenseTermsOf(x.text) !== standardTerms)) {
           byLicense.get(key)!.push('', `  Header with its own terms, as shipped in ${h.files.map((f) => `\`${f}\``).join(', ')}:`, '', makeVerbatimBlock(h.text), '');
         }
@@ -2957,12 +3033,12 @@ export function renderNotices(
         // The scan fails on a license or exception without a standard text.
         const [licenseId, exceptionId] = licKey.split(' WITH ');
         // A text with a holder placeholder (BSD) takes the header's copyright lines.
-        const text = standardTexts[licenseId].replace(
+        const text = entryOf(standardTexts, licenseId)!.replace(
           /Copyright \([cC]\) <(?:year|YEAR)> <(?:copyright holders|COPYRIGHT HOLDERS|owner|author|authors)>/g,
           () => holdersByLicense.get(licKey)!.join('\n')
         );
         assertNoTermsPlaceholders(licKey, text);
-        lines.push(makeCodeBlock(exceptionId ? `${text}\n\n${standardTexts[exceptionId]}` : text));
+        lines.push(makeCodeBlock(exceptionId ? `${text}\n\n${entryOf(standardTexts, exceptionId)}` : text));
         lines.push('');
       }
     }

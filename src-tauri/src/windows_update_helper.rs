@@ -372,7 +372,12 @@ fn companion_exes(current_exe: &Path) -> Vec<&'static str> {
 /// installed exes. Any failure removes what was staged and stops the update,
 /// so it installs the exes of one version or none. Returns the companions
 /// staged, which the helper replaces once the app exe is the new one.
-fn stage_update(staged: &StagedPortable, current_exe: &Path) -> Result<Vec<&'static str>, String> {
+/// Returns the CLI exes staged and the key of the documents batch staged
+/// (None without documents), the batch a later failure may discard.
+fn stage_update(
+    staged: &StagedPortable,
+    current_exe: &Path,
+) -> Result<(Vec<&'static str>, Option<String>), String> {
     let exe_dir = current_exe
         .parent()
         .ok_or_else(|| "Cannot resolve current exe parent dir".to_string())?;
@@ -384,7 +389,9 @@ fn stage_update(staged: &StagedPortable, current_exe: &Path) -> Result<Vec<&'sta
             continue;
         }
         if let Err(e) = stage_beside(&source, &exe_dir.join(name)) {
-            discard_staged(current_exe, &cli);
+            // No batch of this update is staged yet: a next batch there is
+            // an earlier update's, whose exe may be the one running.
+            discard_staged(current_exe, &cli, None);
             return Err(format!("{name}: {e}"));
         }
         cli.push(name);
@@ -402,25 +409,30 @@ fn stage_update(staged: &StagedPortable, current_exe: &Path) -> Result<Vec<&'sta
     .into_iter()
     .filter_map(|(src, name)| src.as_deref().map(|src| (src, name)))
     .collect();
-    if let Err(e) =
-        portable_docs::stage_pending_docs(exe_dir, &staged.new_exe, &docs, &random_suffix())
-    {
-        discard_staged(current_exe, &cli);
-        return Err(format!(
-            "{e}; the update is not applied, the installed exe and documents stay as they are"
-        ));
+    match portable_docs::stage_pending_docs(exe_dir, &staged.new_exe, &docs, &random_suffix()) {
+        Ok(docs_key) => Ok((cli, docs_key)),
+        Err(e) => {
+            // The staging published nothing: it removed its own leftovers.
+            discard_staged(current_exe, &cli, None);
+            Err(format!(
+                "{e}; the update is not applied, the installed exe and documents stay as they are"
+            ))
+        }
     }
-    Ok(cli)
 }
 
-/// Removes the copies `stage_update` put next to the installed exes.
-fn discard_staged(current_exe: &Path, cli: &[&str]) {
+/// Removes the copies `stage_update` put next to the installed exes, and the
+/// next batch when it is the one this update staged (`docs_key`, the key of
+/// its new exe): a batch of another exe is never this update's to remove.
+fn discard_staged(current_exe: &Path, cli: &[&str], docs_key: Option<&str>) {
     let _ = std::fs::remove_file(beside_path(current_exe));
     if let Some(exe_dir) = current_exe.parent() {
         for name in cli {
             let _ = std::fs::remove_file(beside_path(&exe_dir.join(name)));
         }
-        portable_docs::discard_pending_docs(exe_dir);
+        if let Some(key) = docs_key {
+            portable_docs::discard_pending_docs(exe_dir, key);
+        }
     }
 }
 
@@ -510,13 +522,15 @@ struct PreparedPortable {
     script: PathBuf,
     stage_dir: PathBuf,
     cli: Vec<&'static str>,
+    /// The key of the new exe, whose next batch this update staged.
+    docs_key: Option<String>,
 }
 
 impl PreparedPortable {
     /// The helper was not launched: removes everything the update left, as
     /// a failure inside `prepare_portable` does.
     fn discard(&self, current_exe: &Path, downloaded_zip: &Path) {
-        discard_staged(current_exe, &self.cli);
+        discard_staged(current_exe, &self.cli, self.docs_key.as_deref());
         let _ = std::fs::remove_dir_all(&self.stage_dir);
         let _ = std::fs::remove_file(&self.script);
         discard_download(downloaded_zip);
@@ -548,8 +562,8 @@ fn prepare_portable(
         Ok(staged) => staged,
         Err(e) => return fail(None, e),
     };
-    let cli = match stage_update(&staged, current_exe) {
-        Ok(cli) => cli,
+    let (cli, docs_key) = match stage_update(&staged, current_exe) {
+        Ok(staged_update) => staged_update,
         Err(e) => return fail(Some(&staged.stage_dir), e),
     };
     match write_portable_helper(
@@ -564,9 +578,10 @@ fn prepare_portable(
             script,
             stage_dir: staged.stage_dir,
             cli,
+            docs_key,
         }),
         Err(e) => {
-            discard_staged(current_exe, &cli);
+            discard_staged(current_exe, &cli, docs_key.as_deref());
             fail(Some(&staged.stage_dir), e)
         }
     }
@@ -806,13 +821,18 @@ pub fn try_handle_post_update_cleanup_arg() {
     }
 }
 
+/// How long the pass before the window waits for the lock of the batches.
+const START_LOCK_WAIT: Duration = Duration::from_millis(500);
+
 /// Installs the documents a portable update staged beside the exes
-/// (`portable_docs`). The first pass runs before the app opens a window, so
-/// the About dialog never finds another exe's batch; it takes the time of a
-/// hash of the exe and four renames, and only when a batch is there. The
-/// held documents then share one budget of 30 passes a second apart in a
-/// detached thread; one still held is installed at a later start. Each
-/// outcome goes to the app log once the app runs.
+/// (`portable_docs`). The first pass runs before the app opens a window; it
+/// takes the time of a hash of the exe and four renames, and only when a
+/// batch is there. It waits `START_LOCK_WAIT` at most for the lock: when
+/// another process holds it, the batches are left as they are and the pass
+/// runs in the background instead (the About dialog only ever opens this
+/// exe's own batch). The held documents then share one budget of 30 passes a
+/// second apart in a detached thread; one still held is installed at a later
+/// start. Each outcome goes to the app log once the app runs.
 pub fn install_pending_docs_at_start() {
     let Ok(exe) = std::env::current_exe() else {
         return;
@@ -826,23 +846,34 @@ pub fn install_pending_docs_at_start() {
         return;
     }
     let rename = |from: &Path, to: &Path| std::fs::rename(from, to);
-    let first = portable_docs::running_exe_key()
-        .map(|own_key| {
-            let first = portable_docs::install_pending_docs(&exe_dir, &own_key, rename);
-            (own_key, first)
-        })
-        .ok_or_else(|| "its key could not be computed".to_string());
+    // The pass before the window waits a moment for the lock at most: a
+    // stalled staging in another process must not keep the app from opening.
+    let first = portable_docs::running_exe_key().map(|own_key| {
+        let first =
+            portable_docs::install_pending_docs_within(&exe_dir, &own_key, START_LOCK_WAIT, rename);
+        (own_key, first)
+    });
     std::thread::spawn(move || {
         // The app log is set up by then.
         std::thread::sleep(Duration::from_secs(2));
-        let (own_key, first) = match first {
-            Ok(first) => first,
-            Err(e) => {
-                log::warn!(
-                    "portable update: cannot read the running exe ({e}), the staged documents wait"
-                );
-                return;
+        // A key that could not be read before the window (it is not kept
+        // then) or a lock that did not come in time: the pass runs here, in
+        // the background, waiting for the lock as long as it takes.
+        let found = first.or_else(|| {
+            portable_docs::running_exe_key().map(|own_key| {
+                let first = portable_docs::install_pending_docs(&exe_dir, &own_key, rename);
+                (own_key, first)
+            })
+        });
+        let Some((own_key, first)) = found else {
+            log::warn!("portable update: cannot read the running exe, the staged documents wait");
+            return;
+        };
+        let first = match first {
+            portable_docs::Pending::Unavailable(_) => {
+                portable_docs::install_pending_docs(&exe_dir, &own_key, rename)
             }
+            first => first,
         };
         let outcome = portable_docs::retry_held(
             &exe_dir,
@@ -1070,7 +1101,7 @@ mod tests {
     /// What `install_with_helper` does before it spawns the helper: stage the
     /// new exes next to the installed ones, then write the script.
     fn script_for(fx: &Fixture) -> String {
-        let cli = stage_update(&fx.staged, &fx.current).expect("staged");
+        let (cli, _) = stage_update(&fx.staged, &fx.current).expect("staged");
         portable_helper_script(&fx.staged, &fx.current, &cli, Some(&fx.log), &fx.zip)
             .expect("script")
     }
@@ -1560,6 +1591,43 @@ mod tests {
             .join(portable_docs::NEXT_DIR)
             .join("README.txt")
             .is_file());
+    }
+
+    /// The running exe B's notices wait in the next batch (an editor held an
+    /// older exe's current batch when B started). A later update C whose
+    /// companion staging fails leaves that batch: it is B's, not C's, and B
+    /// still installs it.
+    #[test]
+    fn a_failed_companion_staging_keeps_the_next_batch_of_the_running_exe() {
+        let mut fx = fixture();
+        with_cli(&fx);
+        with_docs(&mut fx, |_| true);
+        let next = fx.app.join(portable_docs::NEXT_DIR);
+        std::fs::create_dir(&next).expect("next batch");
+        std::fs::write(
+            next.join("THIRD-PARTY-NOTICES.md"),
+            b"running exe's notices",
+        )
+        .expect("pending notices");
+        let own_key = portable_docs::exe_key(&fx.current).expect("key");
+        std::fs::write(next.join("exe.key"), &own_key).expect("key");
+        std::fs::create_dir(fx.app.join("aeroftp-dispatch.exe.new")).expect("blocker");
+        let refused = stage_update(&fx.staged, &fx.current).expect_err("refused");
+        assert!(refused.contains("aeroftp-dispatch.exe"), "{refused}");
+        assert_eq!(
+            std::fs::read(next.join("THIRD-PARTY-NOTICES.md")).expect("kept"),
+            b"running exe's notices"
+        );
+        assert!(matches!(
+            portable_docs::install_pending_docs(&fx.app, &own_key, |from, to| std::fs::rename(
+                from, to
+            )),
+            portable_docs::Pending::Docs(_)
+        ));
+        assert_eq!(
+            std::fs::read(fx.app.join("THIRD-PARTY-NOTICES.md")).expect("installed"),
+            b"running exe's notices"
+        );
     }
 
     /// An update whose CLI staging fails, before the helper, leaves the

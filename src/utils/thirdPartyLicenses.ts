@@ -40,6 +40,18 @@ export async function getOwnPendingNotices(): Promise<string | null> {
 }
 
 /**
+ * A Windows extended-length path in its ordinary form: Tauri's resource
+ * directory on Windows is `\\?\D:\...` (the exe folder, canonicalized),
+ * a form the shell opener does not take for every reader. `\\?\UNC\host`
+ * becomes `\\host`; any other path is returned unchanged.
+ */
+export function plainWindowsPath(path: string): string {
+  if (path.startsWith('\\\\?\\UNC\\')) return `\\\\${path.slice(8)}`;
+  if (/^\\\\\?\\[A-Za-z]:\\/.test(path)) return path.slice(4);
+  return path;
+}
+
+/**
  * Returns candidate paths for THIRD-PARTY-NOTICES.md.
  * No relative paths are included to avoid CWD-dependent resolution.
  * The running exe's pending notices of a portable update come first (see
@@ -63,7 +75,8 @@ export async function getCandidateNoticePaths(
   if (pending) candidates.push(pending);
   let beside: string | null = null;
   try {
-    const dir = await resourceDirGetter();
+    const found = await resourceDirGetter();
+    const dir = typeof found === 'string' ? plainWindowsPath(found) : found;
     if (dir && typeof dir === 'string') {
       const sep = dir.includes('\\') ? '\\' : '/';
       const root = dir.endsWith(sep) ? dir : `${dir}${sep}`;
@@ -75,7 +88,7 @@ export async function getCandidateNoticePaths(
   try {
     const resPath = await resourceResolver('../THIRD-PARTY-NOTICES.md');
     if (resPath && typeof resPath === 'string') {
-      candidates.push(resPath);
+      candidates.push(plainWindowsPath(resPath));
     }
   } catch {
     // Resource resolver error or running outside packaged Tauri app

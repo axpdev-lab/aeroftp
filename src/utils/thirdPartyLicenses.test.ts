@@ -25,6 +25,7 @@ import {
   openThirdPartyLicenses,
   getCandidateNoticePaths,
   getOwnPendingNotices,
+  plainWindowsPath,
   GITHUB_NOTICES_URL,
   LINUX_NOTICE_PATHS,
 } from './thirdPartyLicenses';
@@ -76,6 +77,24 @@ describe('thirdPartyLicenses', () => {
       // A trailing separator is not doubled.
       const trailing = await getCandidateNoticePaths(mockResolver, vi.fn().mockResolvedValue('C:\\Tools\\AeroFTP\\'));
       expect(trailing[1]).toBe('C:\\Tools\\AeroFTP\\THIRD-PARTY-NOTICES.md');
+    });
+
+    it('gives the exe folder in its ordinary form when Tauri returns it as an extended-length path, as it does on Windows', async () => {
+      // The Windows unit-test job measured resource_dir() as
+      // \\?\D:\a\...\deps for an exe in D:\a\...\deps.
+      const paths = await getCandidateNoticePaths(
+        vi.fn().mockResolvedValue('\\\\?\\C:\\Tools\\AeroFTP\\_up_\\THIRD-PARTY-NOTICES.md'),
+        vi.fn().mockResolvedValue('\\\\?\\C:\\Tools\\AeroFTP')
+      );
+      expect(paths.slice(0, 2)).toEqual([
+        'C:\\Tools\\AeroFTP\\_up_\\THIRD-PARTY-NOTICES.md',
+        'C:\\Tools\\AeroFTP\\THIRD-PARTY-NOTICES.md',
+      ]);
+      const unc = await getCandidateNoticePaths(vi.fn().mockRejectedValue(new Error('none')), vi.fn().mockResolvedValue('\\\\?\\UNC\\server\\share\\AeroFTP'));
+      expect(unc[0]).toBe('\\\\server\\share\\AeroFTP\\THIRD-PARTY-NOTICES.md');
+      // Any other path is left as it is.
+      expect(plainWindowsPath('/opt/AeroFTP')).toBe('/opt/AeroFTP');
+      expect(plainWindowsPath('\\\\server\\share')).toBe('\\\\server\\share');
     });
 
     it('by default asks Tauri for the resource directory, never for executableDir', async () => {
