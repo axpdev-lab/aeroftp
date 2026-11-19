@@ -584,7 +584,7 @@ async fn body_bytes_with_limit(
 /// contain these entity sequences, so unescaping them is a no-op there and a
 /// fix for the XML providers. `&amp;` is decoded last so a double-escaped
 /// `&amp;lt;` does not collapse in one pass.
-fn unescape_xml_entities(s: &str) -> String {
+pub(crate) fn unescape_xml_entities(s: &str) -> String {
     if !s.contains('&') {
         return s.to_string();
     }
@@ -592,8 +592,15 @@ fn unescape_xml_entities(s: &str) -> String {
         .replace("&gt;", ">")
         .replace("&quot;", "\"")
         .replace("&#34;", "\"")
+        .replace("&#x22;", "\"")
+        .replace("&#X22;", "\"")
         .replace("&apos;", "'")
         .replace("&#39;", "'")
+        .replace("&#x27;", "'")
+        .replace("&#X27;", "'")
+        .replace("&#38;", "&")
+        .replace("&#x26;", "&")
+        .replace("&#X26;", "&")
         .replace("&amp;", "&")
 }
 
@@ -707,7 +714,9 @@ mod error_body_excerpt_tests {
 
 /// GAP-A10: Sanitize API error response bodies to prevent leaking sensitive data.
 /// Truncates to first line (max 200 chars), strips potential tokens/keys.
-pub fn sanitize_api_error(body: &str) -> String {
+/// Truncate an already-unescaped error line and run the shared secret-scrubbing
+/// pipeline without performing a second XML entity decode.
+pub(crate) fn sanitize_plain_error(body: &str) -> String {
     let first_line = body.lines().next().unwrap_or("unknown error");
     let truncated = if first_line.len() > 200 {
         let boundary = first_line
@@ -722,9 +731,13 @@ pub fn sanitize_api_error(body: &str) -> String {
     };
     // Apply the same regex-based sanitization used by the AI pipeline
     // (covers sk-*, Bearer tokens, x-api-key, Google key= params)
-    let sanitized = crate::ai::sanitize_error_message(&truncated);
-    // F-011: emit raw UTF-8 for the JSON/plain-text error sink.
-    unescape_xml_entities(&sanitized)
+    crate::ai::sanitize_error_message(&truncated)
+}
+
+pub fn sanitize_api_error(body: &str) -> String {
+    // Decode XML entities once before scrubbing so escaped quotes or ampersands
+    // cannot bypass redaction rules.
+    sanitize_plain_error(&unescape_xml_entities(body))
 }
 
 /// Transfer optimization hints: per-provider capability advertisement

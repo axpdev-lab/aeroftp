@@ -33,9 +33,9 @@ mod owncloud_tests;
 mod nextcloud_purge_tests;
 
 use super::{
-    sanitize_api_error, MultipartHandle, ProviderError, ProviderListExecutorKind,
-    ProviderTransferExecutorKind, ProviderType, RemoteEntry, ShareLinkCapabilities,
-    ShareLinkOptions, ShareLinkResult, StorageProvider, UploadedPart, WebDavConfig,
+    MultipartHandle, ProviderError, ProviderListExecutorKind, ProviderTransferExecutorKind,
+    ProviderType, RemoteEntry, ShareLinkCapabilities, ShareLinkOptions, ShareLinkResult,
+    StorageProvider, UploadedPart, WebDavConfig,
 };
 
 #[cfg(test)]
@@ -491,7 +491,9 @@ fn server_message(body: &str, base_url: &str) -> String {
             format!("a reply of {} bytes with no message", body.len())
         };
     };
-    let mut shown = message.to_string();
+    // Decode XML character references once before scrubbing so entity-escaped
+    // path or query credentials (e.g. `AB&amp;CD` for `AB%26CD`) match.
+    let mut shown = super::unescape_xml_entities(message);
     if let Ok(url) = url::Url::parse(base_url) {
         let path = url.path().trim_end_matches('/');
         // Every leading part of the base path, longest first: a server can
@@ -512,11 +514,13 @@ fn server_message(body: &str, base_url: &str) -> String {
             // percent-decoded), longest first, so a server echoing `?token=...`
             // or a query value inside `<message>` cannot leak a query secret.
             let mut secrets: Vec<String> = Vec::new();
+            let mut short_secrets: Vec<String> = Vec::new();
             let decoded_query = percent_decode_str(query).decode_utf8_lossy().into_owned();
             secrets.push(query.to_string());
             if decoded_query != query {
                 secrets.push(decoded_query);
             }
+            let mut raw_and_decoded_vals: Vec<String> = Vec::new();
             for raw_pair in query.split('&').filter(|p| !p.is_empty()) {
                 secrets.push(raw_pair.to_string());
                 let decoded_pair = percent_decode_str(raw_pair)
@@ -526,18 +530,21 @@ fn server_message(body: &str, base_url: &str) -> String {
                     secrets.push(decoded_pair);
                 }
                 if let Some((_, raw_val)) = raw_pair.split_once('=') {
-                    if raw_val.len() >= 4 {
-                        secrets.push(raw_val.to_string());
-                    }
+                    raw_and_decoded_vals.push(raw_val.to_string());
                     let decoded_val = percent_decode_str(raw_val).decode_utf8_lossy().into_owned();
-                    if decoded_val.len() >= 4 && decoded_val != raw_val {
-                        secrets.push(decoded_val);
+                    if decoded_val != raw_val {
+                        raw_and_decoded_vals.push(decoded_val);
                     }
                 }
             }
             for (_, decoded_val) in url.query_pairs() {
-                if decoded_val.len() >= 4 {
-                    secrets.push(decoded_val.into_owned());
+                raw_and_decoded_vals.push(decoded_val.into_owned());
+            }
+            for val in raw_and_decoded_vals {
+                if val.len() >= 4 {
+                    secrets.push(val);
+                } else if !val.is_empty() {
+                    short_secrets.push(val);
                 }
             }
             secrets.sort_by(|a, b| b.len().cmp(&a.len()).then_with(|| a.cmp(b)));
@@ -545,9 +552,45 @@ fn server_message(body: &str, base_url: &str) -> String {
             for secret in secrets {
                 shown = shown.replace(&secret, "<redacted>");
             }
+            // Short standalone query values (1-3 chars, e.g. `?token=abc`) are
+            // redacted only on non-alphanumeric token boundaries so ordinary
+            // words like "abstract" stay intact.
+            short_secrets.sort_by(|a, b| b.len().cmp(&a.len()).then_with(|| a.cmp(b)));
+            short_secrets.dedup();
+            for short in short_secrets {
+                shown = replace_bounded_token(&shown, &short, "<redacted>");
+            }
         }
     }
-    sanitize_api_error(&shown)
+    super::sanitize_plain_error(&shown)
+}
+
+/// Replace occurrences of `needle` in `haystack` that are bounded on both sides
+/// by start/end of string or non-ASCII-alphanumeric characters.
+fn replace_bounded_token(haystack: &str, needle: &str, replacement: &str) -> String {
+    if needle.is_empty() || !haystack.contains(needle) {
+        return haystack.to_string();
+    }
+    let bytes = haystack.as_bytes();
+    let mut out = String::with_capacity(haystack.len());
+    let mut cursor = 0;
+    while let Some(rel) = haystack[cursor..].find(needle) {
+        let start = cursor + rel;
+        let end = start + needle.len();
+        let left_ok = start == 0 || !bytes[start - 1].is_ascii_alphanumeric();
+        let right_ok = end == bytes.len() || !bytes[end].is_ascii_alphanumeric();
+        if left_ok && right_ok {
+            out.push_str(&haystack[cursor..start]);
+            out.push_str(replacement);
+            cursor = end;
+        } else {
+            let next_char_len = haystack[start..].chars().next().map_or(1, char::len_utf8);
+            out.push_str(&haystack[cursor..start + next_char_len]);
+            cursor = start + next_char_len;
+        }
+    }
+    out.push_str(&haystack[cursor..]);
+    out
 }
 
 /// The value of a response header as the download diagnostic logs it. A
@@ -10831,7 +10874,13 @@ pub(crate) mod collection_redirect_tests {
                 if path.ends_with("/ordinary") {
                     return (
                         StatusCode::LOCKED,
-                        "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<d:error xmlns:d=\"DAV:\" xmlns:s=\"http://sabredav.org/ns\">\n<s:message>Resource is locked by another user</s:message>\n</d:error>",
+                        "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<d:error xmlns:d=\"DAV:\" xmlns:s=\"http://sabredav.org/ns\">\n<s:message>Resource is locked by another user (abstract)</s:message>\n</d:error>",
+                    );
+                }
+                if path.ends_with("/entity") {
+                    return (
+                        StatusCode::LOCKED,
+                        "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<d:error xmlns:d=\"DAV:\" xmlns:s=\"http://sabredav.org/ns\">\n<s:message>Rejected AB&amp;CD and short credential abc</s:message>\n</d:error>",
                     );
                 }
                 (
@@ -10842,7 +10891,7 @@ pub(crate) mod collection_redirect_tests {
         ));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!(
-            "http://{}/root/?access_token=DUMMY%20SECRET&token=TOPSECRET",
+            "http://{}/root/?access_token=DUMMY%20SECRET&token=TOPSECRET&amp_tok=AB%26CD&short=abc",
             listener.local_addr().unwrap()
         );
         let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
@@ -10869,13 +10918,24 @@ pub(crate) mod collection_redirect_tests {
         }
         assert!(leaked.contains("<redacted>"), "{leaked}");
 
+        let entity = provider
+            .lock_file("/entity", 60)
+            .await
+            .unwrap_err()
+            .to_string();
+        for secret in ["AB&CD", "AB&amp;CD", "abc"] {
+            assert!(!entity.contains(secret), "{secret} leaked in {entity}");
+        }
+        assert!(entity.contains("Rejected <redacted>"), "{entity}");
+        assert!(entity.contains("short credential <redacted>"), "{entity}");
+
         let ordinary = provider
             .lock_file("/ordinary", 60)
             .await
             .unwrap_err()
             .to_string();
         assert!(
-            ordinary.contains("Resource is locked by another user"),
+            ordinary.contains("Resource is locked by another user (abstract)"),
             "{ordinary}"
         );
 

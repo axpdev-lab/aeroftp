@@ -28,8 +28,8 @@ use super::s3_delta::{DeltaOperation, S3DeltaCompleted, S3DeltaError, S3DeltaOut
 use super::s3_delta_baseline::{BaselineHasher, BaselineKey, BaselineStore};
 use super::sts;
 use super::{
-    sanitize_api_error, FileVersion, MultipartHandle, ProviderError, ProviderTransferExecutorKind,
-    ProviderType, RemoteEntry, S3Config, ShareLinkCapabilities, ShareLinkOptions, ShareLinkResult,
+    FileVersion, MultipartHandle, ProviderError, ProviderTransferExecutorKind, ProviderType,
+    RemoteEntry, S3Config, ShareLinkCapabilities, ShareLinkOptions, ShareLinkResult,
     StorageProvider, TrashEntry, UploadedPart,
 };
 
@@ -608,13 +608,31 @@ fn scrub_s3_reflected_credentials(text: &str) -> String {
                     r#"(?i)((?:AWSAccessKeyId|SessionToken|SecurityToken)\s*[:=]\s*['"])[^'"]+(['"])"#,
                     "$1[REDACTED]$2",
                 ),
-                // Unquoted header/parameter reflections
+                // Entity-quoted header/parameter reflections (e.g. double-escaped &amp;quot;...&amp;quot;)
                 (
-                    r"(?i)(x-amz-(?:security-token|credential|signature|server-side-encryption-customer-key)\s*[:=]\s*)[^\s,;'\x22&<>)\]}]+",
+                    r"(?i)(x-amz-(?:security-token|credential|signature|server-side-encryption-customer-key)\s*[:=]\s*)(?:&(?:quot|apos|#34|#39|#x22|#x27);)[^\s<>]+",
                     "$1[REDACTED]",
                 ),
                 (
-                    r"(?i)((?:AWSAccessKeyId|SessionToken|SecurityToken)\s*[:=]\s*)[^\s,;'\x22&<>)\]}]+",
+                    r"(?i)((?:AWSAccessKeyId|SessionToken|SecurityToken)\s*[:=]\s*)(?:&(?:quot|apos|#34|#39|#x22|#x27);)[^\s<>]+",
+                    "$1[REDACTED]",
+                ),
+                // Unquoted colon-delimited header reflections (may contain `&` if double-escaped)
+                (
+                    r"(?i)(x-amz-(?:security-token|credential|signature|server-side-encryption-customer-key)\s*:\s*)[^\s,;'\x22<>)\]}]+",
+                    "$1[REDACTED]",
+                ),
+                (
+                    r"(?i)((?:AWSAccessKeyId|SessionToken|SecurityToken)\s*:\s*)[^\s,;'\x22<>)\]}]+",
+                    "$1[REDACTED]",
+                ),
+                // Unquoted equals-delimited query/parameter reflections (`&` terminates a param)
+                (
+                    r"(?i)(x-amz-(?:security-token|credential|signature|server-side-encryption-customer-key)\s*=\s*)[^\s,;'\x22&<>)\]}]+",
+                    "$1[REDACTED]",
+                ),
+                (
+                    r"(?i)((?:AWSAccessKeyId|SessionToken|SecurityToken)\s*=\s*)[^\s,;'\x22&<>)\]}]+",
                     "$1[REDACTED]",
                 ),
                 // SigV4 Credential=... / Signature=... fragments
@@ -641,7 +659,12 @@ fn scrub_s3_reflected_credentials(text: &str) -> String {
 /// out of the error.
 fn s3_error_text(body: &str) -> String {
     match s3_error_code_and_message(body) {
-        Some(detail) => sanitize_api_error(&scrub_s3_reflected_credentials(&detail)),
+        Some(detail) => {
+            // Decode XML entities once before scrubbing so escaped quotes or
+            // numeric character references cannot bypass credential redaction.
+            let decoded = super::unescape_xml_entities(&detail);
+            super::sanitize_plain_error(&scrub_s3_reflected_credentials(&decoded))
+        }
         None if body.is_empty() => "no message".to_string(),
         None => format!("a reply of {} bytes with no S3 error code", body.len()),
     }
@@ -2784,21 +2807,10 @@ impl S3Provider {
         match put_status {
             StatusCode::OK | StatusCode::CREATED | StatusCode::NO_CONTENT => {
                 if put_body.to_ascii_lowercase().contains("<error>") {
-                    let err_code = put_body
-                        .split("<Code>")
-                        .nth(1)
-                        .and_then(|s| s.split("</Code>").next())
-                        .unwrap_or("PutError");
-                    let err_msg = put_body
-                        .split("<Message>")
-                        .nth(1)
-                        .and_then(|s| s.split("</Message>").next())
-                        .unwrap_or("S3 provider returned an error during put");
                     return Err(ProviderError::ServerError(format!(
-                        "FileLu safe rename write failed ({}): {} - {}",
+                        "FileLu safe rename write failed ({}): {}",
                         put_status,
-                        sanitize_api_error(err_code),
-                        sanitize_api_error(err_msg)
+                        s3_error_text(&put_body)
                     )));
                 }
             }
@@ -4617,19 +4629,14 @@ impl S3Provider {
                     let err_code = body
                         .split("<Code>")
                         .nth(1)
-                        .and_then(|s| s.split("</Code>").next())
+                        .and_then(|s| s.split_once("</Code>").map(|(inner, _)| inner.trim()))
+                        .filter(|s| !s.is_empty())
                         .unwrap_or("CopyError");
-                    let err_msg = body
-                        .split("<Message>")
-                        .nth(1)
-                        .and_then(|s| s.split("</Message>").next())
-                        .unwrap_or("S3 provider returned an error during copy");
                     return Err(CopyFailure {
                         error: ProviderError::ServerError(format!(
-                            "Copy failed ({}): {} - {}",
+                            "Copy failed ({}): {}",
                             status,
-                            sanitize_api_error(err_code),
-                            sanitize_api_error(err_msg)
+                            s3_error_text(&body)
                         )),
                         // A 200 carries no verdict on the request headers.
                         status: None,
@@ -20003,12 +20010,87 @@ mod tests {
         assert!(!msg.contains("FwoGZXIvYXdzEBAaDKquoted123"), "{msg}");
         assert!(!msg.contains("AKIAIOSFODNN7EXAMPLE"), "{msg}");
 
+        // XML named and numeric entities around a reflected token must be
+        // decoded before scrubbing so they cannot bypass the quoted rule.
+        let xml_quoted = "<Error><Code>InvalidToken</Code><Message>x-amz-security-token: &quot;DUMMYSESSION123&quot;</Message></Error>";
+        let msg = format_s3_error(
+            "List failed",
+            reqwest::StatusCode::BAD_REQUEST,
+            xml_quoted,
+            None,
+        );
+        assert!(!msg.contains("DUMMYSESSION123"), "{msg}");
+        assert!(msg.contains("[REDACTED]"), "{msg}");
+
+        let numeric_quoted = "<Error><Code>InvalidToken</Code><Message>x-amz-security-token: &#34;NUMSESSION456&#34; and x-amz-signature: &#x27;HEXSIG789&#x27;</Message></Error>";
+        let msg = format_s3_error(
+            "List failed",
+            reqwest::StatusCode::BAD_REQUEST,
+            numeric_quoted,
+            None,
+        );
+        assert!(!msg.contains("NUMSESSION456"), "{msg}");
+        assert!(!msg.contains("HEXSIG789"), "{msg}");
+
+        let double_escaped = "<Error><Code>InvalidToken</Code><Message>x-amz-security-token: &amp;quot;DBLSESSION000&amp;quot;</Message></Error>";
+        let msg = format_s3_error(
+            "List failed",
+            reqwest::StatusCode::BAD_REQUEST,
+            double_escaped,
+            None,
+        );
+        assert!(!msg.contains("DBLSESSION000"), "{msg}");
+
         let ordinary = "<Error><Code>NoSuchKey</Code><Message>The specified key does not exist.</Message></Error>";
         let msg = format_s3_error("GET failed", reqwest::StatusCode::NOT_FOUND, ordinary, None);
         assert_eq!(
             msg,
             "GET failed (404 Not Found): NoSuchKey: The specified key does not exist."
         );
+    }
+
+    /// HTTP 200 XML `<Error>` bodies on copy and FileLu-safe rename also route
+    /// through `s3_error_text`, so reflected session tokens are scrubbed there too.
+    #[tokio::test]
+    async fn s3_http_200_error_bodies_scrub_reflected_tokens() {
+        let app = axum::Router::new().fallback(axum::routing::any(
+            |request: axum::extract::Request| async move {
+                if request.method() == axum::http::Method::GET {
+                    return (reqwest::StatusCode::OK, "payload".to_string());
+                }
+                (
+                    reqwest::StatusCode::OK,
+                    "<Error><Code>InvalidToken</Code><Message>x-amz-security-token: &quot;HTTP200SECRET99&quot;</Message></Error>".to_string(),
+                )
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        let mut provider = make_provider(Some(&endpoint));
+        provider.connected = true;
+
+        let copy_err = provider
+            .copy_object_single_detailed("src.txt", "dst.txt", false)
+            .await
+            .unwrap_err()
+            .error
+            .to_string();
+        assert!(!copy_err.contains("HTTP200SECRET99"), "{copy_err}");
+        assert!(copy_err.contains("InvalidToken"), "{copy_err}");
+        assert!(copy_err.contains("[REDACTED]"), "{copy_err}");
+
+        let rename_err = provider
+            .rename_filelu_safe("src.txt", "dst.txt")
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(!rename_err.contains("HTTP200SECRET99"), "{rename_err}");
+        assert!(rename_err.contains("InvalidToken"), "{rename_err}");
+        assert!(rename_err.contains("[REDACTED]"), "{rename_err}");
+
+        server.abort();
     }
 
     #[test]

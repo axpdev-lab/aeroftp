@@ -198,6 +198,7 @@ const REVIEWED: &[Reviewed] = &[
     ("providers/s3.rs", "format", "a reply of {} bytes with no S3 error code", ", body.len()", "a length"),
     ("providers/s3.rs", "format", "HEAD on rename source returned status {}", ", resp.status()", "a status code"),
     ("providers/s3.rs", "format", "FileLu safe rename write failed ({}): {}", ", put_status, s3_error_text(&put_body)", S3_MESSAGE),
+    ("providers/s3.rs", "format", "Copy failed ({}): {}", ", status, s3_error_text(&body)", S3_MESSAGE),
     ("providers/s3.rs", "debug", "Parsing S3 ListObjectsV2 XML response, {} bytes", ", xml_str.len()", "a length"),
     ("providers/s3.rs", "ProviderError::ServerError", "", "format_s3_error( \"Copy failed\", status, &body, retry_header.as_deref(), )", S3_MESSAGE),
     ("providers/s3.rs", "format", "HEAD on bridge source '/{key}' returned status {}", ", response.status()", "a status code"),
