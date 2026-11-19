@@ -4893,15 +4893,24 @@ mod tests {
         std::fs::write(&sidecar, b"exe B").unwrap();
         let key = exe_key(&sidecar).unwrap();
         let reservation = reserve_update_handoff(dir.path(), "locked01").unwrap();
-        let inventory_lock = lock_batches(dir.path()).unwrap();
+        let exe_dir = dir.path().to_path_buf();
+        let (locked_tx, locked_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let holder = std::thread::spawn(move || {
+            let _lock = lock_batches(&exe_dir).unwrap();
+            locked_tx.send(()).unwrap();
+            release_rx.recv().unwrap();
+        });
+        locked_rx.recv().unwrap();
         let error = reservation
             .transfer_to_within(4242, Some(Duration::from_millis(50)))
-            .expect_err("transfer must wait for C's inventory lock");
+            .expect_err("transfer must wait for C's inventory lock on another thread");
         assert_eq!(error.kind(), io::ErrorKind::TimedOut);
         let keys = installed_app_keys_with_liveness(dir.path(), exe_key, |_| true)
             .expect("complete inventory");
         assert!(keys.contains(&key), "B remains live during C's inventory");
-        drop(inventory_lock);
+        release_tx.send(()).unwrap();
+        holder.join().unwrap();
         reservation.transfer_to(4242).unwrap();
         let keys = installed_app_keys_with_liveness(dir.path(), exe_key, |_| true)
             .expect("complete inventory after transfer");

@@ -1815,6 +1815,93 @@ mod tests {
         println!("private portable state verified");
     }
 
+    #[cfg(windows)]
+    #[test]
+    fn caller_data_roots_defer_on_unreadable_identity_and_recover() {
+        let source = std::env::current_exe().unwrap();
+        let root = cli_integration_fixture::root();
+        let pending = cli_integration_fixture::command(&source, root.path())
+            .args([
+                "--exact",
+                "portable::tests::caller_data_roots_pending_child_probe",
+                "--nocapture",
+            ])
+            .env("AEROFTP_TEST_CALLER_PENDING", "1")
+            .output()
+            .unwrap();
+        assert!(
+            pending.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&pending.stdout),
+            String::from_utf8_lossy(&pending.stderr)
+        );
+
+        let absent_root = cli_integration_fixture::root();
+        let absent = cli_integration_fixture::command(&source, absent_root.path())
+            .args([
+                "--exact",
+                "portable::tests::caller_data_roots_pending_child_probe",
+                "--nocapture",
+            ])
+            .env("AEROFTP_TEST_CALLER_ABSENT", "1")
+            .output()
+            .unwrap();
+        assert!(
+            absent.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&absent.stdout),
+            String::from_utf8_lossy(&absent.stderr)
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn caller_data_roots_pending_child_probe() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let pending = std::env::var_os("AEROFTP_TEST_CALLER_PENDING").is_some();
+        let absent = std::env::var_os("AEROFTP_TEST_CALLER_ABSENT").is_some();
+        if !pending && !absent {
+            return;
+        }
+        let exe = std::env::current_exe().unwrap();
+        let exe_dir = exe.parent().unwrap();
+        std::fs::remove_file(exe_dir.join(MARKER_FILENAME)).unwrap();
+        if absent {
+            let installed = aeroftp_data_root().expect("confirmed absence selects host mode");
+            assert!(!installed.starts_with(exe_dir.join("data")));
+            assert_eq!(credential_store_dir(), Some(installed));
+            return;
+        }
+
+        let marker_source = exe_dir.join("marker-source");
+        std::fs::write(&marker_source, b"portable").unwrap();
+        crate::portable_docs::stage_pending_docs(
+            exe_dir,
+            &exe,
+            &[(&marker_source, MARKER_FILENAME)],
+            "caller-pending",
+        )
+        .unwrap();
+        let id = exe_dir
+            .join(crate::portable_docs::NEXT_DIR)
+            .join(crate::portable_docs::STAGING_ID_FILE);
+        let held = std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(0)
+            .open(&id)
+            .unwrap();
+        assert_eq!(
+            aeroftp_data_root(),
+            None,
+            "Pending must not select host data"
+        );
+        assert_eq!(credential_store_dir(), None);
+        drop(held);
+        let expected = exe_dir.join("data").join(aeroftp_data_leaf());
+        assert_eq!(aeroftp_data_root(), Some(expected.clone()));
+        assert_eq!(credential_store_dir(), Some(expected));
+    }
+
     /// A portable copy logs into its own folder, never into the host's, and
     /// the two readers of the log (the diagnostic bundle and the MCP debug
     /// snapshot) find what was written there.
