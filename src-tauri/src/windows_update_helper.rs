@@ -672,39 +672,20 @@ del /F /Q {new} >nul 2>&1
 
     // The marker, README, LICENSE and notices are not copied here: the old
     // app staged them beside the exes as the next batch (`portable_docs`),
-    // and the new app installs them at its start. A failed swap drops that
-    // batch with the exes, by the names a staging writes and never
-    // recursively: anything else in the folder, and the folder, stay
-    // (`portable_docs::remove_batch`). The current batch, the old exe's
-    // documents still pending, stays for its next start. `del` given a
-    // folder deletes the files inside it, so a name that is a folder
-    // (`X\` exists) is skipped: only a file of that name is deleted. Only
-    // the batch this update staged goes: an update without documents
-    // staged none and deletes nothing there, and a folder at that name
-    // whose key is not this update's (someone's folder, a batch another
-    // process staged since) stays whole. The key is hex, so it needs no
-    // quoting.
+    // and the new app installs them at its start. On a failed swap, the old
+    // app is still at `current_exe`, so cleanup is delegated back to it via
+    // `--discard-pending-docs <key>`, which acquires the same batch mutex,
+    // verifies `exe.key` under that lock, removes only the files staged for
+    // this attempt, and restores any set-aside batch. An update without
+    // documents stages no batch and emits no cleanup line at all. The key is
+    // hex, so it needs no quoting.
     if let Some(key) = docs_key {
         if key.is_empty() || !key.bytes().all(|b| b.is_ascii_hexdigit()) {
             return Err(format!("Invalid portable documents key: {key:?}"));
         }
-        let next = exe_dir.join(portable_docs::NEXT_DIR);
         discard_block.push_str(&format!(
-            "findstr /L /X /C:{key} {} >nul 2>&1\nif errorlevel 1 goto docs_kept\n",
-            quote_for_cmd(&next.join(portable_docs::KEY_FILE))
-        ));
-        for name in portable_docs::BATCH_FILES {
-            let file = next.join(name);
-            let as_folder = PathBuf::from(format!("{}\\", file.display()));
-            discard_block.push_str(&format!(
-                "if not exist {} del /F /Q {} >nul 2>&1\n",
-                quote_for_cmd(&as_folder),
-                quote_for_cmd(&file)
-            ));
-        }
-        discard_block.push_str(&format!(
-            "rmdir {} >nul 2>&1\n:docs_kept\n",
-            quote_for_cmd(&next)
+            "{} {DISCARD_DOCS_FLAG} {key} >nul 2>&1\n",
+            quote_for_cmd(current_exe)
         ));
     }
 
@@ -821,6 +802,38 @@ fn spawn_detached(script: &Path) -> Result<(), String> {
 // ===========================================================================
 
 const CLEANUP_FLAG: &str = "--post-update-cleanup";
+const DISCARD_DOCS_FLAG: &str = "--discard-pending-docs";
+
+fn discard_pending_docs_arg(args: &[String]) -> Option<&str> {
+    let mut iter = args.iter().skip(1);
+    while let Some(arg) = iter.next() {
+        if arg == DISCARD_DOCS_FLAG {
+            let key = iter.next()?.as_str();
+            if !key.is_empty() && key.bytes().all(|b| b.is_ascii_hexdigit()) {
+                return Some(key);
+            }
+            return None;
+        }
+    }
+    None
+}
+
+/// Walk argv looking for `--discard-pending-docs <hex-key>`. When present,
+/// discards only that update's staged batch under the shared `portable_docs`
+/// batch mutex (restoring any set-aside batch) and returns `true` so `main.rs`
+/// exits immediately without booting the GUI.
+pub fn try_handle_discard_pending_docs_arg() -> bool {
+    let args: Vec<String> = std::env::args().collect();
+    let Some(key) = discard_pending_docs_arg(&args) else {
+        return false;
+    };
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(exe_dir) = exe.parent() {
+            portable_docs::discard_pending_docs(exe_dir, key);
+        }
+    }
+    true
+}
 
 /// Walk argv looking for `--post-update-cleanup <path>`. If present, spawn
 /// a detached thread that retries `remove_file` for up to 30 seconds with
@@ -845,6 +858,29 @@ pub fn try_handle_post_update_cleanup_arg() {
 /// How long the pass before the window waits for the lock of the batches.
 const START_LOCK_WAIT: Duration = Duration::from_millis(500);
 
+fn has_pending_batch(exe_dir: &Path) -> bool {
+    exe_dir.join(portable_docs::PENDING_DIR).exists()
+        || exe_dir.join(portable_docs::NEXT_DIR).exists()
+        || exe_dir.join(portable_docs::PREV_DIR).exists()
+}
+
+fn run_first_startup_pass(
+    exe_dir: &Path,
+    own_key: impl FnOnce() -> Option<String>,
+) -> Option<(String, portable_docs::Pending)> {
+    if !has_pending_batch(exe_dir) {
+        return None;
+    }
+    let rename = |from: &Path, to: &Path| std::fs::rename(from, to);
+    // The pass before the window waits a moment for the lock at most: a
+    // stalled staging in another process must not keep the app from opening.
+    own_key().map(|own_key| {
+        let first =
+            portable_docs::install_pending_docs_within(exe_dir, &own_key, START_LOCK_WAIT, rename);
+        (own_key, first)
+    })
+}
+
 /// Installs the documents a portable update staged beside the exes
 /// (`portable_docs`). The first pass runs before the app opens a window; it
 /// takes the time of a hash of the exe and four renames, and only when a
@@ -861,19 +897,11 @@ pub fn install_pending_docs_at_start() {
     let Some(exe_dir) = exe.parent().map(Path::to_path_buf) else {
         return;
     };
-    if !exe_dir.join(portable_docs::PENDING_DIR).exists()
-        && !exe_dir.join(portable_docs::NEXT_DIR).exists()
-    {
+    if !has_pending_batch(&exe_dir) {
         return;
     }
     let rename = |from: &Path, to: &Path| std::fs::rename(from, to);
-    // The pass before the window waits a moment for the lock at most: a
-    // stalled staging in another process must not keep the app from opening.
-    let first = portable_docs::running_exe_key().map(|own_key| {
-        let first =
-            portable_docs::install_pending_docs_within(&exe_dir, &own_key, START_LOCK_WAIT, rename);
-        (own_key, first)
-    });
+    let first = run_first_startup_pass(&exe_dir, portable_docs::running_exe_key);
     std::thread::spawn(move || {
         // The app log is set up by then.
         std::thread::sleep(Duration::from_secs(2));
@@ -1140,15 +1168,47 @@ mod tests {
 
     const THREE_EXES: [&str; 3] = ["AeroFTP.exe", "aeroftp-cli.exe", "aeroftp-dispatch.exe"];
 
+    const CHILD_DISCARD_EXE: &str = "AEROFTP_TEST_DISCARD_EXE";
+    const CHILD_DISCARD_KEY: &str = "AEROFTP_TEST_DISCARD_KEY";
+
+    /// Child process helper invoked by `runnable` in place of the fake 15-byte
+    /// `AeroFTP.exe --discard-pending-docs <key>`, running the real
+    /// `portable_docs::discard_pending_docs` under the real Windows batch lock.
+    #[test]
+    #[ignore = "invoked by failed-swap helper tests via runnable()"]
+    fn child_discard_pending_docs() {
+        let (Some(exe), Some(key)) = (
+            std::env::var_os(CHILD_DISCARD_EXE),
+            std::env::var(CHILD_DISCARD_KEY).ok(),
+        ) else {
+            return;
+        };
+        let exe_path = PathBuf::from(exe);
+        if let Some(exe_dir) = exe_path.parent() {
+            portable_docs::discard_pending_docs(exe_dir, &key);
+        }
+    }
+
     /// The script as the helper runs it, minus the waits (`ping`) and the
-    /// relaunch (`start`), which would launch the test's fake exe.
+    /// relaunch (`start`), which would launch the test's fake exe. A failed
+    /// swap's `{current} --discard-pending-docs <key>` line is routed through
+    /// this test binary's `child_discard_pending_docs` helper (keeping the
+    /// exact cmd-escaped `{current}` path so `%VAR%` handling is still tested).
     fn runnable(script: &str) -> Vec<String> {
+        let test_exe = quote_for_cmd(&std::env::current_exe().expect("test exe"));
+        let marker = format!(" {DISCARD_DOCS_FLAG} ");
         script
             .split_inclusive('\n')
             .map(|line| {
                 let trimmed = line.trim_start();
                 if trimmed.starts_with("ping ") || trimmed.starts_with("start ") {
                     "rem\r\n".to_string()
+                } else if let Some((exe_part, rest)) = trimmed.split_once(&marker) {
+                    let key = rest.split_whitespace().next().unwrap_or("");
+                    let raw_exe = exe_part.trim().trim_matches('"');
+                    format!(
+                        "set \"{CHILD_DISCARD_EXE}={raw_exe}\"\r\nset \"{CHILD_DISCARD_KEY}={key}\"\r\n{test_exe} --exact windows_update_helper::tests::child_discard_pending_docs --ignored >nul 2>&1\r\n"
+                    )
                 } else {
                     line.to_string()
                 }
@@ -1387,12 +1447,18 @@ mod tests {
         for installed_held in [false, true] {
             let mut fx = fixture();
             with_docs(&mut fx, |_| true);
-            let old_key = portable_docs::exe_key(&fx.current).expect("old key");
+            let old_notices = fx.root.path().join("old-notices.md");
+            std::fs::write(&old_notices, b"old exe's notices").expect("old pending notices");
+            portable_docs::stage_pending_docs(
+                &fx.app,
+                &fx.current,
+                &[(&old_notices, "THIRD-PARTY-NOTICES.md")],
+                "old",
+            )
+            .expect("stage old batch");
             let current = fx.app.join(portable_docs::PENDING_DIR);
-            std::fs::create_dir(&current).expect("current batch");
-            std::fs::write(current.join("THIRD-PARTY-NOTICES.md"), b"old exe's notices")
-                .expect("old pending notices");
-            std::fs::write(current.join("exe.key"), &old_key).expect("old key file");
+            std::fs::rename(fx.app.join(portable_docs::NEXT_DIR), &current)
+                .expect("promote old batch");
             let script = script_for(&fx);
             let held_old = hold(&current.join("THIRD-PARTY-NOTICES.md"));
             let held_installed =
@@ -1568,13 +1634,14 @@ mod tests {
     /// README and no key, stays whole.
     #[test]
     fn a_failed_swap_without_documents_deletes_nothing_at_the_batch_name() {
-        let fx = fixture();
+        let mut fx = fixture();
+        fx.staged.new_marker = None;
         let next = fx.app.join(portable_docs::NEXT_DIR);
         std::fs::create_dir(&next).expect("user folder");
         std::fs::write(next.join("README.txt"), b"my readme").expect("user readme");
         let script = script_for(&fx);
         assert!(
-            !script.contains(portable_docs::NEXT_DIR),
+            !script.contains(DISCARD_DOCS_FLAG) && !script.contains(portable_docs::NEXT_DIR),
             "no cleanup of a batch nobody staged"
         );
         std::fs::remove_file(beside_path(&fx.current)).expect("staged exe");
@@ -1584,6 +1651,50 @@ mod tests {
             std::fs::read(next.join("README.txt")).expect("kept"),
             b"my readme"
         );
+    }
+
+    /// When only B's set-aside batch (`.aeroftp-pending-docs.prev`) remains
+    /// after a failed later update's helper removed `NEXT_DIR` and `PENDING_DIR`
+    /// is gone, the startup check still detects it and installs B's notices.
+    #[test]
+    fn startup_installs_a_set_aside_batch_when_only_prev_remains() {
+        let fx = fixture();
+        std::fs::write(fx.app.join("THIRD-PARTY-NOTICES.md"), b"old notices")
+            .expect("installed notices");
+        // Control: with no batch directory present, startup returns None
+        // without hashing the running exe.
+        assert_eq!(
+            run_first_startup_pass(&fx.app, || panic!("no batch, no hash")),
+            None
+        );
+        let b_notices = fx.root.path().join("b-notices.md");
+        std::fs::write(&b_notices, b"notices of B").expect("b notices");
+        let key_b = portable_docs::stage_pending_docs(
+            &fx.app,
+            &fx.current,
+            &[(&b_notices, "THIRD-PARTY-NOTICES.md")],
+            "b",
+        )
+        .expect("stage b")
+        .expect("key b");
+        let prev = fx.app.join(portable_docs::PREV_DIR);
+        std::fs::rename(fx.app.join(portable_docs::NEXT_DIR), &prev).expect("set aside to prev");
+        assert!(!fx.app.join(portable_docs::PENDING_DIR).exists());
+        assert!(!fx.app.join(portable_docs::NEXT_DIR).exists());
+        let outcome = run_first_startup_pass(&fx.app, || Some(key_b.clone()))
+            .expect("startup detects PREV_DIR");
+        assert_eq!(
+            outcome,
+            (
+                key_b,
+                portable_docs::Pending::Docs(vec![(
+                    "THIRD-PARTY-NOTICES.md",
+                    portable_docs::Outcome::Installed
+                )])
+            )
+        );
+        assert_eq!(read(&fx, "THIRD-PARTY-NOTICES.md"), b"notices of B");
+        assert!(!prev.exists());
     }
 
     /// A failed swap deletes the next batch only while it is the one this
@@ -1596,7 +1707,10 @@ mod tests {
         let script = script_for(&fx);
         let next = fx.app.join(portable_docs::NEXT_DIR);
         let own = std::fs::read_to_string(next.join(portable_docs::KEY_FILE)).expect("key");
-        assert!(script.contains(&format!("/C:{own} ")), "{script}");
+        assert!(
+            script.contains(&format!("{DISCARD_DOCS_FLAG} {own}")),
+            "{script}"
+        );
         let other_key = "ab".repeat(32);
         std::fs::write(next.join(portable_docs::KEY_FILE), &other_key).expect("other key");
         std::fs::write(next.join("README.txt"), b"other readme").expect("other readme");
@@ -1610,6 +1724,75 @@ mod tests {
         assert_eq!(
             std::fs::read(next.join("README.txt")).expect("kept"),
             b"other readme"
+        );
+    }
+
+    /// The failed-swap cleanup runs under the same batch mutex as staging: if
+    /// another update holds the lock and publishes a replacement batch while
+    /// the failed helper is running cleanup, the helper waits for the lock,
+    /// sees the new key, and leaves the replacement batch intact.
+    #[test]
+    fn a_failed_swap_that_races_with_a_newer_staging_keeps_the_replacement_batch() {
+        let mut fx = fixture();
+        with_docs(&mut fx, |_| true);
+        let script = script_for(&fx);
+        let next = fx.app.join(portable_docs::NEXT_DIR);
+        std::fs::remove_file(beside_path(&fx.current)).expect("staged exe");
+        let lines = runnable(&script);
+        let lock = portable_docs::lock_batches(&fx.app).expect("hold batch lock");
+        let script_path = fx.root.path().join("race-helper.cmd");
+        std::fs::write(&script_path, lines.concat()).expect("write script");
+        let mut child = std::process::Command::new("cmd.exe")
+            .args(["/d", "/c", &script_path.to_string_lossy()])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .expect("spawn helper");
+        // Give the helper time to enter `:replace_failed` and block on the
+        // batch mutex inside `--discard-pending-docs`.
+        std::thread::sleep(Duration::from_millis(300));
+        assert!(
+            child.try_wait().expect("poll").is_none(),
+            "helper cleanup must wait for the batch mutex"
+        );
+        // Publish a replacement batch while holding the lock.
+        let other_key = "cd".repeat(32);
+        std::fs::write(next.join(portable_docs::KEY_FILE), &other_key).expect("replacement key");
+        std::fs::write(next.join("README.txt"), b"replacement readme").expect("replacement readme");
+        drop(lock);
+        let _ = child.wait().expect("helper finishes");
+        assert_eq!(
+            std::fs::read_to_string(next.join(portable_docs::KEY_FILE)).expect("kept"),
+            other_key
+        );
+        assert_eq!(
+            std::fs::read(next.join("README.txt")).expect("kept"),
+            b"replacement readme"
+        );
+    }
+
+    #[test]
+    fn discard_pending_docs_arg_parses_only_valid_hex_keys() {
+        let key = "0123456789abcdef".repeat(4);
+        assert_eq!(
+            discard_pending_docs_arg(&[
+                "AeroFTP.exe".into(),
+                DISCARD_DOCS_FLAG.into(),
+                key.clone()
+            ]),
+            Some(key.as_str())
+        );
+        assert_eq!(
+            discard_pending_docs_arg(&["AeroFTP.exe".into(), DISCARD_DOCS_FLAG.into()]),
+            None
+        );
+        assert_eq!(
+            discard_pending_docs_arg(&[
+                "AeroFTP.exe".into(),
+                DISCARD_DOCS_FLAG.into(),
+                "not-hex!".into()
+            ]),
+            None
         );
     }
 
@@ -1630,8 +1813,12 @@ mod tests {
             std::fs::read(folder.join("sentinel.txt")).expect("kept"),
             b"mine"
         );
-        // The staged files themselves are gone; only the folder is left.
-        assert_eq!(names_in(&next), vec!["README.txt".to_string()]);
+        // The staged files themselves are gone; the folder stays untouched,
+        // and the batch keeps its key because a named document slot was not removed.
+        assert!(!next.join("portable.marker").exists());
+        assert!(!next.join("LICENSE.txt").exists());
+        assert!(!next.join("THIRD-PARTY-NOTICES.md").exists());
+        assert!(folder.is_dir());
     }
 
     #[test]

@@ -9,6 +9,14 @@ fn main() {
     // part-sized buffers it owns, are shared with the desktop app.
     ftp_client_gui_lib::alloc_tuning::tune_for_transfer_buffers();
 
+    // Windows portable auto-updater: a failed swap delegates batch cleanup
+    // back to this exe (`--discard-pending-docs <key>`) so the check and
+    // removal run under the same batch mutex. Exits immediately without UI.
+    #[cfg(windows)]
+    if ftp_client_gui_lib::windows_update_helper::try_handle_discard_pending_docs_arg() {
+        return;
+    }
+
     // Windows portable auto-updater: when the previous AeroFTP swapped its
     // .exe in place, it relaunches the new build with
     // `--post-update-cleanup <path-to-old-exe>`. Pick that up before Tauri

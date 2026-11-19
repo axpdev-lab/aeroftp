@@ -2027,14 +2027,18 @@ test('package without a holder in its files: a covered header notice is listed o
       fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
       fs.writeFileSync(path.join(tmpDir, rel), content);
     };
-    // A complete MIT text with no holder, and source headers under MIT whose
-    // equivalent notices (differing only in symbol/punctuation) have no year
-    // (the source scan reads notices with a year).
+    // A complete MIT text with no holder, and a source header under MIT whose
+    // yearless notice the source scan does not read: render with only src/a.c
+    // first to pin declared-header recovery, then add an equivalent notice in
+    // src/b.c to pin noticeKey deduplication.
     write('LICENSE', shippedLicense('MIT License', 'MIT'));
     write('src/a.c', '/*\n * \u00a9 Alice Example\n * SPDX-License-Identifier: MIT\n */\nint a;\n');
-    write('src/b.c', '/*\n * Copyright (c) Alice Example.\n * SPDX-License-Identifier: MIT\n */\nint b;\n');
     const comp = () => ({ name: 'covered-header', version: '1.0.0', license: 'MIT', source: 'cargo', packageDir: tmpDir, authors: ['A'], ...readPackageFiles(tmpDir, 'covered-header@1.0.0') });
     const entry = (out) => out.slice(out.indexOf('`covered-header@1.0.0` (cargo'), out.indexOf('```', out.indexOf('`covered-header@1.0.0` (cargo')));
+    const recoveredOnly = entry(generateNoticesMarkdown([comp()], []));
+    assert.strictEqual(recoveredOnly.split('Alice Example').length - 1, 1, recoveredOnly);
+    assert.doesNotMatch(recoveredOnly, /No copyright notice is shipped in the package/);
+    write('src/b.c', '/*\n * Copyright (c) Alice Example.\n * SPDX-License-Identifier: MIT\n */\nint b;\n');
     const withNotice = entry(generateNoticesMarkdown([comp()], []));
     assert.strictEqual(withNotice.split('Alice Example').length - 1, 1, withNotice);
     assert.doesNotMatch(withNotice, /No copyright notice is shipped in the package/);

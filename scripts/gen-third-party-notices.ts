@@ -799,9 +799,9 @@ const mayContinue = (notice: string) =>
 // they are read as a notice there.
 /**
  * A dependency's repository or homepage as the notices may publish it: a
- * manifest URL can carry credentials (`https://user:token@host/...`) or a
- * token in its query, and the notices ship with the app. Credentials, the
- * query and the fragment are dropped; a value that is no URL is not linked.
+ * manifest URL can carry userinfo credentials in its authority or a token in
+ * its query, and the notices ship with the app. Credentials, the query and the
+ * fragment are dropped; a non-http(s) or unparseable value is not linked.
  */
 export function publicLink(url: string | undefined): string | undefined {
   if (!url) return undefined;
