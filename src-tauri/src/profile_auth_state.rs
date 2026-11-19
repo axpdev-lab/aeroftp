@@ -247,18 +247,13 @@ pub fn derive_profile_auth_state_for_user(
     if protocol.eq_ignore_ascii_case("github") {
         return crate::profile_auth::saved_github_readiness(store, profile_id, None, user_id);
     }
-    // Another account's token lives in its partition alone
-    // (`private_token_user`): its state is read there, never from the vault
-    // key of the same name, which is the legacy owner's.
+    // An account's token is read where its connection reads it: its
+    // partition row first, the vault after it for the legacy owner alone
+    // (`resolve_credential_for_user_owner_aware`). Another account's never
+    // comes from the vault key of the same name, which is the owner's.
     if source == AuthSource::Vault && oauth_vault_key_for_protocol(protocol).is_some() {
-        let private =
-            user_id.map(|user| crate::user_partitions::private_token_user(Some(user), "oauth"));
-        match private {
-            Some(Ok(Some(user))) => {
-                return partition_token_state(store, user, profile_id, protocol)
-            }
-            Some(Err(_)) => return "unknown",
-            _ => {}
+        if let Some(user) = user_id {
+            return partition_token_state(store, user, profile_id, protocol);
         }
     }
     derive_profile_auth_state(store, accounts, profile_id, protocol, source)

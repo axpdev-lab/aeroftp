@@ -2033,6 +2033,35 @@ fn private_tokens_keep_to_their_account(store: &CredentialStore, legacy_id: i64,
     assert_eq!(readiness(legacy_id), "valid");
     users::unmirror_credential_for_user_best_effort_any(private_id, "oauth_dropbox_copy-target");
     store.delete("oauth_dropbox_copy-target").unwrap();
+    // The legacy owner's state is read where its connection reads the token:
+    // its row first, the vault after it, so a valid row counts whatever the
+    // vault holds.
+    let conn = users::open_or_init_cli().unwrap();
+    let root = store.derive_user_partition_wrapping_key();
+    users::set_user_credential_for(
+        &conn,
+        &root,
+        legacy_id,
+        "oauth_dropbox_copy-target",
+        "oauth",
+        &token(now + 3600),
+    )
+    .unwrap();
+    assert_eq!(
+        readiness(legacy_id),
+        "valid",
+        "a valid row and no vault copy"
+    );
+    store
+        .store("oauth_dropbox_copy-target", &token(now - 3600))
+        .unwrap();
+    assert_eq!(
+        readiness(legacy_id),
+        "valid",
+        "a valid row over an expired vault copy"
+    );
+    users::delete_user_credential_for(&conn, legacy_id, "oauth_dropbox_copy-target").unwrap();
+    store.delete("oauth_dropbox_copy-target").unwrap();
 
     // The same for a Jottacloud chain, under the profile's key and under the
     // singleton, for GitHub's own authorization, which is read for the account
