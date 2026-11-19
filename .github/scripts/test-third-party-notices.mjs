@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createRequire, syncBuiltinESMExports } from 'node:module';
 import { createHash } from 'node:crypto';
+import YAML from 'yaml';
 import {
   citationApplies,
   publicLink,
@@ -48,6 +49,7 @@ import {
   reviewedNotices,
   reviewedTagMentions,
   reviewedSourceTexts,
+  reviewedSourceText,
 } from '../../scripts/gen-third-party-notices.ts';
 
 // The committed notices with the blocks the generator reproduces as shipped,
@@ -407,10 +409,29 @@ test('npm authors: the manifest author is read in each form npm writes it, a url
   assert.deepStrictEqual(npmAuthors({ author: 'Jane Doe <jane@example.com>' }), ['Jane Doe <jane@example.com>']);
   assert.deepStrictEqual(npmAuthors({ author: 'Jane Doe (https://example.com)' }), ['Jane Doe']);
   assert.deepStrictEqual(npmAuthors({ author: '  Jane Doe  ' }), ['Jane Doe']);
-  assert.deepStrictEqual(npmAuthors({ author: 'Jane Doe (https://example.com) <jane@example.com>' }), ['Jane Doe (https://example.com) <jane@example.com>'], 'another order is kept as written');
+  assert.deepStrictEqual(
+    npmAuthors({ author: 'Jane Doe (https://user:s3cret@example.com) <jane@example.com>' }),
+    ['Jane Doe <jane@example.com>'],
+    'reordered Name (URL) <email> strips the URL and keeps name and email'
+  );
   assert.deepStrictEqual(npmAuthors({ author: { name: 'Jane Doe', email: 'jane@example.com', url: 'https://example.com' } }), ['Jane Doe <jane@example.com>']);
   assert.deepStrictEqual(npmAuthors({ author: { name: 'Jane Doe', url: 'https://example.com' } }), ['Jane Doe']);
-  for (const author of [undefined, '', '   ', '<jane@example.com>', '(https://example.com)', { email: 'jane@example.com' }, { name: '' }, { name: 42 }, ['Jane Doe'], 42, null]) {
+  for (const author of [
+    undefined,
+    '',
+    '   ',
+    '<jane@example.com>',
+    '(https://example.com)',
+    'Jane Doe https://user:s3cret@example.com',
+    'Jane Doe (https://a.example) (https://b.example)',
+    { email: 'jane@example.com' },
+    { name: '' },
+    { name: 'Jane Doe https://user:s3cret@example.com' },
+    { name: 42 },
+    ['Jane Doe'],
+    42,
+    null,
+  ]) {
     assert.strictEqual(npmAuthors({ author }), undefined, JSON.stringify(author));
   }
 });
@@ -420,7 +441,9 @@ test('npm authors: the installed manifest gives a package its authors, and with 
   try {
     const manifests = {
       'test-npm-string': { author: 'Jane Doe <jane@example.com> (https://example.com)' },
+      'test-npm-reordered': { author: 'Alice Roe (https://user:s3cret-token@example.com) <alice@example.com>' },
       'test-npm-object': { author: { name: 'John Roe', email: 'john@example.com', url: 'https://example.com' } },
+      'test-npm-unparseable': { author: 'Bob Raw https://user:s3cret-token@example.com' },
       'test-npm-none': {},
     };
     const packages = { '': {} };
@@ -435,12 +458,24 @@ test('npm authors: the installed manifest gives a package its authors, and with 
     assert.deepStrictEqual(deps.map((d) => [d.name, d.authors]), [
       ['test-npm-none', undefined],
       ['test-npm-object', ['John Roe <john@example.com>']],
+      ['test-npm-reordered', ['Alice Roe <alice@example.com>']],
       ['test-npm-string', ['Jane Doe <jane@example.com>']],
+      ['test-npm-unparseable', undefined],
     ]);
-    const md = generateNoticesMarkdown(deps.filter((d) => d.name !== 'test-npm-none'), []);
+    const validDeps = deps.filter((d) => d.name !== 'test-npm-none' && d.name !== 'test-npm-unparseable');
+    const md = generateNoticesMarkdown(validDeps, []);
     assert.match(md, /- `test-npm-object@1\.0\.0` - SPDX: `Apache-2\.0` \(authors: John Roe <john@example\.com>\)/);
+    assert.match(md, /- `test-npm-reordered@1\.0\.0` - SPDX: `Apache-2\.0` \(authors: Alice Roe <alice@example\.com>\)/);
     assert.match(md, /- `test-npm-string@1\.0\.0` - SPDX: `Apache-2\.0` \(authors: Jane Doe <jane@example\.com>\)/);
-    assert.throws(() => generateNoticesMarkdown(deps, []), /Component test-npm-none@1\.0\.0 has no manifest authors and is missing reviewed attribution/);
+    assert.doesNotMatch(md, /s3cret-token|https:\/\/example\.com/);
+    assert.throws(
+      () => generateNoticesMarkdown(deps.filter((d) => d.name === 'test-npm-none'), []),
+      /Component test-npm-none@1\.0\.0 has no manifest authors and is missing reviewed attribution/
+    );
+    assert.throws(
+      () => generateNoticesMarkdown(deps.filter((d) => d.name === 'test-npm-unparseable'), []),
+      /Component test-npm-unparseable@1\.0\.0 has no manifest authors and is missing reviewed attribution/
+    );
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
@@ -2046,6 +2081,26 @@ test('package without a holder in its files: a covered header notice is listed o
     write('src/a.c', '/* SPDX-License-Identifier: MIT */\nint a;\n');
     write('src/b.c', 'int b;\n');
     assert.match(entry(generateNoticesMarkdown([comp()], [])), /No copyright notice is shipped in the package/);
+    // Without a LICENSE file at all (standard-text fallback), a yearless
+    // covered header attribution is still included and deduplicated by noticeKey.
+    fs.rmSync(path.join(tmpDir, 'LICENSE'));
+    write('src/a.c', '/*\n * \u00a9 Alice Example\n * SPDX-License-Identifier: MIT\n */\nint a;\n');
+    write('src/b.c', '/*\n * Copyright (c) Alice Example.\n * SPDX-License-Identifier: MIT\n */\nint b;\n');
+    const noLicComp = {
+      name: 'test-covered-no-lic',
+      version: '1.0.0',
+      license: 'MIT',
+      source: 'cargo',
+      packageDir: tmpDir,
+      authors: ['Manifest Author'],
+      ...readPackageFiles(tmpDir, 'test-covered-no-lic@1.0.0'),
+    };
+    const noLicOut = generateNoticesMarkdown([noLicComp], []);
+    const stdIdx = noLicOut.indexOf('- `test-covered-no-lic@1.0.0` - SPDX: `MIT`');
+    assert.ok(stdIdx !== -1, noLicOut);
+    const stdEntry = noLicOut.slice(stdIdx, noLicOut.indexOf('```', stdIdx));
+    assert.strictEqual(stdEntry.split('Alice Example').length - 1, 1, stdEntry);
+    assert.doesNotMatch(stdEntry, /No copyright notice is shipped/);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
@@ -2356,27 +2411,59 @@ test('AppImage: every bundled library ships the copyright file of the package th
   }
 });
 
-test('reviewed source texts: a license text inside a source comment is reproduced whole, and a file that lost its reviewed lines fails the run', () => {
+test('reviewed source texts: a license text inside a source comment is bound to version and digest, and interior edits or version bumps fail', () => {
   const reviewed = reviewedSourceTexts();
   assert.ok(reviewed.length > 0);
-  for (const r of reviewed) assert.ok(r.package && r.file && r.from && r.to && r.license && r.source, JSON.stringify(r));
+  for (const r of reviewed) {
+    assert.ok(r.package && r.version && r.file && r.from && r.to && /^[0-9a-f]{64}$/.test(r.sha256) && r.license && r.source, JSON.stringify(r));
+  }
   const r = reviewed.find((x) => x.package === 'tao' && x.file === 'src/keyboard.rs');
   assert.ok(r, 'the tao W3C text is reviewed');
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'source-text-fixture-'));
   try {
     const file = path.join(tmpDir, 'src', 'keyboard.rs');
     fs.mkdirSync(path.dirname(file), { recursive: true });
+    const extracted = `${r.from}\nCopyright (c) 2016 Fixture Consortium. All Rights Reserved.\n\nPermission to copy, modify, and distribute this work is granted.\n${r.to}`;
+    const sha256 = createHash('sha256').update(extracted, 'utf8').digest('hex');
+    const fixtureReview = { ...r, version: '0.35.3', sha256 };
     const body = `// Copyright 2021 Fixture Author\n// SPDX-License-Identifier: Apache-2.0\n\n// ${r.from}\n// Copyright (c) 2016 Fixture Consortium. All Rights Reserved.\n//\n// Permission to copy, modify, and distribute this work is granted.\n// ${r.to}\n\nfn k() {}\n`;
     fs.writeFileSync(file, body);
-    const comp = { name: 'tao', version: '9.9.9', license: 'Apache-2.0', source: 'cargo', packageDir: tmpDir, authors: ['Fixture Author'], ...readPackageFiles(tmpDir, 'tao@9.9.9') };
-    const md = generateNoticesMarkdown([comp], []);
+    const makeComp = (version) => ({
+      name: 'tao',
+      version,
+      license: 'Apache-2.0',
+      source: 'cargo',
+      packageDir: tmpDir,
+      authors: ['Fixture Author'],
+      ...readPackageFiles(tmpDir, `tao@${version}`),
+    });
+    // Control: matching version and unchanged block digest succeeds.
+    const md = generateNoticesMarkdown([makeComp('0.35.3')], [], SPDX_STANDARD_LICENSES_FILE, [], [fixtureReview]);
     const section = md.slice(md.indexOf('## License Texts Inside Source Files'));
     assert.ok(md.includes('## License Texts Inside Source Files'));
-    assert.ok(section.includes(`- \`tao@9.9.9\`, \`src/keyboard.rs\`: ${r.license}`));
-    assert.ok(section.includes(`${r.from}\nCopyright (c) 2016 Fixture Consortium. All Rights Reserved.\n\nPermission to copy, modify, and distribute this work is granted.\n${r.to}\n`), 'the comment is reproduced from its first to its last line, without the leaders');
+    assert.ok(section.includes(`- \`tao@0.35.3\`, \`src/keyboard.rs\`: ${r.license}`));
+    assert.ok(section.includes(`${extracted}\n`), 'the comment is reproduced from its first to its last line, without the leaders');
     assert.ok(!section.includes('fn k()'));
+    // Version mismatch requires a new review instead of silently accepting or omitting.
+    assert.throws(
+      () => generateNoticesMarkdown([makeComp('9.9.9')], [], SPDX_STANDARD_LICENSES_FILE, [], [fixtureReview]),
+      /does not match reviewed sourceTexts version 0\.35\.3/
+    );
+    // Interior edit with unchanged boundary lines fails on digest mismatch.
+    fs.writeFileSync(file, body.replace('Permission to copy, modify, and distribute this work is granted.', 'All commercial use is forbidden.'));
+    assert.throws(
+      () => generateNoticesMarkdown([makeComp('0.35.3')], [], SPDX_STANDARD_LICENSES_FILE, [], [fixtureReview]),
+      /reviewed source text digest changed/
+    );
+    // Missing boundary line still fails.
     fs.writeFileSync(file, body.replace(`// ${r.to}\n`, ''));
-    assert.throws(() => generateNoticesMarkdown([comp], []), /no longer has the reviewed source text/);
+    assert.throws(
+      () => generateNoticesMarkdown([makeComp('0.35.3')], [], SPDX_STANDARD_LICENSES_FILE, [], [fixtureReview]),
+      /no longer has the reviewed source text/
+    );
+    // Direct helper check on matching block.
+    fs.writeFileSync(file, body);
+    assert.strictEqual(reviewedSourceText(makeComp('0.35.3'), fixtureReview), extracted);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
@@ -2905,6 +2992,15 @@ test('bundled code: a tag in a block comment after code is a header read from it
     assert.deepEqual(bundled[0].notices, ['Copyright (c) 2019 Inline Holder. SPDX-License-Identifier: BSD-2-Clause']);
     write('vendor/inline.c', 'const char *s = "/* SPDX-License-Identifier: BSD-2-Clause */";\n');
     assert.throws(() => findBundledCodeUnderOtherLicenses(comp(), known), /inline-pkg@1\.0\.0 has an SPDX-License-Identifier in vendor\/inline\.c outside a comment the scanner knows/);
+    // An unstarred multiline C block comment with text before the SPDX tag is
+    // inside the tracked block and accepted; closing the block before the tag
+    // leaves the tag outside the comment and fails.
+    write('vendor/inline.c', '/*\nCopyright (c) 2020 Unstarred Holder\nLicense: SPDX-License-Identifier: BSD-2-Clause\n*/\nint u;\n');
+    const unstarred = findBundledCodeUnderOtherLicenses(comp(), known);
+    assert.deepEqual(unstarred.map((b) => [b.license, b.files]), [['BSD-2-Clause', ['vendor/inline.c']]]);
+    assert.deepEqual(unstarred[0].notices, ['Copyright (c) 2020 Unstarred Holder']);
+    write('vendor/inline.c', '/*\nCopyright (c) 2020 Closed Holder\n*/ License: SPDX-License-Identifier: BSD-2-Clause\nint u;\n');
+    assert.throws(() => findBundledCodeUnderOtherLicenses(comp(), known), /inline-pkg@1\.0\.0 has an SPDX-License-Identifier in vendor\/inline\.c outside a comment the scanner knows/);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
@@ -3319,6 +3415,48 @@ test('licensing exceptions: fails fast on restriction clauses wrapped across lin
   );
 });
 
+test('licensing exceptions: non-free exemption covers only the registered Cargo source and file', () => {
+  const restricted = 'This library cannot be used to develop an archive or re-create RAR compression algorithm.';
+  const exc = KNOWN_NON_FREE_EXCEPTIONS[0];
+  const registeredCargo = {
+    name: exc.crateName,
+    version: exc.version,
+    license: 'MIT',
+    source: 'cargo',
+    licenseFiles: [
+      { filename: 'LICENSE', content: shippedLicense('Copyright (c) 2020 Cargo Holder', 'MIT') },
+      { filename: exc.sourceFile, content: restricted },
+    ],
+    noticeFiles: [],
+    authors: ['Cargo Author'],
+  };
+  // Control: the registered Cargo crate and exact sourceFile pass.
+  assert.doesNotThrow(() => generateNoticesMarkdown([registeredCargo], [], SPDX_STANDARD_LICENSES_FILE, [exc]));
+  // Another file in the same Cargo crate is still scanned and rejected.
+  const extraFileCargo = {
+    ...registeredCargo,
+    licenseFiles: [...registeredCargo.licenseFiles, { filename: 'OTHER-LICENSE.txt', content: restricted }],
+  };
+  assert.throws(
+    () => generateNoticesMarkdown([extraFileCargo], [], SPDX_STANDARD_LICENSES_FILE, [exc]),
+    /Component unrar_sys@0\.5\.8 \(file: OTHER-LICENSE\.txt\) contains non-free restriction clauses/
+  );
+  // A separate npm component with the same name and version is NOT exempted, even with the same filename.
+  const sameNameNpm = {
+    name: exc.crateName,
+    version: exc.version,
+    license: 'MIT',
+    source: 'npm',
+    licenseFiles: [{ filename: exc.sourceFile, content: restricted }],
+    noticeFiles: [],
+    authors: ['Npm Author'],
+  };
+  assert.throws(
+    () => generateNoticesMarkdown([registeredCargo], [sameNameNpm], SPDX_STANDARD_LICENSES_FILE, [exc]),
+    /Component unrar_sys@0\.5\.8 \(file: vendor\/unrar\/license\.txt\) contains non-free restriction clauses/
+  );
+});
+
 test('committed notices: a placeholder in a block quoted as shipped passes, one in a generated block or line fails', () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'quoted-placeholder-fixture-'));
   try {
@@ -3576,17 +3714,20 @@ const topLevelConjuncts = (condition) => {
 // a step running it with no `if:` and no `continue-on-error`, in a job with
 // neither. A step that runs only on pull requests, or whose failure is
 // ignored, lets the job succeed on a tag without the check.
-const alwaysGates = (jobText, command) => {
-  const [header, stepsText] = jobText.split(/\n {4}steps:\n/);
-  if (stepsText === undefined || /\n {4}(?:if|continue-on-error):/.test(header)) return false;
-  const escaped = command.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  // The step's own `run` key, at the step's indentation: a deeper line of a
-  // script that reads `run: ...` (a heredoc) is text of another step.
-  const runs = new RegExp(`^(?: {6}- | {8})run: ${escaped}\\s*$`, 'm');
-  return stepsText
-    .split(/\n(?= {6}- )/)
-    .filter((step) => runs.test(step))
-    .some((step) => !/(?:^ {6}- |\n {8})(?:if|continue-on-error):/.test(step));
+const alwaysGates = (jobInput, command) => {
+  const job = typeof jobInput === 'string' ? Object.values(YAML.parse(jobInput) ?? {})[0] : jobInput;
+  if (!job || typeof job !== 'object') return false;
+  if (Object.prototype.hasOwnProperty.call(job, 'if') || Object.prototype.hasOwnProperty.call(job, 'continue-on-error')) return false;
+  if (!Array.isArray(job.steps)) return false;
+  return job.steps.some(
+    (step) =>
+      step &&
+      typeof step === 'object' &&
+      typeof step.run === 'string' &&
+      step.run.trim() === command &&
+      !Object.prototype.hasOwnProperty.call(step, 'if') &&
+      !Object.prototype.hasOwnProperty.call(step, 'continue-on-error')
+  );
 };
 const requiresSuccessOf = (condition, need) => (topLevelConjuncts(condition) ?? []).some((c) => c.replace(/\s+/g, ' ') === `needs.${need}.result == 'success'`);
 
@@ -3617,16 +3758,10 @@ test('workflow conditions: a needed job must succeed only when its success is a 
 
 test('release workflow: every publish job requires a job that checks the notices against the lockfiles', () => {
   const workflow = fs.readFileSync(path.join(ROOT, '.github/workflows/build.yml'), 'utf8');
-  // The jobs, by id, with their text up to the next job.
-  const jobsAt = workflow.indexOf('\njobs:\n');
-  assert.ok(jobsAt !== -1);
-  const jobs = new Map();
-  const parts = workflow.slice(jobsAt + 7).split(/\n(?=  [a-z0-9_-]+:\n)/);
-  for (const part of parts) {
-    const m = /^ {2}([a-z0-9_-]+):\n/.exec(part.replace(/^\n/, ''));
-    if (m) jobs.set(m[1], part);
-  }
-  assert.ok(alwaysGates(jobs.get('linux-validate') ?? '', 'npm run check:licenses'), 'linux-validate runs npm run check:licenses on every run, and fails when it fails');
+  const parsed = YAML.parse(workflow);
+  assert.ok(parsed && typeof parsed.jobs === 'object' && parsed.jobs !== null);
+  const jobs = new Map(Object.entries(parsed.jobs));
+  assert.ok(alwaysGates(jobs.get('linux-validate'), 'npm run check:licenses'), 'linux-validate runs npm run check:licenses on every run, and fails when it fails');
   // The same job text with the step skipped on a tag, or its failure
   // ignored, gates nothing.
   const job = (header, step) => `  linux-validate:\n    runs-on: ubuntu-22.04\n${header}    steps:\n      - name: Checkout\n        uses: actions/checkout@v5\n\n${step}\n      - name: Type check\n        run: npx tsc --noEmit\n`;
@@ -3635,14 +3770,19 @@ test('release workflow: every publish job requires a job that checks the notices
   assert.strictEqual(alwaysGates(job('', '      - run: npm run check:licenses\n'), 'npm run check:licenses'), true);
   for (const [header, step] of [
     ['', check.replace('\n        run:', "\n        if: github.event_name == 'pull_request'\n        run:")],
+    ['', check.replace('\n        run:', "\n        if : github.event_name == 'pull_request'\n        run:")],
     ['', `${check}        continue-on-error: true\n`],
+    ['', `${check}        continue-on-error : true\n`],
     ['', "      - if: ${{ !startsWith(github.ref, 'refs/tags/') }}\n        run: npm run check:licenses\n"],
+    ['', "      - if : ${{ !startsWith(github.ref, 'refs/tags/') }}\n        run: npm run check:licenses\n"],
     ['', '      - name: Third-party license notices match the lockfiles\n        run: npm run check:licenses || true\n'],
     // A script that only writes the line, in a heredoc, runs nothing.
     ['', "      - name: Write a later step\n        run: |\n          cat >> steps.yml <<'EOF'\n          run: npm run check:licenses\n          EOF\n"],
     ['', "      - name: Write a later step\n        run: |\n          echo 'x'\n            run: npm run check:licenses\n"],
     ["    if: github.event_name == 'pull_request'\n", check],
+    ["    if : github.event_name == 'pull_request'\n", check],
     ['    continue-on-error: true\n', check],
+    ['    continue-on-error : true\n', check],
     ['', ''],
   ]) {
     assert.strictEqual(alwaysGates(job(header, step), 'npm run check:licenses'), false, `${header}${step}`);
@@ -3651,20 +3791,25 @@ test('release workflow: every publish job requires a job that checks the notices
   // (src/utils/thirdPartyLicenses.ts): on a tag run the same job requires the
   // version sites to equal the tag, so that tag is the one whose notices the
   // check above verified.
-  assert.match(jobs.get('linux-validate'), /\n {12}node scripts\/check-version-sites\.mjs --tag "\$GITHUB_REF_NAME"\n/);
+  assert.ok(
+    (jobs.get('linux-validate')?.steps ?? []).some(
+      (s) => typeof s?.run === 'string' && s.run.includes('node scripts/check-version-sites.mjs --tag "$GITHUB_REF_NAME"')
+    ),
+    'linux-validate checks version sites against GITHUB_REF_NAME'
+  );
   const tsSource = fs.readFileSync(path.join(ROOT, 'src/utils/thirdPartyLicenses.ts'), 'utf8');
   assert.match(tsSource, /GITHUB_NOTICES_URL = `https:\/\/raw\.githubusercontent\.com\/axpdev-lab\/aeroftp\/v\$\{packageJson\.version\}\/THIRD-PARTY-NOTICES\.md`;/);
   // Publishing jobs: the ones that publish on a tag.
   const publishing = [...jobs.keys()].filter((id) => /^(?:publish-|build-snap$)/.test(id));
   assert.deepStrictEqual(publishing.sort(), ['build-snap', 'publish-flatpark', 'publish-github-release', 'publish-winget']);
   for (const id of publishing) {
-    const job = jobs.get(id);
-    const needs = /\n {4}needs: \[([^\]]*)\]/.exec(job);
-    assert.ok(needs && needs[1].split(',').map((s) => s.trim()).includes('linux-validate'), `${id} needs linux-validate`);
+    const j = jobs.get(id);
+    const needs = Array.isArray(j?.needs) ? j.needs : typeof j?.needs === 'string' ? [j.needs] : [];
+    assert.ok(needs.includes('linux-validate'), `${id} needs linux-validate`);
     // `if: !cancelled()` would run a job whose needs failed: the condition
     // must require linux-validate's success explicitly.
-    const condition = /\n {4}if: ([^\n]+)\n/.exec(job);
-    assert.ok(condition && requiresSuccessOf(condition[1], 'linux-validate'), `${id} requires linux-validate to succeed: ${condition?.[1]}`);
+    const condition = typeof j?.if === 'string' ? j.if : '';
+    assert.ok(condition && requiresSuccessOf(condition, 'linux-validate'), `${id} requires linux-validate to succeed: ${condition}`);
   }
 });
 

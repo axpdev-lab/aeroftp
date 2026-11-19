@@ -22,6 +22,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
+import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -1105,22 +1106,36 @@ export function npmInstallsHere(field: unknown, value: string): boolean {
   return named.length === 0 || named.includes(value);
 }
 
-// A manifest's author as npm writes it, "Name <email> (url)" or { name,
-// email, url }, kept as Cargo keeps its authors: the name with its email, as
-// "Name <email>". A url names no one, and an author with no name is none.
+// A manifest's author as npm writes it, "Name <email> (url)", "Name (url)
+// <email>", or { name, email, url }, kept as Cargo keeps its authors: the name
+// with its email, as "Name <email>". A url is never published (it names no one
+// and could carry credentials), and an author that cannot be parsed safely is
+// omitted so generation requires a reviewed attribution instead of publishing
+// the raw string.
 export function npmAuthors(manifest: { author?: unknown }): string[] | undefined {
   const a = manifest.author;
   let name = '';
   let email = '';
   if (typeof a === 'string') {
-    const m = a.match(/^\s*([^<(]*?)\s*(?:<([^>]*)>)?\s*(?:\(([^)]*)\))?\s*$/);
-    // Another order of the parts is kept as written.
-    name = m ? m[1] : a.trim();
-    email = m?.[2]?.trim() ?? '';
+    const emailThenUrl = a.match(/^\s*([^<(]+?)\s*(?:<([^<>]*)>)?\s*(?:\(([^()]*)\))?\s*$/);
+    const urlThenEmail = emailThenUrl
+      ? null
+      : a.match(/^\s*([^<(]+?)\s*\(([^()]*)\)\s*<([^<>]*)>\s*$/);
+    if (emailThenUrl) {
+      name = emailThenUrl[1].trim();
+      email = emailThenUrl[2]?.trim() ?? '';
+    } else if (urlThenEmail) {
+      name = urlThenEmail[1].trim();
+      email = urlThenEmail[3]?.trim() ?? '';
+    } else {
+      return undefined;
+    }
+    if (/[<>()]|:\/\//.test(name) || /[<>()]|:\/\//.test(email)) return undefined;
   } else if (a && typeof a === 'object' && !Array.isArray(a)) {
     const o = a as { name?: unknown; email?: unknown };
     if (typeof o.name === 'string') name = o.name.trim();
     if (typeof o.email === 'string') email = o.email.trim();
+    if (/[<>()]|:\/\//.test(name) || /[<>()]|:\/\//.test(email)) return undefined;
   }
   if (name === '') return undefined;
   return [email ? `${name} <${email}>` : name];
@@ -1469,12 +1484,27 @@ export function reviewedLicenseTerms(): Record<string, string> {
   );
 }
 export const reviewedNotices = (): ReviewedNotice[] => (reviewedEntries().notices as ReviewedNotice[] | undefined) ?? [];
-type ReviewedSourceText = { package: string; file: string; from: string; to: string; license: string; source: string };
+export type ReviewedSourceText = {
+  package: string;
+  version: string;
+  file: string;
+  from: string;
+  to: string;
+  sha256: string;
+  license: string;
+  source: string;
+};
 export const reviewedSourceTexts = (): ReviewedSourceText[] => (reviewedEntries().sourceTexts as ReviewedSourceText[] | undefined) ?? [];
 // The comment of a reviewed source text, from its first line to its last,
-// without the comment leaders; a file that no longer has both lines fails, so
-// a changed upstream is read again.
+// without the comment leaders; bound to both the reviewed package version and
+// the SHA-256 digest of the extracted block so an upstream update or interior
+// edit with unchanged boundaries fails and requires a new review.
 export function reviewedSourceText(comp: ComponentInfo, r: ReviewedSourceText): string {
+  if (!r.version || comp.version !== r.version) {
+    throw new Error(
+      `${comp.name}@${comp.version} does not match reviewed sourceTexts version ${r.version || '(missing)'} for ${r.file}: read the file again and update its sourceTexts entry in scripts/reviewed-license-terms.json`
+    );
+  }
   const full = path.join(comp.packageDir!, r.file);
   const lines = fs.existsSync(full) ? fs.readFileSync(full, 'utf8').split(/\r?\n/) : [];
   const start = lines.findIndex((l) => l.replace(COMMENT_LEADER, '').trim() === r.from);
@@ -1484,10 +1514,17 @@ export function reviewedSourceText(comp: ComponentInfo, r: ReviewedSourceText): 
       `${comp.name}@${comp.version} ${r.file} no longer has the reviewed source text from ${JSON.stringify(r.from)} to ${JSON.stringify(r.to)}: read the file again and update its sourceTexts entry in scripts/reviewed-license-terms.json`
     );
   }
-  return lines
+  const text = lines
     .slice(start, end + 1)
     .map((l) => l.replace(COMMENT_LEADER, '').replace(/^ /, '').trimEnd())
     .join('\n');
+  const actualSha = crypto.createHash('sha256').update(text, 'utf8').digest('hex');
+  if (!r.sha256 || actualSha !== r.sha256) {
+    throw new Error(
+      `${comp.name}@${comp.version} ${r.file} reviewed source text digest changed (expected ${r.sha256 || '(missing)'}, got ${actualSha}): read the file again and update its sourceTexts entry in scripts/reviewed-license-terms.json`
+    );
+  }
+  return text;
 }
 export const reviewedTagMentions = (): Record<string, string> => (reviewedEntries().tagMentions as Record<string, string> | undefined) ?? {};
 
@@ -1953,10 +1990,10 @@ const mayHoldBlockComments = (text: string) => COMMENT_BLOCKS.some(([, closer]) 
  * rule applies. Measured on the dependency tree: all 3727 tag lines that
  * tokenize pass, ARM `@`, DCL `$!`, `REM --` and unstarred blocks included.
  */
-export function isSpdxHeaderLine(line: string, rel: string, at: number): boolean {
+export function isSpdxHeaderLine(line: string, rel: string, at: number, inBlock = false): boolean {
   const doc = /\.(?:md|markdown|rst)$/i.test(rel);
   if (doc && /^\s*(?:[-+*]|\d+[.)])\s/.test(line)) return false;
-  if (!doc && COMMENT_LEADER.test(line)) return true;
+  if (!doc && (inBlock || COMMENT_LEADER.test(line))) return true;
   // A C block comment opened after code on the line (`int x; /*
   // SPDX-License-Identifier: MIT */`), never one inside a string literal.
   if (!doc && cCommentOpeners(line, at).open) return true;
@@ -2057,7 +2094,21 @@ export function findBundledCodeUnderOtherLicenses(
         // sentence that mentions it is no header ("Documentation:
         // SPDX-License-Identifier: MIT (preferred)"), nor a list item of a
         // document.
-        if (!isSpdxHeaderLine(line, entryRel, m.index!)) {
+        const closerAt = closer !== null ? line.indexOf(closer) : -1;
+        const blockClosedBefore =
+          depths !== null
+            ? depths[i] > 0 && rustLine(line, depths[i], m.index!).depth === 0
+            : closer !== null && closerAt !== -1 && closerAt < m.index!;
+        const inBlockAtTag =
+          depths !== null
+            ? rustLine(line, depths[i], m.index!).depth > 0
+            : closer !== null && (closerAt === -1 || closerAt > m.index!);
+        const closedEnd =
+          blockClosedBefore && closer !== null && closerAt !== -1 ? closerAt + closer.length : 0;
+        const headerOk = blockClosedBefore
+          ? isSpdxHeaderLine(line.slice(closedEnd), entryRel, m.index! - closedEnd, false)
+          : isSpdxHeaderLine(line, entryRel, m.index!, inBlockAtTag);
+        if (!headerOk) {
           // In a document a tag in prose is a mention; in a source file the
           // scanner knows no comment there, and does not guess.
           const mentionKey = `${comp.name}@${comp.version}:${entryRel}:${line.trim()}`;
@@ -2429,9 +2480,10 @@ export function generateNoticesMarkdown(
   cargoDeps: ComponentInfo[],
   npmDeps: ComponentInfo[],
   spdxLicensesFile = SPDX_STANDARD_LICENSES_FILE,
-  nonFreeExceptions: NonFreeException[] = KNOWN_NON_FREE_EXCEPTIONS
+  nonFreeExceptions: NonFreeException[] = KNOWN_NON_FREE_EXCEPTIONS,
+  sourceTextReviews: ReviewedSourceText[] = reviewedSourceTexts()
 ): string {
-  return renderNotices(cargoDeps, npmDeps, spdxLicensesFile, nonFreeExceptions).output;
+  return renderNotices(cargoDeps, npmDeps, spdxLicensesFile, nonFreeExceptions, sourceTextReviews).output;
 }
 
 /**
@@ -2449,7 +2501,8 @@ export function renderNotices(
   cargoDeps: ComponentInfo[],
   npmDeps: ComponentInfo[],
   spdxLicensesFile = SPDX_STANDARD_LICENSES_FILE,
-  nonFreeExceptions: NonFreeException[] = KNOWN_NON_FREE_EXCEPTIONS
+  nonFreeExceptions: NonFreeException[] = KNOWN_NON_FREE_EXCEPTIONS,
+  sourceTextReviews: ReviewedSourceText[] = reviewedSourceTexts()
 ): { output: string; verbatimBlocks: string[]; documents: { file: string; content: string }[] } {
   const documents: { file: string; content: string }[] = [];
   // Verify all pinned fallback attributions declare a non-empty source
@@ -2488,16 +2541,18 @@ export function renderNotices(
   // Scan all components for unlisted non-free restriction clauses (spanning potential line breaks)
   const nonFreePattern = /(re-create[\s\S]*?compression algorithm|cannot be used to develop[\s\S]*?rar)/i;
   for (const comp of [...sortedCargoDeps, ...sortedNpmDeps]) {
-    const isDeclared = nonFreeExceptions.some(
-      (exc) => exc.crateName === comp.name && exc.version === comp.version
-    );
-    if (!isDeclared) {
-      for (const f of [...comp.licenseFiles, ...comp.noticeFiles]) {
-        if (nonFreePattern.test(f.content)) {
-          throw new Error(
-            `Component ${comp.name}@${comp.version} (file: ${f.filename}) contains non-free restriction clauses but is not registered in KNOWN_NON_FREE_EXCEPTIONS`
-          );
-        }
+    for (const f of [...comp.licenseFiles, ...comp.noticeFiles]) {
+      const isDeclaredFile = nonFreeExceptions.some(
+        (exc) =>
+          comp.source === 'cargo' &&
+          exc.crateName === comp.name &&
+          exc.version === comp.version &&
+          exc.sourceFile === f.filename
+      );
+      if (!isDeclaredFile && nonFreePattern.test(f.content)) {
+        throw new Error(
+          `Component ${comp.name}@${comp.version} (file: ${f.filename}) contains non-free restriction clauses but is not registered in KNOWN_NON_FREE_EXCEPTIONS`
+        );
       }
     }
   }
@@ -2975,12 +3030,38 @@ export function renderNotices(
         }
         const ownNotice = ownFilesNotice(comp);
         const excluded = [...comp.licenseFiles, ...comp.noticeFiles].map((f) => f.filename);
-        const pkgNotices = ownNotice ? [] : findPackageCopyrightNotices(comp.packageDir, excluded, vendoredFolders(comp));
+        const pkgNotices: string[] = [];
+        if (!ownNotice) {
+          const seen = new Set<string>();
+          for (const n of findPackageCopyrightNotices(comp.packageDir, excluded, vendoredFolders(comp))) {
+            const key = noticeKey(n.notice);
+            if (seen.has(key)) continue;
+            seen.add(key);
+            pkgNotices.push(`${n.notice} (${n.file})`);
+          }
+          const byNotice = new Map<string, { notice: string; licenses: string[] }>();
+          for (const b of bundledOf(comp).filter((x) => x.declared)) {
+            for (const n of b.notices) {
+              const key = noticeKey(n);
+              if (seen.has(key)) continue;
+              let entry = byNotice.get(key);
+              if (!entry) {
+                entry = { notice: n, licenses: [] };
+                byNotice.set(key, entry);
+              }
+              if (!entry.licenses.includes(b.license)) entry.licenses.push(b.license);
+            }
+          }
+          for (const [key, entry] of byNotice) {
+            seen.add(key);
+            pkgNotices.push(`${entry.notice} (in a source header under ${entry.licenses.sort(compareStrings).join(', ')})`);
+          }
+        }
         if (ownNotice) {
           lines.push(`  - ${ownNotice}`);
         } else if (pkgNotices.length > 0) {
-          for (const n of pkgNotices) {
-            lines.push(`  - ${n.notice} (${n.file})`);
+          for (const line of pkgNotices) {
+            lines.push(`  - ${line}`);
           }
         } else if (spdxDoc?.notice) {
           // The copyright line of the SPDX document is listed above.
@@ -3013,13 +3094,28 @@ export function renderNotices(
           const holder = pinned?.copyrightHolder || author;
 
           const excluded = [...comp.licenseFiles, ...comp.noticeFiles].map((f) => f.filename);
-          const pkgNotices = findPackageCopyrightNotices(comp.packageDir, excluded, vendoredFolders(comp));
+          const seenAttr = new Set<string>();
+          const pkgNotices: string[] = [];
+          for (const n of findPackageCopyrightNotices(comp.packageDir, excluded, vendoredFolders(comp))) {
+            const k = noticeKey(n.notice);
+            if (seenAttr.has(k)) continue;
+            seenAttr.add(k);
+            pkgNotices.push(n.notice);
+          }
+          for (const b of bundledOf(comp).filter((x) => x.declared)) {
+            for (const n of b.notices) {
+              const k = noticeKey(n);
+              if (seenAttr.has(k)) continue;
+              seenAttr.add(k);
+              pkgNotices.push(n);
+            }
+          }
 
           if (pinned?.year) {
             attributionLines.push(`Copyright (c) ${pinned.year} ${holder} (${comp.name})`);
           } else if (pkgNotices.length > 0) {
             for (const n of pkgNotices) {
-              attributionLines.push(`${n.notice} (${comp.name})`);
+              attributionLines.push(`${n} (${comp.name})`);
             }
           } else if (comp.noticeFiles.length > 0) {
             attributionLines.push(`Notice file shipped: ${comp.noticeFiles.map((f) => f.filename).join(', ')} (${comp.name})`);
@@ -3121,7 +3217,7 @@ export function renderNotices(
     // keyboard.rs carries the W3C license and notice under an Apache-2.0
     // tag): reviewed by file and reproduced from its first to its last line.
     const sourceTexts = bundledComponents.flatMap((comp) =>
-      reviewedSourceTexts()
+      sourceTextReviews
         .filter((r) => r.package === comp.name)
         .map((r) => ({ comp, r, text: reviewedSourceText(comp, r) }))
     );

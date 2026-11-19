@@ -881,6 +881,39 @@ fn run_first_startup_pass(
     })
 }
 
+fn run_startup_retry_worker(
+    exe_dir: &Path,
+    first: Option<(String, portable_docs::Pending)>,
+    rounds: u32,
+    pause: Duration,
+    mut own_key: impl FnMut() -> Option<String>,
+    replace: impl Fn(&Path, &Path) -> std::io::Result<()>,
+    sleep: impl Fn(Duration),
+) -> Option<portable_docs::Pending> {
+    let mut left = rounds;
+    let found = first.or_else(|| loop {
+        if let Some(key) = own_key() {
+            let pass = portable_docs::install_pending_docs(exe_dir, &key, &replace);
+            return Some((key, pass));
+        }
+        if left == 0 {
+            return None;
+        }
+        left -= 1;
+        sleep(pause);
+    });
+    let (own_key, first) = found?;
+    let first = match first {
+        portable_docs::Pending::Unavailable(_) => {
+            portable_docs::install_pending_docs(exe_dir, &own_key, &replace)
+        }
+        first => first,
+    };
+    Some(portable_docs::retry_held(
+        exe_dir, &own_key, first, left, pause, replace, sleep,
+    ))
+}
+
 /// Installs the documents a portable update staged beside the exes
 /// (`portable_docs`). The first pass runs before the app opens a window; it
 /// takes the time of a hash of the exe and four renames, and only when a
@@ -907,32 +940,20 @@ pub fn install_pending_docs_at_start() {
         std::thread::sleep(Duration::from_secs(2));
         // A key that could not be read before the window (it is not kept
         // then) or a lock that did not come in time: the pass runs here, in
-        // the background, waiting for the lock as long as it takes.
-        let found = first.or_else(|| {
-            portable_docs::running_exe_key().map(|own_key| {
-                let first = portable_docs::install_pending_docs(&exe_dir, &own_key, rename);
-                (own_key, first)
-            })
-        });
-        let Some((own_key, first)) = found else {
-            log::warn!("portable update: cannot read the running exe, the staged documents wait");
-            return;
-        };
-        let first = match first {
-            portable_docs::Pending::Unavailable(_) => {
-                portable_docs::install_pending_docs(&exe_dir, &own_key, rename)
-            }
-            first => first,
-        };
-        let outcome = portable_docs::retry_held(
+        // the background, retrying key reads and held files within the shared
+        // 30-pass startup budget.
+        let Some(outcome) = run_startup_retry_worker(
             &exe_dir,
-            &own_key,
             first,
             30,
             Duration::from_secs(1),
+            portable_docs::running_exe_key,
             rename,
             std::thread::sleep,
-        );
+        ) else {
+            log::warn!("portable update: cannot read the running exe, the staged documents wait");
+            return;
+        };
         match outcome {
             portable_docs::Pending::None => {}
             portable_docs::Pending::Stale => {
@@ -2357,6 +2378,86 @@ mod tests {
         std::fs::remove_dir(fx.app.join("aeroftp-dispatch.exe.new")).expect("blocker");
         assert_eq!(names_in(&fx.app), THREE_EXES.map(String::from).to_vec());
         assert_eq!(read(&fx, "AeroFTP.exe"), OLD_EXE);
+    }
+
+    #[test]
+    fn startup_retry_worker_retries_exe_key_reads_within_shared_budget() {
+        let mut fx = fixture();
+        with_docs(&mut fx, |_| true);
+        let _ = script_for(&fx);
+        let new_key = portable_docs::exe_key(&fx.staged.new_exe).expect("new key");
+        let attempts = std::cell::Cell::new(0u32);
+        let sleeps = std::cell::Cell::new(0u32);
+        let outcome = run_startup_retry_worker(
+            &fx.app,
+            None,
+            5,
+            Duration::from_millis(1),
+            || {
+                let n = attempts.get() + 1;
+                attempts.set(n);
+                if n <= 2 {
+                    None
+                } else {
+                    Some(new_key.clone())
+                }
+            },
+            |from, to| std::fs::rename(from, to),
+            |_| sleeps.set(sleeps.get() + 1),
+        )
+        .expect("worker installs once exe key becomes readable");
+        assert_eq!(attempts.get(), 3);
+        assert_eq!(sleeps.get(), 2);
+        assert!(
+            matches!(&outcome, portable_docs::Pending::Docs(docs) if docs.contains(&("README.txt", portable_docs::Outcome::Installed))),
+            "{outcome:?}"
+        );
+        assert_eq!(read(&fx, "README.txt"), b"new readme");
+
+        // Control: when hashing never succeeds within the budget, returns None.
+        let fx2 = fixture();
+        let failed_attempts = std::cell::Cell::new(0u32);
+        let res = run_startup_retry_worker(
+            &fx2.app,
+            None,
+            3,
+            Duration::from_millis(1),
+            || {
+                failed_attempts.set(failed_attempts.get() + 1);
+                None
+            },
+            |from, to| std::fs::rename(from, to),
+            |_| {},
+        );
+        assert!(res.is_none());
+        assert_eq!(failed_attempts.get(), 4);
+
+        // Control: when the first pass already succeeded, own_key is not re-read.
+        let mut fx3 = fixture();
+        with_docs(&mut fx3, |_| true);
+        let _ = script_for(&fx3);
+        let key3 = portable_docs::exe_key(&fx3.staged.new_exe).expect("key 3");
+        let first = run_first_startup_pass(&fx3.app, || Some(key3.clone()));
+        assert!(first.is_some());
+        let extra_reads = std::cell::Cell::new(0u32);
+        let out3 = run_startup_retry_worker(
+            &fx3.app,
+            first,
+            5,
+            Duration::from_millis(1),
+            || {
+                extra_reads.set(extra_reads.get() + 1);
+                Some(key3.clone())
+            },
+            |from, to| std::fs::rename(from, to),
+            |_| {},
+        )
+        .expect("immediate pass");
+        assert_eq!(extra_reads.get(), 0);
+        assert!(
+            matches!(&out3, portable_docs::Pending::Docs(docs) if docs.contains(&("README.txt", portable_docs::Outcome::Installed))),
+            "{out3:?}"
+        );
     }
 
     #[test]
