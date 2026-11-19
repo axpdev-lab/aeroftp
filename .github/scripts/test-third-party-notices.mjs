@@ -12,6 +12,7 @@ import { createRequire, syncBuiltinESMExports } from 'node:module';
 import { createHash } from 'node:crypto';
 import {
   citationApplies,
+  publicLink,
   CARGO_TREE_ARGS,
   isGplCompatible,
   tokenizeSpdx,
@@ -62,9 +63,15 @@ function realTree() {
   return realTreeInventory;
 }
 let committedNotices;
+// The committed notices as the generator writes them: a Windows checkout
+// with autocrlf has CRLF line ends, the generator LF.
+function lf(md) {
+  return md.replace(/\r\n/g, '\n');
+}
+
 function committedNoticesWithVerbatim() {
   if (!committedNotices) {
-    const content = fs.readFileSync(path.join(ROOT, 'THIRD-PARTY-NOTICES.md'), 'utf8').replace(/\r\n/g, '\n');
+    const content = lf(fs.readFileSync(path.join(ROOT, 'THIRD-PARTY-NOTICES.md'), 'utf8'));
     const { output, verbatimBlocks, documents } = renderNotices(realTree().cargo, realTree().npm);
     assert.strictEqual(content, output, 'THIRD-PARTY-NOTICES.md is up to date (npm run gen:licenses)');
     for (const doc of documents) {
@@ -548,9 +555,8 @@ test('readPackageFiles: a declared license_file outside the crate directory is r
     fs.mkdirSync(path.join(crate, 'legal'), { recursive: true });
     fs.writeFileSync(path.join(tmpDir, 'LICENSE'), 'Workspace terms the crate does not ship');
     fs.writeFileSync(path.join(crate, 'LICENSE-MIT'), 'MIT License');
-    fs.symlinkSync(path.join(tmpDir, 'LICENSE'), path.join(crate, 'LINKED-LICENSE'));
     const outside = /declared license_file ".*", which is outside the crate directory/;
-    for (const declared of ['../LICENSE', path.join(tmpDir, 'LICENSE'), 'LINKED-LICENSE', 'legal/../../LICENSE']) {
+    for (const declared of ['../LICENSE', path.join(tmpDir, 'LICENSE'), 'legal/../../LICENSE']) {
       assert.throws(() => readPackageFiles(crate, 'shared-crate@1.0.0', declared), outside, declared);
     }
     // A directory at the declared path is no license text.
@@ -559,6 +565,27 @@ test('readPackageFiles: a declared license_file outside the crate directory is r
     const inside = readPackageFiles(crate, 'shared-crate@1.0.0', 'legal/../LICENSE-MIT');
     assert.deepStrictEqual(inside.licenseFiles.map((f) => [f.filename, f.content]), [['LICENSE-MIT', 'MIT License']]);
     assert.deepStrictEqual(readPackageFiles(crate, 'shared-crate@1.0.0', path.join(crate, 'LICENSE-MIT')).licenseFiles.map((f) => f.filename), ['LICENSE-MIT']);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+// A link is a case of its own: creating one needs a permission Windows grants
+// apart from writing files, so the test reports a skip only when the link
+// cannot be made, and the path cases above run everywhere.
+test('readPackageFiles: a declared license_file that links outside the crate directory is refused', (t) => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'crate-license-link-fixture-'));
+  try {
+    const crate = path.join(tmpDir, 'crate');
+    fs.mkdirSync(crate, { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, 'LICENSE'), 'Workspace terms the crate does not ship');
+    try {
+      fs.symlinkSync(path.join(tmpDir, 'LICENSE'), path.join(crate, 'LINKED-LICENSE'));
+    } catch (e) {
+      t.skip(`a file link cannot be created here: ${e.code}`);
+      return;
+    }
+    assert.throws(() => readPackageFiles(crate, 'shared-crate@1.0.0', 'LINKED-LICENSE'), /declared license_file "LINKED-LICENSE", which is outside the crate directory/);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
@@ -750,18 +777,23 @@ test('standard SPDX texts: a shipped text covers a term only when it carries eve
 
 test('reviewed terms: each license with no standard text has its whole terms from the SPDX list, and nothing else', () => {
   const reviewed = reviewedLicenseTerms();
-  assert.deepStrictEqual(Object.keys(reviewed).sort(), ['CDLA-Permissive-2.0', 'bzip2-1.0.6']);
+  assert.deepStrictEqual(Object.keys(reviewed).sort(), ['CDLA-Permissive-2.0', 'FSFULLR', 'SAX-PD-2.0', 'bzip2-1.0.6', 'curl']);
   assert.match(reviewed['bzip2-1.0.6'], /^Redistribution and use in source and binary forms/);
   assert.match(reviewed['bzip2-1.0.6'], /EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE\.\n$/);
   assert.match(reviewed['CDLA-Permissive-2.0'], /Community Data License Agreement - Permissive - Version 2\.0/);
   const raw = JSON.parse(fs.readFileSync(path.join(ROOT, 'scripts', 'reviewed-license-terms.json'), 'utf8'));
   for (const id of Object.keys(reviewed)) assert.match(raw[id].source, new RegExp(`^https://spdx\\.org/licenses/${id.replace(/\./g, '\\.')}\\.html$`));
   // Pinned outside the JSON: the SHA-256 of each reviewed text, read from the
-  // SPDX license-list-data text (text/<id>.txt, 2026-11-18), whose whole terms
-  // it is. An edit of the JSON (a condition dropped) changes the digest.
+  // SPDX license-list-data text (text/<id>.txt, 2026-11-18 and, for FSFULLR,
+  // curl and SAX-PD-2.0, 2026-11-19), whose whole terms it is: the title, the
+  // copyright lines and the signature are not terms. An edit of the JSON (a
+  // condition dropped) changes the digest.
   const REVIEWED_DIGESTS = {
     'bzip2-1.0.6': 'c6ecc45e3a362d5e8e4a6aa9dfeddb1ece6c58032b6c2516595c18bacd06a58e',
     'CDLA-Permissive-2.0': '4531a67d443284d93ffed0803df5b10634aff21c3d77e381f2d48af01d875868',
+    FSFULLR: 'dd665685731358287f85adee4a403b3086d9c366658d6385ef89e590da6907cc',
+    curl: '5030e2413942548871ce5f9a72912742b1427ae02e188043c260f7cd9a92c3d9',
+    'SAX-PD-2.0': '9a4aee2fad43f2943dfa34f832163b2b86a8af70087a1e860f60209403ecbeef',
   };
   for (const [id, digest] of Object.entries(REVIEWED_DIGESTS)) {
     assert.strictEqual(createHash('sha256').update(raw[id].terms).digest('hex'), digest, id);
@@ -855,6 +887,13 @@ test('standard SPDX texts: every term of the chosen license needs its text, an o
   // An exception is a term of its own: the Apache-2.0 text alone does not carry it.
   assert.deepStrictEqual(standardFor(comp('test-with', 'Apache-2.0 WITH LLVM-exception', [['LICENSE-APACHE', apache]])), ['Apache-2.0 WITH LLVM-exception']);
   assert.deepStrictEqual(standardFor(comp('test-with-both', 'Apache-2.0 WITH LLVM-exception', [['LICENSE-APACHE', `${apache}\n\n${shippedLicense('', 'LLVM-exception')}`]])), []);
+  // Which sections an exception waives is part of its terms: an exception
+  // that names 4(c) where the standard one names 4(d) is not the standard
+  // exception, so its text is added; the unchanged one adds nothing.
+  const llvm = shippedLicense('', 'LLVM-exception');
+  assert.ok(llvm.includes('4(a), 4(b) and 4(d)'));
+  const altered = llvm.replace('4(a), 4(b) and 4(d)', '4(a), 4(b) and 4(c)');
+  assert.deepStrictEqual(standardFor(comp('test-with-altered', 'Apache-2.0 WITH LLVM-exception', [['LICENSE-APACHE', `${apache}\n\n${altered}`]])), ['Apache-2.0 WITH LLVM-exception']);
   // A term with no standard text is carried by a file that carries its whole
   // reviewed terms, whatever holder and version its attribution names;
   // without one the generation fails with the package and the term.
@@ -1066,8 +1105,14 @@ test('readPackageFiles: files in a nested REUSE license folder are vendored lice
     // A header whose text the vendored code's LICENSES/ ships is covered by it;
     // the same identifier outside that code has no text and fails.
     const known = new Set(Object.keys(JSON.parse(fs.readFileSync(SPDX_STANDARD_LICENSES_FILE, 'utf8'))));
-    write('vendor/lib/LICENSES/FSFULLR.txt', 'Copyright 2010 Free Software Foundation. This file is free software; the Free Software Foundation gives unlimited permission to copy, distribute and modify it.');
+    // A REUSE file that only points upstream carries no FSFULLR terms, so it
+    // covers nothing and the header fails; the file with the terms whole is
+    // the control that covers it.
+    write('vendor/lib/LICENSES/FSFULLR.txt', 'See https://www.gnu.org/prep/maintain/html_node/License-Notices-for-Other-Files.html for the terms of this file.');
     write('vendor/lib/src/y.c', '/* SPDX-License-Identifier: FSFULLR */\n');
+    const pointing = { ...comp, ...readPackageFiles(tmpDir, 'reuse-vendoring@1.0.0') };
+    assert.throws(() => findBundledCodeUnderOtherLicenses(pointing, known), /bundles vendor\/lib\/src\/y\.c under 'FSFULLR', but no standard text exists for 'FSFULLR'/);
+    write('vendor/lib/LICENSES/FSFULLR.txt', '# Copyright Free Software Foundation, Inc.\n#\n# This file is free software; the Free Software Foundation gives\n# unlimited permission to copy and/or distribute it, with or without\n# modifications, as long as this notice is preserved.\n');
     const shipped = { ...comp, ...readPackageFiles(tmpDir, 'reuse-vendoring@1.0.0') };
     assert.deepStrictEqual(findBundledCodeUnderOtherLicenses(shipped, known), []);
     write('other/z.c', '/* SPDX-License-Identifier: FSFULLR */\n');
@@ -1975,6 +2020,49 @@ test('reviewed notices: a reviewed citation gives no attribution in the file it 
   }
 });
 
+test('package without a holder in its files: a covered header notice is listed once, a header without one keeps the absence line', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'covered-header-fixture-'));
+  try {
+    const write = (rel, content) => {
+      fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, rel), content);
+    };
+    // A complete MIT text with no holder, and source headers under MIT whose
+    // equivalent notices (differing only in symbol/punctuation) have no year
+    // (the source scan reads notices with a year).
+    write('LICENSE', shippedLicense('MIT License', 'MIT'));
+    write('src/a.c', '/*\n * \u00a9 Alice Example\n * SPDX-License-Identifier: MIT\n */\nint a;\n');
+    write('src/b.c', '/*\n * Copyright (c) Alice Example.\n * SPDX-License-Identifier: MIT\n */\nint b;\n');
+    const comp = () => ({ name: 'covered-header', version: '1.0.0', license: 'MIT', source: 'cargo', packageDir: tmpDir, authors: ['A'], ...readPackageFiles(tmpDir, 'covered-header@1.0.0') });
+    const entry = (out) => out.slice(out.indexOf('`covered-header@1.0.0` (cargo'), out.indexOf('```', out.indexOf('`covered-header@1.0.0` (cargo')));
+    const withNotice = entry(generateNoticesMarkdown([comp()], []));
+    assert.strictEqual(withNotice.split('Alice Example').length - 1, 1, withNotice);
+    assert.doesNotMatch(withNotice, /No copyright notice is shipped in the package/);
+    // The control: a header without a notice gives the absence line.
+    write('src/a.c', '/* SPDX-License-Identifier: MIT */\nint a;\n');
+    write('src/b.c', 'int b;\n');
+    assert.match(entry(generateNoticesMarkdown([comp()], [])), /No copyright notice is shipped in the package/);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('component links: credentials and query values never reach the notices, an ordinary link stays as it is', () => {
+  assert.strictEqual(publicLink('https://github.com/rust-lang/libc'), 'https://github.com/rust-lang/libc');
+  assert.strictEqual(publicLink('https://user:s3cret-token@git.example.com/org/repo'), 'https://git.example.com/org/repo');
+  assert.strictEqual(publicLink('https://:@git.example.com/org/repo'), 'https://git.example.com/org/repo');
+  assert.strictEqual(publicLink('https://example.com/pkg?access_token=s3cret-token#x'), 'https://example.com/pkg');
+  assert.strictEqual(publicLink('javascript:alert(1)'), undefined);
+  assert.strictEqual(publicLink('file:///etc/passwd'), undefined);
+  assert.strictEqual(publicLink('not a url'), undefined);
+  assert.strictEqual(publicLink(undefined), undefined);
+  const dep = (name, repository) => ({ name, version: '1.0.0', license: 'MIT', source: 'cargo', repository, authors: ['A'], licenseFiles: [], noticeFiles: [] });
+  const { output } = renderNotices([dep('linked', 'https://user:s3cret-token@git.example.com/org/repo?token=s3cret-token'), dep('plain', 'https://github.com/org/plain')], []);
+  assert.doesNotMatch(output, /s3cret-token/);
+  assert.match(output, /\| linked \| 1\.0\.0 \| MIT \| \[Link\]\(https:\/\/git\.example\.com\/org\/repo\) \|/);
+  assert.match(output, /\| plain \| 1\.0\.0 \| MIT \| \[Link\]\(https:\/\/github\.com\/org\/plain\) \|/);
+});
+
 test('reviewed notices: a citation applies in a package folder written with Windows separators', () => {
   const c = { package: 'moka', version: '0.12.16', file: 'src/common/concurrent/arc.rs' };
   assert.ok(citationApplies(c, '/home/r/.cargo/registry/src/idx/moka-0.12.16/src/common/concurrent/arc.rs:5'));
@@ -2197,6 +2285,12 @@ test('AppImage: every bundled library ships the copyright file of the package th
     fails(/fallback\/libwebkit2gtk-4\.1\.so\.0: only package libwebkit2gtk-4\.1-0 installs that name, but the loader resolves it \(ldconfig -p\) to \/usr\/local\/lib\/libwebkit2gtk-4\.1\.so\.0, a file that package does not own/);
     ldcache(['libwebkit2gtk-4.1.so.0', 'libgtk-3.so.0', 'libfoo.so.1']);
     run();
+    // A plugin in its own folder that one package installs under that name,
+    // but only in another folder: the package is not where it came from.
+    write('app/usr/lib/gtk-4.0/immodules/im-xim.so', 'elf');
+    fails(/gtk-4\.0\/immodules\/im-xim\.so: only package libgtk-3-0 installs that name, but at no path ending in \/gtk-4\.0\/immodules\/im-xim\.so/);
+    fs.rmSync(path.join(tmpDir, 'app/usr/lib/gtk-4.0'), { recursive: true });
+    run();
     // A library no package installed, a package without its copyright file
     // or its version fails the build and is named: nothing is guessed.
     write('app/usr/lib/fallback/libsoup-3.0.so.0', 'elf');
@@ -2365,7 +2459,9 @@ test('bundled code: a header covered by a license text shipped beside the code i
     const standard = JSON.parse(fs.readFileSync(SPDX_STANDARD_LICENSES_FILE, 'utf8'));
     assert.ok(!('curl' in standard), 'the fixture needs an identifier with no standard text');
     write('LICENSE', 'MIT License\n\nCopyright (c) 2020 Wrapper Author\n\nPermission is hereby granted, free of charge.');
-    const shippedTerms = 'Permission to use, copy, modify, and distribute this software for any purpose\nwith or without fee is hereby granted.';
+    // The reviewed terms of curl: a text beside the code covers its headers
+    // only when it carries them whole.
+    const shippedTerms = reviewedLicenseTerms().curl.trimEnd();
     write('vend/LICENSES/curl.txt', `COPYRIGHT AND PERMISSION NOTICE\n\nCopyright (c) 1996 - 2025, Daniel Stenberg, <daniel@haxx.se>.\n\n${shippedTerms}`);
     write('vend/lib/plain.c', '/*\n * Copyright (C) Viktor Szakats\n * SPDX-License-Identifier: curl\n */\n');
     write('vend/lib/same.c', `/*\n * Copyright (C) Daniel Stenberg, <daniel@haxx.se>.\n *\n${shippedTerms.split('\n').map((l) => ` * ${l}`).join('\n')}\n *\n * SPDX-License-Identifier: curl\n */\n`);
@@ -2428,7 +2524,7 @@ test('bundled code: a license text in the package LICENSES/ covers its own heade
       fs.writeFileSync(path.join(tmpDir, rel), content);
     };
     write('LICENSE', shippedLicense('MIT License\n\nCopyright (c) 2020 Wrapper Author', 'MIT'));
-    write('LICENSES/SAX-PD-2.0.txt', 'SAX 2.0 is free and in the public domain.');
+    write('LICENSES/SAX-PD-2.0.txt', `SAX2 is Free!\n\n${reviewedLicenseTerms()['SAX-PD-2.0']}`);
     write('src/y.c', '/* SPDX-License-Identifier: SAX-PD-2.0 */\n');
     const comp = { name: 'root-reuse', version: '1.0.0', license: 'MIT', source: 'cargo', packageDir: tmpDir, authors: [], ...readPackageFiles(tmpDir, 'root-reuse@1.0.0') };
     const known = new Set(Object.keys(JSON.parse(fs.readFileSync(SPDX_STANDARD_LICENSES_FILE, 'utf8'))));
@@ -2859,6 +2955,12 @@ test('bundled code: a header expression made of SPDX tokens that does not parse 
     write('lib/broken.c', '/* SPDX-License-Identifier: BSD-2-Clause AND */\n');
     assert.throws(() => findBundledCodeUnderOtherLicenses(comp, known), /malformed-pkg@1\.0\.0 has a malformed SPDX-License-Identifier in lib\/broken\.c: 'BSD-2-Clause AND'\. If the line only mentions the tag, add "malformed-pkg@1\.0\.0:lib\/broken\.c:\/\* SPDX-License-Identifier: BSD-2-Clause AND \*\/" with the reason to KNOWN_SPDX_TAG_MENTIONS/);
     fs.rmSync(path.join(tmpDir, 'lib/broken.c'));
+    // A declaration in a header position that the tokenizer cannot read (an
+    // SPDX document reference) fails too, never passes unchecked; the string
+    // literal and the shell check above stay mentions.
+    write('lib/vendor.c', '/* SPDX-License-Identifier: DocumentRef-Vendor:LicenseRef-Custom */\n');
+    assert.throws(() => findBundledCodeUnderOtherLicenses(comp, known), /malformed-pkg@1\.0\.0 has a malformed SPDX-License-Identifier in lib\/vendor\.c: 'DocumentRef-Vendor:LicenseRef-Custom'/);
+    fs.rmSync(path.join(tmpDir, 'lib/vendor.c'));
     // A comment that mentions the tag fails like a malformed header: the remedy
     // is a reviewed entry, never a guess from the words before the tag.
     write('lib/example.js', '// Example: SPDX-License-Identifier: MIT (preferred)\n');
@@ -3229,6 +3331,12 @@ test('committed notices: a placeholder in a block quoted as shipped passes, one 
     assert.match(output, /<copyright holders>/, 'the upstream header is quoted as shipped');
     // The committed-file check, with the generator's verbatim set, passes.
     assert.doesNotThrow(() => assertNoGeneratedPlaceholders(output, verbatimBlocks));
+    // A CRLF checkout of the same file: its quoted block no longer equals
+    // the generator's LF block, so the raw text fails, and the text the
+    // tests read (lf, as committedNoticesWithVerbatim) passes.
+    const crlf = output.replace(/\n/g, '\r\n');
+    assert.throws(() => assertNoGeneratedPlaceholders(crlf, verbatimBlocks), /unpopulated placeholders/);
+    assert.doesNotThrow(() => assertNoGeneratedPlaceholders(lf(crlf), verbatimBlocks));
     // Mutations: the same placeholder in a generated fenced block (a filled-in
     // standard text) and in a holder line still fail.
     const inGeneratedBlock = `${output}\n\`\`\`text\nCopyright (c) <year> <copyright holders>\n\`\`\`\n`;
@@ -3241,12 +3349,10 @@ test('committed notices: a placeholder in a block quoted as shipped passes, one 
 });
 
 test('fallback placeholders: no <copyright holders> or unpopulated placeholders remain in output', () => {
-  const noticesFile = path.join(ROOT, 'THIRD-PARTY-NOTICES.md');
-  const content = fs.readFileSync(noticesFile, 'utf8');
-
   // A block quoted as shipped may keep an upstream placeholder; the text the
-  // notices write may not, standard texts included. The generator's own set.
-  const { verbatimBlocks } = committedNoticesWithVerbatim();
+  // notices write may not, standard texts included. The generator's own set,
+  // and the committed file with LF line ends (a CRLF checkout included).
+  const { content, verbatimBlocks } = committedNoticesWithVerbatim();
   assertNoGeneratedPlaceholders(content, verbatimBlocks);
   // Verifies reviewed attribution is present for cx448
   assert.match(
@@ -3351,9 +3457,11 @@ test('THIRD-PARTY-NOTICES.md contains expected critical crates and packages with
   assert.doesNotMatch(content, /\| aws-lc-fips-sys \|/);
 });
 
-test('fallback attributions: all 33 pinned entries declare a non-empty source and fail fast if missing', () => {
+test('fallback attributions: every pinned entry declares a non-empty source and fail fast if missing', () => {
+  // No fixed count: a new dependency that needs a reviewed attribution adds
+  // an entry, and each entry is checked for its source.
   const keys = Object.keys(PINNED_FALLBACK_ATTRIBUTIONS);
-  assert.strictEqual(keys.length, 33, 'Expected exactly 33 pinned fallback attributions');
+  assert.ok(keys.length > 0, 'pinned fallback attributions are loaded');
   for (const key of keys) {
     const entry = PINNED_FALLBACK_ATTRIBUTIONS[key];
     assert.ok(
@@ -3396,7 +3504,6 @@ test('fallback attributions: all 33 pinned entries declare a non-empty source an
 // of the same character at least as long, or by the end of the file.
 const FENCED_BLOCK = /(?:^|\n) {0,3}(([`~])\2{2,})[^\n]*\n[\s\S]*?(?:\n {0,3}\1\2*[ \t]*(?=\n|$)|$)/g;
 // One line ending: a CRLF checkout reads as the LF one.
-const lf = (md) => md.replace(/\r\n/g, '\n');
 // The ids an anchor tag gives outside fenced text: a license text that quotes
 // `<a id="x"></a>` in a code block is no destination.
 const anchorIdsOutsideFences = (md) => new Set(Array.from(lf(md).replace(FENCED_BLOCK, '\n').matchAll(/<a id="([^"]+)"><\/a>/g), (m) => m[1]));
@@ -3826,9 +3933,23 @@ test('componentsWithoutFiles copyright notices: extracts upstream source header 
   assert.match(mitSection, /Copyright \(C\) 2019-2023 Microsoft Corporation \(AUTHORS\)/);
   assert.match(mitSection, /Copyright \(C\) 2022-2023 David Rheinsberg \(AUTHORS\)/);
 
-  // A component without copyright notice shipped in its package must show the explicit line
-  assert.match(mitSection, /`qrcodegen-image@1\.5\.2` - SPDX: `MIT`/);
-  assert.match(mitSection, /No copyright notice is shipped in the package/);
+  // A component without copyright notice shipped in its package must show
+  // the explicit line, in its own entry: the lines from its "- `id`" line to
+  // the next entry. The control: a neighbour with the absence line does not
+  // make an entry that lists a notice pass.
+  const entryIn = (section, id) => {
+    const lines = section.split('\n');
+    const at = lines.findIndex((l) => l.startsWith(`- \`${id}\``));
+    if (at < 0) return '';
+    const next = lines.findIndex((l, i) => i > at && l.startsWith('- `'));
+    return lines.slice(at, next < 0 ? undefined : next).join('\n');
+  };
+  const absence = /\n {2}- No copyright notice is shipped in the package$/;
+  assert.match(entryIn(mitSection, 'qrcodegen-image@1.5.2'), /^- `qrcodegen-image@1\.5\.2` - SPDX: `MIT`/);
+  assert.match(entryIn(mitSection, 'qrcodegen-image@1.5.2'), absence);
+  const control = '- `qrcodegen-image@1.5.2` - SPDX: `MIT`\n  - Copyright 2020 Someone (src/lib.rs)\n- `neighbour@1.0.0` - SPDX: `MIT`\n  - No copyright notice is shipped in the package';
+  assert.match(control, /No copyright notice is shipped in the package/);
+  assert.doesNotMatch(entryIn(control, 'qrcodegen-image@1.5.2'), absence);
 
   // crc-catalog@2.5.0 has dedicated LICENSES/ files, so it is in physical notice entries and NOT in componentsWithoutFiles
   assert.match(noticesContent, /<a id="notice-crc-catalog"><\/a>/);
@@ -4065,9 +4186,9 @@ test('holder-free license: extracts source notices for components with holder-fr
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 
-  // Also assert ident_case@1.0.1 in the generated THIRD-PARTY-NOTICES.md
-  const noticesFile = path.join(ROOT, 'THIRD-PARTY-NOTICES.md');
-  const noticesContent = fs.readFileSync(noticesFile, 'utf8');
+  // Also assert ident_case@1.0.1 in the generated THIRD-PARTY-NOTICES.md, as
+  // the generator writes it (LF, also from a CRLF checkout).
+  const noticesContent = committedNoticesWithVerbatim().content;
   assert.match(
     noticesContent,
     /- `ident_case@1\.0\.1` \(cargo, file: `LICENSE`\)\n\s+- Copyright 2017 Serde Developers \(src\/lib\.rs\)/

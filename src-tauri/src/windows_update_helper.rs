@@ -570,6 +570,7 @@ fn prepare_portable(
         &staged,
         current_exe,
         &cli,
+        docs_key.as_deref(),
         log_file,
         downloaded_zip,
         work_dir,
@@ -596,12 +597,14 @@ fn write_portable_helper(
     staged: &StagedPortable,
     current_exe: &Path,
     cli: &[&str],
+    docs_key: Option<&str>,
     log_file: Option<&Path>,
     downloaded_zip: &Path,
     work_dir: &Path,
 ) -> Result<PathBuf, String> {
     let script_path = work_dir.join(format!("aeroftp-update-{}.cmd", random_suffix()));
-    let body = portable_helper_script(staged, current_exe, cli, log_file, downloaded_zip)?;
+    let body =
+        portable_helper_script(staged, current_exe, cli, docs_key, log_file, downloaded_zip)?;
     std::fs::write(&script_path, body)
         .map_err(|e| format!("Failed to write portable helper script: {e}"))?;
     Ok(script_path)
@@ -611,6 +614,7 @@ fn portable_helper_script(
     staged: &StagedPortable,
     current_exe: &Path,
     cli: &[&str],
+    docs_key: Option<&str>,
     log_file: Option<&Path>,
     downloaded_zip: &Path,
 ) -> Result<String, String> {
@@ -674,18 +678,35 @@ del /F /Q {new} >nul 2>&1
     // (`portable_docs::remove_batch`). The current batch, the old exe's
     // documents still pending, stays for its next start. `del` given a
     // folder deletes the files inside it, so a name that is a folder
-    // (`X\` exists) is skipped: only a file of that name is deleted.
-    let next = exe_dir.join(portable_docs::NEXT_DIR);
-    for name in portable_docs::BATCH_FILES {
-        let file = next.join(name);
-        let as_folder = PathBuf::from(format!("{}\\", file.display()));
+    // (`X\` exists) is skipped: only a file of that name is deleted. Only
+    // the batch this update staged goes: an update without documents
+    // staged none and deletes nothing there, and a folder at that name
+    // whose key is not this update's (someone's folder, a batch another
+    // process staged since) stays whole. The key is hex, so it needs no
+    // quoting.
+    if let Some(key) = docs_key {
+        if key.is_empty() || !key.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return Err(format!("Invalid portable documents key: {key:?}"));
+        }
+        let next = exe_dir.join(portable_docs::NEXT_DIR);
         discard_block.push_str(&format!(
-            "if not exist {} del /F /Q {} >nul 2>&1\n",
-            quote_for_cmd(&as_folder),
-            quote_for_cmd(&file)
+            "findstr /L /X /C:{key} {} >nul 2>&1\nif errorlevel 1 goto docs_kept\n",
+            quote_for_cmd(&next.join(portable_docs::KEY_FILE))
+        ));
+        for name in portable_docs::BATCH_FILES {
+            let file = next.join(name);
+            let as_folder = PathBuf::from(format!("{}\\", file.display()));
+            discard_block.push_str(&format!(
+                "if not exist {} del /F /Q {} >nul 2>&1\n",
+                quote_for_cmd(&as_folder),
+                quote_for_cmd(&file)
+            ));
+        }
+        discard_block.push_str(&format!(
+            "rmdir {} >nul 2>&1\n:docs_kept\n",
+            quote_for_cmd(&next)
         ));
     }
-    discard_block.push_str(&format!("rmdir {} >nul 2>&1\n", quote_for_cmd(&next)));
 
     let body = format!(
         r#"@echo off
@@ -1101,9 +1122,16 @@ mod tests {
     /// What `install_with_helper` does before it spawns the helper: stage the
     /// new exes next to the installed ones, then write the script.
     fn script_for(fx: &Fixture) -> String {
-        let (cli, _) = stage_update(&fx.staged, &fx.current).expect("staged");
-        portable_helper_script(&fx.staged, &fx.current, &cli, Some(&fx.log), &fx.zip)
-            .expect("script")
+        let (cli, docs_key) = stage_update(&fx.staged, &fx.current).expect("staged");
+        portable_helper_script(
+            &fx.staged,
+            &fx.current,
+            &cli,
+            docs_key.as_deref(),
+            Some(&fx.log),
+            &fx.zip,
+        )
+        .expect("script")
     }
 
     fn read(fx: &Fixture, name: &str) -> Vec<u8> {
@@ -1533,6 +1561,56 @@ mod tests {
         std::fs::remove_file(beside_path(&fx.current)).expect("staged exe");
         run(&fx, &runnable(&script));
         assert_eq!(names_in(&next), vec!["user.txt".to_string()]);
+    }
+
+    /// An update without documents stages no batch, so its failed swap
+    /// deletes nothing at the batch's name: a user's folder there, with a
+    /// README and no key, stays whole.
+    #[test]
+    fn a_failed_swap_without_documents_deletes_nothing_at_the_batch_name() {
+        let fx = fixture();
+        let next = fx.app.join(portable_docs::NEXT_DIR);
+        std::fs::create_dir(&next).expect("user folder");
+        std::fs::write(next.join("README.txt"), b"my readme").expect("user readme");
+        let script = script_for(&fx);
+        assert!(
+            !script.contains(portable_docs::NEXT_DIR),
+            "no cleanup of a batch nobody staged"
+        );
+        std::fs::remove_file(beside_path(&fx.current)).expect("staged exe");
+        run(&fx, &runnable(&script));
+        assert_eq!(read(&fx, "AeroFTP.exe"), OLD_EXE);
+        assert_eq!(
+            std::fs::read(next.join("README.txt")).expect("kept"),
+            b"my readme"
+        );
+    }
+
+    /// A failed swap deletes the next batch only while it is the one this
+    /// update staged: a batch another process staged there since, with
+    /// another key, stays whole.
+    #[test]
+    fn a_failed_swap_keeps_a_batch_another_update_staged_since() {
+        let mut fx = fixture();
+        with_docs(&mut fx, |_| true);
+        let script = script_for(&fx);
+        let next = fx.app.join(portable_docs::NEXT_DIR);
+        let own = std::fs::read_to_string(next.join(portable_docs::KEY_FILE)).expect("key");
+        assert!(script.contains(&format!("/C:{own} ")), "{script}");
+        let other_key = "ab".repeat(32);
+        std::fs::write(next.join(portable_docs::KEY_FILE), &other_key).expect("other key");
+        std::fs::write(next.join("README.txt"), b"other readme").expect("other readme");
+        std::fs::remove_file(beside_path(&fx.current)).expect("staged exe");
+        run(&fx, &runnable(&script));
+        assert_eq!(read(&fx, "AeroFTP.exe"), OLD_EXE);
+        assert_eq!(
+            std::fs::read_to_string(next.join(portable_docs::KEY_FILE)).expect("kept"),
+            other_key
+        );
+        assert_eq!(
+            std::fs::read(next.join("README.txt")).expect("kept"),
+            b"other readme"
+        );
     }
 
     #[test]

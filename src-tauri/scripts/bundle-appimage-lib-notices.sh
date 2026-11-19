@@ -117,11 +117,22 @@ if ! owners="$(
                 pkgs = distinct(c)
                 if (pkgs == "") { print rel[i] "\t-"; continue }
                 m = split(c, parts, "\n")
-                # One package installed the name. A library the loader
-                # resolves (not a plugin in its own folder) came from the
-                # path ldconfig gives: the package must own that file.
+                # One package installed the name. A plugin in its own folder
+                # came from the system path that ends with its AppDir path:
+                # the package must own a file there, not only the name.
                 if (pkgs !~ / /) {
-                    if (tail[i] ~ /\// || !(name[i] in ldname)) { print rel[i] "\t" pkgs; continue }
+                    if (tail[i] ~ /\//) {
+                        at = 0
+                        for (j = 1; j <= m; j++) {
+                            split(parts[j], f, "\t")
+                            if (parts[j] != "" && substr(f[1], length(f[1]) - length(tail[i])) == "/" tail[i]) at = 1
+                        }
+                        print rel[i] "\t" (at ? pkgs : "~" pkgs)
+                        continue
+                    }
+                    # A library the loader resolves came from the path
+                    # ldconfig gives: the package must own that file.
+                    if (!(name[i] in ldname)) { print rel[i] "\t" pkgs; continue }
                     own = 0
                     for (j = 1; j <= m; j++) {
                         split(parts[j], f, "\t")
@@ -234,6 +245,10 @@ for rel in "${LIBS[@]}"; do
         # "!<package> <the path(s) the loader resolves the name to>"
         sole="${pkg#!}"
         missing+=("$rel: only package ${sole%% *} installs that name, but the loader resolves it (ldconfig -p) to ${sole#* }, a file that package does not own")
+        continue
+    fi
+    if [ "${pkg:0:1}" = "~" ]; then
+        missing+=("$rel: only package ${pkg#\~} installs that name, but at no path ending in /${rel#fallback/}, so it is not where this file came from")
         continue
     fi
     if [ "${pkg:0:1}" = "?" ]; then

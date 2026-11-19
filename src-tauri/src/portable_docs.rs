@@ -5,13 +5,17 @@
 //! README, LICENSE and third-party notices.
 //!
 //! A batch of documents is a folder beside the exes holding the documents and
-//! the SHA-256 of the app exe they belong to. Two places hold one each:
+//! the SHA-256 of the app exe they belong to. Three places hold one each:
 //!
 //! - the next batch (`.aeroftp-pending-docs.next`): staged by the running app
 //!   for the update it is about to hand to the helper, before the exes swap;
 //! - the current batch (`.aeroftp-pending-docs`): the running exe's documents
 //!   not installed yet (one an editor held). The About dialog opens its
-//!   notices first, and only when its key is the running exe's.
+//!   notices first, and only when its key is the running exe's;
+//! - the set-aside batch (`.aeroftp-pending-docs.prev`): a next batch of
+//!   another exe that a staging moved out of the way. Its exe still
+//!   installs from it until the update replaces that exe; a failed update
+//!   puts it back.
 //!
 //! Staging writes the next batch only, under a temporary name renamed into
 //! place, so it is whole or absent, and never touches the current batch. At
@@ -25,7 +29,7 @@
 //! exe's). A next batch of another exe is never removed at start, by any
 //! process: an update another process hands over may be waiting for its
 //! swap. A failed swap drops it (the helper's discard), a discarded update
-//! drops it, and the next staging replaces it. Staging, discarding and each
+//! drops it, and the next staging sets it aside. Staging, discarding and each
 //! install pass hold one
 //! lock per exe folder, so none of them sees another half done. Every
 //! outcome is logged as what it is.
@@ -39,8 +43,12 @@ use std::time::Duration;
 pub(crate) const PENDING_DIR: &str = ".aeroftp-pending-docs";
 /// The batch staged for an update waiting for the exes to swap.
 pub(crate) const NEXT_DIR: &str = ".aeroftp-pending-docs.next";
+/// A next batch of another exe, set aside by a staging until the update it
+/// staged for replaces that exe: a failed update puts it back, and its exe
+/// still installs from it meanwhile.
+const PREV_DIR: &str = ".aeroftp-pending-docs.prev";
 /// The key of the exe a batch belongs to.
-const KEY_FILE: &str = "exe.key";
+pub(crate) const KEY_FILE: &str = "exe.key";
 /// The identity of a staging folder: a random value a staging writes in the
 /// folder it creates and keeps in its record, so the record names that very
 /// folder and never a folder created later at the same path.
@@ -74,6 +82,8 @@ pub(crate) const BATCH_FILES: [&str; 6] = [
 /// the target (`ERROR_SHARING_VIOLATION`, `ERROR_LOCK_VIOLATION`) or because
 /// access is denied (`ERROR_ACCESS_DENIED`: a handle without delete sharing,
 /// a read-only file, an ACL). The module runs on Windows only.
+#[cfg(windows)]
+const ERROR_FILE_NOT_FOUND: i32 = 2;
 const ERROR_ACCESS_DENIED: i32 = 5;
 const ERROR_SHARING_VIOLATION: i32 = 32;
 const ERROR_LOCK_VIOLATION: i32 = 33;
@@ -156,17 +166,60 @@ fn lock_batches_within(exe_dir: &Path, wait: Option<Duration>) -> io::Result<Bat
     use windows::Win32::Foundation::{
         CloseHandle, BOOL, WAIT_ABANDONED, WAIT_OBJECT_0, WAIT_TIMEOUT,
     };
-    use windows::Win32::System::Threading::{CreateMutexW, WaitForSingleObject, INFINITE};
+    use windows::Win32::System::Threading::{
+        CreateMutexW, OpenMutexW, WaitForSingleObject, INFINITE, MUTEX_MODIFY_STATE,
+        SYNCHRONIZATION_SYNCHRONIZE,
+    };
+    // Global: one lock for every Windows session that reaches the folder
+    // (a Local name would give each session a lock of its own).
     let name = HSTRING::from(format!(
-        "Local\\AeroFTP-pending-docs-{}",
+        "Global\\AeroFTP-pending-docs-{}",
         folder_id(exe_dir)
     ));
-    // SAFETY: a named mutex with default security; the handle is owned by
-    // the returned lock, which releases and closes it.
-    let handle =
-        unsafe { CreateMutexW(None, BOOL::from(false), &name) }.map_err(io::Error::other)?;
-    let millis = wait.map_or(INFINITE, |d| {
-        u32::try_from(d.as_millis()).map_or(INFINITE - 1, |ms| ms.min(INFINITE - 1))
+    let os_error = |e: windows::core::Error| {
+        // A Win32 error as its HRESULT (0x8007xxxx): the code itself, so
+        // ERROR_ACCESS_DENIED is recognized.
+        let code = e.code().0 as u32;
+        if code & 0xFFFF_0000 == 0x8007_0000 {
+            io::Error::from_raw_os_error((code & 0xFFFF) as i32)
+        } else {
+            io::Error::other(e)
+        }
+    };
+    let deadline = wait.map(|d| std::time::Instant::now() + d);
+    // SAFETY: a named mutex with default security, or the one another
+    // process of this user created; the handle is owned by the returned
+    // lock, which releases and closes it.
+    let handle = open_named_lock(
+        deadline,
+        || unsafe {
+            // A mutex that exists with less than full access for this
+            // process: opened for what the lock needs (wait and release).
+            CreateMutexW(None, BOOL::from(false), &name)
+                .map_err(os_error)
+                .or_else(|e| match e.raw_os_error() {
+                    Some(ERROR_ACCESS_DENIED) => OpenMutexW(
+                        SYNCHRONIZATION_SYNCHRONIZE | MUTEX_MODIFY_STATE,
+                        BOOL::from(false),
+                        &name,
+                    )
+                    .map_err(os_error)
+                    .or_else(|oe| match oe.raw_os_error() {
+                        // Closed by the other session between CreateMutexW and OpenMutexW.
+                        Some(ERROR_FILE_NOT_FOUND) => {
+                            CreateMutexW(None, BOOL::from(false), &name).map_err(os_error)
+                        }
+                        _ => Err(oe),
+                    }),
+                    _ => Err(e),
+                })
+        },
+        std::time::Instant::now,
+        std::thread::sleep,
+    )?;
+    let millis = deadline.map_or(INFINITE, |d| {
+        let left = d.saturating_duration_since(std::time::Instant::now());
+        u32::try_from(left.as_millis()).map_or(INFINITE - 1, |ms| ms.min(INFINITE - 1))
     });
     // SAFETY: `handle` is the mutex just opened. An abandoned mutex (a
     // process that died holding it) is owned by this thread as well.
@@ -217,7 +270,7 @@ fn lock_batches_within(exe_dir: &Path, wait: Option<Duration>) -> io::Result<Bat
     };
     let deadline = std::time::Instant::now() + wait;
     wait_for_lock(
-        deadline,
+        Some(deadline),
         || match file.try_lock() {
             Ok(()) => Ok(true),
             Err(std::fs::TryLockError::WouldBlock) => Ok(false),
@@ -229,14 +282,43 @@ fn lock_batches_within(exe_dir: &Path, wait: Option<Duration>) -> io::Result<Bat
     Ok(BatchLock { _file: file })
 }
 
-/// Probes `try_lock` until it takes the lock or `deadline` passes: a first
-/// probe at once, then never one past the deadline (a pause is cut to the
-/// time left, and the deadline is checked again before the next probe), so
-/// a lock released after the deadline is not taken. `now` and `sleep` are
-/// the clock, given by the tests.
-#[cfg(not(windows))]
+/// Opens the named mutex of the lock with `open` (Windows). An
+/// `ERROR_ACCESS_DENIED` means the mutex exists and another user's session
+/// created it, with security this one cannot open: that session holds the
+/// lock or waits for it, so the lock is held, never free and never a
+/// failure. It is probed again like a held lock until `deadline` (none: as
+/// long as it takes), then `TimedOut`. Any other error is returned.
+#[cfg(any(windows, test))]
+fn open_named_lock<H>(
+    deadline: Option<std::time::Instant>,
+    mut open: impl FnMut() -> io::Result<H>,
+    now: impl Fn() -> std::time::Instant,
+    sleep: impl Fn(Duration),
+) -> io::Result<H> {
+    let mut opened = None;
+    wait_for_lock(
+        deadline,
+        || match open() {
+            Ok(handle) => {
+                opened = Some(handle);
+                Ok(true)
+            }
+            Err(e) if e.raw_os_error() == Some(ERROR_ACCESS_DENIED) => Ok(false),
+            Err(e) => Err(e),
+        },
+        now,
+        sleep,
+    )?;
+    opened.ok_or_else(|| io::Error::other("the lock of the portable documents was not opened"))
+}
+
+/// Probes `try_lock` until it takes the lock or `deadline` passes (none: as
+/// long as it takes): a first probe at once, then never one past the
+/// deadline (a pause is cut to the time left, and the deadline is checked
+/// again before the next probe), so a lock released after the deadline is
+/// not taken. `now` and `sleep` are the clock, given by the tests.
 fn wait_for_lock(
-    deadline: std::time::Instant,
+    deadline: Option<std::time::Instant>,
     mut try_lock: impl FnMut() -> io::Result<bool>,
     now: impl Fn() -> std::time::Instant,
     sleep: impl Fn(Duration),
@@ -245,6 +327,10 @@ fn wait_for_lock(
         if try_lock()? {
             return Ok(());
         }
+        let Some(deadline) = deadline else {
+            sleep(Duration::from_millis(5));
+            continue;
+        };
         let left = deadline.saturating_duration_since(now());
         if !left.is_zero() {
             sleep(left.min(Duration::from_millis(5)));
@@ -467,8 +553,14 @@ fn stage_with(
     let _lock = lock_batches(exe_dir).map_err(fail)?;
     remove_staging_leftovers(exe_dir);
     let next = exe_dir.join(NEXT_DIR);
-    if matches!(slot(&next), Slot::Key(k) if k == key) {
-        // Already staged for this exe, whole.
+    let prev = exe_dir.join(PREV_DIR);
+    if matches!(slot(&next), Slot::Key(k) if k == key)
+        && docs.iter().all(|(_, name)| next.join(name).is_file())
+    {
+        // Already staged for this exe, with every document asked for. One
+        // that lacks a document (a discard that could not remove them all)
+        // is staged again, and the update stops before its swap if it
+        // cannot be.
         return Ok(Some(key));
     }
     if std::fs::symlink_metadata(&next).is_ok() && !is_batch(&next) {
@@ -496,8 +588,13 @@ fn stage_with(
         for (source, name) in docs {
             std::fs::copy(source, tmp.join(name))?;
         }
-        remove_batch(&next);
-        publish(&tmp, &next)
+        let aside = make_room(&next, &prev, &key);
+        let published = publish(&tmp, &next);
+        if published.is_err() && aside && std::fs::symlink_metadata(&next).is_err() {
+            // Nothing replaced the batch set aside: it is back in its place.
+            let _ = std::fs::rename(&prev, &next);
+        }
+        published
     })();
     if staged.is_err() {
         remove_batch(&tmp);
@@ -513,6 +610,24 @@ fn stage_with(
     staged.map(|()| Some(key)).map_err(fail)
 }
 
+/// Makes room at `next` for the batch of the exe `key`. A batch of another
+/// exe there (one whose documents an editor held, of the exe that runs) is
+/// set aside at `prev`, replacing one set aside before, so that exe still
+/// installs from it until an update replaces it; a batch of this exe (part
+/// of one, a failed attempt left) or a retired one is removed. When `prev`
+/// cannot take it (something else is there), the batch is removed, as it
+/// was before there was a `prev`. Whether a batch was set aside.
+fn make_room(next: &Path, prev: &Path, key: &str) -> bool {
+    if matches!(slot(next), Slot::Key(k) if k != key && k != RETIRED_KEY) {
+        retire_batch(prev);
+        if std::fs::symlink_metadata(prev).is_err() && std::fs::rename(next, prev).is_ok() {
+            return true;
+        }
+    }
+    remove_batch(next);
+    false
+}
+
 /// Removes the next batch of `exe_dir` when it is the one the failed update
 /// staged (its key is `key`, the update's new exe), and any staging
 /// leftover: the update did not go through. The current batch stays, and so
@@ -526,6 +641,14 @@ pub(crate) fn discard_pending_docs(exe_dir: &Path, key: &str) {
     let next = exe_dir.join(NEXT_DIR);
     if matches!(slot(&next), Slot::Key(k) if k == key) {
         remove_batch(&next);
+    }
+    // The batch the staging set aside goes back to its place: nothing
+    // replaced its exe (here, or the helper's failed swap before).
+    let prev = exe_dir.join(PREV_DIR);
+    if std::fs::symlink_metadata(&next).is_err()
+        && matches!(slot(&prev), Slot::Key(k) if k != RETIRED_KEY)
+    {
+        let _ = std::fs::rename(&prev, &next);
     }
 }
 
@@ -556,27 +679,49 @@ fn install_pass(
     remove_staging_leftovers(exe_dir);
     let current = exe_dir.join(PENDING_DIR);
     let next = exe_dir.join(NEXT_DIR);
+    let prev = exe_dir.join(PREV_DIR);
     let mut stale = false;
-    if matches!(slot(&current), Slot::Key(k) if k == RETIRED_KEY) {
-        // Superseded earlier, with a document then held: the rest goes now,
-        // and it counts as removed only once it is gone.
-        retire_batch(&current);
-        stale |= std::fs::symlink_metadata(&current).is_err();
+    for retired in [&current, &prev] {
+        if matches!(slot(retired), Slot::Key(k) if k == RETIRED_KEY) {
+            // Superseded earlier, with a document then held: the rest goes
+            // now, and it counts as removed only once it is gone.
+            retire_batch(retired);
+            stale |= std::fs::symlink_metadata(retired).is_err();
+        }
     }
     let mut source = current.clone();
     match slot(&next) {
         Slot::Missing => {}
         Slot::Key(k) if k == own_key => {
-            // This exe's documents supersede an older exe's.
+            // This exe's documents supersede an older exe's, and the batch
+            // its update set aside.
             stale |= retire_batch(&current);
+            stale |= retire_batch(&prev);
             if std::fs::rename(&next, &current).is_err() {
                 source = next.clone();
             }
         }
+        // A key that cannot be read now may be this exe's: a later pass.
+        Slot::Unreadable => {
+            let why = format!("the key of {} cannot be read now", next.display());
+            return (Pending::Unavailable(why), None);
+        }
         // Another exe's: an update, of this process or another, may be
         // waiting for its swap. It is never read here; a failed swap, a
         // discard or the next staging removes it. No batch: not ours.
-        Slot::Key(_) | Slot::Unreadable | Slot::Invalid => {}
+        Slot::Key(_) | Slot::Invalid => {}
+    }
+    // This exe's batch, set aside by the staging of an update that has not
+    // replaced this exe: its documents install from there.
+    if !matches!(slot(&source), Slot::Key(k) if k == own_key) {
+        match slot(&prev) {
+            Slot::Key(k) if k == own_key => source = prev.clone(),
+            Slot::Unreadable => {
+                let why = format!("the key of {} cannot be read now", prev.display());
+                return (Pending::Unavailable(why), None);
+            }
+            _ => {}
+        }
     }
     match slot(&source) {
         Slot::Missing => {
@@ -669,10 +814,18 @@ pub(crate) fn retry_held(
     replace: impl Fn(&Path, &Path) -> io::Result<()>,
     sleep: impl Fn(Duration),
 ) -> Pending {
+    let mut left = rounds;
+    let mut first = first;
+    // A first pass that could not look at the batches (a key that cannot be
+    // read now, the lock) is tried again within the same budget.
+    while left > 0 && matches!(first, Pending::Unavailable(_)) {
+        left -= 1;
+        sleep(pause);
+        first = install_pass(exe_dir, own_key, None, &replace).0;
+    }
     let Pending::Docs(mut last) = first else {
         return first;
     };
-    let mut left = rounds;
     while left > 0 && last.iter().any(|(_, outcome)| outcome.waits()) {
         left -= 1;
         sleep(pause);
@@ -736,6 +889,9 @@ pub(crate) fn outcome_line(name: &str, outcome: &Outcome) -> String {
     }
 }
 
+/// How long the About lookup waits for the lock of the batches.
+const NOTICES_LOCK_WAIT: Duration = Duration::from_millis(500);
+
 /// The pending notices of the exe whose key `own_key` gives, which the
 /// About dialog opens first: those of the next batch when its key is that
 /// exe's (a pass installs from it when the current batch of an older exe
@@ -750,8 +906,10 @@ pub(crate) fn own_pending_notices(
     exe_dir: &Path,
     own_key: impl FnOnce() -> Option<String>,
 ) -> Option<PathBuf> {
-    let _lock = lock_batches(exe_dir).ok()?;
-    let held: Vec<(PathBuf, String)> = [NEXT_DIR, PENDING_DIR]
+    // A stalled process that holds the lock does not keep About waiting:
+    // past the wait, no pending notices, and About opens the installed ones.
+    let _lock = lock_batches_within(exe_dir, Some(NOTICES_LOCK_WAIT)).ok()?;
+    let held: Vec<(PathBuf, String)> = [NEXT_DIR, PENDING_DIR, PREV_DIR]
         .iter()
         .filter_map(|name| {
             let dir = exe_dir.join(name);
@@ -1313,11 +1471,14 @@ mod tests {
         let (_stage, exe_new, key_new, readme_new) = new_exe(b"new build");
         let notices_new = readme_new.with_file_name("THIRD-PARTY-NOTICES.md");
         std::fs::write(&notices_new, "notices of the new build").unwrap();
+        let license_new = readme_new.with_file_name("LICENSE.txt");
+        std::fs::write(&license_new, "license of the new build").unwrap();
         stage_pending_docs(
             dir.path(),
             &exe_new,
             &[
                 (&readme_new, "README.txt"),
+                (&license_new, "LICENSE.txt"),
                 (&notices_new, "THIRD-PARTY-NOTICES.md"),
             ],
             "n",
@@ -1331,7 +1492,9 @@ mod tests {
             panic!("the new build's batch")
         };
         assert!(first.contains(&("README.txt", Outcome::Installed)));
+        assert!(first.contains(&("LICENSE.txt", Outcome::Installed)));
         assert!(first.contains(&("THIRD-PARTY-NOTICES.md", Outcome::InUse)));
+        assert_eq!(read(dir.path(), "LICENSE.txt"), "license of the new build");
         let current = dir.path().join(PENDING_DIR);
         assert_eq!(read(&current, KEY_FILE), key_new);
         // The older companion starts: the batch is the new build's, kept whole.
@@ -1354,6 +1517,8 @@ mod tests {
             read(dir.path(), "THIRD-PARTY-NOTICES.md"),
             "notices of the new build"
         );
+        assert_eq!(read(dir.path(), "LICENSE.txt"), "license of the new build");
+        assert_eq!(read(dir.path(), "README.txt"), "readme of new build");
         assert!(!current.exists());
     }
 
@@ -1655,7 +1820,6 @@ mod tests {
     /// is cut to the time left and the deadline is checked before the next
     /// probe (a full 5 ms pause and a probe after it would take the lock 1 ms
     /// past the deadline). A lock released before the deadline is taken.
-    #[cfg(not(windows))]
     #[test]
     fn a_lock_released_past_the_deadline_is_not_taken() {
         let start = std::time::Instant::now();
@@ -1665,7 +1829,7 @@ mod tests {
             let release = start + Duration::from_millis(at);
             let probes = Cell::new(0u32);
             let result = wait_for_lock(
-                deadline,
+                Some(deadline),
                 || {
                     assert!(clock.get() <= deadline, "a probe past the deadline");
                     probes.set(probes.get() + 1);
@@ -1682,6 +1846,82 @@ mod tests {
         let (early, probes) = free_at(40);
         assert!(early.is_ok(), "{early:?}");
         assert_eq!(probes, 9, "probes every 5 ms from the start");
+    }
+
+    /// Windows: a mutex another user's session created refuses this one with
+    /// `ERROR_ACCESS_DENIED`. That is the lock held by that session: probed
+    /// again until it opens, never taken as free, and past the deadline a
+    /// `TimedOut` like any held lock, never another error. Any other error
+    /// is returned as it is.
+    #[test]
+    fn a_lock_another_session_holds_is_waited_for_and_never_taken_as_free() {
+        let start = std::time::Instant::now();
+        let clock = Cell::new(start);
+        let deadline = Some(start + Duration::from_millis(50));
+        let denied = || io::Error::from_raw_os_error(ERROR_ACCESS_DENIED);
+        // Held past the deadline.
+        let opens = Cell::new(0u32);
+        let held = open_named_lock::<()>(
+            deadline,
+            || {
+                opens.set(opens.get() + 1);
+                Err(denied())
+            },
+            || clock.get(),
+            |d| clock.set(clock.get() + d),
+        );
+        assert_eq!(held.unwrap_err().kind(), io::ErrorKind::TimedOut);
+        assert!(opens.get() > 1, "probed again while held");
+        // Released by the other session before the deadline: opened then.
+        clock.set(start);
+        let opens = Cell::new(0u32);
+        let released = open_named_lock(
+            deadline,
+            || {
+                opens.set(opens.get() + 1);
+                if opens.get() < 4 {
+                    Err(denied())
+                } else {
+                    Ok("handle")
+                }
+            },
+            || clock.get(),
+            |d| clock.set(clock.get() + d),
+        );
+        assert_eq!(released.unwrap(), "handle");
+        // No deadline: waited for as long as it takes.
+        clock.set(start);
+        let opens = Cell::new(0u32);
+        let waited = open_named_lock(
+            None,
+            || {
+                opens.set(opens.get() + 1);
+                if opens.get() < 1000 {
+                    Err(denied())
+                } else {
+                    Ok(())
+                }
+            },
+            || clock.get(),
+            |d| clock.set(clock.get() + d),
+        );
+        assert!(waited.is_ok());
+        // Another error is no held lock: returned at once.
+        let opens = Cell::new(0u32);
+        let other = open_named_lock::<()>(
+            deadline,
+            || {
+                opens.set(opens.get() + 1);
+                Err(io::Error::from_raw_os_error(ERROR_SHARING_VIOLATION))
+            },
+            || clock.get(),
+            |d| clock.set(clock.get() + d),
+        );
+        assert_eq!(
+            other.unwrap_err().raw_os_error(),
+            Some(ERROR_SHARING_VIOLATION)
+        );
+        assert_eq!(opens.get(), 1);
     }
 
     /// Another process holds the lock (a stalled staging): the pass before
@@ -1733,6 +1973,196 @@ mod tests {
             install_pending_docs(dir.path(), KEY, rename),
             Pending::Docs(DOCS.iter().map(|n| (*n, Outcome::Installed)).collect())
         );
+    }
+
+    /// A batch of this exe that lacks a document asked for (a discard that
+    /// could not remove all of them) is staged again, not reused; one that
+    /// cannot be staged again stops the update before its swap. A whole
+    /// batch is reused (staging_returns_the_key_its_batch_carries).
+    #[test]
+    fn a_batch_of_this_exe_that_lacks_a_document_is_staged_again() {
+        let dir = tempfile::tempdir().unwrap();
+        let (stage, exe_b, key_b, readme_b) = new_exe(b"B");
+        let license_b = stage.path().join("LICENSE.txt");
+        std::fs::write(&license_b, "license of B").unwrap();
+        let docs = [
+            (readme_b.as_path(), "README.txt"),
+            (license_b.as_path(), "LICENSE.txt"),
+        ];
+        stage_pending_docs(dir.path(), &exe_b, &docs, "a").unwrap();
+        let next = dir.path().join(NEXT_DIR);
+        std::fs::remove_file(next.join("README.txt")).unwrap();
+        assert_eq!(
+            stage_pending_docs(dir.path(), &exe_b, &docs, "b")
+                .unwrap()
+                .as_deref(),
+            Some(key_b.as_str())
+        );
+        assert_eq!(read(&next, "README.txt"), "readme of B");
+        assert_eq!(read(&next, "LICENSE.txt"), "license of B");
+        // A document that cannot be removed (here a folder at its name): the
+        // batch cannot be staged again, and the staging fails.
+        std::fs::remove_file(next.join("README.txt")).unwrap();
+        std::fs::remove_file(next.join("LICENSE.txt")).unwrap();
+        std::fs::create_dir(next.join("LICENSE.txt")).unwrap();
+        assert!(stage_pending_docs(dir.path(), &exe_b, &docs, "c").is_err());
+        assert!(next.join("LICENSE.txt").is_dir());
+    }
+
+    /// The running exe B's notices wait in the next batch (an older exe's
+    /// current batch could not be removed, an editor held B's notices). A
+    /// later update C keeps that batch until C replaces B: a publication
+    /// that fails puts it back at once, a discarded update (the helper could
+    /// not start) puts it back, and in both B installs its notices once they
+    /// are released. When C does replace B, C installs its own documents and
+    /// B's batch goes.
+    #[test]
+    fn a_failed_update_keeps_the_held_batch_of_the_running_exe_until_its_exe_is_replaced() {
+        const NOTICES: &str = "THIRD-PARTY-NOTICES.md";
+        let notices_of = |stage: &tempfile::TempDir, who: &str| {
+            let path = stage.path().join(NOTICES);
+            std::fs::write(&path, format!("notices of {who}")).unwrap();
+            path
+        };
+        // B's held batch in the next slot.
+        let setup = || {
+            let dir = tempfile::tempdir().unwrap();
+            std::fs::write(dir.path().join(NOTICES), "installed notices").unwrap();
+            let current = dir.path().join(PENDING_DIR);
+            std::fs::create_dir(&current).unwrap();
+            std::fs::write(current.join(KEY_FILE), "older-exe-key").unwrap();
+            // A document of the older batch that cannot be removed.
+            std::fs::create_dir(current.join(DOCS[1])).unwrap();
+            let (stage_b, exe_b, key_b, _) = new_exe(b"B");
+            let notices_b = notices_of(&stage_b, "B");
+            stage_pending_docs(dir.path(), &exe_b, &[(&notices_b, NOTICES)], "b").unwrap();
+            let busy = RefCell::new(vec![NOTICES]);
+            let first =
+                install_pending_docs(dir.path(), &key_b, held(&busy, ERROR_SHARING_VIOLATION));
+            assert_eq!(first, Pending::Docs(vec![(NOTICES, Outcome::InUse)]));
+            assert_eq!(read(&dir.path().join(NEXT_DIR), KEY_FILE), key_b);
+            (dir, key_b)
+        };
+        let b_installs = |dir: &Path, key_b: &str| {
+            assert_eq!(read(&dir.join(NEXT_DIR), KEY_FILE), key_b);
+            assert_eq!(read(&dir.join(NEXT_DIR), NOTICES), "notices of B");
+            assert_eq!(
+                install_pending_docs(dir, key_b, rename),
+                Pending::Docs(vec![(NOTICES, Outcome::Installed)])
+            );
+            assert_eq!(read(dir, NOTICES), "notices of B");
+        };
+        let (stage_c, exe_c, key_c, _) = new_exe(b"C");
+        let notices_c = notices_of(&stage_c, "C");
+        // C's publication fails after its documents were staged.
+        let (dir, key_b) = setup();
+        let failed = stage_with(dir.path(), &exe_c, &[(&notices_c, NOTICES)], "c", |_, _| {
+            Err(io::Error::other("publication refused"))
+        });
+        assert!(failed.is_err());
+        assert!(!dir.path().join(PREV_DIR).exists());
+        b_installs(dir.path(), &key_b);
+        // C staged, then the update failed before the swap.
+        let (dir, key_b) = setup();
+        stage_pending_docs(dir.path(), &exe_c, &[(&notices_c, NOTICES)], "c").unwrap();
+        assert_eq!(read(&dir.path().join(PREV_DIR), KEY_FILE), key_b);
+        discard_pending_docs(dir.path(), &key_c);
+        assert!(!dir.path().join(PREV_DIR).exists());
+        b_installs(dir.path(), &key_b);
+        // C staged, and B still runs: B installs from the batch set aside.
+        let (dir, key_b) = setup();
+        stage_pending_docs(dir.path(), &exe_c, &[(&notices_c, NOTICES)], "c").unwrap();
+        assert_eq!(
+            install_pending_docs(dir.path(), &key_b, rename),
+            Pending::Docs(vec![(NOTICES, Outcome::Installed)])
+        );
+        assert_eq!(read(dir.path(), NOTICES), "notices of B");
+        assert_eq!(read(&dir.path().join(NEXT_DIR), KEY_FILE), key_c);
+        // The control: C replaced B, installs its own, and B's batch goes.
+        let (dir, _key_b) = setup();
+        stage_pending_docs(dir.path(), &exe_c, &[(&notices_c, NOTICES)], "c").unwrap();
+        assert_eq!(
+            install_pending_docs(dir.path(), &key_c, rename),
+            Pending::Docs(vec![(NOTICES, Outcome::Installed)])
+        );
+        assert_eq!(read(dir.path(), NOTICES), "notices of C");
+        assert!(!dir.path().join(PREV_DIR).exists());
+    }
+
+    /// The next batch's key cannot be read at the first pass (here a folder
+    /// at its name): the pass reports it unavailable, never "nothing to do",
+    /// and the same start installs the batch once the key can be read. A
+    /// readable batch of another exe is left untouched.
+    #[test]
+    fn a_next_batch_whose_key_cannot_be_read_yet_is_installed_by_the_same_start() {
+        let dir = tempfile::tempdir().unwrap();
+        for name in DOCS {
+            std::fs::write(dir.path().join(name), format!("old {name}")).unwrap();
+        }
+        let next = dir.path().join(NEXT_DIR);
+        std::fs::create_dir(&next).unwrap();
+        std::fs::write(next.join("README.txt"), "new README.txt").unwrap();
+        std::fs::create_dir(next.join(KEY_FILE)).unwrap();
+        let first = install_pending_docs(dir.path(), KEY, rename);
+        assert!(
+            matches!(&first, Pending::Unavailable(why) if why.contains("cannot be read now")),
+            "{first:?}"
+        );
+        assert_eq!(read(dir.path(), "README.txt"), "old README.txt");
+        // The key becomes readable during the start's retry budget.
+        let released = Cell::new(false);
+        let outcome = retry_held(dir.path(), KEY, first, 3, Duration::ZERO, rename, |_| {
+            if !released.replace(true) {
+                std::fs::remove_dir(next.join(KEY_FILE)).unwrap();
+                std::fs::write(next.join(KEY_FILE), KEY).unwrap();
+            }
+        });
+        assert_eq!(
+            outcome,
+            Pending::Docs(vec![("README.txt", Outcome::Installed)])
+        );
+        assert_eq!(read(dir.path(), "README.txt"), "new README.txt");
+        // Another exe's readable next batch: nothing to do, and kept.
+        std::fs::create_dir(&next).unwrap();
+        std::fs::write(next.join("README.txt"), "other README").unwrap();
+        std::fs::write(next.join(KEY_FILE), "other-exe-key").unwrap();
+        assert_eq!(install_pending_docs(dir.path(), KEY, rename), Pending::None);
+        assert_eq!(read(&next, "README.txt"), "other README");
+    }
+
+    /// Another process holds the lock past the lookup's wait (a stalled
+    /// staging): About gets no pending notices within that wait, so it opens
+    /// the installed ones (thirdPartyLicenses.ts tries the installed file
+    /// when no pending one is given), and once the lock is free it gets the
+    /// pending ones again.
+    #[test]
+    fn the_pending_notices_lookup_stops_waiting_for_a_held_lock() {
+        let dir = folder(Some(KEY));
+        let path = dir.path().to_path_buf();
+        let (held_tx, held_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
+        let holder = std::thread::spawn(move || {
+            let _lock = lock_batches(&path).unwrap();
+            held_tx.send(()).unwrap();
+            release_rx.recv().unwrap();
+        });
+        held_rx.recv().unwrap();
+        let lookup_dir = dir.path().to_path_buf();
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        let lookup = std::thread::spawn(move || {
+            let started = std::time::Instant::now();
+            let found = own_pending_notices(&lookup_dir, || Some(KEY.to_string()));
+            let _ = done_tx.send((found, started.elapsed()));
+        });
+        let outcome = done_rx.recv_timeout(Duration::from_secs(10));
+        release_tx.send(()).unwrap();
+        holder.join().unwrap();
+        lookup.join().unwrap();
+        let (found, waited) = outcome.expect("the lookup did not give up at its wait");
+        assert_eq!(found, None);
+        assert!(waited >= NOTICES_LOCK_WAIT, "{waited:?}");
+        assert!(read(dir.path(), "THIRD-PARTY-NOTICES.md").starts_with("old"));
+        assert!(own_pending_notices(dir.path(), || Some(KEY.to_string())).is_some());
     }
 
     /// The next batch of the exe B that runs (its key is there) stays when a

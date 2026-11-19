@@ -786,6 +786,48 @@ jobs:
           Write-Host "Contents:"
           Get-ChildItem $stage | ForEach-Object { Write-Host "  $($_.Name) ($($_.Length) bytes)" }
 
+      # The ZIP as a user extracts it. About opens THIRD-PARTY-NOTICES.md at
+      # Tauri's resource root, which on Windows is the running exe's folder
+      # (portable_docs.rs the_resource_root_of_a_windows_app_is_the_running_exe_folder,
+      # run by the Windows tests), so an offline portable app opens the shipped
+      # notices only when they are there, beside AeroFTP.exe. Nothing here
+      # uses the network: the check reads the extracted files and compares
+      # each document with the one the build copied.
+      - name: Check the extracted portable ZIP offline
+        if: matrix.target == 'windows'
+        shell: pwsh
+        run: |
+          $zips = @(Get-ChildItem "src-tauri/target/release/bundle/AeroFTP-*-portable-windows-x64.zip")
+          if ($zips.Count -ne 1) {
+            Write-Host "::error::expected one portable ZIP, found $($zips.Count)"
+            exit 1
+          }
+          $out = Join-Path $env:RUNNER_TEMP "portable-extracted"
+          if (Test-Path -LiteralPath $out) { Remove-Item -Recurse -Force -LiteralPath $out }
+          Expand-Archive -LiteralPath $zips[0].FullName -DestinationPath $out
+          if (-not (Test-Path -LiteralPath (Join-Path $out "AeroFTP.exe") -PathType Leaf)) {
+            Write-Host "::error::AeroFTP.exe is not at the root of the extracted ZIP"
+            exit 1
+          }
+          $documents = [ordered]@{
+            "THIRD-PARTY-NOTICES.md" = "THIRD-PARTY-NOTICES.md"
+            "LICENSE.txt"            = "LICENSE"
+            "README.txt"             = "src-tauri/installer/portable/README.txt"
+            "portable.marker"        = "src-tauri/installer/portable/portable.marker"
+          }
+          foreach ($name in $documents.Keys) {
+            $shipped = Join-Path $out $name
+            if (-not (Test-Path -LiteralPath $shipped -PathType Leaf)) {
+              Write-Host "::error::$name is not beside AeroFTP.exe in the extracted ZIP"
+              exit 1
+            }
+            if ((Get-FileHash -LiteralPath $shipped).Hash -ne (Get-FileHash -LiteralPath $documents[$name]).Hash) {
+              Write-Host "::error::$name in the extracted ZIP differs from $($documents[$name])"
+              exit 1
+            }
+          }
+          Write-Host "The extracted portable ZIP has AeroFTP.exe with its notices, license, readme and marker beside it."
+
       # Always upload platform installers as workflow artifacts. Tag runs used
       # to skip this and publish straight from the runner; that raced
       # linux-validate after C2. Tags now publish from these artifacts in

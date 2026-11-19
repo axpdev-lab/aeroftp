@@ -797,6 +797,26 @@ const mayContinue = (notice: string) =>
 // <file>:<line>") is the file a citation was reviewed in. The same lines in
 // another package or file may credit code taken from the work cited, so
 // they are read as a notice there.
+/**
+ * A dependency's repository or homepage as the notices may publish it: a
+ * manifest URL can carry credentials (`https://user:token@host/...`) or a
+ * token in its query, and the notices ship with the app. Credentials, the
+ * query and the fragment are dropped; a value that is no URL is not linked.
+ */
+export function publicLink(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return undefined;
+  }
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return undefined;
+  const authority = url.slice(url.indexOf('://') + 3).split(/[/?#]/)[0];
+  if (!parsed.username && !parsed.password && !authority.includes('@') && !parsed.search && !parsed.hash) return url;
+  return `${parsed.protocol}//${parsed.host}${parsed.pathname}`;
+}
+
 export function citationApplies(c: { package: string; version: string; file: string }, where: string): boolean {
   // The package folder is a native path: on Windows its separators are
   // backslashes, while the file inside it is always written with slashes.
@@ -1264,7 +1284,11 @@ function termTokens(text: string, markersRemoved = false): { words: string[]; bo
     const between = prepared.slice(last, m.index);
     last = m.index! + m[0].length;
     if (/[.;:!?]|\n[ \t]*\n/.test(between)) pendingBoundary = true;
-    if (m[0].length < 2 && !/[0-9]/.test(m[0])) continue;
+    // A single letter goes (a list marker, an "a"), except a subsection of a
+    // reference, the "d" of "Sections 4(a), 4(b) and 4(d)": which section a
+    // term waives is part of the term.
+    const subsection = /[0-9]\($/.test(prepared.slice(0, m.index)) && prepared[m.index! + 1] === ')';
+    if (m[0].length < 2 && !/[0-9]/.test(m[0]) && !subsection) continue;
     words.push(entryOf(EQUIVALENT_TERM_WORDS, m[0]) ?? m[0]);
     boundary.push(pendingBoundary);
     pendingBoundary = false;
@@ -1969,7 +1993,12 @@ export function findBundledCodeUnderOtherLicenses(
   // whole package for its own LICENSES/ at the root.
   const shippedTexts = comp.licenseFiles
     .filter((f) => LICENSE_DIR.test(path.posix.basename(path.posix.dirname(f.filename))))
-    .map((f) => ({ id: path.posix.basename(f.filename).replace(/\.(?:txt|md|markdown|rst)$/i, ''), root: f.vendored ? vendoredRoot(f.filename) : '' }));
+    .map((f) => ({ id: path.posix.basename(f.filename).replace(/\.(?:txt|md|markdown|rst)$/i, ''), root: f.vendored ? vendoredRoot(f.filename) : '', content: f.content }));
+  // A REUSE file covers its identifier only when it carries the reviewed
+  // terms of that identifier whole: the file name alone is no license text (a
+  // LICENSES/FSFULLR.txt that only points upstream ships no FSFULLR terms).
+  const reviewedTerms = reviewedLicenseTerms();
+  const carriesTermsOf = (id: string, content: string) => hasEntry(reviewedTerms, id) && carriesWholeStandardText(id, reviewedTerms[id], content);
   const found = new Map<string, { notices: string[]; files: string[]; headers: { text: string; files: string[] }[] }>();
   const vendoredDirs = vendoredFolders(comp);
   // The comment styles isSpdxHeaderLine accepts, so a header block keeps its
@@ -2037,7 +2066,12 @@ export function findBundledCodeUnderOtherLicenses(
             `${comp.name}@${comp.version} has an SPDX-License-Identifier in ${entryRel} outside a comment the scanner knows: '${line.trim()}'. Read it at the source; if it only mentions the tag, add ${JSON.stringify(mentionKey)} with the reason to the tagMentions of scripts/reviewed-license-terms.json`
           );
         }
-        if (tokenizeSpdx(m[1]).length === 0) return;
+        // In a header position, a value no SPDX expression reads is skipped
+        // only when it has the characters of a quoted tag (a quote, a
+        // backtick, a backslash: a string literal); any other value is a
+        // declaration this reader cannot read (`DocumentRef-X:LicenseRef-Y`)
+        // and fails below, never passes unchecked.
+        if (tokenizeSpdx(m[1]).length === 0 && /[`'"\\]/.test(m[1])) return;
         const parsed = spdxAlternatives(m[1]);
         if (!parsed) {
           const mentionKey = `${comp.name}@${comp.version}:${entryRel}:${line.trim()}`;
@@ -2071,7 +2105,9 @@ export function findBundledCodeUnderOtherLicenses(
         // header with its own terms is still reproduced.
         const shippedTerm = (t: string) =>
           t.split(' WITH ').every(
-            (id) => !knownLicenseIds.has(id) && shippedTexts.some((x) => x.id === id && (x.root === '' || entryRel.startsWith(`${x.root}/`)))
+            (id) =>
+              !knownLicenseIds.has(id) &&
+              shippedTexts.some((x) => x.id === id && (x.root === '' || entryRel.startsWith(`${x.root}/`)) && carriesTermsOf(id, x.content))
           );
         // Declared and carried: naming a term in the package's expression is
         // not enough when the notices carry no text of it (MIT OR Apache-2.0
@@ -2611,7 +2647,8 @@ export function renderNotices(
   lines.push('| Crate | Version | License (SPDX) | Repository / Homepage |');
   lines.push('|---|---|---|---|');
   for (const dep of sortedCargoDeps) {
-    const repo = dep.repository ? `[Link](${dep.repository})` : 'n/a';
+    const link = publicLink(dep.repository);
+    const repo = link ? `[Link](${link})` : 'n/a';
     lines.push(`| ${dep.name} | ${dep.version} | ${dep.license} | ${repo} |`);
   }
   lines.push('');
@@ -2622,7 +2659,8 @@ export function renderNotices(
   lines.push('| Package | Version | License (SPDX) | Repository / Homepage |');
   lines.push('|---|---|---|---|');
   for (const dep of sortedNpmDeps) {
-    const repo = dep.repository ? `[Link](${dep.repository})` : 'n/a';
+    const link = publicLink(dep.repository);
+    const repo = link ? `[Link](${link})` : 'n/a';
     lines.push(`| ${dep.name} | ${dep.version} | ${dep.license} | ${repo} |`);
   }
   lines.push('');
@@ -2778,15 +2816,39 @@ export function renderNotices(
         }
       }
       if (fullComp && ownLicenseFiles(fullComp).length > 0 && !hasCopyrightHolderInFiles(fullComp)) {
+        // The files name no holder: the sources' notices, and the notices of
+        // the bundled headers under the package's own license (which the
+        // bundled section leaves to this entry, a yearless "(c) Holder" the
+        // source scan does not read included), each once.
         const excluded = [...fullComp.licenseFiles, ...fullComp.noticeFiles].map((f) => f.filename);
-        const pkgNotices = findPackageCopyrightNotices(fullComp.packageDir, excluded, vendoredFolders(fullComp));
-        if (pkgNotices.length > 0) {
-          for (const n of pkgNotices) {
-            lines.push(`  - ${n.notice} (${n.file})`);
-          }
-        } else {
-          lines.push(`  - ${noOwnNoticeLine(fullComp)}`);
+        const seen = new Set<string>();
+        const own: string[] = [];
+        for (const n of findPackageCopyrightNotices(fullComp.packageDir, excluded, vendoredFolders(fullComp))) {
+          const key = noticeKey(n.notice);
+          if (seen.has(key)) continue;
+          seen.add(key);
+          own.push(`  - ${n.notice} (${n.file})`);
         }
+        // Listed with each of the package's texts, as its source notices are.
+        const byNotice = new Map<string, { notice: string; licenses: string[] }>();
+        for (const b of bundledOf(fullComp).filter((x) => x.declared)) {
+          for (const n of b.notices) {
+            const key = noticeKey(n);
+            if (seen.has(key)) continue;
+            let entry = byNotice.get(key);
+            if (!entry) {
+              entry = { notice: n, licenses: [] };
+              byNotice.set(key, entry);
+            }
+            if (!entry.licenses.includes(b.license)) entry.licenses.push(b.license);
+          }
+        }
+        for (const [key, entry] of byNotice) {
+          seen.add(key);
+          own.push(`  - ${entry.notice} (in a source header under ${entry.licenses.sort(compareStrings).join(', ')})`);
+        }
+        if (own.length > 0) lines.push(...own);
+        else lines.push(`  - ${noOwnNoticeLine(fullComp)}`);
       }
     }
     lines.push('');
