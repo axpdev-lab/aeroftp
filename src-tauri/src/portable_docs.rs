@@ -549,12 +549,20 @@ const UPDATE_HANDOFF_PREFIX: &str = ".aeroftp-update-handoff-";
 #[derive(Debug)]
 pub(crate) struct UpdateHandoffReservation {
     path: PathBuf,
+    exe_dir: PathBuf,
     persist: bool,
 }
 
 #[cfg(windows)]
 impl UpdateHandoffReservation {
     pub(crate) fn transfer_to(&self, pid: u32) -> io::Result<()> {
+        self.transfer_to_within(pid, Some(Duration::from_secs(10)))
+    }
+
+    fn transfer_to_within(&self, pid: u32, wait: Option<Duration>) -> io::Result<()> {
+        // Staging reads the reservation while holding this same mutex. The
+        // transfer therefore cannot interleave with its liveness decision.
+        let _lock = lock_batches_within(&self.exe_dir, wait)?;
         let tmp = self.path.with_file_name(format!(
             ".aeroftp-handoff-owner.tmp-{:016x}",
             rand::random::<u64>()
@@ -596,6 +604,7 @@ pub(crate) fn reserve_update_handoff(
     std::fs::write(&path, std::process::id().to_string())?;
     Ok(UpdateHandoffReservation {
         path,
+        exe_dir: exe_dir.to_path_buf(),
         persist: false,
     })
 }
@@ -604,13 +613,12 @@ pub(crate) fn reserve_update_handoff(
 fn process_is_alive(pid: u32) -> bool {
     use windows::Win32::Foundation::{CloseHandle, BOOL, WAIT_TIMEOUT};
     use windows::Win32::System::Threading::{
-        OpenProcess, WaitForSingleObject, PROCESS_QUERY_LIMITED_INFORMATION,
-        SYNCHRONIZATION_SYNCHRONIZE,
+        OpenProcess, WaitForSingleObject, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE,
     };
     // SAFETY: the handle, when returned, is owned here and closed before return.
     let handle = match unsafe {
         OpenProcess(
-            PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZATION_SYNCHRONIZE,
+            PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SYNCHRONIZE,
             BOOL::from(false),
             pid,
         )
@@ -4874,6 +4882,29 @@ mod tests {
                 }
             });
         });
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn handoff_transfer_waits_for_the_inventory_lock_before_replacing_owner() {
+        let dir = FixtureDir::new();
+        let sidecar = dir.path().join("AeroFTP.exe.locked01.new");
+        std::fs::write(&sidecar, b"exe B").unwrap();
+        let key = exe_key(&sidecar).unwrap();
+        let reservation = reserve_update_handoff(dir.path(), "locked01").unwrap();
+        let inventory_lock = lock_batches(dir.path()).unwrap();
+        let error = reservation
+            .transfer_to_within(4242, Some(Duration::from_millis(50)))
+            .expect_err("transfer must wait for C's inventory lock");
+        assert_eq!(error.kind(), io::ErrorKind::TimedOut);
+        let keys = installed_app_keys_with_liveness(dir.path(), exe_key, |_| true)
+            .expect("complete inventory");
+        assert!(keys.contains(&key), "B remains live during C's inventory");
+        drop(inventory_lock);
+        reservation.transfer_to(4242).unwrap();
+        let keys = installed_app_keys_with_liveness(dir.path(), exe_key, |_| true)
+            .expect("complete inventory after transfer");
+        assert!(keys.contains(&key));
     }
 
     #[test]
