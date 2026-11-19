@@ -121,14 +121,13 @@ jobs:
       # the `Version sites agree` step in checks.yml, and the pre-push gate. A list
       # that exists twice will diverge again, and the narrower copy is always the
       # one that runs.
-      - name: R10 version sites agree (and match the tag on tag builds)
-        shell: bash
-        run: |
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            node scripts/check-version-sites.mjs --tag "$GITHUB_REF_NAME"
-          else
-            node scripts/check-version-sites.mjs
-          fi
+      - name: R10 version sites agree
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        run: node scripts/check-version-sites.mjs
+
+      - name: R10 version sites agree and match the tag
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        run: node scripts/check-version-sites.mjs --tag "$GITHUB_REF_NAME"
 
       # The packages ship THIRD-PARTY-NOTICES.md as committed, and checks.yml
       # does not run on tags: a tag whose notices do not match its lockfiles

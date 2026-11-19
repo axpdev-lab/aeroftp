@@ -44,6 +44,8 @@ import {
   parseMode,
   writeNoticesFile,
   npmInstallsHere,
+  currentNodeLibc,
+  auditGplCompatibility,
   noticesLinkFrom,
   npmAuthors,
   reviewedLicenseTerms,
@@ -386,7 +388,7 @@ test('npm collection: a locked package missing from the install stops the genera
     assert.throws(() => collectNpmDependencies(lockPath, tmpDir), /node_modules\/opt is not installed, but package-lock\.json locks opt@1\.0\.0: run npm ci/);
     // Optional and missing where npm would install it: --omit=optional, named as such.
     lockWith({ optional: true });
-    assert.throws(() => collectNpmDependencies(lockPath, tmpDir), /locks the optional opt@1\.0\.0, which is not installed: .*npm ci without --omit=optional/);
+    assert.throws(() => collectNpmDependencies(lockPath, tmpDir), /locks the optional opt@1\.0\.0, which is not installed: .*--omit=optional/);
     lockWith({ devOptional: true, os: [process.platform] });
     assert.throws(() => collectNpmDependencies(lockPath, tmpDir), /locks the optional opt@1\.0\.0, which is not installed/);
     // Optional for another platform: this platform cannot read its files, and the generation says so.
@@ -715,7 +717,8 @@ test('standard SPDX texts: MIT-0 receives distinct MIT-0 section and is not conf
     authors: ['Test Author <author@example.com>'],
   };
 
-  const md = generateNoticesMarkdown([dummyComponent], []);
+  const reviewed = { ...PINNED_FALLBACK_ATTRIBUTIONS, 'test-mit0-crate@1.0.0': { author: 'Test Author <author@example.com>', source: 'test fixture' } };
+  const md = generateNoticesMarkdown([dummyComponent], [], SPDX_STANDARD_LICENSES_FILE, KNOWN_NON_FREE_EXCEPTIONS, undefined, reviewed);
   assert.match(md, /### Standard License: MIT-0/);
   // Verify test-mit0-crate is listed under MIT-0 and not under MIT
   const mit0Section = md.slice(md.indexOf('### Standard License: MIT-0'));
@@ -769,7 +772,8 @@ test('standard SPDX texts: a shipped text covers a term only when it carries eve
   });
   // A phrase of the standard text, whatever line breaks the text has.
   const words = (phrase, flags = '') => new RegExp(phrase.split(' ').map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s+'), flags);
-  const standardFor = (license, text) => [...generateNoticesMarkdown([comp('test-clauses', license, [['LICENSE', text]])], []).matchAll(/^### Standard License: (.+)$/gm)].map((m) => m[1]);
+  const clausesReviewed = { ...PINNED_FALLBACK_ATTRIBUTIONS, 'test-clauses@1.0.0': { author: 'Clause Author', source: 'test fixture' } };
+  const standardFor = (license, text) => [...generateNoticesMarkdown([comp('test-clauses', license, [['LICENSE', text]])], [], SPDX_STANDARD_LICENSES_FILE, KNOWN_NON_FREE_EXCEPTIONS, undefined, clausesReviewed).matchAll(/^### Standard License: (.+)$/gm)].map((m) => m[1]);
   const apache = shippedLicense('', 'Apache-2.0');
   assert.deepStrictEqual(standardFor('Apache-2.0', apache), [], 'the whole text covers its term');
   const no4a = apache.replace(words('(a) You must give any other recipients of the Work or Derivative Works a copy of this License; and'), '');
@@ -944,7 +948,10 @@ test('standard SPDX texts: every term of the chosen license needs its text, an o
     licenseFiles: files.map(([filename, content]) => ({ filename, content })),
     noticeFiles: [],
   });
-  const standardFor = (c) => [...generateNoticesMarkdown([c], []).matchAll(/^### Standard License: (.+)$/gm)].map((m) => m[1]);
+  const standardFor = (c) => {
+    const fb = { ...PINNED_FALLBACK_ATTRIBUTIONS, [`${c.name}@${c.version}`]: { author: c.authors?.[0] || 'Term Author', source: 'test fixture' } };
+    return [...generateNoticesMarkdown([c], [], SPDX_STANDARD_LICENSES_FILE, KNOWN_NON_FREE_EXCEPTIONS, undefined, fb).matchAll(/^### Standard License: (.+)$/gm)].map((m) => m[1]);
+  };
   // A conjunction with one text shipped gets the standard text of the other.
   assert.deepStrictEqual(standardFor(comp('test-and-one', 'MIT AND Apache-2.0', [['LICENSE-MIT', mit]])), ['Apache-2.0']);
   // Controls: both texts shipped, or the single license shipped, add nothing.
@@ -1945,11 +1952,13 @@ test('bundled code: a declared term counts as covered only when the notices carr
 test('standard-license fallback: a holder is inserted literally, a "$&" or "$1" in its name is not expanded', () => {
   // BSD-3-Clause: its standard text has the holder placeholder line.
   const comp = { name: 'test-literal-holder', version: '1.0.0', license: 'BSD-3-Clause', source: 'cargo', licenseFiles: [], noticeFiles: [], authors: ['Research $& Development $1'] };
-  const md = generateNoticesMarkdown([comp], []);
-  assert.match(md, /\nNo copyright notice is shipped upstream; authors: Research \$& Development \$1 \(test-literal-holder\)\n/, 'the holder appears as written in the license block');
+  const reviewed = { ...PINNED_FALLBACK_ATTRIBUTIONS, 'test-literal-holder@1.0.0': { author: 'Research $& Development $1', source: 'test fixture' } };
+  const md = generateNoticesMarkdown([comp], [], SPDX_STANDARD_LICENSES_FILE, KNOWN_NON_FREE_EXCEPTIONS, undefined, reviewed);
+  assert.match(md, /\nNo copyright notice is shipped upstream; authors per test fixture: Research \$& Development \$1 \(test-literal-holder\)\n/, 'the holder appears as written in the license block');
   // Control: a plain holder is inserted the same way.
-  const plain = generateNoticesMarkdown([{ ...comp, authors: ['Plain Holder'] }], []);
-  assert.match(plain, /\nNo copyright notice is shipped upstream; authors: Plain Holder \(test-literal-holder\)\n/);
+  const reviewedPlain = { ...PINNED_FALLBACK_ATTRIBUTIONS, 'test-literal-holder@1.0.0': { author: 'Plain Holder', source: 'test fixture' } };
+  const plain = generateNoticesMarkdown([{ ...comp, authors: ['Plain Holder'] }], [], SPDX_STANDARD_LICENSES_FILE, KNOWN_NON_FREE_EXCEPTIONS, undefined, reviewedPlain);
+  assert.match(plain, /\nNo copyright notice is shipped upstream; authors per test fixture: Plain Holder \(test-literal-holder\)\n/);
 });
 
 test('standard-license fallback: choices come from the parsed expression, a conjunct is never dropped, an exception keeps its text', () => {
@@ -2405,6 +2414,12 @@ test('AppImage: every bundled library ships the copyright file of the package th
     write('app/usr/lib/gtk-4.0/immodules/im-xim.so', 'elf');
     fails(/gtk-4\.0\/immodules\/im-xim\.so: only package libgtk-3-0 installs that name, but at no path ending in \/gtk-4\.0\/immodules\/im-xim\.so/);
     fs.rmSync(path.join(tmpDir, 'app/usr/lib/gtk-4.0'), { recursive: true });
+    // A nested plugin whose soname is installed by two packages (libfoo1 and
+    // foo-plugins), at a path neither package owns: must fail rather than
+    // falling back to ldconfig's flat entry for libfoo1.
+    write('app/usr/lib/other/plugins/libfoo.so.1', 'elf');
+    fails(/other\/plugins\/libfoo\.so\.1: installed under that name by more than one package \(foo-plugins libfoo1\)/);
+    fs.rmSync(path.join(tmpDir, 'app/usr/lib/other'), { recursive: true });
     run();
     // A library no package installed, a package without its copyright file
     // or its version fails the build and is named: nothing is guessed.
@@ -3784,8 +3799,9 @@ test('fallback attributions: every pinned entry declares a non-empty source and 
 
 // The fenced blocks of a Markdown file as GitHub reads them: a fence of three
 // or more backticks or tildes, indented up to three spaces, closed by a fence
-// of the same character at least as long, or by the end of the file.
-const FENCED_BLOCK = /(?:^|\n) {0,3}(([`~])\2{2,})[^\n]*\n[\s\S]*?(?:\n {0,3}\1\2*[ \t]*(?=\n|$)|$)/g;
+// of the same character at least as long (including on the very next line for
+// an empty fenced block), or by the end of the file.
+const FENCED_BLOCK = /(?:^|\n) {0,3}(([`~])\2{2,})[^\n]*\n(?: {0,3}\1\2*[ \t]*(?=\n|$)|[\s\S]*?\n {0,3}\1\2*[ \t]*(?=\n|$)|[\s\S]*$)/g;
 // One line ending: a CRLF checkout reads as the LF one.
 // The ids an anchor tag gives outside fenced text: a license text that quotes
 // `<a id="x"></a>` in a code block is no destination.
@@ -3940,10 +3956,11 @@ test('release workflow: every publish job requires a job that checks the notices
     const norm = cond.replace(/^\s*\$\{\{\s*|\s*\}\}\s*$/g, '').replace(/\s+/g, ' ').trim();
     return (
       norm === "startsWith(github.ref, 'refs/tags/')" ||
+      norm === "startsWith(github.ref, 'refs/tags/v')" ||
       norm === "github.ref_type == 'tag'"
     );
   };
-  const gatesTagRun = (jobInput, needle) => {
+  const gatesTagRun = (jobInput, command) => {
     const j = typeof jobInput === 'string' ? Object.values(YAML.parse(jobInput) ?? {})[0] : jobInput;
     if (!j || typeof j !== 'object') return false;
     if (Object.prototype.hasOwnProperty.call(j, 'continue-on-error') || !runsOnTag(j.if)) return false;
@@ -3952,13 +3969,13 @@ test('release workflow: every publish job requires a job that checks the notices
         s &&
         typeof s === 'object' &&
         typeof s.run === 'string' &&
-        s.run.includes(needle) &&
+        s.run.trim() === command &&
         !Object.prototype.hasOwnProperty.call(s, 'continue-on-error') &&
         runsOnTag(s.if)
     );
   };
-  assert.ok(gatesTagRun(jobs.get('linux-validate'), versionCheckNeedle), 'linux-validate checks version sites on tag runs without continue-on-error');
-  const tagStep = `      - name: Version sites match tag\n        if: startsWith(github.ref, 'refs/tags/')\n        run: |\n          ${versionCheckNeedle}\n`;
+  assert.ok(gatesTagRun(jobs.get('linux-validate'), versionCheckNeedle), 'linux-validate executes check-version-sites on tag runs without continue-on-error');
+  const tagStep = `      - name: Version sites match tag\n        if: \${{ startsWith(github.ref, 'refs/tags/v') }}\n        run: ${versionCheckNeedle}\n`;
   assert.strictEqual(gatesTagRun(job('', tagStep), versionCheckNeedle), true);
   assert.strictEqual(
     gatesTagRun(job('', `      - name: Version sites match tag\n        if: github.event_name == 'pull_request'\n        run: ${versionCheckNeedle}\n`), versionCheckNeedle),
@@ -3969,6 +3986,22 @@ test('release workflow: every publish job requires a job that checks the notices
     gatesTagRun(job('', `${tagStep}        continue-on-error: true\n`), versionCheckNeedle),
     false,
     'a continue-on-error version check does not gate tag releases'
+  );
+  assert.strictEqual(
+    gatesTagRun(
+      job('', `      - name: Version sites match tag\n        if: \${{ startsWith(github.ref, 'refs/tags/v') }}\n        run: |\n          # ${versionCheckNeedle}\n          :\n`),
+      versionCheckNeedle
+    ),
+    false,
+    'a commented-out version check does not gate tag releases'
+  );
+  assert.strictEqual(
+    gatesTagRun(
+      job('', `      - name: Version sites match tag\n        if: \${{ startsWith(github.ref, 'refs/tags/v') }}\n        run: ${versionCheckNeedle} || true\n`),
+      versionCheckNeedle
+    ),
+    false,
+    'a version check whose failure is ignored does not gate tag releases'
   );
   const tsSource = fs.readFileSync(path.join(ROOT, 'src/utils/thirdPartyLicenses.ts'), 'utf8');
   assert.match(tsSource, /GITHUB_NOTICES_URL = `https:\/\/raw\.githubusercontent\.com\/axpdev-lab\/aeroftp\/v\$\{packageJson\.version\}\/THIRD-PARTY-NOTICES\.md`;/);
@@ -4179,7 +4212,8 @@ test('standard SPDX texts: 0BSD fallback replaces uppercase (C) and <year>/<auth
     noticeFiles: [],
     authors: ['ZeroBSD Author <zerobsd@example.com>'],
   };
-  const out = generateNoticesMarkdown([comp], [], SPDX_STANDARD_LICENSES_FILE, []);
+  const reviewed = { ...PINNED_FALLBACK_ATTRIBUTIONS, 'test-0bsd-crate@1.0.0': { author: 'ZeroBSD Author <zerobsd@example.com>', source: 'test fixture' } };
+  const out = generateNoticesMarkdown([comp], [], SPDX_STANDARD_LICENSES_FILE, [], undefined, reviewed);
   assert.match(out, /### Standard License: 0BSD/);
   assert.match(out, /ZeroBSD Author <zerobsd@example\.com> \(test-0bsd-crate\)/);
   assert.doesNotMatch(out, /<year>/i);
@@ -4735,4 +4769,188 @@ test('hasCopyrightHolderInFiles: distinguishes true holders from CC0-1.0 non-hol
       new RegExp(`- \`${crate.replace('+', '\\+')}\`[^\n]*\n\\s+- No copyright notice is shipped in the package`)
     );
   }
+});
+
+test('markdown fences: links immediately after an empty fenced block are kept while quoted links inside fences are ignored', () => {
+  const afterEmptyBackticks = '```\n```\nSee [Notices](THIRD-PARTY-NOTICES.md).\n';
+  assert.deepStrictEqual(linksOutsideFences(afterEmptyBackticks), ['THIRD-PARTY-NOTICES.md']);
+  const afterEmptyTildes = '~~~\n~~~\nSee [Notices](THIRD-PARTY-NOTICES.md).\n';
+  assert.deepStrictEqual(linksOutsideFences(afterEmptyTildes), ['THIRD-PARTY-NOTICES.md']);
+  const quotedOnly = '```md\n[Quoted](THIRD-PARTY-NOTICES.md)\n```\n';
+  assert.deepStrictEqual(linksOutsideFences(quotedOnly), []);
+});
+
+test('continuation errors: never copy unreviewed source lines or secrets into error output', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'continuation-secret-fixture-'));
+  try {
+    fs.writeFileSync(
+      path.join(tmpDir, 'cfg.js'),
+      '// Copyright (c) 2024\nconst DSN = "postgres://admin:super-secret-pass-42@db.internal/app";\n'
+    );
+    let thrown;
+    try {
+      findPackageCopyrightNotices(tmpDir);
+    } catch (err) {
+      thrown = err;
+    }
+    assert.ok(thrown, 'expected continuation error');
+    assert.match(thrown.message, /cfg\.js:1 may continue on its next line/);
+    assert.doesNotMatch(thrown.message, /super-secret-pass-42/);
+    assert.doesNotMatch(thrown.message, /postgres:\/\//);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('optional npm packages: accounts for libc mismatch instead of blindly prescribing npm ci', () => {
+  const hostLibc = currentNodeLibc();
+  const foreignLibc = hostLibc === 'musl' ? 'glibc' : 'musl';
+  assert.strictEqual(npmInstallsHere([foreignLibc], hostLibc), false);
+  assert.strictEqual(npmInstallsHere([`!${foreignLibc}`], hostLibc), true);
+  if (hostLibc) {
+    assert.strictEqual(npmInstallsHere([hostLibc], hostLibc), true);
+    assert.strictEqual(npmInstallsHere([`!${hostLibc}`], hostLibc), false);
+  }
+
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'libc-optional-fixture-'));
+  try {
+    fs.writeFileSync(
+      path.join(tmpDir, 'package-lock.json'),
+      JSON.stringify({
+        lockfileVersion: 3,
+        packages: {
+          '': { name: 'fixture', version: '1.0.0' },
+          'node_modules/native-libc-only': {
+            version: '1.0.0',
+            license: 'MIT',
+            optional: true,
+            os: [process.platform],
+            cpu: [process.arch],
+            libc: [foreignLibc],
+          },
+        },
+      })
+    );
+    assert.throws(
+      () => collectNpmDependencies(path.join(tmpDir, 'package-lock.json'), tmpDir),
+      (err) =>
+        /native-libc-only@1\.0\.0/.test(err.message) &&
+        new RegExp(`libc ${foreignLibc}`).test(err.message) &&
+        !/npm ci without --omit=optional/.test(err.message)
+    );
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('license coverage: BSD-3-Clause with an empty holder slot requires the standard fallback, a named holder does not', () => {
+  const standard = JSON.parse(fs.readFileSync(SPDX_STANDARD_LICENSES_FILE, 'utf8'));
+  const bsd3 = standard['BSD-3-Clause'];
+  const withHolder = bsd3
+    .replace(/Copyright \(c\) <year> <copyright holders>/i, 'Copyright (c) 2024 Acme Corp')
+    .replace(/Neither the name of the copyright holder nor/i, 'Neither the name of Acme Corp nor');
+  const withSingleLetterHolder = bsd3
+    .replace(/Copyright \(c\) <year> <copyright holders>/i, 'Copyright (c) 2024 Q')
+    .replace(/Neither the name of the copyright holder nor/i, 'Neither the name of Q nor');
+  const withEmptySlot = withHolder.replace(/Neither the name of Acme Corp nor/i, 'Neither the name of nor');
+  assert.notStrictEqual(withHolder, bsd3);
+  assert.notStrictEqual(withEmptySlot, withHolder);
+  assert.strictEqual(carriesWholeStandardText('BSD-3-Clause', bsd3, withHolder), true);
+  assert.strictEqual(carriesWholeStandardText('BSD-3-Clause', bsd3, withSingleLetterHolder), true);
+  assert.strictEqual(carriesWholeStandardText('BSD-3-Clause', bsd3, withEmptySlot), false);
+
+  const mkComp = (name, text) => ({
+    name,
+    version: '1.0.0',
+    license: 'BSD-3-Clause',
+    source: 'cargo',
+    authors: ['Acme Corp'],
+    licenseFiles: [{ filename: 'LICENSE', content: text }],
+    noticeFiles: [],
+  });
+  const fb = {
+    ...PINNED_FALLBACK_ATTRIBUTIONS,
+    'empty-slot-crate@1.0.0': { author: 'Acme Corp', source: 'test fixture' },
+  };
+  const fallbackMd = generateNoticesMarkdown([mkComp('empty-slot-crate', withEmptySlot)], [], SPDX_STANDARD_LICENSES_FILE, KNOWN_NON_FREE_EXCEPTIONS, undefined, fb);
+  assert.match(fallbackMd, /### Standard License: BSD-3-Clause/);
+  const fullMd = generateNoticesMarkdown([mkComp('named-slot-crate', withHolder)], [], SPDX_STANDARD_LICENSES_FILE, KNOWN_NON_FREE_EXCEPTIONS, undefined, fb);
+  assert.doesNotMatch(fullMd, /### Standard License: BSD-3-Clause/);
+});
+
+test('vendored headers: retains yearless copyright notices covered by LICENSES/<id>.txt and deduplicates equivalent notices', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vendored-yearless-fixture-'));
+  try {
+    const write = (rel, content) => {
+      fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, rel), content);
+    };
+    write('LICENSE', shippedLicense('MIT License\n\nCopyright (c) 2024 Wrapper Corp', 'MIT'));
+    write('vendor/lib/LICENSES/curl.txt', `curl license\n\n${reviewedLicenseTerms()['curl']}`);
+    write('vendor/lib/a.c', '/*\n * \u00a9 Alice Example\n * SPDX-License-Identifier: curl\n */\nint a;\n');
+    write('vendor/lib/b.c', '/*\n * Copyright (c) 2020 Bob Builder\n * SPDX-License-Identifier: curl\n */\nint b;\n');
+    write('vendor/lib/c.c', '/*\n * \u00a9 Alice Example.\n * SPDX-License-Identifier: curl\n */\nint c;\n');
+    const comp = {
+      name: 'vend-curl-pkg',
+      version: '1.0.0',
+      license: 'MIT',
+      source: 'cargo',
+      packageDir: tmpDir,
+      authors: ['Wrapper Corp'],
+      ...readPackageFiles(tmpDir, 'vend-curl-pkg@1.0.0'),
+    };
+    const md = generateNoticesMarkdown([comp], []);
+    assert.match(md, / {2}- \u00a9 Alice Example \(vendor\/lib\/a\.c\)/, 'yearless vendored header notice must be rendered');
+    assert.strictEqual(md.split('Alice Example').length - 1, 1, 'equivalent yearless vendored notice must appear only once');
+    assert.strictEqual(md.split('Bob Builder').length - 1, 1, 'dated vendored notice found by both scans must appear only once');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('fallback attribution review: production packages named test-* are never waived without an explicit reviewed record', () => {
+  const comp = {
+    name: 'test-widget',
+    version: '1.0.0',
+    license: '0BSD',
+    source: 'npm',
+    licenseFiles: [],
+    noticeFiles: [],
+    authors: ['Widget Author'],
+  };
+  assert.throws(
+    () => generateNoticesMarkdown([], [comp]),
+    /Component test-widget@1\.0\.0 requires an entry in PINNED_FALLBACK_ATTRIBUTIONS/
+  );
+  const reviewed = {
+    ...PINNED_FALLBACK_ATTRIBUTIONS,
+    'test-widget@1.0.0': { author: 'Widget Author', source: 'test fixture' },
+  };
+  const md = generateNoticesMarkdown([], [comp], SPDX_STANDARD_LICENSES_FILE, KNOWN_NON_FREE_EXCEPTIONS, undefined, reviewed);
+  assert.match(md, /Widget Author \(test-widget\)/);
+});
+
+test('GPL audit: rejected license values containing credentials never reach stderr and exit nonzero', () => {
+  const secret = 'super-secret-cred-98765';
+  const badDep = {
+    source: 'npm',
+    name: 'cred-license-pkg',
+    version: '1.0.0',
+    license: `https://user:${secret}@private.example.com/LICENSE`,
+  };
+  const lines = [];
+  const ok = auditGplCompatibility([badDep], (line) => lines.push(line));
+  assert.strictEqual(ok, false);
+  const joined = lines.join('\n');
+  assert.match(joined, /cred-license-pkg@1\.0\.0/);
+  assert.doesNotMatch(joined, new RegExp(secret));
+  assert.doesNotMatch(joined, /private\.example\.com/);
+
+  // Verify nonzero exit code and secret-free stderr through Node execution.
+  const tsxCli = createRequire(path.join(ROOT, 'package.json')).resolve('tsx/cli');
+  const script = `import { auditGplCompatibility } from './scripts/gen-third-party-notices.ts'; if (!auditGplCompatibility([${JSON.stringify(badDep)}])) process.exit(1);`;
+  const run = spawnSync(process.execPath, [tsxCli, '-e', script], { cwd: ROOT, encoding: 'utf8' });
+  assert.strictEqual(run.status, 1);
+  assert.match(run.stderr, /cred-license-pkg@1\.0\.0/);
+  assert.doesNotMatch(run.stderr, new RegExp(secret));
 });

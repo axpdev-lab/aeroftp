@@ -877,14 +877,8 @@ function noticeWithNextLine(notice: string, lineAfter: (k: number) => string | u
       (!r.example || citationApplies(r.example, where))
   );
   if (reviewed) return reviewed.example || reviewed.citation ? '' : reviewed.notice;
-  const following: string[] = [];
-  for (let k = 0; k < 4; k++) {
-    const l = (lineAfter(k) ?? '').trim();
-    if (!l) break;
-    following.push(l);
-  }
   throw new Error(
-    `The copyright notice in ${where} may continue on its next line, and the generation does not guess: read it at the source and add {"line": ${JSON.stringify(notice)}, "following": <every line the notice continues on, from ${JSON.stringify(following)}>, "notice": "<the whole notice>", "source": "<package, file and lines>"} to the notices of scripts/reviewed-license-terms.json`
+    `The copyright notice in ${where} may continue on its next line, and the generation does not guess: inspect the continuation lines locally at the source and add {"line": "<notice line>", "following": ["<continuation line>"], "notice": "<the whole notice>", "source": "<package, file and lines>"} to the notices of scripts/reviewed-license-terms.json`
   );
 }
 
@@ -943,7 +937,7 @@ export function findPackageCopyrightNotices(
     for (let li = 0; li < lines.length; li++) {
       const rawLine = lines[li];
       const field = isCopyrightFormat ? rawLine.match(/^Copyright:\s*(.*)$/i) : null;
-      const continued = inCopyrightField && /^\s+\S/.test(rawLine) ? rawLine.trim() : null;
+      const continued: string | null = inCopyrightField && /^\s+\S/.test(rawLine) ? rawLine.trim() : null;
       inCopyrightField = field !== null || continued !== null;
       const fieldValue = field ? field[1].trim() : continued;
       if (fieldValue) {
@@ -1136,12 +1130,22 @@ export function collectCargoDependencies(): ComponentInfo[] {
 export const npmPlatformList = (field: unknown): string[] | undefined =>
   typeof field === 'string' ? [field] : Array.isArray(field) ? field.filter((v): v is string => typeof v === 'string') : undefined;
 
-export function npmInstallsHere(field: unknown, value: string): boolean {
+export function npmInstallsHere(field: unknown, value: string | undefined): boolean {
   const allowed = npmPlatformList(field);
   if (!allowed || allowed.length === 0) return true;
-  if (allowed.includes(`!${value}`)) return false;
+  if (value !== undefined && allowed.includes(`!${value}`)) return false;
   const named = allowed.filter((a) => !a.startsWith('!'));
-  return named.length === 0 || named.includes(value);
+  return named.length === 0 || (value !== undefined && named.includes(value));
+}
+
+export function currentNodeLibc(): string | undefined {
+  if (process.platform !== 'linux') return undefined;
+  try {
+    const report = process.report?.getReport?.() as { header?: { glibcVersionRuntime?: string } } | undefined;
+    return report?.header?.glibcVersionRuntime ? 'glibc' : 'musl';
+  } catch {
+    return undefined;
+  }
 }
 
 // A manifest's author as npm writes it, "Name <email> (url)", "Name (url)
@@ -1211,11 +1215,20 @@ export function collectNpmDependencies(
       if (pkgInfo.optional || pkgInfo.devOptional) {
         const os = npmPlatformList(pkgInfo.os);
         const cpu = npmPlatformList(pkgInfo.cpu);
-        const only = [os?.length && `os ${os.join(', ')}`, cpu?.length && `cpu ${cpu.join(', ')}`].filter(Boolean);
+        const libc = npmPlatformList(pkgInfo.libc);
+        const only = [
+          os?.length && `os ${os.join(', ')}`,
+          cpu?.length && `cpu ${cpu.join(', ')}`,
+          libc?.length && `libc ${libc.join(', ')}`,
+        ].filter(Boolean);
+        const platformMismatch =
+          !npmInstallsHere(pkgInfo.os, process.platform) ||
+          !npmInstallsHere(pkgInfo.cpu, process.arch) ||
+          !npmInstallsHere(pkgInfo.libc, currentNodeLibc());
         throw new Error(
-          !npmInstallsHere(pkgInfo.os, process.platform) || !npmInstallsHere(pkgInfo.cpu, process.arch)
+          platformMismatch
             ? `${pkgPath} locks the optional ${componentId}, which npm installs only for ${only.join(' and ')}, so this platform cannot read its license files: the notices cover every platform's packages, so the package needs a reviewed source for them before it ships`
-            : `${pkgPath} locks the optional ${componentId}, which is not installed: the notices cover every platform's packages, so install it (npm ci without --omit=optional), then generate the notices again`
+            : `${pkgPath} locks the optional ${componentId}, which is not installed: the notices cover every platform's packages, so check why npm omitted it (for example --omit=optional or platform/engine filters) before reinstalling and generating the notices again`
         );
       }
       throw new Error(`${pkgPath} is not installed, but package-lock.json locks ${componentId}: run npm ci, then generate the notices again`);
@@ -1318,7 +1331,7 @@ const LIST_MARKER = /^[ \t]*(?:#{1,6}[ \t]+)?(?:\(?(?:\d+(?:\.\d+)*|[a-z]|[ivx]{
 // single letters go. `boundary[i]` says that a sentence end or a paragraph
 // break stands before word i (or that it is the first word): a text carries
 // a standard text only from such a boundary to such a boundary.
-function termTokens(text: string, markersRemoved = false): { words: string[]; boundary: boolean[] } {
+function termTokens(text: string, markersRemoved = false): { words: string[]; boundary: boolean[]; omittedBefore: string[][] } {
   // licenseTermsOf's lines, with the line breaks kept for the boundaries.
   const lines = text
     .replace(URL_TEXT, ' ')
@@ -1331,6 +1344,8 @@ function termTokens(text: string, markersRemoved = false): { words: string[]; bo
   const prepared = (markersRemoved ? lines : lines.replace(LIST_MARKER, '')).toLowerCase();
   const words: string[] = [];
   const boundary: boolean[] = [];
+  const omittedBefore: string[][] = [];
+  let pendingOmitted: string[] = [];
   let last = 0;
   let pendingBoundary = true;
   for (const m of prepared.matchAll(/[a-z0-9]+/g)) {
@@ -1339,16 +1354,23 @@ function termTokens(text: string, markersRemoved = false): { words: string[]; bo
     if (/[.;:!?]|\n[ \t]*\n/.test(between)) pendingBoundary = true;
     // A single letter goes (a list marker, an "a"), except a subsection of a
     // reference, the "d" of "Sections 4(a), 4(b) and 4(d)": which section a
-    // term waives is part of the term.
+    // term waives is part of the term. Record omitted single-letter tokens so
+    // a single-letter copyright holder (e.g. "Neither the name of Q nor") is
+    // distinguished from an empty holder slot ("Neither the name of nor").
     const subsection = /[0-9]\($/.test(prepared.slice(0, m.index)) && prepared[m.index! + 1] === ')';
-    if (m[0].length < 2 && !/[0-9]/.test(m[0]) && !subsection) continue;
+    if (m[0].length < 2 && !/[0-9]/.test(m[0]) && !subsection) {
+      pendingOmitted.push(m[0]);
+      continue;
+    }
     words.push(entryOf(EQUIVALENT_TERM_WORDS, m[0]) ?? m[0]);
     boundary.push(pendingBoundary);
+    omittedBefore.push(pendingOmitted);
+    pendingOmitted = [];
     pendingBoundary = false;
   }
   if (/[.;:!?]|\n[ \t]*\n/.test(prepared.slice(last)) || prepared.slice(last).trim() === '') boundary.push(true);
   else boundary.push(false);
-  return { words, boundary };
+  return { words, boundary, omittedBefore };
 }
 // A sentence of a standard text, its list markers already removed by line.
 const sentenceWords = (sentence: string): string[] => termTokens(sentence, true).words;
@@ -1429,20 +1451,26 @@ function slotNamesOf(fileText: string): Set<string> {
     for (let i = 0; i < words.length; i++) {
       for (let j = i + 1; j <= Math.min(words.length, i + SLOT_WORDS); j++) names.add(words.slice(i, j).join(' '));
     }
+    // Preserve single-letter holder names (e.g. "Copyright (c) 2024 Q") that
+    // termTokens omits as list markers so slotHolds can match them when filled.
+    const rawTokens = holder.toLowerCase().match(/[a-z0-9]+/g) ?? [];
+    if (rawTokens.length === 1 && rawTokens[0].length === 1) {
+      names.add(rawTokens[0]);
+    }
   }
   return names;
 }
 
 /** Whether a slot's words are one of `names`, alone or with "and/or (its) contributors" after it. */
 function slotHolds(names: Set<string>, words: string[]): boolean {
-  if (words.length === 0) return true;
+  if (words.length === 0) return false;
   const fill = words.join(' ');
   const withContributors = fill.match(/^(.+) (?:and|or) (?:its )?contributors$/);
   return names.has(fill) || (withContributors !== null && names.has(withContributors[1]));
 }
 
 export function carriesWholeStandardText(id: string, standardText: string, fileText: string): boolean {
-  const { words: file, boundary } = termTokens(fileText);
+  const { words: file, boundary, omittedBefore } = termTokens(fileText);
   const slotNames = slotNamesOf(fileText);
   const at = new Map<string, number[]>();
   file.forEach((w, i) => {
@@ -1472,12 +1500,13 @@ export function carriesWholeStandardText(id: string, standardText: string, fileT
           while (k < ends.length && ends[k] < p - gap - 1) k++;
           for (let j = k; j < ends.length && ends[j] < p; j++) {
             const between = file.slice(ends[j] + 1, p);
+            const slotBetween = between.length > 0 ? between : omittedBefore[p];
             // The next word follows at once, after a reviewed insertion, or
             // after a slot's name: the standard one or a holder the file
             // names, never a negating word; between two sentences nothing
             // may stand.
             const follows = slot
-              ? !between.some((w) => NEGATING_WORDS.has(w)) && slotHolds(slotNames, between)
+              ? !slotBetween.some((w) => NEGATING_WORDS.has(w)) && slotHolds(slotNames, slotBetween)
               : between.length === 0 || reviewed.has(between.join(' '));
             if (follows) {
               next.push(p);
@@ -2080,7 +2109,8 @@ export function findBundledCodeUnderOtherLicenses(
   comp: ComponentInfo,
   knownLicenseIds: Set<string>,
   knownMentions: Record<string, string> = knownTagMentions(),
-  textCarried: (term: string) => boolean = () => true
+  textCarried: (term: string) => boolean = () => true,
+  vendoredHeaderNotices?: Map<string, { notice: string; file: string }[]>
 ): { license: string; notices: string[]; files: string[]; headers: { text: string; files: string[] }[]; declared?: true }[] {
   const declared = new Set(extractSpdxLicenseIds(comp.license));
   // The license texts a REUSE folder ships, by identifier (the file name) and
@@ -2427,7 +2457,20 @@ export function findBundledCodeUnderOtherLicenses(
         // A notice that only points to a license ("Licensed under the Apache
         // License", "you may not use this file except") grants nothing itself.
         const carriesTerms = !typoOnly && PERMISSION_TEXT.test(blockText);
-        if (shippedOnly && vendoredDirs.some((d) => entryRel.startsWith(`${d}/`))) notices.length = 0;
+        const vendoredDir = vendoredDirs
+          .filter((d) => entryRel.startsWith(`${d}/`))
+          .sort((a, b) => b.length - a.length)[0];
+        if (shippedOnly && vendoredDir) {
+          if (vendoredHeaderNotices && notices.length > 0) {
+            let bucket = vendoredHeaderNotices.get(vendoredDir);
+            if (!bucket) {
+              bucket = [];
+              vendoredHeaderNotices.set(vendoredDir, bucket);
+            }
+            for (const n of notices) bucket.push({ notice: n, file: entryRel });
+          }
+          notices.length = 0;
+        }
         // A covered header adds nothing when it names no holder and carries no
         // terms of its own (typoOnly never reproduces its terms).
         if ((shippedOnly || typoOnly) && !carriesTerms && notices.length === 0) return;
@@ -2446,7 +2489,7 @@ export function findBundledCodeUnderOtherLicenses(
       });
     }
   };
-  walk(comp.packageDir, '');
+  if (comp.packageDir) walk(comp.packageDir, '');
   return [...found.keys()].sort(compareStrings).map((key) => {
     const [kind, license] = key.split('\u0000');
     return { license, ...found.get(key)!, ...(kind === 'declared' ? { declared: true } : {}) };
@@ -2577,9 +2620,17 @@ export function generateNoticesMarkdown(
   npmDeps: ComponentInfo[],
   spdxLicensesFile = SPDX_STANDARD_LICENSES_FILE,
   nonFreeExceptions: NonFreeException[] = KNOWN_NON_FREE_EXCEPTIONS,
-  sourceTextReviews: ReviewedSourceText[] = reviewedSourceTexts()
+  sourceTextReviews: ReviewedSourceText[] = reviewedSourceTexts(),
+  fallbackAttributions: Record<string, FallbackAttribution> = PINNED_FALLBACK_ATTRIBUTIONS
 ): string {
-  return renderNotices(cargoDeps, npmDeps, spdxLicensesFile, nonFreeExceptions, sourceTextReviews).output;
+  return renderNotices(
+    cargoDeps,
+    npmDeps,
+    spdxLicensesFile,
+    nonFreeExceptions,
+    sourceTextReviews,
+    fallbackAttributions
+  ).output;
 }
 
 /**
@@ -2598,11 +2649,12 @@ export function renderNotices(
   npmDeps: ComponentInfo[],
   spdxLicensesFile = SPDX_STANDARD_LICENSES_FILE,
   nonFreeExceptions: NonFreeException[] = KNOWN_NON_FREE_EXCEPTIONS,
-  sourceTextReviews: ReviewedSourceText[] = reviewedSourceTexts()
+  sourceTextReviews: ReviewedSourceText[] = reviewedSourceTexts(),
+  fallbackAttributions: Record<string, FallbackAttribution> = PINNED_FALLBACK_ATTRIBUTIONS
 ): { output: string; verbatimBlocks: string[]; documents: { file: string; content: string }[] } {
   const documents: { file: string; content: string }[] = [];
   // Verify all pinned fallback attributions declare a non-empty source
-  for (const [key, attr] of Object.entries(PINNED_FALLBACK_ATTRIBUTIONS)) {
+  for (const [key, attr] of Object.entries(fallbackAttributions)) {
     if (!attr.source || attr.source.trim().length === 0) {
       throw new Error(`Entry ${key} in PINNED_FALLBACK_ATTRIBUTIONS must have a non-empty 'source' field`);
     }
@@ -2717,6 +2769,7 @@ export function renderNotices(
     if (left.length > 0) standardTextTerms.set(comp, left);
   }
   const bundledCache = new Map<ComponentInfo, ReturnType<typeof findBundledCodeUnderOtherLicenses>>();
+  const vendoredHeaderNoticesCache = new Map<ComponentInfo, Map<string, { notice: string; file: string }[]>>();
   let knownLicenseIds: Set<string> | undefined;
   // Whether the notices carry the text of a term of a package's license:
   // its own files carry it, or its standard text is added for the package
@@ -2745,7 +2798,18 @@ export function renderNotices(
       knownLicenseIds = new Set([...Object.keys(standard), ...Object.keys(SHARED_STANDARD_TEXTS).filter((id) => standard[standardTextId(id)])]);
     }
     if (!bundledCache.has(comp)) {
-      bundledCache.set(comp, findBundledCodeUnderOtherLicenses(comp, knownLicenseIds, knownTagMentions(), (term) => textCarried(comp, term)));
+      const vendoredNotices = new Map<string, { notice: string; file: string }[]>();
+      bundledCache.set(
+        comp,
+        findBundledCodeUnderOtherLicenses(
+          comp,
+          knownLicenseIds,
+          knownTagMentions(),
+          (term) => textCarried(comp, term),
+          vendoredNotices
+        )
+      );
+      vendoredHeaderNoticesCache.set(comp, vendoredNotices);
     }
     return bundledCache.get(comp)!;
   };
@@ -2921,8 +2985,17 @@ export function renderNotices(
         const nested = vendoredFolders(fullComp)
           .filter((d) => d.startsWith(`${dir}/`))
           .map((d) => d.slice(dir.length + 1));
+        const seenVendored = new Set<string>();
         for (const n of findPackageCopyrightNotices(path.join(fullComp.packageDir, dir), inDir, nested)) {
+          seenVendored.add(noticeKey(n.notice));
           lines.push(`  - ${n.notice} (${dir}/${n.file})`);
+        }
+        bundledOf(fullComp);
+        for (const n of vendoredHeaderNoticesCache.get(fullComp)?.get(dir) ?? []) {
+          const key = noticeKey(n.notice);
+          if (seenVendored.has(key)) continue;
+          seenVendored.add(key);
+          lines.push(`  - ${n.notice} (${n.file})`);
         }
         continue;
       }
@@ -3017,7 +3090,7 @@ export function renderNotices(
   const authorsOf = (comp: ComponentInfo) =>
     comp.authors && comp.authors.length > 0
       ? comp.authors.join(', ')
-      : (entryOf(PINNED_FALLBACK_ATTRIBUTIONS, `${comp.name}@${comp.version}`)?.author ??
+      : (entryOf(fallbackAttributions, `${comp.name}@${comp.version}`)?.author ??
         spdxDocumentAttribution(comp)?.author ??
         (ownFilesNotice(comp) ? 'named in its license files' : undefined));
   const ownFilesNotice = (comp: ComponentInfo) => {
@@ -3179,8 +3252,8 @@ export function renderNotices(
         const attributionLines: string[] = [];
         for (const comp of comps) {
           const key = `${comp.name}@${comp.version}`;
-          const pinned = entryOf(PINNED_FALLBACK_ATTRIBUTIONS, key);
-          if (!pinned && !key.startsWith('test-')) {
+          const pinned = entryOf(fallbackAttributions, key);
+          if (!pinned) {
             throw new Error(`Component ${key} requires an entry in PINNED_FALLBACK_ATTRIBUTIONS`);
           }
           if (pinned && (!pinned.source || pinned.source.trim().length === 0)) {
@@ -3388,6 +3461,21 @@ export function writeNoticesFile(
   }
 }
 
+export function auditGplCompatibility(
+  deps: Pick<ComponentInfo, 'source' | 'name' | 'version' | 'license'>[],
+  reportError: (line: string) => void = console.error
+): boolean {
+  const incompatible = deps.filter((dep) => !isGplCompatible(dep.license));
+  if (incompatible.length === 0) return true;
+  reportError(`[ERROR] Found ${incompatible.length} components with GPL-incompatible or unparseable licenses:`);
+  for (const inc of incompatible) {
+    reportError(
+      `  - [${inc.source}] ${inc.name}@${inc.version}: declared license failed GPL-3.0 compatibility validation (inspect package manifest locally)`
+    );
+  }
+  return false;
+}
+
 function main() {
   let mode: 'check' | 'write';
   try {
@@ -3403,18 +3491,7 @@ function main() {
   const npmDeps = collectNpmDependencies();
 
   // Audit every dependency license against GPL-3.0 compatibility
-  const incompatible: ComponentInfo[] = [];
-  for (const dep of [...cargoDeps, ...npmDeps]) {
-    if (!isGplCompatible(dep.license)) {
-      incompatible.push(dep);
-    }
-  }
-
-  if (incompatible.length > 0) {
-    console.error(`[ERROR] Found ${incompatible.length} components with GPL-incompatible licenses:`);
-    for (const inc of incompatible) {
-      console.error(`  - [${inc.source}] ${inc.name}@${inc.version}: ${inc.license}`);
-    }
+  if (!auditGplCompatibility([...cargoDeps, ...npmDeps])) {
     process.exit(1);
   }
 

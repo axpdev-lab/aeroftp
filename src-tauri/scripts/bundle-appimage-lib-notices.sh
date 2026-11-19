@@ -141,15 +141,20 @@ if ! owners="$(
                     print rel[i] "\t" (own ? pkgs : "!" pkgs " " ldpath[name[i]])
                     continue
                 }
-                # The system path that ends with the path in the AppDir.
-                byPath = ""
-                for (j = 1; j <= m; j++) {
-                    split(parts[j], f, "\t")
-                    if (parts[j] != "" && tail[i] ~ /\// && substr(f[1], length(f[1]) - length(tail[i])) == "/" tail[i]) byPath = byPath parts[j] "\n"
+                # Nested plugins are opened by path, never via the dynamic loader cache:
+                # require a unique installed path ending with the AppDir subpath.
+                if (tail[i] ~ /\//) {
+                    byPath = ""
+                    for (j = 1; j <= m; j++) {
+                        split(parts[j], f, "\t")
+                        if (parts[j] != "" && substr(f[1], length(f[1]) - length(tail[i])) == "/" tail[i]) byPath = byPath parts[j] "\n"
+                    }
+                    p = distinct(byPath)
+                    if (p != "" && p !~ / /) { print rel[i] "\t" p; continue }
+                    print rel[i] "\t? " pkgs
+                    continue
                 }
-                p = distinct(byPath)
-                if (p != "" && p !~ / /) { print rel[i] "\t" p; continue }
-                # The path the dynamic loader resolves for the name.
+                # Flat library path: the path the dynamic loader resolves for the name.
                 byLd = ""
                 for (j = 1; j <= m; j++) {
                     split(parts[j], f, "\t")

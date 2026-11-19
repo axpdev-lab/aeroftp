@@ -22,98 +22,170 @@ use std::sync::OnceLock;
 #[path = "../tests/support/isolated_cli.rs"]
 mod cli_integration_fixture;
 
+#[cfg(any(not(windows), test))]
 const MARKER_FILENAME: &str = "portable.marker";
 const PORTABLE_DATA_DIRNAME: &str = "data";
 const AEROFTP_DATA_RELEASE_LEAF: &str = "aeroftp";
 const AEROFTP_DATA_DEBUG_LEAF: &str = "aeroftp-dev";
+#[cfg(any(windows, test))]
+const PORTABLE_PROBE_LOCK_WAIT: std::time::Duration = std::time::Duration::from_millis(500);
+const PORTABLE_PENDING_ERR: &str =
+    "Portable mode detection is pending; retry once startup finishes";
 
-/// Cached portable-mode flag. Computed on first access and reused.
+/// Cached portable-mode flag. Computed on first confirmed result and reused.
 static PORTABLE_ROOT: OnceLock<Option<PathBuf>> = OnceLock::new();
 static LEGACY_APP_CONFIG_MIGRATED: OnceLock<()> = OnceLock::new();
+static IDENTIFIER_STATE_CARRIED: OnceLock<()> = OnceLock::new();
+
+/// Result of probing whether this executable runs in portable mode.
+///
+/// `Pending` stays distinct from `Installed`: a lock timeout or temporarily
+/// unreadable batch identity / executable key must never be misclassified as
+/// confirmed installed mode (which would read/write host folders or cache `None`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PortableRootStatus<'a> {
+    Portable(&'a Path),
+    Installed,
+    Pending,
+}
+
+fn status_from_cached(cached: &Option<PathBuf>) -> PortableRootStatus<'_> {
+    match cached.as_deref() {
+        Some(path) => PortableRootStatus::Portable(path),
+        None => PortableRootStatus::Installed,
+    }
+}
 
 /// Resolve the portable root for `dir` using `cache`, synchronizing marker and
 /// pending-batch inspection under the `portable_docs` batch mutex so:
 /// 1. An install that moves `portable.marker` out of a pending batch during
 ///    detection cannot cause both checks to miss and permanently cache `None`.
 /// 2. If this exe's owned pending batch holds `portable.marker`, portable mode
-///    resolves to `Ok(Some(dir))` immediately so no consumer ever initializes
+///    resolves to `Portable(dir)` immediately so no consumer ever initializes
 ///    against the host configuration directory while startup finishes installing.
-/// 3. Transient lock/read uncertainty returns `Err(())` and leaves `cache`
-///    unset instead of conflating `Pending` with confirmed host mode (`Ok(None)`).
+/// 3. Transient lock timeout or read uncertainty returns `Pending` and leaves
+///    `cache` unset instead of conflating `Pending` with confirmed `Installed`.
+/// 4. If two concurrent probes race on `cache.get_or_init`, both return the
+///    winner without panicking or disagreeing with the cached value.
 #[cfg(any(windows, test))]
 fn resolve_portable_root_status<'a>(
     cache: &'a OnceLock<Option<PathBuf>>,
     dir: &Path,
     own_key: impl FnOnce() -> Option<String>,
     wait: Option<std::time::Duration>,
-) -> Result<Option<&'a Path>, ()> {
+) -> PortableRootStatus<'a> {
     if let Some(cached) = cache.get() {
-        return Ok(cached.as_deref());
+        return status_from_cached(cached);
     }
     match crate::portable_docs::probe_portable_marker_within(dir, own_key, wait) {
         crate::portable_docs::PortableMarkerState::Present => {
-            Ok(cache.get_or_init(|| Some(dir.to_path_buf())).as_deref())
+            status_from_cached(cache.get_or_init(|| Some(dir.to_path_buf())))
         }
         crate::portable_docs::PortableMarkerState::Absent => {
-            Ok(cache.get_or_init(|| None).as_deref())
+            status_from_cached(cache.get_or_init(|| None))
         }
-        crate::portable_docs::PortableMarkerState::Pending => Err(()),
+        crate::portable_docs::PortableMarkerState::Pending => PortableRootStatus::Pending,
     }
 }
 
-/// Resolve the portable root directory (the folder containing AeroFTP.exe
-/// and `portable.marker`). Returns `None` when not running as portable.
-fn portable_root() -> Option<&'static Path> {
-    if let Some(cached) = PORTABLE_ROOT.get() {
-        return cached.as_deref();
+/// Resolve the portable root status using an injected executable-directory
+/// lookup. If the executable directory cannot be resolved, returns `Pending`
+/// without caching `None`, so a portable copy is never misclassified as
+/// confirmed installed mode.
+#[cfg(any(windows, test))]
+fn portable_root_status_from_exe<'a>(
+    cache: &'a OnceLock<Option<PathBuf>>,
+    exe_dir: impl FnOnce() -> Option<PathBuf>,
+    own_key: impl FnOnce() -> Option<String>,
+    wait: Option<std::time::Duration>,
+) -> PortableRootStatus<'a> {
+    if let Some(cached) = cache.get() {
+        return status_from_cached(cached);
     }
-    let Ok(exe) = std::env::current_exe() else {
-        return PORTABLE_ROOT.get_or_init(|| None).as_deref();
+    let Some(dir) = exe_dir() else {
+        return PortableRootStatus::Pending;
     };
-    let Some(dir) = exe.parent() else {
-        return PORTABLE_ROOT.get_or_init(|| None).as_deref();
+    resolve_portable_root_status(cache, &dir, own_key, wait)
+}
+
+/// Resolve the portable root status for the running executable, keeping
+/// `Pending` distinct from confirmed `Installed` mode and bounding lock waits
+/// so GUI startup and `portable_info` never block indefinitely.
+pub(crate) fn portable_root_status() -> PortableRootStatus<'static> {
+    if let Some(cached) = PORTABLE_ROOT.get() {
+        return status_from_cached(cached);
+    }
+    let exe_dir = || {
+        std::env::current_exe()
+            .ok()
+            .and_then(|exe| exe.parent().map(Path::to_path_buf))
     };
     #[cfg(any(windows, test))]
     {
-        // Wait for the batch mutex (`None` = unbounded) so a consumer never
-        // falls back to the host config directory while startup is installing
-        // a staged `portable.marker`.
-        resolve_portable_root_status(
+        portable_root_status_from_exe(
             &PORTABLE_ROOT,
-            dir,
+            exe_dir,
             crate::portable_docs::running_exe_key,
-            None,
+            Some(PORTABLE_PROBE_LOCK_WAIT),
         )
-        .unwrap_or_default()
     }
     #[cfg(not(any(windows, test)))]
     {
-        PORTABLE_ROOT
-            .get_or_init(|| {
-                if dir.join(MARKER_FILENAME).is_file() {
-                    Some(dir.to_path_buf())
-                } else {
-                    None
-                }
-            })
-            .as_deref()
+        let Some(dir) = exe_dir() else {
+            return PortableRootStatus::Pending;
+        };
+        status_from_cached(PORTABLE_ROOT.get_or_init(|| {
+            if dir.join(MARKER_FILENAME).is_file() {
+                Some(dir)
+            } else {
+                None
+            }
+        }))
     }
 }
 
-/// True when the running binary is the portable build.
-pub fn is_portable() -> bool {
-    portable_root().is_some()
+/// Resolve the portable root directory when confirmed portable. Returns `None`
+/// for both confirmed installed mode and unresolved (`Pending`) detection;
+/// callers that would otherwise select host folders must match
+/// [`portable_root_status`] directly.
+#[cfg(test)]
+fn portable_root() -> Option<&'static Path> {
+    match portable_root_status() {
+        PortableRootStatus::Portable(root) => Some(root),
+        PortableRootStatus::Installed | PortableRootStatus::Pending => None,
+    }
 }
 
-/// Portable data root: `<exe-dir>/data`. None when not portable.
+/// True when the running binary is confirmed to be a portable build.
+pub fn is_portable() -> bool {
+    matches!(portable_root_status(), PortableRootStatus::Portable(_))
+}
+
+/// True only when portable detection has confirmed this binary is NOT portable.
+/// Returns `false` while detection is `Pending` so callers never touch host
+/// directories or state until mode detection completes.
+pub fn is_confirmed_installed() -> bool {
+    matches!(portable_root_status(), PortableRootStatus::Installed)
+}
+
+/// Portable data root: `<exe-dir>/data`. None when not confirmed portable.
+#[cfg(test)]
 fn portable_data_root() -> Option<PathBuf> {
     portable_root().map(|root| root.join(PORTABLE_DATA_DIRNAME))
 }
 
-/// Resolve portable scratch without creating it. A later creation failure
-/// must stay a failure, never fall back to the installed user's cache.
-pub(crate) fn portable_scratch_dir() -> Option<PathBuf> {
-    portable_data_root().map(|root| root.join(aeroftp_data_leaf()).join("scratch"))
+/// Resolve portable scratch without creating it, keeping unresolved (`Pending`)
+/// portable detection distinct from confirmed installed mode (`Ok(None)`).
+pub(crate) fn try_portable_scratch_dir() -> Result<Option<PathBuf>, String> {
+    match portable_root_status() {
+        PortableRootStatus::Portable(root) => Ok(Some(
+            root.join(PORTABLE_DATA_DIRNAME)
+                .join(aeroftp_data_leaf())
+                .join("scratch"),
+        )),
+        PortableRootStatus::Installed => Ok(None),
+        PortableRootStatus::Pending => Err(PORTABLE_PENDING_ERR.to_string()),
+    }
 }
 
 /// Ensure a directory exists with secure permissions when portable.
@@ -170,6 +242,26 @@ fn test_data_root_override() -> Option<PathBuf> {
         .clone()
 }
 
+fn aeroftp_data_root_for(
+    status: PortableRootStatus<'_>,
+    leaf: &str,
+    installed_base: impl FnOnce() -> Option<PathBuf>,
+) -> Option<PathBuf> {
+    match status {
+        PortableRootStatus::Portable(root) => {
+            let dir = root.join(PORTABLE_DATA_DIRNAME).join(leaf);
+            ensure_dir(&dir).ok()?;
+            Some(dir)
+        }
+        PortableRootStatus::Installed => {
+            let dir = installed_base()?.join(leaf);
+            ensure_dir(&dir).ok()?;
+            Some(dir)
+        }
+        PortableRootStatus::Pending => None,
+    }
+}
+
 pub fn aeroftp_data_root() -> Option<PathBuf> {
     let leaf = aeroftp_data_leaf();
     #[cfg(test)]
@@ -178,16 +270,9 @@ pub fn aeroftp_data_root() -> Option<PathBuf> {
         ensure_dir(&dir).ok()?;
         return Some(dir);
     }
-    if let Some(data_root) = portable_data_root() {
-        let dir = data_root.join(leaf);
-        ensure_dir(&dir).ok()?;
-        return Some(dir);
-    }
-    let dir = dirs::config_dir()
-        .or_else(dirs::home_dir)
-        .map(|base| base.join(leaf))?;
-    ensure_dir(&dir).ok()?;
-    Some(dir)
+    aeroftp_data_root_for(portable_root_status(), leaf, || {
+        dirs::config_dir().or_else(dirs::home_dir)
+    })
 }
 
 /// Resolve the legacy identifier-scoped config directory used before the
@@ -507,7 +592,7 @@ fn merge_legacy_config_once(legacy_dir: &Path, new_dir: &Path) -> std::io::Resul
 }
 
 fn migrate_legacy_app_config_dir(legacy_dir: Option<PathBuf>, new_dir: &Path) {
-    if cfg!(debug_assertions) || is_portable() {
+    if cfg!(debug_assertions) || !is_confirmed_installed() {
         return;
     }
     if LEGACY_APP_CONFIG_MIGRATED.get().is_some() {
@@ -580,14 +665,25 @@ pub fn app_config_dir(_app: &tauri::AppHandle) -> Result<PathBuf, String> {
 /// Tauri's `app_data_dir()` gave every release before #814. It is pinned to
 /// [`LEGACY_APP_IDENTIFIER`] for the reason given there: the speech model
 /// downloaded into it is hundreds of megabytes that an update must not orphan.
-pub fn app_data_dir() -> Result<PathBuf, String> {
-    if let Some(data_root) = portable_data_root() {
-        ensure_dir(&data_root)?;
-        return Ok(data_root);
+fn app_data_dir_for(
+    status: PortableRootStatus<'_>,
+    installed_base: impl FnOnce() -> Option<PathBuf>,
+) -> Result<PathBuf, String> {
+    match status {
+        PortableRootStatus::Portable(root) => {
+            let data_root = root.join(PORTABLE_DATA_DIRNAME);
+            ensure_dir(&data_root)?;
+            Ok(data_root)
+        }
+        PortableRootStatus::Installed => installed_base()
+            .map(|base| base.join(LEGACY_APP_IDENTIFIER))
+            .ok_or_else(|| "Cannot resolve app data dir".to_string()),
+        PortableRootStatus::Pending => Err(PORTABLE_PENDING_ERR.to_string()),
     }
-    dirs::data_dir()
-        .map(|base| base.join(LEGACY_APP_IDENTIFIER))
-        .ok_or_else(|| "Cannot resolve app data dir".to_string())
+}
+
+pub fn app_data_dir() -> Result<PathBuf, String> {
+    app_data_dir_for(portable_root_status(), dirs::data_dir)
 }
 
 /// Resolve the credential-store directory. Kept as a compatibility wrapper
@@ -988,13 +1084,115 @@ pub const APP_IDENTIFIER: &str = "app.aeroftp.AeroFTP";
 /// installation on an empty `localStorage`. On macOS WebKit files the store by
 /// bundle identifier and a directory cannot be chosen here, so this returns
 /// `None` and [`carry_identifier_scoped_state`] copies the store instead.
-pub fn webview_data_dir() -> Option<PathBuf> {
-    if let Some(data_root) = portable_data_root() {
-        let dir = data_root.join("webview");
-        ensure_dir(&dir).ok()?;
-        return Some(dir);
+fn webview_data_dir_for(
+    status: PortableRootStatus<'_>,
+    installed_dir: impl FnOnce() -> Option<PathBuf>,
+) -> Result<Option<PathBuf>, String> {
+    match status {
+        PortableRootStatus::Portable(root) => {
+            let dir = root.join(PORTABLE_DATA_DIRNAME).join("webview");
+            ensure_dir(&dir)?;
+            Ok(Some(dir))
+        }
+        PortableRootStatus::Installed => Ok(installed_dir()),
+        PortableRootStatus::Pending => Err(PORTABLE_PENDING_ERR.to_string()),
     }
-    installed_webview_data_dir()
+}
+
+/// Resolve the WebView data directory while keeping unresolved (`Pending`)
+/// portable detection distinct from confirmed installed mode (`Ok(None)` on
+/// macOS or `Ok(Some(installed))` on Linux/Windows). Window builders use this
+/// so a portable copy never opens a window against the host browser store.
+pub fn try_webview_data_dir() -> Result<Option<PathBuf>, String> {
+    webview_data_dir_for(portable_root_status(), installed_webview_data_dir)
+}
+
+const STARTUP_WEBVIEW_RETRY_ROUNDS: u32 = 6;
+const STARTUP_WEBVIEW_RETRY_PAUSE: std::time::Duration = std::time::Duration::from_millis(250);
+
+/// Resolve the WebView data directory during GUI startup, retrying briefly when
+/// portable detection is transiently `Pending` (for example while an update
+/// finishes releasing the batch lock). When installed mode is confirmed after
+/// an initial skip, runs [`carry_identifier_scoped_state`] before returning so
+/// installed upgrades never open fresh destination state before migration.
+/// If detection still cannot confirm the mode, surfaces an actionable
+/// diagnostic (and native dialog on Windows) before returning `Err`.
+pub fn wait_for_startup_webview_data_dir() -> Result<Option<PathBuf>, String> {
+    let result = wait_for_startup_webview_data_dir_with(
+        STARTUP_WEBVIEW_RETRY_ROUNDS,
+        STARTUP_WEBVIEW_RETRY_PAUSE,
+        || match portable_root_status() {
+            PortableRootStatus::Portable(root) => {
+                let dir = root.join(PORTABLE_DATA_DIRNAME).join("webview");
+                ensure_dir(&dir).map(|()| (false, Some(dir)))
+            }
+            PortableRootStatus::Installed => Ok((true, installed_webview_data_dir())),
+            PortableRootStatus::Pending => Err(PORTABLE_PENDING_ERR.to_string()),
+        },
+        carry_identifier_scoped_state,
+        std::thread::sleep,
+    );
+    if let Err(ref err) = result {
+        report_startup_portable_error(err);
+    }
+    result
+}
+
+fn wait_for_startup_webview_data_dir_with(
+    max_retries: u32,
+    pause: std::time::Duration,
+    mut probe: impl FnMut() -> Result<(bool, Option<PathBuf>), String>,
+    mut on_confirmed_installed: impl FnMut(),
+    sleep: impl Fn(std::time::Duration),
+) -> Result<Option<PathBuf>, String> {
+    let mut last_err = String::new();
+    for attempt in 0..=max_retries {
+        match probe() {
+            Ok((confirmed_installed, dir)) => {
+                if confirmed_installed {
+                    on_confirmed_installed();
+                }
+                return Ok(dir);
+            }
+            Err(e) => {
+                last_err = e;
+                if attempt < max_retries {
+                    sleep(pause);
+                }
+            }
+        }
+    }
+    Err(format!(
+        "{last_err}. Close any other AeroFTP instance or updater and relaunch AeroFTP."
+    ))
+}
+
+/// Resolve portable vs installed mode once at the start of GUI startup (before
+/// `carry_identifier_scoped_state`, file logging, `window-state` plugin, or any
+/// window builder runs) so every startup subsystem observes one confirmed mode.
+pub fn resolve_startup_mode_or_report() -> Result<(), String> {
+    wait_for_startup_webview_data_dir().map(|_| ())
+}
+
+pub(crate) fn report_startup_portable_error(err: &str) {
+    tracing::error!("AeroFTP startup deferred: {err}");
+    eprintln!("AeroFTP cannot start safely yet: {err}");
+    #[cfg(windows)]
+    {
+        use windows::core::HSTRING;
+        use windows::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR, MB_OK};
+        let title = HSTRING::from("AeroFTP Startup Delayed");
+        let body = HSTRING::from(format!(
+            "AeroFTP could not confirm portable vs installed mode in time, so it stopped rather than opening the wrong data directory.\n\n{err}"
+        ));
+        // SAFETY: both HSTRINGs are valid null-terminated UTF-16 strings; None
+        // owner displays a standard modal error box on the desktop.
+        let _ = unsafe { MessageBoxW(None, &body, &title, MB_OK | MB_ICONERROR) };
+    }
+}
+
+pub fn webview_data_dir() -> Option<PathBuf> {
+    try_webview_data_dir().ok().flatten()
 }
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
@@ -1019,13 +1217,23 @@ pub const APP_LOG_FILE: &str = "AeroFTP.log";
 /// builds use Tauri's `app_log_dir()` for the legacy identifier, so the log a
 /// user or a bug report points at keeps its place across the rename; `None`
 /// there only when the platform base is unknown.
-pub fn log_dir() -> Option<PathBuf> {
-    if let Some(data_root) = portable_data_root() {
-        let dir = data_root.join("logs");
-        ensure_dir(&dir).ok()?;
-        return Some(dir);
+fn log_dir_for(
+    status: PortableRootStatus<'_>,
+    installed_dir: impl FnOnce() -> Option<PathBuf>,
+) -> Option<PathBuf> {
+    match status {
+        PortableRootStatus::Portable(root) => {
+            let dir = root.join(PORTABLE_DATA_DIRNAME).join("logs");
+            ensure_dir(&dir).ok()?;
+            Some(dir)
+        }
+        PortableRootStatus::Installed => installed_dir(),
+        PortableRootStatus::Pending => None,
     }
-    installed_log_dir()
+}
+
+pub fn log_dir() -> Option<PathBuf> {
+    log_dir_for(portable_root_status(), installed_log_dir)
 }
 
 /// Whether the log file in `dir` opens the way tauri-plugin-log opens it, for
@@ -1072,7 +1280,10 @@ fn installed_log_dir() -> Option<PathBuf> {
 /// second start does nothing. Portable builds keep everything under their own
 /// folder and are skipped.
 pub fn carry_identifier_scoped_state() {
-    if is_portable() {
+    if !is_confirmed_installed() {
+        return;
+    }
+    if IDENTIFIER_STATE_CARRIED.set(()).is_err() {
         return;
     }
     if let Some(config) = dirs::config_dir() {
@@ -1348,8 +1559,15 @@ const REGISTRY_UNINSTALL_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion
 /// Windows-only install-format detection. Order: marker → registry → path.
 #[cfg(windows)]
 pub fn detect_windows_install_format() -> String {
-    if is_portable() {
-        return "portable".to_string();
+    match portable_root_status() {
+        PortableRootStatus::Portable(_) => return "portable".to_string(),
+        PortableRootStatus::Pending => {
+            log::warn!(
+                "Windows install-format detection: portable mode check is pending; deferring update artifact selection"
+            );
+            return "unknown".to_string();
+        }
+        PortableRootStatus::Installed => {}
     }
 
     if let Some(format) = detect_via_registry() {
@@ -2835,7 +3053,9 @@ mod secval_b_tests {
     #[test]
     fn portable_root_does_not_negatively_cache_while_marker_is_staged_under_held_lock() {
         let dir = tempfile::tempdir().unwrap();
+        let _dir_guard = crate::portable_docs::FolderArtifactsGuard::new(dir.path());
         let src = tempfile::tempdir().unwrap();
+        let host = tempfile::tempdir().unwrap();
         let exe = src.path().join("AeroFTP.exe");
         let marker_src = src.path().join("portable.marker");
         std::fs::write(&exe, b"new portable exe").unwrap();
@@ -2852,7 +3072,7 @@ mod secval_b_tests {
         .unwrap();
         assert!(!dir.path().join(MARKER_FILENAME).exists());
 
-        // Hold the batch lock on a separate thread past the short startup wait.
+        // Hold the batch lock on a separate thread past the bounded probe wait.
         let exe_dir = dir.path().to_path_buf();
         let (locked_tx, locked_rx) = std::sync::mpsc::channel();
         let (release_tx, release_rx) = std::sync::mpsc::channel();
@@ -2874,39 +3094,76 @@ mod secval_b_tests {
             crate::portable_docs::Pending::Unavailable(_)
         ));
 
-        // Lock timeout returns Err(()) (Pending) and leaves the cache unset
-        // instead of treating timeout as confirmed host mode (Ok(None)).
+        // Bounded probe runs on a worker thread while the lock stays held so a
+        // regression to an unbounded wait fails via `recv_timeout` rather than
+        // hanging the test. Always release `holder` before asserting/joining.
         let cache = OnceLock::new();
-        assert_eq!(
-            resolve_portable_root_status(
-                &cache,
-                dir.path(),
-                || Some(key.clone()),
+        let probe_dir = dir.path().to_path_buf();
+        let probe_key = key.clone();
+        let (probe_tx, probe_rx) = std::sync::mpsc::channel();
+        let probe_worker = std::thread::spawn(move || {
+            let worker_cache = OnceLock::new();
+            let s = resolve_portable_root_status(
+                &worker_cache,
+                &probe_dir,
+                || Some(probe_key),
                 Some(std::time::Duration::from_millis(50)),
-            ),
-            Err(())
-        );
+            );
+            let pending = s == PortableRootStatus::Pending && worker_cache.get().is_none();
+            let _ = probe_tx.send(pending);
+        });
+        let probe_result = probe_rx.recv_timeout(std::time::Duration::from_secs(2));
+        let status = match probe_result {
+            Ok(true) => PortableRootStatus::Pending,
+            other => {
+                let _ = release_tx.send(());
+                let _ = holder.join();
+                let _ = probe_worker.join();
+                panic!("bounded portable probe failed or hung while lock was held: {other:?}");
+            }
+        };
+        probe_worker.join().unwrap();
         assert!(
             cache.get().is_none(),
             "lock timeout must leave portable cache unset"
         );
-
-        // Production wait (`None`): blocks until the batch holder releases the
-        // lock, then atomically sees the owned staged marker and immediately
-        // resolves + caches `<exe-dir>` (`<exe-dir>/data`), never falling back
-        // to the host config directory.
-        let releaser = std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_millis(60));
-            release_tx.send(()).unwrap();
-            holder.join().unwrap();
-        });
-        let resolved = resolve_portable_root_status(&cache, dir.path(), || Some(key.clone()), None)
-            .expect("must not be pending after lock release")
-            .expect("portable root resolved from owned staged marker");
-        releaser.join().unwrap();
+        let host_cfg = host.path().join("host-config");
+        let host_logs = host.path().join("host-logs");
+        let host_webview = host.path().join("host-webview");
         assert_eq!(
-            resolved.join(PORTABLE_DATA_DIRNAME),
-            dir.path().join("data")
+            aeroftp_data_root_for(status, "aeroftp", || Some(host_cfg.clone())),
+            None
+        );
+        assert!(app_data_dir_for(status, || Some(host_cfg.clone())).is_err());
+        assert!(webview_data_dir_for(status, || Some(host_webview.clone())).is_err());
+        assert_eq!(log_dir_for(status, || Some(host_logs.clone())), None);
+        assert!(
+            !host_cfg.exists() && !host_logs.exists() && !host_webview.exists(),
+            "unresolved portable probe must not create or select host directories"
+        );
+
+        // Once the holder releases the mutex, the bounded probe resolves and
+        // initializes portable state under `<exe-dir>/data`.
+        release_tx.send(()).unwrap();
+        holder.join().unwrap();
+        let resolved_status = resolve_portable_root_status(
+            &cache,
+            dir.path(),
+            || Some(key.clone()),
+            Some(PORTABLE_PROBE_LOCK_WAIT),
+        );
+        assert_eq!(resolved_status, PortableRootStatus::Portable(dir.path()));
+        assert_eq!(
+            aeroftp_data_root_for(resolved_status, "aeroftp", || Some(host_cfg.clone())),
+            Some(dir.path().join("data").join("aeroftp"))
+        );
+        assert_eq!(
+            webview_data_dir_for(resolved_status, || Some(host_webview.clone())),
+            Ok(Some(dir.path().join("data").join("webview")))
+        );
+        assert_eq!(
+            log_dir_for(resolved_status, || Some(host_logs.clone())),
+            Some(dir.path().join("data").join("logs"))
         );
         assert!(cache.get().is_some());
 
@@ -2916,6 +3173,7 @@ mod secval_b_tests {
         // waits on the batch mutex. Because `Absent` is only confirmed under
         // the lock, the probe sees the installed marker and never caches `None`.
         let dir2 = tempfile::tempdir().unwrap();
+        let _dir2_guard = crate::portable_docs::FolderArtifactsGuard::new(dir2.path());
         crate::portable_docs::stage_pending_docs(
             dir2.path(),
             &exe,
@@ -2940,23 +3198,303 @@ mod secval_b_tests {
         });
         locked_rx2.recv().unwrap();
         let cache2 = OnceLock::new();
-        let resolved2 =
-            resolve_portable_root_status(&cache2, dir2.path(), || Some(key.clone()), None)
-                .expect("atomic probe resolves")
-                .expect("atomic check must observe marker installed during mutex wait");
+        let resolved2 = resolve_portable_root_status(
+            &cache2,
+            dir2.path(),
+            || Some(key.clone()),
+            Some(PORTABLE_PROBE_LOCK_WAIT),
+        );
         installer.join().unwrap();
+        assert_eq!(resolved2, PortableRootStatus::Portable(dir2.path()));
+
+        // Control: with no marker and no staged marker, confirmed `Installed` is
+        // cached and callers select host directories.
+        let plain = tempfile::tempdir().unwrap();
+        let _plain_guard = crate::portable_docs::FolderArtifactsGuard::new(plain.path());
+        let plain_cache = OnceLock::new();
+        let plain_status = resolve_portable_root_status(
+            &plain_cache,
+            plain.path(),
+            || Some(key.clone()),
+            Some(PORTABLE_PROBE_LOCK_WAIT),
+        );
+        assert_eq!(plain_status, PortableRootStatus::Installed);
+        assert_eq!(plain_cache.get(), Some(&None));
         assert_eq!(
-            resolved2.join(PORTABLE_DATA_DIRNAME),
-            dir2.path().join("data")
+            aeroftp_data_root_for(plain_status, "aeroftp", || Some(host_cfg.clone())),
+            Some(host_cfg.join("aeroftp"))
+        );
+        assert_eq!(
+            webview_data_dir_for(plain_status, || Some(host_webview.clone())),
+            Ok(Some(host_webview.clone()))
+        );
+        assert_eq!(
+            log_dir_for(plain_status, || Some(host_logs.clone())),
+            Some(host_logs.clone())
+        );
+    }
+
+    #[test]
+    fn unresolved_identity_never_selects_host_data_root_and_recovers_to_portable() {
+        let dir = tempfile::tempdir().unwrap();
+        let _dir_guard = crate::portable_docs::FolderArtifactsGuard::new(dir.path());
+        let src = tempfile::tempdir().unwrap();
+        let host = tempfile::tempdir().unwrap();
+        let exe = src.path().join("AeroFTP.exe");
+        let marker_src = src.path().join("portable.marker");
+        std::fs::write(&exe, b"portable-exe-id-recovery").unwrap();
+        std::fs::write(&marker_src, b"portable").unwrap();
+        let key = crate::portable_docs::exe_key(&exe).unwrap();
+
+        crate::portable_docs::stage_pending_docs(
+            dir.path(),
+            &exe,
+            &[(&marker_src, "portable.marker")],
+            "id-recovery",
+        )
+        .unwrap();
+
+        let host_cfg = host.path().join("host-cfg");
+        let host_data = host.path().join("host-data");
+        let host_wv = host.path().join("host-wv");
+        let host_log = host.path().join("host-log");
+        let cache = OnceLock::new();
+
+        // 1. Temporarily unreadable `staging.id` yields `Pending`: data root,
+        //    app data dir, webview dir, and log dir must NOT fall back to host.
+        let pending_id = match crate::portable_docs::probe_portable_marker_with_read_id(
+            dir.path(),
+            || Some(key.clone()),
+            Some(PORTABLE_PROBE_LOCK_WAIT),
+            |_| {
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    "locked staging.id",
+                ))
+            },
+        ) {
+            crate::portable_docs::PortableMarkerState::Pending => PortableRootStatus::Pending,
+            other => panic!("expected Pending on unreadable staging.id, got {other:?}"),
+        };
+        assert_eq!(
+            aeroftp_data_root_for(pending_id, "aeroftp", || Some(host_cfg.clone())),
+            None
+        );
+        assert!(app_data_dir_for(pending_id, || Some(host_data.clone())).is_err());
+        assert!(webview_data_dir_for(pending_id, || Some(host_wv.clone())).is_err());
+        assert_eq!(log_dir_for(pending_id, || Some(host_log.clone())), None);
+        assert!(
+            !host_cfg.exists() && !host_data.exists() && !host_wv.exists() && !host_log.exists(),
+            "host folders must not be touched while staging.id is unreadable"
         );
 
-        // Control: with no marker and no staged marker, confirmed `Ok(None)` is cached.
+        // 2. Temporarily failing `running_exe_key` (`|| None`) also yields
+        //    `Pending`, leaves `cache` unset, and refuses host folders.
+        let pending_key = resolve_portable_root_status(
+            &cache,
+            dir.path(),
+            || None,
+            Some(PORTABLE_PROBE_LOCK_WAIT),
+        );
+        assert_eq!(pending_key, PortableRootStatus::Pending);
+        assert!(cache.get().is_none());
+        assert_eq!(
+            aeroftp_data_root_for(pending_key, "aeroftp", || Some(host_cfg.clone())),
+            None
+        );
+        assert!(webview_data_dir_for(pending_key, || Some(host_wv.clone())).is_err());
+
+        // 3. Recovery: once identity and exe key reads succeed, the next lookup
+        //    resolves and caches the portable root `<exe-dir>/data/...`.
+        let recovered = resolve_portable_root_status(
+            &cache,
+            dir.path(),
+            || Some(key.clone()),
+            Some(PORTABLE_PROBE_LOCK_WAIT),
+        );
+        assert_eq!(recovered, PortableRootStatus::Portable(dir.path()));
+        assert_eq!(
+            aeroftp_data_root_for(recovered, "aeroftp", || Some(host_cfg.clone())),
+            Some(dir.path().join("data").join("aeroftp"))
+        );
+        assert_eq!(
+            app_data_dir_for(recovered, || Some(host_data.clone())),
+            Ok(dir.path().join("data"))
+        );
+        assert_eq!(
+            webview_data_dir_for(recovered, || Some(host_wv.clone())),
+            Ok(Some(dir.path().join("data").join("webview")))
+        );
+        assert_eq!(
+            log_dir_for(recovered, || Some(host_log.clone())),
+            Some(dir.path().join("data").join("logs"))
+        );
+        assert!(
+            !host_cfg.exists(),
+            "host config dir must remain untouched after portable recovery"
+        );
+
+        // 4. Control: confirmed absence resolves to host folders.
         let plain = tempfile::tempdir().unwrap();
+        let _plain_guard = crate::portable_docs::FolderArtifactsGuard::new(plain.path());
+        let plain_cache = OnceLock::new();
+        let installed = resolve_portable_root_status(
+            &plain_cache,
+            plain.path(),
+            || Some(key.clone()),
+            Some(PORTABLE_PROBE_LOCK_WAIT),
+        );
+        assert_eq!(installed, PortableRootStatus::Installed);
+        assert_eq!(
+            aeroftp_data_root_for(installed, "aeroftp", || Some(host_cfg.clone())),
+            Some(host_cfg.join("aeroftp"))
+        );
+    }
+
+    #[test]
+    fn unknown_exe_dir_returns_pending_without_caching_installed_and_recovers() {
+        let dir = tempfile::tempdir().unwrap();
+        let _dir_guard = crate::portable_docs::FolderArtifactsGuard::new(dir.path());
+        std::fs::write(dir.path().join(MARKER_FILENAME), b"portable").unwrap();
+
+        let cache = OnceLock::new();
+        assert_eq!(
+            portable_root_status_from_exe(&cache, || None, || None, Some(PORTABLE_PROBE_LOCK_WAIT)),
+            PortableRootStatus::Pending
+        );
+        assert!(
+            cache.get().is_none(),
+            "unknown exe dir must not cache Installed"
+        );
+        assert_eq!(
+            portable_root_status_from_exe(
+                &cache,
+                || Some(dir.path().to_path_buf()),
+                || None,
+                Some(PORTABLE_PROBE_LOCK_WAIT),
+            ),
+            PortableRootStatus::Portable(dir.path())
+        );
+
+        // Control: confirmed marker absence caches Installed.
+        let plain = tempfile::tempdir().unwrap();
+        let _plain_guard = crate::portable_docs::FolderArtifactsGuard::new(plain.path());
         let plain_cache = OnceLock::new();
         assert_eq!(
-            resolve_portable_root_status(&plain_cache, plain.path(), || Some(key.clone()), None),
-            Ok(None)
+            portable_root_status_from_exe(
+                &plain_cache,
+                || Some(plain.path().to_path_buf()),
+                || None,
+                Some(PORTABLE_PROBE_LOCK_WAIT),
+            ),
+            PortableRootStatus::Installed
         );
         assert_eq!(plain_cache.get(), Some(&None));
+    }
+
+    #[test]
+    fn cache_race_returns_winner_without_panicking_in_both_commit_orders() {
+        let dir = tempfile::tempdir().unwrap();
+        let _dir_guard = crate::portable_docs::FolderArtifactsGuard::new(dir.path());
+        let src = tempfile::tempdir().unwrap();
+        let exe = src.path().join("AeroFTP.exe");
+        let marker_src = src.path().join("portable.marker");
+        std::fs::write(&exe, b"race-exe").unwrap();
+        std::fs::write(&marker_src, b"portable").unwrap();
+        let key = crate::portable_docs::exe_key(&exe).unwrap();
+
+        crate::portable_docs::stage_pending_docs(
+            dir.path(),
+            &exe,
+            &[(&marker_src, "portable.marker")],
+            "cache-race",
+        )
+        .unwrap();
+
+        // Order 1: probe observes Present (staged marker matches `own_key`),
+        // but another thread committed `None` (Installed) into `cache` after
+        // the initial cache check and before `get_or_init`: resolver must
+        // return `Installed` without panicking.
+        let cache_absent_wins: OnceLock<Option<PathBuf>> = OnceLock::new();
+        let res1 = resolve_portable_root_status(
+            &cache_absent_wins,
+            dir.path(),
+            || {
+                let _ = cache_absent_wins.set(None);
+                Some(key.clone())
+            },
+            Some(PORTABLE_PROBE_LOCK_WAIT),
+        );
+        assert_eq!(res1, PortableRootStatus::Installed);
+
+        // Order 2: probe observes Absent (staged marker belongs to another
+        // exe key), but another thread committed `Some(dir)` (Portable) into
+        // `cache` mid-probe: resolver must return `Portable(dir)` (the winner),
+        // not `Installed`.
+        let cache_present_wins: OnceLock<Option<PathBuf>> = OnceLock::new();
+        let res2 = resolve_portable_root_status(
+            &cache_present_wins,
+            dir.path(),
+            || {
+                let _ = cache_present_wins.set(Some(dir.path().to_path_buf()));
+                Some("different-exe-key".to_string())
+            },
+            Some(PORTABLE_PROBE_LOCK_WAIT),
+        );
+        assert_eq!(res2, PortableRootStatus::Portable(dir.path()));
+    }
+
+    #[test]
+    fn startup_webview_wait_retries_pending_and_runs_installed_migration_when_needed() {
+        // Recovery to Portable: retries transient Pending, never runs installed migration.
+        let mut tries = 0u32;
+        let mut migrated = 0u32;
+        let res = wait_for_startup_webview_data_dir_with(
+            3,
+            std::time::Duration::ZERO,
+            || {
+                tries += 1;
+                if tries < 3 {
+                    Err(PORTABLE_PENDING_ERR.to_string())
+                } else {
+                    Ok((false, Some(PathBuf::from("/portable/data/webview"))))
+                }
+            },
+            || migrated += 1,
+            |_| {},
+        );
+        assert_eq!(res, Ok(Some(PathBuf::from("/portable/data/webview"))));
+        assert_eq!(tries, 3);
+        assert_eq!(migrated, 0);
+
+        // Recovery to Installed: runs `carry_identifier_scoped_state` before returning.
+        let mut tries2 = 0u32;
+        let mut migrated2 = 0u32;
+        let res2 = wait_for_startup_webview_data_dir_with(
+            3,
+            std::time::Duration::ZERO,
+            || {
+                tries2 += 1;
+                if tries2 < 2 {
+                    Err(PORTABLE_PENDING_ERR.to_string())
+                } else {
+                    Ok((true, Some(PathBuf::from("/host/webview"))))
+                }
+            },
+            || migrated2 += 1,
+            |_| {},
+        );
+        assert_eq!(res2, Ok(Some(PathBuf::from("/host/webview"))));
+        assert_eq!(migrated2, 1);
+
+        // Exhausted retries return actionable error.
+        let res3 = wait_for_startup_webview_data_dir_with(
+            2,
+            std::time::Duration::ZERO,
+            || Err(PORTABLE_PENDING_ERR.to_string()),
+            || panic!("must not migrate on failure"),
+            |_| {},
+        );
+        assert!(res3.unwrap_err().contains("relaunch AeroFTP"));
     }
 }

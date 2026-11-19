@@ -10736,7 +10736,7 @@ impl From<AimdTomlClassWindow> for ftp_client_gui_lib::transfer_dag::AimdClassWi
 /// `<XDG_CONFIG_HOME>/aeroftp/aimd.toml` (or `~/.config/aeroftp/aimd.toml`),
 /// or `None` when neither environment variable resolves.
 fn default_aimd_config_path() -> Option<PathBuf> {
-    if ftp_client_gui_lib::portable::is_portable() {
+    if !ftp_client_gui_lib::portable::is_confirmed_installed() {
         return ftp_client_gui_lib::portable::aeroftp_data_root().map(|d| d.join("aimd.toml"));
     }
     let leaf = ftp_client_gui_lib::portable::aeroftp_data_leaf_for_debug(cfg!(debug_assertions));

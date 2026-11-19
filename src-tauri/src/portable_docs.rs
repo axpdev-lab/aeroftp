@@ -135,12 +135,100 @@ pub(crate) fn exe_key(exe: &Path) -> io::Result<String> {
     Ok(hex::encode(hasher.finalize()))
 }
 
-/// A name for the lock of one exe folder, the same in every process.
-fn folder_id(exe_dir: &Path) -> String {
+/// Strips the Windows extended-length prefix (`\\?\` or `\\?\UNC\`) returned by
+/// `std::fs::canonicalize` so a canonical real folder path produces the exact
+/// same hash and mutex name as a legacy non-canonical path (and as a junction
+/// targeting that folder).
+#[cfg(any(windows, test))]
+fn plain_windows_path(path: &str) -> String {
+    if let Some(rest) = path.strip_prefix(r"\\?\UNC\") {
+        format!(r"\\{rest}")
+    } else {
+        path.strip_prefix(r"\\?\").unwrap_or(path).to_string()
+    }
+}
+
+/// Canonical per-folder identity shared by the batch lock, recovery mirrors,
+/// staging records, and About notice snapshots.
+/// Canonicalizes `exe_dir` first (stripping `\\?\` on Windows so legacy and
+/// canonical paths hash identically) so a directory junction or symlink shares
+/// one identity with the real folder, while case-folding only on Windows so
+/// case-sensitive Unix volumes keep distinct folders separate.
+pub(crate) fn folder_id(exe_dir: &Path) -> String {
     use sha2::{Digest, Sha256};
-    hex::encode(Sha256::digest(
-        exe_dir.to_string_lossy().to_lowercase().as_bytes(),
-    ))
+    let resolved = std::fs::canonicalize(exe_dir).unwrap_or_else(|_| exe_dir.to_path_buf());
+    #[cfg(windows)]
+    let key = plain_windows_path(&resolved.to_string_lossy()).to_lowercase();
+    #[cfg(not(windows))]
+    let key = resolved.to_string_lossy();
+    hex::encode(Sha256::digest(key.as_bytes()))
+}
+
+/// Renames `from` to `to` atomically without replacing an existing entry at `to`
+/// (even an empty directory). Relies directly on the OS no-replace primitive
+/// (`MoveFileExW(..., 0)`, `renameat2(..., RENAME_NOREPLACE)`, `renamex_np(..., RENAME_EXCL)`)
+/// and never falls back to overwrite-capable `std::fs::rename`: if atomic
+/// no-replace rename is unavailable, returns an error so `install_pass_with`
+/// installs directly from `NEXT_DIR`.
+fn rename_no_replace(from: &Path, to: &Path) -> io::Result<()> {
+    #[cfg(windows)]
+    {
+        use windows::core::HSTRING;
+        use windows::Win32::Storage::FileSystem::{MoveFileExW, MOVE_FILE_FLAGS};
+        let from_w = HSTRING::from(from.as_os_str());
+        let to_w = HSTRING::from(to.as_os_str());
+        // SAFETY: both HSTRINGs are valid null-terminated UTF-16 paths; flags=0
+        // refuses to overwrite an existing file or directory at `to`.
+        unsafe { MoveFileExW(&from_w, &to_w, MOVE_FILE_FLAGS(0)) }.map_err(io::Error::other)
+    }
+    #[cfg(target_os = "linux")]
+    {
+        use std::ffi::CString;
+        use std::os::unix::ffi::OsStrExt;
+        let c_from = CString::new(from.as_os_str().as_bytes())
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "path contains NUL"))?;
+        let c_to = CString::new(to.as_os_str().as_bytes())
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "path contains NUL"))?;
+        // SAFETY: both pointers are valid NUL-terminated C strings.
+        let rc = unsafe {
+            libc::renameat2(
+                libc::AT_FDCWD,
+                c_from.as_ptr(),
+                libc::AT_FDCWD,
+                c_to.as_ptr(),
+                libc::RENAME_NOREPLACE,
+            )
+        };
+        if rc == 0 {
+            Ok(())
+        } else {
+            Err(io::Error::last_os_error())
+        }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        use std::ffi::CString;
+        use std::os::unix::ffi::OsStrExt;
+        let c_from = CString::new(from.as_os_str().as_bytes())
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "path contains NUL"))?;
+        let c_to = CString::new(to.as_os_str().as_bytes())
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "path contains NUL"))?;
+        // SAFETY: both pointers are valid NUL-terminated C strings.
+        let rc = unsafe { libc::renamex_np(c_from.as_ptr(), c_to.as_ptr(), libc::RENAME_EXCL) };
+        if rc == 0 {
+            Ok(())
+        } else {
+            Err(io::Error::last_os_error())
+        }
+    }
+    #[cfg(all(unix, not(any(target_os = "linux", target_os = "macos"))))]
+    {
+        let _ = (from, to);
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "atomic no-replace rename is unavailable on this platform",
+        ))
+    }
 }
 
 /// The lock of the batches of one exe folder, held until dropped. On
@@ -386,13 +474,10 @@ fn is_batch(path: &Path) -> bool {
 /// is lost (a cleaned temporary folder) leaves a stopped staging where it
 /// is, never removes anything else.
 fn staging_record(exe_dir: &Path) -> PathBuf {
-    // The folder as written, not folded to lower case as the lock name is:
-    // on a case-sensitive volume `App` and `app` are two folders, and the
-    // stagings of one are never the other's (a lock they share only
-    // serializes them).
-    use sha2::{Digest, Sha256};
-    let exact = hex::encode(Sha256::digest(exe_dir.to_string_lossy().as_bytes()));
-    std::env::temp_dir().join(format!("aeroftp-pending-docs-{exact}.staging"))
+    std::env::temp_dir().join(format!(
+        "aeroftp-pending-docs-{}.staging",
+        folder_id(exe_dir)
+    ))
 }
 
 fn recorded_stagings(exe_dir: &Path) -> Vec<(String, String)> {
@@ -452,9 +537,106 @@ fn owned_batch_record(exe_dir: &Path) -> PathBuf {
 /// in-place deletion of `.aeroftp-pending-docs.owned` does not lose
 /// ownership of existing AeroFTP batches.
 fn temp_batch_record(exe_dir: &Path) -> PathBuf {
-    use sha2::{Digest, Sha256};
-    let exact = hex::encode(Sha256::digest(exe_dir.to_string_lossy().as_bytes()));
-    std::env::temp_dir().join(format!("aeroftp-pending-docs-{exact}.batches"))
+    std::env::temp_dir().join(format!(
+        "aeroftp-pending-docs-{}.batches",
+        folder_id(exe_dir)
+    ))
+}
+
+const CANCEL_MARKER_PREFIX: &str = ".aeroftp-pending-docs-cancel-";
+
+fn cancel_marker_path(exe_dir: &Path, token: &str) -> PathBuf {
+    exe_dir.join(format!("{CANCEL_MARKER_PREFIX}{token}"))
+}
+
+/// Persists an installation-scoped, token-keyed cancellation marker inside
+/// `exe_dir` (independent of `TMP`/`%TEMP%`) when a bounded
+/// `discard_pending_docs_within` times out waiting for the batch lock.
+/// Survives process exit and different temp directories so the next locked pass
+/// discards the failed attempt's batch and restores any set-aside batch.
+fn record_cancelled_batch(exe_dir: &Path, token: &str) {
+    if is_valid_batch_id(token) {
+        let _ = std::fs::write(cancel_marker_path(exe_dir, token), b"");
+    }
+}
+
+/// Applies persisted token-scoped cancellation markers in `exe_dir` while the
+/// caller holds the batch lock.
+///
+/// Returns `true` when every cancellation finished or did not apply, and
+/// `false` when a cancellation could not complete yet (for example `staging.id`
+/// was temporarily unreadable or a document could not be deleted): in that case
+/// the marker stays active so callers defer consuming `NEXT_DIR` instead of
+/// installing or exposing a cancelled batch.
+fn apply_cancelled_batches_with(
+    exe_dir: &Path,
+    read_id: &impl Fn(&Path) -> io::Result<String>,
+) -> bool {
+    let Ok(entries) = std::fs::read_dir(exe_dir) else {
+        return true;
+    };
+    let next = exe_dir.join(NEXT_DIR);
+    let prev = exe_dir.join(PREV_DIR);
+    let mut all_resolved = true;
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy();
+        let Some(token) = name_str.strip_prefix(CANCEL_MARKER_PREFIX) else {
+            continue;
+        };
+        if !is_valid_batch_id(token) {
+            continue;
+        }
+        let marker_path = entry.path();
+        if std::fs::symlink_metadata(&next).is_err() {
+            let _ = std::fs::remove_file(&marker_path);
+            continue;
+        }
+        match batch_ownership_with(exe_dir, &next, read_id) {
+            BatchOwnership::Unreadable => {
+                // Keep marker active and prevent callers from consuming NEXT_DIR
+                // until `staging.id` / ledger become readable again.
+                all_resolved = false;
+                continue;
+            }
+            BatchOwnership::Unowned => {
+                let _ = std::fs::remove_file(&marker_path);
+                continue;
+            }
+            BatchOwnership::Owned => {}
+        }
+        let id_path = next.join(STAGING_ID_FILE);
+        let current_token = match read_id(&id_path) {
+            Ok(raw) => raw.trim().to_string(),
+            Err(_) => {
+                all_resolved = false;
+                continue;
+            }
+        };
+        if current_token != token {
+            let _ = std::fs::remove_file(&marker_path);
+            continue;
+        }
+        remove_batch(&next);
+        if std::fs::symlink_metadata(&next).is_err() {
+            let _ = forget_batch(exe_dir, token);
+            if is_owned_batch(exe_dir, &prev)
+                && matches!(slot(&prev), Slot::Key(k) if k != RETIRED_KEY)
+            {
+                let _ = std::fs::rename(&prev, &next);
+            }
+            let _ = std::fs::remove_file(&marker_path);
+        } else {
+            // Partial cleanup (for example a document is held): keep the marker
+            // active so no pass installs or exposes the cancelled batch.
+            all_resolved = false;
+        }
+    }
+    all_resolved
+}
+
+fn apply_cancelled_batches(exe_dir: &Path) -> bool {
+    apply_cancelled_batches_with(exe_dir, &|p| std::fs::read_to_string(p))
 }
 
 fn is_valid_batch_id(id: &str) -> bool {
@@ -703,14 +885,49 @@ pub(crate) fn probe_portable_marker_within(
     own_key: impl FnOnce() -> Option<String>,
     wait: Option<Duration>,
 ) -> PortableMarkerState {
-    probe_portable_marker_with(exe_dir, own_key, wait, |p| std::fs::symlink_metadata(p))
+    probe_portable_marker_full(
+        exe_dir,
+        own_key,
+        wait,
+        |p| std::fs::symlink_metadata(p),
+        |p| std::fs::read_to_string(p),
+    )
 }
 
+#[cfg(test)]
+pub(crate) fn probe_portable_marker_with_read_id(
+    exe_dir: &Path,
+    own_key: impl FnOnce() -> Option<String>,
+    wait: Option<Duration>,
+    read_id: impl Fn(&Path) -> io::Result<String>,
+) -> PortableMarkerState {
+    probe_portable_marker_full(
+        exe_dir,
+        own_key,
+        wait,
+        |p| std::fs::symlink_metadata(p),
+        read_id,
+    )
+}
+
+#[cfg(test)]
 fn probe_portable_marker_with(
     exe_dir: &Path,
     own_key: impl FnOnce() -> Option<String>,
     wait: Option<Duration>,
     metadata_fn: impl Fn(&Path) -> io::Result<std::fs::Metadata>,
+) -> PortableMarkerState {
+    probe_portable_marker_full(exe_dir, own_key, wait, metadata_fn, |p| {
+        std::fs::read_to_string(p)
+    })
+}
+
+fn probe_portable_marker_full(
+    exe_dir: &Path,
+    own_key: impl FnOnce() -> Option<String>,
+    wait: Option<Duration>,
+    metadata_fn: impl Fn(&Path) -> io::Result<std::fs::Metadata>,
+    read_id: impl Fn(&Path) -> io::Result<String>,
 ) -> PortableMarkerState {
     // Fast path when `portable.marker` is already installed beside the exe.
     if metadata_fn(&exe_dir.join("portable.marker")).is_ok_and(|m| m.is_file()) {
@@ -721,6 +938,9 @@ fn probe_portable_marker_with(
     let Ok(_lock) = lock_batches_within(exe_dir, wait) else {
         return PortableMarkerState::Pending;
     };
+    if !apply_cancelled_batches_with(exe_dir, &read_id) {
+        return PortableMarkerState::Pending;
+    }
     let mut any_unreadable = false;
     match metadata_fn(&exe_dir.join("portable.marker")) {
         Ok(m) if m.is_file() => return PortableMarkerState::Present,
@@ -749,7 +969,7 @@ fn probe_portable_marker_with(
             Ok(m) if !m.is_file() => continue,
             Ok(_) => {}
         }
-        match batch_ownership(exe_dir, &dir) {
+        match batch_ownership_with(exe_dir, &dir, &read_id) {
             BatchOwnership::Owned => match slot(&dir) {
                 Slot::Key(k) => staged_candidates.push(k),
                 Slot::Unreadable | Slot::OwnershipUnreadable => any_unreadable = true,
@@ -892,6 +1112,19 @@ pub(crate) fn stage_pending_docs(
     })
 }
 
+#[cfg(all(windows, test))]
+pub(crate) fn stage_pending_docs_within(
+    exe_dir: &Path,
+    new_exe: &Path,
+    docs: &[(&Path, &'static str)],
+    suffix: &str,
+    wait: Option<Duration>,
+) -> Result<Option<String>, String> {
+    stage_with_wait(exe_dir, new_exe, docs, suffix, wait, |from, to| {
+        std::fs::rename(from, to)
+    })
+}
+
 /// Keys of all installed app executables in `exe_dir` (`AeroFTP.exe`,
 /// `aeroftp-app.exe`, and `std::env::current_exe()` when it resides in
 /// `exe_dir`): a batch matching any of these may still belong to a running
@@ -974,12 +1207,31 @@ fn stage_with_wait(
     wait: Option<Duration>,
     publish: impl Fn(&Path, &Path) -> io::Result<()>,
 ) -> Result<Option<String>, String> {
+    stage_with_commit(exe_dir, new_exe, docs, suffix, wait, record_batch, publish)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn stage_with_commit(
+    exe_dir: &Path,
+    new_exe: &Path,
+    docs: &[(&Path, &'static str)],
+    suffix: &str,
+    wait: Option<Duration>,
+    record: impl Fn(&Path, &str) -> io::Result<()>,
+    publish: impl Fn(&Path, &Path) -> io::Result<()>,
+) -> Result<Option<String>, String> {
     if docs.is_empty() {
         return Ok(None);
     }
     let fail = |e: io::Error| format!("Failed to stage the portable documents: {e}");
     let key = exe_key(new_exe).map_err(fail)?;
     let _lock = lock_batches_within(exe_dir, wait).map_err(fail)?;
+    if !apply_cancelled_batches(exe_dir) {
+        return Err(
+            "Failed to stage the portable documents: a cancelled previous batch could not finish cleanup yet"
+                .to_string(),
+        );
+    }
     remove_staging_leftovers(exe_dir);
     let next = exe_dir.join(NEXT_DIR);
     let prev = exe_dir.join(PREV_DIR);
@@ -1056,17 +1308,31 @@ fn stage_with_wait(
         for (source, name) in docs {
             std::fs::copy(source, tmp.join(name))?;
         }
-        let aside = make_room(exe_dir, &next, &prev, &key, installed_keys.as_deref())?;
-        record_batch(exe_dir, &staging_id)?;
-        let published = publish(&tmp, &next);
-        if published.is_err() {
-            let _ = forget_batch(exe_dir, &staging_id);
-            if aside && std::fs::symlink_metadata(&next).is_err() {
-                // Nothing replaced the batch set aside: it is back in its place.
+        let room = make_room(exe_dir, &next, &prev, &key, installed_keys.as_deref())?;
+        let mut recorded = false;
+        let committed = (|| -> io::Result<()> {
+            record(exe_dir, &staging_id)?;
+            recorded = true;
+            publish(&tmp, &next)
+        })();
+        if committed.is_err() {
+            if recorded {
+                let _ = forget_batch(exe_dir, &staging_id);
+            }
+            if matches!(
+                room,
+                RoomOutcome::SetAsideOther | RoomOutcome::SetAsideSameKey
+            ) && std::fs::symlink_metadata(&next).is_err()
+            {
+                // Nothing replaced the batch set aside: restore it to NEXT_DIR.
                 let _ = std::fs::rename(&prev, &next);
             }
+        } else if matches!(room, RoomOutcome::SetAsideSameKey) {
+            // The replacement batch for the same executable is committed:
+            // retire the superseded previous batch that was kept recoverable.
+            retire_batch(exe_dir, &prev);
         }
-        published
+        committed
     })();
     if staged.is_err() {
         remove_batch(&tmp);
@@ -1082,6 +1348,13 @@ fn stage_with_wait(
     staged.map(|()| Some(staging_id)).map_err(fail)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RoomOutcome {
+    Cleared,
+    SetAsideOther,
+    SetAsideSameKey,
+}
+
 /// Makes room at `next` for the batch of the exe `key`. When `next`'s key is
 /// temporarily unreadable (`Slot::Unreadable`), returns an error immediately
 /// without modifying `next` or `prev`. If `installed_keys` is `Some` and
@@ -1089,17 +1362,18 @@ fn stage_with_wait(
 /// `aeroftp-app.exe` / running exe in `exe_dir`) and `next` does not match any
 /// of them, `next` belongs to an abandoned update that never swapped and is
 /// removed directly without disturbing `prev`. Otherwise sets `next` aside at
-/// `prev`, reclaiming `prev` only when it is already `RETIRED_KEY` or provably
-/// an abandoned update (complete inventory with key mismatch). If `prev` is
-/// still occupied or the rename cannot complete, returns an error without
-/// touching `next` or `prev`. Returns whether a batch was set aside.
+/// `prev` (including when `next` has the same key as `key`, so a running build's
+/// live batch stays recoverable if replacement publication fails), reclaiming
+/// `prev` only when it is already `RETIRED_KEY` or provably an abandoned update
+/// (complete inventory with key mismatch). If `prev` is still occupied or the
+/// rename cannot complete, returns an error without touching `next` or `prev`.
 fn make_room(
     exe_dir: &Path,
     next: &Path,
     prev: &Path,
     key: &str,
     installed_keys: Option<&[String]>,
-) -> io::Result<bool> {
+) -> io::Result<RoomOutcome> {
     let is_abandoned = |k: &str| {
         installed_keys.is_some_and(|keys| !keys.is_empty() && !keys.iter().any(|cur| cur == k))
     };
@@ -1110,11 +1384,11 @@ fn make_room(
                 next.display()
             )));
         }
-        Slot::Key(next_key) if next_key != key && next_key != RETIRED_KEY => {
+        Slot::Key(next_key) if next_key != RETIRED_KEY => {
             if is_abandoned(&next_key) {
                 retire_batch(exe_dir, next);
                 if std::fs::symlink_metadata(next).is_err() {
-                    return Ok(false);
+                    return Ok(RoomOutcome::Cleared);
                 }
                 return Err(io::Error::new(
                     io::ErrorKind::AlreadyExists,
@@ -1131,7 +1405,11 @@ fn make_room(
             }
             if std::fs::symlink_metadata(prev).is_err() {
                 std::fs::rename(next, prev)?;
-                return Ok(true);
+                return Ok(if next_key == key {
+                    RoomOutcome::SetAsideSameKey
+                } else {
+                    RoomOutcome::SetAsideOther
+                });
             }
             return Err(io::Error::new(
                 io::ErrorKind::AlreadyExists,
@@ -1152,7 +1430,7 @@ fn make_room(
             forget_batch(exe_dir, &id)?;
         }
     }
-    Ok(false)
+    Ok(RoomOutcome::Cleared)
 }
 
 /// Removes the next batch of `exe_dir` only when it is an AeroFTP-owned
@@ -1173,15 +1451,29 @@ pub(crate) fn discard_pending_docs_within(
     wait: Option<Duration>,
 ) -> bool {
     let Ok(_lock) = lock_batches_within(exe_dir, wait) else {
+        // Persist token-scoped cancellation in `exe_dir` so a later locked pass
+        // cleans up this failed attempt even if this process exits first or
+        // runs with a different temp directory.
+        record_cancelled_batch(exe_dir, token);
         return false;
     };
+    let _ = apply_cancelled_batches(exe_dir);
     remove_staging_leftovers(exe_dir);
     let next = exe_dir.join(NEXT_DIR);
+    let mut cleaned_target = true;
     if is_owned_batch(exe_dir, &next) && batch_id(&next).as_deref() == Some(token) {
         remove_batch(&next);
         if std::fs::symlink_metadata(&next).is_err() {
             let _ = forget_batch(exe_dir, token);
+        } else {
+            // Partial cleanup: keep the cancellation marker active until a
+            // later pass can finish removing the batch.
+            record_cancelled_batch(exe_dir, token);
+            cleaned_target = false;
         }
+    }
+    if cleaned_target {
+        let _ = std::fs::remove_file(cancel_marker_path(exe_dir, token));
     }
     // The AeroFTP-owned batch the staging set aside goes back to its place:
     // nothing replaced its exe (here, or the helper's failed swap before).
@@ -1226,10 +1518,27 @@ fn install_pass_with(
     replace: impl Fn(&Path, &Path) -> io::Result<()>,
     read_id: impl Fn(&Path) -> io::Result<String>,
 ) -> Pending {
+    install_pass_with_promote(exe_dir, own_key, wait, replace, read_id, rename_no_replace)
+}
+
+fn install_pass_with_promote(
+    exe_dir: &Path,
+    own_key: &str,
+    wait: Option<Duration>,
+    replace: impl Fn(&Path, &Path) -> io::Result<()>,
+    read_id: impl Fn(&Path) -> io::Result<String>,
+    promote: impl Fn(&Path, &Path) -> io::Result<()>,
+) -> Pending {
     let _lock = match lock_batches_within(exe_dir, wait) {
         Ok(lock) => lock,
         Err(e) => return Pending::Unavailable(e.to_string()),
     };
+    if !apply_cancelled_batches_with(exe_dir, &read_id) {
+        return Pending::Unavailable(format!(
+            "a cancelled batch in {} could not finish cleanup yet",
+            exe_dir.display()
+        ));
+    }
     remove_staging_leftovers(exe_dir);
     let current = exe_dir.join(PENDING_DIR);
     let next = exe_dir.join(NEXT_DIR);
@@ -1267,7 +1576,9 @@ fn install_pass_with(
             // its update set aside.
             stale |= retire_batch(exe_dir, &current);
             stale |= retire_batch(exe_dir, &prev);
-            if std::fs::rename(&next, &current).is_err() {
+            // Never replace an existing (including empty unowned) `PENDING_DIR`:
+            // install directly from `NEXT_DIR` when `PENDING_DIR` is occupied.
+            if std::fs::symlink_metadata(&current).is_ok() || promote(&next, &current).is_err() {
                 source = next.clone();
             }
         }
@@ -1458,6 +1769,8 @@ fn retry_held_with_hook(
             for (name, outcome) in retried_docs {
                 if let Some(entry) = last.iter_mut().find(|(n, _)| n == name) {
                     entry.1 = outcome.clone();
+                } else {
+                    last.push((*name, outcome.clone()));
                 }
             }
             // Decide which waiting documents remain from the outcomes observed
@@ -1529,6 +1842,9 @@ pub(crate) fn own_pending_notices(
     // A stalled process that holds the lock does not keep About waiting:
     // past the wait, no pending notices, and About opens the installed ones.
     let _lock = lock_batches_within(exe_dir, Some(NOTICES_LOCK_WAIT)).ok()?;
+    if !apply_cancelled_batches(exe_dir) {
+        return None;
+    }
     let held: Vec<(PathBuf, String)> = [NEXT_DIR, PENDING_DIR, PREV_DIR]
         .iter()
         .filter_map(|name| {
@@ -1600,6 +1916,9 @@ fn cached_key(cell: &OnceLock<String>, compute: impl FnOnce() -> Option<String>)
 }
 
 #[cfg(test)]
+pub(crate) use tests::FolderArtifactsGuard;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use std::cell::{Cell, RefCell};
@@ -1648,19 +1967,83 @@ mod tests {
         assert_eq!(reads.get(), 2);
     }
 
+    /// Clean up per-folder temp-dir artifacts (Unix lock file, mirror batch
+    /// ledger `.batches`, staging record `.staging`, and About notice snapshots)
+    /// for `folder_id`.
+    pub(crate) fn cleanup_folder_artifacts_by_id(id: &str) {
+        let _ = std::fs::remove_file(
+            std::env::temp_dir().join(format!("aeroftp-pending-docs-{id}.batches")),
+        );
+        let _ = std::fs::remove_file(
+            std::env::temp_dir().join(format!("aeroftp-pending-docs-{id}.staging")),
+        );
+        #[cfg(not(windows))]
+        let _ = std::fs::remove_file(
+            std::env::temp_dir().join(format!("aeroftp-pending-docs-{id}.lock")),
+        );
+        let snapshot_prefix = format!("aeroftp-pending-notices-{id}-");
+        if let Ok(entries) = std::fs::read_dir(std::env::temp_dir()) {
+            for entry in entries.flatten() {
+                let name = entry.file_name();
+                if name.to_string_lossy().starts_with(&snapshot_prefix) {
+                    let p = entry.path();
+                    if let Ok(meta) = std::fs::metadata(&p) {
+                        let mut perms = meta.permissions();
+                        if perms.readonly() {
+                            #[cfg(unix)]
+                            {
+                                use std::os::unix::fs::PermissionsExt;
+                                perms.set_mode(0o600);
+                            }
+                            #[cfg(not(unix))]
+                            #[allow(clippy::permissions_set_readonly_false)]
+                            {
+                                perms.set_readonly(false);
+                            }
+                            let _ = std::fs::set_permissions(&p, perms);
+                        }
+                    }
+                    let _ = std::fs::remove_file(&p);
+                }
+            }
+        }
+    }
+
+    /// Scoped cleanup guard for an explicit installation directory path (for
+    /// tests that rename/move the directory or create subdirectories under a
+    /// shared root `TempDir`).
+    pub(crate) struct FolderArtifactsGuard {
+        id: String,
+    }
+
+    impl FolderArtifactsGuard {
+        pub(crate) fn new(exe_dir: &Path) -> Self {
+            Self {
+                id: folder_id(exe_dir),
+            }
+        }
+    }
+
+    impl Drop for FolderArtifactsGuard {
+        fn drop(&mut self) {
+            cleanup_folder_artifacts_by_id(&self.id);
+        }
+    }
+
     /// Scoped cleanup guard for per-folder temp-dir artifacts (Unix lock file,
     /// mirror batch ledger, staging record, and About notice snapshots) so
     /// every test leaves no files behind in `std::env::temp_dir()`, even on
     /// assertion failure.
     struct FixtureDir {
         dir: tempfile::TempDir,
+        id: String,
     }
 
     impl FixtureDir {
         fn new() -> Self {
-            Self {
-                dir: tempfile::tempdir().expect("temp dir"),
-            }
+            let dir = tempfile::tempdir().expect("temp dir");
+            let id = folder_id(dir.path());
+            Self { dir, id }
         }
 
         fn path(&self) -> &Path {
@@ -1670,39 +2053,10 @@ mod tests {
 
     impl Drop for FixtureDir {
         fn drop(&mut self) {
-            let exe_dir = self.dir.path();
-            let id = folder_id(exe_dir);
-            let _ = std::fs::remove_file(temp_batch_record(exe_dir));
-            let _ = std::fs::remove_file(staging_record(exe_dir));
-            #[cfg(not(windows))]
-            let _ = std::fs::remove_file(
-                std::env::temp_dir().join(format!("aeroftp-pending-docs-{id}.lock")),
-            );
-            let snapshot_prefix = format!("aeroftp-pending-notices-{id}-");
-            if let Ok(entries) = std::fs::read_dir(std::env::temp_dir()) {
-                for entry in entries.flatten() {
-                    let name = entry.file_name();
-                    if name.to_string_lossy().starts_with(&snapshot_prefix) {
-                        let p = entry.path();
-                        if let Ok(meta) = std::fs::metadata(&p) {
-                            let mut perms = meta.permissions();
-                            if perms.readonly() {
-                                #[cfg(unix)]
-                                {
-                                    use std::os::unix::fs::PermissionsExt;
-                                    perms.set_mode(0o600);
-                                }
-                                #[cfg(not(unix))]
-                                #[allow(clippy::permissions_set_readonly_false)]
-                                {
-                                    perms.set_readonly(false);
-                                }
-                                let _ = std::fs::set_permissions(&p, perms);
-                            }
-                        }
-                        let _ = std::fs::remove_file(&p);
-                    }
-                }
+            cleanup_folder_artifacts_by_id(&self.id);
+            let current_id = folder_id(self.dir.path());
+            if current_id != self.id {
+                cleanup_folder_artifacts_by_id(&current_id);
             }
         }
     }
@@ -2122,25 +2476,25 @@ mod tests {
         assert!(!dir.path().join(PENDING_DIR).exists());
         // A next folder without a key, or a file there, is no batch, and
         // stays as it is.
-        let dir = tempfile::tempdir().unwrap();
+        let dir = FixtureDir::new();
         std::fs::create_dir(dir.path().join(NEXT_DIR)).unwrap();
         std::fs::write(dir.path().join(NEXT_DIR).join("README.txt"), "no key").unwrap();
         assert_eq!(install_pending_docs(dir.path(), KEY, rename), Pending::None);
         assert_eq!(read(&dir.path().join(NEXT_DIR), "README.txt"), "no key");
         assert!(!dir.path().join("README.txt").exists());
-        let dir = tempfile::tempdir().unwrap();
+        let dir = FixtureDir::new();
         std::fs::write(dir.path().join(NEXT_DIR), b"not a folder").unwrap();
         assert_eq!(install_pending_docs(dir.path(), KEY, rename), Pending::None);
         assert_eq!(read(dir.path(), NEXT_DIR), "not a folder");
         // A next batch of another exe is kept for its update, and never read.
-        let dir = tempfile::tempdir().unwrap();
+        let dir = FixtureDir::new();
         std::fs::create_dir(dir.path().join(NEXT_DIR)).unwrap();
         std::fs::write(dir.path().join(NEXT_DIR).join(KEY_FILE), "other-exe").unwrap();
         std::fs::write(dir.path().join(NEXT_DIR).join("README.txt"), "other").unwrap();
         assert_eq!(install_pending_docs(dir.path(), KEY, rename), Pending::None);
         assert_eq!(read(&dir.path().join(NEXT_DIR), "README.txt"), "other");
         assert!(!dir.path().join("README.txt").exists());
-        let dir = tempfile::tempdir().unwrap();
+        let dir = FixtureDir::new();
         std::fs::write(dir.path().join(PENDING_DIR), b"not a folder").unwrap();
         assert_eq!(install_pending_docs(dir.path(), KEY, rename), Pending::None);
         assert_eq!(read(dir.path(), PENDING_DIR), "not a folder");
@@ -2513,15 +2867,27 @@ mod tests {
         assert!(!current.exists(), "the retired batch goes once released");
     }
 
-    /// The staging record names the folder as written: on a case-sensitive
-    /// volume `App` and `app` are two folders, and one never sweeps the
-    /// other's stagings.
+    /// The staging record preserves case on case-sensitive Unix volumes so
+    /// `App` and `app` never sweep each other's stagings; on Windows,
+    /// `folder_id` normalizes canonical paths case-insensitively and alias
+    /// equivalence is pinned by `folder_id_and_batch_lock_share_namespace_across_symlink_or_junction`.
+    #[cfg(not(windows))]
     #[test]
     fn the_staging_record_of_a_folder_is_not_the_record_of_its_other_case() {
         let upper = staging_record(Path::new("/portable/App"));
         let lower = staging_record(Path::new("/portable/app"));
         assert_ne!(upper, lower);
         assert_eq!(upper, staging_record(Path::new("/portable/App")));
+    }
+
+    #[test]
+    fn plain_windows_path_strips_verbatim_prefixes_for_legacy_mutex_compatibility() {
+        assert_eq!(plain_windows_path(r"\\?\C:\AeroFTP"), r"C:\AeroFTP");
+        assert_eq!(
+            plain_windows_path(r"\\?\UNC\server\share\AeroFTP"),
+            r"\\server\share\AeroFTP"
+        );
+        assert_eq!(plain_windows_path(r"C:\AeroFTP"), r"C:\AeroFTP");
     }
 
     /// A lock released only after the deadline is not taken: the last pause
@@ -2689,7 +3055,7 @@ mod tests {
     /// batch is reused (staging_returns_the_key_its_batch_carries).
     #[test]
     fn a_batch_of_this_exe_that_lacks_a_document_is_staged_again() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = FixtureDir::new();
         let (stage, exe_b, key_b, readme_b) = new_exe(b"B");
         let license_b = stage.path().join("LICENSE.txt");
         std::fs::write(&license_b, "license of B").unwrap();
@@ -2707,13 +3073,33 @@ mod tests {
         assert_eq!(read(&next, STAGING_ID_FILE), restaged);
         assert_eq!(read(&next, "README.txt"), "readme of B");
         assert_eq!(read(&next, "LICENSE.txt"), "license of B");
-        // A document that cannot be removed (here a folder at its name): the
-        // batch cannot be staged again, and the staging fails.
+        // A document that cannot be removed (here a folder at its name): when
+        // PREV_DIR is free, same-key restaging sets the old batch aside at
+        // PREV_DIR (preserving the user's folder untouched) and publishes the
+        // installable replacement at NEXT_DIR.
         std::fs::remove_file(next.join("README.txt")).unwrap();
         std::fs::remove_file(next.join("LICENSE.txt")).unwrap();
         std::fs::create_dir(next.join("LICENSE.txt")).unwrap();
-        assert!(stage_pending_docs(dir.path(), &exe_b, &docs, "c").is_err());
+        let restaged2 = stage_pending_docs(dir.path(), &exe_b, &docs, "c")
+            .unwrap()
+            .expect("restaged with free PREV_DIR");
+        let prev = dir.path().join(PREV_DIR);
+        assert!(
+            prev.join("LICENSE.txt").is_dir(),
+            "old batch's unremovable folder is preserved at PREV_DIR"
+        );
+        assert_eq!(read(&next, STAGING_ID_FILE), restaged2);
+        assert_eq!(read(&next, "README.txt"), "readme of B");
+        assert_eq!(read(&next, "LICENSE.txt"), "license of B");
+        // When PREV_DIR is occupied (here still holding that unremovable folder),
+        // a further incomplete-batch restage cannot set NEXT_DIR aside and fails,
+        // leaving NEXT_DIR and PREV_DIR untouched.
+        std::fs::remove_file(next.join("README.txt")).unwrap();
+        std::fs::remove_file(next.join("LICENSE.txt")).unwrap();
+        std::fs::create_dir(next.join("LICENSE.txt")).unwrap();
+        assert!(stage_pending_docs(dir.path(), &exe_b, &docs, "d").is_err());
         assert!(next.join("LICENSE.txt").is_dir());
+        assert!(prev.join("LICENSE.txt").is_dir());
     }
 
     /// The running exe B's notices wait in the next batch (an older exe's
@@ -2733,7 +3119,7 @@ mod tests {
         };
         // B's held batch in the next slot.
         let setup = || {
-            let dir = tempfile::tempdir().unwrap();
+            let dir = FixtureDir::new();
             std::fs::write(dir.path().join(NOTICES), "installed notices").unwrap();
             let current = dir.path().join(PENDING_DIR);
             std::fs::create_dir(&current).unwrap();
@@ -2804,7 +3190,7 @@ mod tests {
     /// readable batch of another exe is left untouched.
     #[test]
     fn a_next_batch_whose_key_cannot_be_read_yet_is_installed_by_the_same_start() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = FixtureDir::new();
         for name in DOCS {
             std::fs::write(dir.path().join(name), format!("old {name}")).unwrap();
         }
@@ -2885,7 +3271,7 @@ mod tests {
     #[test]
     fn staging_fails_without_dropping_another_exes_batch_when_prev_is_occupied() {
         const NOTICES: &str = "THIRD-PARTY-NOTICES.md";
-        let dir = tempfile::tempdir().unwrap();
+        let dir = FixtureDir::new();
         std::fs::write(dir.path().join(NOTICES), "installed notices").unwrap();
         let (stage_b, exe_b, key_b, _) = new_exe(b"B");
         let notices_b = stage_b.path().join(NOTICES);
@@ -2923,7 +3309,7 @@ mod tests {
     #[test]
     fn an_unowned_folder_with_a_key_at_prev_survives_promotion_and_staging_while_owned_batches_go()
     {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = FixtureDir::new();
         std::fs::write(dir.path().join("README.txt"), "installed").unwrap();
         let prev = dir.path().join(PREV_DIR);
         std::fs::create_dir(&prev).unwrap();
@@ -3034,7 +3420,7 @@ mod tests {
     /// and leaves the replacement batch whole.
     #[test]
     fn discard_waits_for_the_lock_and_keeps_a_replacement_batch_published_before_it_runs() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = FixtureDir::new();
         let (_stage_a, exe_a, _key_a, readme_a) = new_exe(b"A");
         let token_a = stage_pending_docs(dir.path(), &exe_a, &[(&readme_a, "README.txt")], "a")
             .unwrap()
@@ -3071,7 +3457,7 @@ mod tests {
     /// registered AeroFTP batch is removed.
     #[test]
     fn discard_refuses_an_unowned_folder_even_with_matching_key_and_removes_owned_batch() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = FixtureDir::new();
         let (_stage, exe_b, key_b, readme_b) = new_exe(b"B");
         let next = dir.path().join(NEXT_DIR);
         let unrecorded_id = "11".repeat(16);
@@ -3102,6 +3488,7 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let orig = root.path().join("portable-a");
         std::fs::create_dir(&orig).unwrap();
+        let _orig_guard = FolderArtifactsGuard::new(&orig);
         std::fs::write(orig.join(NOTICES), "installed").unwrap();
         let (stage_b, exe_b, key_b, _) = new_exe(b"B");
         let notices_b = stage_b.path().join(NOTICES);
@@ -3116,6 +3503,7 @@ mod tests {
         let _ = std::fs::remove_file(temp_batch_record(&orig));
         let moved = root.path().join("portable-moved");
         std::fs::rename(&orig, &moved).unwrap();
+        let _moved_guard = FolderArtifactsGuard::new(&moved);
         assert!(is_owned_batch(&moved, &moved.join(PREV_DIR)));
         assert!(is_owned_batch(&moved, &moved.join(NEXT_DIR)));
         // C promotes in the moved folder and retires B's set-aside batch.
@@ -3139,7 +3527,7 @@ mod tests {
     /// stay owned, and a retry completes cleanly.
     #[test]
     fn a_failed_record_rewrite_keeps_previous_ids_owned_and_allows_retry() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = FixtureDir::new();
         let (_stage, exe_b, _key_b, readme_b) = new_exe(b"B");
         let token_b = stage_pending_docs(dir.path(), &exe_b, &[(&readme_b, "README.txt")], "b")
             .unwrap()
@@ -3174,7 +3562,7 @@ mod tests {
             std::fs::write(&path, format!("notices of {who}")).unwrap();
             path
         };
-        let dir = tempfile::tempdir().unwrap();
+        let dir = FixtureDir::new();
         std::fs::write(dir.path().join(NOTICES), "installed").unwrap();
         let (stage_b, exe_b, key_b, _) = new_exe(b"B");
         let notices_b = notices_of(&stage_b, "B");
@@ -3200,7 +3588,7 @@ mod tests {
         assert_eq!(read(dir.path(), NOTICES), "notices of B");
         assert!(!prev.exists());
         // Control: when C does replace B, C's promotion retires B's PREV_DIR batch.
-        let dir2 = tempfile::tempdir().unwrap();
+        let dir2 = FixtureDir::new();
         std::fs::write(dir2.path().join(NOTICES), "installed").unwrap();
         stage_pending_docs(dir2.path(), &exe_b, &[(&notices_b, NOTICES)], "b2").unwrap();
         stage_pending_docs(dir2.path(), &exe_c, &[(&notices_c, NOTICES)], "c2").unwrap();
@@ -3218,7 +3606,7 @@ mod tests {
     /// ledger accepts a new record and keeps its previous IDs.
     #[test]
     fn an_unrecognized_ledger_file_stops_staging_unchanged_and_a_valid_ledger_accepts_records() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = FixtureDir::new();
         let (_stage, exe_b, _key_b, readme_b) = new_exe(b"B");
         let ledger = owned_batch_record(dir.path());
         let binary = [0xffu8, 0x00, 0xfe, 0x01, 0x80];
@@ -3252,7 +3640,7 @@ mod tests {
     #[test]
     fn a_retry_with_corrected_document_contents_for_the_same_exe_is_restaged() {
         const NOTICES: &str = "THIRD-PARTY-NOTICES.md";
-        let dir = tempfile::tempdir().unwrap();
+        let dir = FixtureDir::new();
         let (stage, exe_b, _key_b, _) = new_exe(b"B");
         let notices = stage.path().join(NOTICES);
         std::fs::write(&notices, "notices v1").unwrap();
@@ -3288,7 +3676,7 @@ mod tests {
             std::fs::write(&path, format!("notices of {who}")).unwrap();
             path
         };
-        let dir = tempfile::tempdir().unwrap();
+        let dir = FixtureDir::new();
         std::fs::write(dir.path().join("AeroFTP.exe"), b"A").unwrap();
         std::fs::write(dir.path().join(NOTICES), "installed A").unwrap();
         let (stage_b, exe_b, _key_b, _) = new_exe(b"B");
@@ -3305,7 +3693,7 @@ mod tests {
         assert_eq!(read(&dir.path().join(NEXT_DIR), NOTICES), "notices of D");
         // Also if an abandoned B batch already sits in PREV_DIR while A's own
         // held batch sits in NEXT_DIR, staging C reclaims abandoned B and keeps A.
-        let dir2 = tempfile::tempdir().unwrap();
+        let dir2 = FixtureDir::new();
         std::fs::write(dir2.path().join("AeroFTP.exe"), b"A").unwrap();
         let key_a = exe_key(&dir2.path().join("AeroFTP.exe")).unwrap();
         let (stage_a, exe_a, _, _) = new_exe(b"A");
@@ -3327,7 +3715,7 @@ mod tests {
     fn a_batch_whose_exe_key_is_held_during_discard_stays_recoverable() {
         use std::os::windows::fs::OpenOptionsExt;
         const FILE_SHARE_READ: u32 = 1;
-        let dir = tempfile::tempdir().unwrap();
+        let dir = FixtureDir::new();
         let (_stage_b, exe_b, _key_b, readme_b) = new_exe(b"B");
         let token_b = stage_pending_docs(dir.path(), &exe_b, &[(&readme_b, "README.txt")], "b")
             .unwrap()
@@ -3357,7 +3745,7 @@ mod tests {
     #[test]
     fn a_batch_whose_exe_key_cannot_be_removed_during_discard_stays_recoverable() {
         use std::os::unix::fs::PermissionsExt;
-        let dir = tempfile::tempdir().unwrap();
+        let dir = FixtureDir::new();
         let (_stage_b, exe_b, _key_b, readme_b) = new_exe(b"B");
         let token_b = stage_pending_docs(dir.path(), &exe_b, &[(&readme_b, "README.txt")], "b")
             .unwrap()
@@ -3521,7 +3909,7 @@ mod tests {
         };
         let own = || Some(KEY.to_string());
         // No batch: the key is not even read.
-        let dir = tempfile::tempdir().unwrap();
+        let dir = FixtureDir::new();
         assert_eq!(
             own_pending_notices(dir.path(), || panic!("no batch, no hash")),
             None
@@ -3537,7 +3925,7 @@ mod tests {
         // The same from the next batch: B's notices are looked up there,
         // then a staging of build C replaces the next batch; the path About
         // got still holds B's.
-        let dir = tempfile::tempdir().unwrap();
+        let dir = FixtureDir::new();
         notices(dir.path(), PENDING_DIR, "older-exe", "older");
         notices(dir.path(), NEXT_DIR, KEY, "notices of B");
         let offered_b = own_pending_notices(dir.path(), own).expect("B's next batch");
@@ -3560,7 +3948,7 @@ mod tests {
         // An editor held an older exe's current batch, so the promotion
         // failed and the pass installs from the next batch: the older exe's
         // notices are never offered, the next batch's are.
-        let dir = tempfile::tempdir().unwrap();
+        let dir = FixtureDir::new();
         notices(dir.path(), PENDING_DIR, "older-exe", "older");
         notices(dir.path(), NEXT_DIR, KEY, "own");
         let offered = own_pending_notices(dir.path(), own).expect("next batch");
@@ -3571,11 +3959,11 @@ mod tests {
         assert_eq!(own_pending_notices(dir.path(), own), None);
         // A next batch staged for an update, not yet swapped, is the new
         // exe's: the running one never offers it.
-        let dir = tempfile::tempdir().unwrap();
+        let dir = FixtureDir::new();
         notices(dir.path(), NEXT_DIR, "new-exe", "new");
         assert_eq!(own_pending_notices(dir.path(), own), None);
         // A batch without a key is nobody's.
-        let dir = tempfile::tempdir().unwrap();
+        let dir = FixtureDir::new();
         notices(dir.path(), PENDING_DIR, KEY, "own");
         std::fs::remove_file(dir.path().join(PENDING_DIR).join(KEY_FILE)).unwrap();
         assert_eq!(own_pending_notices(dir.path(), own), None);
@@ -3586,7 +3974,7 @@ mod tests {
         // A staging holds the lock while it writes its temporary folder and
         // publishes it; a pass started meanwhile waits, then finds the batch
         // whole, and the temporary folder was never removed under it.
-        let dir = tempfile::tempdir().unwrap();
+        let dir = FixtureDir::new();
         let exe_dir = dir.path().to_path_buf();
         let (locked_tx, locked_rx) = std::sync::mpsc::channel();
         let staging = {
@@ -3669,7 +4057,7 @@ mod tests {
 
     #[test]
     fn a_running_companion_at_aeroftp_app_exe_keeps_its_batch_when_aeroftp_exe_is_older() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = FixtureDir::new();
         let src = tempfile::tempdir().unwrap();
         let exe_a = dir.path().join("AeroFTP.exe");
         let exe_b = dir.path().join("aeroftp-app.exe");
@@ -3721,7 +4109,7 @@ mod tests {
 
     #[test]
     fn discard_pending_docs_within_times_out_while_lock_is_held_and_runs_after_release() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = FixtureDir::new();
         let src = tempfile::tempdir().unwrap();
         let exe = src.path().join("new.exe");
         let doc = src.path().join("README.txt");
@@ -3761,7 +4149,7 @@ mod tests {
     #[test]
     fn incomplete_executable_inventory_preserves_companion_batch_while_complete_inventory_reclaims_abandoned(
     ) {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = FixtureDir::new();
         let src = tempfile::tempdir().unwrap();
         let exe_a = dir.path().join("AeroFTP.exe");
         let exe_b = src.path().join("b.exe");
@@ -3825,7 +4213,7 @@ mod tests {
 
     #[test]
     fn a_retry_that_omits_a_previously_staged_document_restages_instead_of_reusing() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = FixtureDir::new();
         let src = tempfile::tempdir().unwrap();
         let exe = src.path().join("new.exe");
         let marker = src.path().join("portable.marker");
@@ -3877,7 +4265,7 @@ mod tests {
 
     #[test]
     fn staging_leaves_next_batch_intact_when_its_key_is_unreadable() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = FixtureDir::new();
         let src = tempfile::tempdir().unwrap();
         let exe_b = src.path().join("b.exe");
         let exe_c = src.path().join("c.exe");
@@ -3955,7 +4343,7 @@ mod tests {
     #[test]
     fn install_pass_ignores_unowned_folders_with_matching_key_in_every_slot() {
         for slot_name in [PENDING_DIR, NEXT_DIR, PREV_DIR] {
-            let dir = tempfile::tempdir().unwrap();
+            let dir = FixtureDir::new();
             std::fs::write(dir.path().join("README.txt"), "installed readme").unwrap();
             let slot_dir = dir.path().join(slot_name);
             std::fs::create_dir(&slot_dir).unwrap();
@@ -4010,7 +4398,7 @@ mod tests {
 
         // When no slot is owned (even with matching keys in all three slots),
         // lookup returns None.
-        let dir2 = tempfile::tempdir().unwrap();
+        let dir2 = FixtureDir::new();
         for slot_name in [NEXT_DIR, PENDING_DIR, PREV_DIR] {
             let slot_dir = dir2.path().join(slot_name);
             std::fs::create_dir(&slot_dir).unwrap();
@@ -4317,6 +4705,617 @@ mod tests {
             Pending::Docs(vec![("THIRD-PARTY-NOTICES.md", Outcome::Installed)])
         );
         assert_eq!(read(dir.path(), "THIRD-PARTY-NOTICES.md"), "notices of B");
+    }
+
+    #[test]
+    fn folder_id_and_batch_lock_share_namespace_across_symlink_or_junction() {
+        let root = tempfile::tempdir().unwrap();
+        let real = root.path().join("real-app");
+        let alias = root.path().join("alias-app");
+        std::fs::create_dir(&real).unwrap();
+        let _guard = FolderArtifactsGuard::new(&real);
+
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&real, &alias).unwrap();
+        #[cfg(windows)]
+        {
+            let status = std::process::Command::new("cmd.exe")
+                .args(["/D", "/C", "mklink", "/J"])
+                .arg(&alias)
+                .arg(&real)
+                .status()
+                .expect("mklink /J");
+            assert!(status.success(), "mklink /J must succeed");
+        }
+
+        assert_eq!(
+            folder_id(&alias),
+            folder_id(&real),
+            "junction/symlink and real folder must derive the same folder_id"
+        );
+
+        let (locked_tx, locked_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let alias_for_holder = alias.clone();
+        let holder = std::thread::spawn(move || {
+            let _lock = lock_batches(&alias_for_holder).expect("lock through alias");
+            locked_tx.send(()).unwrap();
+            release_rx.recv().unwrap();
+        });
+        locked_rx.recv().unwrap();
+
+        let err = lock_batches_within(&real, Some(Duration::from_millis(60)))
+            .err()
+            .expect("real path must see alias lock as held");
+        assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+
+        let acquired = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let acquired_clone = std::sync::Arc::clone(&acquired);
+        let real_for_waiter = real.clone();
+        let waiter = std::thread::spawn(move || {
+            let _lock = lock_batches(&real_for_waiter).expect("lock through real path");
+            acquired_clone.store(true, std::sync::atomic::Ordering::SeqCst);
+        });
+        std::thread::sleep(Duration::from_millis(50));
+        assert!(
+            !acquired.load(std::sync::atomic::Ordering::SeqCst),
+            "second lock acquisition must wait while alias holds the lock"
+        );
+        release_tx.send(()).unwrap();
+        holder.join().unwrap();
+        waiter.join().unwrap();
+        assert!(acquired.load(std::sync::atomic::Ordering::SeqCst));
+
+        // Mirror-only recovery across alias and real path: stage through alias,
+        // delete the durable ledger in `exe_dir`, and verify the real path still
+        // recognizes and installs the batch via the shared canonical `.batches` mirror.
+        let src = tempfile::tempdir().unwrap();
+        let exe = src.path().join("AeroFTP.exe");
+        let notices = src.path().join("THIRD-PARTY-NOTICES.md");
+        std::fs::write(&exe, b"alias-recovery-exe").unwrap();
+        std::fs::write(&notices, "notices via alias").unwrap();
+        let key = exe_key(&exe).unwrap();
+        stage_pending_docs(
+            &alias,
+            &exe,
+            &[(&notices, "THIRD-PARTY-NOTICES.md")],
+            "alias-mirror",
+        )
+        .unwrap();
+        assert_eq!(temp_batch_record(&alias), temp_batch_record(&real));
+        assert_eq!(staging_record(&alias), staging_record(&real));
+        std::fs::remove_file(owned_batch_record(&real)).unwrap();
+        assert!(is_owned_batch(&real, &real.join(NEXT_DIR)));
+        assert_eq!(
+            install_pending_docs(&real, &key, rename),
+            Pending::Docs(vec![("THIRD-PARTY-NOTICES.md", Outcome::Installed)])
+        );
+        assert_eq!(read(&real, "THIRD-PARTY-NOTICES.md"), "notices via alias");
+
+        // Remove the alias before `root` drops so Windows cleans up the junction cleanly.
+        #[cfg(windows)]
+        let _ = std::fs::remove_dir(&alias);
+        #[cfg(unix)]
+        let _ = std::fs::remove_file(&alias);
+    }
+
+    #[test]
+    fn timed_out_discard_persists_token_cancellation_resolved_on_next_pass() {
+        let dir = FixtureDir::new();
+        let src = tempfile::tempdir().unwrap();
+        let exe_a = src.path().join("exe-a.exe");
+        let exe_b = src.path().join("exe-b.exe");
+        let notice_a = src.path().join("a.md");
+        let notice_b = src.path().join("b.md");
+        std::fs::write(&exe_a, b"build-A").unwrap();
+        std::fs::write(&exe_b, b"build-B").unwrap();
+        std::fs::write(&notice_a, "notices A").unwrap();
+        std::fs::write(&notice_b, "notices B").unwrap();
+        let key_a = exe_key(&exe_a).unwrap();
+        let key_b = exe_key(&exe_b).unwrap();
+
+        // Stage A's live batch, then stage B (which sets A aside in PREV_DIR).
+        stage_pending_docs(
+            dir.path(),
+            &exe_a,
+            &[(&notice_a, "THIRD-PARTY-NOTICES.md")],
+            "a",
+        )
+        .unwrap();
+        let token_b = stage_pending_docs(
+            dir.path(),
+            &exe_b,
+            &[(&notice_b, "THIRD-PARTY-NOTICES.md")],
+            "b",
+        )
+        .unwrap()
+        .unwrap();
+        assert!(dir.path().join(PREV_DIR).is_dir());
+
+        // Hold batch lock on another thread while `discard_pending_docs_within`
+        // times out: it must persist the token-scoped cancellation marker.
+        let exe_dir = dir.path().to_path_buf();
+        let (locked_tx, locked_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let holder = std::thread::spawn(move || {
+            let _lock = lock_batches(&exe_dir).unwrap();
+            locked_tx.send(()).unwrap();
+            release_rx.recv().unwrap();
+        });
+        locked_rx.recv().unwrap();
+
+        assert!(!discard_pending_docs_within(
+            dir.path(),
+            &token_b,
+            Some(Duration::from_millis(50))
+        ));
+        assert!(
+            cancel_marker_path(dir.path(), &token_b).is_file(),
+            "timed-out discard must persist a token-scoped cancellation marker"
+        );
+        release_tx.send(()).unwrap();
+        holder.join().unwrap();
+
+        // Even if the next launch runs with exe B's key, `install_pending_docs`
+        // applies the persisted cancellation BEFORE installing: B's failed batch
+        // is discarded (never installed!), A's set-aside batch is restored to
+        // NEXT_DIR, and the cancel marker is removed.
+        assert_eq!(
+            install_pending_docs(dir.path(), &key_b, rename),
+            Pending::None
+        );
+        assert!(!dir.path().join("THIRD-PARTY-NOTICES.md").exists());
+        assert!(!cancel_marker_path(dir.path(), &token_b).exists());
+        assert_eq!(read(&dir.path().join(NEXT_DIR), KEY_FILE), key_a);
+        // A can now install its restored batch cleanly.
+        assert_eq!(
+            install_pending_docs(dir.path(), &key_a, rename),
+            Pending::Docs(vec![("THIRD-PARTY-NOTICES.md", Outcome::Installed)])
+        );
+        assert_eq!(read(dir.path(), "THIRD-PARTY-NOTICES.md"), "notices A");
+
+        // Incomplete cancellation 1: temporarily unreadable `staging.id` keeps
+        // the cancellation marker active and blocks install/probe until readable.
+        let dir2 = FixtureDir::new();
+        let token_b2 = stage_pending_docs(
+            dir2.path(),
+            &exe_b,
+            &[(&notice_b, "THIRD-PARTY-NOTICES.md")],
+            "b2",
+        )
+        .unwrap()
+        .unwrap();
+        record_cancelled_batch(dir2.path(), &token_b2);
+        let blocked = install_pass_with(dir2.path(), &key_b, None, rename, |_| {
+            Err(io::Error::new(io::ErrorKind::PermissionDenied, "locked id"))
+        });
+        assert!(matches!(blocked, Pending::Unavailable(_)));
+        assert!(
+            cancel_marker_path(dir2.path(), &token_b2).is_file(),
+            "unreadable staging.id must keep cancel marker active"
+        );
+        assert!(!dir2.path().join("THIRD-PARTY-NOTICES.md").exists());
+        assert_eq!(
+            probe_portable_marker_with_read_id(
+                dir2.path(),
+                || Some(key_b.clone()),
+                None,
+                |_| Err(io::Error::new(io::ErrorKind::PermissionDenied, "locked id")),
+            ),
+            PortableMarkerState::Pending
+        );
+        // Once readable again, the cancellation finishes and B is not installed.
+        assert_eq!(
+            install_pending_docs(dir2.path(), &key_b, rename),
+            Pending::None
+        );
+        assert!(!cancel_marker_path(dir2.path(), &token_b2).exists());
+        assert!(!dir2.path().join(NEXT_DIR).exists());
+
+        // Incomplete cancellation 2: a pending document slot that cannot be
+        // removed yet (simulated by a directory at the named document path)
+        // keeps `STAGING_ID_FILE` and the cancel marker active until cleared,
+        // preventing install and notices lookup on the cancelled batch.
+        let dir3 = FixtureDir::new();
+        let token_b3 = stage_pending_docs(
+            dir3.path(),
+            &exe_b,
+            &[(&notice_b, "THIRD-PARTY-NOTICES.md")],
+            "b3",
+        )
+        .unwrap()
+        .unwrap();
+        let next3 = dir3.path().join(NEXT_DIR);
+        let blocker = next3.join("THIRD-PARTY-NOTICES.md");
+        std::fs::remove_file(&blocker).unwrap();
+        std::fs::create_dir(&blocker).unwrap();
+        record_cancelled_batch(dir3.path(), &token_b3);
+        assert!(matches!(
+            install_pending_docs(dir3.path(), &key_b, rename),
+            Pending::Unavailable(_)
+        ));
+        assert!(
+            cancel_marker_path(dir3.path(), &token_b3).is_file(),
+            "partial cleanup must keep cancel marker active"
+        );
+        assert_eq!(
+            own_pending_notices(dir3.path(), || Some(key_b.clone())),
+            None
+        );
+        // Removing the obstruction allows the next pass to finish cancellation.
+        std::fs::remove_dir(&blocker).unwrap();
+        assert_eq!(
+            install_pending_docs(dir3.path(), &key_b, rename),
+            Pending::None
+        );
+        assert!(!cancel_marker_path(dir3.path(), &token_b3).exists());
+        assert!(!next3.exists());
+    }
+
+    #[test]
+    fn ledger_registration_failure_restores_set_aside_batch_to_next_dir() {
+        let dir = FixtureDir::new();
+        let src = tempfile::tempdir().unwrap();
+        let exe_b = src.path().join("exe-b.exe");
+        let notice_orig = src.path().join("orig.md");
+        let notice_new = src.path().join("new.md");
+        std::fs::write(&exe_b, b"build-B-ledger-rb").unwrap();
+        std::fs::copy(&exe_b, dir.path().join("AeroFTP.exe")).unwrap();
+        std::fs::write(&notice_orig, "original notices").unwrap();
+        std::fs::write(&notice_new, "replacement notices").unwrap();
+
+        stage_pending_docs(
+            dir.path(),
+            &exe_b,
+            &[(&notice_orig, "THIRD-PARTY-NOTICES.md")],
+            "orig",
+        )
+        .unwrap();
+
+        // Inject a failure in `record` AFTER `make_room` has moved B's live
+        // batch from NEXT_DIR to PREV_DIR: rollback must restore B's batch to
+        // NEXT_DIR without calling `publish`.
+        let published_called = Cell::new(false);
+        let err = stage_with_commit(
+            dir.path(),
+            &exe_b,
+            &[(&notice_new, "THIRD-PARTY-NOTICES.md")],
+            "fail-ledger",
+            None,
+            |_, _| Err(io::Error::other("injected ledger write failure")),
+            |_, _| {
+                published_called.set(true);
+                Ok(())
+            },
+        )
+        .expect_err("failed ledger registration must return error");
+        assert!(err.contains("injected ledger write failure"), "{err}");
+        assert!(
+            !published_called.get(),
+            "publish must not run when ledger registration fails"
+        );
+        assert!(
+            !dir.path().join(PREV_DIR).exists(),
+            "rollback must restore set-aside batch from PREV_DIR to NEXT_DIR"
+        );
+        assert_eq!(
+            read(&dir.path().join(NEXT_DIR), "THIRD-PARTY-NOTICES.md"),
+            "original notices"
+        );
+    }
+
+    #[test]
+    fn fixture_dir_drop_removes_temp_artifacts() {
+        let src = tempfile::tempdir().unwrap();
+        let exe = src.path().join("AeroFTP.exe");
+        let notices = src.path().join("THIRD-PARTY-NOTICES.md");
+        std::fs::write(&exe, b"cleanup-exe").unwrap();
+        std::fs::write(&notices, "cleanup notices").unwrap();
+        let key = exe_key(&exe).unwrap();
+
+        let (batches_path, snapshot_path, id);
+        {
+            let dir = FixtureDir::new();
+            id = folder_id(dir.path());
+            batches_path = temp_batch_record(dir.path());
+            stage_pending_docs(
+                dir.path(),
+                &exe,
+                &[(&notices, "THIRD-PARTY-NOTICES.md")],
+                "cleanup",
+            )
+            .unwrap();
+            assert!(batches_path.is_file());
+            snapshot_path =
+                own_pending_notices(dir.path(), || Some(key.clone())).expect("snapshot");
+            assert!(snapshot_path.is_file());
+        }
+        assert!(
+            !batches_path.exists(),
+            "FixtureDir::drop must remove .batches mirror"
+        );
+        assert!(
+            !snapshot_path.exists(),
+            "FixtureDir::drop must remove About notice snapshot"
+        );
+        #[cfg(not(windows))]
+        assert!(
+            !std::env::temp_dir()
+                .join(format!("aeroftp-pending-docs-{id}.lock"))
+                .exists(),
+            "FixtureDir::drop must remove Unix lock file"
+        );
+        let _ = id;
+    }
+
+    #[test]
+    fn same_exe_restage_keeps_live_batch_recoverable_on_publish_failure_and_replaces_on_retry() {
+        let dir = FixtureDir::new();
+        let src = tempfile::tempdir().unwrap();
+        let exe_b = src.path().join("AeroFTP.exe");
+        std::fs::write(&exe_b, b"build-B-exe").unwrap();
+        // Install build B in `exe_dir` so it is a live installed executable.
+        std::fs::copy(&exe_b, dir.path().join("AeroFTP.exe")).unwrap();
+        let key_b = exe_key(&exe_b).unwrap();
+        let orig_notices = src.path().join("orig.md");
+        let fixed_notices = src.path().join("fixed.md");
+        std::fs::write(&orig_notices, "original notices of B").unwrap();
+        std::fs::write(&fixed_notices, "corrected notices of B").unwrap();
+
+        stage_pending_docs(
+            dir.path(),
+            &exe_b,
+            &[(&orig_notices, "THIRD-PARTY-NOTICES.md")],
+            "b-orig",
+        )
+        .unwrap();
+
+        // Same-exe restage with corrected notices rejects byte-for-byte reuse,
+        // and publication fails: B's live original batch must be restored.
+        let err = stage_with(
+            dir.path(),
+            &exe_b,
+            &[(&fixed_notices, "THIRD-PARTY-NOTICES.md")],
+            "b-fail",
+            |_, _| {
+                Err(io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    "injected publish error",
+                ))
+            },
+        )
+        .expect_err("failed publish must return error");
+        assert!(err.contains("injected publish error"), "{err}");
+        assert!(
+            !dir.path().join(PREV_DIR).exists(),
+            "failed same-key restage must restore NEXT_DIR without leaving PREV_DIR behind"
+        );
+        assert_eq!(
+            read(&dir.path().join(NEXT_DIR), "THIRD-PARTY-NOTICES.md"),
+            "original notices of B"
+        );
+        // Verify B can still install its original pending notices when editor closes.
+        assert_eq!(
+            install_pending_docs(dir.path(), &key_b, rename),
+            Pending::Docs(vec![("THIRD-PARTY-NOTICES.md", Outcome::Installed)])
+        );
+        assert_eq!(
+            read(dir.path(), "THIRD-PARTY-NOTICES.md"),
+            "original notices of B"
+        );
+
+        // Control: stage original again, then a successful same-key retry
+        // installs the corrected notices and retires the superseded PREV_DIR.
+        stage_pending_docs(
+            dir.path(),
+            &exe_b,
+            &[(&orig_notices, "THIRD-PARTY-NOTICES.md")],
+            "b-orig-2",
+        )
+        .unwrap();
+        stage_pending_docs(
+            dir.path(),
+            &exe_b,
+            &[(&fixed_notices, "THIRD-PARTY-NOTICES.md")],
+            "b-fixed",
+        )
+        .unwrap();
+        assert!(
+            !dir.path().join(PREV_DIR).exists(),
+            "successful same-key restage must retire the superseded PREV_DIR batch"
+        );
+        assert_eq!(
+            install_pending_docs(dir.path(), &key_b, rename),
+            Pending::Docs(vec![("THIRD-PARTY-NOTICES.md", Outcome::Installed)])
+        );
+        assert_eq!(
+            read(dir.path(), "THIRD-PARTY-NOTICES.md"),
+            "corrected notices of B"
+        );
+    }
+
+    #[test]
+    fn promotion_does_not_overwrite_empty_unowned_pending_dir() {
+        let dir = FixtureDir::new();
+        let src = tempfile::tempdir().unwrap();
+        let exe_b = src.path().join("AeroFTP.exe");
+        let notices_b = src.path().join("THIRD-PARTY-NOTICES.md");
+        std::fs::write(&exe_b, b"build-B-promo").unwrap();
+        std::fs::write(&notices_b, "notices of B").unwrap();
+        let key_b = exe_key(&exe_b).unwrap();
+
+        // User's empty unowned directory at PENDING_DIR.
+        let pending = dir.path().join(PENDING_DIR);
+        std::fs::create_dir(&pending).unwrap();
+
+        stage_pending_docs(
+            dir.path(),
+            &exe_b,
+            &[(&notices_b, "THIRD-PARTY-NOTICES.md")],
+            "b-promo",
+        )
+        .unwrap();
+
+        assert_eq!(
+            install_pending_docs(dir.path(), &key_b, rename),
+            Pending::Docs(vec![("THIRD-PARTY-NOTICES.md", Outcome::Installed)])
+        );
+        assert_eq!(read(dir.path(), "THIRD-PARTY-NOTICES.md"), "notices of B");
+        assert!(
+            pending.is_dir(),
+            "empty unowned PENDING_DIR must survive promotion and cleanup"
+        );
+        assert!(
+            !dir.path().join(NEXT_DIR).exists(),
+            "NEXT_DIR was installed directly and cleaned up"
+        );
+
+        // Control: when PENDING_DIR is free, promotion moves NEXT_DIR into
+        // PENDING_DIR (keeping held documents in PENDING_DIR).
+        std::fs::remove_dir(&pending).unwrap();
+        stage_pending_docs(
+            dir.path(),
+            &exe_b,
+            &[(&notices_b, "THIRD-PARTY-NOTICES.md")],
+            "b-promo-free",
+        )
+        .unwrap();
+        let busy = RefCell::new(vec!["THIRD-PARTY-NOTICES.md"]);
+        assert_eq!(
+            install_pending_docs(dir.path(), &key_b, held(&busy, ERROR_SHARING_VIOLATION)),
+            Pending::Docs(vec![("THIRD-PARTY-NOTICES.md", Outcome::InUse)])
+        );
+        assert!(
+            pending.join("THIRD-PARTY-NOTICES.md").is_file(),
+            "free PENDING_DIR slot must permit promotion from NEXT_DIR"
+        );
+        assert!(!dir.path().join(NEXT_DIR).exists());
+
+        // Race fallback: simulate an empty unowned PENDING_DIR appearing AFTER
+        // the metadata check right before `rename_no_replace` executes. The
+        // no-replace rename must refuse to overwrite it and `install_pass_with_promote`
+        // must fall back to installing directly from NEXT_DIR while leaving the
+        // newly created empty PENDING_DIR intact.
+        let dir2 = FixtureDir::new();
+        let pending2 = dir2.path().join(PENDING_DIR);
+        stage_pending_docs(
+            dir2.path(),
+            &exe_b,
+            &[(&notices_b, "THIRD-PARTY-NOTICES.md")],
+            "b-promo-race",
+        )
+        .unwrap();
+        let raced = install_pass_with_promote(
+            dir2.path(),
+            &key_b,
+            None,
+            rename,
+            |p| std::fs::read_to_string(p),
+            |from, to| {
+                // Destination appears after the caller's metadata check.
+                std::fs::create_dir(to)?;
+                rename_no_replace(from, to)
+            },
+        );
+        assert_eq!(
+            raced,
+            Pending::Docs(vec![("THIRD-PARTY-NOTICES.md", Outcome::Installed)])
+        );
+        assert_eq!(read(dir2.path(), "THIRD-PARTY-NOTICES.md"), "notices of B");
+        assert!(
+            pending2.is_dir(),
+            "raced empty unowned PENDING_DIR must not be overwritten by rename_no_replace"
+        );
+        assert!(!dir2.path().join(NEXT_DIR).exists());
+    }
+
+    #[test]
+    fn retry_held_tracks_newly_observed_held_documents_added_by_restage() {
+        let dir = FixtureDir::new();
+        let src = tempfile::tempdir().unwrap();
+        let exe_b = src.path().join("AeroFTP.exe");
+        let readme_b = src.path().join("README.txt");
+        let notices_b = src.path().join("THIRD-PARTY-NOTICES.md");
+        std::fs::write(&exe_b, b"build-B-retry").unwrap();
+        std::fs::write(&readme_b, "readme of B").unwrap();
+        std::fs::write(&notices_b, "notices of B").unwrap();
+        std::fs::copy(&exe_b, dir.path().join("AeroFTP.exe")).unwrap();
+        let key_b = exe_key(&exe_b).unwrap();
+
+        // First pass: only README.txt is staged and held.
+        stage_pending_docs(dir.path(), &exe_b, &[(&readme_b, "README.txt")], "b1").unwrap();
+        let busy = RefCell::new(vec!["README.txt"]);
+        let first = install_pending_docs(dir.path(), &key_b, held(&busy, ERROR_SHARING_VIOLATION));
+        assert_eq!(first, Pending::Docs(vec![("README.txt", Outcome::InUse)]));
+
+        // Before retry round 1, a same-exe restage adds THIRD-PARTY-NOTICES.md.
+        // On round 1 README installs, while THIRD-PARTY-NOTICES.md is held.
+        // On round 2 the hold clears and THIRD-PARTY-NOTICES.md installs.
+        stage_pending_docs(
+            dir.path(),
+            &exe_b,
+            &[
+                (&readme_b, "README.txt"),
+                (&notices_b, "THIRD-PARTY-NOTICES.md"),
+            ],
+            "b2",
+        )
+        .unwrap();
+        let round = Cell::new(0u32);
+        let outcome = retry_held(
+            dir.path(),
+            &key_b,
+            first,
+            4,
+            Duration::ZERO,
+            held(&busy, ERROR_SHARING_VIOLATION),
+            |_| {
+                let r = round.get() + 1;
+                round.set(r);
+                if r == 1 {
+                    *busy.borrow_mut() = vec!["THIRD-PARTY-NOTICES.md"];
+                } else if r == 2 {
+                    busy.borrow_mut().clear();
+                }
+            },
+        );
+        assert_eq!(
+            round.get(),
+            2,
+            "worker must retry for newly observed held notices and stop once installed"
+        );
+        assert_eq!(
+            outcome,
+            Pending::Docs(vec![
+                ("README.txt", Outcome::Installed),
+                ("THIRD-PARTY-NOTICES.md", Outcome::Installed),
+            ])
+        );
+        assert_eq!(read(dir.path(), "README.txt"), "readme of B");
+        assert_eq!(read(dir.path(), "THIRD-PARTY-NOTICES.md"), "notices of B");
+
+        // Control: when another pass finishes all pending work, worker stops immediately.
+        stage_pending_docs(dir.path(), &exe_b, &[(&readme_b, "README.txt")], "b3").unwrap();
+        *busy.borrow_mut() = vec!["README.txt"];
+        let first2 = install_pending_docs(dir.path(), &key_b, held(&busy, ERROR_SHARING_VIOLATION));
+        busy.borrow_mut().clear();
+        let rounds_ctrl = Cell::new(0u32);
+        let outcome2 = retry_held(
+            dir.path(),
+            &key_b,
+            first2,
+            4,
+            Duration::ZERO,
+            rename,
+            |_| {
+                rounds_ctrl.set(rounds_ctrl.get() + 1);
+            },
+        );
+        assert_eq!(rounds_ctrl.get(), 1);
+        assert_eq!(
+            outcome2,
+            Pending::Docs(vec![("README.txt", Outcome::Installed)])
+        );
     }
 
     #[test]

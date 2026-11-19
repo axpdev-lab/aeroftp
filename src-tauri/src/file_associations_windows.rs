@@ -138,7 +138,7 @@ pub fn status() -> Result<WindowsIntegrationStatus, String> {
 }
 
 fn read_status() -> Result<WindowsIntegrationStatus, String> {
-    if crate::portable::is_portable() {
+    if !crate::portable::is_confirmed_installed() {
         return Ok(WindowsIntegrationStatus {
             owned_formats: false,
             archive_formats: false,
@@ -367,7 +367,7 @@ pub fn apply(choices: Choices) -> Result<WindowsIntegrationStatus, String> {
     let _guard = OPERATION_LOCK
         .lock()
         .map_err(|_| "Windows integration lock is poisoned")?;
-    if crate::portable::is_portable() {
+    if !crate::portable::is_confirmed_installed() {
         return Err("Install AeroFTP before changing Windows integration".into());
     }
     let installation =
