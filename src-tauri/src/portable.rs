@@ -31,21 +31,73 @@ const AEROFTP_DATA_DEBUG_LEAF: &str = "aeroftp-dev";
 static PORTABLE_ROOT: OnceLock<Option<PathBuf>> = OnceLock::new();
 static LEGACY_APP_CONFIG_MIGRATED: OnceLock<()> = OnceLock::new();
 
+/// Resolve the portable root for `dir` using `cache`, synchronizing marker and
+/// pending-batch inspection under the `portable_docs` batch mutex so:
+/// 1. An install that moves `portable.marker` out of a pending batch during
+///    detection cannot cause both checks to miss and permanently cache `None`.
+/// 2. If this exe's owned pending batch holds `portable.marker`, portable mode
+///    resolves to `Ok(Some(dir))` immediately so no consumer ever initializes
+///    against the host configuration directory while startup finishes installing.
+/// 3. Transient lock/read uncertainty returns `Err(())` and leaves `cache`
+///    unset instead of conflating `Pending` with confirmed host mode (`Ok(None)`).
+#[cfg(any(windows, test))]
+fn resolve_portable_root_status<'a>(
+    cache: &'a OnceLock<Option<PathBuf>>,
+    dir: &Path,
+    own_key: impl FnOnce() -> Option<String>,
+    wait: Option<std::time::Duration>,
+) -> Result<Option<&'a Path>, ()> {
+    if let Some(cached) = cache.get() {
+        return Ok(cached.as_deref());
+    }
+    match crate::portable_docs::probe_portable_marker_within(dir, own_key, wait) {
+        crate::portable_docs::PortableMarkerState::Present => {
+            Ok(cache.get_or_init(|| Some(dir.to_path_buf())).as_deref())
+        }
+        crate::portable_docs::PortableMarkerState::Absent => {
+            Ok(cache.get_or_init(|| None).as_deref())
+        }
+        crate::portable_docs::PortableMarkerState::Pending => Err(()),
+    }
+}
+
 /// Resolve the portable root directory (the folder containing AeroFTP.exe
 /// and `portable.marker`). Returns `None` when not running as portable.
 fn portable_root() -> Option<&'static Path> {
-    PORTABLE_ROOT
-        .get_or_init(|| {
-            let exe = std::env::current_exe().ok()?;
-            let dir = exe.parent()?.to_path_buf();
-            let marker = dir.join(MARKER_FILENAME);
-            if marker.is_file() {
-                Some(dir)
-            } else {
-                None
-            }
-        })
-        .as_deref()
+    if let Some(cached) = PORTABLE_ROOT.get() {
+        return cached.as_deref();
+    }
+    let Ok(exe) = std::env::current_exe() else {
+        return PORTABLE_ROOT.get_or_init(|| None).as_deref();
+    };
+    let Some(dir) = exe.parent() else {
+        return PORTABLE_ROOT.get_or_init(|| None).as_deref();
+    };
+    #[cfg(any(windows, test))]
+    {
+        // Wait for the batch mutex (`None` = unbounded) so a consumer never
+        // falls back to the host config directory while startup is installing
+        // a staged `portable.marker`.
+        resolve_portable_root_status(
+            &PORTABLE_ROOT,
+            dir,
+            crate::portable_docs::running_exe_key,
+            None,
+        )
+        .unwrap_or_default()
+    }
+    #[cfg(not(any(windows, test)))]
+    {
+        PORTABLE_ROOT
+            .get_or_init(|| {
+                if dir.join(MARKER_FILENAME).is_file() {
+                    Some(dir.to_path_buf())
+                } else {
+                    None
+                }
+            })
+            .as_deref()
+    }
 }
 
 /// True when the running binary is the portable build.
@@ -2778,5 +2830,133 @@ mod secval_b_tests {
             !memory_back && !plugin_back,
             "files deleted from the data root came back from the legacy tree"
         );
+    }
+
+    #[test]
+    fn portable_root_does_not_negatively_cache_while_marker_is_staged_under_held_lock() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = tempfile::tempdir().unwrap();
+        let exe = src.path().join("AeroFTP.exe");
+        let marker_src = src.path().join("portable.marker");
+        std::fs::write(&exe, b"new portable exe").unwrap();
+        std::fs::write(&marker_src, b"portable").unwrap();
+        let key = crate::portable_docs::exe_key(&exe).unwrap();
+
+        // Marker is absent beside the exe, staged in NEXT_DIR instead.
+        crate::portable_docs::stage_pending_docs(
+            dir.path(),
+            &exe,
+            &[(&marker_src, "portable.marker")],
+            "portable-start",
+        )
+        .unwrap();
+        assert!(!dir.path().join(MARKER_FILENAME).exists());
+
+        // Hold the batch lock on a separate thread past the short startup wait.
+        let exe_dir = dir.path().to_path_buf();
+        let (locked_tx, locked_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let holder = std::thread::spawn(move || {
+            let _lock = crate::portable_docs::lock_batches(&exe_dir).unwrap();
+            locked_tx.send(()).unwrap();
+            release_rx.recv().unwrap();
+        });
+        locked_rx.recv().unwrap();
+
+        let first = crate::portable_docs::install_pending_docs_within(
+            dir.path(),
+            &key,
+            std::time::Duration::from_millis(50),
+            |from, to| std::fs::rename(from, to),
+        );
+        assert!(matches!(
+            first,
+            crate::portable_docs::Pending::Unavailable(_)
+        ));
+
+        // Lock timeout returns Err(()) (Pending) and leaves the cache unset
+        // instead of treating timeout as confirmed host mode (Ok(None)).
+        let cache = OnceLock::new();
+        assert_eq!(
+            resolve_portable_root_status(
+                &cache,
+                dir.path(),
+                || Some(key.clone()),
+                Some(std::time::Duration::from_millis(50)),
+            ),
+            Err(())
+        );
+        assert!(
+            cache.get().is_none(),
+            "lock timeout must leave portable cache unset"
+        );
+
+        // Production wait (`None`): blocks until the batch holder releases the
+        // lock, then atomically sees the owned staged marker and immediately
+        // resolves + caches `<exe-dir>` (`<exe-dir>/data`), never falling back
+        // to the host config directory.
+        let releaser = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(60));
+            release_tx.send(()).unwrap();
+            holder.join().unwrap();
+        });
+        let resolved = resolve_portable_root_status(&cache, dir.path(), || Some(key.clone()), None)
+            .expect("must not be pending after lock release")
+            .expect("portable root resolved from owned staged marker");
+        releaser.join().unwrap();
+        assert_eq!(
+            resolved.join(PORTABLE_DATA_DIRNAME),
+            dir.path().join("data")
+        );
+        assert!(cache.get().is_some());
+
+        // Atomic TOCTOU race test: installer holds the lock, moves
+        // `portable.marker` into `dir2` AND deletes the now-empty `NEXT_DIR`
+        // batch before releasing the lock while `resolve_portable_root_status`
+        // waits on the batch mutex. Because `Absent` is only confirmed under
+        // the lock, the probe sees the installed marker and never caches `None`.
+        let dir2 = tempfile::tempdir().unwrap();
+        crate::portable_docs::stage_pending_docs(
+            dir2.path(),
+            &exe,
+            &[(&marker_src, "portable.marker")],
+            "portable-race",
+        )
+        .unwrap();
+        let exe_dir2 = dir2.path().to_path_buf();
+        let (locked_tx2, locked_rx2) = std::sync::mpsc::channel();
+        let installer = std::thread::spawn(move || {
+            let lock = crate::portable_docs::lock_batches(&exe_dir2).unwrap();
+            locked_tx2.send(()).unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(80));
+            let next_dir = exe_dir2.join(crate::portable_docs::NEXT_DIR);
+            std::fs::rename(
+                next_dir.join(MARKER_FILENAME),
+                exe_dir2.join(MARKER_FILENAME),
+            )
+            .unwrap();
+            std::fs::remove_dir_all(&next_dir).unwrap();
+            drop(lock);
+        });
+        locked_rx2.recv().unwrap();
+        let cache2 = OnceLock::new();
+        let resolved2 =
+            resolve_portable_root_status(&cache2, dir2.path(), || Some(key.clone()), None)
+                .expect("atomic probe resolves")
+                .expect("atomic check must observe marker installed during mutex wait");
+        installer.join().unwrap();
+        assert_eq!(
+            resolved2.join(PORTABLE_DATA_DIRNAME),
+            dir2.path().join("data")
+        );
+
+        // Control: with no marker and no staged marker, confirmed `Ok(None)` is cached.
+        let plain = tempfile::tempdir().unwrap();
+        let plain_cache = OnceLock::new();
+        assert_eq!(
+            resolve_portable_root_status(&plain_cache, plain.path(), || Some(key.clone()), None),
+            Ok(None)
+        );
+        assert_eq!(plain_cache.get(), Some(&None));
     }
 }

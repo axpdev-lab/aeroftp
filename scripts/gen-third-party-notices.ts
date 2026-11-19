@@ -539,18 +539,55 @@ export function isGplCompatible(expr: string): boolean {
  * choices, both with BSD-3-Clause-Clear). A term keeps its exception
  * ("Apache-2.0 WITH LLVM-exception"). Null when the expression does not parse.
  */
+export const MAX_SPDX_ALTERNATIVES = 1024;
+
 export function spdxAlternatives(expr: string): string[][] | null {
   const tokens = tokenizeSpdx(expr);
   if (tokens.length === 0) return null;
   let pos = 0;
   const isOp = (t: string | undefined, op: string) => t !== undefined && t.toUpperCase() === op;
-  const and = (a: string[][], b: string[][]) => a.flatMap((x) => b.map((y) => [...new Set([...x, ...y])]));
+  const dedup = (lists: string[][]): string[][] => {
+    const seen = new Set<string>();
+    const out: string[][] = [];
+    for (const terms of lists) {
+      const unique = [...new Set(terms)];
+      const key = [...unique].sort().join('\u0000');
+      if (seen.has(key)) continue;
+      seen.add(key);
+      if (seen.size > MAX_SPDX_ALTERNATIVES) {
+        throw new Error(
+          `SPDX license expression exceeds ${MAX_SPDX_ALTERNATIVES} distinct alternatives: '${expr}'`
+        );
+      }
+      out.push(unique);
+    }
+    return out;
+  };
+  const and = (a: string[][], b: string[][]): string[][] => {
+    const seen = new Set<string>();
+    const out: string[][] = [];
+    for (const x of a) {
+      for (const y of b) {
+        const merged = [...new Set([...x, ...y])];
+        const key = [...merged].sort().join('\u0000');
+        if (seen.has(key)) continue;
+        seen.add(key);
+        if (seen.size > MAX_SPDX_ALTERNATIVES) {
+          throw new Error(
+            `SPDX license expression exceeds ${MAX_SPDX_ALTERNATIVES} distinct alternatives: '${expr}'`
+          );
+        }
+        out.push(merged);
+      }
+    }
+    return out;
+  };
   function parseOr(): string[][] | null {
     let res = parseAnd();
     while (res && isOp(tokens[pos], 'OR')) {
       pos++;
       const rhs = parseAnd();
-      res = rhs && [...res, ...rhs];
+      res = rhs && dedup([...res, ...rhs]);
     }
     return res;
   }
@@ -669,7 +706,7 @@ export function readPackageFiles(
     if (!fs.statSync(declaredPath).isFile()) {
       throw new Error(`Crate ${componentId} declared license_file "${declaredLicenseFile}", which is not a file at ${declaredPath}`);
     }
-    const filename = path.basename(declaredLicenseFile);
+    const filename = inside.split(path.sep).join('/');
     const content = fs.readFileSync(declaredPath, 'utf8').replace(/\r\n/g, '\n').trim();
     licenseFiles.push({ filename, content });
   }
@@ -836,7 +873,8 @@ function noticeWithNextLine(notice: string, lineAfter: (k: number) => string | u
       r.line === notice &&
       r.following.length > 0 &&
       r.following.every((f, k) => (lineAfter(k) ?? '').trim() === f) &&
-      (!r.citation || citationApplies(r.citation, where))
+      (!r.citation || citationApplies(r.citation, where)) &&
+      (!r.example || citationApplies(r.example, where))
   );
   if (reviewed) return reviewed.example || reviewed.citation ? '' : reviewed.notice;
   const following: string[] = [];
@@ -1463,16 +1501,16 @@ export function carriesWholeStandardText(id: string, standardText: string, fileT
 // license (a truncated text, an identifier mentioned beside another license)
 // carries no terms.
 export const REVIEWED_LICENSE_TERMS_FILE = path.join(__dirname, 'reviewed-license-terms.json');
-// `example`: the reviewed line is an example value in documentation, not a
-// notice of anyone: it gives no attribution.
+// `example` and `citation` suppressions apply only in the file they were
+// reviewed in: `{ package, version, file }`.
+type ReviewedScope = { package: string; version: string; file: string };
 type ReviewedNotice = {
   line: string;
   following: string[];
   notice: string;
   source: string;
-  example?: boolean;
-  // A citation applies only in the file it was reviewed in: `package`, `version`, `file`.
-  citation?: { package: string; version: string; file: string };
+  example?: ReviewedScope;
+  citation?: ReviewedScope;
 };
 let reviewedFile: Record<string, unknown> | undefined;
 const reviewedEntries = () => (reviewedFile ??= JSON.parse(fs.readFileSync(REVIEWED_LICENSE_TERMS_FILE, 'utf8')) as Record<string, unknown>);
@@ -1950,24 +1988,44 @@ function rustDepths(lines: string[]): number[] {
   return depths;
 }
 
-// The line where the Rust comment opened at `at` on line `open` ends: where
-// its depth returns to zero, or -1.
-function rustCloseLine(lines: string[], open: number, at: number): number {
+// Index just past the `*/` that drops an open Rust block comment's depth from
+// `startDepth` (> 0) back to zero before `upTo`, or -1 if it does not close.
+function rustOuterCloseEnd(line: string, startDepth: number, upTo: number): number {
+  let depth = startDepth;
+  for (let k = 0; k < upTo; k++) {
+    const c = line[k];
+    const n = line[k + 1];
+    if (c === '/' && n === '*') {
+      depth++;
+      k++;
+    } else if (c === '*' && n === '/') {
+      depth--;
+      k++;
+      if (depth === 0) return k + 1;
+    }
+  }
+  return -1;
+}
+
+// The line and column where the Rust comment opened at `at` on line `open`
+// ends (where its nesting depth returns to zero), or null.
+function rustClosePos(lines: string[], open: number, at: number): { line: number; col: number } | null {
   let depth = 0;
   for (let k = open; k < lines.length; k++) {
-    const line = k === open ? lines[k].slice(at) : lines[k];
+    const offset = k === open ? at : 0;
+    const line = offset > 0 ? lines[k].slice(offset) : lines[k];
     for (let j = 0; j < line.length; j++) {
       if (line[j] === '/' && line[j + 1] === '*') {
         depth++;
         j++;
       } else if (line[j] === '*' && line[j + 1] === '/') {
         depth--;
+        if (depth === 0) return { line: k, col: offset + j };
         j++;
-        if (depth === 0) return k;
       }
     }
   }
-  return -1;
+  return null;
 }
 
 // The comment state of each line of a file: linesInsideBlockComments, or for
@@ -2041,18 +2099,33 @@ export function findBundledCodeUnderOtherLicenses(
   // The comment styles isSpdxHeaderLine accepts, so a header block keeps its
   // copyright and permission lines in each of them (`REM --`, `$!`, `@`).
   const isCommentLine = (l: string) => COMMENT_LEADER.test(l);
-  // The tag's expression ends before a comment closer (`*/`, `*)`, `-}`,
-  // `-->`), and code after the closer is no part of it (`BSD-2-Clause */ int
-  // y;`). In a line comment a closer is text: only one at the end is dropped.
-  const SPDX_TAG = new RegExp(`SPDX-License-Identifier:\\s*(.+?)\\s*(?:${COMMENT_CLOSER_ALTERNATIVES}.*)?$`);
-  const SPDX_TAG_IN_LINE_COMMENT = new RegExp(`SPDX-License-Identifier:\\s*(.+?)\\s*${COMMENT_CLOSER_ALTERNATIVES}?\\s*$`);
+  // Extract an SPDX-License-Identifier tag and its (possibly empty) value
+  // without dynamic regexes: ends before a comment closer (`*/`, `*)`, `-}`,
+  // `-->`) inside a block comment or closing block, and drops only a trailing
+  // closer in a line comment.
+  const SPDX_PREFIX = 'SPDX-License-Identifier:';
+  const extractSpdxTag = (line: string, closer: string | null): { index: number; value: string } | null => {
+    const index = line.indexOf(SPDX_PREFIX);
+    if (index === -1) return null;
+    let rest = line.slice(index + SPDX_PREFIX.length);
+    if (closer !== null) {
+      const cAt = rest.indexOf(closer);
+      if (cAt !== -1) rest = rest.slice(0, cAt);
+    } else if (closesBlock(line)) {
+      const cMatch = COMMENT_CLOSER.exec(rest);
+      if (cMatch) rest = rest.slice(0, cMatch.index);
+    } else {
+      rest = rest.replace(COMMENT_CLOSER_AT_END, '');
+    }
+    return { index, value: rest.trim() };
+  };
   // A header line without its leader and, unless it is a line comment
   // outside a block, without its comment's closer and what follows it: the
   // closer of the block it sits in when known, so another style's closer is
   // text (`src/*/generated` inside `(* *)`), any closer when unknown.
   // The closer goes before the leader, which would take the star of ` *)`.
-  const stripLeader = (l: string, closer: string | null, inBlock: boolean) =>
-    (stripsCloser(l, inBlock) ? l.replace(fromCloser(closer), '') : l).replace(COMMENT_LEADER, '').replace(/^\s/, '').trimEnd();
+  const stripLeader = (l: string, closer: string | null, inBlock: boolean, stripCloser = true) =>
+    (stripCloser && stripsCloser(l, inBlock) ? l.replace(fromCloser(closer), '') : l).replace(COMMENT_LEADER, '').replace(/^\s/, '').trimEnd();
   const walk = (dir: string, rel: string) => {
     for (const entry of readDirSorted(dir)) {
       const entryRel = rel ? `${rel}/${entry.name}` : entry.name;
@@ -2070,14 +2143,10 @@ export function findBundledCodeUnderOtherLicenses(
       lines.forEach((line, i) => {
         // Inside a block comment a closer ends it, whatever leads the line.
         const closer = inside[i] ?? null;
-        const m = line.match(
-          closer !== null
-            ? new RegExp(`SPDX-License-Identifier:\\s*(.+?)\\s*(?:${escapeRegExp(closer)}.*)?$`)
-            : closesBlock(line)
-              ? SPDX_TAG
-              : SPDX_TAG_IN_LINE_COMMENT
-        );
-        if (!m) return;
+        const tag = extractSpdxTag(line, closer);
+        if (!tag) return;
+        const mIndex = tag.index;
+        const tagValue = tag.value;
         // The choices of the header's expression. One whose licenses the
         // package declares covers the code: its holders are still kept, as
         // declared. Otherwise the first choice whose texts all exist is
@@ -2097,38 +2166,44 @@ export function findBundledCodeUnderOtherLicenses(
         const closerAt = closer !== null ? line.indexOf(closer) : -1;
         const blockClosedBefore =
           depths !== null
-            ? depths[i] > 0 && rustLine(line, depths[i], m.index!).depth === 0
-            : closer !== null && closerAt !== -1 && closerAt < m.index!;
+            ? depths[i] > 0 && rustLine(line, depths[i], mIndex).depth === 0
+            : closer !== null && closerAt !== -1 && closerAt < mIndex;
         const inBlockAtTag =
           depths !== null
-            ? rustLine(line, depths[i], m.index!).depth > 0
-            : closer !== null && (closerAt === -1 || closerAt > m.index!);
-        const closedEnd =
-          blockClosedBefore && closer !== null && closerAt !== -1 ? closerAt + closer.length : 0;
+            ? rustLine(line, depths[i], mIndex).depth > 0
+            : closer !== null && (closerAt === -1 || closerAt > mIndex);
+        const closedEnd = blockClosedBefore
+          ? depths !== null
+            ? Math.max(0, rustOuterCloseEnd(line, depths[i], mIndex))
+            : closer !== null && closerAt !== -1
+              ? closerAt + closer.length
+              : 0
+          : 0;
         const headerOk = blockClosedBefore
-          ? isSpdxHeaderLine(line.slice(closedEnd), entryRel, m.index! - closedEnd, false)
-          : isSpdxHeaderLine(line, entryRel, m.index!, inBlockAtTag);
+          ? isSpdxHeaderLine(line.slice(closedEnd), entryRel, mIndex - closedEnd, false)
+          : isSpdxHeaderLine(line, entryRel, mIndex, inBlockAtTag);
         if (!headerOk) {
           // In a document a tag in prose is a mention; in a source file the
-          // scanner knows no comment there, and does not guess.
+          // scanner knows no comment there, and does not guess. Check reviewed
+          // mentions before expanding SPDX alternatives so a reviewed line with
+          // many clauses never trips the alternative cap.
           const mentionKey = `${comp.name}@${comp.version}:${entryRel}:${line.trim()}`;
-          if (/\.(?:md|markdown|rst)$/i.test(entryRel) || tokenizeSpdx(m[1]).length === 0 || !spdxAlternatives(m[1]) || hasEntry(knownMentions, mentionKey)) return;
+          if (hasEntry(knownMentions, mentionKey) || /\.(?:md|markdown|rst)$/i.test(entryRel) || tagValue === '' || tokenizeSpdx(tagValue).length === 0 || !spdxAlternatives(tagValue)) return;
           throw new Error(
-            `${comp.name}@${comp.version} has an SPDX-License-Identifier in ${entryRel} outside a comment the scanner knows: '${line.trim()}'. Read it at the source; if it only mentions the tag, add ${JSON.stringify(mentionKey)} with the reason to the tagMentions of scripts/reviewed-license-terms.json`
+            `${comp.name}@${comp.version} has an SPDX-License-Identifier in ${entryRel}:${i + 1} outside a comment the scanner knows. Inspect that line locally; if it only mentions the tag, add its entry with the reason to the tagMentions of scripts/reviewed-license-terms.json`
           );
         }
         // In a header position, a value no SPDX expression reads is skipped
         // only when it has the characters of a quoted tag (a quote, a
-        // backtick, a backslash: a string literal); any other value is a
-        // declaration this reader cannot read (`DocumentRef-X:LicenseRef-Y`)
-        // and fails below, never passes unchecked.
-        if (tokenizeSpdx(m[1]).length === 0 && /[`'"\\]/.test(m[1])) return;
-        const parsed = spdxAlternatives(m[1]);
+        // backtick, a backslash: a string literal); an empty value or any
+        // unreadable declaration (`DocumentRef-X:LicenseRef-Y`) fails below.
+        if (tagValue !== '' && tokenizeSpdx(tagValue).length === 0 && /[`'"\\]/.test(tagValue)) return;
+        const mentionKey = `${comp.name}@${comp.version}:${entryRel}:${line.trim()}`;
+        if (hasEntry(knownMentions, mentionKey)) return;
+        const parsed = tagValue === '' ? null : spdxAlternatives(tagValue);
         if (!parsed) {
-          const mentionKey = `${comp.name}@${comp.version}:${entryRel}:${line.trim()}`;
-          if (hasEntry(knownMentions, mentionKey)) return;
           throw new Error(
-            `${comp.name}@${comp.version} has a malformed SPDX-License-Identifier in ${entryRel}: '${m[1]}'. If the line only mentions the tag, add ${JSON.stringify(mentionKey)} with the reason to KNOWN_SPDX_TAG_MENTIONS`
+            `${comp.name}@${comp.version} has a malformed SPDX-License-Identifier in ${entryRel}:${i + 1}. Inspect that line locally; if it only mentions the tag, add its entry with the reason to scripts/reviewed-license-terms.json (tagMentions) or KNOWN_SPDX_TAG_MENTIONS`
           );
         }
         // A known upstream typo is dropped from its choice term by term, and
@@ -2145,7 +2220,7 @@ export function findBundledCodeUnderOtherLicenses(
         const alternatives = nonTypo.filter((terms) => isGplCompatible(terms.join(' AND ')));
         if (nonTypo.length > 0 && alternatives.length === 0) {
           throw new Error(
-            `${comp.name}@${comp.version} bundles ${entryRel} under '${m[1]}', and no choice of it is compatible with GPL-3.0: review the dependency before shipping it`
+            `${comp.name}@${comp.version} bundles ${entryRel} under '${tagValue}', and no choice of it is compatible with GPL-3.0: review the dependency before shipping it`
           );
         }
         // A term is covered by the package's declared license. A license with no
@@ -2170,7 +2245,7 @@ export function findBundledCodeUnderOtherLicenses(
         // A header whose only license is a known upstream typo is no license:
         // its terms are left out, its holders are kept, as declared.
         const typoOnly = alternatives.length === 0;
-        const covering = typoOnly ? [m[1].trim()] : alternatives.find((terms) => undeclaredOf(terms).length === 0);
+        const covering = typoOnly ? [tagValue] : alternatives.find((terms) => undeclaredOf(terms).length === 0);
         let chosen: string[];
         // Terms covered only by a text shipped beside the code: a header with
         // terms of its own is still reproduced, as declared, and its holders
@@ -2192,7 +2267,7 @@ export function findBundledCodeUnderOtherLicenses(
           if (!reproducible) {
             const missing = undeclaredOf(alternatives[0]).flatMap((t) => t.split(' WITH ')).find((id) => !knownLicenseIds.has(id));
             throw new Error(
-              `${comp.name}@${comp.version} bundles ${entryRel} under '${m[1]}', but no standard text exists for '${missing}': add it to the standard license texts, or to UNREPRODUCIBLE_HEADER_IDS when the identifier is an upstream typo`
+              `${comp.name}@${comp.version} bundles ${entryRel} under '${tagValue}', but no standard text exists for '${missing}': add it to the standard license texts, or to UNREPRODUCIBLE_HEADER_IDS when the identifier is an upstream typo`
             );
           }
           chosen = undeclaredOf(reproducible);
@@ -2233,7 +2308,7 @@ export function findBundledCodeUnderOtherLicenses(
           // its line (` * /* note */ SPDX-...`) is no end of it. Opened on
           // this line, at its last outer opener before the tag; else back to
           // the line where the depth left zero, at its last outer opener.
-          const atTag = rustLine(line, depths[i], m.index!);
+          const atTag = rustLine(line, depths[i], mIndex);
           if (atTag.depth > 0) {
             pair = COMMENT_BLOCKS[0];
             if (atTag.outerOpen !== -1) {
@@ -2246,7 +2321,7 @@ export function findBundledCodeUnderOtherLicenses(
               openAt = rustLine(lines[k], 0).outerOpen;
             }
           }
-        } else if (within !== null && (closedAt === -1 || closedAt > m.index!)) {
+        } else if (within !== null && (closedAt === -1 || closedAt > mIndex)) {
           // Back to the line that opens this comment: the first line not
           // inside one, or a line that closes the comment before it and
           // opens this one after the closer (`*/ /*`).
@@ -2258,15 +2333,17 @@ export function findBundledCodeUnderOtherLicenses(
         } else {
           const from = within === null ? 0 : closedAt + within.length;
           const found = openerOn(line, from);
-          if (found && found.at < m.index!) {
+          if (found && found.at < mIndex) {
             open = i;
             openAt = found.at;
             pair = found.pair;
           }
         }
         let close = -1;
+        let rustOuterClose: { line: number; col: number } | null = null;
         if (open !== -1 && depths && pair[0] === '/*') {
-          close = rustCloseLine(lines, open, openAt);
+          rustOuterClose = rustClosePos(lines, open, openAt);
+          close = rustOuterClose ? rustOuterClose.line : -1;
         } else if (open !== -1) {
           const [opener, closer] = pair;
           for (let k = i; k < lines.length; k++) {
@@ -2306,19 +2383,38 @@ export function findBundledCodeUnderOtherLicenses(
           }
         }
         // The block's own closer when the header is that block comment; in a
-        // run of comments each line's own (`(* ... *)`), or any.
+        // run of comments each line's own (`(* ... *)`), or any. For nested
+        // Rust block comments, cut only at the outer closer column so text
+        // after an inner `/* ... */` closer on the same line is preserved.
         const inPair = open !== -1 && start === open && end === close;
-        const block = lines
-          .slice(start, end + 1)
-          .map((l, bi) => stripLeader(inPair && start + bi === open ? l.slice(openAt) : l, inPair ? pair[1] : closerOf(l, null), open !== -1));
+        const block = lines.slice(start, end + 1).map((l, bi) => {
+          const lineIdx = start + bi;
+          if (inPair && rustOuterClose !== null) {
+            const fromCol = lineIdx === open ? openAt : 0;
+            const toCol = lineIdx === rustOuterClose.line ? rustOuterClose.col : l.length;
+            return stripLeader(l.slice(fromCol, toCol), null, true, false);
+          }
+          return stripLeader(inPair && lineIdx === open ? l.slice(openAt) : l, inPair ? pair[1] : closerOf(l, null), open !== -1);
+        });
         // Only a line that names a holder is a notice: "copyright notice and
         // this permission notice appear in all copies" is license prose.
+        // For nested Rust block comments, strip inner `/*` / `*/` delimiters
+        // from attribution lines without discarding text after them.
+        const attributionLines =
+          inPair && rustOuterClose !== null
+            ? block.map((l) =>
+                l
+                  .replace(/\/\*[^*]*(?:\*(?!\/)[^*]*)*\*\//g, ' ')
+                  .replace(/\s*(?:\/\*+|\*+\/)\s*/g, ' ')
+                  .trim()
+              )
+            : block;
         const notices: string[] = [];
-        for (let bi = 0; bi < block.length; bi++) {
-          let text = block[bi].trim();
+        for (let bi = 0; bi < attributionLines.length; bi++) {
+          let text = attributionLines[bi].trim();
           const spdxText = text.match(/^SPDX-FileCopyrightText:\s*(\S.*)$/);
           if (spdxText) text = /^(?:copyright\b|\(c\)|©)/i.test(spdxText[1]) ? spdxText[1] : `Copyright ${spdxText[1]}`;
-          if (/^(?:copyright\b|\(c\)|©)/i.test(text)) text = noticeWithNextLine(text, (k) => block[bi + 1 + k], `${comp.name}@${comp.version} ${entryRel}:${start + bi + 1}`);
+          if (/^(?:copyright\b|\(c\)|©)/i.test(text)) text = noticeWithNextLine(text, (k) => attributionLines[bi + 1 + k], `${comp.name}@${comp.version} ${entryRel}:${start + bi + 1}`);
           if (/^(?:copyright\b|\(c\)|©)/i.test(text) && namesCopyrightHolder(text)) {
             notices.push(text);
           }

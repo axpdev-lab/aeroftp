@@ -21,21 +21,24 @@
 //! (`.aeroftp-pending-docs`), then set-aside (`.aeroftp-pending-docs.prev`).
 //!
 //! Staging writes the next batch only, under a temporary name renamed into
-//! place, so it is whole or absent, and never touches the current batch. At
-//! its start an app promotes a next batch with its own key to the current
-//! batch, then renames each document over the installed one, an operation on
-//! that exact path that Windows refuses while another process holds the file
-//! and that never writes into a directory with the document's name. A
-//! document still held stays in the current batch: the held ones share one
-//! retry budget, and what is left is installed at a later start. A current
-//! batch of another exe is removed (a folder replaced by hand, an older
-//! exe's). A next batch of another exe is never removed at start, by any
-//! process: an update another process hands over may be waiting for its
-//! swap. A failed swap drops it (the helper's discard), a discarded update
-//! drops it, and the next staging sets it aside. Staging, discarding and each
-//! install pass hold one
-//! lock per exe folder, so none of them sees another half done. Every
-//! outcome is logged as what it is.
+//! place, so it is whole or absent, and never touches the current batch. Each
+//! staging returns a fresh per-attempt token (`staging.id`), not `exe.key`,
+//! so a failed swap or discarded update removes only the batch of that exact
+//! attempt. At its start an app promotes an owned next batch with its own key
+//! to the current batch (retiring any older current or set-aside batch), then
+//! renames each document over the installed one, an operation on that exact
+//! path that Windows refuses while another process holds the file and that
+//! never writes into a directory with the document's name. A document still
+//! held stays in the current batch: the held ones share one retry budget, and
+//! what is left is installed at a later start. A start with a different
+//! executable key preserves a live current batch unless a matching next batch
+//! supersedes it. A next batch of another exe is never removed at start, by
+//! any process: an update another process hands over may be waiting for its
+//! swap. A failed swap drops it by attempt token (the helper's discard), a
+//! discarded update drops it by attempt token, and the next staging sets it
+//! aside. Staging, discarding and each install pass hold one lock per exe
+//! folder, so none of them sees another half done. Every outcome is logged as
+//! what it is.
 
 use std::io;
 use std::path::{Path, PathBuf};
@@ -150,6 +153,7 @@ pub(crate) struct BatchLock {
 }
 
 /// The lock of the batches of `exe_dir`, waited for as long as it takes.
+#[cfg(test)]
 pub(crate) fn lock_batches(exe_dir: &Path) -> io::Result<BatchLock> {
     lock_batches_within(exe_dir, None)
 }
@@ -349,6 +353,9 @@ enum Slot {
     /// A folder whose key exists but cannot be read now (another process
     /// holds it): a batch, left whole for a later pass.
     Unreadable,
+    /// A folder whose ownership identity (`staging.id` or ownership ledger)
+    /// exists as a regular file but cannot be read now (transient I/O error).
+    OwnershipUnreadable,
     Key(String),
 }
 
@@ -501,16 +508,6 @@ fn read_ids_from(path: &Path) -> Vec<String> {
     read_ledger_strict(path).ok().flatten().unwrap_or_default()
 }
 
-fn recorded_batches(exe_dir: &Path) -> Vec<String> {
-    let mut ids = read_ids_from(&owned_batch_record(exe_dir));
-    for id in read_ids_from(&temp_batch_record(exe_dir)) {
-        if !ids.iter().any(|existing| existing == &id) {
-            ids.push(id);
-        }
-    }
-    ids
-}
-
 fn replace_record_file(tmp: &Path, target: &Path) -> io::Result<()> {
     #[cfg(windows)]
     {
@@ -599,6 +596,13 @@ fn forget_batch(exe_dir: &Path, id: &str) -> io::Result<()> {
     primary
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BatchOwnership {
+    Owned,
+    Unowned,
+    Unreadable,
+}
+
 fn batch_id(path: &Path) -> Option<String> {
     std::fs::symlink_metadata(path.join(STAGING_ID_FILE))
         .ok()
@@ -608,13 +612,166 @@ fn batch_id(path: &Path) -> Option<String> {
     (!id.is_empty()).then(|| id.to_string())
 }
 
+/// Checks whether `path` is a batch folder staged by AeroFTP for `exe_dir`,
+/// rejecting any non-regular `staging.id` entry (symlink, directory, FIFO) before
+/// opening it, while distinguishing a transient read error on a regular
+/// `staging.id` or the ownership ledger (`Unreadable`) from a missing or
+/// unregistered batch (`Unowned`).
+fn batch_ownership(exe_dir: &Path, path: &Path) -> BatchOwnership {
+    batch_ownership_with(exe_dir, path, |p| std::fs::read_to_string(p))
+}
+
+fn batch_ownership_with(
+    exe_dir: &Path,
+    path: &Path,
+    read_id: impl Fn(&Path) -> io::Result<String>,
+) -> BatchOwnership {
+    match std::fs::symlink_metadata(path) {
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return BatchOwnership::Unowned,
+        Err(_) => return BatchOwnership::Unreadable,
+        Ok(m) if !m.is_dir() => return BatchOwnership::Unowned,
+        Ok(_) => {}
+    }
+    match std::fs::symlink_metadata(path.join(KEY_FILE)) {
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return BatchOwnership::Unowned,
+        Err(_) => return BatchOwnership::Unreadable,
+        Ok(m) if m.file_type().is_symlink() => return BatchOwnership::Unowned,
+        Ok(_) => {}
+    }
+    let id_path = path.join(STAGING_ID_FILE);
+    match std::fs::symlink_metadata(&id_path) {
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return BatchOwnership::Unowned,
+        Err(_) => return BatchOwnership::Unreadable,
+        Ok(m) if !m.is_file() => return BatchOwnership::Unowned,
+        Ok(_) => {}
+    }
+    let id = match read_id(&id_path) {
+        Ok(raw) => {
+            let trimmed = raw.trim();
+            if trimmed.is_empty() {
+                return BatchOwnership::Unowned;
+            }
+            trimmed.to_string()
+        }
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return BatchOwnership::Unowned,
+        Err(_) => return BatchOwnership::Unreadable,
+    };
+    let mut ledger_unreadable = false;
+    for record in [owned_batch_record(exe_dir), temp_batch_record(exe_dir)] {
+        match read_ledger_strict(&record) {
+            Ok(Some(ids)) if ids.iter().any(|r| r == &id) => return BatchOwnership::Owned,
+            Ok(_) => {}
+            Err(e) if e.kind() == io::ErrorKind::InvalidData => {}
+            Err(_) => ledger_unreadable = true,
+        }
+    }
+    if ledger_unreadable {
+        BatchOwnership::Unreadable
+    } else {
+        BatchOwnership::Unowned
+    }
+}
+
 /// Whether `path` is a batch folder that AeroFTP itself staged for `exe_dir`:
 /// a real folder carrying `KEY_FILE` and a `STAGING_ID_FILE` recorded in the
 /// durable ownership record (`owned_batch_record` or `temp_batch_record`).
 fn is_owned_batch(exe_dir: &Path, path: &Path) -> bool {
-    std::fs::symlink_metadata(path).is_ok_and(|m| m.is_dir())
-        && std::fs::symlink_metadata(path.join(KEY_FILE)).is_ok_and(|m| !m.file_type().is_symlink())
-        && batch_id(path).is_some_and(|id| recorded_batches(exe_dir).iter().any(|r| r == &id))
+    matches!(batch_ownership(exe_dir, path), BatchOwnership::Owned)
+}
+
+/// Outcome of checking whether `exe_dir` is a portable install, synchronized
+/// with `install_pending_docs` and `stage_pending_docs` via the batch mutex.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PortableMarkerState {
+    /// `portable.marker` is present beside the exe, or staged in an owned
+    /// pending batch belonging to this exe: resolve portable mode immediately.
+    Present,
+    /// Neither `portable.marker` nor any owned staged marker for this exe
+    /// exists under the batch lock: definitively not portable.
+    Absent,
+    /// Could not acquire the batch lock within `wait` or transiently could not
+    /// read a marker/batch/exe key: leave portable detection uncached.
+    Pending,
+}
+
+/// Atomically checks `exe_dir/portable.marker` and any owned pending batch for
+/// `own_key` under the batch mutex, keeping a fast path when `portable.marker`
+/// is already present beside the exe, and confirming `Absent` only while
+/// holding the batch mutex.
+pub(crate) fn probe_portable_marker_within(
+    exe_dir: &Path,
+    own_key: impl FnOnce() -> Option<String>,
+    wait: Option<Duration>,
+) -> PortableMarkerState {
+    probe_portable_marker_with(exe_dir, own_key, wait, |p| std::fs::symlink_metadata(p))
+}
+
+fn probe_portable_marker_with(
+    exe_dir: &Path,
+    own_key: impl FnOnce() -> Option<String>,
+    wait: Option<Duration>,
+    metadata_fn: impl Fn(&Path) -> io::Result<std::fs::Metadata>,
+) -> PortableMarkerState {
+    // Fast path when `portable.marker` is already installed beside the exe.
+    if metadata_fn(&exe_dir.join("portable.marker")).is_ok_and(|m| m.is_file()) {
+        return PortableMarkerState::Present;
+    }
+    // Always confirm absence under the batch lock so an install that moves
+    // `portable.marker` and removes the empty batch cannot race between checks.
+    let Ok(_lock) = lock_batches_within(exe_dir, wait) else {
+        return PortableMarkerState::Pending;
+    };
+    let mut any_unreadable = false;
+    match metadata_fn(&exe_dir.join("portable.marker")) {
+        Ok(m) if m.is_file() => return PortableMarkerState::Present,
+        Ok(_) => {}
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+        Err(_) => any_unreadable = true,
+    }
+    let mut staged_candidates: Vec<String> = Vec::new();
+    for name in [NEXT_DIR, PENDING_DIR, PREV_DIR] {
+        let dir = exe_dir.join(name);
+        match metadata_fn(&dir) {
+            Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
+            Err(_) => {
+                any_unreadable = true;
+                continue;
+            }
+            Ok(m) if !m.is_dir() => continue,
+            Ok(_) => {}
+        }
+        match metadata_fn(&dir.join("portable.marker")) {
+            Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
+            Err(_) => {
+                any_unreadable = true;
+                continue;
+            }
+            Ok(m) if !m.is_file() => continue,
+            Ok(_) => {}
+        }
+        match batch_ownership(exe_dir, &dir) {
+            BatchOwnership::Owned => match slot(&dir) {
+                Slot::Key(k) => staged_candidates.push(k),
+                Slot::Unreadable | Slot::OwnershipUnreadable => any_unreadable = true,
+                _ => {}
+            },
+            BatchOwnership::Unreadable => any_unreadable = true,
+            BatchOwnership::Unowned => {}
+        }
+    }
+    if !staged_candidates.is_empty() {
+        let Some(own) = own_key() else {
+            return PortableMarkerState::Pending;
+        };
+        if staged_candidates.iter().any(|k| k == &own) {
+            return PortableMarkerState::Present;
+        }
+    }
+    if any_unreadable {
+        PortableMarkerState::Pending
+    } else {
+        PortableMarkerState::Absent
+    }
 }
 
 /// Drops `name` from the record once its folder is gone. Under the lock.
@@ -712,14 +869,18 @@ fn retire_batch(exe_dir: &Path, path: &Path) -> bool {
     removed
 }
 
+/// How long update preparation waits for the batch lock before failing so a
+/// stalled holder cannot hang the updater indefinitely.
+const STAGE_LOCK_WAIT: Duration = Duration::from_secs(10);
+
 /// Stages `docs` (source, document name) as the next batch of `exe_dir`, for
 /// the exe at `new_exe`. The current batch is never touched; a next batch of
-/// another exe (a staging whose swap never happened) is replaced. Anything
-/// else at the next batch's name (a folder without a key, a file) is not
-/// ours: staging fails and leaves it as it is, so the update stops before
-/// its swap. Returns the key the batch carries (None with no documents), the
-/// one key a failed update may later discard: read once, here, so a second
-/// read cannot name another batch.
+/// another exe is set aside to `PREV_DIR` (or reclaimed when provably
+/// abandoned). Anything else at the next batch's name (an unowned folder, a
+/// file) is not ours: staging fails and leaves it as it is, so the update
+/// stops before its swap. Returns a fresh per-attempt token (`staging.id`,
+/// never `exe.key`, or `None` with no documents) that a failed swap or
+/// discarded update passes to `discard_pending_docs`.
 pub(crate) fn stage_pending_docs(
     exe_dir: &Path,
     new_exe: &Path,
@@ -795,12 +956,30 @@ fn stage_with(
     suffix: &str,
     publish: impl Fn(&Path, &Path) -> io::Result<()>,
 ) -> Result<Option<String>, String> {
+    stage_with_wait(
+        exe_dir,
+        new_exe,
+        docs,
+        suffix,
+        Some(STAGE_LOCK_WAIT),
+        publish,
+    )
+}
+
+fn stage_with_wait(
+    exe_dir: &Path,
+    new_exe: &Path,
+    docs: &[(&Path, &'static str)],
+    suffix: &str,
+    wait: Option<Duration>,
+    publish: impl Fn(&Path, &Path) -> io::Result<()>,
+) -> Result<Option<String>, String> {
     if docs.is_empty() {
         return Ok(None);
     }
     let fail = |e: io::Error| format!("Failed to stage the portable documents: {e}");
     let key = exe_key(new_exe).map_err(fail)?;
-    let _lock = lock_batches(exe_dir).map_err(fail)?;
+    let _lock = lock_batches_within(exe_dir, wait).map_err(fail)?;
     remove_staging_leftovers(exe_dir);
     let next = exe_dir.join(NEXT_DIR);
     let prev = exe_dir.join(PREV_DIR);
@@ -1029,16 +1208,27 @@ fn classify(target: &Path, e: &io::Error) -> Outcome {
 }
 
 /// One install pass, under the lock, for the exe whose key is `own_key`.
-/// Returns what it found and the folder it installed from.
 fn install_pass(
     exe_dir: &Path,
     own_key: &str,
     wait: Option<Duration>,
     replace: impl Fn(&Path, &Path) -> io::Result<()>,
-) -> (Pending, Option<PathBuf>) {
+) -> Pending {
+    install_pass_with(exe_dir, own_key, wait, replace, |p| {
+        std::fs::read_to_string(p)
+    })
+}
+
+fn install_pass_with(
+    exe_dir: &Path,
+    own_key: &str,
+    wait: Option<Duration>,
+    replace: impl Fn(&Path, &Path) -> io::Result<()>,
+    read_id: impl Fn(&Path) -> io::Result<String>,
+) -> Pending {
     let _lock = match lock_batches_within(exe_dir, wait) {
         Ok(lock) => lock,
-        Err(e) => return (Pending::Unavailable(e.to_string()), None),
+        Err(e) => return Pending::Unavailable(e.to_string()),
     };
     remove_staging_leftovers(exe_dir);
     let current = exe_dir.join(PENDING_DIR);
@@ -1056,14 +1246,17 @@ fn install_pass(
     }
     // Only AeroFTP-owned batches (registered in the ownership ledger) may be
     // promoted or installed; an unowned folder with a matching exe.key is
-    // treated as Invalid and left untouched.
+    // treated as Invalid and left untouched, while a transient read error on
+    // a regular `staging.id` or the ledger yields `Slot::OwnershipUnreadable`.
     let owned_slot = |p: &Path| -> Slot {
-        if std::fs::symlink_metadata(p).is_err() {
-            Slot::Missing
-        } else if !is_owned_batch(exe_dir, p) {
-            Slot::Invalid
-        } else {
-            slot(p)
+        match std::fs::symlink_metadata(p) {
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Slot::Missing,
+            Err(_) => Slot::OwnershipUnreadable,
+            Ok(_) => match batch_ownership_with(exe_dir, p, &read_id) {
+                BatchOwnership::Owned => slot(p),
+                BatchOwnership::Unreadable => Slot::OwnershipUnreadable,
+                BatchOwnership::Unowned => Slot::Invalid,
+            },
         }
     };
     let mut source = current.clone();
@@ -1078,10 +1271,17 @@ fn install_pass(
                 source = next.clone();
             }
         }
-        // A key that cannot be read now may be this exe's: a later pass.
+        // A key or ownership identity that cannot be read now may be this exe's: a later pass.
         Slot::Unreadable => {
             let why = format!("the key of {} cannot be read now", next.display());
-            return (Pending::Unavailable(why), None);
+            return Pending::Unavailable(why);
+        }
+        Slot::OwnershipUnreadable => {
+            let why = format!(
+                "the ownership identity of {} cannot be read now",
+                next.display()
+            );
+            return Pending::Unavailable(why);
         }
         // Another exe's: an update, of this process or another, may be
         // waiting for its swap. It is never read here; a failed swap, a
@@ -1095,7 +1295,14 @@ fn install_pass(
             Slot::Key(k) if k == own_key => source = prev.clone(),
             Slot::Unreadable => {
                 let why = format!("the key of {} cannot be read now", prev.display());
-                return (Pending::Unavailable(why), None);
+                return Pending::Unavailable(why);
+            }
+            Slot::OwnershipUnreadable => {
+                let why = format!(
+                    "the ownership identity of {} cannot be read now",
+                    prev.display()
+                );
+                return Pending::Unavailable(why);
             }
             _ => {}
         }
@@ -1103,27 +1310,34 @@ fn install_pass(
     match owned_slot(&source) {
         Slot::Missing => {
             let found = if stale { Pending::Stale } else { Pending::None };
-            return (found, None);
+            return found;
         }
         Slot::Key(k) if k == own_key => {}
         // Retired and still held: removed by a later pass.
         Slot::Key(k) if k == RETIRED_KEY => {
             let found = if stale { Pending::Stale } else { Pending::None };
-            return (found, None);
+            return found;
         }
         // Another exe's batch: this exe may be an older companion the
         // update could not replace, and the batch the new exe's, waiting for
         // documents to be released. Only the exe whose batch supersedes it
         // removes it (above). A key that cannot be read now: a later pass.
-        Slot::Key(_) => return (Pending::None, None),
+        Slot::Key(_) => return Pending::None,
         Slot::Unreadable => {
             let why = format!("the key of {} cannot be read now", source.display());
-            return (Pending::Unavailable(why), None);
+            return Pending::Unavailable(why);
+        }
+        Slot::OwnershipUnreadable => {
+            let why = format!(
+                "the ownership identity of {} cannot be read now",
+                source.display()
+            );
+            return Pending::Unavailable(why);
         }
         // No batch (no key, a file, a link): not ours, left as it is.
         Slot::Invalid => {
             let found = if stale { Pending::Stale } else { Pending::None };
-            return (found, None);
+            return found;
         }
     }
     let mut outcomes = Vec::new();
@@ -1157,7 +1371,7 @@ fn install_pass(
             }
         }
     }
-    (Pending::Docs(outcomes), Some(source))
+    Pending::Docs(outcomes)
 }
 
 /// One install pass over the batches of `exe_dir` for the exe whose key is
@@ -1168,7 +1382,7 @@ pub(crate) fn install_pending_docs(
     own_key: &str,
     replace: impl Fn(&Path, &Path) -> io::Result<()>,
 ) -> Pending {
-    install_pass(exe_dir, own_key, None, replace).0
+    install_pass(exe_dir, own_key, None, replace)
 }
 
 /// `install_pending_docs` waiting at most `wait` for the lock: the pass a
@@ -1181,7 +1395,7 @@ pub(crate) fn install_pending_docs_within(
     wait: Duration,
     replace: impl Fn(&Path, &Path) -> io::Result<()>,
 ) -> Pending {
-    install_pass(exe_dir, own_key, Some(wait), replace).0
+    install_pass(exe_dir, own_key, Some(wait), replace)
 }
 
 /// After a first pass that found `first`, the held documents share `rounds`
@@ -1197,14 +1411,34 @@ pub(crate) fn retry_held(
     replace: impl Fn(&Path, &Path) -> io::Result<()>,
     sleep: impl Fn(Duration),
 ) -> Pending {
-    let mut left = rounds;
+    retry_held_with_hook(
+        exe_dir,
+        own_key,
+        first,
+        (rounds, pause),
+        replace,
+        sleep,
+        || {},
+    )
+}
+
+fn retry_held_with_hook(
+    exe_dir: &Path,
+    own_key: &str,
+    first: Pending,
+    budget: (u32, Duration),
+    replace: impl Fn(&Path, &Path) -> io::Result<()>,
+    sleep: impl Fn(Duration),
+    mut after_pass: impl FnMut(),
+) -> Pending {
+    let (mut left, pause) = budget;
     let mut first = first;
     // A first pass that could not look at the batches (a key that cannot be
     // read now, the lock) is tried again within the same budget.
     while left > 0 && matches!(first, Pending::Unavailable(_)) {
         left -= 1;
         sleep(pause);
-        first = install_pass(exe_dir, own_key, None, &replace).0;
+        first = install_pass(exe_dir, own_key, None, &replace);
     }
     let Pending::Docs(mut last) = first else {
         return first;
@@ -1212,26 +1446,29 @@ pub(crate) fn retry_held(
     while left > 0 && last.iter().any(|(_, outcome)| outcome.waits()) {
         left -= 1;
         sleep(pause);
-        let (retried, source) = install_pass(exe_dir, own_key, None, &replace);
+        let retried = install_pass(exe_dir, own_key, None, &replace);
+        after_pass();
         // A pass that could not look at the batch (the lock, a key that
         // cannot be read now) says nothing about the held documents: keep
         // the held result and use the remaining retry budget.
         if matches!(retried, Pending::Unavailable(_)) {
             continue;
         }
-        if let Pending::Docs(retried) = &retried {
-            for (name, outcome) in retried {
+        if let Pending::Docs(retried_docs) = &retried {
+            for (name, outcome) in retried_docs {
                 if let Some(entry) = last.iter_mut().find(|(n, _)| n == name) {
                     entry.1 = outcome.clone();
                 }
             }
-        }
-        // A waiting document no longer in this exe's batch was handled by
-        // another pass: this one has nothing true to say about it.
-        last.retain(|(name, outcome)| {
-            !outcome.waits() || source.as_ref().is_some_and(|s| s.join(name).is_file())
-        });
-        if !matches!(retried, Pending::Docs(_)) {
+            // Decide which waiting documents remain from the outcomes observed
+            // under the lock, never by re-checking a mutable slot path after
+            // releasing the lock (a concurrent staging may move NEXT_DIR to
+            // PREV_DIR immediately after `install_pass` drops the mutex).
+            last.retain(|(name, outcome)| {
+                !outcome.waits() || retried_docs.iter().any(|(n, _)| n == name)
+            });
+        } else {
+            last.retain(|(_, outcome)| !outcome.waits());
             break;
         }
     }
@@ -1411,10 +1648,69 @@ mod tests {
         assert_eq!(reads.get(), 2);
     }
 
+    /// Scoped cleanup guard for per-folder temp-dir artifacts (Unix lock file,
+    /// mirror batch ledger, staging record, and About notice snapshots) so
+    /// every test leaves no files behind in `std::env::temp_dir()`, even on
+    /// assertion failure.
+    struct FixtureDir {
+        dir: tempfile::TempDir,
+    }
+
+    impl FixtureDir {
+        fn new() -> Self {
+            Self {
+                dir: tempfile::tempdir().expect("temp dir"),
+            }
+        }
+
+        fn path(&self) -> &Path {
+            self.dir.path()
+        }
+    }
+
+    impl Drop for FixtureDir {
+        fn drop(&mut self) {
+            let exe_dir = self.dir.path();
+            let id = folder_id(exe_dir);
+            let _ = std::fs::remove_file(temp_batch_record(exe_dir));
+            let _ = std::fs::remove_file(staging_record(exe_dir));
+            #[cfg(not(windows))]
+            let _ = std::fs::remove_file(
+                std::env::temp_dir().join(format!("aeroftp-pending-docs-{id}.lock")),
+            );
+            let snapshot_prefix = format!("aeroftp-pending-notices-{id}-");
+            if let Ok(entries) = std::fs::read_dir(std::env::temp_dir()) {
+                for entry in entries.flatten() {
+                    let name = entry.file_name();
+                    if name.to_string_lossy().starts_with(&snapshot_prefix) {
+                        let p = entry.path();
+                        if let Ok(meta) = std::fs::metadata(&p) {
+                            let mut perms = meta.permissions();
+                            if perms.readonly() {
+                                #[cfg(unix)]
+                                {
+                                    use std::os::unix::fs::PermissionsExt;
+                                    perms.set_mode(0o600);
+                                }
+                                #[cfg(not(unix))]
+                                #[allow(clippy::permissions_set_readonly_false)]
+                                {
+                                    perms.set_readonly(false);
+                                }
+                                let _ = std::fs::set_permissions(&p, perms);
+                            }
+                        }
+                        let _ = std::fs::remove_file(&p);
+                    }
+                }
+            }
+        }
+    }
+
     /// An app folder with installed documents and a pending folder for the
     /// exe whose key is `key` (none: no key file).
-    fn folder(key: Option<&str>) -> tempfile::TempDir {
-        let dir = tempfile::tempdir().expect("temp dir");
+    fn folder(key: Option<&str>) -> FixtureDir {
+        let dir = FixtureDir::new();
         let pending = dir.path().join(PENDING_DIR);
         std::fs::create_dir(&pending).expect("pending dir");
         for name in DOCS {
@@ -3722,6 +4018,305 @@ mod tests {
             std::fs::write(slot_dir.join("THIRD-PARTY-NOTICES.md"), "unowned").unwrap();
         }
         assert_eq!(own_pending_notices(dir2.path(), own), None);
+    }
+
+    #[test]
+    fn staging_times_out_when_batch_lock_is_held_without_touching_existing_batch() {
+        let dir = FixtureDir::new();
+        let src = tempfile::tempdir().unwrap();
+        let exe_a = src.path().join("a.exe");
+        let exe_b = src.path().join("b.exe");
+        let doc_a = src.path().join("a.txt");
+        let doc_b = src.path().join("b.txt");
+        std::fs::write(&exe_a, b"exe A").unwrap();
+        std::fs::write(&exe_b, b"exe B").unwrap();
+        std::fs::write(&doc_a, "docs of A").unwrap();
+        std::fs::write(&doc_b, "docs of B").unwrap();
+        let key_a = exe_key(&exe_a).unwrap();
+        let key_b = exe_key(&exe_b).unwrap();
+
+        stage_pending_docs(dir.path(), &exe_a, &[(&doc_a, "README.txt")], "a").unwrap();
+
+        // Hold the lock on a separate thread (Windows mutexes are re-entrant on
+        // the owning thread).
+        let exe_dir = dir.path().to_path_buf();
+        let (locked_tx, locked_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let holder = std::thread::spawn(move || {
+            let _lock = lock_batches(&exe_dir).unwrap();
+            locked_tx.send(()).unwrap();
+            release_rx.recv().unwrap();
+        });
+        locked_rx.recv().unwrap();
+
+        let err = stage_with_wait(
+            dir.path(),
+            &exe_b,
+            &[(&doc_b, "README.txt")],
+            "b",
+            Some(Duration::from_millis(50)),
+            rename,
+        )
+        .expect_err("staging must time out while another process holds the batch lock");
+        assert!(
+            err.contains("Failed to stage the portable documents"),
+            "{err}"
+        );
+        assert_eq!(read(&dir.path().join(NEXT_DIR), KEY_FILE), key_a);
+        assert_eq!(read(&dir.path().join(NEXT_DIR), "README.txt"), "docs of A");
+
+        release_tx.send(()).unwrap();
+        holder.join().unwrap();
+
+        // Control: once the lock is free, staging succeeds normally.
+        stage_with_wait(
+            dir.path(),
+            &exe_b,
+            &[(&doc_b, "README.txt")],
+            "b2",
+            Some(Duration::from_millis(200)),
+            rename,
+        )
+        .unwrap();
+        assert_eq!(read(&dir.path().join(NEXT_DIR), KEY_FILE), key_b);
+        assert_eq!(read(&dir.path().join(NEXT_DIR), "README.txt"), "docs of B");
+    }
+
+    #[test]
+    fn a_batch_whose_staging_id_cannot_be_read_yet_recovers_during_startup_retries() {
+        let dir = FixtureDir::new();
+        let src = tempfile::tempdir().unwrap();
+        let exe = src.path().join("app.exe");
+        let doc = src.path().join("notices.md");
+        std::fs::write(&exe, b"app bytes").unwrap();
+        std::fs::write(&doc, "new notices").unwrap();
+        std::fs::write(dir.path().join("THIRD-PARTY-NOTICES.md"), "old notices").unwrap();
+        let key = exe_key(&exe).unwrap();
+        let _token = stage_pending_docs(dir.path(), &exe, &[(&doc, "THIRD-PARTY-NOTICES.md")], "t")
+            .unwrap()
+            .expect("token");
+
+        // Inject a transient I/O error reading the regular `staging.id` file:
+        // must report an ownership identity read failure (distinct from key
+        // read failure or folder lock failure) and leave installed notices alone.
+        let fail_read = |_: &Path| -> io::Result<String> {
+            Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "transient sharing violation",
+            ))
+        };
+        let first = install_pass_with(dir.path(), &key, None, rename, fail_read);
+        assert!(
+            matches!(&first, Pending::Unavailable(why) if why.contains("ownership identity") && !why.contains("lock")),
+            "{first:?}"
+        );
+        assert_eq!(read(dir.path(), "THIRD-PARTY-NOTICES.md"), "old notices");
+
+        // Hold clears during the startup retry window: notices install in the
+        // same startup.
+        let outcome = retry_held(dir.path(), &key, first, 3, Duration::ZERO, rename, |_| {});
+        assert_eq!(
+            outcome,
+            Pending::Docs(vec![("THIRD-PARTY-NOTICES.md", Outcome::Installed)])
+        );
+        assert_eq!(read(dir.path(), "THIRD-PARTY-NOTICES.md"), "new notices");
+
+        // Persistent unreadable `staging.id` keeps returning the ownership
+        // identity diagnostic (never misattributed to the folder lock).
+        let _token2 =
+            stage_pending_docs(dir.path(), &exe, &[(&doc, "THIRD-PARTY-NOTICES.md")], "t2")
+                .unwrap()
+                .expect("token 2");
+        let persistent = install_pass_with(dir.path(), &key, None, rename, fail_read);
+        assert!(
+            matches!(&persistent, Pending::Unavailable(why) if why.contains("ownership identity") && !why.contains("lock")),
+            "{persistent:?}"
+        );
+
+        // Non-regular `staging.id` entry (e.g., a directory) is rejected as
+        // Unowned without attempting to read it.
+        let id_path = dir.path().join(NEXT_DIR).join(STAGING_ID_FILE);
+        std::fs::remove_file(&id_path).unwrap();
+        std::fs::create_dir(&id_path).unwrap();
+        let non_regular = install_pass_with(dir.path(), &key, None, rename, |_| {
+            panic!("non-regular staging.id must be rejected before reading")
+        });
+        assert_eq!(non_regular, Pending::None);
+        std::fs::remove_dir_all(dir.path().join(NEXT_DIR)).unwrap();
+
+        // Control: an unregistered folder with readable staging.id is Invalid -> Pending::None.
+        let unowned = dir.path().join(NEXT_DIR);
+        std::fs::create_dir(&unowned).unwrap();
+        std::fs::write(unowned.join(KEY_FILE), &key).unwrap();
+        std::fs::write(unowned.join(STAGING_ID_FILE), "00".repeat(16)).unwrap();
+        std::fs::write(unowned.join("THIRD-PARTY-NOTICES.md"), "rogue").unwrap();
+        assert_eq!(
+            install_pending_docs(dir.path(), &key, rename),
+            Pending::None
+        );
+        assert_eq!(read(dir.path(), "THIRD-PARTY-NOTICES.md"), "new notices");
+    }
+
+    #[test]
+    fn probe_portable_marker_distinguishes_metadata_errors_and_unreadable_slots() {
+        let dir = FixtureDir::new();
+        let src = tempfile::tempdir().unwrap();
+        let exe_a = src.path().join("a.exe");
+        let exe_b = src.path().join("b.exe");
+        let marker = src.path().join("portable.marker");
+        std::fs::write(&exe_a, b"exe A").unwrap();
+        std::fs::write(&exe_b, b"exe B").unwrap();
+        std::fs::write(&marker, b"portable").unwrap();
+        let key_a = exe_key(&exe_a).unwrap();
+        let key_b = exe_key(&exe_b).unwrap();
+
+        // 1. Metadata failure on the only staged marker yields Pending (not
+        // Absent), then recovers to Present when metadata succeeds.
+        stage_pending_docs(dir.path(), &exe_a, &[(&marker, "portable.marker")], "a").unwrap();
+        let injected = probe_portable_marker_with(
+            dir.path(),
+            || Some(key_a.clone()),
+            Some(Duration::from_secs(1)),
+            |p| {
+                if p.ends_with("portable.marker")
+                    && p.parent().is_some_and(|d| d.ends_with(NEXT_DIR))
+                {
+                    Err(io::Error::new(io::ErrorKind::PermissionDenied, "injected"))
+                } else {
+                    std::fs::symlink_metadata(p)
+                }
+            },
+        );
+        assert_eq!(injected, PortableMarkerState::Pending);
+        assert_eq!(
+            probe_portable_marker_within(
+                dir.path(),
+                || Some(key_a.clone()),
+                Some(Duration::from_secs(1))
+            ),
+            PortableMarkerState::Present
+        );
+
+        // 2. Two slots populated: A set aside in PREV_DIR with an unreadable
+        // key, B readable in NEXT_DIR. B matches -> Present; A does not match
+        // B and has an unreadable slot -> Pending (never Absent).
+        stage_pending_docs(dir.path(), &exe_b, &[(&marker, "portable.marker")], "b").unwrap();
+        let prev_key = dir.path().join(PREV_DIR).join(KEY_FILE);
+        std::fs::remove_file(&prev_key).unwrap();
+        std::fs::create_dir(&prev_key).unwrap();
+        assert_eq!(
+            probe_portable_marker_within(
+                dir.path(),
+                || Some(key_b.clone()),
+                Some(Duration::from_secs(1))
+            ),
+            PortableMarkerState::Present
+        );
+        assert_eq!(
+            probe_portable_marker_within(
+                dir.path(),
+                || Some(key_a.clone()),
+                Some(Duration::from_secs(1))
+            ),
+            PortableMarkerState::Pending
+        );
+
+        // 3. Control: a directory with no marker and no batches returns Absent.
+        let empty = FixtureDir::new();
+        assert_eq!(
+            probe_portable_marker_within(
+                empty.path(),
+                || Some(key_a.clone()),
+                Some(Duration::from_secs(1))
+            ),
+            PortableMarkerState::Absent
+        );
+    }
+
+    #[test]
+    fn a_held_document_keeps_retrying_when_another_staging_moves_its_batch_after_the_pass() {
+        let dir = FixtureDir::new();
+        let src = tempfile::tempdir().unwrap();
+        let exe_b = src.path().join("b.exe");
+        let exe_c = src.path().join("c.exe");
+        let notice_b = src.path().join("notices-b.md");
+        let marker_c = src.path().join("marker-c");
+        std::fs::write(&exe_b, b"exe B").unwrap();
+        std::fs::write(&exe_c, b"exe C").unwrap();
+        std::fs::write(&notice_b, "notices of B").unwrap();
+        std::fs::write(&marker_c, "portable").unwrap();
+        std::fs::write(dir.path().join("THIRD-PARTY-NOTICES.md"), "old notices").unwrap();
+        let key_b = exe_key(&exe_b).unwrap();
+
+        // Keep an older exe's owned PENDING_DIR holding a file so B installs
+        // directly from NEXT_DIR (cannot promote over occupied PENDING_DIR).
+        let old_pending = dir.path().join(PENDING_DIR);
+        std::fs::create_dir(&old_pending).unwrap();
+        let old_id = format!("{:032x}", rand::random::<u128>());
+        std::fs::write(old_pending.join(KEY_FILE), "older-exe").unwrap();
+        std::fs::write(old_pending.join(STAGING_ID_FILE), &old_id).unwrap();
+        record_batch(dir.path(), &old_id).unwrap();
+        std::fs::create_dir(old_pending.join("sub-keep")).unwrap();
+
+        stage_pending_docs(
+            dir.path(),
+            &exe_b,
+            &[(&notice_b, "THIRD-PARTY-NOTICES.md")],
+            "b",
+        )
+        .unwrap();
+
+        let busy = RefCell::new(vec!["THIRD-PARTY-NOTICES.md"]);
+        let first = install_pending_docs(dir.path(), &key_b, held(&busy, ERROR_SHARING_VIOLATION));
+        assert_eq!(
+            first,
+            Pending::Docs(vec![("THIRD-PARTY-NOTICES.md", Outcome::InUse)])
+        );
+
+        // Immediately after retry pass 1 releases the batch mutex and BEFORE
+        // `retry_held` runs `last.retain` bookkeeping, a concurrent staging C
+        // moves B's batch from NEXT_DIR to PREV_DIR and publishes C in NEXT_DIR
+        // with only `portable.marker`. Because bookkeeping uses the outcomes
+        // observed under the lock instead of re-probing NEXT_DIR, B's held
+        // result stays retryable and installs once the editor hold clears.
+        let moved = Cell::new(false);
+        let sleep_step = Cell::new(0u32);
+        let outcome = retry_held_with_hook(
+            dir.path(),
+            &key_b,
+            first,
+            (4, Duration::ZERO),
+            held(&busy, ERROR_SHARING_VIOLATION),
+            |_| {
+                let s = sleep_step.get() + 1;
+                sleep_step.set(s);
+                if s == 2 {
+                    busy.borrow_mut().clear();
+                }
+            },
+            || {
+                if !moved.replace(true) {
+                    stage_pending_docs(dir.path(), &exe_c, &[(&marker_c, "portable.marker")], "c")
+                        .unwrap();
+                    assert!(dir
+                        .path()
+                        .join(PREV_DIR)
+                        .join("THIRD-PARTY-NOTICES.md")
+                        .is_file());
+                    assert!(!dir
+                        .path()
+                        .join(NEXT_DIR)
+                        .join("THIRD-PARTY-NOTICES.md")
+                        .exists());
+                }
+            },
+        );
+        assert!(moved.get());
+        assert_eq!(
+            outcome,
+            Pending::Docs(vec![("THIRD-PARTY-NOTICES.md", Outcome::Installed)])
+        );
+        assert_eq!(read(dir.path(), "THIRD-PARTY-NOTICES.md"), "notices of B");
     }
 
     #[test]

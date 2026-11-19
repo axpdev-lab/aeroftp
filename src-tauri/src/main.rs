@@ -10,7 +10,7 @@ fn main() {
     ftp_client_gui_lib::alloc_tuning::tune_for_transfer_buffers();
 
     // Windows portable auto-updater: a failed swap delegates batch cleanup
-    // back to this exe (`--discard-pending-docs <key>`) so the check and
+    // back to this exe (`--discard-pending-docs <token>`) so the check and
     // removal run under the same batch mutex. Exits immediately without UI.
     #[cfg(windows)]
     if ftp_client_gui_lib::windows_update_helper::try_handle_discard_pending_docs_arg() {

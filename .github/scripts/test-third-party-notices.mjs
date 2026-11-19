@@ -17,6 +17,8 @@ import {
   CARGO_TREE_ARGS,
   isGplCompatible,
   tokenizeSpdx,
+  spdxAlternatives,
+  MAX_SPDX_ALTERNATIVES,
   extractSpdxLicenseIds,
   activeCargoPackageIds,
   carriesWholeStandardText,
@@ -99,7 +101,7 @@ const ROOT = path.resolve(__dirname, '..', '..');
 // Exit status 1 is "no match"; any other failure is an error.
 const grepCopyrightLines = (dir) => {
   try {
-    return execFileSync('grep', ['-rIhi', '-E', '(copyright|©|\\(c\\))', '--', dir], { encoding: 'utf8' });
+    return execFileSync('grep', ['-rIhi', '--exclude-dir=node_modules', '-E', '(copyright|©|\\(c\\))', '--', dir], { encoding: 'utf8' });
   } catch (err) {
     if (err.status === 1) return '';
     throw new Error(`Grep scan failed for ${dir} (status ${err.status}): ${err.message}`);
@@ -120,6 +122,31 @@ test('SPDX parser: tokenizer handles operators, parentheses, slashes, and identi
   assert.deepStrictEqual(
     tokenizeSpdx('Apache-2.0 WITH LLVM-exception'),
     ['Apache-2.0', 'WITH', 'LLVM-exception']
+  );
+});
+
+test('SPDX parser: spdxAlternatives deduplicates repetitive choices and bounds distinct cross-product expansion', () => {
+  // Ordinary mixed AND/OR expression still expands every distinct choice.
+  assert.deepStrictEqual(
+    spdxAlternatives('(MIT OR Apache-2.0) AND (BSD-2-Clause OR ISC)'),
+    [
+      ['MIT', 'BSD-2-Clause'],
+      ['MIT', 'ISC'],
+      ['Apache-2.0', 'BSD-2-Clause'],
+      ['Apache-2.0', 'ISC'],
+    ]
+  );
+  // 30 repeated two-way choices would yield 2^30 combinations naively, but
+  // deduplication keeps only the 3 distinct sets.
+  const repetitive = Array.from({ length: 30 }, () => '(MIT OR Apache-2.0)').join(' AND ');
+  const deduped = spdxAlternatives(repetitive);
+  assert.strictEqual(deduped.length, 3);
+  assert.deepStrictEqual(deduped, [['MIT'], ['MIT', 'Apache-2.0'], ['Apache-2.0']]);
+  // 11 independent binary choices exceed MAX_SPDX_ALTERNATIVES (2^11 = 2048 > 1024).
+  const huge = Array.from({ length: 11 }, (_, i) => `(LicenseA-${i} OR LicenseB-${i})`).join(' AND ');
+  assert.throws(
+    () => spdxAlternatives(huge),
+    new RegExp(`exceeds ${MAX_SPDX_ALTERNATIVES} distinct alternatives`)
   );
 });
 
@@ -570,8 +597,20 @@ test('readPackageFiles: resolves declared nested license_file and fails fast if 
 
     const result = readPackageFiles(tmpDir, 'custom-crate@1.0.0', 'legal/terms.txt');
     assert.strictEqual(result.licenseFiles.length, 1);
-    assert.strictEqual(result.licenseFiles[0].filename, 'terms.txt');
+    assert.strictEqual(result.licenseFiles[0].filename, 'legal/terms.txt');
     assert.strictEqual(result.licenseFiles[0].content, 'Custom terms and conditions');
+    // The declared nested license file is excluded from source copyright scanning.
+    fs.writeFileSync(path.join(legalDir, 'terms.txt'), 'Copyright (c) 2024 Nested Holder\nCustom terms');
+    const nestedRead = readPackageFiles(tmpDir, 'custom-crate@1.0.0', 'legal/terms.txt');
+    assert.deepStrictEqual(
+      findPackageCopyrightNotices(tmpDir, nestedRead.licenseFiles.map((f) => f.filename)),
+      [],
+      'declared nested license_file must not be re-scanned as source'
+    );
+    // Root-level declared license_file keeps its root filename unchanged.
+    fs.writeFileSync(path.join(tmpDir, 'LICENSE-ROOT'), 'Root terms');
+    const rootRead = readPackageFiles(tmpDir, 'custom-crate@1.0.0', 'LICENSE-ROOT');
+    assert.strictEqual(rootRead.licenseFiles[0].filename, 'LICENSE-ROOT');
 
     // Fails fast if declared license_file does not exist
     assert.throws(
@@ -2015,14 +2054,15 @@ test('wrapped notices: a notice that may go on with its next line is joined only
 test('reviewed notices: a reviewed example value gives no attribution, a reviewed wrapped holder still does', () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'reviewed-example-fixture-'));
   try {
-    fs.writeFileSync(path.join(tmpDir, 'README.md'), '```toml\nCopyright © 2016\n...\n```\n');
-    fs.mkdirSync(path.join(tmpDir, 'src'));
-    fs.writeFileSync(path.join(tmpDir, 'src/lib.rs'), '/// ```\n/// Copyright © 2016\n/// ```\nfn a() {}\n');
-    assert.deepStrictEqual(findPackageCopyrightNotices(tmpDir), []);
+    const pkgDir = path.join(tmpDir, 'tauri-winres-0.3.6');
+    fs.mkdirSync(path.join(pkgDir, 'src'), { recursive: true });
+    fs.writeFileSync(path.join(pkgDir, 'README.md'), '```toml\nCopyright © 2016\n...\n```\n');
+    fs.writeFileSync(path.join(pkgDir, 'src/lib.rs'), '/// ```\n/// Copyright © 2016\n/// ```\nfn a() {}\n');
+    assert.deepStrictEqual(findPackageCopyrightNotices(pkgDir), []);
     // The control: a reviewed notice whose holder is on the next line keeps it.
-    const wrapped = reviewedNotices().find((r) => !r.example && r.following.length === 1);
-    fs.writeFileSync(path.join(tmpDir, 'src/lib.rs'), `// ${wrapped.line}\n// ${wrapped.following[0]}\nfn a() {}\n`);
-    assert.deepStrictEqual(findPackageCopyrightNotices(tmpDir).map((n) => n.notice), [wrapped.notice]);
+    const wrapped = reviewedNotices().find((r) => !r.example && !r.citation && r.following.length === 1);
+    fs.writeFileSync(path.join(pkgDir, 'src/lib.rs'), `// ${wrapped.line}\n// ${wrapped.following[0]}\nfn a() {}\n`);
+    assert.deepStrictEqual(findPackageCopyrightNotices(pkgDir).map((n) => n.notice), [wrapped.notice]);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
@@ -2153,14 +2193,30 @@ test('reviewed notices and tag mentions: each entry names its source and the who
     // An example value or a citation gives no notice; any other entry gives
     // the whole one.
     if (r.citation !== undefined) assert.ok(r.notice === '' && r.example === undefined && ['package', 'version', 'file'].every((k) => typeof r.citation[k] === 'string' && r.citation[k]), r.line);
-    else if (r.example === true) assert.strictEqual(r.notice, '', r.line);
+    else if (r.example !== undefined) assert.ok(r.notice === '' && r.citation === undefined && ['package', 'version', 'file'].every((k) => typeof r.example[k] === 'string' && r.example[k]), r.line);
     else {
       assert.ok(r.example === undefined && r.citation === undefined && r.notice, JSON.stringify(r));
       assert.ok(r.notice.startsWith(r.line.replace(/,$/, '')), r.line);
     }
   }
-  // The two tauri-winres examples are reviewed as examples, not notices.
+  // The two tauri-winres examples are reviewed as examples scoped to their files, not notices.
   assert.deepStrictEqual(reviewedNotices().filter((r) => r.example).map((r) => r.source.split(' (')[0]), ['tauri-winres 0.3.6 README.md:86', 'tauri-winres 0.3.6 src/lib.rs:127']);
+  // Example suppression applies only in the two reviewed tauri-winres@0.3.6 files,
+  // never in an unrelated package carrying the same pair of lines.
+  const exTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'example-scope-fixture-'));
+  try {
+    const tauriDir = path.join(exTmp, 'tauri-winres-0.3.6');
+    fs.mkdirSync(path.join(tauriDir, 'src'), { recursive: true });
+    fs.writeFileSync(path.join(tauriDir, 'README.md'), 'Copyright © 2016\n...\n');
+    fs.writeFileSync(path.join(tauriDir, 'src', 'lib.rs'), '// Copyright © 2016\n// ```\n');
+    assert.deepStrictEqual(findPackageCopyrightNotices(tauriDir), []);
+    const otherDir = path.join(exTmp, 'unrelated-pkg-1.0.0');
+    fs.mkdirSync(otherDir, { recursive: true });
+    fs.writeFileSync(path.join(otherDir, 'README.md'), 'Copyright © 2016\n...\n');
+    assert.throws(() => findPackageCopyrightNotices(otherDir), /may continue on its next line/);
+  } finally {
+    fs.rmSync(exTmp, { recursive: true, force: true });
+  }
   // The moka book citation is reviewed as a citation, not a notice of moka.
   assert.deepStrictEqual(reviewedNotices().filter((r) => r.citation).map((r) => r.source.split(' (')[0]), ['moka 0.12.16 src/common/concurrent/arc.rs:5-6']);
   for (const [key, reason] of Object.entries(reviewedTagMentions())) assert.ok(/^[^@]+@[^:]+:[^:]+:/.test(key) && reason, key);
@@ -2991,7 +3047,7 @@ test('bundled code: a tag in a block comment after code is a header read from it
     // Read from its comment: the code before the opener is no part of the header.
     assert.deepEqual(bundled[0].notices, ['Copyright (c) 2019 Inline Holder. SPDX-License-Identifier: BSD-2-Clause']);
     write('vendor/inline.c', 'const char *s = "/* SPDX-License-Identifier: BSD-2-Clause */";\n');
-    assert.throws(() => findBundledCodeUnderOtherLicenses(comp(), known), /inline-pkg@1\.0\.0 has an SPDX-License-Identifier in vendor\/inline\.c outside a comment the scanner knows/);
+    assert.throws(() => findBundledCodeUnderOtherLicenses(comp(), known), /inline-pkg@1\.0\.0 has an SPDX-License-Identifier in vendor\/inline\.c:1 outside a comment the scanner knows/);
     // An unstarred multiline C block comment with text before the SPDX tag is
     // inside the tracked block and accepted; closing the block before the tag
     // leaves the tag outside the comment and fails.
@@ -3000,7 +3056,7 @@ test('bundled code: a tag in a block comment after code is a header read from it
     assert.deepEqual(unstarred.map((b) => [b.license, b.files]), [['BSD-2-Clause', ['vendor/inline.c']]]);
     assert.deepEqual(unstarred[0].notices, ['Copyright (c) 2020 Unstarred Holder']);
     write('vendor/inline.c', '/*\nCopyright (c) 2020 Closed Holder\n*/ License: SPDX-License-Identifier: BSD-2-Clause\nint u;\n');
-    assert.throws(() => findBundledCodeUnderOtherLicenses(comp(), known), /inline-pkg@1\.0\.0 has an SPDX-License-Identifier in vendor\/inline\.c outside a comment the scanner knows/);
+    assert.throws(() => findBundledCodeUnderOtherLicenses(comp(), known), /inline-pkg@1\.0\.0 has an SPDX-License-Identifier in vendor\/inline\.c:3 outside a comment the scanner knows/);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
@@ -3053,30 +3109,115 @@ test('bundled code: a header expression made of SPDX tokens that does not parse 
     const known = new Set(Object.keys(JSON.parse(fs.readFileSync(SPDX_STANDARD_LICENSES_FILE, 'utf8'))));
     assert.deepStrictEqual(findBundledCodeUnderOtherLicenses(comp, known).filter((b) => !b.declared).map((b) => [b.license, b.files]), [['BSD-2-Clause', ['lib/arm.S', 'lib/one.c', 'lib/valid.c']]]);
     write('lib/broken.c', '/* SPDX-License-Identifier: BSD-2-Clause AND */\n');
-    assert.throws(() => findBundledCodeUnderOtherLicenses(comp, known), /malformed-pkg@1\.0\.0 has a malformed SPDX-License-Identifier in lib\/broken\.c: 'BSD-2-Clause AND'\. If the line only mentions the tag, add "malformed-pkg@1\.0\.0:lib\/broken\.c:\/\* SPDX-License-Identifier: BSD-2-Clause AND \*\/" with the reason to KNOWN_SPDX_TAG_MENTIONS/);
+    assert.throws(
+      () => findBundledCodeUnderOtherLicenses(comp, known),
+      /malformed-pkg@1\.0\.0 has a malformed SPDX-License-Identifier in lib\/broken\.c:1\./
+    );
     fs.rmSync(path.join(tmpDir, 'lib/broken.c'));
+    // A malformed declaration containing a credential-bearing URL reports only
+    // package, file, and line number without leaking the secret into logs.
+    write('lib/secret.c', '/* SPDX-License-Identifier: https://user:s3cret-cred@git.example/repo */\n');
+    assert.throws(
+      () => findBundledCodeUnderOtherLicenses(comp, known),
+      (err) => {
+        assert.match(err.message, /malformed-pkg@1\.0\.0 has a malformed SPDX-License-Identifier in lib\/secret\.c:1\./);
+        assert.doesNotMatch(err.message, /s3cret-cred/);
+        return true;
+      }
+    );
+    fs.rmSync(path.join(tmpDir, 'lib/secret.c'));
+    // An empty SPDX-License-Identifier in declaration position fails, while a
+    // prose mention with no value in docs is ignored.
+    write('lib/empty.c', '// SPDX-License-Identifier:\n');
+    assert.throws(
+      () => findBundledCodeUnderOtherLicenses(comp, known),
+      /malformed-pkg@1\.0\.0 has a malformed SPDX-License-Identifier in lib\/empty\.c:1\./
+    );
+    fs.rmSync(path.join(tmpDir, 'lib/empty.c'));
+    write('docs/empty-prose.md', 'Documentation: SPDX-License-Identifier:\n');
+    assert.deepStrictEqual(
+      findBundledCodeUnderOtherLicenses(comp, known).filter((b) => !b.declared).map((b) => [b.license, b.files]),
+      [['BSD-2-Clause', ['lib/arm.S', 'lib/one.c', 'lib/valid.c']]]
+    );
+    fs.rmSync(path.join(tmpDir, 'docs/empty-prose.md'));
     // A declaration in a header position that the tokenizer cannot read (an
     // SPDX document reference) fails too, never passes unchecked; the string
     // literal and the shell check above stay mentions.
     write('lib/vendor.c', '/* SPDX-License-Identifier: DocumentRef-Vendor:LicenseRef-Custom */\n');
-    assert.throws(() => findBundledCodeUnderOtherLicenses(comp, known), /malformed-pkg@1\.0\.0 has a malformed SPDX-License-Identifier in lib\/vendor\.c: 'DocumentRef-Vendor:LicenseRef-Custom'/);
+    assert.throws(() => findBundledCodeUnderOtherLicenses(comp, known), /malformed-pkg@1\.0\.0 has a malformed SPDX-License-Identifier in lib\/vendor\.c:1\./);
     fs.rmSync(path.join(tmpDir, 'lib/vendor.c'));
     // A comment that mentions the tag fails like a malformed header: the remedy
     // is a reviewed entry, never a guess from the words before the tag.
     write('lib/example.js', '// Example: SPDX-License-Identifier: MIT (preferred)\n');
-    assert.throws(() => findBundledCodeUnderOtherLicenses(comp, known), /in lib\/example\.js: 'MIT \(preferred\)'/);
+    assert.throws(() => findBundledCodeUnderOtherLicenses(comp, known), /in lib\/example\.js:1\./);
     const listed = { 'malformed-pkg@1.0.0:lib/example.js:// Example: SPDX-License-Identifier: MIT (preferred)': 'a usage example in a comment, not a header' };
     assert.deepStrictEqual(findBundledCodeUnderOtherLicenses(comp, known, listed).filter((b) => !b.declared).map((b) => [b.license, b.files]), [['BSD-2-Clause', ['lib/arm.S', 'lib/one.c', 'lib/valid.c']]]);
     // Only the listed file is skipped: the same line elsewhere still fails.
     write('lib/other.js', '// Example: SPDX-License-Identifier: MIT (preferred)\n');
-    assert.throws(() => findBundledCodeUnderOtherLicenses(comp, known, listed), /in lib\/other\.js/);
+    assert.throws(() => findBundledCodeUnderOtherLicenses(comp, known, listed), /in lib\/other\.js:1\./);
     fs.rmSync(path.join(tmpDir, 'lib/other.js'));
     // The entry names one line: a malformed header in the same file still fails.
     write('lib/example.js', '// Example: SPDX-License-Identifier: MIT (preferred)\n/* SPDX-License-Identifier: BSD-2-Clause AND */\n');
-    assert.throws(() => findBundledCodeUnderOtherLicenses(comp, known, listed), /in lib\/example\.js: 'BSD-2-Clause AND'/);
+    assert.throws(() => findBundledCodeUnderOtherLicenses(comp, known, listed), /in lib\/example\.js:2\./);
     write('lib/example.js', '// Example: SPDX-License-Identifier: MIT (preferred)\n');
     // And one version: the same line in another version of the package fails.
-    assert.throws(() => findBundledCodeUnderOtherLicenses({ ...comp, version: '2.0.0' }, known, listed), /malformed-pkg@2\.0\.0 has a malformed SPDX-License-Identifier in lib\/example\.js/);
+    assert.throws(() => findBundledCodeUnderOtherLicenses({ ...comp, version: '2.0.0' }, known, listed), /malformed-pkg@2\.0\.0 has a malformed SPDX-License-Identifier in lib\/example\.js:1\./);
+    // A reviewed mention with > MAX_SPDX_ALTERNATIVES distinct choices is
+    // skipped before expansion, while an unreviewed header above the cap fails.
+    const hugeExpr = Array.from({ length: 11 }, (_, idx) => `(LicenseA-${idx} OR LicenseB-${idx})`).join(' AND ');
+    const mentionLine = `const BIG = "SPDX-License-Identifier: ${hugeExpr}";`;
+    write('lib/huge_mention.c', `${mentionLine}\n`);
+    const hugeMentionMap = { [`malformed-pkg@1.0.0:lib/huge_mention.c:${mentionLine}`]: 'reviewed test mention' };
+    assert.deepStrictEqual(
+      findBundledCodeUnderOtherLicenses(comp, known, { ...listed, ...hugeMentionMap }).filter((b) => !b.declared).map((b) => [b.license, b.files]),
+      [['BSD-2-Clause', ['lib/arm.S', 'lib/one.c', 'lib/valid.c']]]
+    );
+    fs.rmSync(path.join(tmpDir, 'lib/huge_mention.c'));
+    write('lib/huge_header.c', `// SPDX-License-Identifier: ${hugeExpr}\n`);
+    assert.throws(
+      () => findBundledCodeUnderOtherLicenses(comp, known, listed),
+      new RegExp(`exceeds ${MAX_SPDX_ALTERNATIVES} distinct alternatives`)
+    );
+    fs.rmSync(path.join(tmpDir, 'lib/huge_header.c'));
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('bundled code: nested Rust block comments close at outer boundary and keep same-line permission text', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rust-nested-comment-fixture-'));
+  try {
+    const write = (rel, content) => {
+      fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, rel), content);
+    };
+    write('LICENSE', shippedLicense('Copyright (c) 2020 Wrapper Author', 'MIT'));
+    // Outer Rust block closes after an inner closer on the same line, followed by a real // SPDX header.
+    write('src/after_outer.rs', '/* outer\n/* inner */ still outer */ // SPDX-License-Identifier: BSD-2-Clause\npub fn a() {}\n');
+    // Same-line permission text after an inner /* Aside */ closer inside a Rust block comment.
+    write('src/same_line_grant.rs', '/*\n * Copyright (c) 2021 Same Line Holder\n * SPDX-License-Identifier: BSD-2-Clause\n * /* Aside */ Permission is hereby granted to use this file.\n */\npub fn b() {}\n');
+    // Next-line permission text after an inner comment (existing behavior).
+    write('src/next_line_grant.rs', '/*\n * Copyright (c) 2021 Next Line Holder\n * SPDX-License-Identifier: BSD-2-Clause\n * /* Aside */\n * Permission is hereby granted to use this next file.\n */\npub fn c() {}\n');
+    // C control: C block comments do not nest, so text after the first */ is outside the comment.
+    write('src/c_control.c', '/* Copyright (c) 2021 C Holder. SPDX-License-Identifier: BSD-2-Clause */ int x;\n');
+    // Inner Rust comment delimiters are stripped from attribution lines without
+    // truncating text after them: both a reviewed continuation ending at `*/`
+    // and a notice after an inner `/* ... */` work.
+    const wrapped = reviewedNotices().find((r) => !r.example && !r.citation && r.following.length === 1);
+    write(
+      'src/inner_notice.rs',
+      `/*\n * SPDX-License-Identifier: BSD-2-Clause\n * /* ${wrapped.line}\n * ${wrapped.following[0]} */\n * /* Note */ Copyright (c) 2022 After Inner Holder\n */\npub fn d() {}\n`
+    );
+    const comp = { name: 'rust-nested-pkg', version: '1.0.0', license: 'MIT', source: 'cargo', packageDir: tmpDir, authors: ['Wrapper Author'], ...readPackageFiles(tmpDir, 'rust-nested-pkg@1.0.0') };
+    const known = new Set(Object.keys(JSON.parse(fs.readFileSync(SPDX_STANDARD_LICENSES_FILE, 'utf8'))));
+    const bsd = findBundledCodeUnderOtherLicenses(comp, known).find((b) => b.license === 'BSD-2-Clause');
+    assert.ok(bsd);
+    assert.deepStrictEqual(bsd.files, ['src/after_outer.rs', 'src/c_control.c', 'src/inner_notice.rs', 'src/next_line_grant.rs', 'src/same_line_grant.rs']);
+    assert.ok(bsd.notices.includes(wrapped.notice), JSON.stringify(bsd.notices));
+    assert.ok(bsd.notices.some((n) => n.includes('Copyright (c) 2022 After Inner Holder') && !n.includes('*/')), JSON.stringify(bsd.notices));
+    assert.ok(bsd.headers.some((h) => h.files.includes('src/same_line_grant.rs') && h.text.includes('Permission is hereby granted to use this file.')), JSON.stringify(bsd.headers));
+    assert.ok(bsd.headers.some((h) => h.files.includes('src/next_line_grant.rs') && h.text.includes('Permission is hereby granted to use this next file.')), JSON.stringify(bsd.headers));
+    assert.ok(!bsd.headers.some((h) => h.files.includes('src/c_control.c') && h.text.includes('int x;')));
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
@@ -3148,7 +3289,7 @@ test('readPackageFiles: a declared license_file in a subfolder is read once, as 
     assert.deepStrictEqual(
       result.licenseFiles.map((f) => [f.filename, f.content, Boolean(f.vendored)]),
       [
-        ['LICENSE.txt', 'Custom terms', false],
+        ['legal/LICENSE.txt', 'Custom terms', false],
         ['third_party/LICENSE', 'Vendored terms', true],
       ]
     );
@@ -3790,12 +3931,44 @@ test('release workflow: every publish job requires a job that checks the notices
   // About's online fallback opens the notices at the tag of the app version
   // (src/utils/thirdPartyLicenses.ts): on a tag run the same job requires the
   // version sites to equal the tag, so that tag is the one whose notices the
-  // check above verified.
-  assert.ok(
-    (jobs.get('linux-validate')?.steps ?? []).some(
-      (s) => typeof s?.run === 'string' && s.run.includes('node scripts/check-version-sites.mjs --tag "$GITHUB_REF_NAME"')
-    ),
-    'linux-validate checks version sites against GITHUB_REF_NAME'
+  // check above verified. The step must actually run on tag events (no
+  // continue-on-error, and either unconditional or gated on a tag condition).
+  const versionCheckNeedle = 'node scripts/check-version-sites.mjs --tag "$GITHUB_REF_NAME"';
+  const runsOnTag = (cond) => {
+    if (cond === undefined) return true;
+    if (typeof cond !== 'string') return false;
+    const norm = cond.replace(/^\s*\$\{\{\s*|\s*\}\}\s*$/g, '').replace(/\s+/g, ' ').trim();
+    return (
+      norm === "startsWith(github.ref, 'refs/tags/')" ||
+      norm === "github.ref_type == 'tag'"
+    );
+  };
+  const gatesTagRun = (jobInput, needle) => {
+    const j = typeof jobInput === 'string' ? Object.values(YAML.parse(jobInput) ?? {})[0] : jobInput;
+    if (!j || typeof j !== 'object') return false;
+    if (Object.prototype.hasOwnProperty.call(j, 'continue-on-error') || !runsOnTag(j.if)) return false;
+    return Array.isArray(j.steps) && j.steps.some(
+      (s) =>
+        s &&
+        typeof s === 'object' &&
+        typeof s.run === 'string' &&
+        s.run.includes(needle) &&
+        !Object.prototype.hasOwnProperty.call(s, 'continue-on-error') &&
+        runsOnTag(s.if)
+    );
+  };
+  assert.ok(gatesTagRun(jobs.get('linux-validate'), versionCheckNeedle), 'linux-validate checks version sites on tag runs without continue-on-error');
+  const tagStep = `      - name: Version sites match tag\n        if: startsWith(github.ref, 'refs/tags/')\n        run: |\n          ${versionCheckNeedle}\n`;
+  assert.strictEqual(gatesTagRun(job('', tagStep), versionCheckNeedle), true);
+  assert.strictEqual(
+    gatesTagRun(job('', `      - name: Version sites match tag\n        if: github.event_name == 'pull_request'\n        run: ${versionCheckNeedle}\n`), versionCheckNeedle),
+    false,
+    'a PR-only version check does not gate tag releases'
+  );
+  assert.strictEqual(
+    gatesTagRun(job('', `${tagStep}        continue-on-error: true\n`), versionCheckNeedle),
+    false,
+    'a continue-on-error version check does not gate tag releases'
   );
   const tsSource = fs.readFileSync(path.join(ROOT, 'src/utils/thirdPartyLicenses.ts'), 'utf8');
   assert.match(tsSource, /GITHUB_NOTICES_URL = `https:\/\/raw\.githubusercontent\.com\/axpdev-lab\/aeroftp\/v\$\{packageJson\.version\}\/THIRD-PARTY-NOTICES\.md`;/);
@@ -4200,6 +4373,21 @@ test('property: no component marked with "No copyright notice is shipped" has co
     [],
     `Components marked with "No copyright notice is shipped" contain real copyright lines in their packages: ${JSON.stringify(falseNoneList, null, 2)}`
   );
+});
+
+test('property: grepCopyrightLines excludes nested node_modules while still scanning the component own source', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'grep-nested-nm-fixture-'));
+  try {
+    fs.mkdirSync(path.join(tmpDir, 'src'), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, 'node_modules', 'nested-dep'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, 'src', 'index.js'), 'export const x = 1;\n');
+    fs.writeFileSync(path.join(tmpDir, 'node_modules', 'nested-dep', 'index.js'), '// Copyright (c) 2024 Nested Dep Author\n');
+    assert.strictEqual(grepCopyrightLines(tmpDir).trim(), '', 'nested node_modules notices must not be attributed to parent');
+    fs.writeFileSync(path.join(tmpDir, 'src', 'index.js'), '// Copyright (c) 2024 Parent Own Author\nexport const x = 1;\n');
+    assert.match(grepCopyrightLines(tmpDir), /Parent Own Author/);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
 });
 
 test('notice-only component: generates "Notice file shipped: ..." and does not claim "No copyright notice is shipped"', () => {

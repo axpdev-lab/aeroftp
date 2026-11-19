@@ -818,10 +818,10 @@ fn discard_pending_docs_arg(args: &[String]) -> Option<&str> {
     None
 }
 
-/// Walk argv looking for `--discard-pending-docs <hex-key>`. When present,
-/// discards only that update's staged batch under the shared `portable_docs`
-/// batch mutex (restoring any set-aside batch) and returns `true` so `main.rs`
-/// exits immediately without booting the GUI.
+/// Walk argv looking for `--discard-pending-docs <attempt-token>`. When
+/// present, discards only that update attempt's owned staged batch under the
+/// shared `portable_docs` batch mutex (restoring any set-aside batch) and
+/// returns `true` so `main.rs` exits immediately without booting the GUI.
 pub fn try_handle_discard_pending_docs_arg() -> bool {
     let args: Vec<String> = std::env::args().collect();
     let Some(key) = discard_pending_docs_arg(&args) else {
@@ -960,9 +960,7 @@ pub fn install_pending_docs_at_start() {
                 log::info!("portable update: removed staged documents that belong to another exe");
             }
             portable_docs::Pending::Unavailable(e) => {
-                log::warn!(
-                    "portable update: the staged documents wait, the folder lock failed ({e})"
-                );
+                log::warn!("portable update: the staged documents wait ({e})");
             }
             portable_docs::Pending::Docs(outcomes) => {
                 for (name, outcome) in outcomes {
@@ -1588,12 +1586,21 @@ mod tests {
         let mut fx = fixture();
         with_docs(&mut fx, |_| true);
         // The old exe's notices are still pending from its own update.
-        let current = fx.app.join(portable_docs::PENDING_DIR);
-        std::fs::create_dir(&current).expect("current batch");
-        std::fs::write(current.join("THIRD-PARTY-NOTICES.md"), b"old exe's notices")
-            .expect("pending notices");
+        let old_notices = fx.root.path().join("old-exe-notices.md");
+        std::fs::write(&old_notices, b"old exe's notices").expect("pending notices");
+        portable_docs::stage_pending_docs(
+            &fx.app,
+            &fx.current,
+            &[(&old_notices, "THIRD-PARTY-NOTICES.md")],
+            "old",
+        )
+        .expect("stage old batch");
+        std::fs::rename(
+            fx.app.join(portable_docs::NEXT_DIR),
+            fx.app.join(portable_docs::PENDING_DIR),
+        )
+        .expect("promote old batch to current");
         let old_key = portable_docs::exe_key(&fx.current).expect("old key");
-        std::fs::write(current.join("exe.key"), &old_key).expect("key");
         let script = script_for(&fx);
         assert!(fx.app.join(portable_docs::NEXT_DIR).is_dir());
         // The new exe is gone before the helper runs: the swap fails.
@@ -1972,15 +1979,17 @@ mod tests {
         let mut fx = fixture();
         with_cli(&fx);
         with_docs(&mut fx, |_| true);
-        let next = fx.app.join(portable_docs::NEXT_DIR);
-        std::fs::create_dir(&next).expect("next batch");
-        std::fs::write(
-            next.join("THIRD-PARTY-NOTICES.md"),
-            b"running exe's notices",
+        let running_notices = fx.root.path().join("running-notices-next.md");
+        std::fs::write(&running_notices, b"running exe's notices").expect("pending notices");
+        portable_docs::stage_pending_docs(
+            &fx.app,
+            &fx.current,
+            &[(&running_notices, "THIRD-PARTY-NOTICES.md")],
+            "running-next",
         )
-        .expect("pending notices");
+        .expect("stage running batch");
+        let next = fx.app.join(portable_docs::NEXT_DIR);
         let own_key = portable_docs::exe_key(&fx.current).expect("key");
-        std::fs::write(next.join("exe.key"), &own_key).expect("key");
         std::fs::create_dir(fx.app.join("aeroftp-dispatch.exe.new")).expect("blocker");
         let refused = stage_update(&fx.staged, &fx.current).expect_err("refused");
         assert!(refused.contains("aeroftp-dispatch.exe"), "{refused}");
@@ -2008,15 +2017,21 @@ mod tests {
         let mut fx = fixture();
         with_cli(&fx);
         with_docs(&mut fx, |_| true);
-        let current = fx.app.join(portable_docs::PENDING_DIR);
-        std::fs::create_dir(&current).expect("current batch");
-        std::fs::write(
-            current.join("THIRD-PARTY-NOTICES.md"),
-            b"running exe's notices",
+        let running_notices = fx.root.path().join("running-notices-cur.md");
+        std::fs::write(&running_notices, b"running exe's notices").expect("pending notices");
+        portable_docs::stage_pending_docs(
+            &fx.app,
+            &fx.current,
+            &[(&running_notices, "THIRD-PARTY-NOTICES.md")],
+            "running-cur",
         )
-        .expect("pending notices");
+        .expect("stage running batch");
+        std::fs::rename(
+            fx.app.join(portable_docs::NEXT_DIR),
+            fx.app.join(portable_docs::PENDING_DIR),
+        )
+        .expect("promote running batch to current");
         let own_key = portable_docs::exe_key(&fx.current).expect("key");
-        std::fs::write(current.join("exe.key"), &own_key).expect("key");
         // A folder at a staged name: the CLI exe cannot be staged.
         std::fs::create_dir(fx.app.join("aeroftp-dispatch.exe.new")).expect("blocker");
         let refused = stage_update(&fx.staged, &fx.current).expect_err("refused");
