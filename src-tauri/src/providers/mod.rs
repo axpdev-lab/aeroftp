@@ -638,23 +638,70 @@ pub(crate) fn fully_unescaped(s: &str) -> String {
 }
 
 /// `text` with every value a session sent a server replaced by
-/// `[REDACTED]`, as sent and percent-encoded. A server can only reflect what
-/// it received, so a value is caught in any syntax around it. Values shorter
-/// than eight bytes are left to the caller: replacing them would garble
-/// ordinary words.
+/// `[REDACTED]`. A server can only reflect what it received, so a value is
+/// caught in any syntax around it. Values shorter than eight bytes are left
+/// to the caller: replacing them would garble ordinary words.
 pub(crate) fn without_sent_values(text: &str, sent: &[String]) -> String {
-    let mut forms: Vec<String> = sent
+    let long: Vec<String> = sent
         .iter()
         .filter(|value| value.len() >= 8)
-        .flat_map(|value| [value.clone(), urlencoding::encode(value).into_owned()])
+        .cloned()
+        .collect();
+    redact_values(text, &long, "[REDACTED]")
+}
+
+/// `text` with each of `values` replaced by `placeholder`, in every spelling
+/// a reflection can take: as given, percent-encoded, and decoded the way the
+/// text was (`fully_unescaped`, so a value holding a literal `&amp;` matches
+/// its decoded echo). A percent escape matches in either letter case (`%2F`,
+/// `%2f`); everything else matches exactly. Longest spelling first.
+pub(crate) fn redact_values(text: &str, values: &[String], placeholder: &str) -> String {
+    let mut forms: Vec<String> = values
+        .iter()
+        .filter(|value| !value.is_empty())
+        .flat_map(|value| {
+            [
+                value.clone(),
+                urlencoding::encode(value).into_owned(),
+                fully_unescaped(value),
+            ]
+        })
         .collect();
     forms.sort_by_key(|form| std::cmp::Reverse(form.len()));
     forms.dedup();
-    let mut shown = text.to_string();
-    for form in forms {
-        shown = shown.replace(&form, "[REDACTED]");
+    if forms.is_empty() {
+        return text.to_string();
     }
-    shown
+    let alternatives: Vec<String> = forms.iter().map(|form| spelling_pattern(form)).collect();
+    match regex::Regex::new(&format!("(?:{})", alternatives.join("|"))) {
+        Ok(spellings) => spellings
+            .replace_all(text, regex::NoExpand(placeholder))
+            .into_owned(),
+        // Too large a pattern: say nothing of the text rather than risk it.
+        Err(_) => placeholder.to_string(),
+    }
+}
+
+/// A regex matching `form` exactly, except that each `%XX` escape matches in
+/// either letter case.
+fn spelling_pattern(form: &str) -> String {
+    let bytes = form.as_bytes();
+    let mut pattern = String::new();
+    let mut i = 0;
+    while i < form.len() {
+        if bytes[i] == b'%'
+            && bytes.get(i + 1).is_some_and(u8::is_ascii_hexdigit)
+            && bytes.get(i + 2).is_some_and(u8::is_ascii_hexdigit)
+        {
+            pattern.push_str(&format!("%(?i:{})", &form[i + 1..i + 3]));
+            i += 3;
+        } else {
+            let c = form[i..].chars().next().expect("i is on a char boundary");
+            pattern.push_str(&regex::escape(c.encode_utf8(&mut [0; 4])));
+            i += c.len_utf8();
+        }
+    }
+    pattern
 }
 
 /// The start of an error response's body, for a message. At most `max`
@@ -5027,6 +5074,35 @@ mod tests {
         let out = sanitize_api_error("The key &apos;003d90ca&apos; is not valid");
         assert_eq!(out, "The key '003d90ca' is not valid");
         assert!(!out.contains("&apos;"));
+    }
+
+    /// A sent value is found in every spelling of its reflection: percent
+    /// escapes in either case, and a value holding a literal entity against
+    /// its decoded echo. A short value is left alone.
+    #[test]
+    fn a_sent_value_is_redacted_in_every_spelling() {
+        let sent = vec!["FQoGZXIvYXdzE+sent/token==".to_string()];
+        for echo in [
+            "FQoGZXIvYXdzE+sent/token==",
+            "FQoGZXIvYXdzE%2Bsent%2Ftoken%3D%3D",
+            "FQoGZXIvYXdzE%2bsent%2ftoken%3d%3d",
+            "FQoGZXIvYXdzE%2Bsent%2ftoken%3D%3d",
+        ] {
+            assert_eq!(
+                without_sent_values(&format!("token [{echo}] expired"), &sent),
+                "token [[REDACTED]] expired"
+            );
+        }
+        let entity = vec!["opaque&amp;token42".to_string()];
+        let echoed = fully_unescaped("token opaque&amp;amp;token42 expired");
+        assert_eq!(
+            without_sent_values(&echoed, &entity),
+            "token [REDACTED] expired"
+        );
+        assert_eq!(
+            without_sent_values("code abc", &["abc".to_string()]),
+            "code abc"
+        );
     }
 
     /// A parameter behind a twice-escaped `&` is still a parameter: the

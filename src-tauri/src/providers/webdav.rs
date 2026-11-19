@@ -549,16 +549,15 @@ fn server_message(body: &str, base_url: &str) -> String {
             }
             secrets.sort_by(|a, b| b.len().cmp(&a.len()).then_with(|| a.cmp(b)));
             secrets.dedup();
-            for secret in secrets {
-                shown = shown.replace(&secret, "<redacted>");
-            }
+            shown = super::redact_values(&shown, &secrets, "<redacted>");
             // A short value (1-3 bytes, `?token=abc`) cannot be cut out of a
             // word without guessing where it ends (`abc123`), and replacing
             // every occurrence would garble ordinary words. A message that
             // contains one anywhere is withheld: only its size is shown.
             if short_secrets
                 .iter()
-                .any(|short| shown.contains(short.as_str()))
+                .flat_map(|short| [short.clone(), super::fully_unescaped(short)])
+                .any(|short| !short.is_empty() && shown.contains(short.as_str()))
             {
                 return format!(
                     "a server message of {} bytes, withheld: it contains a value of the saved address",
@@ -10860,6 +10859,12 @@ pub(crate) mod collection_redirect_tests {
                         "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<d:error xmlns:d=\"DAV:\" xmlns:s=\"http://sabredav.org/ns\">\n<s:message>Rejected AB&amp;CD</s:message>\n</d:error>",
                     );
                 }
+                if path.ends_with("/literal") {
+                    return (
+                        StatusCode::LOCKED,
+                        "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<d:error xmlns:d=\"DAV:\" xmlns:s=\"http://sabredav.org/ns\">\n<s:message>Rejected QZ&amp;amp;RT</s:message>\n</d:error>",
+                    );
+                }
                 if path.ends_with("/adjacent") {
                     return (
                         StatusCode::LOCKED,
@@ -10880,7 +10885,7 @@ pub(crate) mod collection_redirect_tests {
         ));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!(
-            "http://{}/root/?access_token=DUMMY%20SECRET&token=TOPSECRET&amp_tok=AB%26CD&short=abc&pin=x%2B1",
+            "http://{}/root/?access_token=DUMMY%20SECRET&token=TOPSECRET&amp_tok=AB%26CD&short=abc&pin=x%2B1&lit=QZ%26amp%3BRT",
             listener.local_addr().unwrap()
         );
         let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
@@ -10916,6 +10921,18 @@ pub(crate) mod collection_redirect_tests {
             assert!(!entity.contains(secret), "{secret} leaked in {entity}");
         }
         assert!(entity.contains("Rejected <redacted>"), "{entity}");
+
+        // A saved value holding a literal entity (`QZ&amp;RT`) matches its
+        // reflection, which the message decodes to `QZ&RT`.
+        let literal = provider
+            .lock_file("/literal", 60)
+            .await
+            .unwrap_err()
+            .to_string();
+        for secret in ["QZ&RT", "QZ&amp;RT"] {
+            assert!(!literal.contains(secret), "{secret} leaked in {literal}");
+        }
+        assert!(literal.contains("Rejected <redacted>"), "{literal}");
 
         // A short value cannot be cut out of the word it touches (`abc123`),
         // as sent or percent-decoded (`x%2B1` is `x+1`): the message is

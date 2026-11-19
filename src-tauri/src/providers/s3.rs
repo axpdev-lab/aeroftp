@@ -755,6 +755,11 @@ pub struct S3Provider {
     /// the base credentials are used directly. Behind `Arc<RwLock>` so the
     /// clones spawned for parallel multipart parts share one refreshing cell.
     temp_credentials: Arc<std::sync::RwLock<Option<sts::TempCredentials>>>,
+    /// Session tokens this provider replaced, newest last, shared by its
+    /// clones. A request signed with one can answer after a sibling clone
+    /// refreshed the credentials, so its error must still remove it.
+    retired_session_tokens:
+        Arc<std::sync::Mutex<std::collections::VecDeque<secrecy::SecretString>>>,
     /// Serializes STS refreshes so concurrent multipart parts re-assume the
     /// role once instead of stampeding the STS endpoint near expiry.
     sts_refresh_lock: Arc<tokio::sync::Mutex<()>>,
@@ -1254,6 +1259,9 @@ impl S3Provider {
             acl_override: None,
             storage_class_override: None,
             temp_credentials: Arc::new(std::sync::RwLock::new(None)),
+            retired_session_tokens: Arc::new(std::sync::Mutex::new(
+                std::collections::VecDeque::new(),
+            )),
             sts_refresh_lock: Arc::new(tokio::sync::Mutex::new(())),
             cleartext_warned: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             tigris_rename_state: Arc::new(std::sync::atomic::AtomicU8::new(TIGRIS_RENAME_UNKNOWN)),
@@ -1655,7 +1663,8 @@ impl S3Provider {
     const STS_REFRESH_THRESHOLD_SECS: i64 = 300;
 
     /// The secrets this session sends a server: the session token, base or
-    /// STS-issued. An S3 error built from a reply never repeats them.
+    /// STS-issued, and the STS tokens it replaced (an answer can outlive a
+    /// refresh). An S3 error built from a reply never repeats them.
     fn sent_secrets(&self) -> Vec<String> {
         let mut sent: Vec<String> = self
             .config
@@ -1670,6 +1679,14 @@ impl S3Provider {
         if let Some(credentials) = temporary.as_ref() {
             sent.push(credentials.session_token.expose_secret().to_string());
         }
+        drop(temporary);
+        sent.extend(
+            self.retired_session_tokens
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .iter()
+                .map(|token| token.expose_secret().to_string()),
+        );
         sent
     }
 
@@ -1824,11 +1841,32 @@ impl S3Provider {
             "[S3] STS AssumeRole succeeded for {} (expires {:?})",
             role_arn, creds.expiration
         );
-        *self
+        self.install_temp_credentials(creds);
+        Ok(())
+    }
+
+    /// How many replaced session tokens an error still removes: more than a
+    /// response can outlive, a refresh being minutes apart.
+    const RETIRED_TOKENS_KEPT: usize = 4;
+
+    /// Make `creds` the session's credentials and keep the token they replace
+    /// among the retired ones, for an answer to a request it signed.
+    fn install_temp_credentials(&self, creds: sts::TempCredentials) {
+        let replaced = self
             .temp_credentials
             .write()
-            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(creds);
-        Ok(())
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .replace(creds);
+        if let Some(old) = replaced {
+            let mut retired = self
+                .retired_session_tokens
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            retired.push_back(old.session_token);
+            while retired.len() > Self::RETIRED_TOKENS_KEPT {
+                retired.pop_front();
+            }
+        }
     }
 
     /// Get the S3 endpoint URL
@@ -16477,6 +16515,39 @@ mod tests {
             secret_access_key: secrecy::SecretString::from("tempsecret".to_string()),
             session_token: secrecy::SecretString::from("tok".to_string()),
             expiration,
+        }
+    }
+
+    /// An answer to a request signed with token T1 can arrive after a
+    /// sibling clone refreshed the session to T2: its error still removes T1,
+    /// and T2. With no refresh, the one token is removed.
+    #[test]
+    fn an_error_removes_a_token_a_sibling_clone_replaced() {
+        let with_token = |token: &str| sts::TempCredentials {
+            session_token: secrecy::SecretString::from(token.to_string()),
+            ..temp_creds(Some(Utc::now() + chrono::Duration::hours(1)))
+        };
+        let echo = |token: &str| {
+            format!(
+                "<Error><Code>ExpiredToken</Code><Message>token {token} expired</Message></Error>"
+            )
+        };
+        let provider = make_provider(Some("http://localhost:9000"));
+        provider.install_temp_credentials(with_token("FirstSessionTokenT1"));
+        assert_eq!(
+            provider.reply_text(&echo("FirstSessionTokenT1")),
+            "ExpiredToken: token [REDACTED] expired"
+        );
+
+        let in_flight = provider.clone();
+        let sibling = provider.clone();
+        sibling.install_temp_credentials(with_token("SecondSessionTokenT2"));
+        for token in ["FirstSessionTokenT1", "SecondSessionTokenT2"] {
+            assert_eq!(
+                in_flight.reply_text(&echo(token)),
+                "ExpiredToken: token [REDACTED] expired",
+                "{token}"
+            );
         }
     }
 
