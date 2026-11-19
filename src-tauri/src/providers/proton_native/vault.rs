@@ -86,6 +86,14 @@ const REVOKE_TIMEOUT: Duration = Duration::from_secs(15);
 /// refused rather than made without it.
 const EXCLUSIVE_WAIT: Duration = Duration::from_secs(45);
 
+fn exclusive_wait() -> Duration {
+    #[cfg(test)]
+    if let Some(wait) = test_seams::exclusive_wait() {
+        return wait;
+    }
+    EXCLUSIVE_WAIT
+}
+
 /// Serializes, inside this process, every look-and-write of a session key:
 /// a refresh writes a key only if it still holds the session, and nothing
 /// may change it between that look and that write. Across processes the
@@ -102,9 +110,60 @@ fn session_writes() -> std::sync::MutexGuard<'static, ()> {
 #[cfg(test)]
 pub(crate) mod test_seams {
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::Mutex;
+    use std::sync::{mpsc, Mutex};
+    use std::time::Duration;
 
     static REVOKES: AtomicUsize = AtomicUsize::new(0);
+    static WAITS: Mutex<Option<mpsc::Sender<String>>> = Mutex::new(None);
+    static EXCLUSIVE_WAIT: Mutex<Option<Duration>> = Mutex::new(None);
+
+    /// Every wait for a session's key lock (`key <key>`) or refresh lease
+    /// (`lease <slug>`) from now on, reported as it begins: a test waits for
+    /// the contention it set up, not for time to pass.
+    pub(crate) fn observe_waits() -> mpsc::Receiver<String> {
+        let (sender, receiver) = mpsc::channel();
+        *WAITS
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(sender);
+        receiver
+    }
+
+    /// `future`, reported to [`observe_waits`] as `what` when a poll finds it
+    /// waiting for the first time.
+    pub(super) async fn reported<F: std::future::Future>(what: String, future: F) -> F::Output {
+        let mut future = std::pin::pin!(future);
+        let mut what = Some(what);
+        std::future::poll_fn(|context| {
+            let poll = future.as_mut().poll(context);
+            if poll.is_pending() {
+                if let (Some(what), Some(waits)) = (
+                    what.take(),
+                    WAITS
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner())
+                        .as_ref(),
+                ) {
+                    let _ = waits.send(what);
+                }
+            }
+            poll
+        })
+        .await
+    }
+
+    /// How long a change of a session waits for its key lock and its lease,
+    /// in place of [`super::EXCLUSIVE_WAIT`]; `None` restores that.
+    pub(crate) fn set_exclusive_wait(wait: Option<Duration>) {
+        *EXCLUSIVE_WAIT
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = wait;
+    }
+
+    pub(super) fn exclusive_wait() -> Option<Duration> {
+        *EXCLUSIVE_WAIT
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
 
     type RefreshWriteHook = Box<dyn FnOnce(&str) + Send>;
     static BEFORE_REFRESH_WRITE: Mutex<Option<RefreshWriteHook>> = Mutex::new(None);
@@ -216,7 +275,10 @@ async fn lock_keys(mut keys: Vec<String>) -> Result<Vec<KeyLease>, ProviderError
             "{}.lock",
             hex::encode(Sha256::digest(key.as_bytes()))
         ));
-        leases.push(lock_key_file(&path, EXCLUSIVE_WAIT).await?);
+        let lease = lock_key_file(&path, exclusive_wait());
+        #[cfg(test)]
+        let lease = test_seams::reported(format!("key {key}"), lease);
+        leases.push(lease.await?);
     }
     Ok(leases)
 }
@@ -482,13 +544,36 @@ fn delete_discarded_session(owner: SessionOwner, profile_id: &str) -> Result<(),
 }
 
 /// Remove a profile's saved session locally, without revoking it: a failed
-/// local duplicate, whose source shares the remote session, or the source of a
-/// Move into another account. The key lock and the session's refresh lease are
-/// held, so a refresh in flight saves its pair before the removal, never after.
+/// local duplicate, whose source shares the remote session. The key lock and
+/// the session's refresh lease are held, so a refresh in flight saves its pair
+/// before the removal, never after.
 pub fn discard_session_blocking(
     owner: SessionOwner,
     profile_id: &str,
 ) -> Result<(), ProviderError> {
+    hold_session_blocking(owner, profile_id)?.discard()
+}
+
+/// The key lock of a profile's session and, when the key holds a session, its
+/// refresh lease. A Move takes them before it looks whether the source holds
+/// a session and keeps them until it has removed it: a sign-in, a restore or
+/// a refresh of the profile in between waits for the Move, and a lease it
+/// cannot take stops the Move before anything changed.
+pub struct HeldSession {
+    owner: SessionOwner,
+    profile_id: String,
+    _keys: Vec<KeyLease>,
+    _lease: Option<RefreshLease>,
+}
+
+/// Takes the [`HeldSession`] of `profile_id`, on a thread and a runtime of its
+/// own, so a synchronous caller can hold it across its own transaction. The
+/// caller must not hold the account's session: a refresh in flight may need
+/// it to save its pair while it holds the lease this waits for.
+pub fn hold_session_blocking(
+    owner: SessionOwner,
+    profile_id: &str,
+) -> Result<HeldSession, ProviderError> {
     let profile_id = profile_id.to_string();
     std::thread::spawn(move || {
         let runtime = tokio::runtime::Builder::new_current_thread()
@@ -497,15 +582,28 @@ pub fn discard_session_blocking(
             .map_err(|error| ProviderError::Other(format!("Proton session runtime: {error}")))?;
         runtime.block_on(async {
             let store = open_store()?;
-            let _keys = lock_keys(mutation_keys(owner, Some(&profile_id))?).await?;
+            let keys = lock_keys(mutation_keys(owner, Some(&profile_id))?).await?;
             let key = saved_key(&store, owner, Some(&profile_id))?;
-            let _lease = lease_of_saved(owner, &key).await?;
-            let _writes = session_writes();
-            delete_discarded_session(owner, &profile_id)
+            let lease = lease_of_saved(owner, &key).await?;
+            Ok(HeldSession {
+                owner,
+                profile_id,
+                _keys: keys,
+                _lease: lease,
+            })
         })
     })
     .join()
-    .map_err(|_| ProviderError::Other("Proton duplicate cleanup stopped unexpectedly".into()))?
+    .map_err(|_| ProviderError::Other("Proton session hold stopped unexpectedly".into()))?
+}
+
+impl HeldSession {
+    /// Removes the held session locally, without a sign-out on Proton (see
+    /// [`delete_discarded_session`]).
+    pub fn discard(&self) -> Result<(), ProviderError> {
+        let _writes = session_writes();
+        delete_discarded_session(self.owner, &self.profile_id)
+    }
 }
 
 /// Whether a profile of `owner` other than the one saved under `key` holds the
@@ -535,10 +633,13 @@ fn session_shared(uid: &str, others: impl IntoIterator<Item = ProtonSession>) ->
 async fn acquire_exclusive(slug: &str) -> Option<RefreshLease> {
     let started = std::time::Instant::now();
     loop {
-        if let Some(lease) = RefreshLease::acquire(slug).await {
+        let lease = RefreshLease::acquire(slug);
+        #[cfg(test)]
+        let lease = test_seams::reported(format!("lease {slug}"), lease);
+        if let Some(lease) = lease.await {
             return Some(lease);
         }
-        if started.elapsed() >= EXCLUSIVE_WAIT {
+        if started.elapsed() >= exclusive_wait() {
             return None;
         }
     }

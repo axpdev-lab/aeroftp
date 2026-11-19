@@ -178,9 +178,14 @@ impl Accounts {
         replace_server_profiles_for(&mut db, &self.root_key, user, &profiles).unwrap();
     }
 
+    /// The profile ids `user` lists; the locked target's read with its key.
     fn profile_ids(&self, user: i64) -> Vec<String> {
-        let db = open_or_init_cli().unwrap();
-        list_server_profiles_for(&db, &self.root_key, user)
+        let profiles = if user == self.target.id {
+            read_profiles_with_dek(&self.conn, user, &self.target_dek)
+        } else {
+            list_server_profiles_for(&self.conn, &self.root_key, user)
+        };
+        profiles
             .unwrap()
             .iter()
             .filter_map(|profile| profile["id"].as_str().map(str::to_string))
@@ -410,9 +415,15 @@ fn a_native_session_keeps_to_its_account() {
             &vault::refresh_lease_slug("busy-uid"),
         ))
         .unwrap();
+    let waits = vault::test_seams::observe_waits();
     std::thread::scope(|scope| {
         let mover = scope.spawn(|| relocate(source.id, "busy", "busy-moved", true));
-        std::thread::sleep(std::time::Duration::from_millis(500));
+        let contended = format!("lease {}", vault::refresh_lease_slug("busy-uid"));
+        while waits
+            .recv_timeout(std::time::Duration::from_secs(30))
+            .expect("the Move waits for the refresh's lease")
+            != contended
+        {}
         assert_eq!(loaded(owner, "busy").as_deref(), Some("r1"));
         vault::VaultSession::new(owner, Some("busy"), &session("busy-uid", "r1"))
             .save(&session("busy-uid", "r2").tokens);
@@ -677,4 +688,98 @@ fn a_refresh_does_not_bring_back_a_copy_the_alignment_dropped() {
         "a refresh does not bring back a copy the alignment dropped"
     );
     assert_eq!(loaded(owners_owner, "aligned").as_deref(), Some("r1"));
+}
+
+/// A Move holds the source's session key from before it looks whether the
+/// source holds a session until it has removed it: a sign-in of the profile
+/// that ends meanwhile waits for the Move, instead of saving a session the
+/// Move has looked past, which would stay in the source account.
+#[test]
+fn a_sign_in_waits_for_the_move_of_its_profile() {
+    if !in_isolated_child("a_sign_in_waits_for_the_move_of_its_profile") {
+        return;
+    }
+    let accounts = Accounts::open();
+    let owner = accounts.owner();
+    accounts.add_profile(accounts.source.id, "late-sign-in");
+    let waits = vault::test_seams::observe_waits();
+    let sign_in = std::rc::Rc::new(std::cell::RefCell::new(None));
+    let waited = std::rc::Rc::new(std::cell::Cell::new(false));
+    let (hook_sign_in, hook_waited) = (sign_in.clone(), waited.clone());
+    RELOCATION_LOOKED.set(Some(Box::new(move || {
+        let signing_in = std::thread::spawn(move || {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(vault::replace_session(
+                    owner,
+                    Some("late-sign-in"),
+                    &session("late-uid", "r1"),
+                ))
+        });
+        // The sign-in either waits for the Move's hold of its key, or ends.
+        let contended = format!("key {}", key("late-sign-in"));
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        while !signing_in.is_finished() && std::time::Instant::now() < deadline {
+            if waits
+                .recv_timeout(std::time::Duration::from_millis(50))
+                .is_ok_and(|wait| wait == contended)
+            {
+                hook_waited.set(true);
+                break;
+            }
+        }
+        *hook_sign_in.borrow_mut() = Some(signing_in);
+    })));
+    let moved = accounts.relocate(accounts.source.id, "late-sign-in", "late-moved", true);
+    assert!(moved.moved);
+    assert!(
+        waited.get(),
+        "a sign-in that ends during the Move of its profile waits for the Move"
+    );
+    let signing_in = sign_in.borrow_mut().take().unwrap();
+    signing_in.join().unwrap().unwrap();
+    vault::delete_session(owner, Some("late-sign-in")).unwrap();
+}
+
+/// A Move takes the source session's refresh lease before it commits: while a
+/// refresh holds the lease past the wait, the Move stops with both profile
+/// lists and the session as they were, and it goes ahead once the lease is
+/// free.
+#[test]
+fn a_move_the_lease_holds_off_changes_nothing() {
+    if !in_isolated_child("a_move_the_lease_holds_off_changes_nothing") {
+        return;
+    }
+    let accounts = Accounts::open();
+    let owner = accounts.owner();
+    let (source, target) = (accounts.source.id, accounts.target.id);
+    accounts.seed("held", "held-uid");
+    let lease = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(crate::providers::oauth2::RefreshLease::acquire(
+            &vault::refresh_lease_slug("held-uid"),
+        ))
+        .unwrap();
+    vault::test_seams::set_exclusive_wait(Some(std::time::Duration::ZERO));
+    let refused = relocation(&accounts.store, target, source, "held", "held-moved", true);
+    vault::test_seams::set_exclusive_wait(None);
+    assert!(refused.is_err(), "the Move stops: {refused:?}");
+    assert!(
+        accounts.profile_ids(source).contains(&"held".to_string()),
+        "a Move the lease holds off leaves the source's profile in place"
+    );
+    assert!(!accounts
+        .profile_ids(target)
+        .contains(&"held-moved".to_string()));
+    assert_eq!(loaded(owner, "held").as_deref(), Some("r1"));
+    drop(lease);
+    assert!(accounts.relocate(source, "held", "held-moved", true).moved);
+    assert_eq!(loaded(owner, "held"), None);
+    assert!(accounts
+        .profile_ids(target)
+        .contains(&"held-moved".to_string()));
 }

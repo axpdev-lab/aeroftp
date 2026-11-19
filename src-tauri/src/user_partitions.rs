@@ -2716,6 +2716,22 @@ fn relocate_server_profile_and_credentials(
         resolve_user_dek_scoped(conn, &root_secret, target_user_id, target_passphrase)?;
     let source_key = format!("{PROTON_SESSION_PREFIX}{profile_id}");
     let new_key = format!("{PROTON_SESSION_PREFIX}{new_profile_id}");
+    // A Move holds the source's session from before it looks whether there is
+    // one until it has removed it: a sign-in, a restore or a refresh of the
+    // profile in between waits for the Move, and a lease it cannot take stops
+    // the Move here, before anything changed. Taken outside any session hold,
+    // since a refresh in flight may need the account's session to save.
+    #[cfg(feature = "proton-native")]
+    let held = remove_from_source
+        .then(|| {
+            use crate::providers::proton_native::vault;
+            vault::hold_session_blocking(
+                vault::SessionOwner::for_user(Some(source_user_id)),
+                profile_id,
+            )
+        })
+        .transpose()
+        .map_err(|error| error.to_string())?;
     // The source's session, read as its own readers read it: its row, or the
     // vault copy only for the legacy owner.
     let source_has_session =
@@ -2723,6 +2739,8 @@ fn relocate_server_profile_and_credentials(
             Ok(read_credential_with_dek(conn, source_user_id, dek, &source_key)?.is_some())
         })? || (!vault_copy_is_another_accounts(conn, source_user_id, &source_key)?
             && get_optional_secret(store, &source_key)?.is_some());
+    #[cfg(test)]
+    relocation_looked();
     let mut relocation = with_user_dek(conn, &root_secret, source_user_id, |_, source_dek| {
         let tx = Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
             .map_err(|error| format!("Start profile relocation: {error}"))?;
@@ -2760,14 +2778,16 @@ fn relocate_server_profile_and_credentials(
     if source_has_session && relocation.inserted {
         relocation.secrets_not_copied.push(new_key);
     }
-    // A Move drops the source's session locally under its key lock and its
-    // refresh lease: a refresh in flight saves its pair before the drop, never
-    // after it, which would put the session back in the account the profile
-    // left. The legacy owner's vault copy goes with it.
+    // A Move drops the source's session locally under the hold it took before
+    // it looked: a refresh in flight saved its pair before, and nothing writes
+    // the session back into the account the profile left. The legacy owner's
+    // vault copy goes with it.
     #[cfg(feature = "proton-native")]
-    if source_has_session && relocation.moved {
-        use crate::providers::proton_native::vault;
-        vault::discard_session_blocking(vault::SessionOwner::for_user(Some(source_user_id)), profile_id)
+    if let Some(held) = held
+        .as_ref()
+        .filter(|_| source_has_session && relocation.moved)
+    {
+        held.discard()
             .map_err(|error| {
                 format!(
                     "RELOCATION_COMMITTED: profile {} is saved in target user {}; removal of the source's Proton session failed: {error}",
@@ -2788,6 +2808,21 @@ fn relocate_server_profile_and_credentials(
         })?;
     }
     Ok(relocation)
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Runs once on the thread of a Copy or a Move, after it looked whether the
+    /// source holds a native session and before it commits, for a test to
+    /// play another writer there.
+    static RELOCATION_LOOKED: RefCell<Option<Box<dyn FnOnce()>>> = const { RefCell::new(None) };
+}
+
+#[cfg(test)]
+fn relocation_looked() {
+    if let Some(hook) = RELOCATION_LOOKED.take() {
+        hook();
+    }
 }
 
 /// Both profile lists are changed in the caller's transaction, after the
