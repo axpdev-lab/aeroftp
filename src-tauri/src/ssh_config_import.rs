@@ -1221,25 +1221,25 @@ impl Parser<'_> {
         // account's own ssh config, which ssh reads on every connection,
         // and the files it includes. Elsewhere the words are still checked
         // as ssh checks them, and the hosts the line applies to skipped.
-        if !self.includes {
+        // OpenSSH for Windows reads `Include` with its own rules for path
+        // separators and file permissions, which the import does not check:
+        // there the words are checked the same way (the checks are in the
+        // `readconf.c` both builds share), and the hosts the line applies
+        // to skipped, not read with other rules.
+        if !self.includes || cfg!(not(unix)) {
             for word in words {
                 if let Err(Unread::Refused(why)) = include_pattern(word) {
                     return refuse(self, why);
                 }
             }
+            let why = if self.includes {
+                Unknown::NotOnThisSystem
+            } else {
+                Unknown::NotOwnConfig
+            };
             self.blocks[gate]
                 .unread
-                .get_or_insert_with(|| (at.to_string(), Unknown::NotOwnConfig));
-            return;
-        }
-        // OpenSSH for Windows reads `Include` with its own rules for path
-        // separators and file permissions, which the import does not check:
-        // the hosts the line applies to are skipped, not read with other
-        // rules.
-        if cfg!(not(unix)) {
-            self.blocks[gate]
-                .unread
-                .get_or_insert_with(|| (at.to_string(), Unknown::NotOnThisSystem));
+                .get_or_insert_with(|| (at.to_string(), why));
             return;
         }
         let mut paths = Vec::new();
