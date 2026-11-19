@@ -337,7 +337,8 @@ enum Scope {
 /// negated when its flag is set; the line holds when all of them do.
 #[derive(Debug, PartialEq)]
 struct MatchLine {
-    line: usize,
+    /// Where the line is ([`Place::at`]).
+    at: String,
     criteria: Vec<(bool, Criterion)>,
 }
 
@@ -466,9 +467,12 @@ struct HostBlock {
     /// text in the file, the same for the same text: a host compares up to
     /// 100 of them for each line, at the same cost whatever their length.
     identities: Vec<u32>,
-    /// The line of the block's first `Include`, which the import does not
-    /// read ([`read_pass`]).
-    include: Option<usize>,
+    /// Where the block's first `Include` the import cannot read is
+    /// ([`include_reason`]).
+    unread: Option<String>,
+    /// The block whose reading decides this one's, for a block an
+    /// `Include` reads ([`Gate`]).
+    gate: Option<Gate>,
 }
 
 /// One ssh_config line as OpenSSH reads it (`process_config_line` in
@@ -903,138 +907,471 @@ const SMALLER_FILE: &str = "import a copy of the file that keeps the hosts you n
 /// reason the file has more than [`MAX_HOSTS`] blocks.
 #[cfg(test)]
 fn parse_ssh_config(content: &str) -> (Vec<HostBlock>, Option<String>) {
-    parse_ssh_config_with(content, &Services::default())
+    let (blocks, error, _) = parse_ssh_config_with(content, &Services::default());
+    (blocks, error)
 }
 
 /// [`parse_ssh_config`], looking service names up in `services`. Only the
 /// keys the import reads ([`PROFILE_KEYS`], [`RESOLUTION_KEYS`]) are kept:
 /// a block of other lines costs nothing to apply.
-fn parse_ssh_config_with(content: &str, services: &Services) -> (Vec<HostBlock>, Option<String>) {
-    let mut blocks: Vec<HostBlock> = Vec::new();
-    let mut current: Option<HostBlock> = Some(HostBlock {
-        scope: Scope::Global,
-        aliases: Vec::new(),
-        kv: HashMap::new(),
-        identities: Vec::new(),
-        include: None,
-    });
-    let mut texts: HashMap<String, u32> = HashMap::new();
-    let mut error: Option<String> = None;
-    let mut hosts = 0;
-    let mut capped = false;
-    let push = |blocks: &mut Vec<HostBlock>, block: HostBlock| {
-        if block.scope != Scope::Global
-            || !block.kv.is_empty()
-            || !block.identities.is_empty()
-            || block.include.is_some()
-        {
-            blocks.push(block);
-        }
+fn parse_ssh_config_with(
+    content: &str,
+    services: &Services,
+) -> (Vec<HostBlock>, Option<String>, u64) {
+    let mut parser = Parser {
+        blocks: Vec::new(),
+        texts: HashMap::new(),
+        error: None,
+        hosts: 0,
+        capped: false,
+        services,
+        cost: 0,
+        home: std::env::var("HOME").ok().filter(|h| !h.is_empty()),
     };
+    parser.read(content, Place::File, 0, None);
+    (parser.blocks, parser.error, parser.cost)
+}
 
-    for (index, raw) in content.lines().enumerate() {
-        let line = raw.trim();
-        if line.is_empty() || line.starts_with('#') {
-            continue;
-        }
+/// The deepest an `Include` reads, the file imported being 0
+/// (`READCONF_MAX_DEPTH` in readconf.c; `ssh -G`: a file included at depth
+/// 16 is read, one at 17 is "Too many recursive configuration includes").
+const MAX_INCLUDE_DEPTH: usize = 16;
 
-        let Some(parsed) = split_directive(line) else {
-            continue;
-        };
-        // ssh refuses the whole file for one such line, wherever it is, so
-        // it is recorded for the file and every host is skipped with it.
-        let line_error = match &parsed {
-            Ok((key, words)) => ssh_line_error(key, words, services),
-            Err(reason) => Some(reason.clone()),
-        };
-        if let Some(reason) = line_error {
-            error.get_or_insert(format!(
-                "line {} of the file {reason}, so ssh refuses the whole file and reads none of its hosts",
-                index + 1
-            ));
-        }
-        let Ok((key, words)) = parsed else {
-            continue;
-        };
+/// Where a line is, for the reasons that name it: in the file imported, or
+/// in a file that an `Include` of it reads (`top`: the line of that
+/// `Include` in the file, through any nested one). A reason never repeats
+/// the path of an included file.
+#[derive(Clone, Copy)]
+enum Place {
+    File,
+    Included { top: usize },
+}
 
-        if key == "host" || key == "match" {
-            if let Some(block) = current.take() {
-                push(&mut blocks, block);
+impl Place {
+    fn at(self, line: usize) -> String {
+        match self {
+            Place::File => format!("line {line} of the file"),
+            Place::Included { top } => {
+                format!("line {line} of a file that the `Include` on line {top} of the file reads")
             }
-            if hosts >= MAX_HOSTS {
-                if !capped {
-                    log::warn!("ssh config import: refused past the {MAX_HOSTS}-block cap");
-                    error.get_or_insert(format!(
-                        "the file has more than {MAX_HOSTS} `Host` and `Match` blocks, more than one import reads; {SMALLER_FILE}"
-                    ));
+        }
+    }
+}
+
+/// The block whose reading decides whether another applies ([`read_pass`]),
+/// for the lines an `Include` reads: ssh reads them where the `Include`
+/// stands. With `same`, the block goes on with that one's state: the lines
+/// of an included file before its first `Host` or `Match`, and the lines of
+/// the block after its `Include` (`ssh -G`: `Host a` / `Include f` / `User
+/// after`, with a `Host other` block in `f`, gives `a` the user `after`).
+/// Without, it is a `Host` or `Match` block of an included file, read only
+/// when that one applies: in a block that does not, ssh reads the included
+/// blocks as never matching (`SSHCONF_NEVERMATCH` in readconf.c).
+struct Gate {
+    block: usize,
+    same: bool,
+}
+
+/// The file as it is parsed, its `Include` lines read in place.
+struct Parser<'a> {
+    blocks: Vec<HostBlock>,
+    texts: HashMap<String, u32>,
+    error: Option<String>,
+    hosts: usize,
+    capped: bool,
+    services: &'a Services,
+    /// The files and bytes the `Include` lines read, charged to the step
+    /// budget ([`MAX_MATCH_STEPS`]), and the directory entries a pattern
+    /// in them reads.
+    cost: u64,
+    /// `HOME`, where `~` and a relative `Include` lead (`glob` with
+    /// `GLOB_TILDE` reads it: `ssh -G` with another `HOME` reads that
+    /// folder's `.ssh`).
+    home: Option<String>,
+}
+
+impl Parser<'_> {
+    /// Keeps `block` unless it holds nothing and decides nothing; the index
+    /// of a block kept.
+    fn push(&mut self, block: HostBlock, keep: bool) -> Option<usize> {
+        let empty = block.scope == Scope::Global
+            && block.kv.is_empty()
+            && block.identities.is_empty()
+            && block.unread.is_none();
+        if keep || !empty {
+            self.blocks.push(block);
+            return Some(self.blocks.len() - 1);
+        }
+        None
+    }
+
+    fn read(&mut self, content: &str, place: Place, depth: usize, outer: Option<usize>) {
+        let goes_on = |outer: Option<usize>| HostBlock {
+            scope: Scope::Global,
+            aliases: Vec::new(),
+            kv: HashMap::new(),
+            identities: Vec::new(),
+            unread: None,
+            gate: outer.map(|block| Gate { block, same: true }),
+        };
+        let mut current: Option<HostBlock> = Some(goes_on(outer));
+        for (index, raw) in content.lines().enumerate() {
+            let line = raw.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+
+            let Some(parsed) = split_directive(line) else {
+                continue;
+            };
+            // ssh refuses the whole file for one such line, wherever it is,
+            // in an included file too, so it is recorded for the file and
+            // every host is skipped with it.
+            let line_error = match &parsed {
+                Ok((key, words)) => ssh_line_error(key, words, self.services),
+                Err(reason) => Some(reason.clone()),
+            };
+            if let Some(reason) = line_error {
+                self.error.get_or_insert(format!(
+                    "{} {reason}, so ssh refuses the whole file and reads none of its hosts",
+                    place.at(index + 1)
+                ));
+            }
+            let Ok((key, words)) = parsed else {
+                continue;
+            };
+
+            if key == "host" || key == "match" {
+                if let Some(block) = current.take() {
+                    self.push(block, false);
                 }
-                capped = true;
-                continue;
-            }
-            hosts += 1;
-            let scope = match key.as_str() {
-                "host" => Scope::Host,
-                // A line ssh refuses has refused the whole file above.
-                _ => Scope::Match(MatchLine {
-                    line: index + 1,
-                    criteria: parse_match(&words).unwrap_or_default(),
-                }),
-            };
-            let aliases = match scope {
-                Scope::Host => words.into_iter().filter(|s| !s.is_empty()).collect(),
-                _ => Vec::new(),
-            };
-            current = Some(HostBlock {
-                scope,
-                aliases,
-                kv: HashMap::new(),
-                identities: Vec::new(),
-                include: None,
-            });
-        } else if let Some(block) = current.as_mut() {
-            // `ProxyCommand` and `ProxyJump` are one setting to ssh: the first
-            // of them wins (`ssh -G`: a `ProxyJump` after a `ProxyCommand`
-            // is dropped, and the other way round). The command is kept
-            // whole, to tell `none` from a command.
-            if PROXY_KEYS.contains(&key.as_str())
-                && PROXY_KEYS.iter().any(|k| block.kv.contains_key(*k))
-            {
-                continue;
-            }
-            if key == "include" {
-                block.include.get_or_insert(index + 1);
-                continue;
-            }
-            let value = match key.as_str() {
-                "proxycommand" => words.join(" "),
-                _ => words.into_iter().next().unwrap_or_default(),
-            };
-            if !PROFILE_KEYS.contains(&key.as_str()) && !RESOLUTION_KEYS.contains(&key.as_str()) {
-                continue;
-            }
-            // ssh skips `IdentityFile none`, in any case, when it loads the
-            // keys (`load_public_identity_files` in ssh.c): the key a host
-            // tries first is its first other one, from any block. It still
-            // counts the line.
-            if key == "identityfile" {
-                let next = texts.len() as u32;
-                block
-                    .identities
-                    .push(*texts.entry(value.clone()).or_insert(next));
-                if value.eq_ignore_ascii_case("none") {
+                if self.hosts >= MAX_HOSTS {
+                    if !self.capped {
+                        log::warn!("ssh config import: refused past the {MAX_HOSTS}-block cap");
+                        self.error.get_or_insert(format!(
+                            "the file has more than {MAX_HOSTS} `Host` and `Match` blocks, more than one import reads; {SMALLER_FILE}"
+                        ));
+                    }
+                    self.capped = true;
                     continue;
                 }
+                self.hosts += 1;
+                let scope = match key.as_str() {
+                    "host" => Scope::Host,
+                    // A line ssh refuses has refused the whole file above.
+                    _ => Scope::Match(MatchLine {
+                        at: place.at(index + 1),
+                        criteria: parse_match(&words).unwrap_or_default(),
+                    }),
+                };
+                let aliases = match scope {
+                    Scope::Host => words.into_iter().filter(|s| !s.is_empty()).collect(),
+                    _ => Vec::new(),
+                };
+                current = Some(HostBlock {
+                    scope,
+                    aliases,
+                    kv: HashMap::new(),
+                    identities: Vec::new(),
+                    unread: None,
+                    gate: outer.map(|block| Gate { block, same: false }),
+                });
+            } else if key == "include" {
+                let Some(block) = current.take() else {
+                    continue;
+                };
+                let Some(gate) = self.push(block, true) else {
+                    continue;
+                };
+                let top = match place {
+                    Place::File => index + 1,
+                    Place::Included { top } => top,
+                };
+                self.include(&words, &place.at(index + 1), top, depth, gate);
+                current = Some(goes_on(Some(gate)));
+            } else if let Some(block) = current.as_mut() {
+                // `ProxyCommand` and `ProxyJump` are one setting to ssh: the
+                // first of them wins (`ssh -G`: a `ProxyJump` after a
+                // `ProxyCommand` is dropped, and the other way round). The
+                // command is kept whole, to tell `none` from a command.
+                if PROXY_KEYS.contains(&key.as_str())
+                    && PROXY_KEYS.iter().any(|k| block.kv.contains_key(*k))
+                {
+                    continue;
+                }
+                let value = match key.as_str() {
+                    "proxycommand" => words.join(" "),
+                    _ => words.into_iter().next().unwrap_or_default(),
+                };
+                if !PROFILE_KEYS.contains(&key.as_str()) && !RESOLUTION_KEYS.contains(&key.as_str())
+                {
+                    continue;
+                }
+                // ssh skips `IdentityFile none`, in any case, when it loads
+                // the keys (`load_public_identity_files` in ssh.c): the key a
+                // host tries first is its first other one, from any block.
+                // It still counts the line.
+                if key == "identityfile" {
+                    let next = self.texts.len() as u32;
+                    block
+                        .identities
+                        .push(*self.texts.entry(value.clone()).or_insert(next));
+                    if value.eq_ignore_ascii_case("none") {
+                        continue;
+                    }
+                }
+                // First occurrence wins, matching ssh's own precedence.
+                block.kv.entry(key).or_insert(value);
             }
-            // First occurrence wins, matching ssh's own precedence.
-            block.kv.entry(key).or_insert(value);
+        }
+
+        if let Some(block) = current.take() {
+            self.push(block, false);
         }
     }
 
-    if let Some(block) = current.take() {
-        push(&mut blocks, block);
+    /// Reads the files an `Include` line at `at` names, in the block at
+    /// `gate`, as ssh does (`Include` in readconf.c, measured with `ssh -G`
+    /// on 10.2p1): each word is a pattern, its `${VAR}` expanded and its
+    /// `%` kept, led by `HOME` for a `~` and by `HOME/.ssh/` when it is
+    /// relative; the paths it matches are read in sorted order, a name
+    /// starting with `.` only for a pattern that does too; a pattern that
+    /// matches nothing, a directory and a variable that is not set read
+    /// nothing. ssh refuses the whole file for an `Include` with no word, a
+    /// `${` never closed, a file it cannot read, one that another account
+    /// owns or that anyone can write, and a file past [`MAX_INCLUDE_DEPTH`], a line it
+    /// refuses in any included file too, even in a block that does not
+    /// apply. A word with a variable the import does not read
+    /// ([`SSH_IMPORT_ENV`]) leaves the files unknown: the block keeps the
+    /// line, and a host it applies to is skipped ([`include_reason`]).
+    fn include(&mut self, words: &[String], at: &str, top: usize, depth: usize, gate: usize) {
+        let refuse = |parser: &mut Self, why: &str| {
+            parser.error.get_or_insert(format!(
+                "{at} {why}, so ssh refuses the whole file and reads none of its hosts"
+            ));
+        };
+        if words.is_empty() {
+            return refuse(self, "names no file after `Include`");
+        }
+        let mut paths = Vec::new();
+        for word in words {
+            let pattern = match include_pattern(word, self.home.as_deref()) {
+                Ok(Some(pattern)) => pattern,
+                Ok(None) => continue,
+                Err(None) => {
+                    self.blocks[gate]
+                        .unread
+                        .get_or_insert_with(|| at.to_string());
+                    continue;
+                }
+                Err(Some(why)) => return refuse(self, &why),
+            };
+            let mut found = include_glob(&pattern, &mut self.cost);
+            found.sort();
+            paths.extend(found);
+        }
+        for path in paths {
+            let Ok(meta) = std::fs::metadata(&path) else {
+                continue;
+            };
+            if meta.is_dir() {
+                continue;
+            }
+            if depth + 1 > MAX_INCLUDE_DEPTH {
+                return refuse(
+                    self,
+                    &format!("reads files included more than {MAX_INCLUDE_DEPTH} deep"),
+                );
+            }
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::MetadataExt;
+                // Upstream ssh also refuses a file its group can write; the
+                // Debian and Ubuntu builds read it when the group is the
+                // owner's alone (`ssh -G` on Ubuntu reads a `0664` file).
+                // Only what every build refuses is refused here.
+                // SAFETY: `geteuid` reads the process's own id and cannot fail.
+                let me = unsafe { libc::geteuid() };
+                if (meta.uid() != 0 && meta.uid() != me) || meta.mode() & 0o002 != 0 {
+                    return refuse(
+                        self,
+                        "includes a file that another account owns or that anyone can write, which ssh does not read",
+                    );
+                }
+            }
+            self.cost = self.cost.saturating_add(1 + meta.len());
+            if self.cost > MAX_MATCH_STEPS {
+                self.error.get_or_insert(format!(
+                    "the files the file includes hold more than {MAX_MATCH_STEPS} bytes, more than one import reads; {SMALLER_FILE}"
+                ));
+                return;
+            }
+            let Ok(bytes) = std::fs::read(&path) else {
+                return refuse(self, "includes a file that cannot be read");
+            };
+            self.read(
+                &String::from_utf8_lossy(&bytes),
+                Place::Included { top },
+                depth + 1,
+                Some(gate),
+            );
+            if self.error.is_some() {
+                return;
+            }
+        }
     }
+}
 
-    (blocks, error)
+/// One word of an `Include` as the pattern ssh matches: `Ok(None)` for a
+/// variable that is not set (ssh: "has no value", and reads nothing for the
+/// word), `Err(None)` for a variable the import does not read, `Err(Some)`
+/// for a word ssh refuses the file for.
+fn include_pattern(word: &str, home: Option<&str>) -> Result<Option<String>, Option<String>> {
+    let mut out = String::new();
+    let mut rest = word;
+    while let Some(start) = rest.find("${") {
+        out.push_str(&rest[..start]);
+        let after = &rest[start + 2..];
+        let Some(end) = after.find('}') else {
+            return Err(Some("holds a `${` that is never closed".to_string()));
+        };
+        let name = &after[..end];
+        if !SSH_IMPORT_ENV.contains(&name) {
+            return Err(None);
+        }
+        match std::env::var(name) {
+            Ok(value) => out.push_str(&value),
+            Err(_) => return Ok(None),
+        }
+        rest = &after[end + 1..];
+    }
+    out.push_str(rest);
+    let absolute = out.starts_with('/') || Path::new(&out).is_absolute();
+    if !absolute && !out.starts_with('~') {
+        out = format!("~/.ssh/{out}");
+    }
+    let Some(after) = out.strip_prefix('~') else {
+        return Ok(Some(out));
+    };
+    let (user, tail) = after.split_once('/').unwrap_or((after, ""));
+    let dir = if user.is_empty() {
+        home.map(str::to_string).ok_or(None)?
+    } else {
+        // `glob` leaves `~nosuch` as it is: a path that matches nothing.
+        match passwd_home(user) {
+            Some(dir) => dir,
+            None => return Ok(None),
+        }
+    };
+    Ok(Some(format!("{}/{tail}", dir.trim_end_matches('/'))))
+}
+
+/// The paths a pattern matches (`glob` in libc): each part between `/`
+/// with `*`, `?` or `[` is matched against the names in its folder
+/// ([`glob_part`]), the others are kept as they are; a path that does not
+/// exist is dropped. Each name read is charged to `cost`.
+fn include_glob(pattern: &str, cost: &mut u64) -> Vec<PathBuf> {
+    let root = if pattern.starts_with('/') { "/" } else { "" };
+    let mut found = vec![PathBuf::from(root)];
+    for part in pattern.split('/').filter(|p| !p.is_empty()) {
+        if !part.contains(['*', '?', '[']) {
+            for path in &mut found {
+                path.push(part);
+            }
+            continue;
+        }
+        let mut next = Vec::new();
+        for dir in &found {
+            let Ok(entries) = std::fs::read_dir(dir) else {
+                continue;
+            };
+            for entry in entries.flatten() {
+                let name = entry.file_name();
+                let Some(name) = name.to_str() else {
+                    continue;
+                };
+                *cost = cost.saturating_add(1 + name.len() as u64);
+                if glob_part(part, name) {
+                    next.push(dir.join(name));
+                }
+            }
+        }
+        found = next;
+    }
+    found.retain(|path| path.exists());
+    found
+}
+
+/// Whether a name matches one part of a `glob` pattern: `*` any run of
+/// bytes, `?` one byte, `[...]` one byte of a set (`!` or `^` first to
+/// negate it, `a-z` a range), `\` the byte after it, anything else itself;
+/// a name starting with `.` only when the pattern does too (`ssh -G`:
+/// `Include d/*.conf` does not read `d/.h.conf`).
+fn glob_part(pattern: &str, name: &str) -> bool {
+    let (p, n) = (pattern.as_bytes(), name.as_bytes());
+    if n.first() == Some(&b'.') && p.first() != Some(&b'.') {
+        return false;
+    }
+    let (mut pi, mut ni) = (0, 0);
+    let mut star: Option<(usize, usize)> = None;
+    while ni < n.len() {
+        if pi < p.len() && p[pi] == b'*' {
+            star = Some((pi, ni));
+            pi += 1;
+            continue;
+        }
+        if pi < p.len() {
+            let (matched, next) = glob_one(p, pi, n[ni]);
+            if matched {
+                pi = next;
+                ni += 1;
+                continue;
+            }
+        }
+        match star {
+            Some((sp, sn)) => {
+                pi = sp + 1;
+                ni = sn + 1;
+                star = Some((sp, sn + 1));
+            }
+            None => return false,
+        }
+    }
+    p[pi..].iter().all(|&b| b == b'*')
+}
+
+/// Whether the pattern item at `pi` matches the byte `b`, and where the
+/// next item starts ([`glob_part`]).
+fn glob_one(p: &[u8], pi: usize, b: u8) -> (bool, usize) {
+    match p[pi] {
+        b'?' => (true, pi + 1),
+        b'[' => {
+            let mut i = pi + 1;
+            let negate = i < p.len() && (p[i] == b'!' || p[i] == b'^');
+            if negate {
+                i += 1;
+            }
+            let mut matched = false;
+            let mut first = true;
+            while i < p.len() && (first || p[i] != b']') {
+                first = false;
+                if i + 2 < p.len() && p[i + 1] == b'-' && p[i + 2] != b']' {
+                    matched |= p[i] <= b && b <= p[i + 2];
+                    i += 3;
+                } else {
+                    matched |= p[i] == b;
+                    i += 1;
+                }
+            }
+            if i >= p.len() {
+                // No closing `]`: the `[` stands for itself.
+                return (b == b'[', pi + 1);
+            }
+            (matched != negate, i + 1)
+        }
+        b'\\' if pi + 1 < p.len() => (p[pi + 1] == b, pi + 2),
+        c => (c == b, pi + 1),
+    }
 }
 
 /// Whether `name` matches one ssh pattern: `*` stands for any run of
@@ -1134,6 +1471,8 @@ struct SshConfig {
     others: Vec<usize>,
     /// Whether a `Match` line names `final`, so ssh reads the file twice.
     second_pass: bool,
+    /// The blocks that decide whether others apply ([`Gate`]).
+    gates: std::collections::HashSet<usize>,
     /// The local account, read once for the whole import.
     account: Account,
     /// The service names looked up so far.
@@ -1176,11 +1515,16 @@ impl SshConfig {
             Scope::Match(line) => line.criteria.contains(&(false, Criterion::Final)),
             _ => false,
         });
+        let gates = blocks
+            .iter()
+            .filter_map(|b| b.gate.as_ref().map(|g| g.block))
+            .collect();
         Self {
             blocks,
             by_name,
             others,
             second_pass,
+            gates,
             account: local_account(),
             services,
             steps: Steps::default(),
@@ -1191,7 +1535,7 @@ impl SshConfig {
     /// whether it is one of the blocks that name `alias` itself: those
     /// apply to it without matching their patterns again (each of them is
     /// a name, `alias` among them). Each block is a step.
-    fn candidates(&self, alias: &str) -> Vec<(&HostBlock, bool)> {
+    fn candidates(&self, alias: &str) -> Vec<(usize, &HostBlock, bool)> {
         // Both lists are in file order: merged, not sorted again per host.
         let own: &[usize] = self.by_name.get(alias).map_or(&[], Vec::as_slice);
         self.steps.charge((self.others.len() + own.len()) as u64);
@@ -1204,7 +1548,7 @@ impl SshConfig {
                 (Some(_), None) => others.next().map(|i| (i, false)),
                 (None, None) => break,
             };
-            blocks.extend(next.map(|(i, own)| (&self.blocks[*i], own)));
+            blocks.extend(next.map(|(i, own)| (*i, &self.blocks[*i], own)));
         }
         blocks
     }
@@ -1279,7 +1623,8 @@ const PROXY_KEYS: [&str; 2] = ["proxyjump", "proxycommand"];
 /// a condition known only when ssh runs that may turn this reading on skips
 /// the host. With `CanonicalDomains` too, or a host name ending in `.`, ssh
 /// may rename the host through DNS before that reading, which the import
-/// cannot know: the host is skipped. The file's `Include` lines are not read.
+/// cannot know: the host is skipped. The file's `Include` lines are read
+/// where they stand ([`Parser::include`]).
 fn host_values(config: &SshConfig, alias: &str) -> Result<HashMap<String, String>, String> {
     let mut values: HashMap<String, String> = HashMap::new();
     let mut identities = Identities::default();
@@ -1328,7 +1673,7 @@ fn host_values(config: &SshConfig, alias: &str) -> Result<HashMap<String, String
 struct Identities {
     certain: Vec<u32>,
     maybe: Vec<u32>,
-    maybe_line: Option<usize>,
+    maybe_line: Option<String>,
 }
 
 impl Identities {
@@ -1363,14 +1708,41 @@ impl Identities {
 
 /// One reading of the file for `alias`, with `Host` patterns matched against
 /// `name` (the alias, then the host name in the second reading).
-/// Why a host that an `Include` applies to is skipped: ssh reads the
-/// included files there as part of the file (`Include` in readconf.c, and
-/// `ssh -G`: a `ProxyJump bastion` in an included file before `Host lab`
-/// gives `lab` that jump), and the import does not open them, so any value
-/// it reads for the host, a jump host among them, may not be the one ssh
-/// uses. An `Include` in a block that does not apply sets nothing.
-fn include_reason(line: usize, how: &str) -> String {
-    format!("the `Include` on line {line} of the file {how}, and an import does not read the files it names, which may set the host's values, a jump host among them; import a copy of the file with the included lines in place of the `Include`")
+/// Whether a block applies to the host read ([`read_pass`]): `Maybe` on a
+/// condition known only when ssh runs, with where its `Match` line is.
+#[derive(Clone)]
+enum Decision {
+    Yes,
+    No,
+    Maybe(String),
+}
+
+impl Decision {
+    fn of(holds: bool) -> Self {
+        if holds {
+            Decision::Yes
+        } else {
+            Decision::No
+        }
+    }
+
+    /// The decision of a block read only when `outer` applies ([`Gate`]).
+    fn within(self, outer: Decision) -> Decision {
+        match (outer, self) {
+            (Decision::No, _) | (_, Decision::No) => Decision::No,
+            (Decision::Yes, mine) => mine,
+            (Decision::Maybe(at), Decision::Yes) => Decision::Maybe(at),
+            (Decision::Maybe(_), mine) => mine,
+        }
+    }
+}
+
+/// Why a host that an `Include` the import cannot read applies to is
+/// skipped: its files are named through an environment variable the
+/// import does not read, so the values they set for the host, a jump host
+/// among them, are unknown ([`Parser::include`]).
+fn include_reason(at: &str, how: &str) -> String {
+    format!("the `Include` on {at} {how}, and names its files with an environment variable an import does not read (only {} are expanded), so they may set the host's values, a jump host among them; import a copy of the file with the included lines in place of the `Include`", SSH_IMPORT_ENV.join(", "))
 }
 
 fn read_pass(
@@ -1381,18 +1753,39 @@ fn read_pass(
     alias: &str,
     second: bool,
 ) -> Result<(), String> {
-    for (block, own) in config.candidates(name) {
+    let mut decided: HashMap<usize, Decision> = HashMap::new();
+    for (index, block, own) in config.candidates(name) {
         if let Some(reason) = config.over_budget() {
             return Err(reason);
         }
-        let applies = match &block.scope {
-            Scope::Global => true,
-            Scope::Host => own || host_matches(&block.aliases, name, &config.steps),
-            Scope::Match(line) => match match_holds(line, values, alias, second, config) {
-                Some(holds) => holds,
-                None => {
-                    if let Some(at) = block.include {
-                        return Err(include_reason(at, "may apply to it"));
+        let gate = |decided: &HashMap<usize, Decision>, g: &Gate| {
+            decided.get(&g.block).cloned().unwrap_or(Decision::No)
+        };
+        let mine = match (&block.gate, &block.scope) {
+            (Some(g), _) if g.same => gate(&decided, g),
+            (_, Scope::Global) => Decision::Yes,
+            (_, Scope::Host) => {
+                Decision::of(own || host_matches(&block.aliases, name, &config.steps))
+            }
+            (_, Scope::Match(line)) => match match_holds(line, values, alias, second, config) {
+                Some(holds) => Decision::of(holds),
+                None => Decision::Maybe(line.at.clone()),
+            },
+        };
+        let decision = match &block.gate {
+            Some(g) if !g.same => mine.within(gate(&decided, g)),
+            _ => mine,
+        };
+        if config.gates.contains(&index) {
+            decided.insert(index, decision.clone());
+        }
+        let applies = match decision {
+            Decision::Yes => true,
+            Decision::No => false,
+            Decision::Maybe(at) => {
+                {
+                    if let Some(include) = &block.unread {
+                        return Err(include_reason(include, "may apply to it"));
                     }
                     // ssh settles `HostName` before the second reading, and
                     // asks DNS before it: the keys that decide those do
@@ -1408,8 +1801,7 @@ fn read_pass(
                     // the first one ssh reads wins.
                     if let Some(key) = unset {
                         return Err(format!(
-                            "the `Match` block on line {} of the file may set its `{key}`, on a condition known only when ssh runs; give the host its `{key}` in a `Host` block above that line and import again",
-                            line.line
+                            "the `Match` block on {at} may set its `{key}`, on a condition known only when ssh runs; give the host its `{key}` in a `Host` block above that line and import again"
                         ));
                     }
                     // Its keys count when it applies, whichever key the
@@ -1417,9 +1809,9 @@ fn read_pass(
                     if !block.identities.is_empty() {
                         if Identities::overflow(&identities.all(), &block.identities, &config.steps)
                         {
-                            return Err(format!("the `Match` block on line {} of the file may add `IdentityFile` lines past the {MAX_IDENTITY_FILES} ssh reads, on a condition known only when ssh runs, and ssh then refuses to connect; give the host fewer `IdentityFile` lines and import again", line.line));
+                            return Err(format!("the `Match` block on {at} may add `IdentityFile` lines past the {MAX_IDENTITY_FILES} ssh reads, on a condition known only when ssh runs, and ssh then refuses to connect; give the host fewer `IdentityFile` lines and import again"));
                         }
-                        identities.maybe_line.get_or_insert(line.line);
+                        identities.maybe_line.get_or_insert_with(|| at.clone());
                         for key in &block.identities {
                             if !identities.maybe.contains(key)
                                 && identities.maybe.len() < MAX_IDENTITY_FILES
@@ -1428,13 +1820,13 @@ fn read_pass(
                             }
                         }
                     }
-                    false
                 }
-            },
+                false
+            }
         };
         if applies {
-            if let Some(at) = block.include {
-                return Err(include_reason(at, "applies to it"));
+            if let Some(include) = &block.unread {
+                return Err(include_reason(include, "applies to it"));
             }
             // ssh counts every line, `none` and repeats included, and keeps
             // a key once (`ssh -G`: 100 lines and a `Match final` fail in
@@ -1444,9 +1836,9 @@ fn read_pass(
             if let Some(reason) = config.over_budget() {
                 return Err(reason);
             }
-            if let Some(line) = identities.maybe_line {
+            if let Some(at) = &identities.maybe_line {
                 if Identities::overflow(&identities.all(), &block.identities, &config.steps) {
-                    return Err(format!("the `Match` block on line {line} of the file may add `IdentityFile` lines past the {MAX_IDENTITY_FILES} ssh reads, on a condition known only when ssh runs, and ssh then refuses to connect; give the host fewer `IdentityFile` lines and import again"));
+                    return Err(format!("the `Match` block on {at} may add `IdentityFile` lines past the {MAX_IDENTITY_FILES} ssh reads, on a condition known only when ssh runs, and ssh then refuses to connect; give the host fewer `IdentityFile` lines and import again"));
                 }
             }
             for identity in &block.identities {
@@ -1854,8 +2246,9 @@ pub fn import_ssh_config(path: &Path) -> Result<SshImportResult, String> {
     let content = std::fs::read_to_string(path).map_err(|e| format!("read ssh config: {e}"))?;
 
     let services = Services::default();
-    let (blocks, error) = parse_ssh_config_with(&content, &services);
+    let (blocks, error, cost) = parse_ssh_config_with(&content, &services);
     let config = SshConfig::with(blocks, services);
+    config.steps.charge(cost);
     let error = error.or_else(|| config.too_much_work());
     let total_remotes = config
         .blocks
@@ -1870,8 +2263,10 @@ pub fn import_ssh_config(path: &Path) -> Result<SshImportResult, String> {
     }
     let (mut servers, mut skipped) = import_hosts(&config, error.as_ref());
     // Past the step budget the hosts read so far are dropped too: the file
-    // is refused whole, as for the other limits.
-    if let Some(reason) = config.over_budget() {
+    // is refused whole, as for the other limits. A file already refused
+    // keeps its reason (the bytes its `Include` lines read are charged
+    // before it is matched).
+    if let (None, Some(reason)) = (&error, config.over_budget()) {
         log::warn!("ssh config import: refused past the {MAX_MATCH_STEPS}-step budget");
         (servers, skipped) = import_hosts(&config, Some(&reason));
     }
@@ -2929,60 +3324,318 @@ Host roundtrip
         }
     }
 
-    /// ssh reads the files an `Include` names where the line is, so a
-    /// `ProxyJump` in one reaches the hosts after it (`ssh -G`). The import
-    /// does not open them: it skips every host an `Include` applies to, or
-    /// may apply to, rather than import it with values ssh may not use, a
-    /// direct connection where ssh goes through a jump host. An `Include` in
-    /// a block that does not apply sets nothing.
+    /// Writes `text` at `name` under `dir`, its folders made, and returns its
+    /// path for an `Include` line.
+    fn put(dir: &Path, name: &str, text: &str) -> String {
+        let path = dir.join(name);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, text).unwrap();
+        path.display().to_string()
+    }
+
+    /// Whether `ssh -G` reads `lab` in `file` at all.
+    fn ssh_accepts(file: &Path) -> bool {
+        std::process::Command::new("ssh")
+            .args(["-G", "-F"])
+            .arg(file)
+            .arg("lab")
+            .output()
+            .unwrap()
+            .status
+            .success()
+    }
+
+    /// Each imported host's host name, port and user, as `ssh -G` reads them
+    /// from the same file, when this machine has an ssh.
+    fn same_as_ssh(file: &Path, result: &SshImportResult) {
+        if std::process::Command::new("ssh")
+            .arg("-V")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+        for server in &result.servers {
+            let read = ssh_g(file, &server.name);
+            assert_eq!(read["hostname"], server.host, "{}", server.name);
+            assert_eq!(read["port"], server.port.to_string(), "{}", server.name);
+            assert_eq!(read["user"], server.username, "{}", server.name);
+        }
+    }
+
+    /// ssh reads the files an `Include` names where the line stands, with the
+    /// state of the block it is in, and so does the import (`ssh -G` on
+    /// 10.2p1): a jump host set in an included file reaches its host, the
+    /// files a pattern matches are read in order and a hidden one is not, a
+    /// pattern that matches nothing reads nothing, a host defined in an
+    /// included file is imported from it (an `Include` of OrbStack's file at
+    /// the top of the user's), the block goes on after its `Include`, and a
+    /// `Match` known only when ssh runs skips only the hosts it may apply to.
+    /// Every imported value is the one `ssh -G` reads.
     #[test]
-    fn a_host_an_include_applies_to_is_skipped() {
+    fn an_include_is_read_where_it_stands() {
         let dir = tempfile::tempdir().unwrap();
-        let extra = dir.path().join("extra");
-        std::fs::write(&extra, "ProxyJump bastion.example.com\n").unwrap();
-        let x = extra.display();
+        let d = dir.path();
+        let jump = put(d, "jump", "Host lab\n  ProxyJump bastion.example.com\n");
+        put(d, "conf.d/a.conf", "Host web\n  Port 2001\n");
+        put(d, "conf.d/b.conf", "Host web\n  Port 2002\n  User z\n");
+        put(d, "conf.d/.hidden.conf", "Host web\n  User hidden\n");
+        let pattern = d.join("conf.d/*.conf").display().to_string();
+        let orb = put(
+            d,
+            "orbstack/ssh/config",
+            "Host orb\n  HostName 127.0.0.1\n  Port 32222\n  User default\n",
+        );
+        let other = put(d, "other", "Host other\n  Port 7\n");
+        let port = put(d, "port", "Port 2200\n");
+        let missing = d.join("nope").display().to_string();
+        let folder = d.join("conf.d").display().to_string();
+        let lab_port = put(d, "lab_port", "Host lab\n  Port 2201\n");
         let host = "Host lab\n  HostName lab.example.com\n";
-        let reason = |line: usize, how: &str| {
-            format!("the `Include` on line {line} of the file {how}, and an import does not read the files it names, which may set the host's values, a jump host among them; import a copy of the file with the included lines in place of the `Include`")
-        };
-        let cases = [
+        let dup = "an earlier `Host` block names the same host, and ssh reads the two as one: it is imported once, from the first";
+        let runtime = "the `Match` block on line 1 of the file may set its `port`, on a condition known only when ssh runs; give the host its `port` in a `Host` block above that line and import again";
+        // The file, the hosts imported (name, port, user: empty for the
+        // local account's) and the hosts skipped with their reasons.
+        type Case<'a> = (
+            String,
+            Vec<(&'a str, u32, &'a str)>,
+            Vec<(&'a str, &'a str)>,
+        );
+        let cases: Vec<Case> = vec![
             (
-                format!("Include {x}\n{host}"),
-                vec![],
-                vec![("lab", reason(1, "applies to it"))],
-            ),
-            (
-                format!("{host}Host *\n  Include {x}\n"),
-                vec![],
+                format!("Include {jump}\n{host}Host direct\n  HostName d.example.com\n"),
+                vec![("direct", 22, "")],
                 vec![
-                    ("lab", reason(4, "applies to it")),
-                    ("*", "wildcard host pattern".to_string()),
+                    ("lab", JUMP),
+                    ("lab", dup),
                 ],
             ),
             (
-                format!("{host}Host other\n  Include {x}\n  HostName o.example.com\n"),
-                vec!["lab"],
-                vec![("other", reason(4, "applies to it"))],
+                format!("Include {pattern}\nHost web\n  HostName w.example.com\n"),
+                vec![("web", 2001, "z")],
+                vec![("web", dup), ("web", dup)],
             ),
             (
-                format!("Match exec true\n  Include {x}\n{host}"),
+                format!("Include {missing}\nInclude {missing}*\nInclude {folder}\n{host}"),
+                vec![("lab", 22, "")],
                 vec![],
-                vec![("lab", reason(2, "may apply to it"))],
             ),
-            (host.to_string(), vec!["lab"], vec![]),
+            (
+                format!("Include {orb}\n\n{host}"),
+                vec![("orb", 32222, "default"), ("lab", 22, "")],
+                vec![],
+            ),
+            (
+                format!("{host}  Include {other}\n  User after\n"),
+                vec![("lab", 22, "after"), ("other", 22, "")],
+                vec![],
+            ),
+            (
+                format!("Match host lab exec true\n  Include {port}\n{host}Host set\n  HostName s.example.com\n"),
+                vec![("set", 22, "")],
+                vec![("lab", runtime)],
+            ),
+            (
+                format!("Match exec true\n  Include {lab_port}\n{host}"),
+                vec![],
+                vec![("lab", runtime), ("lab", dup)],
+            ),
         ];
         for (text, imported, skipped) in cases {
-            let result = import_text(dir.path(), &text);
-            let names: Vec<&str> = result.servers.iter().map(|s| s.name.as_str()).collect();
-            assert_eq!(names, imported, "{text}");
-            let skipped: Vec<(&str, &str)> =
-                skipped.iter().map(|(n, r)| (*n, r.as_str())).collect();
+            let file = dir.path().join("config");
+            std::fs::write(&file, &text).unwrap();
+            let result = import_ssh_config(&file).unwrap();
+            let read: Vec<(&str, u32, &str)> = result
+                .servers
+                .iter()
+                .map(|s| (s.name.as_str(), s.port, s.username.as_str()))
+                .collect();
+            let local = local_account().0.unwrap_or_default();
+            let imported: Vec<(&str, u32, &str)> = imported
+                .iter()
+                .map(|(n, p, u)| (*n, *p, if u.is_empty() { local.as_str() } else { *u }))
+                .collect();
+            assert_eq!(read, imported, "{text}");
             assert_eq!(reasons(&result), skipped, "{text}");
+            same_as_ssh(&file, &result);
         }
         if std::process::Command::new("ssh").arg("-V").output().is_ok() {
-            let file = dir.path().join("included");
-            std::fs::write(&file, format!("Include {x}\n{host}")).unwrap();
+            let file = dir.path().join("config");
+            std::fs::write(&file, format!("Include {jump}\n{host}")).unwrap();
             assert_eq!(ssh_g(&file, "lab")["proxyjump"], "bastion.example.com");
+        }
+    }
+
+    /// ssh refuses the whole file for an included file it refuses: a line it
+    /// refuses there, even in a block that does not apply, a file another
+    /// account can write, an `Include` with no file and a `${` never closed.
+    /// One whose files are named through a variable the import does not read
+    /// skips the hosts it applies to.
+    #[test]
+    fn an_include_ssh_refuses_refuses_the_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        let bad = put(d, "bad", "Port 6\nPort 2200 x\n");
+        let host = "Host lab\n  HostName lab.example.com\n";
+        let mut cases = vec![
+            (format!("Host zz\n  Include {bad}\n{host}"), "line 2 of a file that the `Include` on line 2 of the file reads "),
+            (format!("Include\n{host}"), "line 1 of the file names no file after `Include`, so ssh refuses the whole file"),
+            (format!("Include ${{HOME\n{host}"), "line 1 of the file holds a `${` that is never closed, so ssh refuses the whole file"),
+        ];
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let open = put(d, "open", "Port 2200\n");
+            std::fs::set_permissions(&open, std::fs::Permissions::from_mode(0o666)).unwrap();
+            cases.push((
+                format!("Include {open}\n{host}"),
+                "line 1 of the file includes a file that another account owns or that anyone can write, which ssh does not read, so ssh refuses the whole file",
+            ));
+        }
+        let ssh = std::process::Command::new("ssh").arg("-V").output().is_ok();
+        for (text, reason) in cases {
+            let result = import_text(d, &text);
+            assert!(result.servers.is_empty(), "{text}");
+            let read = reasons(&result);
+            assert!(!read.is_empty(), "{text}");
+            assert!(
+                read.iter().all(|r| r.1.starts_with(reason)),
+                "{text}: {read:?}"
+            );
+            if ssh {
+                assert!(!ssh_accepts(&d.join("config")), "ssh read {text}");
+            }
+        }
+        let result = import_text(
+            d,
+            &format!("Include ${{AEROFTP_SSH_TEST_NOT_READ}}/x\n{host}"),
+        );
+        assert_eq!(
+            reasons(&result),
+            [(
+                "lab",
+                include_reason("line 1 of the file", "applies to it").as_str()
+            )]
+        );
+    }
+
+    /// ssh reads a file included 16 deep and refuses the whole file for one
+    /// at 17 ("Too many recursive configuration includes"), and so does the
+    /// import.
+    #[test]
+    fn an_include_past_16_deep_refuses_the_file() {
+        let ssh = std::process::Command::new("ssh").arg("-V").output().is_ok();
+        for (deep, read) in [(MAX_INCLUDE_DEPTH, true), (MAX_INCLUDE_DEPTH + 1, false)] {
+            let dir = tempfile::tempdir().unwrap();
+            let d = dir.path();
+            let path = |i: usize| d.join(format!("f{i}")).display().to_string();
+            for i in 1..deep {
+                put(d, &format!("f{i}"), &format!("Include {}\n", path(i + 1)));
+            }
+            put(d, &format!("f{deep}"), "Port 2200\n");
+            let text = format!(
+                "Include {}\nHost lab\n  HostName lab.example.com\n",
+                path(1)
+            );
+            let result = import_text(d, &text);
+            if read {
+                assert_eq!(result.servers[0].port, 2200, "{:?}", reasons(&result));
+            } else {
+                assert!(result.servers.is_empty());
+                assert!(
+                    reasons(&result)[0]
+                        .1
+                        .contains("reads files included more than 16 deep"),
+                    "{:?}",
+                    reasons(&result)
+                );
+            }
+            if ssh {
+                assert_eq!(ssh_accepts(&d.join("config")), read, "{deep}");
+            }
+        }
+    }
+
+    /// A relative `Include` and one with `~` are read from `HOME`, as `glob`
+    /// reads them for ssh: `Include config.d/lab` is `HOME/.ssh/config.d/lab`.
+    #[test]
+    fn a_relative_include_reads_from_home() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path().display().to_string();
+        put(dir.path(), ".ssh/config.d/lab", "Host lab\n  Port 2201\n");
+        put(dir.path(), "orb/config", "Host orb\n  Port 2202\n");
+        if !in_child_with_env("a_relative_include_reads_from_home", &[("HOME", &home)]) {
+            return;
+        }
+        let home = PathBuf::from(std::env::var("HOME").unwrap());
+        let result = import_text(
+            &home,
+            "Include config.d/lab\nInclude ~/orb/config\nHost lab\n  HostName lab.example.com\n",
+        );
+        let read: Vec<(&str, u32)> = result
+            .servers
+            .iter()
+            .map(|s| (s.name.as_str(), s.port))
+            .collect();
+        assert_eq!(
+            read,
+            [("lab", 2201), ("orb", 2202)],
+            "{:?}",
+            reasons(&result)
+        );
+        same_as_ssh(&home.join("config"), &result);
+    }
+
+    /// One part of an `Include` pattern matches a name as libc `glob` does
+    /// (`ssh -G`: `Include d/[ab].conf` reads `d/a.conf`, `d/*.conf` does not
+    /// read `d/.h.conf`).
+    #[test]
+    fn an_include_pattern_matches_as_glob_does() {
+        for (pattern, name, matches) in [
+            ("*.conf", "a.conf", true),
+            ("*.conf", ".h.conf", false),
+            (".*.conf", ".h.conf", true),
+            ("[ab].conf", "b.conf", true),
+            ("[ab].conf", "c.conf", false),
+            ("[a-c]x", "bx", true),
+            ("[!a]x", "ax", false),
+            ("[^a]x", "bx", true),
+            ("[]]x", "]x", true),
+            ("[ab", "[ab", true),
+            ("a?c", "abc", true),
+            ("a?c", "ac", false),
+            ("\\*x", "*x", true),
+            ("\\*x", "ax", false),
+            ("*a*b", "xxaxxb", true),
+            ("*a*b", "xxaxxbx", false),
+        ] {
+            assert_eq!(glob_part(pattern, name), matches, "{pattern} {name}");
+        }
+    }
+
+    /// Every file and byte an `Include` reads is charged to the step budget:
+    /// a file that includes more than [`MAX_MATCH_STEPS`] bytes is refused
+    /// before it reads them.
+    #[test]
+    fn the_bytes_an_include_reads_count_against_the_budget() {
+        let dir = tempfile::tempdir().unwrap();
+        let big = put(dir.path(), "big", &format!("# {}\n", "x".repeat(4 << 20)));
+        for (times, read) in [(40, true), (60, false)] {
+            let text = format!(
+                "Include {}\nHost lab\n  HostName lab.example.com\n",
+                vec![big.as_str(); times].join(" ")
+            );
+            let result = import_text(dir.path(), &text);
+            assert_eq!(result.servers.len(), usize::from(read), "{times}");
+            if !read {
+                assert!(
+                    reasons(&result)[0].1.starts_with(&format!(
+                        "the files the file includes hold more than {MAX_MATCH_STEPS} bytes"
+                    )),
+                    "{:?}",
+                    reasons(&result)
+                );
+            }
         }
     }
 
