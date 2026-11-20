@@ -1364,6 +1364,9 @@ impl JottacloudProvider {
     /// key; a refused read leaves the key unwritten), so a chain imported
     /// into one while the login is with Jotta is not written over.
     fn begin_login_chain(&mut self) {
+        // The login's chain begins now, on this process's clock too: a key
+        // deleted while the refresh before it was tried removed nothing of it.
+        self.chain_since = deletion_clock();
         self.refresh_source_account = None;
         *self.consumed.lock().unwrap_or_else(|e| e.into_inner()) = None;
         let mut known = self.stored_tokens.lock().unwrap_or_else(|e| e.into_inner());
@@ -1397,7 +1400,8 @@ impl JottacloudProvider {
     /// Try to connect using a persisted refresh token (no login token needed).
     async fn try_connect_with_refresh(&mut self) -> Result<bool, ProviderError> {
         self.bind_credential_owner()?;
-        // The connection begins here, the login-token path of `connect` included.
+        // The connection begins here; a login that follows begins again
+        // (`begin_login_chain`).
         self.chain_since = deletion_clock();
         self.note_chain_generations();
         let own = self.refresh_token_account();

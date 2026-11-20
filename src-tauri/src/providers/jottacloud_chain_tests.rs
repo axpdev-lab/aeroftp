@@ -826,3 +826,51 @@ fn a_load_reads_the_key_its_rotation_and_its_deletions_together() {
     }
     assert!(failures.is_empty(), "{failures:#?}");
 }
+
+/// A login that follows a failed refresh begins its own chain then: a
+/// delete of its key while the refresh was tried does not stop the login's
+/// chain, one after the login began does.
+#[test]
+fn a_login_is_checked_against_deletions_from_when_it_began() {
+    if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+        "providers::jottacloud::chain_tests::a_login_is_checked_against_deletions_from_when_it_began",
+    ) {
+        return;
+    }
+    let chains = Chains::new();
+    let mut failures = Vec::new();
+    let _ = chains.store.delete("jottacloud_refresh");
+    let login_of = |profile: &str, delete_before_login: bool| {
+        let key = format!("jottacloud_refresh_{profile}");
+        let mut connection = chains.bound(profile);
+        assert!(!chains
+            .runtime()
+            .block_on(connection.try_connect_with_refresh())
+            .unwrap());
+        let delete = || {
+            delete_refresh_chain::<String>(&chains.store, Some(chains.first), &key, || Ok(()))
+                .unwrap()
+        };
+        if delete_before_login {
+            delete();
+        }
+        connection.begin_login_chain();
+        if !delete_before_login {
+            delete();
+        }
+        connection.refresh_token = SecretString::from(format!("login-{profile}"));
+        connection.token_endpoint = chains.endpoint.clone();
+        connection.username = "jotta-user".into();
+        connection.persist_refresh_token();
+        (chains.stored(&key), chains.pending(&key).is_some())
+    };
+    let before = login_of("relogin", true);
+    if before != ("login-relogin".to_string(), false) {
+        failures.push(format!("deleted before the login began: {before:?}"));
+    }
+    let after = login_of("deletedlogin", false);
+    if after != (String::new(), false) {
+        failures.push(format!("deleted after the login began: {after:?}"));
+    }
+    assert!(failures.is_empty(), "{failures:#?}");
+}
