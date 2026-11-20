@@ -1490,26 +1490,17 @@ fn megacmd_session_is_account_root(session_url: &str, served: Option<&str>) -> b
 /// server or proxy answering more than was asked), is not this file's, and
 /// binding it would let a delete remove this file's version of that time.
 fn nextcloud_version_id_of_href(href: &str, collection_url: &str) -> Option<String> {
-    // An absolute href names its server: one of another origin is not a row
-    // of this collection, whatever its path.
-    if href.contains("://") {
-        let origin = |s: &str| url::Url::parse(s).ok().map(|u| u.origin());
-        if origin(href)? != origin(collection_url)? {
-            return None;
-        }
+    // The href is resolved against the collection as a browser would: an
+    // absolute URL and a scheme-relative `//host/...` name their own server,
+    // and one of another origin is not a row of this collection, whatever
+    // its path. A path-only href stays on the collection's origin.
+    let base = url::Url::parse(collection_url).ok()?;
+    let resolved = base.join(href).ok()?;
+    if resolved.origin() != base.origin() {
+        return None;
     }
-    let path_of = |s: &str| -> String {
-        let s = s.split(['?', '#']).next().unwrap_or("");
-        match s.split_once("://") {
-            Some((_, rest)) => rest
-                .find('/')
-                .map(|i| rest[i..].to_string())
-                .unwrap_or_default(),
-            None => s.to_string(),
-        }
-    };
-    let href = path_of(href);
-    let collection = path_of(collection_url);
+    let href = resolved.path().to_string();
+    let collection = base.path().to_string();
     let (parent, last) = href.trim_end_matches('/').rsplit_once('/')?;
     let decoded = |p: &str| -> Vec<String> {
         p.split('/')
@@ -1914,9 +1905,10 @@ impl WebDavProvider {
     /// beyond the authority: a slash inside the query is not a path.
     /// Best-effort string parser: avoids pulling in `url` for one call.
     fn url_path_component(url: &str) -> &str {
+        // `//host/path` is a scheme-relative URL: its authority comes first.
         let after_scheme = match url.find("://") {
             Some(i) => &url[i + 3..],
-            None => url,
+            None => url.strip_prefix("//").unwrap_or(url),
         };
         let before_query =
             &after_scheme[..after_scheme.find(['?', '#']).unwrap_or(after_scheme.len())];
@@ -1935,7 +1927,8 @@ impl WebDavProvider {
     /// of that name. The root is no segment at all.
     fn dav_path_segments(href: &str, base: &[String]) -> Vec<String> {
         let raw = href.split(['?', '#']).next().unwrap_or("");
-        let has_authority = raw.find("://").is_some_and(|i| !raw[..i].contains('/'));
+        let has_authority =
+            raw.starts_with("//") || raw.find("://").is_some_and(|i| !raw[..i].contains('/'));
         let (path, relative) = if has_authority {
             (Self::url_path_component(raw), false)
         } else {
@@ -3173,8 +3166,9 @@ impl WebDavProvider {
             )));
         }
         let text = resp.text().await.map_http_err(body_read_error)?;
-        let json: serde_json::Value = serde_json::from_str(&text)
-            .map_err(|e| ProviderError::ParseError(format!("ocs json: {}", e)))?;
+        let json: serde_json::Value = serde_json::from_str(&text).map_err(|e| {
+            ProviderError::ParseError(format!("ocs json: {}", super::json_parse_error(&e)))
+        })?;
         Ok(json
             .pointer("/ocs/data/capabilities/files_sharing/public/password/enforced")
             .and_then(serde_json::Value::as_bool)
@@ -3271,8 +3265,9 @@ impl WebDavProvider {
                 )));
             }
 
-            let json: serde_json::Value = serde_json::from_str(&text2)
-                .map_err(|e| ProviderError::ParseError(format!("ocs json: {}", e)))?;
+            let json: serde_json::Value = serde_json::from_str(&text2).map_err(|e| {
+                ProviderError::ParseError(format!("ocs json: {}", super::json_parse_error(&e)))
+            })?;
 
             let share_url = json
                 .pointer("/ocs/data/url")
@@ -3295,8 +3290,9 @@ impl WebDavProvider {
                 server_message(&text, &self.config.url, &self.sent_secrets())
             )));
         }
-        let json: serde_json::Value = serde_json::from_str(&text)
-            .map_err(|e| ProviderError::ParseError(format!("ocs json: {}", e)))?;
+        let json: serde_json::Value = serde_json::from_str(&text).map_err(|e| {
+            ProviderError::ParseError(format!("ocs json: {}", super::json_parse_error(&e)))
+        })?;
 
         let share_url = json
             .pointer("/ocs/data/url")
@@ -4043,7 +4039,17 @@ impl WebDavProvider {
                 "The current version is the file itself: delete the file instead".into(),
             ));
         }
-        let url = self.nextcloud_version_url(path, version_id).await?;
+        // Only a version the listing holds for this file is deleted: a row
+        // the listing refused (another host's href) has no local version to
+        // remove, and a label of another file is not this file's.
+        let (url, file_id) = self.nextcloud_version_target(path, version_id).await?;
+        let bound = nextcloud_bound_version_id(&file_id, nextcloud_split_version_id(version_id).1);
+        let listed = StorageProvider::list_versions(self, path).await?;
+        if !listed.iter().any(|v| v.id == bound) {
+            return Err(ProviderError::NotFound(format!(
+                "{path} has no version {version_id}"
+            )));
+        }
         let resp = self
             .send_replaying_digest(|| self.request_url(Method::DELETE, &url))
             .await?;
@@ -4097,7 +4103,8 @@ impl WebDavProvider {
                 self.request_url(Method::from_bytes(b"MOVE").unwrap(), &url)
                     .header("Destination", &dest)
             })
-            .await?;
+            .await
+            .map_err(|e| super::sent_change_unconfirmed(e, &format!("the restore of {path}")))?;
         let status = resp.status();
         if status == StatusCode::NOT_FOUND {
             return Err(ProviderError::NotFound(format!(
@@ -8895,6 +8902,20 @@ mod tests {
                             &format!(r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:"><d:response><d:href>{p}1700000000</d:href><d:propstat><d:prop><d:getcontentlength>8</d:getcontentlength><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>"#),
                         ),
                         ("PROPFIND", "/remote.php/dav/versions/user/versions/62/") => reply(500, ""),
+                        // n.txt (file 63): its one version row is a
+                        // network-path reference, `//remote.php/...`, which
+                        // names the host `remote.php`, not this server.
+                        ("PROPFIND", "/remote.php/dav/files/user/n.txt") => reply(
+                            207,
+                            r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns"><d:response><d:href>/remote.php/dav/files/user/n.txt</d:href><d:propstat><d:prop><oc:fileid>63</oc:fileid><d:getetag>&quot;n1&quot;</d:getetag><d:getcontentlength>3</d:getcontentlength><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>"#,
+                        ),
+                        ("PROPFIND", "/remote.php/dav/versions/user/versions/63/") => reply(
+                            207,
+                            r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:"><d:response><d:href>//remote.php/dav/versions/user/versions/63/1700000000</d:href><d:propstat><d:prop><d:getcontentlength>8</d:getcontentlength><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>"#,
+                        ),
+                        ("DELETE", "/remote.php/dav/versions/user/versions/63/1700000000") => {
+                            reply(204, "")
+                        }
                         ("MOVE", "/remote.php/dav/versions/user/versions/42/1700000500") => {
                             reply(500, "<error>user=user password=hunter2-pass token=tok-abc123</error>")
                         }
@@ -8972,6 +8993,26 @@ mod tests {
         ));
         server.abort();
         assert!(log.lock().unwrap().is_empty(), "{:?}", log.lock().unwrap());
+    }
+
+    /// A version row named by a network-path reference (`//host/...`) is a
+    /// row of another server: it is not listed, and a delete of the local
+    /// version of its time is refused before any DELETE is sent.
+    #[tokio::test]
+    async fn a_version_row_of_another_host_is_neither_listed_nor_purged() {
+        let (base, log, server) = serve_nextcloud_versions().await;
+        let mut provider = nextcloud_versions_provider(&base);
+        let versions = provider.list_versions("/n.txt").await.expect("versions");
+        let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
+        assert_eq!(ids, ["63:current"]);
+        let refused = provider.delete_version("/n.txt", "63:1700000000").await;
+        server.abort();
+        assert!(refused.is_err(), "{refused:?}");
+        assert!(
+            !log.lock().unwrap().iter().any(|l| l.starts_with("DELETE")),
+            "{:?}",
+            log.lock().unwrap()
+        );
     }
 
     /// The versions answer for d.txt (file id 46) also carries a row of
@@ -9270,6 +9311,19 @@ mod tests {
         assert_eq!(
             nextcloud_version_id_of_href(&format!("http://cloud.example{row}"), collection),
             None
+        );
+        // A scheme-relative href names a host too: `//remote.php/...` is the
+        // server remote.php, whose path matched the collection's before.
+        assert_eq!(
+            nextcloud_version_id_of_href(
+                "//remote.php/dav/versions/u/versions/42/1700000000",
+                collection
+            ),
+            None
+        );
+        assert_eq!(
+            nextcloud_version_id_of_href(&format!("//cloud.example{row}"), collection).as_deref(),
+            Some("1700000000")
         );
     }
 
@@ -10221,6 +10275,12 @@ mod tests {
         assert_ne!(
             WebDavProvider::dav_path_segments("/dav/a%2Fb", &[]),
             WebDavProvider::dav_path_segments("/dav/a/b", &[])
+        );
+        // A scheme-relative href starts with its host: `//h/dav/a` is the
+        // path /dav/a on h, never the path /h/dav/a.
+        assert_eq!(
+            WebDavProvider::dav_path_segments("//h.example/dav/a", &[]),
+            vec!["dav".to_string(), "a".to_string()]
         );
 
         // Relative hrefs resolve against the listed collection.

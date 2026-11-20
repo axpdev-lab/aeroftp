@@ -19,8 +19,8 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use super::{
-    response_bytes_with_limit, sanitize_api_error, send_with_retry, FileVersion, HttpRetryConfig,
-    ProviderConfig, ProviderError, ProviderType, RemoteEntry, ShareLinkCapabilities, ShareLinkInfo,
+    response_bytes_with_limit, send_with_retry, FileVersion, HttpRetryConfig, ProviderConfig,
+    ProviderError, ProviderType, RemoteEntry, ShareLinkCapabilities, ShareLinkInfo,
     ShareLinkOptions, ShareLinkResult, StorageInfo, StorageProvider, TransferOptimizationHints,
     MAX_DOWNLOAD_TO_BYTES,
 };
@@ -215,6 +215,14 @@ fn koofr_file_state(file: &KoofrFile) -> String {
     )
 }
 
+/// Whether a [`koofr_file_state`] holds a hash: its third part.
+fn koofr_state_has_hash(state: &str) -> bool {
+    state
+        .splitn(3, '.')
+        .nth(2)
+        .is_some_and(|hash| !hash.is_empty())
+}
+
 /// The file state a bound current id names, `None` for any other id.
 fn koofr_bound_current(version_id: &str) -> Option<&str> {
     version_id
@@ -348,6 +356,17 @@ pub struct KoofrProvider {
 
 /// Provider-specific hard cap on concurrent Range streams (mirrors S3's 16).
 const KOOFR_MULTI_THREAD_MAX_STREAMS: usize = 16;
+
+/// Koofr server text in an error, by its length only: a message, code or
+/// body can echo anything the request carried, an app password included,
+/// and no pattern scrub can tell an arbitrary password from other text.
+fn koofr_text_not_shown(what: &str, text: &str) -> String {
+    if text.is_empty() {
+        format!("no {what}")
+    } else {
+        format!("a {what} of {} bytes, not shown", text.len())
+    }
+}
 
 impl KoofrProvider {
     /// Build the provider and its HTTP client, with the limits of [`crate::providers::http_limits`].
@@ -529,21 +548,31 @@ impl KoofrProvider {
 
         if let Ok(err) = serde_json::from_str::<KoofrError>(body) {
             if let Some(inner) = err.error {
-                let code = inner.code.as_deref().unwrap_or("Unknown");
-                // Koofr's own words, scrubbed like any server text: an
-                // echoed credential never reaches an error or the dialog.
+                let code = inner.code.as_deref().unwrap_or("");
+                // Koofr's own words are never shown: the error says what
+                // happened in local text, and only the codes matched here
+                // are named.
                 let message =
-                    sanitize_api_error(inner.message.as_deref().unwrap_or("Unknown error"));
-                let message = message.as_str();
+                    koofr_text_not_shown("message", inner.message.as_deref().unwrap_or(""));
                 return match code {
-                    "NotFound" if status == 404 => ProviderError::NotFound(message.to_string()),
+                    "NotFound" if status == 404 => {
+                        ProviderError::NotFound(format!("Koofr: not found ({message})"))
+                    }
                     // A rename or move onto a taken name (409).
-                    "AlreadyExists" => ProviderError::AlreadyExists(message.to_string()),
-                    "Forbidden" => ProviderError::PermissionDenied(message.to_string()),
-                    "Unauthorized" => ProviderError::AuthenticationFailed(message.to_string()),
+                    "AlreadyExists" => ProviderError::AlreadyExists(format!(
+                        "Koofr: the name is taken ({message})"
+                    )),
+                    "Forbidden" => ProviderError::PermissionDenied(format!(
+                        "Koofr: access refused ({message})"
+                    )),
+                    "Unauthorized" => ProviderError::AuthenticationFailed(format!(
+                        "Koofr: the app password was refused ({message})"
+                    )),
                     _ => ProviderError::ServerError(format!(
-                        "Koofr API error ({}): {}: {}",
-                        status_text, code, message
+                        "Koofr API error ({}): {}, {}",
+                        status_text,
+                        koofr_text_not_shown("code", code),
+                        message
                     )),
                 };
             }
@@ -552,7 +581,7 @@ impl KoofrProvider {
         ProviderError::ServerError(format!(
             "Koofr API error ({}): {}",
             status_text,
-            sanitize_api_error(body)
+            koofr_text_not_shown("answer", body)
         ))
     }
 
@@ -717,9 +746,9 @@ impl StorageProvider for KoofrProvider {
 
         let user: KoofrUser = serde_json::from_str(&user_body).map_err(|e| {
             ProviderError::ConnectionFailed(format!(
-                "Failed to parse user: {}. Body: {}",
-                e,
-                &user_body[..user_body.floor_char_boundary(200)]
+                "Failed to parse user: {} (an answer of {} bytes, not shown)",
+                super::json_parse_error(&e),
+                user_body.len()
             ))
         })?;
 
@@ -748,9 +777,9 @@ impl StorageProvider for KoofrProvider {
             .or_else(|_| serde_json::from_str::<KoofrMountsResponse>(&body).map(|r| r.mounts))
             .map_err(|e| {
                 ProviderError::ConnectionFailed(format!(
-                    "Failed to parse mounts: {}. Body preview: {}",
-                    e,
-                    &body[..body.floor_char_boundary(200)]
+                    "Failed to parse mounts: {} (an answer of {} bytes, not shown)",
+                    super::json_parse_error(&e),
+                    body.len()
                 ))
             })?;
 
@@ -1844,7 +1873,10 @@ impl StorageProvider for KoofrProvider {
         let resp = Self::check_version_response(resp).await?;
         let versions: KoofrVersionsResponse =
             serde_json::from_str(&super::version_listing_text(resp).await?).map_err(|e| {
-                ProviderError::ServerError(format!("Failed to parse versions: {}", e))
+                ProviderError::ServerError(format!(
+                    "Failed to parse versions: {}",
+                    super::json_parse_error(&e)
+                ))
             })?;
         let after = self.version_file_info(&resolved).await?;
         let same_file = |f: &KoofrFile| (f.file_type.clone(), f.size, f.modified, f.hash.clone());
@@ -1896,7 +1928,16 @@ impl StorageProvider for KoofrProvider {
             ))
         };
         if let Some(listed) = listed {
+            // Size and time alone do not bind a row: another file of the
+            // same size written in the same second would pass. Without a
+            // hash, in the row or now, the file read cannot be told apart.
             let now = self.version_file_info(&resolved).await?;
+            if !koofr_state_has_hash(listed) || now.hash.as_deref().is_none_or(str::is_empty) {
+                return Err(ProviderError::TransferFailed(format!(
+                    "Koofr names no hash for {resolved}, so the file read could not be bound to \
+                     the row listed: nothing was saved, download the current file instead"
+                )));
+            }
             if koofr_file_state(&now) != listed {
                 return Err(changed(&now));
             }
@@ -1909,12 +1950,17 @@ impl StorageProvider for KoofrProvider {
             .get(&url)
             .header(AUTHORIZATION, self.auth_header()?)
             .build()
-            .map_err(|e| ProviderError::TransferFailed(format!("Build request failed: {}", e)))?;
+            .map_err(|e| {
+                ProviderError::TransferFailed(format!("Build request failed: {}", e.without_url()))
+            })?;
 
         let resp = send_with_retry(&self.client, request, &HttpRetryConfig::default())
             .await
             .map_http_err(|e| {
-                ProviderError::TransferFailed(format!("Download version failed: {}", e))
+                ProviderError::TransferFailed(format!(
+                    "Download version failed: {}",
+                    e.without_url()
+                ))
             })?;
 
         if !resp.status().is_success() {
@@ -1933,8 +1979,9 @@ impl StorageProvider for KoofrProvider {
             .map_err(|e| ProviderError::TransferFailed(format!("Create file failed: {}", e)))?;
 
         while let Some(chunk) = stream.next().await {
-            let chunk = chunk
-                .map_http_err(|e| ProviderError::TransferFailed(format!("Stream error: {}", e)))?;
+            let chunk = chunk.map_http_err(|e| {
+                ProviderError::TransferFailed(format!("Stream error: {}", e.without_url()))
+            })?;
             atomic
                 .write_all(&chunk)
                 .await
@@ -1974,7 +2021,10 @@ impl StorageProvider for KoofrProvider {
         );
 
         let selected = super::refuse_a_restore_that_changes_nothing(self, path, version_id).await?;
-        let resp = self.post_json(&url, &serde_json::json!({})).await?;
+        let resp = self
+            .post_json(&url, &serde_json::json!({}))
+            .await
+            .map_err(|e| super::sent_change_unconfirmed(e, &format!("the restore of {path}")))?;
         Self::check_response(resp).await?;
         super::confirm_version_restored(self, path, Some(&selected)).await
     }
@@ -2129,7 +2179,10 @@ impl KoofrProvider {
         let resp = Self::check_version_response(resp).await?;
         let info: KoofrFileInfo = serde_json::from_str(&super::version_listing_text(resp).await?)
             .map_err(|e| {
-            ProviderError::ServerError(format!("Failed to parse file info: {}", e))
+            ProviderError::ServerError(format!(
+                "Failed to parse file info: {}",
+                super::json_parse_error(&e)
+            ))
         })?;
         Ok(info.file)
     }
@@ -2619,6 +2672,58 @@ mod tests {
         assert_eq!(infos.load(Ordering::SeqCst), 2);
     }
 
+    /// A current row listed without a hash binds nothing a same-size
+    /// replacement written in the same second would not also match: its
+    /// download is refused before any byte is read, and the destination
+    /// stays as it was.
+    #[tokio::test]
+    async fn a_current_row_without_a_hash_is_not_downloaded() {
+        let gets = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let count = gets.clone();
+        let app = axum::Router::new().fallback(axum::routing::any(move |uri: axum::http::Uri| {
+            let count = count.clone();
+            async move {
+                match uri.path() {
+                    "/mounts/M/files/versions" => r#"{"versions":[]}"#.to_string(),
+                    "/mounts/M/files/info" => {
+                        r#"{"name":"a.txt","type":"file","modified":1794841200000,"size":4}"#
+                            .to_string()
+                    }
+                    "/mounts/M/files/get" => {
+                        count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                        "else".to_string()
+                    }
+                    _ => String::new(),
+                }
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = KoofrProvider::new(KoofrConfig {
+            email: "u@example.com".to_string(),
+            password: secrecy::SecretString::from("p".to_string()),
+            initial_path: None,
+        });
+        provider.connected = true;
+        provider.mount_id = "M".to_string();
+        provider.api_base_override = Some(format!("http://{addr}"));
+        provider.content_base_override = Some(format!("http://{addr}"));
+        let rows = provider.list_versions("/a.txt").await.expect("history");
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("a.txt");
+        std::fs::write(&out, "before").unwrap();
+        let refused = provider
+            .download_version("/a.txt", &rows[0].id, out.to_str().unwrap())
+            .await;
+        assert!(
+            matches!(&refused, Err(ProviderError::TransferFailed(m)) if m.contains("no hash")),
+            "{refused:?}"
+        );
+        assert_eq!(std::fs::read(&out).unwrap(), b"before");
+        assert_eq!(gets.load(std::sync::atomic::Ordering::SeqCst), 0);
+    }
+
     /// The bare `current` id reads the file as its bound row does: a 206
     /// fragment is refused and the destination stays as it was.
     #[tokio::test]
@@ -2970,42 +3075,44 @@ mod tests {
         let nf = r#"{"error":{"code":"NotFound","message":"file not found"}}"#;
         assert!(matches!(
             KoofrProvider::classify_koofr_error(404, nf),
-            ProviderError::NotFound(ref m) if m == "file not found"
+            ProviderError::NotFound(ref m) if m.starts_with("Koofr: not found")
         ));
 
         let forbidden = r#"{"error":{"code":"Forbidden","message":"no access"}}"#;
         assert!(matches!(
             KoofrProvider::classify_koofr_error(403, forbidden),
-            ProviderError::PermissionDenied(ref m) if m == "no access"
+            ProviderError::PermissionDenied(ref m) if m.starts_with("Koofr: access refused")
         ));
 
         let unauth = r#"{"error":{"code":"Unauthorized","message":"bad app password"}}"#;
         assert!(matches!(
             KoofrProvider::classify_koofr_error(401, unauth),
-            ProviderError::AuthenticationFailed(ref m) if m == "bad app password"
+            ProviderError::AuthenticationFailed(ref m) if m.starts_with("Koofr: the app password")
         ));
 
-        // Unknown body code -> ServerError carrying the status (Display form) + code + message.
+        // Unknown body code -> ServerError carrying the status (Display form),
+        // with the code and the message by their length only.
         let other = r#"{"error":{"code":"Teapot","message":"short and stout"}}"#;
         match KoofrProvider::classify_koofr_error(409, other) {
             ProviderError::ServerError(msg) => {
                 assert!(msg.contains("409 Conflict"), "got: {msg}");
-                assert!(msg.contains("Teapot"), "got: {msg}");
-                assert!(msg.contains("short and stout"), "got: {msg}");
+                assert!(msg.contains("a code of 6 bytes"), "got: {msg}");
+                assert!(!msg.contains("Teapot"), "got: {msg}");
+                assert!(!msg.contains("short and stout"), "got: {msg}");
             }
             e => panic!("expected ServerError, got {e:?}"),
         }
     }
 
-    // Missing/empty code or message fall back to the "Unknown"/"Unknown error" defaults.
+    // A missing code or message is said to be missing.
     #[test]
     fn classify_koofr_error_defaults_missing_code_and_message() {
         let only_error = r#"{"error":{}}"#;
         match KoofrProvider::classify_koofr_error(500, only_error) {
             ProviderError::ServerError(msg) => {
                 assert!(msg.contains("500 Internal Server Error"), "got: {msg}");
-                assert!(msg.contains("Unknown"), "got: {msg}");
-                assert!(msg.contains("Unknown error"), "got: {msg}");
+                assert!(msg.contains("no code"), "got: {msg}");
+                assert!(msg.contains("no message"), "got: {msg}");
             }
             e => panic!("expected ServerError, got {e:?}"),
         }
@@ -3031,32 +3138,36 @@ mod tests {
         }
     }
 
-    /// Koofr's structured refusal keeps its status and code, and its own
-    /// message reaches the error scrubbed: before, `error.message` was shown
-    /// verbatim, with whatever credential it echoed.
+    /// Koofr's structured refusal keeps its status and the variant of a
+    /// known code, and shows none of its server text: an opaque app
+    /// password echoed in the message, in the code or in a bare body has no
+    /// pattern a scrub would see.
     #[test]
     fn a_structured_koofr_refusal_keeps_its_code_and_scrubs_its_message() {
-        let body = |code: &str| {
-            format!(
-                r#"{{"error":{{"code":"{code}","message":"refused sk-ant-1234567890abcdefghij"}}}}"#
-            )
-        };
-        match KoofrProvider::classify_koofr_error(403, &body("Forbidden")) {
-            ProviderError::PermissionDenied(msg) => {
-                assert!(msg.contains("[REDACTED]"), "{msg}");
-                assert!(!msg.contains("sk-ant-1234567890abcdefghij"), "{msg}");
-            }
-            e => panic!("expected PermissionDenied, got {e:?}"),
-        }
-        match KoofrProvider::classify_koofr_error(507, &body("QuotaExceeded")) {
-            ProviderError::ServerError(msg) => {
-                assert!(
-                    msg.contains("507") && msg.contains("QuotaExceeded"),
-                    "{msg}"
-                );
-                assert!(!msg.contains("sk-ant-1234567890abcdefghij"), "{msg}");
-            }
-            e => panic!("expected ServerError, got {e:?}"),
+        const ECHO: &str = "Opaque9AppPassword7";
+        let body =
+            |code: &str| format!(r#"{{"error":{{"code":"{code}","message":"refused {ECHO}"}}}}"#);
+        let shown = |error: ProviderError| error.to_string();
+        let refused = KoofrProvider::classify_koofr_error(403, &body("Forbidden"));
+        assert!(
+            matches!(refused, ProviderError::PermissionDenied(_)),
+            "{refused:?}"
+        );
+        for (status, error) in [
+            (403, refused),
+            (
+                507,
+                KoofrProvider::classify_koofr_error(507, &body("QuotaExceeded")),
+            ),
+            (500, KoofrProvider::classify_koofr_error(500, &body(ECHO))),
+            (
+                502,
+                KoofrProvider::classify_koofr_error(502, &format!("bad {ECHO}")),
+            ),
+        ] {
+            let msg = shown(error);
+            assert!(msg.contains("not shown"), "{status}: {msg}");
+            assert!(!msg.contains(ECHO), "{status}: {msg}");
         }
     }
 

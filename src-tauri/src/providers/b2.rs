@@ -763,7 +763,7 @@ impl B2Provider {
             let truncated: String = masked.chars().take(800).collect();
             ProviderError::ServerError(format!(
                 "authorize parse: {} | body[{}B]: {}",
-                e,
+                super::json_parse_error(&e),
                 body_bytes.len(),
                 truncated
             ))
@@ -2291,11 +2291,11 @@ impl B2Provider {
             .send()
             .await
             .map_http_err(|e| {
-                ProviderError::ConnectionFailed(format!("delete_file_version: {}", e))
+                ProviderError::ConnectionFailed(format!("delete_file_version: {}", e.without_url()))
             })?;
         let status = resp.status();
         if !status.is_success() {
-            let text = resp.text().await.unwrap_or_default();
+            let text = super::version_listing_text(resp).await.unwrap_or_default();
             return Err(map_b2_status(status, &text, "b2_delete_file_version"));
         }
         Ok(())
@@ -2355,6 +2355,7 @@ impl B2Provider {
         start_file_name: Option<&str>,
         start_file_id: Option<&str>,
         max_count: u32,
+        budget: &mut super::VersionListingBudget,
     ) -> Result<ListFileVersionsResponse, ProviderError> {
         let url = format!("{}/b2api/v4/b2_list_file_versions", self.api_url);
         let mut body = serde_json::json!({
@@ -2376,7 +2377,10 @@ impl B2Provider {
             .body(body.to_string())
             .build()
             .map_err(|e| {
-                ProviderError::ConnectionFailed(format!("list_file_versions build: {}", e))
+                ProviderError::ConnectionFailed(format!(
+                    "list_file_versions build: {}",
+                    e.without_url()
+                ))
             })?;
         let resp = send_with_retry(
             &self.client,
@@ -2385,7 +2389,7 @@ impl B2Provider {
         )
         .await
         .map_http_err(|e| {
-            ProviderError::ConnectionFailed(format!("list_file_versions send: {}", e))
+            ProviderError::ConnectionFailed(format!("list_file_versions send: {}", e.without_url()))
         })?;
         let status = resp.status();
         if !status.is_success() {
@@ -2401,8 +2405,16 @@ impl B2Provider {
             }
             return Err(error);
         }
-        serde_json::from_str::<ListFileVersionsResponse>(&super::version_listing_text(resp).await?)
-            .map_err(|e| ProviderError::ServerError(format!("list_file_versions parse: {}", e)))
+        // Every page of one listing counts toward its total: a server that
+        // answers each page under the per-answer cap still ends.
+        let text = super::version_listing_text(resp).await?;
+        budget.count(text.len(), prefix)?;
+        serde_json::from_str::<ListFileVersionsResponse>(&text).map_err(|e| {
+            ProviderError::ServerError(format!(
+                "list_file_versions parse: {}",
+                super::json_parse_error(&e)
+            ))
+        })
     }
 
     /// Streaming download of a specific version by `fileId` via
@@ -2697,6 +2709,7 @@ impl B2Provider {
         let key_prefix = self.b2_key(&resolved);
         let mut out = Vec::new();
         let mut start_name: Option<String> = None;
+        let mut budget = super::VersionListingBudget::default();
         let mut start_id: Option<String> = None;
         for _ in 0..MAX_PAGES {
             let page = match self
@@ -2705,6 +2718,7 @@ impl B2Provider {
                     start_name.as_deref(),
                     start_id.as_deref(),
                     PAGE_SIZE,
+                    &mut budget,
                 )
                 .await
             {
@@ -2716,6 +2730,7 @@ impl B2Provider {
                             start_name.as_deref(),
                             start_id.as_deref(),
                             PAGE_SIZE,
+                            &mut budget,
                         )
                         .await?
                     } else {
@@ -2773,14 +2788,15 @@ impl B2Provider {
         }
         let resolved = self.resolved_path(path);
         let key = self.b2_key(&resolved);
+        let mut budget = super::VersionListingBudget::default();
         let page = match self
-            .list_file_versions_page(&key, Some(&key), None, 25)
+            .list_file_versions_page(&key, Some(&key), None, 25, &mut budget)
             .await
         {
             Ok(r) => r,
             Err(e) if is_b2_token_failure(&e) => {
                 if self.maybe_reauth(&e).await {
-                    self.list_file_versions_page(&key, Some(&key), None, 25)
+                    self.list_file_versions_page(&key, Some(&key), None, 25, &mut budget)
                         .await?
                 } else {
                     return Err(e);
@@ -2822,12 +2838,19 @@ impl B2Provider {
         const VERSION_CAP: u32 = 1_000;
         let resolved = self.resolved_path(path);
         let key = self.b2_key(&resolved);
+        let mut budget = super::VersionListingBudget::default();
         let mut deleted: u32 = 0;
         let mut start_name: Option<String> = Some(key.clone());
         let mut start_id: Option<String> = None;
         loop {
             let page = match self
-                .list_file_versions_page(&key, start_name.as_deref(), start_id.as_deref(), 100)
+                .list_file_versions_page(
+                    &key,
+                    start_name.as_deref(),
+                    start_id.as_deref(),
+                    100,
+                    &mut budget,
+                )
                 .await
             {
                 Ok(r) => r,
@@ -2838,6 +2861,7 @@ impl B2Provider {
                             start_name.as_deref(),
                             start_id.as_deref(),
                             100,
+                            &mut budget,
                         )
                         .await?
                     } else {
@@ -3723,6 +3747,7 @@ impl StorageProvider for B2Provider {
         }
         let abs = self.resolved_path(path);
         let key = self.b2_key(&abs);
+        let mut budget = super::VersionListingBudget::default();
         let mut versions: Vec<FileVersion> = Vec::new();
         let mut start_name: Option<String> = None;
         let mut start_id: Option<String> = None;
@@ -3738,6 +3763,7 @@ impl StorageProvider for B2Provider {
                     start_name.as_deref(),
                     start_id.as_deref(),
                     DEFAULT_LIST_PAGE,
+                    &mut budget,
                 )
                 .await
             {
@@ -3749,6 +3775,7 @@ impl StorageProvider for B2Provider {
                             start_name.as_deref(),
                             start_id.as_deref(),
                             DEFAULT_LIST_PAGE,
+                            &mut budget,
                         )
                         .await?
                     } else {
@@ -3886,12 +3913,16 @@ impl StorageProvider for B2Provider {
         // B2 has no "restore" verb: we replay the chosen version as a fresh
         // upload via b2_copy_file (server-side, no client byte transfer). The
         // copy becomes the new latest version with the original fileName.
+        // b2_copy_file takes no precondition: a copy whose answer did not
+        // come may be on top already, and a second one would stack another.
+        let unconfirmed = |e| super::sent_change_unconfirmed(e, &format!("the restore of {path}"));
         let copied = match self.copy_file_to(version_id, &key).await {
             Ok(copied) => copied,
-            Err(e) if is_b2_token_failure(&e) && self.maybe_reauth(&e).await => {
-                self.copy_file_to(version_id, &key).await?
-            }
-            Err(e) => return Err(e),
+            Err(e) if is_b2_token_failure(&e) && self.maybe_reauth(&e).await => self
+                .copy_file_to(version_id, &key)
+                .await
+                .map_err(unconfirmed)?,
+            Err(e) => return Err(unconfirmed(e)),
         };
         // The copy answers with the file id it made, which must then be the
         // version on top.
@@ -7588,6 +7619,9 @@ mod tests {
         Repeat,
         Fresh,
         Half,
+        /// A new cursor on every page, each page 7 MiB: under the per-answer
+        /// cap, past the total of a listing within ten pages.
+        FreshLarge,
     }
 
     async fn b2_version_reader_double(
@@ -7611,7 +7645,7 @@ mod tests {
                             NextCursor::Repeat => {
                                 (serde_json::json!("v.txt"), serde_json::json!("up-1"))
                             }
-                            NextCursor::Fresh => (
+                            NextCursor::Fresh | NextCursor::FreshLarge => (
                                 serde_json::json!("v.txt"),
                                 serde_json::json!(format!("up-page-{asked}")),
                             ),
@@ -7630,7 +7664,12 @@ mod tests {
                                  "uploadTimestamp": 1_794_841_500_000u64, "contentLength": 5}
                             ],
                             "nextFileName": next_name,
-                            "nextFileId": next_id
+                            "nextFileId": next_id,
+                            "padding": if matches!(next, NextCursor::FreshLarge) {
+                                "x".repeat(7 * 1024 * 1024)
+                            } else {
+                                String::new()
+                            }
                         })
                         .to_string()
                         .into_response();
@@ -7852,6 +7891,26 @@ mod tests {
             .await
             .expect("the download by id does not need the listing");
         assert_eq!(std::fs::read_to_string(&out).unwrap(), "whole");
+    }
+
+    /// Pages each under the per-answer cap still end at the total of one
+    /// listing: with 7 MiB pages the tenth passes 64 MiB, and no page after
+    /// it is asked.
+    #[tokio::test]
+    async fn a_b2_listing_of_large_pages_ends_at_the_total_budget() {
+        let (mut provider, seen) = b2_version_reader_double(NextCursor::FreshLarge).await;
+        let listed = provider.list_versions("/v.txt").await;
+        assert!(
+            matches!(&listed, Err(ProviderError::TransferFailed(m)) if m.contains("MiB")),
+            "{listed:?}"
+        );
+        let pages = seen
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|c| c.contains("b2_list_file_versions"))
+            .count();
+        assert_eq!(pages, 10);
     }
 
     /// A next file name without a next file id is half a cursor: the listing

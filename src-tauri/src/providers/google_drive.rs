@@ -1510,7 +1510,7 @@ impl GoogleDriveProvider {
                 .header(AUTHORIZATION, self.auth_header().await?)
                 .send()
                 .await
-                .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ConnectionFailed(e.without_url().to_string()))?;
             if !response.status().is_success() {
                 let text = super::version_listing_text(response)
                     .await
@@ -1595,7 +1595,7 @@ impl GoogleDriveProvider {
             .header(AUTHORIZATION, self.auth_header().await?)
             .send()
             .await
-            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.without_url().to_string()))?;
         if !head.status().is_success() {
             let text = super::version_listing_text(head).await.unwrap_or_default();
             return Err(ProviderError::Other(format!(
@@ -1610,8 +1610,10 @@ impl GoogleDriveProvider {
             modified_time: Option<String>,
             size: Option<String>,
         }
-        let head: Head = serde_json::from_str(&super::version_listing_text(head).await?)
-            .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+        let head: Head =
+            serde_json::from_str(&super::version_listing_text(head).await?).map_err(|e| {
+                ProviderError::Other(format!("Parse error: {}", super::json_parse_error(&e)))
+            })?;
         Ok(head.head_revision_id.map(|id| super::FileVersion {
             id,
             modified: head.modified_time,
@@ -1648,10 +1650,12 @@ impl GoogleDriveProvider {
             .header(AUTHORIZATION, self.auth_header().await?)
             .send()
             .await
-            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.without_url().to_string()))?;
 
         if !response.status().is_success() {
-            let text = response.text().await.unwrap_or_default();
+            let text = super::version_listing_text(response)
+                .await
+                .unwrap_or_default();
             return Err(ProviderError::TransferFailed(format!(
                 "Download revision failed: {}",
                 sanitize_api_error(&text)
@@ -3624,8 +3628,9 @@ fn revision_page(body: &str) -> Result<(Vec<super::FileVersion>, Option<String>)
         revisions: Vec<Revision>,
         next_page_token: Option<String>,
     }
-    let list: RevisionList = serde_json::from_str(body)
-        .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+    let list: RevisionList = serde_json::from_str(body).map_err(|e| {
+        ProviderError::Other(format!("Parse error: {}", super::json_parse_error(&e)))
+    })?;
     let versions = list
         .revisions
         .into_iter()

@@ -211,6 +211,48 @@ struct DrimeBackupPagination {
     current_page: Option<u32>,
     #[serde(default)]
     last_page: Option<u32>,
+    /// The other way Laravel states where the listing ends.
+    #[serde(default)]
+    total: Option<u64>,
+    #[serde(default)]
+    per_page: Option<u64>,
+}
+
+/// The last page of a folder listing answered `page` with `count` of
+/// `per_page` entries. Without `last_page` a short page is the last, and a
+/// full one is an error: reading it as the end would miss the entries after
+/// it, and a lookup would call a present item absent.
+fn drime_last_page(
+    last_page: Option<u32>,
+    page: u32,
+    count: usize,
+    per_page: usize,
+) -> Result<u32, ProviderError> {
+    match last_page {
+        Some(last) => Ok(last),
+        None if count < per_page => Ok(page),
+        None => Err(ProviderError::ParseError(
+            "Drime listing came without its last page: the listing may be incomplete".into(),
+        )),
+    }
+}
+
+impl DrimeBackupPagination {
+    /// The last page of the listing: `last_page`, or `total` over
+    /// `per_page`. An answer that states neither cannot say whether pages
+    /// follow, and a listing cut short would refuse a restore of an older
+    /// version as not listed, so it is an error and not the end.
+    fn last_page(&self, path: &str) -> Result<u64, ProviderError> {
+        match (self.last_page, self.total, self.per_page) {
+            (Some(last), _, _) => Ok(u64::from(last)),
+            (None, Some(total), Some(per_page)) if per_page > 0 => {
+                Ok(total.div_ceil(per_page).max(1))
+            }
+            _ => Err(ProviderError::ParseError(format!(
+                "The versions of {path} came without their last page: the listing may be incomplete"
+            ))),
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -555,7 +597,7 @@ impl DrimeCloudProvider {
                         "Drime listing omitted an item name or ID".into(),
                     ));
                 }
-                let last_page = list_resp.last_page.unwrap_or(1);
+                let last_page = drime_last_page(list_resp.last_page, page, files.len(), 100)?;
 
                 for file in &files {
                     let is_folder = file.file_type.as_deref() == Some("folder");
@@ -818,7 +860,7 @@ impl DrimeCloudProvider {
                     "Drime listing omitted an item name or ID".into(),
                 ));
             }
-            let last_page = list_resp.last_page.unwrap_or(1);
+            let last_page = drime_last_page(list_resp.last_page, page, files.len(), 100)?;
 
             for file in &files {
                 if let (Some(ref name), Some(id)) = (&file.name, file.id_str()) {
@@ -1362,7 +1404,7 @@ impl StorageProvider for DrimeCloudProvider {
                     "Drime listing omitted an item name or ID".into(),
                 ));
             }
-            let last_page = list_resp.last_page.unwrap_or(1);
+            let last_page = drime_last_page(list_resp.last_page, page, files.len(), 50)?;
 
             for file in files {
                 let name = file
@@ -2002,7 +2044,7 @@ impl StorageProvider for DrimeCloudProvider {
                     "Drime listing omitted an item name or ID".into(),
                 ));
             }
-            let last_page = list_resp.last_page.unwrap_or(1);
+            let last_page = drime_last_page(list_resp.last_page, page, files.len(), 100)?;
 
             for file in &files {
                 if let Some(ref name) = file.name {
@@ -2408,20 +2450,28 @@ impl StorageProvider for DrimeCloudProvider {
                 .request_with_retry(|| self.client.get(&url).header(AUTHORIZATION, auth.clone()))
                 .await?;
 
-            if !resp.status().is_success() {
+            // The status and size only: the answer is server text.
+            let status = resp.status();
+            if !status.is_success() {
                 let body = super::version_listing_text(resp).await.unwrap_or_default();
                 return Err(ProviderError::ServerError(format!(
-                    "List versions failed: {}",
-                    sanitize_api_error(&body)
+                    "List versions failed ({status}): an answer of {} bytes, not shown",
+                    body.len()
                 )));
             }
 
             let body = super::version_listing_text(resp).await?;
             budget.count(body.len(), path)?;
-            let backup_resp: DrimeBackupResponse = serde_json::from_str(&body)
-                .map_err(|e| ProviderError::ServerError(format!("Parse backup response: {}", e)))?;
+            let backup_resp: DrimeBackupResponse = serde_json::from_str(&body).map_err(|e| {
+                ProviderError::ServerError(format!(
+                    "Parse backup response: {}",
+                    super::json_parse_error(&e)
+                ))
+            })?;
             let Some(pagination) = backup_resp.pagination else {
-                break;
+                return Err(ProviderError::ParseError(format!(
+                    "The versions of {path} came without their pagination: the listing may be incomplete"
+                )));
             };
             if pagination
                 .current_page
@@ -2431,8 +2481,9 @@ impl StorageProvider for DrimeCloudProvider {
                     "The versions of {path} answered another page than page {page}"
                 )));
             }
+            let last = pagination.last_page(path)?;
             entries.extend(pagination.data.unwrap_or_default());
-            if pagination.last_page.is_none_or(|last| page >= last) {
+            if u64::from(page) >= last {
                 break;
             }
         }
@@ -4363,5 +4414,46 @@ mod tests {
         assert_eq!(primary.dir_cache.len(), cache_before);
         assert!(primary.dir_cache.contains_key("/keep"));
         server.abort();
+    }
+
+    /// A page with no `last_page` ends a listing only when it is short; a
+    /// version answer with neither `last_page` nor `total`/`per_page`, or
+    /// with no pagination at all, is an incomplete listing, not its end.
+    #[test]
+    fn a_listing_without_its_last_page_is_not_read_as_complete() {
+        assert_eq!(drime_last_page(Some(3), 1, 100, 100).unwrap(), 3);
+        assert_eq!(drime_last_page(None, 2, 7, 100).unwrap(), 2);
+        assert!(matches!(
+            drime_last_page(None, 1, 100, 100),
+            Err(ProviderError::ParseError(_))
+        ));
+        let pagination =
+            |json: &str| -> DrimeBackupPagination { serde_json::from_str(json).unwrap() };
+        assert_eq!(pagination(r#"{"last_page":2}"#).last_page("/a").unwrap(), 2);
+        assert_eq!(
+            pagination(r#"{"total":101,"per_page":50}"#)
+                .last_page("/a")
+                .unwrap(),
+            3
+        );
+        assert_eq!(
+            pagination(r#"{"total":0,"per_page":50}"#)
+                .last_page("/a")
+                .unwrap(),
+            1
+        );
+        for json in [
+            r#"{"data":[]}"#,
+            r#"{"total":5}"#,
+            r#"{"total":5,"per_page":0}"#,
+        ] {
+            assert!(
+                matches!(
+                    pagination(json).last_page("/a"),
+                    Err(ProviderError::ParseError(_))
+                ),
+                "{json}"
+            );
+        }
     }
 }

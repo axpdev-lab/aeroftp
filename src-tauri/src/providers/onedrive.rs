@@ -534,7 +534,9 @@ impl OneDriveProvider {
         };
         if !response.status().is_success() {
             let status = response.status();
-            let body = response.text().await.unwrap_or_default();
+            let body = super::version_listing_text(response)
+                .await
+                .unwrap_or_default();
             warn!(
                 "onedrive purge_old_versions: list returned {} for item {}: {}",
                 status,
@@ -557,7 +559,8 @@ impl OneDriveProvider {
             Err(e) => {
                 warn!(
                     "onedrive purge_old_versions: parse failed for item {}: {}",
-                    item_id, e
+                    item_id,
+                    super::json_decode_error(&e).unwrap_or_else(|| e.without_url().to_string())
                 );
                 return;
             }
@@ -599,7 +602,7 @@ impl OneDriveProvider {
                 Ok(r) => {
                     failed += 1;
                     let s = r.status();
-                    let b = r.text().await.unwrap_or_default();
+                    let b = super::version_listing_text(r).await.unwrap_or_default();
                     warn!(
                         "onedrive purge_old_versions: DELETE version {} returned {}: {}",
                         v.id,
@@ -2608,7 +2611,7 @@ impl StorageProvider for OneDriveProvider {
                 .header(AUTHORIZATION, self.auth_header().await?)
                 .send()
                 .await
-                .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ConnectionFailed(e.without_url().to_string()))?;
 
             if !response.status().is_success() {
                 let text = super::version_listing_text(response)
@@ -2622,8 +2625,9 @@ impl StorageProvider for OneDriveProvider {
 
             let body = super::version_listing_text(response).await?;
             budget.count(body.len(), path)?;
-            let page: VersionList = serde_json::from_str(&body)
-                .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+            let page: VersionList = serde_json::from_str(&body).map_err(|e| {
+                ProviderError::Other(format!("Parse error: {}", super::json_parse_error(&e)))
+            })?;
             value.extend(page.value);
             match page.next_link {
                 Some(next) if seen.insert(next.clone()) => {
@@ -2689,10 +2693,12 @@ impl StorageProvider for OneDriveProvider {
             .header(AUTHORIZATION, self.auth_header().await?)
             .send()
             .await
-            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.without_url().to_string()))?;
 
         if !response.status().is_success() {
-            let text = response.text().await.unwrap_or_default();
+            let text = super::version_listing_text(response)
+                .await
+                .unwrap_or_default();
             return Err(ProviderError::TransferFailed(format!(
                 "Download version failed: {}",
                 sanitize_api_error(&text)
@@ -2719,10 +2725,14 @@ impl StorageProvider for OneDriveProvider {
             .header(AUTHORIZATION, self.auth_header().await?)
             .send()
             .await
-            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            // restoreVersion takes no precondition: a timeout may come after
+            // Graph made the version current.
+            .map_err(|e| super::change_send_error(e, &format!("the restore of {path}")))?;
 
         if !response.status().is_success() && response.status().as_u16() != 204 {
-            let text = response.text().await.unwrap_or_default();
+            let text = super::version_listing_text(response)
+                .await
+                .unwrap_or_default();
             return Err(ProviderError::Other(format!(
                 "Restore version failed: {}",
                 sanitize_api_error(&text)
@@ -3781,6 +3791,73 @@ mod tests {
                 .contains(&"POST /v1.0/me/drive/items/F1/versions/1.0/restoreVersion".to_string()),
             "{:?}",
             seen.lock().unwrap()
+        );
+    }
+
+    /// A restore Graph took, whose confirming read then fails with 401, is
+    /// posted once and comes back applied. An auth-shaped error would
+    /// otherwise send MCP to reload the credential and run the restore again
+    /// over any edit made since; an applied error keeps the pooled session
+    /// and is never retried (`ai_core::mcp_impl`,
+    /// `an_applied_operation_is_never_run_again_whatever_its_text`).
+    #[tokio::test]
+    async fn a_restore_confirmed_by_a_401_is_applied_and_posted_once() {
+        use axum::response::IntoResponse;
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::{Arc, Mutex};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let done = Arc::new(AtomicBool::new(false));
+        let seen: Arc<Mutex<Vec<String>>> = Arc::default();
+        let (flag, log) = (Arc::clone(&done), Arc::clone(&seen));
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method, uri: axum::http::Uri| {
+                let (done, log) = (Arc::clone(&flag), Arc::clone(&log));
+                async move {
+                    log.lock().unwrap().push(format!("{method} {}", uri.path()));
+                    let row = |id: &str| {
+                        serde_json::json!({"id": id, "size": 3,
+                        "lastModifiedDateTime": "2026-01-02T00:00:00Z"})
+                    };
+                    match (method.as_str(), uri.path()) {
+                        ("GET", "/v1.0/me/drive/items/F1/versions") => {
+                            if done.load(Ordering::SeqCst) {
+                                return axum::http::StatusCode::UNAUTHORIZED.into_response();
+                            }
+                            axum::Json(serde_json::json!({ "value": [row("2.0"), row("1.0")] }))
+                                .into_response()
+                        }
+                        ("POST", "/v1.0/me/drive/items/F1/versions/1.0/restoreVersion") => {
+                            done.store(true, Ordering::SeqCst);
+                            axum::http::StatusCode::NO_CONTENT.into_response()
+                        }
+                        ("GET", "/v1.0/me/drive/root:/f.txt") => axum::Json(serde_json::json!({
+                            "id": "F1", "name": "f.txt", "size": 3, "file": {},
+                            "parentReference": { "path": "/drive/root:" },
+                        }))
+                        .into_response(),
+                        _ => axum::http::StatusCode::NOT_FOUND.into_response(),
+                    }
+                }
+            },
+        ));
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = test_provider();
+        provider.connected = true;
+        provider.api_origin_override = Some(format!("http://{addr}"));
+        provider.test_access_token = Some("t".to_string());
+        let outcome = provider.restore_version("/f.txt", "F1:1.0").await;
+        server.abort();
+        let posts = seen
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|l| l.starts_with("POST"))
+            .count();
+        assert_eq!(posts, 1, "{outcome:?} {:?}", seen.lock().unwrap());
+        assert!(
+            matches!(&outcome, Err(e) if super::super::was_applied(e)),
+            "{outcome:?}"
         );
     }
 

@@ -73,7 +73,18 @@ pub struct MegaCmdProvider {
     /// A folder of stand-in `mega-*` scripts, in tests.
     #[cfg(test)]
     cmd_dir: Option<std::path::PathBuf>,
+    /// A shorter [`MEGA_CMD_TIMEOUT_SECS`], in tests.
+    #[cfg(test)]
+    test_cmd_timeout_secs: Option<u64>,
+    /// Run right after a download into a folder checked its child's name:
+    /// stands for another program creating that child then.
+    #[cfg(test)]
+    test_after_target_check: Option<TargetCheckHook>,
 }
+
+/// The type of [`MegaCmdProvider::test_after_target_check`].
+#[cfg(test)]
+type TargetCheckHook = std::sync::Arc<dyn Fn(&Path) + Send + Sync>;
 
 impl MegaCmdProvider {
     pub fn new(config: MegaConfig) -> Self {
@@ -84,7 +95,20 @@ impl MegaCmdProvider {
             trashed: std::collections::VecDeque::new(),
             #[cfg(test)]
             cmd_dir: None,
+            #[cfg(test)]
+            test_cmd_timeout_secs: None,
+            #[cfg(test)]
+            test_after_target_check: None,
         }
+    }
+
+    /// [`MEGA_CMD_TIMEOUT_SECS`], or the shorter one a test set.
+    fn cmd_timeout_secs(&self) -> u64 {
+        #[cfg(test)]
+        if let Some(secs) = self.test_cmd_timeout_secs {
+            return secs;
+        }
+        MEGA_CMD_TIMEOUT_SECS
     }
 
     /// Debug logging through tracing infrastructure (no file I/O)
@@ -238,7 +262,7 @@ impl MegaCmdProvider {
             }
             let executed = match on_percent {
                 None => match tokio::time::timeout(
-                    std::time::Duration::from_secs(MEGA_CMD_TIMEOUT_SECS),
+                    std::time::Duration::from_secs(self.cmd_timeout_secs()),
                     cmd_builder.output(),
                 )
                 .await
@@ -268,7 +292,7 @@ impl MegaCmdProvider {
                         if on_percent.is_some() {
                             MEGA_TRANSFER_IDLE_SECS
                         } else {
-                            MEGA_CMD_TIMEOUT_SECS
+                            self.cmd_timeout_secs()
                         },
                         if on_percent.is_some() {
                             " without output"
@@ -684,16 +708,52 @@ impl MegaCmdProvider {
     /// answer is not one file of that name: a path not found, a listing that
     /// failed, or a folder, whose listing opens with a `path:` line and may
     /// hold a file of the folder's own name.
-    /// Whether the remote node at `address` is a folder: `mega-ls -l` of a
-    /// folder opens with its own `/path:` line, a file's is its one row.
-    async fn remote_is_folder(&mut self, address: &str) -> Result<bool, ProviderError> {
+    /// Whether the remote node at `abs_remote` (addressed as `address`) is a
+    /// folder, read from the node's own row in its parent's listing. A
+    /// listing of the node itself cannot say: MEGAcmd 2.6 prints no header
+    /// for an ordinary folder listed without `-R`, so its children read
+    /// like a file's row. The row is the one of the handle when `address`
+    /// is one, else the one of the name; a root is a folder.
+    async fn remote_is_folder(
+        &mut self,
+        abs_remote: &str,
+        address: &str,
+    ) -> Result<bool, ProviderError> {
+        let trimmed = abs_remote.trim_end_matches('/');
+        let special_root = trimmed
+            .strip_prefix("//")
+            .is_some_and(|rest| !rest.contains('/'));
+        let Some((parent, name)) = trimmed.rsplit_once('/').filter(|_| !special_root) else {
+            return Ok(true);
+        };
+        if name.is_empty() {
+            return Ok(true);
+        }
+        let parent = if parent.is_empty() { "/" } else { parent };
         let listing = self
-            .run_mega_cmd_with_reauth("mega-ls", &["-l", address])
+            .run_mega_cmd_with_reauth("mega-ls", &["-l", "--show-handles", parent])
             .await?;
-        Ok(listing.lines().any(|line| {
-            let line = line.trim_end();
-            line.starts_with('/') && line.ends_with(':')
-        }))
+        let by_handle = address.starts_with("H:");
+        let mut rows = listing.lines().filter(|line| {
+            parse_handle_line(line).is_some_and(|(handle, n)| {
+                if by_handle {
+                    handle == address
+                } else {
+                    n == name
+                }
+            })
+        });
+        match (rows.next(), rows.next()) {
+            (Some(row), None) => Ok(row
+                .split_whitespace()
+                .next()
+                .is_some_and(|flags| flags.starts_with('d'))),
+            (None, _) => Err(ProviderError::NotFound(abs_remote.to_string())),
+            (Some(_), Some(_)) => Err(ProviderError::InvalidPath(format!(
+                "more than one item is named '{name}' here, and MEGAcmd cannot tell them \
+                 apart by name: nothing was changed"
+            ))),
+        }
     }
 
     /// A remote folder downloaded into the existing local `folder`: mega-get
@@ -712,8 +772,11 @@ impl MegaCmdProvider {
             abs_remote, folder
         ));
         let local_arg = Self::normalize_local_path_for_cli(folder);
+        // An observer, even a silent one, makes this a transfer: cut after a
+        // silence, not after the fixed limit of a command.
+        let silent = |_: f64| {};
         let out = self
-            .run_mega_transfer_once_with_reauth("mega-get", &[address, &local_arg], None)
+            .run_mega_transfer_once_with_reauth("mega-get", &[address, &local_arg], Some(&silent))
             .await?;
         self.log_debug(&format!("[MEGAcmd] Download output: {}", out));
         if let Some(cb) = progress {
@@ -977,7 +1040,7 @@ impl StorageProvider for MegaCmdProvider {
         let local_is_folder = std::fs::metadata(l).is_ok_and(|meta| meta.is_dir());
         if local_is_folder {
             let address = self.node_address(&abs_remote).await?;
-            if self.remote_is_folder(&address).await? {
+            if self.remote_is_folder(&abs_remote, &address).await? {
                 return self
                     .download_folder_into(&abs_remote, &address, l, progress)
                     .await;
@@ -997,6 +1060,10 @@ impl StorageProvider for MegaCmdProvider {
         } else {
             None
         };
+        #[cfg(test)]
+        if let (Some(child), Some(hook)) = (&into_folder, &self.test_after_target_check) {
+            hook(Path::new(child));
+        }
         let l = into_folder.as_deref().unwrap_or(l);
         self.log_debug(&format!(
             "[MEGAcmd] Downloading '{}' to '{}'",
@@ -1053,6 +1120,11 @@ impl StorageProvider for MegaCmdProvider {
         });
         if inplace {
             if let Ok(meta) = std::fs::symlink_metadata(l) {
+                // A folder target names no file to replace: a child there
+                // now came after the check, and is someone else's.
+                if into_folder.is_some() {
+                    return Err(child_appeared(l));
+                }
                 if meta.file_type().is_file() || meta.file_type().is_symlink() {
                     if let Err(e) = std::fs::remove_file(l) {
                         self.log_debug(&format!(
@@ -1092,6 +1164,11 @@ impl StorageProvider for MegaCmdProvider {
             .await
         };
         let fetched = match (fetched, &staging) {
+            // Into a folder the file is published only at a free name: a
+            // child made there since the check is not replaced.
+            (Ok(out), Some(staging)) if into_folder.is_some() => {
+                publish_without_replacing(&staging.0, Path::new(l)).map(|()| out)
+            }
             (Ok(out), Some(staging)) => tokio::fs::rename(&staging.0, l)
                 .await
                 .map(|()| out)
@@ -1632,9 +1709,20 @@ impl StorageProvider for MegaCmdProvider {
         // (measured 2026-11-18: gone from the chain, the Rubbish Bin and a
         // search): the restore would lose the current version, so it is
         // refused before the put, and when the setting cannot be read.
-        let versioning = self
-            .run_mega_cmd_with_reauth("mega-userattr", &["^!dv"])
-            .await;
+        // Read by its exit status (`mega_df::userattr_answer`): the text
+        // of a failed run is classified as NotFound for an unknown name (53)
+        // and for an attribute never set (9) alike, and only the second
+        // says versioning is on.
+        let versioning = super::mega_df::run_mega_cmd_capture_at(
+            &self.command_path("mega-userattr"),
+            "mega-userattr",
+            &["^!dv"],
+            super::mega_df::MEGA_WEBDAV_TIMEOUT_SECS,
+        )
+        .await
+        .and_then(|output| {
+            super::mega_df::userattr_answer(output.status.code(), &output.stdout, &output.stderr)
+        });
         if mega_versioning_off(versioning)? {
             return Err(ProviderError::NotSupported(MEGA_VERSIONING_OFF.into()));
         }
@@ -1646,6 +1734,14 @@ impl StorageProvider for MegaCmdProvider {
         )
         .await
         .map_err(|e| ProviderError::TransferFailed(format!("Version restore failed: {}", e)))?;
+        // From here the put is done: a check that fails leaves it applied
+        // and unconfirmed, never a restore to put again.
+        let unverified = |e: ProviderError| {
+            super::applied_unconfirmed(format!(
+                "{path} was uploaded from the version, but checking it failed ({e}): list its \
+                 versions again before restoring again"
+            ))
+        };
         // The chain in MEGA's own order (current first, then the one it
         // replaced, and so on), not the dialog's: a version below can be
         // newer in time than the current one. A new current version that
@@ -1656,8 +1752,10 @@ impl StorageProvider for MegaCmdProvider {
                 "mega-ls",
                 &["-l", "--versions", "--show-handles", &abs_path],
             )
-            .await?;
-        let after: Vec<FileVersion> = parse_mega_ls_version_handles(&output, &abs_path)?
+            .await
+            .map_err(unverified)?;
+        let after: Vec<FileVersion> = parse_mega_ls_version_handles(&output, &abs_path)
+            .map_err(unverified)?
             .into_iter()
             .map(|(v, _)| v)
             .collect();
@@ -1668,7 +1766,7 @@ impl StorageProvider for MegaCmdProvider {
                 .get(1)
                 .is_some_and(|below| Some(&below.id) != head.as_ref());
         if raced {
-            return Err(ProviderError::TransferFailed(format!(
+            return Err(super::applied_unconfirmed(format!(
                 "{path} was also written by someone else during the restore: MEGA keeps \
                  every version, list its versions again and check which one should be current"
             )));
@@ -1689,10 +1787,14 @@ impl StorageProvider for MegaCmdProvider {
             .first()
             .map(|v| (v.id.clone(), v.size))
             .ok_or_else(not_taken)?;
-        if !self.version_bytes_match(&top, top_size, &temp.0).await? {
+        if !self
+            .version_bytes_match(&top, top_size, &temp.0)
+            .await
+            .map_err(unverified)?
+        {
             return Err(not_taken());
         }
-        let still = self.list_versions(path).await?;
+        let still = self.list_versions(path).await.map_err(unverified)?;
         if still.first().map(|v| v.id.as_str()) != Some(top.as_str()) {
             return Err(not_taken());
         }
@@ -2370,7 +2472,7 @@ pub(crate) fn mega_versioning_off(
     };
     match answer {
         Ok(text) if text.contains("(^!dv) = 1") => Ok(true),
-        Ok(text) if text.contains("(^!dv) = 0") || text.contains("Not found") => Ok(false),
+        Ok(text) if text.contains("(^!dv) = 0") => Ok(false),
         Ok(text) => Err(unread(text.trim())),
         Err(ProviderError::NotFound(_)) => Ok(false),
         Err(e) => Err(unread(&e.to_string())),
@@ -2485,6 +2587,44 @@ fn unique_handle_for_kind(
         )));
     }
     Ok(found.0.to_string())
+}
+
+/// The refusal of a download into a folder whose child of the file's name
+/// appeared after the check.
+fn child_appeared(child: &str) -> ProviderError {
+    ProviderError::AlreadyExists(format!(
+        "{child} appeared while the download ran: a download into a folder does not write \
+         over it, download to that file to replace it"
+    ))
+}
+
+/// `staged` published at `target` only while nothing is there. A hard link
+/// creates only an absent name, atomically, and the staging name then goes;
+/// where links are not supported, the name is created exclusively first and
+/// the file renamed over that empty placeholder of its own.
+fn publish_without_replacing(staged: &Path, target: &Path) -> Result<(), ProviderError> {
+    let taken = |e: std::io::Error| {
+        if e.kind() == std::io::ErrorKind::AlreadyExists {
+            child_appeared(&target.to_string_lossy())
+        } else {
+            ProviderError::IoError(e)
+        }
+    };
+    match std::fs::hard_link(staged, target) {
+        Ok(()) => {
+            let _ = std::fs::remove_file(staged);
+            Ok(())
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Err(taken(e)),
+        Err(_) => {
+            std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(target)
+                .map_err(taken)?;
+            std::fs::rename(staged, target).map_err(ProviderError::IoError)
+        }
+    }
 }
 
 /// The components of a path, with `.` dropped and `..` taking back the one
@@ -4083,7 +4223,11 @@ Versions of z.txt:
     #[cfg(unix)]
     #[tokio::test]
     async fn a_megacmd_restore_with_versioning_off_is_refused_before_the_put() {
-        for marker in ["versioning-off", "versioning-unreadable"] {
+        for marker in [
+            "versioning-off",
+            "versioning-unreadable",
+            "versioning-unrecognized",
+        ] {
             let (mut provider, dir) = provider_with_stand_in_versions();
             std::fs::write(dir.path().join(marker), "").unwrap();
             let outcome = provider.restore_version("/v.txt", "H:vAAAAAA2").await;
@@ -4112,6 +4256,12 @@ Versions of z.txt:
             .restore_version("/v.txt", "H:vAAAAAA2")
             .await
             .expect("versioning on");
+        let (mut provider, dir) = provider_with_stand_in_versions();
+        std::fs::write(dir.path().join("versioning-absent"), "").unwrap();
+        provider
+            .restore_version("/v.txt", "H:vAAAAAA2")
+            .await
+            .expect("an attribute never set is versioning on");
     }
 
     /// A put that added nothing, then another client's write: a new version
@@ -4147,6 +4297,24 @@ Versions of z.txt:
             matches!(&outcome, Err(ProviderError::TransferFailed(m)) if m.contains("Access denied")),
             "{outcome:?}"
         );
+    }
+
+    /// After a put that exited 0 the restore is applied: a read back of the
+    /// new version, or the listing after it, that fails leaves it applied
+    /// and unconfirmed, never a restore a caller would put again.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_megacmd_restore_whose_check_fails_is_applied() {
+        for switch in ["check-get-fails", "final-ls-fails"] {
+            let (mut provider, dir) = provider_with_stand_in_versions();
+            std::fs::write(dir.path().join(switch), "").unwrap();
+            let outcome = provider.restore_version("/v.txt", "H:vAAAAAA2").await;
+            assert!(
+                outcome.as_ref().is_err_and(super::super::was_applied),
+                "{switch}: {outcome:?}"
+            );
+            assert_eq!(stand_in_log(&dir, "put.log"), ["/v.txt"], "{switch}");
+        }
     }
 
     /// MEGAcmd's non-zero exit is a transfer's failure even with its text on
@@ -4323,6 +4491,74 @@ Versions of z.txt:
         if let Some(marker) = child {
             std::fs::write(marker, b"").unwrap();
         }
+    }
+
+    /// A node's type is its own row in its parent's listing: an ordinary
+    /// folder, which MEGAcmd 2.6 lists with no header line, is downloaded
+    /// as a folder into an existing folder of its name, and a file there is
+    /// still a file.
+    #[tokio::test]
+    async fn a_folder_listed_without_a_header_is_still_a_folder() {
+        let (mut provider, dir) = provider_with_stand_in_versions();
+        let local = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir(local.path().join("plain")).unwrap();
+        provider
+            .download("/plain", local.path().to_str().unwrap(), None)
+            .await
+            .expect("a folder into a folder");
+        assert!(local.path().join("plain/inner.txt").is_file());
+        assert_eq!(
+            stand_in_log(&dir, "get-targets.log"),
+            [local.path().to_str().unwrap()]
+        );
+        std::fs::write(local.path().join("f.dat"), b"mine").unwrap();
+        let taken = provider
+            .download("/f.dat", local.path().to_str().unwrap(), None)
+            .await;
+        assert!(
+            matches!(&taken, Err(ProviderError::AlreadyExists(_))),
+            "{taken:?}"
+        );
+    }
+
+    /// A child made in the folder target after its check is someone
+    /// else's: the staged download is not published over it.
+    #[tokio::test]
+    async fn a_child_made_after_the_check_is_not_replaced() {
+        let (mut provider, _dir) = provider_with_stand_in_versions();
+        let local = tempfile::tempdir().expect("tempdir");
+        provider.test_after_target_check = Some(std::sync::Arc::new(|child: &Path| {
+            std::fs::write(child, b"editor").unwrap();
+        }));
+        let outcome = provider
+            .download("/f.dat", local.path().to_str().unwrap(), None)
+            .await;
+        assert!(
+            matches!(&outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+        assert_eq!(
+            std::fs::read(local.path().join("f.dat")).unwrap(),
+            b"editor"
+        );
+        let left: Vec<_> = std::fs::read_dir(local.path()).unwrap().collect();
+        assert_eq!(left.len(), 1, "a staging file was left: {left:?}");
+    }
+
+    /// A folder downloaded into an existing folder is a transfer: it runs as
+    /// long as mega-get keeps writing progress, past the fixed limit of a
+    /// command, where before it was cut after that limit.
+    #[tokio::test]
+    async fn a_folder_download_is_cut_by_silence_not_by_the_command_limit() {
+        let (mut provider, dir) = provider_with_stand_in_versions();
+        std::fs::write(dir.path().join("folder-get-slow"), "").unwrap();
+        provider.test_cmd_timeout_secs = Some(1);
+        let local = tempfile::tempdir().expect("tempdir");
+        provider
+            .download("/same", local.path().to_str().unwrap(), None)
+            .await
+            .expect("a folder download that keeps reporting progress");
+        assert!(local.path().join("same/same").is_file());
     }
 
     /// A failed get whose partial file cannot be removed is not retried:

@@ -430,7 +430,10 @@ impl KDriveProvider {
             ));
         }
         let profile: serde_json::Value = serde_json::from_slice(&profile_body).map_err(|e| {
-            ProviderError::ServerError(format!("Profile discovery response parse failed: {e}"))
+            ProviderError::ServerError(format!(
+                "Profile discovery response parse failed: {}",
+                super::json_parse_error(&e)
+            ))
         })?;
         let account_id = Self::profile_account_id(&profile).ok_or_else(|| {
             ProviderError::ServerError(
@@ -456,7 +459,10 @@ impl KDriveProvider {
             ));
         }
         let parsed: ApiResponse<Vec<DriveInfo>> = serde_json::from_slice(&body).map_err(|e| {
-            ProviderError::ServerError(format!("Accessible drives response parse failed: {e}"))
+            ProviderError::ServerError(format!(
+                "Accessible drives response parse failed: {}",
+                super::json_parse_error(&e)
+            ))
         })?;
         let mut drives: Vec<(String, String)> = parsed
             .data
@@ -849,11 +855,13 @@ impl KDriveProvider {
                                 // A child kDrive places elsewhere than the
                                 // path walked: its folder moved after it was
                                 // confirmed, and the child is not the one
-                                // at the path.
+                                // at the path. Not `NotFound`: the path may
+                                // well hold its item, and a sync that read
+                                // absence would upload over it.
                                 if exact_so_far
                                     && file.path.as_deref().is_some_and(|at| at != current_path)
                                 {
-                                    return Err(ProviderError::NotFound(format!(
+                                    return Err(ProviderError::ServerError(format!(
                                         "'{current_path}' moved while it was looked up: \
                                          nothing was changed, try again"
                                     )));
@@ -2057,7 +2065,10 @@ impl StorageProvider for KDriveProvider {
             let text = super::version_listing_text(resp).await?;
             budget.count(text.len(), path)?;
             let page: VersionsPage = serde_json::from_str(&text).map_err(|e| {
-                ProviderError::ServerError(format!("Parse versions response failed: {}", e))
+                ProviderError::ServerError(format!(
+                    "Parse versions response failed: {}",
+                    super::json_parse_error(&e)
+                ))
             })?;
             let (data, has_more, next) = page.into_parts();
             listed.extend(data);
@@ -2124,7 +2135,7 @@ impl StorageProvider for KDriveProvider {
 
         if !resp.status().is_success() {
             let status = resp.status();
-            let body = resp.text().await.unwrap_or_default();
+            let body = super::version_listing_text(resp).await.unwrap_or_default();
             return Err(api_failure("Download version failed", Some(status), &body));
         }
 
@@ -2139,7 +2150,10 @@ impl StorageProvider for KDriveProvider {
 
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.map_http_err(|e| {
-                ProviderError::TransferFailed(format!("Version download error: {}", e))
+                ProviderError::TransferFailed(format!(
+                    "Version download error: {}",
+                    e.without_url()
+                ))
             })?;
             atomic
                 .write_all(&chunk)
@@ -2179,11 +2193,12 @@ impl StorageProvider for KDriveProvider {
         let selected = super::refuse_a_restore_that_changes_nothing(self, path, version_id).await?;
         let resp = self
             .post_with_retry(&url, "application/json", vec![])
-            .await?;
+            .await
+            .map_err(|e| super::sent_change_unconfirmed(e, &format!("the restore of {path}")))?;
 
         if !resp.status().is_success() {
             let status = resp.status();
-            let body = resp.text().await.unwrap_or_default();
+            let body = super::version_listing_text(resp).await.unwrap_or_default();
             return Err(api_failure("Restore version failed", Some(status), &body));
         }
 
@@ -2225,7 +2240,10 @@ impl KDriveProvider {
 
         let text = super::version_listing_text(resp).await?;
         let api_resp: ApiResponse<KDriveFile> = serde_json::from_str(&text).map_err(|e| {
-            ProviderError::ServerError(format!("Parse stat response failed: {}", e))
+            ProviderError::ServerError(format!(
+                "Parse stat response failed: {}",
+                super::json_parse_error(&e)
+            ))
         })?;
 
         let file = api_resp.data.ok_or_else(|| {
@@ -3166,7 +3184,7 @@ mod tests {
         cache_docs_as(&mut provider, 70);
         let raced = provider.delete("/docs/sub/a.txt").await;
         assert!(
-            matches!(&raced, Err(ProviderError::NotFound(m)) if m.contains("moved while")),
+            matches!(&raced, Err(ProviderError::ServerError(m)) if m.contains("moved while")),
             "{raced:?}"
         );
         assert!(!provider.dir_cache.contains_key("/docs/sub"));

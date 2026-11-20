@@ -1145,6 +1145,43 @@ pub(crate) fn applied_unconfirmed(detail: String) -> ProviderError {
     ProviderError::TransferFailed(format!("{APPLIED_UNCONFIRMED} {detail}"))
 }
 
+/// The send error of a request that changes something and has no
+/// precondition a second copy would fail: one that never connected sent
+/// nothing; any other failure, a timeout included, may have come after the
+/// server applied it, so it is [`applied_unconfirmed`] and never retried.
+/// (`map_http_err` would make a timeout a plain [`ProviderError::Timeout`],
+/// which callers retry.)
+pub(crate) fn change_send_error(e: reqwest::Error, what: &str) -> ProviderError {
+    if e.is_connect() {
+        return ProviderError::ConnectionFailed(format!(
+            "{what} was not sent: {}",
+            e.without_url()
+        ));
+    }
+    applied_unconfirmed(format!(
+        "{what} was sent, but no answer came ({}): list its versions again before trying again",
+        e.without_url()
+    ))
+}
+
+/// [`change_send_error`] for a sender that has already mapped its error:
+/// a timeout or any transport failure of a change with no precondition may
+/// have come after the server applied it (a refused connect, which sent
+/// nothing, cannot be told apart here and is taken as possibly applied
+/// too: the caller is sent to list again, never to send twice).
+pub(crate) fn sent_change_unconfirmed(e: ProviderError, what: &str) -> ProviderError {
+    match e {
+        ProviderError::Timeout
+        | ProviderError::ConnectionLost(_)
+        | ProviderError::ConnectionFailed(_)
+        | ProviderError::NetworkError(_) => applied_unconfirmed(format!(
+            "{what} was sent, but no answer came ({e}): list its versions again before trying \
+             again"
+        )),
+        other => other,
+    }
+}
+
 /// Whether `error` is one of [`applied_unconfirmed`]: never retried.
 pub(crate) fn was_applied(error: &ProviderError) -> bool {
     matches!(error, ProviderError::TransferFailed(m) if m.starts_with(APPLIED_UNCONFIRMED))
@@ -1606,6 +1643,33 @@ pub fn http_send_error(
     } else {
         otherwise(e)
     }
+}
+
+/// A JSON parse error of a server reply as its category and position only,
+/// never its text: serde's message quotes the value it rejected, and a reply
+/// can echo the request (a URL with its `key=`, a token) in a field of the
+/// wrong type.
+pub(crate) fn json_parse_error(e: &serde_json::Error) -> String {
+    format!(
+        "{:?} at line {}, column {}",
+        e.classify(),
+        e.line(),
+        e.column()
+    )
+}
+
+/// [`json_parse_error`] of the serde error behind a reqwest decode error,
+/// if there is one. reqwest's own text for it ("error decoding response
+/// body") quotes nothing; this is for a caller that would show the cause.
+pub(crate) fn json_decode_error(e: &reqwest::Error) -> Option<String> {
+    let mut source = std::error::Error::source(e);
+    while let Some(inner) = source {
+        if let Some(parse) = inner.downcast_ref::<serde_json::Error>() {
+            return Some(json_parse_error(parse));
+        }
+        source = inner.source();
+    }
+    None
 }
 
 /// [`http_send_error`] as a `map_err` for a reqwest result, which is how the
@@ -6414,6 +6478,141 @@ mod tests {
             out.len() <= 210,
             "clipped near the 200-char cap, got {}",
             out.len()
+        );
+    }
+
+    /// A change sent with no precondition whose answer did not come is
+    /// applied as far as a retry goes; a refusal of its own stays what it
+    /// was.
+    #[test]
+    fn a_sent_change_without_an_answer_is_applied() {
+        for e in [
+            ProviderError::Timeout,
+            ProviderError::ConnectionLost("reset".into()),
+            ProviderError::NetworkError("broken".into()),
+            ProviderError::ConnectionFailed("ended".into()),
+        ] {
+            assert!(was_applied(&sent_change_unconfirmed(
+                e,
+                "the restore of /a"
+            )));
+        }
+        for e in [
+            ProviderError::NotFound("/a".into()),
+            ProviderError::PermissionDenied("no".into()),
+        ] {
+            assert!(!was_applied(&sent_change_unconfirmed(
+                e,
+                "the restore of /a"
+            )));
+        }
+    }
+
+    /// A reply of the wrong JSON type is shown by its category and position
+    /// only, from serde and from reqwest's `json()`: serde's own text quotes
+    /// the rejected value, here an echoed request URL with its key.
+    #[tokio::test]
+    async fn a_reply_of_the_wrong_json_type_is_shown_by_position_only() {
+        #[derive(Debug, serde::Deserialize)]
+        struct Sized {
+            #[allow(dead_code)]
+            size: u64,
+        }
+        let reply = r#"{"size":"GET /api/list?key=ECHO-SECRET-1"}"#;
+        let parsed = serde_json::from_str::<Sized>(reply).unwrap_err();
+        assert!(parsed.to_string().contains("ECHO-SECRET-1"), "{parsed}");
+        let shown = json_parse_error(&parsed);
+        assert!(shown.contains("line 1"), "{shown}");
+        assert!(!shown.contains("ECHO-SECRET-1"), "{shown}");
+
+        // reqwest's text for a body that is not the JSON expected names no
+        // value, and its cause is shown by position only.
+        let decoded = reqwest::Response::from(http::Response::new(reply.to_string()))
+            .json::<Sized>()
+            .await
+            .unwrap_err();
+        assert!(!decoded.to_string().contains("ECHO-SECRET-1"), "{decoded}");
+        let cause = json_decode_error(&decoded).expect("a serde cause");
+        assert!(
+            cause.contains("line 1") && !cause.contains("ECHO-SECRET-1"),
+            "{cause}"
+        );
+    }
+
+    /// Every JSON parse of a reply in the providers this guard reads shows
+    /// its error through [`json_parse_error`] only: a `map_err` that formats
+    /// the serde error itself, or `.to_string()` of it, would quote the value
+    /// it rejected. Decodes of AeroFTP's own handles and receipts are
+    /// exempt: their text is not a server reply.
+    #[test]
+    fn every_reply_parse_error_is_shown_by_its_position_only() {
+        let sources = [
+            ("b2.rs", include_str!("b2.rs")),
+            ("box_provider.rs", include_str!("box_provider.rs")),
+            ("drime_cloud.rs", include_str!("drime_cloud.rs")),
+            ("dropbox.rs", include_str!("dropbox.rs")),
+            ("filelu.rs", include_str!("filelu.rs")),
+            ("google_drive.rs", include_str!("google_drive.rs")),
+            ("kdrive.rs", include_str!("kdrive.rs")),
+            ("koofr.rs", include_str!("koofr.rs")),
+            ("onedrive.rs", include_str!("onedrive.rs")),
+            ("webdav.rs", include_str!("webdav.rs")),
+            ("zoho_workdrive.rs", include_str!("zoho_workdrive.rs")),
+        ];
+        let mut offenders = Vec::new();
+        for (file, source) in sources {
+            let production = source
+                .find("\n#[cfg(test)]\nmod tests")
+                .map_or(source, |end| &source[..end]);
+            for (at, _) in production.match_indices("serde_json::from_") {
+                let after = &production[at..];
+                let Some(start) = after.find(".map_err(|") else {
+                    continue;
+                };
+                // The map_err of this parse, not of a later call.
+                if after[..start].matches(';').count() > 0 {
+                    continue;
+                }
+                let closure = &after[start + ".map_err(|".len()..];
+                let var = &closure[..closure.find('|').unwrap_or(0)];
+                let mut depth = 1;
+                let end = closure
+                    .char_indices()
+                    .find(|&(_, c)| {
+                        match c {
+                            '(' => depth += 1,
+                            ')' => depth -= 1,
+                            _ => {}
+                        }
+                        depth == 0
+                    })
+                    .map_or(closure.len(), |(i, _)| i);
+                let body = &closure[var.len() + 1..end];
+                if body.contains("handle") || body.contains("receipt") {
+                    continue;
+                }
+                if var == "_" {
+                    continue;
+                }
+                // The category and position, which quote nothing.
+                let mut stripped = body.replace(&format!("json_parse_error(&{var})"), "");
+                for part in ["classify()", "line()", "column()"] {
+                    stripped = stripped.replace(&format!("{var}.{part}"), "");
+                }
+                let shown = ["(", " ", ",", "{"].iter().any(|before| {
+                    [")", ",", "}", "."]
+                        .iter()
+                        .any(|after| stripped.contains(&format!("{before}{var}{after}")))
+                }) || stripped.contains(&format!("{{{var}}}"));
+                if shown {
+                    let line = production[..at].matches('\n').count() + 1;
+                    offenders.push(format!("{file}:{line}"));
+                }
+            }
+        }
+        assert!(
+            offenders.is_empty(),
+            "these reply parses show serde's text, which quotes the rejected value: {offenders:?}"
         );
     }
 

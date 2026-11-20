@@ -15,7 +15,7 @@ use super::{FileVersion, ProviderError};
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 const MEGA_DF_TIMEOUT_SECS: u64 = 30;
-const MEGA_WEBDAV_TIMEOUT_SECS: u64 = 30;
+pub(crate) const MEGA_WEBDAV_TIMEOUT_SECS: u64 = 30;
 
 /// Metadata key used to carry the GUI registry preset id through ProviderConfig.
 pub const PROVIDER_ID_META_KEY: &str = "_aeroftp_provider_id";
@@ -134,8 +134,19 @@ async fn run_mega_cmd_capture_within(
     args: &[&str],
     secs: u64,
 ) -> Result<std::process::Output, ProviderError> {
-    let resolved_cmd = resolve_mega_cmd(cmd);
-    let mut command = Command::new(&resolved_cmd);
+    run_mega_cmd_capture_at(&resolve_mega_cmd(cmd), cmd, args, secs).await
+}
+
+/// [`run_mega_cmd_capture_within`] with the executable already resolved
+/// (`resolved_cmd`), for a caller that resolves its own: the native provider
+/// reads `mega-userattr` by its exit status through this.
+pub(crate) async fn run_mega_cmd_capture_at(
+    resolved_cmd: &str,
+    cmd: &str,
+    args: &[&str],
+    secs: u64,
+) -> Result<std::process::Output, ProviderError> {
+    let mut command = Command::new(resolved_cmd);
     command.args(args);
     // #360: tear the child down if its future is dropped (connect cancelled) or
     // the timeout fires, instead of orphaning a blocked `mega-webdav /` process.
@@ -156,10 +167,11 @@ async fn run_mega_cmd_capture_within(
 }
 
 /// The answer of `mega-userattr` by its exit status: 0 is the text it printed,
-/// 53 (MEGAcmd's NOTFOUND, as the native provider classifies it) is an
-/// attribute that was never set, and any other exit is an answer that was
-/// not read, so the restore is refused rather than judged from its text.
-fn userattr_answer(
+/// 9 (the SDK's API_ENOENT) is an attribute that was never set, and any
+/// other exit, 53 (a name MEGAcmd does not know) included, is an answer
+/// that was not read, so the restore is refused rather than judged from its
+/// text. Both providers read the attribute through this.
+pub(crate) fn userattr_answer(
     code: Option<i32>,
     stdout: &[u8],
     stderr: &[u8],
@@ -171,7 +183,12 @@ fn userattr_answer(
     );
     match code {
         Some(0) => Ok(text),
-        Some(53) => Err(ProviderError::NotFound("^!dv".into())),
+        // MEGAcmd 2.6.0: an attribute never set is the SDK's API_ENOENT
+        // (-9), which the client exits with as 9 (`megacmdclient.cpp`: "do
+        // always return positive error codes"). 53 is MCMD_NOTFOUND, a name
+        // `userattr` does not know (`megacmdexecuter.cpp`, "Attribute not
+        // found"): it says nothing about versioning and refuses.
+        Some(9) => Err(ProviderError::NotFound("^!dv".into())),
         other => Err(ProviderError::ServerError(format!(
             "mega-userattr ended with {}: {}",
             other.map_or_else(|| "a signal".to_string(), |c| format!("exit {c}")),
@@ -180,9 +197,10 @@ fn userattr_answer(
     }
 }
 
-/// The deadline of the read back that checks a restore: the command's own
-/// plus a second per 256 KiB of the version, so a large version that is
-/// still arriving is not cut as if MEGA had not answered.
+/// The deadline of a version transfer (its get, its put again, the read
+/// back that checks a restore): the command's own plus a second per 256 KiB
+/// of the version, so a large version that is still arriving is not cut as
+/// if MEGA had not answered.
 fn verification_secs(size: u64) -> u64 {
     #[cfg(test)]
     if let Some(secs) = TEST_VERIFY_SECS.with(|secs| secs.get()) {
@@ -309,7 +327,14 @@ async fn mega_fetch_version_to_temp(
     let size = listed_version_size(listed, path, version_id)?;
     let temp = super::VersionTempFile::new("aeroftp_megaver");
     let temp_str = temp.0.to_string_lossy().to_string();
-    let output = run_mega_cmd_capture("mega-get", &[version_id, &temp_str]).await?;
+    // A deadline that grows with the version, as for the read back: the
+    // fixed one of a short command cut a large version mid-transfer.
+    let output = run_mega_cmd_capture_within(
+        "mega-get",
+        &[version_id, &temp_str],
+        verification_secs(size),
+    )
+    .await?;
     if !output.status.success() {
         return Err(mega_cmd_failure("mega-get version", &output));
     }
@@ -389,7 +414,10 @@ pub async fn mega_restore_version(
         )));
     }
     let temp_str = temp.0.to_string_lossy().to_string();
-    let output = run_mega_cmd_capture("mega-put", &[&temp_str, &path]).await?;
+    let put_size = std::fs::metadata(&temp.0).map_or(0, |m| m.len());
+    let output =
+        run_mega_cmd_capture_within("mega-put", &[&temp_str, &path], verification_secs(put_size))
+            .await?;
     if !output.status.success() {
         return Err(mega_cmd_failure("mega-put restore", &output));
     }
@@ -751,8 +779,9 @@ mod tests {
     use super::*;
 
     /// `mega-userattr` is read by its exit status, never by its text alone:
-    /// an exit other than 0 or 53 refuses the restore even when it printed
-    /// the words a set or absent attribute would print.
+    /// an exit other than 0 or 9 (the attribute never set) refuses the
+    /// restore even when it printed the words a set or absent attribute
+    /// would print; 53, a name MEGAcmd does not know, refuses too.
     #[test]
     fn the_versioning_attribute_is_read_by_the_exit_of_mega_userattr() {
         let off = |code, out: &str| {
@@ -760,8 +789,8 @@ mod tests {
         };
         assert!(off(Some(0), "\tDISABLE_VERSIONS (^!dv) = 1").unwrap());
         assert!(!off(Some(0), "\tDISABLE_VERSIONS (^!dv) = 0").unwrap());
-        assert!(!off(Some(53), "").unwrap());
-        for code in [Some(1), Some(57), None] {
+        assert!(!off(Some(9), "").unwrap());
+        for code in [Some(1), Some(53), Some(57), None] {
             assert!(off(code, "Not found").is_err(), "{code:?}");
             assert!(off(code, "(^!dv) = 0").is_err(), "{code:?}");
         }
@@ -1118,6 +1147,21 @@ Total size taken up by file versions:     31457280 bytes (30.0 MB)
         );
         assert!(bridge_log(&dir, "get.log").is_empty());
 
+        // The versioning setting is read by its exit: an attribute never
+        // set (9) lets the put go, a name MEGAcmd does not know (53) or an
+        // answer that says neither refuses before any put.
+        for switch in ["versioning-unrecognized", "versioning-unreadable"] {
+            let dir = bridge_on_stand_in(&[switch]);
+            let refused = mega_restore_version("/v.txt", "H:vAAAAAA2").await;
+            assert!(refused.is_err(), "{switch}: {refused:?}");
+            assert!(bridge_log(&dir, "put.log").is_empty(), "{switch}");
+        }
+        let dir = bridge_on_stand_in(&["versioning-absent"]);
+        mega_restore_version("/v.txt", "H:vAAAAAA2")
+            .await
+            .expect("an attribute never set is versioning on");
+        assert_eq!(bridge_log(&dir, "put.log"), ["/v.txt"]);
+
         // A read back that fails, and a last listing that fails, say the
         // upload is done and unchecked, never that MEGA did not take it.
         for switch in ["check-get-fails", "final-ls-fails"] {
@@ -1129,6 +1173,21 @@ Total size taken up by file versions:     31457280 bytes (30.0 MB)
             );
             assert_eq!(bridge_log(&dir, "put.log"), ["/v.txt"], "{switch}");
         }
+
+        // The get of the version itself runs under the deadline of its size,
+        // not the fixed one of a short command: a deadline shorter than the
+        // get cuts it and writes nothing, the size's own lets it finish.
+        let dir = bridge_on_stand_in(&["version-get-slow"]);
+        let local = tempfile::tempdir().unwrap();
+        let out = local.path().join("v.txt");
+        TEST_VERIFY_SECS.with(|secs| secs.set(Some(1)));
+        let cut = mega_download_version("/v.txt", "H:vAAAAAA2", out.to_str().unwrap()).await;
+        TEST_VERIFY_SECS.with(|secs| secs.set(None));
+        assert!(cut.is_err() && !out.exists(), "{cut:?}");
+        mega_download_version("/v.txt", "H:vAAAAAA2", out.to_str().unwrap())
+            .await
+            .expect("a version get within the deadline of its size");
+        drop(dir);
 
         let dir = bridge_on_stand_in(&["check-get-slow"]);
         TEST_VERIFY_SECS.with(|secs| secs.set(Some(1)));

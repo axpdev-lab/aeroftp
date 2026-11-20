@@ -8472,10 +8472,20 @@ impl StorageProvider for S3Provider {
                                         past_the_key = true;
                                     }
                                     if listed == key && !v_soft_deleted {
+                                        // Every row names its version (`null`
+                                        // in a bucket never versioned): a row
+                                        // without one would be acted on as
+                                        // the key itself, its current object.
                                         let version_id = v_version_id
                                             .as_ref()
                                             .map(|v| v.trim().to_string())
-                                            .unwrap_or_default();
+                                            .filter(|v| !v.is_empty())
+                                            .ok_or_else(|| {
+                                                ProviderError::ParseError(format!(
+                                                    "A version of {path} came without its \
+                                                     VersionId: the listing is not shown"
+                                                ))
+                                            })?;
                                         let is_latest =
                                             v_is_latest.as_deref().map(str::trim) == Some("true");
                                         let size: u64 = v_size
@@ -8591,8 +8601,9 @@ impl StorageProvider for S3Provider {
                     .map_err(ProviderError::IoError)?;
 
                 while let Some(chunk) = stream.next().await {
-                    let chunk =
-                        chunk.map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+                    let chunk = chunk.map_http_err(|e| {
+                        ProviderError::TransferFailed(e.without_url().to_string())
+                    })?;
                     crate::transfer_dag::throttle::charge(
                         crate::transfer_dag::governor::TransferDirection::Download,
                         chunk.len() as u64,
@@ -8618,7 +8629,9 @@ impl StorageProvider for S3Provider {
                 version_id, path
             ))),
             status => {
-                let body = response.text().await.unwrap_or_default();
+                let body = super::version_listing_text(response)
+                    .await
+                    .unwrap_or_default();
                 Err(ProviderError::TransferFailed(format!(
                     "Download version failed ({}): {}",
                     status,
@@ -8670,10 +8683,12 @@ impl StorageProvider for S3Provider {
         request = request.header("Authorization", &authorization);
         request = request.header("Content-Length", "0");
 
+        // The copy takes no precondition on the key's current version: a
+        // timeout may come after S3 wrote the copy on top.
         let response = request
             .send()
             .await
-            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_err(|e| super::change_send_error(e, &format!("the restore of {path}")))?;
 
         match response.status() {
             StatusCode::OK | StatusCode::CREATED | StatusCode::NO_CONTENT => {
@@ -8698,7 +8713,9 @@ impl StorageProvider for S3Provider {
                 super::confirm_version_restored(self, path, preflight.as_ref()).await
             }
             status => {
-                let body = response.text().await.unwrap_or_default();
+                let body = super::version_listing_text(response)
+                    .await
+                    .unwrap_or_default();
                 Err(ProviderError::ServerError(format!(
                     "Restore version failed ({}): {}",
                     status,
@@ -8736,7 +8753,9 @@ impl StorageProvider for S3Provider {
                 Ok(())
             }
             status => {
-                let body = response.text().await.unwrap_or_default();
+                let body = super::version_listing_text(response)
+                    .await
+                    .unwrap_or_default();
                 Err(ProviderError::ServerError(format!(
                     "Delete version failed ({}): {}",
                     status,
@@ -8793,7 +8812,9 @@ impl StorageProvider for S3Provider {
 
             let status = response.status();
             if !status.is_success() {
-                let body = response.text().await.unwrap_or_default();
+                let body = super::version_listing_text(response)
+                    .await
+                    .unwrap_or_default();
                 return Err(ProviderError::ServerError(format!(
                     "ListObjectVersions failed ({}): {}",
                     status,
@@ -8804,7 +8825,7 @@ impl StorageProvider for S3Provider {
             let xml_str = response
                 .text()
                 .await
-                .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ParseError(e.without_url().to_string()))?;
 
             let (entries, is_truncated, next_key_marker, next_version_id_marker) =
                 parse_object_versions_page(&xml_str)?;
@@ -9128,7 +9149,9 @@ impl S3Provider {
                 ))
             }
             status => {
-                let body = response.text().await.unwrap_or_default();
+                let body = super::version_listing_text(response)
+                    .await
+                    .unwrap_or_default();
                 Err(ProviderError::ServerError(format!(
                     "Glacier restore failed ({}): {}",
                     status,
@@ -9743,6 +9766,18 @@ fn copy_answer_error(body: &str, sent: &SentSecrets) -> Option<String> {
                 Some("Message") => message.push_str(text.as_ref()),
                 _ => {}
             },
+            // An entity reference (`&#43;`, `&amp;`) is its own event in
+            // quick-xml 0.42: decode it here, or the secret check in
+            // `s3_server_text` sees `abc` `def` where the server wrote `abc+def`.
+            Ok(Event::GeneralRef(reference)) => {
+                if let Some(expanded) = super::xml_text::xml_entity_to_str(reference.as_ref()) {
+                    match field.as_deref() {
+                        Some("Code") => code.push_str(&expanded),
+                        Some("Message") => message.push_str(&expanded),
+                        _ => {}
+                    }
+                }
+            }
             Ok(Event::End(_)) => {
                 depth = depth.saturating_sub(1);
                 field = None;
@@ -16142,6 +16177,22 @@ mod tests {
         }
         let done = restore(("v3", "<CopyObjectResult></CopyObjectResult>")).await;
         assert!(done.is_ok(), "{done:?}");
+    }
+
+    /// A copy answer that writes a sent token with an entity (`&#43;` for
+    /// `+`) is still recognised as repeating it: quick-xml hands the
+    /// reference over as its own event, and a parser that drops it compares
+    /// `abcdef` with `abc+def` and shows the rest of the token.
+    #[test]
+    fn a_copy_error_that_encodes_a_sent_token_is_withheld() {
+        let sent = SentSecrets::of(&["SESSIONabc+defTOKEN"]);
+        let body = "<Error><Code>AccessDenied</Code><Message>token SESSIONabc&#43;defTOKEN refused</Message></Error>";
+        let shown = copy_answer_error(body, &sent).expect("an Error root is a failure");
+        assert!(!shown.contains("SESSIONabc"), "{shown}");
+        assert!(!shown.contains("defTOKEN"), "{shown}");
+        let plain = "<Error><Code>Slow&#68;own</Code><Message>try again</Message></Error>";
+        let shown = copy_answer_error(plain, &sent).expect("an Error root is a failure");
+        assert!(shown.starts_with("SlowDown - try again"), "{shown}");
     }
 
     /// A key whose contents were purged and whose delete marker remains

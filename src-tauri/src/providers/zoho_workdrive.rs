@@ -111,6 +111,11 @@ impl ZohoWorkdriveConfig {
 /// JSON:API wrapper for a single resource
 /// Which listing gave the team folders: WorkDrive's team folders, or its
 /// workspaces read as team folders when that listing gives none.
+/// A team folders listing offered and not read whole (see
+/// [`ZohoWorkdriveProvider::fetch_team_folders`]).
+#[derive(Debug)]
+struct TeamFoldersUnread;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TeamFolderSource {
     TeamFolders,
@@ -292,7 +297,8 @@ fn list_folder_failure(status: reqwest::StatusCode, folder_id: &str, body: &str)
 /// text it failed later as `EOF while parsing a value at line 1 column 0`.
 fn body_broke_off(what: &str, error: reqwest::Error) -> ProviderError {
     ProviderError::NetworkError(format!(
-        "{what}: the answer broke off before its body was read: {error}"
+        "{what}: the answer broke off before its body was read: {}",
+        error.without_url()
     ))
 }
 
@@ -604,6 +610,14 @@ fn parse_privatespace_id(body: &str) -> Option<String> {
 }
 
 /// Workspace list resource (for GET /teams/{id}/workspaces)
+/// One page of `/teams/{id}/workspaces`, with the cursor to the next page.
+#[derive(Debug, Deserialize)]
+struct WorkspacePage {
+    data: Vec<WorkspaceListResource>,
+    #[serde(default)]
+    links: Option<PageLinks>,
+}
+
 #[derive(Debug, Deserialize)]
 struct WorkspaceListResource {
     id: String,
@@ -1033,6 +1047,10 @@ pub struct ZohoWorkdriveProvider {
     team_folders: Vec<(String, String)>,
     /// The listing [`Self::team_folders`] was read from.
     team_folders_source: Option<TeamFolderSource>,
+    /// The team folders' listing was offered and could not be read whole,
+    /// with no mapping kept from before: a root name is then not known to
+    /// be private.
+    team_folders_unread: bool,
     /// Team folders removed from the live root whose trash can still be scanned.
     trashed_team_folders: Vec<(String, String)>,
     /// Server profile identifier owning these OAuth tokens. Empty when the
@@ -1112,6 +1130,7 @@ impl ZohoWorkdriveProvider {
             team_user_id: None,
             team_folders: Vec::new(),
             team_folders_source: None,
+            team_folders_unread: false,
             trashed_team_folders: Vec::new(),
             profile_id: String::new(),
             retry: HttpRetryConfig::default(),
@@ -1373,7 +1392,7 @@ impl ZohoWorkdriveProvider {
             .body(body.to_string())
             .send()
             .await
-            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.without_url().to_string()))?;
 
         if !resp.status().is_success() {
             let status_code = resp.status();
@@ -1425,7 +1444,7 @@ impl ZohoWorkdriveProvider {
                 .body(body.to_string())
                 .send()
                 .await
-                .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ConnectionFailed(e.without_url().to_string()))?;
 
             if !resp.status().is_success() {
                 let status_code = resp.status();
@@ -1500,7 +1519,9 @@ impl ZohoWorkdriveProvider {
                     .header(AUTHORIZATION, self.auth_header().await?)
                     .send()
                     .await
-                    .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+                    .map_http_err(|e| {
+                        ProviderError::ConnectionFailed(e.without_url().to_string())
+                    })?;
 
                 if !resp.status().is_success() {
                     break;
@@ -1605,7 +1626,7 @@ impl ZohoWorkdriveProvider {
             .header(AUTHORIZATION, self.auth_header().await?)
             .send()
             .await
-            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.without_url().to_string()))?;
 
         let status = resp.status();
         let resp_body = resp.text().await;
@@ -1619,8 +1640,13 @@ impl ZohoWorkdriveProvider {
         }
         let resp_body = resp_body.map_http_err(|e| body_broke_off("Get share links failed", e))?;
 
-        let parsed: JsonApiListResponse<ZohoShareLink> = serde_json::from_str(&resp_body)
-            .map_err(|e| ProviderError::ParseError(format!("Parse share links: {}", e)))?;
+        let parsed: JsonApiListResponse<ZohoShareLink> =
+            serde_json::from_str(&resp_body).map_err(|e| {
+                ProviderError::ParseError(format!(
+                    "Parse share links: {}",
+                    super::json_parse_error(&e)
+                ))
+            })?;
 
         info!("Found {} share link(s) for {}", parsed.data.len(), path);
         Ok(parsed.data)
@@ -1641,7 +1667,7 @@ impl ZohoWorkdriveProvider {
             )
             .send()
             .await
-            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.without_url().to_string()))?;
 
         let status_code = resp.status().as_u16();
         if status_code != 200 && status_code != 204 {
@@ -1711,7 +1737,7 @@ impl ZohoWorkdriveProvider {
             .body(body.to_string())
             .send()
             .await
-            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.without_url().to_string()))?;
 
         let status = resp.status();
         let resp_body = resp.text().await;
@@ -1727,8 +1753,12 @@ impl ZohoWorkdriveProvider {
             resp_body.map_http_err(|e| body_broke_off("Create native document failed", e))?;
 
         // Parse response to get the created file's permalink/URL
-        let parsed: serde_json::Value = serde_json::from_str(&resp_body)
-            .map_err(|e| ProviderError::ParseError(format!("Parse create doc response: {}", e)))?;
+        let parsed: serde_json::Value = serde_json::from_str(&resp_body).map_err(|e| {
+            ProviderError::ParseError(format!(
+                "Parse create doc response: {}",
+                super::json_parse_error(&e)
+            ))
+        })?;
 
         let permalink = parsed["data"]["attributes"]["permalink"]
             .as_str()
@@ -1783,7 +1813,7 @@ impl ZohoWorkdriveProvider {
             .header(AUTHORIZATION, self.auth_header().await?)
             .send()
             .await
-            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.without_url().to_string()))?;
 
         let mut user_id: Option<String> = None;
         if resp.status().is_success() {
@@ -1812,7 +1842,7 @@ impl ZohoWorkdriveProvider {
             .header(AUTHORIZATION, self.auth_header().await?)
             .send()
             .await
-            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.without_url().to_string()))?;
 
         let team = if resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
@@ -1829,7 +1859,10 @@ impl ZohoWorkdriveProvider {
                     None
                 }
                 Err(e) => {
-                    info!("Zoho WorkDrive /teams parse error: {}", e);
+                    info!(
+                        "Zoho WorkDrive /teams parse error: {}",
+                        super::json_parse_error(&e)
+                    );
                     None
                 }
             }
@@ -1856,7 +1889,7 @@ impl ZohoWorkdriveProvider {
                 .header(AUTHORIZATION, self.auth_header().await?)
                 .send()
                 .await
-                .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ConnectionFailed(e.without_url().to_string()))?;
 
             if resp.status().is_success() {
                 let body = resp.text().await.unwrap_or_default();
@@ -1930,7 +1963,7 @@ impl ZohoWorkdriveProvider {
             .header(AUTHORIZATION, self.auth_header().await?)
             .send()
             .await
-            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.without_url().to_string()))?;
 
         let team_user_id = if resp.status().is_success() {
             let body_text = resp.text().await.unwrap_or_default();
@@ -1944,7 +1977,10 @@ impl ZohoWorkdriveProvider {
                     Some(cu.data.id)
                 }
                 Err(e) => {
-                    info!("Zoho WorkDrive /currentuser parse error: {}", e);
+                    info!(
+                        "Zoho WorkDrive /currentuser parse error: {}",
+                        super::json_parse_error(&e)
+                    );
                     None
                 }
             }
@@ -1994,7 +2030,7 @@ impl ZohoWorkdriveProvider {
             .header(AUTHORIZATION, self.auth_header().await?)
             .send()
             .await
-            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.without_url().to_string()))?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -2043,7 +2079,7 @@ impl ZohoWorkdriveProvider {
             .header(AUTHORIZATION, self.auth_header().await?)
             .send()
             .await
-            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.without_url().to_string()))?;
 
         let mut used = 0u64;
         let mut total = 0u64;
@@ -2078,10 +2114,20 @@ impl ZohoWorkdriveProvider {
         })
     }
 
-    /// Discover team folders and keep them as the root's team folders.
+    /// Discover team folders and keep them as the root's team folders. A
+    /// listing that could not be read whole changes nothing kept; with no
+    /// mapping kept yet it leaves the team folders unread, which refuses a
+    /// root name that is not a known team folder instead of reading it as a
+    /// private folder (see [`Self::confirmed_team_folder`]).
     async fn discover_team_folders(&mut self, team_id: &str) {
-        if let Some((source, found)) = self.fetch_team_folders(team_id).await {
-            self.keep_team_folders(source, found);
+        match self.fetch_team_folders(team_id).await {
+            Ok(Some((source, found))) => self.keep_team_folders(source, found),
+            Ok(None) => {}
+            Err(TeamFoldersUnread) => {
+                if self.team_folders_source.is_none() {
+                    self.team_folders_unread = true;
+                }
+            }
         }
     }
 
@@ -2099,29 +2145,35 @@ impl ZohoWorkdriveProvider {
         }
         self.team_folders = found;
         self.team_folders_source = Some(source);
+        self.team_folders_unread = false;
     }
 
     /// The team folders of `team_id` and where they were read, changing
     /// nothing kept (a refresh dropped half way leaves the mapping as it
-    /// was), or `None` when no listing answered.
+    /// was). `Ok(None)` when neither listing is offered (a refusal of its
+    /// first page); [`TeamFoldersUnread`] when one was offered and could not
+    /// be read whole: a page that failed or broke off, a server error, a
+    /// limit reached. That is not an empty team, and no name may be read as
+    /// a private folder's on it.
     /// Primary: GET /teams/{teamID}/teamfolders (documented endpoint)
     /// Fallback: GET /teams/{teamID}/workspaces (workspaces as virtual folders)
     async fn fetch_team_folders(
         &self,
         team_id: &str,
-    ) -> Option<(TeamFolderSource, Vec<(String, String)>)> {
+    ) -> Result<Option<(TeamFolderSource, Vec<(String, String)>)>, TeamFoldersUnread> {
         let mut found = Vec::new();
         // Primary: GET /teams/{teamId}/teamfolders, every page of it: a team
         // folder renamed on a later page is not read as gone. A first page
         // that does not answer falls back to the workspaces; a later one
         // that does not answer changes nothing kept.
         let mut offset = 0usize;
+        let mut read = 0u64;
         for page in 0.. {
             if page >= TEAM_FOLDER_MAX_PAGES {
                 info!(
                     "Zoho WorkDrive: team folders did not end within {TEAM_FOLDER_MAX_PAGES} pages"
                 );
-                return None;
+                return Err(TeamFoldersUnread);
             }
             let tf_url = format!(
                 "{}/teams/{}/teamfolders?page%5Blimit%5D={TEAM_FOLDER_PAGE_LIMIT}&page%5Boffset%5D={offset}",
@@ -2133,7 +2185,7 @@ impl ZohoWorkdriveProvider {
                 Ok(h) => h,
                 Err(e) => {
                     info!("Zoho WorkDrive: auth error for team folders: {}", e);
-                    return None;
+                    return Err(TeamFoldersUnread);
                 }
             };
             let resp = match self
@@ -2145,30 +2197,54 @@ impl ZohoWorkdriveProvider {
             {
                 Ok(r) => r,
                 Err(e) => {
-                    info!("Zoho WorkDrive: team folders request failed: {}", e);
-                    return None;
+                    info!(
+                        "Zoho WorkDrive: team folders request failed: {}",
+                        e.without_url()
+                    );
+                    return Err(TeamFoldersUnread);
                 }
             };
+            // The status first: a refusal is not read, and an answer is
+            // read up to the listing caps, a page and the whole.
             let status = resp.status();
-            let body = match resp.text().await {
-                Ok(body) if status.is_success() => body,
-                _ if page > 0 => {
+            let body = if status.is_success() {
+                super::version_listing_text_with(resp, |e| body_broke_off("Team folders page", e))
+                    .await
+                    .ok()
+            } else {
+                None
+            };
+            let body = match body {
+                Some(body) => body,
+                None if page > 0 => {
                     info!(
                         "Zoho WorkDrive: team folders page {} unread ({status})",
                         page + 1
                     );
-                    return None;
+                    return Err(TeamFoldersUnread);
                 }
-                _ => {
+                // A refusal of the first page: the listing is not offered
+                // here, the workspaces may be. A server error or a body that
+                // broke off is no answer.
+                None if status.is_success() || status.is_server_error() => {
+                    info!("Zoho WorkDrive: team folders page 1 unread ({status})");
+                    return Err(TeamFoldersUnread);
+                }
+                None => {
                     debug!("Zoho WorkDrive teamfolders failed ({status})");
                     break;
                 }
             };
+            read += body.len() as u64;
+            if read > super::VERSION_LISTING_MAX_TOTAL_BYTES {
+                info!("Zoho WorkDrive: team folders past {read} bytes, given up");
+                return Err(TeamFoldersUnread);
+            }
             let Ok(tfs) = serde_json::from_str::<JsonApiListResponse<TeamFolderResource>>(&body)
             else {
                 if page > 0 {
                     info!("Zoho WorkDrive: team folders page {} unparsable", page + 1);
-                    return None;
+                    return Err(TeamFoldersUnread);
                 }
                 break;
             };
@@ -2187,69 +2263,98 @@ impl ZohoWorkdriveProvider {
         }
         if !found.is_empty() {
             info!("Zoho WorkDrive discovered {} team folders", found.len());
-            return Some((TeamFolderSource::TeamFolders, found));
+            return Ok(Some((TeamFolderSource::TeamFolders, found)));
         }
 
-        // Fallback: use workspaces as team folders (they appear as "Cartelle Team" in the UI)
-        let ws_url = format!("{}/teams/{}/workspaces", self.api_base(), team_id);
-        info!(
-            "Zoho WorkDrive: GET {} (fallback: treating workspaces as team folders)",
-            ws_url
-        );
-
-        let auth = match self.auth_header().await {
-            Ok(h) => h,
-            Err(_) => return None,
-        };
-
-        let resp = match self
-            .client
-            .get(&ws_url)
-            .header(AUTHORIZATION, auth)
-            .send()
-            .await
-        {
-            Ok(r) => r,
-            Err(e) => {
-                info!("Zoho WorkDrive: workspaces request failed: {}", e);
-                return None;
+        // Fallback: use workspaces as team folders (they appear as "Cartelle
+        // Team" in the UI), every page of them as for a folder
+        // ([`next_page_cursor`]): a workspace on a later page is not read
+        // as absent, and its name as a private folder's.
+        let base = format!("{}/teams/{}/workspaces", self.api_base(), team_id);
+        let mut next: Option<String> = None;
+        let mut seen = std::collections::HashSet::new();
+        loop {
+            if seen.len() >= TEAM_FOLDER_MAX_PAGES {
+                info!(
+                    "Zoho WorkDrive: workspaces did not end within {TEAM_FOLDER_MAX_PAGES} pages"
+                );
+                return Err(TeamFoldersUnread);
             }
-        };
-
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let text = resp.text().await.unwrap_or_default();
-            debug!(
-                "Zoho WorkDrive workspaces failed ({}): {}",
-                status,
-                log_preview(&text, 300)
-            );
-            return None;
-        }
-
-        let body = resp.text().await.unwrap_or_default();
-        debug!(
-            "Zoho WorkDrive workspaces response: {}",
-            log_preview(&body, 500)
-        );
-
-        // Only a listing that parsed (an empty one included) replaces the
-        // team folders kept: an unreadable body is no answer.
-        let Ok(ws_list) = serde_json::from_str::<JsonApiListResponse<WorkspaceListResource>>(&body)
-        else {
+            let ws_url = match &next {
+                Some(cursor) => format!("{base}?page%5Bnext%5D={}", urlencoding::encode(cursor)),
+                None => base.clone(),
+            };
             info!(
-                "Zoho WorkDrive: workspaces answer of {} bytes unparsable: team folders kept",
-                body.len()
+                "Zoho WorkDrive: GET workspaces, page {} (fallback: treating workspaces as team folders)",
+                seen.len() + 1
             );
-            return None;
-        };
-        {
-            for ws in ws_list.data {
+            let auth = self.auth_header().await.map_err(|_| TeamFoldersUnread)?;
+            let resp = match self
+                .client
+                .get(&ws_url)
+                .header(AUTHORIZATION, auth)
+                .send()
+                .await
+            {
+                Ok(r) => r,
+                Err(e) => {
+                    info!(
+                        "Zoho WorkDrive: workspaces request failed: {}",
+                        e.without_url()
+                    );
+                    return Err(TeamFoldersUnread);
+                }
+            };
+            let status = resp.status();
+            if !status.is_success() {
+                debug!("Zoho WorkDrive workspaces failed ({status})");
+                if seen.is_empty() && status.is_client_error() {
+                    return Ok(None);
+                }
+                return Err(TeamFoldersUnread);
+            }
+            let body =
+                super::version_listing_text_with(resp, |e| body_broke_off("Workspaces page", e))
+                    .await
+                    .map_err(|_| TeamFoldersUnread)?;
+            read += body.len() as u64;
+            if read > super::VERSION_LISTING_MAX_TOTAL_BYTES {
+                info!("Zoho WorkDrive: workspaces past {read} bytes, given up");
+                return Err(TeamFoldersUnread);
+            }
+
+            // Only a listing that parsed (an empty one included) replaces the
+            // team folders kept: an unreadable body is no answer.
+            let Ok(ws_page) = serde_json::from_str::<WorkspacePage>(&body) else {
+                info!(
+                    "Zoho WorkDrive: workspaces answer of {} bytes unparsable: team folders kept",
+                    body.len()
+                );
+                return Err(TeamFoldersUnread);
+            };
+            let cursor = match next_page_cursor(ws_page.links.as_ref(), ws_page.data.len()) {
+                Ok(cursor) => cursor,
+                Err(e) => {
+                    info!("Zoho WorkDrive: workspaces: {e}: team folders kept");
+                    return Err(TeamFoldersUnread);
+                }
+            };
+            for ws in ws_page.data {
                 info!(
                     "Zoho WorkDrive workspace as team folder: {} ({})",
                     ws.attributes.name, ws.id
                 );
                 found.push((ws.id, ws.attributes.name));
+            }
+            match cursor {
+                Some(cursor) if seen.insert(cursor.clone()) => next = Some(cursor),
+                Some(_) => {
+                    info!(
+                        "Zoho WorkDrive: workspaces pagination did not advance: team folders kept"
+                    );
+                    return Err(TeamFoldersUnread);
+                }
+                None => break,
             }
         }
 
@@ -2257,7 +2362,7 @@ impl ZohoWorkdriveProvider {
             "Zoho WorkDrive discovered {} team folders (via workspaces)",
             found.len()
         );
-        Some((TeamFolderSource::Workspaces, found))
+        Ok(Some((TeamFolderSource::Workspaces, found)))
     }
 
     /// Send one WorkDrive request at the pace WorkDrive accepts. `listing` is
@@ -2297,7 +2402,9 @@ impl ZohoWorkdriveProvider {
             let response =
                 send_with_retry_replayable(&self.client, || build(auth.clone()), &single_attempt)
                     .await
-                    .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+                    .map_http_err(|e| {
+                        ProviderError::ConnectionFailed(e.without_url().to_string())
+                    })?;
             let status = response.status();
             let sent_again = status == reqwest::StatusCode::TOO_MANY_REQUESTS
                 || (resend == Resend::RefusedOrFailed && is_server_failure(status));
@@ -2413,7 +2520,7 @@ impl ZohoWorkdriveProvider {
                     info!(
                         "Zoho WorkDrive list (folder_id={}): {}, asking again",
                         folder_id,
-                        unread.err().map_or("empty body".to_string(), |e| e.to_string())
+                        unread.err().map_or("empty body".to_string(), |e| e.without_url().to_string())
                     );
                     asked_again = true;
                     continue;
@@ -2425,7 +2532,7 @@ impl ZohoWorkdriveProvider {
                 }
                 Err(e) => {
                     return Err(ProviderError::NetworkError(format!(
-                        "List files error (folder_id={folder_id}): the answer broke off before its body was read, twice: {e}"
+                        "List files error (folder_id={folder_id}): the answer broke off before its body was read, twice: {}", e.without_url()
                     )))
                 }
             };
@@ -2438,9 +2545,9 @@ impl ZohoWorkdriveProvider {
 
             return serde_json::from_str(&body_text).map_err(|e| {
                 ProviderError::Other(format!(
-                    "Parse files error: {}: body: {}",
-                    e,
-                    sanitize_api_error(&body_text)
+                    "Parse files error: {} (an answer of {} bytes, not shown)",
+                    super::json_parse_error(&e),
+                    body_text.len()
                 ))
             });
         }
@@ -2548,6 +2655,15 @@ impl ZohoWorkdriveProvider {
 
     /// List root directory: team folders (as directories) + privatespace files
     async fn list_root(&self) -> Result<Vec<RemoteEntry>, ProviderError> {
+        // Without the team folders the root listing is not the root: a
+        // caller would read every team folder as gone.
+        if self.team_folders_unread {
+            return Err(ProviderError::ServerError(
+                "The team folders could not be read, so the root listing would be incomplete: \
+                 try again"
+                    .into(),
+            ));
+        }
         let mut entries = Vec::new();
 
         // 1. Team folders as virtual directory entries
@@ -3123,18 +3239,41 @@ impl ZohoWorkdriveProvider {
                 .find(|(_, folder)| folder == name)
                 .map(|(id, _)| id.clone())
         };
-        let Some(id) = named(self) else {
-            return Ok(None);
-        };
-        if self.team_folder_is(&id, name).await? {
-            return Ok(Some(id));
-        }
         let unconfirmed = || {
             ProviderError::ServerError(format!(
                 "The team folder /{name} could not be confirmed (renamed or replaced since it \
                  was found), so nothing was done in it: try again"
             ))
         };
+        let Some(id) = named(self) else {
+            if !self.team_folders_unread {
+                return Ok(None);
+            }
+            // The team folders were never read whole: /{name} may be one.
+            // Read them again, and refuse while they stay unread.
+            let unread = || {
+                ProviderError::ServerError(format!(
+                    "The team folders could not be read, so /{name} could not be told apart \
+                     from a team folder: nothing was done, try again"
+                ))
+            };
+            let Some(team) = self.team_id.clone() else {
+                return Err(unread());
+            };
+            match self.fetch_team_folders(&team).await {
+                Ok(Some((source, found))) => self.keep_team_folders(source, found),
+                Ok(None) => self.team_folders_unread = false,
+                Err(TeamFoldersUnread) => return Err(unread()),
+            }
+            return match named(self) {
+                None => Ok(None),
+                Some(fresh) if self.team_folder_is(&fresh, name).await? => Ok(Some(fresh)),
+                Some(_) => Err(unconfirmed()),
+            };
+        };
+        if self.team_folder_is(&id, name).await? {
+            return Ok(Some(id));
+        }
         let Some(team) = self.team_id.clone() else {
             return Err(unconfirmed());
         };
@@ -3142,7 +3281,7 @@ impl ZohoWorkdriveProvider {
         // half way, the refresh leaves it whole. A mapping read from the
         // other listing (team folders or workspaces) or empty is no answer
         // about this one.
-        let Some((source, found)) = self.fetch_team_folders(&team).await else {
+        let Ok(Some((source, found))) = self.fetch_team_folders(&team).await else {
             return Err(unconfirmed());
         };
         if found.is_empty() || self.team_folders_source != Some(source) {
@@ -3191,11 +3330,12 @@ impl ZohoWorkdriveProvider {
     /// read back by id (`GET /files/{id}`), its name the one asked for and
     /// its parent the folder cached above it (the private space for the
     /// first, a team folder being found by its discovered name). Top down,
-    /// so the folder acted in is the last one read: a parent confirmed
-    /// after its child would stand in for a child moved meanwhile. What
-    /// remains is the time between the last read and the request that uses
-    /// it, which WorkDrive cannot close: its trash and move take no
-    /// precondition on the parent. One request
+    /// so a parent confirmed after its child cannot stand in for a child
+    /// moved meanwhile, and then the folders above the leaf again, so a
+    /// parent moved after its own read is seen too. What remains is the
+    /// time between the last read and the request that uses it, which
+    /// WorkDrive cannot close: its trash and move take no precondition on
+    /// the parent, so this narrows that race and does not end it. One request
     /// a folder and no listing, so the listings of a folder keep their
     /// window for listings. `None` when a folder on the way is not cached;
     /// when one is not where the cache has it, the ids on the way are
@@ -3239,7 +3379,12 @@ impl ZohoWorkdriveProvider {
             None => (0, true),
         };
         let first = if in_place { first } else { ids.len() };
-        for at in first..ids.len() {
+        // Top down to the leaf, then the folders above it once more: a
+        // folder moved after its own read but before the leaf's still
+        // names the same parent to the leaf, and only a read after the
+        // leaf's shows the move.
+        let reads = (first..ids.len()).chain(first..ids.len().saturating_sub(1));
+        for at in reads {
             let above = if at == 0 {
                 self.privatespace_id.clone()
             } else {
@@ -3583,7 +3728,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
             .header(ACCEPT, HeaderValue::from_static("*/*"))
             .send()
             .await
-            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.without_url().to_string()))?;
 
         let status = resp.status();
         let final_url = resp.url().to_string();
@@ -3618,7 +3763,8 @@ impl StorageProvider for ZohoWorkdriveProvider {
         let mut downloaded: u64 = 0;
 
         while let Some(chunk) = stream.next().await {
-            let chunk = chunk.map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            let chunk = chunk
+                .map_http_err(|e| ProviderError::TransferFailed(e.without_url().to_string()))?;
             atomic
                 .write_all(&chunk)
                 .await
@@ -3711,7 +3857,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
                     }
                     req.send()
                         .await
-                        .map_http_err(|e| ProviderError::NetworkError(e.to_string()))
+                        .map_http_err(|e| ProviderError::NetworkError(e.without_url().to_string()))
                 }
             },
             on_progress,
@@ -3749,7 +3895,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
             .header(ACCEPT, HeaderValue::from_static("*/*"))
             .send()
             .await
-            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.without_url().to_string()))?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -4242,7 +4388,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
                 .header(AUTHORIZATION, self.auth_header().await?)
                 .send()
                 .await
-                .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ConnectionFailed(e.without_url().to_string()))?;
 
             if let Ok(body) = resp.json::<JsonApiResponse<TeamResource>>().await {
                 body.data.attributes.name
@@ -4324,7 +4470,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
             .body(body.to_string())
             .send()
             .await
-            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.without_url().to_string()))?;
 
         if !resp.status().is_success() {
             return Err(ProviderError::Other(format!(
@@ -4452,13 +4598,12 @@ impl StorageProvider for ZohoWorkdriveProvider {
             .body(body.to_string())
             .send()
             .await
-            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.without_url().to_string()))?;
 
         let status = resp.status();
-        let resp_text = resp
-            .text()
-            .await
-            .map_http_err(|e| ProviderError::Other(format!("Read response: {}", e)))?;
+        let resp_text = resp.text().await.map_http_err(|e| {
+            ProviderError::Other(format!("Read response: {}", e.without_url()))
+        })?;
 
         if !status.is_success() {
             info!(
@@ -4476,8 +4621,12 @@ impl StorageProvider for ZohoWorkdriveProvider {
 
         // Parse response to extract the link URL
         // Response shape: { "data": { "attributes": { "link": "https://..." } } }
-        let parsed: serde_json::Value = serde_json::from_str(&resp_text)
-            .map_err(|e| ProviderError::Other(format!("Parse share link response: {}", e)))?;
+        let parsed: serde_json::Value = serde_json::from_str(&resp_text).map_err(|e| {
+            ProviderError::Other(format!(
+                "Parse share link response: {}",
+                super::json_parse_error(&e)
+            ))
+        })?;
 
         let link = parsed["data"]["attributes"]["link"]
             .as_str()
@@ -4512,7 +4661,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
             .header(AUTHORIZATION, self.auth_header().await?)
             .send()
             .await
-            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.without_url().to_string()))?;
 
         if !resp.status().is_success() {
             return Err(ProviderError::Other(format!(
@@ -4521,13 +4670,13 @@ impl StorageProvider for ZohoWorkdriveProvider {
             )));
         }
 
-        let body = resp
-            .text()
-            .await
-            .map_http_err(|e| ProviderError::Other(format!("Read team response: {}", e)))?;
+        let body = resp.text().await.map_http_err(|e| {
+            ProviderError::Other(format!("Read team response: {}", e.without_url()))
+        })?;
 
-        let team: JsonApiResponse<TeamResource> = serde_json::from_str(&body)
-            .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+        let team: JsonApiResponse<TeamResource> = serde_json::from_str(&body).map_err(|e| {
+            ProviderError::Other(format!("Parse error: {}", super::json_parse_error(&e)))
+        })?;
 
         let mut used = team.data.attributes.storage_used.unwrap_or(0);
         let mut total = team.data.attributes.storage_quota.unwrap_or(0);
@@ -4543,10 +4692,10 @@ impl StorageProvider for ZohoWorkdriveProvider {
                 .header(AUTHORIZATION, self.auth_header().await?)
                 .send()
                 .await
-                .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ConnectionFailed(e.without_url().to_string()))?;
             if teams_resp.status().is_success() {
                 let body = teams_resp.text().await.map_http_err(|e| {
-                    ProviderError::Other(format!("Read teams response: {}", e))
+                    ProviderError::Other(format!("Read teams response: {}", e.without_url()))
                 })?;
                 if let Ok(teams) = serde_json::from_str::<JsonApiListResponse<TeamResource>>(&body)
                 {
@@ -4653,7 +4802,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
                 .header(AUTHORIZATION, self.auth_header().await?)
                 .send()
                 .await
-                .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ConnectionFailed(e.without_url().to_string()))?;
 
             let status = resp.status();
             let body = super::version_listing_text_with(resp, |e| {
@@ -4677,7 +4826,8 @@ impl StorageProvider for ZohoWorkdriveProvider {
 
             let page: VersionsPage = serde_json::from_str(&body).map_err(|e| {
                 ProviderError::ParseError(format!(
-                    "Parse versions of {path}: {e} (an answer of {} bytes, not shown)",
+                    "Parse versions of {path}: {} (an answer of {} bytes, not shown)",
+                    super::json_parse_error(&e),
                     body.len()
                 ))
             })?;
@@ -4728,11 +4878,11 @@ impl StorageProvider for ZohoWorkdriveProvider {
             .header(ACCEPT, HeaderValue::from_static("*/*"))
             .send()
             .await
-            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.without_url().to_string()))?;
 
         if !resp.status().is_success() {
             let status = resp.status();
-            let text = resp.text().await.unwrap_or_default();
+            let text = super::version_listing_text(resp).await.unwrap_or_default();
             return Err(ProviderError::TransferFailed(format!(
                 "Version download failed ({}): {}",
                 status,
@@ -4749,7 +4899,8 @@ impl StorageProvider for ZohoWorkdriveProvider {
             .map_err(|e| ProviderError::Other(format!("Create file error: {}", e)))?;
 
         while let Some(chunk) = stream.next().await {
-            let chunk = chunk.map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            let chunk = chunk
+                .map_http_err(|e| ProviderError::TransferFailed(e.without_url().to_string()))?;
             atomic
                 .write_all(&chunk)
                 .await
@@ -4786,11 +4937,13 @@ impl StorageProvider for ZohoWorkdriveProvider {
             .body(restore_version_body(&file_id, label))
             .send()
             .await
-            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            // The revert takes no precondition: a timeout may come after
+            // WorkDrive made the version current.
+            .map_err(|e| super::change_send_error(e, &format!("the restore of {path}")))?;
 
         if !resp.status().is_success() {
             let status = resp.status();
-            let text = resp.text().await.unwrap_or_default();
+            let text = super::version_listing_text(resp).await.unwrap_or_default();
             return Err(ProviderError::Other(format!(
                 "Restore version failed ({}): {}",
                 status,
@@ -5849,12 +6002,25 @@ mod tests {
         MOVE_ON_READ.with(|hook| *hook.borrow_mut() = None);
         let requests: Requests = Default::default();
         let seen = requests.clone();
-        let app = axum::Router::new().fallback(axum::routing::get(move |uri: axum::http::Uri| {
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method, uri: axum::http::Uri| {
             let answer = answer.clone();
             let seen = seen.clone();
             async move {
                 let parts: Vec<&str> = uri.path().split('/').collect();
                 let id = parts.get(5).copied().unwrap_or_default().to_string();
+                // A trash is a PATCH of the file's status, logged by the
+                // file it went to.
+                if method == axum::http::Method::PATCH {
+                    seen.lock().unwrap().push((format!("PATCH {id}"), String::new()));
+                    return axum::http::Response::builder()
+                        .status(200)
+                        .body(axum::body::Body::from(
+                            serde_json::json!({ "data": { "id": id, "attributes": { "status": 51 } } })
+                                .to_string(),
+                        ))
+                        .unwrap();
+                }
                 if parts.len() == 6 && parts[4] == "files" {
                     return folder_read_by_id(&id);
                 }
@@ -5873,7 +6039,8 @@ mod tests {
                 }
                 response.body(axum::body::Body::from(body)).unwrap()
             }
-        }));
+        },
+        ));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
@@ -6803,7 +6970,7 @@ mod tests {
         assert_eq!(p.parent_folder_id(true, "sub").await.unwrap(), "ROOT_SUB");
         assert_eq!(p.parent_folder_id(false, "sub").await.unwrap(), "DOCS_SUB");
         server.abort();
-        assert_eq!(read_by_id(), ["ROOT_SUB", "DOCS", "DOCS_SUB"]);
+        assert_eq!(read_by_id(), ["ROOT_SUB", "DOCS", "DOCS_SUB", "DOCS"]);
         assert!(requests.lock().unwrap().is_empty());
     }
 
@@ -8113,7 +8280,9 @@ mod tests {
         cache_folder(&mut p, "/a", "A");
         cache_folder(&mut p, "/a/b", "B");
         p.list("/a/b").await.unwrap();
-        assert_eq!(read_by_id(), ["A", "B"]);
+        // The leaf, then its ancestors again: a move after their first read
+        // is seen before the folder is used.
+        assert_eq!(read_by_id(), ["A", "B", "A"]);
         assert_eq!(listings_of(&requests, "B"), 1);
         assert_eq!(requests.lock().unwrap().len(), 1, "only b is listed");
         PLACED.with(|placed| {
@@ -8123,7 +8292,7 @@ mod tests {
         });
         p.list("/a/b").await.unwrap();
         server.abort();
-        assert_eq!(read_by_id(), ["A", "B", "A"]);
+        assert_eq!(read_by_id(), ["A", "B", "A", "A"]);
         assert_eq!(
             listings_of(&requests, "B"),
             1,
@@ -8155,6 +8324,67 @@ mod tests {
         p.list("/a/b").await.unwrap();
         server.abort();
         assert_eq!(&read_by_id()[..2], ["A", "B"]);
+        assert_eq!(listings_of(&requests, "B"), 0, "the moved b was listed");
+        assert_eq!(listings_of(&requests, "B2"), 1);
+        assert_eq!(p.folder_cache.get("/a/b").map(String::as_str), Some("B2"));
+    }
+
+    /// A delete with `b` moved to the archive while `a` was read back: the
+    /// trash goes to the file in the `b` at the path now, never to the one
+    /// in the moved `b`.
+    #[tokio::test]
+    async fn a_delete_with_a_folder_moved_between_the_reads_trashes_the_file_there_now() {
+        let (mut p, requests, server) = listing_fixture(|id, _, _| {
+            let entries = match id {
+                "ROOT" => vec![("A", "a", true)],
+                "A" => vec![("B2", "b", true)],
+                "B" => vec![("F1", "f.txt", false)],
+                "B2" => vec![("F2", "f.txt", false)],
+                _ => vec![],
+            };
+            (200, vec![], listing_json(&entries, Some((false, None))))
+        })
+        .await;
+        cache_folder(&mut p, "/a", "A");
+        cache_folder(&mut p, "/a/b", "B");
+        MOVE_ON_READ
+            .with(|hook| *hook.borrow_mut() = Some(("A".into(), "B".into(), "ARCHIVE".into())));
+        p.delete("/a/b/f.txt")
+            .await
+            .expect("the file at the path is trashed");
+        server.abort();
+        let patched: Vec<String> = requests
+            .lock()
+            .unwrap()
+            .iter()
+            .filter_map(|(id, _)| id.strip_prefix("PATCH ").map(str::to_string))
+            .collect();
+        assert_eq!(patched, ["F2"]);
+        assert_eq!(listings_of(&requests, "B"), 0, "the moved b was listed");
+    }
+
+    /// `a` itself moved to the archive by another client while its child
+    /// `b` was read back: `b` still names `a` as its parent, so only the
+    /// read of `a` after `b` shows the move, and the path is walked to the
+    /// folders there now, never listing the moved `b`.
+    #[tokio::test]
+    async fn an_ancestor_moved_after_its_read_is_not_acted_in() {
+        let (mut p, requests, server) = listing_fixture(|id, _, _| {
+            let entries = match id {
+                "ROOT" => vec![("A2", "a", true)],
+                "A2" => vec![("B2", "b", true)],
+                _ => vec![],
+            };
+            (200, vec![], listing_json(&entries, Some((false, None))))
+        })
+        .await;
+        cache_folder(&mut p, "/a", "A");
+        cache_folder(&mut p, "/a/b", "B");
+        MOVE_ON_READ
+            .with(|hook| *hook.borrow_mut() = Some(("B".into(), "A".into(), "ARCHIVE".into())));
+        p.list("/a/b").await.unwrap();
+        server.abort();
+        assert_eq!(&read_by_id()[..3], ["A", "B", "A"]);
         assert_eq!(listings_of(&requests, "B"), 0, "the moved b was listed");
         assert_eq!(listings_of(&requests, "B2"), 1);
         assert_eq!(p.folder_cache.get("/a/b").map(String::as_str), Some("B2"));
@@ -8300,6 +8530,7 @@ mod tests {
             (200, vec![], body)
         })
         .await;
+        p.privatespace_id = Some("ROOT".into());
         p.team_id = Some("TEAM".into());
         p.team_folders = vec![("T1".into(), "Docs".into())];
         p.team_folders_source = Some(TeamFolderSource::TeamFolders);
@@ -8319,6 +8550,86 @@ mod tests {
         server.abort();
         assert_eq!(found.unwrap(), "T2");
         assert_eq!(p.team_folders.len(), TEAM_FOLDER_PAGE_LIMIT + 1);
+    }
+
+    /// At connect, a team folders listing whose second page fails is not an
+    /// empty team: the private `Docs` of a team folder's name is not acted
+    /// in, and the root is not listed without the team folders, until a
+    /// whole listing answers.
+    #[tokio::test]
+    async fn an_initial_discovery_cut_short_refuses_the_private_fallback() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let fail = std::sync::Arc::new(AtomicBool::new(true));
+        let failing = std::sync::Arc::clone(&fail);
+        let (mut p, _requests, server) = listing_fixture(move |id, query, _| {
+            let second = format!("page%5Boffset%5D={TEAM_FOLDER_PAGE_LIMIT}");
+            let body = match id {
+                "TEAM" if query.contains("page%5Boffset%5D=0") => {
+                    let page: Vec<serde_json::Value> = (0..TEAM_FOLDER_PAGE_LIMIT)
+                        .map(|i| {
+                            serde_json::json!({ "id": format!("F{i}"),
+                            "attributes": { "name": format!("Team {i}") } })
+                        })
+                        .collect();
+                    serde_json::json!({ "data": page }).to_string()
+                }
+                "TEAM" if query.contains(&second) => {
+                    if failing.load(Ordering::SeqCst) {
+                        return (503, vec![], String::new());
+                    }
+                    r#"{"data":[{"id":"T2","attributes":{"name":"Docs"}}]}"#.to_string()
+                }
+                "TEAM" => r#"{"data":[]}"#.to_string(),
+                "ROOT" => listing_json(&[("P1", "Docs", true)], Some((false, None))),
+                _ => listing_json(&[], Some((false, None))),
+            };
+            (200, vec![], body)
+        })
+        .await;
+        p.privatespace_id = Some("ROOT".into());
+        p.team_id = Some("TEAM".into());
+        p.discover_team_folders("TEAM").await;
+        assert!(p.team_folders.is_empty());
+        let refused = p.resolve_path("/Docs").await;
+        assert!(
+            matches!(&refused, Err(ProviderError::ServerError(m)) if m.contains("could not be read")),
+            "{refused:?}"
+        );
+        let root = p.list("/").await;
+        assert!(root.is_err(), "{root:?}");
+        fail.store(false, Ordering::SeqCst);
+        let found = p.resolve_path("/Docs").await;
+        server.abort();
+        assert_eq!(found.unwrap(), "T2");
+    }
+
+    /// The workspaces fallback reads every page by its cursor: a workspace
+    /// on the second page is a team folder, where before only the first
+    /// page was read and its name could resolve to a private folder.
+    #[tokio::test]
+    async fn the_workspaces_fallback_reads_every_page() {
+        let (mut p, _requests, server) = listing_fixture(|id, query, _| match id {
+            "TEAM" if query.contains("page%5Boffset") => (404, vec![], String::new()),
+            "TEAM" if query.contains("page%5Bnext%5D=c2") => (
+                200,
+                vec![],
+                r#"{"data":[{"id":"W2","attributes":{"name":"Two"}}],"links":{"cursor":{"has_next":false}}}"#.to_string(),
+            ),
+            "TEAM" => (
+                200,
+                vec![],
+                r#"{"data":[{"id":"W1","attributes":{"name":"One"}}],"links":{"cursor":{"has_next":true,"next":"https://workdrive.zoho.com/api/v1/teams/TEAM/workspaces?page%5Bnext%5D=c2"}}}"#.to_string(),
+            ),
+            _ => (200, vec![], listing_json(&[], Some((false, None)))),
+        })
+        .await;
+        p.discover_team_folders("TEAM").await;
+        server.abort();
+        assert_eq!(
+            p.team_folders,
+            vec![("W1".into(), "One".into()), ("W2".into(), "Two".into())]
+        );
+        assert_eq!(p.team_folders_source, Some(TeamFolderSource::Workspaces));
     }
 
     /// A `/workspaces` answer that does not parse is no answer: the team
@@ -8883,5 +9194,27 @@ mod tests {
             body,
             serde_json::json!({"data":{"attributes":{"revert_to":"2.0","resource_id":"file-1"},"type":"versions"}})
         );
+    }
+
+    /// A request error's text names its URL, and a WorkDrive URL carries
+    /// the server's own ids and page cursors: every request error here
+    /// drops it, a folder or version page included. `body_broke_off` takes
+    /// the error itself and drops its URL there.
+    #[test]
+    fn no_request_error_shows_its_url() {
+        let source = include_str!("zoho_workdrive.rs");
+        let production = &source[..source.find("#[cfg(test)]\nmod tests").unwrap()];
+        for (line, text) in production.lines().enumerate() {
+            let shows_url = text.contains("map_http_err(|e|")
+                && (text.contains("e.to_string()")
+                    || text.contains("{e}")
+                    || (text.contains("\", e)") && !text.contains("body_broke_off(")));
+            assert!(
+                !shows_url,
+                "zoho_workdrive.rs:{}: {}",
+                line + 1,
+                text.trim()
+            );
+        }
     }
 }

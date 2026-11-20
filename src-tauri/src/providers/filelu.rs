@@ -855,21 +855,31 @@ impl FileLuProvider {
             )));
         }
 
+        // The category and position of a parse error only: its own text can
+        // quote the rejected value, an echoed request URL with its `key=`.
         let api_resp: ApiResponse<T> = serde_json::from_str(&text).map_err(|e| {
             ProviderError::ParseError(format!(
-                "json: {e} (an answer of {} bytes, not shown)",
+                "json: {:?} at line {}, column {} (an answer of {} bytes, not shown)",
+                e.classify(),
+                e.line(),
+                e.column(),
                 text.len()
             ))
         })?;
 
         match api_resp.status {
-            Some(s) if s != 200 => {
-                let msg = api_resp
-                    .msg
-                    .map(|m| super::sanitize_api_error(&redact_key(&m)))
-                    .unwrap_or_else(|| format!("API error {}", s));
-                Err(ProviderError::ServerError(msg))
-            }
+            // The status only: `msg` is server text, and FileLu has been
+            // seen to quote the request in it, a bare API key included
+            // (no `key=` in front, so `redact_key` does not see it).
+            Some(s) if s != 200 => Err(ProviderError::ServerError(match api_resp.msg {
+                // FileLu's fixed not-found string is kept, so path-aware
+                // callers still name the path (`name_missing_path`).
+                Some(m) if s == 404 && m.trim() == "No file found in specified folder" => {
+                    "No file found in specified folder".to_string()
+                }
+                Some(m) => format!("API error {s} (a message of {} bytes, not shown)", m.len()),
+                None => format!("API error {s}"),
+            })),
             _ => api_resp.result.ok_or_else(|| {
                 ProviderError::ParseError("API response missing 'result' field".to_string())
             }),
@@ -2629,7 +2639,10 @@ impl StorageProvider for FileLuProvider {
         })?;
         let server_info: UploadServerResponse = serde_json::from_str(&text).map_err(|e| {
             ProviderError::ParseError(format!(
-                "Upload server JSON error: {e} (an answer of {} bytes, not shown)",
+                "Upload server JSON error: {:?} at line {}, column {} (an answer of {} bytes, not shown)",
+                e.classify(),
+                e.line(),
+                e.column(),
                 text.len()
             ))
         })?;
@@ -2716,7 +2729,10 @@ impl StorageProvider for FileLuProvider {
         let upload_results: Vec<UploadResultEntry> =
             serde_json::from_str(&upload_body).map_err(|e| {
                 ProviderError::ParseError(format!(
-                    "Upload result JSON error: {e} (an answer of {} bytes, not shown)",
+                    "Upload result JSON error: {:?} at line {}, column {} (an answer of {} bytes, not shown)",
+                    e.classify(),
+                    e.line(),
+                    e.column(),
                     upload_body.len()
                 ))
             })?;
@@ -6484,8 +6500,9 @@ mod tests {
 
     /// A folder listing that fails twice, the v2 call and then the legacy
     /// one, logs the first failure and returns the second with the status
-    /// and the parse position only: each answer echoes the request with its
-    /// API key, which reached both the log and the error before.
+    /// or the parse category and position only: each answer echoes the
+    /// request with its API key, in the body or in a wrongly typed value
+    /// serde would quote, which reached both the log and the error before.
     #[tokio::test]
     async fn a_failed_folder_listing_logs_and_returns_no_body() {
         #[derive(Clone, Default)]
@@ -6505,9 +6522,11 @@ mod tests {
                 self.clone()
             }
         }
+        // The legacy answer is JSON whose `size` is a string holding an echoed
+        // request URL: serde's own text would quote it.
         let (mut provider, _) = provider_against(|_, path, _| match path {
             "/apiv2/folder/list" => "!500 GET /apiv2/folder/list?key=ECHO-SECRET-1".to_string(),
-            _ => "<html>GET /api/file/list?key=ECHO-SECRET-2</html>".to_string(),
+            _ => r#"{"status":200,"result":{"files":[{"name":"a","size":"GET /api/file/list?key=ECHO-SECRET-2"}],"folders":[{"name":"b","fld_id":"GET /api/folder/list?key=ECHO-SECRET-2"}]}}"#.to_string(),
         })
         .await;
         let capture = Capture::default();
@@ -6516,6 +6535,9 @@ mod tests {
             .with_writer(capture.clone())
             .finish();
         let _guard = tracing::subscriber::set_default(subscriber);
+        // Another test thread can cache this callsite's interest while no
+        // subscriber of its own wants it: read it again for this one.
+        tracing::callsite::rebuild_interest_cache();
         let outcome = provider.list("/").await;
         let logged = String::from_utf8_lossy(&capture.0.lock().unwrap()).to_string();
         let shown = format!("{outcome:?}");
@@ -6528,6 +6550,26 @@ mod tests {
             assert!(!logged.contains(secret), "{logged}");
             assert!(!shown.contains(secret), "{shown}");
         }
+    }
+
+    /// An API error's `msg` is server text that can quote the request, a
+    /// bare key with no `key=` in front of it: only its status and length
+    /// reach the error.
+    #[tokio::test]
+    async fn an_api_error_message_is_not_shown() {
+        let (mut provider, _) = provider_against(|_, path, _| match path {
+            "/apiv2/folder/list" => "!500 down".to_string(),
+            _ => r#"{"status":403,"msg":"Wrong key ECHO-SECRET-3 for GET /api/folder/list"}"#
+                .to_string(),
+        })
+        .await;
+        let outcome = provider.list("/").await;
+        let shown = format!("{outcome:?}");
+        assert!(
+            matches!(&outcome, Err(ProviderError::ServerError(m)) if m.starts_with("API error 403")),
+            "{shown}"
+        );
+        assert!(!shown.contains("ECHO-SECRET-3"), "{shown}");
     }
 
     /// FileLu promotes the version under its own code: a restore is done

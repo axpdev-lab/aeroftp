@@ -68,6 +68,14 @@ case "$(basename "$0")" in
             echo "$3: "
             echo 'FLAGS VERS SIZE DATE HANDLE NAME'
             [ -f "$here/$listing" ] && cat "$here/$listing"
+            # The root's own rows for the nodes the download tests use: a
+            # node's type is read from its row here, never from a listing of
+            # the node itself.
+            if [ "$3" = / ]; then
+                echo 'd---    -           - 10Oct2026 17:12:39 H:sAAAAAA1 same'
+                echo 'd---    -           - 10Oct2026 17:12:39 H:pAAAAAA1 plain'
+                echo '----    1        1000 10Oct2026 17:12:39 H:fAAAAAA1 f.dat'
+            fi
             exit 0
         fi
         if [ "$1" = "-l" ] && [ "$2" = "--versions" ] && [ "$3" = "--show-handles" ] && [ "$4" = "/v.txt" ]; then
@@ -167,6 +175,13 @@ case "$(basename "$0")" in
             echo '----    1         1000 10Oct2026 17:12:39 f.dat'
             exit 0
         fi
+        # An ordinary folder as MEGAcmd 2.6 lists it without -R: its
+        # children, and no header line naming the folder.
+        if [ "$1" = "-l" ] && [ "$2" = "/plain" ]; then
+            echo 'FLAGS VERS      SIZE            DATE       NAME'
+            echo '----    1           5 10Oct2026 17:12:39 inner.txt'
+            exit 0
+        fi
         if [ "$1" = "-l" ] && [ "$2" = "/same" ]; then
             echo '/same: '
             echo 'FLAGS VERS      SIZE            DATE       NAME'
@@ -194,8 +209,16 @@ case "$(basename "$0")" in
     mega-userattr)
         # The DISABLE_VERSIONS attribute as MEGAcmd 2.6 prints it (measured
         # 2026-11-18): 1 with versioning-off, else 0; versioning-unreadable
-        # answers neither.
-        if [ -f "$here/versioning-unreadable" ]; then
+        # answers neither. MEGAcmd 2.6.0 source: an attribute never set is
+        # the SDK's API_ENOENT, exit 9 (versioning-absent); a name it does
+        # not know is MCMD_NOTFOUND, exit 53 (versioning-unrecognized).
+        if [ -f "$here/versioning-absent" ]; then
+            echo "[API:err: ...] Failed to get user attribute ^!dv: Not found" >&2
+            exit 9
+        elif [ -f "$here/versioning-unrecognized" ]; then
+            echo "[API:err: ...] Attribute not found: ^!dv" >&2
+            exit 53
+        elif [ -f "$here/versioning-unreadable" ]; then
             echo "Unexpected answer"
         elif [ -f "$here/versioning-off" ]; then
             printf '\tDISABLE_VERSIONS (^!dv) = 1\n'
@@ -297,6 +320,10 @@ case "$(basename "$0")" in
         if [ "$1" = H:vAAAAAA4 ] && [ -f "$here/final-ls-fails" ]; then
             touch "$here/ls-broken"
         fi
+        # version-get-slow: the get of an older version takes two seconds.
+        if [ "$1" = H:vAAAAAA2 ] && [ -f "$here/version-get-slow" ]; then
+            sleep 2
+        fi
         # check-get-slow: the read back of the version a put added is slow.
         if [ "$1" = H:vAAAAAA4 ] && [ -f "$here/check-get-slow" ]; then
             sleep 3
@@ -339,7 +366,19 @@ case "$(basename "$0")" in
         fi
         # A folder got into an existing folder: MEGAcmd writes the folder of
         # its name inside it.
+        if [ "$1" = /plain ] && [ -d "$2" ]; then
+            mkdir -p "$2/plain" && printf 'five!' > "$2/plain/inner.txt"
+            printf '\nDownload finished: %s\n' "$2/plain"
+            exit 0
+        fi
         if [ "$1" = /same ] && [ -d "$2" ]; then
+            # folder-get-slow: progress for three seconds before it ends.
+            if [ -f "$here/folder-get-slow" ]; then
+                for p in 10 30 50 70 90 95; do
+                    printf 'TRANSFERRING ||####..........||(%s/100 MB: %s.00 %%) \000\r' "$p" "$p" >&2
+                    sleep 0.5
+                done
+            fi
             mkdir -p "$2/same" && printf 'seven!!' > "$2/same/same"
             printf '\nDownload finished: %s\n' "$2/same"
             exit 0

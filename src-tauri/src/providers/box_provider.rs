@@ -139,8 +139,8 @@ impl BoxProvider {
             .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
         let resp = box_lookup_response(resp, path).await?;
         let text = super::version_listing_text(resp).await?;
-        let item: BoxItem =
-            serde_json::from_str(&text).map_err(|e| ProviderError::ParseError(e.to_string()))?;
+        let item: BoxItem = serde_json::from_str(&text)
+            .map_err(|e| ProviderError::ParseError(super::json_parse_error(&e)))?;
         let mut entry = RemoteEntry::directory(
             crate::restricted_chars::decode_leaf(ProviderType::Box, &item.name),
             Self::normalize_path(path),
@@ -169,11 +169,11 @@ impl BoxProvider {
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
             .send()
             .await
-            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.without_url().to_string()))?;
         let resp = box_lookup_response(resp, path).await?;
         let text = super::version_listing_text(resp).await?;
-        let item: serde_json::Value =
-            serde_json::from_str(&text).map_err(|e| ProviderError::ParseError(e.to_string()))?;
+        let item: serde_json::Value = serde_json::from_str(&text)
+            .map_err(|e| ProviderError::ParseError(super::json_parse_error(&e)))?;
         Ok(item
             .get("file_version")
             .and_then(|v| v.get("id"))
@@ -822,8 +822,8 @@ impl BoxProvider {
         }
         let resp = box_lookup_response(resp, normalized).await?;
         let text = super::version_listing_text(resp).await?;
-        let located: Located =
-            serde_json::from_str(&text).map_err(|e| ProviderError::ParseError(e.to_string()))?;
+        let located: Located = serde_json::from_str(&text)
+            .map_err(|e| ProviderError::ParseError(super::json_parse_error(&e)))?;
         // An answer that does not say where the folder is confirms nothing.
         let Some(steps) = located.path_collection else {
             return Ok(false);
@@ -2985,7 +2985,7 @@ impl StorageProvider for BoxProvider {
                 .header(AUTHORIZATION, Self::bearer_header(&token)?)
                 .send()
                 .await
-                .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
+                .map_http_err(|e| ProviderError::NetworkError(e.without_url().to_string()))?;
 
             if !resp.status().is_success() {
                 return Err(ProviderError::Other(format!(
@@ -2997,7 +2997,7 @@ impl StorageProvider for BoxProvider {
             let text = super::version_listing_text(resp).await?;
             budget.count(text.len(), path)?;
             let page: BoxVersionCollection = serde_json::from_str(&text)
-                .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+                .map_err(|e| ProviderError::ParseError(super::json_parse_error(&e)))?;
             // The next page starts after the slots this one covers (its
             // offset plus its limit), not after the versions it held: a short
             // or empty page still moves on. A page that does not move on is
@@ -3079,7 +3079,7 @@ impl StorageProvider for BoxProvider {
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
             .send()
             .await
-            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.without_url().to_string()))?;
 
         if !resp.status().is_success() {
             return Err(ProviderError::TransferFailed(format!(
@@ -3116,14 +3116,14 @@ impl StorageProvider for BoxProvider {
             .json(&body)
             .send()
             .await
-            // A connection dropped before the answer may come after Box
-            // promoted the version: a second promotion would make another.
-            .map_http_err(|e| {
-                super::applied_unconfirmed(format!(
-                    "the restore of version {version_id} of {path} was sent, but the connection \
-                     ended before Box answered ({e}): list its versions again before restoring \
-                     again"
-                ))
+            // A connection dropped before the answer, a timeout included, may
+            // come after Box promoted the version: a second promotion would
+            // make another. Only a request that never connected sent nothing.
+            .map_err(|e| {
+                super::change_send_error(
+                    e,
+                    &format!("the restore of version {version_id} of {path}"),
+                )
             })?;
 
         if !resp.status().is_success() {
@@ -3162,8 +3162,10 @@ impl StorageProvider for BoxProvider {
                      versions again before restoring again"
                 ))
             })?;
+        // Promoted, then replaced: the promotion happened, so this is an
+        // applied change and never a restore to send again.
         if now.as_deref() != Some(promoted.as_str()) {
-            return Err(ProviderError::TransferFailed(format!(
+            return Err(super::applied_unconfirmed(format!(
                 "Box promoted version {promoted} of {path}, but its current version is now {}: \
                  list its versions again",
                 now.as_deref().unwrap_or("unknown")
@@ -4120,7 +4122,8 @@ mod tests {
     }
 
     /// A versions listing whose `total_count` grows past every page ends at
-    /// the page limit with an error. A promotion whose connection ends
+    /// the page limit with an error, and one that ends on that last page is
+    /// listed whole. A promotion whose connection ends
     /// before Box answers may have been applied: it is reported applied but
     /// unconfirmed, never as a failure that a retry would send again.
     #[tokio::test]
@@ -4148,11 +4151,12 @@ mod tests {
                     match (method.as_str(), uri.path()) {
                         ("GET", "/folders/0/items") => axum::Json(serde_json::json!({
                             "entries": [{"type": "file", "id": "55", "name": "a.txt"},
-                                        {"type": "file", "id": "66", "name": "b.txt"}],
-                            "offset": 0, "limit": 1000, "total_count": 2
+                                        {"type": "file", "id": "66", "name": "b.txt"},
+                                        {"type": "file", "id": "77", "name": "c.txt"}],
+                            "offset": 0, "limit": 1000, "total_count": 3
                         }))
                         .into_response(),
-                        ("GET", "/files/55") | ("GET", "/files/66") => {
+                        ("GET", "/files/55") | ("GET", "/files/66") | ("GET", "/files/77") => {
                             let id = uri.path().trim_start_matches("/files/").to_string();
                             axum::Json(serde_json::json!({
                                 "type": "file", "id": id, "name": "f", "size": 9,
@@ -4169,6 +4173,12 @@ mod tests {
                             }))
                             .into_response()
                         }
+                        // A history of exactly 200 one-version pages.
+                        ("GET", "/files/77/versions") => axum::Json(serde_json::json!({
+                            "entries": [version(&format!("w{offset}"))],
+                            "offset": offset, "limit": 1, "total_count": 200
+                        }))
+                        .into_response(),
                         ("GET", "/files/66/versions") => axum::Json(serde_json::json!({
                             "entries": [version("12")], "offset": 0, "limit": 1, "total_count": 1
                         }))
@@ -4196,6 +4206,25 @@ mod tests {
             pages.load(Ordering::SeqCst),
             super::super::VERSION_LISTING_MAX_PAGES
         );
+        // A history that ends on the last page allowed is listed whole.
+        let whole = provider
+            .list_versions("/c.txt")
+            .await
+            .expect("a history of exactly 200 pages");
+        for page in [0, 199] {
+            assert!(
+                whole.iter().any(|v| v.id == format!("w{page}")),
+                "w{page}: {:?}",
+                whole.iter().map(|v| &v.id).collect::<Vec<_>>()
+            );
+        }
+        let asked = calls
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|c| c.starts_with("GET /files/77/versions"))
+            .count();
+        assert_eq!(asked, super::super::VERSION_LISTING_MAX_PAGES);
         let cut = provider.restore_version("/b.txt", "12").await;
         server.abort();
         let error = cut.expect_err("a promotion with no answer is not reported done");
@@ -4329,6 +4358,57 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&out).unwrap(), "before");
     }
 
+    /// A promotion whose answer does not come within the read timeout may
+    /// have been applied: it is an applied, unconfirmed restore, never a
+    /// `Timeout` a caller would retry into a second promotion.
+    #[tokio::test]
+    async fn a_box_promotion_that_times_out_is_applied_not_retried() {
+        let app = axum::Router::new().fallback(axum::routing::any(
+            |method: axum::http::Method, uri: axum::http::Uri| async move {
+                use axum::response::IntoResponse;
+                let version = |id: &str| {
+                    serde_json::json!({"type": "file_version", "id": id, "size": 2,
+                        "modified_at": "2026-01-02T00:00:00Z"})
+                };
+                match (method.as_str(), uri.path()) {
+                    ("GET", "/folders/0/items") => axum::Json(serde_json::json!({
+                        "entries": [{"type": "file", "id": "55", "name": "a.txt"}],
+                        "offset": 0, "limit": 1000, "total_count": 1
+                    }))
+                    .into_response(),
+                    ("GET", "/files/55") => axum::Json(serde_json::json!({
+                        "type": "file", "id": "55", "name": "a.txt", "size": 9,
+                        "modified_at": "2026-01-05T00:00:00Z", "file_version": {"id": "11"}
+                    }))
+                    .into_response(),
+                    ("GET", "/files/55/versions") => axum::Json(serde_json::json!({
+                        "entries": [version("12")], "offset": 0, "limit": 1000, "total_count": 1
+                    }))
+                    .into_response(),
+                    ("POST", "/files/55/versions/current") => {
+                        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                        axum::Json(version("14")).into_response()
+                    }
+                    _ => axum::http::StatusCode::NOT_FOUND.into_response(),
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = fixture_connected();
+        provider.api_base_override = Some(format!("http://{addr}"));
+        provider.client = reqwest::Client::builder()
+            .read_timeout(std::time::Duration::from_millis(500))
+            .build()
+            .unwrap();
+        let outcome = provider.restore_version("/a.txt", "12").await;
+        assert!(
+            outcome.as_ref().is_err_and(super::super::was_applied),
+            "{outcome:?}"
+        );
+    }
+
     /// Box answers a promotion with the version it made: a restore is done
     /// when that version is the file's current one, and not when another
     /// version of the same size took its place meanwhile, nor when the
@@ -4412,6 +4492,10 @@ mod tests {
             } else if readable {
                 assert!(
                     matches!(&outcome, Err(ProviderError::TransferFailed(m)) if m.contains("list its versions again")),
+                    "{outcome:?}"
+                );
+                assert!(
+                    super::super::was_applied(outcome.as_ref().unwrap_err()),
                     "{outcome:?}"
                 );
             } else {

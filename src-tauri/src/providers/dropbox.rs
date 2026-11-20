@@ -229,6 +229,10 @@ struct TrashCallError {
     error: ProviderError,
     throttled: bool,
     retry_after: Option<std::time::Duration>,
+    /// The request reached Dropbox and no refusal came back (no answer, a
+    /// timeout included, or a 2xx answer that could not be read): a change
+    /// it asked for may be applied.
+    maybe_applied: bool,
 }
 
 impl TrashCallError {
@@ -237,6 +241,14 @@ impl TrashCallError {
             error,
             throttled: false,
             retry_after: None,
+            maybe_applied: false,
+        }
+    }
+
+    fn maybe_applied(error: ProviderError) -> Self {
+        Self {
+            maybe_applied: true,
+            ..Self::hard(error)
         }
     }
 }
@@ -580,9 +592,15 @@ impl DropboxProvider {
             .send()
             .await
             .map_err(|e| {
-                TrashCallError::hard(crate::providers::http_send_error(e, |e| {
-                    ProviderError::ConnectionFailed(e.to_string())
-                }))
+                let sent = !e.is_connect();
+                let error = crate::providers::http_send_error(e, |e| {
+                    ProviderError::ConnectionFailed(e.without_url().to_string())
+                });
+                if sent {
+                    TrashCallError::maybe_applied(error)
+                } else {
+                    TrashCallError::hard(error)
+                }
             })?;
 
         if !response.status().is_success() {
@@ -611,12 +629,13 @@ impl DropboxProvider {
                 error: ProviderError::Other(msg),
                 throttled: dropbox_is_rate_limited(status.as_u16(), &text),
                 retry_after: dropbox_retry_hint(&text, retry_header.as_deref()),
+                maybe_applied: false,
             });
         }
 
         response.json().await.map_err(|e| {
-            TrashCallError::hard(crate::providers::http_send_error(e, |e| {
-                ProviderError::Other(format!("Parse error: {}", e))
+            TrashCallError::maybe_applied(crate::providers::http_send_error(e, |e| {
+                ProviderError::Other(format!("Parse error: {}", e.without_url()))
             }))
         })
     }
@@ -677,7 +696,7 @@ impl DropboxProvider {
             .body(request.to_string())
             .send()
             .await
-            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.without_url().to_string()))?;
         if !response.status().is_success() {
             let text = super::version_listing_text(response)
                 .await
@@ -702,14 +721,29 @@ impl DropboxProvider {
         budget: &mut super::VersionListingBudget,
     ) -> Result<String, ProviderError> {
         let parse = |body: &str| {
-            serde_json::from_str::<serde_json::Value>(body)
-                .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))
+            serde_json::from_str::<serde_json::Value>(body).map_err(|e| {
+                ProviderError::Other(format!("Parse error: {}", super::json_parse_error(&e)))
+            })
+        };
+        // Each page states its `entries` and `has_more`: a page that lacks
+        // either is not the end of the history, it is an answer that does
+        // not say where the history ends.
+        let fields = |page: &serde_json::Value| {
+            match (
+            page["entries"].as_array(),
+            page["has_more"].as_bool(),
+        ) {
+            (Some(entries), Some(has_more)) => Ok((entries.clone(), has_more)),
+            _ => Err(ProviderError::ParseError(format!(
+                "A revisions page of {full_path} came without its entries or has_more: the history may be incomplete"
+            ))),
+        }
         };
         let mut answer = parse(&first)?;
-        if answer["has_more"].as_bool() != Some(true) {
+        let (mut entries, has_more) = fields(&answer)?;
+        if !has_more {
             return Ok(first);
         }
-        let mut entries = answer["entries"].as_array().cloned().unwrap_or_default();
         let mut asked = std::collections::HashSet::new();
         let mut pages = 1;
         loop {
@@ -731,9 +765,9 @@ impl DropboxProvider {
             let body = self.list_revisions_page(&request).await?;
             budget.count(body.len(), full_path)?;
             pages += 1;
-            let page = parse(&body)?;
-            entries.extend(page["entries"].as_array().cloned().unwrap_or_default());
-            if page["has_more"].as_bool() != Some(true) {
+            let (page_entries, has_more) = fields(&parse(&body)?)?;
+            entries.extend(page_entries);
+            if !has_more {
                 break;
             }
         }
@@ -757,7 +791,7 @@ impl DropboxProvider {
             .body(arg.to_string())
             .send()
             .await
-            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.without_url().to_string()))?;
         let status = response.status();
         let text = super::version_listing_text(response).await;
         if !status.is_success() {
@@ -771,8 +805,9 @@ impl DropboxProvider {
                 sanitize_api_error(&text)
             )));
         }
-        serde_json::from_str(&text?)
-            .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))
+        serde_json::from_str(&text?).map_err(|e| {
+            ProviderError::Other(format!("Parse error: {}", super::json_parse_error(&e)))
+        })
     }
 
     fn rpc_api_base(&self) -> &str {
@@ -829,6 +864,7 @@ impl DropboxProvider {
                 error: ProviderError::Other(msg),
                 throttled: true,
                 retry_after: dropbox_retry_hint(&body, retry_header.as_deref()),
+                maybe_applied: false,
             });
         }
         parse_trash_revision(status, &body).map_err(TrashCallError::hard)
@@ -2010,8 +2046,12 @@ impl StorageProvider for DropboxProvider {
             url: String,
         }
 
-        let result: CreateLinkResponse = serde_json::from_str(&text)
-            .map_err(|e| ProviderError::Other(format!("Failed to parse response: {}", e)))?;
+        let result: CreateLinkResponse = serde_json::from_str(&text).map_err(|e| {
+            ProviderError::Other(format!(
+                "Failed to parse response: {}",
+                super::json_parse_error(&e)
+            ))
+        })?;
 
         info!("Created share link for {}: {}", path, result.url);
         Ok(ShareLinkResult {
@@ -2237,8 +2277,9 @@ impl StorageProvider for DropboxProvider {
             entries: Vec<ListedRevision>,
             server_deleted: Option<String>,
         }
-        let listed: Listed = serde_json::from_str(&body)
-            .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+        let listed: Listed = serde_json::from_str(&body).map_err(|e| {
+            ProviderError::Other(format!("Parse error: {}", super::json_parse_error(&e)))
+        })?;
         let replaced = || {
             ProviderError::NotFound(format!(
                 "{full_path} was replaced while its versions were read: list its versions again"
@@ -2313,10 +2354,12 @@ impl StorageProvider for DropboxProvider {
             .header("Dropbox-API-Arg", arg.to_string())
             .send()
             .await
-            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.without_url().to_string()))?;
 
         if !response.status().is_success() {
-            let text = response.text().await.unwrap_or_default();
+            let text = super::version_listing_text(response)
+                .await
+                .unwrap_or_default();
             return Err(ProviderError::TransferFailed(format!(
                 "Download revision failed: {}",
                 sanitize_api_error(&text)
@@ -2354,15 +2397,39 @@ impl StorageProvider for DropboxProvider {
             "rev": version_id
         });
 
-        let restored: serde_json::Value = self.rpc_call("files/restore", &body).await?;
+        // Sent and not refused is applied as far as a retry goes: a second
+        // files/restore would make another revision on top.
+        let restored: serde_json::Value = self
+            .rpc_call_classified("files/restore", &body)
+            .await
+            .map_err(|failed| {
+                if failed.maybe_applied {
+                    super::applied_unconfirmed(format!(
+                        "the restore of revision {version_id} of {path} was sent, but its answer \
+                         did not come or could not be read: list its versions again before \
+                         restoring again"
+                    ))
+                } else {
+                    failed.error
+                }
+            })?;
         info!("Restored {} to revision {}", path, version_id);
         // The answer is the file as restored, with the revision the restore
-        // made, which must then be the one on top.
-        let made = restored
+        // made, which must then be the one on top: a receipt that names none
+        // cannot confirm which file is there now.
+        let Some(made) = restored
             .get("rev")
             .and_then(|rev| rev.as_str())
-            .map(str::to_string);
-        let preflight = selected.made_current(made);
+            .filter(|rev| !rev.trim().is_empty())
+            .map(str::to_string)
+        else {
+            return Err(super::applied_unconfirmed(format!(
+                "Dropbox accepted the restore of revision {version_id} of {path}, but its answer \
+                 names no revision, so the restore is not confirmed: list its versions again \
+                 before restoring again"
+            )));
+        };
+        let preflight = selected.made_current(Some(made));
         super::confirm_version_restored(self, path, Some(&preflight)).await
     }
 
@@ -2925,8 +2992,9 @@ fn revisions_in_dialog_order(
     struct RevisionList {
         entries: Vec<RevisionEntry>,
     }
-    let list: RevisionList = serde_json::from_str(body)
-        .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+    let list: RevisionList = serde_json::from_str(body).map_err(|e| {
+        ProviderError::Other(format!("Parse error: {}", super::json_parse_error(&e)))
+    })?;
     super::versions_current_first(
         list.entries
             .into_iter()
@@ -3590,7 +3658,7 @@ mod tests {
                 match request["path"].as_str().unwrap() {
                     "/folder" => (StatusCode::CONFLICT, Json(json!({"error":{".tag":"path","path":{".tag":"not_file"}}}))),
                     "/unknown" => (StatusCode::CONFLICT, Json(json!({"error":{".tag":"path","path":{".tag":"not_found"}}}))),
-                    "/file.txt" => (StatusCode::OK, Json(json!({"is_deleted":true,"entries":[{"rev":"expired","is_restorable":false},{"rev":"good","size":7,"is_restorable":true}]}))),
+                    "/file.txt" => (StatusCode::OK, Json(json!({"is_deleted":true,"has_more":false,"entries":[{"rev":"expired","is_restorable":false},{"rev":"good","size":7,"is_restorable":true}]}))),
                     _ => panic!("unexpected path"),
                 }
             }))
@@ -3657,7 +3725,7 @@ mod tests {
                         _ => (
                             StatusCode::OK,
                             [(RETRY_AFTER, "0")],
-                            Json(json!({"is_deleted":true,"entries":[
+                            Json(json!({"is_deleted":true,"has_more":false,"entries":[
                                 {"rev":"good","size":7,"is_restorable":true}
                             ]})),
                         ),
@@ -3699,7 +3767,7 @@ mod tests {
             .route(
                 "/files/list_revisions",
                 post(|| async {
-                    Json(json!({"is_deleted":true,"entries":[
+                    Json(json!({"is_deleted":true,"has_more":false,"entries":[
                         {"rev":"r1","size":3,"server_modified":"2026-01-01T00:00:00Z"},
                         {"rev":"r2","size":5,"server_modified":"2026-01-02T00:00:00Z"}
                     ]}))
@@ -3763,6 +3831,12 @@ mod tests {
                                 (Some("/stuck.txt"), _) => {
                                     json!({"is_deleted":true,"has_more":true,"entries":[]})
                                 }
+                                (Some("/unsaid.txt"), _) => {
+                                    json!({"is_deleted":true,"entries":[rev("r9", 9)]})
+                                }
+                                (Some("/bare.txt"), None) => json!({"is_deleted":true,
+                                "has_more":true,"entries":[rev("r8", 8)]}),
+                                (Some("/bare.txt"), _) => json!({"has_more":false}),
                                 (_, None) => json!({"is_deleted":true,"has_more":true,
                                 "entries":[rev("r3", 3), rev("r2", 2)]}),
                                 (_, Some("r2")) => json!({"is_deleted":true,"has_more":false,
@@ -3794,6 +3868,13 @@ mod tests {
             assert_eq!(asked[1]["path"], "/gone.txt");
         }
         let stuck = provider.list_versions("/stuck.txt").await;
+        for unsaid in ["/unsaid.txt", "/bare.txt"] {
+            let outcome = provider.list_versions(unsaid).await;
+            assert!(
+                matches!(&outcome, Err(ProviderError::ParseError(m)) if m.contains("may be incomplete")),
+                "{unsaid}: {outcome:?}"
+            );
+        }
         server.abort();
         assert!(
             matches!(&stuck, Err(ProviderError::ParseError(m)) if m.contains("named none")),
@@ -3813,7 +3894,7 @@ mod tests {
             .route(
                 "/files/list_revisions",
                 post(|| async {
-                    Json(json!({"is_deleted":false,"entries":[
+                    Json(json!({"is_deleted":false,"has_more":false,"entries":[
                         {"rev":"r1","size":3,"server_modified":"2026-01-01T00:00:00Z"},
                         {"rev":"r2","size":5,"server_modified":"2026-01-02T00:00:00Z"}
                     ]}))
@@ -3874,10 +3955,10 @@ mod tests {
                 "/files/list_revisions",
                 post(|Json(request): Json<Value>| async move {
                     match request["path"].as_str().unwrap_or("") {
-                        "/d.txt" => Json(json!({"is_deleted":true,
+                        "/d.txt" => Json(json!({"is_deleted":true,"has_more":false,
                             "server_deleted":"2026-09-06T00:00:00Z",
                             "entries":[{"rev":"d1","size":3,"server_modified":"2026-09-01T00:00:00Z"}]})),
-                        _ => Json(json!({"is_deleted":false,
+                        _ => Json(json!({"is_deleted":false,"has_more":false,
                             "entries":[{"id":"id:OLD","rev":"o1","size":3,"server_modified":"2026-09-01T00:00:00Z"}]})),
                     }
                 }),
@@ -3970,9 +4051,9 @@ mod tests {
                         json!({"id":id,"rev":rev,"size":3,"server_modified":"2026-09-01T00:00:00Z"})
                     };
                     match (request["mode"].as_str(), request["path"].as_str().unwrap_or("")) {
-                        (Some("id"), id) => Json(json!({"is_deleted":false,"entries":[rev(id, "n2"), rev(id, "n1")]})),
+                        (Some("id"), id) => Json(json!({"is_deleted":false,"has_more":false,"entries":[rev(id, "n2"), rev(id, "n1")]})),
                         // By path: the earlier file's revisions as well.
-                        _ => Json(json!({"is_deleted":false,"entries":[rev("id:F", "n2"), rev("id:OLD", "o1")]})),
+                        _ => Json(json!({"is_deleted":false,"has_more":false,"entries":[rev("id:F", "n2"), rev("id:OLD", "o1")]})),
                     }
                 }),
             )
@@ -4056,7 +4137,7 @@ mod tests {
                         if listed.load(std::sync::atomic::Ordering::SeqCst) {
                             entries.push(json!({"rev":"r9","size":3,"server_modified":"2026-01-09T00:00:00Z"}));
                         }
-                        Json(json!({"is_deleted":false,"entries":entries}))
+                        Json(json!({"is_deleted":false,"has_more":false,"entries":entries}))
                     }
                 }),
             )
@@ -4112,6 +4193,71 @@ mod tests {
         assert_eq!(*restores.lock().unwrap(), ["r1"]);
     }
 
+    /// A files/restore that was sent and not refused is applied as far as
+    /// a retry goes: an answer that names no revision, or none in time, is
+    /// an applied, unconfirmed restore, sent once.
+    #[tokio::test]
+    async fn a_dropbox_restore_without_its_receipt_is_applied_once() {
+        use axum::{routing::post, Json, Router};
+        use serde_json::{json, Value};
+        let restores: std::sync::Arc<std::sync::Mutex<Vec<String>>> = Default::default();
+        let seen = restores.clone();
+        let app = Router::new()
+            .route(
+                "/files/list_revisions",
+                post(|| async {
+                    Json(json!({"is_deleted":false,"has_more":false,"entries":[
+                        {"rev":"r2","size":5,"server_modified":"2026-01-02T00:00:00Z"},
+                        {"rev":"r1","size":3,"server_modified":"2026-01-01T00:00:00Z"}
+                    ]}))
+                }),
+            )
+            .route(
+                "/files/get_metadata",
+                post(|Json(request): Json<Value>| async move {
+                    let path = request["path"].as_str().unwrap_or("").to_string();
+                    Json(
+                        json!({".tag":"file","name":"f.txt","path_lower":path,"path_display":path,
+                        "id":"id:F","rev":"r2","size":5,"server_modified":"2026-01-02T00:00:00Z"}),
+                    )
+                }),
+            )
+            .route(
+                "/files/restore",
+                post(move |Json(request): Json<Value>| {
+                    let seen = seen.clone();
+                    async move {
+                        let path = request["path"].as_str().unwrap_or("").to_string();
+                        seen.lock().unwrap().push(path.clone());
+                        if path == "/slow.txt" {
+                            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                        }
+                        Json(json!({".tag":"file","name":"f.txt","size":3}))
+                    }
+                }),
+            );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let mut provider = fixture_connected();
+        provider.content_base_override = Some(format!("http://{addr}"));
+        provider.client = reqwest::Client::builder()
+            .read_timeout(std::time::Duration::from_millis(500))
+            .build()
+            .unwrap();
+        for path in ["/norev.txt", "/slow.txt"] {
+            let outcome = provider.restore_version(path, "r1").await;
+            assert!(
+                outcome.as_ref().is_err_and(crate::providers::was_applied),
+                "{path}: {outcome:?}"
+            );
+        }
+        server.abort();
+        assert_eq!(*restores.lock().unwrap(), ["/norev.txt", "/slow.txt"]);
+    }
+
     #[tokio::test]
     async fn ehud_trash_recovers_from_throttle_without_repeating_completed_probes() {
         use axum::{http::StatusCode, routing::post, Json, Router};
@@ -4145,7 +4291,7 @@ mod tests {
                         } else {
                             (
                                 StatusCode::OK,
-                                Json(json!({"is_deleted":true,
+                                Json(json!({"is_deleted":true,"has_more":false,
                             "entries":[{"rev":"good","size":7,"is_restorable":true}]})),
                             )
                         }
@@ -4215,7 +4361,7 @@ mod tests {
                         match endpoint.as_str() {
                             "list_revisions" => (
                                 StatusCode::OK,
-                                Json(json!({"is_deleted":true,
+                                Json(json!({"is_deleted":true,"has_more":false,
                                     "entries":[{"rev":"good","size":7,"is_restorable":true}]})),
                             ),
                             "restore" => (StatusCode::OK, Json(json!({"rev":"good"}))),

@@ -1728,20 +1728,24 @@ impl FilenProvider {
             )
             .json(&serde_json::json!({ "uuid": file_uuid }))
             .build()
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_err(|e| ProviderError::NetworkError(e.without_url().to_string()))?;
         let resp: FileVersionsResponse = self
             .send_read_query(request)
             .await?
             .json()
             .await
-            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.without_url().to_string()))?;
         if !resp.status {
             return Err(ProviderError::ServerError(
                 resp.message
                     .unwrap_or_else(|| "Failed to list file versions".to_string()),
             ));
         }
-        let mut versions = resp.data.map(|d| d.versions).unwrap_or_default();
+        // An answer that reports success and holds no data does not say the
+        // file has no versions.
+        let mut versions = resp.data.map(|d| d.versions).ok_or_else(|| {
+            ProviderError::ParseError("The file versions answer held no data".into())
+        })?;
         // Newest first: the version record timestamp is the canonical creation
         // time and gives a stable order regardless of API response ordering.
         versions.sort_by_key(|v| std::cmp::Reverse(v.timestamp));
@@ -2968,13 +2972,18 @@ impl StorageProvider for FilenProvider {
             )
             .json(&serde_json::json!({ "uuid": version_id, "current": current_uuid }))
             .build()
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_err(|e| ProviderError::NetworkError(e.without_url().to_string()))?;
+        // Sent, an answer that does not come or cannot be read leaves the
+        // restore possibly applied.
+        let what = format!("the restore of {path}");
         let resp: GenericResponse = self
             .send_retry(request)
-            .await?
+            .await
+            .map_err(|e| super::sent_change_unconfirmed(e, &what))?
             .json()
             .await
-            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.without_url().to_string()))
+            .map_err(|e| super::sent_change_unconfirmed(e, &what))?;
         if !resp.status {
             return Err(ProviderError::ServerError(
                 resp.message
