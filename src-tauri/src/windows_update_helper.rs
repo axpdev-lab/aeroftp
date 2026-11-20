@@ -899,13 +899,21 @@ rem (`call :run_swap 9>>...`), then releases the persistent lock entry before
 rem relaunching the new exe (so the relaunched app never inherits the handle),
 rem and wipes the staged ZIP and extraction dir (issue #176).
 
-call :run_swap 9>>{handoff_lock}
-if errorlevel 1 goto replace_failed
+if /I "%~1"=="--swap-inner" goto swap_inner
+
+rem The outer process supervises the inner swap so even a failed lock
+rem redirection returns here for the complete attempt cleanup.
+cmd.exe /D /C call "%~f0" --swap-inner
+if errorlevel 1 goto finish_failed
 
 rem Launch the new exe with cleanup arg pointing at the .old file.
 start "" {current} --post-update-cleanup {old}
 
 del /F /Q "%~f0" & exit /b 0
+
+:swap_inner
+call :run_swap 9>>{handoff_lock}
+exit /b %errorlevel%
 
 :finish_failed
 rem Both handoff rejection and swap failure reach this terminal block once.
@@ -933,9 +941,9 @@ ping 127.0.0.1 -n 2 >nul
 goto replace_loop
 
 :replace_failed
-rem The old exe never left the launch path: the terminal block drops every
-rem artifact of this attempt, including sidecars, documents and the script.
-goto finish_failed
+rem The old exe never left the launch path: return the failure to the outer
+rem supervisor, whose terminal block drops every artifact of this attempt.
+exit /b 1
 
 :replace_done
 rem The app exe is the new one: replace the CLI exes.
