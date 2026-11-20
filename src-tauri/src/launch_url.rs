@@ -546,7 +546,10 @@ pub fn github_repository(target: &LaunchTarget) -> Result<(String, Option<String
 /// The project a `gitlab://` URL names, in the `host/group/project` form the
 /// GitLab backend reads as its host, and its branch (an `@branch` suffix or
 /// `?branch=`): `gitlab://gitlab.com/group[/subgroup]/project[@branch]`. The
-/// whole path is the project, so the URL opens it at its root.
+/// whole path is the project, so the URL opens it at its root. A port stays
+/// in the host (`git.example.com:8443/group/project`), the only place the
+/// backend reads one, and a host without a dot is refused: the backend would
+/// read it as a project owner on gitlab.com and send the token there.
 pub fn gitlab_project(target: &LaunchTarget) -> Result<(String, Option<String>), String> {
     const SHAPE: &str =
         "GitLab URL must be gitlab://host/group/project or gitlab://host/group/project@branch";
@@ -563,8 +566,19 @@ pub fn gitlab_project(target: &LaunchTarget) -> Result<(String, Option<String>),
     if target.host.is_empty() || !project.contains('/') {
         return Err(SHAPE.to_string());
     }
+    if !target.host.contains('.') {
+        return Err(format!(
+            "GitLab URL host '{}' must be the instance's full name (gitlab.com, git.example.com): \
+             a name without a dot would be read as a project on gitlab.com",
+            target.host
+        ));
+    }
     let branch = repository_branch(target, branch)?;
-    Ok((format!("{}/{project}", target.host), branch))
+    let host = match target.port {
+        Some(port) => format!("{}:{port}", target.host),
+        None => target.host.clone(),
+    };
+    Ok((format!("{host}/{project}"), branch))
 }
 
 /// A working example URL for a scheme, as the help and the docs show it.
@@ -1056,6 +1070,40 @@ mod tests {
         );
         assert!(project("gitlab://gitlab.com/").is_err());
         assert!(project("gitlab://gitlab.com/owner").is_err());
+    }
+
+    #[test]
+    fn a_gitlab_url_sends_the_token_only_to_the_instance_it_names() {
+        use crate::providers::{gitlab::GitLabConfig, ProviderConfig, ProviderType};
+        let api_base = |raw: &str| {
+            let (host, _) = gitlab_project(&parse(raw).unwrap())?;
+            let config = ProviderConfig {
+                name: "GitLab".into(),
+                provider_type: ProviderType::GitLab,
+                host,
+                port: None,
+                username: None,
+                password: Some("glpat-test".into()),
+                initial_path: Some("/".into()),
+                extra: Default::default(),
+            };
+            GitLabConfig::from_provider_config(&config)
+                .map(|config| (config.api_base, config.project_path))
+                .map_err(|e| e.to_string())
+        };
+        assert_eq!(
+            api_base("gitlab://git.example.com:8443/group/project").unwrap(),
+            (
+                "https://git.example.com:8443/api/v4".into(),
+                "group/project".into()
+            )
+        );
+        assert_eq!(
+            api_base("gitlab://gitlab.com/group/project").unwrap(),
+            ("https://gitlab.com/api/v4".into(), "group/project".into())
+        );
+        assert!(api_base("gitlab://gitlab/group/project").is_err());
+        assert!(api_base("gitlab://gitlab:8443/group/project").is_err());
     }
 
     #[test]

@@ -821,23 +821,34 @@ mod tests {
         assert_eq!(req.initial_path.as_deref(), Some("/my folder"));
     }
 
+    /// The variables an SFTP launch reads its secret from.
+    const SFTP_SECRET_VARS: &[&str] = &["SFTP_PASSWORD", "AEROFTP_PASSWORD"];
+
     #[test]
     fn remote_url_env_var_password_fallback() {
         let _guard = crate::test_env::lock();
-        unsafe {
-            std::env::set_var("SFTP_PASSWORD", "env_sftp_secret");
-        }
-        let req = parse_remote_url("sftp://alice@host/").unwrap();
-        assert_eq!(req.password.as_deref(), Some("env_sftp_secret"));
-        unsafe {
-            std::env::remove_var("SFTP_PASSWORD");
-            std::env::set_var("AEROFTP_PASSWORD", "env_generic_secret");
-        }
-        let req2 = parse_remote_url("sftp://alice@host/").unwrap();
-        assert_eq!(req2.password.as_deref(), Some("env_generic_secret"));
-        unsafe {
-            std::env::remove_var("AEROFTP_PASSWORD");
-        }
+        let password = |env: &[(&str, &str)], raw: &str| {
+            with_env(SFTP_SECRET_VARS, env, || {
+                parse_remote_url(raw).unwrap().password
+            })
+        };
+        assert_eq!(
+            password(
+                &[("SFTP_PASSWORD", "env_sftp_secret")],
+                "sftp://alice@host/"
+            )
+            .as_deref(),
+            Some("env_sftp_secret")
+        );
+        assert_eq!(
+            password(
+                &[("AEROFTP_PASSWORD", "env_generic_secret")],
+                "sftp://alice@host/"
+            )
+            .as_deref(),
+            Some("env_generic_secret")
+        );
+        assert_eq!(password(&[], "sftp://alice@host/"), None);
     }
 
     #[test]
@@ -974,16 +985,27 @@ mod tests {
         let config_path = dir.path().join("config");
         std::fs::write(&credentials_path, credentials).unwrap();
         std::fs::write(&config_path, config).unwrap();
-        let inherited: Vec<(&str, Option<std::ffi::OsString>)> = AWS_CHAIN_VARS
+        let credentials_path = credentials_path.to_str().unwrap();
+        let config_path = config_path.to_str().unwrap();
+        let mut set = vec![
+            ("AWS_SHARED_CREDENTIALS_FILE", credentials_path),
+            ("AWS_CONFIG_FILE", config_path),
+        ];
+        set.extend_from_slice(env);
+        with_env(AWS_CHAIN_VARS, &set, run)
+    }
+
+    /// Run `run` with `names` cleared and only `env` set among them,
+    /// restoring the inherited values after. The caller holds the env lock.
+    fn with_env<T>(names: &[&str], env: &[(&str, &str)], run: impl FnOnce() -> T) -> T {
+        let inherited: Vec<(&str, Option<std::ffi::OsString>)> = names
             .iter()
             .map(|name| (*name, std::env::var_os(name)))
             .collect();
         unsafe {
-            for name in AWS_CHAIN_VARS {
+            for name in names {
                 std::env::remove_var(name);
             }
-            std::env::set_var("AWS_SHARED_CREDENTIALS_FILE", &credentials_path);
-            std::env::set_var("AWS_CONFIG_FILE", &config_path);
             for (name, value) in env {
                 std::env::set_var(name, value);
             }
@@ -1110,16 +1132,24 @@ mod tests {
     #[test]
     fn the_environment_secret_wins_over_the_url_password_as_in_the_cli() {
         let _guard = crate::test_env::lock();
-        unsafe {
-            std::env::set_var("SFTP_PASSWORD", "env_sftp_secret");
-        }
-        let req = parse_remote_url("sftp://alice:url_secret@host/").unwrap();
-        unsafe {
-            std::env::remove_var("SFTP_PASSWORD");
-        }
-        assert_eq!(req.password.as_deref(), Some("env_sftp_secret"));
-        let req = parse_remote_url("sftp://alice:url_secret@host/").unwrap();
-        assert_eq!(req.password.as_deref(), Some("url_secret"));
+        let password = |env: &[(&str, &str)]| {
+            with_env(SFTP_SECRET_VARS, env, || {
+                parse_remote_url("sftp://alice:url_secret@host/")
+                    .unwrap()
+                    .password
+            })
+        };
+        assert_eq!(
+            password(&[("SFTP_PASSWORD", "env_sftp_secret")]).as_deref(),
+            Some("env_sftp_secret")
+        );
+        assert_eq!(
+            password(&[("AEROFTP_PASSWORD", "env_generic_secret")]).as_deref(),
+            Some("env_generic_secret")
+        );
+        // With neither variable set, whatever the developer's shell holds,
+        // the URL's own password is the one read.
+        assert_eq!(password(&[]).as_deref(), Some("url_secret"));
     }
 
     #[test]

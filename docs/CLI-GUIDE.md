@@ -41,7 +41,7 @@ One table of URL schemes serves the CLI and the desktop app: `aeroftp-cli ls <ur
 | Uploadcare | `uploadcare://PUBLIC_KEY/path` | `UPLOADCARE_SECRET_KEY` |
 | Cloudinary | `cloudinary://API_KEY@cloud_name/path` (Cloudinary's own `CLOUDINARY_URL` form) | `CLOUDINARY_API_SECRET` |
 | GitHub | `github://owner/repo[@branch]` (or `?branch=`) | `AEROFTP_PASSWORD`, or `--token` |
-| GitLab | `gitlab://host/group/project[@branch]` (or `?branch=`; subgroups allowed) | `GITLAB_TOKEN`, or `--token` |
+| GitLab | `gitlab://host[:port]/group/project[@branch]` (or `?branch=`; subgroups allowed; the host is the instance's full name, such as `gitlab.com` or `git.example.com:8443`) | `GITLAB_TOKEN`, or `--token` |
 | Yandex Disk | `yandexdisk:///path` | `--token` (CLI); the app opens a saved profile |
 | Local folder | `/abs/path`, `./rel/path`, `file:///abs/path` | None (a folder of this machine) |
 

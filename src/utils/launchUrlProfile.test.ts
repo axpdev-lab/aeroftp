@@ -74,13 +74,39 @@ describe('a launch URL and the sessions and profiles it can reuse', () => {
     expect(openSessionMatchesLaunch(withEndpoint, req({ options: { bucket: 'b1', endpoint: 'https://other.example.com' } }))).toBe(false);
     expect(openSessionMatchesLaunch(withEndpoint, req({}))).toBe(false);
 
+    // The App stores a GitHub session's user name as `token` when the link names none.
     const repo = (over: Partial<ConnectionParams>) =>
-      session({ protocol: 'github', server: 'owner/repo', port: undefined, username: '', options: {}, ...over });
+      session({ protocol: 'github', server: 'owner/repo', port: undefined, username: 'token', options: {}, ...over });
     const link = (options: OpenRequest['options']) =>
       req({ protocol: 'github', server: 'owner/repo', username: '', options });
     expect(openSessionMatchesLaunch(repo({}), link({}))).toBe(true);
     expect(openSessionMatchesLaunch(repo({}), link({ githubBranch: 'dev' }))).toBe(false);
     expect(openSessionMatchesLaunch(repo({ options: { githubBranch: 'dev' } }), link({ githubBranch: 'dev' }))).toBe(true);
+    // `token` is the default on both sides: a session or link that names no user is the same as one naming `token`.
+    expect(openSessionMatchesLaunch(repo({ username: '' }), link({}))).toBe(true);
+    expect(openSessionMatchesLaunch(repo({ username: '' }), req({ protocol: 'github', server: 'owner/repo', username: 'token', options: {} }))).toBe(true);
+    expect(openSessionMatchesLaunch(repo({ username: 'bot' }), link({}))).toBe(false);
+  });
+
+  it('keeps the case of an S3 endpoint path, not of its scheme and host', () => {
+    const tenant = session({ options: { bucket: 'b1', endpoint: 'HTTPS://Gateway.Example/TenantA' } });
+    expect(openSessionMatchesLaunch(tenant, req({ options: { bucket: 'b1', endpoint: 'https://gateway.example/TenantA/' } }))).toBe(true);
+    expect(openSessionMatchesLaunch(tenant, req({ options: { bucket: 'b1', endpoint: 'https://gateway.example/tenanta' } }))).toBe(false);
+    const saved = { id: 's', name: 'S3', protocol: 's3', host: 's3.example.com', port: 443, username: 'AK', options: { bucket: 'b1', endpoint: 'https://gateway.example/TenantA' } } as ServerProfile;
+    expect(savedProfileMatchesLaunch(saved, req({ options: { bucket: 'b1', endpoint: 'https://GATEWAY.example/TenantA' } }))).toBe(true);
+    expect(savedProfileMatchesLaunch(saved, req({ options: { bucket: 'b1', endpoint: 'https://gateway.example/tenanta' } }))).toBe(false);
+  });
+
+  it('never reuses a session that runs another transport than the link asks for', () => {
+    const dav = (scheme: string) => session({ protocol: 'webdav', server: 'nas.example', port: 8443, username: 'u', options: { webdavScheme: scheme } as ConnectionParams['options'] });
+    const davLink = req({ protocol: 'webdav', server: 'nas.example', port: 8443, username: 'u', options: { webdavScheme: 'https' } as OpenRequest['options'] });
+    expect(openSessionMatchesLaunch(dav('http'), davLink)).toBe(false);
+    expect(openSessionMatchesLaunch(dav('https'), davLink)).toBe(true);
+    const ftp = (tlsMode?: string) => session({ protocol: 'ftp', server: 'host', port: 21, username: 'u', options: tlsMode ? { tlsMode } as ConnectionParams['options'] : {} });
+    const ftpes = req({ protocol: 'ftp', server: 'host', port: 21, username: 'u', options: { tlsMode: 'explicit' } as OpenRequest['options'] });
+    expect(openSessionMatchesLaunch(ftp(), ftpes)).toBe(false);
+    expect(openSessionMatchesLaunch(ftp('none'), ftpes)).toBe(false);
+    expect(openSessionMatchesLaunch(ftp('explicit'), ftpes)).toBe(true);
   });
 
   it('takes the secret only from a profile of the same endpoint and user', () => {

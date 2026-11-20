@@ -35,9 +35,25 @@ export const matchSignInProfile = (
 
 const launchDefaultPort = (protocol: string) => connectionProtocol(protocol)?.defaultPort || 21;
 
-/** An S3 `?endpoint=` as compared: any case, no trailing slash. */
-const normalizedEndpoint = (endpoint: string | undefined) =>
-  (endpoint || '').trim().toLowerCase().replace(/\/+$/, '');
+/** An S3 `?endpoint=` as compared: scheme and host in any case, no trailing
+ *  slash. The path keeps its case: `/TenantA` and `/tenanta` are two
+ *  endpoints to the S3 backend. */
+const normalizedEndpoint = (endpoint: string | undefined) => {
+  const value = (endpoint || '').trim().replace(/\/+$/, '');
+  const parts = value.match(/^([a-z][a-z0-9+.-]*:\/\/)?([^/?#]*)(.*)$/i);
+  return parts ? `${(parts[1] || '').toLowerCase()}${parts[2].toLowerCase()}${parts[3]}` : value;
+};
+
+/** The user name a connection stores when the link names none: GitHub
+ *  connects as `token` (App.tsx), every other protocol keeps it empty. */
+const effectiveUsername = (protocol: string, username: string | undefined) =>
+  username || (protocol === 'github' ? 'token' : '');
+
+/** The transport options a launch URL pins (`webdavScheme` from an
+ *  `https://` or `http://` WebDAV link, `tlsMode` from `ftpes://`): an open
+ *  session is reused only when it runs the same one, so a plain session never
+ *  stands in for a link that asked for TLS. */
+const TRANSPORT_OPTIONS = ['webdavScheme', 'tlsMode'] as const;
 
 /** The endpoint a launch URL names: protocol, host (any case), port (the
  *  manifest default when absent), user, bucket, the S3 endpoint override and
@@ -48,7 +64,7 @@ const launchEndpoint = (req: OpenRequest) => {
     protocol,
     host: (req.server || '').toLowerCase(),
     port: req.port || launchDefaultPort(protocol),
-    username: req.username || '',
+    username: effectiveUsername(protocol, req.username),
     bucket: req.options?.bucket || '',
     endpoint: normalizedEndpoint(req.options?.endpoint),
     branch: req.options?.githubBranch || '',
@@ -67,7 +83,8 @@ export const openSessionMatchesLaunch = (params: ConnectionParams, req: OpenRequ
     && (params.options?.bucket || '') === target.bucket
     && normalizedEndpoint(params.options?.endpoint) === target.endpoint
     && (params.options?.githubBranch || '') === target.branch
-    && (params.username || '') === target.username;
+    && TRANSPORT_OPTIONS.every(key => !req.options?.[key] || params.options?.[key] === req.options[key])
+    && effectiveUsername(protocol, params.username) === target.username;
 };
 
 /** Whether a saved profile supplies the secret for a launch URL that carries
@@ -78,7 +95,7 @@ export const savedProfileMatchesLaunch = (profile: ServerProfile, req: OpenReque
   return (profile.protocol || 'ftp') === target.protocol
     && (profile.host || '').toLowerCase() === target.host
     && (profile.port || launchDefaultPort(target.protocol)) === target.port
-    && (profile.username || '') === target.username
+    && effectiveUsername(target.protocol, profile.username) === target.username
     && (!target.bucket || (profile.options?.bucket || '') === target.bucket)
     && (!target.endpoint || normalizedEndpoint(profile.options?.endpoint) === target.endpoint);
 };
