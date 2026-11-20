@@ -360,13 +360,32 @@ test('npm collection: a lockfile without a packages map (lockfileVersion 1) or o
     write({ name: 'fixture-app', version: '1.0.0', lockfileVersion: 1, requires: true, dependencies: { foo: { version: '1.0.0' } } });
     assert.throws(() => collectNpmDependencies(lockPath, tmpDir), /package-lock\.json has lockfileVersion 1; the notices read the packages map of lockfileVersion 2 or 3/);
     write({ name: 'fixture-app', version: '1.0.0', dependencies: { foo: { version: '1.0.0' } } });
-    assert.throws(() => collectNpmDependencies(lockPath, tmpDir), /package-lock\.json has lockfileVersion null/);
+    assert.throws(() => collectNpmDependencies(lockPath, tmpDir), /package-lock\.json has no lockfileVersion;/);
+    // A value that is not a number is described, never printed: it can be any text.
+    const secret = 'https://user:dummy-lockfile-secret@registry.example.com/';
+    for (const lockfileVersion of [secret, { url: secret }, [secret], true]) {
+      write({ lockfileVersion, packages: { '': {}, 'node_modules/foo': { version: '1.0.0', license: 'MIT' } } });
+      assert.throws(
+        () => collectNpmDependencies(lockPath, tmpDir),
+        (err) => /package-lock\.json has a lockfileVersion that is not a number;/.test(err.message) && !String(err.stack).includes('dummy-lockfile-secret'),
+        JSON.stringify(lockfileVersion)
+      );
+    }
     write({ lockfileVersion: 4, packages: { '': {}, 'node_modules/foo': { version: '1.0.0', license: 'MIT' } } });
     assert.throws(() => collectNpmDependencies(lockPath, tmpDir), /package-lock\.json has lockfileVersion 4/);
     // A known version whose packages map is missing, not an object, or lacks its root entry.
-    for (const packages of [undefined, [], { 'node_modules/foo': { version: '1.0.0', license: 'MIT' } }]) {
+    const foo = { version: '1.0.0', license: 'MIT' };
+    for (const packages of [undefined, null, [], { 'node_modules/foo': foo }]) {
       write({ lockfileVersion: 3, packages });
-      assert.throws(() => collectNpmDependencies(lockPath, tmpDir), /package-lock\.json has no packages map with its root entry/);
+      assert.throws(() => collectNpmDependencies(lockPath, tmpDir), /package-lock\.json has no packages map with its root entry/, JSON.stringify(packages));
+    }
+    // An entry that is no package descriptor, the root one included (read as
+    // given, `"": null` lists no npm package).
+    for (const entry of [null, [], 'foo']) {
+      for (const packages of [{ '': entry, 'node_modules/foo': foo }, { '': {}, 'node_modules/foo': entry }]) {
+        write({ lockfileVersion: 3, packages });
+        assert.throws(() => collectNpmDependencies(lockPath, tmpDir), /package-lock\.json has a packages entry that is not a package descriptor/, JSON.stringify(packages));
+      }
     }
     // Control: the same package in a version 2 and a version 3 lockfile is collected.
     for (const lockfileVersion of [2, 3]) {
@@ -2942,6 +2961,10 @@ test('bundled code: an SPDX tag inside a multiline Rust string is text, the same
       `const C: &[u8] = br##"\n"# still inside\n${tag}\n"##;\n`,
       `const D: &str = "line one \\" quoted\n${tag}\n";\n`,
       `const E: &str = "src/*.c";\nconst F: char = '"';\nconst G: &str = r#"\n/* not a comment\n${tag}\n"#;\n`,
+      // A real MIT header in a line comment after the string closes, on the
+      // line that closes it, after code: the scanner knows that comment.
+      `const H: usize = r#"\n${tag}\n"#.len(); // SPDX-License-Identifier: MIT\n`,
+      `const I: usize = 1; // SPDX-License-Identifier: MIT\n`,
     ];
     for (const body of strings) {
       write('src/example.rs', `// Copyright (c) 2020 Wrapper Author\n// SPDX-License-Identifier: MIT\n\n${body}fn main() {}\n`);
@@ -2953,7 +2976,14 @@ test('bundled code: an SPDX tag inside a multiline Rust string is text, the same
     }
     // The same tag in a real comment, and in a comment after a multiline
     // string has closed, goes through the GPL-3.0 policy and fails.
-    for (const body of [`${tag}\nfn main() {}\n`, `const A: &str = r#"\nexample "text"\n"#;\n${tag}\nfn main() {}\n`, `const D: &str = "one\ntwo";\n/* ${tag.slice(3)} */\n`]) {
+    for (const body of [
+      `${tag}\nfn main() {}\n`,
+      `const A: &str = r#"\nexample "text"\n"#;\n${tag}\nfn main() {}\n`,
+      `const D: &str = "one\ntwo";\n/* ${tag.slice(3)} */\n`,
+      // On the line that closes the string, after code, and after code alone.
+      `const A: usize = r#"\nexample "text"\n"#.len(); ${tag}\nfn main() {}\n`,
+      `fn main() {} ${tag}\n`,
+    ]) {
       write('src/example.rs', body);
       assert.throws(
         () => findBundledCodeUnderOtherLicenses(make(), known),
@@ -3799,6 +3829,19 @@ test('licensing exceptions: a source header that carries a restriction clause is
     // The same restriction wrapped across the header's lines.
     write('src/lib.rs', header('Permission is hereby granted to use this file.\n// It may not be used to re-create the RAR\n// compression algorithm.'));
     assert.throws(() => generateNoticesMarkdown([make()], [], SPDX_STANDARD_LICENSES_FILE, [exception]), /\(file: src\/lib\.rs\) contains non-free restriction clauses in a source header/);
+    // A header with no permission text of its own is not reproduced, and its
+    // restriction still binds the code it ships with.
+    write('src/lib.rs', header('This code cannot be used to develop a RAR (WinRAR) compatible archiver.'));
+    assert.throws(() => generateNoticesMarkdown([make()], [], SPDX_STANDARD_LICENSES_FILE, [exception]), /\(file: src\/lib\.rs\) contains non-free restriction clauses in a source header/);
+    // Controls: the words of a restriction in separate sentences, or inside
+    // another word ("library"), make none.
+    for (const terms of [
+      'Permission is hereby granted to use this file. You can re-create the example below.\n// The compression algorithm is described in the manual.',
+      'Permission is hereby granted to use this file. The examples cannot be used to develop the library itself.',
+    ]) {
+      write('src/lib.rs', header(terms));
+      assert.doesNotThrow(() => generateNoticesMarkdown([make()], [], SPDX_STANDARD_LICENSES_FILE, [exception]), terms);
+    }
     // Control: an unrestricted MIT header with its own terms still renders,
     // reproduced as shipped, and the registered exception file still passes.
     write('src/lib.rs', header('Permission is hereby granted to use this file freely.'));
@@ -3845,6 +3888,7 @@ test('credentials: an attribution line or a text reproduced as shipped with a cr
     `https://${dummy}@example.com/repo`,
     `https://example.com/repo?access_token=${dummy}`,
     `https://bucket.example.com/f?X-Amz-Signature=${dummy}&X-Amz-Date=1`,
+    `https://example.com/callback#access_token=${dummy}&token_type=bearer`,
   ];
   const rejects = (fn, location) =>
     assert.throws(fn, (err) => {
@@ -3928,9 +3972,22 @@ test('credentials: query parameter names are read decoded, as a server reads the
   assert.strictEqual(carriesCredentialUrl(`Holder https://example.com/?%zztoken=${dummy}`), false);
   assert.strictEqual(carriesCredentialUrl(`Holder https://example.com/?x_%74oken%=${dummy}`), false);
   assert.strictEqual(carriesCredentialUrl(`Holder https://example.com/?x_%74oken=${dummy}`), true);
-  // Controls: ordinary parameters, encoded or not, and a credential name only in a value or the fragment.
-  for (const query of ['page=2', '%70age=2', 'page=2&lang=en', 'q=token', 'tokens=1', 'page=2#token=x', 'monkey=1']) {
+  // Controls: ordinary parameters, encoded or not, and a credential name only in a value.
+  for (const query of ['page=2', '%70age=2', 'page=2&lang=en', 'q=token', 'tokens=1', 'page=2#top', 'monkey=1']) {
     assert.strictEqual(carriesCredentialUrl(`Holder https://example.com/repo?${query}`), false, query);
+  }
+  // A fragment is read like a query: an OAuth redirect carries its token there.
+  for (const url of [
+    `https://example.com/callback#access_token=${dummy}&token_type=bearer`,
+    `https://example.com/callback#state=1&%61ccess_token=${dummy}`,
+    `https://example.com/repo?page=2#token=${dummy}`,
+    `https://example.com/app#/callback?id_token=${dummy}`,
+  ]) {
+    assert.strictEqual(carriesCredentialUrl(`Holder ${url}`), true, url);
+  }
+  // Controls: an anchor, a line range, a fragment parameter that carries no secret.
+  for (const url of ['https://example.com/repo#top', 'https://example.com/a.rs#L10-L20', 'https://example.com/doc#section=intro', 'https://example.com/doc#:~:text=token']) {
+    assert.strictEqual(carriesCredentialUrl(`Holder ${url}`), false, url);
   }
 });
 

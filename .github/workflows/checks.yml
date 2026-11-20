@@ -69,7 +69,9 @@ jobs:
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends squashfs-tools
-          unsquashfs -version
+          # `unsquashfs -version` exits 1 without an image to read: the check is
+          # that it is installed.
+          command -v unsquashfs
 
       - name: AppImage library sources are kept for the written offer
         run: python3 -m unittest discover -s .github/scripts -p test_archive_appimage_sources.py -v

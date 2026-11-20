@@ -67,6 +67,14 @@ fn quote_folder_test(path: &Path) -> String {
     quote_for_cmd(Path::new(&s))
 }
 
+/// The first command of every helper script, before any line with a path.
+/// cmd reads each line of a batch file in the console's code page, which in
+/// the new console a helper gets is the OEM one (437 or 850 on most
+/// systems), and the scripts are written as UTF-8: a path outside ASCII
+/// (`%TEMP%` of a user named Müller) would be read as other characters, so
+/// another file. 65001 is UTF-8, and it applies from the next line on.
+const UTF8_CODE_PAGE: &str = "chcp 65001 >nul";
+
 /// Install-format dispatch. The `install_with_helper` entrypoint takes the
 /// format as a string from the existing updater code; we centralise the
 /// parsing here.
@@ -298,6 +306,7 @@ fn write_msi_helper(msi_path: &Path, exe_path: &Path) -> Result<PathBuf, String>
     let body = format!(
         r#"@echo off
 setlocal disabledelayedexpansion
+{code_page}
 rem AeroFTP MSI auto-update helper. Self-deletes on completion.
 
 rem Wait for the parent AeroFTP process to release file locks.
@@ -320,6 +329,7 @@ rem Self-delete the helper script.
 del /F /Q "%~f0"
 endlocal
 "#,
+        code_page = UTF8_CODE_PAGE,
         msi = quote_for_cmd(msi_path),
         exe = quote_for_cmd(exe_path),
     );
@@ -336,10 +346,16 @@ endlocal
 /// stock silent flag.
 fn write_nsis_helper(setup_path: &Path, exe_path: &Path) -> Result<PathBuf, String> {
     let script_path = temp_dir().join(format!("aeroftp-update-{}.cmd", random_suffix()));
+    std::fs::write(&script_path, nsis_helper_script(setup_path, exe_path))
+        .map_err(|e| format!("Failed to write NSIS helper script: {e}"))?;
+    Ok(script_path)
+}
 
-    let body = format!(
+fn nsis_helper_script(setup_path: &Path, exe_path: &Path) -> String {
+    format!(
         r#"@echo off
 setlocal disabledelayedexpansion
+{code_page}
 rem AeroFTP NSIS auto-update helper. Self-deletes on completion.
 
 ping 127.0.0.1 -n 3 >nul
@@ -357,13 +373,10 @@ start "" {exe}
 del /F /Q "%~f0"
 endlocal
 "#,
+        code_page = UTF8_CODE_PAGE,
         setup = quote_for_cmd(setup_path),
         exe = quote_for_cmd(exe_path),
-    );
-
-    std::fs::write(&script_path, body)
-        .map_err(|e| format!("Failed to write NSIS helper script: {e}"))?;
-    Ok(script_path)
+    )
 }
 
 /// Staged portable artifact: paths to the new exe + ancillary files
@@ -1069,6 +1082,7 @@ goto cli_{i}
     let body = format!(
         r#"@echo off
 setlocal enableextensions disabledelayedexpansion
+{code_page}
 rem AeroFTP portable in-place update helper. The updater has already
 rem copied the new exes, whole, next to the installed ones. This helper
 rem holds the installation-scoped handoff lock across the app and CLI swaps
@@ -1190,6 +1204,7 @@ del /F /Q {sigstore} >nul 2>&1
 rmdir /S /Q {stage} >nul 2>&1
 exit /b 0
 "#,
+        code_page = UTF8_CODE_PAGE,
         handoff_lock = quote_for_cmd(&handoff_lock),
         ack = quote_for_cmd(&ack),
         ack_folder = quote_folder_test(&ack),
@@ -2200,6 +2215,67 @@ mod tests {
             std::fs::read(other.join("AeroFTP.exe")).expect("kept"),
             b"other exe"
         );
+    }
+
+    /// A folder name outside ASCII (`%TEMP%` of a user named Müller) is the
+    /// folder the helper works in. Launched as the app launches it
+    /// (`spawn_detached`), in a console whose code page is not UTF-8 (437
+    /// here), the helper writes its confirmation where the app waits for it,
+    /// takes the app's answer and swaps the exe in an app folder outside
+    /// ASCII too.
+    #[test]
+    fn folder_names_outside_ascii_are_the_folders_the_helper_works_in() {
+        let mut fx = fixture_in("app-Müller");
+        with_docs(&mut fx, |_| true);
+        let work = fx.root.path().join("Temp-Müller");
+        std::fs::create_dir(&work).expect("work dir");
+        let (script, staged) = script_for_attempt_in(&fx, "unicode01", &work);
+        drop(staged);
+        let relaunched = fx.root.path().join("relaunched.marker");
+        let lines = runnable_answered(&marking_relaunch(&script, &relaunched), AppAnswer::ByTheApp);
+        let path = fx.root.path().join("helper.cmd");
+        std::fs::write(&path, format!("@chcp 437 >nul\r\n{}", lines.concat()))
+            .expect("write script");
+        let mut helper = HelperProcess(spawn_detached(&path).expect("spawn helper"));
+        let (outcome, status) = app_waits_for(&mut helper, &work, "unicode01");
+        assert_eq!(outcome, HelperAcceptance::Accepted);
+        assert!(status.is_some(), "the helper ends by itself");
+        assert!(relaunched.exists(), "the swap path relaunches");
+        assert_eq!(read(&fx, "AeroFTP.exe"), NEW_EXE);
+        assert!(!has_staged_exe(&fx.app, "AeroFTP.exe"));
+        assert!(!helper_ack_path(&work, "unicode01").exists());
+        assert!(!helper_decision_path(&work, "unicode01").exists());
+    }
+
+    /// The NSIS helper runs the setup it was given at a path outside ASCII
+    /// (the Downloads folder of a user named Müller), in a console whose code
+    /// page is not UTF-8. The setup here is a script that leaves a mark.
+    #[test]
+    fn the_nsis_helper_runs_a_setup_whose_path_is_outside_ascii() {
+        let root = tempfile::tempdir().expect("temp dir");
+        let downloads = root.path().join("Downloads-Müller");
+        std::fs::create_dir(&downloads).expect("downloads");
+        let ran = root.path().join("setup-ran.marker");
+        let setup = downloads.join("AeroFTP-setup.cmd");
+        std::fs::write(&setup, format!("@type nul > {}\r\n", quote_for_cmd(&ran))).expect("setup");
+        let script = nsis_helper_script(&setup, &root.path().join("AeroFTP.exe"));
+        let lines: String = script
+            .lines()
+            .map(|line| {
+                let trimmed = line.trim_start();
+                if trimmed.starts_with("ping ") || trimmed.starts_with("start ") {
+                    "rem\r\n".to_string()
+                } else {
+                    format!("{line}\r\n")
+                }
+            })
+            .collect();
+        let path = root.path().join("helper.cmd");
+        std::fs::write(&path, format!("@chcp 437 >nul\r\n{lines}")).expect("write script");
+        let mut helper = HelperProcess(spawn_detached(&path).expect("spawn helper"));
+        let status = helper.finish(Duration::from_secs(60));
+        assert!(status.is_some(), "the helper ends by itself");
+        assert!(ran.exists(), "the setup at that path ran");
     }
 
     /// A failed swap removes the next batch by the names a staging writes:

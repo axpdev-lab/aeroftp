@@ -257,9 +257,10 @@ class ArchiveAppImageSources(unittest.TestCase):
             for lib, pkg, src, ver in lines
         ))
 
-    def run_script(self, version='9.8.7', today='2026-11-20', **env):
+    def run_script(self, version='9.8.7', today='2026-11-20', folder=None, cwd=None, **env):
         return subprocess.run(
-            ['python3', str(SCRIPT), str(self.release_dir), version],
+            ['python3', str(SCRIPT), folder or str(self.release_dir), version],
+            cwd=cwd,
             env={
                 **os.environ,
                 'PATH': f'{self.bin}:{os.environ["PATH"]}',
@@ -620,6 +621,41 @@ class ArchiveAppImageSources(unittest.TestCase):
         self.assertFalse([k for k, v in env.items() if 'dummy-token-value' in v])
         self.assertEqual([e['source'] for e in self.record()], ['gtk+3.0', 'libxi'])
 
+    def test_the_workflows_relative_folder_is_read_from_the_extractors_folder(self):
+        # The workflow passes release-assets/appimage from the checkout, and
+        # unsquashfs runs in the job's temporary folder: the image it gets
+        # must still name this build's AppImage.
+        self.two_sources()
+        self.ok(self.run_script(folder='release-assets/appimage', cwd=self.dir))
+        argv = json.loads((self.state / 'unsquashfs.log').read_text().splitlines()[-1])['argv']
+        self.assertEqual(argv[5], str(self.appimage))
+        self.assertEqual([e['source'] for e in self.record()], ['gtk+3.0', 'libxi'])
+
+    def test_the_offset_follows_a_last_section_that_ends_after_the_section_header_table(self):
+        # As appimage_get_elf_size of type2-runtime computes it: the table
+        # ends at 256, its last section runs from 256 to 576, and the squashfs
+        # image starts at 576, not at the end of the table.
+        self.two_sources()
+        for bits, order in ((64, 'little'), (64, 'big'), (32, 'little'), (32, 'big')):
+            size = 64 if bits == 64 else 52
+            table_end = size + 64 * 3
+            last = bytearray(64)
+            if bits == 64:
+                last[0x18:0x20] = table_end.to_bytes(8, order)
+                last[0x20:0x28] = (320).to_bytes(8, order)
+            else:
+                last[0x10:0x14] = table_end.to_bytes(4, order)
+                last[0x14:0x18] = (320).to_bytes(4, order)
+            self.appimage.write_bytes(
+                elf_header(size, 64, 3, bits, order) + bytes(64 * 2) + bytes(last) + bytes(320) + b'hsqsfile BUNDLED-LIBRARIES.txt\n'
+            )
+            self.ok(self.run_script())
+            argv = json.loads((self.state / 'unsquashfs.log').read_text().splitlines()[-1])['argv']
+            self.assertEqual(argv[2], str(table_end + 320), (bits, order))
+        # A last section header the file cuts short is refused, not guessed.
+        self.appimage.write_bytes(elf_header(64, 64, 3) + bytes(64 * 2) + bytes(8))
+        self.refused(self.run_script(), r'has no squashfs image at the end of its ELF runtime: cannot read its last section header')
+
     def test_the_offset_is_read_from_32_and_64_bit_headers_of_either_byte_order(self):
         self.two_sources()
         for bits, order in ((64, 'big'), (32, 'little'), (32, 'big')):
@@ -660,6 +696,37 @@ class ArchiveAppImageSources(unittest.TestCase):
         )
         self.refused(result, r'unsquashfs \(squashfs-tools\) is not installed')
         self.assertEqual(self.calls(), [])
+
+    @unittest.skipUnless(shutil.which('unsquashfs'), 'squashfs-tools is not installed')
+    def test_each_install_step_of_squashfs_tools_passes_with_the_real_unsquashfs(self):
+        # The steps run under `set -e`: a check of the installed tool that
+        # exits nonzero (`unsquashfs -version` without an image) stops the
+        # job after a good install. Each step runs as written, with apt-get
+        # behind a stub sudo and the real unsquashfs on PATH.
+        stub = self.dir / 'sudo-bin'
+        stub.mkdir()
+        (stub / 'sudo').write_text('#!/bin/sh\nexit 0\n')
+        (stub / 'sudo').chmod(0o755)
+        for workflow, name in (
+            ('build.yml', 'Install squashfs-tools for the AppImage sources'),
+            ('checks.yml', 'Install squashfs-tools for the AppImage sources test'),
+        ):
+            lines = (ROOT / '.github/workflows' / workflow).read_text().splitlines()
+            at = lines.index(next(l for l in lines if l.strip() == f'- name: {name}'))
+            run = next(k for k in range(at + 1, len(lines)) if lines[k].strip() == 'run: |')
+            indent = len(lines[run]) - len(lines[run].lstrip()) + 2
+            body = []
+            for line in lines[run + 1:]:
+                if line.strip() and len(line) - len(line.lstrip()) < indent:
+                    break
+                body.append(line[indent:])
+            self.assertIn('squashfs-tools', '\n'.join(body), workflow)
+            done = subprocess.run(
+                ['bash', '-e', '-c', '\n'.join(body)],
+                env={**os.environ, 'PATH': f'{stub}:{os.environ["PATH"]}'},
+                capture_output=True, text=True,
+            )
+            self.assertEqual(done.returncode, 0, f'{workflow}: {done.stdout}{done.stderr}')
 
     @unittest.skipUnless(shutil.which('mksquashfs') and shutil.which('unsquashfs'), 'squashfs-tools is not installed')
     def test_a_real_squashfs_image_appended_to_an_elf_is_read_with_the_real_unsquashfs(self):

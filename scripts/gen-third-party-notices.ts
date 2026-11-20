@@ -882,9 +882,10 @@ function decodedQueryName(name: string): string {
 /**
  * Whether text carries a URL that may hold a credential: userinfo in its
  * authority (`https://user:pass@host`, `https://token@host`), or a query
- * parameter that carries a secret (`?access_token=`, `&X-Amz-Signature=`),
- * its name read decoded (`?%74oken=`). The tables publish a link through
- * publicLink, which drops those parts; an attribution line or a text
+ * or fragment parameter that carries a secret (`?access_token=`,
+ * `&X-Amz-Signature=`, `#access_token=`), its name read decoded
+ * (`?%74oken=`). The tables publish a link through publicLink, which drops
+ * those parts; an attribution line or a text
  * reproduced as shipped cannot be altered, so a match stops the generation
  * instead.
  */
@@ -892,9 +893,11 @@ export function carriesCredentialUrl(text: string): boolean {
   for (const url of urlsInText(text)) {
     const authority = url.slice(url.indexOf('://') + 3).split(/[/?#]/)[0];
     if (authority.includes('@')) return true;
-    const beforeFragment = url.split('#')[0];
-    if (!beforeFragment.includes('?')) continue;
-    const params = beforeFragment.slice(beforeFragment.indexOf('?') + 1).split(/[?&;]/);
+    // The fragment is read like the query: an OAuth redirect carries its
+    // token there (`#access_token=`), and an anchor (`#top`) has no `=`.
+    const paramsStart = url.search(/[?#]/);
+    if (paramsStart === -1) continue;
+    const params = url.slice(paramsStart + 1).split(/[?&;#]/);
     for (const param of params) {
       if (!param.includes('=')) continue;
       if (CREDENTIAL_QUERY_PARAM_NAME.test(decodedQueryName(param.slice(0, param.indexOf('='))))) return true;
@@ -1292,15 +1295,29 @@ export function collectNpmDependencies(
   // stops the generation.
   const lockVersion = lock?.lockfileVersion;
   const packages = lock?.packages;
+  // Only a number is printed: a malformed lockfile can hold any text there,
+  // a registry URL with its credentials included.
   if (lockVersion !== 2 && lockVersion !== 3) {
+    const found =
+      typeof lockVersion === 'number'
+        ? `lockfileVersion ${lockVersion}`
+        : lockVersion === undefined || lockVersion === null
+          ? 'no lockfileVersion'
+          : 'a lockfileVersion that is not a number';
     throw new Error(
-      `${path.basename(pkgLockPath)} has lockfileVersion ${JSON.stringify(lockVersion ?? null)}; the notices read the packages map of lockfileVersion 2 or 3: regenerate it with npm 7 or newer`
+      `${path.basename(pkgLockPath)} has ${found}; the notices read the packages map of lockfileVersion 2 or 3: regenerate it with npm 7 or newer`
     );
   }
-  if (!packages || typeof packages !== 'object' || Array.isArray(packages) || !Object.prototype.hasOwnProperty.call(packages, '')) {
+  // Every entry of the map, the root one included, is a package descriptor:
+  // an object. A root entry that is not one (`"": null`) lists no package.
+  const isDescriptor = (entry: unknown) => entry !== null && typeof entry === 'object' && !Array.isArray(entry);
+  if (!isDescriptor(packages) || !Object.prototype.hasOwnProperty.call(packages, '')) {
     throw new Error(
       `${path.basename(pkgLockPath)} has no packages map with its root entry, so it lists no npm package to read: regenerate it with npm 7 or newer`
     );
+  }
+  if (!Object.values(packages).every(isDescriptor)) {
+    throw new Error(`${path.basename(pkgLockPath)} has a packages entry that is not a package descriptor: regenerate it with npm 7 or newer`);
   }
   const results: ComponentInfo[] = [];
 
@@ -2061,12 +2078,12 @@ function linesInsideBlockComments(lines: string[]): (string | null)[] {
 // Rust block comments nest (`/* outer /* inner */ still outer */`): in a
 // `.rs` file a comment ends where its depth returns to zero. `rustLine` reads
 // one line from `depth` and the string literal `str` the line starts in, up
-// to `upTo`: the depth and the string after it, and where the last comment
-// opened from depth zero starts. Outside a comment a string literal, a
-// character literal ('"') and a `//` comment open nothing; a lifetime or a
-// label ('a) is passed over. A string literal spans lines, so its state is
-// carried from one line to the next (rustStates): a line inside a multiline
-// string that reads `// SPDX-License-Identifier: ...` or `/*` is text.
+// to `upTo`: the depth and the string after it, where the last comment
+// opened from depth zero starts, and where a `//` comment starts (-1: none).
+// Outside a comment a string literal, a character literal ('"') and a `//`
+// comment open nothing; a lifetime or a label ('a) is passed over. A string
+// literal spans lines, so its state is carried from one line to the next
+// (rustStates): a line inside a multiline string that reads `// SPDX-License-Identifier: ...` or `/*` is text.
 // `str` is null outside a string, -1 inside a "..." string (b"..." and
 // c"..." too, with their escapes), and n >= 0 inside a raw string closed by
 // a quote and n hashes (r"..." 0, r#"..."# 1, br and cr alike).
@@ -2077,8 +2094,9 @@ function rustLine(
   depth: number,
   upTo = line.length,
   str: RustString = null
-): { depth: number; outerOpen: number; str: RustString } {
+): { depth: number; outerOpen: number; str: RustString; lineComment: number } {
   let outerOpen = -1;
+  let lineComment = -1;
   for (let k = 0; k < upTo; k++) {
     const c = line[k];
     const n = line[k + 1];
@@ -2116,6 +2134,7 @@ function rustLine(
       const end = rustCharLiteralEnd(line, k);
       if (end !== -1) k = end;
     } else if (c === '/' && n === '/') {
+      lineComment = k;
       break;
     } else if (c === '/' && n === '*') {
       depth = 1;
@@ -2123,7 +2142,7 @@ function rustLine(
       k++;
     }
   }
-  return { depth, outerOpen, str };
+  return { depth, outerOpen, str, lineComment };
 }
 
 // The index of the quote that closes the Rust character literal opened at
@@ -2253,7 +2272,8 @@ export function findBundledCodeUnderOtherLicenses(
   knownLicenseIds: Set<string>,
   knownMentions: Record<string, string> = knownTagMentions(),
   textCarried: (term: string) => boolean = () => true,
-  vendoredHeaderNotices?: Map<string, { notice: string; file: string }[]>
+  vendoredHeaderNotices?: Map<string, { notice: string; file: string }[]>,
+  headerTexts?: { text: string; file: string }[]
 ): { license: string; notices: string[]; files: string[]; headers: { text: string; files: string[] }[]; declared?: true }[] {
   const declared = new Set(extractSpdxLicenseIds(comp.license));
   // The license texts a REUSE folder ships, by identifier (the file name) and
@@ -2361,9 +2381,15 @@ export function findBundledCodeUnderOtherLicenses(
               ? closerAt + closer.length
               : 0
           : 0;
-        const headerOk = blockClosedBefore
-          ? isSpdxHeaderLine(line.slice(closedEnd), entryRel, mIndex - closedEnd, false)
-          : isSpdxHeaderLine(line, entryRel, mIndex, inBlockAtTag);
+        // In Rust a `//` comment the scanner reads before the tag holds it,
+        // whatever code precedes it on the line (`"#.len(); // SPDX-...`
+        // after a raw string closes).
+        const inRustLineComment = rust !== null && rustAt(i, mIndex).lineComment !== -1;
+        const headerOk =
+          inRustLineComment ||
+          (blockClosedBefore
+            ? isSpdxHeaderLine(line.slice(closedEnd), entryRel, mIndex - closedEnd, false)
+            : isSpdxHeaderLine(line, entryRel, mIndex, inBlockAtTag));
         if (!headerOk) {
           // In a document a tag in prose is a mention; in a source file the
           // scanner knows no comment there, and does not guess. Check reviewed
@@ -2609,6 +2635,9 @@ export function findBundledCodeUnderOtherLicenses(
         }
         // A header with its own permission text is reproduced as shipped.
         const blockText = block.join('\n').replace(/^\n+|\n+$/g, '');
+        // Every header, reproduced or not, for the restriction scan: a term
+        // in it binds the code it ships with.
+        headerTexts?.push({ text: blockText, file: entryRel });
         // Permission text, in the wordings headers grant it with: "Permission
         // to use", "Permission is hereby granted", "Redistribution and use",
         // "You may use, copy, modify and distribute", "may be freely used".
@@ -2848,9 +2877,14 @@ export function renderNotices(
 
   // Scan all components for unlisted non-free restriction clauses (spanning
   // potential line breaks): the license and notice files here, and below,
-  // once the headers are read, every text the notices reproduce from a source
-  // file. Only the registered Cargo crate, version and file are exempt.
-  const nonFreePattern = /(re-create[\s\S]*?compression algorithm|cannot be used to develop[\s\S]*?rar)/i;
+  // once the headers are read, every source header and every text the notices
+  // reproduce from a source file. Only the registered Cargo crate, version and
+  // file are exempt. A clause ends with its sentence: a period, `!` or `?`
+  // before a space or the end, so two sentences ("You can re-create the
+  // example below." and "The compression algorithm is described...") never
+  // make one restriction.
+  const sameSentence = String.raw`(?:[^.!?]|[.!?](?=\S))*?`;
+  const nonFreePattern = new RegExp(`(re-create${sameSentence}compression algorithm|cannot be used to develop${sameSentence}\\brar\\b)`, 'i');
   const isRegisteredRestriction = (comp: ComponentInfo, file: string) =>
     nonFreeExceptions.some(
       (exc) => comp.source === 'cargo' && exc.crateName === comp.name && exc.version === comp.version && exc.sourceFile === file
@@ -2933,6 +2967,7 @@ export function renderNotices(
   }
   const bundledCache = new Map<ComponentInfo, ReturnType<typeof findBundledCodeUnderOtherLicenses>>();
   const vendoredHeaderNoticesCache = new Map<ComponentInfo, Map<string, { notice: string; file: string }[]>>();
+  const headerTextsCache = new Map<ComponentInfo, { text: string; file: string }[]>();
   let knownLicenseIds: Set<string> | undefined;
   // Whether the notices carry the text of a term of a package's license:
   // its own files carry it, or its standard text is added for the package
@@ -2962,6 +2997,7 @@ export function renderNotices(
     }
     if (!bundledCache.has(comp)) {
       const vendoredNotices = new Map<string, { notice: string; file: string }[]>();
+      const headerTexts: { text: string; file: string }[] = [];
       bundledCache.set(
         comp,
         findBundledCodeUnderOtherLicenses(
@@ -2969,23 +3005,25 @@ export function renderNotices(
           knownLicenseIds,
           knownTagMentions(),
           (term) => textCarried(comp, term),
-          vendoredNotices
+          vendoredNotices,
+          headerTexts
         )
       );
       vendoredHeaderNoticesCache.set(comp, vendoredNotices);
+      headerTextsCache.set(comp, headerTexts);
     }
     return bundledCache.get(comp)!;
   };
-  // The texts the notices reproduce from source files go through the same
-  // restriction scan as the license files, before anything is rendered: a
-  // header with its own permission text (under a license the package declares
-  // or another), and a license text reviewed inside a source file. An
-  // MIT-tagged header that carries the RAR restriction is rejected as a
-  // LICENSE file carrying it would be.
+  // The source headers and the texts the notices reproduce from source files
+  // go through the same restriction scan as the license files, before
+  // anything is rendered: every header, with its own permission text or not
+  // (a restriction binds the code it ships with, reproduced or not), and a
+  // license text reviewed inside a source file. An MIT-tagged header that
+  // carries the RAR restriction is rejected as a LICENSE file carrying it
+  // would be.
   for (const comp of allComponents) {
-    for (const b of bundledOf(comp)) {
-      for (const h of b.headers) assertNoUnregisteredRestriction(comp, h.files, h.text, ' in a source header');
-    }
+    bundledOf(comp);
+    for (const h of headerTextsCache.get(comp) ?? []) assertNoUnregisteredRestriction(comp, [h.file], h.text, ' in a source header');
     for (const r of sourceTextReviews.filter((x) => x.package === comp.name && comp.packageDir)) {
       assertNoUnregisteredRestriction(comp, [r.file], reviewedSourceText(comp, r), ' in a license text inside a source file');
     }

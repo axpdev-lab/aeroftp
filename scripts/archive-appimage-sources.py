@@ -287,9 +287,11 @@ def distributed_appimage(repo: str, tag: str, built: Path, work: Path) -> Path:
 
 def squashfs_offset(image: Path) -> int:
     """Where the squashfs image of a type 2 AppImage starts: the end of its
-    ELF runtime, after the section header table (e_shoff + e_shentsize *
-    e_shnum), as the runtime itself computes it. Read from the file, never by
-    running it."""
+    ELF runtime, as the runtime itself computes it (appimage_get_elf_size in
+    type2-runtime's runtime.c): the later of the end of the section header
+    table (e_shoff + e_shentsize * e_shnum) and the end of the last section
+    it lists (sh_offset + sh_size), since an ELF ends with either. Read from
+    the file, never by running it."""
     with image.open('rb') as f:
         head = f.read(64)
         if len(head) < 52 or head[:4] != b'\x7fELF' or head[4] not in (1, 2) or head[5] not in (1, 2):
@@ -299,9 +301,20 @@ def squashfs_offset(image: Path) -> int:
             if len(head) < 64:
                 raise Refused(f'{image.name} has a truncated ELF header')
             shoff, shentsize, shnum = (int.from_bytes(head[a:b], order) for a, b in ((0x28, 0x30), (0x3A, 0x3C), (0x3C, 0x3E)))
+            # sh_offset and sh_size of an Elf64_Shdr.
+            fields = ((0x18, 0x20), (0x20, 0x28))
         else:
             shoff, shentsize, shnum = (int.from_bytes(head[a:b], order) for a, b in ((0x20, 0x24), (0x2E, 0x30), (0x30, 0x32)))
+            # sh_offset and sh_size of an Elf32_Shdr.
+            fields = ((0x10, 0x14), (0x14, 0x18))
         offset = shoff + shentsize * shnum
+        if shnum > 0:
+            f.seek(shoff + shentsize * (shnum - 1))
+            last = f.read(fields[1][1])
+            if len(last) < fields[1][1]:
+                raise Refused(f'{image.name} has no squashfs image at the end of its ELF runtime: cannot read its last section header')
+            sh_offset, sh_size = (int.from_bytes(last[a:b], order) for a, b in fields)
+            offset = max(offset, sh_offset + sh_size)
         f.seek(offset)
         if offset <= 0 or f.read(4) != b'hsqs':
             raise Refused(f'{image.name} has no squashfs image at the end of its ELF runtime (offset {offset})')
@@ -316,6 +329,9 @@ def extract_list(image: Path, work: Path) -> Path:
     a folder's above it, would make this job read a file of the runner
     instead."""
     offset = squashfs_offset(image)
+    # unsquashfs runs in `work`: a path relative to this job's folder (the
+    # workflow passes release-assets/appimage) would name nothing there.
+    image, work = image.absolute(), work.absolute()
     unsquashfs = shutil.which('unsquashfs')
     if unsquashfs is None:
         raise Refused('unsquashfs (squashfs-tools) is not installed: the list is read from the AppImage without running it')
