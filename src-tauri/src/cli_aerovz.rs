@@ -1,6 +1,5 @@
 use clap::Subcommand;
 use serde::Serialize;
-use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use super::{
@@ -439,15 +438,21 @@ fn create_archive(
     let out_string = resolve_local_path(output);
     ensure_aerozip_path(&out_string)?;
     let out_path = PathBuf::from(&out_string);
-    if out_path.exists() {
-        return Err(ArchiveError::refuse_overwrite(format!(
+    let overwrite = || {
+        ArchiveError::refuse_overwrite(format!(
             "Refusing to overwrite existing .aerozip archive: {}",
             out_path.display()
-        )));
-    }
-    if let Some(parent) = out_path.parent().filter(|p| !p.as_os_str().is_empty()) {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| ArchiveError::io("Create output directory", e))?;
+        ))
+    };
+    let parent = out_path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    std::fs::create_dir_all(parent).map_err(|e| ArchiveError::io("Create output directory", e))?;
+    match out_path.symlink_metadata() {
+        Ok(_) => return Err(overwrite()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(ArchiveError::io("Read archive destination", e)),
     }
 
     let sources = resolve_archive_sources(paths)?;
@@ -457,11 +462,9 @@ fn create_archive(
         .collect();
     let input_bytes = archive_input_size(&resolved_for_size);
 
-    let create_result = create_archive_inner(&out_path, &sources, profile, recovery_pct);
-    if let Err(e) = create_result {
-        let _ = std::fs::remove_file(&out_path);
-        return Err(e);
-    }
+    // Let the crate own writes to the output. Unlinking the final path on a
+    // refusal could delete a link or a file published by a concurrent writer.
+    create_archive_inner(&out_path, &sources, profile, recovery_pct)?;
 
     let vault = open_plaintext_archive(&out_path)?;
     let summary = aerovault::v3::VaultV3::summary(&vault);
@@ -697,25 +700,15 @@ fn recovery_report(path: &Path, overhead_pct: u32) -> Result<AerovzRecoveryRepor
 fn open_plaintext_archive(path: &Path) -> Result<aerovault::v3::OpenVaultV3, ArchiveError> {
     if matches!(v3_plaintext_flag(path)?, Some(false)) {
         return Err(ArchiveError::other(
-            "Not a plaintext .aerozip archive (it is encrypted)",
+            "Not a plaintext .aerozip archive (encrypted or damaged header)",
         ));
     }
     aerovault::v3::VaultV3::open_plaintext(path).map_err(aerovz_error)
 }
 
 fn v3_plaintext_flag(path: &Path) -> Result<Option<bool>, ArchiveError> {
-    let mut file = std::fs::File::open(path).map_err(|e| ArchiveError::io("Open archive", e))?;
-    let mut header_prefix = [0u8; 12];
-    file.read_exact(&mut header_prefix)
-        .map_err(|e| ArchiveError::io("Read archive header", e))?;
-    if &header_prefix[..10] != aerovault::v3::constants::MAGIC
-        || header_prefix[10] != aerovault::v3::constants::VERSION
-    {
-        return Ok(None);
-    }
-    Ok(Some(
-        header_prefix[11] & aerovault::v3::constants::FLAG_PLAINTEXT_CONTENT != 0,
-    ))
+    ftp_client_gui_lib::aerovault_v3::aerovz_plaintext_flag(path)
+        .map_err(|e| ArchiveError::io("Read archive header", e))
 }
 
 /// Refusal message shared by every password entry point on the plaintext lane
@@ -750,8 +743,7 @@ pub(crate) fn is_aerozip_path(path: &str) -> bool {
 }
 
 fn is_plaintext_archive_file(path: &str) -> bool {
-    let p = Path::new(path);
-    p.exists() && aerovault::v3::VaultV3::open_plaintext(p).is_ok()
+    matches!(v3_plaintext_flag(Path::new(path)), Ok(Some(true)))
 }
 
 fn archive_entry_basename(path: &Path) -> Result<String, ArchiveError> {
@@ -925,6 +917,28 @@ mod tests {
             archive_exit_code(&err),
             err.message()
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn archive_create_refuses_a_dangling_output_link_without_removing_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let output = dir.path().join("archive.aerozip");
+        let target = dir.path().join("absent");
+        let input = dir.path().join("payload");
+        std::fs::write(&input, b"payload").unwrap();
+        std::os::unix::fs::symlink(&target, &output).unwrap();
+
+        let error = create_archive(
+            output.to_str().unwrap(),
+            &[input.to_str().unwrap().to_string()],
+            "balanced",
+            "0",
+        )
+        .unwrap_err();
+        assert_eq!(archive_exit_code(&error), 9);
+        assert_eq!(std::fs::read_link(output).unwrap(), target);
+        assert!(!target.exists());
     }
 
     #[test]

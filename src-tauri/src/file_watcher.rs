@@ -195,6 +195,9 @@ const EXCLUDED_HIDDEN: &[&str] = &[
 /// `.dockerignore`, `.editorconfig`, `.htaccess` are preserved.
 pub fn should_exclude_path(path: &Path) -> bool {
     if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+        if crate::sync_exclude::is_vault_sync_artifact(name) {
+            return true;
+        }
         // Check suffix patterns (temp/editor files)
         for suffix in EXCLUDE_SUFFIXES {
             if name.ends_with(suffix) {

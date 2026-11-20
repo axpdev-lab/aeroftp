@@ -23,4 +23,12 @@ describe('mapVaultError', () => {
             expect(mapVaultError(raw, t)).toBe('[vault.errors.wrongPassword]');
         },
     );
+
+    it.each([
+        ['Vault has damaged blocks: run repair before writing to it', 'Vault has damaged blocks: run repair before writing to it'],
+        ['vault is locked by another writer (/tmp/fixture/corrupt.aerovault.aerolock); retry when it has finished', 'vault is locked by another writer (<path>); retry when it has finished'],
+        ['/tmp/fixture/corrupt.aerovault is a symbolic link; use the target path', '<path> is a symbolic link; use the target path'],
+    ])('preserves the actionable refusal %s', (raw, message) => {
+        expect(mapVaultError(raw, t)).toBe(message);
+    });
 });

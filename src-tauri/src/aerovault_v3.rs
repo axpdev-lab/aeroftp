@@ -359,24 +359,50 @@ pub(crate) fn ensure_aerovz_product_path(path: &str) -> Result<(), String> {
     }
 }
 
-fn aerovz_plaintext_flag(path: &Path) -> Result<Option<bool>, String> {
-    let mut file = File::open(path).map_err(|e| format!("Open archive: {e}"))?;
+/// Classify the v3 lane from the header, without unlocking or reading the payload.
+pub fn aerovz_plaintext_flag(path: &Path) -> std::io::Result<Option<bool>> {
+    let mut options = OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        // Match the crate's source guard. The probe runs before open_plaintext
+        // and must never wait on a FIFO in place of an archive.
+        options.custom_flags(libc::O_NONBLOCK);
+    }
+    let mut file = options.open(path)?;
+    if !file.metadata()?.is_file() {
+        return Err(std::io::Error::other(
+            "Archive source is not a regular file",
+        ));
+    }
     let mut header_prefix = [0u8; 12];
-    file.read_exact(&mut header_prefix)
-        .map_err(|e| format!("Read archive header: {e}"))?;
+    file.read_exact(&mut header_prefix)?;
     if &header_prefix[..10] != aerovault::v3::constants::MAGIC
         || header_prefix[10] != aerovault::v3::constants::VERSION
     {
         return Ok(None);
     }
-    Ok(Some(
-        header_prefix[11] & aerovault::v3::constants::FLAG_PLAINTEXT_CONTENT != 0,
-    ))
+    if header_prefix[11] & aerovault::v3::constants::FLAG_PLAINTEXT_CONTENT == 0 {
+        return Ok(Some(false));
+    }
+
+    // An encrypted vault with a flipped plaintext flag still needs a password
+    // so the crate can recover its header from parity. The flag alone is no
+    // proof of the plaintext lane.
+    let mut header_bytes = [0; aerovault::v3::constants::HEADER_SIZE];
+    header_bytes[..header_prefix.len()].copy_from_slice(&header_prefix);
+    file.read_exact(&mut header_bytes[header_prefix.len()..])?;
+    use aerovault::v3::format::{aerovz_mac_key, VaultHeaderV3};
+    Ok(Some(VaultHeaderV3::from_bytes(&header_bytes).is_ok_and(
+        |header| aerovz_mac_key().is_ok_and(|key| header.verify_mac(&key).is_ok()),
+    )))
 }
 
 fn open_aerovz_archive(path: &Path) -> Result<aerovault::v3::OpenVaultV3, String> {
-    if matches!(aerovz_plaintext_flag(path)?, Some(false)) {
-        return Err("Not a plaintext .aerozip archive (it is encrypted)".to_string());
+    let flag = aerovz_plaintext_flag(path).map_err(|e| format!("Read archive header: {e}"))?;
+    if flag == Some(false) {
+        return Err("Not a plaintext .aerozip archive (encrypted or damaged header)".to_string());
     }
     aerovault::v3::VaultV3::open_plaintext(path)
 }
@@ -917,21 +943,40 @@ pub(crate) fn create_aerozip_from_dir(
     scratch: &Path,
     dest: &Path,
 ) -> Result<(usize, usize), String> {
-    let _ = std::fs::remove_file(dest);
-    let opts = aerovault::v3::CreateOptionsV3::new_plaintext(dest.to_path_buf());
+    let _lock = acquire_vault_write_lock(dest)?;
+    match dest.symlink_metadata() {
+        Ok(meta) if meta.file_type().is_symlink() => {
+            return Err(format!(
+                "{} is a symbolic link; use the target path",
+                dest.display()
+            ));
+        }
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(format!("Read archive destination: {error}")),
+    }
+    let parent = dest
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let staging = tempfile::Builder::new()
+        .prefix(".aerocreate-prepare-")
+        .tempdir_in(parent)
+        .map_err(|e| format!("Create archive staging directory: {e}"))?;
+    let staged = staging.path().join("output.aerozip");
+    let opts = aerovault::v3::CreateOptionsV3::new_plaintext(&staged);
     aerovault::v3::VaultV3::create_with_error_correction(
         &opts,
         aerovault::v3::RecoveryPlacement::Embedded,
         ERROR_CORRECTION_DEFAULT_PCT,
     )
     .map_err(|e| format!("Create .aerozip: {e}"))?;
-    let mut vault = open_aerovz_archive(dest)?;
-    aerovault::v3::VaultV3::add_directory(&mut vault, scratch, None).map_err(|e| {
-        // Match the folder/.zip exporters: never leave a truncated product
-        // file at the user's chosen path when packing fails midway.
-        let _ = std::fs::remove_file(dest);
-        format!("Add to .aerozip: {e}")
-    })
+    let mut vault = open_aerovz_archive(&staged)?;
+    let counts = aerovault::v3::VaultV3::add_directory(&mut vault, scratch, None)
+        .map_err(|e| format!("Add to .aerozip: {e}"))?;
+    drop(vault);
+    std::fs::rename(&staged, dest).map_err(|e| format!("Publish .aerozip: {e}"))?;
+    Ok(counts)
 }
 
 /// Open an `.aerovault`/`.aerozip` container and wrap it in a
@@ -1113,9 +1158,7 @@ pub async fn aerovz_repair(vault_path: String, dry_run: bool) -> Result<serde_js
                 Some(acquire_vault_write_lock(Path::new(&vault_path))?)
             };
             let mut vault = open_aerovz_archive(Path::new(&vault_path))?;
-            let damaged = aerovault::v3::VaultV3::scrub(&vault).len();
-            let (repaired, source) = aerovault::v3::VaultV3::repair(&mut vault, dry_run, None)?;
-            Ok((repaired, damaged, source.as_str()))
+            repair_for_dialog(&mut vault, dry_run, None)
         })
         .await
         .map_err(|e| format!("archive repair task failed: {e}"))??;
@@ -1269,14 +1312,24 @@ fn add_directory_v2(
 /// has no in-place reseal, so changing the mode is a repack: open (decrypt) the
 /// vault, extract every entry into a scratch dir on the same filesystem, create a
 /// fresh container with the target options, re-add the content preserving the tree,
-/// then swap it over the original (original moved aside first, restored on any
-/// failure). The plaintext scratch dir auto-scrubs on every path (TempDir drop),
-/// success or error, mirroring the audit M1/M2 temp-hygiene rule.
+/// then atomically replace the original. Both scratch directories are removed
+/// on drop, including any lock artifacts of the staged container.
 fn repack_vault_blocking(
     orig: &Path,
     password: &str,
     target: &RepackTarget,
 ) -> Result<serde_json::Value, String> {
+    let metadata =
+        std::fs::symlink_metadata(orig).map_err(|e| format!("Read vault metadata: {e}"))?;
+    if metadata.file_type().is_symlink() {
+        return Err(format!(
+            "{} is a symbolic link; use the target path",
+            orig.display()
+        ));
+    }
+    if !metadata.is_file() {
+        return Err(format!("{} is not a regular file", orig.display()));
+    }
     let _lock = acquire_vault_write_lock(orig)?;
     let parent = orig
         .parent()
@@ -1307,6 +1360,12 @@ fn repack_vault_blocking(
     )?;
     let effective_ec = target.error_correction && target_v3;
 
+    let sidecar = parent.join(format!("{name}{}", aerovault::AEROCORRECT_EXTENSION));
+    let remove_stale_sidecar = source_is_v3
+        && sidecar.symlink_metadata().is_ok_and(|meta| meta.is_file())
+        && aerovault::v3::VaultV3::recovery_status(orig)
+            .is_ok_and(|status| status.manifest_parity || status.header_parity);
+
     // 1) Extract every entry to a scratch dir on the SAME filesystem (so the later
     //    swap is a same-device rename). TempDir scrubs the plaintext on drop. The
     //    extract is format-agnostic: open the source in its own format.
@@ -1321,13 +1380,13 @@ fn repack_vault_blocking(
         extract_all_v2_preserving_tree(orig, password, scratch.path())?;
     } // the source vault handle is dropped here, before we rewrite the path
 
-    // 2) Create a fresh container at a temp path in the same dir, under the target
-    //    format, and 3) re-add the extracted content preserving the tree.
-    let tmp_container = parent.join(crate::util::temp_name::fit_name(
-        std::ffi::OsStr::new(&format!(".{name}")),
-        &format!(".repack-{}.tmp", std::process::id()),
-    ));
-    let _ = std::fs::remove_file(&tmp_container); // clear any stale leftover
+    // Stage separately from the extracted tree. The crate's persistent lock
+    // files and any recovery artifacts belong to this private namespace.
+    let staging = tempfile::Builder::new()
+        .prefix(".aerovault-repack-output-")
+        .tempdir_in(parent)
+        .map_err(|e| format!("Create repack output dir: {e}"))?;
+    let tmp_container = staging.path().join(&name);
     let readd: Result<(usize, usize), String> = if target_v3 {
         let opts = apply_profile_level(
             aerovault::v3::CreateOptionsV3::new(&tmp_container, password),
@@ -1343,7 +1402,6 @@ fn repack_vault_blocking(
             aerovault::v3::VaultV3::create(&opts)
         };
         if let Err(e) = create_res {
-            let _ = std::fs::remove_file(&tmp_container);
             return Err(format!("Create repacked vault: {e}"));
         }
         (|| -> Result<(usize, usize), String> {
@@ -1359,40 +1417,22 @@ fn repack_vault_blocking(
         let opts = aerovault::CreateOptions::new(&tmp_container, password).with_mode(mode);
         match aerovault::Vault::create(opts) {
             Ok(_) => add_directory_v2(&tmp_container, password, scratch.path()),
-            Err(e) => {
-                let _ = std::fs::remove_file(&tmp_container);
-                return Err(format!("Create repacked vault: {e}"));
-            }
+            Err(e) => return Err(format!("Create repacked vault: {e}")),
         }
     };
-    let (added_files, added_dirs) = match readd {
-        Ok(v) => v,
-        Err(e) => {
-            let _ = std::fs::remove_file(&tmp_container);
-            return Err(format!("Re-add into repacked vault: {e}"));
-        }
-    };
+    let (added_files, added_dirs) =
+        readd.map_err(|e| format!("Re-add into repacked vault: {e}"))?;
 
-    // 4) Swap the new container over the original: move the original aside, move the
-    //    new one into place, restore the original on failure. Cross-platform (a bare
-    //    rename onto an existing path fails on Windows).
-    let bak = parent.join(format!(".{name}.repack-bak-{}", std::process::id()));
-    let _ = std::fs::remove_file(&bak);
-    if let Err(e) = std::fs::rename(orig, &bak) {
-        let _ = std::fs::remove_file(&tmp_container);
-        return Err(format!("Stage original vault aside: {e}"));
-    }
-    if let Err(e) = std::fs::rename(&tmp_container, orig) {
-        let _ = std::fs::rename(&bak, orig); // restore the original
-        return Err(format!("Swap repacked vault into place: {e}"));
-    }
-    let _ = std::fs::remove_file(&bak);
+    // Replace with one same-filesystem rename so a failed swap leaves the
+    // original in place. The AeroFTP operation lock remains held.
+    std::fs::rename(&tmp_container, orig)
+        .map_err(|e| format!("Swap repacked vault into place: {e}"))?;
 
-    // A detached `.aerocorrect` sidecar from before the repack can no longer validate
-    // the rewritten container, so a later verify would mis-report. Drop the stale
-    // sibling (best effort); embedded parity, when requested, lives in-container.
-    let sidecar = parent.join(format!("{name}.{}", aerovault::AEROCORRECT_EXTENSION));
-    let _ = std::fs::remove_file(&sidecar);
+    // A recognized detached vault sidecar describes the previous bytes. Leave
+    // unrelated files and links in the automatic sidecar location alone.
+    if remove_stale_sidecar {
+        let _ = std::fs::remove_file(&sidecar);
+    }
 
     Ok(serde_json::json!({
         "repacked": true,
@@ -1620,10 +1660,7 @@ pub async fn vault_v3_repair(
                 Some(acquire_vault_write_lock(Path::new(&vault_path))?)
             };
             let mut vault = aerovault::v3::VaultV3::open(&vault_path, &password)?;
-            let damaged = aerovault::v3::VaultV3::scrub(&vault).len();
-            let explicit = parity_path.as_deref().map(Path::new);
-            let (repaired, source) = aerovault::v3::VaultV3::repair(&mut vault, dry_run, explicit)?;
-            Ok((repaired, damaged, source.as_str()))
+            repair_for_dialog(&mut vault, dry_run, parity_path.as_deref().map(Path::new))
         })
         .await
         .map_err(|e| format!("vault repair task failed: {e}"))??;
@@ -1633,6 +1670,29 @@ pub async fn vault_v3_repair(
         "dry_run": dry_run,
         "parity_source": source,
     }))
+}
+
+/// The GUI has a localized summary for the crate's no-repair outcome.
+fn repair_for_dialog(
+    vault: &mut aerovault::v3::OpenVaultV3,
+    dry_run: bool,
+    parity: Option<&Path>,
+) -> Result<(usize, usize, &'static str), String> {
+    let damaged = aerovault::v3::VaultV3::scrub(vault).len();
+    match aerovault::v3::VaultV3::repair(vault, dry_run, parity) {
+        Ok((repaired, source)) => Ok((repaired, damaged, source.as_str())),
+        // 0.6.9 exposes this outcome only as a String. Match the complete error
+        // so I/O, validation and lock failures still reach the user unchanged.
+        Err(error)
+            if damaged > 0
+                && error == format!(
+                    "{damaged} damaged block(s) could not be repaired from the available Error Correction parity"
+                ) =>
+        {
+            Ok((0, damaged, "none"))
+        }
+        Err(error) => Err(error),
+    }
 }
 
 /// Peak in-memory multiplier over the projected container size. While sealing,
@@ -2805,6 +2865,305 @@ mod tests {
         let out = dir.path().join("out");
         let got = extract_any_snapshot(&vault, &out);
         assert_files_match(&got, &want, "v3 add_directory_core");
+    }
+
+    #[test]
+    fn change_mode_twice_leaves_only_the_vault_and_its_existing_lock() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("private.aerovault");
+        aerovault::v3::VaultV3::create(&aerovault::v3::CreateOptionsV3::new(&path, STRESS_PW))
+            .unwrap();
+        for error_correction in [true, false] {
+            let target = RepackTarget {
+                security_level: None,
+                compression_profile: Some("balanced".to_string()),
+                error_correction,
+                error_correction_pct: ERROR_CORRECTION_DEFAULT_PCT,
+            };
+            repack_vault_blocking(&path, STRESS_PW, &target).unwrap();
+            let mut names: Vec<_> = std::fs::read_dir(dir.path())
+                .unwrap()
+                .map(|entry| entry.unwrap().file_name())
+                .collect();
+            names.sort();
+            assert_eq!(names, ["private.aerovault", "private.aerovault.aerolock"]);
+        }
+    }
+
+    #[test]
+    fn change_mode_retires_recognized_sidecar_and_keeps_its_lock() {
+        use aerovault::v3::{CreateOptionsV3, VaultV3};
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("private.aerovault");
+        let sidecar = dir.path().join("private.aerovault.aerocorrect");
+        let lock = dir.path().join("private.aerovault.aerocorrect.aerolock");
+        VaultV3::create(&CreateOptionsV3::new(&path, STRESS_PW)).unwrap();
+        VaultV3::export_parity(&path, STRESS_PW, None).unwrap();
+        assert!(sidecar.is_file());
+        assert!(lock.is_file());
+
+        repack_vault_blocking(
+            &path,
+            STRESS_PW,
+            &RepackTarget {
+                security_level: None,
+                compression_profile: Some("balanced".to_string()),
+                error_correction: false,
+                error_correction_pct: ERROR_CORRECTION_DEFAULT_PCT,
+            },
+        )
+        .unwrap();
+        assert!(!sidecar.exists());
+        assert!(lock.is_file());
+        assert!(VaultV3::open(&path, STRESS_PW).is_ok());
+    }
+
+    #[test]
+    fn change_mode_preserves_an_unrecognized_default_sidecar() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("private.aerovault");
+        let sidecar = dir.path().join("private.aerovault.aerocorrect");
+        aerovault::v3::VaultV3::create(&aerovault::v3::CreateOptionsV3::new(&path, STRESS_PW))
+            .unwrap();
+        std::fs::write(&sidecar, b"unrelated file").unwrap();
+        repack_vault_blocking(
+            &path,
+            STRESS_PW,
+            &RepackTarget {
+                security_level: None,
+                compression_profile: Some("balanced".to_string()),
+                error_correction: false,
+                error_correction_pct: ERROR_CORRECTION_DEFAULT_PCT,
+            },
+        )
+        .unwrap();
+        assert_eq!(std::fs::read(sidecar).unwrap(), b"unrelated file");
+    }
+
+    #[tokio::test]
+    async fn unrepairable_vault_and_archive_report_damage_in_both_dialog_modes() {
+        use aerovault::v3::{CreateOptionsV3, VaultV3};
+        let dir = tempfile::tempdir().unwrap();
+        let payload = dir.path().join("payload");
+        std::fs::write(&payload, b"payload without parity").unwrap();
+        for plaintext in [false, true] {
+            let path = dir.path().join(if plaintext {
+                "plain.aerozip"
+            } else {
+                "secret.aerovault"
+            });
+            let path_string = path.to_str().unwrap().to_string();
+            let options = if plaintext {
+                CreateOptionsV3::new_plaintext(&path)
+            } else {
+                CreateOptionsV3::new(&path, STRESS_PW)
+            };
+            VaultV3::create(&options).unwrap();
+            {
+                let mut vault = if plaintext {
+                    VaultV3::open_plaintext(&path)
+                } else {
+                    VaultV3::open(&path, STRESS_PW)
+                }
+                .unwrap();
+                VaultV3::add_files(&mut vault, &[(payload.clone(), "payload".to_string())])
+                    .unwrap();
+            }
+
+            let mut damaged = std::fs::read(&path).unwrap();
+            // v3 data starts after the 1024-byte header and 8-byte block length.
+            damaged[aerovault::v3::constants::DATA_OFFSET as usize + 8] ^= 1;
+            std::fs::write(&path, &damaged).unwrap();
+            for dry_run in [true, false] {
+                let result = if plaintext {
+                    aerovz_repair(path_string.clone(), dry_run).await
+                } else {
+                    vault_v3_repair(path_string.clone(), STRESS_PW.to_string(), dry_run, None).await
+                }
+                .unwrap();
+                assert_eq!(
+                    result,
+                    serde_json::json!({
+                        "repaired": 0, "damaged": 1, "dry_run": dry_run, "parity_source": "none",
+                    })
+                );
+                assert_eq!(std::fs::read(&path).unwrap(), damaged);
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn protected_vault_write_reports_repair_and_leaves_damage_recoverable() {
+        use aerovault::v3::{CreateOptionsV3, RecoveryPlacement, VaultV3};
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("secret.aerovault");
+        let payload = dir.path().join("payload");
+        std::fs::write(&payload, b"recoverable payload").unwrap();
+        VaultV3::create_with_error_correction(
+            &CreateOptionsV3::new(&path, STRESS_PW),
+            RecoveryPlacement::Embedded,
+            ERROR_CORRECTION_DEFAULT_PCT,
+        )
+        .unwrap();
+        {
+            let mut vault = VaultV3::open(&path, STRESS_PW).unwrap();
+            VaultV3::add_files(&mut vault, &[(payload, "payload".to_string())]).unwrap();
+        }
+        let mut bytes = std::fs::read(&path).unwrap();
+        bytes[aerovault::v3::constants::DATA_OFFSET as usize + 8] ^= 1;
+        std::fs::write(&path, &bytes).unwrap();
+        let path = path.to_str().unwrap().to_string();
+
+        let error =
+            vault_v3_create_directory(path.clone(), STRESS_PW.to_string(), "new".to_string())
+                .await
+                .unwrap_err();
+        assert!(error.contains("run repair"), "{error}");
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+        let result = vault_v3_repair(path, STRESS_PW.to_string(), false, None)
+            .await
+            .unwrap();
+        assert_eq!(result["repaired"], 1);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn archive_probe_rejects_a_fifo_without_waiting_for_a_writer() {
+        use std::os::unix::ffi::OsStrExt;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("archive.aerozip");
+        let fifo = std::ffi::CString::new(path.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(fifo.as_ptr(), 0o600) }, 0);
+
+        // Keep a rescue writer available so a regression cannot leave a
+        // blocking pool worker hung when the timeout fails the test.
+        let rescue = path.clone();
+        let (finished, wait) = std::sync::mpsc::channel();
+        let writer = std::thread::spawn(move || {
+            if wait.recv_timeout(Duration::from_secs(2)).is_err() {
+                // Open read+write so the rescue also terminates if no reader
+                // arrived. Closing the handle gives a blocked reader EOF.
+                let _ = OpenOptions::new().read(true).write(true).open(rescue);
+            }
+        });
+        let result = tokio::time::timeout(
+            Duration::from_secs(1),
+            aerovz_open_archive(path.to_str().unwrap().to_string()),
+        )
+        .await;
+        if result.is_ok() {
+            let _ = finished.send(());
+        }
+        writer.join().unwrap();
+        let Err(error) = result.expect("archive probe stalled on a FIFO") else {
+            panic!("opened a FIFO as an archive");
+        };
+        assert!(error.contains("not a regular file"), "{error}");
+    }
+
+    #[tokio::test]
+    async fn a_flipped_plaintext_flag_keeps_the_encrypted_recovery_route() {
+        use aerovault::v3::{CreateOptionsV3, VaultV3};
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("flag.aerovault");
+        VaultV3::create(&CreateOptionsV3::new(&path, STRESS_PW)).unwrap();
+        VaultV3::export_parity(&path, STRESS_PW, None).unwrap();
+        let mut bytes = std::fs::read(&path).unwrap();
+        bytes[11] ^= aerovault::v3::constants::FLAG_PLAINTEXT_CONTENT;
+        std::fs::write(&path, bytes).unwrap();
+
+        let path = path.to_str().unwrap().to_string();
+        assert!(!aerovz_is_archive(path.clone()).await.unwrap());
+        assert_eq!(
+            detect_aero_container(path.clone())
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("vault")
+        );
+        assert!(vault_v3_open(path, STRESS_PW.to_string()).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn password_open_rejects_an_archive_even_under_a_vault_name() {
+        use aerovault::v3::{CreateOptionsV3, VaultV3};
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("plaintext.aerovault");
+        VaultV3::create(&CreateOptionsV3::new_plaintext(&path)).unwrap();
+        let Err(error) =
+            vault_v3_open(path.to_str().unwrap().to_string(), STRESS_PW.to_string()).await
+        else {
+            panic!("password open accepted a plaintext vault");
+        };
+        assert!(error.contains("unencrypted .aerozip archive"), "{error}");
+    }
+
+    #[tokio::test]
+    async fn archive_extraction_preserves_existing_lock_file() {
+        use aerovault::v3::{CreateOptionsV3, VaultV3};
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("test.aerozip");
+        let entry = "protected.aerovault.aerolock";
+        let lock = dir.path().join(entry);
+        let payload = dir.path().join("payload");
+        std::fs::write(&payload, b"archive contents").unwrap();
+        std::fs::write(&lock, b"existing lock").unwrap();
+        VaultV3::create(&CreateOptionsV3::new_plaintext(&archive)).unwrap();
+        let mut vault = VaultV3::open_plaintext(&archive).unwrap();
+        VaultV3::add_files(&mut vault, &[(payload, entry.to_string())]).unwrap();
+
+        let error = aerovz_extract_entry(
+            archive.to_str().unwrap().to_string(),
+            entry.to_string(),
+            dir.path().to_str().unwrap().to_string(),
+        )
+        .await
+        .unwrap_err();
+        assert!(error.contains("lock file"), "{error}");
+        assert_eq!(std::fs::read(lock).unwrap(), b"existing lock");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn save_all_does_not_replace_a_symbolic_link() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("source");
+        let target = dir.path().join("existing.aerozip");
+        let alias = dir.path().join("alias.aerozip");
+        std::fs::create_dir(&source).unwrap();
+        std::fs::write(&target, b"existing").unwrap();
+        std::os::unix::fs::symlink(&target, &alias).unwrap();
+
+        let error = create_aerozip_from_dir(&source, &alias).unwrap_err();
+        assert!(error.contains("is a symbolic link"), "{error}");
+        assert_eq!(std::fs::read_link(alias).unwrap(), target);
+        assert_eq!(std::fs::read(target).unwrap(), b"existing");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn change_mode_refuses_to_replace_a_symbolic_link() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vault.aerovault");
+        let link = dir.path().join("alias.aerovault");
+        aerovault::v3::VaultV3::create(&aerovault::v3::CreateOptionsV3::new(&path, STRESS_PW))
+            .unwrap();
+        std::os::unix::fs::symlink(&path, &link).unwrap();
+        let bytes = std::fs::read(&path).unwrap();
+        let error = repack_vault_blocking(
+            &link,
+            STRESS_PW,
+            &RepackTarget {
+                security_level: None,
+                compression_profile: None,
+                error_correction: false,
+                error_correction_pct: ERROR_CORRECTION_DEFAULT_PCT,
+            },
+        )
+        .unwrap_err();
+        assert!(error.contains("is a symbolic link"), "{error}");
+        assert_eq!(std::fs::read_link(link).unwrap(), path);
+        assert_eq!(std::fs::read(path).unwrap(), bytes);
     }
 
     /// Audit M9: a lock orphaned by a crashed writer (its Drop never ran) names a

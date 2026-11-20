@@ -4746,7 +4746,8 @@ enum VaultCommands {
 #[derive(Subcommand, Clone)]
 enum CorrectCommands {
     /// Generate a `.aerocorrect` recovery sidecar for a file. Default output is
-    /// `<file>.aerocorrect`. The level sets the storage overhead (low ~7%, medium ~15%,
+    /// `<file>.aerocorrect`. The write leaves a persistent `<file>.aerolock` and
+    /// a lock next to the sidecar. The level sets the storage overhead (low ~7%, medium ~15%,
     /// quartile ~25%, high ~30%, or a percentage 5-50; default medium).
     Gen {
         /// Path to the file to protect
@@ -4771,7 +4772,8 @@ enum CorrectCommands {
         #[arg(long)]
         parity: Option<String>,
     },
-    /// Repair a corrupted file in place from its `.aerocorrect` sidecar. Atomic and
+    /// Repair a corrupted file in place from its `.aerocorrect` sidecar. A write
+    /// leaves a persistent `<file>.aerolock` next to the repaired file. Atomic and
     /// all-or-nothing: the original is replaced only if the repaired stream hashes back
     /// to the sidecar's recorded content; otherwise it is left byte-for-byte untouched.
     Repair {
@@ -8544,7 +8546,7 @@ type SyncExcludes = ftp_client_gui_lib::sync_exclude::ExcludeMatcher;
 /// (`sync_exclude`). An invalid pattern is a usage error (exit 5): it used to be
 /// dropped in silence, which left the files it was meant to protect in scope.
 fn compile_sync_excludes(patterns: &[String], format: OutputFormat) -> Result<SyncExcludes, i32> {
-    SyncExcludes::new(patterns).map_err(|e| {
+    SyncExcludes::for_sync(patterns).map_err(|e| {
         print_error(format, &e.to_string(), 5);
         5
     })
@@ -91948,6 +91950,9 @@ mod tests {
                 )
                 .unwrap();
                 assert_eq!(patterns, vec!["x", "*.log", "node_modules", "*.tmp"]);
+                let matcher = compile_sync_excludes(&patterns, OutputFormat::Json).unwrap();
+                assert!(matcher.is_excluded("backup/vault.aerovault.aerolock"));
+                assert!(matcher.is_excluded("backup/data.bin.aerocorrect.aerolock"));
 
                 let missing = dir.path().join("missing.txt");
                 let cli = Cli::try_parse_from([
