@@ -83,6 +83,10 @@
 #           libz-sys 1.1.31 -> 1.1.33 (the only path is libssh2-sys <- ssh2), lock
 #           version and checksum only. Added RUSTSEC-2026-0543, chrono unmaintained,
 #           all versions affected, no maintained release to move to; see below.)
+# Reviewed: 2026-11-20 (RUSTSEC-2026-0574..0582 published 2026-11-18: nine unsound
+#           advisories on heapless 0.7.17, reached only through postcard 1.1.3 in the
+#           iroh/peer-l0 graph; no compatible patched release, no affected function
+#           called. Added with the reach and the exit path; see below.)
 
 [advisories]
 ignore = [
@@ -482,6 +486,44 @@ ignore = [
     # or move aeroftp and peer-l0 to jiff once those dependents no longer
     # pull chrono in.
     "RUSTSEC-2026-0543",  # chrono unmaintained (no maintained release; 11 dependents in the graph, replacement would ship two date libraries)
+
+    # ----------------------------------------------------------------
+    # RUSTSEC-2026-0574..0582 - heapless 0.7.17 unsound (nine advisories)
+    # ----------------------------------------------------------------
+    # Published 2026-11-18, all "unsound", all patched only in heapless >= 0.9.4.
+    # Each names specific heapless functions: SortedLinkedList (FindMutView::pop,
+    # zeroize), Spsc::peek, IndexMap (insert, truncate, retain, clear), Deque
+    # (clear, make_contiguous, try_from), HistoryBuf (clear, write),
+    # vec::IntoIter::drop, and the pool modules (arc_pool, object_pool,
+    # box_pool, pool).
+    #
+    # Reach (measured on the locked graph and the registry sources):
+    #   heapless 0.7.17 <- postcard 1.1.3 (default feature heapless-cas)
+    #     <- iroh-blobs 0.103.1 / iroh-tickets 1.0.0 <- iroh-docs <- peer-l0.
+    # postcard 1.1.3 is the newest postcard and requires heapless ^0.7, so no
+    # compatible patched release exists. postcard uses heapless only for its
+    # heapless flavors (`to_vec`, `to_vec_cobs`, `HVec`, the accumulator) and
+    # for MaxSize impls of heapless::Vec and heapless::String; its IndexMap
+    # use is in its own `#[cfg(test)]` modules. The iroh crates (iroh, iroh-blobs,
+    # iroh-docs, iroh-gossip, iroh-relay, iroh-tickets, irpc) call only
+    # postcard::from_bytes, to_stdvec, to_allocvec, to_slice, to_io, to_extend,
+    # serialize_with_flavor with ser_flavors::Size, and postcard::experimental;
+    # none of them names a heapless type, and neither do aeroftp or peer-l0.
+    # So no affected function is called: the code is compiled, not reached.
+    #
+    # Exit path: remove these ignores when postcard releases a version on
+    # heapless >= 0.9.4 (or drops it from its default features) and iroh moves
+    # to it, or when iroh-blobs and iroh-tickets stop enabling postcard's
+    # default features.
+    "RUSTSEC-2026-0574",  # heapless 0.7.17 FindMutView::pop (postcard transitive, not called)
+    "RUSTSEC-2026-0575",  # heapless 0.7.17 Spsc::peek ordering (not called)
+    "RUSTSEC-2026-0576",  # heapless 0.7.17 IndexMap::truncate (not called)
+    "RUSTSEC-2026-0577",  # heapless 0.7.17 panicking Drop in clear/retain/truncate/IntoIter (not called)
+    "RUSTSEC-2026-0578",  # heapless 0.7.17 SortedLinkedList::zeroize (not called)
+    "RUSTSEC-2026-0579",  # heapless 0.7.17 Deque::try_from (not called)
+    "RUSTSEC-2026-0580",  # heapless 0.7.17 pool treiber stack race (not called)
+    "RUSTSEC-2026-0581",  # heapless 0.7.17 Deque::make_contiguous (not called)
+    "RUSTSEC-2026-0582",  # heapless 0.7.17 IndexMap::insert (not called)
 ]
 
 # We do NOT ignore "informational" advisories blanket-style. Each ignore is
