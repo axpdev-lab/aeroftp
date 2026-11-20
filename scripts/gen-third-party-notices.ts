@@ -839,6 +839,7 @@ export function publicLink(url: string | undefined): string | undefined {
 // and are kept; urlsInText then drops the closing ones the URL does not open,
 // and trailing punctuation, which belong to the prose around it.
 const URL_IN_TEXT = /\b[A-Za-z][A-Za-z0-9+.-]*:\/\/[^\s<>"`]+/g;
+const URL_SCHEME = /\b[A-Za-z][A-Za-z0-9+.-]*:\/\//g;
 const TRAILING_PROSE = /[.,;:!?']$/;
 
 /**
@@ -891,8 +892,12 @@ function decodedQueryName(name: string): string {
  */
 export function carriesCredentialUrl(text: string): boolean {
   for (const url of urlsInText(text)) {
-    const authority = url.slice(url.indexOf('://') + 3).split(/[/?#]/)[0];
-    if (authority.includes('@')) return true;
+    // Adjacent Markdown links make one match
+    // (`[a](https://example.com/a)[b](https://user@example.com/b)`): the
+    // authority of every URL that starts inside it is read, its own first.
+    for (const scheme of url.matchAll(URL_SCHEME)) {
+      if (url.slice(scheme.index + scheme[0].length).split(/[/?#]/)[0].includes('@')) return true;
+    }
     // The fragment is read like the query: an OAuth redirect carries its
     // token there (`#access_token=`), and an anchor (`#top`) has no `=`.
     const paramsStart = url.search(/[?#]/);
@@ -2882,8 +2887,9 @@ export function renderNotices(
   // file are exempt. A clause ends with its sentence: a period, `!` or `?`
   // before a space or the end, so two sentences ("You can re-create the
   // example below." and "The compression algorithm is described...") never
-  // make one restriction.
-  const sameSentence = String.raw`(?:[^.!?]|[.!?](?=\S))*?`;
+  // make one restriction. The period of an abbreviation ends no sentence
+  // ("cannot be used to develop an app (e.g. a RAR archiver)").
+  const sameSentence = String.raw`(?:[^.!?]|[.!?](?=\S)|\b(?:e\.g|i\.e|etc|cf|viz|vs)\.\s)*?`;
   const nonFreePattern = new RegExp(`(re-create${sameSentence}compression algorithm|cannot be used to develop${sameSentence}\\brar\\b)`, 'i');
   const isRegisteredRestriction = (comp: ComponentInfo, file: string) =>
     nonFreeExceptions.some(
@@ -3020,7 +3026,11 @@ export function renderNotices(
   // (a restriction binds the code it ships with, reproduced or not), and a
   // license text reviewed inside a source file. An MIT-tagged header that
   // carries the RAR restriction is rejected as a LICENSE file carrying it
-  // would be.
+  // would be. A header is the comment block around an SPDX-License-Identifier
+  // tag (findBundledCodeUnderOtherLicenses): a source comment with no tag is
+  // no header, the notices read only its copyright lines
+  // (findPackageCopyrightNotices), and its terms are scanned only through a
+  // reviewed license text inside a source file.
   for (const comp of allComponents) {
     bundledOf(comp);
     for (const h of headerTextsCache.get(comp) ?? []) assertNoUnregisteredRestriction(comp, [h.file], h.text, ' in a source header');

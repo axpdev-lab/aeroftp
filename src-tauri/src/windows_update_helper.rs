@@ -2218,11 +2218,11 @@ mod tests {
     }
 
     /// A folder name outside ASCII (`%TEMP%` of a user named Müller) is the
-    /// folder the helper works in. Launched as the app launches it
-    /// (`spawn_detached`), in a console whose code page is not UTF-8 (437
-    /// here), the helper writes its confirmation where the app waits for it,
-    /// takes the app's answer and swaps the exe in an app folder outside
-    /// ASCII too.
+    /// folder the helper works in, and the script sits in it, as in
+    /// production. Launched as the app launches it (`spawn_detached`), in a
+    /// console whose code page is not UTF-8 (437 here), the helper writes its
+    /// confirmation where the app waits for it, takes the app's answer and
+    /// swaps the exe in an app folder outside ASCII too.
     #[test]
     fn folder_names_outside_ascii_are_the_folders_the_helper_works_in() {
         let mut fx = fixture_in("app-Müller");
@@ -2233,7 +2233,7 @@ mod tests {
         drop(staged);
         let relaunched = fx.root.path().join("relaunched.marker");
         let lines = runnable_answered(&marking_relaunch(&script, &relaunched), AppAnswer::ByTheApp);
-        let path = fx.root.path().join("helper.cmd");
+        let path = work.join("helper.cmd");
         std::fs::write(&path, format!("@chcp 437 >nul\r\n{}", lines.concat()))
             .expect("write script");
         let mut helper = HelperProcess(spawn_detached(&path).expect("spawn helper"));
@@ -2248,8 +2248,9 @@ mod tests {
     }
 
     /// The NSIS helper runs the setup it was given at a path outside ASCII
-    /// (the Downloads folder of a user named Müller), in a console whose code
-    /// page is not UTF-8. The setup here is a script that leaves a mark.
+    /// (the Downloads folder of a user named Müller), from a script in a
+    /// `%TEMP%` outside ASCII too, in a console whose code page is not UTF-8.
+    /// The setup here is a script that leaves a mark.
     #[test]
     fn the_nsis_helper_runs_a_setup_whose_path_is_outside_ascii() {
         let root = tempfile::tempdir().expect("temp dir");
@@ -2270,7 +2271,9 @@ mod tests {
                 }
             })
             .collect();
-        let path = root.path().join("helper.cmd");
+        let temp = root.path().join("Temp-Müller");
+        std::fs::create_dir(&temp).expect("temp dir");
+        let path = temp.join("helper.cmd");
         std::fs::write(&path, format!("@chcp 437 >nul\r\n{lines}")).expect("write script");
         let mut helper = HelperProcess(spawn_detached(&path).expect("spawn helper"));
         let status = helper.finish(Duration::from_secs(60));

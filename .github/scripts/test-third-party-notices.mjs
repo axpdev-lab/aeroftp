@@ -3833,6 +3833,9 @@ test('licensing exceptions: a source header that carries a restriction clause is
     // restriction still binds the code it ships with.
     write('src/lib.rs', header('This code cannot be used to develop a RAR (WinRAR) compatible archiver.'));
     assert.throws(() => generateNoticesMarkdown([make()], [], SPDX_STANDARD_LICENSES_FILE, [exception]), /\(file: src\/lib\.rs\) contains non-free restriction clauses in a source header/);
+    // An abbreviation ends no sentence: the restriction is one.
+    write('src/lib.rs', header('This code cannot be used to develop an app (e.g. a RAR archiver).'));
+    assert.throws(() => generateNoticesMarkdown([make()], [], SPDX_STANDARD_LICENSES_FILE, [exception]), /\(file: src\/lib\.rs\) contains non-free restriction clauses in a source header/);
     // Controls: the words of a restriction in separate sentences, or inside
     // another word ("library"), make none.
     for (const terms of [
@@ -3914,6 +3917,12 @@ test('credentials: an attribution line or a text reproduced as shipped with a cr
       const file = make('cred-file', 'MIT', { LICENSE: shippedLicense(`Copyright (c) 2020 File Holder <${url}>`, 'MIT') });
       rejects(() => generateNoticesMarkdown([file], []), /THIRD-PARTY-NOTICES\.md line \d+ \(under cred-file@1\.0\.0\) would publish/);
     }
+    // An ordinary Markdown link right before one with userinfo: each destination is read.
+    const adjacent = make('cred-adjacent', 'MIT', { LICENSE: shippedLicense(`Copyright (c) 2020 File Holder [site](https://example.com/a)[mirror](https://user:${dummy}@example.com/x)`, 'MIT') });
+    rejects(() => generateNoticesMarkdown([adjacent], []), /THIRD-PARTY-NOTICES\.md line \d+ \(under cred-adjacent@1\.0\.0\) would publish/);
+    // Control: adjacent links with no secret, balanced parentheses included, still render.
+    const plainAdjacent = make('plain-adjacent', 'MIT', { LICENSE: shippedLicense('Copyright (c) 2020 File Holder [site](https://example.com/a)[wiki](https://example.com/wiki/A_(b))', 'MIT') });
+    assert.ok(generateNoticesMarkdown([plainAdjacent], []).includes('[site](https://example.com/a)[wiki](https://example.com/wiki/A_(b))'));
     // Control: normal notices, a URL with a plain query and a contact email included, still render.
     const normalUrl = 'https://example.com/normal?page=2#top';
     const normal = make('normal-src', 'MIT', {
@@ -3952,6 +3961,11 @@ test('credentials: a URL is read whole through its own parentheses and brackets,
   // Controls: the same shapes with no secret.
   assert.strictEqual(carriesCredentialUrl('Copyright (c) 2024 Holder (see https://example.com/a(b)?page=2)'), false);
   assert.strictEqual(carriesCredentialUrl('Copyright (c) 2024 Holder (https://example.com/wiki/A_(b))'), false);
+  // Adjacent Markdown links make one match: the userinfo of the second is read.
+  for (const text of [`[a](https://example.com/a)[b](https://user:${dummy}@example.com/x)`, `[a](https://example.com)[b](https://${dummy}@example.com)`]) {
+    assert.strictEqual(carriesCredentialUrl(text), true, text);
+  }
+  assert.strictEqual(carriesCredentialUrl('[a](https://example.com/a)[b](https://example.com/b(c))'), false);
 });
 
 test('credentials: query parameter names are read decoded, as a server reads them', () => {
