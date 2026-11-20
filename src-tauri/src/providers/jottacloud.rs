@@ -192,25 +192,77 @@ struct PersistOutcome {
 
 /// What [`JottacloudProvider::load_refresh_chain`] read for one key.
 enum LoadedChain {
-    /// The chain to exchange, the refresh token its key holds (empty for
-    /// none), and the key's deletion count it was read with (`None`: not
-    /// readable).
-    Chain((String, String, String), String, Option<u64>),
+    /// A chain to exchange.
+    Chain(Loaded),
     /// Nothing to exchange.
     Nothing,
     /// The key, its pending rotation or its deletions kept changing while
     /// they were read: nothing is handed out, and nothing else should be
     /// spent instead.
     Busy,
+    /// The key has a chain that cannot be used now, for the reason given: a
+    /// deletion of it, or of the key its kept rotation was loaded from, is
+    /// running or cannot be read, or the key cannot be read while a rotation
+    /// is kept for it. Nothing is handed out, and nothing else should be
+    /// spent instead: the chain is still there for a retry.
+    Withheld(String),
 }
+
+/// A chain [`LoadedChain::Chain`] hands out.
+struct Loaded {
+    /// Its refresh token, token endpoint and username.
+    chain: (String, String, String),
+    /// The refresh token its key holds (empty for none).
+    stored_token: String,
+    /// The key's deletion count it was read with.
+    generation: u64,
+    /// For a kept rotation whose chain was loaded from another key
+    /// ([`PENDING_SOURCE`]): that key, and its deletion count when the
+    /// rotation's connection began, still its count when it was handed out.
+    source: Option<(String, u64)>,
+}
+
+/// What [`JottacloudProvider::hand_out`] hands out: the chain, the refresh
+/// token its key holds, and [`Loaded::source`].
+type HandedOut = ((String, String, String), String, Option<(String, u64)>);
 
 #[cfg(test)]
 impl LoadedChain {
     fn chain(self) -> Option<((String, String, String), String)> {
         match self {
-            Self::Chain(chain, stored_token, _) => Some((chain, stored_token)),
-            Self::Nothing | Self::Busy => None,
+            Self::Chain(loaded) => Some((loaded.chain, loaded.stored_token)),
+            Self::Nothing | Self::Busy | Self::Withheld(_) => None,
         }
+    }
+}
+
+/// What became of the deletions of a key since a connection read their
+/// count, by any process ([`crate::user_partitions::chain_deletions`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum DeletionState {
+    /// None completed since, and none runs.
+    Unchanged,
+    /// One completed since (or one its process left unfinished, which may
+    /// have): the chain read before it is the authorization it removed.
+    Moved,
+    /// One is running, or the count cannot be read now, or it was not read
+    /// when the connection began: what becomes of the key is not known yet.
+    Unsettled,
+}
+
+/// [`DeletionState`] of `account` of `owner`, against `began`, the count
+/// its connection read.
+fn deletion_state(owner: Option<i64>, account: &str, began: Option<u64>) -> DeletionState {
+    let Some(began) = began else {
+        return DeletionState::Unsettled;
+    };
+    let Some(store) = crate::credential_store::CredentialStore::from_cache() else {
+        return DeletionState::Unsettled;
+    };
+    match crate::user_partitions::chain_deletions(&store, owner, account) {
+        Ok(now) if now.generation != began => DeletionState::Moved,
+        Ok(now) if now.settled() => DeletionState::Unchanged,
+        _ => DeletionState::Unsettled,
     }
 }
 
@@ -293,6 +345,7 @@ pub(crate) fn delete_refresh_chain<E: From<String>>(
     }
     // Before anything is deleted: an owner that cannot be read records nothing.
     let key = (chain_owner(user).map_err(E::from)?, account.to_string());
+    crate::user_partitions::settle_unended_chain_deletions(store);
     let mut deleted = DELETED_CHAINS.lock().unwrap_or_else(|e| e.into_inner());
     // Recorded where every process reads it ([`crate::user_partitions::ChainDeletions`]):
     // running before anything is deleted, so no process hands out a rotation
@@ -312,7 +365,9 @@ pub(crate) fn delete_refresh_chain<E: From<String>>(
     ) {
         // Over all the same: the next read of the key's deletions in this
         // process counts it as completed, and so does any other process
-        // once this one is gone.
+        // once this one is gone. Until then every other process takes it for
+        // one still running, so this one settles it again at its next
+        // connection or deletion ([`crate::user_partitions::settle_unended_chain_deletions`]).
         jotta_log(&format!(
             "Deletion of {} not recorded as ended: {}",
             account, e
@@ -346,6 +401,12 @@ pub struct JottacloudProvider {
     /// whichever client reads either key next finds the current value; see
     /// `refresh_persist_accounts`.
     refresh_source_account: Option<String>,
+    /// Whether a rotation is written to `refresh_source_account` too, not
+    /// only checked against its deletions: always for a chain loaded from
+    /// that key; for a kept rotation loaded again from the profile's own key
+    /// ([`Loaded::source`]), only while the source still held the chain
+    /// handed out, since a different chain there is not this one's.
+    refresh_source_written: bool,
     /// Whether the live chain began with a login of this connection, not a
     /// stored chain: its writes are the account's own sign-in, which the
     /// partition stamps (`store_signed_in_credential_for_user`), and a
@@ -417,6 +478,7 @@ impl JottacloudProvider {
             token_endpoint: String::new(),
             token_expiry: Instant::now(),
             refresh_source_account: None,
+            refresh_source_written: false,
             login_chain: false,
             stored_tokens: Default::default(),
             chain_generations: Default::default(),
@@ -730,64 +792,65 @@ impl JottacloudProvider {
         };
         // Held through the writes: see `delete_refresh_chain`.
         let deleted = DELETED_CHAINS.lock().unwrap_or_else(|e| e.into_inner());
-        // A chain loaded from a key deleted since is the authorization that
-        // delete removed: it is written to no key, its own included.
-        let source_deleted = self
-            .refresh_source_account
-            .as_deref()
-            .is_some_and(|source| deleted.deleted_since(owner, source, self.chain_since));
-        let accounts: Vec<String> = Self::refresh_persist_accounts(
-            &self.profile_id,
-            self.refresh_source_account.as_deref(),
-        )
-        .into_iter()
-        .filter(|account| {
-            !source_deleted && !deleted.deleted_since(owner, account, self.chain_since)
-        })
-        .collect();
-        // The same for a deletion by another process, which the clock above
-        // does not see, against the counts this connection began with. A key
-        // with a deletion completed or in progress since is neither written
-        // nor kept, and when it is the key the chain was loaded from, no key
-        // is. A key whose count cannot be read now is not written, and its
-        // rotation is kept, with the counts its connection began with, for a
-        // load that can check them; while the source's cannot be read, no key
-        // is written and every rotation is kept that way. Jotta has consumed
-        // the stored chain: dropping one only because a count could not be
-        // read would lose the only live chain.
+        let source = self.refresh_source_account.as_deref();
+        // Each key's deletions, by this process (the clock) or another (the
+        // counts this connection began with): see [`DeletionState`]. A chain
+        // loaded from a key deleted since is the authorization that delete
+        // removed: it is written to no key, its own included, and nothing is
+        // kept. A key deleted since is neither written nor kept. A key whose
+        // deletion runs, or whose count cannot be read, is not written, and
+        // its rotation is kept, on the counts its connection began with, for
+        // a load that can check them; while the source's is so, no key is
+        // written and every rotation is kept that way. Jotta has consumed the
+        // stored chain: dropping one only because a deletion was not over yet
+        // (it may fail) or a count could not be read would lose the only
+        // live chain.
         let generations = self
             .chain_generations
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .clone();
-        let deletions = |account: &str| -> Option<bool> {
-            let began = generations.get(account)?;
-            let store = crate::credential_store::CredentialStore::from_cache()?;
-            let now = crate::user_partitions::chain_deletions(&store, owner, account).ok()?;
-            Some(now.settled() && now.generation == *began)
+        let state = |account: &str| {
+            if deleted.deleted_since(owner, account, self.chain_since) {
+                DeletionState::Moved
+            } else {
+                deletion_state(owner, account, generations.get(account).copied())
+            }
         };
-        let source = self.refresh_source_account.as_deref().map(deletions);
-        if source == Some(Some(false)) {
+        let candidates = Self::refresh_persist_accounts(
+            &self.profile_id,
+            source.filter(|_| self.refresh_source_written),
+        );
+        let source_state = source.map(state);
+        if source_state == Some(DeletionState::Moved) {
             jotta_log(
                 "Refresh token not persisted: the key it was loaded from was deleted meanwhile",
             );
+            self.forget_consumed_rotations(owner, &candidates);
             return;
         }
-        let accounts: Vec<(String, Option<bool>)> = accounts
-            .into_iter()
-            .map(|account| {
-                let unchanged = deletions(&account);
-                (account, unchanged)
-            })
-            .filter(|(_, unchanged)| *unchanged != Some(false))
-            .collect();
+        let mut accounts = Vec::new();
+        for account in candidates {
+            match state(&account) {
+                DeletionState::Moved => {
+                    jotta_log(&format!(
+                        "Refresh token not kept for {}: the key was deleted meanwhile",
+                        account
+                    ));
+                    self.forget_consumed_rotations(owner, std::slice::from_ref(&account));
+                }
+                now => accounts.push((account, now)),
+            }
+        }
         if accounts.is_empty() {
             jotta_log("Refresh token not persisted: its stored chain was deleted meanwhile");
             return;
         }
         let checked: Vec<String> = accounts
             .iter()
-            .filter(|(_, unchanged)| *unchanged == Some(true) && source != Some(None))
+            .filter(|(_, now)| {
+                *now == DeletionState::Unchanged && source_state != Some(DeletionState::Unsettled)
+            })
             .map(|(account, _)| account.clone())
             .collect();
         let accounts: Vec<String> = accounts.into_iter().map(|(account, _)| account).collect();
@@ -808,6 +871,19 @@ impl JottacloudProvider {
         };
 
         let outcome = self.write_rotation(&checked);
+        // Read again for every key left unwritten, before the lock of the
+        // kept rotations is taken (no read of the database happens under it):
+        // a deletion that began since the checks above (the write's own check
+        // stopped it for one, or it began right after the write) drops the
+        // rotation once it completed, and keeps it while it runs, as above.
+        let source_after = source.map(state);
+        let after: HashMap<&str, DeletionState> = accounts
+            .iter()
+            .filter(|account| {
+                !outcome.written.contains(account) && !outcome.replaced.contains(account)
+            })
+            .map(|account| (account.as_str(), state(account)))
+            .collect();
         let mut pending = PENDING_ROTATIONS.lock().unwrap_or_else(|e| e.into_inner());
         let known = self.stored_tokens.lock().unwrap_or_else(|e| e.into_inner());
         let generations = self
@@ -821,25 +897,8 @@ impl JottacloudProvider {
             let filed_token = stored_refresh_token(Some(filed));
             filed_token == own_token || consumed.as_ref().is_some_and(|c| c.as_str() == filed_token)
         };
-        // A write stopped by a deletion that began after the checks above: the
-        // key it names is dropped, and every key when the source was deleted.
-        if !outcome.deleted.is_empty()
-            && self.refresh_source_account.as_deref().map(deletions) == Some(Some(false))
-        {
-            jotta_log(
-                "Refresh token not persisted: the key it was loaded from was deleted meanwhile",
-            );
-            return;
-        }
-        for account in accounts {
-            if outcome.deleted.contains(&account) && deletions(&account) == Some(false) {
-                jotta_log(&format!(
-                    "Refresh token not kept for {}: the key was deleted meanwhile",
-                    account
-                ));
-                continue;
-            }
-            let key = (owner, account);
+        for account in &accounts {
+            let key = (owner, account.clone());
             // Per key: a key left unwritten still holds the chain Jotta
             // consumed, whatever happened to the others.
             if outcome.written.contains(&key.1) {
@@ -858,6 +917,24 @@ impl JottacloudProvider {
                 // nothing is filed for this connection. A rotation pending
                 // there may be the newer chain's own; the next load drops it
                 // when the key no longer holds its base.
+                continue;
+            }
+            // Deleted since the checks, or its source was: the rotation is
+            // the authorization the delete removed, and so is the one this
+            // chain consumed, if it was kept there.
+            if source_after == Some(DeletionState::Moved)
+                || after.get(key.1.as_str()) == Some(&DeletionState::Moved)
+            {
+                jotta_log(&format!(
+                    "Refresh token not kept for {}: the key was deleted meanwhile",
+                    key.1
+                ));
+                if pending
+                    .get(&key)
+                    .is_some_and(|filed| continues(filed.as_str()))
+                {
+                    pending.remove(&key);
+                }
                 continue;
             }
             // A rotation pending there that this chain does not continue is
@@ -888,29 +965,48 @@ impl JottacloudProvider {
                             .and_then(|v| v[PENDING_BASE].as_str().map(str::to_string))
                     })
                 });
+            // A rotation is kept only with the counts it is checked against
+            // when it is handed out. Every key an exchange may write has one
+            // (its connection stops before the exchange otherwise), so this
+            // is only a guard.
+            let source = source.filter(|source| *source != key.1);
+            let (Some(generation), Some(source_generation)) = (
+                generations.get(&key.1),
+                source.map_or(Some(None), |source| generations.get(source).map(Some)),
+            ) else {
+                jotta_log(&format!(
+                    "Refresh token not kept for {}: a deletion count it depends on is unknown",
+                    key.1
+                ));
+                continue;
+            };
             let mut chain: serde_json::Value =
                 serde_json::from_str(&self.chain_json()).unwrap_or_default();
             if let Some(base) = base {
                 chain[PENDING_BASE] = serde_json::Value::String(base);
             }
-            match generations.get(&key.1) {
-                Some(generation) => chain[PENDING_GEN] = (*generation).into(),
-                None => jotta_log(&format!(
-                    "Rotation kept for {} without its deletion count: it is not handed out",
-                    key.1
-                )),
-            }
-            if let Some(source) = self
-                .refresh_source_account
-                .as_deref()
-                .filter(|source| *source != key.1)
-            {
+            chain[PENDING_GEN] = (*generation).into();
+            if let (Some(source), Some(source_generation)) = (source, source_generation) {
                 chain[PENDING_SOURCE] = source.into();
-                if let Some(generation) = generations.get(source) {
-                    chain[PENDING_SOURCE_GEN] = (*generation).into();
-                }
+                chain[PENDING_SOURCE_GEN] = (*source_generation).into();
             }
             pending.insert(key, zeroize::Zeroizing::new(chain.to_string()));
+        }
+    }
+
+    /// Drop the rotations kept for `accounts` of `owner` that this
+    /// connection's chain continues: Jotta consumed them, and the key they
+    /// were kept for was deleted.
+    fn forget_consumed_rotations(&self, owner: Option<i64>, accounts: &[String]) {
+        let mut pending = PENDING_ROTATIONS.lock().unwrap_or_else(|e| e.into_inner());
+        for account in accounts {
+            let key = (owner, account.clone());
+            if pending
+                .get(&key)
+                .is_some_and(|filed| self.continues(&stored_refresh_token(Some(filed.as_str()))))
+            {
+                pending.remove(&key);
+            }
         }
     }
 
@@ -1134,6 +1230,17 @@ impl JottacloudProvider {
                         // copy's reader. Its next rotation brings that copy
                         // along (`lagging` above).
                         jotta_log(&format!("Refresh token written to {}: {}", account, e));
+                        // The copy left behind holds what it held before the
+                        // first rotation of this chain it did not follow
+                        // (`lagging`), not the written copy's value before
+                        // this write: that is the base the rotation stays
+                        // pending on, which its reader's load checks.
+                        if let Some(lagging) = &lagging {
+                            outcome.read.insert(
+                                (*account).clone(),
+                                zeroize::Zeroizing::new(lagging.clone()),
+                            );
+                        }
                         self.stored_tokens
                             .lock()
                             .unwrap_or_else(|e| e.into_inner())
@@ -1245,8 +1352,18 @@ impl JottacloudProvider {
                 .get(&(owner, account.to_string()))
                 .cloned()
         };
+        // A key that cannot be read while a rotation is kept for it is
+        // withheld, not nothing: the rotation is the key's live chain, and the
+        // login token must not be spent in its place.
+        let unreadable = |pending: bool, why: &str| {
+            if pending {
+                LoadedChain::Withheld(format!("{account} {why}"))
+            } else {
+                LoadedChain::Nothing
+            }
+        };
         let Some(store) = crate::credential_store::CredentialStore::from_cache() else {
-            return LoadedChain::Nothing;
+            return unreadable(read_pending().is_some(), "is in a vault that is not open");
         };
         // The owner-aware read checks the account first (it exists, it is
         // unlocked): a pending rotation is that account's secret too, and is
@@ -1271,7 +1388,7 @@ impl JottacloudProvider {
             tests::after_pending_read(owner, account);
             let before = counts();
             let Ok(stored) = read_stored() else {
-                return LoadedChain::Nothing;
+                return unreadable(pending.is_some(), "could not be read");
             };
             #[cfg(test)]
             chain_tests::after_stored_read(owner, account);
@@ -1292,14 +1409,33 @@ impl JottacloudProvider {
         };
         let generation = counted.as_ref().ok().map(|count| count.generation);
         match Self::hand_out(&store, owner, account, pending, stored, counted) {
-            Some((chain, stored_token)) => LoadedChain::Chain(chain, stored_token, generation),
-            None => LoadedChain::Nothing,
+            // A chain is handed out only with a count that was read.
+            Ok(Some((chain, stored_token, source))) => match generation {
+                Some(generation) => LoadedChain::Chain(Loaded {
+                    chain,
+                    stored_token,
+                    generation,
+                    source,
+                }),
+                None => {
+                    LoadedChain::Withheld(format!("the deletions of {account} are not readable"))
+                }
+            },
+            Ok(None) => LoadedChain::Nothing,
+            Err(reason) => {
+                jotta_log(&format!(
+                    "Refresh chain of {} withheld: {}",
+                    account, reason
+                ));
+                LoadedChain::Withheld(reason)
+            }
         }
     }
 
     /// What [`Self::load_refresh_chain`] hands out of one state it read:
     /// `pending` and `stored` with `counted`, the deletions of `account` read
-    /// before and after them.
+    /// before and after them. `Err` is a chain withheld, for the reason
+    /// given: neither it nor anything in its place is to be exchanged.
     fn hand_out(
         store: &crate::credential_store::CredentialStore,
         owner: Option<i64>,
@@ -1307,7 +1443,7 @@ impl JottacloudProvider {
         mut pending: Option<zeroize::Zeroizing<String>>,
         stored: Option<zeroize::Zeroizing<String>>,
         counted: Result<crate::user_partitions::ChainDeletions, String>,
-    ) -> Option<((String, String, String), String)> {
+    ) -> Result<Option<HandedOut>, String> {
         let parse = |json: String| -> Option<(String, String, String)> {
             let v: serde_json::Value = serde_json::from_str(&json).ok()?;
             let rt = v["refresh_token"].as_str()?.to_string();
@@ -1320,18 +1456,28 @@ impl JottacloudProvider {
             }
         };
         let stored_token = stored_refresh_token(stored.as_deref().map(|j| j.as_str()));
-        // A rotation filed before the key was last deleted, by any process,
-        // is the authorization that delete removed: dropped, unless a newer
-        // one replaced it. A count that cannot be read keeps it (the
-        // deletions of this process are already applied to it).
+        // The stored chain is handed out only while no deletion of its key
+        // runs and that is known: a deletion that fails leaves it the key's
+        // live chain, and one exchanged meanwhile would be consumed.
+        let hand_stored = |stored: Option<zeroize::Zeroizing<String>>| {
+            let Some(chain) = stored.and_then(|json| parse(json.to_string())) else {
+                return Ok(None);
+            };
+            match &counted {
+                Ok(count) if count.settled() => Ok(Some((chain, stored_token.clone(), None))),
+                Ok(_) => Err(format!("a deletion of {account} is in progress")),
+                Err(e) => Err(format!("the deletions of {account} are not readable: {e}")),
+            }
+        };
         // A rotation is handed out only while no deletion of its key has
         // completed since its connection began, none is in progress, and
         // that is known: one filed before the last completed deletion, by
         // any process, is the authorization it removed, and is dropped
-        // (unless a newer one replaced it); one that cannot be checked (its
-        // connection could not read the count, or the count cannot be read
-        // now) is kept for later, and the key reads as nothing meanwhile,
-        // since what it stores is the chain that rotation consumed.
+        // (unless a newer one replaced it); one that cannot be checked now
+        // (a deletion runs, or the count cannot be read) is withheld, kept
+        // for later, and so is the key, since what it stores is the chain
+        // that rotation consumed. One filed without its connection's count
+        // could never be checked: none is filed so, and one is dropped.
         // The same holds for the key its chain was loaded from, when that
         // was another ([`PENDING_SOURCE`]): a deletion of either drops it.
         if let Some(json) = pending.as_ref() {
@@ -1349,17 +1495,15 @@ impl JottacloudProvider {
                     crate::user_partitions::chain_deletions(store, owner, &key)
                 };
                 match (filed, now) {
+                    (None, _) => moved = true,
                     (Some(filed), Ok(now)) if now.generation != filed => moved = true,
                     (Some(_), Ok(now)) if now.settled() => {}
-                    (None, _) => {
-                        withheld = Some(format!(
-                            "its connection could not read the deletions of {key}"
-                        ))
-                    }
-                    (_, Err(e)) => {
+                    (Some(_), Err(e)) => {
                         withheld = Some(format!("the deletions of {key} are not readable: {e}"))
                     }
-                    _ => withheld = Some(format!("a deletion of {key} is in progress")),
+                    (Some(_), Ok(_)) => {
+                        withheld = Some(format!("a deletion of {key} is in progress"))
+                    }
                 }
             }
             if moved {
@@ -1370,24 +1514,17 @@ impl JottacloudProvider {
                 }
                 pending = None;
             } else if let Some(reason) = withheld {
-                jotta_log(&format!(
-                    "Pending rotation of {} withheld: {}",
-                    account, reason
-                ));
-                return None;
+                return Err(format!("its kept rotation is withheld: {reason}"));
             }
         }
         if let Some(json) = pending {
-            let base = serde_json::from_str::<serde_json::Value>(&json)
-                .ok()
-                .and_then(|v| v[PENDING_BASE].as_str().map(str::to_string));
+            let filed: serde_json::Value = serde_json::from_str(&json).unwrap_or_default();
+            let base = filed[PENDING_BASE].as_str().map(str::to_string);
             // A rotation filed while what its key held was unknown cannot be
             // told from a chain written there since: the stored chain wins,
             // and the rotation stays for when the key holds none.
             if stored.is_some() && base.is_none() {
-                return stored
-                    .and_then(|json| parse(json.to_string()))
-                    .map(|chain| (chain, stored_token));
+                return hand_stored(stored);
             }
 
             // A key with no chain is not a replacement: its delete drops the
@@ -1411,12 +1548,16 @@ impl JottacloudProvider {
                     pending.remove(&key);
                 }
             } else if let Some(chain) = parse(json.to_string()) {
-                return Some((chain, stored_token));
+                // Its deletion dependency goes with it: the key its chain
+                // was loaded from, at the count the rotation was checked on.
+                let source = filed[PENDING_SOURCE]
+                    .as_str()
+                    .zip(filed[PENDING_SOURCE_GEN].as_u64())
+                    .map(|(source, generation)| (source.to_string(), generation));
+                return Ok(Some((chain, stored_token, source)));
             }
         }
-        stored
-            .and_then(|json| parse(json.to_string()))
-            .map(|chain| (chain, stored_token))
+        hand_stored(stored)
     }
 
     /// Read how many times each key this connection may read or write had
@@ -1433,6 +1574,7 @@ impl JottacloudProvider {
         ) else {
             return;
         };
+        crate::user_partitions::settle_unended_chain_deletions(&store);
         for account in Self::refresh_chain_candidates(&self.profile_id) {
             match crate::user_partitions::chain_deletions(&store, owner, &account) {
                 Ok(count) => {
@@ -1454,13 +1596,17 @@ impl JottacloudProvider {
 
     /// A login starts a chain of its own, from no stored key: what the keys
     /// it writes hold now is read before the exchange (empty for an empty
-    /// key; a refused read leaves the key unwritten), so a chain imported
-    /// into one while the login is with Jotta is not written over.
-    fn begin_login_chain(&mut self) {
+    /// key), so a chain imported into one while the login is with Jotta is
+    /// not written over. A login whose chain could not be written (no vault
+    /// opens, the key cannot be read, its deletions cannot be read) is an
+    /// error before the login token is sent: that token is single-use, and
+    /// a session whose chain is kept nowhere cannot be resumed.
+    fn begin_login_chain(&mut self) -> Result<(), ProviderError> {
         // The login's chain begins now, on this process's clock too: a key
         // deleted while the refresh before it was tried removed nothing of it.
         self.chain_since = deletion_clock();
         self.refresh_source_account = None;
+        self.refresh_source_written = false;
         self.login_chain = true;
         *self.consumed.lock().unwrap_or_else(|e| e.into_inner()) = None;
         let mut known = self.stored_tokens.lock().unwrap_or_else(|e| e.into_inner());
@@ -1473,22 +1619,56 @@ impl JottacloudProvider {
                 .and_then(|_| crate::credential_store::CredentialStore::from_cache())
         });
         let Some(store) = store else {
-            return;
+            return Err(ProviderError::ConnectionFailed(
+                "jottacloud: the credential vault could not be opened, so the chain a login starts could not be saved; unlock the vault and try again"
+                    .to_string(),
+            ));
         };
         for account in Self::refresh_persist_accounts(&self.profile_id, None) {
             if let Some(now) = Self::stored_token_now(&store, self.credential_user, &account) {
                 known.insert(account, zeroize::Zeroizing::new(now));
             }
         }
+        let own = self.refresh_token_account();
+        let read = known.contains_key(&own);
         drop(known);
+        if !read {
+            return Err(ProviderError::ConnectionFailed(
+                "jottacloud: the stored refresh chain could not be read, so the chain a login starts could not be saved; try again"
+                    .to_string(),
+            ));
+        }
         // The login's chain begins now: a deletion before it removed nothing
-        // of it, one after it does. A count not read is read again once; a
-        // login goes ahead without it (its token is spent either way), and
-        // its chain is then kept unwritten.
+        // of it, one after it does. A count not read is read again once;
+        // without it the chain could be neither written nor kept for a load
+        // to check.
         self.note_chain_generations();
-        if !self.knows_deletions_of(&[&self.refresh_token_account()]) {
+        if !self.knows_deletions_of(&[&own]) {
             self.note_chain_generations();
         }
+        if !self.knows_deletions_of(&[&own]) {
+            return Err(ProviderError::ConnectionFailed(
+                "jottacloud: the deletions of the refresh chain could not be read; try again"
+                    .to_string(),
+            ));
+        }
+        // Nor while a deletion of its key runs: its chain could be neither
+        // written nor kept beyond this process until that deletion ends.
+        let noted = self
+            .chain_generations
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(&own)
+            .copied();
+        if let Some(owner) = self.rotation_owner {
+            if deletion_state(owner, &own, noted) == DeletionState::Unsettled {
+                return Err(ProviderError::ConnectionFailed(
+                    "jottacloud: a deletion of the stored refresh chain is in progress; try again"
+                        .to_string(),
+                ));
+            }
+        }
+        Ok(())
     }
 
     /// Try to connect using a persisted refresh token (no login token needed).
@@ -1519,19 +1699,13 @@ impl JottacloudProvider {
                     Self::load_refresh_chain(self.credential_user, self.rotation_owner, &account)
                 });
             }
-            let ((rt, te, un), stored_token) = match loaded {
-                LoadedChain::Chain(chain, stored_token, generation) => {
-                    // The count the chain was read with is the one its
-                    // rotation is checked against: a deletion that completed
-                    // before it was read removed some other chain.
-                    if let Some(generation) = generation {
-                        self.chain_generations
-                            .lock()
-                            .unwrap_or_else(|e| e.into_inner())
-                            .insert(account.clone(), generation);
-                    }
-                    (chain, stored_token)
-                }
+            let Loaded {
+                chain: (rt, te, un),
+                stored_token,
+                generation,
+                source,
+            } = match loaded {
+                LoadedChain::Chain(loaded) => loaded,
                 LoadedChain::Nothing => continue,
                 LoadedChain::Busy => {
                     return Err(ProviderError::ConnectionFailed(
@@ -1539,6 +1713,36 @@ impl JottacloudProvider {
                             .to_string(),
                     ))
                 }
+                // Not passed over for the next key or the login token: the
+                // withheld chain is this key's live one.
+                LoadedChain::Withheld(reason) => {
+                    return Err(ProviderError::ConnectionFailed(format!(
+                        "jottacloud: the stored refresh chain cannot be used now ({reason}); try again"
+                    )))
+                }
+            };
+            {
+                // The counts the chain was read with are the ones its
+                // rotation is checked against: a deletion that completed
+                // before it was read removed some other chain. A kept
+                // rotation brings the count of the key its chain was loaded
+                // from, as its connection read it.
+                let mut generations = self
+                    .chain_generations
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner());
+                generations.insert(account.clone(), generation);
+                if let Some((source, generation)) = &source {
+                    generations.insert(source.clone(), *generation);
+                }
+            }
+            // The key besides its own whose deletion drops this chain's
+            // rotation: the one it was loaded from, or, for a kept rotation
+            // loaded again from the profile's key, the one its chain was.
+            let depends_on = if account != own {
+                Some(account.clone())
+            } else {
+                source.map(|(source, _)| source)
             };
             if !self.knows_deletions_of(&[&account, &own]) {
                 return Err(ProviderError::ConnectionFailed(
@@ -1573,6 +1777,26 @@ impl JottacloudProvider {
                     }
                 }
             }
+            // A kept rotation's source that still holds the chain handed out
+            // holds the token this exchange consumes: it is written with the
+            // profile's key, so its reader (an unbound CLI) is not left with
+            // it. Holding another chain, it is only checked.
+            let source_written = account != own
+                || depends_on.as_deref().is_some_and(|source| {
+                    let source_now = crate::credential_store::off_async_worker(|| {
+                        crate::credential_store::CredentialStore::from_cache().and_then(|store| {
+                            Self::stored_token_now(&store, self.credential_user, source)
+                        })
+                    });
+                    let holds = source_now.as_deref() == Some(rt.as_str());
+                    if let Some(source_now) = source_now.filter(|_| holds) {
+                        self.stored_tokens
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .insert(source.to_string(), zeroize::Zeroizing::new(source_now));
+                    }
+                    holds
+                });
             *self.consumed.lock().unwrap_or_else(|e| e.into_inner()) =
                 Some(zeroize::Zeroizing::new(rt.clone()));
             // J1 root cause: Jotta's OIDC rejects uppercase `REFRESH_TOKEN`
@@ -1673,7 +1897,8 @@ impl JottacloudProvider {
             self.token_endpoint = te;
             let expires_in = token_resp.expires_in.unwrap_or(3600);
             self.token_expiry = Instant::now() + std::time::Duration::from_secs(expires_in);
-            self.refresh_source_account = if account == own { None } else { Some(account) };
+            self.refresh_source_account = depends_on;
+            self.refresh_source_written = source_written;
             self.login_chain = false;
 
             self.persist_refresh_token();
@@ -2515,7 +2740,7 @@ impl StorageProvider for JottacloudProvider {
             // read of the stored keys is not what this chain replaces.
             // Off the async worker: it may wait for another process to
             // create the vault, and it reads the partition database.
-            crate::credential_store::off_async_worker(|| self.begin_login_chain());
+            crate::credential_store::off_async_worker(|| self.begin_login_chain())?;
 
             // Step 1: Decode login token
             let login_token = Self::decode_login_token(self.config.login_token.expose_secret())?;
@@ -5499,7 +5724,7 @@ mod tests {
         let mut login = bound("login");
         login.bind_credential_owner().expect("bind");
         login.refresh_source_account = Some("jottacloud_refresh".to_string());
-        login.begin_login_chain();
+        login.begin_login_chain().expect("begin the login");
         store
             .store(login_key, &chain("imported-during-login"))
             .unwrap();
@@ -5512,7 +5737,7 @@ mod tests {
         let login_singleton_pending = pending_of("jottacloud_refresh").is_some();
         let mut vacant = bound("vacant");
         vacant.bind_credential_owner().expect("bind");
-        vacant.begin_login_chain();
+        vacant.begin_login_chain().expect("begin the login");
         vacant.refresh_token = SecretString::from("vacant-chain".to_string());
         vacant.token_endpoint = endpoint.clone();
         vacant.username = "jotta-user".into();
@@ -5693,7 +5918,8 @@ mod tests {
             JottacloudProvider::load_refresh_chain(Some(first), Some(owner), unread)
                 .chain()
                 .map(|((rt, _, _), _)| rt);
-        // One filed without its connection's count is never handed out.
+        // One filed without its connection's count could never be checked:
+        // none is filed so any more, and one is dropped, never handed out.
         let genless = "jottacloud_refresh_genless";
         PENDING_ROTATIONS.lock().unwrap().insert(
             (owner, genless.to_string()),
@@ -5866,7 +6092,7 @@ mod tests {
         assert_eq!(row_bytes_c, "bytes-c", "the row in other bytes follows");
         assert!(unread_withheld.is_none() && unread_kept);
         assert_eq!(unread_loaded.as_deref(), Some("pending-unread"));
-        assert!(genless_withheld.is_none() && genless_kept);
+        assert!(genless_withheld.is_none() && !genless_kept);
         assert!(in_progress_withheld.is_none() && in_progress_kept);
         assert!(failed.is_err());
         assert!(failed_count.settled(), "{failed_count:?}");
@@ -5926,7 +6152,7 @@ mod tests {
         })
         .with_profile_id("fresh");
         login.bind_credential_owner().expect("bind");
-        login.begin_login_chain();
+        login.begin_login_chain().expect("begin the login");
         login.refresh_token = SecretString::from("login-chain".to_string());
         login.token_endpoint = "http://127.0.0.1:9/token".into();
         login.username = "jotta-user".into();

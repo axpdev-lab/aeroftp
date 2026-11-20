@@ -4368,7 +4368,8 @@ pub(crate) fn begin_chain_deletion(
 /// taken back, so a delete that failed leaves a rotation kept for the key as
 /// usable as before it. One a reader already settled as left over counts as
 /// completed either way. Tried three times; one whose end is never recorded
-/// is settled as completed by the next read of the key in this process.
+/// is settled as completed by the next read of the key in this process,
+/// which [`settle_unended_chain_deletions`] makes.
 pub(crate) fn end_chain_deletion(
     store: &CredentialStore,
     owner: Option<i64>,
@@ -4401,7 +4402,39 @@ pub(crate) fn end_chain_deletion(
         std::thread::sleep(std::time::Duration::from_millis(50 * attempt));
         result = end();
     }
+    if result.is_err() {
+        unended_chain_deletions().insert((owner, account.to_string()));
+    }
     result
+}
+
+/// A deletion [`unended_chain_deletions`] keeps: (owner, key).
+type UnendedDeletion = (Option<i64>, String);
+
+/// The deletions this process began and could not record as ended, by
+/// (owner, key). This process counts each as completed at its next read of
+/// that key, but every other process takes it for one still running for as
+/// long as this one lives, and would refuse that key's chain meanwhile: so
+/// this process settles them again ([`settle_unended_chain_deletions`]) until
+/// that is recorded.
+fn unended_chain_deletions() -> MutexGuard<'static, HashSet<UnendedDeletion>> {
+    static UNENDED: std::sync::LazyLock<Mutex<HashSet<UnendedDeletion>>> =
+        std::sync::LazyLock::new(Default::default);
+    UNENDED.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// Settle every deletion this process could not record as ended
+/// ([`unended_chain_deletions`]): a read of the key's deletions here counts
+/// it as left over and commits that, for every process. One whose read fails
+/// is tried again next time. Called when a connection begins and before a
+/// deletion, wherever that connection's key is.
+pub(crate) fn settle_unended_chain_deletions(store: &CredentialStore) {
+    let unended: Vec<UnendedDeletion> = unended_chain_deletions().iter().cloned().collect();
+    for (owner, account) in unended {
+        if chain_deletions(store, owner, &account).is_ok() {
+            unended_chain_deletions().remove(&(owner, account));
+        }
+    }
 }
 
 /// Guard an implicit GUI account during a global/memory token update. Resolve
