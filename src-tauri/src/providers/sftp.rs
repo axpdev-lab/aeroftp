@@ -545,6 +545,10 @@ async fn close_sftp_file(file: russh_sftp::client::fs::File, ended: &Cancellatio
 /// trips it, whatever `--buffer-size` is.
 const SFTP_WRITE_ACK_BOUND: std::time::Duration = std::time::Duration::from_secs(300);
 
+/// How long an upload's size check keeps asking a server that answers before
+/// it reports a verification failure.
+const UPLOAD_VERIFY_WINDOW: std::time::Duration = std::time::Duration::from_secs(3);
+
 /// The buffer between an upload's local file and its remote handle.
 ///
 /// russh-sftp cuts what it is handed into WRITEs of at most the server's
@@ -2441,7 +2445,7 @@ impl SftpProvider {
         remote_path: &str,
         expected_size: u64,
     ) -> Result<(), ProviderError> {
-        let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(3);
+        let deadline = tokio::time::Instant::now() + UPLOAD_VERIFY_WINDOW;
         let mut last_observation = format!("expected {} bytes, got no metadata yet", expected_size);
 
         loop {
@@ -8805,6 +8809,17 @@ mod tests {
     /// A provider whose SFTP session runs over the transport of a
     /// [`GoingAwayServer`].
     async fn provider_on_a_server_that_goes_away(at: GoAwayAt, source: Vec<u8>) -> SftpProvider {
+        provider_on_a_timed_server_that_goes_away(at, source)
+            .await
+            .0
+    }
+
+    /// [`provider_on_a_server_that_goes_away`], and the moment its transport
+    /// ended, once it has.
+    async fn provider_on_a_timed_server_that_goes_away(
+        at: GoAwayAt,
+        source: Vec<u8>,
+    ) -> (SftpProvider, Arc<std::sync::OnceLock<std::time::Instant>>) {
         let (client, proxy_client_side) = tokio::io::duplex(1 << 20);
         let (proxy_server_side, server) = tokio::io::duplex(1 << 20);
         let cut = Arc::new(tokio::sync::Notify::new());
@@ -8822,6 +8837,8 @@ mod tests {
             },
         )
         .await;
+        let ended_at = Arc::new(std::sync::OnceLock::new());
+        let transport_ended_at = ended_at.clone();
         tokio::spawn(async move {
             let (mut a, mut b) = (proxy_client_side, proxy_server_side);
             tokio::select! {
@@ -8829,10 +8846,12 @@ mod tests {
                 _ = cut.notified() => {}
             }
             // Both ends drop here: the client reads end of stream.
+            drop((a, b));
+            let _ = transport_ended_at.set(std::time::Instant::now());
         });
         let mut provider = provider_without_a_session();
         provider.sftp = Some(SftpChannel::open(client).await.expect("sftp init"));
-        provider
+        (provider, ended_at)
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -9196,10 +9215,10 @@ mod tests {
     /// a verification failure.
     #[tokio::test]
     async fn an_upload_verified_against_a_gone_server_is_a_lost_connection() {
-        let mut provider = provider_on_a_server_that_goes_away(GoAwayAt::Stat(1), Vec::new()).await;
+        let (mut provider, gone_at) =
+            provider_on_a_timed_server_that_goes_away(GoAwayAt::Stat(1), Vec::new()).await;
         let dir = tempfile::tempdir().expect("tempdir");
         let local = local_file(&dir, 100 * 1024);
-        let started = std::time::Instant::now();
         let outcome = tokio::time::timeout(
             GONE_SERVER_BOUND,
             provider.upload(&local, "/small.bin", None),
@@ -9208,10 +9227,17 @@ mod tests {
         .expect("the verification hung");
         let err = outcome.expect_err("an upload that cannot be verified cannot succeed");
         assert!(err.is_connection_lost(), "{err:?}");
+        // Timed from the moment the transport ended, while the size check
+        // waits on its first question (the upload's only STAT), so the upload
+        // before it does not count. Asking on would cost nearly the whole
+        // window; half of it leaves a busy runner the other half.
+        let answered_in = gone_at
+            .get()
+            .expect("the server went away at the size check")
+            .elapsed();
         assert!(
-            started.elapsed() < std::time::Duration::from_secs(3),
-            "took {:?}",
-            started.elapsed()
+            answered_in < UPLOAD_VERIFY_WINDOW / 2,
+            "took {answered_in:?} after the server went away: it kept asking for the verify window"
         );
     }
 

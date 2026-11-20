@@ -129,11 +129,23 @@ fn validate_role_session_name(name: &str) -> Result<(), ProviderError> {
 /// only and reduces availability). Callers must validate `region` with
 /// [`validate_sts_region`] first.
 fn sts_endpoint_host(region: &str) -> String {
+    #[cfg(test)]
+    if let Some(host) = TEST_STS_HOST.with(|host| host.borrow().clone()) {
+        return host;
+    }
     if region.starts_with("cn-") {
         format!("sts.{region}.amazonaws.com.cn")
     } else {
         format!("sts.{region}.amazonaws.com")
     }
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Test-only: the host `AssumeRole` goes to on this thread, in place of
+    /// the regional AWS one, so a test can point it at a local server.
+    pub(crate) static TEST_STS_HOST: std::cell::RefCell<Option<String>> =
+        const { std::cell::RefCell::new(None) };
 }
 
 /// Build the `application/x-www-form-urlencoded` request body for `AssumeRole`.

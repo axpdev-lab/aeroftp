@@ -93,6 +93,8 @@ pub mod upload_cursor;
 pub mod upload_progress;
 pub mod upload_source;
 pub mod uploadcare;
+#[cfg(test)]
+mod url_text_guard;
 pub mod webdav;
 pub mod xml_text;
 pub mod yandex_disk;
@@ -1669,17 +1671,175 @@ async fn body_bytes_with_limit(
 /// contain these entity sequences, so unescaping them is a no-op there and a
 /// fix for the XML providers. `&amp;` is decoded last so a double-escaped
 /// `&amp;lt;` does not collapse in one pass.
-fn unescape_xml_entities(s: &str) -> String {
+pub(crate) fn unescape_xml_entities(s: &str) -> String {
     if !s.contains('&') {
         return s.to_string();
     }
-    s.replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&quot;", "\"")
-        .replace("&#34;", "\"")
-        .replace("&apos;", "'")
-        .replace("&#39;", "'")
-        .replace("&amp;", "&")
+    // One pass over every reference, as XML decodes it: the five named
+    // entities and any decimal or hexadecimal one, zero padded or not
+    // (`&#034;`, `&#x0022;`). A list of spellings always missed one, and a
+    // quote that stayed encoded let a credential scrub stop short.
+    static REFERENCE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(r"&(?:#([0-9]+)|#[xX]([0-9A-Fa-f]+)|(lt|gt|quot|apos|amp));").unwrap()
+    });
+    REFERENCE
+        .replace_all(s, |found: &regex::Captures| {
+            // Any number of leading zeros; a value past the last code point
+            // is no character and stays as written.
+            let number = match (found.get(1), found.get(2)) {
+                (Some(decimal), _) => decimal_or_hex(decimal.as_str(), 10),
+                (_, Some(hex)) => decimal_or_hex(hex.as_str(), 16),
+                _ => None,
+            };
+            let decoded = match (number, found.get(3).map(|name| name.as_str())) {
+                (Some(code), _) => char::from_u32(code)
+                    // A control character stays encoded: decoded, an escape
+                    // sequence would reach a terminal through the CLI.
+                    .filter(|c| !c.is_control() || matches!(c, '\t' | '\n' | '\r'))
+                    .map(String::from),
+                (None, Some("lt")) => Some("<".to_string()),
+                (None, Some("gt")) => Some(">".to_string()),
+                (None, Some("quot")) => Some("\"".to_string()),
+                (None, Some("apos")) => Some("'".to_string()),
+                (None, Some("amp")) => Some("&".to_string()),
+                _ => None,
+            };
+            decoded.unwrap_or_else(|| found[0].to_string())
+        })
+        .into_owned()
+}
+
+/// The value of a reference's digits, leading zeros ignored; `None` past `u32`.
+fn decimal_or_hex(digits: &str, radix: u32) -> Option<u32> {
+    let significant = digits.trim_start_matches('0');
+    if significant.is_empty() {
+        return Some(0);
+    }
+    u32::from_str_radix(significant, radix).ok()
+}
+
+/// The most layers of escaping `fully_unescaped` decodes.
+pub(crate) const ESCAPE_LAYERS_DECODED: usize = 8;
+
+/// `s` decoded until no reference is left, for text that is scrubbed for
+/// credentials and then shown, or `None` when it is still decoding after
+/// `ESCAPE_LAYERS_DECODED` passes. A server can escape a value twice
+/// (`&amp;quot;`); scrubbing the once-decoded text would leave a quote
+/// encoded and the value after it unmatched. Text escaped deeper than that is
+/// not shown at all: a bound is needed (a reply of `&amp;amp;amp;...` peels
+/// one layer a pass), and text cut off at it can still hide a separator.
+pub(crate) fn fully_unescaped(s: &str) -> Option<String> {
+    let mut text = s.to_string();
+    for _ in 0..ESCAPE_LAYERS_DECODED {
+        let next = unescape_xml_entities(&text);
+        if next == text {
+            return Some(text);
+        }
+        text = next;
+    }
+    (unescape_xml_entities(&text) == text).then_some(text)
+}
+
+/// `text` with every value a session sent a server replaced by
+/// `[REDACTED]`, or `None` when it holds a value shorter than eight bytes.
+/// A server can only reflect what it received, so a value is caught in any
+/// syntax around it. A short value (a short profile password) cannot be cut
+/// out of the word it touches, and replacing every occurrence would garble
+/// ordinary words, so text that holds one is not shown at all.
+pub(crate) fn without_sent_values(text: &str, sent: &[String]) -> Option<String> {
+    let (long, short): (Vec<String>, Vec<String>) = sent
+        .iter()
+        .filter(|value| !value.is_empty())
+        .cloned()
+        .partition(|value| value.len() >= 8);
+    if contains_any_spelling(text, &short) {
+        return None;
+    }
+    Some(redact_values(text, &long, "[REDACTED]"))
+}
+
+/// What an error shows of a reply that holds a short value this session
+/// sent: its size only.
+pub(crate) fn reply_with_a_sent_value(bytes: usize) -> String {
+    format!("a reply of {bytes} bytes, withheld: it contains a value this session sent")
+}
+
+/// `text` with each of `values` replaced by `placeholder`, in every spelling
+/// a reflection can take: as given, percent-encoded, and decoded the way the
+/// text was (`fully_unescaped`, so a value holding a literal `&amp;` matches
+/// its decoded echo). A percent escape matches in either letter case (`%2F`,
+/// `%2f`); everything else matches exactly. Longest spelling first.
+pub(crate) fn redact_values(text: &str, values: &[String], placeholder: &str) -> String {
+    match spellings_of(values) {
+        Some(Ok(spellings)) => spellings
+            .replace_all(text, regex::NoExpand(placeholder))
+            .into_owned(),
+        Some(Err(_)) => placeholder.to_string(),
+        None => text.to_string(),
+    }
+}
+
+/// Whether `text` holds any of `values` in any spelling `redact_values`
+/// would remove. An unbuildable pattern counts as present, so a caller that
+/// withholds on a match withholds.
+pub(crate) fn contains_any_spelling(text: &str, values: &[String]) -> bool {
+    match spellings_of(values) {
+        Some(Ok(spellings)) => spellings.is_match(text),
+        Some(Err(_)) => true,
+        None => false,
+    }
+}
+
+/// One regex for every spelling of `values`, longest first; `None` when
+/// there is no value.
+fn spellings_of(values: &[String]) -> Option<Result<regex::Regex, regex::Error>> {
+    let mut forms: Vec<String> = values
+        .iter()
+        .filter(|value| !value.is_empty())
+        .flat_map(|value| {
+            [
+                Some(value.clone()),
+                Some(urlencoding::encode(value).into_owned()),
+                fully_unescaped(value),
+            ]
+            .into_iter()
+            .flatten()
+        })
+        .collect();
+    forms.sort_by_key(|form| std::cmp::Reverse(form.len()));
+    forms.dedup();
+    if forms.is_empty() {
+        return None;
+    }
+    let alternatives: Vec<String> = forms.iter().map(|form| spelling_pattern(form)).collect();
+    // Too large a pattern is an error: the callers then say nothing of the
+    // text rather than risk it.
+    Some(regex::Regex::new(&format!(
+        "(?:{})",
+        alternatives.join("|")
+    )))
+}
+
+/// A regex matching `form` exactly, except that each `%XX` escape matches in
+/// either letter case.
+fn spelling_pattern(form: &str) -> String {
+    let bytes = form.as_bytes();
+    let mut pattern = String::new();
+    let mut i = 0;
+    while i < form.len() {
+        if bytes[i] == b'%'
+            && bytes.get(i + 1).is_some_and(u8::is_ascii_hexdigit)
+            && bytes.get(i + 2).is_some_and(u8::is_ascii_hexdigit)
+        {
+            pattern.push_str(&format!("%(?i:{})", &form[i + 1..i + 3]));
+            i += 3;
+        } else {
+            let c = form[i..].chars().next().expect("i is on a char boundary");
+            pattern.push_str(&regex::escape(c.encode_utf8(&mut [0; 4])));
+            i += c.len_utf8();
+        }
+    }
+    pattern
 }
 
 /// The start of an error response's body, for a message. At most `max`
@@ -1792,7 +1952,9 @@ mod error_body_excerpt_tests {
 
 /// GAP-A10: Sanitize API error response bodies to prevent leaking sensitive data.
 /// Truncates to first line (max 200 chars), strips potential tokens/keys.
-pub fn sanitize_api_error(body: &str) -> String {
+/// Truncate an already-unescaped error line and run the shared secret-scrubbing
+/// pipeline without performing a second XML entity decode.
+pub(crate) fn sanitize_plain_error(body: &str) -> String {
     let first_line = body.lines().next().unwrap_or("unknown error");
     let truncated = if first_line.len() > 200 {
         let boundary = first_line
@@ -1807,9 +1969,23 @@ pub fn sanitize_api_error(body: &str) -> String {
     };
     // Apply the same regex-based sanitization used by the AI pipeline
     // (covers sk-*, Bearer tokens, x-api-key, Google key= params)
-    let sanitized = crate::ai::sanitize_error_message(&truncated);
-    // F-011: emit raw UTF-8 for the JSON/plain-text error sink.
-    unescape_xml_entities(&sanitized)
+    crate::ai::sanitize_error_message(&truncated)
+}
+
+pub fn sanitize_api_error(body: &str) -> String {
+    // Fully decoded before scrubbing: decoded once, a twice-escaped
+    // separator (`&amp;amp;key=`) stays `&amp;key=` and no rule sees the
+    // `&` in front of the parameter.
+    match fully_unescaped(body) {
+        Some(decoded) => sanitize_plain_error(&decoded),
+        None => deeply_escaped_reply(body.len()),
+    }
+}
+
+/// What an error shows of a reply escaped deeper than `fully_unescaped`
+/// decodes: its size only.
+pub(crate) fn deeply_escaped_reply(bytes: usize) -> String {
+    format!("a reply of {bytes} bytes, not shown: it is escaped more than {ESCAPE_LAYERS_DECODED} times")
 }
 
 /// Transfer optimization hints: per-provider capability advertisement
@@ -6050,6 +6226,36 @@ mod tests {
         assert_eq!(unescape_xml_entities("&lt;tag&gt;"), "<tag>");
         assert_eq!(unescape_xml_entities("say &quot;hi&quot;"), "say \"hi\"");
         assert_eq!(unescape_xml_entities("&#39;x&#39;"), "'x'");
+        // Any numeric reference, zero padded or not, decimal or hexadecimal.
+        assert_eq!(unescape_xml_entities("&#034;a&#x0022;b&#X22;"), "\"a\"b\"");
+        // One pass, as XML: a twice-escaped quote decodes once.
+        assert_eq!(unescape_xml_entities("&amp;quot;"), "&quot;");
+        assert_eq!(
+            fully_unescaped("&amp;quot;x&amp;#034;").as_deref(),
+            Some("\"x\"")
+        );
+        // Any number of leading zeros, and any number of layers.
+        assert_eq!(
+            unescape_xml_entities("&#00000000034;&#x000000000022;"),
+            "\"\""
+        );
+        // More layers than four, up to the bound; past it, nothing.
+        let layered = |layers: usize| format!("&{}quot;", "amp;".repeat(layers - 1));
+        assert_eq!(fully_unescaped(&layered(7)).as_deref(), Some("\""));
+        assert_eq!(
+            fully_unescaped(&layered(ESCAPE_LAYERS_DECODED)).as_deref(),
+            Some("\"")
+        );
+        assert_eq!(fully_unescaped(&layered(ESCAPE_LAYERS_DECODED + 1)), None);
+        let deep = format!("key=&{}quot;AIzaLAYER", "amp;".repeat(40));
+        assert_eq!(sanitize_api_error(&deep), deeply_escaped_reply(deep.len()));
+        // Past the last code point: no character, kept as written.
+        assert_eq!(unescape_xml_entities("&#99999999999;"), "&#99999999999;");
+        // A control character stays encoded; an unknown name is kept.
+        assert_eq!(
+            unescape_xml_entities("&#27;[31m &nbsp;"),
+            "&#27;[31m &nbsp;"
+        );
         // No ampersand: returns input unchanged (no-op for plain/JSON errors).
         assert_eq!(unescape_xml_entities("plain error"), "plain error");
     }
@@ -6061,6 +6267,55 @@ mod tests {
         let out = sanitize_api_error("The key &apos;003d90ca&apos; is not valid");
         assert_eq!(out, "The key '003d90ca' is not valid");
         assert!(!out.contains("&apos;"));
+    }
+
+    /// A sent value is found in every spelling of its reflection: percent
+    /// escapes in either case, and a value holding a literal entity against
+    /// its decoded echo. A short value is left alone.
+    #[test]
+    fn a_sent_value_is_redacted_in_every_spelling() {
+        let sent = vec!["FQoGZXIvYXdzE+sent/token==".to_string()];
+        for echo in [
+            "FQoGZXIvYXdzE+sent/token==",
+            "FQoGZXIvYXdzE%2Bsent%2Ftoken%3D%3D",
+            "FQoGZXIvYXdzE%2bsent%2ftoken%3d%3d",
+            "FQoGZXIvYXdzE%2Bsent%2ftoken%3D%3d",
+        ] {
+            assert_eq!(
+                without_sent_values(&format!("token [{echo}] expired"), &sent).as_deref(),
+                Some("token [[REDACTED]] expired")
+            );
+        }
+        let entity = vec!["opaque&amp;token42".to_string()];
+        let echoed = fully_unescaped("token opaque&amp;amp;token42 expired").unwrap();
+        assert_eq!(
+            without_sent_values(&echoed, &entity).as_deref(),
+            Some("token [REDACTED] expired")
+        );
+        // A short value is not cut out: text holding it, in any spelling,
+        // is not shown; text without it is.
+        let short = vec!["p@ss w7".to_string()];
+        for echo in ["code p@ss w7", "code p%40ss%20w7", "code xp@ss w7y"] {
+            assert_eq!(without_sent_values(echo, &short), None, "{echo}");
+        }
+        assert_eq!(
+            without_sent_values("code accepted", &short).as_deref(),
+            Some("code accepted")
+        );
+    }
+
+    /// A parameter behind a twice-escaped `&` is still a parameter: the
+    /// scrub runs on the fully decoded text.
+    #[test]
+    fn sanitize_api_error_scrubs_behind_a_twice_escaped_separator() {
+        for body in [
+            "rejected https://api.example/v1?a=1&amp;amp;key=AIzaSyTWICE000",
+            "rejected https://api.example/v1?a=1&amp;#038;key=AIzaSyTWICE000",
+        ] {
+            let out = sanitize_api_error(body);
+            assert!(!out.contains("AIzaSyTWICE000"), "{out}");
+            assert!(out.contains("[REDACTED]"), "{out}");
+        }
     }
 
     /// Row 4: an over-long first line is clipped near the 200-char cap with an
