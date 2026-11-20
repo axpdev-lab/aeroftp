@@ -486,8 +486,6 @@ pub fn export_dreamweaver(
     passwords: &HashMap<String, String>,
     out: &Path,
 ) -> Result<crate::bridge_shared::BridgeExportOutcome, String> {
-    use crate::bridge_shared::atomic_write_600;
-
     let server = servers
         .iter()
         .find(|s| {
@@ -581,8 +579,8 @@ pub fn export_dreamweaver(
     ));
     xml.push_str("</site>\n");
 
-    atomic_write_600(out, xml.as_bytes())?;
     outcome.exported = 1;
+    crate::bridge_shared::write_export(outcome.exported, out, xml.as_bytes())?;
     Ok(outcome)
 }
 

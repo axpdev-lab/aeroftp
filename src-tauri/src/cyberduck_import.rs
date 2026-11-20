@@ -545,8 +545,6 @@ pub fn export_cyberduck(
     // the secret in the file, so the map is intentionally unused.
     let _ = passwords;
 
-    std::fs::create_dir_all(out).map_err(|e| format!("create Cyberduck Bookmarks dir: {e}"))?;
-
     let mut outcome = crate::bridge_shared::BridgeExportOutcome::default();
     // One file per bookmark, on file systems where `Lab.duck` and `lab.duck`
     // are usually one file: the second would replace the first.
@@ -722,6 +720,9 @@ pub fn export_cyberduck(
         // Stable, collision-free file name per bookmark.
         let file_name = format!("{}.duck", names.claim(&sanitize_filename(&server.name)));
 
+        // The folder only once a bookmark goes in it: an export with
+        // nothing to write leaves the destination as it was.
+        std::fs::create_dir_all(out).map_err(|e| format!("create Cyberduck Bookmarks dir: {e}"))?;
         crate::bridge_shared::atomic_write_600(&out.join(&file_name), body.as_bytes())?;
         outcome.exported += 1;
     }
