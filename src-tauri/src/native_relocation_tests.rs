@@ -567,9 +567,17 @@ fn a_refresh_of_the_legacy_owner_stays_in_its_account() {
         &session("owners-shared-uid", "r1"),
     )
     .save(&session("owners-shared-uid", "r2").tokens);
-    assert_eq!(loaded(owners_owner, "owners-shared").as_deref(), Some("r2"));
+    // Each copy read as it is stored: a load adopts the vault's pair for the
+    // same UID, so it would show r2 over a legacy row left at r1.
+    let (vault_copy, legacy_row, source_row) = accounts.copies("owners-shared");
+    assert_eq!(vault_copy.as_deref(), Some("r2"), "the vault key");
     assert_eq!(
-        loaded(owner, "owners-shared").as_deref(),
+        legacy_row.as_deref(),
+        Some("r2"),
+        "the legacy owner's row takes the refreshed pair"
+    );
+    assert_eq!(
+        source_row.as_deref(),
         Some("r1"),
         "the legacy owner's refresh does not write another account's row"
     );
@@ -1487,7 +1495,15 @@ fn a_refresh_does_not_bring_back_a_copy_the_alignment_dropped() {
         None,
         "a refresh does not bring back a copy the alignment dropped"
     );
-    assert_eq!(loaded(owners_owner, "aligned").as_deref(), Some("r1"));
+    // The legacy owner's copies read as they are stored, since a load would
+    // adopt the vault's pair over its row.
+    let (vault_copy, legacy_row, _) = accounts.copies("aligned");
+    assert_eq!(vault_copy.as_deref(), Some("r1"));
+    assert_eq!(
+        legacy_row.as_deref(),
+        Some("r1"),
+        "the source's refresh writes no copy of the legacy owner"
+    );
 }
 
 /// A Move holds the source's session key from before it looks whether the
@@ -1930,4 +1946,45 @@ fn a_session_the_account_store_refuses_leaves_the_vault_as_it_was() {
     assert_eq!(saved.ok(), Some(true));
     assert_eq!(vault_copy("refused-over").as_deref(), Some("i1"));
     assert_eq!(legacy_row("refused-over").as_deref(), Some("i1"));
+}
+
+/// An import of a profile a Move took out of the account saves no session
+/// there: the Move's mark refuses it under the session's key lock, as it
+/// refuses a sign-in, so no orphan row is left in the account the profile
+/// left.
+#[test]
+fn an_import_saves_no_session_for_a_profile_moved_away() {
+    if !in_isolated_child("an_import_saves_no_session_for_a_profile_moved_away") {
+        return;
+    }
+    let accounts = Accounts::open();
+    let (owner, source) = (accounts.owner(), accounts.source.id);
+    accounts.add_profile(source, "moved-then-imported");
+    assert!(
+        accounts
+            .relocate(
+                source,
+                "moved-then-imported",
+                "moved-then-imported-there",
+                true
+            )
+            .moved
+    );
+    let imported = vault::import_session_blocking(
+        owner,
+        "moved-then-imported",
+        &raw(&session("moved-then-imported-uid", "r1")),
+    );
+    assert!(
+        imported
+            .as_ref()
+            .is_err_and(|refused| refused.to_string().contains("moved to another account")),
+        "the import of a profile moved away is refused: {imported:?}"
+    );
+    assert!(!has_row(
+        &accounts.conn,
+        source,
+        &key("moved-then-imported")
+    ));
+    assert_eq!(loaded(owner, "moved-then-imported"), None);
 }
