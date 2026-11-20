@@ -220,7 +220,10 @@ fn versions_in_dialog_order(
 ) -> Vec<FileVersion> {
     versions.retain(|v| v.file_id.is_none_or(|listed| listed == file_id));
     let file_id = file_id.to_string();
-    versions.sort_by_key(|v| std::cmp::Reverse(v.created_at.unwrap_or(0)));
+    // Newest first; two versions of one second by their sequence, the
+    // version number (then the id, which kDrive hands out in order).
+    versions
+        .sort_by_key(|v| std::cmp::Reverse((v.created_at.unwrap_or(0), v.version_number, v.id)));
     let past = versions.iter().map(|v| {
         let modified = v.created_at.map(|ts| {
             chrono::DateTime::from_timestamp(ts, 0)
@@ -373,6 +376,18 @@ impl KDriveProvider {
             self.dir_cache.clear();
         }
         self.dir_cache.insert(key, value);
+    }
+
+    /// Cache the folder `id` under `path` only when kDrive placed it at that
+    /// very path (`at`): a folder seen elsewhere, its parent moved between
+    /// two reads, would hold the id of a folder that is not at the path, and
+    /// a later confirmation of the place it was seen would pass.
+    fn cache_folder_seen(&mut self, path: String, id: i64, at: Option<String>) {
+        if at.as_deref() == Some(path.as_str()) {
+            self.dir_cache_insert(path, DirInfo { id, at });
+        } else {
+            self.dir_cache.remove(&path);
+        }
     }
 
     /// M7: Returns Result instead of silently falling back to an empty header on invalid tokens.
@@ -729,7 +744,7 @@ impl KDriveProvider {
             let prefix = format!("/{}", parts[..depth].join("/"));
             self.dir_cache
                 .get(&prefix)
-                .map(|info| (info.id, info.at.clone(), depth))
+                .map(|info| (info.id, info.at.is_some().then_some(prefix), depth))
         });
         let (start_id, start) = match deepest {
             Some((id, at, depth)) if self.folder_is_at(id, at.as_deref()).await? => (id, depth),
@@ -742,9 +757,10 @@ impl KDriveProvider {
         self.walk_folder(&parts, start, start_id, other_case).await
     }
 
-    /// Whether kDrive gives the folder `folder_id` the path `at` now. A
-    /// folder cached with no path cannot be confirmed, and a folder gone
-    /// (404) is not there.
+    /// Whether kDrive gives the folder `folder_id` the path `at` now, the
+    /// path it was asked for (kDrive's paths start at the drive root, id 1,
+    /// which is this provider's root). A folder cached with no path cannot
+    /// be confirmed, and a folder gone (404) is not there.
     async fn folder_is_at(&self, folder_id: i64, at: Option<&str>) -> Result<bool, ProviderError> {
         let Some(at) = at else {
             return Ok(false);
@@ -830,14 +846,24 @@ impl KDriveProvider {
                     if file.file_type.as_deref() == Some("dir") {
                         if let Some(ref name) = file.name {
                             if name == *part {
+                                // A child kDrive places elsewhere than the
+                                // path walked: its folder moved after it was
+                                // confirmed, and the child is not the one
+                                // at the path.
+                                if exact_so_far
+                                    && file.path.as_deref().is_some_and(|at| at != current_path)
+                                {
+                                    return Err(ProviderError::NotFound(format!(
+                                        "'{current_path}' moved while it was looked up: \
+                                         nothing was changed, try again"
+                                    )));
+                                }
                                 // Exact match: use immediately
                                 if exact_so_far {
-                                    self.dir_cache_insert(
+                                    self.cache_folder_seen(
                                         current_path.clone(),
-                                        DirInfo {
-                                            id: file.id,
-                                            at: file.path.clone(),
-                                        },
+                                        file.id,
+                                        file.path.clone(),
                                     );
                                 }
                                 current_id = file.id;
@@ -1172,13 +1198,7 @@ impl StorageProvider for KDriveProvider {
                         format!("{}/{}", resolved, name)
                     };
                     if cache_children {
-                        self.dir_cache_insert(
-                            dir_path,
-                            DirInfo {
-                                id: file.id,
-                                at: file.path.clone(),
-                            },
-                        );
+                        self.cache_folder_seen(dir_path, file.id, file.path.clone());
                     }
                 }
 
@@ -1495,13 +1515,7 @@ impl StorageProvider for KDriveProvider {
             error: None,
         });
         if let (true, Some(file)) = (cache_new, api_resp.data) {
-            self.dir_cache_insert(
-                resolved,
-                DirInfo {
-                    id: file.id,
-                    at: file.path,
-                },
-            );
+            self.cache_folder_seen(resolved, file.id, file.path);
         }
 
         Ok(())
@@ -2026,6 +2040,7 @@ impl StorageProvider for KDriveProvider {
         let mut listed = Vec::new();
         let mut cursor: Option<String> = None;
         let mut seen = std::collections::HashSet::new();
+        let mut budget = super::VersionListingBudget::default();
         loop {
             let url = match &cursor {
                 Some(cursor) => format!("{base}?cursor={}", urlencoding::encode(cursor)),
@@ -2040,6 +2055,7 @@ impl StorageProvider for KDriveProvider {
             }
 
             let text = super::version_listing_text(resp).await?;
+            budget.count(text.len(), path)?;
             let page: VersionsPage = serde_json::from_str(&text).map_err(|e| {
                 ProviderError::ServerError(format!("Parse versions response failed: {}", e))
             })?;
@@ -3022,8 +3038,14 @@ mod tests {
                         // `sub`: 61 in the folder at the path, 51 in the moved one.
                         ("GET", "/3/drive/987654/files/60/files?with=path") => serde_json::json!({
                             "result": "success", "data": [sub(61, "/docs/sub")] }),
-                        ("GET", "/3/drive/987654/files/50/files?with=path") => serde_json::json!({
+                        ("GET", "/3/drive/987654/files/50/files?with=path")
+                        | ("GET", "/3/drive/987654/files/70/files?with=path") => serde_json::json!({
                             "result": "success", "data": [sub(51, "/archive/docs/sub")] }),
+                        // 70: confirmed at `/docs`, then moved before its
+                        // children were listed.
+                        ("GET", "/3/drive/987654/files/70?with=path") => {
+                            serde_json::json!({ "result": "success", "data": dir(70, "/docs") })
+                        }
                         ("GET", "/3/drive/987654/files/61/files?with=path")
                         | ("GET", "/3/drive/987654/files/51/files?with=path") => {
                             serde_json::json!({ "result": "success", "data": [] })
@@ -3132,6 +3154,50 @@ mod tests {
                 || l.contains("/files/98")),
             "the moved folder was acted in: {seen:?}"
         );
+    }
+
+    /// `/docs` confirmed at its path, then moved before its children were
+    /// listed: the listing places `sub` under the archive. Nothing is cached
+    /// under `/docs/sub` and the moved child is never acted in; once the
+    /// folder is no longer confirmed, the path is walked from the root.
+    #[tokio::test]
+    async fn a_folder_moved_between_its_confirmation_and_its_listing_is_not_acted_in() {
+        let (mut provider, seen) = kdrive_with_a_moved_folder().await;
+        cache_docs_as(&mut provider, 70);
+        let raced = provider.delete("/docs/sub/a.txt").await;
+        assert!(
+            matches!(&raced, Err(ProviderError::NotFound(m)) if m.contains("moved while")),
+            "{raced:?}"
+        );
+        assert!(!provider.dir_cache.contains_key("/docs/sub"));
+        cache_docs_as(&mut provider, 50);
+        provider
+            .delete("/docs/sub/a.txt")
+            .await
+            .expect("the file at the path is deleted");
+        let seen = seen.lock().unwrap();
+        assert!(
+            seen.iter().any(|l| l == "DELETE /2/drive/987654/files/12"),
+            "{seen:?}"
+        );
+        assert!(
+            !seen
+                .iter()
+                .any(|l| l.contains("/files/51") || l.contains("/files/98")),
+            "the moved folder was acted in: {seen:?}"
+        );
+    }
+
+    /// A folder is cached under a path only when kDrive placed it there.
+    #[test]
+    fn a_folder_seen_at_another_path_is_not_cached() {
+        let mut provider = test_provider();
+        provider.cache_folder_seen("/docs/sub".into(), 51, Some("/archive/docs/sub".into()));
+        provider.cache_folder_seen("/docs/x".into(), 52, None);
+        assert!(!provider.dir_cache.contains_key("/docs/sub"));
+        assert!(!provider.dir_cache.contains_key("/docs/x"));
+        provider.cache_folder_seen("/docs/sub".into(), 61, Some("/docs/sub".into()));
+        assert_eq!(provider.dir_cache.get("/docs/sub").map(|i| i.id), Some(61));
     }
 
     /// A cache that is still right costs one request, the folder's path,
@@ -4199,6 +4265,23 @@ mod tests {
         let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
         assert_eq!(ids, ["7:current", "7:3", "7:2", "7:1"]);
         assert_eq!(versions[0].size, 20);
+    }
+
+    /// Two versions of one second, listed oldest first: the later one in
+    /// the version sequence comes first.
+    #[test]
+    fn kdrive_versions_of_one_second_come_newest_first_by_their_number() {
+        let listed: Vec<super::KDriveVersion> = serde_json::from_str(
+            r#"[{"id":5,"size":7,"created_at":1794841200,"version_number":1},
+                {"id":6,"size":11,"created_at":1794841300,"version_number":2},
+                {"id":7,"size":16,"created_at":1794841300,"version_number":3}]"#,
+        )
+        .expect("parse");
+        let mut file = super::RemoteEntry::directory("v.txt".into(), "/v.txt".into());
+        file.is_dir = false;
+        let versions = super::versions_in_dialog_order(listed, &file, 9);
+        let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
+        assert_eq!(ids, ["9:current", "9:7", "9:6", "9:5"]);
     }
 
     /// A row of file 12 in the answer for file 11 would be bound `11:2`, and

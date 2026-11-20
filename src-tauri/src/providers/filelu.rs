@@ -845,24 +845,29 @@ impl FileLuProvider {
             ))
         })?;
 
+        // The status and where parsing stopped, never the body: an answer
+        // can echo the request URL, and its `key=` with it.
         if !status.is_success() {
             return Err(ProviderError::ServerError(format!(
-                "HTTP {}: {}",
-                status, text
+                "HTTP {}: an answer of {} bytes, not shown",
+                status,
+                text.len()
             )));
         }
 
         let api_resp: ApiResponse<T> = serde_json::from_str(&text).map_err(|e| {
             ProviderError::ParseError(format!(
-                "json: {}. Body: {}",
-                e,
-                &text[..text.floor_char_boundary(200)]
+                "json: {e} (an answer of {} bytes, not shown)",
+                text.len()
             ))
         })?;
 
         match api_resp.status {
             Some(s) if s != 200 => {
-                let msg = api_resp.msg.unwrap_or_else(|| format!("API error {}", s));
+                let msg = api_resp
+                    .msg
+                    .map(|m| super::sanitize_api_error(&redact_key(&m)))
+                    .unwrap_or_else(|| format!("API error {}", s));
                 Err(ProviderError::ServerError(msg))
             }
             _ => api_resp.result.ok_or_else(|| {
@@ -2379,6 +2384,10 @@ impl StorageProvider for FileLuProvider {
         true
     }
 
+    fn supports_version_delete(&self) -> bool {
+        true
+    }
+
     /// The earlier versions, newest first; the current content is the file
     /// itself and is not listed.
     async fn list_versions(&mut self, path: &str) -> Result<Vec<FileVersion>, ProviderError> {
@@ -2620,9 +2629,8 @@ impl StorageProvider for FileLuProvider {
         })?;
         let server_info: UploadServerResponse = serde_json::from_str(&text).map_err(|e| {
             ProviderError::ParseError(format!(
-                "Upload server JSON error: {}. Body: {}",
-                e,
-                &text[..text.floor_char_boundary(200)]
+                "Upload server JSON error: {e} (an answer of {} bytes, not shown)",
+                text.len()
             ))
         })?;
         if let Some(s) = server_info.status {
@@ -2708,9 +2716,8 @@ impl StorageProvider for FileLuProvider {
         let upload_results: Vec<UploadResultEntry> =
             serde_json::from_str(&upload_body).map_err(|e| {
                 ProviderError::ParseError(format!(
-                    "Upload result JSON error: {}. Body: {}",
-                    e,
-                    &upload_body[..upload_body.floor_char_boundary(200)]
+                    "Upload result JSON error: {e} (an answer of {} bytes, not shown)",
+                    upload_body.len()
                 ))
             })?;
         let uploaded_file_code = upload_results
@@ -6475,6 +6482,54 @@ mod tests {
         }
     }
 
+    /// A folder listing that fails twice, the v2 call and then the legacy
+    /// one, logs the first failure and returns the second with the status
+    /// and the parse position only: each answer echoes the request with its
+    /// API key, which reached both the log and the error before.
+    #[tokio::test]
+    async fn a_failed_folder_listing_logs_and_returns_no_body() {
+        #[derive(Clone, Default)]
+        struct Capture(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+        impl std::io::Write for Capture {
+            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(buf);
+                Ok(buf.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        impl<'writer> tracing_subscriber::fmt::MakeWriter<'writer> for Capture {
+            type Writer = Capture;
+            fn make_writer(&'writer self) -> Self::Writer {
+                self.clone()
+            }
+        }
+        let (mut provider, _) = provider_against(|_, path, _| match path {
+            "/apiv2/folder/list" => "!500 GET /apiv2/folder/list?key=ECHO-SECRET-1".to_string(),
+            _ => "<html>GET /api/file/list?key=ECHO-SECRET-2</html>".to_string(),
+        })
+        .await;
+        let capture = Capture::default();
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::INFO)
+            .with_writer(capture.clone())
+            .finish();
+        let _guard = tracing::subscriber::set_default(subscriber);
+        let outcome = provider.list("/").await;
+        let logged = String::from_utf8_lossy(&capture.0.lock().unwrap()).to_string();
+        let shown = format!("{outcome:?}");
+        assert!(logged.contains("falling back"), "{logged}");
+        assert!(
+            matches!(&outcome, Err(ProviderError::ParseError(m)) if m.contains("not shown")),
+            "{shown}"
+        );
+        for secret in ["ECHO-SECRET-1", "ECHO-SECRET-2"] {
+            assert!(!logged.contains(secret), "{logged}");
+            assert!(!shown.contains(secret), "{shown}");
+        }
+    }
+
     /// FileLu promotes the version under its own code: a restore is done
     /// only when the file at the path is then that code, not another file of
     /// the same size uploaded in between.
@@ -6601,12 +6656,8 @@ mod tests {
                 Err(ProviderError::NotSupported(_))
             ));
         }
-        assert_eq!(
-            calls.lock().unwrap().len(),
-            before,
-            "{:?}",
-            calls.lock().unwrap()
-        );
+        let sent = calls.lock().unwrap().clone();
+        assert_eq!(sent.len(), before, "{sent:?}");
     }
 
     /// A direct link answered with an error status fails the download, and

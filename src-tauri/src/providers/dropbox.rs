@@ -663,6 +663,85 @@ impl DropboxProvider {
         }))
     }
 
+    /// One `files/list_revisions` answer to `request`, as text.
+    async fn list_revisions_page(
+        &self,
+        request: &serde_json::Value,
+    ) -> Result<String, ProviderError> {
+        let url = format!("{}/files/list_revisions", self.rpc_api_base());
+        let response = self
+            .client
+            .post(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .header(CONTENT_TYPE, "application/json")
+            .body(request.to_string())
+            .send()
+            .await
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+        if !response.status().is_success() {
+            let text = super::version_listing_text(response)
+                .await
+                .unwrap_or_default();
+            return Err(ProviderError::Other(format!(
+                "List revisions failed: {}",
+                sanitize_api_error(&text)
+            )));
+        }
+        super::version_listing_text(response).await
+    }
+
+    /// The path-mode history whose first answer is `first`, with every
+    /// later page asked `before_rev` the last revision read, as one answer
+    /// (`entries` of all pages, the rest of the first). A page that names
+    /// no revision to go on from, or one already asked, is an incomplete
+    /// history.
+    async fn revisions_before(
+        &self,
+        full_path: &str,
+        first: String,
+        budget: &mut super::VersionListingBudget,
+    ) -> Result<String, ProviderError> {
+        let parse = |body: &str| {
+            serde_json::from_str::<serde_json::Value>(body)
+                .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))
+        };
+        let mut answer = parse(&first)?;
+        if answer["has_more"].as_bool() != Some(true) {
+            return Ok(first);
+        }
+        let mut entries = answer["entries"].as_array().cloned().unwrap_or_default();
+        let mut asked = std::collections::HashSet::new();
+        let mut pages = 1;
+        loop {
+            let before = entries
+                .last()
+                .and_then(|entry| entry["rev"].as_str())
+                .map(str::to_string)
+                .filter(|rev| asked.insert(rev.clone()))
+                .ok_or_else(|| {
+                    ProviderError::ParseError(format!(
+                        "The revisions of {full_path} said more follow but named none to go on from"
+                    ))
+                })?;
+            if pages >= super::VERSION_LISTING_MAX_PAGES {
+                return Err(super::version_listing_too_long(full_path));
+            }
+            let request =
+                serde_json::json!({ "path": full_path, "limit": 100, "before_rev": before });
+            let body = self.list_revisions_page(&request).await?;
+            budget.count(body.len(), full_path)?;
+            pages += 1;
+            let page = parse(&body)?;
+            entries.extend(page["entries"].as_array().cloned().unwrap_or_default());
+            if page["has_more"].as_bool() != Some(true) {
+                break;
+            }
+        }
+        answer["entries"] = serde_json::Value::Array(entries);
+        answer["has_more"] = serde_json::Value::Bool(false);
+        Ok(answer.to_string())
+    }
+
     /// `files/get_metadata` for the version paths, read up to the listing
     /// cap like the revision list it is combined with: an endless answer
     /// ends in an error, not in memory growth.
@@ -2136,29 +2215,18 @@ impl StorageProvider for DropboxProvider {
             None => serde_json::json!({ "path": full_path, "limit": 100 }),
         };
 
-        let url = format!("{}/files/list_revisions", self.rpc_api_base());
-
-        let response = self
-            .client
-            .post(&url)
-            .header(AUTHORIZATION, self.auth_header().await?)
-            .header(CONTENT_TYPE, "application/json")
-            .body(request.to_string())
-            .send()
-            .await
-            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
-
-        if !response.status().is_success() {
-            let text = super::version_listing_text(response)
-                .await
-                .unwrap_or_default();
-            return Err(ProviderError::Other(format!(
-                "List revisions failed: {}",
-                sanitize_api_error(&text)
-            )));
-        }
-
-        let body = super::version_listing_text(response).await?;
+        let mut budget = super::VersionListingBudget::default();
+        let body = self.list_revisions_page(&request).await?;
+        budget.count(body.len(), &full_path)?;
+        // A deleted file's history is read by path, which Dropbox pages
+        // with `before_rev` while it answers `has_more`: every page is read
+        // (within the shared limits), so no revision is left out of the
+        // dialog. A live file's is read by id, whose mode has no paging.
+        let body = if live_id.is_none() {
+            self.revisions_before(&full_path, body, &mut budget).await?
+        } else {
+            body
+        };
         #[derive(Deserialize)]
         struct ListedRevision {
             id: Option<String>,
@@ -3667,6 +3735,70 @@ mod tests {
             .map(|v| (v.id.as_str(), v.deleted))
             .collect();
         assert_eq!(rows, [("current", true), ("r2", false), ("r1", false)]);
+    }
+
+    /// A deleted file's history is read by path and paged with
+    /// `before_rev`: a revision on the second page is listed, each page
+    /// asked before the last revision of the one before; a page that says
+    /// more follow and names no revision fails the listing.
+    #[tokio::test]
+    async fn a_deleted_dropbox_file_lists_the_revisions_of_every_page() {
+        use axum::{routing::post, Json, Router};
+        use serde_json::{json, Value};
+        let asked: std::sync::Arc<std::sync::Mutex<Vec<Value>>> = Default::default();
+        let log = std::sync::Arc::clone(&asked);
+        let app = Router::new()
+            .route(
+                "/files/list_revisions",
+                post(move |Json(request): Json<Value>| {
+                    let log = std::sync::Arc::clone(&log);
+                    async move {
+                        log.lock().unwrap().push(request.clone());
+                        let rev = |r: &str, day: u8| {
+                            json!({"rev": r, "size": 3,
+                            "server_modified": format!("2026-01-{day:02}T00:00:00Z")})
+                        };
+                        Json(
+                            match (request["path"].as_str(), request["before_rev"].as_str()) {
+                                (Some("/stuck.txt"), _) => {
+                                    json!({"is_deleted":true,"has_more":true,"entries":[]})
+                                }
+                                (_, None) => json!({"is_deleted":true,"has_more":true,
+                                "entries":[rev("r3", 3), rev("r2", 2)]}),
+                                (_, Some("r2")) => json!({"is_deleted":true,"has_more":false,
+                                "entries":[rev("r1", 1)]}),
+                                _ => json!({"is_deleted":true,"has_more":false,"entries":[]}),
+                            },
+                        )
+                    }
+                }),
+            )
+            .route(
+                "/files/get_metadata",
+                post(|| async { Json(json!({".tag":"deleted","name":"gone.txt"})) }),
+            );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let mut provider = fixture_connected();
+        provider.content_base_override = Some(format!("http://{addr}"));
+        let versions = provider.list_versions("/gone.txt").await.expect("versions");
+        let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
+        assert_eq!(ids, ["current", "r3", "r2", "r1"]);
+        {
+            let asked = asked.lock().unwrap();
+            assert_eq!(asked.len(), 2);
+            assert_eq!(asked[1]["before_rev"], "r2");
+            assert_eq!(asked[1]["path"], "/gone.txt");
+        }
+        let stuck = provider.list_versions("/stuck.txt").await;
+        server.abort();
+        assert!(
+            matches!(&stuck, Err(ProviderError::ParseError(m)) if m.contains("named none")),
+            "{stuck:?}"
+        );
     }
 
     /// The current revision is the file itself: its restore is refused

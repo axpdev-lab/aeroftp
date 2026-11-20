@@ -45,7 +45,7 @@ describe('Object Tags in the S3 file menu', () => {
         const beforeReconnect = switchBody.slice(resetIdx, connectedIdx);
         const afterReconnect = switchBody.slice(connectedIdx);
         expect(beforeReconnect).toContain('providerCapsVersionRef.current++;');
-        expect(beforeReconnect).toContain('setProviderCaps({ versions: false, thumbnails: false, permissions: false, locking: false });');
+        expect(beforeReconnect).toContain('setProviderCaps({ versions: false, versionDelete: false, thumbnails: false, permissions: false, locking: false });');
         expect(afterReconnect).toContain('refreshProviderCaps(protocol);');
 
         // Execute the production refreshProviderCaps implementation across

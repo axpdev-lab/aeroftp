@@ -977,13 +977,15 @@ const SERVER_URL_SITES: &[(&str, &str, &str)] = &[
     ("zoho_workdrive.rs", "upload_url", "built from the configured upload host, never read from an answer"),
 ];
 
-/// The scan behind the F9 review: every provider line that reads a URL out
-/// of an answer is in [`SERVER_URL_SITES`] with its reason. A provider that
-/// starts following a server-given URL fails here until it says why its
-/// credential stays on the configured API, and a listed site that no longer
-/// exists fails too, so the list stays the code's.
+/// The scan behind the F9 review: every (file, marker) pair of a provider
+/// that reads a URL out of an answer is in [`SERVER_URL_SITES`] with its
+/// reason. The granularity is the pair, not the line: a provider that starts
+/// following a server-given URL under a new marker fails here until it says
+/// why its credential stays on the configured API, a second use of a marker
+/// already listed in that file is covered by the reason given for it, and a
+/// listed pair that no longer exists fails too, so the list stays the code's.
 #[test]
-fn every_server_given_url_is_listed_with_why_its_credential_stays_home() {
+fn every_server_url_marker_of_a_file_is_listed_with_why_its_credential_stays_home() {
     let pattern = regex::Regex::new(NEXT_PAGE_PATTERN).expect("the pattern");
     let mut found = std::collections::BTreeSet::new();
     for (file, source) in provider_sources() {

@@ -142,7 +142,7 @@ it('FileVersionsDialog: the guard stays busy until every version operation finis
         return d.promise;
     });
     const onClose = vi.fn();
-    await render(createElement(FileVersionsDialog, { generation: 7, filePath: '/f.txt', fileName: 'f.txt', onClose }));
+    await render(createElement(FileVersionsDialog, { generation: 7, guiTarget: 3, filePath: '/f.txt', fileName: 'f.txt', onClose }));
     await flush();
     const restores = [...host.querySelectorAll<HTMLButtonElement>('button[title*="Restore"], button[title*="restore"]')];
     expect(restores.length).toBe(2);
@@ -163,7 +163,7 @@ it('FileVersionsDialog: the guard stays busy until every version operation finis
     expect(onClose).toHaveBeenCalledTimes(1);
 });
 
-it('FileVersionsDialog: every command carries the generation it was opened on, a refused action is shown, and a refused restore or purge lists again', async () => {
+it('FileVersionsDialog: every command carries the generation and the remote target it was opened on, a refused action is shown, and a refused restore or purge lists again', async () => {
     const calls: Array<[string, Record<string, unknown>]> = [];
     vi.mocked(pickSave).mockResolvedValueOnce('/tmp/f_v1.txt');
     vi.mocked(invoke).mockImplementation(async (cmd, args) => {
@@ -174,7 +174,7 @@ it('FileVersionsDialog: every command carries the generation it was opened on, a
         ];
         throw `refused ${cmd}`;
     });
-    await render(createElement(FileVersionsDialog, { generation: 7, filePath: '/f.txt', fileName: 'f.txt', onClose: vi.fn() }));
+    await render(createElement(FileVersionsDialog, { generation: 7, guiTarget: 3, canPurge: true, filePath: '/f.txt', fileName: 'f.txt', onClose: vi.fn() }));
     await flush();
     const alert = () => host.querySelector('[role="alert"]')?.textContent ?? null;
     const rows = () => host.querySelectorAll('tbody tr').length;
@@ -194,7 +194,7 @@ it('FileVersionsDialog: every command carries the generation it was opened on, a
     expect(rows()).toBe(2);
     const sent = calls.map(([cmd]) => cmd);
     expect(sent).toEqual(['provider_list_versions', 'provider_download_version', 'provider_restore_version', 'provider_list_versions', 'provider_delete_version', 'provider_list_versions']);
-    for (const [cmd, args] of calls) expect([cmd, args.generation]).toEqual([cmd, 7]);
+    for (const [cmd, args] of calls) expect([cmd, args.generation, args.expectedGuiTarget]).toEqual([cmd, 7, 3]);
 });
 
 it('VersionBrowser: the guard stays busy until every restore finishes', async () => {
@@ -422,6 +422,24 @@ it('SharePermissionsDialog: the guard stays busy until every remove finishes', a
     expect(onClose).toHaveBeenCalledTimes(1);
 });
 
+it('FileVersionsDialog: Purge is offered only where the provider deletes a version, and never on the file row', async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd) => {
+        if (cmd === 'provider_list_versions') return [
+            { id: '7:current', modified: null, size: 3, modified_by: null },
+            { id: '7:2', modified: null, size: 2, modified_by: null },
+        ];
+        return {};
+    });
+    const purges = () => [...host.querySelectorAll('tbody tr')]
+        .map(row => row.querySelectorAll('button[title*="Permanently"]').length);
+    await render(createElement(FileVersionsDialog, { generation: 7, guiTarget: 3, filePath: '/f.txt', fileName: 'f.txt', onClose: vi.fn() }));
+    await flush();
+    expect(purges()).toEqual([0, 0]);
+    await render(createElement(FileVersionsDialog, { generation: 8, guiTarget: 3, canPurge: true, filePath: '/f.txt', fileName: 'f.txt', onClose: vi.fn() }));
+    await flush();
+    expect(purges()).toEqual([0, 1]);
+});
+
 it('FileVersionsDialog: a deleted marker on top is Deleted, with no download and no restore', async () => {
     vi.mocked(invoke).mockImplementation(async (cmd) => {
         if (cmd === 'provider_list_versions') return [
@@ -431,7 +449,7 @@ it('FileVersionsDialog: a deleted marker on top is Deleted, with no download and
         ];
         return {};
     });
-    await render(createElement(FileVersionsDialog, { generation: 7, filePath: '/f.txt', fileName: 'f.txt', onClose: vi.fn() }));
+    await render(createElement(FileVersionsDialog, { generation: 7, guiTarget: 3, filePath: '/f.txt', fileName: 'f.txt', onClose: vi.fn() }));
     await flush();
     const rows = [...host.querySelectorAll('tbody tr')];
     expect(rows).toHaveLength(3);

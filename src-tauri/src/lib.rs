@@ -29298,6 +29298,7 @@ pub fn run() {
             provider_commands::provider_set_speed_limit,
             // File versions
             provider_commands::provider_supports_versions,
+            provider_commands::provider_supports_version_delete,
             provider_commands::provider_list_versions,
             provider_commands::provider_download_version,
             provider_commands::provider_restore_version,

@@ -2600,6 +2600,7 @@ impl StorageProvider for OneDriveProvider {
         let mut url = format!("{}/versions", self.api_item(&item_id));
         let mut value = Vec::new();
         let mut seen = std::collections::HashSet::new();
+        let mut budget = super::VersionListingBudget::default();
         loop {
             let response = self
                 .client
@@ -2620,11 +2621,17 @@ impl StorageProvider for OneDriveProvider {
             }
 
             let body = super::version_listing_text(response).await?;
+            budget.count(body.len(), path)?;
             let page: VersionList = serde_json::from_str(&body)
                 .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
             value.extend(page.value);
             match page.next_link {
                 Some(next) if seen.insert(next.clone()) => {
+                    // A new link on every page never repeats: the page count
+                    // ends the listing.
+                    if seen.len() >= super::VERSION_LISTING_MAX_PAGES {
+                        return Err(super::version_listing_too_long(path));
+                    }
                     url = super::next_page_on_api_origin(
                         &self.graph_api(),
                         &next,
@@ -3609,6 +3616,91 @@ mod tests {
             !seen.iter().any(|l| l.contains("/drives/DRV/")),
             "the drive of the removed shortcut was asked: {seen:?}"
         );
+    }
+
+    /// A versions listing whose every page names a new `@odata.nextLink`
+    /// ends at the page limit with an error. A restore Graph applied whose
+    /// confirming listing answers 401 is reported applied but unconfirmed,
+    /// so nothing sends it again: one POST.
+    #[tokio::test]
+    async fn an_endless_listing_stops_and_an_applied_restore_is_sent_once() {
+        use axum::response::IntoResponse;
+        use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+        use std::sync::{Arc, Mutex};
+        let seen: Arc<Mutex<Vec<String>>> = Arc::default();
+        let restored = Arc::new(AtomicBool::new(false));
+        let pages = Arc::new(AtomicUsize::new(0));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let base = format!("http://{addr}");
+        let (log, done, served) = (Arc::clone(&seen), Arc::clone(&restored), Arc::clone(&pages));
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method, uri: axum::http::Uri| {
+                let (log, done, served, base) =
+                    (Arc::clone(&log), Arc::clone(&done), Arc::clone(&served), base.clone());
+                async move {
+                    let target = uri.to_string();
+                    log.lock().unwrap().push(format!("{method} {target}"));
+                    let row = |id: &str| serde_json::json!({"id": id, "size": 3,
+                        "lastModifiedDateTime": "2026-01-02T00:00:00Z"});
+                    match (method.as_str(), uri.path()) {
+                        ("GET", "/v1.0/me/drive/items/E1/versions") => {
+                            let n = served.fetch_add(1, Ordering::SeqCst);
+                            axum::Json(serde_json::json!({ "value": [row("1.0")],
+                                "@odata.nextLink": format!("{base}/v1.0/me/drive/items/E1/versions?$skiptoken=t{n}") }))
+                            .into_response()
+                        }
+                        ("GET", "/v1.0/me/drive/items/F1/versions") => {
+                            if done.load(Ordering::SeqCst) {
+                                return axum::http::StatusCode::UNAUTHORIZED.into_response();
+                            }
+                            axum::Json(serde_json::json!({ "value": [row("2.0"), row("1.0")] }))
+                                .into_response()
+                        }
+                        ("POST", "/v1.0/me/drive/items/F1/versions/1.0/restoreVersion") => {
+                            done.store(true, Ordering::SeqCst);
+                            axum::http::StatusCode::NO_CONTENT.into_response()
+                        }
+                        ("GET", "/v1.0/me/drive/root:/endless.txt") => axum::Json(serde_json::json!({
+                            "id": "E1", "name": "endless.txt", "size": 3, "file": {},
+                            "parentReference": { "path": "/drive/root:" },
+                        }))
+                        .into_response(),
+                        ("GET", "/v1.0/me/drive/root:/f.txt") => axum::Json(serde_json::json!({
+                            "id": "F1", "name": "f.txt", "size": 3, "file": {},
+                            "parentReference": { "path": "/drive/root:" },
+                        }))
+                        .into_response(),
+                        _ => axum::http::StatusCode::NOT_FOUND.into_response(),
+                    }
+                }
+            },
+        ));
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = test_provider();
+        provider.connected = true;
+        provider.api_origin_override = Some(format!("http://{addr}"));
+        provider.test_access_token = Some("t".to_string());
+        let endless = provider.list_versions("/endless.txt").await;
+        assert!(
+            matches!(&endless, Err(ProviderError::TransferFailed(m)) if m.contains("200 pages")),
+            "{endless:?}"
+        );
+        assert_eq!(
+            pages.load(Ordering::SeqCst),
+            super::super::VERSION_LISTING_MAX_PAGES
+        );
+        let outcome = provider.restore_version("/f.txt", "F1:1.0").await;
+        server.abort();
+        let error = outcome.expect_err("an unconfirmed restore is not reported done");
+        assert!(super::super::was_applied(&error), "{error:?}");
+        let posts = seen
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|l| l.starts_with("POST "))
+            .count();
+        assert_eq!(posts, 1);
     }
 
     /// Graph answers the versions a page at a time, with an

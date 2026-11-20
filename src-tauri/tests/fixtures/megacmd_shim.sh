@@ -71,6 +71,10 @@ case "$(basename "$0")" in
             exit 0
         fi
         if [ "$1" = "-l" ] && [ "$2" = "--versions" ] && [ "$3" = "--show-handles" ] && [ "$4" = "/v.txt" ]; then
+            if [ -f "$here/ls-broken" ]; then
+                echo "Server busy" >&2
+                exit 1
+            fi
             echo 'FLAGS VERS      SIZE            DATE          HANDLE NAME'
             if [ -f "$here/put-size-v.txt" ] && [ -f "$here/versioning-off" ]; then
                 # Versioning turned off: the upload replaced the file, which
@@ -95,6 +99,8 @@ case "$(basename "$0")" in
             echo '----    3           13 16Nov2026 15:53:00 H:vAAAAAA3 v.txt#1794840780'
             echo '----    2           12 16Nov2026 15:52:57 H:vAAAAAA2 v.txt#1794840777'
             echo '----    1            8 16Nov2026 15:52:55 H:vAAAAAA1 v.txt#1794840775'
+            # A listing that printed its rows and then failed.
+            [ -f "$here/versions-fail" ] && exit 1
             exit 0
         fi
         if [ "$1" = "-l" ] && [ "$2" = "--versions" ] && [ "$3" = "--show-handles" ] && [ "$4" = "/w.txt" ]; then
@@ -281,6 +287,16 @@ case "$(basename "$0")" in
         fi
         echo "$1" >> "$here/get.log"
         echo "$2" >> "$here/get-targets.log"
+        # check-get-fails: the read back of the version a put added fails.
+        if [ "$1" = H:vAAAAAA4 ] && [ -f "$here/check-get-fails" ]; then
+            echo "Download failed: Access denied" >&2
+            exit 2
+        fi
+        # final-ls-fails: once that version is read back, listing /v.txt
+        # fails.
+        if [ "$1" = H:vAAAAAA4 ] && [ -f "$here/final-ls-fails" ]; then
+            touch "$here/ls-broken"
+        fi
         # check-get-slow: the read back of the version a put added is slow.
         if [ "$1" = H:vAAAAAA4 ] && [ -f "$here/check-get-slow" ]; then
             sleep 3
@@ -320,6 +336,13 @@ case "$(basename "$0")" in
             fi
             echo "Download failed: Temporarily unavailable, try again"
             exit 1
+        fi
+        # A folder got into an existing folder: MEGAcmd writes the folder of
+        # its name inside it.
+        if [ "$1" = /same ] && [ -d "$2" ]; then
+            mkdir -p "$2/same" && printf 'seven!!' > "$2/same/same"
+            printf '\nDownload finished: %s\n' "$2/same"
+            exit 0
         fi
         # MEGAcmd does not write over a file at the target: it writes a
         # " (1)" sibling (measured 2026-11-18).

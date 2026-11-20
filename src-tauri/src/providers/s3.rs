@@ -8248,6 +8248,10 @@ impl StorageProvider for S3Provider {
         !self.is_mega_s4_endpoint() && !self.is_filebase_endpoint() && !self.is_fastly_endpoint()
     }
 
+    fn supports_version_delete(&self) -> bool {
+        self.supports_versions()
+    }
+
     async fn list_versions(&mut self, path: &str) -> Result<Vec<FileVersion>, ProviderError> {
         self.reject_fastly_versioning()?;
         if !self.connected {
@@ -8264,6 +8268,7 @@ impl StorageProvider for S3Provider {
         let mut key_marker: Option<String> = None;
         let mut version_id_marker: Option<String> = None;
         let mut sent_markers: HashSet<(String, Option<String>)> = HashSet::new();
+        let mut budget = super::VersionListingBudget::default();
 
         loop {
             let mut params: Vec<(&str, &str)> = vec![("versions", ""), ("prefix", key)];
@@ -8308,6 +8313,7 @@ impl StorageProvider for S3Provider {
             }
 
             let xml_str = super::version_listing_text(response).await?;
+            budget.count(xml_str.len(), path)?;
             let page_encoded = self.filen_listing_is_encoded(&xml_str);
 
             debug!("S3 ListObjectVersions response, {} bytes", xml_str.len());
@@ -8336,6 +8342,7 @@ impl StorageProvider for S3Provider {
 
             // A key past this one (`a.txt.bak` after `a.txt`) was listed.
             let mut past_the_key = false;
+            let mut document_closed = false;
             // Pagination fields
             let mut is_truncated = false;
             let mut next_key_marker: Option<String> = None;
@@ -8501,6 +8508,7 @@ impl StorageProvider for S3Provider {
                             "IsTruncated" => in_is_truncated = false,
                             "NextKeyMarker" => in_next_key_marker = false,
                             "NextVersionIdMarker" => in_next_version_id_marker = false,
+                            "ListVersionsResult" => document_closed = true,
                             _ => {}
                         }
                         current_tag.clear();
@@ -8514,6 +8522,13 @@ impl StorageProvider for S3Provider {
                 buf.clear();
             }
 
+            // A body that ends before `</ListVersionsResult>` is a page cut
+            // short: the rows it held may not be all of them.
+            if !document_closed {
+                return Err(ProviderError::ParseError(format!(
+                    "ListObjectVersions for {key} ended before its document closed"
+                )));
+            }
             // The prefix also lists every longer key (`a` lists `assets/`):
             // once one is reached the rest of the bucket under it is not read.
             if past_the_key {
@@ -8526,6 +8541,11 @@ impl StorageProvider for S3Provider {
                 &mut sent_markers,
             )? {
                 Some((km, vm)) => {
+                    // New markers on every page never repeat: the page count
+                    // ends the listing.
+                    if sent_markers.len() >= super::VERSION_LISTING_MAX_PAGES {
+                        return Err(super::version_listing_too_long(path));
+                    }
                     key_marker = Some(km);
                     version_id_marker = vm;
                 }
@@ -9688,24 +9708,75 @@ fn build_batch_delete_xml(chunk: &[(String, Option<String>)]) -> Vec<u8> {
     xml.into_bytes()
 }
 
-/// The failure a 2xx CopyObject body carries (`<Error>` with its code and
-/// message, each shown as [`s3_server_text`] allows), or `None` for a
-/// completed copy.
+/// The failure a 2xx CopyObject body carries, or `None` for a completed
+/// copy. CopyObject can answer 200 and fail in its body, so only a document
+/// whose root is a `CopyObjectResult` that closes is a completed copy: an
+/// `Error` root (with or without attributes) is the failure, its code and
+/// message shown as [`s3_server_text`] allows, and an empty, cut or other
+/// body is a copy not known to have completed.
 fn copy_answer_error(body: &str, sent: &SentSecrets) -> Option<String> {
-    if !body.to_ascii_lowercase().contains("<error>") {
-        return None;
+    let mut reader = Reader::from_str(body);
+    let mut buf = Vec::new();
+    let mut depth = 0u32;
+    let mut root: Option<String> = None;
+    let mut closed = false;
+    let mut field: Option<String> = None;
+    let (mut code, mut message) = (String::new(), String::new());
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Err(_) => return Some("CopyError - the copy answer could not be read".into()),
+            Ok(Event::Eof) => break,
+            Ok(Event::Start(event)) => {
+                let name = event.local_name().as_ref().to_string();
+                if depth == 0 {
+                    root = Some(name.clone());
+                }
+                depth += 1;
+                field = (depth == 2).then_some(name);
+            }
+            Ok(Event::Empty(event)) if depth == 0 => {
+                root = Some(event.local_name().as_ref().to_string());
+                closed = true;
+            }
+            Ok(Event::Text(text)) => match field.as_deref() {
+                Some("Code") => code.push_str(text.as_ref()),
+                Some("Message") => message.push_str(text.as_ref()),
+                _ => {}
+            },
+            Ok(Event::End(_)) => {
+                depth = depth.saturating_sub(1);
+                field = None;
+                if depth == 0 {
+                    closed = true;
+                }
+            }
+            Ok(_) => {}
+        }
+        buf.clear();
     }
-    let tag = |name: &str| {
-        body.split(&format!("<{name}>"))
-            .nth(1)
-            .and_then(|s| s.split(&format!("</{name}>")).next())
-            .map(|text| s3_server_text(text, body.len(), sent))
-    };
-    Some(format!(
-        "{} - {}",
-        tag("Code").unwrap_or_else(|| "CopyError".into()),
-        tag("Message").unwrap_or_else(|| "the copy did not complete".into())
-    ))
+    match root.as_deref() {
+        Some("CopyObjectResult") if closed && depth == 0 => None,
+        Some("Error") => {
+            let shown = |text: &str, fallback: &str| {
+                let text = text.trim();
+                if text.is_empty() {
+                    fallback.to_string()
+                } else {
+                    s3_server_text(text, body.len(), sent)
+                }
+            };
+            Some(format!(
+                "{} - {}",
+                shown(&code, "CopyError"),
+                shown(&message, "the copy did not complete")
+            ))
+        }
+        Some("CopyObjectResult") => {
+            Some("CopyError - the copy answer ended before its result closed".into())
+        }
+        Some(_) => Some("CopyError - the copy answer is not a CopyObjectResult".into()),
+        None => Some("CopyError - the copy answer was empty".into()),
+    }
 }
 
 /// Parse the `<Error>` elements of an S3 `DeleteResult` (batch delete) body.
@@ -15973,6 +16044,102 @@ mod tests {
             matches!(&foreign, Err(ProviderError::TransferFailed(m)) if m.contains("v4")),
             "{foreign:?}"
         );
+        // An error with attributes, an empty body and a cut one are no
+        // completed copy either.
+        for (body, said) in [
+            (
+                r#"<Error xmlns="urn:s3"><Code>InternalError</Code></Error>"#,
+                "InternalError",
+            ),
+            ("", "empty"),
+            (
+                "<CopyObjectResult><ETag>\"e\"</ETag>",
+                "before its result closed",
+            ),
+        ] {
+            let refused = restore(("v3", body)).await;
+            assert!(
+                matches!(&refused, Err(ProviderError::ServerError(m)) if m.contains(said)),
+                "{body:?}: {refused:?}"
+            );
+        }
+        let done = restore(("v3", "<CopyObjectResult></CopyObjectResult>")).await;
+        assert!(done.is_ok(), "{done:?}");
+    }
+
+    /// A version listing whose every page is truncated with new markers
+    /// ends at the page limit with an error, never a history cut short; a
+    /// page that ends before `</ListVersionsResult>` is an error too.
+    #[tokio::test]
+    async fn an_s3_version_listing_ends_at_the_page_limit_or_its_closed_document() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let pages = std::sync::Arc::new(AtomicUsize::new(0));
+        let served = std::sync::Arc::clone(&pages);
+        let app = axum::Router::new().fallback(axum::routing::get(
+            move |uri: axum::http::Uri| {
+                let served = std::sync::Arc::clone(&served);
+                async move {
+                    let n = served.fetch_add(1, Ordering::SeqCst);
+                    let row = "<Version><Key>a.txt</Key><VersionId>v</VersionId>\
+                        <IsLatest>true</IsLatest><LastModified>2026-11-05T10:00:00.000Z</LastModified>\
+                        <Size>1</Size></Version>";
+                    if uri.query().unwrap_or_default().contains("prefix=cut.txt") {
+                        return format!("<ListVersionsResult><IsTruncated>false</IsTruncated>{row}");
+                    }
+                    format!(
+                        "<ListVersionsResult><IsTruncated>true</IsTruncated>\
+                         <NextKeyMarker>k{n}</NextKeyMarker>{row}</ListVersionsResult>"
+                    )
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        let endless = provider.list_versions("/a.txt").await;
+        assert!(
+            matches!(&endless, Err(ProviderError::TransferFailed(m)) if m.contains("200 pages")),
+            "{endless:?}"
+        );
+        assert_eq!(
+            pages.load(Ordering::SeqCst),
+            super::super::VERSION_LISTING_MAX_PAGES
+        );
+        let cut = provider.list_versions("/cut.txt").await;
+        server.abort();
+        assert!(
+            matches!(&cut, Err(ProviderError::ParseError(m)) if m.contains("before its document closed")),
+            "{cut:?}"
+        );
+    }
+
+    /// With the version listing denied the restore has no preflight to
+    /// confirm against: only the copy answer says it completed, so a failed
+    /// copy in a 200 body is still refused, and a completed one passes.
+    #[tokio::test]
+    async fn an_s3_restore_without_a_listing_is_done_only_by_a_completed_copy() {
+        let restore = |copy_answer: (&'static str, &'static str)| async move {
+            let config = TigrisDoubleConfig {
+                versions_denied: Some(403),
+                copy_answer: Some(copy_answer),
+                ..Default::default()
+            };
+            let (mut provider, _, _) = tigris_double(&[("docs/a.txt", "AAAA")], config).await;
+            provider.restore_version("/docs/a.txt", "v1").await
+        };
+        for body in [
+            r#"<Error xmlns="urn:s3"><Code>InternalError</Code></Error>"#,
+            "",
+            "<CopyObjectResult>",
+        ] {
+            let refused = restore(("v3", body)).await;
+            assert!(
+                matches!(&refused, Err(ProviderError::ServerError(_))),
+                "{body:?}: {refused:?}"
+            );
+        }
         let done = restore(("v3", "<CopyObjectResult></CopyObjectResult>")).await;
         assert!(done.is_ok(), "{done:?}");
     }

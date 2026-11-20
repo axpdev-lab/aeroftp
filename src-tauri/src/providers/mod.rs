@@ -392,13 +392,39 @@ pub const VERSION_LISTING_MAX_BYTES: u64 = 8 * 1024 * 1024;
 /// new page past it gets an error, never a history cut short.
 pub const VERSION_LISTING_MAX_PAGES: usize = 200;
 
+/// The most bytes a version listing reads over all its pages: each page is
+/// capped at [`VERSION_LISTING_MAX_BYTES`], and the rows kept from every page
+/// must not add up past this either.
+pub const VERSION_LISTING_MAX_TOTAL_BYTES: u64 = 64 * 1024 * 1024;
+
 /// The error of a version listing still announcing pages at
-/// [`VERSION_LISTING_MAX_PAGES`].
+/// [`VERSION_LISTING_MAX_PAGES`], or past [`VERSION_LISTING_MAX_TOTAL_BYTES`].
 pub(crate) fn version_listing_too_long(path: &str) -> ProviderError {
     ProviderError::TransferFailed(format!(
-        "The versions of {path} did not end within {VERSION_LISTING_MAX_PAGES} pages, so none \
-         are shown: try again later"
+        "The versions of {path} did not end within {VERSION_LISTING_MAX_PAGES} pages or {} MiB, \
+         so none are shown: try again later",
+        VERSION_LISTING_MAX_TOTAL_BYTES / (1024 * 1024)
     ))
+}
+
+/// The bytes a paged version listing has read so far, against
+/// [`VERSION_LISTING_MAX_TOTAL_BYTES`]: each page is counted as it is read,
+/// before its rows are kept.
+#[derive(Default)]
+pub(crate) struct VersionListingBudget {
+    read: u64,
+}
+
+impl VersionListingBudget {
+    /// Counts one page of `page_bytes`: an error once the pages read add up
+    /// past the budget, never a history cut short.
+    pub(crate) fn count(&mut self, page_bytes: usize, path: &str) -> Result<(), ProviderError> {
+        self.read = self.read.saturating_add(page_bytes as u64);
+        if self.read > VERSION_LISTING_MAX_TOTAL_BYTES {
+            return Err(version_listing_too_long(path));
+        }
+        Ok(())
+    }
 }
 
 /// A version listing answer as text, read up to [`VERSION_LISTING_MAX_BYTES`].
@@ -1107,6 +1133,23 @@ pub(crate) fn listed_as(row: &FileVersion, version_id: &str) -> bool {
                 .is_some_and(|(_, label)| label == version_id))
 }
 
+/// The words every error opens with when the server took an operation but
+/// its outcome could not be confirmed: the operation may already be done,
+/// so nothing may send it again on its own (an auth-shaped text inside the
+/// error, from the read that checks it, is no proof the server refused it).
+pub(crate) const APPLIED_UNCONFIRMED: &str = "Applied, not confirmed:";
+
+/// An error of an operation the server may already have applied
+/// ([`APPLIED_UNCONFIRMED`]).
+pub(crate) fn applied_unconfirmed(detail: String) -> ProviderError {
+    ProviderError::TransferFailed(format!("{APPLIED_UNCONFIRMED} {detail}"))
+}
+
+/// Whether `error` is one of [`applied_unconfirmed`]: never retried.
+pub(crate) fn was_applied(error: &ProviderError) -> bool {
+    matches!(error, ProviderError::TransferFailed(m) if m.starts_with(APPLIED_UNCONFIRMED))
+}
+
 /// After a restore the server answered with success: the file's current
 /// version, listed again, must hold what the selected one held, as far as a
 /// listing tells (its size, and not a deletion), and must not be the row
@@ -1140,8 +1183,8 @@ pub(crate) fn restore_confirmed(
 ) -> Result<(), ProviderError> {
     let selected = &preflight.selected;
     let not_restored = |held: String| {
-        ProviderError::TransferFailed(format!(
-            "The server answered the restore of {path}, but its current version {held}, not \
+        applied_unconfirmed(format!(
+            "the server answered the restore of {path}, but its current version {held}, not \
              the {} bytes of the restored one: list its versions again",
             selected.size
         ))
@@ -1202,7 +1245,11 @@ pub(crate) fn restore_confirmed(
 }
 
 fn refuse_a_listed_marker(versions: &[FileVersion], version_id: &str) -> Result<(), ProviderError> {
-    if versions.iter().any(|v| v.id == version_id && v.deleted) {
+    // The same matching as the selection: a bare label names its row too.
+    if versions
+        .iter()
+        .any(|v| listed_as(v, version_id) && v.deleted)
+    {
         return Err(ProviderError::NotSupported(
             "This version is a delete marker: the file was deleted then and it has no \
              contents. Restore the version below it."
@@ -1267,6 +1314,36 @@ mod versions_order_tests {
         let mut restored = listed.clone();
         restored[0].modified = Some("2026-11-18T10:05:00Z".into());
         assert!(restore_confirmed(Ok(restored), "/a.txt", &preflight).is_ok());
+    }
+
+    /// A delete marker is refused by the same matching that selects a row: by
+    /// its bare label as by its bound id, while a bare label of a content row
+    /// still selects that row.
+    #[test]
+    fn a_marker_is_refused_by_its_bare_label_as_by_its_bound_id() {
+        let mut marker = sized("42:v1", 0, "2026-11-17T10:00:00Z");
+        marker.deleted = true;
+        let listed = vec![
+            sized("42:v3", 4, "2026-11-18T10:00:00Z"),
+            sized("42:v2", 4, "2026-11-17T12:00:00Z"),
+            marker,
+        ];
+        for id in ["v1", "42:v1"] {
+            assert!(
+                matches!(
+                    restore_preflight(&listed, "/a.txt", id),
+                    Err(ProviderError::NotSupported(ref m)) if m.contains("delete marker")
+                ),
+                "{id}"
+            );
+        }
+        assert_eq!(
+            restore_preflight(&listed, "/a.txt", "v2")
+                .unwrap()
+                .selected
+                .id,
+            "42:v2"
+        );
     }
 
     /// OneDrive F1 restored, and F2 put at the path before the check with a
@@ -3483,6 +3560,12 @@ pub trait StorageProvider: Send + Sync {
         Err(ProviderError::NotSupported("resume_upload".to_string()))
     }
 
+    /// Whether [`Self::delete_version`] removes a single version here: the
+    /// dialog offers Purge only then, as every other provider refuses it.
+    fn supports_version_delete(&self) -> bool {
+        false
+    }
+
     /// Check if provider supports file versions
     fn supports_versions(&self) -> bool {
         false
@@ -3519,7 +3602,8 @@ pub trait StorageProvider: Send + Sync {
 
     /// Restore a file to a specific version. The current version (row 0 of
     /// `list_versions`) is the file itself: its restore is refused with
-    /// `NotSupported` before anything is fetched or sent.
+    /// `NotSupported` before any restore request is sent (the versions are
+    /// still listed to tell which row is current).
     async fn restore_version(
         &mut self,
         _path: &str,

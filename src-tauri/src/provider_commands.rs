@@ -10384,6 +10384,17 @@ pub async fn provider_supports_versions(state: State<'_, ProviderState>) -> Resu
     Ok(provider.supports_versions())
 }
 
+#[tauri::command]
+pub async fn provider_supports_version_delete(
+    state: State<'_, ProviderState>,
+) -> Result<bool, String> {
+    let provider_guard = state.provider.lock().await;
+    let provider = provider_guard
+        .as_ref()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    Ok(provider.supports_version_delete())
+}
+
 /// What the version commands were read against: the generation the File
 /// Versions dialog was opened on, so an action sent after a switch to another
 /// connection never runs there (a purge cannot be undone).
@@ -10393,7 +10404,11 @@ pub(crate) async fn list_versions_of(
     state: &ProviderState,
     path: &str,
     generation: u64,
+    expected_gui_target: Option<u64>,
 ) -> Result<Vec<FileVersion>, String> {
+    // An overlay applied, cleared or locked since the dialog opened keeps
+    // the connection but moves the remote target: refused, nothing sent.
+    let _target = state.pin_gui_target(expected_gui_target).await?;
     let mut provider_guard = state
         .lock_connection_of_generation(generation, VERSIONS_OPENED)
         .await?;
@@ -10412,7 +10427,11 @@ pub(crate) async fn download_version_of(
     version_id: &str,
     local_path: &str,
     generation: u64,
+    expected_gui_target: Option<u64>,
 ) -> Result<String, String> {
+    // An overlay applied, cleared or locked since the dialog opened keeps
+    // the connection but moves the remote target: refused, nothing sent.
+    let _target = state.pin_gui_target(expected_gui_target).await?;
     let mut provider_guard = state
         .lock_connection_of_generation(generation, VERSIONS_OPENED)
         .await?;
@@ -10431,7 +10450,11 @@ pub(crate) async fn restore_version_of(
     path: &str,
     version_id: &str,
     generation: u64,
+    expected_gui_target: Option<u64>,
 ) -> Result<(), String> {
+    // An overlay applied, cleared or locked since the dialog opened keeps
+    // the connection but moves the remote target: refused, nothing sent.
+    let _target = state.pin_gui_target(expected_gui_target).await?;
     let mut provider_guard = state
         .lock_connection_of_generation(generation, VERSIONS_OPENED)
         .await?;
@@ -10454,7 +10477,11 @@ pub(crate) async fn delete_version_of(
     path: &str,
     version_id: &str,
     generation: u64,
+    expected_gui_target: Option<u64>,
 ) -> Result<(), String> {
+    // An overlay applied, cleared or locked since the dialog opened keeps
+    // the connection but moves the remote target: refused, nothing sent.
+    let _target = state.pin_gui_target(expected_gui_target).await?;
     let mut provider_guard = state
         .lock_connection_of_generation(generation, VERSIONS_OPENED)
         .await?;
@@ -10472,8 +10499,9 @@ pub async fn provider_list_versions(
     state: State<'_, ProviderState>,
     path: String,
     generation: u64,
+    expected_gui_target: u64,
 ) -> Result<Vec<FileVersion>, String> {
-    list_versions_of(&state, &path, generation).await
+    list_versions_of(&state, &path, generation, Some(expected_gui_target)).await
 }
 
 #[tauri::command]
@@ -10483,8 +10511,17 @@ pub async fn provider_download_version(
     version_id: String,
     local_path: String,
     generation: u64,
+    expected_gui_target: u64,
 ) -> Result<String, String> {
-    download_version_of(&state, &path, &version_id, &local_path, generation).await
+    download_version_of(
+        &state,
+        &path,
+        &version_id,
+        &local_path,
+        generation,
+        Some(expected_gui_target),
+    )
+    .await
 }
 
 #[tauri::command]
@@ -10493,8 +10530,16 @@ pub async fn provider_restore_version(
     path: String,
     version_id: String,
     generation: u64,
+    expected_gui_target: u64,
 ) -> Result<(), String> {
-    restore_version_of(&state, &path, &version_id, generation).await
+    restore_version_of(
+        &state,
+        &path,
+        &version_id,
+        generation,
+        Some(expected_gui_target),
+    )
+    .await
 }
 
 /// See [`delete_version_of`].
@@ -10504,8 +10549,16 @@ pub async fn provider_delete_version(
     path: String,
     version_id: String,
     generation: u64,
+    expected_gui_target: u64,
 ) -> Result<(), String> {
-    delete_version_of(&state, &path, &version_id, generation).await
+    delete_version_of(
+        &state,
+        &path,
+        &version_id,
+        generation,
+        Some(expected_gui_target),
+    )
+    .await
 }
 
 // --- File Locking ---

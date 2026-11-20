@@ -198,6 +198,30 @@ struct KoofrVersionsResponse {
 /// Koofr lists only past versions, oldest first (live 2026-11-16: three
 /// uploads, two versions); the versions dialog reads row 0 as the current
 /// one, so the file comes first, then the versions newest first.
+/// The id of the current row a listing shows: the file it read (size, time
+/// and hash) bound to `current`, so a download of that row reads those bytes
+/// or nothing. Koofr names a file by its path only, so its id cannot bind it.
+fn koofr_current_id(file: &KoofrFile) -> String {
+    format!("{}:{}", koofr_file_state(file), super::CURRENT_VERSION_ID)
+}
+
+/// What a current row is bound to: size, modification time and hash.
+fn koofr_file_state(file: &KoofrFile) -> String {
+    format!(
+        "{}.{}.{}",
+        file.size,
+        file.modified,
+        file.hash.as_deref().unwrap_or("")
+    )
+}
+
+/// The file state a bound current id names, `None` for any other id.
+fn koofr_bound_current(version_id: &str) -> Option<&str> {
+    version_id
+        .strip_suffix(super::CURRENT_VERSION_ID)?
+        .strip_suffix(':')
+}
+
 fn versions_in_dialog_order(
     mut versions: Vec<KoofrVersion>,
     file: &RemoteEntry,
@@ -506,7 +530,11 @@ impl KoofrProvider {
         if let Ok(err) = serde_json::from_str::<KoofrError>(body) {
             if let Some(inner) = err.error {
                 let code = inner.code.as_deref().unwrap_or("Unknown");
-                let message = inner.message.as_deref().unwrap_or("Unknown error");
+                // Koofr's own words, scrubbed like any server text: an
+                // echoed credential never reaches an error or the dialog.
+                let message =
+                    sanitize_api_error(inner.message.as_deref().unwrap_or("Unknown error"));
+                let message = message.as_str();
                 return match code {
                     "NotFound" if status == 404 => ProviderError::NotFound(message.to_string()),
                     // A rename or move onto a taken name (409).
@@ -547,6 +575,20 @@ impl KoofrProvider {
         } else {
             Err(Self::parse_error(resp).await)
         }
+    }
+
+    /// [`Self::check_response`] for the version reads: only a final 2xx
+    /// carries version data. A 303 that was not followed (no `Location`) is
+    /// no answer, whatever its body looks like.
+    async fn check_version_response(
+        resp: reqwest::Response,
+    ) -> Result<reqwest::Response, ProviderError> {
+        if resp.status().as_u16() == 303 {
+            return Err(ProviderError::ServerError(
+                "Koofr answered the version read with a redirect that was not followed".into(),
+            ));
+        }
+        Self::check_response(resp).await
     }
 
     fn normalize_path(path: &str) -> String {
@@ -1799,7 +1841,7 @@ impl StorageProvider for KoofrProvider {
         // the current row of another file.
         let before = self.version_file_info(&resolved).await?;
         let resp = self.get(&url).await?;
-        let resp = Self::check_response(resp).await?;
+        let resp = Self::check_version_response(resp).await?;
         let versions: KoofrVersionsResponse =
             serde_json::from_str(&super::version_listing_text(resp).await?).map_err(|e| {
                 ProviderError::ServerError(format!("Failed to parse versions: {}", e))
@@ -1813,7 +1855,11 @@ impl StorageProvider for KoofrProvider {
         }
         let (parent, _) = Self::split_path(&resolved);
         let file = self.file_to_entry(&after, parent);
-        Ok(versions_in_dialog_order(versions.versions, &file))
+        let mut rows = versions_in_dialog_order(versions.versions, &file);
+        if let Some(current) = rows.first_mut() {
+            current.id = koofr_current_id(&after);
+        }
+        Ok(rows)
     }
 
     async fn download_version(
@@ -1836,7 +1882,25 @@ impl StorageProvider for KoofrProvider {
             self.mount_id,
             urlencoding::encode(&resolved),
         );
-        if version_id != super::CURRENT_VERSION_ID {
+        // The current row of a listing is bound to the file it showed: the
+        // path is read only while it still holds that file, before and
+        // after the body, so a write between the listing and the download,
+        // or during it, saves nothing. A bare `current` is the file as it is
+        // now, for a caller that asks for that.
+        let listed = koofr_bound_current(version_id);
+        let changed = |now: &KoofrFile| {
+            ProviderError::NotFound(format!(
+                "{resolved} is no longer the file whose versions were listed (it was written \
+                 again, now {} bytes): list its versions again",
+                now.size
+            ))
+        };
+        if let Some(listed) = listed {
+            let now = self.version_file_info(&resolved).await?;
+            if koofr_file_state(&now) != listed {
+                return Err(changed(&now));
+            }
+        } else if version_id != super::CURRENT_VERSION_ID {
             url.push_str(&format!("&version={}", urlencoding::encode(version_id)));
         }
 
@@ -1876,6 +1940,13 @@ impl StorageProvider for KoofrProvider {
                 .await
                 .map_err(|e| ProviderError::TransferFailed(format!("Write error: {}", e)))?;
         }
+        if let Some(listed) = listed {
+            let now = self.version_file_info(&resolved).await?;
+            if koofr_file_state(&now) != listed {
+                // Dropped uncommitted: the destination stays as it was.
+                return Err(changed(&now));
+            }
+        }
         atomic.commit().await.map_err(|e| {
             ProviderError::TransferFailed(format!("Failed to finalize download: {}", e))
         })?;
@@ -1884,7 +1955,7 @@ impl StorageProvider for KoofrProvider {
     }
 
     async fn restore_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
-        if version_id == super::CURRENT_VERSION_ID {
+        if version_id == super::CURRENT_VERSION_ID || koofr_bound_current(version_id).is_some() {
             return Err(ProviderError::NotSupported(
                 "This is already the current version".into(),
             ));
@@ -2055,7 +2126,7 @@ impl KoofrProvider {
             urlencoding::encode(resolved)
         );
         let resp = self.get(&url).await?;
-        let resp = Self::check_response(resp).await?;
+        let resp = Self::check_version_response(resp).await?;
         let info: KoofrFileInfo = serde_json::from_str(&super::version_listing_text(resp).await?)
             .map_err(|e| {
             ProviderError::ServerError(format!("Failed to parse file info: {}", e))
@@ -2426,6 +2497,70 @@ mod tests {
         );
     }
 
+    /// The current row is bound to the file the listing read: a write at the
+    /// path after the listing, or while the body is read, saves nothing and
+    /// leaves the destination as it was.
+    #[tokio::test]
+    async fn a_current_row_written_after_the_listing_or_during_the_download_saves_nothing() {
+        use std::sync::{Arc, Mutex};
+        for sizes in [vec![9u64], vec![4, 9]] {
+            let answers = Arc::new(Mutex::new(std::collections::VecDeque::from(sizes.clone())));
+            let gets = Arc::new(Mutex::new(0usize));
+            let (queue, got) = (answers.clone(), gets.clone());
+            let app = axum::Router::new().fallback(axum::routing::any(
+                move |uri: axum::http::Uri| {
+                    let (queue, got) = (queue.clone(), got.clone());
+                    async move {
+                        match uri.path() {
+                            "/mounts/M/files/info" => {
+                                let size = queue.lock().unwrap().pop_front().unwrap_or(9);
+                                format!(
+                                    r#"{{"name":"a.txt","type":"file","modified":1794841200000,"size":{size},"hash":"h{size}"}}"#
+                                )
+                            }
+                            "/mounts/M/files/get" => {
+                                *got.lock().unwrap() += 1;
+                                "live".to_string()
+                            }
+                            _ => String::new(),
+                        }
+                    }
+                },
+            ));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+            let mut provider = KoofrProvider::new(KoofrConfig {
+                email: "u@example.com".to_string(),
+                password: secrecy::SecretString::from("p".to_string()),
+                initial_path: None,
+            });
+            provider.connected = true;
+            provider.mount_id = "M".to_string();
+            provider.api_base_override = Some(format!("http://{addr}"));
+            provider.content_base_override = Some(format!("http://{addr}"));
+            let dir = tempfile::tempdir().unwrap();
+            let out = dir.path().join("a.txt");
+            std::fs::write(&out, "before").unwrap();
+            let listed = "4.1794841200000.h4:current";
+            let outcome = provider
+                .download_version("/a.txt", listed, out.to_str().unwrap())
+                .await;
+            assert!(
+                matches!(&outcome, Err(ProviderError::NotFound(m)) if m.contains("no longer the file")),
+                "{sizes:?} {outcome:?}"
+            );
+            assert_eq!(
+                std::fs::read_to_string(&out).unwrap(),
+                "before",
+                "{sizes:?}"
+            );
+            // Written after the listing: not even read.
+            let expected_gets = if sizes.len() == 1 { 0 } else { 1 };
+            assert_eq!(*gets.lock().unwrap(), expected_gets, "{sizes:?}");
+        }
+    }
+
     /// Koofr has no file id: a history read while the file at the path
     /// changed is refused, a stable file lists its history under itself.
     #[tokio::test]
@@ -2474,7 +2609,13 @@ mod tests {
         infos.store(0, Ordering::SeqCst);
         let stable = provider.list_versions("/s.txt").await.expect("history");
         let rows: Vec<(&str, u64)> = stable.iter().map(|v| (v.id.as_str(), v.size)).collect();
-        assert_eq!(rows, [(super::super::CURRENT_VERSION_ID, 4), ("k1", 7)]);
+        assert_eq!(rows[1..], [("k1", 7)]);
+        assert_eq!(rows[0].1, 4);
+        // The current row is bound to the file read: its size, time and hash.
+        assert!(
+            super::koofr_bound_current(rows[0].0).is_some_and(|state| state.starts_with("4.")),
+            "{rows:?}"
+        );
         assert_eq!(infos.load(Ordering::SeqCst), 2);
     }
 
@@ -2888,6 +3029,58 @@ mod tests {
             }
             e => panic!("expected ServerError, got {e:?}"),
         }
+    }
+
+    /// Koofr's structured refusal keeps its status and code, and its own
+    /// message reaches the error scrubbed: before, `error.message` was shown
+    /// verbatim, with whatever credential it echoed.
+    #[test]
+    fn a_structured_koofr_refusal_keeps_its_code_and_scrubs_its_message() {
+        let body = |code: &str| {
+            format!(
+                r#"{{"error":{{"code":"{code}","message":"refused sk-ant-1234567890abcdefghij"}}}}"#
+            )
+        };
+        match KoofrProvider::classify_koofr_error(403, &body("Forbidden")) {
+            ProviderError::PermissionDenied(msg) => {
+                assert!(msg.contains("[REDACTED]"), "{msg}");
+                assert!(!msg.contains("sk-ant-1234567890abcdefghij"), "{msg}");
+            }
+            e => panic!("expected PermissionDenied, got {e:?}"),
+        }
+        match KoofrProvider::classify_koofr_error(507, &body("QuotaExceeded")) {
+            ProviderError::ServerError(msg) => {
+                assert!(
+                    msg.contains("507") && msg.contains("QuotaExceeded"),
+                    "{msg}"
+                );
+                assert!(!msg.contains("sk-ant-1234567890abcdefghij"), "{msg}");
+            }
+            e => panic!("expected ServerError, got {e:?}"),
+        }
+    }
+
+    /// A version read needs a final 2xx: a 303 the client did not follow
+    /// (no Location) carries no version listing, where before it was read
+    /// as one.
+    #[tokio::test]
+    async fn a_version_read_answered_by_a_redirect_is_refused() {
+        let answer = |status: u16| {
+            reqwest::Response::from(
+                http::Response::builder()
+                    .status(status)
+                    .body(r#"{"versions":[]}"#.to_string())
+                    .unwrap(),
+            )
+        };
+        let redirected = KoofrProvider::check_version_response(answer(303)).await;
+        assert!(
+            matches!(&redirected, Err(ProviderError::ServerError(m)) if m.contains("redirect")),
+            "{redirected:?}"
+        );
+        assert!(KoofrProvider::check_version_response(answer(200))
+            .await
+            .is_ok());
     }
 
     #[test]

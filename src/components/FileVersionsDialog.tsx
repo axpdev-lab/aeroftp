@@ -26,13 +26,23 @@ interface Props {
   /** The backend connection generation the dialog was opened on: every
    * command carries it, so nothing runs on a connection switched to since. */
   generation: number;
+  /** The remote target the dialog was opened on: an overlay applied,
+   * cleared or locked since moves it, and every command is then refused. */
+  guiTarget: number;
+  /** The provider deletes a single version (`supports_version_delete`):
+   * without it no Purge is offered, as the backend would refuse it. */
+  canPurge?: boolean;
   filePath: string;
   fileName: string;
   onClose: () => void;
   onRestore?: () => void;
 }
 
-export function FileVersionsDialog({ generation, filePath, fileName, onClose, onRestore }: Props) {
+/** The row of the file as it is now, which a provider lists under its own
+ * id (`current`, bound as `<file>:current`): it has no version to purge. */
+const isCurrentFileRow = (id: string) => id === 'current' || id.endsWith(':current');
+
+export function FileVersionsDialog({ generation, guiTarget, canPurge = false, filePath, fileName, onClose, onRestore }: Props) {
   const t = useTranslation();
   const modalDrag = useDraggableModal();
   const [versions, setVersions] = useState<FileVersion[]>([]);
@@ -50,13 +60,13 @@ export function FileVersionsDialog({ generation, filePath, fileName, onClose, on
 
   useEffect(() => {
     loadVersions();
-  }, [filePath, generation]);
+  }, [filePath, generation, guiTarget]);
 
   const loadVersions = async () => {
     setLoading(true);
     setError(null);
     try {
-      const result = await invoke<FileVersion[]>('provider_list_versions', { path: filePath, generation });
+      const result = await invoke<FileVersion[]>('provider_list_versions', { path: filePath, generation, expectedGuiTarget: guiTarget });
       setVersions(result);
     } catch (err) {
       setError(String(err));
@@ -77,6 +87,7 @@ export function FileVersionsDialog({ generation, filePath, fileName, onClose, on
         versionId: version.id,
         localPath: savePath,
         generation,
+        expectedGuiTarget: guiTarget,
       });
     } catch (err) {
       setActionError(String(err));
@@ -93,6 +104,7 @@ export function FileVersionsDialog({ generation, filePath, fileName, onClose, on
         path: filePath,
         versionId: version.id,
         generation,
+        expectedGuiTarget: guiTarget,
       });
       onRestore?.();
     } catch (err) {
@@ -113,6 +125,7 @@ export function FileVersionsDialog({ generation, filePath, fileName, onClose, on
         path: filePath,
         versionId: version.id,
         generation,
+        expectedGuiTarget: guiTarget,
       });
       await loadVersions();
     } catch (err) {
@@ -205,6 +218,7 @@ export function FileVersionsDialog({ generation, filePath, fileName, onClose, on
                             <RotateCcw size={13} />
                           </button>
                         )}
+                        {canPurge && !isCurrentFileRow(v.id) && (
                         <button
                           onClick={() => setPendingPurge(v)}
                           disabled={ops.has(v.id)}
@@ -213,6 +227,7 @@ export function FileVersionsDialog({ generation, filePath, fileName, onClose, on
                         >
                           <Trash2 size={13} />
                         </button>
+                        )}
                       </div>
                     </td>
                   </tr>

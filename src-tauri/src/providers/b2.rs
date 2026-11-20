@@ -2390,7 +2390,16 @@ impl B2Provider {
         let status = resp.status();
         if !status.is_success() {
             let text = super::version_listing_text(resp).await.unwrap_or_default();
-            return Err(map_b2_status(status, &text, "b2_list_file_versions"));
+            let error = map_b2_status(status, &text, "b2_list_file_versions");
+            // A restore goes on without the listing only when the key is
+            // denied it: B2's documented `unauthorized` (no listFiles). Any
+            // other 401 is no such proof, and refuses the restore.
+            let denied_listing =
+                serde_json::from_str::<B2ApiError>(&text).is_ok_and(|e| e.code == "unauthorized");
+            if matches!(error, ProviderError::PermissionDenied(_)) && !denied_listing {
+                return Err(ProviderError::ServerError(error.to_string()));
+            }
+            return Err(error);
         }
         serde_json::from_str::<ListFileVersionsResponse>(&super::version_listing_text(resp).await?)
             .map_err(|e| ProviderError::ServerError(format!("list_file_versions parse: {}", e)))
@@ -3799,8 +3808,11 @@ impl StorageProvider for B2Provider {
             if diverged {
                 break;
             }
-            match (page.next_file_name, page.next_file_id) {
-                (Some(n), Some(i)) if !n.is_empty() && !i.is_empty() => {
+            let next_name = page.next_file_name.filter(|n| !n.is_empty());
+            let next_id = page.next_file_id.filter(|i| !i.is_empty());
+            match (next_name, next_id) {
+                (None, None) => break,
+                (Some(n), Some(i)) => {
                     if n > key {
                         // Cursor walked past our key.
                         break;
@@ -3812,10 +3824,21 @@ impl StorageProvider for B2Provider {
                             "b2_list_file_versions answered the cursor {n} {i} twice for {abs}"
                         )));
                     }
+                    // A new cursor on every page never repeats: the page
+                    // count ends it.
+                    if cursors_seen.len() >= super::VERSION_LISTING_MAX_PAGES {
+                        return Err(super::version_listing_too_long(path));
+                    }
                     start_name = Some(n);
                     start_id = Some(i);
                 }
-                _ => break,
+                // Half a cursor cannot continue the listing, and it is not
+                // its end either.
+                _ => {
+                    return Err(ProviderError::ParseError(format!(
+                        "b2_list_file_versions answered half a cursor for {abs}, so the listing is incomplete"
+                    )))
+                }
             }
         }
         if versions.is_empty() {
@@ -4394,9 +4417,10 @@ fn b2_upload_retry_delay(
 fn map_b2_status(status: reqwest::StatusCode, body: &str, op: &str) -> ProviderError {
     let parsed: Option<B2ApiError> = serde_json::from_str(body).ok();
     let code = parsed.as_ref().map(|e| e.code.as_str()).unwrap_or("");
+    // B2's own message is server text like any other: scrubbed.
     let msg = parsed
         .as_ref()
-        .map(|e| e.message.clone())
+        .map(|e| sanitize_api_error(&e.message))
         .unwrap_or_else(|| sanitize_api_error(body));
     match status.as_u16() {
         401 => match code {
@@ -7558,8 +7582,16 @@ mod tests {
     /// `repeat`, answers the same cursor on every page; a download by id
     /// answers `part` with a 206 fragment and any other id whole; each
     /// `b2_copy_file` body is recorded.
+    #[derive(Clone, Copy)]
+    enum NextCursor {
+        End,
+        Repeat,
+        Fresh,
+        Half,
+    }
+
     async fn b2_version_reader_double(
-        repeat: bool,
+        next: NextCursor,
     ) -> (B2Provider, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
         use axum::response::IntoResponse;
         use std::sync::{Arc, Mutex};
@@ -7569,12 +7601,24 @@ mod tests {
             move |uri: axum::http::Uri, body: String| {
                 let log = Arc::clone(&log);
                 async move {
-                    log.lock().unwrap().push(format!("{} {body}", uri.path()));
+                    let asked = {
+                        let mut log = log.lock().unwrap();
+                        log.push(format!("{} {body}", uri.path()));
+                        log.len()
+                    };
                     if uri.path().ends_with("b2_list_file_versions") {
-                        let (next_name, next_id) = if repeat {
-                            (serde_json::json!("v.txt"), serde_json::json!("up-1"))
-                        } else {
-                            (serde_json::Value::Null, serde_json::Value::Null)
+                        let (next_name, next_id) = match next {
+                            NextCursor::Repeat => {
+                                (serde_json::json!("v.txt"), serde_json::json!("up-1"))
+                            }
+                            NextCursor::Fresh => (
+                                serde_json::json!("v.txt"),
+                                serde_json::json!(format!("up-page-{asked}")),
+                            ),
+                            NextCursor::Half => {
+                                (serde_json::json!("v.txt"), serde_json::Value::Null)
+                            }
+                            NextCursor::End => (serde_json::Value::Null, serde_json::Value::Null),
                         };
                         return serde_json::json!({
                             "files": [
@@ -7618,10 +7662,12 @@ mod tests {
         (provider, seen)
     }
 
-    /// A key without listFiles is denied the listing only: its restore still
-    /// copies by id, and the copy names this bucket as its destination.
-    #[tokio::test]
-    async fn a_restore_denied_the_listing_copies_into_this_bucket() {
+    /// A B2 double whose version listing answers 401 with `listing`; every
+    /// other call succeeds as a copy would. Each call is recorded as
+    /// "{path} {body}".
+    async fn b2_refused_listing_double(
+        listing: &'static str,
+    ) -> (B2Provider, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
         use axum::response::IntoResponse;
         use std::sync::{Arc, Mutex};
         let seen: Arc<Mutex<Vec<String>>> = Arc::default();
@@ -7632,11 +7678,7 @@ mod tests {
                 async move {
                     log.lock().unwrap().push(format!("{} {body}", uri.path()));
                     if uri.path().ends_with("b2_list_file_versions") {
-                        return (
-                            axum::http::StatusCode::UNAUTHORIZED,
-                            r#"{"status":401,"code":"unauthorized","message":"no listFiles"}"#,
-                        )
-                            .into_response();
+                        return (axum::http::StatusCode::UNAUTHORIZED, listing).into_response();
                     }
                     serde_json::json!({
                         "fileId": "up-3", "fileName": "v.txt",
@@ -7656,6 +7698,43 @@ mod tests {
         provider.auth_token = SecretString::new("master-token".into());
         provider.bucket_id = "bucket".into();
         provider.connected = true;
+        (provider, seen)
+    }
+
+    /// A 401 that is not B2's documented `unauthorized` is no proof the key
+    /// lacks listFiles: the restore is refused before any copy, and the
+    /// server's message reaches the error scrubbed. Before, any 401 let the
+    /// restore copy without the listing.
+    #[tokio::test]
+    async fn a_listing_refused_by_another_401_refuses_the_restore() {
+        let (mut provider, seen) = b2_refused_listing_double(
+            r#"{"status":401,"code":"cap_exceeded","message":"refused sk-ant-1234567890abcdefghij"}"#,
+        )
+        .await;
+        let outcome = provider.restore_version("/v.txt", "up-1").await;
+        assert!(
+            matches!(&outcome, Err(ProviderError::TransferFailed(m))
+                if m.contains("no restore was sent")
+                    && m.contains("[REDACTED]")
+                    && !m.contains("sk-ant-1234567890abcdefghij")),
+            "{outcome:?}"
+        );
+        let seen = seen.lock().unwrap();
+        assert!(
+            seen.iter()
+                .all(|c| !c.starts_with("/b2api/v4/b2_copy_file")),
+            "{seen:?}"
+        );
+    }
+
+    /// A key without listFiles is denied the listing only: its restore still
+    /// copies by id, and the copy names this bucket as its destination.
+    #[tokio::test]
+    async fn a_restore_denied_the_listing_copies_into_this_bucket() {
+        let (mut provider, seen) = b2_refused_listing_double(
+            r#"{"status":401,"code":"unauthorized","message":"no listFiles"}"#,
+        )
+        .await;
         provider
             .restore_version("/v.txt", "up-1")
             .await
@@ -7679,7 +7758,7 @@ mod tests {
     /// fragment leaves the destination as it was, a 200 replaces it.
     #[tokio::test]
     async fn b2_history_lists_finished_uploads_and_reads_whole_bodies_only() {
-        let (mut provider, _) = b2_version_reader_double(false).await;
+        let (mut provider, _) = b2_version_reader_double(NextCursor::End).await;
         let versions = provider.list_versions("/v.txt").await.expect("versions");
         let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
         assert_eq!(ids, ["up-2", "up-1"]);
@@ -7707,7 +7786,7 @@ mod tests {
     /// and a restore is refused: only a listing denied decides nothing.
     #[tokio::test]
     async fn a_repeated_b2_cursor_ends_the_listing_and_refuses_the_restore() {
-        let (mut provider, seen) = b2_version_reader_double(true).await;
+        let (mut provider, seen) = b2_version_reader_double(NextCursor::Repeat).await;
         let listed = provider.list_versions("/v.txt").await;
         assert!(
             matches!(&listed, Err(ProviderError::ServerError(m)) if m.contains("twice")),
@@ -7745,6 +7824,47 @@ mod tests {
             "{:?}",
             seen.lock().unwrap()
         );
+    }
+
+    /// A new cursor on every page never repeats: the listing ends at the page
+    /// limit with an error, no page past it is asked, and the download by id
+    /// still works without the listing.
+    #[tokio::test]
+    async fn a_b2_listing_with_a_new_cursor_on_every_page_ends_at_the_page_limit() {
+        let (mut provider, seen) = b2_version_reader_double(NextCursor::Fresh).await;
+        let listed = provider.list_versions("/v.txt").await;
+        assert!(
+            matches!(&listed, Err(ProviderError::TransferFailed(m)) if m.contains("did not end within")),
+            "{listed:?}"
+        );
+        let pages = seen
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|c| c.contains("b2_list_file_versions"))
+            .count();
+        assert_eq!(pages, super::super::VERSION_LISTING_MAX_PAGES);
+
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("v.txt");
+        provider
+            .download_version("/v.txt", "up-1", out.to_str().unwrap())
+            .await
+            .expect("the download by id does not need the listing");
+        assert_eq!(std::fs::read_to_string(&out).unwrap(), "whole");
+    }
+
+    /// A next file name without a next file id is half a cursor: the listing
+    /// is incomplete, not ended, so no history is shown.
+    #[tokio::test]
+    async fn a_half_b2_cursor_is_an_incomplete_listing() {
+        let (mut provider, seen) = b2_version_reader_double(NextCursor::Half).await;
+        let listed = provider.list_versions("/v.txt").await;
+        assert!(
+            matches!(&listed, Err(ProviderError::ParseError(m)) if m.contains("half a cursor")),
+            "{listed:?}"
+        );
+        assert_eq!(seen.lock().unwrap().len(), 1);
     }
 
     /// A hidden file: B2 lists the hide marker on top. Row 0 is that marker,

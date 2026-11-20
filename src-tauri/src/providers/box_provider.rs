@@ -2972,6 +2972,8 @@ impl StorageProvider for BoxProvider {
             limit: None,
         };
         let mut offset: u64 = 0;
+        let mut pages = 0usize;
+        let mut budget = super::VersionListingBudget::default();
         loop {
             let url = match offset {
                 0 => base.clone(),
@@ -2993,6 +2995,7 @@ impl StorageProvider for BoxProvider {
             }
 
             let text = super::version_listing_text(resp).await?;
+            budget.count(text.len(), path)?;
             let page: BoxVersionCollection = serde_json::from_str(&text)
                 .map_err(|e| ProviderError::ParseError(e.to_string()))?;
             // The next page starts after the slots this one covers (its
@@ -3007,7 +3010,14 @@ impl StorageProvider for BoxProvider {
                     page.offset.unwrap_or_default()
                 )));
             }
-            let next = offset + page.limit.unwrap_or(page.entries.len() as u64);
+            pages += 1;
+            let next = offset
+                .checked_add(page.limit.unwrap_or(page.entries.len() as u64))
+                .ok_or_else(|| {
+                    ProviderError::ParseError(format!(
+                        "Box answered a versions page past the last offset after {offset}"
+                    ))
+                })?;
             versions.entries.extend(page.entries);
             if !page.total_count.is_some_and(|total| next < total) {
                 break;
@@ -3016,6 +3026,11 @@ impl StorageProvider for BoxProvider {
                 return Err(ProviderError::ParseError(
                     "Box versions pagination did not advance".into(),
                 ));
+            }
+            // A total that keeps growing never ends the listing: the page
+            // count does.
+            if pages >= super::VERSION_LISTING_MAX_PAGES {
+                return Err(super::version_listing_too_long(path));
             }
             offset = next;
         }
@@ -3101,7 +3116,15 @@ impl StorageProvider for BoxProvider {
             .json(&body)
             .send()
             .await
-            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            // A connection dropped before the answer may come after Box
+            // promoted the version: a second promotion would make another.
+            .map_http_err(|e| {
+                super::applied_unconfirmed(format!(
+                    "the restore of version {version_id} of {path} was sent, but the connection \
+                     ended before Box answered ({e}): list its versions again before restoring \
+                     again"
+                ))
+            })?;
 
         if !resp.status().is_success() {
             return Err(ProviderError::Other(format!(
@@ -3120,7 +3143,7 @@ impl StorageProvider for BoxProvider {
             .and_then(|body| serde_json::from_str::<serde_json::Value>(&body).ok())
             .and_then(|answer| answer.get("id")?.as_str().map(str::to_string));
         let Some(promoted) = promoted else {
-            return Err(ProviderError::TransferFailed(format!(
+            return Err(super::applied_unconfirmed(format!(
                 "Box accepted the restore of version {version_id} of {path}, but its answer could \
                  not be read, so the restore is not confirmed: list its versions again before \
                  restoring again"
@@ -3133,7 +3156,7 @@ impl StorageProvider for BoxProvider {
             .current_version_of_id(&file_id, path)
             .await
             .map_err(|e| {
-                ProviderError::TransferFailed(format!(
+                super::applied_unconfirmed(format!(
                     "Box accepted the restore of version {version_id} of {path}, but its current \
                      version could not be read ({e}), so the restore is not confirmed: list its \
                      versions again before restoring again"
@@ -4094,6 +4117,96 @@ mod tests {
                 .any(|c| c == "POST /files/55/versions/current"),
             "{calls:?}"
         );
+    }
+
+    /// A versions listing whose `total_count` grows past every page ends at
+    /// the page limit with an error. A promotion whose connection ends
+    /// before Box answers may have been applied: it is reported applied but
+    /// unconfirmed, never as a failure that a retry would send again.
+    #[tokio::test]
+    async fn an_endless_box_listing_stops_and_a_cut_promotion_is_unconfirmed() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::{Arc, Mutex};
+        let calls: Arc<Mutex<Vec<String>>> = Arc::default();
+        let pages = Arc::new(AtomicUsize::new(0));
+        let (seen, served) = (Arc::clone(&calls), Arc::clone(&pages));
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method, uri: axum::http::Uri| {
+                let (seen, served) = (Arc::clone(&seen), Arc::clone(&served));
+                async move {
+                    use axum::response::IntoResponse;
+                    seen.lock().unwrap().push(format!("{method} {uri}"));
+                    let version = |id: &str| {
+                        serde_json::json!({"type": "file_version", "id": id, "size": 4,
+                            "modified_at": "2026-01-03T00:00:00Z"})
+                    };
+                    let offset: u64 = uri
+                        .query()
+                        .and_then(|q| q.strip_prefix("offset="))
+                        .and_then(|o| o.parse().ok())
+                        .unwrap_or(0);
+                    match (method.as_str(), uri.path()) {
+                        ("GET", "/folders/0/items") => axum::Json(serde_json::json!({
+                            "entries": [{"type": "file", "id": "55", "name": "a.txt"},
+                                        {"type": "file", "id": "66", "name": "b.txt"}],
+                            "offset": 0, "limit": 1000, "total_count": 2
+                        }))
+                        .into_response(),
+                        ("GET", "/files/55") | ("GET", "/files/66") => {
+                            let id = uri.path().trim_start_matches("/files/").to_string();
+                            axum::Json(serde_json::json!({
+                                "type": "file", "id": id, "name": "f", "size": 9,
+                                "modified_at": "2026-01-05T00:00:00Z",
+                                "file_version": {"type": "file_version", "id": "11"}
+                            }))
+                            .into_response()
+                        }
+                        ("GET", "/files/55/versions") => {
+                            served.fetch_add(1, Ordering::SeqCst);
+                            axum::Json(serde_json::json!({
+                                "entries": [version(&format!("v{offset}"))],
+                                "offset": offset, "limit": 1, "total_count": offset + 2
+                            }))
+                            .into_response()
+                        }
+                        ("GET", "/files/66/versions") => axum::Json(serde_json::json!({
+                            "entries": [version("12")], "offset": 0, "limit": 1, "total_count": 1
+                        }))
+                        .into_response(),
+                        // The connection ends before an answer: the handler's
+                        // task goes down with it.
+                        ("POST", "/files/66/versions/current") => panic!("connection cut"),
+                        _ => axum::http::StatusCode::NOT_FOUND.into_response(),
+                    }
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = fixture_connected();
+        provider.api_base_override = Some(format!("http://{addr}"));
+
+        let endless = provider.list_versions("/a.txt").await;
+        assert!(
+            matches!(&endless, Err(ProviderError::TransferFailed(m)) if m.contains("200 pages")),
+            "{endless:?}"
+        );
+        assert_eq!(
+            pages.load(Ordering::SeqCst),
+            super::super::VERSION_LISTING_MAX_PAGES
+        );
+        let cut = provider.restore_version("/b.txt", "12").await;
+        server.abort();
+        let error = cut.expect_err("a promotion with no answer is not reported done");
+        assert!(super::super::was_applied(&error), "{error:?}");
+        let posts = calls
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|c| c.starts_with("POST "))
+            .count();
+        assert_eq!(posts, 1);
     }
 
     /// Box pages its versions by slot: a page holds up to `limit` versions

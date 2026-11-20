@@ -292,8 +292,11 @@ impl MegaCmdProvider {
             // Never for a transfer: a non-zero exit is its failure, whatever
             // it printed, or an upload or download that did not happen was
             // reported done.
+            // Nor for a version listing: rows printed by a listing that
+            // failed are not the file's history, and a restore is decided
+            // from them.
             let transfer = mega_transfer(cmd);
-            if !transfer && !stdout.trim().is_empty() {
+            if !transfer && !mega_version_listing(cmd, args) && !stdout.trim().is_empty() {
                 return Ok(stdout);
             }
 
@@ -681,6 +684,44 @@ impl MegaCmdProvider {
     /// answer is not one file of that name: a path not found, a listing that
     /// failed, or a folder, whose listing opens with a `path:` line and may
     /// hold a file of the folder's own name.
+    /// Whether the remote node at `address` is a folder: `mega-ls -l` of a
+    /// folder opens with its own `/path:` line, a file's is its one row.
+    async fn remote_is_folder(&mut self, address: &str) -> Result<bool, ProviderError> {
+        let listing = self
+            .run_mega_cmd_with_reauth("mega-ls", &["-l", address])
+            .await?;
+        Ok(listing.lines().any(|line| {
+            let line = line.trim_end();
+            line.starts_with('/') && line.ends_with(':')
+        }))
+    }
+
+    /// A remote folder downloaded into the existing local `folder`: mega-get
+    /// writes the folder of its name inside it, under MEGAcmd's own policy
+    /// for what is already there. Not replayed: a second get would meet the
+    /// first one's partial files.
+    async fn download_folder_into(
+        &mut self,
+        abs_remote: &str,
+        address: &str,
+        folder: &str,
+        progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
+        self.log_debug(&format!(
+            "[MEGAcmd] Downloading folder '{}' into '{}'",
+            abs_remote, folder
+        ));
+        let local_arg = Self::normalize_local_path_for_cli(folder);
+        let out = self
+            .run_mega_transfer_once_with_reauth("mega-get", &[address, &local_arg], None)
+            .await?;
+        self.log_debug(&format!("[MEGAcmd] Download output: {}", out));
+        if let Some(cb) = progress {
+            cb(1, 1);
+        }
+        Ok(())
+    }
+
     async fn listed_file_size(&mut self, path: &str) -> Option<u64> {
         let name = Path::new(path).file_name()?.to_string_lossy().to_string();
         let address = self.node_address(path).await.ok()?;
@@ -927,16 +968,32 @@ impl StorageProvider for MegaCmdProvider {
         mut progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
         let abs_remote = self.resolve_path(r);
-        // A folder destination is MEGAcmd's "into dir": the file is the child
-        // of its name there, written like any file destination.
-        let into_folder = if std::fs::metadata(l).is_ok_and(|meta| meta.is_dir()) {
+        // A folder destination is MEGAcmd's "into dir". A remote folder is
+        // handed to mega-get with that existing folder, as MEGAcmd takes it.
+        // A file is the child of its name there, written like any file
+        // destination, but never over a child already there: MEGAcmd does
+        // not write over a file in a folder target, and only a file target
+        // the caller named is replaced.
+        let local_is_folder = std::fs::metadata(l).is_ok_and(|meta| meta.is_dir());
+        if local_is_folder {
+            let address = self.node_address(&abs_remote).await?;
+            if self.remote_is_folder(&address).await? {
+                return self
+                    .download_folder_into(&abs_remote, &address, l, progress)
+                    .await;
+            }
+        }
+        let into_folder = if local_is_folder {
             let leaf = local_leaf_of(&abs_remote)?;
-            Some(
-                std::path::Path::new(l)
-                    .join(leaf)
-                    .to_string_lossy()
-                    .into_owned(),
-            )
+            let child = std::path::Path::new(l).join(leaf);
+            if std::fs::symlink_metadata(&child).is_ok() {
+                return Err(ProviderError::AlreadyExists(format!(
+                    "{} is already in {l}: a download into a folder does not write over \
+                     it, download to that file to replace it",
+                    child.display()
+                )));
+            }
+            Some(child.to_string_lossy().into_owned())
         } else {
             None
         };
@@ -2246,6 +2303,12 @@ fn mega_transfer(cmd: &str) -> bool {
     matches!(cmd, "mega-put" | "mega-get")
 }
 
+/// Whether a MEGAcmd call lists a file's versions (`mega-ls --versions`),
+/// whose output is taken only from a successful exit.
+fn mega_version_listing(cmd: &str, args: &[&str]) -> bool {
+    cmd == "mega-ls" && args.contains(&"--versions")
+}
+
 /// Refuse to create or name a node whose path holds a MEGAcmd wildcard: the
 /// command would read the name as a pattern and act on whatever it matches.
 fn refuse_mega_wildcard_name(path: &str) -> Result<(), ProviderError> {
@@ -2323,8 +2386,9 @@ pub(crate) fn mega_versioning_off(
 /// (`Versions of d1/a.txt:` for `/d1/a.txt`, measured 2026-11-18). A folder
 /// lists a section for each versioned child instead: a section of another
 /// path refuses the whole listing, so no child's version passes for one of
-/// the folder's. A row without a numeric size is skipped: a version is taken
-/// only at the size it was listed with, an empty one included.
+/// the folder's. A version row (one with a handle) without a numeric size
+/// refuses the whole listing: skipping it would make the next, older row
+/// pass for the current one. An empty version is listed at size 0.
 pub(crate) fn parse_mega_ls_version_handles(
     output: &str,
     abs_path: &str,
@@ -2354,7 +2418,11 @@ pub(crate) fn parse_mega_ls_version_handles(
             continue;
         }
         let Ok(size) = parts[2].parse::<u64>() else {
-            continue;
+            return Err(ProviderError::ParseError(format!(
+                "a version of {abs_path} was listed without a size ({:?}): its history \
+                 was not read, so no row of it is taken",
+                parts[2]
+            )));
         };
         let name = parts[6..].join(" ");
         let time = name
@@ -3726,6 +3794,46 @@ mod tests {
         assert!(stand_in_log(&dir, "get.log").is_empty());
     }
 
+    /// A version listing that exits nonzero is refused whatever rows it
+    /// printed: nothing is fetched or put, and the listing fails too.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_failed_megacmd_version_listing_is_refused_even_with_rows() {
+        let (mut provider, dir) = provider_with_stand_in_versions();
+        std::fs::write(dir.path().join("versions-fail"), "").unwrap();
+        assert!(provider.list_versions("/v.txt").await.is_err());
+        let outcome = provider.restore_version("/v.txt", "H:vAAAAAA2").await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        assert!(stand_in_log(&dir, "get.log").is_empty());
+        assert!(stand_in_log(&dir, "put.log").is_empty());
+    }
+
+    /// A version row without a size refuses the listing: skipping it would
+    /// make the next, older row pass for the current one. Complete histories
+    /// and an empty version are still read.
+    #[test]
+    fn a_version_row_without_a_size_refuses_the_whole_listing() {
+        let malformed = "\
+Versions of v.txt:
+----    3            - 16Nov2026 15:53:00 H:vAAAAAA3 v.txt#1794840780
+----    2           12 16Nov2026 15:52:57 H:vAAAAAA2 v.txt#1794840777
+----    1            8 16Nov2026 15:52:55 H:vAAAAAA1 v.txt#1794840775
+";
+        let refused = parse_mega_ls_version_handles(malformed, "/v.txt");
+        assert!(
+            matches!(&refused, Err(ProviderError::ParseError(m)) if m.contains("without a size")),
+            "{refused:?}"
+        );
+        let complete = "\
+Versions of z.txt:
+----    2            4 16Nov2026 15:53:00 H:zAAAAAA2 z.txt#1794840780
+----    1            0 16Nov2026 15:52:00 H:zAAAAAA1 z.txt#1794840720
+";
+        let rows = parse_mega_ls_version_handles(complete, "/z.txt").unwrap();
+        let sizes: Vec<u64> = rows.iter().map(|(v, _)| v.size).collect();
+        assert_eq!(sizes, [4, 0]);
+    }
+
     /// mega-put names the file by its path: a file put there while the
     /// version downloaded was overwritten by the restore. The current
     /// version is listed again first, and a new one stops the restore.
@@ -4150,6 +4258,71 @@ mod tests {
             1000
         );
         assert_eq!(std::fs::read_dir(local.path()).unwrap().count(), 1);
+    }
+
+    /// A remote folder downloaded into an existing local folder is handed to
+    /// mega-get with that folder, which writes the folder of its name in it;
+    /// a file whose name is already taken in a folder target is refused in
+    /// both transfer modes, the file there untouched and nothing fetched.
+    #[cfg(unix)]
+    #[test]
+    fn a_megacmd_download_into_a_folder_keeps_what_is_there() {
+        const CHILD: &str = "AEROFTP_TEST_MEGA_FOLDER_TARGET_INPLACE_CHILD";
+        let child = std::env::var_os(CHILD);
+        if child.is_some() {
+            super::super::atomic_write::set_inplace_mode(true);
+        } else {
+            let directory = tempfile::tempdir().unwrap();
+            let marker = directory.path().join("child-finished");
+            let name = concat!(
+                module_path!(),
+                "::a_megacmd_download_into_a_folder_keeps_what_is_there"
+            );
+            let name = name.split_once("::").map_or(name, |(_, rest)| rest);
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", name, "--test-threads=1"])
+                .env(CHILD, &marker)
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{}\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert!(marker.exists(), "the in-place child ran no test");
+        }
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+                let (mut provider, dir) = provider_with_stand_in_versions();
+                let local = tempfile::tempdir().expect("tempdir");
+                std::fs::write(local.path().join("f.dat"), b"mine").unwrap();
+                let taken = provider
+                    .download("/f.dat", local.path().to_str().unwrap(), None)
+                    .await;
+                assert!(
+                    matches!(&taken, Err(ProviderError::AlreadyExists(_))),
+                    "{taken:?}"
+                );
+                assert_eq!(std::fs::read(local.path().join("f.dat")).unwrap(), b"mine");
+                assert!(stand_in_log(&dir, "get.log").is_empty());
+
+                provider
+                    .download("/same", local.path().to_str().unwrap(), None)
+                    .await
+                    .expect("a folder into a folder");
+                assert_eq!(
+                    stand_in_log(&dir, "get-targets.log"),
+                    [local.path().to_str().unwrap()]
+                );
+                assert!(local.path().join("same/same").is_file());
+            });
+        if let Some(marker) = child {
+            std::fs::write(marker, b"").unwrap();
+        }
     }
 
     /// A failed get whose partial file cannot be removed is not retried:

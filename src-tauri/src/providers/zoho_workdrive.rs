@@ -128,6 +128,11 @@ struct JsonApiListResponse<T> {
     data: Vec<T>,
 }
 
+/// The team folders asked per page of `/teams/{id}/teamfolders`.
+const TEAM_FOLDER_PAGE_LIMIT: usize = 50;
+/// The pages of team folders read before the listing is given up.
+const TEAM_FOLDER_MAX_PAGES: usize = 200;
+
 /// One page of a folder listing, with the cursor to the next page.
 #[derive(Debug, Deserialize)]
 struct FolderPage {
@@ -2106,61 +2111,83 @@ impl ZohoWorkdriveProvider {
         team_id: &str,
     ) -> Option<(TeamFolderSource, Vec<(String, String)>)> {
         let mut found = Vec::new();
-        // Primary: GET /teams/{teamId}/teamfolders
-        let tf_url = format!("{}/teams/{}/teamfolders", self.api_base(), team_id);
-        info!("Zoho WorkDrive: GET {}", tf_url);
-
-        let auth = match self.auth_header().await {
-            Ok(h) => h,
-            Err(e) => {
-                info!("Zoho WorkDrive: auth error for team folders: {}", e);
+        // Primary: GET /teams/{teamId}/teamfolders, every page of it: a team
+        // folder renamed on a later page is not read as gone. A first page
+        // that does not answer falls back to the workspaces; a later one
+        // that does not answer changes nothing kept.
+        let mut offset = 0usize;
+        for page in 0.. {
+            if page >= TEAM_FOLDER_MAX_PAGES {
+                info!(
+                    "Zoho WorkDrive: team folders did not end within {TEAM_FOLDER_MAX_PAGES} pages"
+                );
                 return None;
             }
-        };
-
-        let resp = match self
-            .client
-            .get(&tf_url)
-            .header(AUTHORIZATION, auth)
-            .send()
-            .await
-        {
-            Ok(r) => r,
-            Err(e) => {
-                info!("Zoho WorkDrive: team folders request failed: {}", e);
-                return None;
-            }
-        };
-
-        if resp.status().is_success() {
-            let body = resp.text().await.unwrap_or_default();
-            debug!(
-                "Zoho WorkDrive teamfolders response: {}",
-                log_preview(&body, 500)
+            let tf_url = format!(
+                "{}/teams/{}/teamfolders?page%5Blimit%5D={TEAM_FOLDER_PAGE_LIMIT}&page%5Boffset%5D={offset}",
+                self.api_base(),
+                team_id
             );
-
-            if let Ok(tfs) = serde_json::from_str::<JsonApiListResponse<TeamFolderResource>>(&body)
+            info!("Zoho WorkDrive: GET team folders, page {}", page + 1);
+            let auth = match self.auth_header().await {
+                Ok(h) => h,
+                Err(e) => {
+                    info!("Zoho WorkDrive: auth error for team folders: {}", e);
+                    return None;
+                }
+            };
+            let resp = match self
+                .client
+                .get(&tf_url)
+                .header(AUTHORIZATION, auth)
+                .send()
+                .await
             {
-                for tf in tfs.data {
-                    info!(
-                        "Zoho WorkDrive team folder: {} ({})",
-                        tf.attributes.name, tf.id
-                    );
-                    found.push((tf.id, tf.attributes.name));
+                Ok(r) => r,
+                Err(e) => {
+                    info!("Zoho WorkDrive: team folders request failed: {}", e);
+                    return None;
                 }
-                if !found.is_empty() {
-                    info!("Zoho WorkDrive discovered {} team folders", found.len());
-                    return Some((TeamFolderSource::TeamFolders, found));
-                }
-            }
-        } else {
+            };
             let status = resp.status();
-            let text = resp.text().await.unwrap_or_default();
-            debug!(
-                "Zoho WorkDrive teamfolders failed ({}): {}",
-                status,
-                log_preview(&text, 300)
-            );
+            let body = match resp.text().await {
+                Ok(body) if status.is_success() => body,
+                _ if page > 0 => {
+                    info!(
+                        "Zoho WorkDrive: team folders page {} unread ({status})",
+                        page + 1
+                    );
+                    return None;
+                }
+                _ => {
+                    debug!("Zoho WorkDrive teamfolders failed ({status})");
+                    break;
+                }
+            };
+            let Ok(tfs) = serde_json::from_str::<JsonApiListResponse<TeamFolderResource>>(&body)
+            else {
+                if page > 0 {
+                    info!("Zoho WorkDrive: team folders page {} unparsable", page + 1);
+                    return None;
+                }
+                break;
+            };
+            let count = tfs.data.len();
+            for tf in tfs.data {
+                info!(
+                    "Zoho WorkDrive team folder: {} ({})",
+                    tf.attributes.name, tf.id
+                );
+                found.push((tf.id, tf.attributes.name));
+            }
+            if count < TEAM_FOLDER_PAGE_LIMIT {
+                break;
+            }
+            offset += count;
+        }
+        if !found.is_empty() {
+            info!("Zoho WorkDrive discovered {} team folders", found.len());
+            return Some((TeamFolderSource::TeamFolders, found));
         }
 
         // Fallback: use workspaces as team folders (they appear as "Cartelle Team" in the UI)
@@ -2206,8 +2233,16 @@ impl ZohoWorkdriveProvider {
             log_preview(&body, 500)
         );
 
-        if let Ok(ws_list) =
-            serde_json::from_str::<JsonApiListResponse<WorkspaceListResource>>(&body)
+        // Only a listing that parsed (an empty one included) replaces the
+        // team folders kept: an unreadable body is no answer.
+        let Ok(ws_list) = serde_json::from_str::<JsonApiListResponse<WorkspaceListResource>>(&body)
+        else {
+            info!(
+                "Zoho WorkDrive: workspaces answer of {} bytes unparsable: team folders kept",
+                body.len()
+            );
+            return None;
+        };
         {
             for ws in ws_list.data {
                 info!(
@@ -3152,10 +3187,15 @@ impl ZohoWorkdriveProvider {
     }
 
     /// The id cached for the folder at `parts`, once WorkDrive confirmed
-    /// that it is still there: each folder on the way, from the deepest up,
+    /// that it is still there: each folder on the way, from the top down,
     /// read back by id (`GET /files/{id}`), its name the one asked for and
     /// its parent the folder cached above it (the private space for the
-    /// first, a team folder being found by its discovered name). One request
+    /// first, a team folder being found by its discovered name). Top down,
+    /// so the folder acted in is the last one read: a parent confirmed
+    /// after its child would stand in for a child moved meanwhile. What
+    /// remains is the time between the last read and the request that uses
+    /// it, which WorkDrive cannot close: its trash and move take no
+    /// precondition on the parent. One request
     /// a folder and no listing, so the listings of a folder keep their
     /// window for listings. `None` when a folder on the way is not cached;
     /// when one is not where the cache has it, the ids on the way are
@@ -3199,7 +3239,7 @@ impl ZohoWorkdriveProvider {
             None => (0, true),
         };
         let first = if in_place { first } else { ids.len() };
-        for at in (first..ids.len()).rev() {
+        for at in first..ids.len() {
             let above = if at == 0 {
                 self.privatespace_id.clone()
             } else {
@@ -4596,12 +4636,16 @@ impl StorageProvider for ZohoWorkdriveProvider {
         let mut data = Vec::new();
         let mut next: Option<String> = None;
         let mut seen = std::collections::HashSet::new();
+        let mut budget = super::VersionListingBudget::default();
         loop {
             let url = match &next {
                 Some(cursor) => format!("{base}?page%5Bnext%5D={}", urlencoding::encode(cursor)),
                 None => base.clone(),
             };
-            info!("Zoho WorkDrive list versions: GET {}", url);
+            info!(
+                "Zoho WorkDrive list versions of {path}: page {}",
+                seen.len() + 1
+            );
 
             let resp = self
                 .client
@@ -4619,24 +4663,22 @@ impl StorageProvider for ZohoWorkdriveProvider {
 
             if !status.is_success() {
                 return Err(ProviderError::Other(format!(
-                    "List versions failed ({}): {}",
-                    status,
-                    sanitize_api_error(&body.unwrap_or_default())
+                    "List versions of {path} failed ({status}): an answer of {} bytes, not shown",
+                    body.map(|b| b.len()).unwrap_or_default()
                 )));
             }
             let body = body?;
-
+            budget.count(body.len(), path)?;
             debug!(
-                "Zoho WorkDrive versions response ({} bytes): {}",
-                body.len(),
-                log_preview(&body, 500)
+                "Zoho WorkDrive versions page {}: {} bytes",
+                seen.len() + 1,
+                body.len()
             );
 
             let page: VersionsPage = serde_json::from_str(&body).map_err(|e| {
                 ProviderError::ParseError(format!(
-                    "Parse versions: {}: body: {}",
-                    e,
-                    sanitize_api_error(&body)
+                    "Parse versions of {path}: {e} (an answer of {} bytes, not shown)",
+                    body.len()
                 ))
             })?;
             let cursor = next_page_cursor(page.links.as_ref(), page.data.len())
@@ -4759,12 +4801,22 @@ impl StorageProvider for ZohoWorkdriveProvider {
         info!("Restored version {} of {}", version_id, path);
         // The answer names the version the restore made: that one must be
         // on top after it, not an upload of the same size by someone else.
+        // WorkDrive's answer names the version it made: one that cannot be
+        // read, or names none, leaves the restore accepted but unconfirmed,
+        // never confirmed by a row of the same size someone else wrote.
         let made = super::version_listing_text(resp)
             .await
             .ok()
             .and_then(|body| zoho_made_version(&body))
             .map(|label| super::bind_version_to_file(&file_id, &label));
-        let preflight = selected.made_current(made);
+        let Some(made) = made else {
+            return Err(super::applied_unconfirmed(format!(
+                "WorkDrive accepted the restore of version {version_id} of {path}, but its \
+                 answer named no version, so the restore is not confirmed: list its versions \
+                 again before restoring again"
+            )));
+        };
+        let preflight = selected.made_current(Some(made));
         super::confirm_version_restored(self, path, Some(&preflight)).await
     }
 
@@ -5794,6 +5846,7 @@ mod tests {
     ) -> (ZohoWorkdriveProvider, Requests, tokio::task::JoinHandle<()>) {
         PLACED.with(|placed| placed.borrow_mut().clear());
         READ_BY_ID.with(|read| read.borrow_mut().clear());
+        MOVE_ON_READ.with(|hook| *hook.borrow_mut() = None);
         let requests: Requests = Default::default();
         let seen = requests.clone();
         let app = axum::Router::new().fallback(axum::routing::get(move |uri: axum::http::Uri| {
@@ -5841,6 +5894,10 @@ mod tests {
             std::cell::RefCell::default();
         /// The ids the stand-in was asked to read (`GET /files/{id}`), in order.
         static READ_BY_ID: std::cell::RefCell<Vec<String>> = std::cell::RefCell::default();
+        /// Another client's move the stand-in makes once a folder is read:
+        /// (the folder read, the folder moved, its new parent).
+        static MOVE_ON_READ: std::cell::RefCell<Option<(String, String, String)>> =
+            std::cell::RefCell::default();
     }
 
     /// The stand-in's answer to `GET /files/{id}`: the folder where it is,
@@ -5848,6 +5905,15 @@ mod tests {
     fn folder_read_by_id(id: &str) -> axum::http::Response<axum::body::Body> {
         READ_BY_ID.with(|read| read.borrow_mut().push(id.to_string()));
         let placed = PLACED.with(|placed| placed.borrow().get(id).cloned());
+        if let Some((_, moved, to)) =
+            MOVE_ON_READ.with(|hook| hook.borrow().clone().filter(|(read, _, _)| read == id))
+        {
+            PLACED.with(|placed| {
+                if let Some(entry) = placed.borrow_mut().get_mut(&moved) {
+                    entry.1 = to;
+                }
+            });
+        }
         let (status, body) = match placed {
             Some((name, parent)) => (
                 200,
@@ -6737,7 +6803,7 @@ mod tests {
         assert_eq!(p.parent_folder_id(true, "sub").await.unwrap(), "ROOT_SUB");
         assert_eq!(p.parent_folder_id(false, "sub").await.unwrap(), "DOCS_SUB");
         server.abort();
-        assert_eq!(read_by_id(), ["ROOT_SUB", "DOCS_SUB", "DOCS"]);
+        assert_eq!(read_by_id(), ["ROOT_SUB", "DOCS", "DOCS_SUB"]);
         assert!(requests.lock().unwrap().is_empty());
     }
 
@@ -7482,6 +7548,31 @@ mod tests {
         assert_eq!(large_upload_host(&us, 1024), None);
     }
 
+    /// The versions listing logs its page number and byte count only: a
+    /// page names the next one by a cursor URL, and its body the uploaders,
+    /// which an INFO preview used to put in the log.
+    #[test]
+    fn the_versions_listing_logs_no_body_or_cursor() {
+        let source = include_str!("zoho_workdrive.rs");
+        let start = source
+            .find("async fn list_versions(")
+            .expect("list_versions");
+        let end = start
+            + source[start..]
+                .find("async fn download_version(")
+                .expect("next fn");
+        let listing = &source[start..end];
+        for shown in ["log_preview(", "{url}", "&url)", "{cursor}"] {
+            let logged = ["info!(", "debug!(", "warn!("].iter().any(|macro_call| {
+                listing
+                    .split(macro_call)
+                    .skip(1)
+                    .any(|call| call.split(");").next().unwrap_or_default().contains(shown))
+            });
+            assert!(!logged, "the versions listing logs {shown}");
+        }
+    }
+
     #[test]
     fn a_log_preview_never_splits_a_character() {
         // "è" is two bytes; put its first byte at index 299 of a 300-byte cut.
@@ -7872,6 +7963,57 @@ mod tests {
         }
     }
 
+    /// A restore whose answer breaks off names no version: it is reported
+    /// applied but unconfirmed, even when a version of the restored size is
+    /// then on top (another client's upload would pass for it).
+    #[tokio::test]
+    async fn an_interrupted_zoho_restore_answer_is_applied_but_unconfirmed() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::Arc;
+        let restored = Arc::new(AtomicBool::new(false));
+        let done = Arc::clone(&restored);
+        let app = axum::Router::new().fallback(axum::routing::any(move |uri: axum::http::Uri| {
+            let done = Arc::clone(&done);
+            async move {
+                let version = |n: &str, at: u64, size: u64| {
+                    format!(r#"{{"id":"r{n}","attributes":{{"version_number":{n},"created_time_in_milliseconds":{at},"file_size":{size}}}}}"#)
+                };
+                match uri.path() {
+                    "/workdrive/api/v1/privatespace/PS/files" => {
+                        r#"{"data":[{"id":"FILE9","attributes":{"name":"f.txt","type":"file"}}]}"#.to_string()
+                    }
+                    "/workdrive/api/v1/files/FILE9/versions" => {
+                        let mut rows = vec![version("2.0", 1794841300000, 3), version("3.0", 1794841400000, 5)];
+                        if done.load(Ordering::SeqCst) {
+                            rows.push(version("5.0", 1794841500000, 3));
+                        }
+                        format!(r#"{{"data":[{}]}}"#, rows.join(","))
+                    }
+                    "/workdrive/api/v1/versions" => {
+                        done.store(true, Ordering::SeqCst);
+                        r#"{"data":{"id":"r40","type":"vers"#.to_string()
+                    }
+                    _ => String::new(),
+                }
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut p = ZohoWorkdriveProvider::new(config("com"));
+        p.endpoint_override = Some(format!("http://{addr}"));
+        p.test_access_token = Some("test-token".into());
+        p.connected = true;
+        p.privatespace_id = Some("PS".into());
+        p.current_folder_id = "PS".into();
+        p.folder_cache.insert("/".into(), "PS".into());
+        let outcome = p.restore_version("/f.txt", "FILE9:2.0").await;
+        server.abort();
+        let error = outcome.expect_err("an answer that names no version confirms nothing");
+        assert!(super::super::was_applied(&error), "{error:?}");
+        assert!(error.to_string().contains("named no version"), "{error}");
+    }
+
     /// A restore is `POST /versions` with `revert_to` the version number and
     /// `resource_id` the resolved file id (the per-file promote route answers
     /// 404), and a version download asks the file's download with `?version=`
@@ -7971,7 +8113,7 @@ mod tests {
         cache_folder(&mut p, "/a", "A");
         cache_folder(&mut p, "/a/b", "B");
         p.list("/a/b").await.unwrap();
-        assert_eq!(read_by_id(), ["B", "A"]);
+        assert_eq!(read_by_id(), ["A", "B"]);
         assert_eq!(listings_of(&requests, "B"), 1);
         assert_eq!(requests.lock().unwrap().len(), 1, "only b is listed");
         PLACED.with(|placed| {
@@ -7981,7 +8123,7 @@ mod tests {
         });
         p.list("/a/b").await.unwrap();
         server.abort();
-        assert_eq!(read_by_id(), ["B", "A", "B", "A"]);
+        assert_eq!(read_by_id(), ["A", "B", "A"]);
         assert_eq!(
             listings_of(&requests, "B"),
             1,
@@ -7989,6 +8131,33 @@ mod tests {
         );
         assert_eq!(listings_of(&requests, "B2"), 1);
         assert_eq!(p.folder_cache.get("/a").map(String::as_str), Some("A2"));
+    }
+
+    /// `b` moved to the archive by another client while its parent `a` was
+    /// read back: the chain is read from the top down, so `b` is read after
+    /// the move, the cache is not trusted, and the path is walked to the `b`
+    /// there now, never listing the moved one.
+    #[tokio::test]
+    async fn a_folder_moved_between_the_reads_of_its_chain_is_not_acted_in() {
+        let (mut p, requests, server) = listing_fixture(|id, _, _| {
+            let entries = match id {
+                "ROOT" => vec![("A", "a", true)],
+                "A" => vec![("B2", "b", true)],
+                _ => vec![],
+            };
+            (200, vec![], listing_json(&entries, Some((false, None))))
+        })
+        .await;
+        cache_folder(&mut p, "/a", "A");
+        cache_folder(&mut p, "/a/b", "B");
+        MOVE_ON_READ
+            .with(|hook| *hook.borrow_mut() = Some(("A".into(), "B".into(), "ARCHIVE".into())));
+        p.list("/a/b").await.unwrap();
+        server.abort();
+        assert_eq!(&read_by_id()[..2], ["A", "B"]);
+        assert_eq!(listings_of(&requests, "B"), 0, "the moved b was listed");
+        assert_eq!(listings_of(&requests, "B2"), 1);
+        assert_eq!(p.folder_cache.get("/a/b").map(String::as_str), Some("B2"));
     }
 
     /// The team folder discovery found as `Docs` (T1) was renamed by another
@@ -8095,6 +8264,81 @@ mod tests {
         );
         assert_eq!(p.team_folders, vec![("T1".into(), "Docs".into())]);
         assert_eq!(p.team_folders_source, Some(TeamFolderSource::TeamFolders));
+    }
+
+    /// The team folders are read page by page: a `Docs` renamed away and
+    /// made again on the second page is the team folder, never the private
+    /// `Docs` of the same name; a second page that does not answer keeps the
+    /// mapping as it was and refuses the operation.
+    #[tokio::test]
+    async fn a_team_folder_on_a_later_page_is_found_before_a_private_one_of_its_name() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let fail = std::sync::Arc::new(AtomicBool::new(true));
+        let failing = std::sync::Arc::clone(&fail);
+        let (mut p, _requests, server) = listing_fixture(move |id, query, _| {
+            let second = format!("page%5Boffset%5D={TEAM_FOLDER_PAGE_LIMIT}");
+            let body = match id {
+                "TEAM" if query.contains("page%5Boffset%5D=0") => {
+                    let page: Vec<serde_json::Value> = (0..TEAM_FOLDER_PAGE_LIMIT)
+                        .map(|i| {
+                            serde_json::json!({ "id": format!("F{i}"),
+                            "attributes": { "name": format!("Team {i}") } })
+                        })
+                        .collect();
+                    serde_json::json!({ "data": page }).to_string()
+                }
+                "TEAM" if query.contains(&second) => {
+                    if failing.load(Ordering::SeqCst) {
+                        return (500, vec![], String::new());
+                    }
+                    r#"{"data":[{"id":"T2","attributes":{"name":"Docs"}}]}"#.to_string()
+                }
+                "TEAM" => r#"{"data":[]}"#.to_string(),
+                "ROOT" => listing_json(&[("P1", "Docs", true)], Some((false, None))),
+                _ => listing_json(&[], Some((false, None))),
+            };
+            (200, vec![], body)
+        })
+        .await;
+        p.team_id = Some("TEAM".into());
+        p.team_folders = vec![("T1".into(), "Docs".into())];
+        p.team_folders_source = Some(TeamFolderSource::TeamFolders);
+        PLACED.with(|placed| {
+            placed
+                .borrow_mut()
+                .insert("T1".into(), ("Archive".into(), "TEAM".into()))
+        });
+        let refused = p.resolve_path("/Docs").await;
+        assert!(
+            matches!(&refused, Err(ProviderError::ServerError(m)) if m.contains("could not be confirmed")),
+            "{refused:?}"
+        );
+        assert_eq!(p.team_folders, vec![("T1".into(), "Docs".into())]);
+        fail.store(false, Ordering::SeqCst);
+        let found = p.resolve_path("/Docs").await;
+        server.abort();
+        assert_eq!(found.unwrap(), "T2");
+        assert_eq!(p.team_folders.len(), TEAM_FOLDER_PAGE_LIMIT + 1);
+    }
+
+    /// A `/workspaces` answer that does not parse is no answer: the team
+    /// folders kept, and their cached roots, stay.
+    #[tokio::test]
+    async fn an_unparsable_workspaces_answer_keeps_the_team_folders() {
+        let (mut p, _requests, server) = listing_fixture(|id, query, _| match id {
+            "TEAM" if query.contains("page") => (404, vec![], String::new()),
+            "TEAM" => (200, vec![], "<html>maintenance</html>".to_string()),
+            _ => (200, vec![], listing_json(&[], Some((false, None)))),
+        })
+        .await;
+        p.team_folders = vec![("T1".into(), "Docs".into())];
+        p.team_folders_source = Some(TeamFolderSource::Workspaces);
+        p.folder_cache.insert("/Docs".into(), "T1".into());
+        p.discover_team_folders("TEAM").await;
+        server.abort();
+        assert_eq!(p.team_folders, vec![("T1".into(), "Docs".into())]);
+        assert_eq!(p.folder_cache.get("/Docs").map(String::as_str), Some("T1"));
+        assert_eq!(p.team_folders_source, Some(TeamFolderSource::Workspaces));
     }
 
     /// `/docs` cached, then moved away by another client and
@@ -8252,7 +8496,8 @@ mod tests {
                         }
                         "/workdrive/api/v1/versions" => {
                             done.store(true, Ordering::SeqCst);
-                            "{}".to_string()
+                            // WorkDrive's documented answer names the version it made.
+                            r#"{"data":{"id":"r40","type":"versions","attributes":{"version_number":4.0}}}"#.to_string()
                         }
                         _ => return (axum::http::StatusCode::NOT_FOUND, "unexpected endpoint".to_string()),
                     };
@@ -8285,10 +8530,11 @@ mod tests {
         );
     }
 
-    /// A versions listing that still names a new page at the page limit is
-    /// refused, not shown cut short, and does not page on for ever.
-    #[tokio::test]
-    async fn a_version_listing_past_the_page_limit_is_refused() {
+    /// A versions double that names a new page on every answer, each answer
+    /// padded by `pad` bytes; gives the listing and the pages read.
+    async fn zoho_endless_versions(
+        pad: usize,
+    ) -> (Result<Vec<super::super::FileVersion>, ProviderError>, usize) {
         use std::sync::atomic::{AtomicUsize, Ordering};
         let pages = std::sync::Arc::new(AtomicUsize::new(0));
         let read = std::sync::Arc::clone(&pages);
@@ -8312,9 +8558,10 @@ mod tests {
                     (
                         axum::http::StatusCode::OK,
                         format!(
-                            r#"{{"data":[{{"id":"r{n}","attributes":{{"version_number":"{n}.0","created_time_in_milliseconds":{},"file_size":3}}}}],"links":{{"cursor":{{"has_next":true,"next":"https://workdrive.example/api/v1/files/FILE9/versions?page%5Bnext%5D=p{}"}}}}}}"#,
+                            r#"{{"data":[{{"id":"r{n}","attributes":{{"version_number":"{n}.0","created_time_in_milliseconds":{},"file_size":3}}}}],"links":{{"cursor":{{"has_next":true,"next":"https://workdrive.example/api/v1/files/FILE9/versions?page%5Bnext%5D=p{}"}}}},"pad":"{}"}}"#,
                             1794841300000 + n,
-                            n + 1
+                            n + 1,
+                            "x".repeat(pad)
                         ),
                     )
                 }
@@ -8339,15 +8586,35 @@ mod tests {
         .await
         .expect("the listing ends");
         server.abort();
+        (listed, pages.load(Ordering::SeqCst))
+    }
+
+    /// A versions listing that still names a new page at the page limit is
+    /// refused, not shown cut short, and does not page on for ever.
+    #[tokio::test]
+    async fn a_version_listing_past_the_page_limit_is_refused() {
+        let (listed, pages) = zoho_endless_versions(0).await;
         assert!(
             matches!(&listed, Err(ProviderError::TransferFailed(m)) if m.contains("did not end within")),
             "{listed:?}"
         );
         // Exactly the cap: page 200 is read, the page it names is not.
-        assert_eq!(
-            pages.load(Ordering::SeqCst),
-            super::super::VERSION_LISTING_MAX_PAGES
+        assert_eq!(pages, super::super::VERSION_LISTING_MAX_PAGES);
+    }
+
+    /// Pages each well under the cap of one answer still add up: the
+    /// listing ends on the page whose sum passes the total budget, long
+    /// before the page limit. Before, only each page was bounded.
+    #[tokio::test]
+    async fn zoho_version_pages_end_at_the_total_byte_budget() {
+        let pad = 2 * 1024 * 1024;
+        let (listed, pages) = zoho_endless_versions(pad).await;
+        assert!(
+            matches!(&listed, Err(ProviderError::TransferFailed(m)) if m.contains("MiB")),
+            "{listed:?}"
         );
+        let whole_pages = super::super::VERSION_LISTING_MAX_TOTAL_BYTES / pad as u64;
+        assert_eq!(pages as u64, whole_pages);
     }
 
     /// The id a listing gives is the one its requests carry: a `1.10` listed

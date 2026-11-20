@@ -527,11 +527,34 @@ impl GoogleDriveProvider {
         name: &str,
         parent_id: &str,
     ) -> Result<Option<DriveFile>, ProviderError> {
+        self.find_by_name_of(name, parent_id, false).await
+    }
+
+    /// [`Self::find_by_name`] of a folder only: Drive keeps a file and a
+    /// folder of one name side by side, and a file found first would hide
+    /// the folder (on its page or a later one).
+    async fn find_folder_by_name(
+        &self,
+        name: &str,
+        parent_id: &str,
+    ) -> Result<Option<DriveFile>, ProviderError> {
+        self.find_by_name_of(name, parent_id, true).await
+    }
+
+    async fn find_by_name_of(
+        &self,
+        name: &str,
+        parent_id: &str,
+        folders_only: bool,
+    ) -> Result<Option<DriveFile>, ProviderError> {
         let escaped_name = name.replace('\\', "\\\\").replace('\'', "\\'");
-        let query = format!(
+        let mut query = format!(
             "name='{}' and '{}' in parents and trashed=false",
             escaped_name, parent_id
         );
+        if folders_only {
+            query.push_str(" and mimeType='application/vnd.google-apps.folder'");
+        }
 
         let base_url = format!(
             "{}/files?q={}&fields=files(id,name,mimeType,size,modifiedTime,parents,md5Checksum,sha1Checksum,sha256Checksum),nextPageToken,incompleteSearch&pageSize=1000",
@@ -561,7 +584,11 @@ impl GoogleDriveProvider {
                 .await
                 .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
             page.require_complete()?;
-            if let Some(file) = page.files.into_iter().find(|file| file.name == name) {
+            if let Some(file) = page
+                .files
+                .into_iter()
+                .find(|file| file.name == name && (!folders_only || is_drive_folder(file)))
+            {
                 return Ok(Some(file));
             }
             match page.next_page_token {
@@ -1466,6 +1493,7 @@ impl GoogleDriveProvider {
         let mut versions = Vec::new();
         let mut token: Option<String> = None;
         let mut seen = std::collections::HashSet::new();
+        let mut budget = super::VersionListingBudget::default();
         loop {
             let mut url = format!(
                 "{}/files/{}/revisions?fields=nextPageToken,revisions(id,modifiedTime,size,lastModifyingUser)&pageSize=1000",
@@ -1493,10 +1521,18 @@ impl GoogleDriveProvider {
                 )));
             }
             let body = super::version_listing_text(response).await?;
+            budget.count(body.len(), &file.name)?;
             let (page, next) = revision_page(&body)?;
             versions.extend(page);
             match next {
-                Some(next) if !next.is_empty() && seen.insert(next.clone()) => token = Some(next),
+                Some(next) if !next.is_empty() && seen.insert(next.clone()) => {
+                    // A new token on every page never repeats: the page count
+                    // ends the listing.
+                    if seen.len() >= super::VERSION_LISTING_MAX_PAGES {
+                        return Err(super::version_listing_too_long(&file.name));
+                    }
+                    token = Some(next)
+                }
                 Some(_) => {
                     return Err(ProviderError::ParseError(
                         "Google Drive revisions pagination did not advance".into(),
@@ -1849,6 +1885,14 @@ impl GoogleDriveProvider {
                         offset = taken;
                         continue;
                     }
+                } else if end < total_size {
+                    // A session answered complete before its last byte was
+                    // sent holds a file shorter than the one uploaded.
+                    let _ = self.client.delete(&session_uri).send().await;
+                    return Err(ProviderError::TransferFailed(format!(
+                        "Google Drive answered the upload complete after {end} of \
+                         {total_size} bytes: upload it again"
+                    )));
                 } else {
                     made = drive_made_head(chunk_response).await;
                 }
@@ -2295,10 +2339,12 @@ impl StorageProvider for GoogleDriveProvider {
         // its status and Retry-After, so the caller's retry policy decides.
         // The name exactly: Drive keeps `photos` beside `Photos` as two
         // folders, so `mkdir /photos` there creates it.
-        if let Some(existing) = self.find_by_name(folder_name, &parent_id).await? {
-            if is_drive_folder(&existing) {
-                return Err(ProviderError::AlreadyExists(path.to_string()));
-            }
+        if self
+            .find_folder_by_name(folder_name, &parent_id)
+            .await?
+            .is_some()
+        {
+            return Err(ProviderError::AlreadyExists(path.to_string()));
         }
 
         let metadata = serde_json::json!({
@@ -2913,8 +2959,8 @@ impl StorageProvider for GoogleDriveProvider {
         // Without the revision it made, a later write of the same length
         // would read as this restore: the upload is reported, unconfirmed.
         let Some(made) = made else {
-            return Err(ProviderError::TransferFailed(format!(
-                "Revision {version_id} of {path} was uploaded as a new revision, but Drive's answer \
+            return Err(super::applied_unconfirmed(format!(
+                "revision {version_id} of {path} was uploaded as a new revision, but Drive's answer \
                  did not name it, so the restore is not confirmed: list its versions again"
             )));
         };
@@ -4311,6 +4357,62 @@ mod tests {
         }
     }
 
+    /// A file of the folder's name listed before the folder, on the same
+    /// page or a page before it, does not hide the folder: mkdir asks for
+    /// folders only, reads on past the file, answers AlreadyExists and
+    /// creates nothing.
+    #[tokio::test]
+    async fn mkdir_finds_the_folder_behind_a_file_of_its_name() {
+        use std::sync::{Arc, Mutex};
+        for split in [false, true] {
+            let requests: Arc<Mutex<Vec<String>>> = Arc::default();
+            let seen = Arc::clone(&requests);
+            let app = axum::Router::new().fallback(axum::routing::any(
+                move |req: axum::extract::Request| {
+                    let seen = Arc::clone(&seen);
+                    async move {
+                        let uri = req.uri().to_string();
+                        seen.lock().unwrap().push(format!("{} {uri}", req.method()));
+                        let file = r#"{"id":"F","name":"docs","mimeType":"text/plain"}"#;
+                        let folder = r#"{"id":"D","name":"docs","mimeType":"application/vnd.google-apps.folder"}"#;
+                        let body = match (split, uri.contains("pageToken=p2")) {
+                            (false, _) => format!(r#"{{"files":[{file},{folder}]}}"#),
+                            (true, false) => {
+                                format!(r#"{{"files":[{file}],"nextPageToken":"p2"}}"#)
+                            }
+                            (true, true) => format!(r#"{{"files":[{folder}]}}"#),
+                        };
+                        (axum::http::StatusCode::OK, body)
+                    }
+                },
+            ));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+            let mut provider = test_provider();
+            provider.connected = true;
+            provider.api_origin_override = Some(format!("http://{addr}"));
+            provider.test_access_token = Some("t".to_string());
+            let outcome = provider.mkdir("/docs").await;
+            server.abort();
+            assert!(
+                matches!(&outcome, Err(ProviderError::AlreadyExists(_))),
+                "split {split}: {outcome:?}"
+            );
+            let requests = requests.lock().unwrap();
+            assert!(
+                requests.iter().all(|r| !r.starts_with("POST")),
+                "{requests:?}"
+            );
+            assert!(
+                requests[0].contains(&*urlencoding::encode(
+                    "mimeType='application/vnd.google-apps.folder'"
+                )),
+                "{requests:?}"
+            );
+        }
+    }
+
     /// After `/a` moved to `/b`, the cache still mapped `/a` (and `/a/sub`)
     /// to the moved folder: a new `/a` resolved to `/b`, and deleting `/a/x`
     /// deleted `/b/x`.
@@ -4899,6 +5001,70 @@ mod tests {
             *ranges.lock().unwrap(),
             ["bytes 0-6291455/6291456", "bytes 1048576-6291455/6291456"]
         );
+    }
+
+    /// A 200 to a chunk before the last one closes a session that holds only
+    /// part of the file: the upload fails, and no further chunk is sent to
+    /// the closed session.
+    #[tokio::test]
+    async fn a_session_answered_complete_before_its_last_chunk_fails_the_upload() {
+        use axum::response::IntoResponse;
+        use std::sync::{Arc, Mutex};
+        let puts: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&puts);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let seen = Arc::clone(&seen);
+                async move {
+                    let host = req
+                        .headers()
+                        .get("host")
+                        .and_then(|v| v.to_str().ok())
+                        .unwrap_or("")
+                        .to_string();
+                    let method = req.method().as_str().to_string();
+                    let path = req.uri().path().to_string();
+                    let range = req
+                        .headers()
+                        .get("content-range")
+                        .and_then(|v| v.to_str().ok())
+                        .map(str::to_string);
+                    let _ = axum::body::to_bytes(req.into_body(), 32 << 20).await;
+                    if method == "PATCH" {
+                        return ([("location", format!("http://{host}/session"))], "")
+                            .into_response();
+                    }
+                    if method == "PUT" && path == "/session" {
+                        seen.lock().unwrap().push(range.unwrap_or_default());
+                        return axum::Json(serde_json::json!({ "id": "F1" })).into_response();
+                    }
+                    axum::http::StatusCode::NO_CONTENT.into_response()
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("big.bin");
+        std::fs::write(&local, vec![7u8; 11 << 20]).unwrap();
+        let mut provider = test_provider();
+        provider.connected = true;
+        provider.api_origin_override = Some(base);
+        provider.test_access_token = Some("t".to_string());
+        let result = provider
+            .upload_into(
+                &local.to_string_lossy(),
+                "/big.bin",
+                Some("F1".to_string()),
+                None,
+            )
+            .await;
+        server.abort();
+        assert!(
+            matches!(&result, Err(ProviderError::TransferFailed(m)) if m.contains("answered the upload complete")),
+            "{result:?}"
+        );
+        assert_eq!(puts.lock().unwrap().len(), 1, "{:?}", puts.lock().unwrap());
     }
 
     /// Drive keeps `photos` beside `Photos` as two folders, and the exact
@@ -5578,7 +5744,7 @@ mod tests {
     /// every page names the same token. Each request is recorded as
     /// "{method} {path}".
     async fn drive_revisions_double(
-        stalled: bool,
+        pages: RevisionPages,
     ) -> (
         GoogleDriveProvider,
         std::sync::Arc<std::sync::Mutex<Vec<String>>>,
@@ -5609,8 +5775,16 @@ mod tests {
                         "/drive/v3/files/F1/revisions" => {
                             let fields = query("fields").unwrap_or_default();
                             assert!(fields.contains("nextPageToken"), "{fields}");
-                            let page = if stalled {
+                            let page = if pages == RevisionPages::Stalled {
                                 serde_json::json!({"revisions": [], "nextPageToken": "same"})
+                            } else if pages == RevisionPages::Endless {
+                                // A new token on every page, forever.
+                                let n: u64 = query("pageToken")
+                                    .and_then(|t| t.parse().ok())
+                                    .unwrap_or(0);
+                                serde_json::json!({"revisions": [
+                                    {"id": format!("e{n}"), "modifiedTime": "2026-11-16T15:00:00.000Z", "size": "8"}
+                                ], "nextPageToken": (n + 1).to_string()})
                             } else if query("pageToken").as_deref() == Some("p 2") {
                                 serde_json::json!({"revisions": [
                                     {"id": "r2", "modifiedTime": "2026-11-16T15:01:00.000Z", "size": "12"},
@@ -5646,15 +5820,48 @@ mod tests {
         (provider, seen, server)
     }
 
+    /// How the revisions double pages its answer.
+    #[derive(Clone, Copy, PartialEq)]
+    enum RevisionPages {
+        /// Two pages, then the end.
+        Two,
+        /// The same token on every page.
+        Stalled,
+        /// A new token on every page, without end.
+        Endless,
+    }
+
+    /// A listing whose every page names a new token ends at the page limit,
+    /// the last page read being the limit itself: before, it ran as long
+    /// as the server kept answering.
+    #[tokio::test]
+    async fn an_endless_drive_revisions_listing_ends_at_the_page_limit() {
+        let (mut provider, seen, server) = drive_revisions_double(RevisionPages::Endless).await;
+        let outcome = provider.list_versions("f.txt").await;
+        server.abort();
+        assert!(
+            matches!(&outcome, Err(ProviderError::TransferFailed(m)) if m.contains("200 pages")),
+            "{outcome:?}"
+        );
+        let pages = seen
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|r| r.ends_with("/revisions"))
+            .count();
+        assert_eq!(pages, super::super::VERSION_LISTING_MAX_PAGES);
+    }
+
     /// Every page of `revisions.list` is read: before, only the first one
     /// was, and a revision past it was not shown at all.
     #[tokio::test]
     async fn drive_versions_are_read_from_every_revisions_page() {
-        let (mut provider, _, server) = drive_revisions_double(false).await;
+        let (mut provider, _, server) = drive_revisions_double(RevisionPages::Two).await;
         let versions = provider.list_versions("f.txt").await.expect("versions");
         let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
         assert_eq!(ids, ["r3", "r2", "r1"]);
-        let (mut provider, _, stalled_server) = drive_revisions_double(true).await;
+        let (mut provider, _, stalled_server) =
+            drive_revisions_double(RevisionPages::Stalled).await;
         let outcome = provider.list_versions("f.txt").await;
         server.abort();
         stalled_server.abort();
@@ -5669,7 +5876,7 @@ mod tests {
     /// uploaded again as a new revision.
     #[tokio::test]
     async fn a_drive_restore_of_the_head_revision_is_refused_before_any_transfer() {
-        let (mut provider, seen, server) = drive_revisions_double(false).await;
+        let (mut provider, seen, server) = drive_revisions_double(RevisionPages::Two).await;
         let outcome = provider.restore_version("f.txt", "r3").await;
         server.abort();
         assert!(

@@ -206,6 +206,11 @@ struct DrimeBackupEntry {
 #[derive(Debug, Deserialize)]
 struct DrimeBackupPagination {
     data: Option<Vec<DrimeBackupEntry>>,
+    /// Laravel's page fields: the page answered and the last one.
+    #[serde(default)]
+    current_page: Option<u32>,
+    #[serde(default)]
+    last_page: Option<u32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -2383,32 +2388,56 @@ impl StorageProvider for DrimeCloudProvider {
             filename, file_id
         ));
 
-        let url = format!(
-            "{}?file_id={}&perPage=50",
-            Self::api_url("/file-backup"),
-            file_id
-        );
-        let auth = self.auth_header()?;
-        let resp = self
-            .request_with_retry(|| self.client.get(&url).header(AUTHORIZATION, auth.clone()))
-            .await?;
+        // `/file-backup` lists the backups a change replaced, 50 a page:
+        // every page is read (within the shared limits), and the file as it
+        // is now becomes row 0, so no backup is labelled Current.
+        let file = self.stat(path).await?;
+        let mut budget = super::VersionListingBudget::default();
+        let mut entries = Vec::new();
+        for page in 1.. {
+            if page as usize > super::VERSION_LISTING_MAX_PAGES {
+                return Err(super::version_listing_too_long(path));
+            }
+            let url = format!(
+                "{}?file_id={}&perPage=50&page={page}",
+                Self::api_url("/file-backup"),
+                file_id
+            );
+            let auth = self.auth_header()?;
+            let resp = self
+                .request_with_retry(|| self.client.get(&url).header(AUTHORIZATION, auth.clone()))
+                .await?;
 
-        if !resp.status().is_success() {
-            let body = super::version_listing_text(resp).await.unwrap_or_default();
-            return Err(ProviderError::ServerError(format!(
-                "List versions failed: {}",
-                sanitize_api_error(&body)
-            )));
+            if !resp.status().is_success() {
+                let body = super::version_listing_text(resp).await.unwrap_or_default();
+                return Err(ProviderError::ServerError(format!(
+                    "List versions failed: {}",
+                    sanitize_api_error(&body)
+                )));
+            }
+
+            let body = super::version_listing_text(resp).await?;
+            budget.count(body.len(), path)?;
+            let backup_resp: DrimeBackupResponse = serde_json::from_str(&body)
+                .map_err(|e| ProviderError::ServerError(format!("Parse backup response: {}", e)))?;
+            let Some(pagination) = backup_resp.pagination else {
+                break;
+            };
+            if pagination
+                .current_page
+                .is_some_and(|answered| answered != page)
+            {
+                return Err(ProviderError::ParseError(format!(
+                    "The versions of {path} answered another page than page {page}"
+                )));
+            }
+            entries.extend(pagination.data.unwrap_or_default());
+            if pagination.last_page.is_none_or(|last| page >= last) {
+                break;
+            }
         }
 
-        let backup_resp: DrimeBackupResponse =
-            serde_json::from_str(&super::version_listing_text(resp).await?)
-                .map_err(|e| ProviderError::ServerError(format!("Parse backup response: {}", e)))?;
-
-        let versions = backup_resp
-            .pagination
-            .and_then(|p| p.data)
-            .unwrap_or_default()
+        let versions = entries
             .into_iter()
             .filter_map(|entry| {
                 let id = entry.id.as_ref().map(|v| match v {
@@ -2426,7 +2455,7 @@ impl StorageProvider for DrimeCloudProvider {
             })
             .collect();
 
-        Ok(versions)
+        Ok(super::versions_after_the_file(versions, &file))
     }
 
     fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
@@ -3072,6 +3101,20 @@ mod tests {
                     let mut items = items.lock().unwrap();
                     let ok =
                         || axum::Json(serde_json::json!({ "status": "success" })).into_response();
+                    // The backups of a file, two pages of one each, newest first.
+                    if method == "GET" && path.ends_with("/file-backup") {
+                        let page = if query.contains("page=2") { 2 } else { 1 };
+                        let backup = if page == 1 {
+                            serde_json::json!({ "id": 5, "file_size": 3,
+                                "created_at": "2026-01-02T00:00:00.000000Z" })
+                        } else {
+                            serde_json::json!({ "id": 4, "file_size": 2,
+                                "created_at": "2026-01-01T00:00:00.000000Z" })
+                        };
+                        return axum::Json(serde_json::json!({ "pagination": {
+                            "data": [backup], "current_page": page, "last_page": 2 } }))
+                        .into_response();
+                    }
                     if method == "GET" {
                         DOUBLE_LISTINGS.with(|n| n.set(n.get() + 1));
                         let parent = query
@@ -3732,6 +3775,16 @@ mod tests {
     /// With `A.txt` listed before `a.txt`, `stat /d/a.txt` took the first
     /// match ignoring the case and answered `A.txt`. The name as spelled
     /// comes first.
+    /// Drime's backups are the versions a change replaced: the file as it
+    /// is now is row 0, then the backups of every page, newest first.
+    #[tokio::test]
+    async fn drime_versions_list_the_file_first_and_every_backup_page() {
+        let (mut provider, _, _) = provider_on_drime_entries(&[(7, "a.txt", "", "file")]).await;
+        let versions = provider.list_versions("/a.txt").await.expect("versions");
+        let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
+        assert_eq!(ids, [super::super::CURRENT_VERSION_ID, "5", "4"]);
+    }
+
     #[tokio::test]
     async fn stat_answers_the_name_as_spelled_first() {
         let (mut provider, _, _) = provider_on_drime_entries(&[

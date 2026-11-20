@@ -155,6 +155,31 @@ async fn run_mega_cmd_capture_within(
         })
 }
 
+/// The answer of `mega-userattr` by its exit status: 0 is the text it printed,
+/// 53 (MEGAcmd's NOTFOUND, as the native provider classifies it) is an
+/// attribute that was never set, and any other exit is an answer that was
+/// not read, so the restore is refused rather than judged from its text.
+fn userattr_answer(
+    code: Option<i32>,
+    stdout: &[u8],
+    stderr: &[u8],
+) -> Result<String, ProviderError> {
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(stdout),
+        String::from_utf8_lossy(stderr)
+    );
+    match code {
+        Some(0) => Ok(text),
+        Some(53) => Err(ProviderError::NotFound("^!dv".into())),
+        other => Err(ProviderError::ServerError(format!(
+            "mega-userattr ended with {}: {}",
+            other.map_or_else(|| "a signal".to_string(), |c| format!("exit {c}")),
+            served_origins_only(text.trim())
+        ))),
+    }
+}
+
 /// The deadline of the read back that checks a restore: the command's own
 /// plus a second per 256 KiB of the version, so a large version that is
 /// still arriving is not cut as if MEGA had not answered.
@@ -342,13 +367,7 @@ pub async fn mega_restore_version(
     let temp = mega_fetch_version_to_temp(&path, version_id, &listed).await?;
     let versioning = run_mega_cmd_capture("mega-userattr", &["^!dv"])
         .await
-        .map(|output| {
-            format!(
-                "{}{}",
-                String::from_utf8_lossy(&output.stdout),
-                String::from_utf8_lossy(&output.stderr)
-            )
-        });
+        .and_then(|output| userattr_answer(output.status.code(), &output.stdout, &output.stderr));
     if super::mega::mega_versioning_off(versioning)? {
         return Err(ProviderError::NotSupported(
             super::mega::MEGA_VERSIONING_OFF.into(),
@@ -383,8 +402,8 @@ pub async fn mega_restore_version(
     // From here the upload is done: a check that cannot run says so, and
     // that a new restore is not what is needed.
     let unverified = |detail: String| {
-        ProviderError::TransferFailed(format!(
-            "The restored version of {path} was uploaded, but reading it back to check it \
+        super::applied_unconfirmed(format!(
+            "the restored version of {path} was uploaded, but reading it back to check it \
              {detail}: refresh its version history to see which version is current instead of \
              restoring again"
         ))
@@ -424,22 +443,29 @@ pub async fn mega_restore_version(
         Err(ProviderError::Timeout) => return Err(unverified("timed out".into())),
         Err(e) => return Err(unverified(format!("failed ({e})"))),
     };
+    // Only a read that ran and compared tells MEGA did not take the
+    // version: a read or a listing that failed tells nothing of it.
     if !output.status.success() {
-        return Err(not_taken());
+        return Err(unverified(format!(
+            "failed ({})",
+            mega_cmd_failure("mega-get", &output)
+        )));
     }
     let (fetched, local) = (check.0.clone(), temp.0.clone());
     let same = tokio::task::spawn_blocking(move || {
         super::mega::fetched_is_version(&fetched, top_size, &local)
     })
     .await
-    .map_err(|e| ProviderError::Other(e.to_string()))?
-    .map_err(ProviderError::IoError)?;
+    .map_err(|e| unverified(format!("failed ({e})")))?
+    .map_err(|e| unverified(format!("failed ({e})")))?;
     if !same {
         return Err(not_taken());
     }
     // The bytes read are those of the handle, whatever the path holds now:
     // that version must still be on top after the read.
-    let still = mega_version_rows(&path).await?;
+    let still = mega_version_rows(&path)
+        .await
+        .map_err(|e| unverified(format!("failed ({e})")))?;
     if still.first().map(|v| v.id.as_str()) != Some(top.as_str()) {
         return Err(not_taken());
     }
@@ -723,6 +749,23 @@ fn integer_tokens(text: &str) -> Vec<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `mega-userattr` is read by its exit status, never by its text alone:
+    /// an exit other than 0 or 53 refuses the restore even when it printed
+    /// the words a set or absent attribute would print.
+    #[test]
+    fn the_versioning_attribute_is_read_by_the_exit_of_mega_userattr() {
+        let off = |code, out: &str| {
+            super::super::mega::mega_versioning_off(userattr_answer(code, out.as_bytes(), b""))
+        };
+        assert!(off(Some(0), "\tDISABLE_VERSIONS (^!dv) = 1").unwrap());
+        assert!(!off(Some(0), "\tDISABLE_VERSIONS (^!dv) = 0").unwrap());
+        assert!(!off(Some(53), "").unwrap());
+        for code in [Some(1), Some(57), None] {
+            assert!(off(code, "Not found").is_err(), "{code:?}");
+            assert!(off(code, "(^!dv) = 0").is_err(), "{code:?}");
+        }
+    }
 
     #[test]
     fn parses_used_and_total_storage_rows() {
@@ -1074,6 +1117,18 @@ Total size taken up by file versions:     31457280 bytes (30.0 MB)
             "{current:?}"
         );
         assert!(bridge_log(&dir, "get.log").is_empty());
+
+        // A read back that fails, and a last listing that fails, say the
+        // upload is done and unchecked, never that MEGA did not take it.
+        for switch in ["check-get-fails", "final-ls-fails"] {
+            let dir = bridge_on_stand_in(&[switch]);
+            let unchecked = mega_restore_version("/v.txt", "H:vAAAAAA2").await;
+            assert!(
+                matches!(&unchecked, Err(e) if super::super::was_applied(e)),
+                "{switch}: {unchecked:?}"
+            );
+            assert_eq!(bridge_log(&dir, "put.log"), ["/v.txt"], "{switch}");
+        }
 
         let dir = bridge_on_stand_in(&["check-get-slow"]);
         TEST_VERIFY_SECS.with(|secs| secs.set(Some(1)));
