@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+import type { RepairResult } from './repairResultMessage';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
@@ -49,10 +50,15 @@ const ERROR_PATTERNS: [RegExp, string][] = [
 
 export function mapVaultError(e: unknown, t: (key: string) => string): string {
     const raw = String(e);
-    for (const [pattern, key] of ERROR_PATTERNS) {
-        if (pattern.test(raw)) {
-            const mapped = t(key);
-            if (mapped && mapped !== key) return mapped;
+    // A filename in the error can itself contain a generic cue like "corrupt".
+    // Preserve the writer's specific reason and recovery instruction.
+    const writerRefusal = /(?:is a symbolic link|vault is locked by another writer|damaged blocks: run repair)/i.test(raw);
+    if (!writerRefusal) {
+        for (const [pattern, key] of ERROR_PATTERNS) {
+            if (pattern.test(raw)) {
+                const mapped = t(key);
+                if (mapped && mapped !== key) return mapped;
+            }
         }
     }
     // Fallback: strip internal details (offsets, hex, stack traces) and redact
@@ -62,7 +68,10 @@ export function mapVaultError(e: unknown, t: (key: string) => string): string {
         .replace(/at offset \d+/gi, '')
         .replace(/0x[0-9a-f]+/gi, '')
         // Unix absolute paths and Windows drive paths -> redacted placeholder.
-        .replace(/(?:[A-Za-z]:)?[\\/][^\s'":]+(?:[\\/][^\s'":]+)+/g, '<path>')
+        .replace(/(?:[A-Za-z]:)?[\\/][^\s'":]+(?:[\\/][^\s'":]+)+/g, (path) => {
+            const closing = path.match(/[);]+$/)?.[0] ?? '';
+            return `<path>${closing}`;
+        })
         .replace(/\s{2,}/g, ' ')
         .trim();
     return cleaned || raw;
@@ -443,12 +452,12 @@ export interface VaultState {
     showRepairDialog: boolean;
     setShowRepairDialog: (show: boolean) => void;
     scrubResult: any | null;  // from vault_v3_scrub
-    repairResult: any | null;
+    repairResult: RepairResult | null;
     repairDryRun: boolean;
     setRepairDryRun: (v: boolean) => void;
     isRepairing: boolean;
     setScrubResult: (r: any | null) => void;
-    setRepairResult: (r: any | null) => void;
+    setRepairResult: (r: RepairResult | null) => void;
     setIsRepairing: (v: boolean) => void;
 
     // Initial props passthrough (now backed by the staged-files list so the
@@ -591,7 +600,7 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
     const [showScrubDialog, setShowScrubDialog] = useState(false);
     const [showRepairDialog, setShowRepairDialog] = useState(false);
     const [scrubResult, setScrubResult] = useState<any | null>(null);
-    const [repairResult, setRepairResult] = useState<any | null>(null);
+    const [repairResult, setRepairResult] = useState<RepairResult | null>(null);
     const [repairDryRun, setRepairDryRun] = useState(true);
     const [isRepairing, setIsRepairing] = useState(false);
 
@@ -2025,8 +2034,8 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         setError(null);
         try {
             const res = isPlaintextZip
-                ? await invoke<any>('aerovz_repair', { vaultPath, dryRun: repairDryRun })
-                : await invoke<any>('vault_v3_repair', { vaultPath, password, dryRun: repairDryRun });
+                ? await invoke<RepairResult>('aerovz_repair', { vaultPath, dryRun: repairDryRun })
+                : await invoke<RepairResult>('vault_v3_repair', { vaultPath, password, dryRun: repairDryRun });
             setRepairResult(res);
             if (!repairDryRun) {
                 await refreshVaultEntries();

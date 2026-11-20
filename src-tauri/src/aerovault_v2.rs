@@ -235,6 +235,39 @@ pub async fn vault_v2_extract_entry(
         .extract(&entry_name, tmp_dir.path())
         .map_err(|e| e.to_string())?;
 
+    // The crate protected the extraction directory. Apply its reserved lock
+    // file rule to the caller's literal destination before publishing there.
+    let is_lock = |path: &std::path::Path| {
+        path.file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(crate::sync_exclude::is_vault_lock_name)
+    };
+    let reserved =
+        is_lock(dest) || (cfg!(windows) && dest.canonicalize().is_ok_and(|path| is_lock(&path)));
+    if reserved {
+        let staged_size = std::fs::metadata(&extracted)
+            .map_err(|e| e.to_string())?
+            .len();
+        let staged = tempfile::TempPath::try_from_path(extracted).map_err(|e| e.to_string())?;
+        match staged.persist_noclobber(dest) {
+            Ok(()) => return Ok(dest_path),
+            Err(e) if e.error.kind() == std::io::ErrorKind::AlreadyExists => {
+                if staged_size == 0
+                    && dest
+                        .symlink_metadata()
+                        .is_ok_and(|meta| meta.is_file() && meta.len() == 0)
+                {
+                    return Ok(dest_path);
+                }
+                return Err(format!(
+                    "{}: refusing to replace an existing vault lock file",
+                    dest.display()
+                ));
+            }
+            Err(e) => return Err(format!("Failed to write destination: {}", e.error)),
+        }
+    }
+
     // Overwrite any existing destination to match v1/v3.
     if dest.exists() {
         std::fs::remove_file(dest).map_err(|e| format!("Failed to replace destination: {}", e))?;
@@ -1319,6 +1352,34 @@ pub async fn vault_v2_add_directory_core(
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn a_literal_extract_target_cannot_replace_a_vault_lock() {
+        use super::{vault_v2_extract_entry, CreateOptions, Vault};
+        let dir = tempfile::tempdir().unwrap();
+        let vault_path = dir.path().join("vault.aerovault");
+        let input = dir.path().join("file.txt");
+        let dest = dir.path().join("other.aerovault.aerolock");
+        let password = "fixture-password";
+        std::fs::write(&input, b"archived bytes").unwrap();
+        std::fs::write(&dest, b"existing lock").unwrap();
+        Vault::create(CreateOptions::new(&vault_path, password)).unwrap();
+        Vault::open(&vault_path, password)
+            .unwrap()
+            .add_files(&[input])
+            .unwrap();
+
+        let error = vault_v2_extract_entry(
+            vault_path.to_str().unwrap().to_string(),
+            password.to_string(),
+            "file.txt".to_string(),
+            dest.to_str().unwrap().to_string(),
+        )
+        .await
+        .unwrap_err();
+        assert!(error.contains("lock file"), "{error}");
+        assert_eq!(std::fs::read(dest).unwrap(), b"existing lock");
+    }
+
     /// Deep-scan 17: a folder on the way that is a link stops the entry.
     #[cfg(unix)]
     #[test]

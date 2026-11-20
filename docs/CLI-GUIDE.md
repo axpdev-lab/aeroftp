@@ -1176,6 +1176,8 @@ aeroftp-cli correct repair ./report.bin --parity ./report.bin.aerocorrect --expe
 
 Replace the hash placeholder before running the command. A bare `correct repair` checks the sidecar's own content hash for integrity, but that hash does not authenticate a sidecar supplied by an attacker who can replace both objects. Detached recovery data must be refreshed after content changes.
 
+A repair that writes the file leaves a persistent `<file>.aerolock` beside it. `correct gen` likewise leaves locks next to the source and the sidecar it writes. Leave these files in place so readers and writers continue to coordinate on the same lock. A read-only verify leaves no new lock. AeroFTP sync excludes these locks even when Error Correction is off.
+
 EC covers damage within the selected Reed-Solomon budget. It does not recover
 logical deletes, ransomware replacing a whole file, complete file loss or damage
 beyond that budget. Each protected file adds a remote object and the selected

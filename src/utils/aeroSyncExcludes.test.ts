@@ -6,11 +6,17 @@ import {
     AEROSYNC_DEFAULT_EXCLUDES,
     aeroSyncCompareOptions,
     compareExcludePatterns,
+    cliExcludePatterns,
     sameExcludePatterns,
     appliedCompareFilters,
 } from './aeroSyncExcludes';
 
 describe('AeroSync compare exclusions', () => {
+    it('excludes persistent vault locks from Compare and exported commands by default', () => {
+        expect(compareExcludePatterns([])).toContain('*.aerolock');
+        expect(cliExcludePatterns([], AEROSYNC_DEFAULT_BACKUP_DIR)).toContain('*.aerolock');
+    });
+
     it('sends the Plan tab patterns to every compare, after the defaults', () => {
         // Before the Plan had an exclude field, a remote compare ran with the
         // defaults only, so a file matching the user's pattern was planned
