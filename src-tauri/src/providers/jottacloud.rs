@@ -785,6 +785,21 @@ impl JottacloudProvider {
             .map(|(account, _)| account.clone())
             .collect();
         let accounts: Vec<String> = accounts.into_iter().map(|(account, _)| account).collect();
+        // A key another connection's rotation is pending for is not written:
+        // that rotation is the key's live chain, filed on what the key holds,
+        // and a write would leave it on a base the key no longer holds. The
+        // filings are serialized by `DELETED_CHAINS`, held here.
+        let checked: Vec<String> = {
+            let pending = PENDING_ROTATIONS.lock().unwrap_or_else(|e| e.into_inner());
+            checked
+                .into_iter()
+                .filter(|account| {
+                    pending.get(&(owner, account.clone())).is_none_or(|filed| {
+                        self.continues(&stored_refresh_token(Some(filed.as_str())))
+                    })
+                })
+                .collect()
+        };
 
         let outcome = self.write_rotation(&checked);
         let mut pending = PENDING_ROTATIONS.lock().unwrap_or_else(|e| e.into_inner());
@@ -795,6 +810,11 @@ impl JottacloudProvider {
             .unwrap_or_else(|e| e.into_inner());
         let consumed = self.consumed.lock().unwrap_or_else(|e| e.into_inner());
         let own_token = self.refresh_token.expose_secret();
+        // [`Self::continues`], with `consumed` held.
+        let continues = |filed: &str| {
+            let filed_token = stored_refresh_token(Some(filed));
+            filed_token == own_token || consumed.as_ref().is_some_and(|c| c.as_str() == filed_token)
+        };
         // A write stopped by a deletion that began after the checks above: the
         // key it names is dropped, and every key when the source was deleted.
         if !outcome.deleted.is_empty()
@@ -817,7 +837,14 @@ impl JottacloudProvider {
             // Per key: a key left unwritten still holds the chain Jotta
             // consumed, whatever happened to the others.
             if outcome.written.contains(&key.1) {
-                pending.remove(&key);
+                // Only this chain's own rotation is done with: a key with
+                // another's pending is not written (above).
+                if pending
+                    .get(&key)
+                    .is_some_and(|filed| continues(filed.as_str()))
+                {
+                    pending.remove(&key);
+                }
                 continue;
             }
             if outcome.replaced.contains(&key.1) {
@@ -830,13 +857,7 @@ impl JottacloudProvider {
             // A rotation pending there that this chain does not continue is
             // another connection's live chain: it is not written over.
             if let Some(filed) = pending.get(&key) {
-                let filed_token = serde_json::from_str::<serde_json::Value>(filed)
-                    .ok()
-                    .and_then(|v| v["refresh_token"].as_str().map(str::to_string))
-                    .unwrap_or_default();
-                let continues = filed_token == own_token
-                    || consumed.as_ref().is_some_and(|c| c.as_str() == filed_token);
-                if !continues {
+                if !continues(filed.as_str()) {
                     jotta_log(&format!(
                         "Refresh token not kept for {}: another connection's rotation is pending there",
                         key.1

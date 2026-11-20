@@ -1112,3 +1112,65 @@ fn a_purge_names_the_keys_it_could_not_remove() {
     }
     assert!(failures.is_empty(), "{failures:#?}");
 }
+
+/// A rotation does not write a key another connection's rotation is pending
+/// for: that rotation is the key's live chain, filed on what the key holds,
+/// and stays usable; the other keys are written as usual.
+#[test]
+fn a_rotation_leaves_a_key_another_connection_filed_for() {
+    if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+        "providers::jottacloud::chain_tests::a_rotation_leaves_a_key_another_connection_filed_for",
+    ) {
+        return;
+    }
+    let chains = Chains::new();
+    let singleton = "jottacloud_refresh";
+    let own = "jottacloud_refresh_filedfor";
+    chains
+        .store
+        .store(singleton, &chains.chain("singleton-filedfor"))
+        .unwrap();
+    let mut connection = chains.bound("filedfor");
+    assert!(chains
+        .runtime()
+        .block_on(connection.try_connect_with_refresh())
+        .unwrap());
+    let own_before = chains.stored(own);
+    // Another connection of this process filed for the profile's key, on
+    // what the key holds now.
+    let noted = chains.noted("filedfor").expect("count");
+    let mut filed: serde_json::Value = serde_json::from_str(&chains.chain("foreign-b")).unwrap();
+    filed[PENDING_BASE] = own_before.clone().into();
+    filed[PENDING_GEN] = noted.into();
+    PENDING_ROTATIONS.lock().unwrap().insert(
+        (chains.owner, own.to_string()),
+        zeroize::Zeroizing::new(filed.to_string()),
+    );
+    connection.token_expiry = Instant::now();
+    chains
+        .runtime()
+        .block_on(connection.refresh_if_needed())
+        .expect("refresh");
+    let rotated = connection.refresh_token.expose_secret().to_string();
+    drop(connection);
+    let mut failures = Vec::new();
+    if chains.stored(own) != own_before {
+        failures.push(format!(
+            "the key is left as it is: {own_before} -> {}",
+            chains.stored(own)
+        ));
+    }
+    let kept = chains
+        .pending(own)
+        .map(|json| stored_refresh_token(Some(&json)));
+    if kept.as_deref() != Some("foreign-b") {
+        failures.push(format!("the other connection's rotation stays: {kept:?}"));
+    }
+    if chains.stored(singleton) != rotated {
+        failures.push(format!(
+            "the other key is written: {}, expected {rotated}",
+            chains.stored(singleton)
+        ));
+    }
+    assert!(failures.is_empty(), "{failures:#?}");
+}
