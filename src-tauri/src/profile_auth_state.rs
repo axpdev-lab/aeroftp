@@ -210,12 +210,13 @@ pub fn oauth_vault_key_for_protocol(protocol: &str) -> Option<&'static str> {
 /// Derive a profile's auth readiness from local vault state only: never
 /// touches the network. Returns one of:
 ///   - `valid`          : credential present and (for OAuth) not expired, or
-///     none needed (`AuthSource::NoSecret`)
+///     none needed (`AuthSource::NoSecret`); a stored value that is not an
+///     OAuth record (a Jottacloud chain, a legacy shape) counts as present
 ///   - `expired`        : OAuth token past `expires_at` and no refresh token
 ///   - `needs_refresh`  : OAuth token past `expires_at` but refresh token present
 ///   - `no_credentials` : nothing stored; user has not signed in yet
-///   - `unknown`        : vault entry present but value couldn't be parsed
-///     (legacy/corrupt), or a session another program keeps
+///   - `unknown`        : the stored entry could not be read (a locked
+///     account, a decrypt error), or a session another program keeps
 ///     (`AuthSource::External`): treated as "agent should try anyway"
 ///
 /// `source` is [`profile_auth_source`] of the profile. `accounts` is a
