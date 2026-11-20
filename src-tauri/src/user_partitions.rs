@@ -10937,9 +10937,14 @@ mod tests {
         ];
         #[cfg(target_os = "linux")]
         {
-            let init = process_start(1)
-                .expect("pid 1 is readable")
-                .expect("pid 1 runs");
+            // This test's own process stands for a live one: its stat is
+            // readable wherever the test runs (`hidepid` hides only other
+            // users' processes, PID 1 among them), and its token is not this
+            // deletion's, so the pid is what decides.
+            let live = std::process::id();
+            let live_start = process_start(live)
+                .expect("this process's own stat is readable")
+                .expect("this process runs");
             let mut child = std::process::Command::new(std::env::current_exe().unwrap())
                 .arg("--list")
                 .stdout(std::process::Stdio::null())
@@ -10952,17 +10957,17 @@ mod tests {
             cases.extend([
                 (
                     "a live process here, past any lease",
-                    running("other", here.clone(), 1, Some(init), stale),
+                    running("other", here.clone(), live, Some(live_start), stale),
                     false,
                 ),
                 (
                     "its pid now another process's",
-                    running("other", here.clone(), 1, Some(init + 1), now),
+                    running("other", here.clone(), live, Some(live_start + 1), now),
                     true,
                 ),
                 (
                     "a process here that is gone",
-                    running("other", here, gone, Some(init), now),
+                    running("other", here, gone, Some(live_start), now),
                     true,
                 ),
             ]);
