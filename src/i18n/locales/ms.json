@@ -1880,7 +1880,9 @@
                 "osKeyring": "Rantai kunci OS",
                 "vaultFormat": "Format peti besi",
                 "zipArchives": "Arkib ZIP"
-            }
+            },
+            "thirdPartyLicenses": "Lesen Pihak Ketiga",
+            "thirdPartyLicensesOpenFailed": "Tidak dapat membuka notis lesen. Notis tersebut tersedia dalam talian di {url}"
         },
         "support": {
             "title": "Sokong AeroFTP",

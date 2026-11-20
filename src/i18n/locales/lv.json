@@ -1880,7 +1880,9 @@
                 "osKeyring": "OS atslēgu saišķis",
                 "vaultFormat": "Glabātuves formāts",
                 "zipArchives": "ZIP arhīvi"
-            }
+            },
+            "thirdPartyLicenses": "Trešo pušu licences",
+            "thirdPartyLicensesOpenFailed": "Neizdevās atvērt licenču paziņojumus. Tie ir pieejami tiešsaistē: {url}"
         },
         "support": {
             "title": "Atbalstīt AeroFTP",

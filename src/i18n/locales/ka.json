@@ -1880,7 +1880,9 @@
                 "osKeyring": "სისტემის გასაღებების ასხმა",
                 "vaultFormat": "სეიფის ფორმატი",
                 "zipArchives": "ZIP არქივები"
-            }
+            },
+            "thirdPartyLicenses": "მესამე მხარის ლიცენზიები",
+            "thirdPartyLicensesOpenFailed": "ლიცენზიის შეტყობინებების გახსნა ვერ მოხერხდა. ისინი ონლაინ ხელმისაწვდომია მისამართზე {url}"
         },
         "support": {
             "title": "მხარი დაუჭირეთ AeroFTP-ს",

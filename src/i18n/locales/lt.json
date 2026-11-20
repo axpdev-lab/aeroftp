@@ -1880,7 +1880,9 @@
                 "osKeyring": "OS raktinė",
                 "vaultFormat": "Saugyklos formatas",
                 "zipArchives": "ZIP archyvai"
-            }
+            },
+            "thirdPartyLicenses": "Trečiųjų šalių licencijos",
+            "thirdPartyLicensesOpenFailed": "Nepavyko atidaryti licencijų pranešimų. Jie pasiekiami internete adresu {url}"
         },
         "support": {
             "title": "Palaikykite AeroFTP",

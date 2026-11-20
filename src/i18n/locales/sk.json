@@ -1880,7 +1880,9 @@
                 "osKeyring": "Kľúčenka systému",
                 "vaultFormat": "Formát trezoru",
                 "zipArchives": "Archívy ZIP"
-            }
+            },
+            "thirdPartyLicenses": "Licencie tretích strán",
+            "thirdPartyLicensesOpenFailed": "Nepodarilo sa otvoriť oznámenia o licenciách. Sú dostupné online na {url}"
         },
         "support": {
             "title": "Podporte AeroFTP",

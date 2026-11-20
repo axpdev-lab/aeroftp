@@ -20071,7 +20071,11 @@ const App: React.FC = () => {
                             verificationMode: updateDownload.verification?.mode ?? 'VerificationUnavailable',
                           });
                         } catch (e) {
-                          setUpdateDownload(prev => prev ? { ...prev, installing: false, error: String(e) } : null);
+                          // A refused portable update discards its downloaded ZIP, so
+                          // Install & Restart would only find a missing file: drop the
+                          // path and leave Retry, which downloads it again.
+                          const discarded = updateAvailable.install_format === 'portable';
+                          setUpdateDownload(prev => prev ? { ...prev, installing: false, error: String(e), ...(discarded ? { completedPath: undefined } : {}) } : null);
                         }
                       }}
                       className="bg-green-500 text-white px-3 py-2 rounded-lg font-medium text-sm hover:bg-green-400 transition-colors shadow-sm w-full flex items-center justify-center gap-1.5"

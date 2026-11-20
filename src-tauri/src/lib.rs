@@ -856,6 +856,8 @@ pub mod user_partitions;
 // Re-export the partition DEK type so the (public) peer_identity storage facade
 // can name it in its signatures without widening the whole user_crypto module.
 pub use user_crypto::SecretKey;
+#[cfg(any(windows, test))]
+mod portable_docs;
 #[cfg(windows)]
 pub mod windows_update_helper;
 // `pub` transitively so integration tests can construct `RsyncStats`
@@ -3394,6 +3396,10 @@ struct PortableInfo {
     webview_data_dir: Option<String>,
     credential_store_dir: Option<String>,
     shared_legacy_present: bool,
+    /// The notices a portable update installs and an editor still holds,
+    /// when they belong to the running exe: the About dialog opens them
+    /// first. Never those of another exe.
+    pending_notices: Option<String>,
 }
 
 #[tauri::command]
@@ -3422,7 +3428,26 @@ fn portable_info_blocking() -> PortableInfo {
         webview_data_dir: portable::webview_data_dir().map(|p| p.display().to_string()),
         credential_store_dir: portable::credential_store_dir().map(|p| p.display().to_string()),
         shared_legacy_present: portable::shared_webview_data_present(),
+        pending_notices: if is_portable {
+            own_pending_notices()
+        } else {
+            None
+        },
     }
+}
+
+/// The running exe's pending notices beside it (`portable_docs`).
+#[cfg(windows)]
+fn own_pending_notices() -> Option<String> {
+    let exe = std::env::current_exe().ok()?;
+    portable_docs::own_pending_notices(exe.parent()?, portable_docs::running_exe_key)
+        .map(|p| p.display().to_string())
+}
+
+/// Portable updates install documents on Windows only.
+#[cfg(not(windows))]
+fn own_pending_notices() -> Option<String> {
+    None
 }
 
 #[tauri::command]
@@ -4246,7 +4271,15 @@ async fn install_windows_update(
 
         info!("Installing Windows update: format={format}, path={downloaded_path}");
 
-        windows_update_helper::install_with_helper(&app, format, downloaded)?;
+        // The helper hand-off waits for the helper's confirmation (seconds):
+        // a blocking thread keeps that wait off the async runtime's workers.
+        let helper_app = app.clone();
+        let helper_zip = downloaded.to_path_buf();
+        tauri::async_runtime::spawn_blocking(move || {
+            windows_update_helper::install_with_helper(&helper_app, format, &helper_zip)
+        })
+        .await
+        .map_err(|e| format!("The update installer stopped unexpectedly: {e}"))??;
 
         let from_version = app.package_info().version.to_string();
         write_update_marker(&app, &from_version, "unknown", format, &verification_mode);
@@ -16154,13 +16187,87 @@ fn open_extract_window(app: &AppHandle, mode: &str, path: &str) {
     }
 }
 
+const EXTRACT_WINDOW_MAX_RETRIES: u8 = 10;
+const EXTRACT_WINDOW_RETRY_PAUSE: std::time::Duration = std::time::Duration::from_millis(250);
+
+/// Decides whether an extract-window WebView lookup opens now, retries while
+/// portable detection is transiently `Pending`, or reports exhaustion.
+#[derive(Debug, PartialEq, Eq)]
+enum ExtractWebviewLookup {
+    Ready(Option<std::path::PathBuf>),
+    Retry,
+    Exhausted(String),
+}
+
+fn decide_extract_webview_lookup(
+    attempt: u8,
+    max_retries: u8,
+    lookup: Result<Option<std::path::PathBuf>, String>,
+) -> ExtractWebviewLookup {
+    match lookup {
+        Ok(dir) => ExtractWebviewLookup::Ready(dir),
+        Err(_) if attempt < max_retries => ExtractWebviewLookup::Retry,
+        Err(e) => ExtractWebviewLookup::Exhausted(e),
+    }
+}
+
+fn should_exit_on_extract_exhaustion(has_main_window: bool) -> bool {
+    !has_main_window
+}
+
 fn open_extract_window_on_main(app: &AppHandle, mode: &str, path: &str) {
+    open_extract_window_attempt(app, mode, path, 0);
+}
+
+fn open_extract_window_attempt(app: &AppHandle, mode: &str, path: &str, attempt: u8) {
     // A build queued before the origin was known to be ours (a second launch
     // during the ownership check) must not load it.
     if !ui_origin_owned() {
         log::warn!("An extract window was asked for before the UI origin was verified: not opened");
         return;
     }
+    let webview_dir = match decide_extract_webview_lookup(
+        attempt,
+        EXTRACT_WINDOW_MAX_RETRIES,
+        portable::try_webview_data_dir(),
+    ) {
+        ExtractWebviewLookup::Ready(dir) => dir,
+        ExtractWebviewLookup::Retry => {
+            log::warn!(
+                "Portable mode detection pending for extract window (attempt {}/{}); retrying",
+                attempt + 1,
+                EXTRACT_WINDOW_MAX_RETRIES
+            );
+            let app_retry = app.clone();
+            let mode_retry = mode.to_string();
+            let path_retry = path.to_string();
+            let next_attempt = attempt.saturating_add(1);
+            std::thread::spawn(move || {
+                std::thread::sleep(EXTRACT_WINDOW_RETRY_PAUSE);
+                let app_main = app_retry.clone();
+                if let Err(e) = app_retry.run_on_main_thread(move || {
+                    open_extract_window_attempt(&app_main, &mode_retry, &path_retry, next_attempt);
+                }) {
+                    log::error!("Failed to marshal extract window retry onto main thread: {e}");
+                }
+            });
+            return;
+        }
+        ExtractWebviewLookup::Exhausted(e) => {
+            let msg = format!(
+                "Could not open archive window after {EXTRACT_WINDOW_MAX_RETRIES} retries while portable mode is pending: {e}"
+            );
+            portable::report_startup_portable_error(&msg);
+            let has_main = app.get_webview_window("main").is_some();
+            if has_main {
+                let _ = app.emit("extract-window-error", msg);
+            }
+            if should_exit_on_extract_exhaustion(has_main) {
+                app.exit(1);
+            }
+            return;
+        }
+    };
     let payload = serde_json::json!({ "mode": mode, "path": path, "lang": detect_desktop_lang() })
         .to_string();
     let init = format!("window.__AEROFTP_EXTRACT__ = {payload};");
@@ -16188,7 +16295,7 @@ fn open_extract_window_on_main(app: &AppHandle, mode: &str, path: &str) {
         Some(menu) => builder.menu(menu),
         None => builder,
     };
-    let builder = match portable::webview_data_dir() {
+    let builder = match webview_dir {
         Some(dir) => builder.data_directory(dir),
         None => builder,
     };
@@ -27342,6 +27449,15 @@ pub fn run() {
     #[cfg(not(debug_assertions))]
     let _ = install_crypto_provider();
 
+    // Confirm portable vs installed mode before any plugin, log target,
+    // migration, or window builder runs so all startup subsystems agree on one
+    // root. If detection still times out after the startup retry budget,
+    // `resolve_startup_mode_or_report` surfaces an actionable diagnostic and
+    // exits cleanly without touching host directories.
+    if portable::resolve_startup_mode_or_report().is_err() {
+        return;
+    }
+
     // #814 renamed the application identifier. Carry the identifier-scoped
     // state that cannot stay pinned to the legacy one (window state, and the
     // macOS WebKit store) before any plugin reads it or any window opens.
@@ -27915,7 +28031,7 @@ pub fn run() {
                     main_builder
                 }
             };
-            let main_builder = match portable::webview_data_dir() {
+            let main_builder = match portable::wait_for_startup_webview_data_dir()? {
                 Some(dir) => main_builder.data_directory(dir),
                 None => main_builder,
             };
@@ -28157,7 +28273,7 @@ pub fn run() {
                         "\";"
                     ))
                     .center();
-                let splash_builder = match portable::webview_data_dir() {
+                let splash_builder = match portable::wait_for_startup_webview_data_dir()? {
                     Some(dir) => splash_builder.data_directory(dir),
                     None => splash_builder,
                 };
@@ -29519,7 +29635,7 @@ fn gui_log_file_target() -> Option<tauri_plugin_log::TargetKind> {
             path,
             file_name: None,
         }),
-        None if portable::is_portable() => None,
+        None if !portable::is_confirmed_installed() => None,
         None => Some(tauri_plugin_log::TargetKind::LogDir { file_name: None }),
     }
 }
@@ -29543,8 +29659,35 @@ fn gui_log_admits(target: &str, level: log::Level) -> bool {
 
 #[cfg(test)]
 mod gui_log_filter_tests {
-    use super::gui_log_admits;
+    use super::{
+        decide_extract_webview_lookup, gui_log_admits, should_exit_on_extract_exhaustion,
+        ExtractWebviewLookup,
+    };
     use log::Level;
+
+    #[test]
+    fn extract_window_lookup_retries_while_pending_and_opens_on_recovery() {
+        // Transient Pending schedules a retry without falling back to host WebView.
+        assert_eq!(
+            decide_extract_webview_lookup(0, 3, Err("pending".to_string())),
+            ExtractWebviewLookup::Retry
+        );
+        // Recovery on a later attempt opens with the resolved portable WebView dir.
+        let portable_wv = std::path::PathBuf::from("/portable/data/webview");
+        assert_eq!(
+            decide_extract_webview_lookup(2, 3, Ok(Some(portable_wv.clone()))),
+            ExtractWebviewLookup::Ready(Some(portable_wv))
+        );
+        // Exhausting the retry budget reports the failure instead of silent drop.
+        assert_eq!(
+            decide_extract_webview_lookup(3, 3, Err("still locked".to_string())),
+            ExtractWebviewLookup::Exhausted("still locked".to_string())
+        );
+        // Cold extract-only launch (no main window) exits cleanly; an existing
+        // main window stays running.
+        assert!(should_exit_on_extract_exhaustion(false));
+        assert!(!should_exit_on_extract_exhaustion(true));
+    }
 
     #[test]
     fn zbus_chatter_stays_out_and_its_warnings_and_our_lines_stay_in() {

@@ -239,3 +239,61 @@ fn selectors_that_select_nothing_are_listed_not_an_empty_skipped() {
         describe(&out)
     );
 }
+
+/// An export whose every profile the exporter refuses exits 4 and leaves the
+/// file already at the destination as it was: it used to replace that file
+/// with one holding only the format's header. A host with a space is one ssh
+/// and lftp cannot write (ssh would read two values, lftp would end the
+/// bookmark URL there), and a carriage return in it one WinSCP cannot write.
+#[test]
+fn an_export_that_writes_no_profile_keeps_the_destination() {
+    const MINE: &str = "the user's own file\n";
+    let config = tempfile::tempdir().unwrap();
+    let conf = config.path().join("rclone.conf");
+    std::fs::write(
+        &conf,
+        format!(
+            "[Spaced]\ntype = sftp\nhost = lab .example.invalid\nuser = smoke\npass = {OBSCURED_PASS}\n\n\
+             [Broken]\ntype = sftp\nhost = lab.example.invalid\rProxyCommand x\nuser = smoke\npass = {OBSCURED_PASS}\n"
+        ),
+    )
+    .unwrap();
+    let imported = cli(
+        config.path(),
+        &[
+            "import",
+            "rclone",
+            conf.to_str().unwrap(),
+            "--apply",
+            "--json",
+        ],
+    );
+    assert!(imported.status.success(), "{}", describe(&imported));
+
+    for (format, selector, file) in [
+        ("ssh", "Spaced", "ssh_config"),
+        ("lftp", "Spaced", "bookmarks.rc"),
+        ("winscp", "Broken", "WinSCP.ini"),
+    ] {
+        let path = config.path().join(file);
+        std::fs::write(&path, MINE).unwrap();
+        let out = export(config.path(), format, selector, &path);
+        assert_eq!(out.status.code(), Some(4), "{format}: {}", describe(&out));
+        // The exporter refused the profile, by its host: exit 4 alone would
+        // also be an import that skipped it, or a selection of nothing.
+        let summary = stdout_json(&out);
+        let refused = skipped(&summary);
+        assert_eq!(refused.len(), 1, "{format}: {summary}");
+        assert_eq!(refused[0].0, selector, "{format}: {summary}");
+        assert!(
+            refused[0].1.contains("host") && !refused[0].1.contains("no profile matches"),
+            "{format}: {summary}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            MINE,
+            "{format}: {}",
+            describe(&out)
+        );
+    }
+}

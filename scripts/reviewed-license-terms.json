@@ -1,0 +1,128 @@
+{
+  "_comment": "Reviewed terms of licenses with no standard text in spdx-standard-licenses.json. A package file covers such a license only when it carries these terms whole (carriesWholeStandardText). The texts come from SPDX license-list-data (text/<id>.txt); for bzip2-1.0.6 the sentence before the conditions and the signature after the disclaimer name the program's holder and version and are left out, as the shipped variants change them. For FSFULLR, curl and SAX-PD-2.0 the title, the copyright lines and the signature are left out, as libssh2 ships these licenses in its REUSE folder (libssh2/LICENSES) with other holders and years; a REUSE file covers its identifier only when it carries these terms whole, never by its file name alone.",
+  "bzip2-1.0.6": {
+    "source": "https://spdx.org/licenses/bzip2-1.0.6.html",
+    "terms": "Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:\n\n     1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.\n\n     2. The origin of this software must not be misrepresented; you must not claim that you wrote the original software. If you use this software in a product, an acknowledgment in the product documentation would be appreciated but is not required.\n\n     3. Altered source versions must be plainly marked as such, and must not be misrepresented as being the original software.\n\n     4. The name of the author may not be used to endorse or promote products derived from this software without specific prior written permission.\n\nTHIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\n"
+  },
+  "SAX-PD-2.0": {
+    "source": "https://spdx.org/licenses/SAX-PD-2.0.html",
+    "terms": "I hereby abandon any property rights to SAX 2.0 (the Simple API for XML), and\nrelease all of the SAX 2.0 source code, compiled code, and documentation\ncontained in this distribution into the Public Domain. SAX comes with NO\nWARRANTY or guarantee of fitness for any purpose."
+  },
+  "curl": {
+    "source": "https://spdx.org/licenses/curl.html",
+    "terms": "Permission to use, copy, modify, and distribute this software for any purpose\nwith or without fee is hereby granted, provided that the above copyright\nnotice and this permission notice appear in all copies.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT OF THIRD PARTY RIGHTS. IN\nNO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,\nDAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR\nOTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE\nOR OTHER DEALINGS IN THE SOFTWARE.\n\nExcept as contained in this notice, the name of a copyright holder shall not\nbe used in advertising or otherwise to promote the sale, use or other dealings\nin this Software without prior written authorization of the copyright holder."
+  },
+  "FSFULLR": {
+    "source": "https://spdx.org/licenses/FSFULLR.html",
+    "terms": "This file is free software; the Free Software Foundation gives unlimited permission to copy and/or distribute it, with or without modifications, as long as this notice is preserved."
+  },
+  "CDLA-Permissive-2.0": {
+    "source": "https://spdx.org/licenses/CDLA-Permissive-2.0.html",
+    "terms": "Community Data License Agreement - Permissive - Version 2.0\n\nThis is the Community Data License Agreement - Permissive, Version 2.0 (the \"agreement\"). Data Provider(s) and Data Recipient(s) agree as follows:\n\n1. Provision of the Data\n\n1.1. A Data Recipient may use, modify, and share the Data made available by Data Provider(s) under this agreement if that Data Recipient follows the terms of this agreement.\n\n1.2. This agreement does not impose any restriction on a Data Recipient's use, modification, or sharing of any portions of the Data that are in the public domain or that may be used, modified, or shared under any other legal exception or limitation.\n\n2. Conditions for Sharing Data\n\n2.1. A Data Recipient may share Data, with or without modifications, so long as the Data Recipient makes available the text of this agreement with the shared Data.\n\n3. No Restrictions on Results\n\n3.1. This agreement does not impose any restriction or obligations with respect to the use, modification, or sharing of Results.\n\n4. No Warranty; Limitation of Liability\n\n4.1. All Data Recipients receive the Data subject to the following terms:\n\nTHE DATA IS PROVIDED ON AN \"AS IS\" BASIS, WITHOUT REPRESENTATIONS, WARRANTIES OR CONDITIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED INCLUDING, WITHOUT LIMITATION, ANY WARRANTIES OR CONDITIONS OF TITLE, NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.\n\nNO DATA PROVIDER SHALL HAVE ANY LIABILITY FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING WITHOUT LIMITATION LOST PROFITS), HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE DATA OR RESULTS, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.\n\n5. Definitions\n\n5.1. \"Data\" means the material received by a Data Recipient under this agreement.\n\n5.2. \"Data Provider\" means any person who is the source of Data provided under this agreement and in reliance on a Data Recipient's agreement to its terms.\n\n5.3. \"Data Recipient\" means any person who receives Data directly or indirectly from a Data Provider and agrees to the terms of this agreement.\n\n5.4. \"Results\" means any outcome obtained by computational analysis of Data, including for example machine learning models and models' insights.\n"
+  },
+  "_notices": "A copyright notice that may continue on its next line (no holder after the years, an open parenthesis, a trailing comma, and, of or by) is never joined by a guess: the generation fails unless the notice is reviewed here with every line it continues on (following), each matched upstream, and the whole notice read at its source. A reviewed line that is an example value in documentation, not anyone's notice, is marked with \"example\" (the package, version and file it was reviewed in) and an empty notice, and gives no attribution there; the same lines in another package or file are read as a notice. A reviewed line that cites a work the code refers to (a book, a paper), not a notice of the code, is marked with \"citation\" (the package, version and file it was reviewed in) and an empty notice, and gives no attribution there; the same lines in another package or file are read as a notice.",
+  "notices": [
+    {
+      "line": "Copyright (C) 1987,88,89,90,91,92,93,94,95,96,98,99,2000,2001,2002,2003,2004,2006",
+      "following": [
+        "Free Software Foundation, Inc."
+      ],
+      "notice": "Copyright (C) 1987,88,89,90,91,92,93,94,95,96,98,99,2000,2001,2002,2003,2004,2006 Free Software Foundation, Inc.",
+      "source": "lzma-sys 0.1.20 xz-5.2/lib/getopt.c:5"
+    },
+    {
+      "line": "Copyright (C) 1989-1994,1996-1999,2001,2003,2004,2005,2006,2007",
+      "following": [
+        "Free Software Foundation, Inc."
+      ],
+      "notice": "Copyright (C) 1989-1994,1996-1999,2001,2003,2004,2005,2006,2007 Free Software Foundation, Inc.",
+      "source": "lzma-sys 0.1.20 xz-5.2/lib/getopt.in.h:2"
+    },
+    {
+      "line": "Copyright (C) 1987,88,89,90,91,92,93,94,96,97,98,2004,2006",
+      "following": [
+        "Free Software Foundation, Inc."
+      ],
+      "notice": "Copyright (C) 1987,88,89,90,91,92,93,94,96,97,98,2004,2006 Free Software Foundation, Inc.",
+      "source": "lzma-sys 0.1.20 xz-5.2/lib/getopt1.c:2"
+    },
+    {
+      "line": "Copyright (C) 1989-1994,1996-1999,2001,2003,2004",
+      "following": [
+        "Free Software Foundation, Inc."
+      ],
+      "notice": "Copyright (C) 1989-1994,1996-1999,2001,2003,2004 Free Software Foundation, Inc.",
+      "source": "lzma-sys 0.1.20 xz-5.2/lib/getopt_int.h:2"
+    },
+    {
+      "line": "Copyright © 2021 World Wide Web Consortium, (Massachusetts Institute of Technology, European",
+      "following": [
+        "Research Consortium for Informatics and Mathematics, Keio University, Beihang). All Rights",
+        "Reserved. This work is distributed under the W3C® Software License [1] in the hope that it will"
+      ],
+      "notice": "Copyright © 2021 World Wide Web Consortium, (Massachusetts Institute of Technology, European Research Consortium for Informatics and Mathematics, Keio University, Beihang). All Rights Reserved.",
+      "source": "tao 0.35.3 src/keyboard.rs:66-68"
+    },
+    {
+      "line": "Copyright 2018 Guillaume Pinot (@TeXitoi) <texitoi@texitoi.eu>,",
+      "following": [
+        "Kevin Knapp (@kbknapp) <kbknapp@gmail.com>, and",
+        "Ana Hobden (@hoverbear) <operator@hoverbear.org>"
+      ],
+      "notice": "Copyright 2018 Guillaume Pinot (@TeXitoi) <texitoi@texitoi.eu>, Kevin Knapp (@kbknapp) <kbknapp@gmail.com>, and Ana Hobden (@hoverbear) <operator@hoverbear.org>",
+      "source": "clap_derive 4.6.7 src/lib.rs:1-3 and 7 other files with the same header"
+    },
+    {
+      "line": "(C) 2005-02-02 David A. Wheeler; released under the D-Bus licenses,",
+      "following": [
+        "GNU GPL version 2 (or greater) and AFL 1.1 (or greater)"
+      ],
+      "notice": "(C) 2005-02-02 David A. Wheeler; released under the D-Bus licenses, GNU GPL version 2 (or greater) and AFL 1.1 (or greater)",
+      "source": "libdbus-sys 0.2.7 vendor/dbus/doc/introspect.dtd:2-3"
+    },
+    {
+      "line": "Copyright 2023 Mara Bos,",
+      "following": [
+        "ISBN: 978-1-098-11944-7"
+      ],
+      "notice": "",
+      "citation": { "package": "moka", "version": "0.12.16", "file": "src/common/concurrent/arc.rs" },
+      "source": "moka 0.12.16 src/common/concurrent/arc.rs:5-6 (a book citation: the module cites Rust Atomics and Locks as a reference, the next line is its ISBN; the code is the moka developers')"
+    },
+    {
+      "line": "Copyright © 2016",
+      "following": [
+        "..."
+      ],
+      "notice": "",
+      "example": { "package": "tauri-winres", "version": "0.3.6", "file": "README.md" },
+      "source": "tauri-winres 0.3.6 README.md:86 (an example value; the next line is an ellipsis)"
+    },
+    {
+      "line": "Copyright © 2016",
+      "following": [
+        "```"
+      ],
+      "notice": "",
+      "example": { "package": "tauri-winres", "version": "0.3.6", "file": "src/lib.rs" },
+      "source": "tauri-winres 0.3.6 src/lib.rs:127 (an example value in a doc comment; the next line ends the code block)"
+    }
+  ],
+  "_tagMentions": "An SPDX-License-Identifier tag in a source file outside a comment the scanner knows is no header only when reviewed here, by package@version:file:line text.",
+  "tagMentions": {
+    "zerocopy@0.8.63:ci/check_packaging.sh:-e '/* SPDX-License-Identifier: BSD-2-Clause OR Apache-2.0 OR MIT */' \\": "a sed expression in a CI script that checks the headers of zerocopy's own files; the crate's own license covers them"
+  },
+  "_sourceTexts": "A license text and notice a source file carries in a comment with no SPDX tag of its own, reproduced from its first to its last line (both compared without the comment leader).",
+  "sourceTexts": [
+    {
+      "package": "tao",
+      "version": "0.35.3",
+      "file": "src/keyboard.rs",
+      "from": "This file contains a substantial portion of the UI Events Specification by the W3C. In",
+      "to": "--------- END OF W3C SHORT NOTICE ---------------------------------------------------------------",
+      "sha256": "fad1c514c639d85b2254518e91c365a1fb07f2d036c2da1a40017c09b3546ea4",
+      "license": "W3C Software and Document Notice and License, with the W3C Software and Document Short Notice",
+      "source": "tao 0.35.3 src/keyboard.rs lines 7 to 74, read 2026-11-18"
+    }
+  ]
+}

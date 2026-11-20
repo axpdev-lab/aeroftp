@@ -519,7 +519,7 @@ pub fn export_mobaxterm(
         outcome.exported += 1;
     }
 
-    crate::bridge_shared::atomic_write_600(out, ini.as_bytes())?;
+    crate::bridge_shared::write_export(outcome.exported, out, ini.as_bytes())?;
 
     Ok(outcome)
 }

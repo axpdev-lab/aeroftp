@@ -505,8 +505,8 @@ pub fn export_restic(
         s.push_str(&format!("export {k}={}\n", sh_squote(v)));
     }
 
-    crate::bridge_shared::atomic_write_600(out, s.as_bytes())?;
     outcome.exported = 1;
+    crate::bridge_shared::write_export(outcome.exported, out, s.as_bytes())?;
     Ok(outcome)
 }
 

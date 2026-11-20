@@ -2919,6 +2919,40 @@ mod tests {
         }
     }
 
+    /// A GUI export whose every profile the exporter refuses keeps the file
+    /// already at the destination: it reports nothing exported, and used to
+    /// replace that file with one holding only the format's header.
+    #[tokio::test]
+    async fn a_gui_export_that_writes_no_profile_keeps_the_destination() {
+        const MINE: &[u8] = b"the user's own file\n";
+        let servers = json!([{
+            "id": "id-a", "name": "Lab", "host": "a.example.com\nProxyCommand x",
+            "port": 22, "username": "u", "protocol": "sftp",
+        }])
+        .to_string();
+        for (source, file) in [
+            ("ssh", "ssh_config.conf"),
+            ("winscp", "WinSCP.ini"),
+            ("lftp", "bookmarks.rc"),
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join(file);
+            std::fs::write(&path, MINE).unwrap();
+            let out = export_bridge_profiles(
+                source,
+                &servers,
+                false,
+                &path.to_string_lossy(),
+                None,
+                |_| None,
+            )
+            .await
+            .unwrap();
+            assert_eq!(out["exported"], 0, "{source}: {out}");
+            assert_eq!(std::fs::read(&path).unwrap(), MINE, "{source}");
+        }
+    }
+
     /// Every bridge writes the start folder as the profile opens it: a
     /// `{username}` template is filled before any writer sees the entry, and a
     /// profile whose user name cannot fill it is skipped with the reason. The
