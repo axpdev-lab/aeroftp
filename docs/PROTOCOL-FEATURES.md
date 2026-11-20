@@ -310,7 +310,7 @@ A backend's own scheme keeps its own name. Dropbox's `content_hash` is a SHA-256
 | Box | SHA-1 |  |
 | pCloud | MD5, SHA-1, SHA-256 |  |
 | Yandex Disk | MD5 |  |
-| Koofr | Koofr hash | Koofr's own opaque hash. Comparable only against another Koofr hash. |
+| Koofr | Koofr hash | The MD5 of the content (measured 2026-11-20), reported under its own name: compared only against another Koofr hash, and by the version download of the current row against the bytes read. |
 | Backblaze B2 | SHA-1 | Large files and uploads B2 recorded as `unverified:` carry no usable `contentSha1`; those are omitted. |
 | GitHub | Git blob SHA-1 | The git blob SHA-1, computed over `blob <len>\0` + content, so it does not match a plain SHA-1 of the same file. |
 | GitLab | - |  |

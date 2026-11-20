@@ -597,8 +597,6 @@ impl DrimeCloudProvider {
                         "Drime listing omitted an item name or ID".into(),
                     ));
                 }
-                let last_page = drime_last_page(list_resp.last_page, page, files.len(), 100)?;
-
                 for file in &files {
                     let is_folder = file.file_type.as_deref() == Some("folder");
                     if is_folder {
@@ -614,7 +612,14 @@ impl DrimeCloudProvider {
                     }
                 }
 
-                if exact.is_some() || page >= last_page {
+                // An exact name on this page is the folder whatever the
+                // pages after it hold; only absence, or a case fallback,
+                // needs the listing to be known complete.
+                if exact.is_some() {
+                    break;
+                }
+                let last_page = drime_last_page(list_resp.last_page, page, files.len(), 100)?;
+                if page >= last_page {
                     break;
                 }
                 page += 1;
@@ -860,8 +865,6 @@ impl DrimeCloudProvider {
                     "Drime listing omitted an item name or ID".into(),
                 ));
             }
-            let last_page = drime_last_page(list_resp.last_page, page, files.len(), 100)?;
-
             for file in &files {
                 if let (Some(ref name), Some(id)) = (&file.name, file.id_str()) {
                     let Some(exact) = wanted(name, &id) else {
@@ -877,6 +880,9 @@ impl DrimeCloudProvider {
                 }
             }
 
+            // An exact match returned above; absence and a case fallback
+            // need the listing known complete.
+            let last_page = drime_last_page(list_resp.last_page, page, files.len(), 100)?;
             if page >= last_page {
                 break;
             }
@@ -2044,8 +2050,6 @@ impl StorageProvider for DrimeCloudProvider {
                     "Drime listing omitted an item name or ID".into(),
                 ));
             }
-            let last_page = drime_last_page(list_resp.last_page, page, files.len(), 100)?;
-
             for file in &files {
                 if let Some(ref name) = file.name {
                     if name == filename {
@@ -2057,6 +2061,9 @@ impl StorageProvider for DrimeCloudProvider {
                 }
             }
 
+            // An exact match returned above; absence and a case fallback
+            // need the listing known complete.
+            let last_page = drime_last_page(list_resp.last_page, page, files.len(), 100)?;
             if page >= last_page {
                 break;
             }
@@ -2924,6 +2931,8 @@ mod tests {
     std::thread_local! {
         /// GET requests the Drime double served on this test's thread.
         static DOUBLE_LISTINGS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+        /// The double's backups answer `total` and `per_page`, not `last_page`.
+        static BACKUPS_BY_TOTAL: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     }
     #[tokio::test]
     async fn probe_contract_drime_root_is_not_a_missing_child() {
@@ -2934,6 +2943,41 @@ mod tests {
         assert!(
             matches!(outcome, Ok(ref root) if root.is_dir),
             "{outcome:?}"
+        );
+    }
+
+    /// A full page without `last_page` is not known complete, but an exact
+    /// name on it is found: the folder walk, the entry lookup and stat use
+    /// it, where only absence needs the pages after it.
+    #[tokio::test]
+    async fn an_exact_name_on_a_full_page_without_last_page_is_found() {
+        let mut rows = vec![serde_json::json!({"id": 7, "name": "target", "type": "folder"})];
+        rows.extend(
+            (1..100).map(
+                |i| serde_json::json!({"id": 100 + i, "name": format!("f{i}"), "type": "file"}),
+            ),
+        );
+        let body = serde_json::json!({ "data": rows }).to_string();
+        let app = axum::Router::new().fallback(axum::routing::get(move || {
+            let body = body.clone();
+            async move { body }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        TEST_API_BASE.with(|base| *base.borrow_mut() = Some(format!("http://{addr}")));
+        let mut provider = test_provider();
+        provider.connected = true;
+        let nested = provider.exists("/target/target").await;
+        let entry = provider.stat("/target").await;
+        let missing = provider.exists("/target/absent").await;
+        TEST_API_BASE.with(|base| *base.borrow_mut() = None);
+        server.abort();
+        assert!(matches!(nested, Ok(true)), "{nested:?}");
+        assert!(matches!(&entry, Ok(e) if e.is_dir), "{entry:?}");
+        assert!(
+            matches!(missing, Err(ProviderError::ParseError(_))),
+            "{missing:?}"
         );
     }
 
@@ -3162,9 +3206,17 @@ mod tests {
                             serde_json::json!({ "id": 4, "file_size": 2,
                                 "created_at": "2026-01-01T00:00:00.000000Z" })
                         };
-                        return axum::Json(serde_json::json!({ "pagination": {
-                            "data": [backup], "current_page": page, "last_page": 2 } }))
-                        .into_response();
+                        // The shape without `last_page`: `total` and
+                        // `per_page` say how many pages there are.
+                        let pagination = if BACKUPS_BY_TOTAL.with(|by_total| by_total.get()) {
+                            serde_json::json!({ "data": [backup], "current_page": page,
+                                "total": 2, "per_page": 1 })
+                        } else {
+                            serde_json::json!({ "data": [backup], "current_page": page,
+                                "last_page": 2 })
+                        };
+                        return axum::Json(serde_json::json!({ "pagination": pagination }))
+                            .into_response();
                     }
                     if method == "GET" {
                         DOUBLE_LISTINGS.with(|n| n.set(n.get() + 1));
@@ -3832,6 +3884,20 @@ mod tests {
     async fn drime_versions_list_the_file_first_and_every_backup_page() {
         let (mut provider, _, _) = provider_on_drime_entries(&[(7, "a.txt", "", "file")]).await;
         let versions = provider.list_versions("/a.txt").await.expect("versions");
+        let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
+        assert_eq!(ids, [super::super::CURRENT_VERSION_ID, "5", "4"]);
+    }
+
+    /// A backups answer without `last_page` is paged by `total` over
+    /// `per_page`: the second page is asked for and its backup listed,
+    /// where a missing `last_page` ended the listing at the first page.
+    #[tokio::test]
+    async fn drime_backups_without_last_page_are_paged_by_their_total() {
+        let (mut provider, _, _) = provider_on_drime_entries(&[(7, "a.txt", "", "file")]).await;
+        BACKUPS_BY_TOTAL.with(|by_total| by_total.set(true));
+        let versions = provider.list_versions("/a.txt").await;
+        BACKUPS_BY_TOTAL.with(|by_total| by_total.set(false));
+        let versions = versions.expect("versions");
         let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
         assert_eq!(ids, [super::super::CURRENT_VERSION_ID, "5", "4"]);
     }

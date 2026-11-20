@@ -3859,6 +3859,14 @@ mod tests {
             matches!(&outcome, Err(e) if super::super::was_applied(e)),
             "{outcome:?}"
         );
+        // MCP decides from this very error whether to reload the credential
+        // and run the restore again: it keeps the session and runs nothing.
+        let Err(error) = &outcome else { unreachable!() };
+        assert_eq!(
+            crate::ai_core::mcp_impl::pooled_session_action(error),
+            crate::ai_core::mcp_impl::PooledSessionAction::KeepSession,
+            "{error}"
+        );
     }
 
     /// A nextLink on another origin is refused before any request: the

@@ -6503,53 +6503,74 @@ mod tests {
     /// or the parse category and position only: each answer echoes the
     /// request with its API key, in the body or in a wrongly typed value
     /// serde would quote, which reached both the log and the error before.
-    #[tokio::test]
-    async fn a_failed_folder_listing_logs_and_returns_no_body() {
-        #[derive(Clone, Default)]
-        struct Capture(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
-        impl std::io::Write for Capture {
-            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-                self.0.lock().unwrap().extend_from_slice(buf);
-                Ok(buf.len())
-            }
-            fn flush(&mut self) -> std::io::Result<()> {
-                Ok(())
-            }
+    #[test]
+    fn a_failed_folder_listing_logs_and_returns_no_body() {
+        // Alone in a child process: no other test's subscriber can
+        // decide these callsites' interest first.
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::filelu::tests::a_failed_folder_listing_logs_and_returns_no_body",
+        ) {
+            return;
         }
-        impl<'writer> tracing_subscriber::fmt::MakeWriter<'writer> for Capture {
-            type Writer = Capture;
-            fn make_writer(&'writer self) -> Self::Writer {
-                self.clone()
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+            #[derive(Clone, Default)]
+            struct Capture(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+            impl std::io::Write for Capture {
+                fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+                    self.0.lock().unwrap().extend_from_slice(buf);
+                    Ok(buf.len())
+                }
+                fn flush(&mut self) -> std::io::Result<()> {
+                    Ok(())
+                }
             }
-        }
-        // The legacy answer is JSON whose `size` is a string holding an echoed
-        // request URL: serde's own text would quote it.
-        let (mut provider, _) = provider_against(|_, path, _| match path {
-            "/apiv2/folder/list" => "!500 GET /apiv2/folder/list?key=ECHO-SECRET-1".to_string(),
-            _ => r#"{"status":200,"result":{"files":[{"name":"a","size":"GET /api/file/list?key=ECHO-SECRET-2"}],"folders":[{"name":"b","fld_id":"GET /api/folder/list?key=ECHO-SECRET-2"}]}}"#.to_string(),
-        })
-        .await;
-        let capture = Capture::default();
-        let subscriber = tracing_subscriber::fmt()
-            .with_max_level(tracing::Level::INFO)
-            .with_writer(capture.clone())
-            .finish();
-        let _guard = tracing::subscriber::set_default(subscriber);
-        // Another test thread can cache this callsite's interest while no
-        // subscriber of its own wants it: read it again for this one.
-        tracing::callsite::rebuild_interest_cache();
-        let outcome = provider.list("/").await;
-        let logged = String::from_utf8_lossy(&capture.0.lock().unwrap()).to_string();
-        let shown = format!("{outcome:?}");
-        assert!(logged.contains("falling back"), "{logged}");
-        assert!(
-            matches!(&outcome, Err(ProviderError::ParseError(m)) if m.contains("not shown")),
-            "{shown}"
-        );
-        for secret in ["ECHO-SECRET-1", "ECHO-SECRET-2"] {
-            assert!(!logged.contains(secret), "{logged}");
-            assert!(!shown.contains(secret), "{shown}");
-        }
+            impl<'writer> tracing_subscriber::fmt::MakeWriter<'writer> for Capture {
+                type Writer = Capture;
+                fn make_writer(&'writer self) -> Self::Writer {
+                    self.clone()
+                }
+            }
+            // The v2 failure as a refusal, as JSON whose string `status` echoes
+            // the request, and as JSON whose `size` does: none reaches the log
+            // or the error. The legacy answer is JSON whose `size` is a string
+            // holding an echoed request URL: serde's own text would quote it.
+            for v2 in [
+                "!500 GET /apiv2/folder/list?key=ECHO-SECRET-1",
+                r#"{"status":"GET /apiv2/folder/list?key=ECHO-SECRET-1","result":{}}"#,
+                r#"{"status":200,"result":{"files":[{"name":"a","size":"GET /apiv2/x?key=ECHO-SECRET-1"}],"folders":[]}}"#,
+            ] {
+                let (mut provider, _) = provider_against(move |_, path, _| match path {
+                    "/apiv2/folder/list" => v2.to_string(),
+                    _ => r#"{"status":200,"result":{"files":[{"name":"a","size":"GET /api/file/list?key=ECHO-SECRET-2"}],"folders":[{"name":"b","fld_id":"GET /api/folder/list?key=ECHO-SECRET-2"}]}}"#.to_string(),
+                })
+                .await;
+                let capture = Capture::default();
+                let subscriber = tracing_subscriber::fmt()
+                    .with_max_level(tracing::Level::INFO)
+                    .with_writer(capture.clone())
+                    .finish();
+                let _guard = tracing::subscriber::set_default(subscriber);
+                // Another test thread can cache this callsite's interest while no
+                // subscriber of its own wants it: read it again for this one.
+                tracing::callsite::rebuild_interest_cache();
+                let outcome = provider.list("/").await;
+                let logged = String::from_utf8_lossy(&capture.0.lock().unwrap()).to_string();
+                let shown = format!("{outcome:?}");
+                assert!(logged.contains("falling back"), "{logged}");
+                assert!(
+                    matches!(&outcome, Err(ProviderError::ParseError(m)) if m.contains("not shown")),
+                    "{shown}"
+                );
+                for secret in ["ECHO-SECRET-1", "ECHO-SECRET-2"] {
+                    assert!(!logged.contains(secret), "{logged}");
+                    assert!(!shown.contains(secret), "{shown}");
+                }
+            }
+            });
     }
 
     /// An API error's `msg` is server text that can quote the request, a

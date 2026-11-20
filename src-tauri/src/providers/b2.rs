@@ -757,15 +757,14 @@ impl B2Provider {
         let body_bytes = resp.bytes().await.map_http_err(|e| {
             ProviderError::ConnectionFailed(format!("authorize read body: {}", e))
         })?;
+        // The answer carries the account's token, under any spacing a mask
+        // could miss: the error names where the parse stopped and the size,
+        // never the body.
         let parsed: AuthorizeResponse = serde_json::from_slice(&body_bytes).map_err(|e| {
-            let preview = String::from_utf8_lossy(&body_bytes);
-            let masked = mask_authorize_secrets(&preview);
-            let truncated: String = masked.chars().take(800).collect();
             ProviderError::ServerError(format!(
-                "authorize parse: {} | body[{}B]: {}",
+                "authorize parse: {} | body of {} bytes not shown",
                 super::json_parse_error(&e),
-                body_bytes.len(),
-                truncated
+                body_bytes.len()
             ))
         })?;
         self.account_id = parsed.account_id;
@@ -4281,33 +4280,6 @@ impl StorageProvider for B2Provider {
 
 // ─── Helpers ───
 
-/// Diagnostic helper: masks the `authorizationToken` value in a JSON body so
-/// the rest of the response can be safely included in error messages without
-/// leaking the bearer token. Keeps the first 6 chars for triage.
-fn mask_authorize_secrets(body: &str) -> String {
-    let needle = "\"authorizationToken\":\"";
-    let Some(start) = body.find(needle) else {
-        return body.to_string();
-    };
-    let value_start = start + needle.len();
-    let Some(end_offset) = body[value_start..].find('"') else {
-        return body.to_string();
-    };
-    let value_end = value_start + end_offset;
-    let value = &body[value_start..value_end];
-    let head_len = value.floor_char_boundary(6);
-    let masked = format!(
-        "{}…<{}B redacted>",
-        &value[..head_len],
-        value.len() - head_len
-    );
-    let mut out = String::with_capacity(body.len());
-    out.push_str(&body[..value_start]);
-    out.push_str(&masked);
-    out.push_str(&body[value_end..]);
-    out
-}
-
 fn short(s: &str) -> String {
     if s.len() <= 8 {
         s.to_string()
@@ -6982,6 +6954,36 @@ mod tests {
         provider.bucket_id = "bucket".into();
         provider.connected = true;
         (provider, ops)
+    }
+
+    /// An authorize answer that does not parse carries the token, compact
+    /// or spaced: the error keeps where the parse stopped and the size, not
+    /// the body, where before a spaced token passed the mask.
+    #[tokio::test]
+    async fn an_unparsable_authorize_answer_does_not_show_its_body() {
+        for body in [
+            r#"{"authorizationToken":"4_secret-token-value","accountId":"acc"}"#,
+            r#"{ "authorizationToken" : "4_secret-token-value", "accountId" : "acc" }"#,
+        ] {
+            let app = axum::Router::new().fallback(axum::routing::get(move || async move { body }));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            let mut provider = empty_provider();
+            provider.authorize_url = format!("http://{addr}/b2api/v4/b2_authorize_account");
+            let refused = provider.authorize().await;
+            server.abort();
+            let Err(ProviderError::ServerError(message)) = refused else {
+                panic!("{refused:?}");
+            };
+            assert!(message.starts_with("authorize parse:"), "{message}");
+            assert!(
+                message.contains(&format!("{} bytes", body.len())),
+                "{message}"
+            );
+            assert!(!message.contains("secret-token"), "{message}");
+            assert!(!message.contains("acc\""), "{message}");
+        }
     }
 
     /// A B2 double holding `d/x.txt` and `other/keep.txt` whose listing of the

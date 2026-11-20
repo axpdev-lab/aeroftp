@@ -165,13 +165,15 @@ fn looks_like_auth_failure(msg: &str) -> bool {
 /// a write may already have reached the server. Every other failure,
 /// including a missing path and a permission error, leaves the entry in place.
 #[derive(Debug, PartialEq, Eq)]
-enum PooledSessionAction {
+pub(crate) enum PooledSessionAction {
     ReloadCredential,
     DropSession,
     KeepSession,
 }
 
-fn pooled_session_action(error: &crate::providers::ProviderError) -> PooledSessionAction {
+pub(crate) fn pooled_session_action(
+    error: &crate::providers::ProviderError,
+) -> PooledSessionAction {
     // An operation the server may already have applied is never run again,
     // whatever its text says: the auth-shaped words in it come from the read
     // that checks the outcome, not from a refusal of the operation.

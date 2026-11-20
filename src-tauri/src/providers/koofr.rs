@@ -1978,10 +1978,18 @@ impl StorageProvider for KoofrProvider {
             .await
             .map_err(|e| ProviderError::TransferFailed(format!("Create file failed: {}", e)))?;
 
+        // Koofr's hash is the MD5 of the content (live 2026-11-20: a 25-byte
+        // upload listed `c792...4049`, its md5sum): the bytes read are the
+        // listed row's only if their MD5 is its hash. The path read the same
+        // before and after the body can still have held another file while
+        // it was read (A, then B, then A again).
+        use md5::{Digest, Md5};
+        let mut digest = Md5::new();
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.map_http_err(|e| {
                 ProviderError::TransferFailed(format!("Stream error: {}", e.without_url()))
             })?;
+            digest.update(&chunk);
             atomic
                 .write_all(&chunk)
                 .await
@@ -1992,6 +2000,18 @@ impl StorageProvider for KoofrProvider {
             if koofr_file_state(&now) != listed {
                 // Dropped uncommitted: the destination stays as it was.
                 return Err(changed(&now));
+            }
+            let read = digest
+                .finalize()
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect::<String>();
+            let hash = listed.splitn(3, '.').nth(2).unwrap_or_default();
+            if !read.eq_ignore_ascii_case(hash) {
+                return Err(ProviderError::NotFound(format!(
+                    "{resolved} held another file while it was read (its bytes are not the \
+                     listed row's): nothing was saved, list its versions again"
+                )));
             }
         }
         atomic.commit().await.map_err(|e| {
@@ -2611,6 +2631,58 @@ mod tests {
             // Written after the listing: not even read.
             let expected_gets = if sizes.len() == 1 { 0 } else { 1 };
             assert_eq!(*gets.lock().unwrap(), expected_gets, "{sizes:?}");
+        }
+    }
+
+    /// The path holds the listed file before and after the body but another
+    /// one while it is read (A, B, A): the bytes are not the listed row's
+    /// (their MD5 is not its hash), so nothing is saved; the listed bytes
+    /// are saved.
+    #[tokio::test]
+    async fn a_current_row_whose_bytes_are_not_its_hash_saves_nothing() {
+        use md5::{Digest, Md5};
+        let listed_hash: String = Md5::digest(b"abcd")
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
+        for (served, saved) in [("wxyz", "before"), ("abcd", "abcd")] {
+            let hash = listed_hash.clone();
+            let app = axum::Router::new().fallback(axum::routing::any(
+                move |uri: axum::http::Uri| {
+                    let hash = hash.clone();
+                    async move {
+                        match uri.path() {
+                            "/mounts/M/files/info" => format!(
+                                r#"{{"name":"a.txt","type":"file","modified":1794841200000,"size":4,"hash":"{hash}"}}"#
+                            ),
+                            "/mounts/M/files/get" => served.to_string(),
+                            _ => String::new(),
+                        }
+                    }
+                },
+            ));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+            let mut provider = KoofrProvider::new(KoofrConfig {
+                email: "u@example.com".to_string(),
+                password: secrecy::SecretString::from("p".to_string()),
+                initial_path: None,
+            });
+            provider.connected = true;
+            provider.mount_id = "M".to_string();
+            provider.api_base_override = Some(format!("http://{addr}"));
+            provider.content_base_override = Some(format!("http://{addr}"));
+            let dir = tempfile::tempdir().unwrap();
+            let out = dir.path().join("a.txt");
+            std::fs::write(&out, "before").unwrap();
+            let id = format!("4.1794841200000.{listed_hash}:current");
+            let outcome = provider
+                .download_version("/a.txt", &id, out.to_str().unwrap())
+                .await;
+            server.abort();
+            assert_eq!(outcome.is_ok(), served == "abcd", "{served}: {outcome:?}");
+            assert_eq!(std::fs::read_to_string(&out).unwrap(), saved, "{served}");
         }
     }
 

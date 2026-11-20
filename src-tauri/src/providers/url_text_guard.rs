@@ -637,6 +637,7 @@ const S3_ERROR: &str = "a reqwest error on an S3 request URL, no secret by const
 const MEGACMD_OUTPUT: &str = "a MEGAcmd process error, its addresses cut to their origin";
 
 const REVIEWED_ERRORS: &[ReviewedError] = &[
+    ("providers/s3.rs", "restore_version", "be read ({e}): list its versions again before trying again\"", S3_ERROR),
     ("providers/s3.rs", "sts_client", ".map_err(|e| ProviderError::ConnectionFailed(format!(\"HTTP client init failed: {e}\")))", CLIENT_BUILD),
     ("providers/s3.rs", "new", ".map_err(|e| ProviderError::InvalidConfig(e.to_string()))?;", "a URL parse error of the endpoint, which has no query, fragment or userinfo by then"),
     ("providers/s3.rs", "new", "ProviderError::ConnectionFailed(format!(\"HTTP client init failed: {e}\"))", CLIENT_BUILD),

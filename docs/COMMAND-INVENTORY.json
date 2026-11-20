@@ -972,7 +972,7 @@
     ]
   },
   "parity": {
-    "name_matched_count": 475,
+    "name_matched_count": 476,
     "name_unmatched": [
       "app_ready",
       "set_close_to_tray",

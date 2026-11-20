@@ -1925,6 +1925,19 @@ impl WebDavProvider {
     /// the collection `base` (segments already normalised). Each segment is
     /// decoded on its own, so an escaped `/` (`%2F`) inside a name stays part
     /// of that name. The root is no segment at all.
+    /// The `host[:port]` an href names: after the scheme of an absolute
+    /// URL, or after the `//` of a network-path reference. None for a path.
+    fn href_authority(href: &str) -> Option<&str> {
+        let raw = href.split(['?', '#']).next().unwrap_or("");
+        let rest = if let Some(rest) = raw.strip_prefix("//") {
+            rest
+        } else {
+            let i = raw.find("://").filter(|i| !raw[..*i].contains('/'))?;
+            &raw[i + 3..]
+        };
+        Some(rest.split('/').next().unwrap_or(""))
+    }
+
     fn dav_path_segments(href: &str, base: &[String]) -> Vec<String> {
         let raw = href.split(['?', '#']).next().unwrap_or("");
         let has_authority =
@@ -3694,6 +3707,19 @@ impl WebDavProvider {
             .filter(|row| !row.file_id.is_empty());
         match (rows.next(), rows.next()) {
             (Some(row), None) => {
+                // An href naming a server (`//host/a.txt`, `https://host/...`)
+                // names that server's entry: only this one's is the file, and
+                // its path alone would match the relative listing path.
+                if let Some(authority) = Self::href_authority(&row.href) {
+                    let own = self.build_url(path);
+                    if !Self::href_authority(&own)
+                        .is_some_and(|mine| mine.eq_ignore_ascii_case(authority))
+                    {
+                        return Err(ProviderError::ServerError(format!(
+                            "The file id answer for {path} names an entry of another server"
+                        )));
+                    }
+                }
                 // The one row must be the file asked for: a lone row for
                 // `/other/a.txt` is not `/a.txt` (decoded segments, as in
                 // `nextcloud_list_file_ids`).
@@ -6759,7 +6785,7 @@ impl StorageProvider for WebDavProvider {
     ) -> Result<Vec<super::FileVersion>, ProviderError> {
         if super::mega_df::is_megacmd_webdav_provider_id(self.config.provider_id.as_deref()) {
             self.megacmd_versions_at_account_root()?;
-            return super::mega_df::mega_list_versions(path).await;
+            return super::mega_df::mega_list_versions(&self.resolve_root(path)).await;
         }
         if self.supports_nextcloud_versions() {
             self.require_connected()?;
@@ -6776,7 +6802,8 @@ impl StorageProvider for WebDavProvider {
     ) -> Result<(), ProviderError> {
         if super::mega_df::is_megacmd_webdav_provider_id(self.config.provider_id.as_deref()) {
             self.megacmd_versions_at_account_root()?;
-            return super::mega_df::mega_download_version(path, version_id, local_path).await;
+            let path = self.resolve_root(path);
+            return super::mega_df::mega_download_version(&path, version_id, local_path).await;
         }
         if self.supports_nextcloud_versions() {
             self.require_connected()?;
@@ -6790,7 +6817,8 @@ impl StorageProvider for WebDavProvider {
     async fn restore_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
         if super::mega_df::is_megacmd_webdav_provider_id(self.config.provider_id.as_deref()) {
             self.megacmd_versions_at_account_root()?;
-            return super::mega_df::mega_restore_version(path, version_id).await;
+            let path = self.resolve_root(path);
+            return super::mega_df::mega_restore_version(&path, version_id).await;
         }
         if self.supports_nextcloud_versions() {
             self.require_connected()?;
@@ -8909,6 +8937,13 @@ mod tests {
                             207,
                             r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns"><d:response><d:href>/remote.php/dav/files/user/n.txt</d:href><d:propstat><d:prop><oc:fileid>63</oc:fileid><d:getetag>&quot;n1&quot;</d:getetag><d:getcontentlength>3</d:getcontentlength><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>"#,
                         ),
+                        // h.txt (file 64): its file id row names another
+                        // server, `//elsewhere.example/h.txt`, whose path
+                        // alone matches the relative listing path.
+                        ("PROPFIND", "/remote.php/dav/files/user/h.txt") => reply(
+                            207,
+                            r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns"><d:response><d:href>//elsewhere.example/h.txt</d:href><d:propstat><d:prop><oc:fileid>64</oc:fileid><d:getetag>&quot;h1&quot;</d:getetag><d:getcontentlength>3</d:getcontentlength><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>"#,
+                        ),
                         ("PROPFIND", "/remote.php/dav/versions/user/versions/63/") => reply(
                             207,
                             r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:"><d:response><d:href>//remote.php/dav/versions/user/versions/63/1700000000</d:href><d:propstat><d:prop><d:getcontentlength>8</d:getcontentlength><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>"#,
@@ -9013,6 +9048,23 @@ mod tests {
             "{:?}",
             log.lock().unwrap()
         );
+    }
+
+    /// The file id answer for h.txt names `//elsewhere.example/h.txt`: an
+    /// entry of another server, refused before any version request, where
+    /// its path alone read as h.txt and its id was listed as h.txt's.
+    #[tokio::test]
+    async fn a_file_id_row_of_another_server_is_refused() {
+        let (base, log, server) = serve_nextcloud_versions().await;
+        let mut provider = nextcloud_versions_provider(&base);
+        let refused = provider.list_versions("/h.txt").await;
+        server.abort();
+        assert!(
+            matches!(&refused, Err(ProviderError::ServerError(m)) if m.contains("another server")),
+            "{refused:?}"
+        );
+        let log = log.lock().unwrap();
+        assert!(!log.iter().any(|l| l.contains("/versions/64")), "{log:?}");
     }
 
     /// The versions answer for d.txt (file id 46) also carries a row of
@@ -9579,6 +9631,45 @@ mod tests {
         }
         server.abort();
         assert!(log.lock().unwrap().is_empty());
+    }
+
+    /// A MEGAcmd bridge profile that starts in `/Team` reads `/report.pdf`
+    /// as `/Team/report.pdf`, as its WebDAV requests do: the versions are
+    /// listed, fetched and restored from that file, not from the account
+    /// root's `/report.pdf`. A path already under the start folder is kept.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn megacmd_versions_are_of_the_file_under_the_start_folder() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let ls = dir.path().join("mega-ls");
+        std::fs::write(
+            &ls,
+            "#!/bin/sh
+for a in \"$@\"; do last=\"$a\"; done
+echo \"$last\" >> \"$(dirname \"$0\")/ls.log\"
+exit 1
+",
+        )
+        .unwrap();
+        std::fs::set_permissions(&ls, std::fs::Permissions::from_mode(0o755)).unwrap();
+        super::super::mega_df::use_test_commands(Some(dir.path()));
+        let mut config = test_config("http://127.0.0.1:4443/H2");
+        config.provider_id = Some("megacmd-webdav".into());
+        let mut provider = WebDavProvider::new(config).unwrap();
+        provider.megacmd_serves_account_root = true;
+        provider.server_root = Some("/Team".into());
+        let out = dir.path().join("r.pdf");
+        let _ = provider.list_versions("/report.pdf").await;
+        let _ = provider.list_versions("/Team/report.pdf").await;
+        let _ = provider
+            .download_version("/report.pdf", "H:rAAAAAA1", out.to_str().unwrap())
+            .await;
+        let _ = provider.restore_version("/report.pdf", "H:rAAAAAA1").await;
+        super::super::mega_df::use_test_commands(None);
+        let asked = std::fs::read_to_string(dir.path().join("ls.log")).unwrap_or_default();
+        let asked: Vec<&str> = asked.lines().collect();
+        assert_eq!(asked, ["/Team/report.pdf"; 4], "{asked:?}");
     }
 
     /// The versions gate is the one the GUI, CLI and MCP read. It opens for

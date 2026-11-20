@@ -4363,33 +4363,39 @@ mod tests {
     /// `Timeout` a caller would retry into a second promotion.
     #[tokio::test]
     async fn a_box_promotion_that_times_out_is_applied_not_retried() {
+        let promotions = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counted = std::sync::Arc::clone(&promotions);
         let app = axum::Router::new().fallback(axum::routing::any(
-            |method: axum::http::Method, uri: axum::http::Uri| async move {
-                use axum::response::IntoResponse;
-                let version = |id: &str| {
-                    serde_json::json!({"type": "file_version", "id": id, "size": 2,
+            move |method: axum::http::Method, uri: axum::http::Uri| {
+                let counted = std::sync::Arc::clone(&counted);
+                async move {
+                    use axum::response::IntoResponse;
+                    let version = |id: &str| {
+                        serde_json::json!({"type": "file_version", "id": id, "size": 2,
                         "modified_at": "2026-01-02T00:00:00Z"})
-                };
-                match (method.as_str(), uri.path()) {
-                    ("GET", "/folders/0/items") => axum::Json(serde_json::json!({
-                        "entries": [{"type": "file", "id": "55", "name": "a.txt"}],
-                        "offset": 0, "limit": 1000, "total_count": 1
-                    }))
-                    .into_response(),
-                    ("GET", "/files/55") => axum::Json(serde_json::json!({
-                        "type": "file", "id": "55", "name": "a.txt", "size": 9,
-                        "modified_at": "2026-01-05T00:00:00Z", "file_version": {"id": "11"}
-                    }))
-                    .into_response(),
-                    ("GET", "/files/55/versions") => axum::Json(serde_json::json!({
-                        "entries": [version("12")], "offset": 0, "limit": 1000, "total_count": 1
-                    }))
-                    .into_response(),
-                    ("POST", "/files/55/versions/current") => {
-                        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
-                        axum::Json(version("14")).into_response()
+                    };
+                    match (method.as_str(), uri.path()) {
+                        ("GET", "/folders/0/items") => axum::Json(serde_json::json!({
+                            "entries": [{"type": "file", "id": "55", "name": "a.txt"}],
+                            "offset": 0, "limit": 1000, "total_count": 1
+                        }))
+                        .into_response(),
+                        ("GET", "/files/55") => axum::Json(serde_json::json!({
+                            "type": "file", "id": "55", "name": "a.txt", "size": 9,
+                            "modified_at": "2026-01-05T00:00:00Z", "file_version": {"id": "11"}
+                        }))
+                        .into_response(),
+                        ("GET", "/files/55/versions") => axum::Json(serde_json::json!({
+                            "entries": [version("12")], "offset": 0, "limit": 1000, "total_count": 1
+                        }))
+                        .into_response(),
+                        ("POST", "/files/55/versions/current") => {
+                            counted.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                            axum::Json(version("14")).into_response()
+                        }
+                        _ => axum::http::StatusCode::NOT_FOUND.into_response(),
                     }
-                    _ => axum::http::StatusCode::NOT_FOUND.into_response(),
                 }
             },
         ));
@@ -4407,6 +4413,8 @@ mod tests {
             outcome.as_ref().is_err_and(super::super::was_applied),
             "{outcome:?}"
         );
+        // One promotion, never sent again after its timeout.
+        assert_eq!(promotions.load(std::sync::atomic::Ordering::SeqCst), 1);
     }
 
     /// Box answers a promotion with the version it made: a restore is done

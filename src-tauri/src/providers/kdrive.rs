@@ -186,17 +186,22 @@ enum VersionsData {
 }
 
 impl VersionsPage {
-    /// The versions of the page, whether more follow, and the cursor to
-    /// them, from whichever shape the page has (the nested one first).
-    fn into_parts(self) -> (Vec<KDriveVersion>, Option<bool>, Option<String>) {
+    /// The versions of the page (None for a page without `data`), whether
+    /// more follow, and the cursor to them, from whichever shape the page
+    /// has (the nested one first).
+    fn into_parts(self) -> (Option<Vec<KDriveVersion>>, Option<bool>, Option<String>) {
         match self.data {
-            Some(VersionsData::Flat(data)) => (data, self.has_more, self.cursor),
+            Some(VersionsData::Flat(data)) => (Some(data), self.has_more, self.cursor),
             Some(VersionsData::Nested {
                 data,
                 has_more,
                 cursor,
-            }) => (data, has_more.or(self.has_more), cursor.or(self.cursor)),
-            None => (Vec::new(), self.has_more, self.cursor),
+            }) => (
+                Some(data),
+                has_more.or(self.has_more),
+                cursor.or(self.cursor),
+            ),
+            None => (None, self.has_more, self.cursor),
         }
     }
 }
@@ -2070,7 +2075,21 @@ impl StorageProvider for KDriveProvider {
                     super::json_parse_error(&e)
                 ))
             })?;
+            // A page without its versions is no page, and a page after the
+            // first that does not say whether more follow cannot end the
+            // listing: either would list the versions read so far as all.
+            let continuation = cursor.is_some();
             let (data, has_more, next) = page.into_parts();
+            let Some(data) = data else {
+                return Err(ProviderError::ParseError(
+                    "kDrive versions page came without its versions".into(),
+                ));
+            };
+            if continuation && has_more.is_none() {
+                return Err(ProviderError::ParseError(
+                    "kDrive versions page did not say whether more follow".into(),
+                ));
+            }
             listed.extend(data);
             match (has_more, next) {
                 (Some(true), Some(next)) if !next.is_empty() && seen.insert(next.clone()) => {
@@ -2558,6 +2577,7 @@ mod tests {
         ] {
             let page: super::VersionsPage = serde_json::from_str(&body).expect(&body);
             let (data, has_more, cursor) = page.into_parts();
+            let data = data.expect(&body);
             assert_eq!(data.len(), 1, "{body}");
             assert_eq!(data[0].id, 7);
             assert_eq!(has_more, Some(true), "{body}");
@@ -3381,6 +3401,66 @@ mod tests {
                 .any(|l| l == "POST /3/drive/987654/files/11/versions/2/restore"),
             "{seen:?}"
         );
+    }
+
+    /// A second versions page with no `data`, or with no `has_more`, is
+    /// not the end of the listing: the listing is refused, where before
+    /// `{}` ended it with the first page's versions shown as all of them.
+    #[tokio::test]
+    async fn a_continuation_page_without_its_versions_or_its_end_is_refused() {
+        use axum::response::IntoResponse;
+        use std::sync::{Arc, Mutex};
+        for second in [
+            serde_json::json!({}),
+            serde_json::json!({ "result": "success",
+                "data": [{ "id": 2, "file_id": 11, "size": 2, "created_at": 1_700_000_200 }] }),
+        ] {
+            let seen: Arc<Mutex<Vec<String>>> = Arc::default();
+            let log = Arc::clone(&seen);
+            let app = axum::Router::new().fallback(axum::routing::any(
+                move |method: axum::http::Method, uri: axum::http::Uri| {
+                    let (log, second) = (Arc::clone(&log), second.clone());
+                    async move {
+                        let target = uri.to_string();
+                        log.lock().unwrap().push(format!("{method} {target}"));
+                        let file = serde_json::json!({ "id": 11, "name": "a.txt",
+                            "type": "file", "size": 4, "last_modified_at": 1_700_000_500 });
+                        let body = match (method.as_str(), target.as_str()) {
+                            ("GET", "/3/drive/987654/files/1/files") => {
+                                serde_json::json!({ "result": "success", "data": [file] })
+                            }
+                            ("GET", "/3/drive/987654/files/11") => {
+                                serde_json::json!({ "result": "success", "data": file })
+                            }
+                            ("GET", "/3/drive/987654/files/11/versions") => serde_json::json!({
+                                "result": "success",
+                                "data": [{ "id": 3, "file_id": 11, "size": 3, "created_at": 1_700_000_300 }],
+                                "has_more": true, "cursor": "c2" }),
+                            ("GET", "/3/drive/987654/files/11/versions?cursor=c2") => second,
+                            _ => return axum::http::StatusCode::NOT_FOUND.into_response(),
+                        };
+                        axum::Json(body).into_response()
+                    }
+                },
+            ));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+            let mut provider = test_provider();
+            provider.connected = true;
+            provider.api_base_override = Some(format!("http://{addr}"));
+            let listed = provider.list_versions("/a.txt").await;
+            server.abort();
+            assert!(
+                matches!(listed, Err(ProviderError::ParseError(_))),
+                "{listed:?}"
+            );
+            let seen = seen.lock().unwrap();
+            assert!(
+                seen.iter().any(|l| l.ends_with("versions?cursor=c2")),
+                "{seen:?}"
+            );
+        }
     }
 
     /// A versions listing that still names a new page at the page limit is

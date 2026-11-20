@@ -8702,7 +8702,15 @@ impl StorageProvider for S3Provider {
                     .and_then(|v| v.to_str().ok())
                     .map(str::to_string);
                 let status = response.status();
-                let body = super::version_listing_text(response).await?;
+                // The copy was answered: an answer that cannot be read may
+                // come after S3 made the copy, so it is not a plain failure
+                // a caller would send again.
+                let body = super::version_listing_text(response).await.map_err(|e| {
+                    super::applied_unconfirmed(format!(
+                        "the restore of {path} was answered {status}, but its answer could not \
+                         be read ({e}): list its versions again before trying again"
+                    ))
+                })?;
                 if let Some(failure) = copy_answer_error(&body, &self.sent_secrets()) {
                     return Err(ProviderError::ServerError(format!(
                         "Restore version failed ({status}): {failure}"
@@ -9778,6 +9786,14 @@ fn copy_answer_error(body: &str, sent: &SentSecrets) -> Option<String> {
                     }
                 }
             }
+            // A CDATA section is text of the element as well: dropped, the
+            // text around it would join into a token the check misses
+            // (`abc<![CDATA[+]]>def` read as `abcdef`).
+            Ok(Event::CData(data)) => match field.as_deref() {
+                Some("Code") => code.push_str(&data),
+                Some("Message") => message.push_str(&data),
+                _ => {}
+            },
             Ok(Event::End(_)) => {
                 depth = depth.saturating_sub(1);
                 field = None;
@@ -13957,6 +13973,8 @@ mod tests {
         copy_answer: Option<(&'static str, &'static str)>,
         /// ListObjectVersions answers a chunked body larger than the cap.
         versions_oversized: bool,
+        /// A copy's 200 answer breaks off after its first bytes.
+        copy_answer_breaks: bool,
     }
 
     impl Default for TigrisDoubleConfig {
@@ -13969,6 +13987,7 @@ mod tests {
                 versions_after_copy: None,
                 copy_answer: None,
                 versions_oversized: false,
+                copy_answer_breaks: false,
             }
         }
     }
@@ -14198,6 +14217,18 @@ mod tests {
                             store.insert(key, data);
                             if headers.contains_key("x-amz-copy-source") {
                                 copied.store(true, std::sync::atomic::Ordering::SeqCst);
+                                if config.copy_answer_breaks {
+                                    let parts = [
+                                        Ok(axum::body::Bytes::from_static(b"<CopyObjectResult>")),
+                                        Err(std::io::Error::other("cut")),
+                                    ];
+                                    return axum::response::Response::builder()
+                                        .status(200)
+                                        .body(axum::body::Body::from_stream(
+                                            futures_util::stream::iter(parts),
+                                        ))
+                                        .unwrap();
+                                }
                                 if let Some((version, answer)) = config.copy_answer {
                                     let named: Vec<(&str, String)> = if version.is_empty() {
                                         Vec::new()
@@ -16186,10 +16217,20 @@ mod tests {
     #[test]
     fn a_copy_error_that_encodes_a_sent_token_is_withheld() {
         let sent = SentSecrets::of(&["SESSIONabc+defTOKEN"]);
-        let body = "<Error><Code>AccessDenied</Code><Message>token SESSIONabc&#43;defTOKEN refused</Message></Error>";
-        let shown = copy_answer_error(body, &sent).expect("an Error root is a failure");
-        assert!(!shown.contains("SESSIONabc"), "{shown}");
-        assert!(!shown.contains("defTOKEN"), "{shown}");
+        // The token written plainly, as a character reference, and split by
+        // a CDATA section: each is the token, withheld.
+        for token in [
+            "SESSIONabc+defTOKEN",
+            "SESSIONabc&#43;defTOKEN",
+            "SESSIONabc<![CDATA[+]]>defTOKEN",
+        ] {
+            let body = format!(
+                "<Error><Code>AccessDenied</Code><Message>token {token} refused</Message></Error>"
+            );
+            let shown = copy_answer_error(&body, &sent).expect("an Error root is a failure");
+            assert!(!shown.contains("SESSIONabc"), "{token}: {shown}");
+            assert!(!shown.contains("defTOKEN"), "{token}: {shown}");
+        }
         let plain = "<Error><Code>Slow&#68;own</Code><Message>try again</Message></Error>";
         let shown = copy_answer_error(plain, &sent).expect("an Error root is a failure");
         assert!(shown.starts_with("SlowDown - try again"), "{shown}");
@@ -16349,6 +16390,28 @@ mod tests {
                 "{status}"
             );
         }
+    }
+
+    /// A copy answered 200 whose answer breaks off may have restored the
+    /// version: the restore is applied, not confirmed, with the listing to
+    /// read before another try, where before it was a plain failure.
+    #[tokio::test]
+    async fn a_restore_whose_answer_breaks_off_is_applied_not_confirmed() {
+        let config = TigrisDoubleConfig {
+            versions_denied: Some(403),
+            copy_answer_breaks: true,
+            ..Default::default()
+        };
+        let (mut provider, _, _log) = tigris_double(&[("docs/a.txt", "A")], config).await;
+        let restored = provider.restore_version("/docs/a.txt", "v2").await;
+        let Err(error) = restored else {
+            panic!("{restored:?}");
+        };
+        assert!(super::super::was_applied(&error), "{error:?}");
+        assert!(
+            error.to_string().contains("list its versions again"),
+            "{error}"
+        );
     }
 
     #[tokio::test]

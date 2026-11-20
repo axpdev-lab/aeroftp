@@ -2598,33 +2598,26 @@ fn child_appeared(child: &str) -> ProviderError {
     ))
 }
 
-/// `staged` published at `target` only while nothing is there. A hard link
-/// creates only an absent name, atomically, and the staging name then goes;
-/// where links are not supported, the name is created exclusively first and
-/// the file renamed over that empty placeholder of its own.
+/// `staged` published at `target` only while nothing is there, in one step
+/// ([`crate::rename_no_replace`]: a no-replace rename, else a hard link). A
+/// volume with neither (FAT, exFAT) is refused: the only way left would be a
+/// placeholder then a rename over it, and another program could save to
+/// that visible name in between and lose its file.
 fn publish_without_replacing(staged: &Path, target: &Path) -> Result<(), ProviderError> {
-    let taken = |e: std::io::Error| {
+    crate::rename_no_replace(staged, target).map_err(|e| {
         if e.kind() == std::io::ErrorKind::AlreadyExists {
             child_appeared(&target.to_string_lossy())
+        } else if crate::is_no_replace_unavailable(&e) {
+            ProviderError::NotSupported(format!(
+                "{}: this volume can neither rename without replacing nor make hard links, so \
+                 the file was not saved into the folder: choose a file name, or a folder on \
+                 another volume",
+                target.display()
+            ))
         } else {
             ProviderError::IoError(e)
         }
-    };
-    match std::fs::hard_link(staged, target) {
-        Ok(()) => {
-            let _ = std::fs::remove_file(staged);
-            Ok(())
-        }
-        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Err(taken(e)),
-        Err(_) => {
-            std::fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(target)
-                .map_err(taken)?;
-            std::fs::rename(staged, target).map_err(ProviderError::IoError)
-        }
-    }
+    })
 }
 
 /// The components of a path, with `.` dropped and `..` taking back the one
@@ -4497,6 +4490,7 @@ Versions of z.txt:
     /// folder, which MEGAcmd 2.6 lists with no header line, is downloaded
     /// as a folder into an existing folder of its name, and a file there is
     /// still a file.
+    #[cfg(unix)]
     #[tokio::test]
     async fn a_folder_listed_without_a_header_is_still_a_folder() {
         let (mut provider, dir) = provider_with_stand_in_versions();
@@ -4521,8 +4515,40 @@ Versions of z.txt:
         );
     }
 
+    /// The publication into a folder is one atomic step or none: on a
+    /// volume with neither a no-replace rename nor hard links it is refused
+    /// and leaves no placeholder at the name; a taken name is refused with
+    /// what is there kept; a free one gets the file.
+    #[cfg(not(windows))]
+    #[test]
+    fn a_folder_publication_is_atomic_or_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let staged = dir.path().join("staged");
+        let target = dir.path().join("f.dat");
+        std::fs::write(&staged, "new").unwrap();
+        crate::NEITHER_NO_REPLACE_NOR_LINK.with(|neither| neither.set(true));
+        let refused = super::publish_without_replacing(&staged, &target);
+        crate::NEITHER_NO_REPLACE_NOR_LINK.with(|neither| neither.set(false));
+        assert!(
+            matches!(&refused, Err(ProviderError::NotSupported(_))),
+            "{refused:?}"
+        );
+        assert!(!target.exists(), "a placeholder was left at the name");
+        std::fs::write(&target, "theirs").unwrap();
+        let taken = super::publish_without_replacing(&staged, &target);
+        assert!(
+            matches!(&taken, Err(ProviderError::AlreadyExists(_))),
+            "{taken:?}"
+        );
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "theirs");
+        std::fs::remove_file(&target).unwrap();
+        super::publish_without_replacing(&staged, &target).expect("a free name");
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "new");
+    }
+
     /// A child made in the folder target after its check is someone
     /// else's: the staged download is not published over it.
+    #[cfg(unix)]
     #[tokio::test]
     async fn a_child_made_after_the_check_is_not_replaced() {
         let (mut provider, _dir) = provider_with_stand_in_versions();
@@ -4545,9 +4571,67 @@ Versions of z.txt:
         assert_eq!(left.len(), 1, "a staging file was left: {left:?}");
     }
 
+    /// The late child in in-place mode, where the download is not staged:
+    /// a child made in the folder target after its check is refused before
+    /// any removal or mega-get, its bytes kept. In-place mode is process
+    /// wide, so this runs in a child process of the test binary.
+    #[cfg(unix)]
+    #[test]
+    fn a_child_made_after_the_check_is_not_replaced_in_place() {
+        const CHILD: &str = "AEROFTP_TEST_MEGA_LATE_CHILD_INPLACE_CHILD";
+        let Some(marker) = std::env::var_os(CHILD) else {
+            let directory = tempfile::tempdir().unwrap();
+            let marker = directory.path().join("child-finished");
+            let name = concat!(
+                module_path!(),
+                "::a_child_made_after_the_check_is_not_replaced_in_place"
+            );
+            let name = name.split_once("::").map_or(name, |(_, rest)| rest);
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", name, "--test-threads=1"])
+                .env(CHILD, &marker)
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{}\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert!(marker.exists(), "the in-place child ran no test");
+            return;
+        };
+        super::super::atomic_write::set_inplace_mode(true);
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+                let (mut provider, dir) = provider_with_stand_in_versions();
+                let local = tempfile::tempdir().expect("tempdir");
+                provider.test_after_target_check = Some(std::sync::Arc::new(|child: &Path| {
+                    std::fs::write(child, b"editor").unwrap();
+                }));
+                let outcome = provider
+                    .download("/f.dat", local.path().to_str().unwrap(), None)
+                    .await;
+                assert!(
+                    matches!(&outcome, Err(ProviderError::AlreadyExists(_))),
+                    "{outcome:?}"
+                );
+                assert_eq!(
+                    std::fs::read(local.path().join("f.dat")).unwrap(),
+                    b"editor"
+                );
+                assert!(stand_in_log(&dir, "get.log").is_empty());
+            });
+        std::fs::write(marker, b"").unwrap();
+    }
+
     /// A folder downloaded into an existing folder is a transfer: it runs as
     /// long as mega-get keeps writing progress, past the fixed limit of a
     /// command, where before it was cut after that limit.
+    #[cfg(unix)]
     #[tokio::test]
     async fn a_folder_download_is_cut_by_silence_not_by_the_command_limit() {
         let (mut provider, dir) = provider_with_stand_in_versions();

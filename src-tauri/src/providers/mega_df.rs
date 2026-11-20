@@ -28,6 +28,12 @@ thread_local! {
         const { std::cell::RefCell::new(None) };
 }
 
+/// Run this thread's MEGAcmd commands from `dir` (None: as installed).
+#[cfg(test)]
+pub(crate) fn use_test_commands(dir: Option<&std::path::Path>) {
+    TEST_CMD_DIR.with(|cmd_dir| *cmd_dir.borrow_mut() = dir.map(std::path::Path::to_path_buf));
+}
+
 /// Resolve MEGAcmd executable path (checks PATH and common install locations).
 pub(crate) fn resolve_mega_cmd(cmd: &str) -> String {
     #[cfg(test)]

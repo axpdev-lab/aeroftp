@@ -138,6 +138,21 @@ const TEAM_FOLDER_PAGE_LIMIT: usize = 50;
 /// The pages of team folders read before the listing is given up.
 const TEAM_FOLDER_MAX_PAGES: usize = 200;
 
+/// A team folders or workspaces answer that says the listing is not offered
+/// to this account (absent, not allowed for it, not implemented): only such
+/// an answer lets discovery fall back or end with no team folders. A rate
+/// limit, a token refused, a server error is no answer.
+fn team_listing_not_offered(status: reqwest::StatusCode) -> bool {
+    matches!(
+        status,
+        reqwest::StatusCode::FORBIDDEN
+            | reqwest::StatusCode::NOT_FOUND
+            | reqwest::StatusCode::METHOD_NOT_ALLOWED
+            | reqwest::StatusCode::GONE
+            | reqwest::StatusCode::NOT_IMPLEMENTED
+    )
+}
+
 /// One page of a folder listing, with the cursor to the next page.
 #[derive(Debug, Deserialize)]
 struct FolderPage {
@@ -2131,6 +2146,29 @@ impl ZohoWorkdriveProvider {
         }
     }
 
+    /// When the team folders were never read whole, read them again: true
+    /// once they are read (or the account has no team listing at all),
+    /// false while they stay unread.
+    async fn reread_team_folders_if_unread(&mut self) -> bool {
+        if !self.team_folders_unread {
+            return true;
+        }
+        let Some(team) = self.team_id.clone() else {
+            return false;
+        };
+        match self.fetch_team_folders(&team).await {
+            Ok(Some((source, found))) => {
+                self.keep_team_folders(source, found);
+                true
+            }
+            Ok(None) => {
+                self.team_folders_unread = false;
+                true
+            }
+            Err(TeamFoldersUnread) => false,
+        }
+    }
+
     /// Keep `found` (from `source`) as the team folders, in place of the
     /// ones kept before, whose cached root paths go with them.
     fn keep_team_folders(&mut self, source: TeamFolderSource, found: Vec<(String, String)>) {
@@ -2223,16 +2261,19 @@ impl ZohoWorkdriveProvider {
                     );
                     return Err(TeamFoldersUnread);
                 }
-                // A refusal of the first page: the listing is not offered
-                // here, the workspaces may be. A server error or a body that
-                // broke off is no answer.
-                None if status.is_success() || status.is_server_error() => {
-                    info!("Zoho WorkDrive: team folders page 1 unread ({status})");
-                    return Err(TeamFoldersUnread);
+                // A first page the server does not offer: the workspaces
+                // may be. A rate limit, an authorization that failed, a
+                // server error or a body that broke off is no answer.
+                None if team_listing_not_offered(status) => {
+                    debug!("Zoho WorkDrive teamfolders not offered ({status})");
+                    break;
                 }
                 None => {
-                    debug!("Zoho WorkDrive teamfolders failed ({status})");
-                    break;
+                    info!(
+                        "Zoho WorkDrive: team folders page {} unread ({status})",
+                        page + 1
+                    );
+                    return Err(TeamFoldersUnread);
                 }
             };
             read += body.len() as u64;
@@ -2242,11 +2283,10 @@ impl ZohoWorkdriveProvider {
             }
             let Ok(tfs) = serde_json::from_str::<JsonApiListResponse<TeamFolderResource>>(&body)
             else {
-                if page > 0 {
-                    info!("Zoho WorkDrive: team folders page {} unparsable", page + 1);
-                    return Err(TeamFoldersUnread);
-                }
-                break;
+                // An answer that does not parse is no answer, on the first
+                // page as on any other: it is not an empty team.
+                info!("Zoho WorkDrive: team folders page {} unparsable", page + 1);
+                return Err(TeamFoldersUnread);
             };
             let count = tfs.data.len();
             for tf in tfs.data {
@@ -2308,7 +2348,7 @@ impl ZohoWorkdriveProvider {
             let status = resp.status();
             if !status.is_success() {
                 debug!("Zoho WorkDrive workspaces failed ({status})");
-                if seen.is_empty() && status.is_client_error() {
+                if seen.is_empty() && team_listing_not_offered(status) {
                     return Ok(None);
                 }
                 return Err(TeamFoldersUnread);
@@ -2654,10 +2694,11 @@ impl ZohoWorkdriveProvider {
     }
 
     /// List root directory: team folders (as directories) + privatespace files
-    async fn list_root(&self) -> Result<Vec<RemoteEntry>, ProviderError> {
+    async fn list_root(&mut self) -> Result<Vec<RemoteEntry>, ProviderError> {
         // Without the team folders the root listing is not the root: a
-        // caller would read every team folder as gone.
-        if self.team_folders_unread {
+        // caller would read every team folder as gone. A discovery that
+        // failed before is tried again first, so a refresh recovers.
+        if !self.reread_team_folders_if_unread().await {
             return Err(ProviderError::ServerError(
                 "The team folders could not be read, so the root listing would be incomplete: \
                  try again"
@@ -3138,6 +3179,9 @@ impl ZohoWorkdriveProvider {
 
         let parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
         let team = self.confirmed_team_folder(parts[0]).await?;
+        let was_cached = self
+            .folder_cache
+            .contains_key(&format!("/{}", parts.join("/")));
         if let Some(id) = self
             .confirmed_cached_folder(&parts, team.as_deref())
             .await?
@@ -3148,6 +3192,13 @@ impl ZohoWorkdriveProvider {
                 alias_derived: false,
             });
         }
+        // The team folder was confirmed before the cached ids were read, and
+        // can have been renamed while they were: when they were read and not
+        // confirmed, it is confirmed again before the walk starts in it.
+        let team = match team {
+            Some(_) if was_cached => self.confirmed_team_folder(parts[0]).await?,
+            team => team,
+        };
         // First component: check team folders by name, then privatespace contents
         let first = parts[0];
         let mut current_path = format!("/{}", first);
@@ -3257,13 +3308,8 @@ impl ZohoWorkdriveProvider {
                      from a team folder: nothing was done, try again"
                 ))
             };
-            let Some(team) = self.team_id.clone() else {
+            if !self.reread_team_folders_if_unread().await {
                 return Err(unread());
-            };
-            match self.fetch_team_folders(&team).await {
-                Ok(Some((source, found))) => self.keep_team_folders(source, found),
-                Ok(None) => self.team_folders_unread = false,
-                Err(TeamFoldersUnread) => return Err(unread()),
             }
             return match named(self) {
                 None => Ok(None),
@@ -3331,11 +3377,12 @@ impl ZohoWorkdriveProvider {
     /// its parent the folder cached above it (the private space for the
     /// first, a team folder being found by its discovered name). Top down,
     /// so a parent confirmed after its child cannot stand in for a child
-    /// moved meanwhile, and then the folders above the leaf again, so a
-    /// parent moved after its own read is seen too. What remains is the
-    /// time between the last read and the request that uses it, which
-    /// WorkDrive cannot close: its trash and move take no precondition on
-    /// the parent, so this narrows that race and does not end it. One request
+    /// moved meanwhile, and then the folders above the leaf again (a team
+    /// folder by its name), so a parent moved or renamed after its own read
+    /// is seen too. What remains is a folder moved after its own last read,
+    /// while the reads after it run or before the request that uses them,
+    /// which WorkDrive cannot close: its trash and move take no precondition
+    /// on the parent, so this narrows that race and does not end it. One request
     /// a folder and no listing, so the listings of a folder keep their
     /// window for listings. `None` when a folder on the way is not cached;
     /// when one is not where the cache has it, the ids on the way are
@@ -3422,6 +3469,11 @@ impl ZohoWorkdriveProvider {
                 in_place = false;
                 break;
             }
+        }
+        // The team folder was confirmed before the folders below it: read
+        // after the leaf, a rename meanwhile is seen as for any parent.
+        if in_place && team.is_some() && ids.len() > 1 {
+            in_place = self.team_folder_is(&ids[0], parts[0]).await?;
         }
         if in_place {
             return Ok(ids.pop());
@@ -4605,10 +4657,13 @@ impl StorageProvider for ZohoWorkdriveProvider {
             ProviderError::Other(format!("Read response: {}", e.without_url()))
         })?;
 
+        // The answer carries the link, and can echo the password sent:
+        // the log records its status and size, never its text.
         if !status.is_success() {
             info!(
-                "Zoho WorkDrive create share link failed: {} - {}",
-                status, resp_text
+                "Zoho WorkDrive create share link failed: {} ({} bytes)",
+                status,
+                resp_text.len()
             );
             return Err(ProviderError::Other(format!(
                 "Create share link failed: {} - {}",
@@ -4617,7 +4672,11 @@ impl StorageProvider for ZohoWorkdriveProvider {
             )));
         }
 
-        debug!("Zoho WorkDrive create share link response: {}", resp_text);
+        debug!(
+            "Zoho WorkDrive create share link answered {} ({} bytes)",
+            status,
+            resp_text.len()
+        );
 
         // Parse response to extract the link URL
         // Response shape: { "data": { "attributes": { "link": "https://..." } } }
@@ -4638,7 +4697,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
                 ))
             })?;
 
-        info!("Zoho WorkDrive share link created: {}", link);
+        info!("Zoho WorkDrive share link created for resource {}", file.id);
         Ok(ShareLinkResult {
             url: link.to_string(),
             password: None,
@@ -6000,6 +6059,7 @@ mod tests {
         PLACED.with(|placed| placed.borrow_mut().clear());
         READ_BY_ID.with(|read| read.borrow_mut().clear());
         MOVE_ON_READ.with(|hook| *hook.borrow_mut() = None);
+        RENAME_ON_READ.with(|hook| *hook.borrow_mut() = None);
         let requests: Requests = Default::default();
         let seen = requests.clone();
         let app = axum::Router::new().fallback(axum::routing::any(
@@ -6065,6 +6125,10 @@ mod tests {
         /// (the folder read, the folder moved, its new parent).
         static MOVE_ON_READ: std::cell::RefCell<Option<(String, String, String)>> =
             std::cell::RefCell::default();
+        /// Another client's rename the stand-in makes once a folder is read:
+        /// (the folder read, the folder renamed, its new name).
+        static RENAME_ON_READ: std::cell::RefCell<Option<(String, String, String)>> =
+            std::cell::RefCell::default();
     }
 
     /// The stand-in's answer to `GET /files/{id}`: the folder where it is,
@@ -6078,6 +6142,15 @@ mod tests {
             PLACED.with(|placed| {
                 if let Some(entry) = placed.borrow_mut().get_mut(&moved) {
                     entry.1 = to;
+                }
+            });
+        }
+        if let Some((_, renamed, name)) =
+            RENAME_ON_READ.with(|hook| hook.borrow().clone().filter(|(read, _, _)| read == id))
+        {
+            PLACED.with(|placed| {
+                if let Some(entry) = placed.borrow_mut().get_mut(&renamed) {
+                    entry.0 = name;
                 }
             });
         }
@@ -8363,6 +8436,46 @@ mod tests {
         assert_eq!(listings_of(&requests, "B"), 0, "the moved b was listed");
     }
 
+    /// The team folder `Team` renamed by another client while its child `b`
+    /// is read back: the team folder is read again after the leaf, and the
+    /// file under the renamed folder is not trashed, where before the team
+    /// folder was confirmed only before its children.
+    #[tokio::test]
+    async fn a_delete_under_a_team_folder_renamed_during_the_reads_is_not_acted_in() {
+        let (mut p, requests, server) = listing_fixture(|id, query, _| {
+            let body = match id {
+                "TEAM" if query.contains("page%5Boffset%5D=0") => {
+                    let name = PLACED
+                        .with(|placed| placed.borrow().get("T1").map(|(name, _)| name.clone()));
+                    serde_json::json!({ "data": [{ "id": "T1",
+                        "attributes": { "name": name.unwrap_or_else(|| "Team".into()) } }] })
+                    .to_string()
+                }
+                "TEAM" => r#"{"data":[]}"#.to_string(),
+                "T1" => listing_json(&[("B", "b", true)], Some((false, None))),
+                "B" => listing_json(&[("F1", "f.txt", false)], Some((false, None))),
+                _ => listing_json(&[], Some((false, None))),
+            };
+            (200, vec![], body)
+        })
+        .await;
+        p.privatespace_id = Some("ROOT".into());
+        p.team_id = Some("TEAM".into());
+        p.discover_team_folders("TEAM").await;
+        cache_folder(&mut p, "/Team", "T1");
+        cache_folder(&mut p, "/Team/b", "B");
+        RENAME_ON_READ
+            .with(|hook| *hook.borrow_mut() = Some(("B".into(), "T1".into(), "Team-old".into())));
+        let deleted = p.delete("/Team/b/f.txt").await;
+        server.abort();
+        assert!(deleted.is_err(), "{deleted:?}");
+        let requests = requests.lock().unwrap();
+        assert!(
+            !requests.iter().any(|(id, _)| id.starts_with("PATCH")),
+            "{requests:?}"
+        );
+    }
+
     /// `a` itself moved to the archive by another client while its child
     /// `b` was read back: `b` still names `a` as its parent, so only the
     /// read of `a` after `b` shows the move, and the path is walked to the
@@ -8555,7 +8668,8 @@ mod tests {
     /// At connect, a team folders listing whose second page fails is not an
     /// empty team: the private `Docs` of a team folder's name is not acted
     /// in, and the root is not listed without the team folders, until a
-    /// whole listing answers.
+    /// whole listing answers; a refresh of the root then reads them again
+    /// and lists them, with no other path resolved first.
     #[tokio::test]
     async fn an_initial_discovery_cut_short_refuses_the_private_fallback() {
         use std::sync::atomic::{AtomicBool, Ordering};
@@ -8598,9 +8712,185 @@ mod tests {
         let root = p.list("/").await;
         assert!(root.is_err(), "{root:?}");
         fail.store(false, Ordering::SeqCst);
+        let root = p
+            .list("/")
+            .await
+            .expect("the root once the team folders answer");
+        assert!(
+            root.iter().any(|e| e.name == "Docs"
+                && e.metadata.get("id").map(String::as_str) == Some("T2")),
+            "{root:?}"
+        );
         let found = p.resolve_path("/Docs").await;
         server.abort();
         assert_eq!(found.unwrap(), "T2");
+    }
+
+    /// A first team folders page that is rate limited, refused for its
+    /// token, a server error or unparsable is no answer: discovery stays
+    /// unread and the private `Docs/f.txt` of a team folder's name is not
+    /// trashed, where before a 429 or an unparsable page fell back to the
+    /// workspaces and, with those rate limited too, to an empty team.
+    #[tokio::test]
+    async fn a_first_team_folders_page_without_an_answer_keeps_the_team_unread() {
+        for (status, body) in [(429, ""), (401, ""), (502, ""), (200, "not json")] {
+            let (mut p, requests, server) = listing_fixture(move |id, query, _| match id {
+                "TEAM" if query.contains("page%5Boffset") => (status, vec![], body.to_string()),
+                "TEAM" => (429, vec![], String::new()),
+                "ROOT" => (
+                    200,
+                    vec![],
+                    listing_json(&[("P1", "Docs", true)], Some((false, None))),
+                ),
+                "P1" => (
+                    200,
+                    vec![],
+                    listing_json(&[("F1", "f.txt", false)], Some((false, None))),
+                ),
+                _ => (200, vec![], listing_json(&[], Some((false, None)))),
+            })
+            .await;
+            p.privatespace_id = Some("ROOT".into());
+            p.team_id = Some("TEAM".into());
+            p.discover_team_folders("TEAM").await;
+            let deleted = p.delete("/Docs/f.txt").await;
+            server.abort();
+            assert!(deleted.is_err(), "{status}: {deleted:?}");
+            let requests = requests.lock().unwrap();
+            assert!(
+                !requests.iter().any(|(id, _)| id.starts_with("PATCH")),
+                "{status}: {requests:?}"
+            );
+            assert!(
+                !requests.iter().any(|(id, q)| id == "TEAM" && q.is_empty()),
+                "{status}: the workspaces were read: {requests:?}"
+            );
+        }
+    }
+
+    /// A request that gets no answer reports the transport failure without
+    /// its URL, which names the team: the error a caller shows or logs
+    /// carries neither the server nor the path.
+    #[tokio::test]
+    async fn a_request_without_an_answer_does_not_name_its_url() {
+        let (mut p, _requests, server) =
+            listing_fixture(|_, _, _| (200, vec![], String::new())).await;
+        server.abort();
+        let _ = server.await;
+        p.team_id = Some("TEAM-SENTINEL".into());
+        let refused = p.storage_info().await;
+        let shown = format!("{refused:?}");
+        assert!(refused.is_err(), "{shown}");
+        for part in ["TEAM-SENTINEL", "127.0.0.1", "http://", "/teams/"] {
+            assert!(!shown.contains(part), "{part}: {shown}");
+        }
+    }
+
+    /// A share link answer holds the link and can echo the password sent:
+    /// neither reaches the log, on success or refusal, where before the
+    /// whole answer was logged.
+    #[test]
+    fn a_share_link_answer_is_not_logged() {
+        // Alone in a child process: no other test's subscriber can
+        // decide these callsites' interest first.
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::zoho_workdrive::tests::a_share_link_answer_is_not_logged",
+        ) {
+            return;
+        }
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+            #[derive(Clone, Default)]
+            struct Capture(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+            impl std::io::Write for Capture {
+                fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+                    self.0.lock().unwrap().extend_from_slice(buf);
+                    Ok(buf.len())
+                }
+                fn flush(&mut self) -> std::io::Result<()> {
+                    Ok(())
+                }
+            }
+            impl<'writer> tracing_subscriber::fmt::MakeWriter<'writer> for Capture {
+                type Writer = Capture;
+                fn make_writer(&'writer self) -> Self::Writer {
+                    self.clone()
+                }
+            }
+            for status in [200u16, 400] {
+                let (mut p, _requests, server) = listing_fixture(move |id, _, _| match id {
+                    "ROOT" => (
+                        200,
+                        vec![],
+                        listing_json(&[("F1", "f.txt", false)], Some((false, None))),
+                    ),
+                    _ => (
+                        status,
+                        vec![],
+                        r#"{"data":{"attributes":{"link":"https://workdrive.zoho.com/LINK-SECRET","password_text":"ECHO-PW"}}}"#
+                            .to_string(),
+                    ),
+                })
+                .await;
+                p.privatespace_id = Some("ROOT".into());
+                let capture = Capture::default();
+                let subscriber = tracing_subscriber::fmt()
+                    .with_max_level(tracing::Level::DEBUG)
+                    .with_writer(capture.clone())
+                    .finish();
+                let _guard = tracing::subscriber::set_default(subscriber);
+                // Another test thread can cache these callsites' interest while
+                // no subscriber of its own wants them: read it again for this one.
+                tracing::callsite::rebuild_interest_cache();
+                let options = ShareLinkOptions {
+                    password: Some("ECHO-PW".into()),
+                    ..Default::default()
+                };
+                let outcome = p.create_share_link("/f.txt", options).await;
+                server.abort();
+                let logged = String::from_utf8_lossy(&capture.0.lock().unwrap()).to_string();
+                assert_eq!(outcome.is_ok(), status == 200, "{outcome:?}");
+                assert!(logged.contains("share link"), "{logged}");
+                for secret in ["LINK-SECRET", "ECHO-PW"] {
+                    assert!(!logged.contains(secret), "{status}: {logged}");
+                }
+            }
+            });
+    }
+
+    /// A team folders page past the per-page cap is no answer: the team
+    /// folders kept stay as they were, and a complete listing then replaces
+    /// them.
+    #[tokio::test]
+    async fn an_oversized_team_folders_page_keeps_the_team_folders() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let oversized = std::sync::Arc::new(AtomicBool::new(true));
+        let big = std::sync::Arc::clone(&oversized);
+        let (mut p, _requests, server) = listing_fixture(move |id, query, _| match id {
+            "TEAM" if query.contains("page%5Boffset%5D=0") && big.load(Ordering::SeqCst) => (
+                200,
+                vec![],
+                " ".repeat(super::super::VERSION_LISTING_MAX_BYTES as usize + 1),
+            ),
+            "TEAM" if query.contains("page%5Boffset%5D=0") => (
+                200,
+                vec![],
+                r#"{"data":[{"id":"T2","attributes":{"name":"New"}}]}"#.to_string(),
+            ),
+            _ => (200, vec![], listing_json(&[], Some((false, None)))),
+        })
+        .await;
+        p.team_folders = vec![("T1".into(), "Docs".into())];
+        p.team_folders_source = Some(TeamFolderSource::TeamFolders);
+        p.discover_team_folders("TEAM").await;
+        assert_eq!(p.team_folders, vec![("T1".into(), "Docs".into())]);
+        oversized.store(false, Ordering::SeqCst);
+        p.discover_team_folders("TEAM").await;
+        server.abort();
+        assert_eq!(p.team_folders, vec![("T2".into(), "New".into())]);
     }
 
     /// The workspaces fallback reads every page by its cursor: a workspace
@@ -8620,11 +8910,24 @@ mod tests {
                 vec![],
                 r#"{"data":[{"id":"W1","attributes":{"name":"One"}}],"links":{"cursor":{"has_next":true,"next":"https://workdrive.zoho.com/api/v1/teams/TEAM/workspaces?page%5Bnext%5D=c2"}}}"#.to_string(),
             ),
+            // A private folder of the second workspace's name.
+            "ROOT" => (
+                200,
+                vec![],
+                listing_json(&[("P2", "Two", true)], Some((false, None))),
+            ),
             _ => (200, vec![], listing_json(&[], Some((false, None)))),
         })
         .await;
+        p.privatespace_id = Some("ROOT".into());
         p.discover_team_folders("TEAM").await;
+        let two = p.resolve_path("/Two").await;
         server.abort();
+        assert_eq!(
+            two.unwrap(),
+            "W2",
+            "the private Two was taken for the workspace"
+        );
         assert_eq!(
             p.team_folders,
             vec![("W1".into(), "One".into()), ("W2".into(), "Two".into())]

@@ -10214,7 +10214,10 @@ pub(crate) fn copy_into_place(
 /// replaces whatever another writer put at `to` meanwhile: the copy is
 /// refused there ([`no_replace_unavailable`]), and `to` is left as it is.
 #[cfg(not(windows))]
-fn rename_no_replace(temp: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
+pub(crate) fn rename_no_replace(
+    temp: &std::path::Path,
+    to: &std::path::Path,
+) -> std::io::Result<()> {
     #[cfg(test)]
     let unsupported = NEITHER_NO_REPLACE_NOR_LINK.with(std::cell::Cell::get);
     #[cfg(not(test))]
@@ -10301,7 +10304,7 @@ fn no_replace_unavailable() -> std::io::Error {
     std::io::Error::new(std::io::ErrorKind::Unsupported, NoReplaceUnavailable)
 }
 
-fn is_no_replace_unavailable(error: &std::io::Error) -> bool {
+pub(crate) fn is_no_replace_unavailable(error: &std::io::Error) -> bool {
     error
         .get_ref()
         .is_some_and(|inner| inner.is::<NoReplaceUnavailable>())
@@ -10323,7 +10326,7 @@ impl std::error::Error for NoReplaceUnavailable {}
 thread_local! {
     /// The filesystem under the test has neither a no-replace rename nor
     /// hard links.
-    static NEITHER_NO_REPLACE_NOR_LINK: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    pub(crate) static NEITHER_NO_REPLACE_NOR_LINK: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     /// Run once where a publication finds neither atomic step, the moment
     /// another writer can reach the name.
     static WHERE_NEITHER_STEP_EXISTS: std::cell::RefCell<Option<Box<dyn FnOnce()>>> =
@@ -10336,7 +10339,10 @@ thread_local! {
 /// `0x800700B7`, which std reads as no known kind, so [`win32_io_error`]
 /// turns it back into the Win32 code that std reads as `AlreadyExists`.
 #[cfg(windows)]
-fn rename_no_replace(temp: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
+pub(crate) fn rename_no_replace(
+    temp: &std::path::Path,
+    to: &std::path::Path,
+) -> std::io::Result<()> {
     use std::os::windows::ffi::OsStrExt;
     use windows::core::PCWSTR;
     use windows::Win32::Storage::FileSystem::{MoveFileExW, MOVE_FILE_FLAGS};
