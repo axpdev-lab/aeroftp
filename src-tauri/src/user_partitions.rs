@@ -6251,6 +6251,84 @@ fn end_deferred_proton_sessions(conn: &Connection, root_key: &[u8; 32], user_id:
     }
 }
 
+/// How long an unlock waits for the sessions a purge left to it
+/// ([`end_deferred_proton_sessions`]) before it returns: past it they go on
+/// being ended in the background, and a mark not ended by then stays for
+/// the next unlock.
+#[cfg(all(feature = "proton-native", not(test)))]
+const DEFERRED_CLEANUP_BUDGET: std::time::Duration = std::time::Duration::from_secs(2);
+/// In a test the cleanup is waited for to its end, unless the test sets a
+/// budget ([`DEFERRED_CLEANUP_BUDGET_IN_TEST`]).
+#[cfg(all(feature = "proton-native", test))]
+const DEFERRED_CLEANUP_BUDGET: std::time::Duration = std::time::Duration::from_secs(120);
+
+/// [`DEFERRED_CLEANUP_BUDGET`], or the one a test set.
+#[cfg(feature = "proton-native")]
+fn deferred_cleanup_budget() -> std::time::Duration {
+    #[cfg(test)]
+    if let Some(budget) = *DEFERRED_CLEANUP_BUDGET_IN_TEST
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+    {
+        return budget;
+    }
+    DEFERRED_CLEANUP_BUDGET
+}
+
+/// The budget of an unlock's deferred cleanup a test set (test only).
+#[cfg(all(test, feature = "proton-native"))]
+pub(crate) static DEFERRED_CLEANUP_BUDGET_IN_TEST: Mutex<Option<std::time::Duration>> =
+    Mutex::new(None);
+
+/// [`end_deferred_proton_sessions`] for `user_id` on a thread of its own,
+/// with a connection of its own, waited for up to [`deferred_cleanup_budget`]:
+/// an unlock while Proton cannot be reached returns, and the cleanup goes on
+/// beyond it. One cleanup per account at a time; an unlock while one runs
+/// leaves the marks to it, and to the next unlock what it did not end.
+#[cfg(feature = "proton-native")]
+fn end_deferred_proton_sessions_within_budget(root_key: &[u8; 32], user_id: i64) {
+    static RUNNING: Mutex<Vec<i64>> = Mutex::new(Vec::new());
+    {
+        let mut running = RUNNING
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if running.contains(&user_id) {
+            return;
+        }
+        running.push(user_id);
+    }
+    let root_key = Zeroizing::new(*root_key);
+    let (done, finished) = std::sync::mpsc::channel::<()>();
+    let spawned = std::thread::Builder::new()
+        .name("proton-deferred-cleanup".into())
+        .spawn(move || {
+            match open_or_init_cli() {
+                Ok(conn) => end_deferred_proton_sessions(&conn, &root_key, user_id),
+                Err(error) => log::warn!(
+                    "Unlock: the Proton sessions left by a purge stay for the next unlock: {error}"
+                ),
+            }
+            RUNNING
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .retain(|running| *running != user_id);
+            let _ = done.send(());
+        });
+    if let Err(error) = spawned {
+        RUNNING
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .retain(|running| *running != user_id);
+        log::warn!("Unlock: the Proton sessions left by a purge stay for the next unlock: {error}");
+        return;
+    }
+    if finished.recv_timeout(deferred_cleanup_budget()).is_err() {
+        log::warn!(
+            "Unlock: the Proton sessions left by a purge are still being ended in the background"
+        );
+    }
+}
+
 /// Ends the session `deferred` names. A mark made without a fingerprint
 /// (the account locked and its row not indexed) gets the one of the row
 /// read now, which is the purged session or its refresh: a sign-in saved
@@ -7693,9 +7771,10 @@ fn unlock_user_inner(
         set_user_session(user_id, dek)?;
     }
     // Once the account reads its partition, the sessions a purge could not
-    // end while it was locked are ended.
+    // end while it was locked are ended, for a bounded time: offline, each
+    // waits for Proton, and the unlock is not held for that.
     #[cfg(feature = "proton-native")]
-    end_deferred_proton_sessions(conn, root_key, user_id);
+    end_deferred_proton_sessions_within_budget(root_key, user_id);
     let mut status = user_unlock_status(conn)?;
     status.security_reset = security_reset;
     Ok(status)

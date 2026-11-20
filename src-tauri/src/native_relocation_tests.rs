@@ -2137,3 +2137,59 @@ fn a_sign_in_during_the_unlock_cleanup_keeps_its_session() {
     );
     assert_eq!(deferred_revokes(&accounts.conn), 0, "no mark is put back");
 }
+
+/// An unlock whose deferred cleanup cannot end its session in time (offline,
+/// here the purged session's lease held elsewhere) is not held by it: the
+/// unlock returns within the cleanup's budget with the row and the mark in
+/// place, and the cleanup goes on in the background, ending the session and
+/// removing both once the lease is free.
+#[test]
+fn an_unlock_is_not_held_by_a_deferred_cleanup() {
+    if !in_isolated_child("an_unlock_is_not_held_by_a_deferred_cleanup") {
+        return;
+    }
+    let accounts = Accounts::open();
+    defer_target_session(&accounts, "slow-cleanup", "slow-cleanup-uid");
+    let lease = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(crate::providers::oauth2::RefreshLease::acquire_checked(
+            &vault::refresh_lease_slug("slow-cleanup-uid"),
+        ))
+        .unwrap()
+        .unwrap();
+    vault::test_seams::set_exclusive_wait(Some(std::time::Duration::from_secs(8)));
+    *DEFERRED_CLEANUP_BUDGET_IN_TEST.lock().unwrap() = Some(std::time::Duration::from_millis(300));
+    let revokes = vault::test_seams::revokes();
+    let started = std::time::Instant::now();
+    accounts.unlock_target();
+    let took = started.elapsed();
+    assert!(
+        took < std::time::Duration::from_secs(3),
+        "the unlock is not held by the cleanup: {took:?}"
+    );
+    assert_eq!(accounts.target_row("slow-cleanup").as_deref(), Some("r1"));
+    assert_eq!(deferred_revokes(&accounts.conn), 1, "the mark waits");
+
+    drop(lease);
+    let ended = std::time::Instant::now();
+    while deferred_revokes(&accounts.conn) != 0
+        && ended.elapsed() < std::time::Duration::from_secs(20)
+    {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    *DEFERRED_CLEANUP_BUDGET_IN_TEST.lock().unwrap() = None;
+    vault::test_seams::set_exclusive_wait(None);
+    assert_eq!(
+        deferred_revokes(&accounts.conn),
+        0,
+        "the background cleanup ends it"
+    );
+    assert_eq!(vault::test_seams::revokes(), revokes + 1);
+    assert!(!has_row(
+        &accounts.conn,
+        accounts.target.id,
+        &key("slow-cleanup")
+    ));
+}
