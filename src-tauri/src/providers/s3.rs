@@ -8668,7 +8668,7 @@ impl StorageProvider for S3Provider {
                     .map(str::to_string);
                 let status = response.status();
                 let body = super::version_listing_text(response).await?;
-                if let Some(failure) = copy_answer_error(&body) {
+                if let Some(failure) = copy_answer_error(&body, &self.sent_secrets()) {
                     return Err(ProviderError::ServerError(format!(
                         "Restore version failed ({status}): {failure}"
                     )));
@@ -9689,8 +9689,9 @@ fn build_batch_delete_xml(chunk: &[(String, Option<String>)]) -> Vec<u8> {
 }
 
 /// The failure a 2xx CopyObject body carries (`<Error>` with its code and
-/// message), or `None` for a completed copy.
-fn copy_answer_error(body: &str) -> Option<String> {
+/// message, each shown as [`s3_server_text`] allows), or `None` for a
+/// completed copy.
+fn copy_answer_error(body: &str, sent: &SentSecrets) -> Option<String> {
     if !body.to_ascii_lowercase().contains("<error>") {
         return None;
     }
@@ -9698,7 +9699,7 @@ fn copy_answer_error(body: &str) -> Option<String> {
         body.split(&format!("<{name}>"))
             .nth(1)
             .and_then(|s| s.split(&format!("</{name}>")).next())
-            .map(sanitize_api_error)
+            .map(|text| s3_server_text(text, body.len(), sent))
     };
     Some(format!(
         "{} - {}",
