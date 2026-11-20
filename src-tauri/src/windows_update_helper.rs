@@ -58,6 +58,15 @@ fn quote_for_cmd(path: &Path) -> String {
     format!("\"{s}\"")
 }
 
+/// `path` quoted for cmd with a trailing backslash, for `if exist`: true only
+/// when `path` is a folder. Measured on windows-2022: false for a file and for
+/// a missing path, true for an empty folder and for one with `%` in its name.
+fn quote_folder_test(path: &Path) -> String {
+    let mut s = path.as_os_str().to_os_string();
+    s.push("\\");
+    quote_for_cmd(Path::new(&s))
+}
+
 /// Install-format dispatch. The `install_with_helper` entrypoint takes the
 /// format as a string from the existing updater code; we centralise the
 /// parsing here.
@@ -822,16 +831,30 @@ fn portable_helper_script(
         .ok_or_else(|| "Cannot resolve current exe parent dir".to_string())?;
     let old_exe = current_exe.with_extension("exe.old");
 
+    // A staged copy is the file staging wrote. A folder at its name is not
+    // ours: `del` would delete the files in it and `move /Y` would put it in
+    // place of the installed exe (both measured on windows-2022), so every
+    // command on a staged copy first checks that it is not a folder. Check
+    // and command are two steps, and cmd has no file-only form of either (a
+    // wildcard pattern measured: `del /A:-D` spares the folder but deletes a
+    // sibling the pattern matches). A process that puts a folder there between
+    // the two needs write access to this folder, which already lets it delete
+    // those files or the exe itself: the window gives it nothing.
+    let del_staged = |path: &Path| {
+        format!(
+            "if not exist {} del /F /Q {} >nul 2>&1\n",
+            quote_folder_test(path),
+            quote_for_cmd(path)
+        )
+    };
     // Every staged copy goes when the app exe cannot be replaced: then the
     // installed exes all stay as they were.
-    let mut discard_block = format!(
-        "del /F /Q {} >nul 2>&1\n",
-        quote_for_cmd(&beside_path(current_exe, attempt_id))
-    );
+    let mut discard_block = del_staged(&beside_path(current_exe, attempt_id));
     // A file held open without write sharing refuses the replace. The log
     // line is in a group that swallows cmd's error when the log itself is
     // held, and the helper goes on with its exit code unchanged.
     const IN_USE: &str = "is in use, kept the installed one";
+    const NOT_A_FILE: &str = "update copy is not a file, kept the installed one";
     let warn_line = |name: &str, outcome: &str| {
         match log_file {
         Some(log) => format!(
@@ -845,26 +868,33 @@ fn portable_helper_script(
 
     // Each CLI exe is replaced only after the app exe, so a failed app swap
     // leaves all three at the installed version. One still in use keeps the
-    // installed exe, and the app log says so.
+    // installed exe, and the app log says so; so does one whose staged copy
+    // is not a file.
     let mut cli_block = String::new();
     for (i, &name) in cli.iter().enumerate() {
         let target = exe_dir.join(name);
-        let new = quote_for_cmd(&beside_path(&target, attempt_id));
-        discard_block.push_str(&format!("del /F /Q {new} >nul 2>&1\n"));
+        let staged_copy = beside_path(&target, attempt_id);
+        let new = quote_for_cmd(&staged_copy);
+        let del_new = del_staged(&staged_copy);
+        discard_block.push_str(&del_new);
         let log_line = warn_line(name, IN_USE);
+        let not_a_file_line = warn_line(name, NOT_A_FILE);
         cli_block.push_str(&format!(
             r#"set RETRY=0
 :cli_{i}
+if exist {new_folder} goto cli_{i}_not_a_file
 move /Y {new} {target} >nul 2>&1
 if not errorlevel 1 goto cli_{i}_done
 set /a RETRY+=1
 if %RETRY% GEQ {CLI_ATTEMPTS} goto cli_{i}_busy
 ping 127.0.0.1 -n 2 >nul
 goto cli_{i}
+:cli_{i}_not_a_file
+{not_a_file_line}goto cli_{i}_done
 :cli_{i}_busy
-del /F /Q {new} >nul 2>&1
-{log_line}:cli_{i}_done
+{del_new}{log_line}:cli_{i}_done
 "#,
+            new_folder = quote_folder_test(&staged_copy),
             target = quote_for_cmd(&target),
         ));
     }
@@ -939,6 +969,8 @@ rem AeroFTP has exited. `move /Y` within one folder is a single rename that
 rem replaces the target.
 set RETRY=0
 :replace_loop
+rem Checked before every try: the copy can change while a try waits.
+if exist {new_exe_folder} goto replace_failed
 move /Y {new_exe} {current} >nul 2>&1
 if not errorlevel 1 goto replace_done
 set /a RETRY+=1
@@ -970,6 +1002,7 @@ exit /b 0
         current = quote_for_cmd(current_exe),
         old = quote_for_cmd(&old_exe),
         new_exe = quote_for_cmd(&beside_path(current_exe, attempt_id)),
+        new_exe_folder = quote_folder_test(&beside_path(current_exe, attempt_id)),
         discard_block = discard_block,
         cli_block = cli_block,
         zip = quote_for_cmd(downloaded_zip),
@@ -3022,6 +3055,145 @@ mod tests {
         assert!(relaunched.exists(), "the swap path relaunches");
         assert_eq!(read(&free, "AeroFTP.exe"), NEW_EXE);
         assert!(!has_staged_exe(&free.app, "AeroFTP.exe"));
+    }
+
+    /// A folder at the name of a staged copy is not the update's: the helper
+    /// never puts it in place of an installed exe and never deletes what is
+    /// in it, while the staged copies that are files still go.
+    #[test]
+    fn a_folder_at_a_staged_copy_name_is_never_swapped_in_nor_emptied() {
+        // The app's staged copy is a folder: no swap, no relaunch, the folder
+        // and its file stay, and the CLI copies (files) go with the attempt.
+        let fx = fixture();
+        with_cli(&fx);
+        let (script, staged) = script_for_attempt(&fx, "folderapp01");
+        drop(staged);
+        let app_copy = beside_path(&fx.current, "folderapp01");
+        std::fs::remove_file(&app_copy).expect("staged app copy");
+        std::fs::create_dir(&app_copy).expect("folder");
+        std::fs::write(app_copy.join("sentinel.txt"), b"mine").expect("sentinel");
+        let relaunched = fx.root.path().join("relaunched.marker");
+        run(&fx, &runnable(&marking_relaunch(&script, &relaunched)));
+        assert!(!relaunched.exists(), "no relaunch without the app swap");
+        assert_eq!(read(&fx, "AeroFTP.exe"), OLD_EXE);
+        assert_eq!(
+            std::fs::read(app_copy.join("sentinel.txt")).expect("kept"),
+            b"mine"
+        );
+        for (name, old, _) in CLI_FILES {
+            assert!(
+                !beside_path(&fx.app.join(name), "folderapp01").exists(),
+                "{name}: a staged copy that is a file goes"
+            );
+            assert_eq!(read(&fx, name), old);
+        }
+
+        // A CLI exe's staged copy is a folder: the app and the other CLI exe
+        // update, that one keeps the installed exe, its folder stays, and the
+        // app log says so.
+        let fx = fixture();
+        with_cli(&fx);
+        let (script, staged) = script_for_attempt(&fx, "foldercli01");
+        drop(staged);
+        let cli_copy = beside_path(&fx.app.join("aeroftp-cli.exe"), "foldercli01");
+        std::fs::remove_file(&cli_copy).expect("staged cli copy");
+        std::fs::create_dir(&cli_copy).expect("folder");
+        std::fs::write(cli_copy.join("sentinel.txt"), b"mine").expect("sentinel");
+        run(&fx, &runnable(&script));
+        assert_eq!(read(&fx, "AeroFTP.exe"), NEW_EXE);
+        assert_eq!(read(&fx, "aeroftp-cli.exe"), b"old cli");
+        assert_eq!(read(&fx, "aeroftp-dispatch.exe"), b"new dispatch");
+        assert_eq!(
+            std::fs::read(cli_copy.join("sentinel.txt")).expect("kept"),
+            b"mine"
+        );
+        let log = std::fs::read_to_string(&fx.log).expect("app log");
+        assert!(
+            log.contains("aeroftp-cli.exe update copy is not a file, kept the installed one"),
+            "{log}"
+        );
+    }
+
+    /// The folder check runs before every try, not once: a staged copy that
+    /// becomes a folder while a try waits for the installed exe is never
+    /// moved in place of it, for the app and for a CLI exe. The installed exe
+    /// is read-only so the first `move /Y` fails; the line injected after
+    /// that failure clears the attribute and, unless `as_folder` is false
+    /// (the control: the second try then replaces it), turns the copy into a
+    /// folder with a file in it.
+    #[test]
+    fn a_staged_copy_that_becomes_a_folder_between_tries_is_never_swapped_in() {
+        for installed in ["AeroFTP.exe", "aeroftp-cli.exe"] {
+            for as_folder in [true, false] {
+                let fx = fixture();
+                with_cli(&fx);
+                let attempt = if as_folder {
+                    "retryfolder01"
+                } else {
+                    "retryfile01"
+                };
+                let (script, staged) = script_for_attempt(&fx, attempt);
+                drop(staged);
+                let target = fx.app.join(installed);
+                let copy = beside_path(&target, attempt);
+                let mut readonly = std::fs::metadata(&target).expect("installed").permissions();
+                readonly.set_readonly(true);
+                std::fs::set_permissions(&target, readonly).expect("read-only");
+                let change = if as_folder {
+                    format!(
+                        " & del /F /Q {copy} >nul 2>&1 & mkdir {copy} & (echo mine)>{sentinel}",
+                        copy = quote_for_cmd(&copy),
+                        sentinel = quote_for_cmd(&copy.join("sentinel.txt")),
+                    )
+                } else {
+                    String::new()
+                };
+                let inject = format!(
+                    "if \"%RETRY%\"==\"0\" (attrib -R {target} >nul 2>&1{change})\r\n",
+                    target = quote_for_cmd(&target),
+                );
+                let this_move = format!("move /Y {} ", quote_for_cmd(&copy));
+                let mut after_move = false;
+                let mut injected = String::new();
+                for line in script.split_inclusive('\n') {
+                    if line.starts_with(&this_move) {
+                        after_move = true;
+                    } else if after_move && line.starts_with("set /a RETRY+=1") {
+                        injected.push_str(&inject);
+                        after_move = false;
+                    }
+                    injected.push_str(line);
+                }
+                assert!(
+                    injected.contains(&inject),
+                    "{installed}: no retry loop found"
+                );
+                run(&fx, &runnable(&injected));
+                let new = if installed == "AeroFTP.exe" {
+                    NEW_EXE.to_vec()
+                } else {
+                    b"new cli".to_vec()
+                };
+                if as_folder {
+                    assert_ne!(read(&fx, installed), new, "{installed}");
+                    assert!(
+                        target.is_file(),
+                        "{installed}: the installed exe stays a file"
+                    );
+                    assert!(
+                        copy.join("sentinel.txt").is_file(),
+                        "{installed}: the folder keeps its file"
+                    );
+                } else {
+                    assert_eq!(
+                        read(&fx, installed),
+                        new,
+                        "{installed}: the retry replaces it"
+                    );
+                    assert!(!copy.exists(), "{installed}");
+                }
+            }
+        }
     }
 
     /// `script` with the relaunch (`start ...`) replaced by the creation of
