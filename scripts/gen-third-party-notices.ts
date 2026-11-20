@@ -866,10 +866,11 @@ export function urlsInText(text: string): string[] {
 }
 
 // The query parameter names that carry a secret: a token, a key, a password,
-// a signature (a presigned URL), a session, with or without a prefix
-// (`X-Amz-Signature`).
+// a signature (a presigned URL), a session, an Authorization value passed as
+// a parameter (`?authorization=Bearer%20...`, `?jwt=`, an OAuth client
+// `assertion`), with or without a prefix (`X-Amz-Signature`).
 const CREDENTIAL_QUERY_PARAM_NAME =
-  /^(?:[a-z0-9_.-]*[_.-])?(?:access[_-]?token|auth[_-]?token|refresh[_-]?token|id[_-]?token|private[_-]?token|token|api[_-]?key|apikey|key|secret|client[_-]?secret|password|passwd|pwd|pass|auth|sig|signature|credential|security[_-]?token|session|sas)$/i;
+  /^(?:[a-z0-9_.-]*[_.-])?(?:access[_-]?token|auth[_-]?token|refresh[_-]?token|id[_-]?token|private[_-]?token|token|api[_-]?key|apikey|key|secret|client[_-]?secret|password|passwd|pwd|pass|auth|sig|signature|credential|security[_-]?token|session|sas|authorization|bearer|jwt|passphrase|assertion)$/i;
 
 // A query parameter name as a server reads it: `+` is a space and a
 // percent-encoded byte is the byte (`%74oken` is `token`). A malformed

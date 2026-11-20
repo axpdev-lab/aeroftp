@@ -3979,6 +3979,12 @@ test('credentials: query parameter names are read decoded, as a server reads the
     `api%5Fkey=${dummy}`,
     `%zz=1&%74oken=${dummy}`,
     `page=2;%73ecret=${dummy}`,
+    `authorization=Bearer%20${dummy}`,
+    `%61uthorization=Basic%20${dummy}`,
+    `x-bearer=${dummy}`,
+    `jwt=${dummy}`,
+    `passphrase=${dummy}`,
+    `client_assertion=${dummy}`,
   ]) {
     assert.strictEqual(carriesCredentialUrl(`Holder https://example.com/repo?${query}`), true, query);
   }
@@ -3987,7 +3993,7 @@ test('credentials: query parameter names are read decoded, as a server reads the
   assert.strictEqual(carriesCredentialUrl(`Holder https://example.com/?x_%74oken%=${dummy}`), false);
   assert.strictEqual(carriesCredentialUrl(`Holder https://example.com/?x_%74oken=${dummy}`), true);
   // Controls: ordinary parameters, encoded or not, and a credential name only in a value.
-  for (const query of ['page=2', '%70age=2', 'page=2&lang=en', 'q=token', 'tokens=1', 'page=2#top', 'monkey=1']) {
+  for (const query of ['page=2', '%70age=2', 'page=2&lang=en', 'q=token', 'tokens=1', 'page=2#top', 'monkey=1', 'q=authorization', 'authorized=1']) {
     assert.strictEqual(carriesCredentialUrl(`Holder https://example.com/repo?${query}`), false, query);
   }
   // A fragment is read like a query: an OAuth redirect carries its token there.
