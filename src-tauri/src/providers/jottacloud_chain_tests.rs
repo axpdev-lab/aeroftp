@@ -438,8 +438,9 @@ pub(super) enum Around {
 
 /// A key deleted by another process around a rotation's write of `at`
 /// (test only): `(when, at, owner, deleted)`, taken once.
-pub(super) static DELETE_AROUND_WRITE: Mutex<Option<(Around, String, Option<i64>, String)>> =
-    Mutex::new(None);
+pub(super) static DELETE_AROUND_WRITE: Mutex<Option<DeleteAroundWrite>> = Mutex::new(None);
+
+type DeleteAroundWrite = (Around, String, Option<i64>, String);
 
 /// Run the deletion [`DELETE_AROUND_WRITE`] holds for `when` and `account`.
 pub(super) fn around_rotation_write(when: Around, account: &str) {
@@ -819,7 +820,7 @@ fn a_load_reads_the_key_its_rotation_and_its_deletions_together() {
     *AFTER_STORED_READ.lock().unwrap() = None;
     let sent = *chains.calls.lock().unwrap() - sent_before;
     let error = format!("{result:?}");
-    if sent != 0 || !matches!(refresh_or_login_token(result), Err(_)) {
+    if sent != 0 || refresh_or_login_token(result).is_ok() {
         failures.push(format!(
             "a rotation filed anew at every read: {error}, {sent} exchange(s) sent"
         ));
@@ -1178,8 +1179,9 @@ fn a_rotation_leaves_a_key_another_connection_filed_for() {
 /// A key signed out elsewhere and given a new chain right after a connection
 /// read its keys' deletion counts (test only): `(profile, owner, key, the new
 /// chain)`, taken once.
-pub(super) static REPLACED_AFTER_NOTE: Mutex<Option<(String, Option<i64>, String, String)>> =
-    Mutex::new(None);
+pub(super) static REPLACED_AFTER_NOTE: Mutex<Option<ReplacedAfterNote>> = Mutex::new(None);
+
+type ReplacedAfterNote = (String, Option<i64>, String, String);
 
 pub(super) fn after_note(profile: &str) {
     let replaced = REPLACED_AFTER_NOTE
