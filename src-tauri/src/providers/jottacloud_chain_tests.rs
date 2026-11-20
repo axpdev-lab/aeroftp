@@ -227,6 +227,7 @@ fn overlapping_deletions_settle_in_every_order() {
         let after = partitions::chain_deletions(&chains.store, chains.owner, &key).unwrap();
         let loaded =
             JottacloudProvider::load_refresh_chain(Some(chains.first), Some(chains.owner), &key)
+                .chain()
                 .map(|((rt, _, _), _)| rt);
         if between.settled() {
             failures.push(format!("{case}: settled while one still runs: {between:?}"));
@@ -504,6 +505,7 @@ fn a_rotation_whose_deletions_cannot_be_read_is_kept_and_checked_later() {
     // Readable again and nothing deleted: handed out.
     let loaded =
         JottacloudProvider::load_refresh_chain(Some(chains.first), Some(chains.owner), own)
+            .chain()
             .map(|((rt, _, _), _)| rt);
     if loaded.as_deref() != Some(rotated.as_str()) {
         failures.push(format!("the kept rotation is handed out: {loaded:?}"));
@@ -513,6 +515,7 @@ fn a_rotation_whose_deletions_cannot_be_read_is_kept_and_checked_later() {
     delete_elsewhere(&chains.store, chains.owner, singleton);
     let after_source_deleted =
         JottacloudProvider::load_refresh_chain(Some(chains.first), Some(chains.owner), own)
+            .chain()
             .map(|((rt, _, _), _)| rt);
     if after_source_deleted.as_deref() == Some(rotated.as_str()) || chains.pending(own).is_some() {
         failures.push(format!(
@@ -685,6 +688,141 @@ fn a_deletion_elsewhere_right_before_the_write_stops_it() {
             drop(connection);
             PENDING_ROTATIONS.lock().unwrap().clear();
         }
+    }
+    assert!(failures.is_empty(), "{failures:#?}");
+}
+
+/// What happens right after a load reads its key (test only): `(owner, key,
+/// what)`, a deletion elsewhere once, or a new rotation filed at every read.
+pub(super) enum AfterStoredRead {
+    DeleteOnce,
+    RefileEveryTime(u32),
+}
+
+pub(super) static AFTER_STORED_READ: Mutex<Option<(Option<i64>, String, AfterStoredRead)>> =
+    Mutex::new(None);
+
+pub(super) fn after_stored_read(owner: Option<i64>, account: &str) {
+    let mut hook = AFTER_STORED_READ.lock().unwrap();
+    let Some((o, key, what)) = hook.as_mut() else {
+        return;
+    };
+    if *o != owner || key != account {
+        return;
+    }
+    let store = CredentialStore::from_cache().unwrap();
+    match what {
+        AfterStoredRead::DeleteOnce => {
+            let (o, key) = (*o, key.clone());
+            *hook = None;
+            drop(hook);
+            delete_elsewhere(&store, o, &key);
+        }
+        AfterStoredRead::RefileEveryTime(n) => {
+            *n += 1;
+            let endpoint = stored_chain_endpoint(&store, key);
+            let mut chain = serde_json::json!({
+                "refresh_token": format!("refiled-{n}"),
+                "token_endpoint": endpoint,
+                "username": "jotta-user",
+            });
+            chain[PENDING_BASE] = stored_refresh_token(store.get(key).ok().as_deref()).into();
+            chain[PENDING_GEN] = 0.into();
+            PENDING_ROTATIONS.lock().unwrap().insert(
+                (owner, key.clone()),
+                zeroize::Zeroizing::new(chain.to_string()),
+            );
+        }
+    }
+}
+
+fn stored_chain_endpoint(store: &CredentialStore, key: &str) -> String {
+    store
+        .get(key)
+        .ok()
+        .and_then(|json| serde_json::from_str::<serde_json::Value>(&json).ok())
+        .and_then(|v| v["token_endpoint"].as_str().map(str::to_string))
+        .unwrap_or_default()
+}
+
+/// A load reads one consistent state of the key, its pending rotation and
+/// its deletions: a deletion that completes while the key is read is not
+/// paired with the chain it removed, and a pending rotation replaced at every
+/// read sends nothing and leaves the login token alone.
+#[test]
+fn a_load_reads_the_key_its_rotation_and_its_deletions_together() {
+    if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+        "providers::jottacloud::chain_tests::a_load_reads_the_key_its_rotation_and_its_deletions_together",
+    ) {
+        return;
+    }
+    let chains = Chains::new();
+    let mut failures = Vec::new();
+    let _ = chains.store.delete("jottacloud_refresh");
+
+    // Deleted elsewhere right after the key was read.
+    let gone = "jottacloud_refresh_readgone";
+    chains
+        .store
+        .store(gone, &chains.chain("stored-readgone"))
+        .unwrap();
+    let noted = chains.noted("readgone").expect("count");
+    let mut filed: serde_json::Value =
+        serde_json::from_str(&chains.chain("pending-readgone")).unwrap();
+    filed[PENDING_BASE] = "stored-readgone".into();
+    filed[PENDING_GEN] = noted.into();
+    PENDING_ROTATIONS.lock().unwrap().insert(
+        (chains.owner, gone.to_string()),
+        zeroize::Zeroizing::new(filed.to_string()),
+    );
+    *AFTER_STORED_READ.lock().unwrap() =
+        Some((chains.owner, gone.to_string(), AfterStoredRead::DeleteOnce));
+    let sent_before = *chains.calls.lock().unwrap();
+    let mut connection = chains.bound("readgone");
+    let result = chains
+        .runtime()
+        .block_on(connection.try_connect_with_refresh());
+    *AFTER_STORED_READ.lock().unwrap() = None;
+    let sent = *chains.calls.lock().unwrap() - sent_before;
+    if !matches!(result, Ok(false)) || sent != 0 {
+        failures.push(format!(
+            "a key deleted while it is read: {result:?}, {sent} exchange(s) sent"
+        ));
+    }
+    drop(connection);
+    PENDING_ROTATIONS.lock().unwrap().clear();
+
+    // A rotation filed anew at every read of the key.
+    let restless = "jottacloud_refresh_restless";
+    chains
+        .store
+        .store(restless, &chains.chain("stored-restless"))
+        .unwrap();
+    let mut filed: serde_json::Value =
+        serde_json::from_str(&chains.chain("pending-restless")).unwrap();
+    filed[PENDING_BASE] = "stored-restless".into();
+    filed[PENDING_GEN] = 0.into();
+    PENDING_ROTATIONS.lock().unwrap().insert(
+        (chains.owner, restless.to_string()),
+        zeroize::Zeroizing::new(filed.to_string()),
+    );
+    *AFTER_STORED_READ.lock().unwrap() = Some((
+        chains.owner,
+        restless.to_string(),
+        AfterStoredRead::RefileEveryTime(0),
+    ));
+    let sent_before = *chains.calls.lock().unwrap();
+    let mut connection = chains.bound("restless");
+    let result = chains
+        .runtime()
+        .block_on(connection.try_connect_with_refresh());
+    *AFTER_STORED_READ.lock().unwrap() = None;
+    let sent = *chains.calls.lock().unwrap() - sent_before;
+    let error = format!("{result:?}");
+    if sent != 0 || !matches!(refresh_or_login_token(result), Err(_)) {
+        failures.push(format!(
+            "a rotation filed anew at every read: {error}, {sent} exchange(s) sent"
+        ));
     }
     assert!(failures.is_empty(), "{failures:#?}");
 }

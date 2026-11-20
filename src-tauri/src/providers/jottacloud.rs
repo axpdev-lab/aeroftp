@@ -187,6 +187,30 @@ struct PersistOutcome {
     read: HashMap<String, zeroize::Zeroizing<String>>,
 }
 
+/// What [`JottacloudProvider::load_refresh_chain`] read for one key.
+enum LoadedChain {
+    /// The chain to exchange, the refresh token its key holds (empty for
+    /// none), and the key's deletion count it was read with (`None`: not
+    /// readable).
+    Chain((String, String, String), String, Option<u64>),
+    /// Nothing to exchange.
+    Nothing,
+    /// The key, its pending rotation or its deletions kept changing while
+    /// they were read: nothing is handed out, and nothing else should be
+    /// spent instead.
+    Busy,
+}
+
+#[cfg(test)]
+impl LoadedChain {
+    fn chain(self) -> Option<((String, String, String), String)> {
+        match self {
+            Self::Chain(chain, stored_token, _) => Some((chain, stored_token)),
+            Self::Nothing | Self::Busy => None,
+        }
+    }
+}
+
 /// The refresh token of a stored chain's JSON, empty for no chain.
 fn stored_refresh_token(json: Option<&str>) -> String {
     json.and_then(|json| serde_json::from_str::<serde_json::Value>(json).ok())
@@ -1121,10 +1145,12 @@ impl JottacloudProvider {
         user: Option<i64>,
         owner: Option<Option<i64>>,
         account: &str,
-    ) -> Option<((String, String, String), String)> {
+    ) -> LoadedChain {
         // An owner that was never read reads nothing: the stored chain may be
         // the one a pending rotation replaced, which Jotta has consumed.
-        let owner = owner?;
+        let Some(owner) = owner else {
+            return LoadedChain::Nothing;
+        };
         let read_pending = || {
             PENDING_ROTATIONS
                 .lock()
@@ -1132,9 +1158,69 @@ impl JottacloudProvider {
                 .get(&(owner, account.to_string()))
                 .cloned()
         };
-        let mut pending = read_pending();
-        #[cfg(test)]
-        tests::after_pending_read(owner, account);
+        let Some(store) = crate::credential_store::CredentialStore::from_cache() else {
+            return LoadedChain::Nothing;
+        };
+        // The owner-aware read checks the account first (it exists, it is
+        // unlocked): a pending rotation is that account's secret too, and is
+        // not handed out while the read is refused. It stays for later.
+        let read_stored = || match user {
+            Some(user) => crate::user_partitions::resolve_credential_for_user_owner_aware(
+                &store, user, account,
+            ),
+            None => crate::user_partitions::resolve_active_credential_owner_aware(&store, account),
+        };
+        // One state of the key, its pending rotation and its deletions: read
+        // again until the rotation and the count are the same before and
+        // after the key is read, so neither changed in between. A deletion
+        // that completed while the key was read is not paired with the chain
+        // it removed, and a rotation filed meanwhile is read with the key as
+        // it is now. A state that keeps changing is not handed out.
+        let counts = || crate::user_partitions::chain_deletions(&store, owner, account);
+        let mut snapshot = None;
+        for _ in 0..4 {
+            let pending = read_pending();
+            #[cfg(test)]
+            tests::after_pending_read(owner, account);
+            let before = counts();
+            let Ok(stored) = read_stored() else {
+                return LoadedChain::Nothing;
+            };
+            #[cfg(test)]
+            chain_tests::after_stored_read(owner, account);
+            let after = counts();
+            let same_pending =
+                read_pending().as_ref().map(|p| p.as_str()) == pending.as_ref().map(|p| p.as_str());
+            if same_pending && before.as_ref().ok() == after.as_ref().ok() {
+                snapshot = Some((pending, stored, after));
+                break;
+            }
+        }
+        let Some((pending, stored, counted)) = snapshot else {
+            jotta_log(&format!(
+                "Refresh chain of {} not loaded: it kept changing while it was read",
+                account
+            ));
+            return LoadedChain::Busy;
+        };
+        let generation = counted.as_ref().ok().map(|count| count.generation);
+        match Self::hand_out(&store, owner, account, pending, stored, counted) {
+            Some((chain, stored_token)) => LoadedChain::Chain(chain, stored_token, generation),
+            None => LoadedChain::Nothing,
+        }
+    }
+
+    /// What [`Self::load_refresh_chain`] hands out of one state it read:
+    /// `pending` and `stored` with `counted`, the deletions of `account` read
+    /// before and after them.
+    fn hand_out(
+        store: &crate::credential_store::CredentialStore,
+        owner: Option<i64>,
+        account: &str,
+        mut pending: Option<zeroize::Zeroizing<String>>,
+        stored: Option<zeroize::Zeroizing<String>>,
+        counted: Result<crate::user_partitions::ChainDeletions, String>,
+    ) -> Option<((String, String, String), String)> {
         let parse = |json: String| -> Option<(String, String, String)> {
             let v: serde_json::Value = serde_json::from_str(&json).ok()?;
             let rt = v["refresh_token"].as_str()?.to_string();
@@ -1146,27 +1232,6 @@ impl JottacloudProvider {
                 Some((rt, te, un))
             }
         };
-        let store = crate::credential_store::CredentialStore::from_cache()?;
-        // The owner-aware read checks the account first (it exists, it is
-        // unlocked): a pending rotation is that account's secret too, and is
-        // not handed out while the read is refused. It stays for later.
-        let read_stored = || match user {
-            Some(user) => crate::user_partitions::resolve_credential_for_user_owner_aware(
-                &store, user, account,
-            ),
-            None => crate::user_partitions::resolve_active_credential_owner_aware(&store, account),
-        };
-        let mut stored = read_stored().ok()?;
-        // A rotation filed or replaced between the two reads is read with
-        // the key as it is now, not with the key as it was.
-        for _ in 0..3 {
-            let now = read_pending();
-            if now.as_ref().map(|p| p.as_str()) == pending.as_ref().map(|p| p.as_str()) {
-                break;
-            }
-            pending = now;
-            stored = read_stored().ok()?;
-        }
         let stored_token = stored_refresh_token(stored.as_deref().map(|j| j.as_str()));
         // A rotation filed before the key was last deleted, by any process,
         // is the authorization that delete removed: dropped, unless a newer
@@ -1191,7 +1256,11 @@ impl JottacloudProvider {
             let mut moved = false;
             let mut withheld = None;
             for (key, filed) in checks {
-                let now = crate::user_partitions::chain_deletions(&store, owner, &key);
+                let now = if key == account {
+                    counted.clone()
+                } else {
+                    crate::user_partitions::chain_deletions(store, owner, &key)
+                };
                 match (filed, now) {
                     (Some(filed), Ok(now)) if now.generation != filed => moved = true,
                     (Some(_), Ok(now)) if now.settled() => {}
@@ -1341,13 +1410,33 @@ impl JottacloudProvider {
             // exchange, and does not go on to the login token.
             let mut loaded =
                 Self::load_refresh_chain(self.credential_user, self.rotation_owner, &account);
-            if loaded.is_some() && !self.knows_deletions_of(&[&account, &own]) {
+            if matches!(loaded, LoadedChain::Chain(..))
+                && !self.knows_deletions_of(&[&account, &own])
+            {
                 self.note_chain_generations();
                 loaded =
                     Self::load_refresh_chain(self.credential_user, self.rotation_owner, &account);
             }
-            let Some(((rt, te, un), stored_token)) = loaded else {
-                continue;
+            let ((rt, te, un), stored_token) = match loaded {
+                LoadedChain::Chain(chain, stored_token, generation) => {
+                    // The count the chain was read with is the one its
+                    // rotation is checked against: a deletion that completed
+                    // before it was read removed some other chain.
+                    if let Some(generation) = generation {
+                        self.chain_generations
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .insert(account.clone(), generation);
+                    }
+                    (chain, stored_token)
+                }
+                LoadedChain::Nothing => continue,
+                LoadedChain::Busy => {
+                    return Err(ProviderError::ConnectionFailed(
+                        "jottacloud: the stored refresh chain kept changing while it was read; try again"
+                            .to_string(),
+                    ))
+                }
             };
             if !self.knows_deletions_of(&[&account, &own]) {
                 return Err(ProviderError::ConnectionFailed(
@@ -5003,6 +5092,7 @@ mod tests {
             zeroize::Zeroizing::new(stamped(&filed.to_string())),
         );
         let absent_loaded = JottacloudProvider::load_refresh_chain(Some(first), Some(None), absent)
+            .chain()
             .map(|((rt, _, _), _)| rt);
 
         // A rotation filed over that one after the load read it, and before
@@ -5013,6 +5103,7 @@ mod tests {
         *FILED_AFTER_PENDING_READ.lock().unwrap() =
             Some((None, absent.to_string(), stamped(&newer.to_string())));
         let newer_loaded = JottacloudProvider::load_refresh_chain(Some(first), Some(None), absent)
+            .chain()
             .map(|((rt, _, _), _)| rt);
         PENDING_ROTATIONS
             .lock()
@@ -5283,6 +5374,7 @@ mod tests {
         let nobase_pending = pending_of(nobase).is_some();
         let nobase_loaded =
             JottacloudProvider::load_refresh_chain(Some(first), Some(owner), nobase)
+                .chain()
                 .map(|((rt, _, _), _)| rt);
         drop(blind);
         PENDING_ROTATIONS.lock().unwrap().clear();
@@ -5352,12 +5444,14 @@ mod tests {
             zeroize::Zeroizing::new(kept.to_string()),
         );
         let before_delete = JottacloudProvider::load_refresh_chain(Some(first), Some(owner), gone)
+            .chain()
             .map(|((rt, _, _), _)| rt);
         let elsewhere =
             partitions::begin_chain_deletion(&store, owner, gone).expect("begin elsewhere");
         partitions::end_chain_deletion(&store, owner, gone, elsewhere, true)
             .expect("delete elsewhere");
         let after_delete = JottacloudProvider::load_refresh_chain(Some(first), Some(owner), gone)
+            .chain()
             .map(|((rt, _, _), _)| rt);
         let gone_pending = pending_of(gone).is_some();
         // A deletion here is counted for every process.
@@ -5478,11 +5572,12 @@ mod tests {
         );
         partitions::set_chain_deletions_raw(&store, owner, unread, "garbled").unwrap();
         let unread_withheld =
-            JottacloudProvider::load_refresh_chain(Some(first), Some(owner), unread);
+            JottacloudProvider::load_refresh_chain(Some(first), Some(owner), unread).chain();
         let unread_kept = pending_of(unread).is_some();
         partitions::set_chain_deletions_raw(&store, owner, unread, r#"{"generation":0}"#).unwrap();
         let unread_loaded =
             JottacloudProvider::load_refresh_chain(Some(first), Some(owner), unread)
+                .chain()
                 .map(|((rt, _, _), _)| rt);
         // One filed without its connection's count is never handed out.
         let genless = "jottacloud_refresh_genless";
@@ -5491,7 +5586,7 @@ mod tests {
             zeroize::Zeroizing::new(chain("pending-genless")),
         );
         let genless_withheld =
-            JottacloudProvider::load_refresh_chain(Some(first), Some(owner), genless);
+            JottacloudProvider::load_refresh_chain(Some(first), Some(owner), genless).chain();
         let genless_kept = pending_of(genless).is_some();
         // One whose deletion is in progress is withheld, not dropped.
         let busy_delete = "jottacloud_refresh_busydelete";
@@ -5501,7 +5596,7 @@ mod tests {
         );
         let running = partitions::begin_chain_deletion(&store, owner, busy_delete).unwrap();
         let in_progress_withheld =
-            JottacloudProvider::load_refresh_chain(Some(first), Some(owner), busy_delete);
+            JottacloudProvider::load_refresh_chain(Some(first), Some(owner), busy_delete).chain();
         let in_progress_kept = pending_of(busy_delete).is_some();
         partitions::end_chain_deletion(&store, owner, busy_delete, running, false).unwrap();
 
@@ -5517,6 +5612,7 @@ mod tests {
         let failed_count = partitions::chain_deletions(&store, owner, failing).expect("count");
         let failed_loaded =
             JottacloudProvider::load_refresh_chain(Some(first), Some(owner), failing)
+                .chain()
                 .map(|((rt, _, _), _)| rt);
 
         // The key is rewritten with the same token before every attempt:
