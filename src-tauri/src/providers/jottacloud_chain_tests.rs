@@ -417,3 +417,274 @@ fn a_deletion_its_process_left_unfinished_settles() {
     }
     assert!(failures.is_empty(), "{failures:#?}");
 }
+
+/// A deletion of `deleted` by another process: recorded, deleted from the
+/// vault, ended, without this process's clock (test only).
+pub(super) fn delete_elsewhere(store: &CredentialStore, owner: Option<i64>, deleted: &str) {
+    let deletion = partitions::begin_chain_deletion(store, owner, deleted).expect("begin");
+    let _ = store.delete(deleted);
+    partitions::end_chain_deletion(store, owner, deleted, deletion, true).expect("end");
+}
+
+/// When a deletion by another process lands around a rotation's write.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Around {
+    /// After the rotation's last check, right before the write.
+    BeforeWrite,
+    /// Right after the write.
+    AfterWrite,
+}
+
+/// A key deleted by another process around a rotation's write of `at`
+/// (test only): `(when, at, owner, deleted)`, taken once.
+pub(super) static DELETE_AROUND_WRITE: Mutex<Option<(Around, String, Option<i64>, String)>> =
+    Mutex::new(None);
+
+/// Run the deletion [`DELETE_AROUND_WRITE`] holds for `when` and `account`.
+pub(super) fn around_rotation_write(when: Around, account: &str) {
+    let deletion = DELETE_AROUND_WRITE
+        .lock()
+        .unwrap()
+        .take_if(|(w, at, _, _)| *w == when && at == account);
+    if let Some((_, _, owner, deleted)) = deletion {
+        let store = CredentialStore::from_cache().unwrap();
+        delete_elsewhere(&store, owner, &deleted);
+    }
+}
+
+/// A rotation whose deletion counts cannot be read when it is persisted is
+/// kept, with what it needs to be checked later, and a connection whose
+/// counts cannot be read before its exchange sends nothing and leaves the
+/// login token alone.
+#[test]
+fn a_rotation_whose_deletions_cannot_be_read_is_kept_and_checked_later() {
+    use std::sync::atomic::Ordering::SeqCst;
+    if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+        "providers::jottacloud::chain_tests::a_rotation_whose_deletions_cannot_be_read_is_kept_and_checked_later",
+    ) {
+        return;
+    }
+    let chains = Chains::new();
+    let mut failures = Vec::new();
+    let own = "jottacloud_refresh_unread";
+    let singleton = "jottacloud_refresh";
+
+    // Loaded from the singleton; the counts cannot be read at the next
+    // rotation: kept for both keys, written to neither.
+    chains
+        .store
+        .store(singleton, &chains.chain("singleton-unread"))
+        .unwrap();
+    let mut connection = chains.bound("unread");
+    assert!(chains
+        .runtime()
+        .block_on(connection.try_connect_with_refresh())
+        .unwrap());
+    let written = chains.stored(own);
+    partitions::CHAIN_DELETIONS_REFUSED.store(true, SeqCst);
+    connection.token_expiry = Instant::now();
+    chains
+        .runtime()
+        .block_on(connection.refresh_if_needed())
+        .expect("refresh");
+    partitions::CHAIN_DELETIONS_REFUSED.store(false, SeqCst);
+    let rotated = connection.refresh_token.expose_secret().to_string();
+    drop(connection);
+    for key in [own, singleton] {
+        let kept = chains
+            .pending(key)
+            .map(|json| stored_refresh_token(Some(&json)));
+        if kept.as_deref() != Some(rotated.as_str()) {
+            failures.push(format!("{key}: kept {kept:?}, expected {rotated}"));
+        }
+        if chains.stored(key) != written {
+            failures.push(format!("{key}: written while its counts were unreadable"));
+        }
+    }
+    // Readable again and nothing deleted: handed out.
+    let loaded =
+        JottacloudProvider::load_refresh_chain(Some(chains.first), Some(chains.owner), own)
+            .map(|((rt, _, _), _)| rt);
+    if loaded.as_deref() != Some(rotated.as_str()) {
+        failures.push(format!("the kept rotation is handed out: {loaded:?}"));
+    }
+    // The singleton it came from is signed out elsewhere: dropped for the
+    // profile's key too.
+    delete_elsewhere(&chains.store, chains.owner, singleton);
+    let after_source_deleted =
+        JottacloudProvider::load_refresh_chain(Some(chains.first), Some(chains.owner), own)
+            .map(|((rt, _, _), _)| rt);
+    if after_source_deleted.as_deref() == Some(rotated.as_str()) || chains.pending(own).is_some() {
+        failures.push(format!(
+            "the rotation of a signed-out source is dropped: {after_source_deleted:?}, {:?}",
+            chains.pending(own)
+        ));
+    }
+    PENDING_ROTATIONS.lock().unwrap().clear();
+
+    // The counts cannot be read before the exchange: nothing is sent, and
+    // the error does not fall through to the login token.
+    let blind = "jottacloud_refresh_blind";
+    chains
+        .store
+        .store(blind, &chains.chain("own-blind"))
+        .unwrap();
+    let sent_before = *chains.calls.lock().unwrap();
+    partitions::CHAIN_DELETIONS_REFUSED.store(true, SeqCst);
+    let mut connection = chains.bound("blind");
+    let refused = chains
+        .runtime()
+        .block_on(connection.try_connect_with_refresh());
+    partitions::CHAIN_DELETIONS_REFUSED.store(false, SeqCst);
+    let sent = *chains.calls.lock().unwrap() - sent_before;
+    if sent != 0 || refused.is_ok() {
+        failures.push(format!(
+            "an exchange without its counts: {sent} sent, {refused:?}"
+        ));
+    }
+    let falls_back = matches!(refresh_or_login_token(refused), Ok(false));
+    if falls_back {
+        failures.push("the refused connection spends the login token".to_string());
+    }
+    drop(connection);
+    let mut connection = chains.bound("blind");
+    let readable = chains
+        .runtime()
+        .block_on(connection.try_connect_with_refresh());
+    let now = chains.stored(blind);
+    if !matches!(readable, Ok(true)) || !now.starts_with("rotated-") {
+        failures.push(format!(
+            "readable again, the chain is exchanged and written: {readable:?}, {now}"
+        ));
+    }
+    assert!(failures.is_empty(), "{failures:#?}");
+}
+
+/// A key deleted by another process between a rotation's last check and its
+/// write: the source the chain was loaded from stops every write, a
+/// destination that held nothing is not written, on the row and the vault
+/// paths alike. Deleted right after the write instead, what was written
+/// before the deletion stays, and what the deletion removed stays removed.
+#[test]
+fn a_deletion_elsewhere_right_before_the_write_stops_it() {
+    if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+        "providers::jottacloud::chain_tests::a_deletion_elsewhere_right_before_the_write_stops_it",
+    ) {
+        return;
+    }
+    let chains = Chains::new();
+    let mut failures = Vec::new();
+    let singleton = "jottacloud_refresh";
+    for (case, user) in [
+        ("account", chains.first),
+        ("vault only", partitions::LEGACY_ONLY_ACCOUNT),
+    ] {
+        let owner = chain_owner(Some(user)).expect("owner");
+        // Read as the path under test reads it.
+        let token = |key: &str| {
+            if user == chains.first {
+                chains.stored(key)
+            } else {
+                stored_refresh_token(chains.store.get(key).ok().as_deref())
+            }
+        };
+        let pending = |key: &str| {
+            PENDING_ROTATIONS
+                .lock()
+                .unwrap()
+                .contains_key(&(owner, key.to_string()))
+        };
+        for when in [Around::BeforeWrite, Around::AfterWrite] {
+            let profile = format!(
+                "{}{}",
+                if user == chains.first {
+                    "racing"
+                } else {
+                    "racingvault"
+                },
+                if when == Around::BeforeWrite {
+                    ""
+                } else {
+                    "after"
+                }
+            );
+            let own = format!("jottacloud_refresh_{profile}");
+
+            // The source is deleted elsewhere around the write of the
+            // profile's key.
+            chains
+                .store
+                .store(singleton, &chains.chain("singleton-racing"))
+                .unwrap();
+            let mut connection = chains.bound(&profile);
+            connection.set_credential_user(Some(user));
+            assert!(chains
+                .runtime()
+                .block_on(connection.try_connect_with_refresh())
+                .unwrap());
+            let own_before = token(&own);
+            *DELETE_AROUND_WRITE.lock().unwrap() =
+                Some((when, own.clone(), owner, singleton.to_string()));
+            connection.token_expiry = Instant::now();
+            chains
+                .runtime()
+                .block_on(connection.refresh_if_needed())
+                .expect("refresh");
+            *DELETE_AROUND_WRITE.lock().unwrap() = None;
+            let rotated = connection.refresh_token.expose_secret().to_string();
+            let expected = match when {
+                Around::BeforeWrite => own_before.clone(),
+                Around::AfterWrite => rotated.clone(),
+            };
+            let own_after = token(&own);
+            let singleton_after = token(singleton);
+            if own_after != expected || !singleton_after.is_empty() {
+                failures.push(format!(
+                    "{case}, {when:?}, source deleted: {own} {own_before} -> {own_after} (expected {expected}), singleton {singleton_after:?}"
+                ));
+            }
+            if pending(&own) || pending(singleton) {
+                failures.push(format!(
+                    "{case}, {when:?}, source deleted: a rotation is kept"
+                ));
+            }
+            drop(connection);
+            PENDING_ROTATIONS.lock().unwrap().clear();
+
+            // The profile's key, empty, is deleted elsewhere around the
+            // write of its first chain: it ends up empty either way; the
+            // singleton is written.
+            chains
+                .store
+                .store(singleton, &chains.chain("singleton-empty"))
+                .unwrap();
+            let empty = format!("jottacloud_refresh_{profile}empty");
+            let mut connection = chains.bound(&format!("{profile}empty"));
+            connection.set_credential_user(Some(user));
+            *DELETE_AROUND_WRITE.lock().unwrap() =
+                Some((when, empty.clone(), owner, empty.clone()));
+            assert!(chains
+                .runtime()
+                .block_on(connection.try_connect_with_refresh())
+                .unwrap());
+            *DELETE_AROUND_WRITE.lock().unwrap() = None;
+            let rotated = connection.refresh_token.expose_secret().to_string();
+            let empty_after = token(&empty);
+            let singleton_after = token(singleton);
+            if !empty_after.is_empty() || pending(&empty) {
+                failures.push(format!(
+                    "{case}, {when:?}, empty destination deleted: written {empty_after:?}, kept {}",
+                    pending(&empty)
+                ));
+            }
+            if singleton_after != rotated {
+                failures.push(format!(
+                    "{case}, {when:?}, empty destination deleted: the singleton holds {singleton_after}, expected {rotated}"
+                ));
+            }
+            drop(connection);
+            PENDING_ROTATIONS.lock().unwrap().clear();
+        }
+    }
+    assert!(failures.is_empty(), "{failures:#?}");
+}

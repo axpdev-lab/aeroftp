@@ -3673,6 +3673,15 @@ pub(crate) fn refresh_user_credential(
 /// a best-effort basis, by its own compare-and-write on what it holds, while
 /// `same_chain` says it holds the chain `expected` held (the same chain in
 /// other bytes included); a copy that holds another chain is left as it is.
+///
+/// `unmoved` names, for `owner` ([`chain_deletions`]), each key whose
+/// deletions must still be the given generation with none running: checked
+/// in the same transaction, the one a deletion is recorded in, so a deletion
+/// that began after the caller last looked stops the write with
+/// [`CHAIN_DELETED`]. A vault-only write is made inside that transaction too
+/// (lock order: the database, then the vault; no vault lock is ever held
+/// while the database is waited for).
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn replace_owner_aware_if_unchanged(
     store: &CredentialStore,
     user: Option<i64>,
@@ -3681,7 +3690,21 @@ pub(crate) fn replace_owner_aware_if_unchanged(
     expected: Option<&str>,
     replacement: &str,
     same_chain: &dyn Fn(&str, &str) -> bool,
+    owner: Option<i64>,
+    unmoved: &[(&str, u64)],
 ) -> Result<bool, String> {
+    let unmoved_in = |conn: &Connection| -> Result<(), String> {
+        let now = now_ms();
+        for (account, generation) in unmoved {
+            let mut record =
+                DeletionRecord::read(conn, &chain_deletion_key(store, owner, account)?)?;
+            record.settle(now);
+            if record.generation != *generation || !record.running.is_empty() {
+                return Err(CHAIN_DELETED.to_string());
+            }
+        }
+        Ok(())
+    };
     let vault = || -> Result<bool, String> {
         match expected {
             Some(expected) => {
@@ -3691,8 +3714,24 @@ pub(crate) fn replace_owner_aware_if_unchanged(
         }
         .map_err(|e| format!("Conditional vault write: {e}"))
     };
-    if user == Some(LEGACY_ONLY_ACCOUNT) {
+    // A write with nothing to check needs no transaction of its own.
+    let vault_checked = || -> Result<bool, String> {
+        if unmoved.is_empty() {
+            return vault();
+        }
+        init_or_migrate_cli(store)?;
+        let conn = open_or_init_cli()?;
+        let tx =
+            rusqlite::Transaction::new_unchecked(&conn, rusqlite::TransactionBehavior::Immediate)
+                .map_err(|e| format!("Begin conditional credential write: {e}"))?;
+        unmoved_in(&tx)?;
         let written = vault()?;
+        tx.commit()
+            .map_err(|e| format!("Commit conditional credential write: {e}"))?;
+        Ok(written)
+    };
+    if user == Some(LEGACY_ONLY_ACCOUNT) {
+        let written = vault_checked()?;
         // The legacy owner's row of that key, when it still holds the chain
         // the vault held, is the same chain: it follows, so a reader of the
         // row is not left with a token Jotta consumed. A row that holds
@@ -3732,7 +3771,7 @@ pub(crate) fn replace_owner_aware_if_unchanged(
         // (`resolve_active_credential_owner_aware`).
         None => active_user_id(&conn)?,
     }) else {
-        return vault();
+        return vault_checked();
     };
     let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
     let root_secret = user_crypto::secret_key_from_bytes(&root_key);
@@ -3743,6 +3782,7 @@ pub(crate) fn replace_owner_aware_if_unchanged(
         if user.is_none() && active_user_id(&tx)? != Some(user_id) {
             return Err(ACCOUNT_CHANGED.to_owned());
         }
+        unmoved_in(&tx)?;
         let current = read_credential_with_dek(&tx, user_id, dek, credential_id)?;
         let reads_vault = current.is_none() && nonprofile_secret_owner(&tx)? == Some(user_id);
         if reads_vault {
@@ -3833,6 +3873,11 @@ impl ChainDeletions {
         self.in_progress == 0
     }
 }
+
+/// Why a conditional write of a refresh chain stopped: a deletion of a key
+/// it depends on began or completed since its connection began.
+pub(crate) const CHAIN_DELETED: &str =
+    "CHAIN_DELETED: the chain was deleted since its connection began";
 
 /// How long a deletion recorded by a process this one cannot look at (on
 /// another machine sharing the data folder, in another pid namespace, or on
@@ -4034,6 +4079,11 @@ fn update_chain_deletions(
     Ok(record.view())
 }
 
+/// Every read of a key's chain deletions fails (test only).
+#[cfg(test)]
+pub(crate) static CHAIN_DELETIONS_REFUSED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
 /// Every end of a chain deletion fails (test only).
 #[cfg(test)]
 pub(crate) static CHAIN_DELETION_END_REFUSED: std::sync::atomic::AtomicBool =
@@ -4067,6 +4117,10 @@ pub(crate) fn chain_deletions(
     owner: Option<i64>,
     account: &str,
 ) -> Result<ChainDeletions, String> {
+    #[cfg(test)]
+    if CHAIN_DELETIONS_REFUSED.load(std::sync::atomic::Ordering::SeqCst) {
+        return Err("Read chain deletions: refused (test)".to_string());
+    }
     init_or_migrate_cli(store)?;
     let conn = open_or_init_cli()?;
     let key = chain_deletion_key(store, owner, account)?;
