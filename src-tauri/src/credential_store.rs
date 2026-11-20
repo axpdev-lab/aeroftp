@@ -2567,6 +2567,30 @@ impl CredentialStore {
         Ok(true)
     }
 
+    /// Put `value` under `account` (`None`: remove it) only while it holds
+    /// `expected` (`None`: absent), under the cross-process vault lock, so a
+    /// write being undone never replaces a value another writer stored since.
+    /// Whether it was written.
+    pub(crate) fn swap_secret_if(
+        &self,
+        account: &str,
+        expected: Option<&str>,
+        value: Option<&str>,
+    ) -> Result<bool, CredentialError> {
+        match (expected, value) {
+            (Some(expected), Some(value)) => {
+                self.replace_secret_if_unchanged(account, expected, value)
+            }
+            (Some(expected), None) => self.delete_secret_if_unchanged(account, expected),
+            (None, Some(value)) => self.store_secret_if_absent(account, value),
+            (None, None) => match self.get(account) {
+                Ok(_) => Ok(false),
+                Err(CredentialError::NotFound(_)) => Ok(true),
+                Err(e) => Err(e),
+            },
+        }
+    }
+
     /// Legacy migration never replaces an authorization created in the meantime.
     pub(crate) fn store_secret_if_absent(
         &self,

@@ -3781,6 +3781,53 @@ pub(crate) fn replace_user_credential_if_unchanged(
     )
 }
 
+/// Put `value` in the row `credential_id` of `user_id` (`None`: remove it),
+/// only while the row holds `expected` (`None`: no row). Read, comparison and
+/// write share one IMMEDIATE transaction, so a value another writer stored in
+/// between (a refresh of the token) is never replaced. Whether it was written.
+pub(crate) fn swap_user_credential_if(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+    credential_id: &str,
+    credential_type: &str,
+    expected: Option<&str>,
+    value: Option<&str>,
+) -> Result<bool, String> {
+    let root_secret = user_crypto::secret_key_from_bytes(root_key);
+    with_user_dek(conn, &root_secret, user_id, |user_id, dek| {
+        let tx =
+            rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
+                .map_err(|e| format!("Begin conditional credential write: {e}"))?;
+        let current = read_credential_with_dek(&tx, user_id, dek, credential_id)?;
+        let holds = match (current.as_ref().map(|v| v.as_str()), expected) {
+            (None, None) => true,
+            (Some(current), Some(expected)) => {
+                use subtle::ConstantTimeEq;
+                bool::from(current.as_bytes().ct_eq(expected.as_bytes()))
+            }
+            _ => false,
+        };
+        if !holds {
+            return Ok(false);
+        }
+        match value {
+            Some(value) => set_user_credential_with_dek(
+                &tx,
+                user_id,
+                dek,
+                credential_id,
+                credential_type,
+                value,
+            )?,
+            None => delete_user_credential_for(&tx, user_id, credential_id)?,
+        }
+        tx.commit()
+            .map_err(|e| format!("Commit conditional credential write: {e}"))?;
+        Ok(true)
+    })
+}
+
 /// [`replace_user_credential_if_unchanged`] for a row that must still hold a
 /// value `still_holds` accepts, not one exact value: the row is replaced by
 /// `replacement` only then, read and written in one IMMEDIATE transaction,
