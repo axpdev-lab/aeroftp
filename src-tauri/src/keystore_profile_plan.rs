@@ -138,10 +138,17 @@ pub struct ProfileDecisionInput {
 /// device's when it restores none. The legacy owner's private tokens are the
 /// vault's too; another account's are its partition row alone
 /// (`user_partitions::vault_copy_is_another_accounts`).
+///
+/// Two databases number their accounts each on their own, so an equal id is
+/// not the same account: `identity` is the account's DEK verifier
+/// (`user_partitions::account_identity`), the same in every copy of one
+/// account's database and different for any other account, and two
+/// receivers are equal only when it is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Receiver {
     pub user_id: i64,
     pub legacy_owner: bool,
+    pub identity: [u8; 16],
 }
 
 /// The two lists and the secrets the plan works on.

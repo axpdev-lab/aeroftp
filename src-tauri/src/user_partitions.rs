@@ -7461,6 +7461,25 @@ pub(crate) fn is_legacy_owner(conn: &Connection, user_id: i64) -> Result<bool, S
     Ok(nonprofile_secret_owner_unpersisted(conn)? == Some(user_id))
 }
 
+/// What tells account `user_id` apart from every other across databases:
+/// its DEK verifier, an HMAC tag of its random DEK. Each database numbers its
+/// accounts on its own, so two of them can give one id to two people; every
+/// copy of one account's database carries the same verifier (a transport
+/// re-key re-wraps the DEK and keeps it), and only an administrator's reset,
+/// which wipes the account's secrets, changes it. Read without unlocking.
+pub(crate) fn account_identity(conn: &Connection, user_id: i64) -> Result<[u8; 16], String> {
+    let verifier: Vec<u8> = conn
+        .query_row(
+            "SELECT dek_verifier FROM users WHERE id = ?1",
+            params![user_id],
+            |row| row.get(0),
+        )
+        .map_err(|e| format!("Read the identity of account {user_id}: {e}"))?;
+    verifier
+        .try_into()
+        .map_err(|_| format!("The identity of account {user_id} is not readable"))
+}
+
 /// Whether the vault copy of `credential_id` is someone else's for
 /// `user_id`: a private token ([`private_token_type`]) and an account other
 /// than the legacy owner, whose key of that name it is. Such an account reads
