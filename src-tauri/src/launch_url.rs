@@ -626,7 +626,7 @@ pub fn redact(raw: &str) -> String {
     // The password is masked on the raw text first: a raw `?`, `#`, `/` or
     // `@` in it ends the authority early, and the parser then reads part of
     // the password as a port or a path (an all-digit one even parses).
-    let masked = mask_raw_password(raw);
+    let masked = mask_port_path_at(&mask_raw_password(raw));
     let raw = masked.as_str();
     if let Ok(mut url) = url::Url::parse(raw) {
         if url.password().is_some() {
@@ -678,6 +678,39 @@ fn user_part_end(rest: &str) -> Option<usize> {
     let after = &rest[end + 1..];
     let segment_end = after.find('/').unwrap_or(after.len());
     after[..segment_end].rfind('@').map(|at| end + 1 + at)
+}
+
+/// For the logs only: `raw` with everything from the port to the last `@`
+/// masked, when the authority has a port and no `@` and an `@` follows it.
+///
+/// `parse` reads `u:12/x/y@host` as written (host `u`, port 12, a path), the
+/// limit `user_part_end` documents, so the text may still hold a password cut
+/// short by a raw `/`. A log line cannot tell that from a valid
+/// `host:2222/photos/a@2x.png` either, and masking a valid link costs only
+/// the readability of one log line: both log as `<host>:***@<rest>`.
+fn mask_port_path_at(raw: &str) -> String {
+    let Some(start) = raw.find("://").map(|index| index + 3) else {
+        return raw.to_string();
+    };
+    let rest = &raw[start..];
+    let end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    let authority = &rest[..end];
+    let Some(colon) = authority.rfind(':') else {
+        return raw.to_string();
+    };
+    let port = &authority[colon + 1..];
+    if authority.contains('@') || port.is_empty() || !port.bytes().all(|b| b.is_ascii_digit()) {
+        return raw.to_string();
+    }
+    let Some(at) = rest[end..].rfind('@').map(|at| end + at) else {
+        return raw.to_string();
+    };
+    format!(
+        "{}{}:***{}",
+        &raw[..start],
+        &authority[..colon],
+        &rest[at..]
+    )
 }
 
 /// `raw` with the password of its user part replaced by `***`. The user part
@@ -1074,14 +1107,32 @@ mod tests {
             ("files.example", Some(2222), "/photos/a@2x.png")
         );
         assert_eq!(target.url_secret, None);
+        // In a log it is masked all the same: it has the shape of a
+        // password cut short by a raw `/` (`u:12/x/y@host` below).
         assert_eq!(
             redact("sftp://files.example:2222/photos/a@2x.png"),
-            "sftp://files.example:2222/photos/a@2x.png"
+            "sftp://files.example:***@2x.png"
         );
         // The rule's limit, refused rather than dialed: an `@` in the first
         // name after a port reads as the end of a user part; `%40` opens it.
         assert!(parse("sftp://h:2222/a@2x.png").is_err());
         assert_eq!(parse("sftp://h:2222/a%402x.png").unwrap().port, Some(2222));
+        // The read-as-path limit: parsed as written, never logged with the
+        // password it may hold.
+        let target = parse("ftp://u:12/x/y@host/").unwrap();
+        assert_eq!(
+            (target.host.as_str(), target.port, target.path.as_str()),
+            ("u", Some(12), "/x/y@host/")
+        );
+        let masked = redact("ftp://u:12/x/y@host/");
+        assert_eq!(masked, "ftp://u:***@host/");
+        assert!(!masked.contains("12/x/y"), "{masked}");
+        // A port without an `@` after it, or a user part, is logged as is.
+        assert_eq!(redact("sftp://h:2222/var/log"), "sftp://h:2222/var/log");
+        assert_eq!(
+            redact("sftp://alice@h:2222/a@2x.png"),
+            "sftp://alice@h:2222/a@2x.png"
+        );
         // A raw `@` in the password is the URL standard's case: the last `@`
         // of the authority ends the user part.
         assert_eq!(
