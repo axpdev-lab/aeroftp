@@ -346,6 +346,11 @@ pub struct JottacloudProvider {
     /// whichever client reads either key next finds the current value; see
     /// `refresh_persist_accounts`.
     refresh_source_account: Option<String>,
+    /// Whether the live chain began with a login of this connection, not a
+    /// stored chain: its writes are the account's own sign-in, which the
+    /// partition stamps (`store_signed_in_credential_for_user`), and a
+    /// stored chain's rotations keep the stamp its key has.
+    login_chain: bool,
     current_path: String,
     /// Server profile identifier owning the persisted refresh token. Empty
     /// when the caller has not bound a profile (legacy singleton key path).
@@ -412,6 +417,7 @@ impl JottacloudProvider {
             token_endpoint: String::new(),
             token_expiry: Instant::now(),
             refresh_source_account: None,
+            login_chain: false,
             stored_tokens: Default::default(),
             chain_generations: Default::default(),
             consumed: Default::default(),
@@ -1074,6 +1080,7 @@ impl JottacloudProvider {
                         },
                         owner,
                         &unmoved,
+                        self.login_chain,
                     ) {
                         Ok(false) => {
                             match Self::stored_chain_now(store, self.credential_user, account) {
@@ -1454,6 +1461,7 @@ impl JottacloudProvider {
         // deleted while the refresh before it was tried removed nothing of it.
         self.chain_since = deletion_clock();
         self.refresh_source_account = None;
+        self.login_chain = true;
         *self.consumed.lock().unwrap_or_else(|e| e.into_inner()) = None;
         let mut known = self.stored_tokens.lock().unwrap_or_else(|e| e.into_inner());
         known.clear();
@@ -1666,6 +1674,7 @@ impl JottacloudProvider {
             let expires_in = token_resp.expires_in.unwrap_or(3600);
             self.token_expiry = Instant::now() + std::time::Duration::from_secs(expires_in);
             self.refresh_source_account = if account == own { None } else { Some(account) };
+            self.login_chain = false;
 
             self.persist_refresh_token();
             jotta_log("Reconnected using persisted refresh token; rotated token saved");
@@ -5579,6 +5588,7 @@ mod tests {
             &same,
             None,
             &[],
+            false,
         )
         .expect("row write");
         let row_b = token_of(&stored(copies));
@@ -5593,6 +5603,7 @@ mod tests {
             &same,
             None,
             &[],
+            false,
         )
         .expect("vault write");
         let row_c = token_of(&stored(copies));
@@ -5607,6 +5618,7 @@ mod tests {
             &same,
             None,
             &[],
+            false,
         )
         .expect("row write");
         let row_d = token_of(&stored(copies));
@@ -5638,6 +5650,7 @@ mod tests {
             &same,
             None,
             &[],
+            false,
         )
         .expect("row write");
         let vault_bytes_b = token_of(&store.get(bytes).unwrap_or_default());
@@ -5659,6 +5672,7 @@ mod tests {
             &same,
             None,
             &[],
+            false,
         )
         .expect("vault write");
         let row_bytes_c = token_of(&stored(bytes));

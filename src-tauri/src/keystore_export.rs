@@ -2663,6 +2663,8 @@ fn prepare_partition_restore(
     let prepared = (|| {
         atomic_write_synced(&db_path, bytes).map_err(|e| format!("Stage partition: {e}"))?;
         let rekey = rekey_imported_user_partitions(store, &db_path, transport, password)?;
+        // A restored row is the backup's, never a sign-in made here.
+        crate::user_partitions::forget_sign_in_stamps_in_db(&db_path)?;
         put_right_restored_profile_names(store, staging.path());
         // Include the active account: profile decisions are applied afterwards,
         // but a crash before that write must still leave a safe partition.

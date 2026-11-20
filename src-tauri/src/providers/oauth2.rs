@@ -1620,7 +1620,7 @@ impl OAuth2Manager {
                         "Credential vault is not open; tokens not stored".to_string(),
                     )
                 })?;
-            crate::user_partitions::store_credential_for_user(
+            crate::user_partitions::store_signed_in_credential_for_user(
                 &store, user, &account, "oauth", &json,
             )
             .map_err(|e| ProviderError::Other(format!("Failed to store tokens: {}", e)))?;

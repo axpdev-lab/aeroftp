@@ -66,9 +66,9 @@ impl AuthScope<'_> {
     }
     fn write(&self, key: &str, value: &str) -> Result<(), String> {
         match self.user_id {
-            Some(id) => {
-                users::store_credential_for_user_typed_dual(self.store, id, key, "oauth", value)
-            }
+            Some(id) => users::store_signed_in_credential_for_user_typed_dual(
+                self.store, id, key, "oauth", value,
+            ),
             None => self.store.store(key, value).map_err(|e| e.to_string()),
         }
     }

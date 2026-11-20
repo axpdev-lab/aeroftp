@@ -444,6 +444,20 @@ pub fn init_db_schema(conn: &Connection) -> Result<(), String> {
          BEGIN
              DELETE FROM proton_session_index
              WHERE user_id = OLD.user_id AND credential_id = OLD.credential_id;
+         END;
+
+         CREATE TABLE IF NOT EXISTS private_token_sign_ins (
+             user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+             credential_id  TEXT NOT NULL,
+             blob_digest    TEXT NOT NULL,
+             PRIMARY KEY(user_id, credential_id)
+         );
+
+         CREATE TRIGGER IF NOT EXISTS private_token_sign_in_leaves_with_its_row
+             AFTER DELETE ON user_credentials
+         BEGIN
+             DELETE FROM private_token_sign_ins
+             WHERE user_id = OLD.user_id AND credential_id = OLD.credential_id;
          END;",
     )
     .map_err(|e| format!("User partitions schema init: {e}"))
@@ -3543,6 +3557,145 @@ fn set_user_credential_with_dek(
     Ok(())
 }
 
+/// Whether the row `credential_id` of `user_id` holds the very ciphertext a
+/// sign-in of that account wrote, or a refresh of it since
+/// ([`stamp_sign_in`]). A row any other writer rewrote (a restore, an
+/// import, a migration copy, a relocation, the alignment) no longer matches
+/// its stamp.
+fn signed_in_row(conn: &Connection, user_id: i64, credential_id: &str) -> Result<bool, String> {
+    let row: Option<(Vec<u8>, Vec<u8>, String)> = conn
+        .query_row(
+            "SELECT c.encrypted_blob, c.nonce, s.blob_digest
+             FROM user_credentials c
+             JOIN private_token_sign_ins s
+                 ON s.user_id = c.user_id AND s.credential_id = c.credential_id
+             WHERE c.user_id = ?1 AND c.credential_id = ?2",
+            params![user_id, credential_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .optional()
+        .map_err(|e| format!("Read sign-in stamp: {e}"))?;
+    Ok(row.is_some_and(|(blob, nonce, digest)| credential_blob_digest(&blob, &nonce) == digest))
+}
+
+/// Stamps the row `credential_id` of `user_id`, as it is now, as written by
+/// that account's own sign-in: in the caller's transaction, the one that
+/// wrote the row.
+fn stamp_sign_in(conn: &Connection, user_id: i64, credential_id: &str) -> Result<(), String> {
+    let (blob, nonce): (Vec<u8>, Vec<u8>) = conn
+        .query_row(
+            "SELECT encrypted_blob, nonce FROM user_credentials
+             WHERE user_id = ?1 AND credential_id = ?2",
+            params![user_id, credential_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .map_err(|e| format!("Read signed-in credential: {e}"))?;
+    conn.execute(
+        "INSERT INTO private_token_sign_ins(user_id, credential_id, blob_digest)
+         VALUES (?1, ?2, ?3)
+         ON CONFLICT(user_id, credential_id) DO UPDATE SET blob_digest = excluded.blob_digest",
+        params![
+            user_id,
+            credential_id,
+            credential_blob_digest(&blob, &nonce)
+        ],
+    )
+    .map_err(|e| format!("Write sign-in stamp: {e}"))?;
+    Ok(())
+}
+
+/// [`set_user_credential_with_dek`] for a sign-in of `user_id`'s own: a
+/// private token ([`private_token_type`]) is stamped in the same write, so a
+/// stamped row always has its account's sign-in behind it. `conn` is the
+/// caller's transaction.
+fn set_signed_in_credential_with_dek(
+    conn: &Connection,
+    user_id: i64,
+    dek: &SecretKey,
+    credential_id: &str,
+    credential_type: &str,
+    secret: &str,
+) -> Result<(), String> {
+    set_user_credential_with_dek(conn, user_id, dek, credential_id, credential_type, secret)?;
+    if private_token_type(credential_id).is_some() {
+        stamp_sign_in(conn, user_id, credential_id)?;
+    }
+    Ok(())
+}
+
+/// [`set_user_credential_with_dek`] for a refresh of the row: a row a sign-in
+/// stamped stays stamped, any other stays unstamped. `conn` is the caller's
+/// transaction.
+fn set_refreshed_credential_with_dek(
+    conn: &Connection,
+    user_id: i64,
+    dek: &SecretKey,
+    credential_id: &str,
+    credential_type: &str,
+    secret: &str,
+) -> Result<(), String> {
+    let signed_in = signed_in_row(conn, user_id, credential_id)?;
+    set_user_credential_with_dek(conn, user_id, dek, credential_id, credential_type, secret)?;
+    if signed_in {
+        stamp_sign_in(conn, user_id, credential_id)?;
+    }
+    Ok(())
+}
+
+/// [`set_user_credential_for`] for a sign-in of `user_id`'s own
+/// ([`set_signed_in_credential_with_dek`]), the row and its stamp in one
+/// transaction.
+pub(crate) fn set_signed_in_credential_for(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+    credential_id: &str,
+    credential_type: &str,
+    secret: &str,
+) -> Result<(), String> {
+    if credential_id.is_empty() {
+        return Err("CREDENTIAL_ID_REQUIRED".to_string());
+    }
+    if credential_type.is_empty() {
+        return Err("CREDENTIAL_TYPE_REQUIRED".to_string());
+    }
+    let root_secret = user_crypto::secret_key_from_bytes(root_key);
+    with_user_dek(conn, &root_secret, user_id, |user_id, dek| {
+        let tx =
+            rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
+                .map_err(|e| format!("Begin signed-in credential write: {e}"))?;
+        set_signed_in_credential_with_dek(
+            &tx,
+            user_id,
+            dek,
+            credential_id,
+            credential_type,
+            secret,
+        )?;
+        tx.commit()
+            .map_err(|e| format!("Commit signed-in credential write: {e}"))
+    })
+}
+
+/// Forgets every sign-in stamp of the partition database at `db_path`: a
+/// restored database carries its rows, never the sign-ins behind them.
+pub fn forget_sign_in_stamps_in_db(db_path: &std::path::Path) -> Result<(), String> {
+    let conn = Connection::open(db_path).map_err(|e| format!("Open user partitions DB: {e}"))?;
+    let has_stamps: bool = conn
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master
+             WHERE type = 'table' AND name = 'private_token_sign_ins')",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|e| format!("Read sign-in stamps: {e}"))?;
+    if has_stamps {
+        conn.execute("DELETE FROM private_token_sign_ins", [])
+            .map_err(|e| format!("Forget sign-in stamps: {e}"))?;
+    }
+    Ok(())
+}
+
 /// Read one secret from a user's partition, decrypted with their DEK.
 ///
 /// Returns `Ok(None)` when no row exists. The decrypted secret is wrapped in
@@ -3616,7 +3769,7 @@ fn replace_user_credential_where(
         if !current.as_ref().is_some_and(|secret| still_holds(secret)) {
             return Ok(false);
         }
-        set_user_credential_with_dek(
+        set_refreshed_credential_with_dek(
             &tx,
             user_id,
             dek,
@@ -3695,6 +3848,7 @@ pub(crate) fn replace_owner_aware_if_unchanged(
     same_chain: &dyn Fn(&str, &str) -> bool,
     owner: Option<i64>,
     unmoved: &[(&str, u64)],
+    signed_in: bool,
 ) -> Result<bool, String> {
     let unmoved_in = |conn: &Connection| -> Result<(), String> {
         let now = now_ms();
@@ -3810,14 +3964,25 @@ pub(crate) fn replace_owner_aware_if_unchanged(
         if !unchanged {
             return Ok(false);
         }
-        set_user_credential_with_dek(
-            &tx,
-            user_id,
-            dek,
-            credential_id,
-            credential_type,
-            replacement,
-        )?;
+        if signed_in {
+            set_signed_in_credential_with_dek(
+                &tx,
+                user_id,
+                dek,
+                credential_id,
+                credential_type,
+                replacement,
+            )?;
+        } else {
+            set_refreshed_credential_with_dek(
+                &tx,
+                user_id,
+                dek,
+                credential_id,
+                credential_type,
+                replacement,
+            )?;
+        }
         let owner = nonprofile_secret_owner(&tx)? == Some(user_id);
         tx.commit()
             .map_err(|e| format!("Commit conditional credential write: {e}"))?;
@@ -4746,8 +4911,9 @@ fn private_token_keys_of_profile(profile_id: &str) -> Vec<String> {
 /// into its partition when no row is there yet, then removed from the vault.
 /// A profile id another account also holds is left: the vault copy cannot be
 /// told apart, and the legacy owner reads it as its own; a row of this account
-/// that shows no sign-in of its own ([`own_sign_in`]) is a copy an earlier
-/// migration made of it, and is dropped. Idempotent via the
+/// that its own sign-in did not stamp ([`signed_in_row`]), and that is not a
+/// Jottacloud chain of another user ([`another_jottacloud_user`]), may be a
+/// copy an earlier migration made of it, and is dropped. Idempotent via the
 /// `private_tokens_aligned_<id>` marker, set once the vault has let go of the
 /// keys moved; a locked passphrase account is left unmarked until its first
 /// unlock, as for [`migrate_user_credentials_inner`].
@@ -4833,7 +4999,7 @@ fn align_private_tokens_inner(
             // A profile id another account also holds: the vault key is the
             // legacy owner's, and a row of this account is a copy of it, which
             // an earlier migration made and a refresh may have rewritten since,
-            // unless it shows a sign-in of its own. A native Proton session is
+            // unless its own sign-in stamped it. A native Proton session is
             // the same session by its UID, whatever pair a refresh has rotated
             // it to since.
             for key in keys {
@@ -4848,7 +5014,7 @@ fn align_private_tokens_inner(
                         proton_session_uid(&vault).is_some_and(|held| held == copy)
                     })
                 } else {
-                    !own_sign_in(&key, &row, &vault)
+                    !signed_in_row(&tx, uid, &key)? && !another_jottacloud_user(&key, &row, &vault)
                 };
                 if copied {
                     delete_user_credential_for(&tx, uid, &key)?;
@@ -4907,16 +5073,20 @@ fn align_private_tokens_inner(
     Ok(moved.len())
 }
 
-/// Whether `row`, this account's copy of `key` on a profile id another account
-/// also holds, shows a sign-in of its own rather than a copy of the vault's
-/// token: a value that differs proves nothing, since every refresh of the
-/// vault's token rewrites it. An OAuth record is its own when it carries the
-/// family a sign-in mints (`owner_family`, providers/oauth2.rs) and the
-/// vault's is another, with neither of the vault's tokens; a Jottacloud chain
-/// when it signs in to another Jottacloud user than the vault's, with another
-/// refresh token. Anything else, a record written before families among it,
-/// shows none, and that account signs in again.
-fn own_sign_in(key: &str, row: &str, vault: &str) -> bool {
+/// Whether `row`, this account's unstamped copy of the Jottacloud chain `key`
+/// on a profile id another account also holds, signs in to another
+/// Jottacloud user than the vault's chain, with another refresh token: a
+/// copy of the owner's chain, refreshed or not, carries the owner's user, so
+/// another user is a sign-in of its own. A value that differs proves nothing
+/// else (every refresh of the vault's token rewrites it), nor does an OAuth
+/// record's own `v1:` family: a copy an earlier migration made keeps the
+/// family the owner had then, and the owner's next sign-in mints another.
+/// Only the sign-in stamp ([`signed_in_row`]) proves those; any other row
+/// is dropped, and that account signs in again.
+fn another_jottacloud_user(key: &str, row: &str, vault: &str) -> bool {
+    if !key.starts_with("jottacloud_refresh") {
+        return false;
+    }
     let (Ok(row), Ok(vault)) = (
         serde_json::from_str::<Value>(row),
         serde_json::from_str::<Value>(vault),
@@ -4933,17 +5103,7 @@ fn own_sign_in(key: &str, row: &str, vault: &str) -> bool {
     let another = |name: &str| {
         field(&row, name).is_some_and(|own| field(&vault, name).as_deref() != Some(own.as_str()))
     };
-    let not_the_vaults = |name: &str| field(&row, name).is_none() || another(name);
-    if key.starts_with("oauth_") {
-        field(&row, "owner_family").is_some_and(|family| family.starts_with("v1:"))
-            && another("owner_family")
-            && not_the_vaults("access_token")
-            && not_the_vaults("refresh_token")
-    } else if key.starts_with("jottacloud_refresh") {
-        another("username") && another("refresh_token")
-    } else {
-        false
-    }
+    another("username") && another("refresh_token")
 }
 
 /// After a keystore restore wrote private token keys into the vault: a backup
@@ -5225,7 +5385,9 @@ pub(crate) fn store_profile_credential(
     };
     if owners.is_empty() {
         return match credential_type {
-            Some(kind) => store_active_credential_typed_dual(store, credential_id, kind, secret),
+            Some(kind) => {
+                store_active_signed_in_credential_typed_dual(store, credential_id, kind, secret)
+            }
             None => store_active_credential_dual(store, credential_id, secret),
         };
     }
@@ -5236,9 +5398,13 @@ pub(crate) fn store_profile_credential(
     let mut first_failure = None;
     for owner in owners {
         let written = match credential_type {
-            Some(kind) => {
-                store_credential_for_user_typed_dual(store, owner, credential_id, kind, secret)
-            }
+            Some(kind) => store_signed_in_credential_for_user_typed_dual(
+                store,
+                owner,
+                credential_id,
+                kind,
+                secret,
+            ),
             None => store_credential_for_user_dual(store, owner, credential_id, secret),
         };
         if let Err(e) = written {
@@ -5592,10 +5758,10 @@ fn session_index_key_tag(key: &[u8; 32]) -> String {
     session_index_mac(key, b"aeroftp proton session index key tag")[..16].to_string()
 }
 
-/// Which ciphertext an entry describes: a row rewritten by any writer that did
-/// not index it again no longer matches its entry.
-#[cfg(feature = "proton-native")]
-fn session_blob_digest(blob: &[u8], nonce: &[u8]) -> String {
+/// Which ciphertext of a credential row an entry describes (a session index
+/// entry, a sign-in stamp): a row rewritten by any writer that did not write
+/// the entry again no longer matches it.
+fn credential_blob_digest(blob: &[u8], nonce: &[u8]) -> String {
     let mut digest = Sha256::new();
     digest.update(nonce);
     digest.update(blob);
@@ -5643,7 +5809,7 @@ fn index_session_row(
                     user_id,
                     credential_id,
                     session_fingerprint(&key, &uid),
-                    session_blob_digest(&blob, &nonce),
+                    credential_blob_digest(&blob, &nonce),
                     session_index_key_tag(&key),
                     now_ms()
                 ],
@@ -5759,7 +5925,7 @@ pub(crate) fn other_accounts_holding_session(
         .filter(|(credential_id, ..)| is_proton_session_key(credential_id))
     {
         let describes_the_row = tag.as_deref() == Some(key_tag.as_str())
-            && digest.as_deref() == Some(session_blob_digest(&blob, &nonce).as_str());
+            && digest.as_deref() == Some(credential_blob_digest(&blob, &nonce).as_str());
         match entry {
             Some(entry) if describes_the_row => {
                 if entry == fingerprint {
@@ -5857,7 +6023,7 @@ fn saved_session_fingerprint(
         params![
             user_id,
             credential_id,
-            session_blob_digest(&blob, &nonce),
+            credential_blob_digest(&blob, &nonce),
             session_index_key_tag(&key)
         ],
         |row| row.get(0),
@@ -6109,19 +6275,55 @@ pub fn store_credential_for_user(
     credential_type: &str,
     secret: &str,
 ) -> Result<(), String> {
+    store_credential_for_user_as(
+        store,
+        user_id,
+        credential_id,
+        credential_type,
+        secret,
+        false,
+    )
+}
+
+/// [`store_credential_for_user`] for a sign-in of `user_id`'s own: a private
+/// token is stamped in the same write ([`set_signed_in_credential_for`]),
+/// which is what keeps it on a profile id another account also holds
+/// ([`align_private_tokens_inner`]). Only a sign-in writer of that account
+/// calls this; a restore, an import, a copy or a relocation never does.
+pub fn store_signed_in_credential_for_user(
+    store: &CredentialStore,
+    user_id: i64,
+    credential_id: &str,
+    credential_type: &str,
+    secret: &str,
+) -> Result<(), String> {
+    store_credential_for_user_as(store, user_id, credential_id, credential_type, secret, true)
+}
+
+fn store_credential_for_user_as(
+    store: &CredentialStore,
+    user_id: i64,
+    credential_id: &str,
+    credential_type: &str,
+    secret: &str,
+    signed_in: bool,
+) -> Result<(), String> {
     init_or_migrate_cli(store)?;
     let conn = open_or_init_cli()?;
-    let mut root_key = store.derive_user_partition_wrapping_key();
-    let result = set_user_credential_for(
+    let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
+    let write = if signed_in {
+        set_signed_in_credential_for
+    } else {
+        set_user_credential_for
+    };
+    write(
         &conn,
         &root_key,
         user_id,
         credential_id,
         credential_type,
         secret,
-    );
-    root_key.zeroize();
-    result
+    )
 }
 
 fn read_credential_for_user(
@@ -6912,8 +7114,36 @@ pub fn store_active_credential_typed_dual(
     credential_type: &str,
     secret: &str,
 ) -> Result<(), String> {
+    store_active_credential_typed_dual_as(store, credential_id, credential_type, secret, false)
+}
+
+/// [`store_active_credential_typed_dual`] for a sign-in of the active
+/// account's own ([`store_signed_in_credential_for_user`]).
+fn store_active_signed_in_credential_typed_dual(
+    store: &CredentialStore,
+    credential_id: &str,
+    credential_type: &str,
+    secret: &str,
+) -> Result<(), String> {
+    store_active_credential_typed_dual_as(store, credential_id, credential_type, secret, true)
+}
+
+fn store_active_credential_typed_dual_as(
+    store: &CredentialStore,
+    credential_id: &str,
+    credential_type: &str,
+    secret: &str,
+    signed_in: bool,
+) -> Result<(), String> {
     if let Some(user) = private_token_user(None, credential_type)? {
-        return store_credential_for_user(store, user, credential_id, credential_type, secret);
+        return store_credential_for_user_as(
+            store,
+            user,
+            credential_id,
+            credential_type,
+            secret,
+            signed_in,
+        );
     }
     store
         .store(credential_id, secret)
@@ -6930,8 +7160,52 @@ pub fn store_credential_for_user_typed_dual(
     credential_type: &str,
     secret: &str,
 ) -> Result<(), String> {
+    store_credential_for_user_typed_dual_as(
+        store,
+        user_id,
+        credential_id,
+        credential_type,
+        secret,
+        false,
+    )
+}
+
+/// [`store_credential_for_user_typed_dual`] for a sign-in of `user_id`'s own
+/// ([`store_signed_in_credential_for_user`]).
+pub fn store_signed_in_credential_for_user_typed_dual(
+    store: &CredentialStore,
+    user_id: i64,
+    credential_id: &str,
+    credential_type: &str,
+    secret: &str,
+) -> Result<(), String> {
+    store_credential_for_user_typed_dual_as(
+        store,
+        user_id,
+        credential_id,
+        credential_type,
+        secret,
+        true,
+    )
+}
+
+fn store_credential_for_user_typed_dual_as(
+    store: &CredentialStore,
+    user_id: i64,
+    credential_id: &str,
+    credential_type: &str,
+    secret: &str,
+    signed_in: bool,
+) -> Result<(), String> {
     if let Some(user) = private_token_user(Some(user_id), credential_type)? {
-        return store_credential_for_user(store, user, credential_id, credential_type, secret);
+        return store_credential_for_user_as(
+            store,
+            user,
+            credential_id,
+            credential_type,
+            secret,
+            signed_in,
+        );
     }
     store
         .store(credential_id, secret)
@@ -10991,8 +11265,8 @@ mod tests {
     /// that the owner's refreshes have rewritten since holds other bytes but
     /// the same sign-in family and refresh token, and is dropped; so is a
     /// record with no family, which says nothing of where it came from, and a
-    /// Jottacloud chain of the vault's Jottacloud user. A record of another
-    /// sign-in, and a chain of another Jottacloud user, stay.
+    /// Jottacloud chain of the vault's Jottacloud user. A record its own
+    /// sign-in stamped, and a chain of another Jottacloud user, stay.
     #[test]
     fn a_shared_profiles_row_stays_only_for_a_sign_in_of_its_own() {
         let _guard = test_lock();
@@ -11061,6 +11335,9 @@ mod tests {
             let kind = private_token_type(key).unwrap();
             set_user_credential_for(&conn, &root, other.id, key, kind, row).unwrap();
         }
+        // The account's own sign-in, stamped as its sign-in writer stamps it.
+        set_signed_in_credential_for(&conn, &root, other.id, rows[1].0, "oauth", &rows[1].1)
+            .unwrap();
         let held: Vec<(&str, &str)> = rows.iter().map(|(k, _, v)| (*k, v.as_str())).collect();
         let (keys, read) = fake_vault(&held);
         let delete = |_: &str| Ok(());
@@ -11079,6 +11356,247 @@ mod tests {
         assert_eq!(row("oauth_dropbox_profile-2"), None);
         assert_eq!(row("jottacloud_refresh_profile-0"), None);
         assert_eq!(row("jottacloud_refresh_profile-1"), Some(rows[4].1.clone()));
+    }
+
+    /// The alignment marker of `user` reset, as a restore that wrote private
+    /// token keys resets it ([`realign_private_tokens_after_restore`]).
+    fn reset_alignment(conn: &Connection, user: i64) {
+        conn.execute(
+            "DELETE FROM global_state WHERE key = ?1",
+            params![format!("{PRIVATE_TOKENS_ALIGNED_PREFIX}{user}")],
+        )
+        .unwrap();
+    }
+
+    /// An account other than the legacy owner that holds `profile-0`, a
+    /// profile id the owner of `conn` (`migrated_conn(1)`) also holds.
+    fn shares_the_owners_profile(conn: &mut Connection, root: &[u8; 32]) -> UserMetadata {
+        let other = create_passphrase_less_user(conn, root, "Other", None, None).unwrap();
+        clear_user_session();
+        let profile = json!({"id": "profile-0", "name": "p", "protocol": "dropbox",
+                             "host": "", "port": 0, "username": "p@example.test"});
+        replace_server_profiles_for(conn, root, other.id, &[profile]).unwrap();
+        mark_creds_migrated(conn, other.id).unwrap();
+        other
+    }
+
+    fn oauth_record(access: &str, refresh: &str, family: &str) -> String {
+        json!({"access_token": access, "refresh_token": refresh, "expires_at": 1,
+               "token_type": "Bearer", "scopes": [], "owner_family": family})
+        .to_string()
+    }
+
+    fn row_of(conn: &Connection, root: &[u8; 32], user: i64, key: &str) -> Option<String> {
+        get_user_credential_for(conn, root, user, key)
+            .unwrap()
+            .map(|value| value.to_string())
+    }
+
+    /// A non-owner signs in to GitHub again on a profile id the owner also
+    /// holds, with a token other than the owner's: its row is its own sign-in,
+    /// kept by the alignment, and kept again when a restore resets the marker.
+    #[test]
+    fn a_non_owners_own_github_sign_in_survives_the_alignment_and_a_restore() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(1);
+        let root = test_root();
+        let other = shares_the_owners_profile(&mut conn, &root);
+        let key = "github_oauth_profile-0";
+        set_signed_in_credential_for(&conn, &root, other.id, key, "oauth", "gho_other").unwrap();
+        let (keys, read) = fake_vault(&[(key, "gho_owner")]);
+        let delete = |_: &str| Ok(());
+        align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete).unwrap();
+        assert_eq!(
+            row_of(&conn, &root, other.id, key).as_deref(),
+            Some("gho_other"),
+            "the non-owner's own GitHub sign-in was dropped"
+        );
+        reset_alignment(&conn, other.id);
+        align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete).unwrap();
+        assert_eq!(
+            row_of(&conn, &root, other.id, key).as_deref(),
+            Some("gho_other"),
+            "the non-owner's own GitHub sign-in was dropped after a restore"
+        );
+    }
+
+    /// A row written before the stamp, on a profile id the owner also holds,
+    /// that differs from the vault (an OAuth record with a `v1:` family of
+    /// its own, a GitHub token) proves no sign-in: it is dropped once, the
+    /// owner's row and vault copy are left as they are, and a sign-in of the
+    /// account's own afterwards stays.
+    #[test]
+    fn an_unstamped_shared_row_is_dropped_once_and_the_owners_is_untouched() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(1);
+        let root = test_root();
+        let owner = nonprofile_secret_owner(&conn).unwrap().unwrap();
+        let other = shares_the_owners_profile(&mut conn, &root);
+        let (oauth, github) = ("oauth_dropbox_profile-0", "github_oauth_profile-0");
+        let owners = oauth_record("owners-access", "owners-refresh", "v1:owners");
+        let others = oauth_record("other-access", "other-refresh", "v1:other");
+        set_user_credential_for(&conn, &root, other.id, oauth, "oauth", &others).unwrap();
+        set_user_credential_for(&conn, &root, other.id, github, "oauth", "gho_other").unwrap();
+        set_user_credential_for(&conn, &root, owner, oauth, "oauth", &owners).unwrap();
+        let (keys, read) = fake_vault(&[(oauth, owners.as_str()), (github, "gho_owner")]);
+        let deleted = RefCell::new(Vec::<String>::new());
+        let delete = |key: &str| {
+            deleted.borrow_mut().push(key.to_string());
+            Ok(())
+        };
+        align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete).unwrap();
+        assert_eq!(
+            row_of(&conn, &root, other.id, oauth),
+            None,
+            "an unstamped record with a family of its own was kept"
+        );
+        assert_eq!(row_of(&conn, &root, other.id, github), None);
+        assert_eq!(row_of(&conn, &root, owner, oauth), Some(owners.clone()));
+        assert!(deleted.borrow().is_empty(), "{:?}", deleted.borrow());
+
+        set_signed_in_credential_for(&conn, &root, other.id, oauth, "oauth", &others).unwrap();
+        reset_alignment(&conn, other.id);
+        align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete).unwrap();
+        assert_eq!(row_of(&conn, &root, other.id, oauth), Some(others));
+        assert_eq!(row_of(&conn, &root, owner, oauth), Some(owners));
+        assert!(deleted.borrow().is_empty(), "{:?}", deleted.borrow());
+    }
+
+    /// An earlier migration copied the owner's OAuth record, family and all,
+    /// into another account's row; the owner then signed in again, which
+    /// minted a new family, while the copied token may still be valid. The
+    /// copy differs from the vault in family and tokens alike and is still
+    /// dropped; the account's own sign-in, stamped, stays.
+    #[test]
+    fn a_copied_v1_record_is_dropped_after_the_owner_signs_in_again() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(1);
+        let root = test_root();
+        let other = shares_the_owners_profile(&mut conn, &root);
+        let key = "oauth_dropbox_profile-0";
+        let copied = oauth_record("old-access", "old-refresh", "v1:owners-first");
+        set_user_credential_for(&conn, &root, other.id, key, "oauth", &copied).unwrap();
+        let signed_in_again = oauth_record("new-access", "new-refresh", "v1:owners-second");
+        let (keys, read) = fake_vault(&[(key, signed_in_again.as_str())]);
+        let delete = |_: &str| Ok(());
+        align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete).unwrap();
+        assert_eq!(
+            row_of(&conn, &root, other.id, key),
+            None,
+            "a copy of the owner's earlier sign-in was kept"
+        );
+
+        let own = oauth_record("own-access", "own-refresh", "v1:own");
+        set_signed_in_credential_for(&conn, &root, other.id, key, "oauth", &own).unwrap();
+        reset_alignment(&conn, other.id);
+        align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete).unwrap();
+        assert_eq!(row_of(&conn, &root, other.id, key), Some(own));
+    }
+
+    /// A stamp is never carried: a row a restore (or any writer other than
+    /// the account's sign-in) writes over a stamped one is unstamped, and a
+    /// restored partition database comes back with no stamp at all. Either
+    /// row is dropped on a profile id the owner also holds.
+    #[test]
+    fn a_restored_row_carries_no_sign_in_stamp() {
+        let _guard = test_lock();
+        clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("partitions.db");
+        let mut conn = open_or_init_path(path.clone()).expect("open");
+        let root = test_root();
+        let owners_list = json!([{"id": "profile-0", "name": "p", "protocol": "dropbox",
+                                  "host": "", "port": 0, "username": "p@example.test"}]);
+        migrate_legacy_payloads(&mut conn, Some(&owners_list.to_string()), None, &root)
+            .expect("seed");
+        let other = shares_the_owners_profile(&mut conn, &root);
+        let (oauth, github) = ("oauth_dropbox_profile-0", "github_oauth_profile-0");
+        let own = oauth_record("own-access", "own-refresh", "v1:own");
+        set_signed_in_credential_for(&conn, &root, other.id, oauth, "oauth", &own).unwrap();
+        set_signed_in_credential_for(&conn, &root, other.id, github, "oauth", "gho_other").unwrap();
+        // The backup's copy of the row, written back by a restore.
+        set_user_credential_for(&conn, &root, other.id, oauth, "oauth", &own).unwrap();
+        // A restored partition database.
+        forget_sign_in_stamps_in_db(&path).unwrap();
+        let owners = oauth_record("owners-access", "owners-refresh", "v1:owners");
+        let (keys, read) = fake_vault(&[(oauth, owners.as_str()), (github, "gho_owner")]);
+        let delete = |_: &str| Ok(());
+        align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete).unwrap();
+        assert_eq!(
+            row_of(&conn, &root, other.id, oauth),
+            None,
+            "a row a restore wrote kept its sign-in stamp"
+        );
+        assert_eq!(
+            row_of(&conn, &root, other.id, github),
+            None,
+            "a restored database kept its sign-in stamps"
+        );
+    }
+
+    /// The owner's own rows on a profile id another account also holds are
+    /// never touched: not by the owner's alignment, nor by the other's.
+    #[test]
+    fn the_alignment_never_touches_the_owners_rows() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(1);
+        let root = test_root();
+        let owner = nonprofile_secret_owner(&conn).unwrap().unwrap();
+        let other = shares_the_owners_profile(&mut conn, &root);
+        let (oauth, github) = ("oauth_dropbox_profile-0", "github_oauth_profile-0");
+        let owners = oauth_record("owners-access", "owners-refresh", "v1:owners");
+        set_user_credential_for(&conn, &root, owner, oauth, "oauth", &owners).unwrap();
+        set_user_credential_for(&conn, &root, owner, github, "oauth", "gho_owner_row").unwrap();
+        let vault = oauth_record("vault-access", "vault-refresh", "v1:vault");
+        let (keys, read) = fake_vault(&[(oauth, vault.as_str()), (github, "gho_vault")]);
+        let delete = |_: &str| Ok(());
+        for user in [owner, other.id, owner] {
+            reset_alignment(&conn, user);
+            align_private_tokens_inner(&conn, &root, user, &keys, &read, &delete).unwrap();
+        }
+        assert_eq!(row_of(&conn, &root, owner, oauth), Some(owners));
+        assert_eq!(
+            row_of(&conn, &root, owner, github).as_deref(),
+            Some("gho_owner_row")
+        );
+    }
+
+    /// A sign-in stamped by its writer and refreshed since (a record with no
+    /// family, as the headless OAuth finish writes it) is still the account's
+    /// own sign-in, and stays on a profile id the owner also holds.
+    #[test]
+    fn a_refreshed_sign_in_keeps_its_stamp() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(1);
+        let root = test_root();
+        let other = shares_the_owners_profile(&mut conn, &root);
+        let key = "oauth_dropbox_profile-0";
+        let record = |access: &str| {
+            json!({"access_token": access, "refresh_token": "own-refresh", "expires_at": 1,
+                   "token_type": "Bearer", "scopes": []})
+            .to_string()
+        };
+        set_signed_in_credential_for(&conn, &root, other.id, key, "oauth", &record("first"))
+            .unwrap();
+        assert!(replace_user_credential_if_unchanged(
+            &conn,
+            &root,
+            other.id,
+            key,
+            "oauth",
+            (&record("first"), &record("refreshed")),
+            false,
+        )
+        .unwrap());
+        let owners = oauth_record("owners-access", "owners-refresh", "v1:owners");
+        let (keys, read) = fake_vault(&[(key, owners.as_str())]);
+        let delete = |_: &str| Ok(());
+        align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete).unwrap();
+        assert_eq!(
+            row_of(&conn, &root, other.id, key),
+            Some(record("refreshed")),
+            "a refresh of the account's own sign-in lost its stamp"
+        );
     }
 
     /// The migration of an account other than the legacy owner takes the
