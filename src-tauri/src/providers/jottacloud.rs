@@ -35,6 +35,11 @@ const API_BASE: &str = "https://api.jottacloud.com";
 /// The recycle bin is a mountpoint of the device, alongside Archive and Sync.
 const TRASH_MOUNTPOINT: &str = "Trash";
 
+/// Why a login stopped when no credential vault could be opened, and what
+/// to do: it stops before the login token is sent, so the same token works
+/// for the retry.
+pub(crate) const NO_VAULT_FOR_LOGIN: &str = "jottacloud: no credential vault could be opened, so the login token cannot be stored; unlock or repair the vault and try again (the login token was not used and is still valid)";
+
 fn jotta_log(msg: &str) {
     info!("[JOTTACLOUD] {}", msg);
 }
@@ -645,6 +650,8 @@ impl JottacloudProvider {
     }
 
     async fn discover_oidc(&self, well_known_url: &str) -> Result<String, ProviderError> {
+        #[cfg(test)]
+        tests::DISCOVERIES.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         // Validate URL scheme
         if !well_known_url.starts_with("https://") {
             return Err(ProviderError::AuthenticationFailed(
@@ -1628,10 +1635,11 @@ impl JottacloudProvider {
                 .ok()
                 .and_then(|_| crate::credential_store::CredentialStore::from_cache())
         });
+        // Stopped before the login token is sent, so it stays valid for the
+        // retry the message asks for.
         let Some(store) = store else {
             return Err(ProviderError::ConnectionFailed(
-                "jottacloud: the credential vault could not be opened, so the chain a login starts could not be saved; unlock the vault and try again"
-                    .to_string(),
+                NO_VAULT_FOR_LOGIN.to_string(),
             ));
         };
         for account in Self::refresh_persist_accounts(&self.profile_id, None) {
@@ -5257,6 +5265,9 @@ mod tests {
         chain.to_string()
     }
 
+    /// How many OIDC discoveries a login sent (test only).
+    pub(super) static DISCOVERIES: std::sync::atomic::AtomicUsize =
+        std::sync::atomic::AtomicUsize::new(0);
     /// The owner-aware read refuses (test only).
     pub(super) static READ_REFUSED: std::sync::atomic::AtomicBool =
         std::sync::atomic::AtomicBool::new(false);

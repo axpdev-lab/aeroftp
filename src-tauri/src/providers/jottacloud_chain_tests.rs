@@ -1791,6 +1791,69 @@ fn a_login_that_could_not_keep_its_chain_spends_nothing() {
     assert!(failures.is_empty(), "{failures:#?}");
 }
 
+/// A login that finds no credential vault it can open stops before the login
+/// token is sent: `connect` returns the retryable error that says why and what
+/// to do, with no OIDC discovery and no exchange sent. With the vault open
+/// again, the same login goes on to its discovery, and a login of the profile
+/// writes its chain.
+#[test]
+fn a_login_with_no_vault_to_open_keeps_its_login_token() {
+    use std::sync::atomic::Ordering::SeqCst;
+    if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+        "providers::jottacloud::chain_tests::a_login_with_no_vault_to_open_keeps_its_login_token",
+    ) {
+        return;
+    }
+    let chains = Chains::new();
+    let _ = chains.store.delete("jottacloud_refresh");
+    let profile = "novaultlogin";
+    let login = || {
+        let mut login = JottacloudProvider::new(JottacloudConfig {
+            login_token: SecretString::from(unanswered_login_token()),
+            device: "Jotta".into(),
+            mountpoint: "Archive".into(),
+            initial_path: None,
+        })
+        .with_profile_id(profile);
+        login.set_credential_user(Some(chains.first));
+        login
+    };
+    let (sent, discovered) = (chains.submissions(), super::tests::DISCOVERIES.load(SeqCst));
+    CredentialStore::lock();
+    let connected = chains.runtime().block_on(login().connect());
+    CredentialStore::unlock_with_master(PASSWORD, None).expect("unlock");
+    assert_eq!(
+        super::tests::DISCOVERIES.load(SeqCst) - discovered,
+        0,
+        "no OIDC discovery is sent: {connected:?}"
+    );
+    assert_eq!(
+        chains.submitted_since(sent),
+        Vec::<String>::new(),
+        "no exchange is sent"
+    );
+    match &connected {
+        Err(ProviderError::ConnectionFailed(message)) => {
+            assert_eq!(
+                message,
+                super::NO_VAULT_FOR_LOGIN,
+                "the message says why and what to do"
+            )
+        }
+        other => panic!("a login with no vault stops with a retryable error: {other:?}"),
+    }
+
+    // The vault opens: the same login token goes on to its discovery (which
+    // the double leaves unanswered), and a login writes the profile's chain.
+    let connected = chains.runtime().block_on(login().connect());
+    assert!(
+        matches!(&connected, Err(ProviderError::AuthenticationFailed(m)) if m.contains("OIDC discovery failed")),
+        "with the vault open the login goes ahead: {connected:?}"
+    );
+    assert_eq!(super::tests::DISCOVERIES.load(SeqCst) - discovered, 1);
+    assert_eq!(chains.login(profile, "login-novault"), "login-novault");
+}
+
 /// A rotation kept for a profile's key, whose chain was loaded from the
 /// singleton, keeps that source when it is handed out again: a sign-out of
 /// the singleton by another process during the next exchange stops its
