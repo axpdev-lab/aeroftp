@@ -174,6 +174,10 @@ pub struct PlanInputs {
     /// The account the secrets are read for and written to; `None` on an
     /// install without accounts.
     pub receiver: Option<Receiver>,
+    /// The plan is for the backup's partition, which the import restores
+    /// whole: its decisions are written only once that partition is the one
+    /// this device uses, never into the one it keeps when the restore fails.
+    pub targets_restored_partition: bool,
     /// The vault's own value of every private token key the plan read, before
     /// the import wrote anything: what a failed step puts back in the vault
     /// when the receiver's writes leave it alone.
@@ -700,6 +704,7 @@ mod tests {
                 ("server_srv_d", "pw-d"),
             ]),
             receiver: None,
+            targets_restored_partition: false,
             local_vault: HashMap::new(),
             security_reset: Vec::new(),
         }

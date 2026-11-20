@@ -1706,6 +1706,7 @@ fn profile_plan_inputs(
         local_secrets,
         backup_secrets,
         receiver,
+        targets_restored_partition: restores_partition,
         local_vault,
         security_reset,
     })
@@ -1842,7 +1843,17 @@ fn apply_profile_decisions(
     inputs: &PlanInputs,
     choices: ProfileChoices<'_>,
     blob_before_import: Option<String>,
+    partition_published: bool,
+    vault_written: &HashMap<String, Zeroizing<String>>,
 ) -> Result<(u32, Vec<serde_json::Value>), String> {
+    #[cfg(test)]
+    tests::run_before_profile_decisions(store);
+    // A plan made for the backup's partition describes that partition's
+    // list and secrets: when it was not published, this device keeps its
+    // own, and nothing of the plan is written into it.
+    if inputs.targets_restored_partition && !partition_published {
+        return Err(PARTITION_NOT_RESTORED.to_string());
+    }
     let outcome = keystore_profile_plan::apply(
         inputs,
         choices.decisions,
@@ -1862,33 +1873,13 @@ fn apply_profile_decisions(
     if active != inputs.receiver {
         return Err(crate::user_partitions::ACCOUNT_CHANGED.to_string());
     }
-    let mut touched: Vec<String> = outcome.secret_ops.iter().map(|(k, _)| k.clone()).collect();
-    touched.sort();
-    touched.dedup();
-    // Put back what the plan read before the import wrote, not what is there
-    // now: the import has already replaced it with the backup's version, even
-    // for a profile the user kept from this device. A key the plan did not
-    // read belongs to a new copy, which did not exist then.
-    let vault = if reads_vault_tokens(inputs.receiver) {
-        Vec::new()
-    } else {
-        touched
-            .iter()
-            .filter_map(|key| Some((key.clone(), inputs.local_vault.get(key)?.clone())))
-            .collect()
-    };
-    let snapshot = ProfileStepSnapshot {
-        receiver: inputs.receiver,
-        secrets: touched
-            .into_iter()
-            .map(|key| {
-                let before = inputs.local_secrets.get(&key).cloned().flatten();
-                (key, before)
-            })
-            .collect(),
-        vault,
-        list: inputs.local.clone(),
-        blob: blob_before_import,
+    // Where the import itself wrote what the receiver reads: every row of a
+    // partition it restored, or a vault entry the receiver reads.
+    let partition_restored = inputs.targets_restored_partition && partition_published;
+    let in_vault_written = |key: &str| {
+        vault_written
+            .get(key)
+            .filter(|_| private_row_of(db.as_deref(), inputs.receiver, key).is_none())
     };
 
     let applied = (|| -> Result<(), String> {
@@ -1931,6 +1922,10 @@ fn apply_profile_decisions(
         }
     }
 }
+
+/// The refusal of a profile step planned for the backup's partition when that
+/// partition was not restored: this device's list and credentials stay.
+const PARTITION_NOT_RESTORED: &str = "PARTITION_NOT_RESTORED: the backup's account database was not restored, so the choices made for its server list were not applied; this device's server list and credentials are unchanged";
 
 /// Phase, current and total, as reported to the import progress callback.
 type ImportProgress<'a> = &'a dyn Fn(&str, u32, u32);
@@ -4723,10 +4718,78 @@ mod tests {
         assert_eq!(row_in(&store, &cfg, bob, key).as_deref(), Some("bob-token"));
     }
 
+    /// The backup's partition, of this very account, cannot be published (its
+    /// security reset fails): this device keeps its own, and the choices
+    /// made for the backup's list are not written into it, though the
+    /// account active here is the one the plan was made for.
+    #[test]
+    fn choices_for_a_partition_not_restored_leave_this_devices_alone() {
+        let _guard = crate::user_partitions::test_lock();
+        crate::user_partitions::clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let cfg = dir.path().join("config");
+        let key = "oauth_dropbox_srv_drive";
+        let bob = bob_with_his_token(&store, &cfg, key);
+        let source_db = dir.path().join("copy.db");
+        rusqlite::Connection::open(cfg.join("user_partitions.db"))
+            .unwrap()
+            .execute("VACUUM INTO ?1", [source_db.to_str().unwrap()])
+            .unwrap();
+        let root = store.derive_user_partition_wrapping_key();
+        let mut conn = rusqlite::Connection::open(&source_db).unwrap();
+        let backup_list = [dropbox("srv_drive", "Drive B"), relaxed("srv_lab", "Lab")];
+        crate::user_partitions::replace_server_profiles_for(&mut conn, &root, bob, &backup_list)
+            .unwrap();
+        crate::user_partitions::set_user_credential_for(
+            &conn,
+            &root,
+            bob,
+            key,
+            "oauth",
+            "bob-backup-token",
+        )
+        .unwrap();
+        conn.execute_batch(
+            "CREATE TRIGGER fail_reset BEFORE INSERT ON server_profiles
+             BEGIN SELECT RAISE(FAIL, 'forced reset failure'); END;",
+        )
+        .unwrap();
+        drop(conn);
+        crate::user_partitions::clear_user_session();
+        let backup = full_backup(dir.path(), &source_db, &backup_list);
+
+        let result = import_deciding(
+            &store,
+            &cfg,
+            &backup,
+            ImportSections::default(),
+            &[decide(
+                "srv_drive",
+                keystore_profile_plan::ProfileDecision::Accept,
+            )],
+        );
+        crate::user_partitions::forget_security_reset_blocks_for_tests();
+        assert_eq!(result.sqlite_dbs_failed, ["user_partitions.db"]);
+        let error = result
+            .profile_decisions_error
+            .expect("the choices were applied to this device's partition");
+        assert!(error.starts_with("PARTITION_NOT_RESTORED"), "{error}");
+        assert_eq!(row_in(&store, &cfg, bob, key).as_deref(), Some("bob-token"));
+        assert_eq!(
+            my_servers(&store, &cfg)
+                .iter()
+                .map(|p| p["name"].as_str().unwrap().to_string())
+                .collect::<Vec<_>>(),
+            ["Drive"]
+        );
+    }
+
     /// The profile step writes to the account its plan was made for. When the
     /// restore leaves another one active, here because the backup's partition
     /// could not be published and this device's stays, the step is refused
-    /// before it writes, and this device's account keeps its own token.
+    /// before it writes (the plan was for the partition not restored), and
+    /// this device's account keeps its own token.
     #[test]
     fn decisions_for_another_account_are_refused_before_they_write() {
         let _guard = crate::user_partitions::test_lock();
@@ -4821,7 +4884,74 @@ mod tests {
         let error = result
             .profile_decisions_error
             .expect("the decisions were applied");
+        assert!(error.starts_with("PARTITION_NOT_RESTORED"), "{error}");
+    }
+
+    /// A plan for this device's partition is written for the account it was
+    /// made for: when another account is active by the time the step runs,
+    /// the step is refused before it writes, and the planned account keeps
+    /// its own token.
+    #[test]
+    fn decisions_for_an_account_switched_to_meanwhile_are_refused() {
+        let _guard = crate::user_partitions::test_lock();
+        crate::user_partitions::clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let cfg = dir.path().join("config");
+        let key = "oauth_dropbox_srv_drive";
+        let bob = bob_with_his_token(&store, &cfg, key);
+        let mut payload = ExportPayload::default();
+        payload.vault_entries.insert(
+            "config_server_profiles".to_string(),
+            serde_json::to_string(&[dropbox("srv_drive", "Drive B")]).unwrap(),
+        );
+        let backup = dir.path().join("vault.aeroftp-keystore");
+        seal_backup(&backup, PASSWORD_736, &payload);
+        let hook_db = cfg.join("user_partitions.db");
+        let carol = {
+            let mut conn = rusqlite::Connection::open(&hook_db).unwrap();
+            let root = store.derive_user_partition_wrapping_key();
+            let carol = crate::user_partitions::create_passphrase_less_user(
+                &mut conn, &root, "Carol", None, None,
+            )
+            .unwrap();
+            crate::user_partitions::set_active_user(&conn, bob).unwrap();
+            carol.id
+        };
+        crate::user_partitions::clear_user_session();
+        // A writer that ignores the profile list lock the import holds (every
+        // switch through the app waits for it): the guard is the last line.
+        before_profile_decisions(move |_| {
+            rusqlite::Connection::open(&hook_db)
+                .unwrap()
+                .execute(
+                    "UPDATE global_state SET value = ?1 WHERE key = 'active_user_id'",
+                    [carol.to_string()],
+                )
+                .unwrap();
+            crate::user_partitions::clear_user_session();
+        });
+
+        let result = import_deciding(
+            &store,
+            &cfg,
+            &backup,
+            VAULT_ONLY,
+            &[decide(
+                "srv_drive",
+                keystore_profile_plan::ProfileDecision::Accept,
+            )],
+        );
+
+        let error = result
+            .profile_decisions_error
+            .expect("the decisions were applied");
         assert!(error.starts_with("ACCOUNT_CHANGED"), "{error}");
+        assert_eq!(
+            row_in(&store, &cfg, bob, key).as_deref(),
+            Some("bob-token"),
+            "the planned account's token was rewritten"
+        );
     }
 
     /// The preview reads this device's row of a token before it asks whose
@@ -5262,7 +5392,10 @@ mod tests {
         let fingerprint = keystore_profile_plan::preview(&inputs).fingerprint;
         let blob_before = store.get("config_server_profiles").unwrap();
 
+        // Published, as the import does before the step: the plan is the
+        // backup partition's.
         let db = cfg.join("user_partitions.db");
+        std::fs::copy(dir.path().join("source").join("user_partitions.db"), &db).unwrap();
         std::fs::set_permissions(&db, std::fs::Permissions::from_mode(0o444)).unwrap();
         if std::fs::OpenOptions::new().write(true).open(&db).is_ok() {
             eprintln!("running with write access to a 0444 file (root?): skipped");
@@ -5282,6 +5415,8 @@ mod tests {
                 fingerprint: &fingerprint,
             },
             Some(blob_before.clone()),
+            true,
+            &HashMap::new(),
         )
         .unwrap_err();
         std::fs::set_permissions(&db, std::fs::Permissions::from_mode(0o644)).unwrap();
