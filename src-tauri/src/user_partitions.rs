@@ -7185,6 +7185,32 @@ pub fn store_active_credential_typed_dual(
     store_active_credential_typed_dual_as(store, credential_id, credential_type, secret, false)
 }
 
+/// [`store_active_credential_typed_dual`] for `user_id`, the account active
+/// when the request arrived ([`active_user_for_save`]): a writer of several
+/// secrets reads the account once, so a switch while one of them waits sends
+/// none of the others elsewhere. `None` (no account yet) writes the vault, as
+/// the active-account writer does then.
+pub fn store_typed_credential_dual_as(
+    store: &CredentialStore,
+    user_id: Option<i64>,
+    credential_id: &str,
+    credential_type: &str,
+    secret: &str,
+) -> Result<(), String> {
+    match user_id {
+        Some(user_id) => store_credential_for_user_typed_dual(
+            store,
+            user_id,
+            credential_id,
+            credential_type,
+            secret,
+        ),
+        None => store
+            .store(credential_id, secret)
+            .map_err(|e| format!("Store credential in vault: {e}")),
+    }
+}
+
 /// [`store_active_credential_typed_dual`] for a sign-in of the active
 /// account's own ([`store_signed_in_credential_for_user`]).
 fn store_active_signed_in_credential_typed_dual(

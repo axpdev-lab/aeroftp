@@ -201,6 +201,14 @@ const AEROFTP_OBSCURED_SWIFT_UNTIL: (&str, &str) = ("2026-06-16T18:48:54Z", "4.0
 /// path is meant to recover (a Swift password); S3, Azure and B2 keys are longer.
 const MIN_REVEALED_PLAIN_SECRET_LEN: usize = 8;
 
+/// What an rclone import says of a remote whose saved Proton session it
+/// stored: said by the writer after the store, never by the parser, since the
+/// store may keep the session out.
+pub const RCLONE_SESSION_SHARED: &str = "rclone's saved session was imported and is now shared with rclone: the first of the two to refresh it keeps it, the other signs in again";
+
+/// [`RCLONE_SESSION_SHARED`] for a configuration template.
+pub const TEMPLATE_SESSION_SHARED: &str = "the saved session in the template was imported and is now shared with the external configuration: the first of the two to refresh it keeps it, the other signs in again";
+
 /// Appends the notes about credentials left out to the warning the profile
 /// already carries.
 fn with_credential_notes(mut mapped: MappedProfile, notes: Vec<String>) -> MappedProfile {

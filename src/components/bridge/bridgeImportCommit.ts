@@ -145,11 +145,18 @@ async function restoreRemovedProfiles(removed: ServerProfile[], userId: number |
  * the same add-vs-update split and rollback semantics used by the
  * legacy rclone/WinSCP/FileZilla confirm handlers. Single source of
  * truth so every bridge source behaves identically.
+ *
+ * @param importedUserId the account the scan stored the profiles' secrets in
+ *   (`importedUserId` of `import_bridge_config`, `null` for no account).
+ *   Undefined skips the check. A confirm in another account is refused before
+ *   anything is removed: its profiles would land where their tokens and
+ *   sessions are not.
  */
 export async function commitImportedServers(
     selected: ServerProfile[],
     existingServerKeys: Set<string>,
     onImport: (servers: ServerProfile[], expectedUserId?: number | null) => void | Promise<void>,
+    importedUserId?: number | null,
 ): Promise<CommitOutcome> {
     const key = bridgeProfileKey;
     const added = selected.filter(s => !existingServerKeys.has(key(s)));
@@ -172,6 +179,13 @@ export async function commitImportedServers(
             added: 0,
             updated: 0,
             error: 'Import failed. The saved profiles could not be read, so nothing was changed.',
+        };
+    }
+    if (importedUserId !== undefined && (backupUserId ?? null) !== importedUserId) {
+        return {
+            added: 0,
+            updated: 0,
+            error: 'The active account changed after the file was read, so nothing was saved. Make the account you imported into the active one again and import the same file again.',
         };
     }
 

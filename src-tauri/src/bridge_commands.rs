@@ -239,11 +239,15 @@ fn dispatch_import(source: &str, path: &Path) -> Result<Value, String> {
 
 /// Persist rclone's per-profile OAuth/Jotta tokens (#214) into the vault with
 /// the same keys the saved-server reconnect path expects
-/// (`oauth_<slug>_<id>`, `jottacloud_refresh_<id>`). No-op when the vault is
+/// (`oauth_<slug>_<id>`, `jottacloud_refresh_<id>`), for `user`, the account
+/// the import began in (see [`import_bridge_config`]). No-op when the vault is
 /// locked; the server-credential loop in `import_bridge_config` already
-/// surfaces that case to the caller.
+/// surfaces that case to the caller. Returns what to tell of each profile: a
+/// secret not stored, or the note of a Proton session stored, said only once
+/// it is.
 fn store_rclone_provider_secrets(
     result: &rclone_import::RcloneImportResult,
+    user: &Result<Option<i64>, String>,
 ) -> Vec<(String, String)> {
     let mut failures = Vec::new();
     let store = match CredentialStore::from_cache() {
@@ -278,13 +282,16 @@ fn store_rclone_provider_secrets(
         };
         if let Some(ref oauth_json) = secrets.oauth {
             if let Some(slug) = crate::oauth_vault_slug_for_protocol(protocol) {
-                // MUV-4: dual-write into vault + active user's partition.
-                if let Err(e) = crate::user_partitions::store_active_credential_typed_dual(
-                    &store,
-                    &format!("oauth_{}_{}", slug, profile_id),
-                    "oauth",
-                    oauth_json,
-                ) {
+                // MUV-4: dual-write into vault + the importing account's partition.
+                if let Err(e) = user.clone().and_then(|user| {
+                    crate::user_partitions::store_typed_credential_dual_as(
+                        &store,
+                        user,
+                        &format!("oauth_{}_{}", slug, profile_id),
+                        "oauth",
+                        oauth_json,
+                    )
+                }) {
                     log::warn!("rclone bridge: oauth token store failed for {profile_id}: {e}");
                     failures.push((
                         profile_id.clone(),
@@ -295,12 +302,15 @@ fn store_rclone_provider_secrets(
         }
         if let Some(ref jotta_json) = secrets.jotta_refresh {
             if protocol == "jottacloud" {
-                if let Err(e) = crate::user_partitions::store_active_credential_typed_dual(
-                    &store,
-                    &format!("jottacloud_refresh_{}", profile_id),
-                    "jottacloud_refresh",
-                    jotta_json,
-                ) {
+                if let Err(e) = user.clone().and_then(|user| {
+                    crate::user_partitions::store_typed_credential_dual_as(
+                        &store,
+                        user,
+                        &format!("jottacloud_refresh_{}", profile_id),
+                        "jottacloud_refresh",
+                        jotta_json,
+                    )
+                }) {
                     log::warn!("rclone bridge: jotta token store failed for {profile_id}: {e}");
                     failures.push((
                         profile_id.clone(),
@@ -310,17 +320,28 @@ fn store_rclone_provider_secrets(
             }
         }
         // The cached session of an rclone `protondrive` remote, restored for
-        // the active account as an `.aeroftp` import restores one: never into
-        // an account while another on this device may hold it, since a
-        // sign-out here would revoke it there.
+        // the importing account as an `.aeroftp` import restores one: never
+        // into an account while another on this device may hold it, since a
+        // sign-out here would revoke it there. Said to be shared with rclone
+        // only once it is stored.
         #[cfg(feature = "proton-native")]
         if let Some(ref session_json) = secrets.proton_native_session {
             if protocol == "proton" {
                 use crate::providers::proton_native::vault;
-                match vault::SessionOwner::current().and_then(|owner| {
-                    vault::import_session_blocking(owner, profile_id, session_json)
-                }) {
-                    Ok(true) => {}
+                match user
+                    .clone()
+                    .map_err(crate::providers::ProviderError::Other)
+                    .and_then(|user| {
+                        vault::import_session_blocking(
+                            vault::SessionOwner::for_user(user),
+                            profile_id,
+                            session_json,
+                        )
+                    }) {
+                    Ok(true) => failures.push((
+                        profile_id.clone(),
+                        rclone_import::RCLONE_SESSION_SHARED.into(),
+                    )),
                     Ok(false) => failures.push((profile_id.clone(), vault::IMPORT_WITHHELD.into())),
                     Err(e) => {
                         log::warn!(
@@ -713,10 +734,16 @@ pub async fn import_bridge_config(
     // `#[serde(skip)]` field that a generic `Value` cannot transport, so we
     // import it natively here and persist those tokens before serialising the
     // server list back into the shared post-processing below.
+    // One account for every secret of the scan, read once before the first
+    // write: a write may wait for a vault or a session lock, and an account
+    // switched to meanwhile (in this window or another process) must receive
+    // none of them. The response names it, for the window to refuse a confirm
+    // in another account.
+    let user = crate::user_partitions::active_user_for_save();
     let mut secret_failures: Vec<(String, String)> = Vec::new();
     let value = if source == "rclone" {
         let result = rclone_import::import_rclone(&canonical).map_err(|e| e.to_string())?;
-        secret_failures = store_rclone_provider_secrets(&result);
+        secret_failures = store_rclone_provider_secrets(&result, &user);
         serde_json::to_value(&result).map_err(|e| e.to_string())?
     } else {
         dispatch_import(&source, &canonical)?
@@ -724,7 +751,7 @@ pub async fn import_bridge_config(
     let store = CredentialStore::from_cache();
     let mut write = |key: &str, secret: &str| -> Result<(), String> {
         let store = store.as_ref().ok_or("the credential vault is locked")?;
-        crate::user_partitions::store_active_credential_dual(store, key, secret)
+        crate::user_partitions::store_credential_dual_as(store, user.clone()?, key, secret)
             .map_err(|e| e.to_string())
     };
     let vault: Option<VaultWrite<'_>> = if store.is_some() {
@@ -732,13 +759,17 @@ pub async fn import_bridge_config(
     } else {
         None
     };
-    match keep_relaxed {
+    let mut response = match keep_relaxed {
         Some(keep) => {
             let policy = crate::profile_security::RelaxationPolicy::Keep(keep);
             finish_bridge_import_with_policy(&source, &value, secret_failures, vault, &policy)
         }
         None => finish_bridge_import(&source, &value, secret_failures, vault),
+    }?;
+    if let Ok(user) = &user {
+        response["importedUserId"] = json!(user);
     }
+    Ok(response)
 }
 
 /// One vault write: the entry's key and its secret.

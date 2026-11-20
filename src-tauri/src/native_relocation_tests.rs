@@ -1743,3 +1743,101 @@ fn only_a_proton_move_takes_a_proton_session_lock() {
         .profile_ids(target)
         .contains(&"unsigned-proton-moved".to_string()));
 }
+
+/// An rclone import writes every secret of one scan into the account active
+/// when it began. Another account becomes active while the first session's
+/// restore waits for its lease: neither the second session nor the OAuth
+/// token after it goes there, and the response names the account the secrets
+/// went to, for the window to refuse a confirm in another.
+#[test]
+fn an_rclone_import_keeps_to_the_account_it_began_in() {
+    if !in_isolated_child("an_rclone_import_keeps_to_the_account_it_began_in") {
+        return;
+    }
+    let accounts = Accounts::open();
+    let owners_owner = accounts.owners_owner();
+    let conf = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(
+        conf.path(),
+        concat!(
+            "[pd-first]\ntype = protondrive\nusername = first@example.test\n",
+            "client_uid = pinned-first-uid\nclient_access_token = access-1\n",
+            "client_refresh_token = refresh-1\nclient_salted_key_pass = a2V5LXBhc3N3b3JkLTE=\n",
+            "[pd-second]\ntype = protondrive\nusername = second@example.test\n",
+            "client_uid = pinned-second-uid\nclient_access_token = access-1\n",
+            "client_refresh_token = refresh-1\nclient_salted_key_pass = a2V5LXBhc3N3b3JkLTE=\n",
+            "[box]\ntype = dropbox\n",
+            "token = {\"access_token\":\"box-access\",\"token_type\":\"bearer\",\"refresh_token\":\"box-refresh\"}\n",
+        ),
+    )
+    .unwrap();
+    let first_slug = vault::refresh_lease_slug("pinned-first-uid");
+    let lease = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(crate::providers::oauth2::RefreshLease::acquire_checked(
+            &first_slug,
+        ))
+        .unwrap()
+        .unwrap();
+    let waits = vault::test_seams::observe_waits();
+    let path = conf.path().to_string_lossy().into_owned();
+    let importing = std::thread::spawn(move || {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(crate::bridge_commands::import_bridge_config(
+                "rclone".into(),
+                path,
+                None,
+            ))
+    });
+    let contended = format!("lease {first_slug}");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    let mut waited = false;
+    while !importing.is_finished() && std::time::Instant::now() < deadline {
+        if waits
+            .recv_timeout(std::time::Duration::from_millis(50))
+            .is_ok_and(|wait| wait == contended)
+        {
+            waited = true;
+            break;
+        }
+    }
+    assert!(waited, "the first session's restore waits for its lease");
+    cli_set_active_user(&accounts.store, accounts.source.id).unwrap();
+    drop(lease);
+    let imported = importing.join().unwrap().unwrap();
+    let id_of = |name: &str| {
+        imported["servers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|server| server["name"] == name)
+            .and_then(|server| server["id"].as_str())
+            .unwrap()
+            .to_string()
+    };
+    for name in ["pd-first", "pd-second"] {
+        let id = id_of(name);
+        assert!(
+            vault::load_session(owners_owner, Some(&id))
+                .unwrap()
+                .is_some(),
+            "{name}'s session is in the account the import began in"
+        );
+        assert!(
+            !has_row(&accounts.conn, accounts.source.id, &key(&id)),
+            "{name}'s session is not in the account switched to"
+        );
+    }
+    let token = format!("oauth_dropbox_{}", id_of("box"));
+    assert!(
+        !has_row(&accounts.conn, accounts.source.id, &token),
+        "the OAuth token is not in the account switched to"
+    );
+    assert!(has_row(&accounts.conn, accounts.legacy, &token));
+    assert_eq!(imported["importedUserId"], json!(accounts.legacy));
+}

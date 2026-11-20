@@ -28,6 +28,8 @@ interface BridgeImportResult {
     security?: ImportedSecurity[];
     sourcePath: string | null;
     totalRemotes: number;
+    /** The account the scan stored the secrets in (`null`: no account yet). */
+    importedUserId?: number | null;
 }
 
 interface BridgeExportResult {
@@ -254,7 +256,7 @@ export const BridgeSourcePanel: React.FC<Props> = ({
         committingRef.current = true;
         setLoading(true);
         try {
-            const outcome = await commitImportedServers(selected, existingServerKeys, onImport);
+            const outcome = await commitImportedServers(selected, existingServerKeys, onImport, result.importedUserId);
             if (outcome.error) { setError(outcome.error); return; }
             const parts: string[] = [];
             if (outcome.added > 0) parts.push(t('settings.importSuccess').replace('{count}', String(outcome.added)));

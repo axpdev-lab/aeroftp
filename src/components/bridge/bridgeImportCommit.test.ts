@@ -226,6 +226,23 @@ describe('the import callback and the commit helper together', () => {
         expect(vault.writes).toBe(0);
         expect(vault.profiles.map(s => s.id)).toEqual(['base']);
     });
+
+    // The scan stored the tokens and sessions in account 4; account 3 is active
+    // at the confirm. Its profiles there would have none of them, so nothing is
+    // removed, stored or handed to the callback.
+    it('refuses a confirm in an account other than the one the scan stored the secrets in', async () => {
+        const vault = fakeVault([base]);
+        const onImport = vi.fn();
+        const replacement: ServerProfile = { ...base, id: 'replacement', name: 'Koofr renamed' };
+        const outcome = await commitImportedServers([replacement], new Set([bridgeProfileKey(base)]), onImport, 4);
+        expect(outcome).toEqual({ added: 0, updated: 0, error: expect.stringContaining('active account changed') });
+        expect(onImport).not.toHaveBeenCalled();
+        expect(vault.writes).toBe(0);
+        expect(vault.profiles.map(s => s.id)).toEqual(['base']);
+        // The account the scan stored into is the active one: the confirm goes on.
+        expect(await commitImportedServers([replacement], new Set([bridgeProfileKey(base)]),
+            servers => appendImportedProfiles(servers, 3).then(() => undefined), 3)).toEqual({ added: 0, updated: 1 });
+    });
 });
 
 describe('an imported Filen API key (#230)', () => {
