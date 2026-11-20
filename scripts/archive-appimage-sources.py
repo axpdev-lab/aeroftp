@@ -31,7 +31,13 @@ least three years after the last release that ships it, which is what the
 offer promises.
 
 Usage: archive-appimage-sources.py <folder with this release's AppImage> <AeroFTP version>
-Reads GITHUB_REPOSITORY and GITHUB_SHA; gh reads GH_TOKEN. The publish job runs
+Reads GITHUB_REPOSITORY, GITHUB_REF_NAME and GITHUB_SHA; gh reads GH_TOKEN.
+
+The sources kept are those of the AppImage the release distributes. On a
+re-run of a tag whose release already has its AppImage, the publish job keeps
+the published one (it uploads with overwrite_files: false), and a rebuild can
+bundle newer Ubuntu libraries: the list is then read from the published
+AppImage, downloaded from the release, never from the rebuild. The publish job runs
 it under a concurrency group shared by every tag, so two runs never write the
 record at once.
 
@@ -226,14 +232,14 @@ def archive(source: str, version: str, work: Path) -> Path:
     return tar_path
 
 
-def lookup(repo: str) -> dict | None:
-    """The archive release with its body and assets, or None when it does not exist."""
-    done = gh('api', '--include', f'repos/{repo}/releases/tags/{TAG}')
+def release_by_tag(repo: str, tag: str) -> dict | None:
+    """The release `tag` with its body and assets, or None when it does not exist."""
+    done = gh('api', '--include', f'repos/{repo}/releases/tags/{tag}')
     status = done.stdout.split('\n', 1)[0]
     if done.returncode != 0:
         if re.match(r'^HTTP/[0-9.]+ 404(\s|$)', status):
             return None
-        raise Refused(f'cannot look up the release {TAG}: {status or done.stderr.strip()}')
+        raise Refused(f'cannot look up the release {tag}: {status or done.stderr.strip()}')
     body = re.split(r'\r?\n\r?\n', done.stdout, maxsplit=1)
     try:
         release = json.loads(body[1]) if len(body) == 2 else None
@@ -241,13 +247,34 @@ def lookup(repo: str) -> dict | None:
         release = None
     if (
         not isinstance(release, dict)
-        or release.get('tag_name') != TAG
+        or release.get('tag_name') != tag
         or not isinstance(release.get('body') or '', str)
         or not isinstance(release.get('assets'), list)
         or not all(isinstance(a, dict) and isinstance(a.get('name'), str) for a in release['assets'])
     ):
-        raise Refused(f'cannot read the release {TAG}, its body and its assets from gh api --include')
+        raise Refused(f'cannot read the release {tag}, its body and its assets from gh api --include')
     return release
+
+
+def lookup(repo: str) -> dict | None:
+    """The archive release with its body and assets, or None when it does not exist."""
+    return release_by_tag(repo, TAG)
+
+
+def distributed_appimage(repo: str, tag: str, built: Path, work: Path) -> Path:
+    """The AppImage the release `tag` distributes: the one already published
+    under the same name, downloaded, or this build's when there is none yet."""
+    release = release_by_tag(repo, tag)
+    if release is None or built.name not in {a['name'] for a in release['assets']}:
+        return built
+    folder = work / 'published'
+    folder.mkdir()
+    done = gh('release', 'download', tag, '--repo', repo, '--pattern', built.name, '--dir', str(folder), '--clobber')
+    published = folder / built.name
+    if done.returncode != 0 or not published.is_file():
+        raise Refused(f'cannot download the published {built.name} of {tag}: {done.stderr.strip()}')
+    print(f'{tag} already distributes {built.name}: keeping the sources of the published one, not of this rebuild')
+    return published
 
 
 def read_state(body: str) -> list[dict] | None:
@@ -296,13 +323,14 @@ def main(argv: list[str]) -> int:
     when = today()
     with tempfile.TemporaryDirectory() as tmp:
         work = Path(tmp)
+        source = distributed_appimage(repo, os.environ['GITHUB_REF_NAME'], appimages[0], work)
         runner = work / 'appimage'
-        shutil.copyfile(appimages[0], runner)
+        shutil.copyfile(source, runner)
         runner.chmod(0o755)
         extracted = subprocess.run([str(runner), '--appimage-extract', LIST_IN_APPIMAGE], cwd=work, capture_output=True, text=True)
         list_path = work / 'squashfs-root' / LIST_IN_APPIMAGE
         if extracted.returncode != 0 or not list_path.is_file():
-            raise Refused(f'cannot extract {LIST_IN_APPIMAGE} from {appimages[0].name}: {extracted.stderr.strip()}')
+            raise Refused(f'cannot extract {LIST_IN_APPIMAGE} from {source.name}: {extracted.stderr.strip()}')
         needed = bundled_sources(list_path.read_text(encoding='utf-8'))
 
         release = lookup(repo)

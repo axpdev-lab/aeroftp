@@ -51,6 +51,28 @@ def release():
     r['assets'] = [{'name': n, 'size': os.path.getsize(os.path.join(assets, n))} for n in sorted(os.listdir(assets))]
     return r
 
+tags = os.path.join(state, 'tags')
+if args[:2] == ['api', '--include'] and not args[2].endswith('/releases/tags/appimage-sources'):
+    # The AeroFTP release of the tag being published: state/tags/<tag>/ holds
+    # its assets when it already exists.
+    tag = args[2].rsplit('/', 1)[-1]
+    if fail == 'tag-lookup':
+        print('HTTP/2.0 502 Bad Gateway\nContent-Type: application/json\r\n\r\n{"message":"Bad Gateway"}')
+        sys.exit(1)
+    folder = os.path.join(tags, tag)
+    if not os.path.isdir(folder):
+        print('HTTP/2.0 404 Not Found\nContent-Type: application/json; charset=utf-8\r\n\r\n{"message":"Not Found","status":"404"}')
+        sys.exit(1)
+    r = {'tag_name': tag, 'body': '', 'assets': [{'name': n} for n in sorted(os.listdir(folder))]}
+    print('HTTP/2.0 200 OK\nContent-Type: application/json; charset=utf-8\r\n\r\n' + json.dumps(r))
+    sys.exit(0)
+if args[:2] == ['release', 'download'] and args[2] != 'appimage-sources':
+    if fail == 'tag-download':
+        print('download refused', file=sys.stderr)
+        sys.exit(1)
+    name = args[args.index('--pattern') + 1]
+    shutil.copyfile(os.path.join(tags, args[2], name), os.path.join(args[args.index('--dir') + 1], name))
+    sys.exit(0)
 if args[:2] == ['api', '--include']:
     if fail == 'lookup':
         print('HTTP/2.0 502 Bad Gateway\nContent-Type: application/json\r\n\r\n{"message":"Bad Gateway"}')
@@ -120,6 +142,9 @@ mkdir -p "squashfs-root/$(dirname "$2")"
 cp "$STUB_LIST" "squashfs-root/$2"
 '''
 
+# The AppImage a release already distributes: it answers with its own list.
+STUB_PUBLISHED_APPIMAGE = STUB_APPIMAGE.replace('$STUB_LIST', '$STUB_PUBLISHED_LIST')
+
 
 def sha(data):
     return hashlib.sha256(data).hexdigest()
@@ -181,6 +206,8 @@ class ArchiveAppImageSources(unittest.TestCase):
                 **os.environ,
                 'PATH': f'{self.bin}:{os.environ["PATH"]}',
                 'GITHUB_REPOSITORY': REPO,
+                'GITHUB_REF_NAME': f'v{version}',
+                'STUB_PUBLISHED_LIST': str(self.dir / 'PUBLISHED-BUNDLED-LIBRARIES.txt'),
                 'GITHUB_SHA': 'a' * 40,
                 'STUB_STATE': str(self.state),
                 'STUB_LAUNCHPAD': str(self.launchpad),
@@ -438,7 +465,52 @@ class ArchiveAppImageSources(unittest.TestCase):
         self.assertNotIn('continue-on-error', step)
         # Every tag's publish job shares one group, never cancelled: two runs
         # never write the record at once.
-        self.assertRegex(job, r'\n    concurrency:\n      group: appimage-sources-archive\n      cancel-in-progress: false\n')
+        # queue: max keeps every waiting tag: with the default single queue a
+        # third tag would cancel the second one's pending publication.
+        self.assertRegex(job, r'\n    concurrency:\n      group: appimage-sources-archive\n      cancel-in-progress: false\n      queue: max\n')
+
+    def publish_appimage(self, tag, *lines):
+        """The release `tag` already distributes an AppImage whose list is `lines`."""
+        folder = self.state / 'tags' / tag
+        folder.mkdir(parents=True)
+        (folder / self.appimage.name).write_text(STUB_PUBLISHED_APPIMAGE)
+        (self.dir / 'PUBLISHED-BUNDLED-LIBRARIES.txt').write_text(HEADER + ''.join(
+            f'usr/lib/{lib} {pkg} 1.0 {src} {ver} https://launchpad.net/ubuntu/+source/{src}/{ver}\n'
+            for lib, pkg, src, ver in lines
+        ))
+
+    def test_a_rerun_keeps_the_sources_of_the_published_appimage_not_of_the_rebuild(self):
+        self.two_sources()
+        self.publish_source('gtk+3.0', '3.24.33-1ubuntu3', {'gtk+3.0_3.24.33-1ubuntu3.debian.tar.xz': b'gtk debian 3'})
+        # The release already has the AppImage built with ubuntu2; the rerun's
+        # build bundles ubuntu3, which this release never distributes.
+        self.publish_appimage('v9.8.7', ('fallback/libgtk-3.so.0', 'libgtk-3-0', 'gtk+3.0', '3.24.33-1ubuntu2'))
+        self.bundle(('fallback/libgtk-3.so.0', 'libgtk-3-0', 'gtk+3.0', '3.24.33-1ubuntu3'))
+        result = self.run_script()
+        self.ok(result)
+        self.assertIn('keeping the sources of the published one', result.stdout)
+        self.assertEqual([(e['source'], e['version']) for e in self.record()], [('gtk+3.0', '3.24.33-1ubuntu2')])
+        self.assertEqual(self.assets(), ['SOURCES.json', 'gtk_3.0_3.24.33-1ubuntu2.tar'])
+        downloads = [c for c in self.calls() if c[:3] == ['release', 'download', 'v9.8.7']]
+        self.assertEqual(len(downloads), 1)
+        self.assertEqual(downloads[0][downloads[0].index('--pattern') + 1], self.appimage.name)
+
+    def test_a_release_without_its_appimage_yet_keeps_the_sources_of_this_build(self):
+        self.two_sources()
+        # The release exists (another platform was uploaded) but not the AppImage.
+        (self.state / 'tags' / 'v9.8.7').mkdir(parents=True)
+        (self.state / 'tags' / 'v9.8.7' / 'AeroFTP_9.8.7_x64-setup.exe').write_text('exe')
+        self.ok(self.run_script())
+        self.assertEqual([e['source'] for e in self.record()], ['gtk+3.0', 'libxi'])
+        self.assertFalse([c for c in self.calls() if c[:3] == ['release', 'download', 'v9.8.7']])
+
+    def test_a_published_appimage_it_cannot_look_up_or_download_stops_the_job(self):
+        self.two_sources()
+        self.refused(self.run_script(STUB_FAIL='tag-lookup'), r'cannot look up the release v9\.8\.7: HTTP/2\.0 502')
+        self.assertFalse((self.state / 'release.json').exists())
+        self.publish_appimage('v9.8.7', ('fallback/libXi.so.6', 'libxi6', 'libxi', '2:1.8-1build1'))
+        self.refused(self.run_script(STUB_FAIL='tag-download'), r'cannot download the published AeroFTP_9\.8\.7_amd64\.AppImage of v9\.8\.7')
+        self.assertFalse((self.state / 'release.json').exists())
 
 
 if __name__ == '__main__':

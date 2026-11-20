@@ -693,8 +693,6 @@ fn apply_cancelled_batches_with(
     let Ok(entries) = std::fs::read_dir(exe_dir) else {
         return CancellationState::default();
     };
-    let next = exe_dir.join(NEXT_DIR);
-    let prev = exe_dir.join(PREV_DIR);
     let mut state = CancellationState::default();
     for entry in entries.flatten() {
         let name = entry.file_name();
@@ -706,53 +704,93 @@ fn apply_cancelled_batches_with(
             continue;
         }
         let marker_path = entry.path();
-        if std::fs::symlink_metadata(&next).is_err() {
-            let _ = std::fs::remove_file(&marker_path);
-            continue;
-        }
-        match batch_ownership_with(exe_dir, &next, read_id) {
-            BatchOwnership::Unreadable => {
-                // The token match is unresolved: preserve cancellation and do
-                // not let detection conclude installed mode from this slot.
+        let (in_next, in_prev) = cancel_in_slots(exe_dir, token, read_id);
+        match in_next {
+            // The token match is unresolved: preserve cancellation and do
+            // not let detection conclude installed mode from this slot.
+            SlotCancel::Unreadable => {
                 state.unfinished = true;
                 state.identity_unresolved = true;
-                continue;
             }
-            BatchOwnership::Unowned => {
-                let _ = std::fs::remove_file(&marker_path);
-                continue;
-            }
-            BatchOwnership::Owned => {}
+            // Partial cleanup (for example a document is held): keep the
+            // marker active so no pass installs or exposes the cancelled batch.
+            SlotCancel::Partial => state.unfinished = true,
+            SlotCancel::Removed => restore_set_aside(exe_dir),
+            SlotCancel::NotThere => {}
         }
-        let id_path = next.join(STAGING_ID_FILE);
-        let current_token = match read_id(&id_path) {
-            Ok(raw) => raw.trim().to_string(),
-            Err(_) => {
-                state.unfinished = true;
-                state.identity_unresolved = true;
-                continue;
-            }
-        };
-        if current_token != token {
+        // The marker goes once neither slot can still hold the batch: a
+        // later staging may have set it aside, and a set-aside batch the
+        // marker no longer names would be put back and installed.
+        if in_next.settled() && in_prev.settled() {
             let _ = std::fs::remove_file(&marker_path);
-            continue;
-        }
-        remove_batch(&next);
-        if std::fs::symlink_metadata(&next).is_err() {
-            let _ = forget_batch(exe_dir, token);
-            if is_owned_batch(exe_dir, &prev)
-                && matches!(slot(&prev), Slot::Key(k) if k != RETIRED_KEY)
-            {
-                let _ = std::fs::rename(&prev, &next);
-            }
-            let _ = std::fs::remove_file(&marker_path);
-        } else {
-            // Partial cleanup (for example a document is held): keep the marker
-            // active so no pass installs or exposes the cancelled batch.
-            state.unfinished = true;
         }
     }
     state
+}
+
+/// What cancelling a batch token found in one slot.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SlotCancel {
+    /// No AeroFTP batch with that token there.
+    NotThere,
+    /// The batch was there and is gone.
+    Removed,
+    /// The batch was there and part of it could not be removed.
+    Partial,
+    /// Whether the batch there is that token cannot be read now.
+    Unreadable,
+}
+
+impl SlotCancel {
+    fn settled(self) -> bool {
+        matches!(self, SlotCancel::NotThere | SlotCancel::Removed)
+    }
+}
+
+/// Removes the batch of `token` from `NEXT_DIR` and from `PREV_DIR`, where a
+/// later staging sets the waiting batch aside. Under the batch lock.
+fn cancel_in_slots(
+    exe_dir: &Path,
+    token: &str,
+    read_id: &impl Fn(&Path) -> io::Result<String>,
+) -> (SlotCancel, SlotCancel) {
+    let cancel = |dir: PathBuf| -> SlotCancel {
+        match batch_ownership_with(exe_dir, &dir, read_id) {
+            BatchOwnership::Unowned => return SlotCancel::NotThere,
+            BatchOwnership::Unreadable => return SlotCancel::Unreadable,
+            BatchOwnership::Owned => {}
+        }
+        match read_id(&dir.join(STAGING_ID_FILE)) {
+            Ok(raw) if raw.trim() == token => {}
+            Ok(_) => return SlotCancel::NotThere,
+            Err(_) => return SlotCancel::Unreadable,
+        }
+        remove_batch(&dir);
+        if std::fs::symlink_metadata(&dir).is_err() {
+            let _ = forget_batch(exe_dir, token);
+            SlotCancel::Removed
+        } else {
+            SlotCancel::Partial
+        }
+    };
+    (
+        cancel(exe_dir.join(NEXT_DIR)),
+        cancel(exe_dir.join(PREV_DIR)),
+    )
+}
+
+/// Puts the batch a staging set aside back in `NEXT_DIR` once that slot is
+/// free, unless that batch's own cancellation is recorded.
+fn restore_set_aside(exe_dir: &Path) {
+    let next = exe_dir.join(NEXT_DIR);
+    let prev = exe_dir.join(PREV_DIR);
+    if std::fs::symlink_metadata(&next).is_err()
+        && is_owned_batch(exe_dir, &prev)
+        && matches!(slot(&prev), Slot::Key(k) if k != RETIRED_KEY)
+        && !batch_id(&prev).is_some_and(|id| cancel_marker_path(exe_dir, &id).exists())
+    {
+        let _ = std::fs::rename(&prev, &next);
+    }
 }
 
 fn apply_cancelled_batches(exe_dir: &Path) -> CancellationState {
@@ -1275,6 +1313,22 @@ fn add_active_handoff_keys(
     process_alive: &impl Fn(u32) -> bool,
     keys: &mut Vec<String>,
 ) -> io::Result<()> {
+    for_each_live_handoff(exe_dir, hash_exe, process_alive, |_, k| {
+        if !keys.contains(&k) {
+            keys.push(k);
+        }
+    })
+}
+
+/// Calls `found(attempt, key)` for the staged app exe of every handoff whose
+/// owner (the updating app, then its helper) is alive. A reservation whose
+/// owner is gone is removed.
+fn for_each_live_handoff(
+    exe_dir: &Path,
+    hash_exe: &impl Fn(&Path) -> io::Result<String>,
+    process_alive: &impl Fn(u32) -> bool,
+    mut found: impl FnMut(&str, String),
+) -> io::Result<()> {
     for entry in std::fs::read_dir(exe_dir)? {
         let entry = entry?;
         let name = entry.file_name();
@@ -1300,17 +1354,32 @@ fn add_active_handoff_keys(
         for app in ["AeroFTP.exe", "aeroftp-app.exe"] {
             let sidecar = exe_dir.join(format!("{app}.{attempt}.new"));
             match hash_exe(&sidecar) {
-                Ok(k) => {
-                    if !keys.contains(&k) {
-                        keys.push(k);
-                    }
-                }
+                Ok(k) => found(attempt, k),
                 Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
                 Err(e) => return Err(e),
             }
         }
     }
     Ok(())
+}
+
+/// Whether a live handoff of an attempt other than `own_attempt` waits to
+/// swap in an exe with `key`. A read that fails counts as a claim: the batch
+/// is then kept for that helper.
+fn live_handoff_claims_key(
+    exe_dir: &Path,
+    key: &str,
+    own_attempt: &str,
+    hash_exe: &impl Fn(&Path) -> io::Result<String>,
+    process_alive: &impl Fn(u32) -> bool,
+) -> bool {
+    let mut claimed = false;
+    let read = for_each_live_handoff(exe_dir, hash_exe, process_alive, |attempt, k| {
+        if attempt != own_attempt && k == key {
+            claimed = true;
+        }
+    });
+    claimed || read.is_err()
 }
 
 fn installed_app_keys_with_liveness(
@@ -1414,7 +1483,7 @@ fn stage_with_commit(
     remove_staging_leftovers(exe_dir);
     let next = exe_dir.join(NEXT_DIR);
     let prev = exe_dir.join(PREV_DIR);
-    if is_owned_batch(exe_dir, &next)
+    let reusable = is_owned_batch(exe_dir, &next)
         && matches!(slot(&next), Slot::Key(k) if k == key)
         && DOCS.iter().all(|name| {
             let staged_doc = next.join(name);
@@ -1428,8 +1497,18 @@ fn stage_with_commit(
                 }
                 None => std::fs::symlink_metadata(&staged_doc).is_err(),
             }
-        })
-    {
+        });
+    // The same batch may be the claim of an earlier attempt whose helper is
+    // still waiting to swap: taking it over would let this attempt's failure
+    // remove the documents that helper's exe starts with. It is reused only
+    // once that handoff has ended.
+    if reusable && live_handoff_claims_key(exe_dir, &key, suffix, &exe_key, &process_is_alive) {
+        return Err(
+            "Failed to stage the portable documents: an earlier update of this version is still being installed; try again once it finishes"
+                .to_string(),
+        );
+    }
+    if reusable {
         // Already staged by AeroFTP for this exe, with every requested
         // document matching byte for byte. Transfer ownership under the lock
         // to a fresh per-attempt token so cleanup from an earlier failed
@@ -1678,37 +1757,16 @@ pub(crate) fn discard_pending_docs_within(
     };
     let _ = apply_cancelled_batches(exe_dir);
     remove_staging_leftovers(exe_dir);
-    let next = exe_dir.join(NEXT_DIR);
-    let mut cleaned_target = true;
-    match batch_ownership(exe_dir, &next) {
-        BatchOwnership::Owned => match batch_id(&next) {
-            Some(id) if id == token => {
-                remove_batch(&next);
-                if std::fs::symlink_metadata(&next).is_err() {
-                    let _ = forget_batch(exe_dir, token);
-                } else {
-                    // The pre-recorded marker stays until a later pass finishes.
-                    cleaned_target = false;
-                }
-            }
-            Some(_) => {}
-            None => cleaned_target = false,
-        },
-        BatchOwnership::Unreadable => cleaned_target = false,
-        BatchOwnership::Unowned => {}
-    }
-    if cleaned_target {
+    // The batch is looked for in both slots: a later staging may have set it
+    // aside. The pre-recorded marker stays until a later pass finishes one
+    // that could not be removed or read now.
+    let (in_next, in_prev) = cancel_in_slots(exe_dir, token, &|p| std::fs::read_to_string(p));
+    if in_next.settled() && in_prev.settled() {
         let _ = std::fs::remove_file(cancel_marker_path(exe_dir, token));
     }
     // The AeroFTP-owned batch the staging set aside goes back to its place:
     // nothing replaced its exe (here, or the helper's failed swap before).
-    let prev = exe_dir.join(PREV_DIR);
-    if std::fs::symlink_metadata(&next).is_err()
-        && is_owned_batch(exe_dir, &prev)
-        && matches!(slot(&prev), Slot::Key(k) if k != RETIRED_KEY)
-    {
-        let _ = std::fs::rename(&prev, &next);
-    }
+    restore_set_aside(exe_dir);
     true
 }
 
@@ -1893,9 +1951,11 @@ fn install_pass_with_promote(
                 Err(e) => classify(&target, &e),
             }
         };
-        if matches!(outcome, Outcome::Failed(_))
-            || (matches!(outcome, Outcome::Directory) && name != "portable.marker")
-        {
+        // The staged marker may be the only one this exe has: dropping it
+        // after any failed replace (a full disk as much as a directory at its
+        // name) would make the next start resolve installed mode and open the
+        // host copy's data. It stays pending, and a later pass retries it.
+        if matches!(outcome, Outcome::Failed(_) | Outcome::Directory) && name != "portable.marker" {
             let _ = std::fs::remove_file(&pending);
         }
         outcomes.push((name, outcome));
@@ -4958,6 +5018,62 @@ mod tests {
         );
     }
 
+    #[test]
+    fn a_failed_marker_replace_keeps_the_only_staged_marker_and_portable_mode() {
+        let dir = FixtureDir::new();
+        let src = tempfile::tempdir().unwrap();
+        let exe = src.path().join("AeroFTP.exe");
+        let marker = src.path().join("portable.marker");
+        let readme = src.path().join("README.txt");
+        std::fs::write(&exe, b"portable exe").unwrap();
+        std::fs::write(&marker, b"portable").unwrap();
+        std::fs::write(&readme, b"new README.txt").unwrap();
+        let key = exe_key(&exe).unwrap();
+        stage_pending_docs(
+            dir.path(),
+            &exe,
+            &[(&marker, "portable.marker"), (&readme, "README.txt")],
+            "start",
+        )
+        .unwrap();
+        // A failure that is neither a lock nor a directory, on every document.
+        let full = |_: &Path, _: &Path| -> io::Result<()> {
+            Err(io::Error::new(
+                io::ErrorKind::StorageFull,
+                "There is not enough space on the disk.",
+            ))
+        };
+        let Pending::Docs(outcomes) = install_pending_docs(dir.path(), &key, full) else {
+            panic!("docs")
+        };
+        assert!(outcomes
+            .iter()
+            .all(|(_, o)| matches!(o, Outcome::Failed(_))));
+        assert!(!dir.path().join("portable.marker").exists());
+        // The marker stays staged, and the start resolves portable mode from
+        // it; the other document is dropped as before.
+        assert!(dir
+            .path()
+            .join(PENDING_DIR)
+            .join("portable.marker")
+            .is_file());
+        assert!(!dir.path().join(PENDING_DIR).join("README.txt").exists());
+        assert_eq!(
+            probe_portable_marker_within(dir.path(), || Some(key.clone()), None),
+            PortableMarkerState::Present
+        );
+        // Control: once the replace works, the marker is installed.
+        assert_eq!(
+            install_pending_docs(dir.path(), &key, rename),
+            Pending::Docs(vec![("portable.marker", Outcome::Installed)])
+        );
+        assert!(dir.path().join("portable.marker").is_file());
+        assert_eq!(
+            probe_portable_marker_within(dir.path(), || Some(key), None),
+            PortableMarkerState::Present
+        );
+    }
+
     #[cfg(unix)]
     #[test]
     fn probe_portable_marker_follows_symlink_to_regular_file_without_pending_batch() {
@@ -4968,6 +5084,171 @@ mod tests {
         assert_eq!(
             probe_portable_marker_within(dir.path(), || None, Some(Duration::from_secs(1))),
             PortableMarkerState::Present
+        );
+    }
+
+    /// B's batch waits in NEXT_DIR; C, another exe, sets it aside to
+    /// PREV_DIR and stages its own. Then both helpers fail, B first. B's
+    /// cancellation must reach its batch in PREV_DIR, so C's failure cannot
+    /// put it back for the next start to install.
+    #[test]
+    fn a_cancelled_batch_set_aside_by_a_later_staging_is_never_put_back() {
+        let dir = FixtureDir::new();
+        let src = tempfile::tempdir().unwrap();
+        let exe_b = src.path().join("b.exe");
+        let exe_c = src.path().join("c.exe");
+        let notice_b = src.path().join("notices-b.md");
+        let notice_c = src.path().join("notices-c.md");
+        std::fs::write(&exe_b, b"exe B").unwrap();
+        std::fs::write(&exe_c, b"exe C").unwrap();
+        std::fs::write(&notice_b, "notices of B").unwrap();
+        std::fs::write(&notice_c, "notices of C").unwrap();
+        std::fs::write(dir.path().join("THIRD-PARTY-NOTICES.md"), "old notices").unwrap();
+        let key_b = exe_key(&exe_b).unwrap();
+        let key_c = exe_key(&exe_c).unwrap();
+        let token_b = stage_pending_docs(
+            dir.path(),
+            &exe_b,
+            &[(&notice_b, "THIRD-PARTY-NOTICES.md")],
+            "b",
+        )
+        .unwrap()
+        .unwrap();
+        let token_c = stage_pending_docs(
+            dir.path(),
+            &exe_c,
+            &[(&notice_c, "THIRD-PARTY-NOTICES.md")],
+            "c",
+        )
+        .unwrap()
+        .unwrap();
+        let next = dir.path().join(NEXT_DIR);
+        let prev = dir.path().join(PREV_DIR);
+        assert_eq!(batch_id(&prev).as_deref(), Some(token_b.as_str()));
+        assert_eq!(batch_id(&next).as_deref(), Some(token_c.as_str()));
+
+        // B's helper fails: its batch goes from PREV_DIR, C's stays whole.
+        assert!(discard_pending_docs_within(dir.path(), &token_b, None));
+        assert!(
+            !prev.exists(),
+            "B's cancelled batch is removed where it was set aside"
+        );
+        assert_eq!(batch_id(&next).as_deref(), Some(token_c.as_str()));
+        assert_eq!(read(&next, "THIRD-PARTY-NOTICES.md"), "notices of C");
+        assert!(!cancel_marker_path(dir.path(), &token_b).exists());
+
+        // C's helper fails too: nothing is put back, and no start installs
+        // either attempt's documents.
+        assert!(discard_pending_docs_within(dir.path(), &token_c, None));
+        assert!(!next.exists());
+        assert!(!prev.exists());
+        for key in [&key_b, &key_c] {
+            let replace = |_: &Path, _: &Path| -> io::Result<()> {
+                panic!("a cancelled batch is never installed")
+            };
+            assert_eq!(
+                install_pending_docs(dir.path(), key, replace),
+                Pending::None
+            );
+        }
+        assert_eq!(read(dir.path(), "THIRD-PARTY-NOTICES.md"), "old notices");
+    }
+
+    /// A marker whose batch was set aside is applied there by the next pass
+    /// too, and a set-aside batch with a recorded cancellation is never moved
+    /// back, whichever marker the pass reads first.
+    #[test]
+    fn a_pass_applies_a_cancellation_to_the_set_aside_batch_and_does_not_restore_it() {
+        let dir = FixtureDir::new();
+        let src = tempfile::tempdir().unwrap();
+        let exe_b = src.path().join("b.exe");
+        let exe_c = src.path().join("c.exe");
+        let notice = src.path().join("notices.md");
+        std::fs::write(&exe_b, b"exe B").unwrap();
+        std::fs::write(&exe_c, b"exe C").unwrap();
+        std::fs::write(&notice, "notices").unwrap();
+        let token_b = stage_pending_docs(
+            dir.path(),
+            &exe_b,
+            &[(&notice, "THIRD-PARTY-NOTICES.md")],
+            "b",
+        )
+        .unwrap()
+        .unwrap();
+        let token_c = stage_pending_docs(
+            dir.path(),
+            &exe_c,
+            &[(&notice, "THIRD-PARTY-NOTICES.md")],
+            "c",
+        )
+        .unwrap()
+        .unwrap();
+        // Both cancellations recorded, as by two discards that could not take
+        // the lock in time.
+        record_cancelled_batch(dir.path(), &token_b).unwrap();
+        record_cancelled_batch(dir.path(), &token_c).unwrap();
+        let _lock = lock_batches(dir.path()).unwrap();
+        let state = apply_cancelled_batches(dir.path());
+        assert!(!state.unfinished);
+        assert!(!dir.path().join(NEXT_DIR).exists());
+        assert!(!dir.path().join(PREV_DIR).exists());
+        assert!(!cancel_marker_path(dir.path(), &token_b).exists());
+        assert!(!cancel_marker_path(dir.path(), &token_c).exists());
+    }
+
+    /// A batch whose helper is still waiting to swap stays that helper's: a
+    /// second attempt of the same exe and documents does not take it over,
+    /// so the second attempt's failure cannot remove what the first helper's
+    /// exe starts with. Once that handoff has ended, the batch is reused.
+    #[test]
+    fn a_batch_claimed_by_a_live_handoff_is_not_taken_over_by_a_second_attempt() {
+        let dir = FixtureDir::new();
+        let src = tempfile::tempdir().unwrap();
+        let exe = src.path().join("new.exe");
+        let notice = src.path().join("notices.md");
+        std::fs::write(&exe, b"exe of the update").unwrap();
+        std::fs::write(&notice, "notices of the update").unwrap();
+        let docs: &[(&Path, &'static str)] = &[(&notice, "THIRD-PARTY-NOTICES.md")];
+        let token_b = stage_pending_docs(dir.path(), &exe, docs, "attemptb")
+            .unwrap()
+            .unwrap();
+        // B's helper holds the handoff: its reservation names a live owner
+        // and its staged app exe is this exe.
+        let reservation = dir.path().join(format!("{UPDATE_HANDOFF_PREFIX}attemptb"));
+        std::fs::write(&reservation, std::process::id().to_string()).unwrap();
+        std::fs::copy(&exe, dir.path().join("AeroFTP.exe.attemptb.new")).unwrap();
+
+        let refused = stage_pending_docs(dir.path(), &exe, docs, "attemptc").unwrap_err();
+        assert!(refused.contains("still being installed"), "{refused}");
+        let next = dir.path().join(NEXT_DIR);
+        assert_eq!(batch_id(&next).as_deref(), Some(token_b.as_str()));
+        assert_eq!(
+            read(&next, "THIRD-PARTY-NOTICES.md"),
+            "notices of the update"
+        );
+        // C failing changes nothing for B: its token is not on the batch.
+        assert!(discard_pending_docs_within(
+            dir.path(),
+            "0123456789abcdef0123456789abcdef",
+            None
+        ));
+        assert_eq!(batch_id(&next).as_deref(), Some(token_b.as_str()));
+
+        // The attempt's own reservation is not a claim against itself.
+        let own = dir.path().join(format!("{UPDATE_HANDOFF_PREFIX}attemptc"));
+        std::fs::write(&own, std::process::id().to_string()).unwrap();
+        std::fs::copy(&exe, dir.path().join("AeroFTP.exe.attemptc.new")).unwrap();
+        std::fs::remove_file(&reservation).unwrap();
+        // Control: B's handoff has ended, so the same batch is reused under
+        // a new token.
+        let token_c = stage_pending_docs(dir.path(), &exe, docs, "attemptc")
+            .unwrap()
+            .unwrap();
+        assert_ne!(token_c, token_b);
+        assert_eq!(batch_id(&next).as_deref(), Some(token_c.as_str()));
+        assert_eq!(
+            read(&next, "THIRD-PARTY-NOTICES.md"),
+            "notices of the update"
         );
     }
 

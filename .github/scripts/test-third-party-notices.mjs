@@ -54,6 +54,8 @@ import {
   reviewedTagMentions,
   reviewedSourceTexts,
   reviewedSourceText,
+  checkNoticesFiles,
+  carriesCredentialUrl,
 } from '../../scripts/gen-third-party-notices.ts';
 
 // The committed notices with the blocks the generator reproduces as shipped,
@@ -337,6 +339,38 @@ test('npm collection: walks lock entries by path and preserves multiple versions
 
     // Dev dependencies must be excluded
     assert.strictEqual(deps.some((d) => d.name === 'dev-tool'), false, 'devDependencies must be excluded');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('npm collection: a lockfile without a packages map (lockfileVersion 1) or of an unknown version stops the generation', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'npm-lock-v1-fixture-'));
+  try {
+    // An installed production package that a version 1 lockfile names only
+    // in its nested dependencies tree: read as an empty inventory, the notices
+    // would list no npm package and still be written.
+    fs.mkdirSync(path.join(tmpDir, 'node_modules/foo'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, 'node_modules/foo/package.json'), JSON.stringify({ name: 'foo', version: '1.0.0' }));
+    fs.writeFileSync(path.join(tmpDir, 'node_modules/foo/LICENSE'), 'MIT License foo');
+    const lockPath = path.join(tmpDir, 'package-lock.json');
+    const write = (lock) => fs.writeFileSync(lockPath, JSON.stringify(lock));
+    write({ name: 'fixture-app', version: '1.0.0', lockfileVersion: 1, requires: true, dependencies: { foo: { version: '1.0.0' } } });
+    assert.throws(() => collectNpmDependencies(lockPath, tmpDir), /package-lock\.json has lockfileVersion 1; the notices read the packages map of lockfileVersion 2 or 3/);
+    write({ name: 'fixture-app', version: '1.0.0', dependencies: { foo: { version: '1.0.0' } } });
+    assert.throws(() => collectNpmDependencies(lockPath, tmpDir), /package-lock\.json has lockfileVersion null/);
+    write({ lockfileVersion: 4, packages: { '': {}, 'node_modules/foo': { version: '1.0.0', license: 'MIT' } } });
+    assert.throws(() => collectNpmDependencies(lockPath, tmpDir), /package-lock\.json has lockfileVersion 4/);
+    // A known version whose packages map is missing, not an object, or lacks its root entry.
+    for (const packages of [undefined, [], { 'node_modules/foo': { version: '1.0.0', license: 'MIT' } }]) {
+      write({ lockfileVersion: 3, packages });
+      assert.throws(() => collectNpmDependencies(lockPath, tmpDir), /package-lock\.json has no packages map with its root entry/);
+    }
+    // Control: the same package in a version 2 and a version 3 lockfile is collected.
+    for (const lockfileVersion of [2, 3]) {
+      write({ lockfileVersion, packages: { '': {}, 'node_modules/foo': { version: '1.0.0', license: 'MIT' } } });
+      assert.deepStrictEqual(collectNpmDependencies(lockPath, tmpDir).map((d) => `${d.name}@${d.version}`), ['foo@1.0.0']);
+    }
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
@@ -2884,6 +2918,55 @@ test('bundled code: a header license goes through the GPL-3.0 policy, however it
   }
 });
 
+test('bundled code: an SPDX tag inside a multiline Rust string is text, the same tag in a real comment goes through the policy', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rust-string-tag-fixture-'));
+  try {
+    const write = (rel, content) => {
+      fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, rel), content);
+    };
+    write('LICENSE', 'MIT License\n\nCopyright (c) 2020 Wrapper Author\n\nPermission is hereby granted, free of charge.');
+    const make = () => ({ name: 'rust-string-pkg', version: '1.0.0', license: 'MIT', source: 'cargo', packageDir: tmpDir, authors: [], ...readPackageFiles(tmpDir, 'rust-string-pkg@1.0.0') });
+    const known = new Set(Object.keys(JSON.parse(fs.readFileSync(SPDX_STANDARD_LICENSES_FILE, 'utf8'))));
+    const tag = '// SPDX-License-Identifier: GPL-2.0-only';
+    // The example header on a line of its own inside each kind of string
+    // literal that spans lines: raw with and without hashes (a quote inside
+    // one with hashes does not end it), byte raw, and an ordinary string
+    // (an escaped quote does not end it). A `/*` inside a string opens no
+    // comment, and a character literal '"' opens no string.
+    const strings = [
+      `const A: &str = r#"\n${tag}\nhe said "hi"\n"#;\n`,
+      `const B: &str = r"\n${tag}\n";\n`,
+      `const C: &[u8] = br##"\n"# still inside\n${tag}\n"##;\n`,
+      `const D: &str = "line one \\" quoted\n${tag}\n";\n`,
+      `const E: &str = "src/*.c";\nconst F: char = '"';\nconst G: &str = r#"\n/* not a comment\n${tag}\n"#;\n`,
+    ];
+    for (const body of strings) {
+      write('src/example.rs', `// Copyright (c) 2020 Wrapper Author\n// SPDX-License-Identifier: MIT\n\n${body}fn main() {}\n`);
+      assert.deepStrictEqual(
+        findBundledCodeUnderOtherLicenses(make(), known).map((b) => [b.license, b.declared]),
+        [['MIT', true]],
+        `only the real header is read: ${JSON.stringify(body)}`
+      );
+    }
+    // The same tag in a real comment, and in a comment after a multiline
+    // string has closed, goes through the GPL-3.0 policy and fails.
+    for (const body of [`${tag}\nfn main() {}\n`, `const A: &str = r#"\nexample "text"\n"#;\n${tag}\nfn main() {}\n`, `const D: &str = "one\ntwo";\n/* ${tag.slice(3)} */\n`]) {
+      write('src/example.rs', body);
+      assert.throws(
+        () => findBundledCodeUnderOtherLicenses(make(), known),
+        /rust-string-pkg@1\.0\.0 bundles src\/example\.rs under 'GPL-2\.0-only', and no choice of it is compatible with GPL-3\.0/,
+        JSON.stringify(body)
+      );
+    }
+    // A raw identifier is no raw string: the comment after it is read.
+    write('src/example.rs', `fn r#type() {}\n${tag}\n`);
+    assert.throws(() => findBundledCodeUnderOtherLicenses(make(), known), /under 'GPL-2\.0-only', and no choice of it is compatible/);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
 test('bundled code: a known typo is dropped term by term, the other terms of its choice still go through the policy', () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'typo-conjunction-fixture-'));
   try {
@@ -3463,26 +3546,63 @@ test('THIRD-PARTY-NOTICES.md and the exception pages exist and are up to date wi
   assert.match(content, new RegExp(`- \\*\\*Node\\.js / Web \\(npm\\) Production Packages:\\*\\* ${realTree().npm.length}\\n`));
 });
 
-test('check:licenses drift reporting: nonzero with a line location, never notice contents', () => {
+test('check:licenses drift reporting: nonzero with a line location, never notice contents, on a private copy of the files', () => {
   assert.strictEqual(firstDifferingLine('line 1\nline 2\n', 'line 1\nchanged\n'), 2);
   assert.strictEqual(firstDifferingLine('same\n', 'same\n'), null);
-  const file = path.join(ROOT, 'docs/UNRAR-LICENSE.md');
-  const before = fs.readFileSync(file);
-  const dummyCredential = 'dummy-credential-for-ci-log-test';
-  const tsxCli = createRequire(path.join(ROOT, 'package.json')).resolve('tsx/cli');
+  // The check runs against a private directory, never the checkout: an edit
+  // saved to a tracked page during the run, or an interrupted run, cannot be
+  // overwritten or left with the marker.
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'check-licenses-drift-fixture-'));
+  const tracked = ['THIRD-PARTY-NOTICES.md', 'docs/UNRAR-LICENSE.md'].map((f) => [f, fs.readFileSync(path.join(ROOT, f))]);
   try {
-    fs.writeFileSync(file, `${before.toString('utf8')}\n${dummyCredential}\n`);
-    const run = spawnSync(process.execPath, [tsxCli, 'scripts/gen-third-party-notices.ts', '--check'], {
-      cwd: ROOT,
-      encoding: 'utf8',
-      stdio: 'pipe',
-    });
-    const output = `${run.stdout}${run.stderr}`;
-    assert.notStrictEqual(run.status, 0, output);
-    assert.match(output, /First difference at line \d+\./);
-    assert.ok(!output.includes(dummyCredential), 'drift diagnostics must not reproduce notice contents');
+    const generated = 'notices line 1\nnotices line 2\nnotices line 3\n';
+    const documents = [{ file: 'docs/UNRAR-LICENSE.md', content: 'exception line 1\nexception line 2\n' }];
+    const write = (rel, content) => {
+      fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, rel), content);
+    };
+    const run = () => {
+      const reported = [];
+      const ok = checkNoticesFiles(generated, documents, tmpDir, (l) => reported.push(l));
+      return { ok, output: reported.join('\n') };
+    };
+    write('THIRD-PARTY-NOTICES.md', generated);
+    write('docs/UNRAR-LICENSE.md', documents[0].content);
+    // Control: files equal to the generated text pass, CRLF line ends too.
+    assert.deepStrictEqual(run(), { ok: true, output: '' });
+    write('docs/UNRAR-LICENSE.md', documents[0].content.replace(/\n/g, '\r\n'));
+    assert.deepStrictEqual(run(), { ok: true, output: '' });
+    const dummyCredential = 'dummy-credential-for-ci-log-test';
+    // A drifted exception page: nonzero, its line, not its text.
+    write('docs/UNRAR-LICENSE.md', `exception line 1\n${dummyCredential}\n`);
+    let r = run();
+    assert.strictEqual(r.ok, false);
+    assert.match(r.output, /docs[\\/]UNRAR-LICENSE\.md is out of date\.\nFirst difference at line 2\./);
+    assert.ok(r.output.startsWith(`ERROR: ${path.join(tmpDir, 'docs/UNRAR-LICENSE.md')}`), r.output.split('\n')[0]);
+    assert.ok(!r.output.includes(dummyCredential), 'drift diagnostics must not reproduce notice contents');
+    // A drifted notices file: the same, at its own line.
+    write('docs/UNRAR-LICENSE.md', documents[0].content);
+    write('THIRD-PARTY-NOTICES.md', `notices line 1\nnotices line 2\n${dummyCredential}\n`);
+    r = run();
+    assert.strictEqual(r.ok, false);
+    assert.match(r.output, /THIRD-PARTY-NOTICES\.md is out of date\.\nFirst difference at line 3\./);
+    assert.ok(!r.output.includes(dummyCredential), 'drift diagnostics must not reproduce notice contents');
+    // Through Node, as --check runs it: a failed check is a nonzero exit, and
+    // stderr carries the line, not the text.
+    const tsxCli = createRequire(path.join(ROOT, 'package.json')).resolve('tsx/cli');
+    const script = `import { checkNoticesFiles } from './scripts/gen-third-party-notices.ts'; if (!checkNoticesFiles(${JSON.stringify(generated)}, ${JSON.stringify(documents)}, ${JSON.stringify(tmpDir)})) process.exit(1);`;
+    const child = spawnSync(process.execPath, [tsxCli, '-e', script], { cwd: ROOT, encoding: 'utf8', stdio: 'pipe' });
+    const childOutput = `${child.stdout}${child.stderr}`;
+    assert.strictEqual(child.status, 1, childOutput);
+    assert.match(childOutput, /First difference at line 3\./);
+    assert.ok(!childOutput.includes(dummyCredential), 'drift diagnostics must not reproduce notice contents');
+    // Missing files are named.
+    fs.rmSync(path.join(tmpDir, 'docs/UNRAR-LICENSE.md'));
+    assert.match(run().output, /UNRAR-LICENSE\.md is missing\./);
+    // The tracked files were not touched.
+    for (const [f, bytes] of tracked) assert.ok(fs.readFileSync(path.join(ROOT, f)).equals(bytes), f);
   } finally {
-    fs.writeFileSync(file, before);
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
 
@@ -3653,6 +3773,115 @@ test('licensing exceptions: non-free exemption covers only the registered Cargo 
     () => generateNoticesMarkdown([registeredCargo], [sameNameNpm], SPDX_STANDARD_LICENSES_FILE, [exc]),
     /Component unrar_sys@0\.5\.8 \(file: vendor\/unrar\/license\.txt\) contains non-free restriction clauses/
   );
+});
+
+test('licensing exceptions: a source header that carries a restriction clause is scanned like a license file', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'restricted-header-fixture-'));
+  try {
+    const write = (rel, content) => {
+      fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, rel), content);
+    };
+    write('LICENSE', shippedLicense('Copyright (c) 2020 Wrapper Author', 'MIT'));
+    write('vendor/rar/license.txt', 'Vendored RAR license terms.\nThis code cannot be used to develop a RAR (WinRAR) compatible archiver.');
+    const header = (terms) => `// Copyright (c) 2024 Header Holder\n// SPDX-License-Identifier: MIT\n// ${terms}\nfn x() {}\n`;
+    const make = () => ({ name: 'vend_rar', version: '1.0.0', license: 'MIT', source: 'cargo', packageDir: tmpDir, authors: ['Rar Wrapper'], ...readPackageFiles(tmpDir, 'vend_rar@1.0.0') });
+    const exception = { crateName: 'vend_rar', version: '1.0.0', author: 'Rar Author', licenseName: 'RAR', sourceFile: 'vendor/rar/license.txt', document: 'docs/RAR-LICENSE.md', facts: 'It is not free software.' };
+    // An MIT-tagged header with its own grant and the RAR restriction: the
+    // header is reproduced as shipped, so it is rejected, by file.
+    write('src/lib.rs', header('Permission is hereby granted to use this file, but it cannot be used to develop a RAR (WinRAR) compatible archiver.'));
+    assert.throws(
+      () => generateNoticesMarkdown([make()], [], SPDX_STANDARD_LICENSES_FILE, [exception]),
+      /Component vend_rar@1\.0\.0 \(file: src\/lib\.rs\) contains non-free restriction clauses in a source header but is not registered in KNOWN_NON_FREE_EXCEPTIONS/
+    );
+    // The same restriction wrapped across the header's lines.
+    write('src/lib.rs', header('Permission is hereby granted to use this file.\n// It may not be used to re-create the RAR\n// compression algorithm.'));
+    assert.throws(() => generateNoticesMarkdown([make()], [], SPDX_STANDARD_LICENSES_FILE, [exception]), /\(file: src\/lib\.rs\) contains non-free restriction clauses in a source header/);
+    // Control: an unrestricted MIT header with its own terms still renders,
+    // reproduced as shipped, and the registered exception file still passes.
+    write('src/lib.rs', header('Permission is hereby granted to use this file freely.'));
+    const md = generateNoticesMarkdown([make()], [], SPDX_STANDARD_LICENSES_FILE, [exception]);
+    assert.match(md, /## Source Headers With Their Own Terms\n/);
+    assert.match(md, /Permission is hereby granted to use this file freely\./);
+    assert.match(md, /This code cannot be used to develop a RAR \(WinRAR\) compatible archiver\./);
+    // The registration covers its file only: without it, that file is rejected.
+    assert.throws(() => generateNoticesMarkdown([make()], [], SPDX_STANDARD_LICENSES_FILE, []), /\(file: vendor\/rar\/license\.txt\) contains non-free restriction clauses but is not registered/);
+    // A license text reviewed inside a source file (no tag of its own) is
+    // reproduced as shipped too, and scanned the same way.
+    const reviewFor = (body) => {
+      write('src/terms.rs', `${body}\nfn y() {}\n`);
+      const text = body.split('\n').map((l) => l.replace(/^\/\/ ?/, '')).join('\n');
+      return [{ package: 'vend_rar', version: '1.0.0', file: 'src/terms.rs', from: text.split('\n')[0], to: text.split('\n').at(-1), sha256: createHash('sha256').update(text, 'utf8').digest('hex'), license: 'W3C' }];
+    };
+    const restrictedReview = reviewFor('// Copyright (c) 2024 Terms Holder\n// Permission to use this file is granted, but it cannot be used to develop a RAR archiver.\n// End of terms.');
+    assert.throws(
+      () => generateNoticesMarkdown([make()], [], SPDX_STANDARD_LICENSES_FILE, [exception], restrictedReview),
+      /\(file: src\/terms\.rs\) contains non-free restriction clauses in a license text inside a source file but is not registered/
+    );
+    const freeReview = reviewFor('// Copyright (c) 2024 Terms Holder\n// Permission to use this file is granted.\n// End of terms.');
+    assert.match(generateNoticesMarkdown([make()], [], SPDX_STANDARD_LICENSES_FILE, [exception], freeReview), /## License Texts Inside Source Files\n[\s\S]*Permission to use this file is granted\./);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('credentials: an attribution line or a text reproduced as shipped with a credential-bearing URL stops the generation, by location only', () => {
+  const tmpDirs = [];
+  const make = (name, license, files) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'credential-notice-fixture-'));
+    tmpDirs.push(dir);
+    for (const [rel, content] of Object.entries(files)) {
+      fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(dir, rel), content);
+    }
+    return { name, version: '1.0.0', license, source: 'cargo', packageDir: dir, authors: [`${name} Author`], ...readPackageFiles(dir, `${name}@1.0.0`) };
+  };
+  const dummy = 'dummy-credential-in-a-notice';
+  const ownLicense = shippedLicense('Copyright (c) 2020 Wrapper Author', 'MIT');
+  const credentialUrls = [
+    `https://user:${dummy}@example.com/repo`,
+    `https://${dummy}@example.com/repo`,
+    `https://example.com/repo?access_token=${dummy}`,
+    `https://bucket.example.com/f?X-Amz-Signature=${dummy}&X-Amz-Date=1`,
+  ];
+  const rejects = (fn, location) =>
+    assert.throws(fn, (err) => {
+      assert.ok(!String(err.message).includes(dummy), 'the diagnostic must not carry the credential');
+      assert.ok(!String(err.stack).includes(dummy), 'the stack must not carry the credential');
+      assert.match(err.message, /would publish a URL that carries credentials/);
+      assert.match(err.message, location);
+      return true;
+    });
+  try {
+    for (const url of credentialUrls) {
+      assert.strictEqual(carriesCredentialUrl(`Copyright (c) 2024 Holder ${url}`), true, url);
+      // The package's own files name a holder: the sources' other notices are listed in its Notice Entry.
+      const listed = make('cred-src', 'MIT', { LICENSE: ownLicense, 'src/lib.rs': `// Copyright (c) 2024 Cred Holder ${url}\nfn x() {}\n` });
+      rejects(() => generateNoticesMarkdown([listed], []), /THIRD-PARTY-NOTICES\.md line \d+ \(under cred-src@1\.0\.0\) .*, from the attribution line at .*[\\/]src\/lib\.rs:1\./);
+      // No own files: the notices are listed with the standard text.
+      const bare = make('cred-bare', 'Apache-2.0', { 'src/lib.rs': `\n// Copyright (c) 2024 Cred Holder ${url}\nfn x() {}\n` });
+      rejects(() => generateNoticesMarkdown([bare], []), /\(under cred-bare@1\.0\.0\) .*, from the attribution line at .*[\\/]src\/lib\.rs:2\./);
+      // A holder line of a bundled header.
+      const header = make('cred-header', 'MIT', { LICENSE: ownLicense, 'vendor/x.c': `/* Copyright (c) 2024 Header Holder ${url}\n * SPDX-License-Identifier: BSD-2-Clause */\nint x;\n` });
+      rejects(() => generateNoticesMarkdown([header], []), /\(under cred-header@1\.0\.0\) .*, from the attribution line at cred-header@1\.0\.0 vendor\/x\.c:1\./);
+      // A license file reproduced as shipped.
+      const file = make('cred-file', 'MIT', { LICENSE: shippedLicense(`Copyright (c) 2020 File Holder <${url}>`, 'MIT') });
+      rejects(() => generateNoticesMarkdown([file], []), /THIRD-PARTY-NOTICES\.md line \d+ \(under cred-file@1\.0\.0\) would publish/);
+    }
+    // Control: normal notices, a URL with a plain query and a contact email included, still render.
+    const normalUrl = 'https://example.com/normal?page=2#top';
+    const normal = make('normal-src', 'MIT', {
+      LICENSE: ownLicense,
+      'src/lib.rs': `// Copyright (c) 2024 Normal Holder ${normalUrl}\n// Copyright (c) 2025 Mail Holder <mail@example.com>\nfn x() {}\n`,
+    });
+    assert.strictEqual(carriesCredentialUrl(`Copyright (c) 2024 Normal Holder ${normalUrl}`), false);
+    const md = generateNoticesMarkdown([normal], []);
+    assert.ok(md.includes(`  - Copyright (c) 2024 Normal Holder ${normalUrl} (src/lib.rs)`), 'a normal notice still renders');
+    assert.ok(md.includes('  - Copyright (c) 2025 Mail Holder <mail@example.com> (src/lib.rs)'));
+    assert.ok(!md.includes(dummy));
+  } finally {
+    for (const dir of tmpDirs) fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('committed notices: a placeholder in a block quoted as shipped passes, one in a generated block or line fails', () => {
@@ -4443,36 +4672,62 @@ test('property selector: a component without a notice is found from an LF and a 
   }
 });
 
-test('property: no component marked with "No copyright notice is shipped" has copyright lines in its package sources', () => {
-  const noticesContent = fs.readFileSync(path.join(ROOT, 'THIRD-PARTY-NOTICES.md'), 'utf8');
-  const { cargo, npm } = realTree();
-  const allComponents = [...cargo, ...npm];
-
+/**
+ * The components the notices mark as shipping no copyright notice whose
+ * package sources have copyright lines: each by its identity and the number
+ * of lines, never the lines (a line may carry a credential-bearing URL, and
+ * the report reaches a CI log).
+ */
+function falseNoNoticeReport(noticesContent, components) {
   const copyrightPattern = /(?:copyright:?\s*(?:\([cC]\)|©|\d{4})|\([cC]\)\s*\d{4}|©\s*\d{4}|SPDX-FileCopyrightText:\s*\S)\s*[A-Za-z0-9]/i;
   const boilerplateRegex = /above copyright|copyright holders|copyright notice|copyright owner|copyright law|copyright (license|and|or|to|in|is|of|for|statement)|copyrighted|copyright_|copyright:? *$/i;
   const cocoaApiRegex = /NSCopyright|kMDItemCopyright|kFontCopyright|AuthorizationCopyRights/i;
-
-  const falseNoneList = [];
-
-  for (const c of allComponents) {
+  const report = [];
+  for (const c of components) {
     if (!c.packageDir || !fs.existsSync(c.packageDir)) continue;
-
     if (!marksNoNotice(noticesContent, c.name, c.version)) continue;
-
-    const matched = grepCopyrightLines(c.packageDir)
+    const matches = grepCopyrightLines(c.packageDir)
       .split('\n')
       .map((l) => l.trim())
-      .filter((l) => l.length > 0 && copyrightPattern.test(l) && !boilerplateRegex.test(l) && !cocoaApiRegex.test(l));
-    if (matched.length > 0) {
-      falseNoneList.push({ comp: `${c.source} ${c.name}@${c.version}`, matched });
-    }
+      .filter((l) => l.length > 0 && copyrightPattern.test(l) && !boilerplateRegex.test(l) && !cocoaApiRegex.test(l)).length;
+    if (matches > 0) report.push({ comp: `${c.source} ${c.name}@${c.version}`, matches });
   }
+  return report;
+}
 
+test('property: no component marked with "No copyright notice is shipped" has copyright lines in its package sources', () => {
+  const noticesContent = fs.readFileSync(path.join(ROOT, 'THIRD-PARTY-NOTICES.md'), 'utf8');
+  const { cargo, npm } = realTree();
+  const falseNoneList = falseNoNoticeReport(noticesContent, [...cargo, ...npm]);
   assert.deepStrictEqual(
     falseNoneList,
     [],
-    `Components marked with "No copyright notice is shipped" contain real copyright lines in their packages: ${JSON.stringify(falseNoneList, null, 2)}`
+    `Components marked with "No copyright notice is shipped" contain real copyright lines in their packages (inspect each package locally): ${JSON.stringify(falseNoneList, null, 2)}`
   );
+});
+
+test('property selector: the false "no notice" report names the component and a count, never the matched line', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'false-none-report-fixture-'));
+  try {
+    const dummyCredential = 'dummy-credential-in-a-copyright-line';
+    fs.mkdirSync(path.join(tmpDir, 'src'), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, 'src', 'lib.js'),
+      `// Copyright (c) 2024 Quiet Holder https://user:${dummyCredential}@example.com/repo\n// Copyright (c) 2025 Second Holder\nmodule.exports = 1;\n`
+    );
+    const md = '- `quiet@1.0.0` - SPDX: `MIT`\n  - No copyright notice is shipped in the package\n';
+    const comp = { name: 'quiet', version: '1.0.0', source: 'npm', packageDir: tmpDir };
+    const report = falseNoNoticeReport(md, [comp, { ...comp, name: 'listed' }]);
+    assert.deepStrictEqual(report, [{ comp: 'npm quiet@1.0.0', matches: 2 }]);
+    assert.ok(!JSON.stringify(report).includes(dummyCredential), 'the report must not carry a matched source line');
+    // The failure the property test prints carries neither.
+    assert.throws(
+      () => assert.deepStrictEqual(report, [], `Components marked with "No copyright notice is shipped" contain real copyright lines in their packages (inspect each package locally): ${JSON.stringify(report, null, 2)}`),
+      (err) => !String(err.message).includes(dummyCredential) && !String(err.stack).includes(dummyCredential) && /npm quiet@1\.0\.0/.test(err.message)
+    );
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
 });
 
 test('property: grepCopyrightLines excludes nested node_modules while still scanning the component own source', () => {

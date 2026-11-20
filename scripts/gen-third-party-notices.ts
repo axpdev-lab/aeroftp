@@ -832,6 +832,60 @@ export function publicLink(url: string | undefined): string | undefined {
   return `${parsed.protocol}//${parsed.host}${parsed.pathname}`;
 }
 
+// A URL in text: a scheme, `://` and what follows up to a space or a
+// delimiter of prose around it.
+const URL_IN_TEXT = /\b[A-Za-z][A-Za-z0-9+.-]*:\/\/[^\s<>()"'`\]]+/g;
+// The query parameters that carry a secret: a token, a key, a password, a
+// signature (a presigned URL), a session.
+const CREDENTIAL_QUERY_PARAM =
+  /[?&;](?:[a-z0-9_.-]*[_.-])?(?:access[_-]?token|auth[_-]?token|refresh[_-]?token|id[_-]?token|private[_-]?token|token|api[_-]?key|apikey|key|secret|client[_-]?secret|password|passwd|pwd|pass|auth|sig|signature|credential|security[_-]?token|session|sas)=/i;
+
+/**
+ * Whether text carries a URL that may hold a credential: userinfo in its
+ * authority (`https://user:pass@host`, `https://token@host`), or a query
+ * parameter that carries a secret (`?access_token=`, `&X-Amz-Signature=`).
+ * The tables publish a link through publicLink, which drops those parts; an
+ * attribution line or a text reproduced as shipped cannot be altered, so a
+ * match stops the generation instead.
+ */
+export function carriesCredentialUrl(text: string): boolean {
+  for (const m of text.matchAll(URL_IN_TEXT)) {
+    const url = m[0];
+    const authority = url.slice(url.indexOf('://') + 3).split(/[/?#]/)[0];
+    if (authority.includes('@')) return true;
+    const query = url.split('#')[0];
+    if (query.includes('?') && CREDENTIAL_QUERY_PARAM.test(query.slice(query.indexOf('?')))) return true;
+  }
+  return false;
+}
+
+// Where each attribution line with a credential-bearing URL was read ("<package
+// dir>/<file>:<line>" or "<name>@<version> <file>:<line>"), so the check of the
+// rendered notices names the source of a line it stops on, never the line.
+const credentialNoticeSources = new Map<string, string>();
+const recordCredentialNotice = (notice: string, where: string) => {
+  if (carriesCredentialUrl(notice) && !credentialNoticeSources.has(notice)) credentialNoticeSources.set(notice, where);
+};
+
+/**
+ * Fails when a rendered document carries a URL that may hold a credential
+ * (carriesCredentialUrl): the notices ship with the app. The error names the
+ * document and line, the component listed above it and, for an attribution
+ * line, the package file and line it was read from; never the text.
+ */
+export function assertNoCredentialUrls(documentName: string, content: string): void {
+  const lines = content.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    if (!carriesCredentialUrl(lines[i])) continue;
+    const source = [...credentialNoticeSources].find(([notice]) => lines[i].includes(notice))?.[1];
+    let component: string | undefined;
+    for (let k = i; k >= 0 && component === undefined; k--) component = lines[k].match(/^\s*- `([^`\s]+@[^`\s]+)`/)?.[1];
+    throw new Error(
+      `${documentName} line ${i + 1}${component ? ` (under ${component})` : ''} would publish a URL that carries credentials (userinfo, or a secret in its query)${source ? `, from the attribution line at ${source}` : ''}. The notices reproduce that text verbatim and cannot drop the credential: inspect the source locally and review the dependency before shipping it. The line is not printed.`
+    );
+  }
+}
+
 export function citationApplies(c: { package: string; version: string; file: string }, where: string): boolean {
   // The package folder is a native path: on Windows its separators are
   // backslashes, while the file inside it is always written with slashes.
@@ -921,6 +975,7 @@ export function findPackageCopyrightNotices(
         const notice = /^(?:copyright\b|\(c\)|©)/i.test(fieldValue) ? fieldValue : `Copyright ${fieldValue}`;
         if (/[A-Za-z0-9]/.test(fieldValue) && !TEMPLATE_NOTICE.test(notice) && !seenNotice.has(notice)) {
           seenNotice.add(notice);
+          recordCredentialNotice(notice, `${packageDir}/${f.rel}:${li + 1}`);
           notices.push({ notice, file: f.rel });
         }
         continue;
@@ -969,6 +1024,7 @@ export function findPackageCopyrightNotices(
         );
         if (cleaned.length > 0 && !TEMPLATE_NOTICE.test(cleaned) && !seenNotice.has(cleaned)) {
           seenNotice.add(cleaned);
+          recordCredentialNotice(cleaned, `${packageDir}/${f.rel}:${li + 1}`);
           notices.push({ notice: cleaned, file: f.rel });
         }
       }
@@ -1165,7 +1221,23 @@ export function collectNpmDependencies(
   baseDir = ROOT
 ): ComponentInfo[] {
   const lock = JSON.parse(fs.readFileSync(pkgLockPath, 'utf8'));
-  const packages = lock.packages || {};
+  // The inventory is the `packages` map of lockfile versions 2 and 3. A
+  // version 1 lockfile has none (only a nested `dependencies` tree), and an
+  // empty inventory would publish notices that list no npm package at all, so
+  // a lockfile without that map, or of a version this reader does not know,
+  // stops the generation.
+  const lockVersion = lock?.lockfileVersion;
+  const packages = lock?.packages;
+  if (lockVersion !== 2 && lockVersion !== 3) {
+    throw new Error(
+      `${path.basename(pkgLockPath)} has lockfileVersion ${JSON.stringify(lockVersion ?? null)}; the notices read the packages map of lockfileVersion 2 or 3: regenerate it with npm 7 or newer`
+    );
+  }
+  if (!packages || typeof packages !== 'object' || Array.isArray(packages) || !Object.prototype.hasOwnProperty.call(packages, '')) {
+    throw new Error(
+      `${path.basename(pkgLockPath)} has no packages map with its root entry, so it lists no npm package to read: regenerate it with npm 7 or newer`
+    );
+  }
   const results: ComponentInfo[] = [];
 
   // Traversal walks exact lockfile package paths, including all production/runtime
@@ -1924,13 +1996,24 @@ function linesInsideBlockComments(lines: string[]): (string | null)[] {
 
 // Rust block comments nest (`/* outer /* inner */ still outer */`): in a
 // `.rs` file a comment ends where its depth returns to zero. `rustLine` reads
-// one line from `depth`, up to `upTo`: the depth after it, and where the last
-// comment opened from depth zero starts. Outside a comment a `"` string, a
+// one line from `depth` and the string literal `str` the line starts in, up
+// to `upTo`: the depth and the string after it, and where the last comment
+// opened from depth zero starts. Outside a comment a string literal, a
 // character literal ('"') and a `//` comment open nothing; a lifetime or a
-// label ('a) is passed over.
+// label ('a) is passed over. A string literal spans lines, so its state is
+// carried from one line to the next (rustStates): a line inside a multiline
+// string that reads `// SPDX-License-Identifier: ...` or `/*` is text.
+// `str` is null outside a string, -1 inside a "..." string (b"..." and
+// c"..." too, with their escapes), and n >= 0 inside a raw string closed by
+// a quote and n hashes (r"..." 0, r#"..."# 1, br and cr alike).
 export const isRustFile = (rel: string) => /\.rs$/i.test(rel);
-function rustLine(line: string, depth: number, upTo = line.length): { depth: number; outerOpen: number } {
-  let quote = false;
+type RustString = number | null;
+function rustLine(
+  line: string,
+  depth: number,
+  upTo = line.length,
+  str: RustString = null
+): { depth: number; outerOpen: number; str: RustString } {
   let outerOpen = -1;
   for (let k = 0; k < upTo; k++) {
     const c = line[k];
@@ -1943,11 +2026,25 @@ function rustLine(line: string, depth: number, upTo = line.length): { depth: num
         depth--;
         k++;
       }
-    } else if (quote) {
-      if (c === '\\') k++;
-      else if (c === '"') quote = false;
+    } else if (str !== null) {
+      if (str === -1) {
+        if (c === '\\') k++;
+        else if (c === '"') str = null;
+      } else if (c === '"' && line.startsWith('#'.repeat(str), k + 1)) {
+        k += str;
+        str = null;
+      }
     } else if (c === '"') {
-      quote = true;
+      str = -1;
+    } else if ((c === 'r' || ((c === 'b' || c === 'c') && n === 'r')) && !/[A-Za-z0-9_]/.test(line[k - 1] ?? '')) {
+      // A raw string opens with r, br or cr, hashes and a quote; anything
+      // else is an identifier (`return`, the raw identifier `r#type`).
+      let j = c === 'r' ? k + 1 : k + 2;
+      while (line[j] === '#') j++;
+      if (line[j] === '"') {
+        str = j - (c === 'r' ? k + 1 : k + 2);
+        k = j;
+      }
     } else if (c === "'") {
       // A character literal is skipped whole, so the quote it may hold
       // ('"') opens no string; a lifetime or a label ('a) has no closing
@@ -1962,7 +2059,7 @@ function rustLine(line: string, depth: number, upTo = line.length): { depth: num
       k++;
     }
   }
-  return { depth, outerOpen };
+  return { depth, outerOpen, str };
 }
 
 // The index of the quote that closes the Rust character literal opened at
@@ -1983,16 +2080,21 @@ function rustCharLiteralEnd(line: string, k: number): number {
   return line[after] === "'" ? after : -1;
 }
 
-// For each line of a Rust file, its depth at the start (0: outside any comment).
-function rustDepths(lines: string[]): number[] {
-  const depths: number[] = [];
-  let depth = 0;
+// For each line of a Rust file, its comment depth (0: outside any comment)
+// and the string literal it starts in, read forward through the file.
+function rustStates(lines: string[]): { depth: number; str: RustString }[] {
+  const states: { depth: number; str: RustString }[] = [];
+  let state: { depth: number; str: RustString } = { depth: 0, str: null };
   for (const line of lines) {
-    depths.push(depth);
-    depth = rustLine(line, depth).depth;
+    states.push(state);
+    const after = rustLine(line, state.depth, line.length, state.str);
+    state = { depth: after.depth, str: after.str };
   }
-  return depths;
+  return states;
 }
+
+// For each line of a Rust file, its depth at the start (0: outside any comment).
+const rustDepths = (lines: string[]): number[] => rustStates(lines).map((s) => s.depth);
 
 // Index just past the `*/` that drops an open Rust block comment's depth from
 // `startDepth` (> 0) back to zero before `upTo`, or -1 if it does not close.
@@ -2146,7 +2248,12 @@ export function findBundledCodeUnderOtherLicenses(
       const text = buf.toString('utf8');
       const lines = text.split(/\r?\n/);
       const inside = text.includes('SPDX-License-Identifier') ? commentStateOf(entryRel, text, lines) : [];
-      const depths = isRustFile(entryRel) && inside.length > 0 ? rustDepths(lines) : null;
+      // A Rust file's comment depth and string literal at the start of each
+      // line, read through the whole file: a string spans lines.
+      const rust = isRustFile(entryRel) && text.includes('SPDX-License-Identifier') ? rustStates(lines) : null;
+      const depths = rust !== null && inside.length > 0 ? rust.map((st) => st.depth) : null;
+      // The state of a Rust line at `upTo`, from the state it starts in.
+      const rustAt = (k: number, upTo: number) => rustLine(lines[k], rust![k].depth, upTo, rust![k].str);
       lines.forEach((line, i) => {
         // Inside a block comment a closer ends it, whatever leads the line.
         const closer = inside[i] ?? null;
@@ -2154,6 +2261,10 @@ export function findBundledCodeUnderOtherLicenses(
         if (!tag) return;
         const mIndex = tag.index;
         const tagValue = tag.value;
+        // A tag inside a Rust string literal (a raw string that holds an
+        // example header on a line of its own) is text of the program, and
+        // licenses no code.
+        if (rust !== null && rustAt(i, mIndex).str !== null) return;
         // The choices of the header's expression. One whose licenses the
         // package declares covers the code: its holders are still kept, as
         // declared. Otherwise the first choice whose texts all exist is
@@ -2173,11 +2284,11 @@ export function findBundledCodeUnderOtherLicenses(
         const closerAt = closer !== null ? line.indexOf(closer) : -1;
         const blockClosedBefore =
           depths !== null
-            ? depths[i] > 0 && rustLine(line, depths[i], mIndex).depth === 0
+            ? depths[i] > 0 && rustAt(i, mIndex).depth === 0
             : closer !== null && closerAt !== -1 && closerAt < mIndex;
         const inBlockAtTag =
           depths !== null
-            ? rustLine(line, depths[i], mIndex).depth > 0
+            ? rustAt(i, mIndex).depth > 0
             : closer !== null && (closerAt === -1 || closerAt > mIndex);
         const closedEnd = blockClosedBefore
           ? depths !== null
@@ -2320,7 +2431,7 @@ export function findBundledCodeUnderOtherLicenses(
           // its line (` * /* note */ SPDX-...`) is no end of it. Opened on
           // this line, at its last outer opener before the tag; else back to
           // the line where the depth left zero, at its last outer opener.
-          const atTag = rustLine(line, depths[i], mIndex);
+          const atTag = rustAt(i, mIndex);
           if (atTag.depth > 0) {
             pair = COMMENT_BLOCKS[0];
             if (atTag.outerOpen !== -1) {
@@ -2330,7 +2441,7 @@ export function findBundledCodeUnderOtherLicenses(
               let k = i;
               while (k > 0 && depths[k] > 0) k--;
               open = k;
-              openAt = rustLine(lines[k], 0).outerOpen;
+              openAt = rustAt(k, lines[k].length).outerOpen;
             }
           }
         } else if (within !== null && (closedAt === -1 || closedAt > mIndex)) {
@@ -2428,6 +2539,7 @@ export function findBundledCodeUnderOtherLicenses(
           if (spdxText) text = /^(?:copyright\b|\(c\)|©)/i.test(spdxText[1]) ? spdxText[1] : `Copyright ${spdxText[1]}`;
           if (/^(?:copyright\b|\(c\)|©)/i.test(text)) text = noticeWithNextLine(text, (k) => attributionLines[bi + 1 + k], `${comp.name}@${comp.version} ${entryRel}:${start + bi + 1}`);
           if (/^(?:copyright\b|\(c\)|©)/i.test(text) && namesCopyrightHolder(text)) {
+            recordCredentialNotice(text, `${comp.name}@${comp.version} ${entryRel}:${start + bi + 1}`);
             notices.push(text);
           }
         }
@@ -2635,6 +2747,8 @@ export function renderNotices(
   fallbackAttributions: Record<string, FallbackAttribution> = PINNED_FALLBACK_ATTRIBUTIONS
 ): { output: string; verbatimBlocks: string[]; documents: { file: string; content: string }[] } {
   const documents: { file: string; content: string }[] = [];
+  // The sources of this render's attribution lines only.
+  credentialNoticeSources.clear();
   // Verify all pinned fallback attributions declare a non-empty source
   for (const [key, attr] of Object.entries(fallbackAttributions)) {
     if (!attr.source || attr.source.trim().length === 0) {
@@ -2668,23 +2782,25 @@ export function renderNotices(
     }
   }
 
-  // Scan all components for unlisted non-free restriction clauses (spanning potential line breaks)
+  // Scan all components for unlisted non-free restriction clauses (spanning
+  // potential line breaks): the license and notice files here, and below,
+  // once the headers are read, every text the notices reproduce from a source
+  // file. Only the registered Cargo crate, version and file are exempt.
   const nonFreePattern = /(re-create[\s\S]*?compression algorithm|cannot be used to develop[\s\S]*?rar)/i;
+  const isRegisteredRestriction = (comp: ComponentInfo, file: string) =>
+    nonFreeExceptions.some(
+      (exc) => comp.source === 'cargo' && exc.crateName === comp.name && exc.version === comp.version && exc.sourceFile === file
+    );
+  const assertNoUnregisteredRestriction = (comp: ComponentInfo, files: string[], text: string, where = '') => {
+    if (!nonFreePattern.test(text)) return;
+    const unregistered = files.find((file) => !isRegisteredRestriction(comp, file));
+    if (unregistered === undefined) return;
+    throw new Error(
+      `Component ${comp.name}@${comp.version} (file: ${unregistered}) contains non-free restriction clauses${where} but is not registered in KNOWN_NON_FREE_EXCEPTIONS`
+    );
+  };
   for (const comp of [...sortedCargoDeps, ...sortedNpmDeps]) {
-    for (const f of [...comp.licenseFiles, ...comp.noticeFiles]) {
-      const isDeclaredFile = nonFreeExceptions.some(
-        (exc) =>
-          comp.source === 'cargo' &&
-          exc.crateName === comp.name &&
-          exc.version === comp.version &&
-          exc.sourceFile === f.filename
-      );
-      if (!isDeclaredFile && nonFreePattern.test(f.content)) {
-        throw new Error(
-          `Component ${comp.name}@${comp.version} (file: ${f.filename}) contains non-free restriction clauses but is not registered in KNOWN_NON_FREE_EXCEPTIONS`
-        );
-      }
-    }
+    for (const f of [...comp.licenseFiles, ...comp.noticeFiles]) assertNoUnregisteredRestriction(comp, [f.filename], f.content);
   }
 
   const lines: string[] = [];
@@ -2796,6 +2912,20 @@ export function renderNotices(
     }
     return bundledCache.get(comp)!;
   };
+  // The texts the notices reproduce from source files go through the same
+  // restriction scan as the license files, before anything is rendered: a
+  // header with its own permission text (under a license the package declares
+  // or another), and a license text reviewed inside a source file. An
+  // MIT-tagged header that carries the RAR restriction is rejected as a
+  // LICENSE file carrying it would be.
+  for (const comp of allComponents) {
+    for (const b of bundledOf(comp)) {
+      for (const h of b.headers) assertNoUnregisteredRestriction(comp, h.files, h.text, ' in a source header');
+    }
+    for (const r of sourceTextReviews.filter((x) => x.package === comp.name && comp.packageDir)) {
+      assertNoUnregisteredRestriction(comp, [r.file], reviewedSourceText(comp, r), ' in a license text inside a source file');
+    }
+  }
   const listedDeclaredHolders = new Set<string>();
   const listedVendoredRoots = new Map<string, string>();
   const { groupedTexts, componentsWithoutFiles } = groupLicenseTexts(allComponents);
@@ -3395,6 +3525,10 @@ export function renderNotices(
 
   const output = lines.join('\n') + '\n';
   assertNoGeneratedPlaceholders(output, verbatimBlocks);
+  // Every line the notices publish, the attribution lines and the texts
+  // reproduced as shipped included, before anything is written.
+  assertNoCredentialUrls(path.basename(NOTICES_FILE), output);
+  for (const doc of documents) assertNoCredentialUrls(doc.file, doc.content);
 
   // Exclude fenced code blocks from anchor validation so license texts containing id="..." don't trigger false positives.
   // Match any markdown fenced block starting with 3 or more backticks and ending with a matching-length closing fence.
@@ -3461,6 +3595,46 @@ export function auditGplCompatibility(
   return false;
 }
 
+/**
+ * The --check of the notices and of the standalone pages of the licensing
+ * exceptions, against the files under `root`: each must exist and equal the
+ * text generated. A drift is reported by file and first differing line, never
+ * by the lines themselves (a notice reproduced as shipped is not repeated in
+ * a CI log). Returns whether every file is up to date.
+ */
+export function checkNoticesFiles(
+  generated: string,
+  documents: { file: string; content: string }[],
+  root = ROOT,
+  reportError: (line: string) => void = console.error
+): boolean {
+  const noticesFile = path.join(root, path.basename(NOTICES_FILE));
+  for (const doc of documents) {
+    const file = path.join(root, doc.file);
+    const existing = fs.existsSync(file) ? fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n') : undefined;
+    if (existing !== doc.content) {
+      reportError(`ERROR: ${file} is ${existing === undefined ? 'missing' : 'out of date'}.`);
+      if (existing !== undefined) {
+        reportError(`First difference at line ${firstDifferingLine(existing, doc.content)}.`);
+      }
+      reportError(`Run 'npm run gen:licenses' to update it.`);
+      return false;
+    }
+  }
+  if (!fs.existsSync(noticesFile)) {
+    reportError(`ERROR: ${noticesFile} does not exist. Run with --write to generate it.`);
+    return false;
+  }
+  const existing = fs.readFileSync(noticesFile, 'utf8').replace(/\r\n/g, '\n');
+  if (existing !== generated) {
+    reportError(`ERROR: ${noticesFile} is out of date.`);
+    reportError(`First difference at line ${firstDifferingLine(existing, generated)}.`);
+    reportError(`Run 'npm run gen:licenses' to update it.`);
+    return false;
+  }
+  return true;
+}
+
 function main() {
   let mode: 'check' | 'write';
   try {
@@ -3487,31 +3661,7 @@ function main() {
     for (const doc of documents) writeNoticesFile(path.join(ROOT, doc.file), doc.content);
     console.log(`Successfully written ${cargoDeps.length} Cargo and ${npmDeps.length} npm notices to ${NOTICES_FILE}`);
   } else if (isCheck) {
-    // The standalone pages of the licensing exceptions are checked with the
-    // notices: each must exist and equal the text generated from its source.
-    for (const doc of documents) {
-      const file = path.join(ROOT, doc.file);
-      const existing = fs.existsSync(file) ? fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n') : undefined;
-      if (existing !== doc.content) {
-        console.error(`ERROR: ${file} is ${existing === undefined ? 'missing' : 'out of date'}.`);
-        if (existing !== undefined) {
-          console.error(`First difference at line ${firstDifferingLine(existing, doc.content)}.`);
-        }
-        console.error(`Run 'npm run gen:licenses' to update it.`);
-        process.exit(1);
-      }
-    }
-    if (!fs.existsSync(NOTICES_FILE)) {
-      console.error(`ERROR: ${NOTICES_FILE} does not exist. Run with --write to generate it.`);
-      process.exit(1);
-    }
-    const existing = fs.readFileSync(NOTICES_FILE, 'utf8').replace(/\r\n/g, '\n');
-    if (existing !== generated) {
-      console.error(`ERROR: ${NOTICES_FILE} is out of date.`);
-      console.error(`First difference at line ${firstDifferingLine(existing, generated)}.`);
-      console.error(`Run 'npm run gen:licenses' to update it.`);
-      process.exit(1);
-    }
+    if (!checkNoticesFiles(generated, documents)) process.exit(1);
     console.log(`OK: ${NOTICES_FILE} is up to date (${cargoDeps.length} Cargo, ${npmDeps.length} npm).`);
   }
 }

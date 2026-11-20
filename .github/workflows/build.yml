@@ -879,9 +879,12 @@ jobs:
     runs-on: ubuntu-latest
     # One tag at a time across all tags: the step that keeps the AppImage
     # sources reads and rewrites the record of the release appimage-sources.
+    # queue: max keeps every waiting tag; the default queue holds one, so a
+    # third tag would cancel the second's pending publication.
     concurrency:
       group: appimage-sources-archive
       cancel-in-progress: false
+      queue: max
     permissions:
       contents: write
       id-token: write

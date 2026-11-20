@@ -10749,17 +10749,17 @@ fn default_aimd_config_path() -> Result<Option<PathBuf>, String> {
             .join("aimd.toml")
         }));
     }
-    default_aimd_config_path_for(ftp_client_gui_lib::portable::aeroftp_data_root())
+    default_aimd_config_path_for(ftp_client_gui_lib::portable::try_aeroftp_data_root())
 }
 
-fn default_aimd_config_path_for(portable_root: Option<PathBuf>) -> Result<Option<PathBuf>, String> {
-    portable_root
-        .map(|root| root.join("aimd.toml"))
-        .map(Some)
-        .ok_or_else(|| {
-            "Portable mode detection is pending; retry the command once startup finishes"
-                .to_string()
-        })
+/// A pending detection and a data directory that cannot be created are told
+/// apart: only the first is fixed by retrying after startup.
+fn default_aimd_config_path_for(
+    data_root: Result<PathBuf, ftp_client_gui_lib::portable::DataRootError>,
+) -> Result<Option<PathBuf>, String> {
+    data_root
+        .map(|root| Some(root.join("aimd.toml")))
+        .map_err(|e| e.to_string())
 }
 
 /// Load per-class AIMD window overrides from a TOML file. Returns
@@ -90371,10 +90371,20 @@ mod tests {
 
     #[test]
     fn test_default_aimd_config_pending_is_an_error_and_portable_path_is_preserved() {
-        let pending = default_aimd_config_path_for(None).unwrap_err();
+        use ftp_client_gui_lib::portable::DataRootError;
+        let pending = default_aimd_config_path_for(Err(DataRootError::Pending)).unwrap_err();
         assert!(pending.contains("retry the command"));
+        // A directory that cannot be created is its own error: it names the
+        // failure and does not ask for a retry that cannot help.
+        let failed = default_aimd_config_path_for(Err(DataRootError::Unavailable(
+            "Failed to create /portable/data: Permission denied".to_string(),
+        )))
+        .unwrap_err();
+        assert!(failed.contains("Permission denied"), "{failed}");
+        assert!(!failed.contains("pending"), "{failed}");
+        assert!(!failed.contains("retry"), "{failed}");
         assert_eq!(
-            default_aimd_config_path_for(Some(PathBuf::from("/portable/data"))).unwrap(),
+            default_aimd_config_path_for(Ok(PathBuf::from("/portable/data"))).unwrap(),
             Some(PathBuf::from("/portable/data/aimd.toml"))
         );
     }

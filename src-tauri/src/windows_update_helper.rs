@@ -153,7 +153,31 @@ pub fn install_with_helper(
             prepared.discard(&exe_path, downloaded_path);
             return Err(format!("Failed to record the helper handoff owner: {e}"));
         }
-        prepared.persist_handoff();
+        // The lock was released for the helper to take, and another attempt
+        // can take it first: then the helper stops and never relaunches. The
+        // app reports the restart and exits only once the helper says it
+        // holds the lock, so a refused update leaves the window open.
+        match await_helper_acceptance(&mut helper, &prepared.ack, HELPER_ACCEPT_WAIT) {
+            HelperAcceptance::Accepted => prepared.persist_handoff(),
+            HelperAcceptance::Rejected => {
+                // The helper's terminal block removes the attempt; this is the
+                // same cleanup for a helper that ended before reaching it.
+                prepared.discard(&exe_path, downloaded_path);
+                return Err(
+                    "Another portable update took this installation first: this update was not applied"
+                        .to_string(),
+                );
+            }
+            HelperAcceptance::Undecided => {
+                // Still running, so it owns the handoff. It cannot replace an
+                // exe this process still runs: it fails and removes the attempt.
+                prepared.persist_handoff();
+                return Err(format!(
+                    "The update helper did not confirm within {} seconds: this update was not applied",
+                    HELPER_ACCEPT_WAIT.as_secs()
+                ));
+            }
+        }
     }
 
     // Notify frontend before we drop the AppHandle. Same phase emitted by
@@ -161,6 +185,51 @@ pub fn install_with_helper(
     let _ = tauri::Emitter::emit(app, "update_install_phase", "restart");
 
     Ok(())
+}
+
+/// How long the app waits for the portable helper to confirm it holds the
+/// installation lock. The confirmation is the first thing the helper does
+/// under the lock, before its first pause.
+const HELPER_ACCEPT_WAIT: Duration = Duration::from_secs(15);
+
+/// What the portable helper answered after its spawn.
+#[derive(Debug, PartialEq, Eq)]
+enum HelperAcceptance {
+    /// It holds the installation lock and waits for this process to exit.
+    Accepted,
+    /// It ended without taking the lock: another attempt holds it.
+    Rejected,
+    /// Neither within the wait.
+    Undecided,
+}
+
+/// Waits for the helper's confirmation file `ack`, or for its exit. The file
+/// is read first: a helper that wrote it is past the lock, and it ends only
+/// seconds later. The file is removed once read.
+fn await_helper_acceptance(
+    helper: &mut std::process::Child,
+    ack: &Path,
+    wait: Duration,
+) -> HelperAcceptance {
+    let deadline = std::time::Instant::now() + wait;
+    loop {
+        if ack.is_file() {
+            let _ = std::fs::remove_file(ack);
+            return HelperAcceptance::Accepted;
+        }
+        if let Ok(Some(_)) = helper.try_wait() {
+            return HelperAcceptance::Rejected;
+        }
+        if std::time::Instant::now() >= deadline {
+            return HelperAcceptance::Undecided;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+/// The confirmation file of the helper of attempt `attempt_id` in `work_dir`.
+fn helper_ack_path(work_dir: &Path, attempt_id: &str) -> PathBuf {
+    work_dir.join(format!("aeroftp-update-{attempt_id}.ack"))
 }
 
 /// MSI helper: silent upgrade with progress UI, relaunch.
@@ -671,6 +740,8 @@ struct PreparedPortable {
     /// or dropped after failure cleanup.
     update_lock: Option<std::fs::File>,
     handoff: portable_docs::UpdateHandoffReservation,
+    /// The file the helper writes once it holds the installation lock.
+    ack: PathBuf,
 }
 
 impl PreparedPortable {
@@ -702,6 +773,9 @@ impl PreparedPortable {
         );
         let _ = std::fs::remove_dir_all(&self.stage_dir);
         let _ = std::fs::remove_file(&self.script);
+        if self.ack.is_file() {
+            let _ = std::fs::remove_file(&self.ack);
+        }
         discard_download(downloaded_zip);
         docs_cleaned
     }
@@ -766,6 +840,7 @@ fn prepare_portable_with(
             script,
             stage_dir: staged.stage_dir,
             cli: staged_update.cli,
+            ack: helper_ack_path(work_dir, &staged_update.attempt_id),
             attempt_id: staged_update.attempt_id,
             docs_key: staged_update.docs_key,
             update_lock: Some(staged_update.update_lock),
@@ -808,12 +883,14 @@ fn write_portable_helper(
         docs_key,
         log_file,
         downloaded_zip,
+        &helper_ack_path(work_dir, attempt_id),
     )?;
     std::fs::write(&script_path, body)
         .map_err(|e| format!("Failed to write portable helper script: {e}"))?;
     Ok(script_path)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn portable_helper_script(
     staged: &StagedPortable,
     current_exe: &Path,
@@ -822,6 +899,7 @@ fn portable_helper_script(
     docs_key: Option<&str>,
     log_file: Option<&Path>,
     downloaded_zip: &Path,
+    ack: &Path,
 ) -> Result<String, String> {
     if attempt_id.is_empty() || !attempt_id.bytes().all(|b| b.is_ascii_alphanumeric()) {
         return Err(format!("Invalid portable attempt id: {attempt_id:?}"));
@@ -939,7 +1017,7 @@ if errorlevel 1 goto finish_failed
 rem Launch the new exe with cleanup arg pointing at the .old file.
 start "" {current} --post-update-cleanup {old}
 
-del /F /Q "%~f0" & exit /b 0
+{del_ack}del /F /Q "%~f0" & exit /b 0
 
 :swap_inner
 rem A redirection cmd cannot open (the lock held by another attempt) skips
@@ -952,13 +1030,19 @@ exit /b 0
 
 :finish_failed
 rem Both handoff rejection and swap failure reach this terminal block once.
-{discard_block}del /F /Q {zip} >nul 2>&1
+{discard_block}{del_ack}del /F /Q {zip} >nul 2>&1
 del /F /Q {sigstore} >nul 2>&1
 rmdir /S /Q {stage} >nul 2>&1
 del /F /Q "%~f0" & exit /b 1
 
 :run_swap
 set "AEROFTP_SWAP_RAN=1"
+rem Tell the app this helper holds the lock: it exits only after this file
+rem appears. One that cannot be written stops the swap, as the app then
+rem reports the update as not applied.
+if exist {ack_folder} exit /b 1
+type nul > {ack} 2>nul
+if not exist {ack} exit /b 1
 ping 127.0.0.1 -n 3 >nul
 
 if not exist {new_exe} goto replace_failed
@@ -999,6 +1083,9 @@ rmdir /S /Q {stage} >nul 2>&1
 exit /b 0
 "#,
         handoff_lock = quote_for_cmd(&handoff_lock),
+        ack = quote_for_cmd(ack),
+        ack_folder = quote_folder_test(ack),
+        del_ack = del_staged(ack),
         current = quote_for_cmd(current_exe),
         old = quote_for_cmd(&old_exe),
         new_exe = quote_for_cmd(&beside_path(current_exe, attempt_id)),
@@ -1433,6 +1520,7 @@ mod tests {
             staged_update.docs_key.as_deref(),
             Some(&fx.log),
             &fx.zip,
+            &helper_ack_path(fx.root.path(), attempt_id),
         )
         .expect("script");
         (script, staged_update)
@@ -3021,40 +3109,99 @@ mod tests {
         assert_eq!(std::fs::read(&path).expect("sentinel"), b"user sentinel");
     }
 
+    /// `run` without waiting: the helper's process, for the app's wait.
+    fn spawn_script(fx: &Fixture, lines: &[String]) -> std::process::Child {
+        let script = fx.root.path().join("helper.cmd");
+        std::fs::write(&script, lines.concat()).expect("write script");
+        std::process::Command::new("cmd.exe")
+            .args(["/D", "/C", "call"])
+            .arg(&script)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .expect("spawn helper")
+    }
+
+    /// Holds the helper right after its confirmation until `release` exists,
+    /// as the real swap waits for the app to exit: without it the test's
+    /// helper could finish before the app's wait reads the file.
+    fn pausing_after_ack(lines: Vec<String>, release: &Path) -> Vec<String> {
+        lines
+            .into_iter()
+            .flat_map(|line| {
+                let t = line.trim();
+                if t.starts_with("if not exist ") && t.contains(".ack") && t.ends_with("exit /b 1") {
+                    vec![
+                        line,
+                        format!(
+                            ":test_pause\r\nif exist {r} goto test_resume\r\nping 127.0.0.1 -n 2 >nul\r\ngoto test_pause\r\n:test_resume\r\n",
+                            r = quote_for_cmd(release)
+                        ),
+                    ]
+                } else {
+                    vec![line]
+                }
+            })
+            .collect()
+    }
+
     #[test]
     fn helper_rejected_by_held_handoff_lock_cleans_its_attempt() {
         let mut fx = fixture();
         with_docs(&mut fx, |_| true);
         let (script, staged) = script_for_attempt(&fx, "handoffheld01");
         drop(staged);
+        let ack = helper_ack_path(fx.root.path(), "handoffheld01");
         let relaunched = fx.root.path().join("relaunched.marker");
         let lock = acquire_update_handoff_lock(&fx.app).expect("hold handoff lock");
-        // The exit code says nothing here: the helper deletes itself on both
-        // paths and cmd then reports the batch file missing. What tells the
-        // paths apart is the relaunch, which only the swap path reaches.
-        run(&fx, &runnable(&marking_relaunch(&script, &relaunched)));
+        // The app's wait is the caller's answer: a helper that cannot take
+        // the lock ends without confirming, so the app reports the update as
+        // not applied and stays open. The exit code says nothing (the helper
+        // deletes itself on both paths and cmd then reports the batch file
+        // missing); the relaunch, which only the swap path reaches, does.
+        let mut helper = spawn_script(&fx, &runnable(&marking_relaunch(&script, &relaunched)));
+        assert_eq!(
+            await_helper_acceptance(&mut helper, &ack, Duration::from_secs(60)),
+            HelperAcceptance::Rejected
+        );
+        let _ = helper.wait();
         drop(lock);
         assert!(
             !relaunched.exists(),
             "a helper rejected by the held handoff lock must not relaunch"
         );
+        assert!(!ack.exists());
         assert!(!has_staged_exe(&fx.app, "AeroFTP.exe"));
         assert!(!fx.app.join(portable_docs::NEXT_DIR).exists());
         assert!(!fx.staged.stage_dir.exists());
         assert!(!fx.zip.exists());
         assert_eq!(read(&fx, "AeroFTP.exe"), OLD_EXE);
 
-        // Control: the same attempt with the lock free swaps and relaunches,
-        // so the marker above can tell the two paths apart.
+        // Control: the same attempt with the lock free confirms, so the app
+        // reports the restart, then swaps and relaunches.
         let mut free = fixture();
         with_docs(&mut free, |_| true);
         let (script, staged) = script_for_attempt(&free, "handofffree01");
         drop(staged);
+        let ack = helper_ack_path(free.root.path(), "handofffree01");
+        let release = free.root.path().join("app-exited.marker");
         let relaunched = free.root.path().join("relaunched.marker");
-        run(&free, &runnable(&marking_relaunch(&script, &relaunched)));
+        let mut helper = spawn_script(
+            &free,
+            &pausing_after_ack(runnable(&marking_relaunch(&script, &relaunched)), &release),
+        );
+        assert_eq!(
+            await_helper_acceptance(&mut helper, &ack, Duration::from_secs(60)),
+            HelperAcceptance::Accepted
+        );
+        assert!(!ack.exists(), "the app removes the confirmation it read");
+        std::fs::write(&release, b"").expect("release the helper");
+        let _ = helper.wait();
         assert!(relaunched.exists(), "the swap path relaunches");
         assert_eq!(read(&free, "AeroFTP.exe"), NEW_EXE);
         assert!(!has_staged_exe(&free.app, "AeroFTP.exe"));
+        assert!(!ack.exists());
     }
 
     /// A folder at the name of a staged copy is not the update's: the helper

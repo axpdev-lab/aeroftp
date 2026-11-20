@@ -254,35 +254,74 @@ fn test_data_root_override() -> Option<PathBuf> {
         .clone()
 }
 
+/// Why [`try_aeroftp_data_root`] has no directory to give.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DataRootError {
+    /// Portable detection has not finished: retrying once startup completes
+    /// can succeed.
+    Pending,
+    /// The mode is known but its directory cannot be resolved or created (a
+    /// permission or storage failure): retrying alone does not fix it.
+    Unavailable(String),
+}
+
+impl std::fmt::Display for DataRootError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DataRootError::Pending => f.write_str(
+                "Portable mode detection is pending; retry the command once startup finishes",
+            ),
+            DataRootError::Unavailable(why) => {
+                write!(f, "The AeroFTP data directory is unavailable: {why}")
+            }
+        }
+    }
+}
+
+// The Option form, kept for the tests that only ask whether a root resolves.
+#[cfg(test)]
 fn aeroftp_data_root_for(
     status: PortableRootStatus<'_>,
     leaf: &str,
     installed_base: impl FnOnce() -> Option<PathBuf>,
 ) -> Option<PathBuf> {
-    match status {
-        PortableRootStatus::Portable(root) => {
-            let dir = root.join(PORTABLE_DATA_DIRNAME).join(leaf);
-            ensure_dir(&dir).ok()?;
-            Some(dir)
-        }
-        PortableRootStatus::Installed => {
-            let dir = installed_base()?.join(leaf);
-            ensure_dir(&dir).ok()?;
-            Some(dir)
-        }
-        PortableRootStatus::Pending => None,
-    }
+    try_aeroftp_data_root_for(status, leaf, installed_base).ok()
+}
+
+fn try_aeroftp_data_root_for(
+    status: PortableRootStatus<'_>,
+    leaf: &str,
+    installed_base: impl FnOnce() -> Option<PathBuf>,
+) -> Result<PathBuf, DataRootError> {
+    let dir = match status {
+        PortableRootStatus::Portable(root) => root.join(PORTABLE_DATA_DIRNAME).join(leaf),
+        PortableRootStatus::Installed => installed_base()
+            .ok_or_else(|| {
+                DataRootError::Unavailable("no configuration or home directory".to_string())
+            })?
+            .join(leaf),
+        PortableRootStatus::Pending => return Err(DataRootError::Pending),
+    };
+    ensure_dir(&dir).map_err(DataRootError::Unavailable)?;
+    Ok(dir)
 }
 
 pub fn aeroftp_data_root() -> Option<PathBuf> {
+    try_aeroftp_data_root().ok()
+}
+
+/// [`aeroftp_data_root`] that says why there is no directory: pending
+/// detection, which a retry can resolve, apart from a directory that cannot
+/// be created.
+pub fn try_aeroftp_data_root() -> Result<PathBuf, DataRootError> {
     let leaf = aeroftp_data_leaf();
     #[cfg(test)]
     if let Some(data_root) = test_data_root_override() {
         let dir = data_root.join(leaf);
-        ensure_dir(&dir).ok()?;
-        return Some(dir);
+        ensure_dir(&dir).map_err(DataRootError::Unavailable)?;
+        return Ok(dir);
     }
-    aeroftp_data_root_for(portable_root_status(), leaf, || {
+    try_aeroftp_data_root_for(portable_root_status(), leaf, || {
         #[cfg(test)]
         if let Some(base) = std::env::var_os("AEROFTP_TEST_INSTALLED_BASE") {
             return Some(PathBuf::from(base));
@@ -1906,10 +1945,19 @@ mod tests {
             "Pending must not select host data"
         );
         assert_eq!(credential_store_dir(), None);
+        // Scratch resolves the same way: while the mode is pending, a transfer
+        // has nowhere to stage, never the host user's cache folder.
+        let scratch = crate::util::scratch::try_scratch_dir_path().unwrap_err();
+        assert_eq!(scratch, PORTABLE_PENDING_ERR);
+        assert!(crate::util::scratch::staging_dir(0).is_err());
         drop(held);
         let expected = exe_dir.join("data").join(aeroftp_data_leaf());
         assert_eq!(aeroftp_data_root(), Some(expected.clone()));
-        assert_eq!(credential_store_dir(), Some(expected));
+        assert_eq!(credential_store_dir(), Some(expected.clone()));
+        assert_eq!(
+            crate::util::scratch::try_scratch_dir_path().unwrap(),
+            expected.join("scratch")
+        );
     }
 
     /// A portable copy logs into its own folder, never into the host's, and
@@ -3726,5 +3774,37 @@ mod secval_b_tests {
         assert!(error.contains("/portable/data/webview"));
         assert!(error.contains("read-only filesystem"));
         assert!(!error.contains("relaunch AeroFTP"));
+    }
+
+    #[test]
+    fn a_data_directory_that_cannot_be_created_is_not_reported_as_pending() {
+        let dir = tempfile::tempdir().unwrap();
+        // A file where the portable data directory must go: creating it fails
+        // however many times it is retried.
+        std::fs::write(dir.path().join(PORTABLE_DATA_DIRNAME), b"not a directory").unwrap();
+        let failed =
+            try_aeroftp_data_root_for(PortableRootStatus::Portable(dir.path()), "aeroftp", || None)
+                .unwrap_err();
+        assert!(
+            matches!(failed, DataRootError::Unavailable(_)),
+            "{failed:?}"
+        );
+        assert!(!failed.to_string().contains("pending"), "{failed}");
+        let pending =
+            try_aeroftp_data_root_for(PortableRootStatus::Pending, "aeroftp", || None).unwrap_err();
+        assert_eq!(pending, DataRootError::Pending);
+        assert!(pending.to_string().contains("retry"));
+        // The Option form keeps its contract for every other caller.
+        assert_eq!(
+            aeroftp_data_root_for(PortableRootStatus::Portable(dir.path()), "aeroftp", || None),
+            None
+        );
+        // Control: a creatable directory resolves.
+        let ok = tempfile::tempdir().unwrap();
+        assert_eq!(
+            try_aeroftp_data_root_for(PortableRootStatus::Portable(ok.path()), "aeroftp", || None)
+                .unwrap(),
+            ok.path().join(PORTABLE_DATA_DIRNAME).join("aeroftp")
+        );
     }
 }
