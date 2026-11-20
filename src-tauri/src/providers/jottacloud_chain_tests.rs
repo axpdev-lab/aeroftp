@@ -874,3 +874,67 @@ fn a_login_is_checked_against_deletions_from_when_it_began() {
     }
     assert!(failures.is_empty(), "{failures:#?}");
 }
+
+/// A login's setup, which may wait for another process to create the vault,
+/// runs off the async worker: a task beside the connection still runs.
+#[test]
+fn a_login_waiting_for_the_vault_leaves_the_async_worker_free() {
+    if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+        "providers::jottacloud::chain_tests::a_login_waiting_for_the_vault_leaves_the_async_worker_free",
+    ) {
+        return;
+    }
+    let _env = crate::test_env::lock();
+    let _partition = partitions::test_lock();
+    let temporary = tempfile::TempDir::new().expect("temporary config");
+    std::env::set_var("XDG_CONFIG_HOME", temporary.path());
+    std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+    // Before the first initialization: the vault is created in master mode,
+    // and no keyring slot is touched.
+    std::env::set_var("AEROFTP_MASTER_PASSWORD", "jotta-worker-test-pass");
+    CredentialStore::clear_cache();
+    // Another process is creating the vault.
+    let dir = crate::portable::credential_store_dir().expect("vault folder");
+    std::fs::create_dir_all(&dir).unwrap();
+    let creating = dir.join(".vault.lock");
+    std::fs::write(&creating, b"").unwrap();
+    let release = {
+        let creating = creating.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(800));
+            let _ = std::fs::remove_file(creating);
+        })
+    };
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(1)
+        .enable_all()
+        .build()
+        .unwrap();
+    let ticked = runtime.block_on(async {
+        let ticker = tokio::spawn(async {
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        });
+        let connection = tokio::spawn(async {
+            let mut login = JottacloudProvider::new(JottacloudConfig {
+                login_token: SecretString::from(String::new()),
+                device: "Jotta".into(),
+                mountpoint: "Archive".into(),
+                initial_path: None,
+            });
+            let _ = login.connect().await;
+        });
+        let ticked = tokio::time::timeout(std::time::Duration::from_millis(400), ticker)
+            .await
+            .is_ok();
+        let _ = connection.await;
+        ticked
+    });
+    release.join().unwrap();
+    drop(runtime);
+    std::env::remove_var("AEROFTP_MASTER_PASSWORD");
+    CredentialStore::clear_cache();
+    assert!(
+        ticked,
+        "a task beside the connection ran while its login waited for the vault"
+    );
+}

@@ -173,7 +173,7 @@ const PENDING_GEN: &str = "chain_deletions";
 const PENDING_SOURCE: &str = "source_account";
 const PENDING_SOURCE_GEN: &str = "source_chain_deletions";
 
-/// What [`JottacloudProvider::persist_refresh_token_now`] did with each key.
+/// What [`JottacloudProvider::write_rotation`] did with each key.
 #[derive(Default)]
 struct PersistOutcome {
     /// The keys every copy of the rotated chain was written to.
@@ -705,11 +705,16 @@ impl JottacloudProvider {
 
     // ─── Token Persistence ───────────────────────────────────────────────
 
-    /// Persist refresh token + metadata in credential vault for reconnection
-    /// without requiring a new single-use login token.
-    /// Persist the rotated chain, off the async worker (see
-    /// [`crate::credential_store::off_async_worker`]).
+    /// Persist the rotated chain, so a reconnection needs no new single-use
+    /// login token. Off the async worker (see
+    /// [`crate::credential_store::off_async_worker`]), checks included: they
+    /// read the partition database, and the writes may wait on the vault.
     fn persist_refresh_token(&self) {
+        crate::credential_store::off_async_worker(|| self.persist_refresh_token_now());
+    }
+
+    /// The body of [`Self::persist_refresh_token`].
+    fn persist_refresh_token_now(&self) {
         let Some(owner) = self.rotation_owner else {
             jotta_log("Refresh token not persisted: no connection began");
             return;
@@ -778,8 +783,7 @@ impl JottacloudProvider {
             .collect();
         let accounts: Vec<String> = accounts.into_iter().map(|(account, _)| account).collect();
 
-        let outcome =
-            crate::credential_store::off_async_worker(|| self.persist_refresh_token_now(&checked));
+        let outcome = self.write_rotation(&checked);
         let mut pending = PENDING_ROTATIONS.lock().unwrap_or_else(|e| e.into_inner());
         let known = self.stored_tokens.lock().unwrap_or_else(|e| e.into_inner());
         let generations = self
@@ -894,7 +898,7 @@ impl JottacloudProvider {
     /// were left alone because they hold a chain written from outside since
     /// this connection last read or wrote them, and what each key held when
     /// it was read before the write.
-    fn persist_refresh_token_now(&self, accounts: &[String]) -> PersistOutcome {
+    fn write_rotation(&self, accounts: &[String]) -> PersistOutcome {
         let data = serde_json::json!({
             "refresh_token": self.refresh_token.expose_secret(),
             "token_endpoint": self.token_endpoint,
@@ -1371,7 +1375,7 @@ impl JottacloudProvider {
         *self.consumed.lock().unwrap_or_else(|e| e.into_inner()) = None;
         let mut known = self.stored_tokens.lock().unwrap_or_else(|e| e.into_inner());
         known.clear();
-        // The vault the rotation would initialize (`persist_refresh_token_now`)
+        // The vault the rotation would initialize (`write_rotation`)
         // is initialized now, before the exchange, so its keys are read first.
         let store = crate::credential_store::CredentialStore::from_cache().or_else(|| {
             crate::credential_store::CredentialStore::init()
@@ -1399,11 +1403,11 @@ impl JottacloudProvider {
 
     /// Try to connect using a persisted refresh token (no login token needed).
     async fn try_connect_with_refresh(&mut self) -> Result<bool, ProviderError> {
-        self.bind_credential_owner()?;
+        crate::credential_store::off_async_worker(|| self.bind_credential_owner())?;
         // The connection begins here; a login that follows begins again
         // (`begin_login_chain`).
         self.chain_since = deletion_clock();
-        self.note_chain_generations();
+        crate::credential_store::off_async_worker(|| self.note_chain_generations());
         let own = self.refresh_token_account();
         for account in Self::refresh_chain_candidates(&self.profile_id) {
             // Every key the exchange may write is checked against a deletion
@@ -1412,14 +1416,16 @@ impl JottacloudProvider {
             // chain again after it (a count read after the chain could miss a
             // deletion between the two); then the connection stops before the
             // exchange, and does not go on to the login token.
-            let mut loaded =
-                Self::load_refresh_chain(self.credential_user, self.rotation_owner, &account);
+            let mut loaded = crate::credential_store::off_async_worker(|| {
+                Self::load_refresh_chain(self.credential_user, self.rotation_owner, &account)
+            });
             if matches!(loaded, LoadedChain::Chain(..))
                 && !self.knows_deletions_of(&[&account, &own])
             {
-                self.note_chain_generations();
-                loaded =
-                    Self::load_refresh_chain(self.credential_user, self.rotation_owner, &account);
+                crate::credential_store::off_async_worker(|| self.note_chain_generations());
+                loaded = crate::credential_store::off_async_worker(|| {
+                    Self::load_refresh_chain(self.credential_user, self.rotation_owner, &account)
+                });
             }
             let ((rt, te, un), stored_token) = match loaded {
                 LoadedChain::Chain(chain, stored_token, generation) => {
@@ -1465,10 +1471,11 @@ impl JottacloudProvider {
                 known.clear();
                 known.insert(account.clone(), zeroize::Zeroizing::new(stored_token));
                 if account != own {
-                    let own_now =
+                    let own_now = crate::credential_store::off_async_worker(|| {
                         crate::credential_store::CredentialStore::from_cache().and_then(|store| {
                             Self::stored_token_now(&store, self.credential_user, &own)
-                        });
+                        })
+                    });
                     if let Some(own_now) = own_now {
                         known.insert(own.clone(), zeroize::Zeroizing::new(own_now));
                     }
@@ -1531,24 +1538,27 @@ impl JottacloudProvider {
                         pending.remove(&key);
                     }
                 }
-                let private = crate::user_partitions::private_token_user(
-                    self.credential_user,
-                    "jottacloud_refresh",
-                )
-                .map_or(true, |user| user.is_some());
-                if !private {
-                    if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-                        let _ = store.delete(&account);
+                crate::credential_store::off_async_worker(|| {
+                    let private = crate::user_partitions::private_token_user(
+                        self.credential_user,
+                        "jottacloud_refresh",
+                    )
+                    .map_or(true, |user| user.is_some());
+                    if !private {
+                        if let Some(store) = crate::credential_store::CredentialStore::from_cache()
+                        {
+                            let _ = store.delete(&account);
+                        }
                     }
-                }
-                match self.credential_user {
-                    Some(user) => {
-                        crate::user_partitions::unmirror_credential_for_user_best_effort_any(
-                            user, &account,
-                        )
+                    match self.credential_user {
+                        Some(user) => {
+                            crate::user_partitions::unmirror_credential_for_user_best_effort_any(
+                                user, &account,
+                            )
+                        }
+                        None => crate::user_partitions::unmirror_active_credential(&account),
                     }
-                    None => crate::user_partitions::unmirror_active_credential(&account),
-                }
+                });
                 continue;
             }
 
@@ -2402,7 +2412,7 @@ impl StorageProvider for JottacloudProvider {
         // Before the refresh attempt, whose failures fall back to the login
         // token: an account that cannot be read stops the connection before
         // either token is spent.
-        self.bind_credential_owner()?;
+        crate::credential_store::off_async_worker(|| self.bind_credential_owner())?;
         // Strategy: try persisted refresh token first (avoids consuming the single-use login token).
         // If that fails, fall back to the login token from config.
         let used_refresh = refresh_or_login_token(self.try_connect_with_refresh().await)?;
@@ -2410,7 +2420,9 @@ impl StorageProvider for JottacloudProvider {
         if !used_refresh {
             // A login starts a chain of its own: what an exchange that failed
             // read of the stored keys is not what this chain replaces.
-            self.begin_login_chain();
+            // Off the async worker: it may wait for another process to
+            // create the vault, and it reads the partition database.
+            crate::credential_store::off_async_worker(|| self.begin_login_chain());
 
             // Step 1: Decode login token
             let login_token = Self::decode_login_token(self.config.login_token.expose_secret())?;

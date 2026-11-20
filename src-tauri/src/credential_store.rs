@@ -4286,6 +4286,30 @@ mod vault_lock_tests {
             let rest = &source[start..];
             &rest[..rest.find("\n    }\n").unwrap()]
         }
+        /// Where the argument of each `off_async_worker(` call in `source`
+        /// lies, parentheses matched: the closure that runs off the worker.
+        fn worker_spans(source: &str) -> Vec<std::ops::Range<usize>> {
+            source
+                .match_indices("off_async_worker(")
+                .map(|(call, name)| {
+                    let open = call + name.len() - 1;
+                    let mut depth = 0;
+                    for (at, c) in source[open..].char_indices() {
+                        match c {
+                            '(' => depth += 1,
+                            ')' => {
+                                depth -= 1;
+                                if depth == 0 {
+                                    return open..open + at + 1;
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    panic!("unbalanced off_async_worker call")
+                })
+                .collect()
+        }
         let oauth = include_str!("providers/oauth2.rs");
         let refresh = body(oauth, "pub async fn refresh_tokens(");
         assert!(
@@ -4324,14 +4348,56 @@ mod vault_lock_tests {
                 "{inner} is called only by its wrapper"
             );
         }
+        // The Jottacloud wrapper reads nothing itself: the deletion checks are
+        // in the body it hands to the worker.
+        let jotta = include_str!("providers/jottacloud.rs");
+        let wrapper = body(jotta, "fn persist_refresh_token(&self) {");
+        for read in ["chain_deletions", "DELETED_CHAINS", "PENDING_ROTATIONS"] {
+            assert!(
+                !wrapper.contains(read),
+                "persist_refresh_token reads {read}"
+            );
+        }
+        // A connection's reads of the partition database and the vault run off
+        // the worker: every call of each is the closure handed to it.
+        for (signature, calls) in [
+            (
+                "async fn connect(&mut self) -> Result<(), ProviderError> {",
+                &["self.bind_credential_owner()", "self.begin_login_chain()"][..],
+            ),
+            (
+                "async fn try_connect_with_refresh(&mut self) -> Result<bool, ProviderError> {",
+                &[
+                    "self.bind_credential_owner()",
+                    "self.note_chain_generations()",
+                    "Self::load_refresh_chain(",
+                    "Self::stored_token_now(",
+                    "unmirror_credential_for_user_best_effort_any(",
+                ][..],
+            ),
+        ] {
+            let connection = body(jotta, signature);
+            let spans = worker_spans(connection);
+            for call in calls {
+                let all = connection.matches(call).count();
+                let off = connection
+                    .match_indices(call)
+                    .filter(|(at, _)| spans.iter().any(|span| span.contains(at)))
+                    .count();
+                assert!(all > 0, "{signature}: {call} not found");
+                assert_eq!(off, all, "{signature}: {call} runs on the async worker");
+            }
+        }
         let proton = include_str!("providers/proton_native/vault.rs");
         let save = body(proton, "fn save(&self, tokens: &SessionTokens) {");
-        // The write is inside the closure handed to the worker, never before it.
-        let (before, after) = save
-            .split_once("off_async_worker(||")
-            .expect("proton save goes through off_async_worker");
-        assert!(!before.contains("save_refreshed("), "proton save");
-        assert!(after.contains("save_refreshed("), "proton save");
+        // The write is inside the closure handed to the worker, never before
+        // or after it.
+        assert_eq!(save.matches("save_refreshed(").count(), 1, "proton save");
+        let at = save.find("save_refreshed(").unwrap();
+        assert!(
+            worker_spans(save).iter().any(|span| span.contains(&at)),
+            "proton save writes outside the worker closure"
+        );
     }
 
     #[test]
