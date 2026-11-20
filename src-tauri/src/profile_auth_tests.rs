@@ -1124,7 +1124,8 @@ async fn durable_profile_auth_lifecycle(
         store.delete("oauth_rollback_app_client_id").unwrap();
 
         // An ordinary save that does not reach the row a reader prefers is an error
-        // that names the key, and never its value. The vault keeps the new value.
+        // that names the key, and never its value. The vault is put back as it
+        // was, so no reader finds the value of a save reported as failed.
         let conn = users::open_or_init_cli().unwrap();
         users::store_credential_for_user_dual(store, active_id, "server_dual-save", "old").unwrap();
         conn.execute_batch(
@@ -1151,7 +1152,7 @@ async fn durable_profile_auth_lifecycle(
         );
         assert!(refused.contains("server_dual-save"), "{refused}");
         assert!(!refused.contains("new-value"), "{refused}");
-        assert_eq!(store.get("server_dual-save").unwrap(), "new-value");
+        assert_eq!(store.get("server_dual-save").unwrap(), "old");
 
         // An app kept in the legacy settings blob counts as stored: a config with
         // another app must not put it in front of the one existing profiles use.
