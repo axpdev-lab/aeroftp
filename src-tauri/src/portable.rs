@@ -283,6 +283,10 @@ pub fn aeroftp_data_root() -> Option<PathBuf> {
         return Some(dir);
     }
     aeroftp_data_root_for(portable_root_status(), leaf, || {
+        #[cfg(test)]
+        if let Some(base) = std::env::var_os("AEROFTP_TEST_INSTALLED_BASE") {
+            return Some(PathBuf::from(base));
+        }
         dirs::config_dir().or_else(dirs::home_dir)
     })
 }
@@ -1844,6 +1848,7 @@ mod tests {
                 "--nocapture",
             ])
             .env("AEROFTP_TEST_CALLER_ABSENT", "1")
+            .env("AEROFTP_TEST_INSTALLED_BASE", absent_root.path())
             .output()
             .unwrap();
         assert!(
@@ -1867,7 +1872,12 @@ mod tests {
         let exe_dir = exe.parent().unwrap();
         std::fs::remove_file(exe_dir.join(MARKER_FILENAME)).unwrap();
         if absent {
+            let base = std::env::var_os("AEROFTP_TEST_INSTALLED_BASE")
+                .map(PathBuf::from)
+                .expect("injected installed base");
+            let expected = base.join(aeroftp_data_leaf());
             let installed = aeroftp_data_root().expect("confirmed absence selects host mode");
+            assert_eq!(installed, expected);
             assert!(!installed.starts_with(exe_dir.join("data")));
             assert_eq!(credential_store_dir(), Some(installed));
             return;
