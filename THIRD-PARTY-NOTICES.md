@@ -15,9 +15,10 @@ it bundles in `usr/share/doc/<package>/copyright`, and `usr/share/doc/BUNDLED-LI
 the Ubuntu source package and version it was built from, and a link to that source on Launchpad. For at least three years
 from the date of each release, anyone who asks can obtain from us the complete corresponding source code of each of those
 libraries, at the version listed, for a charge no more than our cost of providing it: ask at dev@aeroftp.app, the contact
-published in [SECURITY.md](SECURITY.md). Every version listed is a package of the Ubuntu archive, which keeps its source: we fetch
-that exact version from the Launchpad page listed, or from the Ubuntu archive snapshot of the release's build date at
-snapshot.ubuntu.com when Launchpad no longer serves it, and send it to you.
+published in [SECURITY.md](SECURITY.md). We keep that source, as the Ubuntu archive publishes it, in the release
+[appimage-sources](https://github.com/axpdev-lab/aeroftp/releases/tag/appimage-sources) until at least three years after
+the last release whose AppImage bundles it, where anyone can download it: `SOURCES.json` there names the file of each
+source version and its SHA-256.
 
 ---
 

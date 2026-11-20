@@ -62,6 +62,9 @@ jobs:
       - name: AppImage .zsync pairing reads the published asset list
         run: python3 -m unittest discover -s .github/scripts -p test_pair_appimage_zsync.py -v
 
+      - name: AppImage library sources are kept for the written offer
+        run: python3 -m unittest discover -s .github/scripts -p test_archive_appimage_sources.py -v
+
       - name: Snap stale-package audit reads every staged package
         run: node --test .github/scripts/test-snap-stale-packages.mjs
 

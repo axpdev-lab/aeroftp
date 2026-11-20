@@ -12,6 +12,8 @@
 # version it was built from, the Launchpad page of that source version
 # (https://launchpad.net/ubuntu/+source/<source>/<version>, the version with
 # its epoch, as Launchpad names it), and the written offer of that source.
+# The publish job keeps each source version in the release appimage-sources
+# (scripts/archive-appimage-sources.py), which the offer names.
 #
 # The package is the one that installed the file the library was copied from.
 # A file name installed by one package is that package's. A name several
@@ -288,16 +290,10 @@ if [ "${#missing[@]}" -gt 0 ]; then
     exit 1
 fi
 
-# The archive snapshot of the build time (UTC) keeps every version listed
-# when Launchpad no longer serves it. The time, not the midnight of that day:
-# a package published earlier that day and installed for the build is not in
-# the midnight snapshot. This runs after the libraries were installed and
-# bundled, so the snapshot at this second already holds each of them.
-SNAPSHOT_DATE="$(date -u +%Y%m%dT%H%M%SZ)"
 {
     echo "Libraries this AppImage bundles. Each line: the library, the Ubuntu package that provides it and its version, then the Ubuntu source package it was built from, its version, and the Launchpad page of that source version."
     echo "The terms of each package are in usr/share/doc/<package>/copyright."
-    echo "Written offer: for at least three years from the date of the AeroFTP $VERSION release, anyone who asks can obtain from us the complete corresponding source code of each library listed here, at the source package version listed, for a charge no more than our cost of providing it. Ask at dev@aeroftp.app, the contact published in SECURITY.md of https://github.com/axpdev-lab/aeroftp. Every version listed is a package of the Ubuntu archive, and the archive keeps its source: we fetch that exact version from the Launchpad page listed, or from the archive snapshot of the build date at https://snapshot.ubuntu.com/ubuntu/$SNAPSHOT_DATE/ when Launchpad no longer serves it, and send it to you."
+    echo "Written offer: for at least three years from the date of the AeroFTP $VERSION release, anyone who asks can obtain from us the complete corresponding source code of each library listed here, at the source package version listed, for a charge no more than our cost of providing it. Ask at dev@aeroftp.app, the contact published in SECURITY.md of https://github.com/axpdev-lab/aeroftp. We keep that source, as the Ubuntu archive publishes it, in the release https://github.com/axpdev-lab/aeroftp/releases/tag/appimage-sources until at least three years after the last AeroFTP release that bundles it, where anyone can download it: SOURCES.json there names the file of each source version and its SHA-256."
     echo
     while IFS= read -r path; do
         echo "$path ${lines[$path]}"

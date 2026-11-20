@@ -115,6 +115,7 @@ run-clean.sh
 !/scripts/apply-i18n-batch.py
 !/scripts/aerorsync-emit-guard-tests.sh
 !/scripts/pair-appimage-zsync.sh
+!/scripts/archive-appimage-sources.py
 !/scripts/i18n-validate.ts
 !/scripts/i18n-sync.ts
 !/scripts/i18n-stats.ts

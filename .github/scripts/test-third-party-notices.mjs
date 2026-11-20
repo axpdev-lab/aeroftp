@@ -1987,7 +1987,7 @@ test('scope: the introduction claims only the Cargo and npm dependencies it list
   const md = generateNoticesMarkdown([], []);
   const intro = md.slice(0, md.indexOf('\n---\n'));
   assert.match(intro, /license texts\nfor the Rust \(Cargo\) and Node\.js \(npm\) production dependencies that AeroFTP distribution packages include:/);
-  assert.match(intro, /System libraries that are not Cargo or npm dependencies \(for example WebKitGTK, which the AppImage bundles as a\nfallback\) are not covered by this document\. The AppImage ships the copyright file of the Ubuntu package of each library\nit bundles in `usr\/share\/doc\/<package>\/copyright`, and `usr\/share\/doc\/BUNDLED-LIBRARIES\.txt` names that package and its version,\nthe Ubuntu source package and version it was built from, and a link to that source on Launchpad\. For at least three years\nfrom the date of each release, anyone who asks can obtain from us the complete corresponding source code of each of those\nlibraries, at the version listed, for a charge no more than our cost of providing it: ask at dev@aeroftp\.app, the contact\npublished in \[SECURITY\.md\]\(SECURITY\.md\)\. Every version listed is a package of the Ubuntu archive, which keeps its source: we fetch\nthat exact version from the Launchpad page listed, or from the Ubuntu archive snapshot of the release's build date at\nsnapshot\.ubuntu\.com when Launchpad no longer serves it, and send it to you\./);
+  assert.match(intro, /System libraries that are not Cargo or npm dependencies \(for example WebKitGTK, which the AppImage bundles as a\nfallback\) are not covered by this document\. The AppImage ships the copyright file of the Ubuntu package of each library\nit bundles in `usr\/share\/doc\/<package>\/copyright`, and `usr\/share\/doc\/BUNDLED-LIBRARIES\.txt` names that package and its version,\nthe Ubuntu source package and version it was built from, and a link to that source on Launchpad\. For at least three years\nfrom the date of each release, anyone who asks can obtain from us the complete corresponding source code of each of those\nlibraries, at the version listed, for a charge no more than our cost of providing it: ask at dev@aeroftp\.app, the contact\npublished in \[SECURITY\.md\]\(SECURITY\.md\)\. We keep that source, as the Ubuntu archive publishes it, in the release\n\[appimage-sources\]\(https:\/\/github\.com\/axpdev-lab\/aeroftp\/releases\/tag\/appimage-sources\) until at least three years after\nthe last release whose AppImage bundles it, where anyone can download it: `SOURCES\.json` there names the file of each\nsource version and its SHA-256\./);
   // The offer states what the release process provides, nothing it cannot.
   assert.doesNotMatch(intro, /convenience only|whether or not a link still works/);
   // The contact of the offer is the one SECURITY.md publishes, not a new address.
@@ -2373,26 +2373,20 @@ test('AppImage: every bundled library ships the copyright file of the package th
         encoding: 'utf8',
       });
     const fails = (pattern) => assert.throws(run, (e) => pattern.test(String(e.stderr)) || assert.fail(String(e.stderr)));
-    const startedAt = Math.floor(Date.now() / 1000);
     run();
-    const endedAt = Math.ceil(Date.now() / 1000);
     const doc = path.join(tmpDir, 'app/usr/share/doc');
     for (const pkg of ['libwebkit2gtk-4.1-0', 'libgtk-3-0', 'libfoo1', 'foo-plugins']) assert.strictEqual(fs.readFileSync(path.join(doc, pkg, 'copyright'), 'utf8'), `${pkg} terms`);
     assert.ok(!fs.existsSync(path.join(doc, 'some-app')));
     const list = fs.readFileSync(path.join(doc, 'BUNDLED-LIBRARIES.txt'), 'utf8');
     // The written offer of the source, valid three years from the release,
-    // at the contact SECURITY.md publishes; no asset is named.
-    // The archive snapshot is named by the UTC time of the build, to the
-    // second, so the exact version stays retrievable when Launchpad no longer
-    // serves it, also for a package published earlier that day (the midnight
-    // snapshot of the day does not hold it).
+    // at the contact SECURITY.md publishes, and the release that keeps each
+    // source version (scripts/archive-appimage-sources.py fills it before
+    // the release is published).
     assert.match(
       list,
-      /\nWritten offer: for at least three years from the date of the AeroFTP 9\.8\.7 release, anyone who asks can obtain from us the complete corresponding source code of each library listed here, at the source package version listed, for a charge no more than our cost of providing it\. Ask at dev@aeroftp\.app, the contact published in SECURITY\.md of https:\/\/github\.com\/axpdev-lab\/aeroftp\. Every version listed is a package of the Ubuntu archive, and the archive keeps its source: we fetch that exact version from the Launchpad page listed, or from the archive snapshot of the build date at https:\/\/snapshot\.ubuntu\.com\/ubuntu\/20[0-9]{2}(0[1-9]|1[0-2])(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3])[0-5][0-9][0-5][0-9]Z\/ when Launchpad no longer serves it, and send it to you\.\n/,
+      /\nWritten offer: for at least three years from the date of the AeroFTP 9\.8\.7 release, anyone who asks can obtain from us the complete corresponding source code of each library listed here, at the source package version listed, for a charge no more than our cost of providing it\. Ask at dev@aeroftp\.app, the contact published in SECURITY\.md of https:\/\/github\.com\/axpdev-lab\/aeroftp\. We keep that source, as the Ubuntu archive publishes it, in the release https:\/\/github\.com\/axpdev-lab\/aeroftp\/releases\/tag\/appimage-sources until at least three years after the last AeroFTP release that bundles it, where anyone can download it: SOURCES\.json there names the file of each source version and its SHA-256\.\n/,
     );
-    const [, y, mo, d, h, mi, se] = list.match(/snapshot\.ubuntu\.com\/ubuntu\/(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z\//);
-    const stamp = Date.UTC(+y, +mo - 1, +d, +h, +mi, +se) / 1000;
-    assert.ok(stamp >= startedAt && stamp <= endedAt, `the snapshot is the time of the run (${stamp} not in ${startedAt}..${endedAt}), not the midnight of its day`);
+    assert.doesNotMatch(list, /snapshot\.ubuntu\.com/);
     assert.doesNotMatch(list, /convenience only|whether or not a link still works/);
     assert.doesNotMatch(list, /lib-sources|\.tar\b/);
     const entries = [

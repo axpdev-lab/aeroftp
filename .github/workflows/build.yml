@@ -877,6 +877,11 @@ jobs:
     if: ${{ !cancelled() && startsWith(github.ref, 'refs/tags/') && needs.linux-validate.result == 'success' }}
     needs: [linux-validate, build-and-release]
     runs-on: ubuntu-latest
+    # One tag at a time across all tags: the step that keeps the AppImage
+    # sources reads and rewrites the record of the release appimage-sources.
+    concurrency:
+      group: appimage-sources-archive
+      cancel-in-progress: false
     permissions:
       contents: write
       id-token: write
@@ -925,6 +930,17 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: scripts/pair-appimage-zsync.sh release-assets/appimage
+
+      # The AppImage's written offer names the release `appimage-sources`,
+      # which keeps the source of every library the AppImage bundles until
+      # three years after the last release that ships it. It runs before this
+      # release is published, so the offer holds from the first download: a
+      # source that cannot be fetched, checked or kept stops the publication.
+      - name: Keep the source of the libraries the AppImage bundles
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts/archive-appimage-sources.py release-assets/appimage "${GITHUB_REF_NAME#v}"
 
       - name: Install Cosign
         uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
