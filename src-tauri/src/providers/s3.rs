@@ -13310,8 +13310,9 @@ mod tests {
         rename: RenameHeader,
         stats: Option<(u16, &'static str)>,
         versions_xml: Option<&'static str>,
-        /// ListObjectVersions answers 403 (no `s3:ListBucketVersions`).
-        versions_denied: bool,
+        /// ListObjectVersions answers this refusal (403 or 401: no
+        /// `s3:ListBucketVersions`).
+        versions_denied: Option<u16>,
         /// The versions listed once a copy was answered (a restore made).
         versions_after_copy: Option<&'static str>,
         /// A copy's 200 answer: its `x-amz-version-id` (empty: none) and body.
@@ -13326,7 +13327,7 @@ mod tests {
                 rename: RenameHeader::Honor,
                 stats: None,
                 versions_xml: None,
-                versions_denied: false,
+                versions_denied: None,
                 versions_after_copy: None,
                 copy_answer: None,
                 versions_oversized: false,
@@ -13430,9 +13431,13 @@ mod tests {
                     match method.as_str() {
                         "GET" if key.is_empty()
                             && query.contains_key("versions")
-                            && config.versions_denied =>
+                            && config.versions_denied.is_some() =>
                         {
-                            reply(403, &[], b"<Error><Code>AccessDenied</Code></Error>".to_vec())
+                            reply(
+                                config.versions_denied.unwrap_or(403),
+                                &[],
+                                b"<Error><Code>AccessDenied</Code></Error>".to_vec(),
+                            )
                         }
                         "GET" if key.is_empty()
                             && query.contains_key("versions")
@@ -15565,10 +15570,41 @@ mod tests {
             .any(|s| s.method == "PUT" && s.headers.contains_key("x-amz-copy-source")));
     }
 
+    /// A key denied the listing (403 or 401) may still restore by the
+    /// version id named: the copy goes out, as a listing denied decides
+    /// nothing, while a listing that broke off refuses it
+    /// (an_oversized_version_listing_is_refused_and_decides_nothing).
+    #[tokio::test]
+    async fn a_restore_denied_the_listing_still_copies_by_version_id() {
+        for status in [403u16, 401] {
+            let config = TigrisDoubleConfig {
+                versions_denied: Some(status),
+                ..Default::default()
+            };
+            let (mut provider, _, log) = tigris_double(&[("docs/a.txt", "A")], config).await;
+            let listed = provider.list_versions("/docs/a.txt").await;
+            assert!(
+                matches!(&listed, Err(ProviderError::PermissionDenied(_))),
+                "{status}: {listed:?}"
+            );
+            provider
+                .restore_version("/docs/a.txt", "v2")
+                .await
+                .unwrap_or_else(|e| panic!("{status}: the restore copies by version id: {e:?}"));
+            assert!(
+                log.lock()
+                    .unwrap()
+                    .iter()
+                    .any(|s| s.method == "PUT" && s.headers.contains_key("x-amz-copy-source")),
+                "{status}"
+            );
+        }
+    }
+
     #[tokio::test]
     async fn a_known_version_downloads_without_the_right_to_list_versions() {
         let config = TigrisDoubleConfig {
-            versions_denied: true,
+            versions_denied: Some(403),
             ..Default::default()
         };
         let (mut provider, _, log) = tigris_double(&[("docs/a.txt", "A")], config).await;
