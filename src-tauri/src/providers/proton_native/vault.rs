@@ -841,8 +841,7 @@ pub async fn bind_unbound_session(
     if read(&store, owner, &owner.key(Some(profile_id)))?.is_some() {
         return Err(takeover_changed());
     }
-    store_session(owner, Some(profile_id), &current)?;
-    clear_deferred_revoke(owner, Some(profile_id));
+    store_over_deferred_revoke(owner, Some(profile_id), &current)?;
     remove_saved(&store, owner, &source_key)?;
     Ok(current)
 }
@@ -883,23 +882,43 @@ pub async fn replace_session(
     if previous_key != owner.key(profile_id) {
         remove_saved(&store, owner, &previous_key)?;
     }
-    store_session(owner, profile_id, session)?;
-    clear_deferred_revoke(owner, profile_id);
-    Ok(())
+    store_over_deferred_revoke(owner, profile_id, session)
 }
 
-/// Drops the mark a purge of `profile_id` left to its account's unlock
+/// Saves `session` for `profile_id` of `owner` ([`store_session`]) over the
+/// mark a purge of the profile left to the account's unlock
 /// ([`crate::user_partitions::defer_proton_revoke`]), under the key lock of
-/// the sign-in, import or duplicate that just saved a session there for the
-/// profile, which is its own. Best effort: the mark names the purged
-/// session, so one left behind ends nothing else.
-fn clear_deferred_revoke(owner: SessionOwner, profile_id: Option<&str>) {
+/// the sign-in, import or duplicate: the session is the profile's own now,
+/// and the purged one it replaces goes with the save. The mark is taken
+/// first, and a mark that cannot be taken refuses the save, so no mark is
+/// left over a session saved since; a save that fails puts it back, so the
+/// purged session the key still holds is ended at the next unlock.
+fn store_over_deferred_revoke(
+    owner: SessionOwner,
+    profile_id: Option<&str>,
+    session: &ProtonSession,
+) -> Result<(), ProviderError> {
     let (Some(user), Some(profile_id)) = (owner.user_id, profile_id) else {
-        return;
+        return store_session(owner, profile_id, session);
     };
-    if let Err(error) = crate::user_partitions::clear_deferred_proton_revoke(user, profile_id) {
-        log::warn!("Proton: the mark of a purged session was not cleared: {error}");
-    }
+    let taken = crate::user_partitions::take_deferred_proton_revoke(user, profile_id).map_err(
+        |error| {
+            ProviderError::Other(format!(
+                "the session was not saved: the mark of the profile's purged session could not be read: {error}"
+            ))
+        },
+    )?;
+    store_session(owner, Some(profile_id), session).inspect_err(|_| {
+        if let Some(mark) = taken {
+            if let Err(error) =
+                crate::user_partitions::put_back_deferred_proton_revoke(user, profile_id, &mark)
+            {
+                log::warn!(
+                    "Proton: the mark of a purged session was not put back after a failed save: {error}"
+                );
+            }
+        }
+    })
 }
 
 /// Refuses a sign-in's save for a profile a Move took out of the account
@@ -986,8 +1005,7 @@ async fn restore(
     if let Some(saved) = same {
         session.tokens = saved.tokens;
     }
-    store_session(owner, Some(profile_id), &session)?;
-    clear_deferred_revoke(owner, Some(profile_id));
+    store_over_deferred_revoke(owner, Some(profile_id), &session)?;
     Ok(true)
 }
 

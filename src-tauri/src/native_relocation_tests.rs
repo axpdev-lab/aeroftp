@@ -2099,3 +2099,41 @@ fn a_secret_the_account_store_refuses_leaves_the_vault_as_it_was() {
     );
     assert!(failures.is_empty(), "{failures:#?}");
 }
+
+/// A mark the purge left without a fingerprint (the account locked, its row
+/// not indexed), and a sign-in that saves a new session for the profile
+/// after the unlock read the marks and before it fingerprints the row: the
+/// sign-in took the mark, so the unlock neither puts it back nor ends the new
+/// session, which stays with its row.
+#[test]
+fn a_sign_in_during_the_unlock_cleanup_keeps_its_session() {
+    if !in_isolated_child("a_sign_in_during_the_unlock_cleanup_keeps_its_session") {
+        return;
+    }
+    let accounts = Accounts::open();
+    defer_unindexed_target_session(&accounts, "raced", "raced-purged-uid");
+    let owner = accounts.target_owner();
+    *BEFORE_DEFERRED_SESSION_END.lock().unwrap() = Some(Box::new(move || {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(vault::replace_session(
+                owner,
+                Some("raced"),
+                &session("raced-new-uid", "n1"),
+            ))
+            .unwrap();
+    }));
+    accounts.unlock_target();
+    assert!(
+        BEFORE_DEFERRED_SESSION_END.lock().unwrap().is_none(),
+        "the sign-in ran"
+    );
+    assert_eq!(
+        accounts.target_row("raced").as_deref(),
+        Some("n1"),
+        "the session saved by the sign-in is not ended"
+    );
+    assert_eq!(deferred_revokes(&accounts.conn), 0, "no mark is put back");
+}
