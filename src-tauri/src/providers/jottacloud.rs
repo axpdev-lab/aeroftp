@@ -5776,6 +5776,7 @@ mod tests {
             .unwrap()
             .at
             .remove(&(owner, deleted_destination.to_string()));
+        let source_before = token_of(&store.get("jottacloud_refresh").unwrap_or_default());
         writes_to_deleted.token_expiry = Instant::now();
         runtime
             .block_on(writes_to_deleted.refresh_if_needed())
@@ -5783,6 +5784,7 @@ mod tests {
         let destination_after = stored(deleted_destination);
         let destination_pending = pending_of(deleted_destination).is_some();
         let source_after = token_of(&store.get("jottacloud_refresh").unwrap_or_default());
+        let destination_successor = writes_to_deleted.refresh_token.expose_secret().to_string();
         drop(writes_to_deleted);
 
         // A delete through a store handle kept after the process cache is
@@ -5865,7 +5867,9 @@ mod tests {
         );
         assert_eq!(destination_after, "", "the deleted key stays deleted");
         assert!(!destination_pending, "nothing is kept for the deleted key");
-        assert!(source_after.starts_with("rotated-"), "{source_after}");
+        // The source gets this exchange's successor, not only an earlier one.
+        assert_eq!(source_after, destination_successor, "{source_before}");
+        assert_ne!(source_after, source_before);
         assert!(handle_deleted.is_ok());
         assert_eq!(
             handle_count,
