@@ -1174,3 +1174,59 @@ fn a_rotation_leaves_a_key_another_connection_filed_for() {
     }
     assert!(failures.is_empty(), "{failures:#?}");
 }
+
+/// A key signed out elsewhere and given a new chain right after a connection
+/// read its keys' deletion counts (test only): `(profile, owner, key, the new
+/// chain)`, taken once.
+pub(super) static REPLACED_AFTER_NOTE: Mutex<Option<(String, Option<i64>, String, String)>> =
+    Mutex::new(None);
+
+pub(super) fn after_note(profile: &str) {
+    let replaced = REPLACED_AFTER_NOTE
+        .lock()
+        .unwrap()
+        .take_if(|(at, _, _, _)| at == profile);
+    if let Some((_, owner, key, chain)) = replaced {
+        let store = CredentialStore::from_cache().unwrap();
+        delete_elsewhere(&store, owner, &key);
+        store.store(&key, &chain).unwrap();
+    }
+}
+
+/// A key signed out and given a new chain between a connection's first count
+/// reads and its load: the new chain is loaded, and its rotation is written,
+/// checked against the count the chain was read with, not the earlier one.
+#[test]
+fn a_chain_stored_again_before_its_load_is_rotated() {
+    if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+        "providers::jottacloud::chain_tests::a_chain_stored_again_before_its_load_is_rotated",
+    ) {
+        return;
+    }
+    let chains = Chains::new();
+    let _ = chains.store.delete("jottacloud_refresh");
+    let key = "jottacloud_refresh_storedagain";
+    chains
+        .store
+        .store(key, &chains.chain("signed-out"))
+        .unwrap();
+    *REPLACED_AFTER_NOTE.lock().unwrap() = Some((
+        "storedagain".to_string(),
+        chains.owner,
+        key.to_string(),
+        chains.chain("stored-again"),
+    ));
+    let mut connection = chains.bound("storedagain");
+    let connected = chains
+        .runtime()
+        .block_on(connection.try_connect_with_refresh());
+    *REPLACED_AFTER_NOTE.lock().unwrap() = None;
+    let rotated = connection.refresh_token.expose_secret().to_string();
+    drop(connection);
+    assert!(matches!(connected, Ok(true)), "{connected:?}");
+    assert_eq!(
+        (chains.stored(key), chains.pending(key).is_some()),
+        (rotated, false),
+        "the new chain's rotation is written"
+    );
+}

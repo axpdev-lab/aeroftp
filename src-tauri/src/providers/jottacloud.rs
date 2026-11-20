@@ -1490,6 +1490,8 @@ impl JottacloudProvider {
         // (`begin_login_chain`).
         self.chain_since = deletion_clock();
         crate::credential_store::off_async_worker(|| self.note_chain_generations());
+        #[cfg(test)]
+        chain_tests::after_note(&self.profile_id);
         let own = self.refresh_token_account();
         for account in Self::refresh_chain_candidates(&self.profile_id) {
             // Every key the exchange may write is checked against a deletion
