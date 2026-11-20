@@ -28,8 +28,8 @@ use super::s3_delta::{DeltaOperation, S3DeltaCompleted, S3DeltaError, S3DeltaOut
 use super::s3_delta_baseline::{BaselineHasher, BaselineKey, BaselineStore};
 use super::sts;
 use super::{
-    sanitize_api_error, FileVersion, MultipartHandle, ProviderError, ProviderTransferExecutorKind,
-    ProviderType, RemoteEntry, S3Config, ShareLinkCapabilities, ShareLinkOptions, ShareLinkResult,
+    FileVersion, MultipartHandle, ProviderError, ProviderTransferExecutorKind, ProviderType,
+    RemoteEntry, S3Config, ShareLinkCapabilities, ShareLinkOptions, ShareLinkResult,
     StorageProvider, TrashEntry, UploadedPart,
 };
 
@@ -447,6 +447,25 @@ fn plan_copy_parts(
 /// cross a network segment other machines share, so "I trust this certificate"
 /// and "nobody else can read this" are different questions with different
 /// answers. Do not merge the two predicates.
+/// #389: the Filen Desktop S3 bridge protocol (HTTP vs HTTPS) is a user
+/// setting in the Filen app, independent of the scheme saved in the profile.
+/// Reconcile the endpoint against the live bridge (scheme + loopback IP) so a
+/// request survives either choice. The client already trusts loopback /
+/// local.s3.filen.io self-signed certs (is_local_s3_endpoint). Both ways in
+/// run it: the connect, and the bucket discovery that runs before one.
+pub(crate) async fn reconcile_bridge_endpoint(config: &mut S3Config) {
+    if let Some(ep) = config.endpoint.clone() {
+        let fixed = crate::local_bridge::reconcile_local_bridge_url(&ep).await;
+        if fixed != ep {
+            tracing::info!(
+                "[S3] Filen bridge endpoint reconciled to {}",
+                crate::local_bridge::url_origin(&fixed)
+            );
+            config.endpoint = Some(fixed);
+        }
+    }
+}
+
 fn is_local_s3_endpoint(endpoint: &str) -> bool {
     // The host the request reaches (#1506 Requested 188): a split string kept
     // `?` and `#`, so a schemeless `evil.com?.local` read as an mDNS name.
@@ -559,18 +578,119 @@ fn s3_retry_marker_tail(status: u16, body: &str, retry_header: Option<&str>) -> 
 /// The `prefix` is prepended verbatim; the standard tail
 /// `<status>: <sanitised body>` is appended; the optional marker
 /// ` [retry-after-secs=NN]` is appended last.
+/// The secrets a session sent, for an error built from a reply.
+#[derive(Debug, Default)]
+struct SentSecrets {
+    values: Vec<String>,
+    /// A replaced token was dropped to bound the list: a reply could repeat
+    /// a token that `values` does not hold.
+    missing_token: bool,
+}
+
+impl SentSecrets {
+    #[cfg(test)]
+    fn of(values: &[&str]) -> Self {
+        Self {
+            values: values.iter().map(|value| value.to_string()).collect(),
+            missing_token: false,
+        }
+    }
+}
+
+/// Session tokens a provider replaced, oldest first.
+#[derive(Default)]
+struct RetiredTokens {
+    kept: std::collections::VecDeque<secrecy::SecretString>,
+    /// One was dropped for room: from then on a reply is withheld.
+    lost: bool,
+}
+
 fn format_s3_error(
     prefix: &str,
     status: reqwest::StatusCode,
     body: &str,
     retry_header: Option<&str>,
+    sent: &SentSecrets,
 ) -> String {
-    let detail = s3_error_code_and_message(body).unwrap_or_else(|| body.to_string());
-    let mut msg = format!("{} ({}): {}", prefix, status, sanitize_api_error(&detail));
+    let mut msg = format!("{} ({}): {}", prefix, status, s3_error_text(body, sent));
     if let Some(tail) = s3_retry_marker_tail(status.as_u16(), body, retry_header) {
         msg.push_str(&tail);
     }
     msg
+}
+
+/// Remove reflected S3/AWS credential headers or parameters from an error
+/// message before it reaches `sanitize_api_error`. Ordinary S3 error messages
+/// stay intact.
+fn scrub_s3_reflected_credentials(text: &str) -> String {
+    // A credential field, its name bare or quoted (`x-amz-security-token:`,
+    // `"SessionToken": `), then its value. The text is fully decoded first,
+    // so these two rules see every quote as a quote; a reference that stays
+    // encoded (a control character, a value past the last code point) is
+    // skipped between the separator and the value instead of ending it.
+    const FIELD: &str = r#"(?i)(["']?\b(?:x-amz-(?:security-token|credential|signature|server-side-encryption-customer-key)|AWSAccessKeyId|SessionToken|SecurityToken|Credential|Signature)["']?\s*[:=]\s*(?:&#?[0-9A-Za-z]+;\s*)*)"#;
+    static RULES: std::sync::LazyLock<[(regex::Regex, &'static str); 2]> =
+        std::sync::LazyLock::new(|| {
+            [
+                // A quoted value, spaces and all.
+                (
+                    regex::Regex::new(&format!(r#"{FIELD}(["'])[^"']*(["'])"#)).unwrap(),
+                    "$1$2[REDACTED]$3",
+                ),
+                // A bare value, up to the next delimiter; a reference left
+                // encoded inside it does not end it.
+                (
+                    regex::Regex::new(&format!(
+                        r#"{FIELD}((?:[^\s,;'"&<>)\]}}]|&#?[0-9A-Za-z]+;)+)"#
+                    ))
+                    .unwrap(),
+                    "$1[REDACTED]",
+                ),
+            ]
+        });
+    let mut out = text.to_string();
+    for (rule, replacement) in RULES.iter() {
+        out = rule.replace_all(&out, *replacement).into_owned();
+    }
+    out
+}
+
+/// What an error may show of an S3 error reply: its `Code: Message`,
+/// sanitized, or only its length. The rest of the reply can name the request
+/// (`<Resource>` is the bucket and key path, `<Key>` the object), so it stays
+/// out of the error.
+///
+/// `sent` is what this session sent the server as a secret (its session
+/// token): an echo of it is removed in any syntax, before the field rules.
+/// When a token that can still sign is no longer known (`SentSecrets`), the
+/// reply is shown by its size only.
+fn s3_error_text(body: &str, sent: &SentSecrets) -> String {
+    match s3_error_code_and_message(body) {
+        Some(detail) => s3_server_text(&detail, body.len(), sent),
+        None if body.is_empty() => "no message".to_string(),
+        None if sent.missing_token => s3_server_text(body, body.len(), sent),
+        None => format!("a reply of {} bytes with no S3 error code", body.len()),
+    }
+}
+
+/// What an error may show of `text`, a field an S3 server wrote in a reply
+/// of `reply_bytes` bytes: sanitized, with this session's secrets removed,
+/// or only the reply's size when it may hold a secret no rule can cut out.
+fn s3_server_text(text: &str, reply_bytes: usize, sent: &SentSecrets) -> String {
+    if sent.missing_token {
+        return format!(
+            "a reply of {reply_bytes} bytes, withheld: a session token it may repeat is no longer known"
+        );
+    }
+    // Fully decoded first, so no escaped quote or reference can stop a rule
+    // short of the value.
+    let Some(decoded) = super::fully_unescaped(text) else {
+        return super::deeply_escaped_reply(reply_bytes);
+    };
+    let Some(shown) = super::without_sent_values(&decoded, &sent.values) else {
+        return super::reply_with_a_sent_value(reply_bytes);
+    };
+    super::sanitize_plain_error(&scrub_s3_reflected_credentials(&shown))
 }
 
 /// `Code: Message` of an S3 XML error body, or `None` when it has neither.
@@ -581,7 +701,12 @@ fn s3_error_code_and_message(body: &str) -> Option<String> {
     let tag = |name: &str| {
         body.split(&format!("<{name}>"))
             .nth(1)
-            .and_then(|rest| rest.split(&format!("</{name}>")).next())
+            // A closed element only: an unclosed one would take the rest of
+            // the reply with it, `<Resource>` included.
+            .and_then(|rest| {
+                rest.split_once(&format!("</{name}>"))
+                    .map(|(inner, _)| inner)
+            })
             .map(str::trim)
             .filter(|text| !text.is_empty())
     };
@@ -607,6 +732,10 @@ pub struct S3Provider {
     baseline_test_path: Option<PathBuf>,
     config: S3Config,
     client: Client,
+    /// The client of the AWS STS AssumeRole call. STS is always a remote AWS
+    /// endpoint: it keeps the system proxy and checks certificates unless the
+    /// user turned that off, whatever `client` does for a local endpoint.
+    sts_client: Client,
     current_prefix: String,
     connected: bool,
     /// Clock offset in seconds to compensate for local system clock skew.
@@ -616,6 +745,10 @@ pub struct S3Provider {
     /// reproduced byte for byte.
     #[cfg(test)]
     fixed_now: Option<DateTime<Utc>>,
+    /// Runs inside `install_temp_credentials` once the new credentials are
+    /// in place and before the old token is retired, the lock still held.
+    #[cfg(test)]
+    between_replace_and_retire: Option<Arc<dyn Fn() + Send + Sync>>,
     /// Override for multipart upload part size (default: 5 MB)
     upload_chunk_override: Option<usize>,
     /// Number of concurrent Range streams for multi-thread download (1 = disabled).
@@ -675,6 +808,11 @@ pub struct S3Provider {
     /// the base credentials are used directly. Behind `Arc<RwLock>` so the
     /// clones spawned for parallel multipart parts share one refreshing cell.
     temp_credentials: Arc<std::sync::RwLock<Option<sts::TempCredentials>>>,
+    /// Session tokens this provider replaced and that are still accepted,
+    /// shared by its clones. A request signed with one can answer after a
+    /// sibling clone refreshed the credentials, however late (a long upload),
+    /// so its error must still remove it.
+    retired_session_tokens: Arc<std::sync::Mutex<RetiredTokens>>,
     /// Serializes STS refreshes so concurrent multipart parts re-assume the
     /// role once instead of stampeding the STS endpoint near expiry.
     sts_refresh_lock: Arc<tokio::sync::Mutex<()>>,
@@ -837,6 +975,27 @@ impl Drop for DeltaHold {
     }
 }
 
+/// True when `endpoint` names a user or a password. Read from the parsed URL,
+/// which skips the extra slashes a browser also skips (`https:///u:p@host`
+/// is `u:p` at `host`); an endpoint that does not parse counts an `@` in
+/// the authority it would have, after any leading slashes.
+fn endpoint_has_userinfo(endpoint: &str) -> bool {
+    match url::Url::parse(endpoint) {
+        // Only a URL with a host has an authority to read: `user:pw@host`
+        // parses as the scheme `user` with an opaque path, so it takes the
+        // textual check below.
+        Ok(url) if url.has_host() => !url.username().is_empty() || url.password().is_some(),
+        _ => endpoint
+            .split_once("://")
+            .map_or(endpoint, |(_, rest)| rest)
+            .trim_start_matches(['/', '\\'])
+            .split(['/', '\\'])
+            .next()
+            .unwrap_or("")
+            .contains('@'),
+    }
+}
+
 impl S3Provider {
     fn baseline_path(&self) -> Option<std::path::PathBuf> {
         #[cfg(test)]
@@ -992,8 +1151,61 @@ impl S3Provider {
         (entries, truncated)
     }
 
+    /// The client for STS: the data-plane client's timeouts and redirect
+    /// refusal, and nothing of what the user chose for the S3 endpoint. The
+    /// STS host is always AWS (`sts::assume_role`), so its certificate is
+    /// always checked: neither the local-endpoint trust nor "Verify
+    /// certificate" turned off (meant for a self-signed MinIO, say) reaches
+    /// the role's credential exchange, and the system proxy is kept.
+    fn sts_client() -> Result<Client, ProviderError> {
+        Client::builder()
+            .user_agent(crate::providers::AEROFTP_USER_AGENT)
+            .connect_timeout(crate::providers::http_limits::limit(
+                std::time::Duration::from_secs(30),
+            ))
+            .read_timeout(crate::providers::http_limits::limit(
+                crate::providers::http_limits::READ_TIMEOUT,
+            ))
+            .redirect(reqwest::redirect::Policy::none())
+            .http1_only()
+            .build()
+            .map_err(|e| ProviderError::ConnectionFailed(format!("HTTP client init failed: {e}")))
+    }
+
     /// Create a new S3 provider with the given configuration
     pub fn new(config: S3Config) -> Result<Self, ProviderError> {
+        // Every request URL is the endpoint with the bucket and the key
+        // appended (`build_url`, the Tigris quota, bucket discovery), so a
+        // query or a fragment in it would swallow them. Refused here, where
+        // every caller passes, rather than rewritten: the message says what to
+        // change, and the endpoint itself is not repeated (a query can carry
+        // a secret).
+        if config
+            .endpoint
+            .as_deref()
+            .is_some_and(|endpoint| endpoint.contains(['?', '#']))
+        {
+            return Err(ProviderError::InvalidConfig(
+                "The S3 endpoint must not contain a query or a fragment (? or #): AeroFTP adds \
+                 the bucket and the object key after the endpoint, so remove everything from the \
+                 ? or # on"
+                    .to_string(),
+            ));
+        }
+        // Credentials go in the signed headers, never in the URL, so a user
+        // name or password in the endpoint is not used by S3; it would only
+        // ride along in every request URL and in every error that names one.
+        if config
+            .endpoint
+            .as_deref()
+            .is_some_and(endpoint_has_userinfo)
+        {
+            return Err(ProviderError::InvalidConfig(
+                "The S3 endpoint must not contain a user name or a password (user:password@): \
+                 S3 signs every request with the access key, so remove everything up to the @"
+                    .to_string(),
+            ));
+        }
         if !config.path_style && !config.bucket.is_empty() {
             // The bucket becomes URL authority in virtual-hosted mode, not path data.
             let endpoint = config
@@ -1064,13 +1276,21 @@ impl S3Provider {
             debug!("[S3] accepting invalid TLS certificates (self-signed / loopback)");
             client_builder = client_builder.danger_accept_invalid_certs(true);
         }
+        // A local endpoint is reached directly: a system proxy cannot reach
+        // this machine's loopback or mDNS names, and with the certificate
+        // trusted above it could answer in the endpoint's place.
+        if endpoint_is_local {
+            client_builder = client_builder.no_proxy();
+        }
         let client = client_builder.build().map_err(|e| {
             ProviderError::ConnectionFailed(format!("HTTP client init failed: {e}"))
         })?;
+        let sts_client = Self::sts_client()?;
 
         Ok(Self {
             config,
             client,
+            sts_client,
             current_prefix: String::new(),
             connected: false,
             multipart_baselines: Arc::new(std::sync::Mutex::new(HashMap::new())),
@@ -1080,6 +1300,8 @@ impl S3Provider {
             clock_offset_secs: 0,
             #[cfg(test)]
             fixed_now: None,
+            #[cfg(test)]
+            between_replace_and_retire: None,
             upload_chunk_override: None,
             download_time: Default::default(),
             multi_thread_streams: 1,
@@ -1092,6 +1314,7 @@ impl S3Provider {
             acl_override: None,
             storage_class_override: None,
             temp_credentials: Arc::new(std::sync::RwLock::new(None)),
+            retired_session_tokens: Arc::new(std::sync::Mutex::new(RetiredTokens::default())),
             sts_refresh_lock: Arc::new(tokio::sync::Mutex::new(())),
             cleartext_warned: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             tigris_rename_state: Arc::new(std::sync::atomic::AtomicU8::new(TIGRIS_RENAME_UNKNOWN)),
@@ -1314,7 +1537,13 @@ impl S3Provider {
             status: status.as_u16(),
             code: self.extract_xml_tag(body, "Code"),
             operation,
-            message: format_s3_error(operation.name(), status, body, retry_after),
+            message: format_s3_error(
+                operation.name(),
+                status,
+                body,
+                retry_after,
+                &self.sent_secrets(),
+            ),
         }
     }
 
@@ -1486,6 +1715,49 @@ impl S3Provider {
     /// a token that lapses mid-flight. 5 minutes mirrors the AWS SDK default.
     const STS_REFRESH_THRESHOLD_SECS: i64 = 300;
 
+    /// The secrets this session sends a server: the session token, base or
+    /// STS-issued, and the STS tokens it replaced that are still accepted (an
+    /// answer can outlive a refresh). An S3 error built from a reply never
+    /// repeats them.
+    fn sent_secrets(&self) -> SentSecrets {
+        let mut sent: Vec<String> = self
+            .config
+            .session_token
+            .iter()
+            .map(|token| token.expose_secret().to_string())
+            .collect();
+        let temporary = self
+            .temp_credentials
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if let Some(credentials) = temporary.as_ref() {
+            sent.push(credentials.session_token.expose_secret().to_string());
+        }
+        // Still under the credentials lock, see `install_temp_credentials`.
+        let retired = self
+            .retired_session_tokens
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        sent.extend(
+            retired
+                .kept
+                .iter()
+                .map(|token| token.expose_secret().to_string()),
+        );
+        let missing_token = retired.lost;
+        drop(retired);
+        drop(temporary);
+        SentSecrets {
+            values: sent,
+            missing_token,
+        }
+    }
+
+    /// `s3_error_text` with this session's secrets.
+    fn reply_text(&self, body: &str) -> String {
+        s3_error_text(body, &self.sent_secrets())
+    }
+
     /// A consistent snapshot of the credentials the data-plane signers must
     /// use: the STS-issued temporary credentials when a role has been assumed
     /// (issue #301), else the long-term base credentials (or a manually-supplied
@@ -1627,16 +1899,53 @@ impl S3Provider {
         };
         // Sign the STS request with the same skew-adjusted clock as the data
         // plane (issue #301, M1), not the raw system clock.
-        let creds = sts::assume_role(&self.client, &req, self.now_adjusted()).await?;
+        let creds = sts::assume_role(&self.sts_client, &req, self.now_adjusted()).await?;
         info!(
             "[S3] STS AssumeRole succeeded for {} (expires {:?})",
             role_arn, creds.expiration
         );
-        *self
+        self.install_temp_credentials(creds);
+        Ok(())
+    }
+
+    /// How many replaced session tokens an error removes. A response can
+    /// arrive any time after its token was replaced (the read timeout bounds
+    /// a stall, not a response), and an expired token is still a credential,
+    /// so none is dropped for age. A refresh comes at most every 600 seconds
+    /// (a 900 second minimum STS lifetime, renewed 300 seconds early), so
+    /// this many cover at least a week of one session; past them, replies
+    /// are withheld.
+    const RETIRED_TOKENS_KEPT: usize = 1024;
+
+    /// Make `creds` the session's credentials and keep the token they
+    /// replace among the retired ones, for an answer to a request it signed,
+    /// however late. A token dropped for room is not forgotten: from then on
+    /// `sent_secrets` reports one missing and S3 error replies are withheld.
+    ///
+    /// The old token is retired before the credentials lock is released, and
+    /// `sent_secrets` reads both under that lock (always credentials first,
+    /// then the retired list): a reader sees a token as current or as
+    /// retired, never in neither place.
+    fn install_temp_credentials(&self, creds: sts::TempCredentials) {
+        let mut current = self
             .temp_credentials
             .write()
-            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(creds);
-        Ok(())
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if let Some(old) = current.replace(creds) {
+            #[cfg(test)]
+            if let Some(between) = &self.between_replace_and_retire {
+                between();
+            }
+            let mut retired = self
+                .retired_session_tokens
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            retired.kept.push_back(old.session_token);
+            if retired.kept.len() > Self::RETIRED_TOKENS_KEPT {
+                retired.kept.pop_front();
+                retired.lost = true;
+            }
+        }
     }
 
     /// Get the S3 endpoint URL
@@ -2619,21 +2928,10 @@ impl S3Provider {
         match put_status {
             StatusCode::OK | StatusCode::CREATED | StatusCode::NO_CONTENT => {
                 if put_body.to_ascii_lowercase().contains("<error>") {
-                    let err_code = put_body
-                        .split("<Code>")
-                        .nth(1)
-                        .and_then(|s| s.split("</Code>").next())
-                        .unwrap_or("PutError");
-                    let err_msg = put_body
-                        .split("<Message>")
-                        .nth(1)
-                        .and_then(|s| s.split("</Message>").next())
-                        .unwrap_or("S3 provider returned an error during put");
                     return Err(ProviderError::ServerError(format!(
-                        "FileLu safe rename write failed ({}): {} - {}",
+                        "FileLu safe rename write failed ({}): {}",
                         put_status,
-                        sanitize_api_error(err_code),
-                        sanitize_api_error(err_msg)
+                        self.reply_text(&put_body)
                     )));
                 }
             }
@@ -2641,7 +2939,7 @@ impl S3Provider {
                 return Err(ProviderError::ServerError(format!(
                     "FileLu safe rename write failed ({}): {}",
                     put_status,
-                    sanitize_api_error(&put_body)
+                    self.reply_text(&put_body)
                 )));
             }
         }
@@ -3120,7 +3418,13 @@ impl S3Provider {
             if let Some(message) = self.fastly_region_mismatch_hint(status.as_u16(), &body) {
                 return Err(ProviderError::InvalidConfig(message));
             }
-            let message = format_s3_error("ListBuckets failed", status, &body, None);
+            let message = format_s3_error(
+                "ListBuckets failed",
+                status,
+                &body,
+                None,
+                &self.sent_secrets(),
+            );
             return if matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN) {
                 Err(ProviderError::AuthenticationFailed(message))
             } else {
@@ -4452,19 +4756,14 @@ impl S3Provider {
                     let err_code = body
                         .split("<Code>")
                         .nth(1)
-                        .and_then(|s| s.split("</Code>").next())
+                        .and_then(|s| s.split_once("</Code>").map(|(inner, _)| inner.trim()))
+                        .filter(|s| !s.is_empty())
                         .unwrap_or("CopyError");
-                    let err_msg = body
-                        .split("<Message>")
-                        .nth(1)
-                        .and_then(|s| s.split("</Message>").next())
-                        .unwrap_or("S3 provider returned an error during copy");
                     return Err(CopyFailure {
                         error: ProviderError::ServerError(format!(
-                            "Copy failed ({}): {} - {}",
+                            "Copy failed ({}): {}",
                             status,
-                            sanitize_api_error(err_code),
-                            sanitize_api_error(err_msg)
+                            self.reply_text(&body)
                         )),
                         // A 200 carries no verdict on the request headers.
                         status: None,
@@ -4481,6 +4780,7 @@ impl S3Provider {
                     status,
                     &body,
                     retry_header.as_deref(),
+                    &self.sent_secrets(),
                 )),
                 status: Some(status),
                 code: body
@@ -5742,18 +6042,7 @@ impl StorageProvider for S3Provider {
     }
 
     async fn connect(&mut self) -> Result<(), ProviderError> {
-        // #389: the Filen Desktop S3 bridge protocol (HTTP vs HTTPS) is a user
-        // setting in the Filen app, independent of the scheme saved in this
-        // profile. Reconcile the endpoint against the live bridge (scheme +
-        // loopback IP) so the connect survives either choice. The client already
-        // trusts loopback / local.s3.filen.io self-signed certs (is_local_s3_endpoint).
-        if let Some(ep) = self.config.endpoint.clone() {
-            let fixed = crate::local_bridge::reconcile_local_bridge_url(&ep).await;
-            if fixed != ep {
-                tracing::info!("[S3] Filen bridge endpoint reconciled {} -> {}", ep, fixed);
-                self.config.endpoint = Some(fixed);
-            }
-        }
+        reconcile_bridge_endpoint(&mut self.config).await;
         // After the bridge reconciliation above, which can change the scheme, and
         // before the STS exchange below, which is the first signed request of a
         // session: nothing is signed until the endpoint is known to be one worth
@@ -5914,7 +6203,7 @@ impl StorageProvider for S3Provider {
                                 let retry_body = retry.text().await.unwrap_or_default();
                                 Err(ProviderError::AuthenticationFailed(format!(
                                     "S3 auth error: {}",
-                                    sanitize_api_error(&extract_s3_error(&retry_body))
+                                    self.reply_text(&retry_body)
                                 )))
                             }
                         };
@@ -5923,7 +6212,7 @@ impl StorageProvider for S3Provider {
 
                 Err(ProviderError::AuthenticationFailed(format!(
                     "S3 auth error: {}",
-                    sanitize_api_error(&error_msg)
+                    self.reply_text(&body)
                 )))
             }
             StatusCode::NOT_FOUND => Err(ProviderError::NotFound(format!(
@@ -5932,11 +6221,15 @@ impl StorageProvider for S3Provider {
             ))),
             status => {
                 let body = response.text().await.unwrap_or_default();
-                debug!("[S3] connect() failed with status={} body={}", status, body);
+                debug!(
+                    "[S3] connect() failed with status={} and a reply of {} bytes",
+                    status,
+                    body.len()
+                );
                 Err(ProviderError::ConnectionFailed(format!(
                     "S3 error ({}): {}",
                     status,
-                    sanitize_api_error(&body)
+                    self.reply_text(&body)
                 )))
             }
         }
@@ -6008,19 +6301,8 @@ impl StorageProvider for S3Provider {
                         .await
                         .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
-                    // Debug: Log raw XML response (truncated for readability).
-                    // Must NOT use `&xml[..2000]`: a byte slice that lands
-                    // inside a multi-byte UTF-8 codepoint (emoji in an
-                    // object key, non-ASCII bucket/prefix) panics with
-                    // "end byte index is not a char boundary". Iterate on
-                    // chars + head cap instead.
-                    let xml_preview = if xml.len() > 2000 {
-                        let head: String = xml.chars().take(2000).collect();
-                        format!("{head}... [truncated, total {} bytes]", xml.len())
-                    } else {
-                        xml.clone()
-                    };
-                    debug!("S3 LIST response XML:\n{}", xml_preview);
+                    // The size only: the listing names every key.
+                    debug!("S3 LIST response, {} bytes", xml.len());
 
                     if let Some(error) = Self::bucket_addressing_error(&xml) {
                         return Err(error);
@@ -6043,27 +6325,10 @@ impl StorageProvider for S3Provider {
                 status => {
                     let body = response.text().await.unwrap_or_default();
 
-                    // Extract error message from XML if present
-                    let error_msg = if body.contains("<Message>") {
-                        body.split("<Message>")
-                            .nth(1)
-                            .and_then(|s| s.split("</Message>").next())
-                            .unwrap_or(&body)
-                            .to_string()
-                    } else if body.contains("<Code>") {
-                        // Try to get the error code
-                        body.split("<Code>")
-                            .nth(1)
-                            .and_then(|s| s.split("</Code>").next())
-                            .unwrap_or(&body)
-                            .to_string()
-                    } else {
-                        body
-                    };
                     return Err(ProviderError::ServerError(format!(
                         "List failed ({}): {}",
                         status,
-                        sanitize_api_error(&error_msg)
+                        self.reply_text(&body)
                     )));
                 }
             }
@@ -6738,6 +7003,7 @@ impl StorageProvider for S3Provider {
                 status,
                 &body,
                 retry_header.as_deref(),
+                &self.sent_secrets(),
             )));
         };
 
@@ -6777,6 +7043,7 @@ impl StorageProvider for S3Provider {
                     status,
                     &body,
                     retry_header.as_deref(),
+                    &self.sent_secrets(),
                 )))
             }
         }
@@ -7358,7 +7625,7 @@ impl StorageProvider for S3Provider {
                 let body = response.text().await.unwrap_or_default();
                 return Err(ProviderError::ServerError(format!(
                     "Search failed: {}",
-                    sanitize_api_error(&body)
+                    self.reply_text(&body)
                 )));
             }
 
@@ -8023,7 +8290,7 @@ impl StorageProvider for S3Provider {
                 return Err(ProviderError::ServerError(format!(
                     "ListObjectVersions failed ({}): {}",
                     status,
-                    sanitize_api_error(&body)
+                    self.reply_text(&body)
                 )));
             }
 
@@ -8304,7 +8571,7 @@ impl StorageProvider for S3Provider {
                 Err(ProviderError::TransferFailed(format!(
                     "Download version failed ({}): {}",
                     status,
-                    sanitize_api_error(&body)
+                    self.reply_text(&body)
                 )))
             }
         }
@@ -8364,7 +8631,7 @@ impl StorageProvider for S3Provider {
                 Err(ProviderError::ServerError(format!(
                     "Restore version failed ({}): {}",
                     status,
-                    sanitize_api_error(&body)
+                    self.reply_text(&body)
                 )))
             }
         }
@@ -8402,7 +8669,7 @@ impl StorageProvider for S3Provider {
                 Err(ProviderError::ServerError(format!(
                     "Delete version failed ({}): {}",
                     status,
-                    sanitize_api_error(&body)
+                    self.reply_text(&body)
                 )))
             }
         }
@@ -8459,7 +8726,7 @@ impl StorageProvider for S3Provider {
                 return Err(ProviderError::ServerError(format!(
                     "ListObjectVersions failed ({}): {}",
                     status,
-                    sanitize_api_error(&body)
+                    self.reply_text(&body)
                 )));
             }
 
@@ -8595,7 +8862,17 @@ impl S3Provider {
                     .text()
                     .await
                     .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
-                failures.extend(parse_batch_delete_errors(&body));
+                // Key and Code are the server's words: shown as an error
+                // reply is, without this session's secrets.
+                let sent = self.sent_secrets();
+                failures.extend(parse_batch_delete_errors(&body).into_iter().map(
+                    |(key, reason)| {
+                        (
+                            s3_server_text(&key, body.len(), &sent),
+                            s3_server_text(&reason, body.len(), &sent),
+                        )
+                    },
+                ));
             } else {
                 // Fall back to sequential delete if the batch call itself fails,
                 // recording every key whose individual DELETE errors.
@@ -8700,7 +8977,7 @@ impl S3Provider {
                 Err(ProviderError::ServerError(format!(
                     "Change storage class failed ({}): {}",
                     status,
-                    sanitize_api_error(&body)
+                    self.reply_text(&body)
                 )))
             }
         }
@@ -8784,7 +9061,7 @@ impl S3Provider {
                 Err(ProviderError::ServerError(format!(
                     "Glacier restore failed ({}): {}",
                     status,
-                    sanitize_api_error(&body)
+                    self.reply_text(&body)
                 )))
             }
         }
@@ -8824,7 +9101,7 @@ impl S3Provider {
             return Err(ProviderError::ServerError(format!(
                 "GetObjectTagging failed ({}): {}",
                 status,
-                sanitize_api_error(&body)
+                self.reply_text(&body)
             )));
         }
 
@@ -8986,7 +9263,7 @@ impl S3Provider {
                 Err(ProviderError::ServerError(format!(
                     "PutObjectTagging failed ({}): {}",
                     status,
-                    sanitize_api_error(&body)
+                    self.reply_text(&body)
                 )))
             }
         }
@@ -9024,7 +9301,7 @@ impl S3Provider {
                 Err(ProviderError::ServerError(format!(
                     "DeleteObjectTagging failed ({}): {}",
                     status,
-                    sanitize_api_error(&body)
+                    self.reply_text(&body)
                 )))
             }
         }
@@ -9139,7 +9416,7 @@ impl S3Provider {
                     return Err(ProviderError::ServerError(format!(
                         "List recursive failed ({}): {}",
                         status,
-                        sanitize_api_error(&body)
+                        self.reply_text(&body)
                     )));
                 }
             }
@@ -10405,6 +10682,133 @@ mod tests {
         );
     }
 
+    /// A local S3 endpoint, or certificate checks turned off for it, makes the
+    /// data-plane client accept any certificate. AssumeRole goes to AWS STS,
+    /// not to that endpoint, so neither reaches it: a self-signed STS server
+    /// is refused whatever `verify_cert` says.
+    #[tokio::test]
+    async fn assume_role_always_checks_the_sts_certificate() {
+        let acceptor = super::super::webdav::collection_redirect_tests::tls_acceptor();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let requests = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counted = Arc::clone(&requests);
+        let server = tokio::spawn(async move {
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+            while let Ok((stream, _)) = listener.accept().await {
+                let acceptor = acceptor.clone();
+                let counted = Arc::clone(&counted);
+                tokio::spawn(async move {
+                    let Ok(mut stream) = acceptor.accept(stream).await else {
+                        return;
+                    };
+                    // Count a request, not a handshake: schannel (Windows)
+                    // checks the certificate after the handshake completes,
+                    // so a refusing client still lets `accept` finish and
+                    // then sends nothing.
+                    let mut chunk = [0u8; 8192];
+                    if !matches!(stream.read(&mut chunk).await, Ok(n) if n > 0) {
+                        return;
+                    }
+                    counted.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    let body = "<ErrorResponse><Error><Code>AccessDenied</Code>\
+                                <Message>test</Message></Error></ErrorResponse>";
+                    let reply = format!(
+                        "HTTP/1.1 403 Forbidden\r\nContent-Type: text/xml\r\n\
+                         Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    );
+                    let _ = stream.write_all(reply.as_bytes()).await;
+                    let _ = stream.shutdown().await;
+                });
+            }
+        });
+        sts::TEST_STS_HOST.with(|host| *host.borrow_mut() = Some(format!("127.0.0.1:{port}")));
+        for verify_cert in [true, false] {
+            let mut provider = cleartext_test_provider(
+                "https://127.0.0.1:9/",
+                false,
+                Some("arn:aws:iam::123456789012:role/test"),
+            );
+            if !verify_cert {
+                provider = S3Provider::new(S3Config {
+                    verify_cert: false,
+                    ..provider.config.clone()
+                })
+                .unwrap();
+            }
+            let before = requests.load(std::sync::atomic::Ordering::SeqCst);
+            let outcome = provider.ensure_fresh_credentials().await;
+            assert!(outcome.is_err(), "verify_cert={verify_cert}: {outcome:?}");
+            let reached = requests.load(std::sync::atomic::Ordering::SeqCst) > before;
+            assert!(
+                !reached,
+                "verify_cert={verify_cert}: an unverified STS server was reached: {outcome:?}"
+            );
+        }
+        sts::TEST_STS_HOST.with(|host| *host.borrow_mut() = None);
+        server.abort();
+    }
+
+    /// With a system proxy set, a request to a local endpoint goes to the
+    /// endpoint directly, and AssumeRole goes through the proxy to AWS STS:
+    /// the local trust (direct, any certificate) must not reach STS, and the
+    /// user's proxy must not see local traffic. In a child process, because
+    /// the proxy variables are process-wide.
+    #[tokio::test]
+    async fn a_local_endpoint_skips_the_system_proxy_and_assume_role_takes_it() {
+        if !crate::local_bridge::proxied::in_child(
+            "providers::s3::tests::a_local_endpoint_skips_the_system_proxy_and_assume_role_takes_it",
+        ) {
+            return;
+        }
+        let proxy = crate::local_bridge::proxied::RecordingProxy::start().await;
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let requests = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counted = Arc::clone(&requests);
+        let server = tokio::spawn(async move {
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+            while let Ok((mut stream, _)) = listener.accept().await {
+                let counted = Arc::clone(&counted);
+                tokio::spawn(async move {
+                    let mut chunk = [0u8; 8192];
+                    let _ = stream.read(&mut chunk).await;
+                    counted.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    let _ = stream
+                        .write_all(b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                        .await;
+                    let _ = stream.shutdown().await;
+                });
+            }
+        });
+        let endpoint = format!("http://127.0.0.1:{port}/");
+
+        let direct = cleartext_test_provider(&endpoint, true, None);
+        let _ = direct.discover_buckets().await;
+        assert!(
+            requests.load(std::sync::atomic::Ordering::SeqCst) > 0,
+            "the local endpoint was not reached; proxy saw {:?}",
+            proxy.lines()
+        );
+        assert!(
+            !proxy.saw(&format!("127.0.0.1:{port}")),
+            "a local endpoint request went through the system proxy: {:?}",
+            proxy.lines()
+        );
+
+        let with_role =
+            cleartext_test_provider(&endpoint, true, Some("arn:aws:iam::123456789012:role/test"));
+        let outcome = with_role.ensure_fresh_credentials().await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        assert!(
+            proxy.saw("sts.us-east-1.amazonaws.com:443"),
+            "AssumeRole did not go through the system proxy: {:?}",
+            proxy.lines()
+        );
+        server.abort();
+    }
+
     /// Build a provider whose only interesting property is its endpoint, for the
     /// cleartext-consent checks. Nothing here touches the network.
     fn cleartext_test_provider(
@@ -11104,6 +11508,85 @@ mod tests {
             provider.build_url("path/to/file.txt"),
             "https://my-bucket.s3.us-west-2.amazonaws.com/path/to/file.txt"
         );
+    }
+
+    /// An endpoint with a query or a fragment is refused, in both addressing
+    /// styles and with or without a bucket: every request URL appends the
+    /// bucket and key to it, which the query or fragment would swallow (a
+    /// Fetch built `<endpoint>?tenant=blue/`).
+    #[test]
+    fn an_endpoint_with_a_query_or_a_fragment_is_refused() {
+        for endpoint in [
+            "https://gateway.example/s3?tenant=blue",
+            "https://gateway.example/s3#part",
+            "http://127.0.0.1:1800?x=1",
+        ] {
+            for (path_style, bucket) in [(true, ""), (true, "b"), (false, "b")] {
+                let mut config = make_provider(Some("https://gateway.example/s3"))
+                    .config
+                    .clone();
+                config.endpoint = Some(endpoint.to_string());
+                config.path_style = path_style;
+                config.bucket = bucket.to_string();
+                match S3Provider::new(config) {
+                    Err(ProviderError::InvalidConfig(message)) => {
+                        assert!(message.contains("query or a fragment"), "{message}");
+                        assert!(!message.contains("tenant"), "{message}");
+                    }
+                    other => panic!(
+                        "{endpoint} path_style={path_style}: {:?}",
+                        other.map(|_| ())
+                    ),
+                }
+            }
+        }
+        assert!(S3Provider::new(
+            make_provider(Some("https://gateway.example/s3"))
+                .config
+                .clone()
+        )
+        .is_ok());
+    }
+
+    /// A user name or password in the endpoint is refused: S3 never uses it,
+    /// and it would appear in every request URL and every error naming one.
+    /// An `@` later in the path is a key character, not userinfo.
+    #[test]
+    fn an_endpoint_with_userinfo_is_refused() {
+        for endpoint in [
+            "https://user:hunter2@gateway.example/s3",
+            "https://hunter2@gateway.example",
+            "http://u:hunter2@127.0.0.1:1800",
+            "https:///u:hunter2@gateway.example/s3",
+            "HTTPS://u:hunter2@gateway.example",
+            "https:\\\\u:hunter2@gateway.example",
+            "user:hunter2@gateway.example",
+            "u:hunter2@127.0.0.1:1800/s3",
+        ] {
+            for (path_style, bucket) in [(true, ""), (true, "b"), (false, "b")] {
+                let mut config = make_provider(Some("https://gateway.example/s3"))
+                    .config
+                    .clone();
+                config.endpoint = Some(endpoint.to_string());
+                config.path_style = path_style;
+                config.bucket = bucket.to_string();
+                match S3Provider::new(config) {
+                    Err(ProviderError::InvalidConfig(message)) => {
+                        assert!(message.contains("user name or a password"), "{message}");
+                        assert!(!message.contains("hunter2"), "{message}");
+                    }
+                    other => panic!(
+                        "{endpoint} path_style={path_style}: {:?}",
+                        other.map(|_| ())
+                    ),
+                }
+            }
+        }
+        let mut config = make_provider(Some("https://gateway.example/s3"))
+            .config
+            .clone();
+        config.endpoint = Some("https://gateway.example/s3/team@example".to_string());
+        assert!(S3Provider::new(config).is_ok());
     }
 
     #[test]
@@ -12878,6 +13361,54 @@ mod tests {
             .await
             .unwrap();
         server.abort();
+    }
+
+    /// A batch delete answered 200 with per-key errors, after five refreshes
+    /// on a sibling clone: the token that signed the request, echoed in the
+    /// `Key` and the `Code`, is not in the error.
+    #[tokio::test]
+    async fn a_batch_delete_reply_never_shows_the_token_that_signed_it() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let provider = make_provider(Some(&format!("http://{addr}")));
+        let with_token = |token: String| sts::TempCredentials {
+            session_token: secrecy::SecretString::from(token),
+            ..temp_creds(Some(Utc::now() + chrono::Duration::hours(1)))
+        };
+        provider.install_temp_credentials(with_token("BatchDeleteSigner01".to_string()));
+        let sibling = provider.clone();
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |req: axum::extract::Request| {
+                let sibling = sibling.clone();
+                async move {
+                    assert_eq!(req.method(), Method::POST);
+                    let signed = req
+                        .headers()
+                        .get("x-amz-security-token")
+                        .and_then(|v| v.to_str().ok())
+                        .unwrap_or_default()
+                        .to_string();
+                    for n in 1..=5 {
+                        sibling.install_temp_credentials(with_token(format!("BatchDeleteNext{n:04}")));
+                    }
+                    format!(
+                        "<DeleteResult><Error><Key>obj {signed}</Key><Code>{signed}</Code></Error></DeleteResult>"
+                    )
+                }
+            },
+        ));
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let error = provider
+            .batch_delete_objects(&[("obj".into(), None)])
+            .await
+            .unwrap_err()
+            .to_string();
+        server.abort();
+        assert!(error.contains("1 of 1"), "{error}");
+        assert!(!error.contains("BatchDeleteSigner01"), "{error}");
+        assert!(error.contains("obj [REDACTED] ([REDACTED])"), "{error}");
     }
 
     /// An S3 double for renaming the folder `src` (the marker `src/` and
@@ -16122,6 +16653,192 @@ mod tests {
             session_token: secrecy::SecretString::from("tok".to_string()),
             expiration,
         }
+    }
+
+    /// An answer to a request signed with token T1 can arrive after a
+    /// sibling clone refreshed the session to T2: its error still removes T1,
+    /// and T2. With no refresh, the one token is removed.
+    #[test]
+    fn an_error_removes_a_token_a_sibling_clone_replaced() {
+        let with_token = |token: &str| sts::TempCredentials {
+            session_token: secrecy::SecretString::from(token.to_string()),
+            ..temp_creds(Some(Utc::now() + chrono::Duration::hours(1)))
+        };
+        let echo = |token: &str| {
+            format!(
+                "<Error><Code>ExpiredToken</Code><Message>token {token} expired</Message></Error>"
+            )
+        };
+        let provider = make_provider(Some("http://localhost:9000"));
+        provider.install_temp_credentials(with_token("FirstSessionTokenT1"));
+        assert_eq!(
+            provider.reply_text(&echo("FirstSessionTokenT1")),
+            "ExpiredToken: token [REDACTED] expired"
+        );
+
+        let in_flight = provider.clone();
+        let sibling = provider.clone();
+        sibling.install_temp_credentials(with_token("SecondSessionTokenT2"));
+        for token in ["FirstSessionTokenT1", "SecondSessionTokenT2"] {
+            assert_eq!(
+                in_flight.reply_text(&echo(token)),
+                "ExpiredToken: token [REDACTED] expired",
+                "{token}"
+            );
+        }
+    }
+
+    /// A reply that answers after many refreshes, as a long upload can, and
+    /// after its token expired: the token that signed its request is still
+    /// removed from the error, and past the bound on kept tokens the reply is
+    /// withheld, never shown.
+    #[test]
+    fn a_late_reply_never_shows_the_token_that_signed_it() {
+        let with_token = |token: String, expires: DateTime<Utc>| sts::TempCredentials {
+            session_token: secrecy::SecretString::from(token),
+            ..temp_creds(Some(expires))
+        };
+        let echo = |token: &str| {
+            format!(
+                "<Error><Code>ExpiredToken</Code><Message>token {token} expired</Message></Error>"
+            )
+        };
+        let mut provider = make_provider(Some("http://localhost:9000"));
+        let now = Utc::now();
+        provider.fixed_now = Some(now);
+        let soon = now + chrono::Duration::minutes(15);
+        provider.install_temp_credentials(with_token("LateReplySigner00".to_string(), soon));
+        let signed = provider
+            .effective_credentials()
+            .session_token
+            .map(|token| token.expose_secret().to_string())
+            .unwrap();
+
+        // Five replacements between signing and the reply.
+        for n in 1..=5 {
+            provider.install_temp_credentials(with_token(format!("LateReplyNext{n:04}"), soon));
+        }
+        assert_eq!(
+            provider.reply_text(&echo(&signed)),
+            "ExpiredToken: token [REDACTED] expired"
+        );
+
+        // A day later, long after it expired, and after another refresh.
+        provider.fixed_now = Some(now + chrono::Duration::days(1));
+        provider.install_temp_credentials(with_token(
+            "LateReplyNextDay".to_string(),
+            now + chrono::Duration::days(2),
+        ));
+        assert_eq!(
+            provider.reply_text(&echo(&signed)),
+            "ExpiredToken: token [REDACTED] expired"
+        );
+
+        // More tokens than are kept: the dropped signer is not known, so the
+        // reply is withheld whole, and stays withheld.
+        for n in 6..=S3Provider::RETIRED_TOKENS_KEPT {
+            provider.install_temp_credentials(with_token(format!("LateReplyNext{n:04}"), soon));
+        }
+        for reply in [
+            echo(&signed),
+            "<Error><Code>NoSuchKey</Code><Message>gone</Message></Error>".to_string(),
+        ] {
+            let late = provider.reply_text(&reply);
+            assert!(!late.contains(&signed), "{late}");
+            assert!(late.contains("withheld"), "{late}");
+        }
+    }
+
+    /// The moment between installing new credentials and retiring the old
+    /// token, forced: no reader can take a snapshot there, so the token that
+    /// just left `temp_credentials` is never in neither place.
+    #[test]
+    fn no_snapshot_falls_between_replacing_and_retiring_a_token() {
+        let mut provider = make_provider(Some("http://localhost:9000"));
+        let cell = provider.temp_credentials.clone();
+        let paused = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let reader_blocked = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let (was_paused, blocked) = (paused.clone(), reader_blocked.clone());
+        provider.between_replace_and_retire = Some(Arc::new(move || {
+            was_paused.store(true, std::sync::atomic::Ordering::SeqCst);
+            blocked.store(
+                cell.try_read().is_err(),
+                std::sync::atomic::Ordering::SeqCst,
+            );
+        }));
+        let with_token = |token: &str| sts::TempCredentials {
+            session_token: secrecy::SecretString::from(token.to_string()),
+            ..temp_creds(Some(Utc::now() + chrono::Duration::hours(1)))
+        };
+        provider.install_temp_credentials(with_token("OverlapSigner0001"));
+        provider.install_temp_credentials(with_token("OverlapNext000002"));
+        assert!(paused.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(
+            reader_blocked.load(std::sync::atomic::Ordering::SeqCst),
+            "a snapshot could be taken with the old token retired nowhere"
+        );
+        assert_eq!(
+            provider.reply_text(
+                "<Error><Code>ExpiredToken</Code><Message>token OverlapSigner0001 expired</Message></Error>"
+            ),
+            "ExpiredToken: token [REDACTED] expired"
+        );
+    }
+
+    /// A reply that lands while a sibling clone refreshes: whatever token a
+    /// request signed with, the error snapshot taken after it still holds
+    /// that token, current or retired. Run against many refreshes so the
+    /// window between replacing and retiring, if it existed, is hit.
+    #[test]
+    fn a_reply_during_a_refresh_still_removes_the_signed_token() {
+        use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+        let provider = make_provider(Some("http://localhost:9000"));
+        let with_token = |n: usize| sts::TempCredentials {
+            session_token: secrecy::SecretString::from(format!("RefreshRaceToken{n:06}")),
+            ..temp_creds(Some(Utc::now() + chrono::Duration::hours(1)))
+        };
+        provider.install_temp_credentials(with_token(0));
+        let refresher = provider.clone();
+        // Counted before each refresh starts, so a reader can tell how many
+        // could have run between its signing and its snapshot.
+        let started = Arc::new(AtomicUsize::new(0));
+        let done = Arc::new(AtomicBool::new(false));
+        let (count, stop) = (started.clone(), done.clone());
+        let writer = std::thread::spawn(move || {
+            for n in 1..50_000 {
+                count.fetch_add(1, Ordering::SeqCst);
+                refresher.install_temp_credentials(with_token(n));
+            }
+            stop.store(true, Ordering::SeqCst);
+        });
+        let mut checked = 0usize;
+        // At least one check after the writer ends, so a writer that
+        // finishes before the first round still leaves one checked reply.
+        loop {
+            let finished = done.load(Ordering::SeqCst);
+            let before = started.load(Ordering::SeqCst);
+            let signed = provider
+                .effective_credentials()
+                .session_token
+                .map(|token| token.expose_secret().to_string())
+                .unwrap();
+            let sent = provider.sent_secrets();
+            let overlapping = started.load(Ordering::SeqCst) - before + 1;
+            // More refreshes than the retired list keeps can evict the token
+            // by design; that is not the window this test is about.
+            if overlapping <= S3Provider::RETIRED_TOKENS_KEPT {
+                assert!(
+                    sent.values.contains(&signed),
+                    "{signed} was neither current nor retired ({overlapping} refreshes overlapped)"
+                );
+                checked += 1;
+            }
+            if finished {
+                break;
+            }
+        }
+        writer.join().unwrap();
+        assert!(checked > 0);
     }
 
     #[test]
@@ -19602,6 +20319,7 @@ mod tests {
             reqwest::StatusCode::FORBIDDEN,
             body,
             None,
+            &SentSecrets::default(),
         );
         assert_eq!(
             msg,
@@ -19612,8 +20330,259 @@ mod tests {
             reqwest::StatusCode::BAD_GATEWAY,
             "upstream down",
             None,
+            &SentSecrets::default(),
         );
-        assert_eq!(plain, "GET failed (502 Bad Gateway): upstream down");
+        // A reply with no S3 error code is shown by its size: a proxy page or
+        // a gateway text can carry the request path or a token.
+        assert_eq!(
+            plain,
+            "GET failed (502 Bad Gateway): a reply of 13 bytes with no S3 error code"
+        );
+        let empty = format_s3_error(
+            "GET failed",
+            reqwest::StatusCode::BAD_GATEWAY,
+            "",
+            None,
+            &SentSecrets::default(),
+        );
+        assert_eq!(empty, "GET failed (502 Bad Gateway): no message");
+    }
+
+    /// The error keeps `Code: Message` and nothing else of the reply:
+    /// `<Resource>` and `<Key>` name the bucket and the object path.
+    #[test]
+    fn an_s3_error_never_shows_the_resource_it_names() {
+        let body = "<Error><Code>NoSuchKey</Code><Message>The specified key does not exist.</Message><Key>private/tax-2026.pdf</Key><Resource>/bucket/private/tax-2026.pdf</Resource><RequestId>4442587FB7D0A2F9</RequestId></Error>";
+        let msg = format_s3_error(
+            "GET failed",
+            reqwest::StatusCode::NOT_FOUND,
+            body,
+            None,
+            &SentSecrets::default(),
+        );
+        assert_eq!(
+            msg,
+            "GET failed (404 Not Found): NoSuchKey: The specified key does not exist."
+        );
+        let unclosed = "<Error><Code>AccessDenied</Code><Message>denied<Resource>/mount/opaque-capability</Resource></Error>";
+        let msg = format_s3_error(
+            "GET failed",
+            reqwest::StatusCode::FORBIDDEN,
+            unclosed,
+            None,
+            &SentSecrets::default(),
+        );
+        assert_eq!(msg, "GET failed (403 Forbidden): AccessDenied");
+        let bare = "<Error><Resource>/bucket/private/tax-2026.pdf</Resource></Error>";
+        let msg = format_s3_error(
+            "GET failed",
+            reqwest::StatusCode::NOT_FOUND,
+            bare,
+            None,
+            &SentSecrets::default(),
+        );
+        assert!(!msg.contains("tax-2026"), "{msg}");
+    }
+
+    /// Reflected S3 credential values (session tokens, SigV4 credentials,
+    /// signatures) are scrubbed from `Message`, while ordinary error messages
+    /// stay visible.
+    #[test]
+    fn an_s3_error_redacts_reflected_session_tokens_and_keeps_ordinary_messages() {
+        let reflected = "<Error><Code>InvalidToken</Code><Message>Malformed header x-amz-security-token: FwoGZXIvYXdzEBAaDK9988776655</Message></Error>";
+        let msg = format_s3_error(
+            "List failed",
+            reqwest::StatusCode::BAD_REQUEST,
+            reflected,
+            None,
+            &SentSecrets::default(),
+        );
+        assert!(!msg.contains("FwoGZXIvYXdzEBAaDK9988776655"), "{msg}");
+        assert!(msg.contains("InvalidToken"), "{msg}");
+        assert!(msg.contains("[REDACTED]"), "{msg}");
+
+        let quoted = r#"<Error><Code>InvalidToken</Code><Message>Rejected x-amz-security-token: "FwoGZXIvYXdzEBAaDKquoted123" and X-Amz-Credential=AKIAIOSFODNN7EXAMPLE/20261119/us-east-1/s3/aws4_request</Message></Error>"#;
+        let msg = format_s3_error(
+            "List failed",
+            reqwest::StatusCode::BAD_REQUEST,
+            quoted,
+            None,
+            &SentSecrets::default(),
+        );
+        assert!(!msg.contains("FwoGZXIvYXdzEBAaDKquoted123"), "{msg}");
+        assert!(!msg.contains("AKIAIOSFODNN7EXAMPLE"), "{msg}");
+
+        // XML named and numeric entities around a reflected token must be
+        // decoded before scrubbing so they cannot bypass the quoted rule.
+        let xml_quoted = "<Error><Code>InvalidToken</Code><Message>x-amz-security-token: &quot;DUMMYSESSION123&quot;</Message></Error>";
+        let msg = format_s3_error(
+            "List failed",
+            reqwest::StatusCode::BAD_REQUEST,
+            xml_quoted,
+            None,
+            &SentSecrets::default(),
+        );
+        assert!(!msg.contains("DUMMYSESSION123"), "{msg}");
+        assert!(msg.contains("[REDACTED]"), "{msg}");
+
+        let numeric_quoted = "<Error><Code>InvalidToken</Code><Message>x-amz-security-token: &#34;NUMSESSION456&#34; and x-amz-signature: &#x27;HEXSIG789&#x27;</Message></Error>";
+        let msg = format_s3_error(
+            "List failed",
+            reqwest::StatusCode::BAD_REQUEST,
+            numeric_quoted,
+            None,
+            &SentSecrets::default(),
+        );
+        assert!(!msg.contains("NUMSESSION456"), "{msg}");
+        assert!(!msg.contains("HEXSIG789"), "{msg}");
+
+        let double_escaped = "<Error><Code>InvalidToken</Code><Message>x-amz-security-token: &amp;quot;DBLSESSION000&amp;quot;</Message></Error>";
+        let msg = format_s3_error(
+            "List failed",
+            reqwest::StatusCode::BAD_REQUEST,
+            double_escaped,
+            None,
+            &SentSecrets::default(),
+        );
+        assert!(!msg.contains("DBLSESSION000"), "{msg}");
+
+        // Zero-padded decimal and hexadecimal references, and a quoted field
+        // name (JSON), reach the field rules fully decoded.
+        for (reflected, secret) in [
+            (
+                "x-amz-security-token: &#034;PADDEDDEC111&#034;",
+                "PADDEDDEC111",
+            ),
+            (
+                "x-amz-security-token: &#x0022;PADDEDHEX222&#x0022;",
+                "PADDEDHEX222",
+            ),
+            (
+                "{&quot;x-amz-security-token&quot;:&quot;JSONFIELD333&quot;}",
+                "JSONFIELD333",
+            ),
+            (r#"{"SessionToken": "JSON SPACED 444"}"#, "SPACED 444"),
+            (
+                "x-amz-signature: &#00000000034;LONGPAD555&#00000000034;",
+                "LONGPAD555",
+            ),
+            (
+                "x-amz-signature: &amp;amp;amp;amp;amp;quot;LAYERS666&amp;amp;amp;amp;amp;quot;",
+                "LAYERS666",
+            ),
+            ("x-amz-signature=&#27;CTRLSIG777", "CTRLSIG777"),
+            ("x-amz-signature: &#99999999999;HUGEREF888", "HUGEREF888"),
+            ("x-amz-signature=MID&#27;DLECTRL999", "DLECTRL999"),
+            (r#"x-amz-signature: &#27;"QUOTED REFSIG1010""#, "REFSIG1010"),
+        ] {
+            let body =
+                format!("<Error><Code>InvalidToken</Code><Message>{reflected}</Message></Error>");
+            let msg = format_s3_error(
+                "List failed",
+                reqwest::StatusCode::BAD_REQUEST,
+                &body,
+                None,
+                &SentSecrets::default(),
+            );
+            assert!(!msg.contains(secret), "{secret} in {msg}");
+            assert!(msg.contains("[REDACTED]"), "{msg}");
+        }
+
+        // Escaped deeper than the decoder goes: only the reply's size.
+        let body = format!(
+            "<Error><Code>InvalidToken</Code><Message>x-amz-signature: &{}quot;DEEP000</Message></Error>",
+            "amp;".repeat(crate::providers::ESCAPE_LAYERS_DECODED)
+        );
+        let msg = format_s3_error(
+            "List failed",
+            reqwest::StatusCode::BAD_REQUEST,
+            &body,
+            None,
+            &SentSecrets::default(),
+        );
+        assert!(!msg.contains("DEEP000"), "{msg}");
+        assert!(
+            msg.contains(&crate::providers::deeply_escaped_reply(body.len())),
+            "{msg}"
+        );
+
+        // The token this session sent is removed in any syntax, as sent or
+        // percent-encoded, with no field name next to it.
+        let sent = SentSecrets::of(&["FQoGZXIvYXdzE+sent/token=="]);
+        for echoed in [
+            "FQoGZXIvYXdzE+sent/token==",
+            "FQoGZXIvYXdzE%2Bsent%2Ftoken%3D%3D",
+        ] {
+            let body = format!("<Error><Code>ExpiredToken</Code><Message>token [{echoed}] expired</Message></Error>");
+            let msg = format_s3_error(
+                "List failed",
+                reqwest::StatusCode::BAD_REQUEST,
+                &body,
+                None,
+                &sent,
+            );
+            assert_eq!(
+                msg,
+                "List failed (400 Bad Request): ExpiredToken: token [[REDACTED]] expired"
+            );
+        }
+
+        let ordinary = "<Error><Code>NoSuchKey</Code><Message>The specified key does not exist.</Message></Error>";
+        let msg = format_s3_error(
+            "GET failed",
+            reqwest::StatusCode::NOT_FOUND,
+            ordinary,
+            None,
+            &SentSecrets::default(),
+        );
+        assert_eq!(
+            msg,
+            "GET failed (404 Not Found): NoSuchKey: The specified key does not exist."
+        );
+    }
+
+    /// HTTP 200 XML `<Error>` bodies on copy and FileLu-safe rename also route
+    /// through `s3_error_text`, so reflected session tokens are scrubbed there too.
+    #[tokio::test]
+    async fn s3_http_200_error_bodies_scrub_reflected_tokens() {
+        let app = axum::Router::new().fallback(axum::routing::any(
+            |request: axum::extract::Request| async move {
+                if request.method() == axum::http::Method::GET {
+                    return (reqwest::StatusCode::OK, "payload".to_string());
+                }
+                (
+                    reqwest::StatusCode::OK,
+                    "<Error><Code>InvalidToken</Code><Message>x-amz-security-token: &quot;HTTP200SECRET99&quot;</Message></Error>".to_string(),
+                )
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        let mut provider = make_provider(Some(&endpoint));
+        provider.connected = true;
+
+        let copy_err = provider
+            .copy_object_single_detailed("src.txt", "dst.txt", false)
+            .await
+            .unwrap_err()
+            .error
+            .to_string();
+        assert!(!copy_err.contains("HTTP200SECRET99"), "{copy_err}");
+        assert!(copy_err.contains("InvalidToken"), "{copy_err}");
+        assert!(copy_err.contains("[REDACTED]"), "{copy_err}");
+
+        let rename_err = provider
+            .rename_filelu_safe("src.txt", "dst.txt")
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(!rename_err.contains("HTTP200SECRET99"), "{rename_err}");
+        assert!(rename_err.contains("InvalidToken"), "{rename_err}");
+        assert!(rename_err.contains("[REDACTED]"), "{rename_err}");
+
+        server.abort();
     }
 
     #[test]
@@ -19623,6 +20592,7 @@ mod tests {
             reqwest::StatusCode::TOO_MANY_REQUESTS,
             "",
             Some("45"),
+            &SentSecrets::default(),
         );
         assert!(msg.contains("UploadPart 3 failed"));
         assert!(msg.contains("429"));
@@ -19636,6 +20606,7 @@ mod tests {
             reqwest::StatusCode::NOT_FOUND,
             "key gone",
             Some("45"),
+            &SentSecrets::default(),
         );
         assert!(msg.contains("404"));
         assert!(!msg.contains("retry-after-secs"));

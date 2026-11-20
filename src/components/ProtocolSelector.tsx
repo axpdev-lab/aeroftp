@@ -30,7 +30,8 @@ import {
 import { ProviderType, FtpTlsMode, isSshProtocol } from '../types';
 import { scpFallbackAllowed, withScpFallback } from '../utils/scpFallback';
 import { useTranslation } from '../i18n';
-import { getProviderById, resolveS3Endpoint, jurisdictionSegment, s3TemplateParams, endpointNeedsCleartextConsent } from '../providers';
+import { getProviderById, resolveS3Endpoint, jurisdictionSegment, s3TemplateParams, endpointNeedsCleartextConsent, presetNeedsUserEndpoint } from '../providers';
+import { resolvePresetText } from '../providers/presetText';
 import { CopyLinkButton } from './common/CopyLinkButton';
 import { Bucket } from './connectionMethodIcons';
 import { DiscoverableTargetField, type ConnectionTarget } from './common/DiscoverableTargetField';
@@ -900,6 +901,8 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
         const accountIdField = providerConfig?.fields?.find(f => f.key === 'accountId');
         const jurisdictionField = providerConfig?.fields?.find(f => f.key === 'jurisdiction');
         const hasRegionSelect = regionField?.type === 'select' && regionField?.options;
+        // A preset's own text names a control of this form by reference.
+        const presetText = (text: string) => resolvePresetText(text, providerConfig, t);
 
         // Endpoint architecture:
         // - hasEndpointTemplate: endpoint computed from region/accountId (Wasabi, DO, Cloudflare R2)
@@ -962,17 +965,18 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
             onChange(updatedOptions);
         };
 
-        // Providers where endpoint must stay visible (user-specific or self-hosted)
-        const VISIBLE_ENDPOINT_PROVIDERS = new Set(['minio', 'oracle-cloud', 'storj']);
-        // Endpoint in Advanced: all non-generic providers except those needing visible endpoint
+        // Endpoint in Advanced: every non-generic preset, except one whose
+        // endpoint the user must type (no preset endpoint to fall back on): a
+        // required field hidden under Advanced reads as a form with nothing
+        // left to fill.
         const endpointInAdvanced = !providerConfig?.isGeneric && !!providerConfig?.id
-            && !VISIBLE_ENDPOINT_PROVIDERS.has(providerConfig.id)
+            && !presetNeedsUserEndpoint(providerConfig)
             && (hasPresetEndpoint || hasUserEndpointField);
         // Preset endpoints are disabled in Advanced until unlocked
         const endpointDisabled = hasPresetEndpoint && !presetUnlocked['endpoint'];
 
         // Endpoint placeholder: use template pattern when available
-        const endpointPlaceholder = endpointField?.placeholder
+        const endpointPlaceholder = (endpointField?.placeholder && presetText(endpointField.placeholder))
             || (providerConfig?.defaults?.endpointTemplate ? t('protocol.endpointTemplateExample', { template: providerConfig.defaults.endpointTemplate.replace(/\{(\w+)\}/g, '<$1>') }) : null)
             || t('protocol.endpointPlaceholder');
 
@@ -989,8 +993,8 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                     onDiscover={discoverS3Targets || (async () => [])}
                     canDiscover={canDiscoverS3Targets && !!discoverS3Targets}
                     disabled={disabled}
-                    placeholder={bucketField?.placeholder || t('protocol.bucketPlaceholder')}
-                    helpText={!isEditing ? bucketField?.helpText : undefined}
+                    placeholder={(bucketField?.placeholder && presetText(bucketField.placeholder)) || t('protocol.bucketPlaceholder')}
+                    helpText={!isEditing && bucketField?.helpText ? presetText(bucketField.helpText) : undefined}
                     required
                     resetKey={s3DiscoveryResetKey}
                 />
@@ -1201,7 +1205,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                                     onChange={(e) => handleAccountIdChange(e.target.value)}
                                     disabled={disabled}
                                     className={`px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 ${endpointFixedPart ? 'rounded-l-lg border-r-0 flex-1 min-w-0' : 'rounded-lg w-full'}`}
-                                    placeholder={accountIdField.placeholder || t('protocol.accountId')}
+                                    placeholder={(accountIdField.placeholder && presetText(accountIdField.placeholder)) || t('protocol.accountId')}
                                     required={accountIdField.required}
                                 />
                                 {endpointFixedPart && (
@@ -1233,10 +1237,10 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                             </div>
                         )}
                         {!isEditing && accountIdField.helpText && !presetUnlocked['endpointSuffix'] && (
-                            <p className="text-xs text-gray-500 mt-1">{accountIdField.helpText}</p>
+                            <p className="text-xs text-gray-500 mt-1">{presetText(accountIdField.helpText)}</p>
                         )}
                         {!isEditing && jurisdictionField?.helpText && !presetUnlocked['endpointSuffix'] && (
-                            <p className="text-xs text-gray-500 mt-1">{jurisdictionField.helpText}</p>
+                            <p className="text-xs text-gray-500 mt-1">{presetText(jurisdictionField.helpText)}</p>
                         )}
                     </div>
                 )}
@@ -1303,7 +1307,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                                     />
                                 )}
                                 {!isEditing && endpointField?.helpText && (
-                                    <p className="text-xs text-gray-500 mt-1">{endpointField.helpText}</p>
+                                    <p className="text-xs text-gray-500 mt-1">{presetText(endpointField.helpText)}</p>
                                 )}
                             </div>
                         )}
@@ -1341,7 +1345,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                             />
                         )}
                         {!isEditing && endpointField?.helpText && (
-                            <p className="text-xs text-gray-500 mt-1">{endpointField.helpText}</p>
+                            <p className="text-xs text-gray-500 mt-1">{presetText(endpointField.helpText)}</p>
                         )}
                     </div>
                 )}
@@ -1396,7 +1400,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                                         placeholder={endpointPlaceholder}
                                     />
                                     {!isEditing && endpointField?.helpText && (
-                                        <p className="text-xs text-gray-500 mt-1">{endpointField.helpText}</p>
+                                        <p className="text-xs text-gray-500 mt-1">{presetText(endpointField.helpText)}</p>
                                     )}
                                 </div>
                                 <Checkbox
@@ -1451,48 +1455,13 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
         const isNextcloud = selectedProviderId === 'nextcloud';
         const isCustomOrGeneric = !selectedProviderId || selectedProviderId === 'custom-webdav';
         const showNextcloudHint = isNextcloud || isCustomOrGeneric;
-        // Local-bridge WebDAV presets (Filen Desktop, MEGAcmd, ...) mark
-        // themselves with `defaults.webdavScheme`. MEGAcmd's scheme is chosen by
-        // AeroFTP (it arms `mega-webdav /` on HTTP), so the manual toggle stays.
         // The Filen Desktop bridge protocol is a user setting in the Filen app;
-        // AeroFTP now auto-detects it at connect (#389), so its manual toggle is
-        // replaced by an informational note. HTTPS local bridges always use a
-        // self-signed certificate (loopback), so cert verification is disabled.
+        // AeroFTP detects it at connect on the default port (#389), so the form
+        // shows a note instead of a scheme choice. MEGAcmd has its own form.
         const isFilenLocalBridge = selectedProviderId === 'filen-desktop-webdav';
-        const showWebdavSchemeToggle =
-            !!providerConfig?.defaults?.webdavScheme && !isFilenLocalBridge;
-        const currentScheme = (options.webdavScheme as 'http' | 'https' | undefined) || 'http';
 
         return (
             <div className="pt-2 border-t border-gray-200 dark:border-gray-700 mt-3 space-y-3">
-                {showWebdavSchemeToggle && (
-                    <div>
-                        <label className="block text-sm font-medium mb-1.5">{t('protocol.webdavLocalScheme')}</label>
-                        <div className="flex gap-4">
-                            {(['http', 'https'] as const).map((value) => (
-                                <label key={value} className="flex items-center gap-2 text-sm cursor-pointer">
-                                    <input
-                                        type="radio"
-                                        name="webdav-local-scheme"
-                                        checked={currentScheme === value}
-                                        onChange={() => onChange({
-                                            ...options,
-                                            webdavScheme: value,
-                                            // Loopback HTTPS bridges use self-signed certs
-                                            verifyCert: value === 'https' ? false : options.verifyCert,
-                                        })}
-                                        disabled={disabled}
-                                        className="text-blue-500 focus:ring-blue-500"
-                                    />
-                                    {value.toUpperCase()}
-                                </label>
-                            ))}
-                        </div>
-                        <p className="text-xs text-gray-500 mt-1">
-                            {t('protocol.webdavLocalSchemeHelp')}
-                        </p>
-                    </div>
-                )}
                 {isFilenLocalBridge && (
                     <div className="text-sm text-gray-600 dark:text-gray-400 flex items-start gap-2">
                         <Cloud size={14} className="mt-0.5 shrink-0" />

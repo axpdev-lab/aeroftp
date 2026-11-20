@@ -27,6 +27,7 @@ export {
     resolveS3Endpoint,
     resolveProfileS3Location,
     presetDefaultS3Region,
+    presetNeedsUserEndpoint,
     jurisdictionSegment,
     s3TemplateParams,
     endpointNeedsCleartextConsent,
