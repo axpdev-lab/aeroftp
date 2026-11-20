@@ -575,7 +575,15 @@ pub fn store_session(
         indexed(&store, user, &key);
         return Ok(());
     }
-    let previous = store.get(&key).ok().map(Zeroizing::new);
+    let previous = match store.get(&key) {
+        Ok(previous) => Some(Zeroizing::new(previous)),
+        Err(crate::credential_store::CredentialError::NotFound(_)) => None,
+        Err(error) => {
+            return Err(ProviderError::Other(format!(
+                "the saved session could not be read before its save: {error}"
+            )))
+        }
+    };
     store
         .store(&key, &json)
         .map_err(|error| ProviderError::Other(format!("the vault refused the session: {error}")))?;
@@ -615,20 +623,13 @@ fn undo_vault_write(
     previous: Option<&str>,
     error: &str,
 ) -> ProviderError {
-    let undone = match previous {
-        Some(previous) => store
-            .replace_secret_if_unchanged(key, written, previous)
-            .map(|_| ()),
-        None => store.delete(key),
-    };
-    match undone {
-        Ok(()) => ProviderError::Other(format!(
-            "the session was not saved, the account store refused it: {error}"
-        )),
-        Err(undo) => ProviderError::Other(format!(
-            "the session reached the vault but not the account store, and the vault could not be put back ({undo}): {error}"
-        )),
-    }
+    ProviderError::Other(crate::user_partitions::undo_vault_write(
+        store,
+        key,
+        written,
+        previous,
+        &format!("the session was not saved, the account store refused it: {error}"),
+    ))
 }
 
 /// Indexes the row `key` of `user` just written (see

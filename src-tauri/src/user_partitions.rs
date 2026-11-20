@@ -3512,6 +3512,10 @@ pub fn set_user_credential_for(
     credential_type: &str,
     secret: &str,
 ) -> Result<(), String> {
+    #[cfg(test)]
+    if PARTITION_WRITE_REFUSED.swap(false, std::sync::atomic::Ordering::SeqCst) {
+        return Err("the account store refused the row (test)".to_string());
+    }
     if credential_id.is_empty() {
         return Err("CREDENTIAL_ID_REQUIRED".to_string());
     }
@@ -4297,6 +4301,12 @@ fn update_chain_deletions(
         .map_err(|e| format!("Commit chain deletion: {e}"))?;
     Ok(record.view())
 }
+
+/// The next partition row written is refused, as an account store that
+/// fails does, on any thread (test only).
+#[cfg(test)]
+pub(crate) static PARTITION_WRITE_REFUSED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
 
 /// Every read of a key's chain deletions fails (test only).
 #[cfg(test)]
@@ -5583,8 +5593,9 @@ pub(crate) fn mirror_credential_for_user_typed(
 }
 
 /// A failure here is an error, because readers prefer the partition row: it would
-/// go on answering with the old secret after a save reported as done. The vault
-/// keeps the new value, since a rotated token cannot go back. A locked legacy owner
+/// go on answering with the old secret after a save reported as done. The writers
+/// that wrote the vault first put it back ([`store_vault_then_mirror`]); a rotation
+/// writes its one copy itself (Jottacloud) or never goes through here. A locked legacy owner
 /// with no row is the one exception: its readers fall back to the vault, and the MUV-2
 /// lazy pass mirrors it at the next unlock. Any other account reads only its partition.
 fn mirror_into_partition(
@@ -6484,12 +6495,60 @@ fn store_credential_dual_with(
     mirror: impl FnOnce(i64) -> Result<(), String>,
 ) -> Result<(), String> {
     let user_id = active_user()?;
+    store_vault_then_mirror(store, credential_id, secret, || match user_id {
+        Some(user_id) => mirror(user_id),
+        None => Ok(()),
+    })
+}
+
+/// Writes `secret` to the vault key `credential_id`, then `mirror`, the
+/// account's half: whole or not at all. A mirror that fails puts the vault key
+/// back as it was ([`undo_vault_write`]), so a save reported as failed never
+/// leaves its value where a reader of the vault finds it.
+pub(crate) fn store_vault_then_mirror(
+    store: &CredentialStore,
+    credential_id: &str,
+    secret: &str,
+    mirror: impl FnOnce() -> Result<(), String>,
+) -> Result<(), String> {
+    let previous = match store.get(credential_id) {
+        Ok(previous) => Some(Zeroizing::new(previous)),
+        Err(crate::credential_store::CredentialError::NotFound(_)) => None,
+        Err(e) => return Err(format!("Read credential in vault: {e}")),
+    };
     store
         .store(credential_id, secret)
         .map_err(|e| format!("Store credential in vault: {e}"))?;
-    match user_id {
-        Some(user_id) => mirror(user_id),
-        None => Ok(()),
+    mirror().map_err(|error| {
+        undo_vault_write(
+            store,
+            credential_id,
+            secret,
+            previous.as_deref().map(String::as_str),
+            &error,
+        )
+    })
+}
+
+/// Puts the vault key `credential_id` back as it was before `written`: the
+/// `previous` value, or no key. Only while it still holds `written`, so a
+/// value another writer stored since stays. The error the caller returns,
+/// saying what became of the vault copy.
+pub(crate) fn undo_vault_write(
+    store: &CredentialStore,
+    credential_id: &str,
+    written: &str,
+    previous: Option<&str>,
+    error: &str,
+) -> String {
+    let undone = match previous {
+        Some(previous) => store.replace_secret_if_unchanged(credential_id, written, previous),
+        None => store.delete_secret_if_unchanged(credential_id, written),
+    };
+    match undone {
+        Ok(true) => format!("{error}; the vault copy was put back as it was"),
+        Ok(false) => format!("{error}; the vault copy was rewritten since, so it stays as written"),
+        Err(undo) => format!("{error}; the vault copy could not be put back: {undo}"),
     }
 }
 
@@ -6508,10 +6567,9 @@ pub fn store_credential_for_user_dual(
     if let Some(kind) = private_token_type(credential_id) {
         return store_credential_for_user_typed_dual(store, user_id, credential_id, kind, secret);
     }
-    store
-        .store(credential_id, secret)
-        .map_err(|e| format!("Store credential in vault: {e}"))?;
-    mirror_credential_for_user(store, user_id, credential_id, secret)
+    store_vault_then_mirror(store, credential_id, secret, || {
+        mirror_credential_for_user(store, user_id, credential_id, secret)
+    })
 }
 
 /// The type `credential_id` is stored with in a partition: `credential_type` when
@@ -6602,16 +6660,15 @@ pub fn store_imported_credential_for_user(
             return store_credential_for_user(store, private, credential_id, kind, secret);
         }
     }
-    store
-        .store(credential_id, secret)
-        .map_err(|e| format!("Store credential in vault: {e}"))?;
-    let conn = open_or_init_cli()?;
-    let Some(kind) = partition_credential_type(&conn, user_id, credential_id, credential_type)?
-    else {
-        return Ok(());
-    };
-    let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
-    set_user_credential_for(&conn, &root_key, user_id, credential_id, &kind, secret)
+    store_vault_then_mirror(store, credential_id, secret, || {
+        let conn = open_or_init_cli()?;
+        let Some(kind) = partition_credential_type(&conn, user_id, credential_id, credential_type)?
+        else {
+            return Ok(());
+        };
+        let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
+        set_user_credential_for(&conn, &root_key, user_id, credential_id, &kind, secret)
+    })
 }
 
 /// Remove an imported credential from both the user's partition and the vault.
@@ -7239,10 +7296,9 @@ fn store_active_credential_typed_dual_as(
             signed_in,
         );
     }
-    store
-        .store(credential_id, secret)
-        .map_err(|e| format!("Store credential in vault: {e}"))?;
-    mirror_active_credential(store, credential_id, credential_type, secret)
+    store_vault_then_mirror(store, credential_id, secret, || {
+        mirror_active_credential(store, credential_id, credential_type, secret)
+    })
 }
 
 /// Explicitly-typed dual writer (CLI `--user`): vault first, then mirror into
@@ -7301,10 +7357,9 @@ fn store_credential_for_user_typed_dual_as(
             signed_in,
         );
     }
-    store
-        .store(credential_id, secret)
-        .map_err(|e| format!("Store credential in vault: {e}"))?;
-    mirror_credential_for_user_typed(store, user_id, credential_id, credential_type, secret)
+    store_vault_then_mirror(store, credential_id, secret, || {
+        mirror_credential_for_user_typed(store, user_id, credential_id, credential_type, secret)
+    })
 }
 
 /// MU-7: list other users that already store a profile with the SAME dedup

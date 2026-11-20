@@ -2539,6 +2539,34 @@ impl CredentialStore {
         Ok(true)
     }
 
+    /// Deletes `account` only while it still holds `expected`, so a write
+    /// being undone never removes a value another writer stored since.
+    /// Whether it was deleted.
+    pub(crate) fn delete_secret_if_unchanged(
+        &self,
+        account: &str,
+        expected: &str,
+    ) -> Result<bool, CredentialError> {
+        Self::reject_reserved_account(account)?;
+        let guard = VaultWriteGuard::acquire(Self::lock_dir(&self.vault_path)?)?;
+        let mut vault = Self::read_vault(&self.vault_path)?;
+        Self::ensure_vault_opens_with(&vault, &self.vault_key)?;
+        let Some(entry) = vault.entries.get(account) else {
+            return Ok(false);
+        };
+        let plaintext = Zeroizing::new(
+            crate::crypto::decrypt_aes_gcm(&self.vault_key, &entry.nonce, &entry.data)
+                .map_err(CredentialError::Encryption)?,
+        );
+        use subtle::ConstantTimeEq;
+        if !bool::from(plaintext.as_slice().ct_eq(expected.as_bytes())) {
+            return Ok(false);
+        }
+        vault.entries.remove(account);
+        Self::write_vault(&self.vault_path, &vault, &guard)?;
+        Ok(true)
+    }
+
     /// Legacy migration never replaces an authorization created in the meantime.
     pub(crate) fn store_secret_if_absent(
         &self,

@@ -1988,3 +1988,114 @@ fn an_import_saves_no_session_for_a_profile_moved_away() {
     ));
     assert_eq!(loaded(owner, "moved-then-imported"), None);
 }
+
+/// Every writer that saves a secret to the vault and then to the account's
+/// row is whole or not at all: a row the account store refuses puts the vault
+/// key back as it was, the previous value or no key, for the generic and the
+/// typed dual writers, the import writer and a new OAuth authorization.
+#[test]
+fn a_secret_the_account_store_refuses_leaves_the_vault_as_it_was() {
+    if !in_isolated_child("a_secret_the_account_store_refuses_leaves_the_vault_as_it_was") {
+        return;
+    }
+    use std::sync::atomic::Ordering::SeqCst;
+    let accounts = Accounts::open();
+    let (store, legacy) = (&accounts.store, accounts.legacy);
+    let refused = |write: &dyn Fn() -> Result<(), String>| {
+        PARTITION_WRITE_REFUSED.store(true, SeqCst);
+        let written = write();
+        PARTITION_WRITE_REFUSED.store(false, SeqCst);
+        written
+    };
+    let vault_value = |key: &str| store.get(key).ok();
+    let mut failures = Vec::new();
+
+    // The generic writer, over a value saved before.
+    store_credential_dual_as(store, Some(legacy), "server_refused-generic", "before").unwrap();
+    let written = refused(&|| {
+        store_credential_dual_as(store, Some(legacy), "server_refused-generic", "after")
+    });
+    if !written
+        .as_ref()
+        .is_err_and(|e| e.contains("put back as it was"))
+        || vault_value("server_refused-generic").as_deref() != Some("before")
+    {
+        failures.push(format!(
+            "generic: {written:?}, vault {:?}",
+            vault_value("server_refused-generic")
+        ));
+    }
+
+    // The typed writer, with nothing saved before.
+    let written = refused(&|| {
+        store_typed_credential_dual_as(
+            store,
+            Some(legacy),
+            "oauth_dropbox_refused-typed",
+            "oauth",
+            "imported-token",
+        )
+    });
+    if written.is_ok() || vault_value("oauth_dropbox_refused-typed").is_some() {
+        failures.push(format!(
+            "typed: {written:?}, vault {:?}",
+            vault_value("oauth_dropbox_refused-typed")
+        ));
+    }
+
+    // The writer of an import with no type.
+    let written = refused(&|| {
+        store_imported_credential_for_user(store, legacy, "server_refused-import", None, "x")
+    });
+    if written.is_ok() || vault_value("server_refused-import").is_some() {
+        failures.push(format!(
+            "import: {written:?}, vault {:?}",
+            vault_value("server_refused-import")
+        ));
+    }
+
+    // A new OAuth authorization of the legacy owner.
+    let tokens = crate::providers::oauth2::StoredTokens {
+        access_token: "refused-access".into(),
+        refresh_token: Some("refused-refresh".into()),
+        expires_at: None,
+        token_type: "Bearer".into(),
+        scopes: Vec::new(),
+    };
+    let manager = crate::providers::oauth2::OAuth2Manager::new().with_credential_user(Some(legacy));
+    let written = refused(&|| {
+        manager
+            .store_tokens(
+                crate::providers::oauth2::OAuthProvider::Dropbox,
+                "refused-oauth",
+                &tokens,
+            )
+            .map_err(|e| e.to_string())
+    });
+    if written.is_ok() || vault_value("oauth_dropbox_refused-oauth").is_some() {
+        failures.push(format!(
+            "oauth: {written:?}, vault {:?}",
+            vault_value("oauth_dropbox_refused-oauth").is_some()
+        ));
+    }
+
+    // Without the refusal each writer saves both halves.
+    store_credential_dual_as(store, Some(legacy), "server_refused-generic", "after").unwrap();
+    assert_eq!(
+        vault_value("server_refused-generic").as_deref(),
+        Some("after")
+    );
+    assert_eq!(
+        get_user_credential_for(
+            &accounts.conn,
+            &accounts.root_key,
+            legacy,
+            "server_refused-generic"
+        )
+        .unwrap()
+        .as_deref()
+        .map(String::as_str),
+        Some("after")
+    );
+    assert!(failures.is_empty(), "{failures:#?}");
+}
