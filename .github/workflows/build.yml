@@ -121,14 +121,20 @@ jobs:
       # the `Version sites agree` step in checks.yml, and the pre-push gate. A list
       # that exists twice will diverge again, and the narrower copy is always the
       # one that runs.
-      - name: R10 version sites agree (and match the tag on tag builds)
-        shell: bash
-        run: |
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            node scripts/check-version-sites.mjs --tag "$GITHUB_REF_NAME"
-          else
-            node scripts/check-version-sites.mjs
-          fi
+      - name: R10 version sites agree
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        run: node scripts/check-version-sites.mjs
+
+      - name: R10 version sites agree and match the tag
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        run: node scripts/check-version-sites.mjs --tag "$GITHUB_REF_NAME"
+
+      # The packages ship THIRD-PARTY-NOTICES.md as committed, and checks.yml
+      # does not run on tags: a tag whose notices do not match its lockfiles
+      # would publish them. Every publish job (GitHub release, snap, winget,
+      # FlatPark) requires this job's success, so the check gates them all.
+      - name: Third-party license notices match the lockfiles
+        run: npm run check:licenses
 
       - name: TypeScript type check
         run: npx tsc --noEmit
@@ -550,6 +556,7 @@ jobs:
         run: |
           APPIMAGE=$(realpath src-tauri/target/release/bundle/appimage/*.AppImage 2>/dev/null | head -1)
           if [ -z "$APPIMAGE" ]; then echo "No AppImage found, skipping"; exit 0; fi
+          AEROFTP_VERSION=$(jq -r .version src-tauri/tauri.conf.json)
           echo "Patching $APPIMAGE"
           chmod +x "$APPIMAGE"
           ORIG_SIZE=$(du -m "$APPIMAGE" | cut -f1)
@@ -578,6 +585,14 @@ jobs:
           # LD_LIBRARY_PATH only when ldd finds a library of the binary
           # missing on the system.
           "$GITHUB_WORKSPACE/src-tauri/scripts/patch-appimage-lib-fallback.sh" "$(pwd)"
+
+          # --- Fix 3b: the terms of every bundled library ---
+          # THIRD-PARTY-NOTICES.md covers the Cargo and npm dependencies; each
+          # bundled library ships its Ubuntu package's copyright file under
+          # usr/share/doc/<package>/, listed in usr/share/doc/BUNDLED-LIBRARIES.txt
+          # with its source package and the written offer of that source.
+          # A library with no package or no copyright file fails the build.
+          "$GITHUB_WORKSPACE/src-tauri/scripts/bundle-appimage-lib-notices.sh" "$(pwd)" "$AEROFTP_VERSION"
 
           # --- Fix 4: permissions every user can run ---
           # linuxdeploy leaves AppRun.wrapped 0750 (and a 0777 schemas folder,
@@ -755,6 +770,11 @@ jobs:
           Copy-Item "src-tauri/installer/portable/portable.marker"    "$stage\portable.marker"
           Copy-Item "src-tauri/installer/portable/README.txt"         "$stage\README.txt"
           Copy-Item "LICENSE"                                         "$stage\LICENSE.txt"
+          Copy-Item "THIRD-PARTY-NOTICES.md"                          "$stage\THIRD-PARTY-NOTICES.md"
+          if (-not (Test-Path "$stage\THIRD-PARTY-NOTICES.md")) {
+            Write-Host "::error::THIRD-PARTY-NOTICES.md not found in portable stage"
+            exit 1
+          }
 
           $dest = "src-tauri/target/release/bundle/$zipName"
           if (Test-Path $dest) { Remove-Item -Force $dest }
@@ -764,6 +784,48 @@ jobs:
           Write-Host "Created portable ZIP: $zipName ($size bytes)"
           Write-Host "Contents:"
           Get-ChildItem $stage | ForEach-Object { Write-Host "  $($_.Name) ($($_.Length) bytes)" }
+
+      # The ZIP as a user extracts it. About opens THIRD-PARTY-NOTICES.md at
+      # Tauri's resource root, which on Windows is the running exe's folder
+      # (portable_docs.rs the_resource_root_of_a_windows_app_is_the_running_exe_folder,
+      # run by the Windows tests), so an offline portable app opens the shipped
+      # notices only when they are there, beside AeroFTP.exe. Nothing here
+      # uses the network: the check reads the extracted files and compares
+      # each document with the one the build copied.
+      - name: Check the extracted portable ZIP offline
+        if: matrix.target == 'windows'
+        shell: pwsh
+        run: |
+          $zips = @(Get-ChildItem "src-tauri/target/release/bundle/AeroFTP-*-portable-windows-x64.zip")
+          if ($zips.Count -ne 1) {
+            Write-Host "::error::expected one portable ZIP, found $($zips.Count)"
+            exit 1
+          }
+          $out = Join-Path $env:RUNNER_TEMP "portable-extracted"
+          if (Test-Path -LiteralPath $out) { Remove-Item -Recurse -Force -LiteralPath $out }
+          Expand-Archive -LiteralPath $zips[0].FullName -DestinationPath $out
+          if (-not (Test-Path -LiteralPath (Join-Path $out "AeroFTP.exe") -PathType Leaf)) {
+            Write-Host "::error::AeroFTP.exe is not at the root of the extracted ZIP"
+            exit 1
+          }
+          $documents = [ordered]@{
+            "THIRD-PARTY-NOTICES.md" = "THIRD-PARTY-NOTICES.md"
+            "LICENSE.txt"            = "LICENSE"
+            "README.txt"             = "src-tauri/installer/portable/README.txt"
+            "portable.marker"        = "src-tauri/installer/portable/portable.marker"
+          }
+          foreach ($name in $documents.Keys) {
+            $shipped = Join-Path $out $name
+            if (-not (Test-Path -LiteralPath $shipped -PathType Leaf)) {
+              Write-Host "::error::$name is not beside AeroFTP.exe in the extracted ZIP"
+              exit 1
+            }
+            if ((Get-FileHash -LiteralPath $shipped).Hash -ne (Get-FileHash -LiteralPath $documents[$name]).Hash) {
+              Write-Host "::error::$name in the extracted ZIP differs from $($documents[$name])"
+              exit 1
+            }
+          }
+          Write-Host "The extracted portable ZIP has AeroFTP.exe with its notices, license, readme and marker beside it."
 
       # Always upload platform installers as workflow artifacts. Tag runs used
       # to skip this and publish straight from the runner; that raced
@@ -815,6 +877,14 @@ jobs:
     if: ${{ !cancelled() && startsWith(github.ref, 'refs/tags/') && needs.linux-validate.result == 'success' }}
     needs: [linux-validate, build-and-release]
     runs-on: ubuntu-latest
+    # One tag at a time across all tags: the step that keeps the AppImage
+    # sources reads and rewrites the record of the release appimage-sources.
+    # queue: max keeps every waiting tag; the default queue holds one, so a
+    # third tag would cancel the second's pending publication.
+    concurrency:
+      group: appimage-sources-archive
+      cancel-in-progress: false
+      queue: max
     permissions:
       contents: write
       id-token: write
@@ -863,6 +933,30 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: scripts/pair-appimage-zsync.sh release-assets/appimage
+
+      # The AppImage's written offer names the release `appimage-sources`,
+      # which keeps the source of every library the AppImage bundles until
+      # three years after the last release that ships it. It runs before this
+      # release is published, so the offer holds from the first download: a
+      # source that cannot be fetched, checked or kept stops the publication.
+      # The list is read from the AppImage's squashfs image with unsquashfs,
+      # never by running the AppImage, which may be the one downloaded from
+      # the release: no code of it runs where this token is.
+      - name: Install squashfs-tools for the AppImage sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends squashfs-tools
+          # `unsquashfs -version` exits 1 without an image to read: the check is
+          # that it is installed.
+          command -v unsquashfs
+
+      - name: Keep the source of the libraries the AppImage bundles
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts/archive-appimage-sources.py release-assets/appimage "${GITHUB_REF_NAME#v}"
 
       - name: Install Cosign
         uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3

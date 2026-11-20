@@ -55,8 +55,10 @@ fn managed_temp_vault_roots() -> Vec<PathBuf> {
     }
     // A scratch folder that does not exist yet holds no vault file to
     // validate, so a failed canonicalize simply omits it.
-    if let Ok(scratch) = crate::util::scratch::scratch_dir_path().canonicalize() {
-        roots.push(scratch);
+    if let Ok(path) = crate::util::scratch::try_scratch_dir_path() {
+        if let Ok(scratch) = path.canonicalize() {
+            roots.push(scratch);
+        }
     }
     roots
 }

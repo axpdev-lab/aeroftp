@@ -1880,7 +1880,9 @@
                 "osKeyring": "Ключодържател на ОС",
                 "vaultFormat": "Формат на трезора",
                 "zipArchives": "ZIP архиви"
-            }
+            },
+            "thirdPartyLicenses": "Лицензи на трети страни",
+            "thirdPartyLicensesOpenFailed": "Бележките за лицензите не можаха да бъдат отворени. Налични са онлайн на {url}"
         },
         "support": {
             "title": "Подкрепете AeroFTP",

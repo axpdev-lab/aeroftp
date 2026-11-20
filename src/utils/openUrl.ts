@@ -7,26 +7,45 @@
  *
  * Security: only http, https and mailto schemes are allowed.
  * Other schemes (file://, javascript:, custom://) are blocked to prevent abuse.
+ *
+ * Resolves true when the URL was handed to the system or to a new window, and
+ * false when it does not parse, the scheme is blocked, or both the shell and
+ * the window.open fallback failed (window.open returns null or throws). The
+ * fallback runs only for a URL that parsed with an allowed scheme. It never
+ * rejects, so a caller that ignores the result keeps working as before.
  */
 import { open } from '@tauri-apps/plugin-shell';
 
 const ALLOWED_SCHEMES = ['http:', 'https:', 'mailto:'];
 
-export async function openUrl(url: string): Promise<void> {
+export async function openUrl(url: string): Promise<boolean> {
+  let parsed: URL;
   try {
-    const parsed = new URL(url);
-    if (!ALLOWED_SCHEMES.includes(parsed.protocol)) {
-      throw new Error(`Blocked URL scheme: ${parsed.protocol}`);
-    }
+    parsed = new URL(url);
+  } catch {
+    // The input is not logged: it may carry a token.
+    console.warn('Not a valid URL');
+    return false;
+  }
+  if (!ALLOWED_SCHEMES.includes(parsed.protocol)) {
+    console.warn(`Blocked URL scheme: ${parsed.protocol}`);
+    return false;
+  }
+  try {
     await open(url);
-  } catch (error) {
-    if (error instanceof Error && error.message.startsWith('Blocked URL scheme')) {
-      console.warn(error.message);
-      return;
+    return true;
+  } catch {
+    // The rejection is not logged: it can carry the launcher's command line,
+    // and with it the URL.
+    console.error('Failed to open URL');
+    // Fallback: try window.open (won't work in Tauri but useful for dev).
+    // It returns null when it opens nothing and can throw.
+    try {
+      return window.open(url, '_blank') !== null;
+    } catch {
+      console.error('Failed to open URL in a new window');
+      return false;
     }
-    console.error('Failed to open URL:', error);
-    // Fallback: try window.open (won't work in Tauri but useful for dev)
-    window.open(url, '_blank');
   }
 }
 

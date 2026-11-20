@@ -1880,7 +1880,9 @@
                 "osKeyring": "OS-sleutelhanger",
                 "vaultFormat": "Kluisformaat",
                 "zipArchives": "ZIP-archieven"
-            }
+            },
+            "thirdPartyLicenses": "Licenties van derden",
+            "thirdPartyLicensesOpenFailed": "De licentievermeldingen konden niet worden geopend. Ze zijn online beschikbaar op {url}"
         },
         "support": {
             "title": "Steun AeroFTP",

@@ -1880,7 +1880,9 @@
                 "osKeyring": "Chaveiro do sistema",
                 "vaultFormat": "Formato do cofre",
                 "zipArchives": "Arquivos ZIP"
-            }
+            },
+            "thirdPartyLicenses": "Licenças de terceiros",
+            "thirdPartyLicensesOpenFailed": "Não foi possível abrir os avisos de licença. Estão disponíveis online em {url}"
         },
         "support": {
             "title": "Apoiar AeroFTP",

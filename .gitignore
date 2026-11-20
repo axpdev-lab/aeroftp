@@ -115,6 +115,7 @@ run-clean.sh
 !/scripts/apply-i18n-batch.py
 !/scripts/aerorsync-emit-guard-tests.sh
 !/scripts/pair-appimage-zsync.sh
+!/scripts/archive-appimage-sources.py
 !/scripts/i18n-validate.ts
 !/scripts/i18n-sync.ts
 !/scripts/i18n-stats.ts
@@ -158,6 +159,10 @@ run-clean.sh
 # Exception: derives every published provider/preset/protocol figure into
 # docs/PROVIDER-INVENTORY.json, gated by the fast checks workflow
 !/scripts/gen-provider-inventory.ts
+# Exception: generates third-party license notices from locked dependency trees
+!/scripts/gen-third-party-notices.ts
+!/scripts/spdx-standard-licenses.json
+!/scripts/reviewed-license-terms.json
 # Exception: stripped-diacritics gate and its reviewed baseline, run by the
 # fast checks workflow (#628 item 12)
 !/scripts/i18n-diacritics.mjs

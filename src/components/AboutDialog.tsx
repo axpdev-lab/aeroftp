@@ -2,7 +2,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { X, Mail, Copy, Check, ExternalLink, Heart, RefreshCw, CheckCircle, ArrowUpCircle, AlertTriangle, Loader2, Lock } from 'lucide-react';
 
 const Github = ({ size = 24 }: { size?: number }) => (
@@ -22,6 +22,7 @@ import { getVersion } from '@tauri-apps/api/app';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation, type TranslationFunction } from '../i18n';
 import { openUrl } from '../utils/openUrl';
+import { GITHUB_NOTICES_URL, openThirdPartyLicenses } from '../utils/thirdPartyLicenses';
 import { useDraggableModal } from '../hooks/useDraggableModal';
 import { copyText } from '../utils/clipboard';
 
@@ -124,6 +125,10 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => 
     const [appVersion, setAppVersion] = useState('0.0.0');
     const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
     const [copied, setCopied] = useState(false);
+    const [licensesOpenFailed, setLicensesOpenFailed] = useState(false);
+    // The current license-open attempt: an earlier one, or one that ends after
+    // the dialog closed, does not set the alert.
+    const licensesAttempt = useRef(0);
     const [latestVersions, setLatestVersions] = useState<Record<string, string>>({});
     const [libStatus, setLibStatus] = useState<Record<string, LibStatus>>({});
     const [checking, setChecking] = useState(false);
@@ -167,6 +172,19 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => 
             return () => { document.documentElement.classList.remove('modal-open'); };
         }
     }, [isOpen]);
+
+    // Opening or closing the dialog ends any license-open attempt and clears its alert.
+    useEffect(() => {
+        licensesAttempt.current += 1;
+        setLicensesOpenFailed(false);
+    }, [isOpen]);
+
+    const openLicenses = useCallback(async () => {
+        const attempt = ++licensesAttempt.current;
+        setLicensesOpenFailed(false);
+        const { success } = await openThirdPartyLicenses();
+        if (attempt === licensesAttempt.current) setLicensesOpenFailed(!success);
+    }, []);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -320,6 +338,19 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => 
                                 >
                                     GNU General Public License v3.0
                                 </button>
+                                <div className="mt-1">
+                                    <button
+                                        onClick={openLicenses}
+                                        className="text-[11px] text-gray-500 dark:text-gray-400 hover:text-blue-500 dark:hover:text-cyan-400 underline transition-colors font-mono inline-block"
+                                    >
+                                        {t('about.thirdPartyLicenses') || 'Third-Party Licenses'}
+                                    </button>
+                                    {licensesOpenFailed && (
+                                        <p role="alert" className="text-[10px] text-red-500 dark:text-red-400 font-mono mt-1 select-text break-all">
+                                            {t('about.thirdPartyLicensesOpenFailed', { url: GITHUB_NOTICES_URL })}
+                                        </p>
+                                    )}
+                                </div>
                             </div>
 
                             {/* Team: the people in TEAM.md, with the same roles. Initials

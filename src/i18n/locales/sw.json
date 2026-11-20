@@ -1880,7 +1880,9 @@
                 "osKeyring": "Kishika funguo cha OS",
                 "vaultFormat": "Muundo wa hifadhi salama",
                 "zipArchives": "Kumbukumbu za ZIP"
-            }
+            },
+            "thirdPartyLicenses": "Leseni za Wengine",
+            "thirdPartyLicensesOpenFailed": "Imeshindwa kufungua notisi za leseni. Zinapatikana mtandaoni kwenye {url}"
         },
         "support": {
             "title": "Saidia AeroFTP",

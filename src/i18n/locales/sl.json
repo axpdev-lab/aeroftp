@@ -1880,7 +1880,9 @@
                 "osKeyring": "Obesek za ključe sistema",
                 "vaultFormat": "Oblika trezorja",
                 "zipArchives": "Arhivi ZIP"
-            }
+            },
+            "thirdPartyLicenses": "Licence tretjih oseb",
+            "thirdPartyLicensesOpenFailed": "Obvestil o licencah ni bilo mogoče odpreti. Na voljo so na spletu na {url}"
         },
         "support": {
             "title": "Podpri AeroFTP",

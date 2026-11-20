@@ -2466,7 +2466,9 @@
                 "osKeyring": "Portachiavi del sistema",
                 "vaultFormat": "Formato cassaforte",
                 "zipArchives": "Archivi ZIP"
-            }
+            },
+            "thirdPartyLicenses": "Licenze di terze parti",
+            "thirdPartyLicensesOpenFailed": "Impossibile aprire le note sulle licenze. Sono disponibili online su {url}"
         },
         "support": {
             "title": "Supporta AeroFTP",
