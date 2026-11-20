@@ -4643,10 +4643,12 @@ impl StorageProvider for ZohoWorkdriveProvider {
                 .map_err(|e| ProviderError::ParseError(format!("Versions of {path}: {e}")))?;
             data.extend(page.data);
             match cursor {
-                Some(_) if seen.len() + 1 >= super::VERSION_LISTING_MAX_PAGES => {
-                    return Err(super::version_listing_too_long(path))
+                Some(cursor) if seen.insert(cursor.clone()) => {
+                    if seen.len() >= super::VERSION_LISTING_MAX_PAGES {
+                        return Err(super::version_listing_too_long(path));
+                    }
+                    next = Some(cursor)
                 }
-                Some(cursor) if seen.insert(cursor.clone()) => next = Some(cursor),
                 Some(_) => {
                     return Err(ProviderError::ParseError(
                         "Zoho WorkDrive versions pagination did not advance".into(),
@@ -8287,8 +8289,16 @@ mod tests {
     /// refused, not shown cut short, and does not page on for ever.
     #[tokio::test]
     async fn a_version_listing_past_the_page_limit_is_refused() {
-        let app = axum::Router::new().fallback(axum::routing::any(|uri: axum::http::Uri| async move {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let pages = std::sync::Arc::new(AtomicUsize::new(0));
+        let read = std::sync::Arc::clone(&pages);
+        let app = axum::Router::new().fallback(axum::routing::any(move |uri: axum::http::Uri| {
+            let read = std::sync::Arc::clone(&read);
+            async move {
             let query = uri.query().unwrap_or_default().to_string();
+            if uri.path() == "/workdrive/api/v1/files/FILE9/versions" {
+                read.fetch_add(1, Ordering::SeqCst);
+            }
             match uri.path() {
                 "/workdrive/api/v1/privatespace/PS/files" => (
                     axum::http::StatusCode::OK,
@@ -8309,6 +8319,7 @@ mod tests {
                     )
                 }
                 _ => (axum::http::StatusCode::NOT_FOUND, "unexpected endpoint".to_string()),
+            }
             }
         }));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -8331,6 +8342,11 @@ mod tests {
         assert!(
             matches!(&listed, Err(ProviderError::TransferFailed(m)) if m.contains("did not end within")),
             "{listed:?}"
+        );
+        // Exactly the cap: page 200 is read, the page it names is not.
+        assert_eq!(
+            pages.load(Ordering::SeqCst),
+            super::super::VERSION_LISTING_MAX_PAGES
         );
     }
 

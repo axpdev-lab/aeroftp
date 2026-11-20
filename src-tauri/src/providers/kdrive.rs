@@ -3304,8 +3304,16 @@ mod tests {
     #[tokio::test]
     async fn a_version_listing_past_the_page_limit_is_refused() {
         use axum::response::IntoResponse;
-        let app = axum::Router::new().fallback(axum::routing::any(|uri: axum::http::Uri| async move {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let pages = std::sync::Arc::new(AtomicUsize::new(0));
+        let read = std::sync::Arc::clone(&pages);
+        let app = axum::Router::new().fallback(axum::routing::any(move |uri: axum::http::Uri| {
+            let read = std::sync::Arc::clone(&read);
+            async move {
             let target = uri.to_string();
+            if target.starts_with("/3/drive/987654/files/11/versions") {
+                read.fetch_add(1, Ordering::SeqCst);
+            }
             let file = serde_json::json!({ "id": 11, "name": "a.txt", "type": "file",
                 "size": 4, "last_modified_at": 1_700_000_500 });
             let body = if target == "/3/drive/987654/files/1/files" {
@@ -3324,6 +3332,7 @@ mod tests {
                 return axum::http::StatusCode::NOT_FOUND.into_response();
             };
             axum::Json(body).into_response()
+            }
         }));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
@@ -3341,6 +3350,11 @@ mod tests {
         assert!(
             matches!(&listed, Err(ProviderError::TransferFailed(m)) if m.contains("did not end within")),
             "{listed:?}"
+        );
+        // Exactly the cap: page 200 is read, the page it names is not.
+        assert_eq!(
+            pages.load(Ordering::SeqCst),
+            super::super::VERSION_LISTING_MAX_PAGES
         );
     }
 
