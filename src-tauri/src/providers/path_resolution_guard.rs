@@ -966,6 +966,7 @@ const SERVER_URL_SITES: &[(&str, &str, &str)] = &[
     ("twake.rs", "next page", "the refusal message of next_page_path"),
     ("twake.rs", "next_page", "next_page_path, which keeps a link to a path on the instance"),
     ("twake.rs", "next: Option<String>", "followed with the bearer token only as a path on the instance (next_page_path)"),
+    ("url_text_guard.rs", "\"location\"", "the error-text guard's own table of reviewed log lines: text, never a request"),
     ("uploadcare.rs", "next_page", "the call of next_page_on_api_origin in validate_uploadcare_api_url"),
     ("uploadcare.rs", "next: Option<String>", "followed with the secret key: validate_uploadcare_api_url keeps it on the API origin"),
     ("webdav.rs", ".href", "only the path of an href is used, joined to the configured base; its authority is dropped"),

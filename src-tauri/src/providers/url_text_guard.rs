@@ -666,8 +666,6 @@ const REVIEWED_ERRORS: &[ReviewedError] = &[
     ("providers/s3.rs", "download_with_size_hint", "ProviderError::TransferFailed(format!(\"Failed to finalize download: {}\", e))", NOT_REQWEST),
     ("providers/s3.rs", "find", ".map_http_err(|e| ProviderError::ParseError(e.to_string()))?;", S3_ERROR),
     ("providers/s3.rs", "find", "return Err(ProviderError::ParseError(format!(\"xml: {e}\")));", NOT_REQWEST),
-    ("providers/s3.rs", "list_versions", ".map_http_err(|e| ProviderError::ParseError(e.to_string()))?;", S3_ERROR),
-    ("providers/s3.rs", "list_versions", "return Err(ProviderError::ParseError(format!(\"xml: {e}\")));", NOT_REQWEST),
     ("providers/s3.rs", "download_version", "chunk.map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;", S3_ERROR),
     ("providers/s3.rs", "download_version", ".map_err(|e| ProviderError::TransferFailed(e.to_string()))?;", "a local file write error, no URL"),
     ("providers/s3.rs", "download_version", "ProviderError::TransferFailed(format!(\"Failed to finalize download: {}\", e))", NOT_REQWEST),
