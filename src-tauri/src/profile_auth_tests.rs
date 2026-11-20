@@ -551,6 +551,7 @@ async fn round_trip() {
     }
     durable_profile_auth_lifecycle(&store, &github, active.id, owner.id).await;
     private_tokens_keep_to_their_account(&store, active.id, owner.id);
+    github_readiness_reads_the_asked_accounts_profile(&store, active.id, owner.id);
     a_purge_reports_the_accounts_own_token(&store, active.id, owner.id).await;
     #[cfg(feature = "proton-native")]
     native_session_ownership(&store, active.id, owner.id).await;
@@ -1981,6 +1982,56 @@ async fn a_purge_reports_the_accounts_own_token(
 /// owner's, keeps its value. Read back, that account sees its own copy, or
 /// nothing once it is gone, never the owner's; the owner still reads its own.
 /// Any other key keeps the dual write.
+/// The GitHub readiness of a profile of `asked`, which is not the active
+/// account, reads that account's profile: the active account lists a
+/// profile of the same id in another sign-in mode, whose credential `asked`
+/// does not hold, and the answer would be that mode's.
+fn github_readiness_reads_the_asked_accounts_profile(
+    store: &CredentialStore,
+    active_id: i64,
+    asked: i64,
+) {
+    let id = "fixture-github-readiness";
+    let was_active = users::cli_get_active_user(store)
+        .unwrap()
+        .map(|user| user.id);
+    users::cli_set_active_user(store, active_id).unwrap();
+    let profile = |mode: &str| {
+        json!({"id": id, "name": id, "protocol": "github", "host": "",
+               "options": {"githubAuthMode": mode}})
+    };
+    let mut lists = Vec::new();
+    for (user, mode) in [(active_id, "app"), (asked, "authorize")] {
+        let mut before = Vec::new();
+        users::cli_update_server_profiles_for_user(store, user, |stored| {
+            before = stored.clone();
+            stored.push(profile(mode));
+            true
+        })
+        .unwrap();
+        lists.push((user, before));
+    }
+    let key = format!("github_oauth_{id}");
+    users::store_credential_for_user_typed_dual(store, asked, &key, "oauth", "gho_readiness")
+        .unwrap();
+    let readiness = saved_github_readiness(store, id, None, Some(asked));
+    users::delete_credential_for_user_dual(store, asked, &key).unwrap();
+    for (user, before) in lists {
+        users::cli_update_server_profiles_for_user(store, user, |stored| {
+            *stored = before.clone();
+            true
+        })
+        .unwrap();
+    }
+    if let Some(user) = was_active {
+        users::cli_set_active_user(store, user).unwrap();
+    }
+    assert_eq!(
+        readiness, "valid",
+        "the readiness read the active account's profile of the same id"
+    );
+}
+
 fn private_tokens_keep_to_their_account(store: &CredentialStore, legacy_id: i64, private_id: i64) {
     for key in [
         "oauth_dropbox_copy-target",

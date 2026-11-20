@@ -318,25 +318,28 @@ fn materialize_github_metadata(
     Ok(())
 }
 /// Only GitHub readiness belongs to this route; other auth-source rules remain shared.
+/// Without `profile`, the profile is the one `user_id` lists (the active
+/// account's when `None`): another account may hold a profile of the same id
+/// signed in another way, and its mode decides which credential is read.
 pub fn saved_github_readiness(
     store: &CredentialStore,
     id: &str,
     profile: Option<&Value>,
     user_id: Option<i64>,
 ) -> &'static str {
+    let found = if profile.is_none() {
+        users::mcp_list_server_profiles(store, user_id)
+            .ok()
+            .and_then(|profiles| profiles.into_iter().find(|p| field(p, "id") == id))
+    } else {
+        None
+    };
     let user_id = user_id.or_else(|| {
         users::cli_get_active_user(store)
             .ok()
             .flatten()
             .map(|user| user.id)
     });
-    let found = if profile.is_none() {
-        users::mcp_list_active_server_profiles(store)
-            .ok()
-            .and_then(|profiles| profiles.into_iter().find(|p| field(p, "id") == id))
-    } else {
-        None
-    };
     let fallback = json!({"id":id,"protocol":"github","host":""});
     readiness(
         &AuthScope { store, user_id },
