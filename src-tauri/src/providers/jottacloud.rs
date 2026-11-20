@@ -183,6 +183,9 @@ struct PersistOutcome {
     /// The keys not written because a deletion of the key, or of the one
     /// the chain was loaded from, began since the checks before the write.
     deleted: Vec<String>,
+    /// The keys whose copy was written while the legacy owner's other copy
+    /// did not follow: the rotation stays pending for the other's reader.
+    unfollowed: Vec<String>,
     /// The refresh token each key held when it was read before the write.
     read: HashMap<String, zeroize::Zeroizing<String>>,
 }
@@ -884,6 +887,19 @@ impl JottacloudProvider {
         }
     }
 
+    /// Whether `filed`, the refresh token of a rotation pending for a key, is
+    /// this connection's chain: the one its last exchange consumed, or the one
+    /// it holds now.
+    fn continues(&self, filed: &str) -> bool {
+        filed == self.refresh_token.expose_secret()
+            || self
+                .consumed
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .as_ref()
+                .is_some_and(|consumed| consumed.as_str() == filed)
+    }
+
     /// The live chain as it is persisted.
     fn chain_json(&self) -> String {
         serde_json::json!({
@@ -937,6 +953,7 @@ impl JottacloudProvider {
                 if outcome.written.contains(account)
                     || outcome.replaced.contains(account)
                     || outcome.deleted.contains(account)
+                    || outcome.unfollowed.contains(account)
                 {
                     continue;
                 }
@@ -995,6 +1012,21 @@ impl JottacloudProvider {
                     .insert((*account).clone(), zeroize::Zeroizing::new(now.clone()));
                 #[cfg(test)]
                 tests::before_rotation_write(account);
+                // A copy an earlier rotation of this chain left behind (it did
+                // not follow) holds the base of the rotation this connection
+                // filed for the key: the same chain, so it follows now.
+                let lagging = PENDING_ROTATIONS
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .get(&(owner, (*account).clone()))
+                    .and_then(|json| serde_json::from_str::<serde_json::Value>(json).ok())
+                    .filter(|filed| {
+                        filed["refresh_token"]
+                            .as_str()
+                            .is_some_and(|token| self.continues(token))
+                    })
+                    .and_then(|filed| filed[PENDING_BASE].as_str().map(str::to_string))
+                    .filter(|base| !base.is_empty());
                 // Written only while the copy read above is still there: an
                 // import committed since is never written over. One copy, the
                 // one every reader reads, so no write is left half done. A
@@ -1015,7 +1047,9 @@ impl JottacloudProvider {
                         &json,
                         &|a, b| {
                             let token = stored_refresh_token(Some(a));
-                            !token.is_empty() && token == stored_refresh_token(Some(b))
+                            let other = stored_refresh_token(Some(b));
+                            (!token.is_empty() && token == other)
+                                || lagging.as_deref() == Some(other.as_str())
                         },
                         owner,
                         &unmoved,
@@ -1064,6 +1098,23 @@ impl JottacloudProvider {
                         ));
                         outcome.replaced.push((*account).clone());
                     }
+                    Err(e) if e == crate::user_partitions::COPY_NOT_FOLLOWED => {
+                        // This copy holds the new chain, the other one the
+                        // chain Jotta consumed: this connection knows the key
+                        // holds the new one, and the rotation stays pending,
+                        // on the consumed chain as its base, for the other
+                        // copy's reader. Its next rotation brings that copy
+                        // along (`lagging` above).
+                        jotta_log(&format!("Refresh token written to {}: {}", account, e));
+                        self.stored_tokens
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .insert(
+                                (*account).clone(),
+                                zeroize::Zeroizing::new(new_token.clone()),
+                            );
+                        outcome.unfollowed.push((*account).clone());
+                    }
                     Err(e) if e == crate::user_partitions::CHAIN_DELETED => {
                         jotta_log(&format!("Refresh token not written to {}: {}", account, e));
                         outcome.deleted.push((*account).clone());
@@ -1073,7 +1124,11 @@ impl JottacloudProvider {
                     }
                 }
             }
-            outcome.written.len() + outcome.replaced.len() + outcome.deleted.len() == writable.len()
+            outcome.written.len()
+                + outcome.replaced.len()
+                + outcome.deleted.len()
+                + outcome.unfollowed.len()
+                == writable.len()
         };
         if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
             if write_missing(&store) {
@@ -1308,8 +1363,14 @@ impl JottacloudProvider {
             }
 
             // A key with no chain is not a replacement: its delete drops the
-            // rotation itself (`delete_refresh_chain`).
-            if stored.is_some() && base.as_ref().is_some_and(|base| *base != stored_token) {
+            // rotation itself (`delete_refresh_chain`). Nor is a key that
+            // holds the rotation's own chain: a copy that was written while
+            // the other did not follow, whose reader still needs the rotation.
+            let own_chain = stored_refresh_token(Some(json.as_str())) == stored_token;
+            if stored.is_some()
+                && !own_chain
+                && base.as_ref().is_some_and(|base| *base != stored_token)
+            {
                 // The key was written from outside since the rotation was
                 // filed (an import, a restore): that chain wins, and the
                 // rotation is dropped unless a newer one replaced it.

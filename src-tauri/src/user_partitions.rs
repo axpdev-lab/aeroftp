@@ -3673,6 +3673,8 @@ pub(crate) fn refresh_user_credential(
 /// a best-effort basis, by its own compare-and-write on what it holds, while
 /// `same_chain` says it holds the chain `expected` held (the same chain in
 /// other bytes included); a copy that holds another chain is left as it is.
+/// A follow that fails is [`COPY_NOT_FOLLOWED`]: the copy read was written,
+/// the other was not.
 ///
 /// `unmoved` names, for `owner` ([`chain_deletions`]), each key whose
 /// deletions must still be the given generation with none running: checked
@@ -3738,6 +3740,10 @@ pub(crate) fn replace_owner_aware_if_unchanged(
         // another chain is left as it is.
         if let Some(expected) = expected.filter(|_| written) {
             let follow = || -> Result<(), String> {
+                #[cfg(test)]
+                if FOLLOW_REFUSED.load(std::sync::atomic::Ordering::SeqCst) {
+                    return Err("refused (test)".to_string());
+                }
                 init_or_migrate_cli(store)?;
                 let conn = open_or_init_cli()?;
                 if let Some(owner) = nonprofile_secret_owner(&conn)? {
@@ -3759,6 +3765,7 @@ pub(crate) fn replace_owner_aware_if_unchanged(
             };
             if let Err(e) = follow() {
                 log::warn!("Conditional credential write: the owner's row did not follow: {e}");
+                return Err(COPY_NOT_FOLLOWED.to_string());
             }
         }
         return Ok(written);
@@ -3819,6 +3826,10 @@ pub(crate) fn replace_owner_aware_if_unchanged(
         // transaction. A copy that holds another chain stays.
         if let Some(expected) = expected.filter(|_| owner) {
             let follow = || -> Result<(), String> {
+                #[cfg(test)]
+                if FOLLOW_REFUSED.load(std::sync::atomic::Ordering::SeqCst) {
+                    return Err("refused (test)".to_string());
+                }
                 if let Some(copy) = get_optional_secret(store, credential_id)?
                     .filter(|copy| same_chain(expected, copy))
                 {
@@ -3830,6 +3841,7 @@ pub(crate) fn replace_owner_aware_if_unchanged(
             };
             if let Err(e) = follow() {
                 log::warn!("Conditional credential write: the vault copy did not follow: {e}");
+                return Err(COPY_NOT_FOLLOWED.to_string());
             }
         }
         Ok(true)
@@ -3873,6 +3885,12 @@ impl ChainDeletions {
         self.in_progress == 0
     }
 }
+
+/// Why a conditional write reports its key as not fully written: the copy it
+/// read was replaced, but the legacy owner's other copy, which held the same
+/// chain, did not follow, and its reader still reads the old one.
+pub(crate) const COPY_NOT_FOLLOWED: &str =
+    "COPY_NOT_FOLLOWED: the other copy of the chain did not follow";
 
 /// Why a conditional write of a refresh chain stopped: a deletion of a key
 /// it depends on began or completed since its connection began.
@@ -4082,6 +4100,11 @@ fn update_chain_deletions(
 /// Every read of a key's chain deletions fails (test only).
 #[cfg(test)]
 pub(crate) static CHAIN_DELETIONS_REFUSED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// Every follow of a chain's other copy fails (test only).
+#[cfg(test)]
+pub(crate) static FOLLOW_REFUSED: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
 /// Every end of a chain deletion fails (test only).

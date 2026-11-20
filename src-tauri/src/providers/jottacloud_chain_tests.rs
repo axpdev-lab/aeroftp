@@ -938,3 +938,128 @@ fn a_login_waiting_for_the_vault_leaves_the_async_worker_free() {
         "a task beside the connection ran while its login waited for the vault"
     );
 }
+
+/// The legacy owner's chain has two copies, its row and the shared vault key,
+/// and a rotation writes one and has the other follow. When the other does
+/// not follow, the rotation stays pending for the reader of that copy, whose
+/// key still holds the chain Jotta consumed, and the reader of the written
+/// copy loads the same chain; the next rotation brings the other copy along.
+/// Both directions: the row after a vault-only write, the vault after a row
+/// write.
+#[test]
+fn a_copy_that_did_not_follow_keeps_the_rotation_for_its_reader() {
+    use std::sync::atomic::Ordering::SeqCst;
+    if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+        "providers::jottacloud::chain_tests::a_copy_that_did_not_follow_keeps_the_rotation_for_its_reader",
+    ) {
+        return;
+    }
+    let chains = Chains::new();
+    assert_eq!(
+        chains.owner, None,
+        "the first account owns the shared vault"
+    );
+    let _ = chains.store.delete("jottacloud_refresh");
+    let mut failures = Vec::new();
+    let row = |key: &str| chains.stored(key);
+    let vault = |key: &str| stored_refresh_token(chains.store.get(key).ok().as_deref());
+    for (case, user, other) in [
+        (
+            "the row after a vault write",
+            partitions::LEGACY_ONLY_ACCOUNT,
+            chains.first,
+        ),
+        (
+            "the vault after a row write",
+            chains.first,
+            partitions::LEGACY_ONLY_ACCOUNT,
+        ),
+    ] {
+        let profile = if user == chains.first {
+            "followvault"
+        } else {
+            "followrow"
+        };
+        let key = format!("jottacloud_refresh_{profile}");
+        // The copy this connection writes, and the one that follows it.
+        let written = |key: &str| {
+            if user == chains.first {
+                row(key)
+            } else {
+                vault(key)
+            }
+        };
+        let follower = |key: &str| {
+            if user == chains.first {
+                vault(key)
+            } else {
+                row(key)
+            }
+        };
+        // Both copies: the owner's row and the shared vault key.
+        let both = chains.chain(&format!("both-{profile}"));
+        chains.store.store(&key, &both).unwrap();
+        partitions::store_imported_credential_for_user(
+            &chains.store,
+            chains.first,
+            &key,
+            Some("jottacloud_refresh"),
+            &both,
+        )
+        .unwrap();
+        let mut connection = chains.bound(profile);
+        connection.set_credential_user(Some(user));
+        assert!(chains
+            .runtime()
+            .block_on(connection.try_connect_with_refresh())
+            .unwrap());
+        let first = connection.refresh_token.expose_secret().to_string();
+        if written(&key) != first || follower(&key) != first {
+            failures.push(format!(
+                "{case}: both copies follow a rotation: {} / {}, expected {first}",
+                written(&key),
+                follower(&key)
+            ));
+        }
+
+        partitions::FOLLOW_REFUSED.store(true, SeqCst);
+        connection.token_expiry = Instant::now();
+        chains
+            .runtime()
+            .block_on(connection.refresh_if_needed())
+            .expect("refresh");
+        partitions::FOLLOW_REFUSED.store(false, SeqCst);
+        let second = connection.refresh_token.expose_secret().to_string();
+        // The reader of the written copy first: it must not drop what the
+        // reader of the other one needs.
+        for (reader, reader_user) in [("written copy", user), ("copy left behind", other)] {
+            let loaded =
+                JottacloudProvider::load_refresh_chain(Some(reader_user), Some(chains.owner), &key)
+                    .chain()
+                    .map(|((rt, _, _), _)| rt);
+            if loaded.as_deref() != Some(second.as_str()) {
+                failures.push(format!(
+                    "{case}: the reader of the {reader} loads {loaded:?}, expected {second}"
+                ));
+            }
+        }
+
+        connection.token_expiry = Instant::now();
+        chains
+            .runtime()
+            .block_on(connection.refresh_if_needed())
+            .expect("refresh");
+        let third = connection.refresh_token.expose_secret().to_string();
+        if written(&key) != third || follower(&key) != third || chains.pending(&key).is_some() {
+            failures.push(format!(
+                "{case}: the next rotation writes both copies: {} / {}, expected {third}, kept {}",
+                written(&key),
+                follower(&key),
+                chains.pending(&key).is_some()
+            ));
+        }
+        drop(connection);
+        PENDING_ROTATIONS.lock().unwrap().clear();
+    }
+    assert!(failures.is_empty(), "{failures:#?}");
+}
