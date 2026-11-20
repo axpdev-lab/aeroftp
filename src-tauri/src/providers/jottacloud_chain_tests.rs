@@ -1111,11 +1111,13 @@ fn a_login_waiting_for_the_vault_leaves_the_async_worker_free() {
     std::fs::create_dir_all(&dir).unwrap();
     let creating = dir.join(".vault.lock");
     std::fs::write(&creating, b"").unwrap();
+    let began = std::time::Instant::now();
     let release = {
         let creating = creating.clone();
         std::thread::spawn(move || {
             std::thread::sleep(std::time::Duration::from_millis(800));
             let _ = std::fs::remove_file(creating);
+            std::time::Instant::now()
         })
     };
     let runtime = tokio::runtime::Builder::new_multi_thread()
@@ -1123,9 +1125,13 @@ fn a_login_waiting_for_the_vault_leaves_the_async_worker_free() {
         .enable_all()
         .build()
         .unwrap();
-    let ticked = runtime.block_on(async {
+    let (ticked, connected) = runtime.block_on(async {
+        // When the task beside the connection ran: a timeout alone cannot
+        // tell, since a blocked worker drives no timer, and the ticker and
+        // its timeout come due together once it is free again.
         let ticker = tokio::spawn(async {
             tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            std::time::Instant::now()
         });
         let connection = tokio::spawn(async {
             let mut login = JottacloudProvider::new(JottacloudConfig {
@@ -1134,21 +1140,35 @@ fn a_login_waiting_for_the_vault_leaves_the_async_worker_free() {
                 mountpoint: "Archive".into(),
                 initial_path: None,
             });
-            let _ = login.connect().await;
+            let result = login.connect().await;
+            (result, std::time::Instant::now())
         });
-        let ticked = tokio::time::timeout(std::time::Duration::from_millis(400), ticker)
-            .await
-            .is_ok();
-        let _ = connection.await;
-        ticked
+        (ticker.await, connection.await)
     });
-    release.join().unwrap();
+    let released = release.join().unwrap();
     drop(runtime);
     std::env::remove_var("AEROFTP_MASTER_PASSWORD");
     CredentialStore::clear_cache();
+    let ticked = ticked.expect("the ticker did not panic");
     assert!(
-        ticked,
-        "a task beside the connection ran while its login waited for the vault"
+        ticked < released,
+        "a task beside the connection ran while its login waited for the vault: ticked {:?} after the start, released {:?}",
+        ticked - began,
+        released - began
+    );
+    let (result, ended) = connected.expect("the connection task did not panic");
+    // The empty login token is decoded only once the login's setup is over:
+    // its error proves the connection got past it.
+    let error = format!("{:?}", result.err());
+    assert!(
+        error.contains("Invalid login token"),
+        "the connection stopped before the login token was read: {error}"
+    );
+    assert!(
+        ended >= released,
+        "the login's setup waited for the vault: ended {:?} after the start, released {:?}",
+        ended - began,
+        released - began
     );
 }
 
@@ -1913,4 +1933,132 @@ fn an_unended_deletion_of_a_live_process_is_settled_by_it() {
         failures.push(format!("a login after the deletion wrote {login:?}"));
     }
     assert!(failures.is_empty(), "{failures:#?}");
+}
+
+/// A connection does not hold up the async worker while another thread
+/// holds the lock deletions and rotation writes are serialized by: the clock
+/// it begins at is read off the worker, and building a provider reads none.
+#[test]
+fn the_deletion_clock_is_read_off_the_async_worker() {
+    if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+        "providers::jottacloud::chain_tests::the_deletion_clock_is_read_off_the_async_worker",
+    ) {
+        return;
+    }
+    let chains = Chains::new();
+    let first = chains.first;
+    let mut failures = Vec::new();
+    for case in ["a connection", "a new provider"] {
+        let (locked_tx, locked_rx) = std::sync::mpsc::channel();
+        let holding = std::thread::spawn(move || {
+            let _held = DELETED_CHAINS.lock().unwrap_or_else(|e| e.into_inner());
+            locked_tx.send(()).unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(800));
+            Instant::now()
+        });
+        locked_rx.recv().unwrap();
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .enable_all()
+            .build()
+            .unwrap();
+        let (ticked, ended) = runtime.block_on(async move {
+            // When the task beside it ran (see
+            // `a_login_waiting_for_the_vault_leaves_the_async_worker_free`).
+            let ticker = tokio::spawn(async {
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                Instant::now()
+            });
+            let task = tokio::spawn(async move {
+                if case == "a connection" {
+                    let mut connection = bound_provider(first, "clockoff");
+                    let _ = connection.try_connect_with_refresh().await;
+                } else {
+                    drop(bound_provider(first, "clockoff"));
+                }
+                Instant::now()
+            });
+            (ticker.await, task.await)
+        });
+        let released = holding.join().unwrap();
+        drop(runtime);
+        let ended = ended.expect("the task did not panic");
+        if ticked.expect("the ticker did not panic") >= released {
+            failures.push(format!("{case} held the only async worker"));
+        }
+        if case == "a connection" && ended < released {
+            failures.push(format!("{case} did not wait for the lock"));
+        }
+    }
+    assert!(failures.is_empty(), "{failures:#?}");
+}
+
+/// A connection reads the partition database and the vault only off the
+/// async worker, on every path: a stored chain exchanged, one Jotta refuses,
+/// and a login (which fails at its discovery here), each run as a task.
+#[test]
+fn a_connection_reads_its_chains_off_the_async_worker() {
+    if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+        "providers::jottacloud::chain_tests::a_connection_reads_its_chains_off_the_async_worker",
+    ) {
+        return;
+    }
+    let chains = Chains::new();
+    let _ = chains.store.delete("jottacloud_refresh");
+    chains
+        .store
+        .store("jottacloud_refresh_probegood", &chains.chain("probe-good"))
+        .unwrap();
+    chains
+        .store
+        .store(
+            "jottacloud_refresh_proberefused",
+            &chains.chain("refused-probe"),
+        )
+        .unwrap();
+    let first = chains.first;
+    crate::credential_store::off_worker_probe::take();
+    let (good, refused, login) = chains.runtime().block_on(async move {
+        let good = tokio::spawn(async move {
+            let mut connection = bound_provider(first, "probegood");
+            connection
+                .try_connect_with_refresh()
+                .await
+                .map_err(|e| e.to_string())
+        });
+        let good = good.await.unwrap();
+        let refused = tokio::spawn(async move {
+            let mut connection = bound_provider(first, "proberefused");
+            connection
+                .try_connect_with_refresh()
+                .await
+                .map_err(|e| e.to_string())
+        });
+        let refused = refused.await.unwrap();
+        let login = tokio::spawn(async move {
+            let mut login = JottacloudProvider::new(JottacloudConfig {
+                login_token: SecretString::from(unanswered_login_token()),
+                device: "Jotta".into(),
+                mountpoint: "Archive".into(),
+                initial_path: None,
+            })
+            .with_profile_id("probelogin");
+            login.set_credential_user(Some(first));
+            login.connect().await.map_err(|e| e.to_string())
+        });
+        (good, refused, login.await.unwrap())
+    });
+    let on_worker = crate::credential_store::off_worker_probe::take();
+    assert_eq!(good, Ok(true), "the stored chain is exchanged");
+    assert_eq!(refused, Ok(false), "the refused chain falls through");
+    assert!(
+        login
+            .as_ref()
+            .is_err_and(|e| e.contains("OIDC discovery failed")),
+        "the login got to its discovery: {login:?}"
+    );
+    assert!(
+        on_worker.is_empty(),
+        "read on the async worker: {on_worker:?}"
+    );
 }

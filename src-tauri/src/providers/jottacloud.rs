@@ -314,6 +314,7 @@ impl DeletedChains {
 }
 
 fn deletion_clock() -> u64 {
+    crate::credential_store::expect_off_worker("deletion_clock");
     DELETED_CHAINS
         .lock()
         .unwrap_or_else(|e| e.into_inner())
@@ -431,7 +432,10 @@ pub struct JottacloudProvider {
     /// nothing is filed then.
     rotation_owner: Option<Option<i64>>,
     /// The [`DELETED_CHAINS`] clock when this connection began: a key deleted
-    /// later is not written back.
+    /// later is not written back. 0 until then: it is read only once
+    /// `rotation_owner` is set, and the connection that sets that
+    /// (`try_connect_with_refresh`, `begin_login_chain`) sets this first, off
+    /// the async worker, since the clock's lock is held across vault writes.
     chain_since: u64,
     /// The refresh token this connection last read from or wrote to each
     /// key (empty for an empty key). A key found holding another one was
@@ -487,7 +491,7 @@ impl JottacloudProvider {
             profile_id: String::new(),
             credential_user: None,
             rotation_owner: None,
-            chain_since: deletion_clock(),
+            chain_since: 0,
             #[cfg(test)]
             jfs_base_override: None,
             #[cfg(test)]
@@ -528,6 +532,7 @@ impl JottacloudProvider {
     /// at all is the legacy stores (`LEGACY_ONLY_ACCOUNT`). The owner its
     /// rotations are filed under is read here too, for the same reason.
     fn bind_credential_owner(&mut self) -> Result<(), ProviderError> {
+        crate::credential_store::expect_off_worker("bind_credential_owner");
         let unreadable = |e: String| {
             ProviderError::ConnectionFailed(format!(
                 "jottacloud: the active account could not be read: {e}"
@@ -786,6 +791,7 @@ impl JottacloudProvider {
 
     /// The body of [`Self::persist_refresh_token`].
     fn persist_refresh_token_now(&self) {
+        crate::credential_store::expect_off_worker("persist_refresh_token_now");
         let Some(owner) = self.rotation_owner else {
             jotta_log("Refresh token not persisted: no connection began");
             return;
@@ -1308,6 +1314,7 @@ impl JottacloudProvider {
         user: Option<i64>,
         account: &str,
     ) -> Option<(String, Option<zeroize::Zeroizing<String>>)> {
+        crate::credential_store::expect_off_worker("stored_chain_now");
         #[cfg(test)]
         if tests::READ_REFUSED.load(std::sync::atomic::Ordering::SeqCst) {
             return None;
@@ -1340,6 +1347,7 @@ impl JottacloudProvider {
         owner: Option<Option<i64>>,
         account: &str,
     ) -> LoadedChain {
+        crate::credential_store::expect_off_worker("load_refresh_chain");
         // An owner that was never read reads nothing: the stored chain may be
         // the one a pending rotation replaced, which Jotta has consumed.
         let Some(owner) = owner else {
@@ -1563,6 +1571,7 @@ impl JottacloudProvider {
     /// Read how many times each key this connection may read or write had
     /// been deleted, by any process ([`PENDING_GEN`]).
     fn note_chain_generations(&self) {
+        crate::credential_store::expect_off_worker("note_chain_generations");
         let mut generations = self
             .chain_generations
             .lock()
@@ -1602,6 +1611,7 @@ impl JottacloudProvider {
     /// error before the login token is sent: that token is single-use, and
     /// a session whose chain is kept nowhere cannot be resumed.
     fn begin_login_chain(&mut self) -> Result<(), ProviderError> {
+        crate::credential_store::expect_off_worker("begin_login_chain");
         // The login's chain begins now, on this process's clock too: a key
         // deleted while the refresh before it was tried removed nothing of it.
         self.chain_since = deletion_clock();
@@ -1673,11 +1683,15 @@ impl JottacloudProvider {
 
     /// Try to connect using a persisted refresh token (no login token needed).
     async fn try_connect_with_refresh(&mut self) -> Result<bool, ProviderError> {
-        crate::credential_store::off_async_worker(|| self.bind_credential_owner())?;
-        // The connection begins here; a login that follows begins again
-        // (`begin_login_chain`).
-        self.chain_since = deletion_clock();
-        crate::credential_store::off_async_worker(|| self.note_chain_generations());
+        crate::credential_store::off_async_worker(|| {
+            self.bind_credential_owner()?;
+            // The connection begins here; a login that follows begins again
+            // (`begin_login_chain`). Off the worker: the clock's lock is held
+            // across vault writes and deletions.
+            self.chain_since = deletion_clock();
+            self.note_chain_generations();
+            Ok::<_, ProviderError>(())
+        })?;
         #[cfg(test)]
         chain_tests::after_note(&self.profile_id);
         let own = self.refresh_token_account();
@@ -1841,20 +1855,21 @@ impl JottacloudProvider {
                 // key of the same name belongs to the legacy owner.
                 // A pending rotation Jotta refused is dead too: dropped,
                 // unless a newer rotation has replaced it meanwhile.
-                if let Some(owner) = self.rotation_owner {
-                    let key = (owner, account.clone());
-                    let mut pending = PENDING_ROTATIONS.lock().unwrap_or_else(|e| e.into_inner());
-                    let refused = pending.get(&key).is_some_and(|json| {
-                        serde_json::from_str::<serde_json::Value>(json)
-                            .ok()
-                            .and_then(|v| v["refresh_token"].as_str().map(|t| t == rt))
-                            .unwrap_or(false)
-                    });
-                    if refused {
-                        pending.remove(&key);
-                    }
-                }
                 crate::credential_store::off_async_worker(|| {
+                    if let Some(owner) = self.rotation_owner {
+                        let key = (owner, account.clone());
+                        let mut pending =
+                            PENDING_ROTATIONS.lock().unwrap_or_else(|e| e.into_inner());
+                        let refused = pending.get(&key).is_some_and(|json| {
+                            serde_json::from_str::<serde_json::Value>(json)
+                                .ok()
+                                .and_then(|v| v["refresh_token"].as_str().map(|t| t == rt))
+                                .unwrap_or(false)
+                        });
+                        if refused {
+                            pending.remove(&key);
+                        }
+                    }
                     let private = crate::user_partitions::private_token_user(
                         self.credential_user,
                         "jottacloud_refresh",
