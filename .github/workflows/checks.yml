@@ -62,6 +62,15 @@ jobs:
       - name: AppImage .zsync pairing reads the published asset list
         run: python3 -m unittest discover -s .github/scripts -p test_pair_appimage_zsync.py -v
 
+      # The real unsquashfs reads a squashfs image appended to an ELF in one
+      # test; without it that test is skipped, so it is installed here.
+      - name: Install squashfs-tools for the AppImage sources test
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends squashfs-tools
+          unsquashfs -version
+
       - name: AppImage library sources are kept for the written offer
         run: python3 -m unittest discover -s .github/scripts -p test_archive_appimage_sources.py -v
 

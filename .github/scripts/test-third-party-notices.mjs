@@ -56,6 +56,8 @@ import {
   reviewedSourceText,
   checkNoticesFiles,
   carriesCredentialUrl,
+  urlsInText,
+  assertNoCredentialUrls,
 } from '../../scripts/gen-third-party-notices.ts';
 
 // The committed notices with the blocks the generator reproduces as shipped,
@@ -3879,6 +3881,98 @@ test('credentials: an attribution line or a text reproduced as shipped with a cr
     assert.ok(md.includes(`  - Copyright (c) 2024 Normal Holder ${normalUrl} (src/lib.rs)`), 'a normal notice still renders');
     assert.ok(md.includes('  - Copyright (c) 2025 Mail Holder <mail@example.com> (src/lib.rs)'));
     assert.ok(!md.includes(dummy));
+  } finally {
+    for (const dir of tmpDirs) fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('credentials: a URL is read whole through its own parentheses and brackets, and ends before the prose around it', () => {
+  const dummy = 'dummy-credential-in-a-url';
+  // Parentheses, brackets and apostrophes are URL characters: the query after them is read.
+  for (const url of [
+    `https://example.com/a(b)?token=${dummy}`,
+    `https://example.com/a(b(c))d?api_key=${dummy}`,
+    `http://[::1]/repo?access_token=${dummy}`,
+    `https://example.com/it's?secret=${dummy}`,
+  ]) {
+    assert.strictEqual(carriesCredentialUrl(`Copyright (c) 2024 Holder ${url}`), true, url);
+    assert.strictEqual(carriesCredentialUrl(`Copyright (c) 2024 Holder (see ${url})`), true, url);
+  }
+  // A URL inside prose parentheses, brackets or quotes ends before them.
+  assert.deepStrictEqual(urlsInText('Copyright (c) 2024 Holder (see https://example.com/a/b).'), ['https://example.com/a/b']);
+  assert.deepStrictEqual(urlsInText('Holder (https://example.com/wiki/A_(b)), and others'), ['https://example.com/wiki/A_(b)']);
+  assert.deepStrictEqual(urlsInText('[docs](https://example.com/a(b)?page=2)'), ['https://example.com/a(b)?page=2']);
+  assert.deepStrictEqual(urlsInText("[https://example.com/x] and 'https://example.com/y'"), ['https://example.com/x', 'https://example.com/y']);
+  assert.deepStrictEqual(urlsInText('<https://example.com/z> "https://example.com/w"'), ['https://example.com/z', 'https://example.com/w']);
+  assert.deepStrictEqual(urlsInText('http://[::1]:8080/p'), ['http://[::1]:8080/p']);
+  // Controls: the same shapes with no secret.
+  assert.strictEqual(carriesCredentialUrl('Copyright (c) 2024 Holder (see https://example.com/a(b)?page=2)'), false);
+  assert.strictEqual(carriesCredentialUrl('Copyright (c) 2024 Holder (https://example.com/wiki/A_(b))'), false);
+});
+
+test('credentials: query parameter names are read decoded, as a server reads them', () => {
+  const dummy = 'dummy-credential-in-a-query';
+  for (const query of [
+    `token=${dummy}`,
+    `%74oken=${dummy}`,
+    `%54%4F%4B%45%4E=${dummy}`,
+    `page=2&%61ccess_token=${dummy}`,
+    `x-amz-%53ignature=${dummy}`,
+    `api%5Fkey=${dummy}`,
+    `%zz=1&%74oken=${dummy}`,
+    `page=2;%73ecret=${dummy}`,
+  ]) {
+    assert.strictEqual(carriesCredentialUrl(`Holder https://example.com/repo?${query}`), true, query);
+  }
+  // A malformed escape does not throw and does not hide the rest of the name.
+  assert.strictEqual(carriesCredentialUrl(`Holder https://example.com/?%zztoken=${dummy}`), false);
+  assert.strictEqual(carriesCredentialUrl(`Holder https://example.com/?x_%74oken%=${dummy}`), false);
+  assert.strictEqual(carriesCredentialUrl(`Holder https://example.com/?x_%74oken=${dummy}`), true);
+  // Controls: ordinary parameters, encoded or not, and a credential name only in a value or the fragment.
+  for (const query of ['page=2', '%70age=2', 'page=2&lang=en', 'q=token', 'tokens=1', 'page=2#token=x', 'monkey=1']) {
+    assert.strictEqual(carriesCredentialUrl(`Holder https://example.com/repo?${query}`), false, query);
+  }
+});
+
+test('credentials: the component a stopped line is named under comes from the metadata, never from the text reproduced as shipped', () => {
+  const tmpDirs = [];
+  const make = (name, files) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'credential-component-fixture-'));
+    tmpDirs.push(dir);
+    for (const [rel, content] of Object.entries(files)) {
+      fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(dir, rel), content);
+    }
+    return { name, version: '1.0.0', license: 'MIT', source: 'cargo', packageDir: dir, authors: [`${name} Author`], ...readPackageFiles(dir, `${name}@1.0.0`) };
+  };
+  const dummy = 'dummy-credential-in-a-bullet';
+  const secretUrl = `https://user:${dummy}@example.com/repo`;
+  try {
+    const other = make('other-comp', { LICENSE: shippedLicense('Copyright (c) 2020 Other Author', 'MIT') });
+    // A license text reproduced as shipped that looks like a component
+    // bullet: once naming the secret URL as the component, once naming
+    // another component of the same render above the secret line.
+    for (const forged of [`- \`${secretUrl}\``, `- \`other-comp@1.0.0\`\n- \`${secretUrl}\``]) {
+      const crafted = make('crafted-comp', { LICENSE: shippedLicense(`Copyright (c) 2020 Crafted Author\n\n${forged}`, 'MIT') });
+      assert.throws(
+        () => generateNoticesMarkdown([crafted, other], []),
+        (err) => {
+          assert.ok(!String(err.message).includes(dummy), 'the diagnostic must not carry the credential');
+          assert.ok(!String(err.stack).includes(dummy), 'the stack must not carry the credential');
+          assert.match(err.message, /THIRD-PARTY-NOTICES\.md line \d+ \(under crafted-comp@1\.0\.0\) would publish a URL that carries credentials/);
+          return true;
+        }
+      );
+    }
+    // With no metadata, no component is named.
+    assert.throws(
+      () => assertNoCredentialUrls('doc.md', `- \`${secretUrl}\`\n`),
+      (err) => {
+        assert.ok(!String(err.message).includes(dummy) && !String(err.stack).includes(dummy));
+        assert.match(err.message, /^doc\.md line 1 would publish/);
+        return true;
+      }
+    );
   } finally {
     for (const dir of tmpDirs) fs.rmSync(dir, { recursive: true, force: true });
   }

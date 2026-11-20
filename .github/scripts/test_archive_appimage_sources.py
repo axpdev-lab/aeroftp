@@ -7,9 +7,12 @@ The publish job runs the script before it publishes: a source it could not
 keep, or a release it could not read back, must stop the job, never pass.
 
 The stub gh keeps the release in a folder (one file per asset, plus
-release.json), the stub AppImage answers `--appimage-extract` with the list a
-test gives it, and the stub fetch serves a Launchpad laid out as
-<folder>/<source>/<version>/<file>.
+release.json), the stub fetch serves a Launchpad laid out as
+<folder>/<source>/<version>/<file>, and the AppImage is never run: a stub
+AppImage is an ELF header followed by a stub squashfs image that names the list
+a test gives it, which the stub unsquashfs extracts at the offset the script
+reads from the ELF header. One test extracts a real squashfs image with the real
+unsquashfs when squashfs-tools is installed.
 """
 
 from pathlib import Path
@@ -17,7 +20,9 @@ import hashlib
 import io
 import json
 import os
+import shutil
 import subprocess
+import sys
 import tarfile
 import tempfile
 import unittest
@@ -136,14 +141,67 @@ rest="${url#*+sourcefiles/}"
 if [ -f "$dir/$rest" ]; then cp "$dir/$rest" "$out"; echo 200; else echo 404; fi
 '''
 
-STUB_APPIMAGE = r'''#!/usr/bin/env bash
-[ "$1" = --appimage-extract ] || exit 2
-mkdir -p "squashfs-root/$(dirname "$2")"
-cp "$STUB_LIST" "squashfs-root/$2"
+# unsquashfs as the script runs it: `-no-xattrs -o <offset> -d <folder>
+# <image> <path>`. The image at the offset is `hsqs` and the name of a list
+# next to the state folder; the stub writes that list at <folder>/<path>. It
+# reads nothing from its environment (the script gives it only PATH and a
+# locale) and records the environment it got, and every call, in the state.
+STUB_UNSQUASHFS = r'''#!/usr/bin/env python3
+import json, os, sys
+here = os.path.dirname(os.path.dirname(os.path.realpath(sys.argv[0])))
+state = os.path.join(here, 'state')
+with open(os.path.join(state, 'unsquashfs.log'), 'a') as f:
+    f.write(json.dumps({'argv': sys.argv[1:], 'env': dict(os.environ)}) + '\n')
+args = sys.argv[1:]
+if args[0] != '-no-xattrs' or args[1] != '-o' or args[3] != '-d' or len(args) != 7:
+    print('unexpected unsquashfs call: ' + ' '.join(args), file=sys.stderr)
+    sys.exit(2)
+offset, dest, image, path = int(args[2]), args[4], args[5], args[6]
+with open(image, 'rb') as f:
+    f.seek(offset)
+    data = f.read()
+if data[:4] != b'hsqs':
+    print("Can't find a SQUASHFS superblock on " + image, file=sys.stderr)
+    sys.exit(1)
+kind, _, name = data[4:].decode().strip().partition(' ')
+os.makedirs(os.path.join(dest, os.path.dirname(path)))
+if kind == 'symlink':
+    os.symlink(name, os.path.join(dest, path))
+else:
+    with open(os.path.join(here, name), 'rb') as src, open(os.path.join(dest, path), 'wb') as out:
+        out.write(src.read())
 '''
 
-# The AppImage a release already distributes: it answers with its own list.
-STUB_PUBLISHED_APPIMAGE = STUB_APPIMAGE.replace('$STUB_LIST', '$STUB_PUBLISHED_LIST')
+
+def elf_header(shoff, shentsize, shnum, bits=64, order='little'):
+    """An ELF header whose section header table ends at shoff + shentsize * shnum."""
+    if bits == 64:
+        head = bytearray(64)
+        head[0x28:0x30] = shoff.to_bytes(8, order)
+        head[0x3A:0x3C] = shentsize.to_bytes(2, order)
+        head[0x3C:0x3E] = shnum.to_bytes(2, order)
+    else:
+        head = bytearray(52)
+        head[0x20:0x24] = shoff.to_bytes(4, order)
+        head[0x2E:0x30] = shentsize.to_bytes(2, order)
+        head[0x30:0x32] = shnum.to_bytes(2, order)
+    head[:4] = b'\x7fELF'
+    head[4] = 2 if bits == 64 else 1
+    head[5] = 1 if order == 'little' else 2
+    return bytes(head)
+
+
+def stub_appimage(payload, bits=64, order='little'):
+    """An AppImage of an ELF header, its section header table and a stub
+    squashfs image: `payload` is `file <list>` or `symlink <target>`."""
+    size = 64 if bits == 64 else 52
+    return elf_header(size, 64, 3, bits, order) + bytes(64 * 3) + b'hsqs' + payload.encode() + b'\n'
+
+
+# The AppImage of this build, and the one a release already distributes,
+# each with its own list.
+STUB_APPIMAGE = stub_appimage('file BUNDLED-LIBRARIES.txt')
+STUB_PUBLISHED_APPIMAGE = stub_appimage('file PUBLISHED-BUNDLED-LIBRARIES.txt')
 
 
 def sha(data):
@@ -160,13 +218,13 @@ class ArchiveAppImageSources(unittest.TestCase):
         self.launchpad.mkdir()
         self.bin = self.dir / 'bin'
         self.bin.mkdir()
-        for name, body in (('gh', STUB_GH), ('fetch', STUB_FETCH)):
+        for name, body in (('gh', STUB_GH), ('fetch', STUB_FETCH), ('unsquashfs', STUB_UNSQUASHFS)):
             (self.bin / name).write_text(body)
             (self.bin / name).chmod(0o755)
         self.release_dir = self.dir / 'release-assets' / 'appimage'
         self.release_dir.mkdir(parents=True)
         self.appimage = self.release_dir / 'AeroFTP_9.8.7_amd64.AppImage'
-        self.appimage.write_text(STUB_APPIMAGE)  # left 0644: the script runs a copy
+        self.appimage.write_bytes(STUB_APPIMAGE)  # 0644: never run
         self.list = self.dir / 'BUNDLED-LIBRARIES.txt'
 
     def tearDown(self):
@@ -463,6 +521,13 @@ class ArchiveAppImageSources(unittest.TestCase):
         step = job[job.rindex('- name:', 0, keep):keep]
         self.assertIn('GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}', step)
         self.assertNotIn('continue-on-error', step)
+        # unsquashfs, which reads the list without running the AppImage, is
+        # installed before, in a step that holds no token.
+        install = job.index('- name: Install squashfs-tools for the AppImage sources')
+        self.assertLess(install, keep)
+        install_step = job[install:job.index('- name:', install + 1)]
+        self.assertIn('sudo apt-get install -y --no-install-recommends squashfs-tools', install_step)
+        self.assertNotIn('GH_TOKEN', install_step)
         # Every tag's publish job shares one group, never cancelled: two runs
         # never write the record at once.
         # queue: max keeps every waiting tag: with the default single queue a
@@ -473,7 +538,7 @@ class ArchiveAppImageSources(unittest.TestCase):
         """The release `tag` already distributes an AppImage whose list is `lines`."""
         folder = self.state / 'tags' / tag
         folder.mkdir(parents=True)
-        (folder / self.appimage.name).write_text(STUB_PUBLISHED_APPIMAGE)
+        (folder / self.appimage.name).write_bytes(STUB_PUBLISHED_APPIMAGE)
         (self.dir / 'PUBLISHED-BUNDLED-LIBRARIES.txt').write_text(HEADER + ''.join(
             f'usr/lib/{lib} {pkg} 1.0 {src} {ver} https://launchpad.net/ubuntu/+source/{src}/{ver}\n'
             for lib, pkg, src, ver in lines
@@ -511,6 +576,103 @@ class ArchiveAppImageSources(unittest.TestCase):
         self.publish_appimage('v9.8.7', ('fallback/libXi.so.6', 'libxi6', 'libxi', '2:1.8-1build1'))
         self.refused(self.run_script(STUB_FAIL='tag-download'), r'cannot download the published AeroFTP_9\.8\.7_amd64\.AppImage of v9\.8\.7')
         self.assertFalse((self.state / 'release.json').exists())
+
+
+    # An AppImage that writes a marker when it runs, and otherwise answers the
+    # `--appimage-extract` the script once ran it with: a published AppImage
+    # is a download, and the job holds a token that writes the releases.
+    def runnable_appimage(self, marker, list_path):
+        script = (
+            f'#!/bin/sh\nenv > "{marker}"\n'
+            f'mkdir -p "squashfs-root/$(dirname "$2")"\ncp "{list_path}" "squashfs-root/$2"\n'
+        )
+        return script.encode()
+
+    def test_the_appimage_is_never_run_published_or_rebuilt(self):
+        self.two_sources()
+        marker = self.dir / 'ran'
+        # The published AppImage of a rerun.
+        self.publish_appimage('v9.8.7', ('fallback/libXi.so.6', 'libxi6', 'libxi', '2:1.8-1build1'))
+        published = self.state / 'tags' / 'v9.8.7' / self.appimage.name
+        published.write_bytes(self.runnable_appimage(marker, self.dir / 'PUBLISHED-BUNDLED-LIBRARIES.txt'))
+        published.chmod(0o755)
+        self.refused(self.run_script(GH_TOKEN='dummy-token-value'), r'AeroFTP_9\.8\.7_amd64\.AppImage is not an ELF AppImage')
+        self.assertFalse(marker.exists(), 'the published AppImage ran')
+        self.assertFalse((self.state / 'release.json').exists())
+        # This build's AppImage, when the release has none yet.
+        shutil.rmtree(self.state / 'tags')
+        self.appimage.write_bytes(self.runnable_appimage(marker, self.list))
+        self.appimage.chmod(0o755)
+        self.refused(self.run_script(GH_TOKEN='dummy-token-value'), r'is not an ELF AppImage')
+        self.assertFalse(marker.exists(), 'the AppImage of this build ran')
+        self.assertFalse((self.state / 'release.json').exists())
+
+    def test_the_extractor_gets_no_token_and_reads_at_the_end_of_the_elf(self):
+        self.two_sources()
+        self.ok(self.run_script(GH_TOKEN='dummy-token-value', GITHUB_TOKEN='dummy-token-value'))
+        calls = [json.loads(line) for line in (self.state / 'unsquashfs.log').read_text().splitlines()]
+        self.assertEqual(len(calls), 1)
+        argv, env = calls[0]['argv'], calls[0]['env']
+        # The 64-byte header, then three 64-byte section headers.
+        self.assertEqual(argv[:3], ['-no-xattrs', '-o', str(64 + 64 * 3)])
+        self.assertEqual(argv[-1], 'usr/share/doc/BUNDLED-LIBRARIES.txt')
+        self.assertEqual(sorted(env), ['LC_ALL', 'PATH'])
+        self.assertFalse([k for k, v in env.items() if 'dummy-token-value' in v])
+        self.assertEqual([e['source'] for e in self.record()], ['gtk+3.0', 'libxi'])
+
+    def test_the_offset_is_read_from_32_and_64_bit_headers_of_either_byte_order(self):
+        self.two_sources()
+        for bits, order in ((64, 'big'), (32, 'little'), (32, 'big')):
+            self.appimage.write_bytes(stub_appimage('file BUNDLED-LIBRARIES.txt', bits, order))
+            self.ok(self.run_script())
+            argv = json.loads((self.state / 'unsquashfs.log').read_text().splitlines()[-1])['argv']
+            self.assertEqual(argv[2], str((64 if bits == 64 else 52) + 64 * 3), (bits, order))
+
+    def test_an_appimage_without_a_squashfs_image_at_the_end_of_its_elf_is_refused(self):
+        self.two_sources()
+        self.appimage.write_bytes(elf_header(64, 64, 3) + bytes(64 * 3) + b'not squashfs')
+        self.refused(self.run_script(), r'has no squashfs image at the end of its ELF runtime \(offset 256\)')
+        self.appimage.write_bytes(elf_header(10 ** 9, 64, 3))
+        self.refused(self.run_script(), r'has no squashfs image at the end of its ELF runtime')
+        self.appimage.write_bytes(b'\x7fELF')
+        self.refused(self.run_script(), r'is not an ELF AppImage')
+        # Only the lookup of the tag's release: the archive is not touched.
+        self.assertFalse((self.state / 'unsquashfs.log').exists())
+        self.assertEqual({c[2].rsplit('/', 1)[-1] for c in self.calls()}, {'v9.8.7'})
+        self.assertFalse((self.state / 'release.json').exists())
+
+    def test_a_list_that_is_a_link_out_of_the_image_is_refused(self):
+        # The link names a readable list: only the check of the path stops it.
+        self.two_sources()
+        self.appimage.write_bytes(stub_appimage(f'symlink {self.list}'))
+        self.refused(self.run_script(), r'cannot extract usr/share/doc/BUNDLED-LIBRARIES\.txt from AeroFTP_9\.8\.7_amd64\.AppImage: it is not a regular file of the image')
+        self.assertFalse((self.state / 'release.json').exists())
+
+    def test_without_unsquashfs_the_job_stops_before_any_call(self):
+        self.two_sources()
+        bare = self.dir / 'bare-bin'
+        bare.mkdir()
+        shutil.copy(self.bin / 'gh', bare / 'gh')
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT), str(self.release_dir), '9.8.7'],
+            env={'PATH': str(bare), 'GITHUB_REPOSITORY': REPO, 'GITHUB_REF_NAME': 'v9.8.7', 'GITHUB_SHA': 'a' * 40, 'STUB_STATE': str(self.state)},
+            capture_output=True, text=True,
+        )
+        self.refused(result, r'unsquashfs \(squashfs-tools\) is not installed')
+        self.assertEqual(self.calls(), [])
+
+    @unittest.skipUnless(shutil.which('mksquashfs') and shutil.which('unsquashfs'), 'squashfs-tools is not installed')
+    def test_a_real_squashfs_image_appended_to_an_elf_is_read_with_the_real_unsquashfs(self):
+        self.two_sources()
+        root = self.dir / 'image-root'
+        (root / 'usr/share/doc').mkdir(parents=True)
+        shutil.copy(self.list, root / 'usr/share/doc/BUNDLED-LIBRARIES.txt')
+        image = self.dir / 'image.squashfs'
+        subprocess.run(['mksquashfs', str(root), str(image), '-quiet', '-noappend', '-all-root'], check=True, capture_output=True)
+        self.appimage.write_bytes(elf_header(64, 64, 3) + bytes(64 * 3) + image.read_bytes())
+        (self.bin / 'unsquashfs').unlink()
+        self.ok(self.run_script())
+        self.assertEqual([e['source'] for e in self.record()], ['gtk+3.0', 'libxi'])
 
 
 if __name__ == '__main__':

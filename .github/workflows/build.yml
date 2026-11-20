@@ -939,6 +939,17 @@ jobs:
       # three years after the last release that ships it. It runs before this
       # release is published, so the offer holds from the first download: a
       # source that cannot be fetched, checked or kept stops the publication.
+      # The list is read from the AppImage's squashfs image with unsquashfs,
+      # never by running the AppImage, which may be the one downloaded from
+      # the release: no code of it runs where this token is.
+      - name: Install squashfs-tools for the AppImage sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends squashfs-tools
+          unsquashfs -version
+
       - name: Keep the source of the libraries the AppImage bundles
         shell: bash
         env:

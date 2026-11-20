@@ -4271,7 +4271,15 @@ async fn install_windows_update(
 
         info!("Installing Windows update: format={format}, path={downloaded_path}");
 
-        windows_update_helper::install_with_helper(&app, format, downloaded)?;
+        // The helper hand-off waits for the helper's confirmation (seconds):
+        // a blocking thread keeps that wait off the async runtime's workers.
+        let helper_app = app.clone();
+        let helper_zip = downloaded.to_path_buf();
+        tauri::async_runtime::spawn_blocking(move || {
+            windows_update_helper::install_with_helper(&helper_app, format, &helper_zip)
+        })
+        .await
+        .map_err(|e| format!("The update installer stopped unexpectedly: {e}"))??;
 
         let from_version = app.package_info().version.to_string();
         write_update_marker(&app, &from_version, "unknown", format, &verification_mode);

@@ -41,6 +41,14 @@ AppImage, downloaded from the release, never from the rebuild. The publish job r
 it under a concurrency group shared by every tag, so two runs never write the
 record at once.
 
+The list is read without running the AppImage: a type 2 AppImage is an ELF
+runtime with a squashfs image appended at the end of the ELF (the end of its
+section header table), and unsquashfs reads that image at that offset. The
+published AppImage is a download, and this job holds a token that can write
+the releases: no code of it runs here, and unsquashfs runs with an
+environment that holds no token. unsquashfs is squashfs-tools, which the
+publish job installs.
+
 Any step that cannot be done or checked stops with an error: the publish job
 then does not publish, because the AppImage's offer names this release.
 No AppImage in the folder (the Linux build failed) is not an error: nothing
@@ -277,6 +285,57 @@ def distributed_appimage(repo: str, tag: str, built: Path, work: Path) -> Path:
     return published
 
 
+def squashfs_offset(image: Path) -> int:
+    """Where the squashfs image of a type 2 AppImage starts: the end of its
+    ELF runtime, after the section header table (e_shoff + e_shentsize *
+    e_shnum), as the runtime itself computes it. Read from the file, never by
+    running it."""
+    with image.open('rb') as f:
+        head = f.read(64)
+        if len(head) < 52 or head[:4] != b'\x7fELF' or head[4] not in (1, 2) or head[5] not in (1, 2):
+            raise Refused(f'{image.name} is not an ELF AppImage: cannot find its squashfs image without running it')
+        order = 'little' if head[5] == 1 else 'big'
+        if head[4] == 2:
+            if len(head) < 64:
+                raise Refused(f'{image.name} has a truncated ELF header')
+            shoff, shentsize, shnum = (int.from_bytes(head[a:b], order) for a, b in ((0x28, 0x30), (0x3A, 0x3C), (0x3C, 0x3E)))
+        else:
+            shoff, shentsize, shnum = (int.from_bytes(head[a:b], order) for a, b in ((0x20, 0x24), (0x2E, 0x30), (0x30, 0x32)))
+        offset = shoff + shentsize * shnum
+        f.seek(offset)
+        if offset <= 0 or f.read(4) != b'hsqs':
+            raise Refused(f'{image.name} has no squashfs image at the end of its ELF runtime (offset {offset})')
+    return offset
+
+
+def extract_list(image: Path, work: Path) -> Path:
+    """LIST_IN_APPIMAGE from the squashfs image of `image`, extracted with
+    unsquashfs: the AppImage is not run. unsquashfs gets only PATH and a
+    locale, so no token of this job reaches it, and the list must be a
+    regular file of the image at its own path: a symbolic link, the list's or
+    a folder's above it, would make this job read a file of the runner
+    instead."""
+    offset = squashfs_offset(image)
+    unsquashfs = shutil.which('unsquashfs')
+    if unsquashfs is None:
+        raise Refused('unsquashfs (squashfs-tools) is not installed: the list is read from the AppImage without running it')
+    root = work / 'squashfs-root'
+    extracted = subprocess.run(
+        [unsquashfs, '-no-xattrs', '-o', str(offset), '-d', str(root), str(image), LIST_IN_APPIMAGE],
+        cwd=work, capture_output=True, text=True,
+        env={'PATH': os.environ.get('PATH', os.defpath), 'LC_ALL': 'C'},
+    )
+    list_path = root / LIST_IN_APPIMAGE
+    try:
+        inside = list_path.resolve() == root.resolve() / LIST_IN_APPIMAGE
+    except (OSError, RuntimeError):  # a loop of symbolic links
+        inside = False
+    if extracted.returncode != 0 or not inside or not list_path.is_file():
+        detail = extracted.stderr.strip() if extracted.returncode != 0 else 'it is not a regular file of the image'
+        raise Refused(f'cannot extract {LIST_IN_APPIMAGE} from {image.name}: {detail}')
+    return list_path
+
+
 def read_state(body: str) -> list[dict] | None:
     """The record in the release body, or None when the body has none."""
     start = body.find(STATE_OPEN)
@@ -320,17 +379,13 @@ def main(argv: list[str]) -> int:
         return 0
     if len(appimages) > 1:
         raise Refused(f'more than one AppImage in {folder}: {[a.name for a in appimages]}')
+    if shutil.which('unsquashfs') is None:
+        raise Refused('unsquashfs (squashfs-tools) is not installed: the list is read from the AppImage without running it')
     when = today()
     with tempfile.TemporaryDirectory() as tmp:
         work = Path(tmp)
         source = distributed_appimage(repo, os.environ['GITHUB_REF_NAME'], appimages[0], work)
-        runner = work / 'appimage'
-        shutil.copyfile(source, runner)
-        runner.chmod(0o755)
-        extracted = subprocess.run([str(runner), '--appimage-extract', LIST_IN_APPIMAGE], cwd=work, capture_output=True, text=True)
-        list_path = work / 'squashfs-root' / LIST_IN_APPIMAGE
-        if extracted.returncode != 0 or not list_path.is_file():
-            raise Refused(f'cannot extract {LIST_IN_APPIMAGE} from {source.name}: {extracted.stderr.strip()}')
+        list_path = extract_list(source, work)
         needed = bundled_sources(list_path.read_text(encoding='utf-8'))
 
         release = lookup(repo)

@@ -678,18 +678,34 @@ fn record_cancelled_batch(exe_dir: &Path, token: &str) -> io::Result<()> {
 
 #[derive(Default)]
 struct CancellationState {
+    /// A cancelled batch in `NEXT_DIR` is not gone yet: that slot is masked,
+    /// and no staging starts.
     unfinished: bool,
+    /// The same for `PREV_DIR`, where a later staging set the batch aside:
+    /// that slot is masked.
+    unfinished_prev: bool,
     identity_unresolved: bool,
 }
 
+impl CancellationState {
+    /// Whether the slot `name` still holds a cancelled batch, which no pass
+    /// reads, installs or offers.
+    fn masks(&self, name: &str) -> bool {
+        (name == NEXT_DIR && self.unfinished) || (name == PREV_DIR && self.unfinished_prev)
+    }
+}
+
 /// Applies persisted token-scoped cancellation markers in `exe_dir` while the
-/// caller holds the batch lock. An unfinished confirmed cancellation masks only
-/// `NEXT_DIR`; an unreadable identity also keeps portable detection `Pending`
-/// unless another valid marker proves portable mode.
+/// caller holds the batch lock. An unfinished confirmed cancellation masks the
+/// slot that still holds it (`NEXT_DIR` or `PREV_DIR`) and only that one; an
+/// unreadable identity also keeps portable detection `Pending` unless another
+/// valid marker proves portable mode. Remnants of owned batches are finished
+/// first (`finish_owned_remnants`).
 fn apply_cancelled_batches_with(
     exe_dir: &Path,
     read_id: &impl Fn(&Path) -> io::Result<String>,
 ) -> CancellationState {
+    finish_owned_remnants(exe_dir, read_id);
     let Ok(entries) = std::fs::read_dir(exe_dir) else {
         return CancellationState::default();
     };
@@ -717,6 +733,16 @@ fn apply_cancelled_batches_with(
             SlotCancel::Partial => state.unfinished = true,
             SlotCancel::Removed => restore_set_aside(exe_dir),
             SlotCancel::NotThere => {}
+        }
+        // The same in the set-aside slot: the mode probe, the notices lookup
+        // and the install pass read it too, for the exe the batch names.
+        match in_prev {
+            SlotCancel::Unreadable => {
+                state.unfinished_prev = true;
+                state.identity_unresolved = true;
+            }
+            SlotCancel::Partial => state.unfinished_prev = true,
+            SlotCancel::Removed | SlotCancel::NotThere => {}
         }
         // The marker goes once neither slot can still hold the batch: a
         // later staging may have set it aside, and a set-aside batch the
@@ -755,6 +781,17 @@ fn cancel_in_slots(
     read_id: &impl Fn(&Path) -> io::Result<String>,
 ) -> (SlotCancel, SlotCancel) {
     let cancel = |dir: PathBuf| -> SlotCancel {
+        // What a removal stopped after the key left: the batch is still this
+        // token's, by its identity and the ledger, until it is gone.
+        if let Some(id) = owned_remnant_id(exe_dir, &dir, read_id) {
+            return if id != token {
+                SlotCancel::NotThere
+            } else if finish_remnant(exe_dir, &dir, &id) {
+                SlotCancel::Removed
+            } else {
+                SlotCancel::Partial
+            };
+        }
         match batch_ownership_with(exe_dir, &dir, read_id) {
             BatchOwnership::Unowned => return SlotCancel::NotThere,
             BatchOwnership::Unreadable => return SlotCancel::Unreadable,
@@ -790,6 +827,69 @@ fn restore_set_aside(exe_dir: &Path) {
         && !batch_id(&prev).is_some_and(|id| cancel_marker_path(exe_dir, &id).exists())
     {
         let _ = std::fs::rename(&prev, &next);
+    }
+}
+
+/// The identity of the owned batch whose removal stopped at `dir` after its
+/// key: `remove_batch` removes the documents, then the key, then the identity
+/// (`staging.id`), so a process that holds the identity open without delete
+/// sharing leaves a folder with only that file. Without a key it is no batch
+/// (`is_batch`), and nothing else would ever remove it: a staging then finds
+/// a folder it does not own at the batch's name. It is still AeroFTP's when
+/// the ledger records that identity, which only a staging writes. `None` for
+/// anything else, and when any entry cannot be checked now.
+fn owned_remnant_id(
+    exe_dir: &Path,
+    dir: &Path,
+    read_id: &impl Fn(&Path) -> io::Result<String>,
+) -> Option<String> {
+    let absent = |path: &Path| {
+        let found = std::fs::symlink_metadata(path);
+        matches!(found, Err(e) if e.kind() == io::ErrorKind::NotFound)
+    };
+    if !std::fs::symlink_metadata(dir).ok()?.is_dir()
+        || !absent(&dir.join(KEY_FILE))
+        || !DOCS.iter().all(|name| absent(&dir.join(name)))
+    {
+        return None;
+    }
+    let id_path = dir.join(STAGING_ID_FILE);
+    if !std::fs::symlink_metadata(&id_path).ok()?.is_file() {
+        return None;
+    }
+    let id = read_id(&id_path).ok()?.trim().to_string();
+    if !is_valid_batch_id(&id) {
+        return None;
+    }
+    [owned_batch_record(exe_dir), temp_batch_record(exe_dir)]
+        .iter()
+        .any(|record| matches!(read_ledger_strict(record), Ok(Some(ids)) if ids.contains(&id)))
+        .then_some(id)
+}
+
+/// Finishes the removal `owned_remnant_id` found at `dir`: the identity, then
+/// the folder if that left it empty (never recursive), then the ledger entry.
+/// Whether the folder is gone.
+fn finish_remnant(exe_dir: &Path, dir: &Path, id: &str) -> bool {
+    let id_path = dir.join(STAGING_ID_FILE);
+    let _ = std::fs::remove_file(&id_path);
+    if std::fs::symlink_metadata(&id_path).is_err() {
+        let _ = std::fs::remove_dir(dir);
+        // Nothing names the identity any more, whatever else the folder holds.
+        let _ = forget_batch(exe_dir, id);
+    }
+    std::fs::symlink_metadata(dir).is_err()
+}
+
+/// Finishes every remnant of an owned batch (`owned_remnant_id`) in the three
+/// slots: the install pass, a superseding staging and a cancellation all
+/// remove batches with `remove_batch`. Under the batch lock.
+fn finish_owned_remnants(exe_dir: &Path, read_id: &impl Fn(&Path) -> io::Result<String>) {
+    for name in [PENDING_DIR, NEXT_DIR, PREV_DIR] {
+        let dir = exe_dir.join(name);
+        if let Some(id) = owned_remnant_id(exe_dir, &dir, read_id) {
+            finish_remnant(exe_dir, &dir, &id);
+        }
     }
 }
 
@@ -1097,7 +1197,6 @@ fn probe_portable_marker_full(
         return PortableMarkerState::Pending;
     };
     let cancellations = apply_cancelled_batches_with(exe_dir, &read_id);
-    let cancelled_next = cancellations.unfinished;
     let mut any_unreadable = cancellations.identity_unresolved;
     match metadata_fn(&exe_dir.join("portable.marker")) {
         Ok(m) if m.is_file() => return PortableMarkerState::Present,
@@ -1107,7 +1206,7 @@ fn probe_portable_marker_full(
     }
     let mut staged_candidates: Vec<String> = Vec::new();
     for name in [NEXT_DIR, PENDING_DIR, PREV_DIR] {
-        if cancelled_next && name == NEXT_DIR {
+        if cancellations.masks(name) {
             continue;
         }
         let dir = exe_dir.join(name);
@@ -1537,6 +1636,14 @@ fn stage_with_commit(
     // so an unrecognized user file at `.aeroftp-pending-docs.owned` stops
     // staging untouched.
     read_ledger_strict(&owned_batch_record(exe_dir)).map_err(fail)?;
+    // An earlier removal of an owned batch that a held file stopped (the
+    // pass above tried to finish it): not the user's, and not to move away.
+    if owned_remnant_id(exe_dir, &next, &|p| std::fs::read_to_string(p)).is_some() {
+        return Err(
+            "Failed to stage the portable documents: an earlier batch could not finish cleanup yet; try again once its files are released"
+                .to_string(),
+        );
+    }
     if std::fs::symlink_metadata(&next).is_ok() && !is_owned_batch(exe_dir, &next) {
         return Err(format!(
             "Failed to stage the portable documents: {} is not an update batch owned by AeroFTP, so it is left as it is; move it away and update again",
@@ -1816,7 +1923,7 @@ fn install_pass_with_promote(
         Ok(lock) => lock,
         Err(e) => return Pending::Unavailable(e.to_string()),
     };
-    let cancelled_next = apply_cancelled_batches_with(exe_dir, &read_id).unfinished;
+    let cancellations = apply_cancelled_batches_with(exe_dir, &read_id);
     remove_staging_leftovers(exe_dir);
     let current = exe_dir.join(PENDING_DIR);
     let next = exe_dir.join(NEXT_DIR);
@@ -1847,7 +1954,7 @@ fn install_pass_with_promote(
         }
     };
     let mut source = current.clone();
-    let next_slot = if cancelled_next {
+    let next_slot = if cancellations.masks(NEXT_DIR) {
         Slot::Invalid
     } else {
         owned_slot(&next)
@@ -1884,8 +1991,13 @@ fn install_pass_with_promote(
     }
     // This exe's batch, set aside by the staging of an update that has not
     // replaced this exe: its documents install from there.
+    let prev_slot = if cancellations.masks(PREV_DIR) {
+        Slot::Invalid
+    } else {
+        owned_slot(&prev)
+    };
     if !matches!(owned_slot(&source), Slot::Key(k) if k == own_key) {
-        match owned_slot(&prev) {
+        match prev_slot {
             Slot::Key(k) if k == own_key => source = prev.clone(),
             Slot::Unreadable => {
                 let why = format!("the key of {} cannot be read now", prev.display());
@@ -2129,10 +2241,10 @@ pub(crate) fn own_pending_notices(
     // A stalled process that holds the lock does not keep About waiting:
     // past the wait, no pending notices, and About opens the installed ones.
     let _lock = lock_batches_within(exe_dir, Some(NOTICES_LOCK_WAIT)).ok()?;
-    let cancelled_next = apply_cancelled_batches(exe_dir).unfinished;
+    let cancellations = apply_cancelled_batches(exe_dir);
     let held: Vec<(PathBuf, String)> = [NEXT_DIR, PENDING_DIR, PREV_DIR]
         .iter()
-        .filter(|name| !(cancelled_next && **name == NEXT_DIR))
+        .filter(|name| !cancellations.masks(name))
         .filter_map(|name| {
             let dir = exe_dir.join(name);
             if !is_owned_batch(exe_dir, &dir) {
@@ -5250,6 +5362,207 @@ mod tests {
             read(&next, "THIRD-PARTY-NOTICES.md"),
             "notices of the update"
         );
+    }
+
+    /// What `remove_batch` leaves when a process holds `staging.id` open
+    /// without delete sharing: the documents and the key are gone, the
+    /// identity stays. The batch is still found as the cancelled attempt's,
+    /// so once the identity is released a pass finishes it, its cancellation
+    /// ends, and the next update stages without anyone moving the folder
+    /// away. The same remnant in the set-aside slot, with no cancellation
+    /// (an install pass or a superseding staging left it), goes too.
+    #[test]
+    fn a_batch_whose_removal_stopped_after_its_key_is_finished_and_the_next_update_stages() {
+        let dir = FixtureDir::new();
+        let (_stage_b, exe_b, _key_b, readme_b) = new_exe(b"B");
+        let token_b = stage_pending_docs(dir.path(), &exe_b, &[(&readme_b, "README.txt")], "b")
+            .unwrap()
+            .unwrap();
+        let next = dir.path().join(NEXT_DIR);
+        std::fs::remove_file(next.join("README.txt")).unwrap();
+        std::fs::remove_file(next.join(KEY_FILE)).unwrap();
+        record_cancelled_batch(dir.path(), &token_b).unwrap();
+        let prev = dir.path().join(PREV_DIR);
+        std::fs::create_dir(&prev).unwrap();
+        let prev_id = format!("{:032x}", rand::random::<u128>());
+        std::fs::write(prev.join(STAGING_ID_FILE), &prev_id).unwrap();
+        record_batch(dir.path(), &prev_id).unwrap();
+        let read_id = |p: &Path| std::fs::read_to_string(p);
+        assert_eq!(
+            owned_remnant_id(dir.path(), &next, &read_id).as_deref(),
+            Some(token_b.as_str())
+        );
+
+        let (_stage_c, exe_c, key_c, readme_c) = new_exe(b"C");
+        let token_c = stage_pending_docs(dir.path(), &exe_c, &[(&readme_c, "README.txt")], "c")
+            .expect("the next update stages over a finished remnant")
+            .unwrap();
+        assert_eq!(read(&next, KEY_FILE), key_c);
+        assert_eq!(batch_id(&next).as_deref(), Some(token_c.as_str()));
+        assert!(!cancel_marker_path(dir.path(), &token_b).exists());
+        assert!(!prev.exists(), "the set-aside remnant is finished too");
+        let ledger = read_ids_from(&owned_batch_record(dir.path()));
+        assert!(!ledger.contains(&token_b));
+        assert!(!ledger.contains(&prev_id));
+        assert!(ledger.contains(&token_c));
+
+        // A folder with only an identity the ledger does not record is not
+        // AeroFTP's: it stays as it is.
+        let stranger = format!("{:032x}", rand::random::<u128>());
+        let current = dir.path().join(PENDING_DIR);
+        std::fs::create_dir(&current).unwrap();
+        std::fs::write(current.join(STAGING_ID_FILE), &stranger).unwrap();
+        assert_eq!(owned_remnant_id(dir.path(), &current, &read_id), None);
+        let _lock = lock_batches(dir.path()).unwrap();
+        let _ = apply_cancelled_batches(dir.path());
+        assert_eq!(read(&current, STAGING_ID_FILE), stranger);
+    }
+
+    /// The remnant above while its identity is still held (here a read-only
+    /// folder keeps it): the cancellation stays recorded and staging waits,
+    /// saying so; once it is released the next update stages.
+    #[cfg(unix)]
+    #[test]
+    fn a_held_identity_keeps_the_cancellation_until_it_is_released() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = FixtureDir::new();
+        let (_stage_b, exe_b, _key_b, readme_b) = new_exe(b"B");
+        let token_b = stage_pending_docs(dir.path(), &exe_b, &[(&readme_b, "README.txt")], "b")
+            .unwrap()
+            .unwrap();
+        let next = dir.path().join(NEXT_DIR);
+        std::fs::remove_file(next.join("README.txt")).unwrap();
+        std::fs::remove_file(next.join(KEY_FILE)).unwrap();
+        record_cancelled_batch(dir.path(), &token_b).unwrap();
+        let (_stage_c, exe_c, key_c, readme_c) = new_exe(b"C");
+        let probe = next.join("permission-probe");
+        std::fs::write(&probe, b"probe").unwrap();
+        std::fs::set_permissions(&next, std::fs::Permissions::from_mode(0o555)).unwrap();
+        // A runner with CAP_DAC_OVERRIDE can still delete files: only the
+        // released case can be exercised there.
+        let held = std::fs::remove_file(&probe).is_err();
+        let refused = held.then(|| {
+            stage_pending_docs(dir.path(), &exe_c, &[(&readme_c, "README.txt")], "c")
+                .expect_err("staging waits for the held remnant")
+        });
+        std::fs::set_permissions(&next, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let _ = std::fs::remove_file(&probe);
+        if let Some(refused) = refused {
+            assert!(
+                refused.contains("could not finish cleanup yet"),
+                "{refused}"
+            );
+            assert!(cancel_marker_path(dir.path(), &token_b).exists());
+            assert!(next.join(STAGING_ID_FILE).is_file());
+        }
+        stage_pending_docs(dir.path(), &exe_c, &[(&readme_c, "README.txt")], "c")
+            .expect("released, the next update stages")
+            .unwrap();
+        assert_eq!(read(&next, KEY_FILE), key_c);
+        assert!(!cancel_marker_path(dir.path(), &token_b).exists());
+    }
+
+    /// B's batch was set aside by C's staging, and B's cancellation could not
+    /// remove it there (its files are held: a read-only folder here). Until
+    /// it can, no pass reads that slot: the mode probe, the notices lookup and
+    /// the install pass all skip it for B, while C's batch in NEXT_DIR stays
+    /// usable. Once released, the cancellation finishes.
+    #[cfg(unix)]
+    #[test]
+    fn a_partly_cancelled_set_aside_batch_is_masked_and_the_next_batch_stays_usable() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = FixtureDir::new();
+        let src = tempfile::tempdir().unwrap();
+        let exe_b = src.path().join("b.exe");
+        let exe_c = src.path().join("c.exe");
+        let marker = src.path().join("portable.marker");
+        let notices_b = src.path().join("notices-b.md");
+        let notices_c = src.path().join("notices-c.md");
+        std::fs::write(&exe_b, b"exe B").unwrap();
+        std::fs::write(&exe_c, b"exe C").unwrap();
+        std::fs::write(&marker, b"portable").unwrap();
+        std::fs::write(&notices_b, "notices of B").unwrap();
+        std::fs::write(&notices_c, "notices of C").unwrap();
+        let key_b = exe_key(&exe_b).unwrap();
+        let key_c = exe_key(&exe_c).unwrap();
+        let docs_b: &[(&Path, &'static str)] = &[
+            (&marker, "portable.marker"),
+            (&notices_b, "THIRD-PARTY-NOTICES.md"),
+        ];
+        let docs_c: &[(&Path, &'static str)] = &[
+            (&marker, "portable.marker"),
+            (&notices_c, "THIRD-PARTY-NOTICES.md"),
+        ];
+        let token_b = stage_pending_docs(dir.path(), &exe_b, docs_b, "b")
+            .unwrap()
+            .unwrap();
+        stage_pending_docs(dir.path(), &exe_c, docs_c, "c")
+            .unwrap()
+            .unwrap();
+        let prev = dir.path().join(PREV_DIR);
+        assert_eq!(batch_id(&prev).as_deref(), Some(token_b.as_str()));
+
+        let probe = prev.join("permission-probe");
+        std::fs::write(&probe, b"probe").unwrap();
+        std::fs::set_permissions(&prev, std::fs::Permissions::from_mode(0o555)).unwrap();
+        if std::fs::remove_file(&probe).is_ok() {
+            // CAP_DAC_OVERRIDE: nothing can be held here.
+            std::fs::set_permissions(&prev, std::fs::Permissions::from_mode(0o755)).unwrap();
+            return;
+        }
+        assert!(discard_pending_docs_within(dir.path(), &token_b, None));
+        assert!(cancel_marker_path(dir.path(), &token_b).exists());
+        assert!(prev.join("portable.marker").is_file());
+        assert!(prev.join("THIRD-PARTY-NOTICES.md").is_file());
+
+        assert_eq!(
+            probe_portable_marker_within(dir.path(), || Some(key_b.clone()), None),
+            PortableMarkerState::Absent,
+            "a cancelled batch's marker never makes its exe portable"
+        );
+        assert_eq!(
+            own_pending_notices(dir.path(), || Some(key_b.clone())),
+            None
+        );
+        let replaced = Cell::new(0);
+        let count = |_: &Path, _: &Path| -> io::Result<()> {
+            replaced.set(replaced.get() + 1);
+            Err(io::Error::other("not installed in this test"))
+        };
+        assert_eq!(
+            install_pending_docs(dir.path(), &key_b, count),
+            Pending::None
+        );
+        assert_eq!(
+            replaced.get(),
+            0,
+            "nothing of the cancelled batch is installed"
+        );
+
+        // The batch in the other slot is C's and stays usable.
+        assert_eq!(
+            probe_portable_marker_within(dir.path(), || Some(key_c.clone()), None),
+            PortableMarkerState::Present
+        );
+        let offered = own_pending_notices(dir.path(), || Some(key_c.clone()))
+            .expect("C's notices are offered");
+        assert_eq!(std::fs::read_to_string(offered).unwrap(), "notices of C");
+        assert_eq!(
+            install_pending_docs(dir.path(), &key_c, rename),
+            Pending::Docs(vec![
+                ("portable.marker", Outcome::Installed),
+                ("THIRD-PARTY-NOTICES.md", Outcome::Installed),
+            ])
+        );
+        assert_eq!(read(dir.path(), "THIRD-PARTY-NOTICES.md"), "notices of C");
+
+        std::fs::set_permissions(&prev, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::remove_file(&probe).unwrap();
+        let _lock = lock_batches(dir.path()).unwrap();
+        let state = apply_cancelled_batches(dir.path());
+        assert!(!state.unfinished_prev);
+        assert!(!prev.exists());
+        assert!(!cancel_marker_path(dir.path(), &token_b).exists());
     }
 
     #[test]

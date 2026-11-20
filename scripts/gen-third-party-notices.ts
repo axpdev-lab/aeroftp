@@ -833,28 +833,72 @@ export function publicLink(url: string | undefined): string | undefined {
 }
 
 // A URL in text: a scheme, `://` and what follows up to a space or a
-// delimiter of prose around it.
-const URL_IN_TEXT = /\b[A-Za-z][A-Za-z0-9+.-]*:\/\/[^\s<>()"'`\]]+/g;
-// The query parameters that carry a secret: a token, a key, a password, a
-// signature (a presigned URL), a session.
-const CREDENTIAL_QUERY_PARAM =
-  /[?&;](?:[a-z0-9_.-]*[_.-])?(?:access[_-]?token|auth[_-]?token|refresh[_-]?token|id[_-]?token|private[_-]?token|token|api[_-]?key|apikey|key|secret|client[_-]?secret|password|passwd|pwd|pass|auth|sig|signature|credential|security[_-]?token|session|sas)=/i;
+// character that is never part of a URL and that prose puts around one
+// (`<`, `>`, `"`, a backtick). Parentheses, brackets and apostrophes are URL
+// characters (`https://example.com/a(b)?token=`, an IPv6 host `http://[::1]/`)
+// and are kept; urlsInText then drops the closing ones the URL does not open,
+// and trailing punctuation, which belong to the prose around it.
+const URL_IN_TEXT = /\b[A-Za-z][A-Za-z0-9+.-]*:\/\/[^\s<>"`]+/g;
+const TRAILING_PROSE = /[.,;:!?']$/;
+
+/**
+ * The URLs a text carries, each without the prose punctuation that follows
+ * it: `(see https://example.com/a)` gives `https://example.com/a`, while
+ * `https://example.com/a(b)?x=1` is kept whole. Trimming only ever removes
+ * characters after the last one the URL needs, so it never hides a query.
+ */
+export function urlsInText(text: string): string[] {
+  const urls: string[] = [];
+  for (const m of text.matchAll(URL_IN_TEXT)) {
+    let url = m[0];
+    for (;;) {
+      const last = url[url.length - 1];
+      const count = (c: string) => url.split(c).length - 1;
+      if (TRAILING_PROSE.test(url)) url = url.slice(0, -1);
+      else if (last === ')' && count(')') > count('(')) url = url.slice(0, -1);
+      else if (last === ']' && count(']') > count('[')) url = url.slice(0, -1);
+      else break;
+    }
+    urls.push(url);
+  }
+  return urls;
+}
+
+// The query parameter names that carry a secret: a token, a key, a password,
+// a signature (a presigned URL), a session, with or without a prefix
+// (`X-Amz-Signature`).
+const CREDENTIAL_QUERY_PARAM_NAME =
+  /^(?:[a-z0-9_.-]*[_.-])?(?:access[_-]?token|auth[_-]?token|refresh[_-]?token|id[_-]?token|private[_-]?token|token|api[_-]?key|apikey|key|secret|client[_-]?secret|password|passwd|pwd|pass|auth|sig|signature|credential|security[_-]?token|session|sas)$/i;
+
+// A query parameter name as a server reads it: `+` is a space and a
+// percent-encoded byte is the byte (`%74oken` is `token`). A malformed
+// sequence (`%zz`, a lone `%`) stays as written, and every well-formed
+// one is still decoded, so a broken escape elsewhere in the name cannot
+// hide the name the server would read.
+function decodedQueryName(name: string): string {
+  return name.replace(/\+/g, ' ').replace(/%([0-9A-Fa-f]{2})/g, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)));
+}
 
 /**
  * Whether text carries a URL that may hold a credential: userinfo in its
  * authority (`https://user:pass@host`, `https://token@host`), or a query
- * parameter that carries a secret (`?access_token=`, `&X-Amz-Signature=`).
- * The tables publish a link through publicLink, which drops those parts; an
- * attribution line or a text reproduced as shipped cannot be altered, so a
- * match stops the generation instead.
+ * parameter that carries a secret (`?access_token=`, `&X-Amz-Signature=`),
+ * its name read decoded (`?%74oken=`). The tables publish a link through
+ * publicLink, which drops those parts; an attribution line or a text
+ * reproduced as shipped cannot be altered, so a match stops the generation
+ * instead.
  */
 export function carriesCredentialUrl(text: string): boolean {
-  for (const m of text.matchAll(URL_IN_TEXT)) {
-    const url = m[0];
+  for (const url of urlsInText(text)) {
     const authority = url.slice(url.indexOf('://') + 3).split(/[/?#]/)[0];
     if (authority.includes('@')) return true;
-    const query = url.split('#')[0];
-    if (query.includes('?') && CREDENTIAL_QUERY_PARAM.test(query.slice(query.indexOf('?')))) return true;
+    const beforeFragment = url.split('#')[0];
+    if (!beforeFragment.includes('?')) continue;
+    const params = beforeFragment.slice(beforeFragment.indexOf('?') + 1).split(/[?&;]/);
+    for (const param of params) {
+      if (!param.includes('=')) continue;
+      if (CREDENTIAL_QUERY_PARAM_NAME.test(decodedQueryName(param.slice(0, param.indexOf('='))))) return true;
+    }
   }
   return false;
 }
@@ -872,14 +916,34 @@ const recordCredentialNotice = (notice: string, where: string) => {
  * (carriesCredentialUrl): the notices ship with the app. The error names the
  * document and line, the component listed above it and, for an attribution
  * line, the package file and line it was read from; never the text.
+ *
+ * The component is one of `components` (the `name@version` of the rendered
+ * components, from their metadata), read from the last component bullet the
+ * generator wrote above the line: a bullet at the start of a line outside a
+ * fenced block. A text reproduced as shipped sits in a fenced block it cannot
+ * close (makeCodeBlock fences it with more backticks than it holds), so a
+ * bullet inside it is never read, and an identity not in `components` is never
+ * printed: the diagnostic carries no text of the notices.
  */
-export function assertNoCredentialUrls(documentName: string, content: string): void {
+export function assertNoCredentialUrls(documentName: string, content: string, components: Iterable<string> = []): void {
+  const known = new Set(components);
   const lines = content.split('\n');
+  let fence: string | undefined;
+  let component: string | undefined;
   for (let i = 0; i < lines.length; i++) {
-    if (!carriesCredentialUrl(lines[i])) continue;
-    const source = [...credentialNoticeSources].find(([notice]) => lines[i].includes(notice))?.[1];
-    let component: string | undefined;
-    for (let k = i; k >= 0 && component === undefined; k--) component = lines[k].match(/^\s*- `([^`\s]+@[^`\s]+)`/)?.[1];
+    const line = lines[i];
+    if (fence === undefined) {
+      const opening = line.match(/^(`{3,})/)?.[1];
+      if (opening) fence = opening;
+      else {
+        const id = line.match(/^- `([^`\s]+@[^`\s]+)`/)?.[1];
+        if (id !== undefined && known.has(id)) component = id;
+      }
+    } else if (line === fence) {
+      fence = undefined;
+    }
+    if (!carriesCredentialUrl(line)) continue;
+    const source = [...credentialNoticeSources].find(([notice]) => line.includes(notice))?.[1];
     throw new Error(
       `${documentName} line ${i + 1}${component ? ` (under ${component})` : ''} would publish a URL that carries credentials (userinfo, or a secret in its query)${source ? `, from the attribution line at ${source}` : ''}. The notices reproduce that text verbatim and cannot drop the credential: inspect the source locally and review the dependency before shipping it. The line is not printed.`
     );
@@ -3527,8 +3591,9 @@ export function renderNotices(
   assertNoGeneratedPlaceholders(output, verbatimBlocks);
   // Every line the notices publish, the attribution lines and the texts
   // reproduced as shipped included, before anything is written.
-  assertNoCredentialUrls(path.basename(NOTICES_FILE), output);
-  for (const doc of documents) assertNoCredentialUrls(doc.file, doc.content);
+  const componentIds = [...cargoDeps, ...npmDeps].map((c) => `${c.name}@${c.version}`);
+  assertNoCredentialUrls(path.basename(NOTICES_FILE), output, componentIds);
+  for (const doc of documents) assertNoCredentialUrls(doc.file, doc.content, componentIds);
 
   // Exclude fenced code blocks from anchor validation so license texts containing id="..." don't trigger false positives.
   // Match any markdown fenced block starting with 3 or more backticks and ending with a matching-length closing fence.
