@@ -3212,6 +3212,61 @@ mod secval_b_tests {
         );
     }
 
+    /// A failed replace of the staged `portable.marker` (a full disk, not a
+    /// lock) keeps the only copy, so startup still resolves this copy's own
+    /// data root, never the host configuration folder. Control: once the
+    /// replace works the marker is installed and the root is the same.
+    #[test]
+    fn a_failed_marker_replace_still_resolves_the_portable_data_root() {
+        let dir = tempfile::tempdir().unwrap();
+        let _dir_guard = crate::portable_docs::FolderArtifactsGuard::new(dir.path());
+        let src = tempfile::tempdir().unwrap();
+        let host = tempfile::tempdir().unwrap();
+        let exe = src.path().join("AeroFTP.exe");
+        let marker_src = src.path().join("portable.marker");
+        std::fs::write(&exe, b"new portable exe").unwrap();
+        std::fs::write(&marker_src, b"portable").unwrap();
+        let key = crate::portable_docs::exe_key(&exe).unwrap();
+        crate::portable_docs::stage_pending_docs(
+            dir.path(),
+            &exe,
+            &[(&marker_src, "portable.marker")],
+            "portable-start",
+        )
+        .unwrap();
+        let full = |_: &Path, _: &Path| -> std::io::Result<()> {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::StorageFull,
+                "There is not enough space on the disk.",
+            ))
+        };
+        let failed = crate::portable_docs::install_pending_docs(dir.path(), &key, full);
+        assert!(
+            matches!(&failed, crate::portable_docs::Pending::Docs(o) if o.iter().all(|(_, o)| matches!(o, crate::portable_docs::Outcome::Failed(_)))),
+            "{failed:?}"
+        );
+        assert!(!dir.path().join(MARKER_FILENAME).exists());
+        let expected = dir.path().join(PORTABLE_DATA_DIRNAME).join("aeroftp");
+        let resolve = |cache: &OnceLock<Option<PathBuf>>| {
+            let status = resolve_portable_root_status(
+                cache,
+                dir.path(),
+                || Some(key.clone()),
+                Some(std::time::Duration::from_millis(200)),
+            );
+            assert_eq!(status, PortableRootStatus::Portable(dir.path()));
+            try_aeroftp_data_root_for(status, "aeroftp", || Some(host.path().to_path_buf()))
+        };
+        assert_eq!(resolve(&OnceLock::new()), Ok(expected.clone()));
+        // Control: the replace works, the marker is installed beside the exe,
+        // and a fresh start resolves the same portable data root.
+        crate::portable_docs::install_pending_docs(dir.path(), &key, |from, to| {
+            std::fs::rename(from, to)
+        });
+        assert!(dir.path().join(MARKER_FILENAME).is_file());
+        assert_eq!(resolve(&OnceLock::new()), Ok(expected));
+    }
+
     #[test]
     fn portable_root_does_not_negatively_cache_while_marker_is_staged_under_held_lock() {
         let dir = tempfile::tempdir().unwrap();
