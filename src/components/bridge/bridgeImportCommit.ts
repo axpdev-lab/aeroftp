@@ -222,3 +222,46 @@ export async function commitImportedServers(
 
     return { added: added.length, updated: updated.length };
 }
+
+/**
+ * The bridge scan a panel has not settled yet (`scanId` of
+ * `import_bridge_config`). `settle` is `settle_bridge_import`: a scan id
+ * settles that scan, `null` the scans of windows that are gone. A failed
+ * settle is logged, never thrown: the next scan or opening settles again. A
+ * scan that ends after the panel closed is settled at once.
+ */
+export function createScanSettler(settle: (scanId: string | null) => Promise<unknown>) {
+    let current: string | null = null;
+    let closed = false;
+    const run = async (scanId: string | null) => {
+        try {
+            await settle(scanId);
+        } catch (e) {
+            console.warn('Bridge import: settle failed:', e);
+        }
+    };
+    const release = async () => {
+        const scanId = current;
+        current = null;
+        if (scanId) await run(scanId);
+    };
+    return {
+        /** Holds the scan just made; one made after the panel closed is settled. */
+        async track(scanId: string | null | undefined) {
+            current = scanId ?? null;
+            if (closed) await release();
+        },
+        /** Settles the scan held, if any, once. */
+        release,
+        /** The panel is showing: settles the scans no window holds. */
+        async open() {
+            closed = false;
+            await run(null);
+        },
+        /** The panel closed: settles the scan held. */
+        async close() {
+            closed = true;
+            await release();
+        },
+    };
+}

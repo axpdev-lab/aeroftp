@@ -106,6 +106,7 @@ pub mod aws_credentials_import;
 pub mod bridge_commands;
 #[cfg(test)]
 mod bridge_export_endpoint_tests;
+pub(crate) mod bridge_import_scan;
 pub mod bridge_shared;
 mod chat_history;
 pub mod cloud_config;
@@ -28924,6 +28925,7 @@ pub fn run() {
             bridge_commands::bridge_source_meta,
             bridge_commands::bridge_identify,
             bridge_commands::import_bridge_config,
+            bridge_commands::settle_bridge_import,
             bridge_commands::export_bridge_config,
             template_import::preview_configuration_template,
             template_import::import_configuration_template,

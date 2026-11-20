@@ -689,6 +689,34 @@ pub fn discard_session_blocking(
     hold_session_blocking(owner, profile_id)?.discard()
 }
 
+/// Removes the session saved for `profile_id` locally, without a sign-out on
+/// Proton, while `imported` says its UID is the one an import saved there:
+/// what a bridge scan never confirmed wrote (`bridge_import_scan`). The
+/// session is shared with the configuration it came from, so it is never
+/// revoked; one saved since (a sign-in) stays. Whether it was removed.
+pub fn discard_imported_session_blocking(
+    owner: SessionOwner,
+    profile_id: &str,
+    imported: impl Fn(&str) -> bool,
+) -> Result<bool, ProviderError> {
+    let held = hold_session_blocking(owner, profile_id)?;
+    let store = open_store()?;
+    let key = saved_key(&store, owner, Some(profile_id))?;
+    match read(&store, owner, &key)? {
+        Some(saved) if imported(&saved.tokens.uid) => {
+            held.discard()?;
+            Ok(true)
+        }
+        _ => Ok(false),
+    }
+}
+
+/// The UID of a saved session's JSON, what [`discard_imported_session_blocking`]
+/// knows an imported session by.
+pub fn session_uid(raw: &str) -> Result<String, ProviderError> {
+    Ok(parse(raw)?.tokens.uid)
+}
+
 /// The key lock of a profile's session and, when the key holds a session, its
 /// refresh lease. A Move takes them before it looks whether the source holds
 /// a session and keeps them until it has removed it: a sign-in, a restore or

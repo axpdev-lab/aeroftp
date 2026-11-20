@@ -1799,7 +1799,6 @@ fn an_rclone_import_keeps_to_the_account_it_began_in() {
         return;
     }
     let accounts = Accounts::open();
-    let owners_owner = accounts.owners_owner();
     let conf = tempfile::NamedTempFile::new().unwrap();
     std::fs::write(
         conf.path(),
@@ -1853,37 +1852,200 @@ fn an_rclone_import_keeps_to_the_account_it_began_in() {
     assert!(waited, "the first session's restore waits for its lease");
     cli_set_active_user(&accounts.store, accounts.source.id).unwrap();
     drop(lease);
-    let imported = importing.join().unwrap().unwrap();
-    let id_of = |name: &str| {
-        imported["servers"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|server| server["name"] == name)
-            .and_then(|server| server["id"].as_str())
-            .unwrap()
-            .to_string()
-    };
-    for name in ["pd-first", "pd-second"] {
-        let id = id_of(name);
-        assert!(
-            vault::load_session(owners_owner, Some(&id))
-                .unwrap()
-                .is_some(),
-            "{name}'s session is in the account the import began in"
-        );
-        assert!(
-            !has_row(&accounts.conn, accounts.source.id, &key(&id)),
-            "{name}'s session is not in the account switched to"
+    // The scan stored every secret in the account it began in, never in the
+    // one switched to, and once it ends in another account it is refused and
+    // takes back what it stored: nothing of it is left in either account.
+    let refused = importing.join().unwrap().unwrap_err();
+    assert_eq!(refused, crate::bridge_import_scan::SCAN_ACCOUNT_CHANGED);
+    for user in [accounts.legacy, accounts.source.id] {
+        assert_eq!(
+            rows_like(
+                &accounts.conn,
+                user,
+                &["-pd-first-", "-pd-second-", "-box-"]
+            ),
+            Vec::<String>::new(),
+            "nothing of the refused scan stays in account {user}"
         );
     }
-    let token = format!("oauth_dropbox_{}", id_of("box"));
-    assert!(
-        !has_row(&accounts.conn, accounts.source.id, &token),
-        "the OAuth token is not in the account switched to"
+    assert_eq!(
+        vault_keys_like(&["-pd-first-", "-pd-second-", "-box-"]),
+        Vec::<String>::new(),
+        "nothing of the refused scan stays in the vault"
     );
-    assert!(has_row(&accounts.conn, accounts.legacy, &token));
-    assert_eq!(imported["importedUserId"], json!(accounts.legacy));
+}
+
+/// The credential ids `user`'s rows hold that contain any of `parts`.
+fn rows_like(conn: &Connection, user: i64, parts: &[&str]) -> Vec<String> {
+    let mut statement = conn
+        .prepare("SELECT credential_id FROM user_credentials WHERE user_id = ?1 ORDER BY 1")
+        .unwrap();
+    statement
+        .query_map(params![user], |row| row.get::<_, String>(0))
+        .unwrap()
+        .map(Result::unwrap)
+        .filter(|id| parts.iter().any(|part| id.contains(part)))
+        .collect()
+}
+
+/// The vault keys that contain any of `parts`.
+fn vault_keys_like(parts: &[&str]) -> Vec<String> {
+    let mut keys: Vec<String> = CredentialStore::from_cache()
+        .unwrap()
+        .list_accounts()
+        .unwrap()
+        .into_iter()
+        .filter(|key| parts.iter().any(|part| key.contains(part)))
+        .collect();
+    keys.sort();
+    keys
+}
+
+/// What a bridge scan stores for the profiles the window never saves goes
+/// when the scan is settled: when the window confirms it, scans again or
+/// closes, and at the next opening for one whose window is gone. A profile
+/// the confirm saved, a secret saved since and a Proton session signed in
+/// since stay, and no session is revoked on Proton: rclone still holds it.
+#[test]
+fn a_scan_never_confirmed_takes_back_what_it_stored() {
+    if !in_isolated_child("a_scan_never_confirmed_takes_back_what_it_stored") {
+        return;
+    }
+    let accounts = Accounts::open();
+    let owners_owner = accounts.owners_owner();
+    let conf = tempfile::NamedTempFile::new().unwrap();
+    let pass = crate::rclone_import::obscure_password("ftp-secret").unwrap();
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    // A scan of the file with the Proton session `uid`: the response, and
+    // the profile ids by remote name.
+    let scan = |uid: &str| {
+        std::fs::write(
+            conf.path(),
+            format!(
+                concat!(
+                    "[pd]\ntype = protondrive\nusername = scan@example.test\n",
+                    "client_uid = {uid}\nclient_access_token = access-1\n",
+                    "client_refresh_token = refresh-1\nclient_salted_key_pass = a2V5LXBhc3N3b3JkLTE=\n",
+                    "[box]\ntype = dropbox\n",
+                    "token = {{\"access_token\":\"box-access\",\"token_type\":\"bearer\",\"refresh_token\":\"box-refresh\"}}\n",
+                    "[files]\ntype = ftp\nhost = ftp.example.test\nuser = demo\npass = {pass}\n",
+                ),
+                uid = uid,
+                pass = pass,
+            ),
+        )
+        .unwrap();
+        let imported = runtime
+            .block_on(crate::bridge_commands::import_bridge_config(
+                "rclone".into(),
+                conf.path().to_string_lossy().into_owned(),
+                None,
+            ))
+            .unwrap();
+        let id_of = |name: &str| {
+            imported["servers"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|server| server["name"] == name)
+                .and_then(|server| server["id"].as_str())
+                .unwrap()
+                .to_string()
+        };
+        let ids = (id_of("pd"), id_of("box"), id_of("files"));
+        (imported, ids)
+    };
+    // A settle, which never revokes a session on Proton: rclone still holds
+    // what it takes back.
+    let settle = |scan_id: Option<&str>| {
+        let revokes = vault::test_seams::revokes();
+        runtime
+            .block_on(crate::bridge_commands::settle_bridge_import(
+                scan_id.map(str::to_string),
+            ))
+            .unwrap();
+        assert_eq!(
+            vault::test_seams::revokes(),
+            revokes,
+            "a session taken back is never revoked"
+        );
+    };
+    let vault_value = |key: &str| CredentialStore::from_cache().unwrap().get(key).ok();
+    let uid_of = |id: &str| {
+        vault::load_session(owners_owner, Some(id))
+            .unwrap()
+            .map(|session| session.tokens.uid)
+    };
+
+    // The window confirms the Dropbox profile only.
+    let (imported, (pd, dropbox, files)) = scan("scan-uid-1");
+    let (oauth, password) = (
+        format!("oauth_dropbox_{dropbox}"),
+        format!("server_{files}"),
+    );
+    assert_eq!(uid_of(&pd).as_deref(), Some("scan-uid-1"));
+    assert!(has_row(&accounts.conn, accounts.legacy, &oauth));
+    assert!(has_row(&accounts.conn, accounts.legacy, &password));
+    assert_eq!(vault_value(&password).as_deref(), Some("ftp-secret"));
+    accounts.add_profile(accounts.legacy, &dropbox);
+    settle(imported["scanId"].as_str());
+    assert_eq!(
+        uid_of(&pd),
+        None,
+        "the session of a profile never saved goes"
+    );
+    assert!(!has_row(&accounts.conn, accounts.legacy, &key(&pd)));
+    assert!(!has_row(&accounts.conn, accounts.legacy, &password));
+    assert_eq!(vault_value(&password), None, "its vault copy goes too");
+    assert!(
+        has_row(&accounts.conn, accounts.legacy, &oauth),
+        "the token of the profile the confirm saved stays"
+    );
+
+    // A window gone with its process: its scan is settled at the next opening.
+    let (_, (pd, dropbox, files)) = scan("scan-uid-2");
+    crate::bridge_import_scan::forget_live_scans();
+    settle(None);
+    assert_eq!(uid_of(&pd), None);
+    for gone in [
+        format!("oauth_dropbox_{dropbox}"),
+        format!("server_{files}"),
+    ] {
+        assert!(!has_row(&accounts.conn, accounts.legacy, &gone), "{gone}");
+        assert_eq!(vault_value(&gone), None, "{gone}");
+    }
+
+    // A live scan of this process is never taken for an abandoned one, and
+    // what was saved since it wrote stays when it is settled.
+    let (imported, (pd, _, files)) = scan("scan-uid-3");
+    let password = format!("server_{files}");
+    settle(None);
+    assert_eq!(
+        uid_of(&pd).as_deref(),
+        Some("scan-uid-3"),
+        "a live scan stays"
+    );
+    crate::user_partitions::store_credential_dual_as(
+        &accounts.store,
+        Some(accounts.legacy),
+        &password,
+        "saved-since",
+    )
+    .unwrap();
+    runtime
+        .block_on(vault::replace_session(
+            owners_owner,
+            Some(&pd),
+            &session("signed-in-since", "g1"),
+        ))
+        .unwrap();
+    settle(imported["scanId"].as_str());
+    assert_eq!(uid_of(&pd).as_deref(), Some("signed-in-since"));
+    assert_eq!(vault_value(&password).as_deref(), Some("saved-since"));
+    assert!(has_row(&accounts.conn, accounts.legacy, &password));
 }
 
 /// A session save is whole or not made. For the legacy owner, whose session

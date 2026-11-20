@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ServerProfile } from '../../types';
-import { appendImportedProfiles, bridgeProfileKey, commitImportedServers, importedServerProfile, type ImportedServer } from './bridgeImportCommit';
+import { appendImportedProfiles, bridgeProfileKey, commitImportedServers, createScanSettler, importedServerProfile, type ImportedServer } from './bridgeImportCommit';
 import { readSavedServerProfilesForWrite, storeSavedServerProfiles } from '../../utils/serverProfileStore';
 
 vi.mock('../../utils/serverProfileStore', () => ({
@@ -320,5 +320,43 @@ describe('importedServerProfile security relaxations on bridge imports', () => {
 
         const keptFromRaw = importedServerProfile(winscpWebdavRawHttp, ['webdavScheme']);
         expect(keptFromRaw.options?.webdavScheme).toBe('http');
+    });
+});
+
+describe('createScanSettler', () => {
+    it('settles a scan once, and the scans of closed windows on opening', async () => {
+        const settle = vi.fn().mockResolvedValue(undefined);
+        const scans = createScanSettler(settle);
+        await scans.open();
+        expect(settle).toHaveBeenLastCalledWith(null);
+        await scans.track('scan-1');
+        await scans.release();
+        await scans.release();
+        expect(settle.mock.calls).toEqual([[null], ['scan-1']]);
+    });
+
+    it('settles the scan a closed panel held, and one that ends after it closed', async () => {
+        const settle = vi.fn().mockResolvedValue(undefined);
+        const scans = createScanSettler(settle);
+        await scans.track('scan-1');
+        await scans.close();
+        expect(settle.mock.calls).toEqual([['scan-1']]);
+        await scans.track('scan-2');
+        expect(settle.mock.calls).toEqual([['scan-1'], ['scan-2']]);
+        await scans.track(undefined);
+        expect(settle).toHaveBeenCalledTimes(2);
+    });
+
+    it('keeps going when a settle fails', async () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        const settle = vi.fn().mockRejectedValueOnce(new Error('locked')).mockResolvedValue(undefined);
+        const scans = createScanSettler(settle);
+        await scans.track('scan-1');
+        await expect(scans.release()).resolves.toBeUndefined();
+        expect(warn).toHaveBeenCalled();
+        await scans.track('scan-2');
+        await scans.release();
+        expect(settle.mock.calls).toEqual([['scan-1'], ['scan-2']]);
+        warn.mockRestore();
     });
 });
