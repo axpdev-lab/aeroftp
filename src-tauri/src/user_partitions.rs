@@ -5794,21 +5794,91 @@ fn deferred_revoke_prefix(user_id: i64) -> String {
     format!("{DEFERRED_REVOKE_PREFIX}{user_id}_")
 }
 
-/// Leaves the native Proton session of the purged profile `profile_id` in
-/// the locked account `user_id`, its row as it is, marked by key, so the
-/// account's next unlock ends it on Proton and removes it
-/// ([`end_deferred_proton_sessions`]): a session is never dropped without
-/// its revoke.
 #[cfg(feature = "proton-native")]
-pub(crate) fn defer_proton_revoke(user_id: i64, profile_id: &str) -> Result<(), String> {
-    let conn = open_or_init_cli()?;
+fn deferred_revoke_key(user_id: i64, profile_id: &str) -> String {
+    format!("{}{profile_id}", deferred_revoke_prefix(user_id))
+}
+
+/// The session a purge left to an unlock, named without its key: the
+/// session index fingerprint of its UID. A refresh keeps the UID and a new
+/// sign-in gets another one, so the fingerprint follows the purged session
+/// through a refresh and never names a sign-in made after the purge. `None`
+/// while no fingerprint of the purged row could be taken: the account's
+/// unlock takes it from the row it reads then.
+#[cfg(feature = "proton-native")]
+#[derive(Serialize, Deserialize)]
+struct DeferredRevoke {
+    profile_id: String,
+    fingerprint: Option<String>,
+}
+
+/// The fingerprint of the session the row `credential_id` of `user_id` holds
+/// now: from its plaintext when this process can read the account's
+/// partition, otherwise from the index entry, while it describes that very
+/// ciphertext. `None` when neither tells.
+#[cfg(feature = "proton-native")]
+fn saved_session_fingerprint(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+    credential_id: &str,
+) -> Result<Option<String>, String> {
+    let Some((blob, nonce)) = conn
+        .query_row(
+            "SELECT encrypted_blob, nonce FROM user_credentials
+             WHERE user_id = ?1 AND credential_id = ?2",
+            params![user_id, credential_id],
+            |row| Ok((row.get::<_, Vec<u8>>(0)?, row.get::<_, Vec<u8>>(1)?)),
+        )
+        .optional()
+        .map_err(|e| format!("Read the purged session: {e}"))?
+    else {
+        return Ok(None);
+    };
+    let key = session_index_key(root_key);
+    let root_secret = user_crypto::secret_key_from_bytes(root_key);
+    let read = with_user_dek(conn, &root_secret, user_id, |_, dek| {
+        let plaintext = user_crypto::decrypt_blob(dek, &nonce, &blob)
+            .map_err(|_| "the saved session could not be decrypted".to_string())?;
+        Ok(std::str::from_utf8(&plaintext)
+            .ok()
+            .and_then(proton_session_uid))
+    });
+    match read {
+        Ok(uid) => return Ok(uid.map(|uid| session_fingerprint(&key, &uid))),
+        Err(error) if error == "USER_LOCKED" => {}
+        Err(error) => return Err(error),
+    }
+    conn.query_row(
+        "SELECT fingerprint FROM proton_session_index
+         WHERE user_id = ?1 AND credential_id = ?2 AND blob_digest = ?3 AND key_tag = ?4",
+        params![
+            user_id,
+            credential_id,
+            session_blob_digest(&blob, &nonce),
+            session_index_key_tag(&key)
+        ],
+        |row| row.get(0),
+    )
+    .optional()
+    .map_err(|e| format!("Read session index: {e}"))
+}
+
+#[cfg(feature = "proton-native")]
+fn write_deferred_revoke(
+    conn: &Connection,
+    user_id: i64,
+    deferred: &DeferredRevoke,
+) -> Result<(), String> {
+    let mark = serde_json::to_string(deferred)
+        .map_err(|e| format!("Encode deferred Proton revoke: {e}"))?;
     conn.execute(
         "INSERT INTO global_state(key, value, updated_at)
          VALUES (?1, ?2, ?3)
          ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
         params![
-            format!("{}{profile_id}", deferred_revoke_prefix(user_id)),
-            profile_id,
+            deferred_revoke_key(user_id, &deferred.profile_id),
+            mark,
             now_ms()
         ],
     )
@@ -5816,13 +5886,55 @@ pub(crate) fn defer_proton_revoke(user_id: i64, profile_id: &str) -> Result<(), 
     Ok(())
 }
 
-/// Ends the sessions a purge left to `user_id`'s unlock: each on Proton
-/// unless another account holds it (the session index decides, as at any
-/// sign-out), then its row and its mark go. One that fails keeps its mark
-/// for the next unlock.
+/// Leaves the native Proton session of the purged profile `profile_id` in
+/// the locked account `user_id`, its row as it is, marked with the session
+/// it holds ([`DeferredRevoke`]), so the account's next unlock ends it on
+/// Proton and removes it ([`end_deferred_proton_sessions`]): a session is
+/// never dropped without its revoke, and a session saved there after the
+/// purge is never ended by it.
 #[cfg(feature = "proton-native")]
-fn end_deferred_proton_sessions(conn: &Connection, user_id: i64) {
-    use crate::providers::proton_native::vault;
+pub(crate) fn defer_proton_revoke(
+    store: &CredentialStore,
+    user_id: i64,
+    profile_id: &str,
+) -> Result<(), String> {
+    let conn = open_or_init_cli()?;
+    let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
+    let credential_id = crate::providers::proton_native::vault::session_key(Some(profile_id));
+    let fingerprint = saved_session_fingerprint(&conn, &root_key, user_id, &credential_id)?;
+    write_deferred_revoke(
+        &conn,
+        user_id,
+        &DeferredRevoke {
+            profile_id: profile_id.to_string(),
+            fingerprint,
+        },
+    )
+}
+
+/// Drops the mark a purge left on profile `profile_id` of `user_id`, for a
+/// writer that saved a session there for the profile: that session is the
+/// profile's own, never the purged one.
+#[cfg(feature = "proton-native")]
+pub(crate) fn clear_deferred_proton_revoke(user_id: i64, profile_id: &str) -> Result<(), String> {
+    open_or_init_cli()?
+        .execute(
+            "DELETE FROM global_state WHERE key = ?1",
+            params![deferred_revoke_key(user_id, profile_id)],
+        )
+        .map_err(|e| format!("Clear deferred Proton revoke: {e}"))?;
+    Ok(())
+}
+
+/// Ends the sessions a purge left to `user_id`'s unlock, once the unlock
+/// has indexed the account's rows: each on Proton unless another account
+/// holds it (the session index decides, as at any sign-out), then its row
+/// and its mark go. A mark whose profile the account lists again, or whose
+/// row holds another session now, goes and the row stays. One that fails
+/// keeps its mark, with the fingerprint of the row read now, for the next
+/// unlock.
+#[cfg(feature = "proton-native")]
+fn end_deferred_proton_sessions(conn: &Connection, root_key: &[u8; 32], user_id: i64) {
     let prefix = deferred_revoke_prefix(user_id);
     let marks: Vec<(String, String)> = match conn
         .prepare(
@@ -5840,13 +5952,13 @@ fn end_deferred_proton_sessions(conn: &Connection, user_id: i64) {
             return;
         }
     };
-    for (mark, profile_id) in marks {
-        let ended = vault::end_session_blocking(
-            vault::SessionOwner::for_user(Some(user_id)),
-            Some(&profile_id),
-        )
-        .map_err(|error| error.to_string())
-        .and_then(|()| {
+    for (mark, value) in marks {
+        // A mark that names no profile ends nothing.
+        let ended = match serde_json::from_str::<DeferredRevoke>(&value) {
+            Ok(deferred) => end_deferred_proton_session(conn, root_key, user_id, deferred),
+            Err(_) => Ok(false),
+        }
+        .and_then(|_| {
             conn.execute("DELETE FROM global_state WHERE key = ?1", params![mark])
                 .map(|_| ())
                 .map_err(|error| error.to_string())
@@ -5857,6 +5969,51 @@ fn end_deferred_proton_sessions(conn: &Connection, user_id: i64) {
             );
         }
     }
+}
+
+/// Ends the session `deferred` names. A mark made without a fingerprint
+/// (the account locked and its row not indexed) gets the one of the row
+/// read now, which is the purged session or its refresh: a sign-in saved
+/// there since cleared the mark. Under the session's key lock and lease the
+/// account must not list the profile again and the row must hold that
+/// session (any session, for a row no fingerprint could be taken of, so
+/// none is left behind). Whether it was ended.
+#[cfg(feature = "proton-native")]
+fn end_deferred_proton_session(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+    mut deferred: DeferredRevoke,
+) -> Result<bool, String> {
+    use crate::providers::proton_native::vault;
+    let credential_id = vault::session_key(Some(&deferred.profile_id));
+    if deferred.fingerprint.is_none() {
+        deferred.fingerprint = saved_session_fingerprint(conn, root_key, user_id, &credential_id)?;
+        if deferred.fingerprint.is_some() {
+            write_deferred_revoke(conn, user_id, &deferred)?;
+        }
+    }
+    let root_key = Zeroizing::new(*root_key);
+    let profile_id = deferred.profile_id.clone();
+    vault::end_purged_session_blocking(
+        vault::SessionOwner::for_user(Some(user_id)),
+        &profile_id,
+        move |uid| {
+            let conn = open_or_init_cli()?;
+            let listed = list_server_profiles_for(&conn, &root_key, user_id)?
+                .iter()
+                .any(|profile| {
+                    value_str(profile, &["id", "uid", "profileUid"])
+                        == Some(deferred.profile_id.as_str())
+                });
+            let fingerprint = session_fingerprint(&session_index_key(&root_key), uid);
+            Ok(!listed
+                && deferred
+                    .fingerprint
+                    .is_none_or(|purged| purged == fingerprint))
+        },
+    )
+    .map_err(|error| error.to_string())
 }
 
 /// The account that owns legacy unbound/global secrets, for one-time reads
@@ -7014,7 +7171,7 @@ fn unlock_user_inner(
     // Once the account reads its partition, the sessions a purge could not
     // end while it was locked are ended.
     #[cfg(feature = "proton-native")]
-    end_deferred_proton_sessions(conn, user_id);
+    end_deferred_proton_sessions(conn, root_key, user_id);
     let mut status = user_unlock_status(conn)?;
     status.security_reset = security_reset;
     Ok(status)

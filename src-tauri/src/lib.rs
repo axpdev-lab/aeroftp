@@ -24338,7 +24338,7 @@ async fn end_purged_proton_session(
     }
     if let Some(user) = user_id {
         if user_partitions::partition_locked(store, user)? {
-            user_partitions::defer_proton_revoke(user, profile_id)?;
+            user_partitions::defer_proton_revoke(store, user, profile_id)?;
             let name = user_partitions::cli_list_users(store)?
                 .into_iter()
                 .find(|account| account.id == user)

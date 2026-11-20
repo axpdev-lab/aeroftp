@@ -1096,6 +1096,314 @@ fn a_locked_accounts_shared_proton_session_is_not_revoked_at_its_unlock() {
     );
 }
 
+/// The target open in another process: its key at hand there, without this
+/// process's unlock, so nothing a purge left to the unlock runs.
+fn open_target_elsewhere(accounts: &Accounts) {
+    let root_secret = user_crypto::secret_key_from_bytes(&accounts.root_key);
+    let dek = resolve_user_dek_scoped(
+        &accounts.conn,
+        &root_secret,
+        accounts.target.id,
+        Some(TARGET_PASSWORD),
+    )
+    .unwrap();
+    set_user_session(accounts.target.id, dek).unwrap();
+}
+
+/// The purge of the target's profile `id`, signed in with `uid`, while the
+/// target is locked here: its session is left to the next unlock.
+fn defer_target_session(accounts: &Accounts, id: &str, uid: &str) {
+    accounts.unlock_target();
+    vault::store_session(accounts.target_owner(), Some(id), &session(uid, "r1")).unwrap();
+    accounts.unlock_source();
+    cli_set_active_user(&accounts.store, accounts.target.id).unwrap();
+    let purged = purge(id, "proton");
+    assert!(
+        purged
+            .as_ref()
+            .is_ok_and(|purged| purged.proton_session_ends_at_unlock_of.is_some()),
+        "the purge leaves the session to the next unlock: {purged:?}"
+    );
+    assert_eq!(deferred_revokes(&accounts.conn), 1);
+}
+
+/// A sign-in that ends in another process, where the target is open, after
+/// a purge here left the profile's session to the target's next unlock: the
+/// unlock keeps the new session, revokes nothing, and the mark goes.
+#[test]
+fn a_sign_in_after_a_deferred_purge_keeps_its_session_at_the_unlock() {
+    if !in_isolated_child("a_sign_in_after_a_deferred_purge_keeps_its_session_at_the_unlock") {
+        return;
+    }
+    let accounts = Accounts::open();
+    defer_target_session(&accounts, "signed-in-again", "purged-uid");
+    open_target_elsewhere(&accounts);
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(vault::replace_session(
+            accounts.target_owner(),
+            Some("signed-in-again"),
+            &session("new-sign-in-uid", "n1"),
+        ))
+        .unwrap();
+    clear_user_session();
+    let revokes = vault::test_seams::revokes();
+    accounts.unlock_target();
+    assert_eq!(
+        vault::test_seams::revokes(),
+        revokes,
+        "the unlock ends no session a sign-in saved after the purge"
+    );
+    assert_eq!(
+        accounts.target_row("signed-in-again").as_deref(),
+        Some("n1")
+    );
+    assert_eq!(deferred_revokes(&accounts.conn), 0);
+}
+
+/// As above, for a process that saves the new sign-in and leaves the mark
+/// as it is: the mark names the session the purge left, and a session with
+/// another UID is not that one.
+#[test]
+fn a_session_saved_over_a_deferred_purge_is_kept_at_the_unlock() {
+    if !in_isolated_child("a_session_saved_over_a_deferred_purge_is_kept_at_the_unlock") {
+        return;
+    }
+    let accounts = Accounts::open();
+    defer_target_session(&accounts, "saved-over", "purged-uid");
+    open_target_elsewhere(&accounts);
+    vault::store_session(
+        accounts.target_owner(),
+        Some("saved-over"),
+        &session("saved-over-uid", "n1"),
+    )
+    .unwrap();
+    clear_user_session();
+    let revokes = vault::test_seams::revokes();
+    accounts.unlock_target();
+    assert_eq!(
+        vault::test_seams::revokes(),
+        revokes,
+        "the unlock ends no session other than the one the purge left"
+    );
+    assert_eq!(accounts.target_row("saved-over").as_deref(), Some("n1"));
+    assert_eq!(deferred_revokes(&accounts.conn), 0);
+}
+
+/// The session a purge left, refreshed in another process before the unlock:
+/// a new ciphertext of the same session, which the unlock still ends.
+#[test]
+fn a_refreshed_deferred_session_still_ends_at_the_unlock() {
+    if !in_isolated_child("a_refreshed_deferred_session_still_ends_at_the_unlock") {
+        return;
+    }
+    let accounts = Accounts::open();
+    defer_target_session(&accounts, "refreshed", "refreshed-uid");
+    open_target_elsewhere(&accounts);
+    vault::store_session(
+        accounts.target_owner(),
+        Some("refreshed"),
+        &session("refreshed-uid", "r2"),
+    )
+    .unwrap();
+    clear_user_session();
+    let revokes = vault::test_seams::revokes();
+    accounts.unlock_target();
+    assert_eq!(
+        vault::test_seams::revokes(),
+        revokes + 1,
+        "a refresh keeps the session the purge left, which the unlock ends"
+    );
+    assert!(!has_row(
+        &accounts.conn,
+        accounts.target.id,
+        &key("refreshed")
+    ));
+    assert_eq!(deferred_revokes(&accounts.conn), 0);
+}
+
+/// A purged profile listed again by its account before the unlock (an
+/// import of it, in another process): its session is its own again, and the
+/// unlock keeps it.
+#[test]
+fn a_deferred_session_of_a_profile_listed_again_is_kept() {
+    if !in_isolated_child("a_deferred_session_of_a_profile_listed_again_is_kept") {
+        return;
+    }
+    let accounts = Accounts::open();
+    defer_target_session(&accounts, "listed-again", "listed-again-uid");
+    open_target_elsewhere(&accounts);
+    accounts.add_profile(accounts.target.id, "listed-again");
+    clear_user_session();
+    let revokes = vault::test_seams::revokes();
+    accounts.unlock_target();
+    assert_eq!(
+        vault::test_seams::revokes(),
+        revokes,
+        "the session of a profile the account lists again is not ended"
+    );
+    assert_eq!(accounts.target_row("listed-again").as_deref(), Some("r1"));
+    assert_eq!(deferred_revokes(&accounts.conn), 0);
+}
+
+/// The target's profile `id` signed in with `uid` by a writer that left it
+/// out of the session index, then purged while the target is locked here:
+/// the mark carries no fingerprint.
+fn defer_unindexed_target_session(accounts: &Accounts, id: &str, uid: &str) {
+    set_user_credential_with_dek(
+        &accounts.conn,
+        accounts.target.id,
+        &accounts.target_dek,
+        &key(id),
+        "proton_native_session",
+        &raw(&session(uid, "r1")),
+    )
+    .unwrap();
+    cli_set_active_user(&accounts.store, accounts.target.id).unwrap();
+    let purged = purge(id, "proton");
+    assert!(
+        purged
+            .as_ref()
+            .is_ok_and(|purged| purged.proton_session_ends_at_unlock_of.is_some()),
+        "the purge leaves the session to the next unlock: {purged:?}"
+    );
+    assert_eq!(deferred_revokes(&accounts.conn), 1);
+}
+
+/// A purge of a session the index did not describe, in a locked account:
+/// the unlock indexes it, ends it on Proton as the index decides (no other
+/// account holds it), and leaves neither the row nor the mark.
+#[test]
+fn an_unindexed_deferred_session_ends_at_the_unlock() {
+    if !in_isolated_child("an_unindexed_deferred_session_ends_at_the_unlock") {
+        return;
+    }
+    let accounts = Accounts::open();
+    defer_unindexed_target_session(&accounts, "unindexed", "unindexed-uid");
+    let revokes = vault::test_seams::revokes();
+    accounts.unlock_target();
+    assert_eq!(vault::test_seams::revokes(), revokes + 1);
+    assert!(!has_row(
+        &accounts.conn,
+        accounts.target.id,
+        &key("unindexed")
+    ));
+    assert_eq!(deferred_revokes(&accounts.conn), 0);
+}
+
+/// As above, for a session another account holds: no revoke, and still no
+/// row or mark left.
+#[test]
+fn an_unindexed_shared_deferred_session_is_removed_without_a_revoke() {
+    if !in_isolated_child("an_unindexed_shared_deferred_session_is_removed_without_a_revoke") {
+        return;
+    }
+    let accounts = Accounts::open();
+    accounts.seed("source-copy", "unindexed-shared-uid");
+    defer_unindexed_target_session(&accounts, "unindexed-shared", "unindexed-shared-uid");
+    let revokes = vault::test_seams::revokes();
+    accounts.unlock_target();
+    assert_eq!(
+        vault::test_seams::revokes(),
+        revokes,
+        "a session another account holds is not revoked"
+    );
+    assert!(!has_row(
+        &accounts.conn,
+        accounts.target.id,
+        &key("unindexed-shared")
+    ));
+    assert_eq!(deferred_revokes(&accounts.conn), 0);
+    accounts.unlock_source();
+    assert_eq!(
+        loaded(accounts.owner(), "source-copy").as_deref(),
+        Some("r1")
+    );
+}
+
+/// A session the index did not describe, purged, then refreshed in another
+/// process into another ciphertext before the unlock: still the purged
+/// session, which the unlock ends, leaving no row behind.
+#[test]
+fn an_unindexed_deferred_session_refreshed_since_ends_at_the_unlock() {
+    if !in_isolated_child("an_unindexed_deferred_session_refreshed_since_ends_at_the_unlock") {
+        return;
+    }
+    let accounts = Accounts::open();
+    defer_unindexed_target_session(&accounts, "unindexed-refreshed", "unindexed-refreshed-uid");
+    set_user_credential_with_dek(
+        &accounts.conn,
+        accounts.target.id,
+        &accounts.target_dek,
+        &key("unindexed-refreshed"),
+        "proton_native_session",
+        &raw(&session("unindexed-refreshed-uid", "r2")),
+    )
+    .unwrap();
+    let revokes = vault::test_seams::revokes();
+    accounts.unlock_target();
+    assert_eq!(vault::test_seams::revokes(), revokes + 1);
+    assert!(!has_row(
+        &accounts.conn,
+        accounts.target.id,
+        &key("unindexed-refreshed")
+    ));
+    assert_eq!(deferred_revokes(&accounts.conn), 0);
+}
+
+/// An unlock whose cleanup a refresh's lease holds off keeps the mark; a
+/// sign-in saved in another process before the next unlock is the
+/// profile's own, and that unlock keeps it.
+#[test]
+fn a_sign_in_after_a_failed_deferred_cleanup_is_kept() {
+    if !in_isolated_child("a_sign_in_after_a_failed_deferred_cleanup_is_kept") {
+        return;
+    }
+    let accounts = Accounts::open();
+    defer_unindexed_target_session(&accounts, "held-off", "held-off-uid");
+    let lease = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(crate::providers::oauth2::RefreshLease::acquire(
+            &vault::refresh_lease_slug("held-off-uid"),
+        ))
+        .unwrap();
+    vault::test_seams::set_exclusive_wait(Some(std::time::Duration::ZERO));
+    let revokes = vault::test_seams::revokes();
+    accounts.unlock_target();
+    vault::test_seams::set_exclusive_wait(None);
+    drop(lease);
+    assert_eq!(vault::test_seams::revokes(), revokes);
+    assert_eq!(accounts.target_row("held-off").as_deref(), Some("r1"));
+    assert_eq!(deferred_revokes(&accounts.conn), 1, "the mark waits");
+
+    clear_user_session();
+    open_target_elsewhere(&accounts);
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(vault::replace_session(
+            accounts.target_owner(),
+            Some("held-off"),
+            &session("held-off-new-uid", "n1"),
+        ))
+        .unwrap();
+    clear_user_session();
+    let revokes = vault::test_seams::revokes();
+    accounts.unlock_target();
+    assert_eq!(
+        vault::test_seams::revokes(),
+        revokes,
+        "the unlock ends no session a sign-in saved after the purge"
+    );
+    assert_eq!(accounts.target_row("held-off").as_deref(), Some("n1"));
+    assert_eq!(deferred_revokes(&accounts.conn), 0);
+}
+
 /// A refresh writes a copy of its session only while the copy still holds
 /// it, and never creates one: the alignment drops an account's copy of a
 /// session the legacy owner holds without the session's lease, and when it

@@ -717,6 +717,7 @@ pub async fn bind_unbound_session(
         return Err(takeover_changed());
     }
     store_session(owner, Some(profile_id), &current)?;
+    clear_deferred_revoke(owner, Some(profile_id));
     remove_saved(&store, owner, &source_key)?;
     Ok(current)
 }
@@ -755,7 +756,23 @@ pub async fn replace_session(
     if previous_key != owner.key(profile_id) {
         remove_saved(&store, owner, &previous_key)?;
     }
-    store_session(owner, profile_id, session)
+    store_session(owner, profile_id, session)?;
+    clear_deferred_revoke(owner, profile_id);
+    Ok(())
+}
+
+/// Drops the mark a purge of `profile_id` left to its account's unlock
+/// ([`crate::user_partitions::defer_proton_revoke`]), under the key lock of
+/// the sign-in, import or duplicate that just saved a session there for the
+/// profile, which is its own. Best effort: the mark names the purged
+/// session, so one left behind ends nothing else.
+fn clear_deferred_revoke(owner: SessionOwner, profile_id: Option<&str>) {
+    let (Some(user), Some(profile_id)) = (owner.user_id, profile_id) else {
+        return;
+    };
+    if let Err(error) = crate::user_partitions::clear_deferred_proton_revoke(user, profile_id) {
+        log::warn!("Proton: the mark of a purged session was not cleared: {error}");
+    }
 }
 
 /// Refuses a sign-in's save for a profile a Move took out of the account
@@ -808,6 +825,7 @@ async fn restore(
     let store = open_store()?;
     let key = owner.key(Some(profile_id));
     let _keys = lock_keys(vec![key.clone()]).await?;
+    refuse_moved_away(&store, owner, Some(profile_id))?;
     let previous = read(&store, owner, &key)?;
     let mut uids = vec![session.tokens.uid.clone()];
     if let Some(previous) = &previous {
@@ -842,6 +860,7 @@ async fn restore(
         session.tokens = saved.tokens;
     }
     store_session(owner, Some(profile_id), &session)?;
+    clear_deferred_revoke(owner, Some(profile_id));
     Ok(true)
 }
 
@@ -954,6 +973,43 @@ pub async fn end_session(
     revoke_saved_session(owner, profile_id).await;
     let _writes = session_writes();
     delete_session(owner, profile_id)
+}
+
+/// [`end_session`] of the session a purge left to its account's unlock, for
+/// a synchronous caller: ended only when `left_by_the_purge`, given the UID
+/// of the session saved now, read under the key lock and the session's
+/// lease, says it is the session the purge left. A session saved there
+/// since stays. Whether one was ended.
+pub fn end_purged_session_blocking(
+    owner: SessionOwner,
+    profile_id: &str,
+    left_by_the_purge: impl FnOnce(&str) -> Result<bool, String> + Send + 'static,
+) -> Result<bool, ProviderError> {
+    let profile_id = profile_id.to_string();
+    std::thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|error| ProviderError::Other(format!("Proton session runtime: {error}")))?;
+        runtime.block_on(async {
+            let store = open_store()?;
+            let _keys = lock_keys(mutation_keys(owner, Some(&profile_id))?).await?;
+            let key = saved_key(&store, owner, Some(&profile_id))?;
+            let _lease = lease_of_saved(owner, &key).await?;
+            let Some(saved) = read(&store, owner, &key)? else {
+                return Ok(false);
+            };
+            if !left_by_the_purge(&saved.tokens.uid).map_err(ProviderError::Other)? {
+                return Ok(false);
+            }
+            revoke_saved_session(owner, Some(&profile_id)).await;
+            let _writes = session_writes();
+            delete_session(owner, Some(&profile_id))?;
+            Ok(true)
+        })
+    })
+    .join()
+    .map_err(|_| ProviderError::Other("Proton session cleanup stopped unexpectedly".into()))?
 }
 
 /// [`end_session`] for a synchronous caller (the CLI profile delete): it
