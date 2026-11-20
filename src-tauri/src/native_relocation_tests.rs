@@ -230,6 +230,21 @@ impl Accounts {
             .map(|raw| generation(&raw))
     }
 
+    /// The generation of profile `id`'s session in the vault key, in the
+    /// legacy owner's row and in the source's row, each read as it is stored.
+    fn copies(&self, id: &str) -> (Option<String>, Option<String>, Option<String>) {
+        let row = |user: i64| {
+            get_user_credential_for(&self.conn, &self.root_key, user, &key(id))
+                .unwrap()
+                .map(|raw| generation(&raw))
+        };
+        (
+            self.store.get(&key(id)).ok().map(|raw| generation(&raw)),
+            row(self.legacy),
+            row(self.source.id),
+        )
+    }
+
     fn in_vault(&self, id: &str) -> bool {
         self.store.get(&key(id)).is_ok()
     }
@@ -714,11 +729,18 @@ fn an_rclone_import_brings_no_session_another_account_holds() {
             .map(|session| session.tokens.uid)
     };
 
-    // The legacy owner, the active account, imports the remote.
-    let (owners_id, _) = import();
+    // The legacy owner, the active account, imports the remote, and is told
+    // its session is now shared with rclone.
+    let (owners_id, reasons) = import();
     assert_eq!(
         uid_of(owners_owner, &owners_id).as_deref(),
         Some("rclone-uid")
+    );
+    assert!(
+        reasons
+            .iter()
+            .any(|reason| reason == crate::rclone_import::RCLONE_SESSION_SHARED),
+        "a stored session is reported shared with rclone: {reasons:?}"
     );
 
     // The same file, imported into the source once it is the active account,
@@ -731,6 +753,12 @@ fn an_rclone_import_brings_no_session_another_account_holds() {
             .iter()
             .any(|reason| reason == vault::IMPORT_WITHHELD),
         "the profile is reported to sign in again: {reasons:?}"
+    );
+    assert!(
+        !reasons
+            .iter()
+            .any(|reason| reason.contains("now shared with rclone")),
+        "a session left out is not reported imported: {reasons:?}"
     );
     assert_eq!(
         uid_of(owner, &id),
@@ -1840,4 +1868,66 @@ fn an_rclone_import_keeps_to_the_account_it_began_in() {
     );
     assert!(has_row(&accounts.conn, accounts.legacy, &token));
     assert_eq!(imported["importedUserId"], json!(accounts.legacy));
+}
+
+/// A session save is whole or not made. For the legacy owner, whose session
+/// is a vault key and its row, a row the account store refuses puts the
+/// vault key back as it was: an import reported as not restored leaves no
+/// session the profile would connect with, and a session saved before stays
+/// the one in use. Without the refusal both halves take the import.
+#[test]
+fn a_session_the_account_store_refuses_leaves_the_vault_as_it_was() {
+    if !in_isolated_child("a_session_the_account_store_refuses_leaves_the_vault_as_it_was") {
+        return;
+    }
+    let accounts = Accounts::open();
+    let owners_owner = accounts.owners_owner();
+    let vault_copy = |id: &str| accounts.copies(id).0;
+    let legacy_row = |id: &str| accounts.copies(id).1;
+
+    accounts.add_profile(accounts.legacy, "refused-fresh");
+    vault::test_seams::refuse_next_mirror();
+    let fresh = vault::import_session_blocking(
+        owners_owner,
+        "refused-fresh",
+        &raw(&session("refused-fresh-uid", "r1")),
+    );
+    assert!(fresh.is_err(), "the refused import is an error: {fresh:?}");
+    assert_eq!(
+        vault_copy("refused-fresh"),
+        None,
+        "the vault holds no session of an import that failed"
+    );
+    assert_eq!(loaded(owners_owner, "refused-fresh"), None);
+
+    accounts.add_profile(accounts.legacy, "refused-over");
+    vault::store_session(
+        owners_owner,
+        Some("refused-over"),
+        &session("refused-previous-uid", "p1"),
+    )
+    .unwrap();
+    vault::test_seams::refuse_next_mirror();
+    let over = vault::import_session_blocking(
+        owners_owner,
+        "refused-over",
+        &raw(&session("refused-imported-uid", "i1")),
+    );
+    assert!(over.is_err(), "the refused import is an error: {over:?}");
+    assert_eq!(
+        vault_copy("refused-over").as_deref(),
+        Some("p1"),
+        "the vault keeps the session saved before"
+    );
+    assert_eq!(legacy_row("refused-over").as_deref(), Some("p1"));
+    assert_eq!(loaded(owners_owner, "refused-over").as_deref(), Some("p1"));
+
+    let saved = vault::import_session_blocking(
+        owners_owner,
+        "refused-over",
+        &raw(&session("refused-imported-uid", "i1")),
+    );
+    assert_eq!(saved.ok(), Some(true));
+    assert_eq!(vault_copy("refused-over").as_deref(), Some("i1"));
+    assert_eq!(legacy_row("refused-over").as_deref(), Some("i1"));
 }

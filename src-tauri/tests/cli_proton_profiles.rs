@@ -169,8 +169,20 @@ fn an_rclone_import_into_a_second_account_leaves_the_session_to_the_first() {
         assert_eq!(out.status.code(), Some(0), "{}", describe(&out));
     };
 
-    let (first_id, _) = import();
+    // Whether the import's `warnings` say a session is now shared with rclone.
+    let says_shared = |imported: &serde_json::Value| {
+        imported["warnings"].as_array().is_some_and(|warnings| {
+            warnings.iter().any(|warning| {
+                warning["reason"] == ftp_client_gui_lib::rclone_import::RCLONE_SESSION_SHARED
+            })
+        })
+    };
+    let (first_id, imported) = import();
     assert_eq!(signed_in(&first_id), serde_json::json!(true), "imported");
+    assert!(
+        says_shared(&imported),
+        "a stored session is reported shared: {imported}"
+    );
     let listed = json(&cli(root, &["--json", "users", "list"]));
     let first_user = listed["users"][0]["name"]
         .as_str()
@@ -182,13 +194,25 @@ fn an_rclone_import_into_a_second_account_leaves_the_session_to_the_first() {
 
     let (second_id, imported) = import();
     let warnings = imported["appliedSummary"]["signInWarnings"].clone();
+    // The reason is that another account may hold the session, never another
+    // failure that names the profile too.
     assert!(
         warnings
             .as_array()
-            .is_some_and(|warnings| warnings.iter().any(|warning| warning
-                .as_str()
-                .is_some_and(|warning| warning.contains(&second_id)))),
+            .is_some_and(
+                |warnings| warnings
+                    .iter()
+                    .any(|warning| warning.as_str().is_some_and(|warning| warning
+                        .contains(&second_id)
+                        && warning.contains(
+                            ftp_client_gui_lib::providers::proton_native::vault::IMPORT_WITHHELD
+                        )))
+            ),
         "the profile is reported to sign in again: {imported}"
+    );
+    assert!(
+        !says_shared(&imported),
+        "a session left out is not reported imported: {imported}"
     );
     assert_eq!(
         signed_in(&second_id),

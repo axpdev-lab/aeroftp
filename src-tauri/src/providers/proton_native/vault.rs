@@ -187,6 +187,18 @@ pub(crate) mod test_seams {
         }
     }
 
+    static MIRROR_REFUSED: AtomicBool = AtomicBool::new(false);
+
+    /// The next save of a session's partition row is refused, as an account
+    /// store that fails does, on any thread.
+    pub(crate) fn refuse_next_mirror() {
+        MIRROR_REFUSED.store(true, Ordering::SeqCst);
+    }
+
+    pub(super) fn mirror_refused() -> bool {
+        MIRROR_REFUSED.swap(false, Ordering::SeqCst)
+    }
+
     static NO_FILE_LOCKS: AtomicBool = AtomicBool::new(false);
 
     /// Plays a filesystem without file locks for every session key lock, on
@@ -536,7 +548,10 @@ fn saved_key(
 
 /// Saves `session` in the vault and the captured user's partition. Unbound
 /// keys include the user id so concurrent sign-ins by different users stay
-/// isolated. `None` ownership is the pre-partition legacy vault.
+/// isolated. `None` ownership is the pre-partition legacy vault. Whole or
+/// not at all: a row the account store refuses puts the vault key back as it
+/// was ([`undo_vault_write`]), so a save that failed is never the session the
+/// profile connects with.
 pub fn store_session(
     owner: SessionOwner,
     profile_id: Option<&str>,
@@ -560,21 +575,60 @@ pub fn store_session(
         indexed(&store, user, &key);
         return Ok(());
     }
+    let previous = store.get(&key).ok().map(Zeroizing::new);
     store
         .store(&key, &json)
         .map_err(|error| ProviderError::Other(format!("the vault refused the session: {error}")))?;
     if let Some(user) = owner.user_id {
-        crate::user_partitions::mirror_credential_for_user_typed(
-            &store,
-            user,
-            &key,
-            PARTITION_TYPE,
-            &json,
-        )
-        .map_err(ProviderError::Other)?;
+        if let Err(error) = mirror_session(&store, user, &key, &json) {
+            return Err(undo_vault_write(
+                &store,
+                &key,
+                &json,
+                previous.as_deref().map(String::as_str),
+                &error,
+            ));
+        }
         indexed(&store, user, &key);
     }
     Ok(())
+}
+
+/// The legacy owner's row of the session `json` just written to the vault.
+fn mirror_session(store: &CredentialStore, user: i64, key: &str, json: &str) -> Result<(), String> {
+    #[cfg(test)]
+    if test_seams::mirror_refused() {
+        return Err("the account store refused the session".into());
+    }
+    crate::user_partitions::mirror_credential_for_user_typed(store, user, key, PARTITION_TYPE, json)
+}
+
+/// The vault key `key` put back as it was before `written` replaced it, once
+/// the row failed with `error`: the previous session, or no key when there was
+/// none. Every caller holds the key's lock and the sessions' leases, so no
+/// other writer is undone; a value changed since is left as it is anyway. The
+/// error says whether the vault was put back.
+fn undo_vault_write(
+    store: &CredentialStore,
+    key: &str,
+    written: &str,
+    previous: Option<&str>,
+    error: &str,
+) -> ProviderError {
+    let undone = match previous {
+        Some(previous) => store
+            .replace_secret_if_unchanged(key, written, previous)
+            .map(|_| ()),
+        None => store.delete(key),
+    };
+    match undone {
+        Ok(()) => ProviderError::Other(format!(
+            "the session was not saved, the account store refused it: {error}"
+        )),
+        Err(undo) => ProviderError::Other(format!(
+            "the session reached the vault but not the account store, and the vault could not be put back ({undo}): {error}"
+        )),
+    }
 }
 
 /// Indexes the row `key` of `user` just written (see

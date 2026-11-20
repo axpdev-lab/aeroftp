@@ -42402,7 +42402,7 @@ async fn cmd_import_rclone(
     }
 
     match rclone_import::import_rclone(&config_path) {
-        Ok(result) => {
+        Ok(mut result) => {
             // Issue #214: --apply mirrors the GUI `import_rclone_config` Tauri
             // command end-to-end: write the per-profile password under
             // `server_<id>`, the OAuth blob under `oauth_<slug>_<id>`, the
@@ -42413,7 +42413,22 @@ async fn cmd_import_rclone(
             let mut applied_summary: Option<RcloneApplySummary> = None;
             if apply {
                 match apply_rclone_import_to_vault(cli, &result, keep_insecure_options).await {
-                    Ok(summary) => applied_summary = Some(summary),
+                    Ok(summary) => {
+                        // A stored session is said to be shared with rclone, only
+                        // once the store took it.
+                        for id in &summary.shared_sessions {
+                            let name = result
+                                .servers
+                                .iter()
+                                .find(|server| &server.id == id)
+                                .map_or(id.as_str(), |server| server.name.as_str());
+                            result.warnings.push(rclone_import::RcloneImportWarning {
+                                name: name.to_string(),
+                                reason: rclone_import::RCLONE_SESSION_SHARED.to_string(),
+                            });
+                        }
+                        applied_summary = Some(summary);
+                    }
                     Err(err) => {
                         if json {
                             println!(
@@ -42490,6 +42505,9 @@ struct RcloneApplySummary {
     /// One line per profile that signs in again: the session it carried was
     /// not restored.
     sign_in_warnings: Vec<String>,
+    /// The profiles whose native Proton session was stored, now shared with
+    /// rclone: said only once the store took it.
+    shared_sessions: Vec<String>,
     /// The security-relaxing options of the stored remotes: reset to their
     /// safe state, or kept with --keep-insecure-options (#1506 Requested 198).
     security: Vec<ftp_client_gui_lib::profile_import_plan::ImportedSecurity>,
@@ -42635,6 +42653,7 @@ async fn apply_rclone_import_to_vault(
                 profiles_renamed: Vec::new(),
                 oauth_app_warnings: Vec::new(),
                 sign_in_warnings: Vec::new(),
+                shared_sessions: Vec::new(),
                 security: Vec::new(),
             };
             #[cfg(feature = "proton-native")]
@@ -42746,24 +42765,25 @@ async fn apply_rclone_import_to_vault(
     // while another on this device may hold it, since a sign-out here would
     // revoke it there.
     #[cfg(feature = "proton-native")]
-    let sign_in_warnings: Vec<String> = {
+    let (sign_in_warnings, shared_sessions) = {
         use ftp_client_gui_lib::providers::proton_native::vault;
         let owner = vault::SessionOwner::for_user(Some(target.id));
-        proton_sessions
-            .into_iter()
-            .filter_map(|(profile_id, session_json)| {
-                match vault::import_session_blocking(owner, profile_id, session_json) {
-                    Ok(true) => None,
-                    Ok(false) => Some(format!("'{profile_id}': {}", vault::IMPORT_WITHHELD)),
-                    Err(e) => Some(format!(
-                        "the Proton session of '{profile_id}' was not stored, so it signs in again: {e}"
-                    )),
+        let (mut sign_in_warnings, mut shared_sessions) = (Vec::new(), Vec::new());
+        for (profile_id, session_json) in proton_sessions {
+            match vault::import_session_blocking(owner, profile_id, session_json) {
+                Ok(true) => shared_sessions.push(profile_id.to_string()),
+                Ok(false) => {
+                    sign_in_warnings.push(format!("'{profile_id}': {}", vault::IMPORT_WITHHELD))
                 }
-            })
-            .collect()
+                Err(e) => sign_in_warnings.push(format!(
+                    "the Proton session of '{profile_id}' was not stored, so it signs in again: {e}"
+                )),
+            }
+        }
+        (sign_in_warnings, shared_sessions)
     };
     #[cfg(not(feature = "proton-native"))]
-    let sign_in_warnings: Vec<String> = Vec::new();
+    let (sign_in_warnings, shared_sessions) = (Vec::new(), Vec::new());
     // Read from the list stored: only the write knows which profile had a
     // name first (an older list may hold two of one name).
     for warning in oauth_app_warnings.iter().chain(&sign_in_warnings) {
@@ -42773,6 +42793,7 @@ async fn apply_rclone_import_to_vault(
         profiles_renamed: renamed_by_write(&profiles, &stored),
         oauth_app_warnings,
         sign_in_warnings,
+        shared_sessions,
         ..summary
     })
 }

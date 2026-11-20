@@ -26077,6 +26077,8 @@ pub(crate) struct SharedImportSecrets {
     /// Profiles whose shared secret or native session could not be written,
     /// or whose native session another account on this device may hold.
     pub(crate) failed: std::collections::HashSet<String>,
+    /// Profiles whose native session was stored.
+    pub(crate) restored_sessions: std::collections::HashSet<String>,
 }
 
 /// Write what the list commit must come before, in file order: the provider-wide
@@ -26213,7 +26215,9 @@ pub(crate) fn restore_shared_import_secrets(
             )
             .map(|()| true);
             match result {
-                Ok(true) => {}
+                Ok(true) => {
+                    shared.restored_sessions.insert(profile_id.clone());
+                }
                 Ok(false) => {
                     log::info!(
                         "Import: {profile_id} proton session not restored: another account on this device may hold it"
