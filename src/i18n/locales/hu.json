@@ -7190,8 +7190,8 @@
             "folderBusyTitle": "A mappa még töltődik",
             "folderBusy": "A megnyitott fájl nem jelent meg: egy másik mappa még töltődött, amikor a(z) {folder} mappát kérték. Nyissa meg újra.",
             "signInNeedsProfileTitle": "A(z) {provider} a mentett bejelentkezését igényli",
-            "signInNeedsProfile": "A(z) {provider} saját böngészős engedélyezéssel jelentkezik be, amit egy hivatkozás nem tud magával vinni. Adja hozzá és engedélyezze a fiókot a Saját szerverek részben, majd nyissa meg: {scheme}://<profilnév>/mappa.",
-            "signInNameTheProfile": "Több {provider}-fiók van mentve. Nevezze meg, melyiket nyissa meg: {scheme}://<profilnév>/mappa."
+            "signInNeedsProfile": "A(z) {provider} saját böngészős engedélyezéssel jelentkezik be, amit egy hivatkozás nem tud magával vinni. Adja hozzá és engedélyezze a fiókot a Saját szerverek részben, majd nyissa meg: {scheme}://<profilnév>/mappa/.",
+            "signInNameTheProfile": "Több {provider}-fiók van mentve. Nevezze meg, melyiket nyissa meg: {scheme}://<profilnév>/mappa/."
         }
     }
 }

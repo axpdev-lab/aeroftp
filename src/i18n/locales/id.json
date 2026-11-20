@@ -7190,8 +7190,8 @@
             "folderBusyTitle": "Folder masih dimuat",
             "folderBusy": "File yang Anda buka tidak ditampilkan: folder lain masih dimuat saat {folder} diminta. Buka kembali file tersebut.",
             "signInNeedsProfileTitle": "{provider} memerlukan login tersimpannya",
-            "signInNeedsProfile": "{provider} masuk melalui otorisasi browser miliknya sendiri, yang tidak dapat dibawa oleh tautan. Tambahkan dan otorisasi akun di Server Saya, lalu buka {scheme}://<nama profil>/folder.",
-            "signInNameTheProfile": "Beberapa akun {provider} tersimpan. Sebutkan yang akan dibuka: {scheme}://<nama profil>/folder."
+            "signInNeedsProfile": "{provider} masuk melalui otorisasi browser miliknya sendiri, yang tidak dapat dibawa oleh tautan. Tambahkan dan otorisasi akun di Server Saya, lalu buka {scheme}://<nama profil>/folder/.",
+            "signInNameTheProfile": "Beberapa akun {provider} tersimpan. Sebutkan yang akan dibuka: {scheme}://<nama profil>/folder/."
         }
     }
 }

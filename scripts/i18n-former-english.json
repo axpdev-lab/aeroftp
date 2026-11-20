@@ -6,7 +6,7 @@
         "enHash is the SHA-256 of the flattened current en.json. Change English and run --write in the same commit.",
         "A value listed here fails the gate when a locale still equals it and the current English does not."
     ],
-    "enHash": "594b1280d63279088db9207556bbe330094c58b879b90f9730c71e381c0fd6f1",
+    "enHash": "dffaf9fb84f471158453ecb37bfbd4c50c2dee780aa09730381d74a2e0b184fa",
     "former": {
         "about.aiCredits": [
             "AI: Claude Opus 4.5 + support models"
@@ -491,6 +491,12 @@
         ],
         "mountManager.title": [
             "Mount Manager"
+        ],
+        "openRequest.signInNameTheProfile": [
+            "Several {provider} accounts are saved. Name the one to open: {scheme}://<profile name>/folder."
+        ],
+        "openRequest.signInNeedsProfile": [
+            "{provider} signs in through its own browser authorization, which a link cannot carry. Add and authorize the account in My Servers, then open {scheme}://<profile name>/folder."
         ],
         "portable.banner.body": [
             "Every portable installation is fully self-contained: saved servers, AeroVault, AI chats and preferences all live next to AeroFTP.exe. From v3.7.8 onward, two portable folders on the same PC are completely independent — deleting a profile in one folder no longer affects the other."

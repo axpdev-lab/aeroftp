@@ -57,19 +57,32 @@ impl AwsFiles {
     /// The files the AWS tools read, from this process's environment. A
     /// missing, unreadable or oversized file contributes nothing.
     pub fn from_environment() -> Self {
-        let Some(credentials_path) =
-            crate::aws_credentials_import::default_aws_credentials_config_path()
-        else {
-            return Self::default();
-        };
-        let config_path = crate::aws_credentials_import::aws_config_path_for(&credentials_path);
+        let (credentials, config) = shared_file_paths(|name| std::env::var(name).ok());
         Self {
-            credentials: read_sections(&credentials_path),
-            config: config_path
+            credentials: credentials
                 .map(|path| read_sections(&path))
                 .unwrap_or_default(),
+            config: config.map(|path| read_sections(&path)).unwrap_or_default(),
         }
     }
+}
+
+/// The credentials and config file paths, each from its own variable, else
+/// its default under `~/.aws`, as the AWS tools resolve them: a
+/// `AWS_SHARED_CREDENTIALS_FILE` elsewhere does not move the config file.
+fn shared_file_paths(
+    env: impl Fn(&str) -> Option<String>,
+) -> (Option<std::path::PathBuf>, Option<std::path::PathBuf>) {
+    let env = |name: &str| env(name).filter(|value| !value.is_empty());
+    let home = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
+    let aws_dir = env(home).map(|home| std::path::PathBuf::from(home).join(".aws"));
+    let credentials = env("AWS_SHARED_CREDENTIALS_FILE")
+        .map(std::path::PathBuf::from)
+        .or_else(|| aws_dir.as_ref().map(|dir| dir.join("credentials")));
+    let config = env("AWS_CONFIG_FILE")
+        .map(std::path::PathBuf::from)
+        .or_else(|| aws_dir.map(|dir| dir.join("config")));
+    (credentials, config)
 }
 
 fn read_sections(path: &std::path::Path) -> Sections {
@@ -107,8 +120,20 @@ pub fn resolve(
     let aws_region = env("AWS_REGION").or_else(|| env("AWS_DEFAULT_REGION"));
     let aeroftp_secret = env("AEROFTP_PASSWORD");
 
-    let needs_files = (url_user.is_none() && aws_key.is_none())
-        || (url_secret.is_none() && aeroftp_secret.is_none() && aws_secret.is_none())
+    // The key id the URL and the environment settle on, before any file. The
+    // files are read only when that key id has no secret of its own here, or
+    // when the key id or the region is still open.
+    let key_from_url = url_user.is_some();
+    let key_before_files = url_user.clone().or_else(|| aws_key.clone());
+    let aws_secret_pairs = |key: &str| match &aws_key {
+        Some(aws_key) => aws_key == key,
+        None => key_from_url,
+    };
+    let secret_without_files = url_secret.is_some()
+        || aeroftp_secret.is_some()
+        || (aws_secret.is_some() && key_before_files.as_deref().is_some_and(aws_secret_pairs));
+    let needs_files = key_before_files.is_none()
+        || !secret_without_files
         || (url_region.is_none() && aws_region.is_none());
     let files = if needs_files {
         files()
@@ -116,22 +141,19 @@ pub fn resolve(
         AwsFiles::default()
     };
     let profile = env("AWS_PROFILE").unwrap_or_else(|| "default".to_string());
-    let file_value = |key: &str| {
-        let from = |sections: &Sections| {
-            non_empty(
-                sections
-                    .get(&profile)
-                    .and_then(|section| section.get(key))
-                    .map(String::as_str),
-            )
-        };
-        from(&files.credentials).or_else(|| from(&files.config))
-    };
+    // One file entry holds the key id, its secret and its token: the
+    // credentials file's section when it names a key id, else the config
+    // file's. The two are never merged field by field, which could pair one
+    // file's key id with the other's secret.
+    let file_entry = [&files.credentials, &files.config]
+        .into_iter()
+        .filter_map(|sections| sections.get(&profile))
+        .find(|section| non_empty(section.get("aws_access_key_id").map(String::as_str)).is_some());
+    let file_value =
+        |key: &str| file_entry.and_then(|section| non_empty(section.get(key).map(String::as_str)));
     let file_key = file_value("aws_access_key_id");
 
-    let key_from_url = url_user.is_some();
-    let access_key_id = url_user
-        .or_else(|| aws_key.clone())
+    let access_key_id = key_before_files
         .or_else(|| file_key.clone())
         .unwrap_or_default();
 
@@ -139,10 +161,7 @@ pub fn resolve(
         (Some(secret.to_string()), None, Some(CredentialSource::Url))
     } else if let Some(secret) = aeroftp_secret {
         (Some(secret), None, Some(CredentialSource::AeroftpEnv))
-    } else if let Some(secret) = aws_secret.filter(|_| match &aws_key {
-        Some(key) => *key == access_key_id,
-        None => key_from_url,
-    }) {
+    } else if let Some(secret) = aws_secret.filter(|_| aws_secret_pairs(&access_key_id)) {
         (
             Some(secret),
             env("AWS_SESSION_TOKEN"),
@@ -352,6 +371,89 @@ mod tests {
         );
         assert_eq!(resolved.access_key_id, "FILEKEY");
         assert_eq!(resolved.secret_access_key.as_deref(), Some("filesecret"));
+    }
+
+    #[test]
+    fn the_files_are_read_for_a_url_key_id_the_environment_does_not_hold() {
+        // The URL names FILEKEY; the AWS variables hold another identity and a
+        // region. FILEKEY's secret lives only in the files, so they are read.
+        let resolved = resolve("FILEKEY", None, None, env_of(AWS_ENV), || {
+            files_with(CREDENTIALS, CONFIG)
+        });
+        assert_eq!(resolved.access_key_id, "FILEKEY");
+        assert_eq!(resolved.secret_access_key.as_deref(), Some("filesecret"));
+        assert_eq!(resolved.session_token.as_deref(), Some("filetoken"));
+        assert_eq!(resolved.secret_source, Some(CredentialSource::AwsFiles));
+        assert_eq!(resolved.region.as_deref(), Some("us-west-2"));
+    }
+
+    #[test]
+    fn key_secret_and_token_come_from_one_file_entry() {
+        // The credentials file names the key id without a secret or token;
+        // the config file holds another identity's secret and token. They
+        // are never paired.
+        let resolved = resolve("", None, None, env_of(&[]), || {
+            files_with(
+                    "[default]\naws_access_key_id = CREDKEY\n",
+                    "[default]\naws_access_key_id = CONFKEY\naws_secret_access_key = confsecret\naws_session_token = conftoken\nregion = eu-west-3\n",
+                )
+        });
+        assert_eq!(resolved.access_key_id, "CREDKEY");
+        assert_eq!(resolved.secret_access_key, None);
+        assert_eq!(resolved.session_token, None);
+
+        // A token in the config file never joins the credentials file's pair.
+        let resolved = resolve("", None, None, env_of(&[]), || {
+            files_with(
+                "[default]\naws_access_key_id = CREDKEY\naws_secret_access_key = credsecret\n",
+                "[default]\naws_session_token = conftoken\n",
+            )
+        });
+        assert_eq!(resolved.secret_access_key.as_deref(), Some("credsecret"));
+        assert_eq!(resolved.session_token, None);
+
+        // The config file alone still works, `[profile name]` included.
+        let resolved = resolve("", None, None, env_of(&[("AWS_PROFILE", "work")]), || {
+            files_with(
+                "",
+                "[profile work]\naws_access_key_id = CONFKEY\naws_secret_access_key = confsecret\n",
+            )
+        });
+        assert_eq!(resolved.access_key_id, "CONFKEY");
+        assert_eq!(resolved.secret_access_key.as_deref(), Some("confsecret"));
+    }
+
+    #[test]
+    fn each_file_path_comes_from_its_own_variable() {
+        let home = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
+        let home_dir = std::path::Path::new("/home/u").join(".aws");
+        let env = |pairs: &'static [(&'static str, &'static str)]| {
+            move |name: &str| {
+                let name = if name == home { "HOME" } else { name };
+                pairs
+                    .iter()
+                    .find(|(key, _)| *key == name)
+                    .map(|(_, value)| value.to_string())
+            }
+        };
+        // A credentials file elsewhere leaves the config file at its default.
+        let (credentials, config) = shared_file_paths(env(&[
+            ("AWS_SHARED_CREDENTIALS_FILE", "/tmp/work-creds"),
+            ("HOME", "/home/u"),
+        ]));
+        assert_eq!(credentials, Some("/tmp/work-creds".into()));
+        assert_eq!(config, Some(home_dir.join("config")));
+        // And the other way round.
+        let (credentials, config) = shared_file_paths(env(&[
+            ("AWS_CONFIG_FILE", "/tmp/work-config"),
+            ("HOME", "/home/u"),
+        ]));
+        assert_eq!(credentials, Some(home_dir.join("credentials")));
+        assert_eq!(config, Some("/tmp/work-config".into()));
+        // With no home, an explicit config file is still read.
+        let (credentials, config) = shared_file_paths(env(&[("AWS_CONFIG_FILE", "/tmp/c")]));
+        assert_eq!(credentials, None);
+        assert_eq!(config, Some("/tmp/c".into()));
     }
 
     #[test]

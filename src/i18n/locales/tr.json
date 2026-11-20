@@ -7190,8 +7190,8 @@
             "folderBusyTitle": "Klasör hâlâ yükleniyor",
             "folderBusy": "Açtığınız dosya gösterilmedi: {folder} istendiğinde başka bir klasör hâlâ yükleniyordu. Lütfen dosyayı yeniden açın.",
             "signInNeedsProfileTitle": "{provider} kayıtlı oturum açma bilgisine ihtiyaç duyuyor",
-            "signInNeedsProfile": "{provider}, tarayıcıdaki kendi yetkilendirmesiyle oturum açar ve bir bağlantı bunu taşıyamaz. Hesabı Sunucularım bölümünde ekleyip yetkilendirin, ardından {scheme}://<profil adı>/klasör adresini açın.",
-            "signInNameTheProfile": "Birden fazla {provider} hesabı kayıtlı. Açılacak olanı belirtin: {scheme}://<profil adı>/klasör."
+            "signInNeedsProfile": "{provider}, tarayıcıdaki kendi yetkilendirmesiyle oturum açar ve bir bağlantı bunu taşıyamaz. Hesabı Sunucularım bölümünde ekleyip yetkilendirin, ardından {scheme}://<profil adı>/klasör/ adresini açın.",
+            "signInNameTheProfile": "Birden fazla {provider} hesabı kayıtlı. Açılacak olanı belirtin: {scheme}://<profil adı>/klasör/."
         }
     }
 }

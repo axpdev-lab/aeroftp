@@ -291,10 +291,11 @@ pub fn parse(raw: &str) -> Result<LaunchTarget, String> {
     let url = url::Url::parse(raw).map_err(|e| format!("Invalid URL: {e}"))?;
     // A raw `/`, `?` or `#` in the password ends the authority early: the
     // parser then reads the start of the password as a port (`u:123/x@host`
-    // dials host `u`, port 123) and the rest as the path.
+    // dials host `u`, port 123) and the rest as the path. `user_part_end`
+    // states the rule that tells it from a port and a path.
     if url.password().is_none() && mask_raw_password(raw) != raw {
         return Err(
-            "The password holds a '/', '?', '#' or '@' that must be percent-encoded (%2F, %3F, %23, %40)"
+            "The password holds a raw '/', '?' or '#' that must be percent-encoded (%2F, %3F, %23)"
                 .to_string(),
         );
     }
@@ -312,9 +313,11 @@ pub fn parse(raw: &str) -> Result<LaunchTarget, String> {
     let mut options = BTreeMap::new();
     for (key, value) in url.query_pairs() {
         let key = key.to_ascii_lowercase().replace('-', "_");
+        // The rejected name is never repeated: a token pasted as a bare query
+        // (`?ghp_...`) is read as a field name.
         if secret_like(&key) {
             return Err(format!(
-                "A URL query never carries a secret ('{key}'): set it in the environment ({}AEROFTP_PASSWORD)",
+                "A URL query never carries a secret: set it in the environment ({}AEROFTP_PASSWORD)",
                 scheme
                     .secret_env
                     .iter()
@@ -324,14 +327,22 @@ pub fn parse(raw: &str) -> Result<LaunchTarget, String> {
         }
         if !allowed.contains(&key.as_str()) {
             return Err(if allowed.is_empty() {
-                format!("{}:// URLs take no query options ('{key}')", scheme.scheme)
+                format!("{}:// URLs take no query options", scheme.scheme)
             } else {
                 format!(
-                    "Unknown option '{key}' for {}://; accepted: {}",
+                    "Unknown query option for {}://; accepted: {}",
                     scheme.scheme,
                     allowed.join(", ")
                 )
             });
+        }
+        // An endpoint names a host, never an account: credentials written
+        // into it would reach the logs that print the launch URL.
+        if key == "endpoint" && value.contains('@') {
+            return Err(
+                "The endpoint option names a host, never a user or a password: set the keys in the URL user part or the environment"
+                    .to_string(),
+            );
         }
         if key == "scheme" && !matches!(value.as_ref(), "http" | "https") {
             return Err("scheme must be http or https".to_string());
@@ -473,33 +484,87 @@ impl LaunchTarget {
     }
 }
 
-/// The repository a `github://` URL names, `owner/repo`, and the branch of
-/// an `@branch` suffix: `github://owner/repo[@branch]`, or
+/// The branch a repository URL names: its `@branch` suffix, or `?branch=`.
+/// The two naming different branches is refused.
+fn repository_branch(
+    target: &LaunchTarget,
+    suffix: Option<&str>,
+) -> Result<Option<String>, String> {
+    let query = target
+        .options
+        .get("branch")
+        .map(String::as_str)
+        .filter(|branch| !branch.is_empty());
+    match (suffix, query) {
+        (Some(suffix), Some(query)) if suffix != query => Err(format!(
+            "The URL names two branches, @{suffix} and ?branch={query}: keep one"
+        )),
+        (suffix, query) => Ok(suffix.or(query).map(str::to_string)),
+    }
+}
+
+/// The repository a `github://` URL names, `owner/repo`, and its branch
+/// (an `@branch` suffix or `?branch=`): `github://owner/repo[@branch]`, or
 /// `github://github.com/owner/repo[@branch]`.
 pub fn github_repository(target: &LaunchTarget) -> Result<(String, Option<String>), String> {
     const SHAPE: &str = "GitHub URL must be github://owner/repo or github://owner/repo@branch";
-    let segments: Vec<&str> = target.path.split('/').filter(|s| !s.is_empty()).collect();
-    let (owner, repo_with_branch) = if target.host.eq_ignore_ascii_case("github.com") {
+    // The branch is everything after the `@`, slashes included: Git branch
+    // names hold them (`release/2026`, `aeroftp/user/main`).
+    let (path, branch) = match target.path.split_once('@') {
+        Some((path, branch)) => {
+            let branch = branch.trim_end_matches('/');
+            if branch.is_empty() {
+                return Err(SHAPE.to_string());
+            }
+            (path, Some(branch))
+        }
+        None => (target.path.as_str(), None),
+    };
+    let segments: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+    let (owner, repo) = if target.host.eq_ignore_ascii_case("github.com") {
         match segments.as_slice() {
-            [owner, repo, ..] => (*owner, *repo),
+            [owner, repo] => (*owner, *repo),
+            [owner, repo, ..] if branch.is_none() => (*owner, *repo),
             _ => return Err(SHAPE.to_string()),
         }
     } else {
-        match segments.first() {
-            Some(repo) if !target.host.is_empty() => (target.host.as_str(), *repo),
+        match segments.as_slice() {
+            [repo] if !target.host.is_empty() => (target.host.as_str(), *repo),
+            [repo, ..] if !target.host.is_empty() && branch.is_none() => {
+                (target.host.as_str(), *repo)
+            }
             _ => return Err(SHAPE.to_string()),
         }
-    };
-    let (repo, branch) = match repo_with_branch.rsplit_once('@') {
-        Some((repo, branch)) if !repo.is_empty() && !branch.is_empty() => {
-            (repo, Some(branch.to_string()))
-        }
-        _ => (repo_with_branch, None),
     };
     if owner.is_empty() || repo.is_empty() {
         return Err(SHAPE.to_string());
     }
+    let branch = repository_branch(target, branch)?;
     Ok((format!("{owner}/{repo}"), branch))
+}
+
+/// The project a `gitlab://` URL names, in the `host/group/project` form the
+/// GitLab backend reads as its host, and its branch (an `@branch` suffix or
+/// `?branch=`): `gitlab://gitlab.com/group[/subgroup]/project[@branch]`. The
+/// whole path is the project, so the URL opens it at its root.
+pub fn gitlab_project(target: &LaunchTarget) -> Result<(String, Option<String>), String> {
+    const SHAPE: &str =
+        "GitLab URL must be gitlab://host/group/project or gitlab://host/group/project@branch";
+    let project = target.path.trim_matches('/');
+    // The branch is everything after the first `@`, slashes included: a
+    // project path holds no `@`, a branch name may hold `/`.
+    let (project, branch) = match project.split_once('@') {
+        Some((project, branch)) if !project.is_empty() && !branch.is_empty() => {
+            (project, Some(branch))
+        }
+        Some(_) => return Err(SHAPE.to_string()),
+        None => (project, None),
+    };
+    if target.host.is_empty() || !project.contains('/') {
+        return Err(SHAPE.to_string());
+    }
+    let branch = repository_branch(target, branch)?;
+    Ok((format!("{}/{project}", target.host), branch))
 }
 
 /// A working example URL for a scheme, as the help and the docs show it.
@@ -571,7 +636,7 @@ pub fn redact(raw: &str) -> String {
             let pairs: Vec<(String, String)> = url
                 .query_pairs()
                 .map(|(key, value)| {
-                    let value = if secret_like(&key) {
+                    let value = if secret_like(&key) || (key == "endpoint" && value.contains('@')) {
                         "***".to_string()
                     } else {
                         value.into_owned()
@@ -588,23 +653,46 @@ pub fn redact(raw: &str) -> String {
     raw.split(['?', '#']).next().unwrap_or_default().to_string()
 }
 
+/// Where the user part of `rest` (the text after `://`) ends: the index of
+/// the `@` before the host, if the text has a user part.
+///
+/// The authority ends at the first `/`, `?` or `#`. An `@` in it ends the
+/// user part, the last one, so a raw `@` in a password stays in it. With no
+/// `@` there, a `:` in the authority may still be a password cut short by a
+/// raw `/`, `?` or `#`: then an `@` in the very next segment ends the user
+/// part (`u:12/x@host/`, which the URL parser reads as host `u`, port 12). An
+/// `@` further on is part of the path (`host:2222/photos/a@2x.png`).
+///
+/// The two limits of that rule, both refused or read as written: a password
+/// with two raw `/` before its `@` (`u:12/x/y@host`) reads as a path, and an
+/// explicit port followed straight by a name with an `@`
+/// (`host:2222/a@2x.png`) reads as a user part; encode them (`%2F`, `%40`).
+fn user_part_end(rest: &str) -> Option<usize> {
+    let end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    if let Some(at) = rest[..end].rfind('@') {
+        return Some(at);
+    }
+    if end == rest.len() || !rest[..end].contains(':') {
+        return None;
+    }
+    let after = &rest[end + 1..];
+    let segment_end = after.find('/').unwrap_or(after.len());
+    after[..segment_end].rfind('@').map(|at| end + 1 + at)
+}
+
 /// `raw` with the password of its user part replaced by `***`. The user part
-/// runs from `://` to the `@` of the host: the last `@` before the first `/`
-/// that follows an `@`, so an `@` in the password stays in it and one in the
-/// path stays out. A user name holds no `/`, `?` or `#`, so a `:` in the path
-/// or the query of a URL without a user part is never taken for one.
+/// is what `user_part_end` finds, so an `@` in the password stays in it and
+/// one in the path stays out. A user name holds no `/`, `?` or `#`, so a `:`
+/// in the path or the query of a URL without a user part is never taken for
+/// one.
 fn mask_raw_password(raw: &str) -> String {
     let Some(start) = raw.find("://").map(|index| index + 3) else {
         return raw.to_string();
     };
     let rest = &raw[start..];
-    let Some(first_at) = rest.find('@') else {
+    let Some(at) = user_part_end(rest) else {
         return raw.to_string();
     };
-    let host_end = rest[first_at..]
-        .find('/')
-        .map_or(rest.len(), |slash| first_at + slash);
-    let at = rest[..host_end].rfind('@').unwrap_or(first_at);
     let Some(colon) = rest[..at].find(':') else {
         return raw.to_string();
     };
@@ -720,12 +808,44 @@ mod tests {
             assert!(!error.contains("hunter2"), "{raw}: {error}");
             assert!(error.contains("environment"), "{raw}: {error}");
         }
+        // The rejected name is never repeated either: a token pasted as a
+        // bare query is read as a field name.
         let error = parse("s3://AKID@host/?bukcet=b").unwrap_err();
         assert!(
-            error.contains("bukcet") && error.contains("bucket"),
+            !error.contains("bukcet") && error.contains("bucket"),
             "{error}"
         );
+        for raw in [
+            "s3://AKID@host/?ghp_dummy0123456789",
+            "sftp://host/?ghp_dummy0123456789",
+            "s3://AKID@host/?mytoken0123=1",
+        ] {
+            let error = parse(raw).unwrap_err();
+            assert!(!error.contains("dummy0123"), "{raw}: {error}");
+            assert!(!error.contains("mytoken0123"), "{raw}: {error}");
+        }
         assert!(parse("sftp://host/?region=x").is_err());
+    }
+
+    #[test]
+    fn an_s3_endpoint_never_carries_credentials() {
+        let raw = "s3://AKID@host/?bucket=b&endpoint=https://u:hunter2@minio.example.com";
+        let error = parse(raw).unwrap_err();
+        assert!(!error.contains("hunter2"), "{error}");
+        let masked = redact(raw);
+        assert!(!masked.contains("hunter2"), "{masked}");
+        assert!(masked.contains("bucket=b"), "{masked}");
+        // A custom endpoint is read and logged as written.
+        let raw = "s3://AKID@host/?bucket=b&endpoint=https://minio.example.com:9000";
+        assert_eq!(
+            parse(raw)
+                .unwrap()
+                .options
+                .get("endpoint")
+                .map(String::as_str),
+            Some("https://minio.example.com:9000")
+        );
+        assert!(redact(raw).contains("minio.example.com"));
     }
 
     #[test]
@@ -849,12 +969,60 @@ mod tests {
             repo("github://t@owner/repo@main").unwrap(),
             ("owner/repo".into(), Some("main".into()))
         );
+        // A branch keeps its slashes; nothing after the `@` is dropped.
         assert_eq!(
             repo("github://github.com/owner/repo@dev/sub").unwrap(),
-            ("owner/repo".into(), Some("dev".into()))
+            ("owner/repo".into(), Some("dev/sub".into()))
         );
+        assert_eq!(
+            repo("github://t@owner/repo@release/2026").unwrap(),
+            ("owner/repo".into(), Some("release/2026".into()))
+        );
+        assert!(repo("github://t@owner/repo/sub@dev").is_err());
+        assert!(repo("github://t@owner/repo@").is_err());
         assert!(repo("github://owner").is_err());
         assert!(repo("github://github.com/owner").is_err());
+    }
+
+    #[test]
+    fn a_branch_query_names_the_branch_unless_the_suffix_disagrees() {
+        let repo = |raw: &str| github_repository(&parse(raw).unwrap());
+        assert_eq!(
+            repo("github://t@owner/repo?branch=dev").unwrap(),
+            ("owner/repo".into(), Some("dev".into()))
+        );
+        assert_eq!(
+            repo("github://t@owner/repo@dev?branch=dev").unwrap(),
+            ("owner/repo".into(), Some("dev".into()))
+        );
+        assert!(repo("github://t@owner/repo@main?branch=dev").is_err());
+    }
+
+    #[test]
+    fn gitlab_names_a_project_in_the_host_and_an_optional_branch() {
+        let project = |raw: &str| gitlab_project(&parse(raw).unwrap());
+        assert_eq!(
+            project("gitlab://gitlab.com/owner/repo").unwrap(),
+            ("gitlab.com/owner/repo".into(), None)
+        );
+        assert_eq!(
+            project("gitlab://git.example.com/group/sub/project@dev").unwrap(),
+            (
+                "git.example.com/group/sub/project".into(),
+                Some("dev".into())
+            )
+        );
+        assert_eq!(
+            project("gitlab://gitlab.com/owner/repo?branch=dev").unwrap(),
+            ("gitlab.com/owner/repo".into(), Some("dev".into()))
+        );
+        assert!(project("gitlab://gitlab.com/owner/repo@main?branch=dev").is_err());
+        assert_eq!(
+            project("gitlab://gitlab.com/owner/repo@release/2026").unwrap(),
+            ("gitlab.com/owner/repo".into(), Some("release/2026".into()))
+        );
+        assert!(project("gitlab://gitlab.com/").is_err());
+        assert!(project("gitlab://gitlab.com/owner").is_err());
     }
 
     #[test]
@@ -898,10 +1066,33 @@ mod tests {
         ] {
             assert_eq!(redact(raw), kept, "{raw}");
         }
+        // A port and a path with an `@` further on is a link, not a password:
+        // read and logged as written.
+        let target = parse("sftp://files.example:2222/photos/a@2x.png").unwrap();
+        assert_eq!(
+            (target.host.as_str(), target.port, target.path.as_str()),
+            ("files.example", Some(2222), "/photos/a@2x.png")
+        );
+        assert_eq!(target.url_secret, None);
+        assert_eq!(
+            redact("sftp://files.example:2222/photos/a@2x.png"),
+            "sftp://files.example:2222/photos/a@2x.png"
+        );
+        // The rule's limit, refused rather than dialed: an `@` in the first
+        // name after a port reads as the end of a user part; `%40` opens it.
+        assert!(parse("sftp://h:2222/a@2x.png").is_err());
+        assert_eq!(parse("sftp://h:2222/a%402x.png").unwrap().port, Some(2222));
+        // A raw `@` in the password is the URL standard's case: the last `@`
+        // of the authority ends the user part.
+        assert_eq!(
+            parse("ftp://u:p@ss@host/").unwrap().url_secret.as_deref(),
+            Some("p@ss")
+        );
         // Read for a connection, a password the parser would split is
         // refused, never dialed as a host and port.
         for (raw, secret) in [
             ("ftp://u:123/x@host/", "123"),
+            ("sftp://user:12/x@host/", "12/x"),
             ("ftp://u:123?x@host/", "123"),
             ("ftp://u:pa#ss@host/", "pa#ss"),
         ] {
@@ -926,8 +1117,7 @@ mod tests {
         // A limit, not a leak this code can close: `u:a@b/c@host` is, by the
         // URL standard, password `a` at host `b` with path `/c@host`. An `@`
         // followed by a `/` in a password cannot be told from an `@` in the
-        // path (`file@2x.png`) without breaking the path; the refusal above
-        // asks for `%40`.
+        // path (`file@2x.png`) without breaking the path; encode it as `%40`.
         // No password: nothing in the path or the query is taken for one.
         assert_eq!(redact("sftp://alice@host/a@b"), "sftp://alice@host/a@b");
         assert_eq!(

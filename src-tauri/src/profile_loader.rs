@@ -465,11 +465,16 @@ fn s3_profile_static_endpoint(provider_id: &str) -> Option<&'static str> {
 /// not produce (a virtual-hosted `bucket.` host, another provider). Mirrors
 /// `regionFromS3Endpoint` in `src/providers/registry.ts`.
 fn region_from_s3_template(template: &str, endpoint: &str) -> Option<String> {
+    // A URI scheme is read in any case (`HTTPS://` as `https://`).
     fn without_scheme(value: &str) -> &str {
-        value
-            .strip_prefix("https://")
-            .or_else(|| value.strip_prefix("http://"))
-            .unwrap_or(value)
+        ["https://", "http://"]
+            .into_iter()
+            .find(|scheme| {
+                value
+                    .get(..scheme.len())
+                    .is_some_and(|head| head.eq_ignore_ascii_case(scheme))
+            })
+            .map_or(value, |scheme| &value[scheme.len()..])
     }
     let template = without_scheme(template);
     let (prefix, suffix) = template.split_once("{region}")?;
@@ -1156,6 +1161,16 @@ mod tests {
                 "fastly",
                 "https://bucket.eu-west-1.object.fastlystorage.app",
                 None,
+            ),
+            (
+                "wasabi",
+                "https://s3.eu-central-2.wasabisys.com",
+                Some("eu-central-2"),
+            ),
+            (
+                "wasabi",
+                "HTTPS://s3.eu-central-2.wasabisys.com",
+                Some("eu-central-2"),
             ),
         ] {
             assert_eq!(

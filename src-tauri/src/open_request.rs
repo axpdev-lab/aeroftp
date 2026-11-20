@@ -172,6 +172,22 @@ fn frontend_options(
             serde_json::Value::Bool(true),
         );
     }
+    // A WebDAV URL that names its transport keeps it: left to the `auto`
+    // rule, an `https://` link on a local host or another port than 443
+    // could fall back to plain HTTP and send its password in the clear.
+    if target.token() == "webdav" {
+        let transport = match target.scheme.scheme {
+            "https" | "webdavs" => Some("https"),
+            "http" => Some("http"),
+            _ => None,
+        };
+        if let Some(transport) = transport {
+            options.insert(
+                "webdavScheme".to_string(),
+                serde_json::Value::String(transport.to_string()),
+            );
+        }
+    }
     options
 }
 
@@ -210,11 +226,10 @@ pub fn parse_remote_url(raw: &str) -> Option<OpenRequest> {
         });
     }
 
-    let (server, branch) = if protocol == "github" {
-        let (repo, branch) = crate::launch_url::github_repository(&target).ok()?;
-        (repo, branch)
-    } else {
-        (target.connection_host(), None)
+    let (server, branch) = match protocol {
+        "github" => crate::launch_url::github_repository(&target).ok()?,
+        "gitlab" => crate::launch_url::gitlab_project(&target).ok()?,
+        _ => (target.connection_host(), None),
     };
     let username = target.connection_username();
     let username = if username.is_empty() && matches!(protocol, "ftp" | "ftps") {
@@ -237,11 +252,14 @@ pub fn parse_remote_url(raw: &str) -> Option<OpenRequest> {
             Some(target.s3_provider_id().to_string()),
         )
     } else {
-        let password = target
-            .url_secret
-            .clone()
-            .filter(|secret| !secret.is_empty())
-            .or_else(|| target.env_secret());
+        // The environment first, then the URL, as the CLI reads them
+        // (docs/CLI-GUIDE.md ranks the URL password last).
+        let password = target.env_secret().or_else(|| {
+            target
+                .url_secret
+                .clone()
+                .filter(|secret| !secret.is_empty())
+        });
         (username, password, None)
     };
     if let Some(branch) = branch {
@@ -251,7 +269,7 @@ pub fn parse_remote_url(raw: &str) -> Option<OpenRequest> {
         );
     }
     // A repository URL names no folder: its path is the repository.
-    let (initial_path, folder, name, is_dir) = if protocol == "github" {
+    let (initial_path, folder, name, is_dir) = if matches!(protocol, "github" | "gitlab") {
         ("/".to_string(), "/".to_string(), String::new(), true)
     } else {
         (initial_path, folder, name, is_dir)
@@ -721,6 +739,9 @@ mod tests {
 
     #[test]
     fn remote_url_with_credentials_and_port() {
+        // The environment is read before the URL password: hold the lock
+        // so a variable another test sets never stands in for it.
+        let _guard = crate::test_env::lock();
         let req = parse_remote_url("sftp://bob:secret@example.com:2222/var/www/file.txt").unwrap();
         assert_eq!(req.kind, OpenKind::RemoteUrl);
         assert_eq!(req.protocol.as_deref(), Some("sftp"));
@@ -786,6 +807,9 @@ mod tests {
 
     #[test]
     fn remote_url_percent_encoding_decoding() {
+        // The environment is read before the URL password: hold the lock
+        // so a variable another test sets never stands in for it.
+        let _guard = crate::test_env::lock();
         let req = parse_remote_url(
             "sftp://user%40work.com:p%40ss%23123@host:22/my%20folder/file%201.txt",
         )
@@ -851,6 +875,9 @@ mod tests {
 
     #[test]
     fn the_app_opens_every_scheme_the_launch_table_has() {
+        // The environment is read before the URL password: hold the lock
+        // so a variable another test sets never stands in for it.
+        let _guard = crate::test_env::lock();
         use crate::launch_url::{example_url, LaunchAuth, LAUNCH_SCHEMES};
         for entry in LAUNCH_SCHEMES {
             let url = example_url(entry);
@@ -906,27 +933,69 @@ mod tests {
         assert_eq!(github.server.as_deref(), Some("owner/repo"));
         assert_eq!(github.options.unwrap()["githubBranch"], "dev");
 
+        // The GitLab backend reads the project from the host: the URL's path
+        // is the project, never a folder inside it.
+        let gitlab = parse_remote_url("gitlab://gitlab.com/group/project@dev").unwrap();
+        assert_eq!(gitlab.server.as_deref(), Some("gitlab.com/group/project"));
+        assert_eq!(gitlab.initial_path.as_deref(), Some("/"));
+        assert_eq!(gitlab.options.unwrap()["githubBranch"], "dev");
+
         let ftpes = parse_remote_url("ftpes://u@h/").unwrap();
         assert_eq!(ftpes.protocol.as_deref(), Some("ftp"));
         assert_eq!(ftpes.port, Some(21));
         assert_eq!(ftpes.options.unwrap()["tlsMode"], "explicit");
     }
 
-    /// Point the AWS tools' files at `dir` for one test, under the env lock.
-    fn with_aws_files<T>(credentials: &str, config: &str, run: impl FnOnce() -> T) -> T {
+    /// Every variable the S3 chain reads: a test clears the ones the
+    /// developer's shell holds, so an inherited key never decides it.
+    const AWS_CHAIN_VARS: &[&str] = &[
+        "AEROFTP_PASSWORD",
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "AWS_SESSION_TOKEN",
+        "AWS_PROFILE",
+        "AWS_REGION",
+        "AWS_DEFAULT_REGION",
+        "AWS_SHARED_CREDENTIALS_FILE",
+        "AWS_CONFIG_FILE",
+    ];
+
+    /// Run `run` with the AWS tools' files in a temporary folder and only the
+    /// variables of `env` set among the chain's, restoring the inherited ones
+    /// after. The caller holds the env lock.
+    fn with_aws_files<T>(
+        credentials: &str,
+        config: &str,
+        env: &[(&str, &str)],
+        run: impl FnOnce() -> T,
+    ) -> T {
         let dir = tempfile::tempdir().unwrap();
         let credentials_path = dir.path().join("credentials");
         let config_path = dir.path().join("config");
         std::fs::write(&credentials_path, credentials).unwrap();
         std::fs::write(&config_path, config).unwrap();
+        let inherited: Vec<(&str, Option<std::ffi::OsString>)> = AWS_CHAIN_VARS
+            .iter()
+            .map(|name| (*name, std::env::var_os(name)))
+            .collect();
         unsafe {
+            for name in AWS_CHAIN_VARS {
+                std::env::remove_var(name);
+            }
             std::env::set_var("AWS_SHARED_CREDENTIALS_FILE", &credentials_path);
             std::env::set_var("AWS_CONFIG_FILE", &config_path);
+            for (name, value) in env {
+                std::env::set_var(name, value);
+            }
         }
         let result = run();
         unsafe {
-            std::env::remove_var("AWS_SHARED_CREDENTIALS_FILE");
-            std::env::remove_var("AWS_CONFIG_FILE");
+            for (name, value) in inherited {
+                match value {
+                    Some(value) => std::env::set_var(name, value),
+                    None => std::env::remove_var(name),
+                }
+            }
         }
         result
     }
@@ -937,6 +1006,7 @@ mod tests {
         let request = with_aws_files(
             "[default]\naws_access_key_id = FILEKEY\naws_secret_access_key = filesecret\naws_session_token = filetoken\n",
             "[default]\nregion = eu-west-3\n",
+            &[],
             || parse_remote_url("s3://minio.lan:9000/?bucket=b1").unwrap(),
         );
         assert_eq!(request.username.as_deref(), Some("FILEKEY"));
@@ -948,27 +1018,59 @@ mod tests {
         assert!(!request.path.contains("filesecret"));
 
         // The AWS variables win over the files.
-        unsafe {
-            std::env::set_var("AWS_ACCESS_KEY_ID", "ENVKEY");
-            std::env::set_var("AWS_SECRET_ACCESS_KEY", "envsecret");
-        }
         let request = with_aws_files(
             "[default]\naws_access_key_id = FILEKEY\naws_secret_access_key = filesecret\n",
             "",
+            &[
+                ("AWS_ACCESS_KEY_ID", "ENVKEY"),
+                ("AWS_SECRET_ACCESS_KEY", "envsecret"),
+            ],
             || parse_remote_url("s3://minio.lan:9000/?bucket=b1").unwrap(),
         );
-        unsafe {
-            std::env::remove_var("AWS_ACCESS_KEY_ID");
-            std::env::remove_var("AWS_SECRET_ACCESS_KEY");
-        }
         assert_eq!(request.username.as_deref(), Some("ENVKEY"));
         assert_eq!(request.password.as_deref(), Some("envsecret"));
     }
 
     #[test]
+    fn an_inherited_aws_identity_never_decides_a_test() {
+        // The developer's shell holds another identity and profile: the
+        // helper clears them for the run and puts them back after.
+        let _guard = crate::test_env::lock();
+        let inherited: Vec<_> = ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_PROFILE"]
+            .iter()
+            .map(|name| (*name, std::env::var_os(name)))
+            .collect();
+        unsafe {
+            std::env::set_var("AWS_ACCESS_KEY_ID", "SHELLKEY");
+            std::env::set_var("AWS_SECRET_ACCESS_KEY", "shellsecret");
+            std::env::set_var("AWS_PROFILE", "other");
+        }
+        let request = with_aws_files(
+            "[default]\naws_access_key_id = FILEKEY\naws_secret_access_key = filesecret\n",
+            "",
+            &[],
+            || parse_remote_url("s3://minio.lan:9000/?bucket=b1").unwrap(),
+        );
+        assert_eq!(request.username.as_deref(), Some("FILEKEY"));
+        assert_eq!(request.password.as_deref(), Some("filesecret"));
+        assert_eq!(
+            std::env::var("AWS_ACCESS_KEY_ID").as_deref(),
+            Ok("SHELLKEY")
+        );
+        unsafe {
+            for (name, value) in inherited {
+                match value {
+                    Some(value) => std::env::set_var(name, value),
+                    None => std::env::remove_var(name),
+                }
+            }
+        }
+    }
+
+    #[test]
     fn an_s3_endpoint_names_its_preset_and_the_region_it_carries() {
         let _guard = crate::test_env::lock();
-        let request = with_aws_files("", "", || {
+        let request = with_aws_files("", "", &[], || {
             parse_remote_url(
                 "s3://KEY:secret@s3.eu-central-2.wasabisys.com/?bucket=b1&region=us-east-1",
             )
@@ -977,7 +1079,7 @@ mod tests {
         assert_eq!(request.provider_id.as_deref(), Some("wasabi"));
         assert_eq!(request.options.unwrap()["region"], "eu-central-2");
 
-        let generic = with_aws_files("", "", || {
+        let generic = with_aws_files("", "", &[], || {
             parse_remote_url("s3://KEY:secret@storage.example.net/?bucket=b1").unwrap()
         });
         assert_eq!(generic.provider_id.as_deref(), Some("custom-s3"));
@@ -996,6 +1098,40 @@ mod tests {
         assert!(!request.path.contains("hunter2"));
         let named = parse_remote_url("onedrive://work/Reports").unwrap();
         assert_eq!(named.server.as_deref(), Some("work"));
+        // Without the final `/` the last name is a file to select in its
+        // folder, which is why the notices write `<profile name>/folder/`.
+        assert_eq!(named.initial_path.as_deref(), Some("/"));
+        assert_eq!((named.name.as_str(), named.is_dir), ("Reports", false));
+        let folder = parse_remote_url("onedrive://work/Reports/").unwrap();
+        assert_eq!(folder.initial_path.as_deref(), Some("/Reports/"));
+        assert!(folder.is_dir);
+    }
+
+    #[test]
+    fn the_environment_secret_wins_over_the_url_password_as_in_the_cli() {
+        let _guard = crate::test_env::lock();
+        unsafe {
+            std::env::set_var("SFTP_PASSWORD", "env_sftp_secret");
+        }
+        let req = parse_remote_url("sftp://alice:url_secret@host/").unwrap();
+        unsafe {
+            std::env::remove_var("SFTP_PASSWORD");
+        }
+        assert_eq!(req.password.as_deref(), Some("env_sftp_secret"));
+        let req = parse_remote_url("sftp://alice:url_secret@host/").unwrap();
+        assert_eq!(req.password.as_deref(), Some("url_secret"));
+    }
+
+    #[test]
+    fn a_webdav_url_keeps_the_transport_it_names() {
+        let options = |raw: &str| parse_remote_url(raw).unwrap().options.unwrap_or_default();
+        assert_eq!(options("https://localhost:8080/")["webdavScheme"], "https");
+        assert_eq!(
+            options("webdavs://dav.example.com:8443/")["webdavScheme"],
+            "https"
+        );
+        assert_eq!(options("http://nas.lan/")["webdavScheme"], "http");
+        assert!(!options("webdav://dav.example.com/").contains_key("webdavScheme"));
     }
 
     #[test]

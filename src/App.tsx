@@ -19443,6 +19443,13 @@ const App: React.FC = () => {
     await openSavedProfile(matched);
   };
 
+  // A launch navigates after an await (a connect, a tab switch): by then the
+  // render that started it is stale, and its changeRemoteDirectory would read
+  // the previous session's state (its AeroVault overlay, its path). This runs
+  // the body of the last commit, the one of the session just opened.
+  const navigateAfterLaunch = useLatestCallback((path: string, protocol?: string) =>
+    changeRemoteDirectory(path, protocol));
+
   // Open one saved profile: its live tab when it has one, else a connect.
   const openSavedProfile = async (matched: ServerProfile, initialPath?: string) => {
     const existing = sessions.find(
@@ -19460,7 +19467,7 @@ const App: React.FC = () => {
       return;
     }
     if (initialPath && initialPath !== '/') {
-      await changeRemoteDirectory(initialPath, matched.protocol);
+      await navigateAfterLaunch(initialPath, matched.protocol);
     }
   };
 
@@ -19515,7 +19522,7 @@ const App: React.FC = () => {
       setShowLocalPreview(false);
       await switchSession(existingSession.id);
       if (initialRemotePath && initialRemotePath !== '/' && initialRemotePath !== '') {
-        await changeRemoteDirectory(initialRemotePath, targetProtocol);
+        await navigateAfterLaunch(initialRemotePath, targetProtocol);
       }
       return;
     }

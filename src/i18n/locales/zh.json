@@ -7190,8 +7190,8 @@
             "folderBusyTitle": "文件夹仍在加载",
             "folderBusy": "您打开的文件未显示：请求 {folder} 时，另一个文件夹仍在加载。请重新打开。",
             "signInNeedsProfileTitle": "{provider} 需要已保存的登录信息",
-            "signInNeedsProfile": "{provider} 通过其自带的浏览器授权登录,链接无法携带该授权。请在“我的服务器”中添加并授权该账户,然后打开 {scheme}://<配置文件名称>/文件夹。",
-            "signInNameTheProfile": "已保存多个 {provider} 账户。请指定要打开的账户:{scheme}://<配置文件名称>/文件夹。"
+            "signInNeedsProfile": "{provider} 通过其自带的浏览器授权登录,链接无法携带该授权。请在“我的服务器”中添加并授权该账户,然后打开 {scheme}://<配置文件名称>/文件夹/。",
+            "signInNameTheProfile": "已保存多个 {provider} 账户。请指定要打开的账户:{scheme}://<配置文件名称>/文件夹/。"
         }
     }
 }

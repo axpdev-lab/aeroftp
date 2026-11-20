@@ -31,6 +31,20 @@ describe('matchSignInProfile', () => {
     expect(matchSignInProfile(saved, 'onedrive', '')).toEqual({ kind: 'missing' });
     expect(matchSignInProfile(saved, 'googledrive', 'Work')).toEqual({ kind: 'missing' });
   });
+
+  it('never guesses between two profiles the link names alike', () => {
+    const twins = [
+      profile('w1', 'Work', 'dropbox', 'one@example.com'),
+      profile('w2', 'work', 'dropbox', 'two@example.com'),
+      profile('s1', 'Shared A', 'dropbox', 'team@example.com'),
+      profile('s2', 'Shared B', 'dropbox', 'team@example.com'),
+    ];
+    expect(matchSignInProfile(twins, 'dropbox', 'work')).toEqual({ kind: 'ambiguous' });
+    expect(matchSignInProfile(twins, 'dropbox', 'team@example.com')).toEqual({ kind: 'ambiguous' });
+    // A single name match wins over the account step; a single account match opens.
+    expect(matchSignInProfile(twins, 'dropbox', 'shared a')).toEqual({ kind: 'found', profile: twins[2] });
+    expect(matchSignInProfile(twins, 'dropbox', 'one@example.com')).toEqual({ kind: 'found', profile: twins[0] });
+  });
 });
 
 describe('a launch URL and the sessions and profiles it can reuse', () => {
@@ -54,6 +68,21 @@ describe('a launch URL and the sessions and profiles it can reuse', () => {
     expect(openSessionMatchesLaunch(session({ protocol: 'webdav' }), req({}))).toBe(false);
   });
 
+  it('opens another tab for another S3 endpoint or repository branch', () => {
+    const withEndpoint = session({ options: { bucket: 'b1', endpoint: 'https://Minio.Example.com/' } });
+    expect(openSessionMatchesLaunch(withEndpoint, req({ options: { bucket: 'b1', endpoint: 'https://minio.example.com' } }))).toBe(true);
+    expect(openSessionMatchesLaunch(withEndpoint, req({ options: { bucket: 'b1', endpoint: 'https://other.example.com' } }))).toBe(false);
+    expect(openSessionMatchesLaunch(withEndpoint, req({}))).toBe(false);
+
+    const repo = (over: Partial<ConnectionParams>) =>
+      session({ protocol: 'github', server: 'owner/repo', port: undefined, username: '', options: {}, ...over });
+    const link = (options: OpenRequest['options']) =>
+      req({ protocol: 'github', server: 'owner/repo', username: '', options });
+    expect(openSessionMatchesLaunch(repo({}), link({}))).toBe(true);
+    expect(openSessionMatchesLaunch(repo({}), link({ githubBranch: 'dev' }))).toBe(false);
+    expect(openSessionMatchesLaunch(repo({ options: { githubBranch: 'dev' } }), link({ githubBranch: 'dev' }))).toBe(true);
+  });
+
   it('takes the secret only from a profile of the same endpoint and user', () => {
     const saved = { id: 's', name: 'S3', protocol: 's3', host: 's3.example.com', port: 443, username: 'AK', options: { bucket: 'b1' } } as ServerProfile;
     expect(savedProfileMatchesLaunch(saved, req({}))).toBe(true);
@@ -61,5 +90,10 @@ describe('a launch URL and the sessions and profiles it can reuse', () => {
     expect(savedProfileMatchesLaunch(saved, req({ options: { bucket: 'b2' } }))).toBe(false);
     expect(savedProfileMatchesLaunch(saved, req({ username: 'OTHER' }))).toBe(false);
     expect(savedProfileMatchesLaunch({ ...saved, port: 0 }, req({ port: 443 }))).toBe(true);
+    // An S3 endpoint the URL names must be the profile's; none takes the profile's.
+    const minio = { ...saved, options: { bucket: 'b1', endpoint: 'https://minio.example.com' } } as ServerProfile;
+    expect(savedProfileMatchesLaunch(minio, req({}))).toBe(true);
+    expect(savedProfileMatchesLaunch(minio, req({ options: { bucket: 'b1', endpoint: 'https://MINIO.example.com/' } }))).toBe(true);
+    expect(savedProfileMatchesLaunch(minio, req({ options: { bucket: 'b1', endpoint: 'https://other.example.com' } }))).toBe(false);
   });
 });

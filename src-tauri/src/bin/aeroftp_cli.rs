@@ -13265,15 +13265,17 @@ fn resolve_password(
     prompt_secret()
 }
 
-/// The secret key of an `s3://` URL: the --token and --password-stdin flags,
-/// then what the AWS chain of `LaunchTarget::s3_credentials` resolved,
-/// then the prompt.
+/// The secret key of an `s3://` URL and the session token that goes with it:
+/// the --token and --password-stdin flags, then what the AWS chain of
+/// `LaunchTarget::s3_credentials` resolved, then the prompt. The chain's
+/// session token belongs to the chain's secret, so a secret from a flag or
+/// the prompt comes without one.
 fn resolve_s3_secret(
     credentials: &ftp_client_gui_lib::launch_url::aws::S3Credentials,
     cli: &Cli,
-) -> Result<String, String> {
+) -> Result<(String, Option<String>), String> {
     if let Some(secret) = flag_secret(cli)? {
-        return Ok(secret);
+        return Ok((secret, None));
     }
     if let Some(secret) = credentials.secret_access_key.clone() {
         if credentials.secret_source
@@ -13281,9 +13283,9 @@ fn resolve_s3_secret(
         {
             warn_url_secret();
         }
-        return Ok(secret);
+        return Ok((secret, credentials.session_token.clone()));
     }
-    prompt_secret()
+    Ok((prompt_secret()?, None))
 }
 
 fn warn_url_secret() {
@@ -13569,14 +13571,12 @@ fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, Strin
             return Ok((config, "/".to_string()));
         }
         "gitlab" => {
-            // gitlab://gitlab.com/owner/repo or gitlab://self-hosted.com/owner/repo
-            let host = url_obj.host_str().unwrap_or("gitlab.com");
-            let path = url_obj.path().trim_matches('/');
-            let gitlab_host = if path.is_empty() {
-                host.to_string()
-            } else {
-                format!("{}/{}", host, path)
-            };
+            let (gitlab_host, gitlab_branch) =
+                ftp_client_gui_lib::launch_url::gitlab_project(&target)?;
+            let mut extra = HashMap::new();
+            if let Some(branch_name) = gitlab_branch {
+                extra.insert("branch".to_string(), branch_name);
+            }
 
             let password = resolve_password(&url_obj, scheme, cli)?;
 
@@ -13588,7 +13588,7 @@ fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, Strin
                 username: None,
                 password: Some(password),
                 initial_path: Some("/".to_string()),
-                extra: HashMap::new(),
+                extra,
             };
 
             return Ok((config, "/".to_string()));
@@ -13612,11 +13612,13 @@ fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, Strin
     // files) below the --token and --password-stdin flags; the other schemes
     // keep their order.
     let s3_credentials = (provider_type == ProviderType::S3).then(|| target.s3_credentials());
+    let mut s3_session_token = None;
     let (username, password) = match &s3_credentials {
-        Some(credentials) => (
-            credentials.access_key_id.clone(),
-            resolve_s3_secret(credentials, cli)?,
-        ),
+        Some(credentials) => {
+            let (secret, session_token) = resolve_s3_secret(credentials, cli)?;
+            s3_session_token = session_token;
+            (credentials.access_key_id.clone(), secret)
+        }
         None => (username, resolve_password(&url_obj, scheme, cli)?),
     };
 
@@ -13734,7 +13736,7 @@ fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, Strin
         if let Some(region) = credentials.region {
             extra.insert("region".to_string(), region);
         }
-        if let Some(token) = credentials.session_token {
+        if let Some(token) = s3_session_token {
             extra.insert("session_token".to_string(), token);
         }
     }
@@ -90353,6 +90355,68 @@ mod tests {
         )
         .unwrap();
         assert_eq!(config.password.as_deref(), Some("flagsecret"));
+
+        // A host that spells its region signs with it over --region too:
+        // SigV4 must use the region the host serves (docs/CLI-GUIDE.md).
+        cli.region = Some("us-east-1".to_string());
+        let (config, _) = url_to_provider_config(
+            "s3://KEY:urlsecret@s3.eu-central-2.wasabisys.com/?bucket=b1",
+            &cli,
+        )
+        .unwrap();
+        assert_eq!(
+            config.extra.get("region").map(String::as_str),
+            Some("eu-central-2")
+        );
+        // A host that spells none takes --region.
+        let (config, _) =
+            url_to_provider_config("s3://KEY:urlsecret@storage.example.net/?bucket=b1", &cli)
+                .unwrap();
+        assert_eq!(
+            config.extra.get("region").map(String::as_str),
+            Some("us-east-1")
+        );
+    }
+
+    #[test]
+    fn a_repository_url_takes_its_branch_from_the_suffix_or_the_query() {
+        let cli = test_cli();
+        let (config, path) =
+            url_to_provider_config("gitlab://gitlab.com/group/project?branch=dev", &cli).unwrap();
+        assert_eq!(config.host, "gitlab.com/group/project");
+        assert_eq!(config.extra.get("branch").map(String::as_str), Some("dev"));
+        assert_eq!(path, "/");
+        let (config, _) =
+            url_to_provider_config("gitlab://git.example.com/group/sub/project@main", &cli)
+                .unwrap();
+        assert_eq!(config.host, "git.example.com/group/sub/project");
+        assert_eq!(config.extra.get("branch").map(String::as_str), Some("main"));
+        let (config, _) = url_to_provider_config("github://owner/repo?branch=dev", &cli).unwrap();
+        assert_eq!(config.host, "owner/repo");
+        assert_eq!(config.extra.get("branch").map(String::as_str), Some("dev"));
+        assert!(url_to_provider_config("github://owner/repo@main?branch=dev", &cli).is_err());
+    }
+
+    #[test]
+    fn a_flag_secret_drops_the_aws_chains_session_token() {
+        use ftp_client_gui_lib::launch_url::aws::{CredentialSource, S3Credentials};
+        let credentials = S3Credentials {
+            access_key_id: "ENVKEY".to_string(),
+            secret_access_key: Some("envsecret".to_string()),
+            session_token: Some("envtoken".to_string()),
+            region: None,
+            secret_source: Some(CredentialSource::AwsEnv),
+        };
+        let mut cli = test_cli();
+        assert_eq!(
+            resolve_s3_secret(&credentials, &cli).unwrap(),
+            ("envsecret".to_string(), Some("envtoken".to_string()))
+        );
+        cli.token = Some("flagsecret".to_string());
+        assert_eq!(
+            resolve_s3_secret(&credentials, &cli).unwrap(),
+            ("flagsecret".to_string(), None)
+        );
     }
 
     #[test]

@@ -7209,8 +7209,8 @@
             "folderBusyTitle": "Mae'r ffolder yn dal i lwytho",
             "folderBusy": "Ni ddangoswyd y ffeil a agorwyd gennych: roedd ffolder arall yn dal i lwytho pan ofynnwyd am {folder}. Agorwch hi eto.",
             "signInNeedsProfileTitle": "Mae {provider} angen ei fewngofnodi wedi'i gadw",
-            "signInNeedsProfile": "Mae {provider} yn mewngofnodi trwy ei awdurdodiad porwr ei hun, na all dolen ei gario. Ychwanegwch ac awdurdodwch y cyfrif yn Fy Gweinyddion, yna agorwch {scheme}://<enw'r proffil>/ffolder.",
-            "signInNameTheProfile": "Mae sawl cyfrif {provider} wedi'u cadw. Enwch yr un i'w agor: {scheme}://<enw'r proffil>/ffolder."
+            "signInNeedsProfile": "Mae {provider} yn mewngofnodi trwy ei awdurdodiad porwr ei hun, na all dolen ei gario. Ychwanegwch ac awdurdodwch y cyfrif yn Fy Gweinyddion, yna agorwch {scheme}://<enw'r proffil>/ffolder/.",
+            "signInNameTheProfile": "Mae sawl cyfrif {provider} wedi'u cadw. Enwch yr un i'w agor: {scheme}://<enw'r proffil>/ffolder/."
         }
     }
 }
