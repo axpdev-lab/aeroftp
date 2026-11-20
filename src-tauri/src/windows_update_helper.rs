@@ -823,11 +823,10 @@ fn portable_helper_script(
     let old_exe = current_exe.with_extension("exe.old");
 
     // Every staged copy goes when the app exe cannot be replaced: then the
-    // installed exes all stay as they were. Rust removes them so cleanup does
-    // not depend on cmd's redirection/error state after a rejected handoff.
+    // installed exes all stay as they were.
     let mut discard_block = format!(
-        "{} {DISCARD_EXES_FLAG} {attempt_id} >nul 2>&1\n",
-        quote_for_cmd(current_exe)
+        "del /F /Q {} >nul 2>&1\n",
+        quote_for_cmd(&beside_path(current_exe, attempt_id))
     );
     // A file held open without write sharing refuses the replace. The log
     // line is in a group that swallows cmd's error when the log itself is
@@ -851,6 +850,7 @@ fn portable_helper_script(
     for (i, &name) in cli.iter().enumerate() {
         let target = exe_dir.join(name);
         let new = quote_for_cmd(&beside_path(&target, attempt_id));
+        discard_block.push_str(&format!("del /F /Q {new} >nul 2>&1\n"));
         let log_line = warn_line(name, IN_USE);
         cli_block.push_str(&format!(
             r#"set RETRY=0
@@ -912,8 +912,13 @@ start "" {current} --post-update-cleanup {old}
 del /F /Q "%~f0" & exit /b 0
 
 :swap_inner
+rem A redirection cmd cannot open (the lock held by another attempt) skips
+rem the call and leaves errorlevel as it was, so the swap reports that it ran.
+set "AEROFTP_SWAP_RAN="
 call :run_swap 9>>{handoff_lock}
-exit /b %errorlevel%
+if errorlevel 1 exit /b 1
+if not defined AEROFTP_SWAP_RAN exit /b 1
+exit /b 0
 
 :finish_failed
 rem Both handoff rejection and swap failure reach this terminal block once.
@@ -923,6 +928,7 @@ rmdir /S /Q {stage} >nul 2>&1
 del /F /Q "%~f0" & exit /b 1
 
 :run_swap
+set "AEROFTP_SWAP_RAN=1"
 ping 127.0.0.1 -n 3 >nul
 
 if not exist {new_exe} goto replace_failed
@@ -1014,7 +1020,6 @@ fn spawn_detached(script: &Path) -> Result<std::process::Child, String> {
 
 const CLEANUP_FLAG: &str = "--post-update-cleanup";
 const DISCARD_DOCS_FLAG: &str = "--discard-pending-docs";
-const DISCARD_EXES_FLAG: &str = "--discard-staged-exes";
 
 fn discard_pending_docs_arg(args: &[String]) -> Option<&str> {
     let mut iter = args.iter().skip(1);
@@ -1028,35 +1033,6 @@ fn discard_pending_docs_arg(args: &[String]) -> Option<&str> {
         }
     }
     None
-}
-
-fn discard_staged_exes_arg(args: &[String]) -> Option<&str> {
-    let mut iter = args.iter().skip(1);
-    while let Some(arg) = iter.next() {
-        if arg == DISCARD_EXES_FLAG {
-            let attempt_id = iter.next()?.as_str();
-            if !attempt_id.is_empty() && attempt_id.bytes().all(|b| b.is_ascii_alphanumeric()) {
-                return Some(attempt_id);
-            }
-            return None;
-        }
-    }
-    None
-}
-
-/// Walk argv looking for `--discard-staged-exes <attempt-id>`. When present,
-/// removes only that attempt's sidecars for the running app and its companions,
-/// then returns `true` so `main.rs` exits without booting the GUI.
-pub fn try_handle_discard_staged_exes_arg() -> bool {
-    let args: Vec<String> = std::env::args().collect();
-    let Some(attempt_id) = discard_staged_exes_arg(&args) else {
-        return false;
-    };
-    if let Ok(exe) = std::env::current_exe() {
-        let companions = companion_exes(&exe);
-        discard_staged(&exe, attempt_id, &companions, None);
-    }
-    true
 }
 
 /// Walk argv looking for `--discard-pending-docs <attempt-token>`. When
@@ -1467,7 +1443,6 @@ mod tests {
 
     const CHILD_DISCARD_EXE: &str = "AEROFTP_TEST_DISCARD_EXE";
     const CHILD_DISCARD_KEY: &str = "AEROFTP_TEST_DISCARD_KEY";
-    const CHILD_DISCARD_ATTEMPT: &str = "AEROFTP_TEST_DISCARD_ATTEMPT";
     const CHILD_DISCARD_DONE: &str = "AEROFTP_TEST_DISCARD_DONE";
 
     /// Child process helper invoked by `runnable` in place of the fake 15-byte
@@ -1492,43 +1467,21 @@ mod tests {
         }
     }
 
-    #[test]
-    #[ignore = "invoked by failed-swap helper tests via runnable()"]
-    fn child_discard_staged_exes() {
-        let (Some(exe), Ok(attempt_id)) = (
-            std::env::var_os(CHILD_DISCARD_EXE),
-            std::env::var(CHILD_DISCARD_ATTEMPT),
-        ) else {
-            return;
-        };
-        let exe_path = PathBuf::from(exe);
-        let companions = companion_exes(&exe_path);
-        discard_staged(&exe_path, &attempt_id, &companions, None);
-    }
-
     /// The script as the helper runs it, minus the waits (`ping`) and the
     /// relaunch (`start`), which would launch the test's fake exe. A failed
-    /// swap's `{current} --discard-staged-exes <attempt>` and
-    /// `{current} --discard-pending-docs <key>` lines are routed through this
-    /// test binary's child helpers (keeping the exact cmd-escaped `{current}`
-    /// path so `%VAR%` handling is still tested).
+    /// swap's `{current} --discard-pending-docs <key>` line is routed through
+    /// this test binary's `child_discard_pending_docs` helper (keeping the
+    /// exact cmd-escaped `{current}` path so `%VAR%` handling is still tested).
     fn runnable(script: &str) -> Vec<String> {
         let test_exe = quote_for_cmd(&std::env::current_exe().expect("test exe"));
-        let docs_marker = format!(" {DISCARD_DOCS_FLAG} ");
-        let exes_marker = format!(" {DISCARD_EXES_FLAG} ");
+        let marker = format!(" {DISCARD_DOCS_FLAG} ");
         script
             .split_inclusive('\n')
             .map(|line| {
                 let trimmed = line.trim_start();
                 if trimmed.starts_with("ping ") || trimmed.starts_with("start ") {
                     "rem\r\n".to_string()
-                } else if let Some((exe_part, rest)) = trimmed.split_once(&exes_marker) {
-                    let attempt_id = rest.split_whitespace().next().unwrap_or("");
-                    let raw_exe = exe_part.trim().trim_matches('"');
-                    format!(
-                        "set \"{CHILD_DISCARD_EXE}={raw_exe}\"\r\nset \"{CHILD_DISCARD_ATTEMPT}={attempt_id}\"\r\n{test_exe} --exact windows_update_helper::tests::child_discard_staged_exes --ignored >nul 2>&1\r\n"
-                    )
-                } else if let Some((exe_part, rest)) = trimmed.split_once(&docs_marker) {
+                } else if let Some((exe_part, rest)) = trimmed.split_once(&marker) {
                     let key = rest.split_whitespace().next().unwrap_or("");
                     let raw_exe = exe_part.trim().trim_matches('"');
                     format!(
@@ -2193,32 +2146,6 @@ mod tests {
             ]),
             None
         );
-    }
-
-    #[test]
-    fn discard_staged_exes_arg_parses_only_valid_attempt_ids() {
-        assert_eq!(
-            discard_staged_exes_arg(&[
-                "AeroFTP.exe".into(),
-                DISCARD_EXES_FLAG.into(),
-                "handoffheld01".into()
-            ]),
-            Some("handoffheld01")
-        );
-        assert_eq!(
-            discard_staged_exes_arg(&["AeroFTP.exe".into(), DISCARD_EXES_FLAG.into()]),
-            None
-        );
-        for invalid in ["", "another.attempt", "attempt/../other"] {
-            assert_eq!(
-                discard_staged_exes_arg(&[
-                    "AeroFTP.exe".into(),
-                    DISCARD_EXES_FLAG.into(),
-                    invalid.into()
-                ]),
-                None
-            );
-        }
     }
 
     #[test]
@@ -3067,16 +2994,49 @@ mod tests {
         with_docs(&mut fx, |_| true);
         let (script, staged) = script_for_attempt(&fx, "handoffheld01");
         drop(staged);
+        let relaunched = fx.root.path().join("relaunched.marker");
         let lock = acquire_update_handoff_lock(&fx.app).expect("hold handoff lock");
-        let status = run(&fx, &runnable(&script));
+        // The exit code says nothing here: the helper deletes itself on both
+        // paths and cmd then reports the batch file missing. What tells the
+        // paths apart is the relaunch, which only the swap path reaches.
+        run(&fx, &runnable(&marking_relaunch(&script, &relaunched)));
+        drop(lock);
         assert!(
-            !status.success(),
-            "helper must reject the held handoff lock"
+            !relaunched.exists(),
+            "a helper rejected by the held handoff lock must not relaunch"
         );
         assert!(!has_staged_exe(&fx.app, "AeroFTP.exe"));
         assert!(!fx.app.join(portable_docs::NEXT_DIR).exists());
+        assert!(!fx.staged.stage_dir.exists());
+        assert!(!fx.zip.exists());
         assert_eq!(read(&fx, "AeroFTP.exe"), OLD_EXE);
-        drop(lock);
+
+        // Control: the same attempt with the lock free swaps and relaunches,
+        // so the marker above can tell the two paths apart.
+        let mut free = fixture();
+        with_docs(&mut free, |_| true);
+        let (script, staged) = script_for_attempt(&free, "handofffree01");
+        drop(staged);
+        let relaunched = free.root.path().join("relaunched.marker");
+        run(&free, &runnable(&marking_relaunch(&script, &relaunched)));
+        assert!(relaunched.exists(), "the swap path relaunches");
+        assert_eq!(read(&free, "AeroFTP.exe"), NEW_EXE);
+        assert!(!has_staged_exe(&free.app, "AeroFTP.exe"));
+    }
+
+    /// `script` with the relaunch (`start ...`) replaced by the creation of
+    /// `marker`, so a test can see whether the helper reached it.
+    fn marking_relaunch(script: &str, marker: &Path) -> String {
+        script
+            .split_inclusive('\n')
+            .map(|line| {
+                if line.trim_start().starts_with("start ") {
+                    format!("type nul > {}\r\n", quote_for_cmd(marker))
+                } else {
+                    line.to_string()
+                }
+            })
+            .collect()
     }
 
     #[test]

@@ -9,13 +9,11 @@ fn main() {
     // part-sized buffers it owns, are shared with the desktop app.
     ftp_client_gui_lib::alloc_tuning::tune_for_transfer_buffers();
 
-    // Windows portable auto-updater: a failed swap delegates attempt cleanup
-    // back to this exe. Sidecars are removed directly; document batches are
-    // checked and removed under the same batch mutex. Exit immediately without UI.
+    // Windows portable auto-updater: a failed swap delegates batch cleanup
+    // back to this exe (`--discard-pending-docs <token>`) so the check and
+    // removal run under the same batch mutex. Exits immediately without UI.
     #[cfg(windows)]
-    if ftp_client_gui_lib::windows_update_helper::try_handle_discard_staged_exes_arg()
-        || ftp_client_gui_lib::windows_update_helper::try_handle_discard_pending_docs_arg()
-    {
+    if ftp_client_gui_lib::windows_update_helper::try_handle_discard_pending_docs_arg() {
         return;
     }
 
