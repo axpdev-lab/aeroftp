@@ -396,8 +396,14 @@ fn remove_saved(
     store
         .delete(key)
         .map_err(|error| ProviderError::Other(format!("the vault refused the delete: {error}")))?;
+    // The row is what the account reads first: one left behind keeps the
+    // session the delete was asked to remove, so its removal is reported.
     if let Some(user) = owner.user_id {
-        crate::user_partitions::unmirror_credential_for_user_best_effort_any(user, key);
+        crate::user_partitions::try_unmirror_active_credential(user, key).map_err(|error| {
+            ProviderError::Other(format!(
+                "the vault copy was deleted, but the account's row was not: {error}"
+            ))
+        })?;
     }
     Ok(())
 }

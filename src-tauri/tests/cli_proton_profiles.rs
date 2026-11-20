@@ -583,3 +583,69 @@ fn a_profile_delete_takes_a_proton_session_lock_only_for_proton() {
         "a native Proton profile's delete goes through its session lock"
     );
 }
+
+/// The first file named `name` under `dir`, at any depth.
+fn find_file(dir: &Path, name: &str) -> Option<std::path::PathBuf> {
+    std::fs::read_dir(dir).ok()?.flatten().find_map(|entry| {
+        let path = entry.path();
+        if path.is_dir() {
+            find_file(&path, name)
+        } else {
+            (entry.file_name() == name).then_some(path)
+        }
+    })
+}
+
+/// A profile delete whose credential row cannot be removed says so: the
+/// profile leaves the list, and the secret still saved under its id is named,
+/// instead of a plain "deleted" over a row every reader still takes first.
+#[test]
+fn a_profile_delete_names_the_secret_it_could_not_remove() {
+    let root = isolated_cli::root();
+    let root = root.path();
+    let mut add = isolated_cli::command(Path::new(env!("CARGO_BIN_EXE_aeroftp-cli")), root)
+        .args([
+            "--json",
+            "profile-add",
+            "--name",
+            "kept-secret",
+            "--protocol",
+            "ftp",
+            "--host",
+            "127.0.0.1",
+            "--password-stdin",
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("run aeroftp-cli");
+    {
+        use std::io::Write;
+        add.stdin.take().unwrap().write_all(b"hunter2\n").unwrap();
+    }
+    let out = add.wait_with_output().expect("aeroftp-cli output");
+    assert_eq!(out.status.code(), Some(0), "{}", describe(&out));
+    let added: serde_json::Value =
+        serde_json::from_slice(&out.stdout).unwrap_or_else(|e| panic!("{e}: {}", describe(&out)));
+    let id = added["id"].as_str().expect("id").to_string();
+    let db = find_file(root, "user_partitions.db").expect("the account database");
+    rusqlite::Connection::open(&db)
+        .unwrap()
+        .execute_batch(
+            "CREATE TRIGGER keep_rows BEFORE DELETE ON user_credentials
+             BEGIN SELECT RAISE(FAIL, 'disk full'); END;",
+        )
+        .unwrap();
+    let out = cli(root, &["--json", "profile-delete", &id, "--yes"]);
+    assert_eq!(out.status.code(), Some(0), "{}", describe(&out));
+    let deleted: serde_json::Value =
+        serde_json::from_slice(&out.stdout).unwrap_or_else(|e| panic!("{e}: {}", describe(&out)));
+    assert_eq!(deleted["status"], "deleted", "{}", describe(&out));
+    assert_eq!(
+        deleted["secrets_not_removed"],
+        serde_json::json!([format!("server_{id}")]),
+        "{}",
+        describe(&out)
+    );
+}

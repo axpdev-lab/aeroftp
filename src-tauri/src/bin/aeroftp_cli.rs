@@ -14204,31 +14204,23 @@ fn dual_store_server_cred(
     let _ = dual_store_server_cred_checked(store, uid, credential_id, secret);
 }
 
-/// Best-effort dual-delete a `server_<id>` secret (vault + the user's partition
-/// when `uid` is known).
+/// Dual-delete a profile secret: the vault entry and, when `uid` is known,
+/// the user's partition row. The row is read ahead of the vault, so a delete
+/// that leaves it fails, and the caller says what was left.
 fn dual_delete_server_cred(
     store: &ftp_client_gui_lib::credential_store::CredentialStore,
     uid: Option<i64>,
     credential_id: &str,
-) {
+) -> Result<(), String> {
     match uid {
-        Some(uid) => {
-            if ftp_client_gui_lib::user_partitions::delete_credential_for_user_dual(
-                store,
-                uid,
-                credential_id,
-            )
-            .is_ok()
-            {
-                ftp_client_gui_lib::user_partitions::unmirror_credential_for_user_best_effort_any(
-                    uid,
-                    credential_id,
-                );
-            }
-        }
-        None => {
-            let _ = store.delete(credential_id);
-        }
+        Some(uid) => ftp_client_gui_lib::user_partitions::delete_credential_for_user_dual(
+            store,
+            uid,
+            credential_id,
+        ),
+        None => store
+            .delete(credential_id)
+            .map_err(|error| error.to_string()),
     }
 }
 
@@ -18722,7 +18714,10 @@ fn tui_delete_profile(
         return None; // nothing to delete
     }
     prune_profile_from_groups_and_favorites(store, profile_id);
-    dual_delete_server_cred(store, Some(user.id), &format!("server_{}", profile_id));
+    let key = format!("server_{}", profile_id);
+    if let Err(error) = dual_delete_server_cred(store, Some(user.id), &key) {
+        log::warn!("Profile delete: {key} was not removed: {error}");
+    }
     Some(stored)
 }
 
@@ -24676,10 +24671,17 @@ fn interactive_profiles_loop(
                         continue;
                     }
                     match delete_profile_in_vault(cli, store, &id) {
-                        Ok(remaining) => {
+                        Ok((remaining, left_behind)) => {
                             current = remaining;
                             tombstones.push((zero, profile));
                             eprintln!("Profile '{}' removed.", name);
+                            if !left_behind.is_empty() {
+                                eprintln!(
+                                    "Warning: secrets of '{}' not removed: {}",
+                                    name,
+                                    left_behind.join(", ")
+                                );
+                            }
                         }
                         Err(e) => {
                             eprintln!("Delete '{}' failed: {}", name, e);
@@ -28837,10 +28839,13 @@ fn duplicate_or_convert_mode_in_vault(
     }
 
     // Convert: delete the source's profile-level credential too (the
-    // profile is gone from the list, the credential would orphan). Best-
-    // effort; ignore errors.
+    // profile is gone from the list, the credential would orphan). The
+    // conversion stands either way; a credential left behind is named.
     if replace_in_slot && !source_id.is_empty() {
-        dual_delete_server_cred(store, scoped_uid, &format!("server_{}", source_id));
+        let key = format!("server_{}", source_id);
+        if let Err(error) = dual_delete_server_cred(store, scoped_uid, &key) {
+            eprintln!("Warning: the source profile's credential {key} was not removed: {error}");
+        }
     }
 
     // Carry the ⭐ favourite flag onto the new profile so switching a profile's
@@ -29335,11 +29340,13 @@ fn cmd_profile_convert_mode(
 /// CLI matches the GUI's confirmDelete behaviour in `MyServersPanel`. Without
 /// these companion deletes the GUI would see a stale credential ghost or a
 /// dangling favourite after the next vault → state reconcile (issue #194).
+/// Returns the profiles left and the profile's secret keys found and not
+/// removed ([`ftp_client_gui_lib::purge_profile_secret_keys`]).
 fn delete_profile_in_vault(
     cli: &Cli,
     store: &CredentialStore,
     profile_id: &str,
-) -> Result<Vec<serde_json::Value>, String> {
+) -> Result<(Vec<serde_json::Value>, Vec<String>), String> {
     let profiles: Vec<serde_json::Value> = load_active_user_profiles(cli, store)
         .map_err(|e| format!("Failed to read profiles: {}", e))?;
     // Capture the protocol before removing the entry, so the OAuth-token key can
@@ -29357,8 +29364,9 @@ fn delete_profile_in_vault(
     // so a delete leaves nothing behind. Same single source of truth
     // (`per_profile_vault_keys`) the GUI `purge_profile_secrets` command and the
     // export-collect path use, so the CLI and GUI can never diverge. MUV-3:
-    // dual-delete from the vault + the scoped user's partition; best-effort per
-    // key (a key absent for this profile kind is a no-op).
+    // dual-delete from the vault + the scoped user's partition; every key is
+    // tried, a key absent for this profile kind is a no-op, and a key found
+    // and not removed is reported.
     let scoped_uid = scoped_credential_user_id(cli, store);
     // A native Proton Drive session is ended on Proton before its key goes,
     // as the GUI delete does: for a Proton profile, or one that holds a
@@ -29393,15 +29401,21 @@ fn delete_profile_in_vault(
             Ok(current.or_else(|| protocol.clone()))
         },
     )?;
-    for key in
-        ftp_client_gui_lib::per_profile_vault_keys_for_delete(profile_id, protocol.as_deref())
-    {
-        #[cfg(feature = "proton-native")]
-        if key == format!("proton_native_session_{profile_id}") {
-            continue;
-        }
-        dual_delete_server_cred(store, scoped_uid, &key);
-    }
+    let (_, left_behind) = ftp_client_gui_lib::purge_profile_secret_keys(
+        profile_id,
+        protocol.as_deref(),
+        |key| match scoped_uid {
+            Some(uid) => ftp_client_gui_lib::user_partitions::holds_credential(store, uid, key),
+            None => match store.get(key) {
+                Ok(value) => Ok(!value.is_empty()),
+                Err(ftp_client_gui_lib::credential_store::CredentialError::NotFound(_)) => {
+                    Ok(false)
+                }
+                Err(error) => Err(error.to_string()),
+            },
+        },
+        |key| dual_delete_server_cred(store, scoped_uid, key),
+    );
 
     // Drop the id from the favourites set if present. Best-effort: a missing
     // or malformed entry leaves the favourites list untouched.
@@ -29418,7 +29432,7 @@ fn delete_profile_in_vault(
         }
     }
 
-    Ok(stored)
+    Ok((stored, left_behind))
 }
 
 /// `aeroftp profile-delete <SELECTOR> [--yes]` — public CLI surface for
@@ -29511,13 +29525,14 @@ fn cmd_profile_delete(cli: &Cli, format: OutputFormat, selector: &str, skip_conf
     }
 
     match delete_profile_in_vault(cli, &store, &target_id) {
-        Ok(remaining) => match format {
+        Ok((remaining, left_behind)) => match format {
             OutputFormat::Json => {
                 print_json(&serde_json::json!({
                     "status": "deleted",
                     "id": target_id,
                     "name": target_name,
                     "remaining": remaining.len(),
+                    "secrets_not_removed": left_behind,
                 }));
                 0
             }
@@ -29528,6 +29543,12 @@ fn cmd_profile_delete(cli: &Cli, format: OutputFormat, selector: &str, skip_conf
                     target_id,
                     remaining.len()
                 );
+                if !left_behind.is_empty() {
+                    eprintln!(
+                        "Warning: these secrets of the profile were not removed: {}",
+                        left_behind.join(", ")
+                    );
+                }
                 0
             }
         },
@@ -64673,8 +64694,10 @@ fn store_headerless_init_config(
     if let Err(e) = dual_store_server_cred_checked(store, uid, &salt_key, salt_b64) {
         if let Some(old) = old_config {
             dual_store_server_cred(store, uid, &config_key, &old);
-        } else {
-            dual_delete_server_cred(store, uid, &config_key);
+        } else if let Err(error) = dual_delete_server_cred(store, uid, &config_key) {
+            return Err(format!(
+                "{e}; the overlay config written before it was not removed: {error}"
+            ));
         }
         return Err(e);
     }

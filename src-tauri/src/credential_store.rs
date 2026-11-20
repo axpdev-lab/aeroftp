@@ -2715,7 +2715,8 @@ impl CredentialStore {
 
     /// Flip one ciphertext byte of `account`'s entry, so reading it fails
     /// with an `Encryption` error while every other entry still reads.
-    // Used only by profile_auth_tests.rs, which builds on Linux alone.
+    // Used by profile_auth_tests.rs, which builds on Linux alone, and the
+    // profile purge tests, built there too.
     #[cfg(all(test, target_os = "linux"))]
     pub(crate) fn corrupt_entry_for_test(&self, account: &str) {
         let guard = VaultWriteGuard::acquire(Self::lock_dir(&self.vault_path).unwrap()).unwrap();
@@ -4542,7 +4543,7 @@ mod vault_lock_tests {
                     "self.note_chain_generations()",
                     "Self::load_refresh_chain(",
                     "Self::stored_token_now(",
-                    "unmirror_credential_for_user_best_effort_any(",
+                    "try_unmirror_active_credential(",
                     "deletion_clock()",
                 ][..],
             ),

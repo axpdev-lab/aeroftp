@@ -1889,13 +1889,16 @@ impl JottacloudProvider {
                             let _ = store.delete(&account);
                         }
                     }
-                    match self.credential_user {
+                    let unmirrored = match self.credential_user {
                         Some(user) => {
-                            crate::user_partitions::unmirror_credential_for_user_best_effort_any(
-                                user, &account,
-                            )
+                            crate::user_partitions::try_unmirror_active_credential(user, &account)
                         }
                         None => crate::user_partitions::unmirror_active_credential(&account),
+                    };
+                    if let Err(e) = unmirrored {
+                        jotta_log(&format!(
+                            "The refused chain {account} stays in the account's partition: {e}"
+                        ));
                     }
                 });
                 continue;

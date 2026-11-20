@@ -5647,7 +5647,7 @@ fn partition_row_exists(
 /// Whether `user_id` holds `credential_id` where it reads it, decrypting
 /// nothing: its row, which a locked account has too and a delete by key
 /// removes, or else the vault copy when that is one it reads.
-pub(crate) fn holds_credential(
+pub fn holds_credential(
     store: &CredentialStore,
     user_id: i64,
     credential_id: &str,
@@ -7037,8 +7037,9 @@ pub fn restore_credential_op_for_user(
     Ok(())
 }
 
-/// Active-user dual delete (GUI): delete from the vault and best-effort from the
-/// active user's partition. Part of an explicit user delete, never a purge.
+/// Active-user dual delete (GUI): delete from the vault and from the active
+/// user's partition, a row left behind being an error. Part of an explicit
+/// user delete, never a purge.
 /// The account is the one active when the call starts, as for
 /// [`store_active_credential_dual`]. A lookup that fails is an error before
 /// either copy changes: read as no account, it deleted the vault copy and
@@ -7065,26 +7066,22 @@ pub fn delete_credential_dual_as(
     )
 }
 
-/// The partition half of a delete. A Jottacloud refresh chain left in the
-/// partition is read ahead of the vault, so its removal must succeed or the
-/// delete fails, and no deletion is recorded; any other key is best-effort,
-/// as during the dual-write rollout.
+/// The partition half of a delete. Every reader takes the account's row
+/// ahead of the vault, so a row left behind is the value the app goes on
+/// using: its removal must succeed or the delete fails (and, for a
+/// Jottacloud refresh chain, no deletion is recorded), whatever the key.
 fn unmirror_deleted_credential(user_id: i64, credential_id: &str) -> Result<(), String> {
-    if crate::providers::jottacloud::is_refresh_chain(credential_id) {
-        #[cfg(test)]
-        if PARTITION_DELETE_REFUSED.with(std::cell::Cell::get) {
-            return Err("Delete credential from partition: refused".to_string());
-        }
-        return try_unmirror_active_credential(user_id, credential_id)
-            .map_err(|e| format!("Delete credential from partition: {e}"));
+    #[cfg(test)]
+    if PARTITION_DELETE_REFUSED.with(std::cell::Cell::get) {
+        return Err("Delete credential from partition: refused".to_string());
     }
-    unmirror_credential_for_user_best_effort_any(user_id, credential_id);
-    Ok(())
+    try_unmirror_active_credential(user_id, credential_id)
+        .map_err(|e| format!("Delete credential from partition: {e}"))
 }
 
 #[cfg(test)]
 thread_local! {
-    /// The partition refuses the delete of a refresh chain.
+    /// The partition refuses the row delete of a dual delete.
     pub(crate) static PARTITION_DELETE_REFUSED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
@@ -7122,9 +7119,9 @@ pub(crate) fn delete_credential_dual_with(
     })
 }
 
-/// Explicit-user dual delete (CLI `--user`): vault delete + best-effort removal
-/// from `user_id`'s partition. Another account's private token: its row only,
-/// as [`delete_credential_dual_with`].
+/// Explicit-user dual delete (CLI `--user`): vault delete + removal from
+/// `user_id`'s partition, both reported. Another account's private token: its
+/// row only, as [`delete_credential_dual_with`].
 pub fn delete_credential_for_user_dual(
     store: &CredentialStore,
     user_id: i64,
@@ -7252,14 +7249,14 @@ pub fn mirror_active_credential(
     }
 }
 
-/// Best-effort removal of one secret from the active user's partition. The
-/// partition half of an explicit token delete (OAuth/Jottacloud logout). An
-/// account that cannot be read is logged, not taken for no account.
-pub fn unmirror_active_credential(credential_id: &str) {
-    match active_user_id_for_write() {
-        Ok(Some(user_id)) => unmirror_credential_for_user_best_effort_any(user_id, credential_id),
-        Ok(None) => {}
-        Err(e) => tracing::warn!("Partition copy of a credential not removed: {e}"),
+/// Removal of one secret from the active user's partition. The partition
+/// half of an explicit token delete (OAuth/Jottacloud logout), so a failure,
+/// and an account that cannot be read, are returned: the row left behind is
+/// the one every reader takes first.
+pub fn unmirror_active_credential(credential_id: &str) -> Result<(), String> {
+    match active_user_id_for_write()? {
+        Some(user_id) => unmirror_deleted_credential(user_id, credential_id),
+        None => Ok(()),
     }
 }
 

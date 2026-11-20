@@ -1616,6 +1616,33 @@ async fn native_session_ownership(store: &CredentialStore, active_id: i64, selec
     );
     assert!(vault::load_session(selected, None).unwrap().is_none());
     vault::delete_session(active, None).unwrap();
+    // The legacy owner's session is its vault entry and its row: a delete
+    // that leaves the row, which the account reads first, is an error.
+    let kept = vault::session_key(Some("native-row-kept"));
+    vault::store_session(
+        active,
+        Some("native-row-kept"),
+        &session("kept-uid", "kept"),
+    )
+    .unwrap();
+    let rows = users::open_or_init_cli().unwrap();
+    rows.execute_batch(&format!(
+        "CREATE TRIGGER keep_session_row BEFORE DELETE ON user_credentials
+         WHEN OLD.credential_id = '{kept}'
+         BEGIN SELECT RAISE(FAIL, 'disk full'); END;"
+    ))
+    .unwrap();
+    let refused = vault::delete_session(active, Some("native-row-kept"));
+    rows.execute_batch("DROP TRIGGER keep_session_row;")
+        .unwrap();
+    assert!(
+        refused.is_err(),
+        "a session delete that left the account's row was reported done"
+    );
+    assert!(vault::load_session(active, Some("native-row-kept"))
+        .unwrap()
+        .is_some());
+    vault::delete_session(active, Some("native-row-kept")).unwrap();
     let scoped = session("scoped-native-uid", "access-before");
     vault::store_session(selected, Some("native-selected"), &scoped).unwrap();
     let db = users::open_or_init_cli().unwrap();
