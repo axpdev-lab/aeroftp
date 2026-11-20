@@ -42,6 +42,9 @@ vi.mock('./IntroHub/DiscoverPanel', () => ({
 vi.mock('./IntroHub/PortableIsolationBanner', () => ({ PortableIsolationBanner: () => null }));
 
 import { ConnectionScreen } from './ConnectionScreen';
+import { PROVIDERS, presetNeedsUserEndpoint } from '../providers/registry';
+import { presetTextReferences, presetTexts, resolvePresetText } from '../providers/presetText';
+import type { ProviderConfig } from '../providers/types';
 import { BACKEND_SWAP_WAIT_MS, latestSettledBackendSwapToken, swapBackend, useOAuth2, type BackendSwapDetail } from '../hooks/useOAuth2';
 import { connectStartFolder } from '../utils/usernameTemplate';
 import { IntroHub } from './IntroHub/IntroHub';
@@ -63,6 +66,9 @@ const countAbandoned = () => { abandoned += 1; };
 beforeEach(() => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     localStorage.clear();
+    // Every test starts from an empty vault: a test that runs alone (`-t`)
+    // must not depend on the profiles an earlier one saved.
+    profiles = [];
     mocks.invoke.mockReset();
     mocks.log.mockReset();
     onFormSaved = vi.fn<() => void>();
@@ -591,6 +597,212 @@ describe('Puter WebDAV credential guidance and Advanced Server override', () => 
             serverInput.dispatchEvent(new Event('input', { bubbles: true }));
         });
         expect(serverInput.value).toBe('https://dav.puter.com/myuser');
+    });
+});
+
+describe('a preset text names the controls its form renders', () => {
+    // A label that is not its key: a text left unresolved, or resolved to a
+    // key with no translation, cannot pass for the label the form shows.
+    const label = (key: string) => `[${key}]`;
+    const identity = mocks.t;
+    beforeEach(() => { mocks.t = label; });
+    afterEach(() => { mocks.t = identity; });
+
+    /** The connection parameters the form last handed up. */
+    let handedUp: ConnectionParams | undefined;
+
+    async function renderPreset(provider: ProviderConfig) {
+        handedUp = undefined;
+        function Harness() {
+            const [params, setParams] = useState<ConnectionParams>({
+                protocol: provider.protocol as ProviderType,
+                providerId: provider.id,
+                server: '',
+                username: '',
+                password: '',
+            });
+            const [dirs, setDirs] = useState({ remoteDir: '', localDir: '' });
+            return React.createElement(ConnectionScreen, {
+                connectionParams: params,
+                quickConnectDirs: dirs,
+                loading: false,
+                onConnectionParamsChange: (next: ConnectionParams) => { handedUp = next; setParams(next); },
+                onQuickConnectDirsChange: setDirs,
+                onConnect: vi.fn(),
+            });
+        }
+        await act(async () => root.render(React.createElement(Harness)));
+    }
+
+    /** Open what a user opens to follow the steps: the setup box, Advanced,
+     *  and the Edit, Edit anyway unlock of a preset endpoint. Returns every
+     *  label and button seen on the way: Edit is gone once it is pressed. */
+    async function openEverything() {
+        const seen = new Set<string>();
+        const look = () => container.querySelectorAll('label, button')
+            .forEach(element => seen.add(element.textContent?.trim() || ''));
+        for (const expander of container.querySelectorAll<HTMLButtonElement>('button[aria-expanded="false"]')) {
+            await act(async () => expander.click());
+        }
+        for (const name of ['protocol.advanced', 'common.edit', 'protocol.advancedUnlock'].map(label)) {
+            look();
+            const found = [...container.querySelectorAll('button')].find(b => b.textContent?.trim() === name);
+            if (found) await act(async () => found.click());
+        }
+        look();
+        return [...seen];
+    }
+
+    const referring = PROVIDERS.filter(provider =>
+        presetTexts(provider).some(({ text }) => presetTextReferences(text).length > 0));
+
+    it.each(referring.map(provider => [provider.id, provider] as const))('%s', async (_id, provider) => {
+        await renderPreset(provider);
+        const controls = await openEverything();
+        const shown = [
+            container.textContent || '',
+            ...[...container.querySelectorAll('input')].map(input => input.placeholder),
+        ].join('\n');
+        // Each text reaches the form resolved: no reference is left raw.
+        expect(shown).not.toMatch(/\{(?:ui|field):/);
+        // Each control a text names is one this form shows, under that name.
+        for (const { where, text } of presetTexts(provider)) {
+            for (const reference of presetTextReferences(text)) {
+                const name = resolvePresetText(`{${reference.kind}:${reference.key}}`, provider, label);
+                expect(controls.some(control => control.includes(name)), `${provider.id} ${where}: ${name}`).toBe(true);
+            }
+        }
+        // The setup steps are all shown, resolved (a field's help can be
+        // replaced by the form's own, as the Filen bridges do).
+        for (const step of provider.setupInstructions || []) {
+            expect(shown).toContain(resolvePresetText(step, provider, label));
+        }
+    });
+
+    it('unlocks the S3Drive endpoint with the steps its setup text gives', async () => {
+        const s3drive = PROVIDERS.find(provider => provider.id === 's3drive')!;
+        await renderPreset(s3drive);
+        await act(async () => button(label('protocol.advanced')).click());
+        const endpoint = [...container.querySelectorAll('label')]
+            .find(element => element.textContent?.trim() === label('protocol.s3Endpoint'))!
+            .closest('div')!.parentElement!.querySelector<HTMLInputElement>('input')!;
+        expect(endpoint.disabled).toBe(true);
+        await act(async () => button(label('common.edit')).click());
+        await act(async () => button(label('protocol.advancedUnlock')).click());
+        expect(endpoint.disabled).toBe(false);
+        await act(async () => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(endpoint, 'gateway.storjshare.io');
+            endpoint.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        expect(endpoint.value).toBe('gateway.storjshare.io');
+        // The edit reached the connection, not only the input element.
+        expect(handedUp?.options?.endpoint).toBe('gateway.storjshare.io');
+    });
+
+    it('takes a custom Filen S3 port in the endpoint its setup text names', async () => {
+        const filen = PROVIDERS.find(provider => provider.id === 'filen-desktop-s3')!;
+        const step = filen.setupInstructions!
+            .map(text => resolvePresetText(text, filen, label))
+            .find(text => text.startsWith('On a custom port'))!;
+        expect(step).toContain(`open ${label('protocol.advanced')}, press ${label('common.edit')} and ${label('protocol.advancedUnlock')}, and enter in ${label('protocol.s3Endpoint')}`);
+        await renderPreset(filen);
+        await act(async () => button(label('protocol.advanced')).click());
+        const endpoint = [...container.querySelectorAll('label')]
+            .find(element => element.textContent?.trim() === label('protocol.s3Endpoint'))!
+            .closest('div')!.parentElement!.querySelector<HTMLInputElement>('input')!;
+        expect(endpoint.disabled).toBe(true);
+        await act(async () => button(label('common.edit')).click());
+        await act(async () => button(label('protocol.advancedUnlock')).click());
+        expect(endpoint.disabled).toBe(false);
+        await act(async () => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(endpoint, 'http://local.s3.filen.io:1801');
+            endpoint.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        // What connect sends: the connection's endpoint, as typed.
+        expect(handedUp?.options?.endpoint).toBe('http://local.s3.filen.io:1801');
+        // What Fetch sends: the same scheme and port, not the preset default.
+        const previous = mocks.invoke.getMockImplementation()!;
+        mocks.invoke.mockImplementation(async (command: string, args?: any) =>
+            command === 'provider_discover_targets' ? [] : previous(command, args));
+        const fetch = [...container.querySelectorAll('button')]
+            .find(element => element.textContent?.includes(label('connection.discovery.fetch')))!;
+        await act(async () => fetch.click());
+        const discovery = mocks.invoke.mock.calls
+            .filter(([command]) => command === 'provider_discover_targets')
+            .map(([, args]) => (args as { params: { endpoint?: string } }).params);
+        expect(discovery).toHaveLength(1);
+        expect(discovery[0].endpoint).toBe('http://local.s3.filen.io:1801');
+    });
+
+    it('takes a custom Filen WebDAV port in the field its setup text names', async () => {
+        const filen = PROVIDERS.find(provider => provider.id === 'filen-desktop-webdav')!;
+        const step = filen.setupInstructions!
+            .map(text => resolvePresetText(text, filen, label))
+            .find(text => text.startsWith('On a custom port'))!;
+        expect(step).toContain(`open ${label('protocol.advanced')}, press ${label('common.edit')} and ${label('protocol.advancedUnlock')}, and set ${label('connection.port')}`);
+        await renderPreset(filen);
+        await act(async () => button(label('protocol.advanced')).click());
+        const port = [...container.querySelectorAll('label')]
+            .find(element => element.textContent?.trim() === label('connection.port'))!
+            .parentElement!.querySelector<HTMLInputElement>('input')!;
+        expect(port.disabled).toBe(true);
+        await act(async () => button(label('common.edit')).click());
+        await act(async () => button(label('protocol.advancedUnlock')).click());
+        expect(port.disabled).toBe(false);
+        await act(async () => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(port, '1901');
+            port.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        expect(handedUp?.port).toBe(1901);
+    });
+
+    it('asks for the Filen S3 bucket with the Fetch button the form shows', async () => {
+        const filen = PROVIDERS.find(provider => provider.id === 'filen-desktop-s3')!;
+        await renderPreset(filen);
+        const placeholders = [...container.querySelectorAll('input')].map(input => input.placeholder);
+        expect(placeholders).toContain(`Press ${label('connection.discovery.fetch')} to list your folders`);
+        expect([...container.querySelectorAll('button')].some(b => b.textContent?.includes(label('connection.discovery.fetch')))).toBe(true);
+    });
+
+    it('sends Puter token auth to the field the WebDAV form labels Endpoint URL, behind Advanced', async () => {
+        const puter = PROVIDERS.find(provider => provider.id === 'puter-webdav')!;
+        await renderPreset(puter);
+        const help = resolvePresetText(puter.fields!.find(field => field.key === 'password')!.helpText!, puter, label);
+        expect(container.textContent).toContain(help);
+        expect(help).toContain('set [connection.endpointUrl] to https://dav.puter.com/<username> under [protocol.advanced] ([common.edit], then [protocol.advancedUnlock])');
+        await act(async () => button(label('protocol.advanced')).click());
+        const server = container.querySelector<HTMLInputElement>('input[placeholder="https://dav.puter.com/{username}"]')!;
+        expect(server.closest('div')!.querySelector('label')!.textContent).toBe(label('connection.endpointUrl'));
+    });
+});
+
+describe('an S3 endpoint the user must type is in the main form, not under Advanced', () => {
+    async function renderS3(provider: ProviderConfig) {
+        function Harness() {
+            const [params, setParams] = useState<ConnectionParams>({
+                protocol: 's3', providerId: provider.id, server: '', username: '', password: '',
+            });
+            const [dirs, setDirs] = useState({ remoteDir: '', localDir: '' });
+            return React.createElement(ConnectionScreen, {
+                connectionParams: params,
+                quickConnectDirs: dirs,
+                loading: false,
+                onConnectionParamsChange: setParams,
+                onQuickConnectDirsChange: setDirs,
+                onConnect: vi.fn(),
+            });
+        }
+        await act(async () => root.render(React.createElement(Harness)));
+    }
+
+    const withEndpoint = PROVIDERS.filter(provider => provider.protocol === 's3'
+        && (provider.fields?.some(field => field.key === 'endpoint') || provider.defaults?.endpoint || provider.defaults?.endpointTemplate));
+
+    it.each(withEndpoint.map(provider => [provider.id, provider] as const))('%s', async (_id, provider) => {
+        await renderS3(provider);
+        const label = provider.fields?.find(field => field.key === 'endpoint')?.label || 'protocol.s3Endpoint';
+        const shown = [...container.querySelectorAll('label')].some(element => element.textContent?.trim() === label);
+        expect(shown, `${provider.id}: ${label} before Advanced`).toBe(!!provider.isGeneric || presetNeedsUserEndpoint(provider));
     });
 });
 

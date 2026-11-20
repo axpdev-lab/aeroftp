@@ -7858,6 +7858,11 @@ fn strict_mode_violations(cli: &Cli) -> Vec<&'static str> {
 /// must be one every command accepts: a global flag, like `--timeout`.
 fn connect_failure_message(e: &ProviderError) -> String {
     let hint = match e {
+        ProviderError::ConnectionFailed(detail)
+            if detail.starts_with(ftp_client_gui_lib::providers::webdav::REFUSED_CERTIFICATE) =>
+        {
+            " (this computer does not trust the server's certificate: give the server one it trusts, or add its CA to the system's trusted certificates)"
+        }
         ProviderError::ConnectionFailed(_) => {
             " (check hostname/port and verify the service is running)"
         }
@@ -89456,6 +89461,23 @@ mod tests {
         let code = provider_error_to_exit_code(&failure);
         assert_eq!(code, 6);
         assert!(!is_retryable_exit(code));
+    }
+
+    /// A WebDAV server whose certificate this computer refused got "check
+    /// hostname/port and verify the service is running": advice for a server
+    /// that is down, about one that answered. The certificate gets its own.
+    #[test]
+    fn a_refused_certificate_is_not_reported_as_a_server_that_is_down() {
+        let failure = ProviderError::ConnectionFailed(format!(
+            "{} (error sending request to https://127.0.0.1:4443: certificate verify failed)",
+            ftp_client_gui_lib::providers::webdav::REFUSED_CERTIFICATE
+        ));
+        let message = connect_failure_message(&failure);
+        assert!(
+            message.contains("does not trust the server's certificate"),
+            "{message}"
+        );
+        assert!(!message.contains("service is running"), "{message}");
     }
 
     #[test]
