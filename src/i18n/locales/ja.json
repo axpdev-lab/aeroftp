@@ -5916,7 +5916,7 @@
             },
             "demoTabLabel": "デモ: {protocol}",
             "newTabLabel": "新規: {name}",
-            "protonSessionEndsAtUnlock": "プロファイルを削除しました。Proton Driveのセッションは、次に{account}のロックを解除したときに終了します。",
+            "protonSessionEndsAtUnlock": "このコンピューター上の別のアカウントが使用していない限り、このプロファイルの Proton セッションは、このアカウントの次回のロック解除時に終了します。",
             "profileSecretsNotRemoved": "プロファイルは削除されましたが、保存されていた認証情報の一部をVaultから削除できませんでした。"
         },
         "gitlab": {

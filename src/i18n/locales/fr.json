@@ -5916,7 +5916,7 @@
             },
             "demoTabLabel": "Démo : {protocol}",
             "newTabLabel": "Nouveau : {name}",
-            "protonSessionEndsAtUnlock": "Le profil a été supprimé. Sa session Proton Drive sera fermée au prochain déverrouillage de {account}.",
+            "protonSessionEndsAtUnlock": "La session Proton de ce profil prend fin au prochain déverrouillage de ce compte, sauf si un autre compte de cet ordinateur l'utilise.",
             "profileSecretsNotRemoved": "Le profil a été supprimé, mais certains de ses identifiants enregistrés n'ont pas pu être effacés du coffre."
         },
         "gitlab": {

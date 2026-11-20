@@ -5935,7 +5935,7 @@
             },
             "demoTabLabel": "Demoa: {protocol}",
             "newTabLabel": "Berria: {name}",
-            "protonSessionEndsAtUnlock": "Profila kendu da. Bere Proton Drive saioa itxiko da {account} hurrengoan desblokeatzen denean.",
+            "protonSessionEndsAtUnlock": "Profil honen Proton saioa kontu hau desblokeatzen den hurrengo aldian amaituko da, ordenagailu honetako beste kontu batek erabiltzen ez badu.",
             "profileSecretsNotRemoved": "Profila kendu da, baina gordetako kredentzial batzuk ezin izan dira kutxa gotorretik ezabatu."
         },
         "gitlab": {

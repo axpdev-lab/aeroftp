@@ -5916,7 +5916,7 @@
             },
             "demoTabLabel": "Predstavitev: {protocol}",
             "newTabLabel": "Novo: {name}",
-            "protonSessionEndsAtUnlock": "Profil je bil odstranjen. Njegova seja Proton Drive bo zaprta ob naslednjem odklepu računa {account}.",
+            "protonSessionEndsAtUnlock": "Seja Proton tega profila se konča ob naslednjem odklepanju tega računa, razen če jo uporablja drug račun v tem računalniku.",
             "profileSecretsNotRemoved": "Profil je bil odstranjen, vendar nekaterih njegovih shranjenih poverilnic ni bilo mogoče izbrisati iz trezorja."
         },
         "gitlab": {

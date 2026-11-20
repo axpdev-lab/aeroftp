@@ -5916,7 +5916,7 @@
             },
             "demoTabLabel": "Onyesho: {protocol}",
             "newTabLabel": "Mpya: {name}",
-            "protonSessionEndsAtUnlock": "Wasifu umeondolewa. Kipindi chake cha Proton Drive kitafungwa {account} itakapofunguliwa wakati ujao.",
+            "protonSessionEndsAtUnlock": "Kipindi cha Proton cha wasifu huu kinaisha akaunti hii itakapofunguliwa tena, isipokuwa akaunti nyingine kwenye kompyuta hii inakitumia.",
             "profileSecretsNotRemoved": "Wasifu uliondolewa, lakini baadhi ya vitambulisho vyake vilivyohifadhiwa havikuweza kufutwa kwenye hifadhi salama."
         },
         "gitlab": {

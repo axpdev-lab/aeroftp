@@ -5916,7 +5916,7 @@
             },
             "demoTabLabel": "Demo: {protocol}",
             "newTabLabel": "Ny: {name}",
-            "protonSessionEndsAtUnlock": "Profilen er fjernet. Dens Proton Drive-session lukkes, næste gang {account} låses op.",
+            "protonSessionEndsAtUnlock": "Proton-sessionen for denne profil afsluttes, næste gang denne konto låses op, medmindre en anden konto på denne computer bruger den.",
             "profileSecretsNotRemoved": "Profilen blev fjernet, men visse af dens gemte legitimationsoplysninger kunne ikke slettes fra boksen."
         },
         "gitlab": {

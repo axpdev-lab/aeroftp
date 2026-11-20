@@ -5916,7 +5916,7 @@
             },
             "demoTabLabel": "Demo: {protocol}",
             "newTabLabel": "Nuevo: {name}",
-            "protonSessionEndsAtUnlock": "Se eliminó el perfil. Su sesión de Proton Drive se cerrará la próxima vez que se desbloquee {account}.",
+            "protonSessionEndsAtUnlock": "La sesión de Proton de este perfil finaliza la próxima vez que se desbloquee esta cuenta, salvo que otra cuenta de este equipo la utilice.",
             "profileSecretsNotRemoved": "El perfil se eliminó, pero no se pudieron borrar de la bóveda algunas de sus credenciales guardadas."
         },
         "gitlab": {

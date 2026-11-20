@@ -5916,7 +5916,7 @@
             },
             "demoTabLabel": "Ukážka: {protocol}",
             "newTabLabel": "Nový: {name}",
-            "protonSessionEndsAtUnlock": "Profil bol odstránený. Jeho relácia Proton Drive sa ukončí pri ďalšom odomknutí účtu {account}.",
+            "protonSessionEndsAtUnlock": "Relácia Proton tohto profilu sa skončí pri ďalšom odomknutí tohto účtu, pokiaľ ju nepoužíva iný účet v tomto počítači.",
             "profileSecretsNotRemoved": "Profil bol odstránený, ale niektoré jeho uložené prihlasovacie údaje sa nepodarilo odstrániť z trezoru."
         },
         "gitlab": {

@@ -6,7 +6,7 @@
         "enHash is the SHA-256 of the flattened current en.json. Change English and run --write in the same commit.",
         "A value listed here fails the gate when a locale still equals it and the current English does not."
     ],
-    "enHash": "36ad72405c29ce3188c175cc3cccfb0f614888716ca29b867a9f4d83e457afba",
+    "enHash": "213b110d6a04fe2d1742de347889d20305757823fe1b1ce0671e8aff3962cdb2",
     "former": {
         "about.aiCredits": [
             "AI: Claude Opus 4.5 + support models"
@@ -446,6 +446,9 @@
         ],
         "introHub.list.searchPlaceholder": [
             "Search providers, protocols..."
+        ],
+        "introHub.protonSessionEndsAtUnlock": [
+            "The profile was removed. Its Proton Drive session will be closed the next time {account} is unlocked."
         ],
         "introHub.tab.discover": [
             "Discover Services"

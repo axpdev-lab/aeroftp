@@ -5916,7 +5916,7 @@
             },
             "demoTabLabel": "Demo: {protocol}",
             "newTabLabel": "Uus: {name}",
-            "protonSessionEndsAtUnlock": "Profiil eemaldati. Selle Proton Drive'i seanss suletakse, kui {account} järgmine kord lukust avatakse.",
+            "protonSessionEndsAtUnlock": "Selle profiili Protoni seanss lõpeb selle konto järgmisel avamisel, kui seda ei kasuta mõni teine selle arvuti konto.",
             "profileSecretsNotRemoved": "Profiil eemaldati, kuid mõnda selle salvestatud mandaati ei õnnestunud hoidlast kustutada."
         },
         "gitlab": {

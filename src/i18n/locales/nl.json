@@ -5916,7 +5916,7 @@
             },
             "demoTabLabel": "Demo: {protocol}",
             "newTabLabel": "Nieuw: {name}",
-            "protonSessionEndsAtUnlock": "Het profiel is verwijderd. De Proton Drive-sessie wordt gesloten zodra {account} de volgende keer wordt ontgrendeld.",
+            "protonSessionEndsAtUnlock": "De Proton-sessie van dit profiel eindigt wanneer dit account de volgende keer wordt ontgrendeld, tenzij een ander account op deze computer deze gebruikt.",
             "profileSecretsNotRemoved": "Het profiel is verwijderd, maar een deel van de opgeslagen inloggegevens kon niet uit de kluis worden gewist."
         },
         "gitlab": {

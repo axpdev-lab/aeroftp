@@ -5935,7 +5935,7 @@
             },
             "demoTabLabel": "Demo: {protocol}",
             "newTabLabel": "Nou: {name}",
-            "protonSessionEndsAtUnlock": "S'ha eliminat el perfil. La seva sessió de Proton Drive es tancarà la propera vegada que es desbloquegi {account}.",
+            "protonSessionEndsAtUnlock": "La sessió de Proton d'aquest perfil finalitza la propera vegada que es desbloquegi aquest compte, tret que un altre compte d'aquest ordinador la utilitzi.",
             "profileSecretsNotRemoved": "El perfil s'ha eliminat, però algunes de les seves credencials desades no s'han pogut esborrar de la caixa forta."
         },
         "gitlab": {

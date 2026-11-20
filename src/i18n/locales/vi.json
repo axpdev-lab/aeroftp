@@ -5916,7 +5916,7 @@
             },
             "demoTabLabel": "Dùng thử: {protocol}",
             "newTabLabel": "Mới: {name}",
-            "protonSessionEndsAtUnlock": "Hồ sơ đã bị xóa. Phiên Proton Drive của hồ sơ sẽ được đóng vào lần tới khi {account} được mở khóa.",
+            "protonSessionEndsAtUnlock": "Phiên Proton của hồ sơ này kết thúc vào lần mở khóa tài khoản này tiếp theo, trừ khi một tài khoản khác trên máy tính này đang sử dụng nó.",
             "profileSecretsNotRemoved": "Hồ sơ đã được xóa, nhưng một số thông tin xác thực đã lưu của hồ sơ không thể xóa khỏi kho bảo mật."
         },
         "gitlab": {

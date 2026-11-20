@@ -5916,7 +5916,7 @@
             },
             "demoTabLabel": "Demo: {protocol}",
             "newTabLabel": "Baru: {name}",
-            "protonSessionEndsAtUnlock": "Profil telah dihapus. Sesi Proton Drive-nya akan ditutup saat {account} dibuka kuncinya lagi.",
+            "protonSessionEndsAtUnlock": "Sesi Proton profil ini berakhir saat akun ini dibuka kuncinya berikutnya, kecuali akun lain di komputer ini menggunakannya.",
             "profileSecretsNotRemoved": "Profil telah dihapus, tetapi beberapa kredensial tersimpannya tidak dapat dihapus dari brankas."
         },
         "gitlab": {

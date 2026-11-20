@@ -1578,7 +1578,7 @@ export function MyServersPanel({
                     window.dispatchEvent(new CustomEvent('aeroftp-toast', {
                         detail: {
                             type: 'info',
-                            title: t('introHub.protonSessionEndsAtUnlock', { account }),
+                            title: t('introHub.protonSessionEndsAtUnlock'),
                             important: true,
                         },
                     }));
