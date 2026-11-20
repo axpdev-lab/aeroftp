@@ -116,6 +116,15 @@ impl ZohoWorkdriveConfig {
 #[derive(Debug)]
 struct TeamFoldersUnread;
 
+/// A listing read whole by [`ZohoWorkdriveProvider::fetch_team_folders`].
+struct TeamFolderListing {
+    source: TeamFolderSource,
+    found: Vec<(String, String)>,
+    /// The team folders listing was read whole in this read, with team
+    /// folders or with none before the workspaces were read.
+    team_folders_whole: bool,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TeamFolderSource {
     TeamFolders,
@@ -1056,6 +1065,9 @@ pub struct ZohoWorkdriveProvider {
     privatespace_id: Option<String>,
     /// Authenticated user email
     account_email: Option<String>,
+    /// Authenticated user id (`/users/me`): who the connection is, where the
+    /// email is optional
+    account_id: Option<String>,
     /// Team-specific user ID (for labels API)
     team_user_id: Option<String>,
     /// Team folders discovered during connect: (id, name)
@@ -1066,6 +1078,26 @@ pub struct ZohoWorkdriveProvider {
     /// with no mapping kept from before: a root name is then not known to
     /// be private.
     team_folders_unread: bool,
+    /// The team folders listing answered (a page offered, its body read or
+    /// not) since a listing was last accepted: set before each page's body is
+    /// read, so a listing that broke off or was dropped half way leaves it,
+    /// and cleared only when a listing read whole is kept. Until then the
+    /// workspaces do not answer unless the same read found the team folders
+    /// listing whole and empty.
+    team_folders_answered: std::sync::atomic::AtomicBool,
+    /// Either listing answered since a listing was last accepted (set before
+    /// each page's body is read, cleared when one is kept): a root name the
+    /// mapping kept lacks may then be one the answer named, and a refusal of
+    /// both listings no longer says the team has none.
+    team_folders_progress: std::sync::atomic::AtomicBool,
+    /// A discovery began with no mapping kept and no read of the listings
+    /// has ended since (it was dropped before any answer): a refusal of
+    /// both listings, which says neither is offered, still answers. Once a
+    /// read ends without an answer, only a whole listing does.
+    team_folders_discovery_open: bool,
+    /// The team the discovery state above was learned of: another team is
+    /// discovered from nothing.
+    team_folders_team: Option<String>,
     /// Team folders removed from the live root whose trash can still be scanned.
     trashed_team_folders: Vec<(String, String)>,
     /// Server profile identifier owning these OAuth tokens. Empty when the
@@ -1142,10 +1174,15 @@ impl ZohoWorkdriveProvider {
             team_id: None,
             privatespace_id: None,
             account_email: None,
+            account_id: None,
             team_user_id: None,
             team_folders: Vec::new(),
             team_folders_source: None,
             team_folders_unread: false,
+            team_folders_answered: std::sync::atomic::AtomicBool::new(false),
+            team_folders_progress: std::sync::atomic::AtomicBool::new(false),
+            team_folders_discovery_open: false,
+            team_folders_team: None,
             trashed_team_folders: Vec::new(),
             profile_id: String::new(),
             retry: HttpRetryConfig::default(),
@@ -1813,6 +1850,10 @@ impl ZohoWorkdriveProvider {
 
     /// Check if authenticated
     pub fn is_authenticated(&self) -> bool {
+        #[cfg(test)]
+        if self.test_access_token.is_some() {
+            return true;
+        }
         self.oauth_manager
             .has_tokens(OAuthProvider::ZohoWorkdrive, &self.profile_id)
     }
@@ -1834,6 +1875,7 @@ impl ZohoWorkdriveProvider {
         if resp.status().is_success() {
             if let Ok(body) = resp.json::<JsonApiResponse<UserResource>>().await {
                 self.account_email = body.data.attributes.email_id.clone();
+                self.account_id = Some(body.data.id.clone());
                 user_id = Some(body.data.id.clone());
                 info!(
                     "Zoho WorkDrive user: {} ({}), edition: {}",
@@ -2037,6 +2079,9 @@ impl ZohoWorkdriveProvider {
     /// workspace, so the caller can fall back (team accounts) or report a
     /// precise error (personal accounts).
     async fn discover_privatespace(&mut self, user_id: &str) -> Result<bool, ProviderError> {
+        // Another account's or team's root is not this one's: a lookup that
+        // finds none leaves none.
+        self.privatespace_id = None;
         let private_url = format!("{}/users/{}/privatespace", self.api_base(), user_id);
         info!("Zoho WorkDrive: GET {}", private_url);
         let resp = self
@@ -2049,6 +2094,22 @@ impl ZohoWorkdriveProvider {
 
         if !resp.status().is_success() {
             let status = resp.status();
+            // A rate limit or a server error is no answer: a private space
+            // read as absent would connect without it.
+            if status == reqwest::StatusCode::TOO_MANY_REQUESTS || status.is_server_error() {
+                return Err(ProviderError::ServerError(format!(
+                    "Zoho WorkDrive private space lookup failed: HTTP {status}, try again"
+                )));
+            }
+            // An authorization refused says nothing of the private space: read
+            // as absent, the connection would go on without My Folders.
+            if status == reqwest::StatusCode::UNAUTHORIZED {
+                return Err(ProviderError::AuthenticationFailed(
+                    "Zoho WorkDrive refused the private space lookup (HTTP 401): sign in to \
+                     Zoho WorkDrive again"
+                        .into(),
+                ));
+            }
             let text = resp.text().await.unwrap_or_default();
             debug!(
                 "Zoho WorkDrive /users/{}/privatespace failed ({}): {}",
@@ -2133,38 +2194,162 @@ impl ZohoWorkdriveProvider {
     /// listing that could not be read whole changes nothing kept; with no
     /// mapping kept yet it leaves the team folders unread, which refuses a
     /// root name that is not a known team folder instead of reading it as a
-    /// private folder (see [`Self::confirmed_team_folder`]).
+    /// private folder (see [`Self::confirmed_team_folder`]). With no mapping
+    /// kept, a discovery in progress counts as unread until it ends: dropped
+    /// half way (a connect cancelled between pages), it leaves the team
+    /// folders unread, not read as none.
     async fn discover_team_folders(&mut self, team_id: &str) {
+        if self
+            .team_folders_team
+            .as_deref()
+            .is_some_and(|known| known != team_id)
+        {
+            self.forget_team_folders();
+        }
+        self.team_folders_team = Some(team_id.to_string());
+        if self.team_folders_source.is_none() && !self.team_folders_unread {
+            self.team_folders_unread = true;
+            self.team_folders_discovery_open = true;
+        }
         match self.fetch_team_folders(team_id).await {
-            Ok(Some((source, found))) => self.keep_team_folders(source, found),
-            Ok(None) => {}
-            Err(TeamFoldersUnread) => {
-                if self.team_folders_source.is_none() {
-                    self.team_folders_unread = true;
-                }
+            Ok(Some(listing)) if self.answers_for_the_team_folders(&listing) => {
+                self.keep_team_folders(listing.source, listing.found)
             }
+            Ok(None) => {
+                self.settle_on_refusal();
+            }
+            // Not read whole, or the workspaces after a team folders listing
+            // that named team folders and broke off: no answer, unread while
+            // no mapping is kept.
+            Ok(Some(_)) | Err(TeamFoldersUnread) => self.team_folders_discovery_open = false,
         }
     }
 
-    /// When the team folders were never read whole, read them again: true
-    /// once they are read, false while they stay unread. A later refusal of
+    /// Whether a root name the mapping kept lacks may be a team folder: the
+    /// team folders were never read whole, or a listing has answered since
+    /// the mapping was kept (see `team_folders_progress`) and was not read
+    /// whole and accepted.
+    fn team_folders_unknown(&self) -> bool {
+        self.team_folders_unread
+            || self
+                .team_folders_progress
+                .load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// The mapping kept was read from the workspaces, and the team folders
+    /// listing has since answered and was not read whole: a name it has is
+    /// not known to be the one the path names either.
+    fn kept_workspaces_in_doubt(&self) -> bool {
+        self.team_folders_source == Some(TeamFolderSource::Workspaces)
+            && self
+                .team_folders_answered
+                .load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// A refusal of both listings (neither offered) answers only for a
+    /// discovery dropped before any read ended and before either listing
+    /// answered: the team then has no team folders. True when it answered.
+    fn settle_on_refusal(&mut self) -> bool {
+        let progress = self
+            .team_folders_progress
+            .load(std::sync::atomic::Ordering::SeqCst);
+        if !self.team_folders_discovery_open || progress {
+            return false;
+        }
+        self.team_folders_unread = false;
+        self.team_folders_discovery_open = false;
+        true
+    }
+
+    /// Forget what discovery learned of a team, at the end of its session:
+    /// another team, or the same one later, is discovered from nothing.
+    fn forget_team_folders(&mut self) {
+        self.team_folders.clear();
+        self.team_folders_source = None;
+        self.team_folders_unread = false;
+        self.team_folders_discovery_open = false;
+        self.team_folders_answered
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+        self.team_folders_progress
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+        self.team_folders_team = None;
+        self.trashed_team_folders.clear();
+    }
+
+    /// When the team folders were never read whole, or a workspaces mapping
+    /// kept no longer rules out a team folder (see
+    /// [`Self::team_folders_unknown`]), read them again: true once they are
+    /// read, false while they stay unread. A later refusal of
     /// both listings is not an answer: an offered listing that broke off
     /// showed the team has folders, so a root name stays unknown rather
     /// than be read as a private folder's.
     async fn reread_team_folders_if_unread(&mut self) -> bool {
-        if !self.team_folders_unread {
+        if !self.team_folders_unknown() {
             return true;
         }
         let Some(team) = self.team_id.clone() else {
             return false;
         };
         match self.fetch_team_folders(&team).await {
-            Ok(Some((source, found))) => {
-                self.keep_team_folders(source, found);
+            Ok(Some(listing)) if self.answers_for_the_team_folders(&listing) => {
+                self.keep_team_folders(listing.source, listing.found);
                 true
             }
-            Ok(None) | Err(TeamFoldersUnread) => false,
+            Ok(None) if self.settle_on_refusal() => true,
+            Ok(_) | Err(TeamFoldersUnread) => {
+                self.team_folders_discovery_open = false;
+                false
+            }
         }
+    }
+
+    /// Whether a listing read whole answers for the team folders. The
+    /// workspaces read in place of the team folders listing (it refused) say
+    /// nothing about team folders kept from it, nor about the ones it may
+    /// have listed when it answered and broke off (or was dropped), unless
+    /// the same read found the team folders listing whole and empty.
+    fn answers_for_the_team_folders(&self, listing: &TeamFolderListing) -> bool {
+        // A team folders listing read whole and empty, the workspaces
+        // refused, says nothing about a workspaces mapping kept: a refusal
+        // may deny the listing of workspaces that still exist.
+        if self.team_folders_source == Some(TeamFolderSource::Workspaces)
+            && listing.source == TeamFolderSource::TeamFolders
+            && listing.found.is_empty()
+        {
+            return false;
+        }
+        listing.source == TeamFolderSource::TeamFolders
+            || listing.team_folders_whole
+            || (self.team_folders_source != Some(TeamFolderSource::TeamFolders)
+                && !self
+                    .team_folders_answered
+                    .load(std::sync::atomic::Ordering::SeqCst))
+    }
+
+    /// A connection to act in: none after a connect that failed (or after
+    /// a disconnect), where an operation would act in a root forgotten.
+    fn require_root(&self) -> Result<(), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        Ok(())
+    }
+
+    /// Forget what a connection learned: the account, the root, the team,
+    /// the private space and the team folders. Not connected until a
+    /// connect succeeds.
+    fn forget_connection(&mut self) {
+        self.connected = false;
+        self.account_email = None;
+        self.account_id = None;
+        self.team_user_id = None;
+        self.current_is_legacy_alias = false;
+        self.current_path = "/".to_string();
+        self.current_folder_id.clear();
+        self.folder_cache.clear();
+        self.team_id = None;
+        self.privatespace_id = None;
+        self.forget_team_folders();
     }
 
     /// Keep `found` (from `source`) as the team folders, in place of the
@@ -2182,6 +2367,11 @@ impl ZohoWorkdriveProvider {
         self.team_folders = found;
         self.team_folders_source = Some(source);
         self.team_folders_unread = false;
+        self.team_folders_discovery_open = false;
+        self.team_folders_answered
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+        self.team_folders_progress
+            .store(false, std::sync::atomic::Ordering::SeqCst);
     }
 
     /// The team folders of `team_id` and where they were read, changing
@@ -2196,8 +2386,9 @@ impl ZohoWorkdriveProvider {
     async fn fetch_team_folders(
         &self,
         team_id: &str,
-    ) -> Result<Option<(TeamFolderSource, Vec<(String, String)>)>, TeamFoldersUnread> {
+    ) -> Result<Option<TeamFolderListing>, TeamFoldersUnread> {
         let mut found = Vec::new();
+        let mut team_folders_whole = false;
         // Primary: GET /teams/{teamId}/teamfolders, every page of it: a team
         // folder renamed on a later page is not read as gone. A first page
         // that does not answer falls back to the workspaces; a later one
@@ -2243,6 +2434,14 @@ impl ZohoWorkdriveProvider {
             // The status first: a refusal is not read, and an answer is
             // read up to the listing caps, a page and the whole.
             let status = resp.status();
+            // An answer offered, then dropped or cut off while its body is
+            // read, may have named team folders.
+            if status.is_success() {
+                self.team_folders_answered
+                    .store(true, std::sync::atomic::Ordering::SeqCst);
+                self.team_folders_progress
+                    .store(true, std::sync::atomic::Ordering::SeqCst);
+            }
             let body = if status.is_success() {
                 super::version_listing_text_with(resp, |e| body_broke_off("Team folders page", e))
                     .await
@@ -2295,13 +2494,18 @@ impl ZohoWorkdriveProvider {
                 found.push((tf.id, tf.attributes.name));
             }
             if count < TEAM_FOLDER_PAGE_LIMIT {
+                team_folders_whole = true;
                 break;
             }
             offset += count;
         }
         if !found.is_empty() {
             info!("Zoho WorkDrive discovered {} team folders", found.len());
-            return Ok(Some((TeamFolderSource::TeamFolders, found)));
+            return Ok(Some(TeamFolderListing {
+                source: TeamFolderSource::TeamFolders,
+                found,
+                team_folders_whole,
+            }));
         }
 
         // Fallback: use workspaces as team folders (they appear as "Cartelle
@@ -2347,10 +2551,23 @@ impl ZohoWorkdriveProvider {
             if !status.is_success() {
                 debug!("Zoho WorkDrive workspaces failed ({status})");
                 if seen.is_empty() && team_listing_not_offered(status) {
+                    // The team folders listing read whole and empty is an
+                    // answer: no team folders, and no workspaces offered.
+                    if team_folders_whole {
+                        return Ok(Some(TeamFolderListing {
+                            source: TeamFolderSource::TeamFolders,
+                            found,
+                            team_folders_whole,
+                        }));
+                    }
                     return Ok(None);
                 }
                 return Err(TeamFoldersUnread);
             }
+            // As for a team folders page: an answer offered may have named
+            // workspaces.
+            self.team_folders_progress
+                .store(true, std::sync::atomic::Ordering::SeqCst);
             let body =
                 super::version_listing_text_with(resp, |e| body_broke_off("Workspaces page", e))
                     .await
@@ -2400,7 +2617,11 @@ impl ZohoWorkdriveProvider {
             "Zoho WorkDrive discovered {} team folders (via workspaces)",
             found.len()
         );
-        Ok(Some((TeamFolderSource::Workspaces, found)))
+        Ok(Some(TeamFolderListing {
+            source: TeamFolderSource::Workspaces,
+            found,
+            team_folders_whole,
+        }))
     }
 
     /// Send one WorkDrive request at the pace WorkDrive accepts. `listing` is
@@ -3162,6 +3383,7 @@ impl ZohoWorkdriveProvider {
         &mut self,
         path: &str,
     ) -> Result<FolderResolution, ProviderError> {
+        self.require_root()?;
         let path = path.trim_matches('/');
         if path.is_empty() {
             return Ok(FolderResolution {
@@ -3279,7 +3501,8 @@ impl ZohoWorkdriveProvider {
     /// have renamed the folder discovery found under this name, and made a
     /// new one with it. On a mismatch the team folders are discovered again
     /// and the new id read back the same way; a name that discovery no
-    /// longer returns is not a team folder (`None`), and one that cannot be
+    /// longer returns refuses the operation that found it gone (the next
+    /// one reads it as no team folder, `None`), and one that cannot be
     /// confirmed refuses the operation instead of acting in another folder.
     async fn confirmed_team_folder(&mut self, name: &str) -> Result<Option<String>, ProviderError> {
         let named = |p: &Self| {
@@ -3294,8 +3517,11 @@ impl ZohoWorkdriveProvider {
                  was found), so nothing was done in it: try again"
             ))
         };
-        let Some(id) = named(self) else {
-            if !self.team_folders_unread {
+        // A workspaces mapping in doubt names nothing for sure: a name it has
+        // may be a team folder of the same name, read again below.
+        let mapped = named(self);
+        let Some(id) = mapped.clone().filter(|_| !self.kept_workspaces_in_doubt()) else {
+            if !self.team_folders_unknown() {
                 return Ok(None);
             }
             // The team folders were never read whole: /{name} may be one.
@@ -3310,6 +3536,10 @@ impl ZohoWorkdriveProvider {
                 return Err(unread());
             }
             return match named(self) {
+                // A name the mapping in doubt had, gone from the one read
+                // since: the operation meant for it is refused, never carried
+                // into a private folder of the name.
+                None if mapped.is_some() => Err(unconfirmed()),
                 None => Ok(None),
                 Some(fresh) if self.team_folder_is(&fresh, name).await? => Ok(Some(fresh)),
                 Some(_) => Err(unconfirmed()),
@@ -3325,17 +3555,22 @@ impl ZohoWorkdriveProvider {
         // half way, the refresh leaves it whole. A mapping read from the
         // other listing (team folders or workspaces) or empty is no answer
         // about this one.
-        let Ok(Some((source, found))) = self.fetch_team_folders(&team).await else {
+        let Ok(Some(listing)) = self.fetch_team_folders(&team).await else {
             return Err(unconfirmed());
         };
-        if found.is_empty() || self.team_folders_source != Some(source) {
+        // The same rule as a root refresh: the workspaces replace team
+        // folders only when the same read found the team folders listing
+        // whole and empty.
+        if !self.answers_for_the_team_folders(&listing) {
             return Err(unconfirmed());
         }
-        self.keep_team_folders(source, found);
+        self.keep_team_folders(listing.source, listing.found);
+        // The fresh mapping is kept, empty or not. The operation meant for
+        // the folder no longer of this name is refused, never carried into
+        // a private folder of it; the next one acts on the mapping kept.
         match named(self) {
-            None => Ok(None),
             Some(fresh) if self.team_folder_is(&fresh, name).await? => Ok(Some(fresh)),
-            Some(_) => Err(unconfirmed()),
+            _ => Err(unconfirmed()),
         }
     }
 
@@ -3600,8 +3835,39 @@ impl StorageProvider for ZohoWorkdriveProvider {
             ));
         }
 
+        // A connect that fails half way keeps nothing of an earlier one: a
+        // root or team kept from before is not this connection's. The team
+        // folders trashed since (the live listing no longer names them, only
+        // the trash listing scans them) come back once the same account and
+        // team are found again, never after a failed connect or another team.
+        // Team folders known before also keep a discovery that both listings
+        // refuse unread: the refusals do not make them an empty team.
+        let retired = (
+            self.account_id.clone(),
+            self.team_id.clone(),
+            std::mem::take(&mut self.trashed_team_folders),
+            !self.team_folders.is_empty() || self.team_folders_unknown(),
+        );
+        self.forget_connection();
         // Discover team and privatespace
         self.discover_team().await?;
+        if let (Some(account), Some(team), trashed, had_team_folders) = retired {
+            if self.account_id.as_deref() == Some(account.as_str())
+                && self.team_id.as_deref() == Some(team.as_str())
+            {
+                if had_team_folders && self.team_folders_source.is_none() {
+                    self.team_folders_unread = true;
+                }
+                for entry in trashed {
+                    let known = |(id, _): &(String, String)| id == &entry.0;
+                    if !self.team_folders.iter().any(known)
+                        && !self.trashed_team_folders.iter().any(known)
+                    {
+                        self.trashed_team_folders.push(entry);
+                    }
+                }
+            }
+        }
 
         self.connected = true;
         self.current_path = "/".to_string();
@@ -3614,13 +3880,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
     }
 
     async fn disconnect(&mut self) -> Result<(), ProviderError> {
-        self.connected = false;
-        self.current_is_legacy_alias = false;
-        self.folder_cache.clear();
-        self.team_id = None;
-        self.privatespace_id = None;
-        self.team_folders.clear();
-        self.trashed_team_folders.clear();
+        self.forget_connection();
         info!("Disconnected from Zoho WorkDrive");
         Ok(())
     }
@@ -3630,6 +3890,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
     }
 
     async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+        self.require_root()?;
         // Determine effective path
         let effective_path = if path == "." || path.is_empty() {
             self.current_path.clone()
@@ -6015,6 +6276,7 @@ mod tests {
         p.endpoint_override = Some(format!("http://{addr}"));
         p.test_access_token = Some("test-token".into());
         p.privatespace_id = Some("PS".into());
+        p.connected = true;
         p.current_folder_id = "PS".into();
         assert_eq!(p.resolve_path("/PS").await.unwrap(), "NAMED_FOLDER");
         assert_eq!(p.resolve_path("/PS").await.unwrap(), "NAMED_FOLDER");
@@ -8538,15 +8800,32 @@ mod tests {
     /// The team folder discovery found as `Docs` (T1) was renamed by another
     /// client and a new `Docs` (T2) made: T1 read back by id no longer says
     /// `Docs`, the team folders are discovered again, and the path resolves
-    /// to T2. An unchanged team folder costs its one read; when discovery
-    /// gives no mapping to confirm, the operation is refused.
+    /// to T2. An unchanged team folder costs its one read. A workspaces
+    /// mapping is replaced by a team folders listing read whole, and kept
+    /// when that listing breaks off; when discovery gives no mapping to
+    /// confirm, the operation is refused.
     #[tokio::test]
     async fn a_renamed_team_folder_is_never_acted_in() {
-        // Discovery answers the two folders twice, then nothing.
-        let (mut p, _requests, server) = listing_fixture(|id, _, nth| {
-            let body = match id {
-                "TEAM" if nth <= 1 => r#"{"data":[{"id":"T1","attributes":{"name":"Archive"}},{"id":"T2","attributes":{"name":"Docs"}}]}"#.to_string(),
-                "TEAM" => r#"{"data":[]}"#.to_string(),
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        // Phase 0: the two folders, whole. Phase 1: a full page, then a
+        // second page that fails. Phase 2: no team folders.
+        let phase = std::sync::Arc::new(AtomicUsize::new(0));
+        let phasing = std::sync::Arc::clone(&phase);
+        let (mut p, _requests, server) = listing_fixture(move |id, query, _| {
+            let second = format!("page%5Boffset%5D={TEAM_FOLDER_PAGE_LIMIT}");
+            let body = match (id, phasing.load(Ordering::SeqCst)) {
+                ("TEAM", 0) => r#"{"data":[{"id":"T1","attributes":{"name":"Archive"}},{"id":"T2","attributes":{"name":"Docs"}}]}"#.to_string(),
+                ("TEAM", 1) if query.contains(&second) => return (503, vec![], String::new()),
+                ("TEAM", 1) => {
+                    let page: Vec<serde_json::Value> = (0..TEAM_FOLDER_PAGE_LIMIT)
+                    .map(|i| {
+                        serde_json::json!({ "id": format!("F{i}"),
+                        "attributes": { "name": format!("Team {i}") } })
+                    })
+                    .collect();
+                serde_json::json!({ "data": page }).to_string()
+                }
+                ("TEAM", _) => r#"{"data":[]}"#.to_string(),
                 _ => listing_json(&[], Some((false, None))),
             };
             (200, vec![], body)
@@ -8566,19 +8845,11 @@ mod tests {
         assert_eq!(p.resolve_path("/Docs").await.unwrap(), "T2");
         assert_eq!(read_by_id(), ["T2"]);
 
-        // A mapping read from the workspaces is not confirmed by the team
-        // folders listing: refused, and kept as it was.
+        // A workspaces mapping is replaced by the team folders listing read
+        // whole: /Docs is the team folder T2 it names.
         p.team_folders = vec![("T1".into(), "Docs".into())];
         p.team_folders_source = Some(TeamFolderSource::Workspaces);
         place("T1", "Archive");
-        let other_listing = p.resolve_path("/Docs").await;
-        assert!(
-            matches!(&other_listing, Err(ProviderError::ServerError(m)) if m.contains("could not be confirmed")),
-            "{other_listing:?}"
-        );
-        assert_eq!(p.team_folders, vec![("T1".into(), "Docs".into())]);
-        p.team_folders_source = Some(TeamFolderSource::TeamFolders);
-
         assert_eq!(p.resolve_path("/Docs").await.unwrap(), "T2");
         assert_eq!(
             p.team_folders,
@@ -8587,13 +8858,463 @@ mod tests {
                 ("T2".into(), "Docs".into())
             ]
         );
+        assert_eq!(p.team_folders_source, Some(TeamFolderSource::TeamFolders));
 
+        // A team folders listing that breaks off is no answer: refused, and
+        // the workspaces mapping kept as it was.
+        phase.store(1, Ordering::SeqCst);
         p.team_folders = vec![("T1".into(), "Docs".into())];
+        p.team_folders_source = Some(TeamFolderSource::Workspaces);
+        let cut_short = p.resolve_path("/Docs").await;
+        assert!(
+            matches!(&cut_short, Err(ProviderError::ServerError(m)) if m.contains("could not be confirmed")),
+            "{cut_short:?}"
+        );
+        assert_eq!(p.team_folders, vec![("T1".into(), "Docs".into())]);
+        assert_eq!(p.team_folders_source, Some(TeamFolderSource::Workspaces));
+
+        phase.store(2, Ordering::SeqCst);
+        p.team_folders_source = Some(TeamFolderSource::TeamFolders);
         let unconfirmed = p.resolve_path("/Docs").await;
         server.abort();
         assert!(
             matches!(&unconfirmed, Err(ProviderError::ServerError(m)) if m.contains("could not be confirmed")),
             "{unconfirmed:?}"
+        );
+    }
+
+    /// A team folder `Docs` (T1) kept from connect and gone since, while the
+    /// team folders listing is refused (403) and the workspaces answer whole
+    /// without `Docs`: the replacement refused when `/Docs` is confirmed is
+    /// refused the same way by the root refresh that follows, so the
+    /// private `Docs/f.txt` is never trashed in place of the team folder's.
+    #[tokio::test]
+    async fn a_root_refresh_does_not_let_workspaces_replace_kept_team_folders() {
+        let (mut p, requests, server) = listing_fixture(|id, query, _| match id {
+            "TEAM" if query.contains("page%5Boffset") => (403, vec![], String::new()),
+            "TEAM" => (
+                200,
+                vec![],
+                r#"{"data":[{"id":"W1","attributes":{"name":"Other"}}],"links":{"cursor":{"has_next":false}}}"#.to_string(),
+            ),
+            "ROOT" => (
+                200,
+                vec![],
+                listing_json(&[("P1", "Docs", true)], Some((false, None))),
+            ),
+            "P1" => (
+                200,
+                vec![],
+                listing_json(&[("F1", "f.txt", false)], Some((false, None))),
+            ),
+            _ => (200, vec![], listing_json(&[], Some((false, None)))),
+        })
+        .await;
+        p.privatespace_id = Some("ROOT".into());
+        p.team_id = Some("TEAM".into());
+        p.keep_team_folders(
+            TeamFolderSource::TeamFolders,
+            vec![("T1".into(), "Docs".into())],
+        );
+        let first = p.delete("/Docs/f.txt").await;
+        assert!(first.is_err(), "{first:?}");
+        let root = p.list("/").await;
+        let second = p.delete("/Docs/f.txt").await;
+        server.abort();
+        assert!(root.is_err(), "{root:?}");
+        assert!(second.is_err(), "{second:?}");
+        assert_eq!(p.team_folders_source, Some(TeamFolderSource::TeamFolders));
+        let requests = requests.lock().unwrap();
+        assert!(
+            !requests.iter().any(|(id, _)| id.starts_with("PATCH")),
+            "the private Docs/f.txt was trashed: {requests:?}"
+        );
+    }
+
+    /// A connect of a connected provider that fails half way (the private
+    /// space lookup is rate limited) keeps nothing of the connection before:
+    /// not connected, and no root, team or private space of the earlier one
+    /// left for an operation to act in.
+    #[tokio::test]
+    async fn a_failed_connect_keeps_nothing_of_the_earlier_connection() {
+        for teams_answer in [true, false] {
+            let (mut p, _requests, server) = listing_fixture(move |id, _query, _| match id {
+                "" if teams_answer => (
+                    200,
+                    vec![],
+                    r#"{"data":[{"id":"TEAM2","attributes":{"name":"Two"}}]}"#.to_string(),
+                ),
+                "" => (503, vec![], String::new()),
+                _ => (429, vec![], String::new()),
+            })
+            .await;
+            p.team_id = Some("OLD".into());
+            p.privatespace_id = Some("ROOT".into());
+            p.account_email = Some("old@example.com".into());
+            p.team_user_id = Some("OLDUSER".into());
+            p.trashed_team_folders = vec![("RETIRED".into(), "Gone".into())];
+            p.keep_team_folders(
+                TeamFolderSource::TeamFolders,
+                vec![("T1".into(), "Docs".into())],
+            );
+            let connected = p.connect().await;
+            server.abort();
+            assert!(connected.is_err(), "{teams_answer}: {connected:?}");
+            if teams_answer {
+                assert!(
+                    matches!(&connected, Err(ProviderError::ServerError(m)) if m.contains("try again")),
+                    "{connected:?}"
+                );
+            }
+            assert!(!p.is_connected());
+            assert!(p.folder_cache.is_empty(), "{:?}", p.folder_cache);
+            assert!(p.current_folder_id.is_empty());
+            assert!(p.privatespace_id.is_none());
+            assert!(p.team_folders.is_empty());
+            assert!(p.trashed_team_folders.is_empty(), "{teams_answer}");
+            assert!(p.account_email.is_none(), "{teams_answer}");
+            assert!(p.team_user_id.is_none(), "{teams_answer}");
+            // No root to act in: the operations refuse before any request.
+            let root = p.list("/").await;
+            assert!(matches!(root, Err(ProviderError::NotConnected)), "{root:?}");
+            let docs = p.resolve_path("/Docs").await;
+            assert!(matches!(docs, Err(ProviderError::NotConnected)), "{docs:?}");
+        }
+    }
+
+    /// A team folder trashed since connect is scanned by the trash listing
+    /// after a reconnect that finds the same account (by its id, the email
+    /// being optional) and team, and not after one that finds another team
+    /// or another account of the same team.
+    #[tokio::test]
+    async fn a_reconnect_to_the_same_team_keeps_the_trashed_team_folders() {
+        for (team, account, email, kept) in [
+            ("TEAM", "U1", false, true),
+            ("TEAM2", "U1", true, false),
+            ("TEAM", "U2", true, false),
+        ] {
+            let (mut p, requests, server) = listing_fixture(move |id, query, _| match id {
+                "me" => {
+                    let attributes = if email {
+                        serde_json::json!({ "email_id": "u@example.com" })
+                    } else {
+                        serde_json::json!({})
+                    };
+                    (
+                        200,
+                        vec![],
+                        serde_json::json!({ "data": { "id": account, "attributes": attributes } })
+                            .to_string(),
+                    )
+                }
+                "" => (
+                    200,
+                    vec![],
+                    serde_json::json!({ "data": [{ "id": team, "attributes": { "name": "Team" } }] })
+                        .to_string(),
+                ),
+                "TEAM" | "TEAM2" if query.contains("page%5Boffset") => {
+                    (200, vec![], r#"{"data":[]}"#.to_string())
+                }
+                "TEAM" | "TEAM2" | "U1" | "U2" => (404, vec![], String::new()),
+                _ => (200, vec![], r#"{"data":[]}"#.to_string()),
+            })
+            .await;
+            p.account_id = Some("U1".into());
+            p.account_email = Some("u@example.com".into());
+            p.team_id = Some("TEAM".into());
+            p.trashed_team_folders = vec![("RETIRED".into(), "Gone".into())];
+            p.connect().await.expect("reconnect");
+            let asked_before = requests.lock().unwrap().len();
+            let _ = p.list_trash().await;
+            server.abort();
+            let scanned = requests.lock().unwrap()[asked_before..]
+                .iter()
+                .any(|(id, _)| id == "RETIRED");
+            assert_eq!(scanned, kept, "{team} {account}");
+            assert_eq!(p.trashed_team_folders.is_empty(), !kept, "{team} {account}");
+        }
+    }
+
+    /// A reconnect of the same account to the same team whose two listings
+    /// are both refused (403): the team folders known before are not read
+    /// as an empty team, so `/Docs`, a team folder before, stays unresolved
+    /// and the private `Docs/f.txt` is not trashed; for another account the
+    /// refusals settle as before.
+    #[tokio::test]
+    async fn a_reconnect_refused_by_both_listings_keeps_known_team_folders_unread() {
+        for (account, unread) in [("U1", true), ("U2", false)] {
+            let (mut p, requests, server) = listing_fixture(move |id, _query, _| match id {
+                "me" => (
+                    200,
+                    vec![],
+                    serde_json::json!({ "data": { "id": account, "attributes": {} } }).to_string(),
+                ),
+                "" => (
+                    200,
+                    vec![],
+                    r#"{"data":[{"id":"TEAM","attributes":{"name":"Team"}}]}"#.to_string(),
+                ),
+                "TEAM" => (403, vec![], String::new()),
+                "U1" | "U2" => (200, vec![], r#"{"data":[{"id":"ROOT"}]}"#.to_string()),
+                "ROOT" => (
+                    200,
+                    vec![],
+                    listing_json(&[("P1", "Docs", true)], Some((false, None))),
+                ),
+                "P1" => (
+                    200,
+                    vec![],
+                    listing_json(&[("F1", "f.txt", false)], Some((false, None))),
+                ),
+                _ => (200, vec![], listing_json(&[], Some((false, None)))),
+            })
+            .await;
+            p.account_id = Some("U1".into());
+            p.team_id = Some("TEAM".into());
+            p.keep_team_folders(
+                TeamFolderSource::TeamFolders,
+                vec![("T1".into(), "Docs".into())],
+            );
+            p.connect().await.expect("reconnect");
+            assert_eq!(p.team_folders_unknown(), unread, "{account}");
+            if unread {
+                let deleted = p.delete("/Docs/f.txt").await;
+                assert!(deleted.is_err(), "{deleted:?}");
+                assert!(
+                    !requests
+                        .lock()
+                        .unwrap()
+                        .iter()
+                        .any(|(id, _)| id.starts_with("PATCH")),
+                    "the private Docs/f.txt was trashed"
+                );
+            }
+            server.abort();
+        }
+    }
+
+    /// The private space lookup refused as unauthorized (401) after the team
+    /// was found: the connect fails, where it went on without My Folders.
+    #[tokio::test]
+    async fn a_private_space_lookup_refused_as_unauthorized_fails_the_connect() {
+        let (mut p, _requests, server) = listing_fixture(|id, query, _| match id {
+            "me" => (
+                200,
+                vec![],
+                r#"{"data":{"id":"U1","attributes":{}}}"#.to_string(),
+            ),
+            "" => (
+                200,
+                vec![],
+                r#"{"data":[{"id":"TEAM","attributes":{"name":"Team"}}]}"#.to_string(),
+            ),
+            "TEAM" if query.contains("page%5Boffset") => {
+                (200, vec![], r#"{"data":[]}"#.to_string())
+            }
+            "U1" => (401, vec![], String::new()),
+            _ => (404, vec![], String::new()),
+        })
+        .await;
+        let connected = p.connect().await;
+        server.abort();
+        assert!(
+            matches!(&connected, Err(ProviderError::AuthenticationFailed(m)) if m.contains("401")),
+            "{connected:?}"
+        );
+        assert!(!p.is_connected());
+    }
+
+    /// A workspaces mapping in doubt (a team folders read answered and broke
+    /// off) with `Docs` (W1), then a refresh read whole that lists only
+    /// `Other`: the fresh mapping is kept and the delete meant for the
+    /// workspace refused, never carried into the private `Docs/f.txt`.
+    #[tokio::test]
+    async fn a_delete_in_a_workspace_in_doubt_gone_since_is_refused() {
+        let (mut p, requests, server) = listing_fixture(|id, query, _| match id {
+            "TEAM" if query.contains("page%5Boffset") => (
+                200,
+                vec![],
+                r#"{"data":[{"id":"T9","attributes":{"name":"Other"}}]}"#.to_string(),
+            ),
+            "ROOT" => (
+                200,
+                vec![],
+                listing_json(&[("P1", "Docs", true)], Some((false, None))),
+            ),
+            "P1" => (
+                200,
+                vec![],
+                listing_json(&[("F1", "f.txt", false)], Some((false, None))),
+            ),
+            _ => (200, vec![], listing_json(&[], Some((false, None)))),
+        })
+        .await;
+        p.privatespace_id = Some("ROOT".into());
+        p.team_id = Some("TEAM".into());
+        p.keep_team_folders(
+            TeamFolderSource::Workspaces,
+            vec![("W1".into(), "Docs".into())],
+        );
+        p.team_folders_answered
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        p.team_folders_progress
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        assert!(p.kept_workspaces_in_doubt());
+        let deleted = p.delete("/Docs/f.txt").await;
+        server.abort();
+        assert!(deleted.is_err(), "{deleted:?}");
+        assert_eq!(p.team_folders, [("T9".to_string(), "Other".to_string())]);
+        assert!(
+            !requests
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|(id, _)| id.starts_with("PATCH")),
+            "the private Docs/f.txt was trashed"
+        );
+    }
+
+    /// A team folder `Docs` (T1) kept from connect and gone since, the team
+    /// folders listing read whole and empty and the workspaces not offered
+    /// (404): the empty mapping is kept, so the delete that found T1 gone is
+    /// refused and the retry resolves `/Docs` without asking the team
+    /// folders again, in the private space.
+    #[tokio::test]
+    async fn a_whole_empty_refresh_is_kept_when_a_team_folder_is_gone() {
+        let (mut p, requests, server) = listing_fixture(|id, query, _| match id {
+            "TEAM" if query.contains("page%5Boffset") => {
+                (200, vec![], r#"{"data":[]}"#.to_string())
+            }
+            "TEAM" => (404, vec![], String::new()),
+            "ROOT" => (
+                200,
+                vec![],
+                listing_json(&[("P1", "Docs", true)], Some((false, None))),
+            ),
+            _ => (200, vec![], listing_json(&[], Some((false, None)))),
+        })
+        .await;
+        p.privatespace_id = Some("ROOT".into());
+        p.team_id = Some("TEAM".into());
+        p.keep_team_folders(
+            TeamFolderSource::TeamFolders,
+            vec![("T1".into(), "Docs".into())],
+        );
+        let first = p.resolve_path("/Docs").await;
+        assert!(
+            matches!(&first, Err(ProviderError::ServerError(m)) if m.contains("could not be confirmed")),
+            "{first:?}"
+        );
+        assert!(p.team_folders.is_empty());
+        let retried = p.resolve_path("/Docs").await;
+        server.abort();
+        assert_eq!(retried.expect("the private Docs"), "P1");
+        let team_folder_reads = requests
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(id, q)| id == "TEAM" && q.contains("page%5Boffset"))
+            .count();
+        assert_eq!(team_folder_reads, 1);
+    }
+
+    /// A workspace `Docs` (W1) renamed by another client before a delete in
+    /// it, the team folders listing read whole without `Docs`: the fresh
+    /// mapping is kept and the delete refused, never carried into the
+    /// private `Docs/f.txt`.
+    #[tokio::test]
+    async fn a_delete_in_a_renamed_workspace_is_not_carried_into_my_folders() {
+        let (mut p, requests, server) = listing_fixture(|id, query, _| match id {
+            "TEAM" if query.contains("page%5Boffset") => (
+                200,
+                vec![],
+                r#"{"data":[{"id":"T9","attributes":{"name":"Other"}}]}"#.to_string(),
+            ),
+            "ROOT" => (
+                200,
+                vec![],
+                listing_json(&[("P1", "Docs", true)], Some((false, None))),
+            ),
+            "P1" => (
+                200,
+                vec![],
+                listing_json(&[("F1", "f.txt", false)], Some((false, None))),
+            ),
+            _ => (200, vec![], listing_json(&[], Some((false, None)))),
+        })
+        .await;
+        p.privatespace_id = Some("ROOT".into());
+        p.team_id = Some("TEAM".into());
+        p.keep_team_folders(
+            TeamFolderSource::Workspaces,
+            vec![("W1".into(), "Docs".into())],
+        );
+        PLACED.with(|placed| {
+            placed
+                .borrow_mut()
+                .insert("W1".into(), ("Renamed".into(), "TEAM".into()))
+        });
+        let deleted = p.delete("/Docs/f.txt").await;
+        server.abort();
+        assert!(deleted.is_err(), "{deleted:?}");
+        assert_eq!(p.team_folders, [("T9".to_string(), "Other".to_string())]);
+        assert!(
+            !requests
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|(id, _)| id.starts_with("PATCH")),
+            "the private Docs/f.txt was trashed"
+        );
+    }
+
+    /// A workspaces mapping kept with `Docs` (W1, not confirmed by id), then
+    /// a refresh where the team folders listing is whole and empty and the
+    /// workspaces are refused (403): the refusal may deny the listing of
+    /// workspaces that still exist, so the mapping is kept, by the
+    /// confirmation as by a discovery, and the private `Docs/f.txt` is not
+    /// trashed.
+    #[tokio::test]
+    async fn a_refusal_of_the_workspaces_does_not_clear_a_kept_workspaces_mapping() {
+        let (mut p, requests, server) = listing_fixture(|id, query, _| match id {
+            "TEAM" if query.contains("page%5Boffset") => {
+                (200, vec![], r#"{"data":[]}"#.to_string())
+            }
+            "TEAM" => (403, vec![], String::new()),
+            "ROOT" => (
+                200,
+                vec![],
+                listing_json(&[("P1", "Docs", true)], Some((false, None))),
+            ),
+            "P1" => (
+                200,
+                vec![],
+                listing_json(&[("F1", "f.txt", false)], Some((false, None))),
+            ),
+            _ => (200, vec![], listing_json(&[], Some((false, None)))),
+        })
+        .await;
+        p.privatespace_id = Some("ROOT".into());
+        p.team_id = Some("TEAM".into());
+        let docs = vec![("W1".to_string(), "Docs".to_string())];
+        p.keep_team_folders(TeamFolderSource::Workspaces, docs.clone());
+        p.discover_team_folders("TEAM").await;
+        assert_eq!(p.team_folders, docs);
+        let first = p.delete("/Docs/f.txt").await;
+        let second = p.delete("/Docs/f.txt").await;
+        server.abort();
+        assert!(first.is_err(), "{first:?}");
+        assert!(second.is_err(), "{second:?}");
+        assert_eq!(p.team_folders, docs);
+        assert_eq!(p.team_folders_source, Some(TeamFolderSource::Workspaces));
+        assert!(
+            !requests
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|(id, _)| id.starts_with("PATCH")),
+            "the private Docs/f.txt was trashed"
         );
     }
 
@@ -8759,7 +9480,8 @@ mod tests {
     }
 
     /// A team folders discovery left unread at connect (a second page that
-    /// failed, a rate limited first page, an unparsable first page) stays
+    /// failed, a rate limited first page, an unparsable first page, a
+    /// workspaces listing whose second page failed) stays
     /// unread when a later read is refused by both listings (403 or 404 on
     /// the team folders and on the workspaces): the root is not listed and
     /// the private `Docs/f.txt` of a possible team folder's name is not
@@ -8775,6 +9497,8 @@ mod tests {
             ("rate limited", 404),
             ("unparsable", 403),
             ("unparsable", 404),
+            ("workspaces cut short", 403),
+            ("workspaces cut short", 404),
         ] {
             let reread = std::sync::Arc::new(AtomicBool::new(false));
             let rereading = std::sync::Arc::clone(&reread);
@@ -8783,6 +9507,19 @@ mod tests {
                 match id {
                     "TEAM" if rereading.load(Ordering::SeqCst) => (refusal, vec![], String::new()),
                     "TEAM" if first == "rate limited" => (429, vec![], String::new()),
+                    // No team folders listing, then a workspaces listing
+                    // whose second page fails.
+                    "TEAM" if first == "workspaces cut short" && query.contains("page%5Boffset") => {
+                        (404, vec![], String::new())
+                    }
+                    "TEAM" if first == "workspaces cut short" && query.contains("page%5Bnext%5D=c2") => {
+                        (503, vec![], String::new())
+                    }
+                    "TEAM" if first == "workspaces cut short" => (
+                        200,
+                        vec![],
+                        r#"{"data":[{"id":"W1","attributes":{"name":"One"}}],"links":{"cursor":{"has_next":true,"next":"https://workdrive.zoho.com/api/v1/teams/TEAM/workspaces?page%5Bnext%5D=c2"}}}"#.to_string(),
+                    ),
                     "TEAM" if first == "unparsable" && query.contains("page%5Boffset") => {
                         (200, vec![], "not json".to_string())
                     }
@@ -8815,6 +9552,7 @@ mod tests {
             p.team_id = Some("TEAM".into());
             p.discover_team_folders("TEAM").await;
             assert!(p.team_folders_unread, "{first} {refusal}");
+            let asked_before = requests.lock().unwrap().len();
             reread.store(true, Ordering::SeqCst);
             let root = p.list("/").await;
             let deleted = p.delete("/Docs/f.txt").await;
@@ -8828,13 +9566,1191 @@ mod tests {
                 "{first} {refusal}: {requests:?}"
             );
             assert!(
-                requests
+                requests[asked_before..]
                     .iter()
-                    .filter(|(id, q)| id == "TEAM" && q.is_empty())
-                    .count()
-                    >= 1,
-                "{first} {refusal}: the workspaces were never asked: {requests:?}"
+                    .any(|(id, q)| id == "TEAM" && q.is_empty()),
+                "{first} {refusal}: the workspaces were never asked again: {requests:?}"
             );
+        }
+    }
+
+    /// A team folders listing cut short at connect, then refused (403) on
+    /// the read again, or on a discovery run again, while the workspaces
+    /// answer, with none or with others: the workspaces read in its place do
+    /// not answer for the team folders it had begun to list, so the root is
+    /// not listed and the private `Docs/f.txt` is not trashed, where before
+    /// the workspaces replaced the unread listing.
+    #[tokio::test]
+    async fn workspaces_do_not_answer_for_a_team_folders_listing_cut_short() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        for (route, workspaces) in [
+            (
+                "read again",
+                r#"{"data":[],"links":{"cursor":{"has_next":false}}}"#,
+            ),
+            (
+                "read again",
+                r#"{"data":[{"id":"W1","attributes":{"name":"Other"}}],"links":{"cursor":{"has_next":false}}}"#,
+            ),
+            (
+                "discovered again",
+                r#"{"data":[],"links":{"cursor":{"has_next":false}}}"#,
+            ),
+            (
+                "discovered again",
+                r#"{"data":[{"id":"W1","attributes":{"name":"Other"}}],"links":{"cursor":{"has_next":false}}}"#,
+            ),
+        ] {
+            let reread = std::sync::Arc::new(AtomicBool::new(false));
+            let rereading = std::sync::Arc::clone(&reread);
+            let (mut p, requests, server) = listing_fixture(move |id, query, _| {
+                let second = format!("page%5Boffset%5D={TEAM_FOLDER_PAGE_LIMIT}");
+                let rereading = rereading.load(Ordering::SeqCst);
+                match id {
+                    "TEAM" if rereading && query.contains("page%5Boffset") => {
+                        (403, vec![], String::new())
+                    }
+                    "TEAM" if rereading => (200, vec![], workspaces.to_string()),
+                    "TEAM" if query.contains("page%5Boffset%5D=0") => {
+                        let page: Vec<serde_json::Value> = (0..TEAM_FOLDER_PAGE_LIMIT)
+                            .map(|i| {
+                                serde_json::json!({ "id": format!("F{i}"),
+                                "attributes": { "name": format!("Team {i}") } })
+                            })
+                            .collect();
+                        (200, vec![], serde_json::json!({ "data": page }).to_string())
+                    }
+                    "TEAM" if query.contains(&second) => (503, vec![], String::new()),
+                    "TEAM" => (403, vec![], String::new()),
+                    "ROOT" => (
+                        200,
+                        vec![],
+                        listing_json(&[("P1", "Docs", true)], Some((false, None))),
+                    ),
+                    "P1" => (
+                        200,
+                        vec![],
+                        listing_json(&[("F1", "f.txt", false)], Some((false, None))),
+                    ),
+                    _ => (200, vec![], listing_json(&[], Some((false, None)))),
+                }
+            })
+            .await;
+            p.privatespace_id = Some("ROOT".into());
+            p.team_id = Some("TEAM".into());
+            p.discover_team_folders("TEAM").await;
+            assert!(p.team_folders_unread, "{route} {workspaces}");
+            reread.store(true, Ordering::SeqCst);
+            if route == "discovered again" {
+                p.discover_team_folders("TEAM").await;
+                assert!(p.team_folders_unread, "{route} {workspaces}");
+            }
+            let root = p.list("/").await;
+            let deleted = p.delete("/Docs/f.txt").await;
+            server.abort();
+            assert!(root.is_err(), "{route} {workspaces}: {root:?}");
+            assert!(deleted.is_err(), "{route} {workspaces}: {deleted:?}");
+            assert!(p.team_folders_unread, "{route} {workspaces}");
+            let requests = requests.lock().unwrap();
+            assert!(
+                !requests.iter().any(|(id, _)| id.starts_with("PATCH")),
+                "{route} {workspaces}: {requests:?}"
+            );
+            assert!(
+                requests.iter().any(|(id, q)| id == "TEAM" && q.is_empty()),
+                "{route} {workspaces}: the workspaces were never read: {requests:?}"
+            );
+        }
+    }
+
+    /// A team folders discovery left unread at connect (a rate limited
+    /// first page), then a read again dropped after the team folders
+    /// listing named team folders and before it ended, then a read again
+    /// where the team folders are refused (403) and the workspaces answer
+    /// whole: the team folders the dropped read named still stand, so the
+    /// root is not listed and the private `Docs/f.txt` is not trashed,
+    /// where evidence kept only by a listing's error was lost with the
+    /// dropped read.
+    #[tokio::test]
+    async fn a_read_dropped_after_team_folders_were_named_keeps_them_unread() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let step = std::sync::Arc::new(AtomicUsize::new(0));
+        let stepping = std::sync::Arc::clone(&step);
+        let (mut p, requests, server) = listing_fixture(move |id, query, _| {
+            let step = stepping.load(Ordering::SeqCst);
+            match id {
+                "TEAM" if step == 0 => (429, vec![], String::new()),
+                // Every page full: the listing does not end before the
+                // read is dropped.
+                "TEAM" if step == 1 && query.contains("page%5Boffset") => {
+                    let page: Vec<serde_json::Value> = (0..TEAM_FOLDER_PAGE_LIMIT)
+                        .map(|i| {
+                            serde_json::json!({ "id": format!("F{i}"),
+                            "attributes": { "name": format!("Team {i}") } })
+                        })
+                        .collect();
+                    (200, vec![], serde_json::json!({ "data": page }).to_string())
+                }
+                "TEAM" if query.contains("page%5Boffset") => (403, vec![], String::new()),
+                "TEAM" => (
+                    200,
+                    vec![],
+                    r#"{"data":[{"id":"W1","attributes":{"name":"Other"}}],"links":{"cursor":{"has_next":false}}}"#.to_string(),
+                ),
+                "ROOT" => (
+                    200,
+                    vec![],
+                    listing_json(&[("P1", "Docs", true)], Some((false, None))),
+                ),
+                "P1" => (
+                    200,
+                    vec![],
+                    listing_json(&[("F1", "f.txt", false)], Some((false, None))),
+                ),
+                _ => (200, vec![], listing_json(&[], Some((false, None)))),
+            }
+        })
+        .await;
+        p.privatespace_id = Some("ROOT".into());
+        p.team_id = Some("TEAM".into());
+        p.discover_team_folders("TEAM").await;
+        assert!(p.team_folders_unread);
+        step.store(1, Ordering::SeqCst);
+        let second = format!("page%5Boffset%5D={TEAM_FOLDER_PAGE_LIMIT}");
+        {
+            let mut listing = Box::pin(p.list("/"));
+            loop {
+                let polled =
+                    tokio::time::timeout(std::time::Duration::from_millis(2), &mut listing).await;
+                assert!(polled.is_err(), "the read ended: {polled:?}");
+                if requests
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .any(|(id, q)| id == "TEAM" && q.contains(&second))
+                {
+                    break;
+                }
+            }
+        }
+        step.store(2, Ordering::SeqCst);
+        let root = p.list("/").await;
+        let deleted = p.delete("/Docs/f.txt").await;
+        server.abort();
+        assert!(root.is_err(), "{root:?}");
+        assert!(deleted.is_err(), "{deleted:?}");
+        assert!(p.team_folders_unread);
+        let requests = requests.lock().unwrap();
+        assert!(
+            !requests.iter().any(|(id, _)| id.starts_with("PATCH")),
+            "{requests:?}"
+        );
+        assert!(
+            requests.iter().any(|(id, q)| id == "TEAM" && q.is_empty()),
+            "the workspaces were never read: {requests:?}"
+        );
+    }
+
+    /// A team folders listing cut short at connect, then read whole with no
+    /// team folder while the workspaces answer, with none or with others:
+    /// the listing that broke off no longer stands, so the workspaces answer
+    /// and the root is listed, where before the evidence of the listing cut
+    /// short refused them on every read.
+    #[tokio::test]
+    async fn a_team_folders_listing_read_whole_and_empty_lets_the_workspaces_answer() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        for (workspaces, names) in [
+            (
+                r#"{"data":[],"links":{"cursor":{"has_next":false}}}"#,
+                vec![],
+            ),
+            (
+                r#"{"data":[{"id":"W1","attributes":{"name":"Other"}}],"links":{"cursor":{"has_next":false}}}"#,
+                vec!["Other"],
+            ),
+        ] {
+            let reread = std::sync::Arc::new(AtomicBool::new(false));
+            let rereading = std::sync::Arc::clone(&reread);
+            let (mut p, _requests, server) = listing_fixture(move |id, query, _| {
+                let second = format!("page%5Boffset%5D={TEAM_FOLDER_PAGE_LIMIT}");
+                let rereading = rereading.load(Ordering::SeqCst);
+                match id {
+                    "TEAM" if rereading && query.contains("page%5Boffset") => {
+                        (200, vec![], r#"{"data":[]}"#.to_string())
+                    }
+                    "TEAM" if rereading => (200, vec![], workspaces.to_string()),
+                    "TEAM" if query.contains("page%5Boffset%5D=0") => {
+                        let page: Vec<serde_json::Value> = (0..TEAM_FOLDER_PAGE_LIMIT)
+                            .map(|i| {
+                                serde_json::json!({ "id": format!("F{i}"),
+                                "attributes": { "name": format!("Team {i}") } })
+                            })
+                            .collect();
+                        (200, vec![], serde_json::json!({ "data": page }).to_string())
+                    }
+                    "TEAM" if query.contains(&second) => (503, vec![], String::new()),
+                    "TEAM" => (403, vec![], String::new()),
+                    "ROOT" => (
+                        200,
+                        vec![],
+                        listing_json(&[("P1", "Docs", true)], Some((false, None))),
+                    ),
+                    _ => (200, vec![], listing_json(&[], Some((false, None)))),
+                }
+            })
+            .await;
+            p.privatespace_id = Some("ROOT".into());
+            p.team_id = Some("TEAM".into());
+            p.discover_team_folders("TEAM").await;
+            assert!(p.team_folders_unread, "{workspaces}");
+            reread.store(true, Ordering::SeqCst);
+            let root = p.list("/").await;
+            server.abort();
+            assert!(root.is_ok(), "{workspaces}: {root:?}");
+            assert!(!p.team_folders_unread, "{workspaces}");
+            let kept: Vec<&str> = p.team_folders.iter().map(|(_, n)| n.as_str()).collect();
+            assert_eq!(kept, names, "{workspaces}");
+        }
+    }
+
+    /// A first discovery dropped after the team folders listing named team
+    /// folders and before it ended (a connect cancelled between pages),
+    /// then a read where the team folders are refused (403) and the
+    /// workspaces answer whole: the team folders stay unread, so the root is
+    /// not listed and the private `Docs/f.txt` is not trashed, where the
+    /// dropped discovery left them read as none.
+    #[tokio::test]
+    async fn a_first_discovery_dropped_between_pages_leaves_the_team_folders_unread() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let dropped = std::sync::Arc::new(AtomicBool::new(false));
+        let after_drop = std::sync::Arc::clone(&dropped);
+        let (mut p, requests, server) = listing_fixture(move |id, query, _| {
+            let after_drop = after_drop.load(Ordering::SeqCst);
+            match id {
+                // Every page full: the listing does not end before the
+                // discovery is dropped.
+                "TEAM" if !after_drop && query.contains("page%5Boffset") => {
+                    let page: Vec<serde_json::Value> = (0..TEAM_FOLDER_PAGE_LIMIT)
+                        .map(|i| {
+                            serde_json::json!({ "id": format!("F{i}"),
+                            "attributes": { "name": format!("Team {i}") } })
+                        })
+                        .collect();
+                    (200, vec![], serde_json::json!({ "data": page }).to_string())
+                }
+                "TEAM" if query.contains("page%5Boffset") => (403, vec![], String::new()),
+                "TEAM" => (
+                    200,
+                    vec![],
+                    r#"{"data":[{"id":"W1","attributes":{"name":"Other"}}],"links":{"cursor":{"has_next":false}}}"#.to_string(),
+                ),
+                "ROOT" => (
+                    200,
+                    vec![],
+                    listing_json(&[("P1", "Docs", true)], Some((false, None))),
+                ),
+                "P1" => (
+                    200,
+                    vec![],
+                    listing_json(&[("F1", "f.txt", false)], Some((false, None))),
+                ),
+                _ => (200, vec![], listing_json(&[], Some((false, None)))),
+            }
+        })
+        .await;
+        p.privatespace_id = Some("ROOT".into());
+        p.team_id = Some("TEAM".into());
+        let second = format!("page%5Boffset%5D={TEAM_FOLDER_PAGE_LIMIT}");
+        {
+            let mut discovery = Box::pin(p.discover_team_folders("TEAM"));
+            loop {
+                let polled =
+                    tokio::time::timeout(std::time::Duration::from_millis(2), &mut discovery).await;
+                assert!(polled.is_err(), "the discovery ended");
+                if requests
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .any(|(id, q)| id == "TEAM" && q.contains(&second))
+                {
+                    break;
+                }
+            }
+        }
+        dropped.store(true, Ordering::SeqCst);
+        assert!(p.team_folders_unread);
+        let root = p.list("/").await;
+        let deleted = p.delete("/Docs/f.txt").await;
+        server.abort();
+        assert!(root.is_err(), "{root:?}");
+        assert!(deleted.is_err(), "{deleted:?}");
+        assert!(p.team_folders_unread);
+        let requests = requests.lock().unwrap();
+        assert!(
+            !requests.iter().any(|(id, _)| id.starts_with("PATCH")),
+            "{requests:?}"
+        );
+    }
+
+    /// A first discovery dropped before any answer arrived, then a read
+    /// where neither listing is offered (404): the refusal answers, the team
+    /// has no team folders and the root is listed, where a discovery dropped
+    /// that early left the root unread for good.
+    #[tokio::test]
+    async fn a_first_discovery_dropped_before_any_answer_is_settled_by_a_refusal() {
+        let (mut p, requests, server) = listing_fixture(|id, _query, _| match id {
+            "TEAM" => (404, vec![], String::new()),
+            "ROOT" => (
+                200,
+                vec![],
+                listing_json(&[("P1", "Docs", true)], Some((false, None))),
+            ),
+            _ => (200, vec![], listing_json(&[], Some((false, None)))),
+        })
+        .await;
+        p.privatespace_id = Some("ROOT".into());
+        p.team_id = Some("TEAM".into());
+        {
+            // One poll: the first request is sent, no answer is read.
+            let mut discovery = Box::pin(p.discover_team_folders("TEAM"));
+            let polled = tokio::time::timeout(std::time::Duration::ZERO, &mut discovery).await;
+            assert!(polled.is_err(), "the discovery ended");
+        }
+        assert!(p.team_folders_unread);
+        assert!(
+            !requests.lock().unwrap().iter().any(|(id, _)| id == "ROOT"),
+            "the root was read before the drop"
+        );
+        let root = p.list("/").await;
+        server.abort();
+        assert!(root.is_ok(), "{root:?}");
+        assert!(!p.team_folders_unread);
+    }
+
+    /// A workspaces mapping kept from connect (no team folders listing),
+    /// then a discovery whose team folders listing names team folders and
+    /// breaks off: the workspaces kept no longer rule out a team folder, so
+    /// the root is not listed and the private `Docs/f.txt` is not trashed
+    /// while the team folders stay unread, where before the cached
+    /// workspaces read `Docs` as private. A later read that finds the team
+    /// folders listing whole and empty does not restore them before the
+    /// workspaces are read whole too: then they answer again.
+    #[tokio::test]
+    async fn a_kept_workspaces_mapping_does_not_rule_out_team_folders_named_since() {
+        use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+        let named = std::sync::Arc::new(AtomicBool::new(false));
+        let naming = std::sync::Arc::clone(&named);
+        let phase = std::sync::Arc::new(AtomicUsize::new(0));
+        let phasing = std::sync::Arc::clone(&phase);
+        let (mut p, requests, server) = listing_fixture(move |id, query, _| {
+            let second = format!("page%5Boffset%5D={TEAM_FOLDER_PAGE_LIMIT}");
+            let naming = naming.load(Ordering::SeqCst);
+            let phase = phasing.load(Ordering::SeqCst);
+            match id {
+                "TEAM" if phase > 0 && query.contains("page%5Boffset") => {
+                    (200, vec![], r#"{"data":[]}"#.to_string())
+                }
+                "TEAM" if phase == 1 && query.contains("page%5Bnext%5D=c2") => {
+                    (503, vec![], String::new())
+                }
+                "TEAM" if phase == 1 => (
+                    200,
+                    vec![],
+                    r#"{"data":[{"id":"W1","attributes":{"name":"Other"}}],"links":{"cursor":{"has_next":true,"next":"https://workdrive.zoho.com/api/v1/teams/TEAM/workspaces?page%5Bnext%5D=c2"}}}"#.to_string(),
+                ),
+                "TEAM" if !naming && query.contains("page%5Boffset") => {
+                    (404, vec![], String::new())
+                }
+                "TEAM" if naming && query.contains("page%5Boffset%5D=0") => {
+                    let page: Vec<serde_json::Value> = (0..TEAM_FOLDER_PAGE_LIMIT)
+                        .map(|i| {
+                            serde_json::json!({ "id": format!("F{i}"),
+                            "attributes": { "name": if i == 0 { "Docs".to_string() } else { format!("Team {i}") } } })
+                        })
+                        .collect();
+                    (200, vec![], serde_json::json!({ "data": page }).to_string())
+                }
+                "TEAM" if query.contains(&second) => (503, vec![], String::new()),
+                "TEAM" => (
+                    200,
+                    vec![],
+                    r#"{"data":[{"id":"W1","attributes":{"name":"Other"}}],"links":{"cursor":{"has_next":false}}}"#.to_string(),
+                ),
+                "ROOT" => (
+                    200,
+                    vec![],
+                    listing_json(&[("P1", "Docs", true)], Some((false, None))),
+                ),
+                "P1" => (
+                    200,
+                    vec![],
+                    listing_json(&[("F1", "f.txt", false)], Some((false, None))),
+                ),
+                _ => (200, vec![], listing_json(&[], Some((false, None)))),
+            }
+        })
+        .await;
+        p.privatespace_id = Some("ROOT".into());
+        p.team_id = Some("TEAM".into());
+        p.discover_team_folders("TEAM").await;
+        assert_eq!(p.team_folders_source, Some(TeamFolderSource::Workspaces));
+        assert!(!p.team_folders_unread);
+        named.store(true, Ordering::SeqCst);
+        p.discover_team_folders("TEAM").await;
+        let root = p.list("/").await;
+        let deleted = p.delete("/Docs/f.txt").await;
+        assert!(root.is_err(), "{root:?}");
+        assert!(deleted.is_err(), "{deleted:?}");
+        // The team folders listing read whole and empty, the workspaces cut
+        // short: the kept workspaces stay in doubt.
+        phase.store(1, Ordering::SeqCst);
+        let root = p.list("/").await;
+        let deleted = p.delete("/Docs/f.txt").await;
+        assert!(root.is_err(), "{root:?}");
+        assert!(deleted.is_err(), "{deleted:?}");
+        // Read whole and empty, the workspaces whole: they answer again.
+        phase.store(2, Ordering::SeqCst);
+        let root = p.list("/").await;
+        server.abort();
+        assert!(root.is_ok(), "{root:?}");
+        assert!(!p.team_folders_unknown());
+        let requests = requests.lock().unwrap();
+        assert!(
+            !requests.iter().any(|(id, _)| id.starts_with("PATCH")),
+            "{requests:?}"
+        );
+    }
+
+    /// A first discovery with no team folders listing, dropped while the
+    /// workspaces were being paged after the first named `Docs` (or after
+    /// empty pages that each said more follow), then a read where neither
+    /// listing is offered (404): the workspaces had more to say, so the
+    /// refusal does not say the team has none, the root is not listed and
+    /// the private `Docs/f.txt` is not trashed.
+    #[tokio::test]
+    async fn a_discovery_dropped_while_paging_the_workspaces_is_not_settled_by_a_refusal() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        for empty_pages in [false, true] {
+            let dropped = std::sync::Arc::new(AtomicBool::new(false));
+            let after_drop = std::sync::Arc::clone(&dropped);
+            let (mut p, requests, server) = listing_fixture(move |id, query, _| {
+            let after_drop = after_drop.load(Ordering::SeqCst);
+            match id {
+                "TEAM" if after_drop || query.contains("page%5Boffset") => {
+                    (404, vec![], String::new())
+                }
+                // A page of one workspace each, every one with a next: the
+                // listing does not end before the discovery is dropped.
+                "TEAM" => {
+                    let n: usize = query
+                        .rsplit("page%5Bnext%5D=c")
+                        .next()
+                        .and_then(|n| n.parse().ok())
+                        .unwrap_or(1);
+                    let name = if n == 1 { "Docs".to_string() } else { format!("W{n}") };
+                    let data = if empty_pages {
+                        serde_json::json!([])
+                    } else {
+                        serde_json::json!([{ "id": format!("W{n}"), "attributes": { "name": name } }])
+                    };
+                    (
+                        200,
+                        vec![],
+                        serde_json::json!({
+                            "data": data,
+                            "links": { "cursor": { "has_next": true,
+                                "next": format!("https://workdrive.zoho.com/api/v1/teams/TEAM/workspaces?page%5Bnext%5D=c{}", n + 1) } }
+                        })
+                        .to_string(),
+                    )
+                }
+                "ROOT" => (
+                    200,
+                    vec![],
+                    listing_json(&[("P1", "Docs", true)], Some((false, None))),
+                ),
+                "P1" => (
+                    200,
+                    vec![],
+                    listing_json(&[("F1", "f.txt", false)], Some((false, None))),
+                ),
+                _ => (200, vec![], listing_json(&[], Some((false, None)))),
+            }
+        })
+        .await;
+            p.privatespace_id = Some("ROOT".into());
+            p.team_id = Some("TEAM".into());
+            {
+                let mut discovery = Box::pin(p.discover_team_folders("TEAM"));
+                loop {
+                    let polled =
+                        tokio::time::timeout(std::time::Duration::from_millis(2), &mut discovery)
+                            .await;
+                    assert!(polled.is_err(), "the discovery ended");
+                    if requests
+                        .lock()
+                        .unwrap()
+                        .iter()
+                        .any(|(id, q)| id == "TEAM" && q.contains("page%5Bnext%5D=c2"))
+                    {
+                        break;
+                    }
+                }
+            }
+            dropped.store(true, Ordering::SeqCst);
+            let root = p.list("/").await;
+            let deleted = p.delete("/Docs/f.txt").await;
+            server.abort();
+            assert!(root.is_err(), "empty pages {empty_pages}: {root:?}");
+            assert!(deleted.is_err(), "empty pages {empty_pages}: {deleted:?}");
+            assert!(p.team_folders_unread, "empty pages {empty_pages}");
+            let requests = requests.lock().unwrap();
+            assert!(
+                !requests.iter().any(|(id, _)| id.starts_with("PATCH")),
+                "empty pages {empty_pages}: {requests:?}"
+            );
+        }
+    }
+
+    /// A team folders mapping kept from connect without `Docs`, then a
+    /// refresh whose team folders listing names `Docs` and breaks off: the
+    /// mapping kept no longer rules `Docs` out, so `Docs/f.txt` is not trashed
+    /// in the private space while the team folders stay unread; read whole
+    /// again, `Docs` is the team folder T0.
+    #[tokio::test]
+    async fn a_kept_team_folders_mapping_does_not_rule_out_one_named_since() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let phase = std::sync::Arc::new(AtomicUsize::new(0));
+        let phasing = std::sync::Arc::clone(&phase);
+        let (mut p, requests, server) = listing_fixture(move |id, query, _| {
+            let second = format!("page%5Boffset%5D={TEAM_FOLDER_PAGE_LIMIT}");
+            let phase = phasing.load(Ordering::SeqCst);
+            match id {
+                "TEAM" if phase == 0 => (
+                    200,
+                    vec![],
+                    r#"{"data":[{"id":"T9","attributes":{"name":"Alpha"}}]}"#.to_string(),
+                ),
+                "TEAM" if query.contains("page%5Boffset%5D=0") => {
+                    let page: Vec<serde_json::Value> = (0..TEAM_FOLDER_PAGE_LIMIT)
+                        .map(|i| {
+                            let name = if i == 0 { "Docs".to_string() } else { format!("Team {i}") };
+                            serde_json::json!({ "id": format!("T{i}"), "attributes": { "name": name } })
+                        })
+                        .collect();
+                    (200, vec![], serde_json::json!({ "data": page }).to_string())
+                }
+                "TEAM" if phase == 1 && query.contains(&second) => (503, vec![], String::new()),
+                "TEAM" if query.contains(&second) => (200, vec![], r#"{"data":[]}"#.to_string()),
+                "ROOT" => (
+                    200,
+                    vec![],
+                    listing_json(&[("P1", "Docs", true)], Some((false, None))),
+                ),
+                "P1" => (
+                    200,
+                    vec![],
+                    listing_json(&[("F1", "f.txt", false)], Some((false, None))),
+                ),
+                _ => (200, vec![], listing_json(&[], Some((false, None)))),
+            }
+        })
+        .await;
+        p.privatespace_id = Some("ROOT".into());
+        p.team_id = Some("TEAM".into());
+        p.discover_team_folders("TEAM").await;
+        assert_eq!(p.team_folders_source, Some(TeamFolderSource::TeamFolders));
+        phase.store(1, Ordering::SeqCst);
+        p.discover_team_folders("TEAM").await;
+        let deleted = p.delete("/Docs/f.txt").await;
+        assert!(deleted.is_err(), "{deleted:?}");
+        assert!(
+            !requests
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|(id, _)| id.starts_with("PATCH")),
+            "the private Docs/f.txt was trashed"
+        );
+        phase.store(2, Ordering::SeqCst);
+        let root = p.list("/").await;
+        server.abort();
+        assert!(root.is_ok(), "{root:?}");
+        assert!(!p.team_folders_unknown());
+        assert!(p
+            .team_folders
+            .iter()
+            .any(|(id, name)| id == "T0" && name == "Docs"));
+    }
+
+    /// A first discovery dropped after a listing answered 200 and before its
+    /// body arrived (the team folders listing, or the workspaces after the
+    /// team folders were not offered), then a read where neither listing is
+    /// offered (404): the answer dropped may have named entries, so the
+    /// refusal does not settle the team as having none and the private
+    /// `Docs/f.txt` is not trashed.
+    #[tokio::test]
+    async fn a_discovery_dropped_while_a_body_is_read_is_not_settled_by_a_refusal() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        for held in ["teamfolders", "workspaces"] {
+            let (mut p, requests, server) = listing_fixture(|id, _query, _| match id {
+                "TEAM" => (404, vec![], String::new()),
+                "ROOT" => (
+                    200,
+                    vec![],
+                    listing_json(&[("P1", "Docs", true)], Some((false, None))),
+                ),
+                "P1" => (
+                    200,
+                    vec![],
+                    listing_json(&[("F1", "f.txt", false)], Some((false, None))),
+                ),
+                _ => (200, vec![], listing_json(&[], Some((false, None)))),
+            })
+            .await;
+            // A server that answers the held listing's headers and holds its
+            // body; the other listing is not offered.
+            let holder = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let holder_addr = holder.local_addr().unwrap();
+            let headers_sent = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let sent = std::sync::Arc::clone(&headers_sent);
+            let holding = tokio::spawn(async move {
+                loop {
+                    let Ok((mut socket, _)) = holder.accept().await else {
+                        return;
+                    };
+                    let sent = std::sync::Arc::clone(&sent);
+                    tokio::spawn(async move {
+                        let mut request = Vec::new();
+                        let mut buf = [0u8; 4096];
+                        loop {
+                            let n = socket.read(&mut buf).await.unwrap_or(0);
+                            if n == 0 {
+                                return;
+                            }
+                            request.extend_from_slice(&buf[..n]);
+                            while let Some(end) = request.windows(4).position(|w| w == b"\r\n\r\n")
+                            {
+                                let head = String::from_utf8_lossy(&request[..end]).to_string();
+                                request.drain(..end + 4);
+                                let answer: &[u8] = if head.contains(held) {
+                                    b"HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 100000\r\n\r\n{\"data\":["
+                                } else {
+                                    b"HTTP/1.1 404 Not Found\r\ncontent-length: 0\r\n\r\n"
+                                };
+                                if socket.write_all(answer).await.is_err() {
+                                    return;
+                                }
+                                if head.contains(held) {
+                                    sent.store(true, std::sync::atomic::Ordering::SeqCst);
+                                }
+                            }
+                        }
+                    });
+                }
+            });
+            let fixture = p.endpoint_override.replace(format!("http://{holder_addr}"));
+            p.privatespace_id = Some("ROOT".into());
+            p.team_id = Some("TEAM".into());
+            {
+                let mut discovery = Box::pin(p.discover_team_folders("TEAM"));
+                let mut after_headers = 0;
+                loop {
+                    let polled =
+                        tokio::time::timeout(std::time::Duration::from_millis(2), &mut discovery)
+                            .await;
+                    assert!(polled.is_err(), "{held}: the discovery ended");
+                    if after_headers > 0 || headers_sent.load(std::sync::atomic::Ordering::SeqCst) {
+                        after_headers += 1;
+                    }
+                    // A few polls after the headers: the body is being read.
+                    if after_headers > 5 {
+                        break;
+                    }
+                }
+            }
+            holding.abort();
+            p.endpoint_override = fixture;
+            let root = p.list("/").await;
+            let deleted = p.delete("/Docs/f.txt").await;
+            server.abort();
+            assert!(root.is_err(), "{held}: {root:?}");
+            assert!(deleted.is_err(), "{held}: {deleted:?}");
+            assert!(p.team_folders_unread, "{held}");
+            let requests = requests.lock().unwrap();
+            assert!(
+                !requests.iter().any(|(id, _)| id.starts_with("PATCH")),
+                "{held}: {requests:?}"
+            );
+        }
+    }
+
+    /// A team folders listing cut short at connect, then read whole and
+    /// empty while the workspaces are not offered (404): the team has no
+    /// team folders, an answer, so the root is listed, where the refusal of
+    /// the workspaces dropped the whole listing and the root stayed unread.
+    #[tokio::test]
+    async fn a_whole_empty_team_folders_listing_answers_when_workspaces_are_not_offered() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let reread = std::sync::Arc::new(AtomicBool::new(false));
+        let rereading = std::sync::Arc::clone(&reread);
+        let (mut p, _requests, server) = listing_fixture(move |id, query, _| {
+            let second = format!("page%5Boffset%5D={TEAM_FOLDER_PAGE_LIMIT}");
+            let rereading = rereading.load(Ordering::SeqCst);
+            match id {
+                "TEAM" if rereading && query.contains("page%5Boffset") => {
+                    (200, vec![], r#"{"data":[]}"#.to_string())
+                }
+                "TEAM" if query.contains("page%5Boffset%5D=0") => {
+                    let page: Vec<serde_json::Value> = (0..TEAM_FOLDER_PAGE_LIMIT)
+                        .map(|i| {
+                            serde_json::json!({ "id": format!("F{i}"),
+                            "attributes": { "name": format!("Team {i}") } })
+                        })
+                        .collect();
+                    (200, vec![], serde_json::json!({ "data": page }).to_string())
+                }
+                "TEAM" if query.contains(&second) => (503, vec![], String::new()),
+                "TEAM" => (404, vec![], String::new()),
+                "ROOT" => (
+                    200,
+                    vec![],
+                    listing_json(&[("P1", "Docs", true)], Some((false, None))),
+                ),
+                _ => (200, vec![], listing_json(&[], Some((false, None)))),
+            }
+        })
+        .await;
+        p.privatespace_id = Some("ROOT".into());
+        p.team_id = Some("TEAM".into());
+        p.discover_team_folders("TEAM").await;
+        assert!(p.team_folders_unread);
+        reread.store(true, Ordering::SeqCst);
+        let root = p.list("/").await;
+        server.abort();
+        assert!(root.is_ok(), "{root:?}");
+        assert!(!p.team_folders_unknown());
+        assert_eq!(p.team_folders_source, Some(TeamFolderSource::TeamFolders));
+        assert!(p.team_folders.is_empty());
+    }
+
+    /// A team folders page answered (200) whose body could not be read (it
+    /// does not parse, or passes the cap), then a read where the team
+    /// folders are not offered (404) and the workspaces answer whole: the
+    /// answer not read may have listed team folders, so the workspaces do not
+    /// answer, the root is not listed and the private `Docs/f.txt` is not
+    /// trashed, where a page that named no entry before breaking off let the
+    /// workspaces replace it.
+    #[tokio::test]
+    async fn workspaces_do_not_answer_for_a_team_folders_answer_whose_body_was_not_read() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        for unread in ["unparsable", "oversized"] {
+            let reread = std::sync::Arc::new(AtomicBool::new(false));
+            let rereading = std::sync::Arc::clone(&reread);
+            let (mut p, requests, server) = listing_fixture(move |id, query, _| {
+                let rereading = rereading.load(Ordering::SeqCst);
+                match id {
+                    "TEAM" if !rereading && query.contains("page%5Boffset") => {
+                        let body = if unread == "unparsable" {
+                            "not json".to_string()
+                        } else {
+                            format!(
+                                r#"{{"data":[],"pad":"{}"}}"#,
+                                "x".repeat(super::super::VERSION_LISTING_MAX_BYTES as usize + 1)
+                            )
+                        };
+                        (200, vec![], body)
+                    }
+                    "TEAM" if query.contains("page%5Boffset") => (404, vec![], String::new()),
+                    "TEAM" => (
+                        200,
+                        vec![],
+                        r#"{"data":[{"id":"W1","attributes":{"name":"Other"}}],"links":{"cursor":{"has_next":false}}}"#.to_string(),
+                    ),
+                    "ROOT" => (
+                        200,
+                        vec![],
+                        listing_json(&[("P1", "Docs", true)], Some((false, None))),
+                    ),
+                    "P1" => (
+                        200,
+                        vec![],
+                        listing_json(&[("F1", "f.txt", false)], Some((false, None))),
+                    ),
+                    _ => (200, vec![], listing_json(&[], Some((false, None)))),
+                }
+            })
+            .await;
+            p.privatespace_id = Some("ROOT".into());
+            p.team_id = Some("TEAM".into());
+            p.discover_team_folders("TEAM").await;
+            assert!(p.team_folders_unread, "{unread}");
+            reread.store(true, Ordering::SeqCst);
+            let root = p.list("/").await;
+            let deleted = p.delete("/Docs/f.txt").await;
+            server.abort();
+            assert!(root.is_err(), "{unread}: {root:?}");
+            assert!(deleted.is_err(), "{unread}: {deleted:?}");
+            let requests = requests.lock().unwrap();
+            assert!(
+                !requests.iter().any(|(id, _)| id.starts_with("PATCH")),
+                "{unread}: {requests:?}"
+            );
+        }
+    }
+
+    /// A workspaces mapping kept from connect without `Docs`, then a refresh
+    /// whose workspaces listing names `Docs` and breaks off on its second
+    /// page: the mapping kept no longer rules `Docs` out, so `Docs/f.txt` is
+    /// not trashed in the private space; read whole again, `Docs` is the
+    /// workspace W1.
+    #[tokio::test]
+    async fn a_kept_workspaces_mapping_does_not_rule_out_a_workspace_named_since() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let phase = std::sync::Arc::new(AtomicUsize::new(0));
+        let phasing = std::sync::Arc::clone(&phase);
+        let (mut p, requests, server) = listing_fixture(move |id, query, _| {
+            let phase = phasing.load(Ordering::SeqCst);
+            match id {
+                "TEAM" if query.contains("page%5Boffset") => (404, vec![], String::new()),
+                "TEAM" if phase == 0 => (
+                    200,
+                    vec![],
+                    r#"{"data":[{"id":"W9","attributes":{"name":"Other"}}],"links":{"cursor":{"has_next":false}}}"#.to_string(),
+                ),
+                "TEAM" if query.contains("page%5Bnext%5D=c2") && phase == 1 => {
+                    (503, vec![], String::new())
+                }
+                "TEAM" if query.contains("page%5Bnext%5D=c2") => (
+                    200,
+                    vec![],
+                    r#"{"data":[{"id":"W2","attributes":{"name":"Two"}}],"links":{"cursor":{"has_next":false}}}"#.to_string(),
+                ),
+                "TEAM" => (
+                    200,
+                    vec![],
+                    r#"{"data":[{"id":"W1","attributes":{"name":"Docs"}}],"links":{"cursor":{"has_next":true,"next":"https://workdrive.zoho.com/api/v1/teams/TEAM/workspaces?page%5Bnext%5D=c2"}}}"#.to_string(),
+                ),
+                "ROOT" => (
+                    200,
+                    vec![],
+                    listing_json(&[("P1", "Docs", true)], Some((false, None))),
+                ),
+                "P1" => (
+                    200,
+                    vec![],
+                    listing_json(&[("F1", "f.txt", false)], Some((false, None))),
+                ),
+                _ => (200, vec![], listing_json(&[], Some((false, None)))),
+            }
+        })
+        .await;
+        p.privatespace_id = Some("ROOT".into());
+        p.team_id = Some("TEAM".into());
+        p.discover_team_folders("TEAM").await;
+        assert_eq!(p.team_folders, [("W9".to_string(), "Other".to_string())]);
+        phase.store(1, Ordering::SeqCst);
+        p.discover_team_folders("TEAM").await;
+        let deleted = p.delete("/Docs/f.txt").await;
+        assert!(deleted.is_err(), "{deleted:?}");
+        assert!(
+            !requests
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|(id, _)| id.starts_with("PATCH")),
+            "the private Docs/f.txt was trashed"
+        );
+        phase.store(2, Ordering::SeqCst);
+        let root = p.list("/").await;
+        server.abort();
+        assert!(root.is_ok(), "{root:?}");
+        assert!(!p.team_folders_unknown());
+        assert!(p
+            .team_folders
+            .iter()
+            .any(|(id, name)| id == "W1" && name == "Docs"));
+    }
+
+    /// A team folder `Docs` (T1) kept from connect and gone since, then a
+    /// refresh that finds the team folders listing whole and empty and a
+    /// workspace `Docs` (W1) in the workspaces read whole: the workspace
+    /// replaces it and `/Docs` is listed from W1, where the change of listing
+    /// refused the replacement on every read. Without a team folders answer
+    /// (503) the replacement is refused.
+    #[tokio::test]
+    async fn a_workspace_replaces_a_gone_team_folder_when_the_team_folders_answer_none() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        for answering in [true, false] {
+            let phase = std::sync::Arc::new(AtomicUsize::new(0));
+            let phasing = std::sync::Arc::clone(&phase);
+            let (mut p, requests, server) = listing_fixture(move |id, query, _| {
+                let phase = phasing.load(Ordering::SeqCst);
+                match id {
+                    "TEAM" if phase == 0 && query.contains("page%5Boffset") => (
+                        200,
+                        vec![],
+                        r#"{"data":[{"id":"T1","attributes":{"name":"Docs"}}]}"#.to_string(),
+                    ),
+                    "TEAM" if query.contains("page%5Boffset") && answering => {
+                        (200, vec![], r#"{"data":[]}"#.to_string())
+                    }
+                    "TEAM" if query.contains("page%5Boffset") => (503, vec![], String::new()),
+                    "TEAM" => (
+                        200,
+                        vec![],
+                        r#"{"data":[{"id":"W1","attributes":{"name":"Docs"}}],"links":{"cursor":{"has_next":false}}}"#.to_string(),
+                    ),
+                    "W1" => (
+                        200,
+                        vec![],
+                        listing_json(&[("WF", "f.txt", false)], Some((false, None))),
+                    ),
+                    _ => (200, vec![], listing_json(&[], Some((false, None)))),
+                }
+            })
+            .await;
+            p.privatespace_id = Some("ROOT".into());
+            p.team_id = Some("TEAM".into());
+            p.discover_team_folders("TEAM").await;
+            assert_eq!(p.team_folders, [("T1".to_string(), "Docs".to_string())]);
+            // T1 is gone: read by its id, WorkDrive no longer has it.
+            PLACED.with(|placed| placed.borrow_mut().remove("T1"));
+            phase.store(1, Ordering::SeqCst);
+            let listed = p.list("/Docs").await;
+            server.abort();
+            if answering {
+                let names: Vec<String> = listed
+                    .expect("Docs from the workspace")
+                    .into_iter()
+                    .map(|e| e.name)
+                    .collect();
+                assert_eq!(names, ["f.txt"]);
+                assert!(p
+                    .team_folders
+                    .iter()
+                    .any(|(id, name)| id == "W1" && name == "Docs"));
+            } else {
+                assert!(listed.is_err(), "{listed:?}");
+                assert!(
+                    !requests.lock().unwrap().iter().any(|(id, _)| id == "W1"),
+                    "W1 was listed without a team folders answer"
+                );
+            }
+        }
+    }
+
+    /// A privatespace lookup that finds none leaves no private root: the root
+    /// of the account or team read before is not kept as this one's.
+    #[tokio::test]
+    async fn a_privatespace_lookup_that_finds_none_keeps_no_earlier_root() {
+        let (mut p, _requests, server) =
+            listing_fixture(|_id, _query, _| (404, vec![], String::new())).await;
+        p.privatespace_id = Some("EARLIER".into());
+        let found = p.discover_privatespace("USER").await;
+        server.abort();
+        assert!(matches!(found, Ok(false)), "{found:?}");
+        assert!(p.privatespace_id.is_none());
+    }
+
+    /// A privatespace lookup that is rate limited or meets a server error is
+    /// no answer: the connect fails and can be tried again, where it went on
+    /// without the private space.
+    #[tokio::test]
+    async fn a_privatespace_lookup_without_an_answer_is_an_error() {
+        for status in [429, 503] {
+            let (mut p, _requests, server) =
+                listing_fixture(move |_id, _query, _| (status, vec![], String::new())).await;
+            let found = p.discover_privatespace("USER").await;
+            server.abort();
+            assert!(
+                matches!(&found, Err(ProviderError::ServerError(m)) if m.contains("try again")),
+                "{status}: {found:?}"
+            );
+        }
+    }
+
+    /// A workspace `Docs` (W1) kept from connect, then a team folders
+    /// listing that names a team folder `Docs` and breaks off: the kept
+    /// `Docs` is not known to be the one the path names, so `Docs/f.txt` is
+    /// not trashed in the workspace, where the kept name was acted in.
+    #[tokio::test]
+    async fn a_workspace_in_doubt_is_not_acted_in_under_a_team_folder_of_its_name() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let named = std::sync::Arc::new(AtomicBool::new(false));
+        let naming = std::sync::Arc::clone(&named);
+        let (mut p, requests, server) = listing_fixture(move |id, query, _| {
+            let second = format!("page%5Boffset%5D={TEAM_FOLDER_PAGE_LIMIT}");
+            let naming = naming.load(Ordering::SeqCst);
+            match id {
+                "TEAM" if !naming && query.contains("page%5Boffset") => {
+                    (404, vec![], String::new())
+                }
+                "TEAM" if naming && query.contains("page%5Boffset%5D=0") => {
+                    let page: Vec<serde_json::Value> = (0..TEAM_FOLDER_PAGE_LIMIT)
+                        .map(|i| {
+                            let name = if i == 0 { "Docs".to_string() } else { format!("Team {i}") };
+                            serde_json::json!({ "id": format!("T{i}"), "attributes": { "name": name } })
+                        })
+                        .collect();
+                    (200, vec![], serde_json::json!({ "data": page }).to_string())
+                }
+                "TEAM" if query.contains(&second) => (503, vec![], String::new()),
+                "TEAM" => (
+                    200,
+                    vec![],
+                    r#"{"data":[{"id":"W1","attributes":{"name":"Docs"}}],"links":{"cursor":{"has_next":false}}}"#.to_string(),
+                ),
+                "W1" => (
+                    200,
+                    vec![],
+                    listing_json(&[("WF", "f.txt", false)], Some((false, None))),
+                ),
+                _ => (200, vec![], listing_json(&[], Some((false, None)))),
+            }
+        })
+        .await;
+        p.privatespace_id = Some("ROOT".into());
+        p.team_id = Some("TEAM".into());
+        p.discover_team_folders("TEAM").await;
+        assert_eq!(p.team_folders, [("W1".to_string(), "Docs".to_string())]);
+        named.store(true, Ordering::SeqCst);
+        p.discover_team_folders("TEAM").await;
+        let deleted = p.delete("/Docs/f.txt").await;
+        server.abort();
+        assert!(deleted.is_err(), "{deleted:?}");
+        let requests = requests.lock().unwrap();
+        assert!(
+            !requests.iter().any(|(id, _)| id.starts_with("PATCH")),
+            "{requests:?}"
+        );
+    }
+
+    /// Team A's team folders listing names team folders and breaks off, the
+    /// provider disconnects (or a retry discovers another team without a
+    /// disconnect), and team B offers no team folders listing (404) but its
+    /// workspaces whole: B's workspaces answer, so its root is listed, where
+    /// A's evidence refused them.
+    #[tokio::test]
+    async fn a_disconnect_forgets_what_discovery_learned_of_the_team() {
+        for disconnect in [true, false] {
+            let (mut p, _requests, server) = listing_fixture(move |id, query, _| {
+            let second = format!("page%5Boffset%5D={TEAM_FOLDER_PAGE_LIMIT}");
+            match id {
+                "TEAM" if query.contains("page%5Boffset%5D=0") => {
+                    let page: Vec<serde_json::Value> = (0..TEAM_FOLDER_PAGE_LIMIT)
+                        .map(|i| {
+                            serde_json::json!({ "id": format!("F{i}"),
+                            "attributes": { "name": format!("Team {i}") } })
+                        })
+                        .collect();
+                    (200, vec![], serde_json::json!({ "data": page }).to_string())
+                }
+                "TEAM" if query.contains(&second) => (503, vec![], String::new()),
+                "TEAMB" if query.contains("page%5Boffset") => (404, vec![], String::new()),
+                "TEAMB" => (
+                    200,
+                    vec![],
+                    r#"{"data":[{"id":"W1","attributes":{"name":"Other"}}],"links":{"cursor":{"has_next":false}}}"#.to_string(),
+                ),
+                "ROOT" => (
+                    200,
+                    vec![],
+                    listing_json(&[("P1", "Docs", true)], Some((false, None))),
+                ),
+                _ => (200, vec![], listing_json(&[], Some((false, None)))),
+            }
+        })
+        .await;
+            p.privatespace_id = Some("ROOT".into());
+            p.team_id = Some("TEAM".into());
+            p.discover_team_folders("TEAM").await;
+            assert!(p.team_folders_unread);
+            if disconnect {
+                p.disconnect().await.expect("disconnect");
+                // Forgotten by the disconnect itself, before any other team.
+                assert!(!p.team_folders_unread);
+                assert!(!p.team_folders_discovery_open);
+                assert!(p.team_folders_source.is_none());
+                assert!(p.team_folders_team.is_none());
+                assert!(!p
+                    .team_folders_answered
+                    .load(std::sync::atomic::Ordering::SeqCst));
+                assert!(!p
+                    .team_folders_progress
+                    .load(std::sync::atomic::Ordering::SeqCst));
+            }
+            // Connected again, to another team.
+            p.connected = true;
+            p.privatespace_id = Some("ROOT".into());
+            p.team_id = Some("TEAMB".into());
+            p.discover_team_folders("TEAMB").await;
+            assert!(!p.team_folders_unread, "disconnect {disconnect}");
+            let root = p.list("/").await;
+            server.abort();
+            assert!(root.is_ok(), "disconnect {disconnect}: {root:?}");
+            let kept: Vec<&str> = p.team_folders.iter().map(|(_, n)| n.as_str()).collect();
+            assert_eq!(kept, ["Other"], "disconnect {disconnect}");
+        }
+    }
+
+    /// No team folders listing and a workspaces listing cut short at
+    /// connect, then a read again whose team folders request gets no page
+    /// (429, 503), then one where the team folders are not offered (404)
+    /// and the workspaces answer whole: the request that got no page showed
+    /// no team folder, so the workspaces answer and the root is listed,
+    /// where before it was recorded as a team folders listing that broke off
+    /// and every later read refused the workspaces.
+    #[tokio::test]
+    async fn a_team_folders_request_without_a_page_leaves_the_workspaces_to_answer() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        for no_page in [429, 503] {
+            let step = std::sync::Arc::new(AtomicUsize::new(0));
+            let stepping = std::sync::Arc::clone(&step);
+            let (mut p, _requests, server) = listing_fixture(move |id, query, _| {
+                let step = stepping.load(Ordering::SeqCst);
+                match id {
+                    "TEAM" if step == 1 && query.contains("page%5Boffset") => {
+                        (no_page, vec![], String::new())
+                    }
+                    "TEAM" if query.contains("page%5Boffset") => (404, vec![], String::new()),
+                    "TEAM" if step == 0 && query.contains("page%5Bnext%5D=c2") => {
+                        (503, vec![], String::new())
+                    }
+                    "TEAM" if step == 0 => (
+                        200,
+                        vec![],
+                        r#"{"data":[{"id":"W1","attributes":{"name":"One"}}],"links":{"cursor":{"has_next":true,"next":"https://workdrive.zoho.com/api/v1/teams/TEAM/workspaces?page%5Bnext%5D=c2"}}}"#.to_string(),
+                    ),
+                    "TEAM" => (
+                        200,
+                        vec![],
+                        r#"{"data":[{"id":"W1","attributes":{"name":"One"}},{"id":"W2","attributes":{"name":"Two"}}],"links":{"cursor":{"has_next":false}}}"#.to_string(),
+                    ),
+                    "ROOT" => (
+                        200,
+                        vec![],
+                        listing_json(&[("P1", "Docs", true)], Some((false, None))),
+                    ),
+                    _ => (200, vec![], listing_json(&[], Some((false, None)))),
+                }
+            })
+            .await;
+            p.privatespace_id = Some("ROOT".into());
+            p.team_id = Some("TEAM".into());
+            p.discover_team_folders("TEAM").await;
+            assert!(p.team_folders_unread, "{no_page}");
+            step.store(1, Ordering::SeqCst);
+            let without_a_page = p.list("/").await;
+            assert!(without_a_page.is_err(), "{no_page}: {without_a_page:?}");
+            assert!(p.team_folders_unread, "{no_page}");
+            step.store(2, Ordering::SeqCst);
+            let root = p.list("/").await;
+            server.abort();
+            assert!(root.is_ok(), "{no_page}: {root:?}");
+            assert!(!p.team_folders_unread, "{no_page}");
+            let names: Vec<&str> = p.team_folders.iter().map(|(_, n)| n.as_str()).collect();
+            assert_eq!(names, ["One", "Two"], "{no_page}");
         }
     }
 

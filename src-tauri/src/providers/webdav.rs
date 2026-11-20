@@ -1918,18 +1918,36 @@ impl WebDavProvider {
         }
     }
 
-    /// The origin an href names: the scheme of an absolute URL (None for a
-    /// network-path reference `//host/...`, which takes the scheme of the
-    /// request) and the `host[:port]` after it. None for a path.
-    fn href_origin(href: &str) -> Option<(Option<&str>, &str)> {
-        let raw = href.split(['?', '#']).next().unwrap_or("");
-        let (scheme, rest) = if let Some(rest) = raw.strip_prefix("//") {
-            (None, rest)
-        } else {
-            let i = raw.find("://").filter(|i| !raw[..*i].contains('/'))?;
-            (Some(&raw[..i]), &raw[i + 3..])
-        };
-        Some((scheme, rest.split('/').next().unwrap_or("")))
+    /// The href resolved against `base` (the URL the answer came from, after
+    /// any redirect) as a browser resolves it (WHATWG URL), when it names an
+    /// entry of `own`'s origin: a path or a
+    /// scheme-relative href (`//host/...`) takes `base`'s scheme, a default
+    /// port is the same as none, user information and the case of the scheme
+    /// and host do not count, and a backslash ends the authority (and
+    /// separates segments) as it does in `http` and `https`. None for an
+    /// href of another origin, of another scheme (a `blob:` URL takes the
+    /// origin of the URL inside it) or one that does not parse. Its path,
+    /// read from the same parse, is the resource the href names.
+    fn href_of_our_origin(href: &str, base: &str, own: &str) -> Option<url::Url> {
+        let own = url::Url::parse(own).ok()?;
+        let base = url::Url::parse(base).ok()?;
+        // The parser drops a leading or trailing space and every tab or
+        // newline: escaped first, they stay part of the name the href gives
+        // (`a.txt ` is not `a.txt`).
+        let escaped: String = href
+            .chars()
+            .map(|c| {
+                if c <= ' ' {
+                    format!("%{:02X}", u32::from(c))
+                } else {
+                    c.to_string()
+                }
+            })
+            .collect();
+        let href = base.join(&escaped).ok()?;
+        let origin = own.origin();
+        (origin.is_tuple() && href.scheme() == own.scheme() && href.origin() == origin)
+            .then_some(href)
     }
 
     /// The path a PROPFIND href names, as its decoded segments, for an exact
@@ -3700,6 +3718,9 @@ impl WebDavProvider {
                 "File id PROPFIND failed: HTTP {status}"
             )));
         }
+        // A relative href is relative to where the answer came from: after
+        // a redirect, the server redirected to.
+        let answered_from = resp.url().to_string();
         let body = super::response_bytes_with_limit(resp, NEXTCLOUD_VERSIONS_MAX_BYTES).await?;
         let xml = String::from_utf8(body)
             .map_err(|e| ProviderError::ParseError(format!("File id answer is not UTF-8: {e}")))?;
@@ -3708,24 +3729,19 @@ impl WebDavProvider {
             .filter(|row| !row.file_id.is_empty());
         match (rows.next(), rows.next()) {
             (Some(row), None) => {
-                // An href naming an origin (`//host/a.txt`, `https://host/...`)
-                // names that origin's entry: only this one's is the file (its
-                // scheme and authority, a scheme-relative href taking ours),
-                // and its path alone would match the relative listing path.
-                if let Some((scheme, authority)) = Self::href_origin(&row.href) {
-                    let own = self.build_url(path);
-                    let same = Self::href_origin(&own).is_some_and(|(my_scheme, mine)| {
-                        mine.eq_ignore_ascii_case(authority)
-                            && scheme.is_none_or(|scheme| {
-                                my_scheme.is_some_and(|my| my.eq_ignore_ascii_case(scheme))
-                            })
-                    });
-                    if !same {
-                        return Err(ProviderError::ServerError(format!(
-                            "The file id answer for {path} names an entry of another server"
-                        )));
-                    }
-                }
+                // The href, resolved as a browser resolves it against the URL
+                // the answer came from, must name this server's origin: an
+                // href of another origin (`//host/a.txt`, `https://host/...`,
+                // `https://host\@us/...`, a relative one after a redirect to
+                // another server) names that origin's entry, and its path
+                // alone would match the relative listing path.
+                let own = self.build_url(path);
+                let Some(resolved) = Self::href_of_our_origin(&row.href, &answered_from, &own)
+                else {
+                    return Err(ProviderError::ServerError(format!(
+                        "The file id answer for {path} names an entry of another server"
+                    )));
+                };
                 // The one row must be the file asked for: a lone row for
                 // `/other/a.txt` is not `/a.txt` (decoded segments, as in
                 // `nextcloud_list_file_ids`).
@@ -3733,7 +3749,11 @@ impl WebDavProvider {
                     Self::dav_path_segments(Self::url_path_component(&self.build_url(path)), &[]);
                 let listing_path =
                     Self::dav_path_segments(&Self::encode_path(path.trim_start_matches('/')), &[]);
-                let href = Self::dav_path_segments(&row.href, &request_path);
+                // The resource is the resolved URL's path: the same parse
+                // that read its origin (`https://us\@host/a.txt` names
+                // `/@host/a.txt`, not `/a.txt`). The whole URL, not its path
+                // alone, which would read `//other/a.txt` as an authority.
+                let href = Self::dav_path_segments(resolved.as_str(), &request_path);
                 if href != request_path && href != listing_path {
                     return Err(ProviderError::ServerError(format!(
                         "The file id answer for {path} names another entry"
@@ -8737,10 +8757,64 @@ mod tests {
             r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns"><d:response><d:href>{}/remote.php/dav/files/user/s.txt</d:href><d:propstat><d:prop><oc:fileid>65</oc:fileid><d:getetag>&quot;s1&quot;</d:getetag><d:getcontentlength>3</d:getcontentlength><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>"#,
             base.replacen("http://", "https://", 1)
         );
+        // bh.txt (file 66): its file id row names another host that a
+        // backslash ends, `elsewhere.example\@` before this server's
+        // authority: split at the `@` it read as this server.
+        let backslash_host = format!(
+            r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns"><d:response><d:href>{}/remote.php/dav/files/user/bh.txt</d:href><d:propstat><d:prop><oc:fileid>66</oc:fileid><d:getetag>&quot;bh1&quot;</d:getetag><d:getcontentlength>3</d:getcontentlength><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>"#,
+            base.replacen("http://", "http://elsewhere.example\\@", 1)
+        );
+        // bp.txt (file 67): its file id row names this server, then a
+        // backslash that ends the authority: its path is
+        // `/@elsewhere.example/bp.txt`, which a read past the backslash
+        // took as `/bp.txt`, the relative listing path.
+        // bo.txt (file 68): its file id row names this server with the path
+        // `//other/bo.txt`, which a read of the path alone took for the
+        // authority `other` and the path `/bo.txt`.
+        let double_slash = format!(
+            r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns"><d:response><d:href>{base}//other/bo.txt</d:href><d:propstat><d:prop><oc:fileid>68</oc:fileid><d:getetag>&quot;bo1&quot;</d:getetag><d:getcontentlength>3</d:getcontentlength><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>"#
+        );
+        // bb.txt (file 69): its file id row is a `blob:` URL of this
+        // server's bb.txt, whose origin is this server's but whose scheme
+        // and resource are not.
+        let blob = format!(
+            r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns"><d:response><d:href>blob:{base}/remote.php/dav/files/user/bb.txt</d:href><d:propstat><d:prop><oc:fileid>69</oc:fileid><d:getetag>&quot;bb1&quot;</d:getetag><d:getcontentlength>3</d:getcontentlength><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>"#
+        );
+        // sp.txt with a trailing space (file 70) answers with the href of
+        // sp.txt, and sq.txt (file 71) with the href of `sq.txt ` written
+        // with a literal space: neither is the file asked for. `sr.txt `
+        // (file 72) answers with its own href, the space escaped.
+        let space_row = |href: &str, id: u32| {
+            format!(
+                r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns"><d:response><d:href>{href}</d:href><d:propstat><d:prop><oc:fileid>{id}</oc:fileid><d:getetag>&quot;e{id}&quot;</d:getetag><d:getcontentlength>3</d:getcontentlength><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>"#
+            )
+        };
+        // rel.txt (file 73) and dot.txt (file 74) answer with a relative
+        // href, `rel.txt` and `./dot.txt`: the file itself.
+        let relative = [space_row("rel.txt", 73), space_row("./dot.txt", 74)];
+        let spaced = [
+            space_row("/remote.php/dav/files/user/sp.txt", 70),
+            space_row("/remote.php/dav/files/user/sq.txt ", 71),
+            space_row("/remote.php/dav/files/user/sr.txt%20", 72),
+        ];
+        let backslash_path = format!(
+            r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns"><d:response><d:href>{base}\@elsewhere.example/bp.txt</d:href><d:propstat><d:prop><oc:fileid>67</oc:fileid><d:getetag>&quot;bp1&quot;</d:getetag><d:getcontentlength>3</d:getcontentlength><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>"#
+        );
+        // rd.txt: the PROPFIND is redirected (307) to another origin, this
+        // server under the name `localhost`, which answers file 99 with the
+        // relative href `rd.txt`: that origin's rd.txt, not this one's.
+        let redirect_to = base.replacen("127.0.0.1", "localhost", 1);
         let seen = log.clone();
         let app =
             axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let redirect_to = redirect_to.clone();
                 let other_scheme = other_scheme.clone();
+                let backslash_host = backslash_host.clone();
+                let backslash_path = backslash_path.clone();
+                let double_slash = double_slash.clone();
+                let spaced = spaced.clone();
+                let relative = relative.clone();
+                let blob = blob.clone();
                 let seen = seen.clone();
                 let swap_listings = swap_listings.clone();
                 let gone_listings = gone_listings.clone();
@@ -8770,6 +8844,26 @@ mod tests {
                             .body(axum::body::Body::from(body.to_string()))
                             .unwrap()
                     };
+                    let host = req
+                        .headers()
+                        .get(reqwest::header::HOST)
+                        .and_then(|v| v.to_str().ok())
+                        .unwrap_or_default()
+                        .to_string();
+                    if path == "/remote.php/dav/files/user/rd.txt" {
+                        return if host.starts_with("127.0.0.1") {
+                            axum::response::Response::builder()
+                                .status(307)
+                                .header(reqwest::header::LOCATION, format!("{redirect_to}{path}"))
+                                .body(axum::body::Body::empty())
+                                .unwrap()
+                        } else {
+                            reply(
+                                207,
+                                r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns"><d:response><d:href>rd.txt</d:href><d:propstat><d:prop><oc:fileid>99</oc:fileid><d:getetag>&quot;rd1&quot;</d:getetag><d:getcontentlength>3</d:getcontentlength><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>"#,
+                            )
+                        };
+                    }
                     match (method.as_str(), path.as_str()) {
                         ("PROPFIND", "/remote.php/dav/files/user/") => reply(
                             207,
@@ -8954,6 +9048,31 @@ mod tests {
                         ("PROPFIND", "/remote.php/dav/files/user/s.txt") => {
                             reply(207, &other_scheme)
                         }
+                        ("PROPFIND", "/remote.php/dav/files/user/bh.txt") => {
+                            reply(207, &backslash_host)
+                        }
+                        ("PROPFIND", "/remote.php/dav/files/user/bp.txt") => {
+                            reply(207, &backslash_path)
+                        }
+                        ("PROPFIND", "/remote.php/dav/files/user/bo.txt") => {
+                            reply(207, &double_slash)
+                        }
+                        ("PROPFIND", "/remote.php/dav/files/user/bb.txt") => reply(207, &blob),
+                        ("PROPFIND", "/remote.php/dav/files/user/sp.txt%20") => {
+                            reply(207, &spaced[0])
+                        }
+                        ("PROPFIND", "/remote.php/dav/files/user/sq.txt") => {
+                            reply(207, &spaced[1])
+                        }
+                        ("PROPFIND", "/remote.php/dav/files/user/sr.txt%20") => {
+                            reply(207, &spaced[2])
+                        }
+                        ("PROPFIND", "/remote.php/dav/files/user/rel.txt") => {
+                            reply(207, &relative[0])
+                        }
+                        ("PROPFIND", "/remote.php/dav/files/user/dot.txt") => {
+                            reply(207, &relative[1])
+                        }
                         // h.txt (file 64): its file id row names another
                         // server, `//elsewhere.example/h.txt`, whose path
                         // alone matches the relative listing path.
@@ -9084,6 +9203,103 @@ mod tests {
         assert!(!log.iter().any(|l| l.contains("/versions/64")), "{log:?}");
     }
 
+    /// The same origin written two ways is one origin: a default port, the
+    /// case of the scheme and host, user information, a path and a
+    /// scheme-relative href do not make another server; another host, port
+    /// or scheme does, and so does a host a backslash ends. The resolved
+    /// path comes from the same parse.
+    #[test]
+    fn an_href_is_resolved_as_a_browser_resolves_it() {
+        let own = "https://cloud.example/remote.php/dav/files/u/a.txt";
+        for href in [
+            "https://cloud.example:443/x",
+            "HTTPS://Cloud.Example/x",
+            "https://user@cloud.example/x",
+            "//cloud.example:443/x",
+            "/remote.php/dav/files/u/b.txt",
+        ] {
+            assert!(
+                WebDavProvider::href_of_our_origin(href, own, own).is_some(),
+                "{href}"
+            );
+        }
+        assert!(WebDavProvider::href_of_our_origin(
+            "http://h.example:80/x",
+            "http://h.example/a",
+            "http://h.example/a"
+        )
+        .is_some());
+        assert!(WebDavProvider::href_of_our_origin(
+            "https://[::1]:443/x",
+            "https://[::1]/a",
+            "https://[::1]/a"
+        )
+        .is_some());
+        // The path is read from the same parse: a backslash after our host
+        // ends the authority, and what follows is the path.
+        let resolved = WebDavProvider::href_of_our_origin(
+            "https://cloud.example\\@elsewhere.example/a.txt",
+            own,
+            own,
+        )
+        .expect("our origin");
+        // After a redirect, a relative href is the redirect target's: of
+        // another origin when the redirect left this one.
+        assert!(WebDavProvider::href_of_our_origin(
+            "a.txt",
+            "https://elsewhere.example/remote.php/dav/files/u/a.txt",
+            own,
+        )
+        .is_none());
+        assert_eq!(resolved.path(), "/@elsewhere.example/a.txt");
+        // A relative href names a sibling of the file asked for, the file
+        // itself when it is its name: never a child of it.
+        for href in ["a.txt", "./a.txt"] {
+            let resolved = WebDavProvider::href_of_our_origin(href, own, own).expect("our origin");
+            assert_eq!(resolved.path(), "/remote.php/dav/files/u/a.txt", "{href}");
+        }
+        for (href, segments) in [
+            ("/d/a.txt ", ["d", "a.txt "]),
+            ("/d/a.txt%20", ["d", "a.txt "]),
+            ("/d/a\t.txt", ["d", "a\t.txt"]),
+            ("/d/a.txt", ["d", "a.txt"]),
+        ] {
+            let resolved = WebDavProvider::href_of_our_origin(href, own, own).expect("our origin");
+            assert_eq!(
+                WebDavProvider::dav_path_segments(resolved.as_str(), &[]),
+                segments,
+                "{href:?}"
+            );
+        }
+        assert_eq!(
+            WebDavProvider::dav_path_segments(resolved.as_str(), &[]),
+            ["@elsewhere.example", "a.txt"]
+        );
+        let resolved =
+            WebDavProvider::href_of_our_origin("https://cloud.example//other/a.txt", own, own)
+                .expect("our origin");
+        assert_eq!(
+            WebDavProvider::dav_path_segments(resolved.as_str(), &[]),
+            ["other", "a.txt"]
+        );
+        for href in [
+            "http://cloud.example/x",
+            "https://cloud.example:8443/x",
+            "https://elsewhere.example/x",
+            "http://cloud.example:443/x",
+            "//cloud.example:80/x",
+            "https://elsewhere.example\\@cloud.example/a.txt",
+            "\\\\elsewhere.example\\a.txt",
+            "https://[bad/x",
+            "blob:https://cloud.example/a.txt",
+        ] {
+            assert!(
+                WebDavProvider::href_of_our_origin(href, own, own).is_none(),
+                "{href}"
+            );
+        }
+    }
+
     /// The file id answer for s.txt names this server's authority under
     /// `https://` while the requests go over `http://`: another origin,
     /// refused before any version request, where a check of the authority
@@ -9100,6 +9316,139 @@ mod tests {
         );
         let log = log.lock().unwrap();
         assert!(!log.iter().any(|l| l.contains("/versions/65")), "{log:?}");
+    }
+
+    /// The file id answer for bh.txt names `elsewhere.example` with this
+    /// server's authority after a backslash and an `@`: another host, as a
+    /// browser reads it, refused before any version request, where a split
+    /// at the `@` read it as this server and took its id as bh.txt's.
+    #[tokio::test]
+    async fn a_file_id_row_whose_host_a_backslash_ends_is_refused() {
+        let (base, log, server) = serve_nextcloud_versions().await;
+        let mut provider = nextcloud_versions_provider(&base);
+        let refused = provider.list_versions("/bh.txt").await;
+        server.abort();
+        assert!(
+            matches!(&refused, Err(ProviderError::ServerError(m)) if m.contains("another server")),
+            "{refused:?}"
+        );
+        let log = log.lock().unwrap();
+        assert!(!log.iter().any(|l| l.contains("/versions/66")), "{log:?}");
+    }
+
+    /// The file id answer for bp.txt names this server, then a backslash
+    /// that ends the authority: the resource is `/@elsewhere.example/bp.txt`,
+    /// not bp.txt, refused before any version request, where the path read
+    /// past the backslash matched the relative listing path.
+    #[tokio::test]
+    async fn a_file_id_row_whose_path_follows_a_backslash_is_refused() {
+        let (base, log, server) = serve_nextcloud_versions().await;
+        let mut provider = nextcloud_versions_provider(&base);
+        let refused = provider.list_versions("/bp.txt").await;
+        server.abort();
+        assert!(
+            matches!(&refused, Err(ProviderError::ServerError(m)) if m.contains("another entry")),
+            "{refused:?}"
+        );
+        let log = log.lock().unwrap();
+        assert!(!log.iter().any(|l| l.contains("/versions/67")), "{log:?}");
+    }
+
+    /// A file id row of this server whose path is `//other/bo.txt` names
+    /// the resource `/other/bo.txt`, and a `blob:` URL of this server's
+    /// bb.txt is not bb.txt: both are refused before any version request,
+    /// where a read of the path alone found `/bo.txt` (the relative listing
+    /// path) and a `blob:` URL passed with the origin of the URL inside it.
+    #[tokio::test]
+    async fn a_file_id_row_of_another_resource_or_scheme_on_this_origin_is_refused() {
+        let (base, log, server) = serve_nextcloud_versions().await;
+        let mut provider = nextcloud_versions_provider(&base);
+        let double_slash = provider.list_versions("/bo.txt").await;
+        let blob = provider.list_versions("/bb.txt").await;
+        server.abort();
+        assert!(
+            matches!(&double_slash, Err(ProviderError::ServerError(m)) if m.contains("another entry")),
+            "{double_slash:?}"
+        );
+        assert!(
+            matches!(&blob, Err(ProviderError::ServerError(m)) if m.contains("another server")),
+            "{blob:?}"
+        );
+        let log = log.lock().unwrap();
+        assert!(
+            !log.iter()
+                .any(|l| l.contains("/versions/68") || l.contains("/versions/69")),
+            "{log:?}"
+        );
+    }
+
+    /// A trailing space is part of the name: the row of sp.txt is not
+    /// `sp.txt `'s and the row of `sq.txt ` is not sq.txt's, both refused
+    /// before any version request, where the URL parser dropped the space
+    /// of a literal href; the escaped href of `sr.txt ` is its own and its
+    /// versions are asked.
+    #[tokio::test]
+    async fn a_trailing_space_in_a_file_id_row_is_part_of_its_name() {
+        let (base, log, server) = serve_nextcloud_versions().await;
+        let mut provider = nextcloud_versions_provider(&base);
+        let spaced_lookup = provider.list_versions("/sp.txt ").await;
+        let spaced_row = provider.list_versions("/sq.txt").await;
+        let _ = provider.list_versions("/sr.txt ").await;
+        server.abort();
+        for refused in [&spaced_lookup, &spaced_row] {
+            assert!(
+                matches!(refused, Err(ProviderError::ServerError(m)) if m.contains("another entry")),
+                "{refused:?}"
+            );
+        }
+        let log = log.lock().unwrap();
+        assert!(
+            !log.iter()
+                .any(|l| l.contains("/versions/70") || l.contains("/versions/71")),
+            "{log:?}"
+        );
+        assert!(log.iter().any(|l| l.contains("/versions/72")), "{log:?}");
+    }
+
+    /// A file id row with a relative href (`rel.txt`, `./dot.txt`) names the
+    /// file asked for, resolved against its own URL: accepted, and its
+    /// versions are asked under its own id.
+    #[tokio::test]
+    async fn a_file_id_row_with_a_relative_href_is_the_file() {
+        let (base, log, server) = serve_nextcloud_versions().await;
+        let mut provider = nextcloud_versions_provider(&base);
+        let _ = provider.list_versions("/rel.txt").await;
+        let _ = provider.list_versions("/dot.txt").await;
+        server.abort();
+        let log = log.lock().unwrap();
+        assert!(log.iter().any(|l| l.contains("/versions/73")), "{log:?}");
+        assert!(log.iter().any(|l| l.contains("/versions/74")), "{log:?}");
+    }
+
+    /// The file id PROPFIND for rd.txt is redirected (307) to another
+    /// origin, which answers file 99 with the relative href `rd.txt`: that
+    /// origin's file, refused before any version request, where the href was
+    /// resolved against this server's URL and file 99 listed as rd.txt's.
+    #[tokio::test]
+    async fn a_relative_href_after_a_redirect_to_another_origin_is_refused() {
+        let (base, log, server) = serve_nextcloud_versions().await;
+        let mut provider = nextcloud_versions_provider(&base);
+        let refused = provider.list_versions("/rd.txt").await;
+        server.abort();
+        assert!(
+            matches!(&refused, Err(ProviderError::ServerError(m)) if m.contains("another server")),
+            "{refused:?}"
+        );
+        let log = log.lock().unwrap();
+        // The redirect was followed: the other origin was asked.
+        assert_eq!(
+            log.iter()
+                .filter(|l| l.starts_with("PROPFIND /remote.php/dav/files/user/rd.txt"))
+                .count(),
+            2,
+            "{log:?}"
+        );
+        assert!(!log.iter().any(|l| l.contains("/versions/99")), "{log:?}");
     }
 
     /// The versions answer for d.txt (file id 46) also carries a row of
