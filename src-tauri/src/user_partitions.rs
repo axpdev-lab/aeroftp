@@ -5972,10 +5972,12 @@ pub(crate) fn another_account_may_hold_session(
     init_or_migrate_cli(store)?;
     let conn = open_or_init_cli()?;
     let rows = conn
-        .prepare(
+        .prepare(&format!(
             "SELECT user_id, credential_id FROM user_credentials
-             WHERE ?1 IS NULL OR user_id <> ?1 ORDER BY user_id, credential_id",
-        )
+             WHERE (?1 IS NULL OR user_id <> ?1) AND {}
+             ORDER BY user_id, credential_id",
+            proton_session_key_sql("credential_id")
+        ))
         .and_then(|mut statement| {
             statement
                 .query_map(params![user], |row| {
@@ -6154,36 +6156,46 @@ pub(crate) enum OtherAccounts {
     MayHoldIt,
 }
 
-/// Whether an account other than `user` holds the native Proton session
-/// `uid`, read from the index alone: no account's partition is decrypted,
-/// so a locked account answers as an unlocked one does.
+/// The rows of the accounts other than `user` that hold a native Proton
+/// session, with their index entries ([`other_accounts_holding_session`]).
 #[cfg(feature = "proton-native")]
-pub(crate) fn other_accounts_holding_session(
-    store: &CredentialStore,
+type SessionIndexRow = (
+    String,
+    Vec<u8>,
+    Vec<u8>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+);
+
+/// What selects a native Proton session row by its key in SQL, for
+/// `column`: the three shapes [`is_proton_session_key`] accepts (`_` taken
+/// literally, a non-empty tail), so no other secret's ciphertext is loaded.
+/// [`is_proton_session_key`] stays the authority over what is read.
+#[cfg(feature = "proton-native")]
+fn proton_session_key_sql(column: &str) -> String {
+    format!(
+        "({column} = '{PROTON_UNBOUND_SESSION}' \
+         OR {column} LIKE 'proton\\_native\\_session\\__%' ESCAPE '\\' \
+         OR {column} LIKE 'proton\\_native\\_unbound\\_user\\__%' ESCAPE '\\')"
+    )
+}
+
+#[cfg(feature = "proton-native")]
+fn other_accounts_session_rows(
+    conn: &Connection,
     user: Option<i64>,
-    uid: &str,
-) -> Result<OtherAccounts, String> {
-    init_or_migrate_cli(store)?;
-    let conn = open_or_init_cli()?;
-    let key = session_index_key(&store.derive_user_partition_wrapping_key());
-    let (fingerprint, key_tag) = (session_fingerprint(&key, uid), session_index_key_tag(&key));
-    type Row = (
-        String,
-        Vec<u8>,
-        Vec<u8>,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-    );
-    let rows: Vec<Row> = conn
-        .prepare(
+) -> Result<Vec<SessionIndexRow>, String> {
+    let rows: Vec<SessionIndexRow> = conn
+        .prepare(&format!(
             "SELECT c.credential_id, c.encrypted_blob, c.nonce,
                     i.fingerprint, i.blob_digest, i.key_tag
              FROM user_credentials c
              LEFT JOIN proton_session_index i
                  ON i.user_id = c.user_id AND i.credential_id = c.credential_id
-             WHERE ?1 IS NULL OR c.user_id <> ?1",
-        )
+             WHERE (?1 IS NULL OR c.user_id <> ?1) AND {}",
+            proton_session_key_sql("c.credential_id")
+        ))
         .and_then(|mut statement| {
             statement
                 .query_map(params![user], |row| {
@@ -6199,11 +6211,27 @@ pub(crate) fn other_accounts_holding_session(
                 .collect::<rusqlite::Result<Vec<_>>>()
         })
         .map_err(|e| format!("Read session index: {e}"))?;
-    let mut answer = OtherAccounts::HoldNone;
-    for (_, blob, nonce, entry, digest, tag) in rows
+    Ok(rows
         .into_iter()
         .filter(|(credential_id, ..)| is_proton_session_key(credential_id))
-    {
+        .collect())
+}
+
+/// Whether an account other than `user` holds the native Proton session
+/// `uid`, read from the index alone: no account's partition is decrypted,
+/// so a locked account answers as an unlocked one does.
+#[cfg(feature = "proton-native")]
+pub(crate) fn other_accounts_holding_session(
+    store: &CredentialStore,
+    user: Option<i64>,
+    uid: &str,
+) -> Result<OtherAccounts, String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    let key = session_index_key(&store.derive_user_partition_wrapping_key());
+    let (fingerprint, key_tag) = (session_fingerprint(&key, uid), session_index_key_tag(&key));
+    let mut answer = OtherAccounts::HoldNone;
+    for (_, blob, nonce, entry, digest, tag) in other_accounts_session_rows(&conn, user)? {
         let describes_the_row = tag.as_deref() == Some(key_tag.as_str())
             && digest.as_deref() == Some(credential_blob_digest(&blob, &nonce).as_str());
         match entry {
@@ -11810,6 +11838,51 @@ mod tests {
             get_user_credential_for(&conn, &here, other.id, "oauth_dropbox_p").unwrap(),
             None
         );
+    }
+
+    /// The SQL that selects native Proton session rows takes the three key
+    /// shapes the Rust filter accepts and nothing else: no other secret's
+    /// ciphertext is loaded to be filtered out, an `_` is not a wildcard,
+    /// and a prefix with no tail is no session.
+    #[cfg(feature = "proton-native")]
+    #[test]
+    fn the_session_row_query_selects_session_keys_alone() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("CREATE TABLE k(credential_id TEXT)")
+            .unwrap();
+        let keys = [
+            "proton_native_session",
+            "proton_native_session_p1",
+            "proton_native_unbound_user_3",
+            "proton_native_session_",
+            "proton_native_unbound_user_",
+            "protonXnativeXsessionXp1",
+            "proton_native_sessionXp1",
+            "proton_native_unbound_userX3",
+            "server_proton_native_session_p1",
+            "server_p1",
+        ];
+        for key in keys {
+            conn.execute("INSERT INTO k VALUES (?1)", params![key])
+                .unwrap();
+        }
+        let selected: Vec<String> = conn
+            .prepare(&format!(
+                "SELECT credential_id FROM k WHERE {} ORDER BY rowid",
+                proton_session_key_sql("credential_id")
+            ))
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap();
+        let expected: Vec<String> = keys
+            .iter()
+            .filter(|key| is_proton_session_key(key))
+            .map(|key| key.to_string())
+            .collect();
+        assert_eq!(expected.len(), 3);
+        assert_eq!(selected, expected);
     }
 
     /// A partition restored from another machine with a passphrase account
