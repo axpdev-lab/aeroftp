@@ -440,9 +440,10 @@ fn a_native_session_keeps_to_its_account() {
         .build()
         .unwrap();
     let lease = runtime
-        .block_on(crate::providers::oauth2::RefreshLease::acquire(
+        .block_on(crate::providers::oauth2::RefreshLease::acquire_checked(
             &vault::refresh_lease_slug("busy-uid"),
         ))
+        .unwrap()
         .unwrap();
     let waits = vault::test_seams::observe_waits();
     std::thread::scope(|scope| {
@@ -1367,9 +1368,10 @@ fn a_sign_in_after_a_failed_deferred_cleanup_is_kept() {
         .enable_all()
         .build()
         .unwrap()
-        .block_on(crate::providers::oauth2::RefreshLease::acquire(
+        .block_on(crate::providers::oauth2::RefreshLease::acquire_checked(
             &vault::refresh_lease_slug("held-off-uid"),
         ))
+        .unwrap()
         .unwrap();
     vault::test_seams::set_exclusive_wait(Some(std::time::Duration::ZERO));
     let revokes = vault::test_seams::revokes();
@@ -1554,9 +1556,10 @@ fn a_move_the_lease_holds_off_changes_nothing() {
         .enable_all()
         .build()
         .unwrap()
-        .block_on(crate::providers::oauth2::RefreshLease::acquire(
+        .block_on(crate::providers::oauth2::RefreshLease::acquire_checked(
             &vault::refresh_lease_slug("held-uid"),
         ))
+        .unwrap()
         .unwrap();
     vault::test_seams::set_exclusive_wait(Some(std::time::Duration::ZERO));
     let refused = relocation(&accounts.store, target, source, "held", "held-moved", true);
@@ -1576,4 +1579,59 @@ fn a_move_the_lease_holds_off_changes_nothing() {
     assert!(accounts
         .profile_ids(target)
         .contains(&"held-moved".to_string()));
+}
+
+/// A lease storage that fails (its directory is a regular file) is no
+/// contention: a change of the session stops at once with that cause, never
+/// after the whole wait as a refresh that "did not let go", and a refresh
+/// goes ahead without the lease at once instead of spinning for the wait.
+#[test]
+fn a_lease_storage_that_fails_stops_a_change_at_once() {
+    if !in_isolated_child("a_lease_storage_that_fails_stops_a_change_at_once") {
+        return;
+    }
+    let accounts = Accounts::open();
+    let owner = accounts.owner();
+    accounts.seed("lease-storage", "lease-storage-uid");
+    let tokens = crate::portable::aeroftp_data_root()
+        .unwrap()
+        .join("oauth_tokens");
+    if tokens.is_dir() {
+        std::fs::remove_dir(&tokens).unwrap();
+    }
+    std::fs::write(&tokens, b"").unwrap();
+    vault::test_seams::set_exclusive_wait(Some(std::time::Duration::from_secs(5)));
+    let started = std::time::Instant::now();
+    let held = vault::hold_session_blocking(owner, "lease-storage");
+    let held_for = started.elapsed();
+    let started = std::time::Instant::now();
+    let refresh_lease = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(
+            vault::VaultSession::new(
+                owner,
+                Some("lease-storage"),
+                &session("lease-storage-uid", "r1"),
+            )
+            .lock(),
+        );
+    let refresh_waited = started.elapsed();
+    vault::test_seams::set_exclusive_wait(None);
+    let refused = held.err().expect("the hold stops").to_string();
+    assert!(
+        refused.contains("lease storage unavailable"),
+        "the hold names the lease storage: {refused}"
+    );
+    assert!(
+        held_for < std::time::Duration::from_secs(1),
+        "the hold stops at once: {held_for:?}"
+    );
+    assert!(refresh_lease.is_none());
+    assert!(
+        refresh_waited < std::time::Duration::from_secs(1),
+        "the refresh does not wait for a lease it cannot take: {refresh_waited:?}"
+    );
+    assert_eq!(loaded(owner, "lease-storage").as_deref(), Some("r1"));
 }

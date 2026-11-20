@@ -1107,15 +1107,11 @@ impl RefreshLease {
     const POLL_MS: u64 = 150;
 
     /// Try to become the single cross-process owner of the refresh for
-    /// `slug`. `Some(lease)` => WE own it, perform the refresh. `None` =>
-    /// gave up waiting or no lock dir; caller must re-load tokens (the other
-    /// owner is refreshing) rather than refresh in parallel.
-    #[cfg(any(test, feature = "proton-native"))]
-    pub(crate) async fn acquire(slug: &str) -> Option<Self> {
-        Self::acquire_checked(slug).await.ok().flatten()
-    }
-
-    async fn acquire_checked(slug: &str) -> Result<Option<Self>, ProviderError> {
+    /// `slug`. `Ok(Some(lease))` => WE own it, perform the refresh.
+    /// `Ok(None)` => another owner held it past the wait; the caller must
+    /// re-load tokens (the other owner is refreshing) rather than refresh in
+    /// parallel. `Err` => the lease storage itself failed, which no wait cures.
+    pub(crate) async fn acquire_checked(slug: &str) -> Result<Option<Self>, ProviderError> {
         let dir = OAuth2Manager::token_dir().map_err(|_| {
             ProviderError::Other("Authorization refresh lease directory is unavailable".into())
         })?;
@@ -4183,7 +4179,10 @@ mod tests {
         let _ = std::fs::remove_file(&lock_path);
 
         // Fresh acquire wins and creates the lock file.
-        let lease = RefreshLease::acquire(&slug).await.expect("first acquire");
+        let lease = RefreshLease::acquire_checked(&slug)
+            .await
+            .unwrap()
+            .expect("first acquire");
         assert!(lock_path.exists(), "lock file must exist while held");
 
         // Drop releases and removes the file.
@@ -4198,8 +4197,9 @@ mod tests {
         let stale = std::time::SystemTime::now()
             - std::time::Duration::from_secs(RefreshLease::STALE_SECS + 5);
         filetime::set_file_mtime(&lock_path, filetime::FileTime::from_system_time(stale)).unwrap();
-        let stolen = RefreshLease::acquire(&slug)
+        let stolen = RefreshLease::acquire_checked(&slug)
             .await
+            .unwrap()
             .expect("stale lock must be stolen");
         assert!(lock_path.exists());
         drop(stolen);

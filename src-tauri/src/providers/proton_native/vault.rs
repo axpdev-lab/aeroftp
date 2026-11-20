@@ -642,18 +642,21 @@ fn session_shared(uid: &str, others: impl IntoIterator<Item = ProtonSession>) ->
     others.into_iter().any(|other| other.tokens.uid == uid)
 }
 
-/// The lease of `slug`, waited for up to [`EXCLUSIVE_WAIT`].
-async fn acquire_exclusive(slug: &str) -> Option<RefreshLease> {
+/// The lease of `slug`, waited for up to [`EXCLUSIVE_WAIT`] while another
+/// holder keeps it: `Ok(None)` once the wait is over. A lease storage that
+/// fails is no contention, and no wait cures it: its error comes back at
+/// once, never read as a holder that did not let go.
+async fn acquire_exclusive(slug: &str) -> Result<Option<RefreshLease>, ProviderError> {
     let started = std::time::Instant::now();
     loop {
-        let lease = RefreshLease::acquire(slug);
+        let lease = RefreshLease::acquire_checked(slug);
         #[cfg(test)]
         let lease = test_seams::reported(format!("lease {slug}"), lease);
-        if let Some(lease) = lease.await {
-            return Some(lease);
+        if let Some(lease) = lease.await? {
+            return Ok(Some(lease));
         }
         if started.elapsed() >= exclusive_wait() {
-            return None;
+            return Ok(None);
         }
     }
 }
@@ -686,7 +689,7 @@ async fn lease_of_saved(
         };
         let lease = exclusive(
             true,
-            acquire_exclusive(&refresh_lease_slug(&saved.tokens.uid)).await,
+            acquire_exclusive(&refresh_lease_slug(&saved.tokens.uid)).await?,
         )?;
         // A sign-in may have changed the key while we waited. Never mutate
         // its replacement while holding only the old session's lease.
@@ -835,7 +838,7 @@ async fn restore(
     uids.dedup();
     let mut leases = Vec::with_capacity(uids.len());
     for uid in uids {
-        if let Some(lease) = exclusive(true, acquire_exclusive(&refresh_lease_slug(&uid)).await)? {
+        if let Some(lease) = exclusive(true, acquire_exclusive(&refresh_lease_slug(&uid)).await?)? {
             leases.push(lease);
         }
     }
@@ -1390,9 +1393,13 @@ impl VaultSession {
 #[async_trait::async_trait]
 impl SessionStore for VaultSession {
     async fn lock(&self) -> Option<Box<dyn Send>> {
-        acquire_exclusive(&refresh_lease_slug(&self.uid))
-            .await
-            .map(|lease| Box::new(lease) as Box<dyn Send>)
+        match acquire_exclusive(&refresh_lease_slug(&self.uid)).await {
+            Ok(lease) => lease.map(|lease| Box::new(lease) as Box<dyn Send>),
+            Err(error) => {
+                log::warn!("Proton: the refresh lease could not be taken: {error}");
+                None
+            }
+        }
     }
 
     fn load(&self) -> Option<SessionTokens> {
