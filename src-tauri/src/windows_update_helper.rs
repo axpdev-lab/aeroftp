@@ -823,10 +823,11 @@ fn portable_helper_script(
     let old_exe = current_exe.with_extension("exe.old");
 
     // Every staged copy goes when the app exe cannot be replaced: then the
-    // installed exes all stay as they were.
+    // installed exes all stay as they were. Rust removes them so cleanup does
+    // not depend on cmd's redirection/error state after a rejected handoff.
     let mut discard_block = format!(
-        "del /F /Q {} >nul 2>&1\n",
-        quote_for_cmd(&beside_path(current_exe, attempt_id))
+        "{} {DISCARD_EXES_FLAG} {attempt_id} >nul 2>&1\n",
+        quote_for_cmd(current_exe)
     );
     // A file held open without write sharing refuses the replace. The log
     // line is in a group that swallows cmd's error when the log itself is
@@ -850,7 +851,6 @@ fn portable_helper_script(
     for (i, &name) in cli.iter().enumerate() {
         let target = exe_dir.join(name);
         let new = quote_for_cmd(&beside_path(&target, attempt_id));
-        discard_block.push_str(&format!("del /F /Q {new} >nul 2>&1\n"));
         let log_line = warn_line(name, IN_USE);
         cli_block.push_str(&format!(
             r#"set RETRY=0
@@ -1014,6 +1014,7 @@ fn spawn_detached(script: &Path) -> Result<std::process::Child, String> {
 
 const CLEANUP_FLAG: &str = "--post-update-cleanup";
 const DISCARD_DOCS_FLAG: &str = "--discard-pending-docs";
+const DISCARD_EXES_FLAG: &str = "--discard-staged-exes";
 
 fn discard_pending_docs_arg(args: &[String]) -> Option<&str> {
     let mut iter = args.iter().skip(1);
@@ -1027,6 +1028,35 @@ fn discard_pending_docs_arg(args: &[String]) -> Option<&str> {
         }
     }
     None
+}
+
+fn discard_staged_exes_arg(args: &[String]) -> Option<&str> {
+    let mut iter = args.iter().skip(1);
+    while let Some(arg) = iter.next() {
+        if arg == DISCARD_EXES_FLAG {
+            let attempt_id = iter.next()?.as_str();
+            if !attempt_id.is_empty() && attempt_id.bytes().all(|b| b.is_ascii_alphanumeric()) {
+                return Some(attempt_id);
+            }
+            return None;
+        }
+    }
+    None
+}
+
+/// Walk argv looking for `--discard-staged-exes <attempt-id>`. When present,
+/// removes only that attempt's sidecars for the running app and its companions,
+/// then returns `true` so `main.rs` exits without booting the GUI.
+pub fn try_handle_discard_staged_exes_arg() -> bool {
+    let args: Vec<String> = std::env::args().collect();
+    let Some(attempt_id) = discard_staged_exes_arg(&args) else {
+        return false;
+    };
+    if let Ok(exe) = std::env::current_exe() {
+        let companions = companion_exes(&exe);
+        discard_staged(&exe, attempt_id, &companions, None);
+    }
+    true
 }
 
 /// Walk argv looking for `--discard-pending-docs <attempt-token>`. When
@@ -1437,6 +1467,7 @@ mod tests {
 
     const CHILD_DISCARD_EXE: &str = "AEROFTP_TEST_DISCARD_EXE";
     const CHILD_DISCARD_KEY: &str = "AEROFTP_TEST_DISCARD_KEY";
+    const CHILD_DISCARD_ATTEMPT: &str = "AEROFTP_TEST_DISCARD_ATTEMPT";
     const CHILD_DISCARD_DONE: &str = "AEROFTP_TEST_DISCARD_DONE";
 
     /// Child process helper invoked by `runnable` in place of the fake 15-byte
@@ -1461,21 +1492,43 @@ mod tests {
         }
     }
 
+    #[test]
+    #[ignore = "invoked by failed-swap helper tests via runnable()"]
+    fn child_discard_staged_exes() {
+        let (Some(exe), Ok(attempt_id)) = (
+            std::env::var_os(CHILD_DISCARD_EXE),
+            std::env::var(CHILD_DISCARD_ATTEMPT),
+        ) else {
+            return;
+        };
+        let exe_path = PathBuf::from(exe);
+        let companions = companion_exes(&exe_path);
+        discard_staged(&exe_path, &attempt_id, &companions, None);
+    }
+
     /// The script as the helper runs it, minus the waits (`ping`) and the
     /// relaunch (`start`), which would launch the test's fake exe. A failed
-    /// swap's `{current} --discard-pending-docs <key>` line is routed through
-    /// this test binary's `child_discard_pending_docs` helper (keeping the
-    /// exact cmd-escaped `{current}` path so `%VAR%` handling is still tested).
+    /// swap's `{current} --discard-staged-exes <attempt>` and
+    /// `{current} --discard-pending-docs <key>` lines are routed through this
+    /// test binary's child helpers (keeping the exact cmd-escaped `{current}`
+    /// path so `%VAR%` handling is still tested).
     fn runnable(script: &str) -> Vec<String> {
         let test_exe = quote_for_cmd(&std::env::current_exe().expect("test exe"));
-        let marker = format!(" {DISCARD_DOCS_FLAG} ");
+        let docs_marker = format!(" {DISCARD_DOCS_FLAG} ");
+        let exes_marker = format!(" {DISCARD_EXES_FLAG} ");
         script
             .split_inclusive('\n')
             .map(|line| {
                 let trimmed = line.trim_start();
                 if trimmed.starts_with("ping ") || trimmed.starts_with("start ") {
                     "rem\r\n".to_string()
-                } else if let Some((exe_part, rest)) = trimmed.split_once(&marker) {
+                } else if let Some((exe_part, rest)) = trimmed.split_once(&exes_marker) {
+                    let attempt_id = rest.split_whitespace().next().unwrap_or("");
+                    let raw_exe = exe_part.trim().trim_matches('"');
+                    format!(
+                        "set \"{CHILD_DISCARD_EXE}={raw_exe}\"\r\nset \"{CHILD_DISCARD_ATTEMPT}={attempt_id}\"\r\n{test_exe} --exact windows_update_helper::tests::child_discard_staged_exes --ignored >nul 2>&1\r\n"
+                    )
+                } else if let Some((exe_part, rest)) = trimmed.split_once(&docs_marker) {
                     let key = rest.split_whitespace().next().unwrap_or("");
                     let raw_exe = exe_part.trim().trim_matches('"');
                     format!(
@@ -2140,6 +2193,32 @@ mod tests {
             ]),
             None
         );
+    }
+
+    #[test]
+    fn discard_staged_exes_arg_parses_only_valid_attempt_ids() {
+        assert_eq!(
+            discard_staged_exes_arg(&[
+                "AeroFTP.exe".into(),
+                DISCARD_EXES_FLAG.into(),
+                "handoffheld01".into()
+            ]),
+            Some("handoffheld01")
+        );
+        assert_eq!(
+            discard_staged_exes_arg(&["AeroFTP.exe".into(), DISCARD_EXES_FLAG.into()]),
+            None
+        );
+        for invalid in ["", "another.attempt", "attempt/../other"] {
+            assert_eq!(
+                discard_staged_exes_arg(&[
+                    "AeroFTP.exe".into(),
+                    DISCARD_EXES_FLAG.into(),
+                    invalid.into()
+                ]),
+                None
+            );
+        }
     }
 
     #[test]
