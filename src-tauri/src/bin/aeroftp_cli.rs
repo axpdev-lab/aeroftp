@@ -29361,13 +29361,23 @@ fn delete_profile_in_vault(
     // key (a key absent for this profile kind is a no-op).
     let scoped_uid = scoped_credential_user_id(cli, store);
     // A native Proton Drive session is ended on Proton before its key goes,
-    // as the GUI delete does.
+    // as the GUI delete does: for a Proton profile, or one that holds a
+    // session key. Any other profile takes no Proton session lock.
     #[cfg(feature = "proton-native")]
-    ftp_client_gui_lib::providers::proton_native::vault::end_session_blocking(
-        ftp_client_gui_lib::providers::proton_native::vault::SessionOwner::for_user(scoped_uid),
-        Some(profile_id),
-    )
-    .map_err(|error| error.to_string())?;
+    {
+        use ftp_client_gui_lib::providers::proton_native::vault;
+        let owner = vault::SessionOwner::for_user(scoped_uid);
+        let proton = protocol
+            .as_deref()
+            .is_some_and(|protocol| protocol.eq_ignore_ascii_case("proton"));
+        if proton
+            || vault::holds_saved_session(store, owner, profile_id)
+                .map_err(|error| error.to_string())?
+        {
+            vault::end_session_blocking(owner, Some(profile_id))
+                .map_err(|error| error.to_string())?;
+        }
+    }
     // The protocol as it stands now decides which token keys go below.
     let (protocol, _, stored) = update_active_user_profiles(
         cli,

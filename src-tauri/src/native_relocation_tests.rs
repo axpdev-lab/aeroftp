@@ -1684,3 +1684,62 @@ fn a_deferred_revoke_that_fails_is_tried_again_at_the_next_unlock() {
     ));
     assert_eq!(deferred_revokes(&accounts.conn), 0);
 }
+
+/// A Move takes a Proton session lock only for a profile that may carry a
+/// native Proton session. On a filesystem without file locks, where the
+/// profile list goes on without its lock, an SFTP Move goes through; the Move
+/// of a Proton profile with no session yet still takes the lock (a sign-in of
+/// it may be open), so it is refused with the cause named and both lists as
+/// they were.
+#[test]
+fn only_a_proton_move_takes_a_proton_session_lock() {
+    if !in_isolated_child("only_a_proton_move_takes_a_proton_session_lock") {
+        return;
+    }
+    let accounts = Accounts::open();
+    let (source, target) = (accounts.source.id, accounts.target.id);
+    let mut db = open_or_init_cli().unwrap();
+    let mut profiles = list_server_profiles_for(&db, &accounts.root_key, source).unwrap();
+    profiles.push(
+        json!({"id":"plain-sftp","name":"plain-sftp","protocol":"sftp",
+        "host":"sftp.example.test","port":22,"username":"someone"}),
+    );
+    replace_server_profiles_for(&mut db, &accounts.root_key, source, &profiles).unwrap();
+    accounts.add_profile(source, "unsigned-proton");
+    NO_FILE_LOCKS_IN_TEST.set(true);
+    vault::test_seams::set_no_file_locks(true);
+    let sftp = relocation(
+        &accounts.store,
+        target,
+        source,
+        "plain-sftp",
+        "plain-sftp-moved",
+        true,
+    );
+    let proton = relocation(
+        &accounts.store,
+        target,
+        source,
+        "unsigned-proton",
+        "unsigned-proton-moved",
+        true,
+    );
+    vault::test_seams::set_no_file_locks(false);
+    NO_FILE_LOCKS_IN_TEST.set(false);
+    assert!(
+        sftp.as_ref().is_ok_and(|moved| moved.moved),
+        "an SFTP Move takes no Proton session lock: {sftp:?}"
+    );
+    assert!(
+        proton
+            .as_ref()
+            .is_err_and(|refused| refused.contains(NO_FILE_LOCKS)),
+        "a Proton Move without file locks is refused with the cause: {proton:?}"
+    );
+    assert!(accounts
+        .profile_ids(source)
+        .contains(&"unsigned-proton".to_string()));
+    assert!(!accounts
+        .profile_ids(target)
+        .contains(&"unsigned-proton-moved".to_string()));
+}

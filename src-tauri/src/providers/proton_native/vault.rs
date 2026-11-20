@@ -187,6 +187,18 @@ pub(crate) mod test_seams {
         }
     }
 
+    static NO_FILE_LOCKS: AtomicBool = AtomicBool::new(false);
+
+    /// Plays a filesystem without file locks for every session key lock, on
+    /// any thread, until called again with `false`.
+    pub(crate) fn set_no_file_locks(none: bool) {
+        NO_FILE_LOCKS.store(none, Ordering::SeqCst);
+    }
+
+    pub(super) fn no_file_locks() -> bool {
+        NO_FILE_LOCKS.load(Ordering::SeqCst)
+    }
+
     /// How many sign-outs on Proton this process has made.
     pub(crate) fn revokes() -> usize {
         REVOKES.load(Ordering::SeqCst)
@@ -241,9 +253,18 @@ async fn lock_key_file(path: &std::path::Path, wait: Duration) -> Result<KeyLeas
     let file = options
         .open(path)
         .map_err(|error| ProviderError::Other(format!("Proton session lock: {error}")))?;
+    let try_lock = || {
+        #[cfg(test)]
+        if test_seams::no_file_locks() {
+            return Err(std::fs::TryLockError::Error(std::io::Error::from(
+                std::io::ErrorKind::Unsupported,
+            )));
+        }
+        file.try_lock()
+    };
     let deadline = std::time::Instant::now() + wait;
     loop {
-        match file.try_lock() {
+        match try_lock() {
             Ok(()) => return Ok(KeyLease(file)),
             Err(std::fs::TryLockError::WouldBlock) if std::time::Instant::now() < deadline => {
                 tokio::time::sleep(Duration::from_millis(50)).await;
@@ -251,6 +272,15 @@ async fn lock_key_file(path: &std::path::Path, wait: Duration) -> Result<KeyLeas
             Err(std::fs::TryLockError::WouldBlock) => {
                 return Err(ProviderError::Other(
                     "The Proton session is being changed elsewhere; try again in a moment".into(),
+                ))
+            }
+            // Without file locks nothing keeps another process off the
+            // session while it changes: refused, with the cause named.
+            Err(std::fs::TryLockError::Error(error))
+                if crate::user_partitions::file_locks_unavailable(&error) =>
+            {
+                return Err(ProviderError::Other(
+                    crate::user_partitions::NO_FILE_LOCKS.into(),
                 ))
             }
             Err(std::fs::TryLockError::Error(error)) => {
@@ -320,6 +350,22 @@ fn private_account(owner: SessionOwner) -> Result<Option<i64>, ProviderError> {
         None => Ok(None),
         Some(user) => crate::user_partitions::private_token_user(Some(user), PARTITION_TYPE)
             .map_err(ProviderError::Other),
+    }
+}
+
+/// Whether a session is saved for `profile_id` of `owner`, seen by its key
+/// and nothing of an account decrypted: the account's row, which a locked
+/// account has too, or else the vault copy when it is one the account reads.
+pub fn holds_saved_session(
+    store: &CredentialStore,
+    owner: SessionOwner,
+    profile_id: &str,
+) -> Result<bool, ProviderError> {
+    let key = session_key(Some(profile_id));
+    match owner.user_id {
+        Some(user) => crate::user_partitions::holds_credential(store, user, &key)
+            .map_err(ProviderError::Other),
+        None => Ok(store.get(&key).is_ok_and(|value| !value.is_empty())),
     }
 }
 

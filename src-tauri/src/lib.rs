@@ -24328,12 +24328,9 @@ async fn end_purged_proton_session(
     profile_id: &str,
 ) -> Result<Option<String>, String> {
     use providers::proton_native::vault;
-    let key = vault::session_key(Some(profile_id));
-    let saved = match user_id {
-        Some(user) => user_partitions::holds_credential(store, user, &key)?,
-        None => store.get(&key).is_ok_and(|value| !value.is_empty()),
-    };
-    if !saved {
+    if !vault::holds_saved_session(store, vault::SessionOwner::for_user(user_id), profile_id)
+        .map_err(|error| error.to_string())?
+    {
         return Ok(None);
     }
     if let Some(user) = user_id {

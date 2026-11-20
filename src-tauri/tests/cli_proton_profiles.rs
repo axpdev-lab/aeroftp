@@ -509,3 +509,53 @@ async fn proton_mode_switch_translates_the_initial_folder_both_ways() {
     assert_eq!(json(&pwd)["resolved_root"], "/");
     assert_eq!(json(&pwd)["start_folder"], "/my-files");
 }
+
+/// Whether a directory named `name` exists anywhere under `dir`.
+#[cfg(feature = "proton-native")]
+fn has_directory(dir: &Path, name: &str) -> bool {
+    std::fs::read_dir(dir).is_ok_and(|entries| {
+        entries.flatten().any(|entry| {
+            let path = entry.path();
+            path.is_dir() && (entry.file_name() == name || has_directory(&path, name))
+        })
+    })
+}
+
+/// The delete of a profile that is not a Proton one takes no Proton session
+/// lock (a filesystem without file locks would refuse that lock, and with it
+/// the delete), while a native Proton profile's delete still goes through the
+/// session's lock to end its session.
+#[cfg(feature = "proton-native")]
+#[test]
+fn a_profile_delete_takes_a_proton_session_lock_only_for_proton() {
+    let root = isolated_cli::root();
+    let root = root.path();
+    let out = cli(
+        root,
+        &[
+            "--json",
+            "profile-add",
+            "--name",
+            "plain",
+            "--protocol",
+            "ftp",
+            "--host",
+            "127.0.0.1",
+        ],
+    );
+    assert_eq!(out.status.code(), Some(0), "{}", describe(&out));
+    let out = cli(root, &["profile-delete", "plain", "--yes"]);
+    assert_eq!(out.status.code(), Some(0), "{}", describe(&out));
+    assert!(
+        !has_directory(root, "proton_session_locks"),
+        "an FTP profile's delete takes no Proton session lock"
+    );
+
+    let (native_id, _) = add_proton(root, "native", Some("native"));
+    let out = cli(root, &["profile-delete", &native_id, "--yes"]);
+    assert_eq!(out.status.code(), Some(0), "{}", describe(&out));
+    assert!(
+        has_directory(root, "proton_session_locks"),
+        "a native Proton profile's delete goes through its session lock"
+    );
+}

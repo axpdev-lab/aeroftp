@@ -2866,22 +2866,33 @@ fn relocate_server_profile_and_credentials(
         resolve_user_dek_scoped(conn, &root_secret, target_user_id, target_passphrase)?;
     let source_key = format!("{PROTON_SESSION_PREFIX}{profile_id}");
     let new_key = format!("{PROTON_SESSION_PREFIX}{new_profile_id}");
-    // A Move holds the source's session from before it looks whether there is
-    // one until it has removed it: a sign-in, a restore or a refresh of the
+    // A Move of a native Proton profile, or of one that holds a session key,
+    // holds the source's session from before it looks whether there is one
+    // until it has removed it: a sign-in, a restore or a refresh of the
     // profile in between waits for the Move, and a lease it cannot take stops
-    // the Move here, before anything changed. Taken outside any session hold,
-    // since a refresh in flight may need the account's session to save.
+    // the Move here, before anything changed. A Proton profile with no session
+    // yet is held too, since a sign-in of it may be open. Any other profile
+    // takes no Proton lock. Taken outside any session hold, since a refresh
+    // in flight may need the account's session to save.
     #[cfg(feature = "proton-native")]
-    let held = remove_from_source
-        .then(|| {
-            use crate::providers::proton_native::vault;
-            vault::hold_session_blocking(
-                vault::SessionOwner::for_user(Some(source_user_id)),
-                profile_id,
-            )
-        })
-        .transpose()
-        .map_err(|error| error.to_string())?;
+    let held = (remove_from_source
+        && moves_a_proton_session(
+            conn,
+            store,
+            root_key,
+            source_user_id,
+            profile_id,
+            &source_key,
+        )?)
+    .then(|| {
+        use crate::providers::proton_native::vault;
+        vault::hold_session_blocking(
+            vault::SessionOwner::for_user(Some(source_user_id)),
+            profile_id,
+        )
+    })
+    .transpose()
+    .map_err(|error| error.to_string())?;
     // The source's session, read as its own readers read it: its row, or the
     // vault copy only for the legacy owner.
     let source_has_session =
@@ -2965,6 +2976,30 @@ fn relocate_server_profile_and_credentials(
         })?;
     }
     Ok(relocation)
+}
+
+/// Whether the Move of `profile_id` out of `source_user_id` may carry a native
+/// Proton session, and so holds it: the profile is a Proton one in the source's
+/// list, read under the profile list lock the Move holds, or the source holds
+/// its session key, seen without decrypting it.
+#[cfg(feature = "proton-native")]
+fn moves_a_proton_session(
+    conn: &Connection,
+    store: &CredentialStore,
+    root_key: &[u8; 32],
+    source_user_id: i64,
+    profile_id: &str,
+    session_key: &str,
+) -> Result<bool, String> {
+    let proton = list_server_profiles_for(conn, root_key, source_user_id)?
+        .iter()
+        .find(|profile| value_str(profile, &["id", "uid", "profileUid"]) == Some(profile_id))
+        .and_then(|profile| value_str(profile, &["protocol"]))
+        .is_some_and(|protocol| protocol.eq_ignore_ascii_case("proton"));
+    Ok(proton
+        || partition_row_exists(conn, source_user_id, session_key)?
+        || (!vault_copy_is_another_accounts(conn, source_user_id, session_key)?
+            && get_optional_secret(store, session_key)?.is_some()))
 }
 
 /// Marks a profile id a Move took out of an account ([`profile_moved_away`]).
