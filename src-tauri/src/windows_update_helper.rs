@@ -909,6 +909,9 @@ del /F /Q "%~f0" & exit /b 0
 
 :finish_failed
 rem Both handoff rejection and swap failure reach this terminal block once.
+{discard_block}del /F /Q {zip} >nul 2>&1
+del /F /Q {sigstore} >nul 2>&1
+rmdir /S /Q {stage} >nul 2>&1
 del /F /Q "%~f0" & exit /b 1
 
 :run_swap
@@ -930,12 +933,8 @@ ping 127.0.0.1 -n 2 >nul
 goto replace_loop
 
 :replace_failed
-rem The old exe never left the launch path: drop the staged copies, the
-rem CLI exes stay at the same version as the app. The download, the stage
-rem and this script go too, as after an update that went through (#176).
-{discard_block}del /F /Q {zip} >nul 2>&1
-del /F /Q {sigstore} >nul 2>&1
-rmdir /S /Q {stage} >nul 2>&1
+rem The old exe never left the launch path: the terminal block drops every
+rem artifact of this attempt, including sidecars, documents and the script.
 goto finish_failed
 
 :replace_done

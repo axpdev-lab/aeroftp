@@ -4877,6 +4877,7 @@ mod tests {
             });
             scope.spawn(|| {
                 for _ in 0..500 {
+                    let _lock = lock_batches(dir.path()).unwrap();
                     let keys = installed_app_keys_with_liveness(dir.path(), exe_key, |_| true)
                         .expect("complete inventory");
                     assert!(keys.contains(&key), "reader observed a partial PID write");
