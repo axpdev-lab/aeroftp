@@ -916,7 +916,7 @@ mod version_class_guards {
             (
                 "drime_cloud.rs",
                 include_str!("drime_cloud.rs"),
-                "list_versions",
+                "drime_versions",
             ),
             ("dropbox.rs", include_str!("dropbox.rs"), "list_versions"),
             ("dropbox.rs", include_str!("dropbox.rs"), "version_metadata"),

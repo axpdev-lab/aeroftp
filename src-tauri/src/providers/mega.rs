@@ -3746,6 +3746,24 @@ mod tests {
         assert!(stand_in_log(&dir, "put.log").is_empty());
     }
 
+    /// A download of a version needs the listing that binds its handle to
+    /// the file: with the listing failing nothing is fetched and the target
+    /// is never written.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_failed_megacmd_version_listing_refuses_the_download() {
+        let (mut provider, dir) = provider_with_stand_in_versions();
+        std::fs::write(dir.path().join("versions-fail"), "").unwrap();
+        let local = tempfile::tempdir().expect("tempdir");
+        let target = local.path().join("old.txt");
+        let outcome = provider
+            .download_version("/v.txt", "H:vAAAAAA2", target.to_str().unwrap())
+            .await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        assert!(stand_in_log(&dir, "get.log").is_empty());
+        assert!(!target.exists());
+    }
+
     /// A version row without a size refuses the listing: skipping it would
     /// make the next, older row pass for the current one. Complete histories
     /// and an empty version are still read.

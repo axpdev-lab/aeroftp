@@ -193,29 +193,65 @@ struct DrimeShareLinkResponse {
     link: Option<DrimeShareLink>,
 }
 
-// ─── File Backup/Version Response ───────────────────────────────────────
+// ─── File Versions Response ─────────────────────────────────────────────
+//
+// `GET /file-versions/{file id}` is what the Drime web app reads for the
+// version history of a file. It is not in docs.drime.cloud: the documented
+// `GET /file-backup` answered 500 to every form of its request on
+// 2026-11-20, on files with versions and without. One answer holds every
+// version kept, without paging: `current` is the file itself, `versions`
+// the contents earlier uploads onto the same entry replaced.
 
 #[derive(Debug, Deserialize)]
-struct DrimeBackupEntry {
+struct DrimeVersionEntry {
     id: Option<serde_json::Value>,
-    name: Option<String>,
+    /// The file the version belongs to.
+    file_id: Option<serde_json::Value>,
     file_size: Option<u64>,
     created_at: Option<String>,
+    editor_name: Option<String>,
+    /// The stored object of the version: a restore makes it the file's own.
+    file_name: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
-struct DrimeBackupPagination {
-    data: Option<Vec<DrimeBackupEntry>>,
-    /// Laravel's page fields: the page answered and the last one.
-    #[serde(default)]
-    current_page: Option<u32>,
-    #[serde(default)]
-    last_page: Option<u32>,
-    /// The other way Laravel states where the listing ends.
-    #[serde(default)]
-    total: Option<u64>,
-    #[serde(default)]
-    per_page: Option<u64>,
+struct DrimeVersionsCurrent {
+    id: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Deserialize)]
+struct DrimeVersionsResponse {
+    versions: Option<Vec<DrimeVersionEntry>>,
+    current: Option<DrimeVersionsCurrent>,
+}
+
+/// The answer of `POST /file-versions/{version id}/revert`: the file, under
+/// its own id, now holding the stored object of the version.
+#[derive(Debug, Deserialize)]
+struct DrimeRevertResponse {
+    #[serde(rename = "fileEntry")]
+    file_entry: Option<DrimeRevertedEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+struct DrimeRevertedEntry {
+    id: Option<serde_json::Value>,
+    file_name: Option<String>,
+}
+
+/// An id Drime answers as a number or as a string, as text.
+fn drime_id(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::Number(n) => n.to_string(),
+        serde_json::Value::String(s) => s.clone(),
+        other => other.to_string(),
+    }
+}
+
+impl DrimeVersionEntry {
+    fn id(&self) -> Option<String> {
+        self.id.as_ref().map(drime_id)
+    }
 }
 
 /// The last page of a folder listing answered `page` with `count` of
@@ -235,29 +271,6 @@ fn drime_last_page(
             "Drime listing came without its last page: the listing may be incomplete".into(),
         )),
     }
-}
-
-impl DrimeBackupPagination {
-    /// The last page of the listing: `last_page`, or `total` over
-    /// `per_page`. An answer that states neither cannot say whether pages
-    /// follow, and a listing cut short would refuse a restore of an older
-    /// version as not listed, so it is an error and not the end.
-    fn last_page(&self, path: &str) -> Result<u64, ProviderError> {
-        match (self.last_page, self.total, self.per_page) {
-            (Some(last), _, _) => Ok(u64::from(last)),
-            (None, Some(total), Some(per_page)) if per_page > 0 => {
-                Ok(total.div_ceil(per_page).max(1))
-            }
-            _ => Err(ProviderError::ParseError(format!(
-                "The versions of {path} came without their last page: the listing may be incomplete"
-            ))),
-        }
-    }
-}
-
-#[derive(Debug, Deserialize)]
-struct DrimeBackupResponse {
-    pagination: Option<DrimeBackupPagination>,
 }
 
 // ─── Storage Response ───────────────────────────────────────────────────
@@ -1153,6 +1166,106 @@ impl DrimeCloudProvider {
         Ok(())
     }
 
+    /// The id of the file `path` names and its versions, as
+    /// `/file-versions/{file id}` lists them: the answer must be that of
+    /// the file (`current`) and every version must be one of it. A failed
+    /// answer is an error naming its status, never an empty list.
+    async fn drime_versions(
+        &mut self,
+        path: &str,
+    ) -> Result<(String, Vec<DrimeVersionEntry>), ProviderError> {
+        let resolved = self.resolve_path(path);
+        let (parent_path, filename) = Self::split_path(&resolved);
+        let parent_id = self.resolve_folder_id(parent_path).await?;
+        let (file_id, _, _) = self
+            .find_file_in_folder(&parent_id, filename)
+            .await?
+            .ok_or_else(|| ProviderError::NotFound(format!("'{}' not found", filename)))?;
+        drime_log(&format!(
+            "Listing versions for {} (id={})",
+            filename, file_id
+        ));
+
+        let url = format!(
+            "{}?workspaceId=0",
+            Self::api_url(&format!("/file-versions/{file_id}"))
+        );
+        let auth = self.auth_header()?;
+        let resp = self
+            .request_with_retry(|| self.client.get(&url).header(AUTHORIZATION, auth.clone()))
+            .await?;
+        // The status and size only: the answer is server text.
+        let status = resp.status();
+        if !status.is_success() {
+            let body = super::version_listing_text(resp).await.unwrap_or_default();
+            return Err(ProviderError::ServerError(format!(
+                "List versions failed ({status}): an answer of {} bytes, not shown",
+                body.len()
+            )));
+        }
+        let body = super::version_listing_text(resp).await?;
+        super::VersionListingBudget::default().count(body.len(), path)?;
+        let answer: DrimeVersionsResponse = serde_json::from_str(&body).map_err(|e| {
+            ProviderError::ServerError(format!(
+                "Parse versions response: {}",
+                super::json_parse_error(&e)
+            ))
+        })?;
+        let current = answer.current.and_then(|c| c.id).map(|id| drime_id(&id));
+        if current.as_deref() != Some(file_id.as_str()) {
+            return Err(ProviderError::ParseError(format!(
+                "The versions Drime answered for {path} are not those of its file (id {file_id})"
+            )));
+        }
+        let versions = answer.versions.ok_or_else(|| {
+            ProviderError::ParseError(format!("The versions of {path} came without their list"))
+        })?;
+        if versions
+            .iter()
+            .any(|v| v.file_id.as_ref().map(drime_id).as_deref() != Some(file_id.as_str()))
+        {
+            return Err(ProviderError::ParseError(format!(
+                "The versions Drime answered for {path} hold a version of another file"
+            )));
+        }
+        Ok((file_id, versions))
+    }
+
+    /// The file as it is now, then the versions Drime keeps, newest first.
+    fn version_rows(entries: Vec<DrimeVersionEntry>, file: &RemoteEntry) -> Vec<FileVersion> {
+        let versions = entries
+            .into_iter()
+            .filter_map(|entry| {
+                Some(FileVersion {
+                    id: entry.id()?,
+                    modified: entry.created_at.as_deref().and_then(Self::parse_date),
+                    size: entry.file_size.unwrap_or(0),
+                    modified_by: entry.editor_name,
+                    deleted: false,
+                })
+            })
+            .collect();
+        super::versions_after_the_file(versions, file)
+    }
+
+    /// The listed version `version_id` names. Ids change at every revert,
+    /// so an id from an older listing is refused here, never sent.
+    fn listed_version<'a>(
+        entries: &'a [DrimeVersionEntry],
+        path: &str,
+        version_id: &str,
+    ) -> Result<&'a DrimeVersionEntry, ProviderError> {
+        entries
+            .iter()
+            .find(|v| v.id().as_deref() == Some(version_id))
+            .ok_or_else(|| {
+                ProviderError::NotFound(format!(
+                    "Version {version_id} is not among the versions {path} lists now: list its \
+                     versions again"
+                ))
+            })
+    }
+
     /// Execute a request with exponential backoff on 429 (rate limit)
     async fn request_with_retry(
         &self,
@@ -1601,33 +1714,15 @@ impl StorageProvider for DrimeCloudProvider {
             filename, file_size, parent_id
         ));
 
-        // Delete existing file before overwrite: the one of this exact
-        // name, never one of another letter case, and never a folder: a
-        // folder of that name went to the trash with everything in it.
-        let existing = match self.find_exact_in_folder(&parent_id, filename).await? {
-            Some((_, true, _)) => {
-                return Err(ProviderError::InvalidPath(format!(
-                    "{resolved} is a folder: an upload replaces a file, never a folder"
-                )))
-            }
-            Some((id, false, _)) => Some(id),
-            None => None,
-        };
-        if let Some(existing_id) = existing {
-            drime_log(&format!(
-                "File {} exists (id={}), deleting before overwrite",
-                filename, existing_id
-            ));
-            let del_body =
-                serde_json::json!({ "entryIds": [existing_id.parse::<i64>().unwrap_or(0)] });
-            let _ = self
-                .client
-                .post(Self::api_url("/file-entries/delete"))
-                .header(AUTHORIZATION, self.auth_header()?)
-                .header(CONTENT_TYPE, "application/json")
-                .body(del_body.to_string())
-                .send()
-                .await;
+        // An upload onto an existing file goes onto that entry, as the web
+        // app's "replace": Drime keeps the contents it held as a version,
+        // and until the new contents are complete the file keeps the old
+        // ones (a failed upload changes nothing). Only the name of this
+        // exact spelling is the file replaced, and never a folder.
+        if let Some((_, true, _)) = self.find_exact_in_folder(&parent_id, filename).await? {
+            return Err(ProviderError::InvalidPath(format!(
+                "{resolved} is a folder: an upload replaces a file, never a folder"
+            )));
         }
 
         if let Some(ref cb) = on_progress {
@@ -2422,98 +2517,160 @@ impl StorageProvider for DrimeCloudProvider {
         true
     }
 
+    fn supports_version_delete(&self) -> bool {
+        true
+    }
+
     async fn list_versions(&mut self, path: &str) -> Result<Vec<FileVersion>, ProviderError> {
-        let resolved = self.resolve_path(path);
-        let (parent_path, filename) = Self::split_path(&resolved);
-        let parent_id = self.resolve_folder_id(parent_path).await?;
-
-        let (file_id, _, _) = self
-            .find_file_in_folder(&parent_id, filename)
-            .await?
-            .ok_or_else(|| ProviderError::NotFound(format!("'{}' not found", filename)))?;
-
-        drime_log(&format!(
-            "Listing versions for {} (id={})",
-            filename, file_id
-        ));
-
-        // `/file-backup` lists the backups a change replaced, 50 a page:
-        // every page is read (within the shared limits), and the file as it
-        // is now becomes row 0, so no backup is labelled Current.
+        let (_, entries) = self.drime_versions(path).await?;
         let file = self.stat(path).await?;
-        let mut budget = super::VersionListingBudget::default();
-        let mut entries = Vec::new();
-        for page in 1.. {
-            if page as usize > super::VERSION_LISTING_MAX_PAGES {
-                return Err(super::version_listing_too_long(path));
-            }
-            let url = format!(
-                "{}?file_id={}&perPage=50&page={page}",
-                Self::api_url("/file-backup"),
-                file_id
-            );
-            let auth = self.auth_header()?;
-            let resp = self
-                .request_with_retry(|| self.client.get(&url).header(AUTHORIZATION, auth.clone()))
-                .await?;
+        Ok(Self::version_rows(entries, &file))
+    }
 
-            // The status and size only: the answer is server text.
-            let status = resp.status();
-            if !status.is_success() {
-                let body = super::version_listing_text(resp).await.unwrap_or_default();
-                return Err(ProviderError::ServerError(format!(
-                    "List versions failed ({status}): an answer of {} bytes, not shown",
-                    body.len()
-                )));
-            }
-
-            let body = super::version_listing_text(resp).await?;
-            budget.count(body.len(), path)?;
-            let backup_resp: DrimeBackupResponse = serde_json::from_str(&body).map_err(|e| {
-                ProviderError::ServerError(format!(
-                    "Parse backup response: {}",
-                    super::json_parse_error(&e)
-                ))
-            })?;
-            let Some(pagination) = backup_resp.pagination else {
-                return Err(ProviderError::ParseError(format!(
-                    "The versions of {path} came without their pagination: the listing may be incomplete"
-                )));
-            };
-            if pagination
-                .current_page
-                .is_some_and(|answered| answered != page)
-            {
-                return Err(ProviderError::ParseError(format!(
-                    "The versions of {path} answered another page than page {page}"
-                )));
-            }
-            let last = pagination.last_page(path)?;
-            entries.extend(pagination.data.unwrap_or_default());
-            if u64::from(page) >= last {
-                break;
-            }
+    async fn download_version(
+        &mut self,
+        path: &str,
+        version_id: &str,
+        local_path: &str,
+    ) -> Result<(), ProviderError> {
+        if version_id == super::CURRENT_VERSION_ID {
+            return self.download(path, local_path, None).await;
         }
+        let (_, entries) = self.drime_versions(path).await?;
+        let entry = Self::listed_version(&entries, path, version_id)?;
+        let selected = entry.id().unwrap_or_default();
+        // The route the web app opens for a previous version.
+        let resp = self
+            .client
+            .get(Self::api_url(&format!(
+                "/file-versions/{selected}/download"
+            )))
+            .header(AUTHORIZATION, self.auth_header()?)
+            .send()
+            .await
+            .map_http_err(|e| ProviderError::NetworkError(e.without_url().to_string()))?;
+        if !resp.status().is_success() {
+            return Err(ProviderError::TransferFailed(format!(
+                "Version download failed: {}",
+                resp.status()
+            )));
+        }
+        // Drime answers a download it does not serve with an empty archive
+        // and a success status (`/file-entries/download/{hash}` of a version,
+        // 2026-11-20): only a body of the size the listing gives the version
+        // is taken as it, and anything else writes nothing.
+        let listed = entry.file_size;
+        if listed.is_none() || resp.content_length() != listed {
+            return Err(ProviderError::TransferFailed(format!(
+                "Drime answered {} bytes for version {version_id} of {path}, which holds {}: \
+                 nothing was written",
+                resp.content_length()
+                    .map_or_else(|| "an unknown number of".to_string(), |n| n.to_string()),
+                listed.map_or_else(|| "an unknown size".to_string(), |n| format!("{n} bytes"))
+            )));
+        }
+        super::save_version_body(resp, local_path, "Download version failed").await
+    }
 
-        let versions = entries
-            .into_iter()
-            .filter_map(|entry| {
-                let id = entry.id.as_ref().map(|v| match v {
-                    serde_json::Value::Number(n) => n.to_string(),
-                    serde_json::Value::String(s) => s.clone(),
-                    other => other.to_string(),
-                })?;
-                Some(FileVersion {
-                    id,
-                    modified: entry.created_at.as_deref().and_then(Self::parse_date),
-                    size: entry.file_size.unwrap_or(0),
-                    modified_by: entry.name,
-                    deleted: false,
-                })
-            })
-            .collect();
+    /// Drime reverts a version onto the file's own entry: the file keeps its
+    /// id, takes the stored object of the version, and the contents it held
+    /// become a new version, under a new id. The restore is confirmed only
+    /// when the answer names the file and that stored object.
+    async fn restore_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
+        if version_id == super::CURRENT_VERSION_ID {
+            return Err(ProviderError::NotSupported(
+                "This is already the current version".into(),
+            ));
+        }
+        let listed = self
+            .drime_versions(path)
+            .await
+            .map_err(|e| super::restore_needs_its_listing(path, e))?;
+        let file = self
+            .stat(path)
+            .await
+            .map_err(|e| super::restore_needs_its_listing(path, e))?;
+        let (file_id, entries) = listed;
+        let stored = Self::listed_version(&entries, path, version_id)?
+            .file_name
+            .clone();
+        let rows = Self::version_rows(entries, &file);
+        let preflight = super::restore_preflight(&rows, path, version_id)?;
+        let selected = preflight.selected.id.clone();
 
-        Ok(super::versions_after_the_file(versions, &file))
+        let what = format!("the restore of version {selected} of {path}");
+        let resp = self
+            .client
+            .post(Self::api_url(&format!("/file-versions/{selected}/revert")))
+            .header(AUTHORIZATION, self.auth_header()?)
+            .send()
+            .await
+            .map_err(|e| super::change_send_error(e, &what))?;
+        if !resp.status().is_success() {
+            return Err(ProviderError::Other(format!(
+                "Restore version failed: {}",
+                resp.status()
+            )));
+        }
+        // An answer that cannot be read leaves the revert accepted but not
+        // bound: the check below then reports it unconfirmed.
+        let reverted = super::version_listing_text(resp)
+            .await
+            .ok()
+            .and_then(|body| serde_json::from_str::<DrimeRevertResponse>(&body).ok())
+            .and_then(|answer| answer.file_entry);
+        let bound = reverted.is_some_and(|entry| {
+            entry.id.as_ref().map(drime_id).as_deref() == Some(file_id.as_str())
+                && stored.is_some()
+                && entry.file_name == stored
+        });
+        let preflight = if bound {
+            preflight.bound_by_the_caller()
+        } else {
+            preflight
+        };
+        super::confirm_version_restored(self, path, Some(&preflight)).await
+    }
+
+    async fn delete_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
+        if version_id == super::CURRENT_VERSION_ID {
+            return Err(ProviderError::NotSupported(
+                "The current version is the file itself: delete the file instead".into(),
+            ));
+        }
+        let (_, entries) = self.drime_versions(path).await?;
+        let selected = Self::listed_version(&entries, path, version_id)?
+            .id()
+            .unwrap_or_default();
+        let what = format!("the deletion of version {selected} of {path}");
+        let resp = self
+            .client
+            .delete(Self::api_url(&format!("/file-versions/{selected}")))
+            .header(AUTHORIZATION, self.auth_header()?)
+            .send()
+            .await
+            .map_err(|e| super::change_send_error(e, &what))?;
+        if !resp.status().is_success() {
+            return Err(ProviderError::Other(format!(
+                "Delete version failed: {}",
+                resp.status()
+            )));
+        }
+        let (_, after) = self.drime_versions(path).await.map_err(|e| {
+            super::applied_unconfirmed(format!(
+                "Drime accepted {what}, but the versions could not be listed again ({e}): list \
+                 them again"
+            ))
+        })?;
+        if after
+            .iter()
+            .any(|v| v.id().as_deref() == Some(selected.as_str()))
+        {
+            return Err(ProviderError::ServerError(format!(
+                "Drime answered {what}, but still lists the version: list its versions again"
+            )));
+        }
+        Ok(())
     }
 
     fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
@@ -2932,7 +3089,8 @@ mod tests {
         /// GET requests the Drime double served on this test's thread.
         static DOUBLE_LISTINGS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
         /// The double's backups answer `total` and `per_page`, not `last_page`.
-        static BACKUPS_BY_TOTAL: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+        static REVERT_NAMES_ANOTHER_OBJECT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+        static DELETE_KEEPS_THE_VERSION: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     }
     #[tokio::test]
     async fn probe_contract_drime_root_is_not_a_missing_child() {
@@ -3259,9 +3417,30 @@ mod tests {
         ));
         let changes: Arc<Mutex<Vec<String>>> = Arc::default();
         let (items, seen) = (Arc::clone(&store), Arc::clone(&changes));
+        // The versions Drime keeps of file 7 (id, file, size, created, stored
+        // object), newest first, and the size of a file a revert changed.
+        type Kept = Vec<(u64, u64, u64, String, String)>;
+        let kept: Arc<Mutex<Kept>> = Arc::new(Mutex::new(vec![
+            (
+                5,
+                7,
+                3,
+                "2026-01-02T00:00:00.000000Z".into(),
+                "obj-5".into(),
+            ),
+            (
+                4,
+                7,
+                2,
+                "2026-01-01T00:00:00.000000Z".into(),
+                "obj-4".into(),
+            ),
+        ]));
+        let sizes: Arc<Mutex<std::collections::HashMap<u64, u64>>> = Arc::default();
         let app =
             axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
                 let (items, seen) = (Arc::clone(&items), Arc::clone(&seen));
+                let (kept, sizes) = (Arc::clone(&kept), Arc::clone(&sizes));
                 async move {
                     let method = req.method().as_str().to_string();
                     let path = req.uri().path().to_string();
@@ -3273,27 +3452,92 @@ mod tests {
                     let mut items = items.lock().unwrap();
                     let ok =
                         || axum::Json(serde_json::json!({ "status": "success" })).into_response();
-                    // The backups of a file, two pages of one each, newest first.
-                    if method == "GET" && path.ends_with("/file-backup") {
-                        let page = if query.contains("page=2") { 2 } else { 1 };
-                        let backup = if page == 1 {
-                            serde_json::json!({ "id": 5, "file_size": 3,
-                                "created_at": "2026-01-02T00:00:00.000000Z" })
-                        } else {
-                            serde_json::json!({ "id": 4, "file_size": 2,
-                                "created_at": "2026-01-01T00:00:00.000000Z" })
-                        };
-                        // The shape without `last_page`: `total` and
-                        // `per_page` say how many pages there are.
-                        let pagination = if BACKUPS_BY_TOTAL.with(|by_total| by_total.get()) {
-                            serde_json::json!({ "data": [backup], "current_page": page,
-                                "total": 2, "per_page": 1 })
-                        } else {
-                            serde_json::json!({ "data": [backup], "current_page": page,
-                                "last_page": 2 })
-                        };
-                        return axum::Json(serde_json::json!({ "pagination": pagination }))
+                    // The versions of a file, in the shape of the live
+                    // answer (2026-11-20): the listing only with the
+                    // `workspaceId` the web app sends, file 8 failing as
+                    // the documented `/file-backup` did, a revert that moves
+                    // the current contents into a new version, a delete.
+                    if let Some(rest) = path.strip_prefix("/file-versions/") {
+                        let mut kept = kept.lock().unwrap();
+                        let mut sizes = sizes.lock().unwrap();
+                        if let Some(id) = rest.strip_suffix("/download") {
+                            // Version 5 answers as Drime answers a download
+                            // it does not serve: an empty archive, 200.
+                            let id: u64 = id.parse().unwrap();
+                            if id == 5 {
+                                return b"PK\x05\x06\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"
+                                    .to_vec()
+                                    .into_response();
+                            }
+                            let Some(v) = kept.iter().find(|v| v.0 == id) else {
+                                return axum::http::StatusCode::NOT_FOUND.into_response();
+                            };
+                            return "v".repeat(v.2 as usize).into_response();
+                        }
+                        if method == "GET" {
+                            if !query.split('&').any(|pair| pair == "workspaceId=0") {
+                                return axum::http::StatusCode::UNPROCESSABLE_ENTITY
+                                    .into_response();
+                            }
+                            let file: u64 = rest.parse().unwrap_or(0);
+                            if file == 8 {
+                                return (
+                                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                                    r#"{"message": "Server Error"}"#,
+                                )
+                                    .into_response();
+                            }
+                            let versions: Vec<serde_json::Value> = kept
+                                .iter()
+                                .filter(|v| v.1 == file)
+                                .map(|(id, file, size, created, object)| {
+                                    serde_json::json!({ "id": id, "file_id": file,
+                                        "file_size": size, "created_at": created,
+                                        "file_name": object, "hash": format!("aGFzaC{id}"),
+                                        "editor_name": null })
+                                })
+                                .collect();
+                            return axum::Json(serde_json::json!({ "versions": versions,
+                                "current": { "id": file }, "status": "success" }))
                             .into_response();
+                        }
+                        if let Some(id) = rest.strip_suffix("/revert") {
+                            let id: u64 = id.parse().unwrap();
+                            let Some(at) = kept.iter().position(|v| v.0 == id) else {
+                                return axum::http::StatusCode::NOT_FOUND.into_response();
+                            };
+                            let (id, file, size, _, object) = kept.remove(at);
+                            let held = sizes.get(&file).copied().unwrap_or(0);
+                            kept.insert(
+                                0,
+                                (
+                                    id + 100,
+                                    file,
+                                    held,
+                                    "2026-01-03T00:00:00.000000Z".into(),
+                                    format!("obj-{}", id + 100),
+                                ),
+                            );
+                            sizes.insert(file, size);
+                            seen.lock().unwrap().push(format!("revert {id}"));
+                            let answered = if REVERT_NAMES_ANOTHER_OBJECT.with(|f| f.get()) {
+                                "obj-other".to_string()
+                            } else {
+                                object
+                            };
+                            return axum::Json(serde_json::json!({ "fileEntry": { "id": file,
+                                "file_name": answered, "file_size": size },
+                                "status": "success" }))
+                            .into_response();
+                        }
+                        if method == "DELETE" {
+                            let id: u64 = rest.parse().unwrap();
+                            seen.lock().unwrap().push(format!("delete version {id}"));
+                            if !DELETE_KEEPS_THE_VERSION.with(|f| f.get()) {
+                                kept.retain(|v| v.0 != id);
+                            }
+                            return ok();
+                        }
                     }
                     if method == "GET" {
                         DOUBLE_LISTINGS.with(|n| n.set(n.get() + 1));
@@ -3305,7 +3549,12 @@ mod tests {
                             .iter()
                             .filter(|(_, _, p, _)| p == parent)
                             .map(|(id, name, _, kind)| {
-                                serde_json::json!({ "id": id, "name": name, "type": kind })
+                                let mut row =
+                                    serde_json::json!({ "id": id, "name": name, "type": kind });
+                                if let Some(size) = sizes.lock().unwrap().get(id) {
+                                    row["file_size"] = (*size).into();
+                                }
+                                row
                             })
                             .collect();
                         return axum::Json(serde_json::json!({ "data": data, "last_page": 1 }))
@@ -3404,9 +3653,17 @@ mod tests {
                             };
                             let name = part("filename=\"", "\"");
                             let parent = part("name=\"parentId\"\r\n\r\n", "\r\n");
-                            let id = items.iter().map(|e| e.0).max().unwrap_or(0) + 1;
+                            if name.starts_with("fail") {
+                                return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, "{}")
+                                    .into_response();
+                            }
                             seen.lock().unwrap().push(format!("upload {name} {parent}"));
-                            items.push((id, name, parent, "file".to_string()));
+                            // Onto a file of that name the upload goes onto
+                            // its entry, as Drime's replace does.
+                            if !items.iter().any(|e| e.1 == name && e.2 == parent) {
+                                let id = items.iter().map(|e| e.0).max().unwrap_or(0) + 1;
+                                items.push((id, name, parent, "file".to_string()));
+                            }
                             ok()
                         }
                         // A folder create refused as Laravel does in an
@@ -3952,33 +4209,171 @@ mod tests {
         }
     }
 
-    /// With `A.txt` listed before `a.txt`, `stat /d/a.txt` took the first
-    /// match ignoring the case and answered `A.txt`. The name as spelled
-    /// comes first.
-    /// Drime's backups are the versions a change replaced: the file as it
-    /// is now is row 0, then the backups of every page, newest first.
+    /// Drime's versions are the contents uploads onto the file replaced: the
+    /// file as it is now is row 0, then every version kept, newest first,
+    /// read in one answer of `/file-versions/{file id}`.
     #[tokio::test]
-    async fn drime_versions_list_the_file_first_and_every_backup_page() {
+    async fn drime_versions_list_the_file_first_and_every_version() {
         let (mut provider, _, _) = provider_on_drime_entries(&[(7, "a.txt", "", "file")]).await;
         let versions = provider.list_versions("/a.txt").await.expect("versions");
         let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
         assert_eq!(ids, [super::super::CURRENT_VERSION_ID, "5", "4"]);
+        assert_eq!(versions[1].size, 3);
     }
 
-    /// A backups answer without `last_page` is paged by `total` over
-    /// `per_page`: the second page is asked for and its backup listed,
-    /// where a missing `last_page` ended the listing at the first page.
+    /// A versions listing the server fails is an error that says so, never
+    /// an empty list of versions.
     #[tokio::test]
-    async fn drime_backups_without_last_page_are_paged_by_their_total() {
-        let (mut provider, _, _) = provider_on_drime_entries(&[(7, "a.txt", "", "file")]).await;
-        BACKUPS_BY_TOTAL.with(|by_total| by_total.set(true));
-        let versions = provider.list_versions("/a.txt").await;
-        BACKUPS_BY_TOTAL.with(|by_total| by_total.set(false));
-        let versions = versions.expect("versions");
-        let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
-        assert_eq!(ids, [super::super::CURRENT_VERSION_ID, "5", "4"]);
+    async fn a_failed_version_listing_is_an_error_not_an_empty_list() {
+        let (mut provider, _, _) = provider_on_drime_entries(&[(8, "b.txt", "", "file")]).await;
+        let outcome = provider.list_versions("/b.txt").await;
+        assert!(
+            matches!(&outcome, Err(ProviderError::ServerError(message)) if message.contains("500")),
+            "{outcome:?}"
+        );
     }
 
+    /// The revert answer names the file and the stored object of the
+    /// version: the restore is confirmed.
+    #[tokio::test]
+    async fn a_revert_onto_the_stored_object_of_the_version_is_confirmed() {
+        let (mut provider, _, changes) =
+            provider_on_drime_entries(&[(7, "a.txt", "", "file")]).await;
+        provider
+            .restore_version("/a.txt", "5")
+            .await
+            .expect("restored");
+        assert_eq!(*changes.lock().unwrap(), ["revert 5"]);
+    }
+
+    /// An answer naming another stored object proves no restore of the
+    /// version: it was sent, and it is not confirmed.
+    #[tokio::test]
+    async fn a_revert_answer_naming_another_object_is_not_confirmed() {
+        let (mut provider, _, _) = provider_on_drime_entries(&[(7, "a.txt", "", "file")]).await;
+        REVERT_NAMES_ANOTHER_OBJECT.with(|f| f.set(true));
+        let outcome = provider.restore_version("/a.txt", "5").await;
+        REVERT_NAMES_ANOTHER_OBJECT.with(|f| f.set(false));
+        let error = outcome.expect_err("not confirmed");
+        assert!(super::super::was_applied(&error), "{error:?}");
+    }
+
+    /// A revert gives the versions new ids: an id from the listing before
+    /// it is refused, never sent again.
+    #[tokio::test]
+    async fn a_version_id_from_before_a_revert_is_never_sent() {
+        let (mut provider, _, changes) =
+            provider_on_drime_entries(&[(7, "a.txt", "", "file")]).await;
+        provider
+            .restore_version("/a.txt", "5")
+            .await
+            .expect("restored");
+        let again = provider.restore_version("/a.txt", "5").await;
+        assert!(
+            matches!(again, Err(ProviderError::NotFound(_))),
+            "{again:?}"
+        );
+        assert_eq!(*changes.lock().unwrap(), ["revert 5"]);
+    }
+
+    /// A deleted version is gone from the listing read after the delete;
+    /// one still listed is an error, not a deletion.
+    #[tokio::test]
+    async fn a_deleted_version_is_gone_from_the_listing() {
+        let (mut provider, _, changes) =
+            provider_on_drime_entries(&[(7, "a.txt", "", "file")]).await;
+        provider
+            .delete_version("/a.txt", "4")
+            .await
+            .expect("deleted");
+        let versions = provider.list_versions("/a.txt").await.expect("versions");
+        let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
+        assert_eq!(ids, [super::super::CURRENT_VERSION_ID, "5"]);
+        DELETE_KEEPS_THE_VERSION.with(|f| f.set(true));
+        let kept = provider.delete_version("/a.txt", "5").await;
+        DELETE_KEEPS_THE_VERSION.with(|f| f.set(false));
+        assert!(
+            matches!(kept, Err(ProviderError::ServerError(_))),
+            "{kept:?}"
+        );
+        assert_eq!(
+            *changes.lock().unwrap(),
+            ["delete version 4", "delete version 5"]
+        );
+    }
+
+    /// A version is downloaded by the route the web app opens for it,
+    /// `/file-versions/{version id}/download`.
+    #[tokio::test]
+    async fn a_version_is_downloaded_by_its_own_route() {
+        let (mut provider, _, _) = provider_on_drime_entries(&[(7, "a.txt", "", "file")]).await;
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("v.txt");
+        provider
+            .download_version("/a.txt", "4", out.to_str().unwrap())
+            .await
+            .expect("downloaded");
+        assert_eq!(std::fs::read_to_string(&out).unwrap(), "vv");
+    }
+
+    /// Drime answers a download it does not serve with an empty archive
+    /// (22 bytes, live 2026-11-20), not an error: a body that is not the
+    /// listed size writes nothing.
+    #[tokio::test]
+    async fn a_version_body_of_another_size_writes_nothing() {
+        let (mut provider, _, _) = provider_on_drime_entries(&[(7, "a.txt", "", "file")]).await;
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("v.txt");
+        let outcome = provider
+            .download_version("/a.txt", "5", out.to_str().unwrap())
+            .await;
+        assert!(
+            matches!(&outcome, Err(ProviderError::TransferFailed(m)) if m.contains("nothing was written")),
+            "{outcome:?}"
+        );
+        assert!(!out.exists());
+    }
+
+    /// An upload onto a file goes onto its entry, as Drime's replace: no
+    /// delete comes first, so the old contents become a version and a
+    /// failed upload leaves the file as it was.
+    #[tokio::test]
+    async fn an_upload_onto_a_file_goes_onto_its_entry_without_a_delete() {
+        let (mut provider, items, changes) =
+            provider_on_drime_entries(&[(1, "d", "", "folder"), (10, "x.txt", "1", "file")]).await;
+        let file = local_file();
+        provider
+            .upload(file.path().to_str().unwrap(), "/d/x.txt", None)
+            .await
+            .expect("uploaded");
+        assert_eq!(*changes.lock().unwrap(), ["upload x.txt 1"]);
+        let named: Vec<u64> = items
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|e| e.1 == "x.txt")
+            .map(|e| e.0)
+            .collect();
+        assert_eq!(named, [10]);
+    }
+
+    #[tokio::test]
+    async fn a_failed_upload_onto_a_file_keeps_it() {
+        let (mut provider, items, changes) =
+            provider_on_drime_entries(&[(1, "d", "", "folder"), (10, "failx.txt", "1", "file")])
+                .await;
+        let file = local_file();
+        let outcome = provider
+            .upload(file.path().to_str().unwrap(), "/d/failx.txt", None)
+            .await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        assert!(changes.lock().unwrap().is_empty());
+        assert!(items.lock().unwrap().iter().any(|e| e.0 == 10));
+    }
+
+    /// With `A.txt` listed before `a.txt`, `stat /d/a.txt` took the first
+    /// match ignoring the case and answered `A.txt`. The name as spelled
+    /// comes first.
     #[tokio::test]
     async fn stat_answers_the_name_as_spelled_first() {
         let (mut provider, _, _) = provider_on_drime_entries(&[
@@ -4559,9 +4954,7 @@ mod tests {
         server.abort();
     }
 
-    /// A page with no `last_page` ends a listing only when it is short; a
-    /// version answer with neither `last_page` nor `total`/`per_page`, or
-    /// with no pagination at all, is an incomplete listing, not its end.
+    /// A page with no `last_page` ends a listing only when it is short.
     #[test]
     fn a_listing_without_its_last_page_is_not_read_as_complete() {
         assert_eq!(drime_last_page(Some(3), 1, 100, 100).unwrap(), 3);
@@ -4570,33 +4963,5 @@ mod tests {
             drime_last_page(None, 1, 100, 100),
             Err(ProviderError::ParseError(_))
         ));
-        let pagination =
-            |json: &str| -> DrimeBackupPagination { serde_json::from_str(json).unwrap() };
-        assert_eq!(pagination(r#"{"last_page":2}"#).last_page("/a").unwrap(), 2);
-        assert_eq!(
-            pagination(r#"{"total":101,"per_page":50}"#)
-                .last_page("/a")
-                .unwrap(),
-            3
-        );
-        assert_eq!(
-            pagination(r#"{"total":0,"per_page":50}"#)
-                .last_page("/a")
-                .unwrap(),
-            1
-        );
-        for json in [
-            r#"{"data":[]}"#,
-            r#"{"total":5}"#,
-            r#"{"total":5,"per_page":0}"#,
-        ] {
-            assert!(
-                matches!(
-                    pagination(json).last_page("/a"),
-                    Err(ProviderError::ParseError(_))
-                ),
-                "{json}"
-            );
-        }
     }
 }
