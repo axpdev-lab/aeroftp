@@ -3814,67 +3814,232 @@ fn chain_deletion_key(
     Ok(format!("chain_deleted:{tag}"))
 }
 
-/// The deletions of a refresh chain's key, by any process: how many began,
-/// and how many completed. A rotation filed before the last completed one
-/// is not handed out again, and none is handed out while one is in progress
-/// (`load_refresh_chain` in providers/jottacloud.rs).
+/// The deletions of a refresh chain's key, by any process: how many
+/// completed, and how many are running now. A rotation filed before the last
+/// completed one is not handed out again, and none is handed out while one
+/// runs (`load_refresh_chain` in providers/jottacloud.rs).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct ChainDeletions {
-    pub(crate) began: u64,
-    pub(crate) completed: u64,
+    /// Moved by every deletion that completed, and by every one its process
+    /// left unfinished: either may have removed the key.
+    pub(crate) generation: u64,
+    /// The deletions running now, each in a live process.
+    pub(crate) in_progress: usize,
 }
 
 impl ChainDeletions {
     /// No deletion in progress.
     pub(crate) fn settled(&self) -> bool {
-        self.began == self.completed
+        self.in_progress == 0
     }
 }
 
-fn read_chain_deletions(conn: &Connection, key: &str) -> Result<ChainDeletions, String> {
-    let value: Option<String> = conn
-        .query_row(
-            "SELECT value FROM global_state WHERE key = ?1",
-            params![key],
-            |row| row.get(0),
-        )
-        .optional()
-        .map_err(|e| format!("Read chain deletions: {e}"))?;
-    let Some(value) = value else {
-        return Ok(ChainDeletions {
-            began: 0,
-            completed: 0,
-        });
+/// How long a deletion recorded by a process this one cannot look at (on
+/// another machine sharing the data folder, in another pid namespace, or on
+/// a system whose processes cannot be read) counts as running. A deletion
+/// takes milliseconds; this only bounds how long one left behind blocks.
+const CHAIN_DELETION_LEASE_MS: i64 = 10 * 60 * 1000;
+
+/// What the `global_state` row of one key's deletions holds.
+#[derive(Default, Serialize, Deserialize)]
+struct DeletionRecord {
+    generation: u64,
+    #[serde(default)]
+    running: Vec<RunningDeletion>,
+}
+
+/// One deletion in progress, and the process that runs it.
+#[derive(Serialize, Deserialize)]
+struct RunningDeletion {
+    id: String,
+    /// The process, by a token drawn when it started.
+    process: String,
+    /// Where `pid` and `start` can be looked up: the boot and the pid
+    /// namespace on Linux, hashed. `None` where processes are not read.
+    space: Option<String>,
+    pid: u32,
+    /// When the process started, in clock ticks since boot.
+    start: Option<u64>,
+    /// When the deletion began (`now_ms`), for the lease.
+    at: i64,
+}
+
+/// A deletion this process began: running until it is ended, or dropped.
+/// One dropped without its end recorded is over as far as this process
+/// knows, and the next read of its key's deletions here counts it as
+/// completed.
+#[derive(Debug)]
+pub(crate) struct ChainDeletion {
+    id: String,
+}
+
+impl Drop for ChainDeletion {
+    fn drop(&mut self) {
+        deletions_running_here().remove(&self.id);
+    }
+}
+
+fn deletions_running_here() -> MutexGuard<'static, HashSet<String>> {
+    static RUNNING: std::sync::LazyLock<Mutex<HashSet<String>>> =
+        std::sync::LazyLock::new(Default::default);
+    RUNNING.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// This process as a deletion records it.
+struct DeletingProcess {
+    token: String,
+    space: Option<String>,
+    pid: u32,
+    start: Option<u64>,
+}
+
+fn this_process() -> &'static DeletingProcess {
+    static THIS: std::sync::LazyLock<DeletingProcess> = std::sync::LazyLock::new(|| {
+        let pid = std::process::id();
+        DeletingProcess {
+            token: hex::encode(crate::crypto::random_bytes(16)),
+            space: pid_space(),
+            pid,
+            start: process_start(pid).ok().flatten(),
+        }
+    });
+    &THIS
+}
+
+/// The boot and pid namespace this process's pids belong to, hashed: a pid
+/// recorded in another one names some other process here.
+#[cfg(target_os = "linux")]
+fn pid_space() -> Option<String> {
+    let boot = std::fs::read_to_string("/proc/sys/kernel/random/boot_id").ok()?;
+    let namespace = std::fs::read_link("/proc/self/ns/pid").ok()?;
+    let mut hash = Sha256::new();
+    hash.update(boot.trim().as_bytes());
+    hash.update(b"|");
+    hash.update(namespace.to_string_lossy().as_bytes());
+    Some(hex::encode(&hash.finalize()[..16]))
+}
+
+#[cfg(not(target_os = "linux"))]
+fn pid_space() -> Option<String> {
+    None
+}
+
+/// When process `pid` started, in clock ticks since boot: `Ok(None)` when
+/// there is no such process, or only its zombie; `Err` when that cannot be
+/// read. Measured on Linux 7.0 (2026-11-20): about 10 microseconds for a
+/// live process, 2 for a gone one, and the same value at every read.
+#[cfg(target_os = "linux")]
+fn process_start(pid: u32) -> Result<Option<u64>, ()> {
+    let stat = match std::fs::read_to_string(format!("/proc/{pid}/stat")) {
+        Ok(stat) => stat,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(_) => return Err(()),
     };
-    let parsed = value
-        .split_once(':')
-        .and_then(|(b, c)| Some((b.parse().ok()?, c.parse().ok()?)));
-    match parsed {
-        Some((began, completed)) => Ok(ChainDeletions { began, completed }),
-        None => Err("Read chain deletions: unreadable value".to_string()),
+    // `comm` may hold spaces and parentheses: the fields follow the last ')'.
+    let fields: Vec<&str> = stat
+        .get(stat.rfind(')').ok_or(())? + 1..)
+        .ok_or(())?
+        .split_whitespace()
+        .collect();
+    // Field 3 (the state) is at index 0, field 22 (the start time) at 19.
+    if matches!(fields.first(), Some(&"Z") | Some(&"X")) {
+        return Ok(None);
+    }
+    fields
+        .get(19)
+        .and_then(|start| start.parse().ok())
+        .map(Some)
+        .ok_or(())
+}
+
+#[cfg(not(target_os = "linux"))]
+fn process_start(_pid: u32) -> Result<Option<u64>, ()> {
+    Err(())
+}
+
+/// Whether `deletion` will never end: this process's own when it no longer
+/// runs here; one of a process on this machine when that process is gone
+/// (its pid is free, a zombie, or another process's); any other once its
+/// lease ran out.
+fn deletion_left_over(deletion: &RunningDeletion, now: i64) -> bool {
+    let this = this_process();
+    if deletion.process == this.token {
+        return !deletions_running_here().contains(&deletion.id);
+    }
+    if let (Some(space), Some(start)) = (&deletion.space, deletion.start) {
+        if this.space.as_ref() == Some(space) {
+            match process_start(deletion.pid) {
+                Ok(None) => return true,
+                Ok(Some(now_start)) => return now_start != start,
+                Err(()) => {}
+            }
+        }
+    }
+    now.saturating_sub(deletion.at) > CHAIN_DELETION_LEASE_MS
+}
+
+impl DeletionRecord {
+    fn read(conn: &Connection, key: &str) -> Result<Self, String> {
+        let value: Option<String> = conn
+            .query_row(
+                "SELECT value FROM global_state WHERE key = ?1",
+                params![key],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| format!("Read chain deletions: {e}"))?;
+        match value {
+            None => Ok(Self::default()),
+            Some(value) => serde_json::from_str(&value)
+                .map_err(|_| "Read chain deletions: unreadable value".to_string()),
+        }
+    }
+
+    fn view(&self) -> ChainDeletions {
+        ChainDeletions {
+            generation: self.generation,
+            in_progress: self.running.len(),
+        }
+    }
+
+    /// Count every deletion left over as completed: it may have removed the
+    /// key, so a rotation filed before it is not handed out again, and it
+    /// never ends, so the key is not held for ever. Whether any was.
+    fn settle(&mut self, now: i64) -> bool {
+        let before = self.running.len();
+        self.running
+            .retain(|deletion| !deletion_left_over(deletion, now));
+        let settled = (before - self.running.len()) as u64;
+        self.generation += settled;
+        settled > 0
     }
 }
 
-fn write_chain_deletions(
+/// Settle the deletions of `key` and apply `update`, in one IMMEDIATE
+/// transaction.
+fn update_chain_deletions(
     conn: &Connection,
     key: &str,
-    update: impl FnOnce(ChainDeletions) -> ChainDeletions,
+    update: impl FnOnce(&mut DeletionRecord),
 ) -> Result<ChainDeletions, String> {
     let tx = rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
         .map_err(|e| format!("Begin chain deletion: {e}"))?;
-    let next = update(read_chain_deletions(&tx, key)?);
-    upsert_global_state(
-        &tx,
-        key,
-        &format!("{}:{}", next.began, next.completed),
-        now_ms(),
-    )?;
+    let mut record = DeletionRecord::read(&tx, key)?;
+    record.settle(now_ms());
+    update(&mut record);
+    let value = serde_json::to_string(&record).map_err(|e| format!("Chain deletions: {e}"))?;
+    upsert_global_state(&tx, key, &value, now_ms())?;
     tx.commit()
         .map_err(|e| format!("Commit chain deletion: {e}"))?;
-    Ok(next)
+    Ok(record.view())
 }
 
-/// Write the raw deletion count of `account` for `owner` (test only).
+/// Every end of a chain deletion fails (test only).
+#[cfg(test)]
+pub(crate) static CHAIN_DELETION_END_REFUSED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// Write the raw deletion record of `account` for `owner` (test only).
 #[cfg(test)]
 pub(crate) fn set_chain_deletions_raw(
     store: &CredentialStore,
@@ -3895,7 +4060,8 @@ pub(crate) fn set_chain_deletions_raw(
     tx.commit().map_err(|e| e.to_string())
 }
 
-/// The deletions of `account` for `owner` ([`ChainDeletions`]).
+/// The deletions of `account` for `owner` ([`ChainDeletions`]); those left
+/// over are settled first.
 pub(crate) fn chain_deletions(
     store: &CredentialStore,
     owner: Option<i64>,
@@ -3903,51 +4069,87 @@ pub(crate) fn chain_deletions(
 ) -> Result<ChainDeletions, String> {
     init_or_migrate_cli(store)?;
     let conn = open_or_init_cli()?;
-    read_chain_deletions(&conn, &chain_deletion_key(store, owner, account)?)
+    let key = chain_deletion_key(store, owner, account)?;
+    let record = DeletionRecord::read(&conn, &key)?;
+    let now = now_ms();
+    if !record
+        .running
+        .iter()
+        .any(|deletion| deletion_left_over(deletion, now))
+    {
+        return Ok(record.view());
+    }
+    update_chain_deletions(&conn, &key, |_| {})
 }
 
-/// Count a deletion of `account` for `owner` as begun, before anything is
-/// deleted; gives its number, for [`end_chain_deletion`].
+/// Record a deletion of `account` for `owner` as running, before anything
+/// is deleted; [`end_chain_deletion`] ends it.
 pub(crate) fn begin_chain_deletion(
     store: &CredentialStore,
     owner: Option<i64>,
     account: &str,
-) -> Result<u64, String> {
+) -> Result<ChainDeletion, String> {
     init_or_migrate_cli(store)?;
     let conn = open_or_init_cli()?;
     let key = chain_deletion_key(store, owner, account)?;
-    write_chain_deletions(&conn, &key, |d| ChainDeletions {
-        began: d.began + 1,
-        completed: d.completed,
-    })
-    .map(|d| d.began)
+    let this = this_process();
+    let deletion = ChainDeletion {
+        id: hex::encode(crate::crypto::random_bytes(16)),
+    };
+    // Running here before it is recorded: no reader of this process takes
+    // it for one left over.
+    deletions_running_here().insert(deletion.id.clone());
+    update_chain_deletions(&conn, &key, |record| {
+        record.running.push(RunningDeletion {
+            id: deletion.id.clone(),
+            process: this.token.clone(),
+            space: this.space.clone(),
+            pid: this.pid,
+            start: this.start,
+            at: now_ms(),
+        })
+    })?;
+    Ok(deletion)
 }
 
-/// End deletion `number` of `account` for `owner`: completed when `done`,
-/// else taken back (while no later one began), so a delete that failed
-/// leaves a rotation kept for the key as usable as before it.
+/// End `deletion` of `account` for `owner`: completed when `done`, else
+/// taken back, so a delete that failed leaves a rotation kept for the key as
+/// usable as before it. One a reader already settled as left over counts as
+/// completed either way. Tried three times; one whose end is never recorded
+/// is settled as completed by the next read of the key in this process.
 pub(crate) fn end_chain_deletion(
     store: &CredentialStore,
     owner: Option<i64>,
     account: &str,
-    number: u64,
+    deletion: ChainDeletion,
     done: bool,
 ) -> Result<(), String> {
-    init_or_migrate_cli(store)?;
-    let conn = open_or_init_cli()?;
-    let key = chain_deletion_key(store, owner, account)?;
-    write_chain_deletions(&conn, &key, |d| match done {
-        true => ChainDeletions {
-            began: d.began,
-            completed: d.completed.max(number),
-        },
-        false if d.began == number && d.completed < number => ChainDeletions {
-            began: number - 1,
-            completed: d.completed,
-        },
-        false => d,
-    })
-    .map(|_| ())
+    let end = || -> Result<(), String> {
+        #[cfg(test)]
+        if CHAIN_DELETION_END_REFUSED.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err("End chain deletion: refused (test)".to_string());
+        }
+        init_or_migrate_cli(store)?;
+        let conn = open_or_init_cli()?;
+        let key = chain_deletion_key(store, owner, account)?;
+        update_chain_deletions(&conn, &key, |record| {
+            let before = record.running.len();
+            record.running.retain(|running| running.id != deletion.id);
+            if done || record.running.len() == before {
+                record.generation += 1;
+            }
+        })
+        .map(|_| ())
+    };
+    let mut result = end();
+    for attempt in 1..3 {
+        if result.is_ok() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50 * attempt));
+        result = end();
+    }
+    result
 }
 
 /// Guard an implicit GUI account during a global/memory token update. Resolve
@@ -9623,6 +9825,115 @@ mod tests {
     use super::*;
     use rusqlite::params;
     use serde_json::json;
+
+    /// A running deletion is settled as completed once it can never end
+    /// (its process gone, its pid another process's, its lease run out on a
+    /// machine this one cannot look at, or this process's own that no longer
+    /// runs here), and only then: a live process of this machine holds its
+    /// key however long it takes.
+    #[test]
+    fn a_deletion_is_settled_only_once_it_can_never_end() {
+        let this = this_process();
+        let now = now_ms();
+        let stale = now - CHAIN_DELETION_LEASE_MS - 1;
+        let running = |process: &str, space: Option<String>, pid: u32, start: Option<u64>, at| {
+            RunningDeletion {
+                id: hex::encode(crate::crypto::random_bytes(8)),
+                process: process.to_string(),
+                space,
+                pid,
+                start,
+                at,
+            }
+        };
+        let elsewhere = Some("another machine".to_string());
+        let mut cases = vec![
+            (
+                "another machine, just begun",
+                running("other", elsewhere.clone(), 1, Some(1), now),
+                false,
+            ),
+            (
+                "another machine, its lease run out",
+                running("other", elsewhere, 1, Some(1), stale),
+                true,
+            ),
+            (
+                "no pid space, just begun",
+                running("other", None, 1, None, now),
+                false,
+            ),
+            (
+                "no pid space, its lease run out",
+                running("other", None, 1, None, stale),
+                true,
+            ),
+        ];
+        #[cfg(target_os = "linux")]
+        {
+            let init = process_start(1)
+                .expect("pid 1 is readable")
+                .expect("pid 1 runs");
+            let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+                .arg("--list")
+                .stdout(std::process::Stdio::null())
+                .spawn()
+                .unwrap();
+            let gone = child.id();
+            child.wait().unwrap();
+            let here = this.space.clone();
+            assert!(here.is_some(), "the pid space of this process is read");
+            cases.extend([
+                (
+                    "a live process here, past any lease",
+                    running("other", here.clone(), 1, Some(init), stale),
+                    false,
+                ),
+                (
+                    "its pid now another process's",
+                    running("other", here.clone(), 1, Some(init + 1), now),
+                    true,
+                ),
+                (
+                    "a process here that is gone",
+                    running("other", here, gone, Some(init), now),
+                    true,
+                ),
+            ]);
+        }
+        let ours = ChainDeletion {
+            id: hex::encode(crate::crypto::random_bytes(8)),
+        };
+        deletions_running_here().insert(ours.id.clone());
+        let mut own = running(&this.token, this.space.clone(), this.pid, this.start, stale);
+        own.id = ours.id.clone();
+        cases.extend([
+            ("this process's, running here", own, false),
+            (
+                "this process's, no longer running",
+                running(&this.token, this.space.clone(), this.pid, this.start, now),
+                true,
+            ),
+        ]);
+        let left_over = cases.iter().filter(|(_, _, left)| *left).count();
+        for (case, deletion, left) in &cases {
+            assert_eq!(deletion_left_over(deletion, now), *left, "{case}");
+        }
+        let mut record = DeletionRecord {
+            generation: 3,
+            running: cases.into_iter().map(|(_, deletion, _)| deletion).collect(),
+        };
+        let kept = record.running.len() - left_over;
+        assert!(record.settle(now));
+        assert_eq!(
+            record.view(),
+            ChainDeletions {
+                generation: 3 + left_over as u64,
+                in_progress: kept,
+            }
+        );
+        drop(ours);
+    }
 
     /// A partition call made under the session its thread holds reads the
     /// session from the hold: the lock is not reentrant, and taking it again

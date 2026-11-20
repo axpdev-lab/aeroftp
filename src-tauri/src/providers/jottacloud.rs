@@ -258,25 +258,29 @@ pub(crate) fn delete_refresh_chain<E: From<String>>(
     // Before anything is deleted: an owner that cannot be read records nothing.
     let key = (chain_owner(user).map_err(E::from)?, account.to_string());
     let mut deleted = DELETED_CHAINS.lock().unwrap_or_else(|e| e.into_inner());
-    // Counted where every process reads it ([`crate::user_partitions::ChainDeletions`]):
-    // begun before anything is deleted, so no process hands out a rotation
+    // Recorded where every process reads it ([`crate::user_partitions::ChainDeletions`]):
+    // running before anything is deleted, so no process hands out a rotation
     // kept for this key while the delete runs; completed once it succeeded,
     // so the rotation is dropped there when it is next read; taken back when
     // it failed, so the rotation, the key's only live chain, stays usable. A
-    // count that cannot be begun deletes nothing.
-    let number =
+    // deletion that cannot be recorded deletes nothing.
+    let deletion =
         crate::user_partitions::begin_chain_deletion(store, key.0, account).map_err(E::from)?;
     let deleted_now = delete();
     if let Err(e) = crate::user_partitions::end_chain_deletion(
         store,
         key.0,
         account,
-        number,
+        deletion,
         deleted_now.is_ok(),
     ) {
-        // Left in progress: every process withholds that key's rotation
-        // until a later deletion of it completes.
-        jotta_log(&format!("Deletion of {} not settled: {}", account, e));
+        // Over all the same: the next read of the key's deletions in this
+        // process counts it as completed, and so does any other process
+        // once this one is gone.
+        jotta_log(&format!(
+            "Deletion of {} not recorded as ended: {}",
+            account, e
+        ));
     }
     deleted_now?;
 
@@ -709,7 +713,7 @@ impl JottacloudProvider {
             let began = generations.get(account)?;
             let store = crate::credential_store::CredentialStore::from_cache()?;
             let now = crate::user_partitions::chain_deletions(&store, owner, account).ok()?;
-            Some(now.settled() && now.completed == *began)
+            Some(now.settled() && now.generation == *began)
         };
         let source_unchanged = self
             .refresh_source_account
@@ -1103,7 +1107,7 @@ impl JottacloudProvider {
                 .and_then(|v| v[PENDING_GEN].as_u64());
             let now = crate::user_partitions::chain_deletions(&store, owner, account);
             match (filed, now) {
-                (Some(filed), Ok(now)) if now.completed != filed => {
+                (Some(filed), Ok(now)) if now.generation != filed => {
                     let mut kept = PENDING_ROTATIONS.lock().unwrap_or_else(|e| e.into_inner());
                     let key = (owner, account.to_string());
                     if kept.get(&key).is_some_and(|p| p.as_str() == json.as_str()) {
@@ -1179,7 +1183,7 @@ impl JottacloudProvider {
         for account in Self::refresh_chain_candidates(&self.profile_id) {
             match crate::user_partitions::chain_deletions(&store, owner, &account) {
                 Ok(count) => {
-                    generations.insert(account, count.completed);
+                    generations.insert(account, count.generation);
                 }
                 Err(e) => jotta_log(&format!("Deletions of {} not read: {}", account, e)),
             }
@@ -4200,6 +4204,10 @@ fn token_exchange_refusal(body: &str) -> ProviderError {
 }
 
 #[cfg(test)]
+#[path = "jottacloud_chain_tests.rs"]
+mod chain_tests;
+
+#[cfg(test)]
 mod tests {
     /// #1506 row 164: the OAuth `error` code decides a spent login token,
     /// whatever language or wording the description is in.
@@ -5208,7 +5216,7 @@ mod tests {
         let gone = "jottacloud_refresh_gone";
         let count = partitions::chain_deletions(&store, owner, gone)
             .expect("count")
-            .completed;
+            .generation;
         let mut kept: serde_json::Value = serde_json::from_str(&chain("pending-gone")).unwrap();
         kept[PENDING_GEN] = count.into();
         PENDING_ROTATIONS.lock().unwrap().insert(
@@ -5334,7 +5342,7 @@ mod tests {
         let unread_withheld =
             JottacloudProvider::load_refresh_chain(Some(first), Some(owner), unread);
         let unread_kept = pending_of(unread).is_some();
-        partitions::set_chain_deletions_raw(&store, owner, unread, "0:0").unwrap();
+        partitions::set_chain_deletions_raw(&store, owner, unread, r#"{"generation":0}"#).unwrap();
         let unread_loaded =
             JottacloudProvider::load_refresh_chain(Some(first), Some(owner), unread)
                 .map(|((rt, _, _), _)| rt);
@@ -5353,10 +5361,11 @@ mod tests {
             (owner, busy_delete.to_string()),
             zeroize::Zeroizing::new(stamped(&chain("pending-busydelete"))),
         );
-        partitions::set_chain_deletions_raw(&store, owner, busy_delete, "1:0").unwrap();
+        let running = partitions::begin_chain_deletion(&store, owner, busy_delete).unwrap();
         let in_progress_withheld =
             JottacloudProvider::load_refresh_chain(Some(first), Some(owner), busy_delete);
         let in_progress_kept = pending_of(busy_delete).is_some();
+        partitions::end_chain_deletion(&store, owner, busy_delete, running, false).unwrap();
 
         // A delete that fails leaves the count settled and the rotation usable.
         let failing = "jottacloud_refresh_failing";
@@ -5489,8 +5498,8 @@ mod tests {
         assert_eq!(
             counted,
             partitions::ChainDeletions {
-                began: count + 2,
-                completed: count + 2
+                generation: count + 2,
+                in_progress: 0
             }
         );
         assert!(both && vault_first);
@@ -5529,8 +5538,8 @@ mod tests {
         assert_eq!(
             handle_count,
             partitions::ChainDeletions {
-                began: 1,
-                completed: 1
+                generation: 1,
+                in_progress: 0
             }
         );
     }
