@@ -2574,7 +2574,8 @@
             "restore": "Restaurar esta versión",
             "none": "Non hai versións dispoñibles",
             "purge": "Eliminar permanentemente esta versión",
-            "purgeConfirm": "Eliminar permanentemente esta versión? Esta acción non se pode desfacer."
+            "purgeConfirm": "Eliminar permanentemente esta versión? Esta acción non se pode desfacer.",
+            "restoreUnconfirmed": "A restauración enviouse, pero o servidor non pode confirmar que versión é agora a actual. Revisa as versións antes de restaurar de novo."
         },
         "sharing": {
             "title": "Compartir",

@@ -2574,7 +2574,8 @@
             "restore": "Pulihkan versi ini",
             "none": "Tiada versi tersedia",
             "purge": "Padam versi ini secara kekal",
-            "purgeConfirm": "Padam versi ini secara kekal? Tindakan ini tidak boleh dibuat asal."
+            "purgeConfirm": "Padam versi ini secara kekal? Tindakan ini tidak boleh dibuat asal.",
+            "restoreUnconfirmed": "Pemulihan telah dihantar, tetapi pelayan tidak dapat mengesahkan versi mana yang kini semasa. Semak versi sebelum memulihkan semula."
         },
         "sharing": {
             "title": "Perkongsian",

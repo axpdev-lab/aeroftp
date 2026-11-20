@@ -1044,6 +1044,18 @@ struct FolderResolution {
     alias_derived: bool,
 }
 
+/// What a connection learned that the next connect of the same account to
+/// the same team takes back: the team folders trashed since, and whether the
+/// team had team folders. Kept apart from the connection, so an operation
+/// never acts on it, and kept across connects that fail.
+#[derive(Debug)]
+struct RetiredConnection {
+    account_id: String,
+    team_id: String,
+    trashed_team_folders: Vec<(String, String)>,
+    had_team_folders: bool,
+}
+
 /// Zoho WorkDrive Storage Provider
 pub struct ZohoWorkdriveProvider {
     config: ZohoWorkdriveConfig,
@@ -1100,6 +1112,10 @@ pub struct ZohoWorkdriveProvider {
     team_folders_team: Option<String>,
     /// Team folders removed from the live root whose trash can still be scanned.
     trashed_team_folders: Vec<(String, String)>,
+    /// The last connection that ended (a disconnect, or the start of a
+    /// connect), until a connect finds an account and team: see
+    /// [`RetiredConnection`].
+    retired_connection: Option<RetiredConnection>,
     /// Server profile identifier owning these OAuth tokens. Empty when the
     /// caller has not bound a profile (legacy singleton key path). Issue #214.
     profile_id: String,
@@ -1184,6 +1200,7 @@ impl ZohoWorkdriveProvider {
             team_folders_discovery_open: false,
             team_folders_team: None,
             trashed_team_folders: Vec::new(),
+            retired_connection: None,
             profile_id: String::new(),
             retry: HttpRetryConfig::default(),
             pace: if cfg!(test) {
@@ -2338,6 +2355,21 @@ impl ZohoWorkdriveProvider {
     /// Forget what a connection learned: the account, the root, the team,
     /// the private space and the team folders. Not connected until a
     /// connect succeeds.
+    /// End the connection: what it learned of its team goes to
+    /// [`Self::retired_connection`], unless it found no account and team
+    /// (a connect that failed), which keeps the one retired before it.
+    fn retire_connection(&mut self) {
+        if let (Some(account_id), Some(team_id)) = (self.account_id.clone(), self.team_id.clone()) {
+            self.retired_connection = Some(RetiredConnection {
+                account_id,
+                team_id,
+                trashed_team_folders: std::mem::take(&mut self.trashed_team_folders),
+                had_team_folders: !self.team_folders.is_empty() || self.team_folders_unknown(),
+            });
+        }
+        self.forget_connection();
+    }
+
     fn forget_connection(&mut self) {
         self.connected = false;
         self.account_email = None;
@@ -3839,26 +3871,24 @@ impl StorageProvider for ZohoWorkdriveProvider {
         // root or team kept from before is not this connection's. The team
         // folders trashed since (the live listing no longer names them, only
         // the trash listing scans them) come back once the same account and
-        // team are found again, never after a failed connect or another team.
-        // Team folders known before also keep a discovery that both listings
-        // refuse unread: the refusals do not make them an empty team.
-        let retired = (
-            self.account_id.clone(),
-            self.team_id.clone(),
-            std::mem::take(&mut self.trashed_team_folders),
-            !self.team_folders.is_empty() || self.team_folders_unknown(),
-        );
-        self.forget_connection();
+        // team are found again, never for another team, and a failed connect
+        // (or a disconnect) keeps them retired for the next one. Team folders
+        // known before also keep a discovery that both listings refuse
+        // unread: the refusals do not make them an empty team.
+        self.retire_connection();
         // Discover team and privatespace
-        self.discover_team().await?;
-        if let (Some(account), Some(team), trashed, had_team_folders) = retired {
-            if self.account_id.as_deref() == Some(account.as_str())
-                && self.team_id.as_deref() == Some(team.as_str())
+        if let Err(e) = self.discover_team().await {
+            self.forget_connection();
+            return Err(e);
+        }
+        if let Some(retired) = self.retired_connection.take() {
+            if self.account_id.as_deref() == Some(retired.account_id.as_str())
+                && self.team_id.as_deref() == Some(retired.team_id.as_str())
             {
-                if had_team_folders && self.team_folders_source.is_none() {
+                if retired.had_team_folders && self.team_folders_source.is_none() {
                     self.team_folders_unread = true;
                 }
-                for entry in trashed {
+                for entry in retired.trashed_team_folders {
                     let known = |(id, _): &(String, String)| id == &entry.0;
                     if !self.team_folders.iter().any(known)
                         && !self.trashed_team_folders.iter().any(known)
@@ -3880,7 +3910,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
     }
 
     async fn disconnect(&mut self) -> Result<(), ProviderError> {
-        self.forget_connection();
+        self.retire_connection();
         info!("Disconnected from Zoho WorkDrive");
         Ok(())
     }
@@ -9090,6 +9120,82 @@ mod tests {
                     "the private Docs/f.txt was trashed"
                 );
             }
+            server.abort();
+        }
+    }
+
+    /// A connection that knew the team folder `Docs` ends in a failed
+    /// reconnect (the private space lookup is rate limited) or in a
+    /// disconnect; the next connect finds the same account and team, and
+    /// both listings refuse (403). The team folders known before are not
+    /// read as an empty team: `/Docs` stays unresolved and the private
+    /// `Docs/f.txt` is not trashed. The failed connect leaves the provider
+    /// not connected all the same.
+    #[tokio::test]
+    async fn a_failed_reconnect_or_a_disconnect_keeps_known_team_folders_unread() {
+        for ends_by_failing in [true, false] {
+            let lookups = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+            let seen = lookups.clone();
+            let (mut p, requests, server) = listing_fixture(move |id, _query, _| match id {
+                "me" => (
+                    200,
+                    vec![],
+                    r#"{"data":{"id":"U1","attributes":{}}}"#.to_string(),
+                ),
+                "" => (
+                    200,
+                    vec![],
+                    r#"{"data":[{"id":"TEAM","attributes":{"name":"Team"}}]}"#.to_string(),
+                ),
+                "TEAM" => (403, vec![], String::new()),
+                "U1" if ends_by_failing
+                    && seen.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 0 =>
+                {
+                    (429, vec![], String::new())
+                }
+                "U1" => (200, vec![], r#"{"data":[{"id":"ROOT"}]}"#.to_string()),
+                "ROOT" => (
+                    200,
+                    vec![],
+                    listing_json(&[("P1", "Docs", true)], Some((false, None))),
+                ),
+                "P1" => (
+                    200,
+                    vec![],
+                    listing_json(&[("F1", "f.txt", false)], Some((false, None))),
+                ),
+                _ => (200, vec![], listing_json(&[], Some((false, None)))),
+            })
+            .await;
+            p.connected = true;
+            p.account_id = Some("U1".into());
+            p.team_id = Some("TEAM".into());
+            p.keep_team_folders(
+                TeamFolderSource::TeamFolders,
+                vec![("T1".into(), "Docs".into())],
+            );
+            if ends_by_failing {
+                let failed = p.connect().await;
+                assert!(failed.is_err(), "{failed:?}");
+                assert!(!p.is_connected());
+                assert!(p.team_folders.is_empty());
+                let root = p.list("/").await;
+                assert!(matches!(root, Err(ProviderError::NotConnected)), "{root:?}");
+            } else {
+                p.disconnect().await.expect("disconnect");
+            }
+            p.connect().await.expect("reconnect");
+            assert!(p.team_folders_unknown(), "{ends_by_failing}");
+            let deleted = p.delete("/Docs/f.txt").await;
+            assert!(deleted.is_err(), "{ends_by_failing}: {deleted:?}");
+            assert!(
+                !requests
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .any(|(id, _)| id.starts_with("PATCH")),
+                "{ends_by_failing}: the private Docs/f.txt was trashed"
+            );
             server.abort();
         }
     }

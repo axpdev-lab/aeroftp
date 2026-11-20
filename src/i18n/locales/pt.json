@@ -2574,7 +2574,8 @@
             "restore": "Restaurar esta versão",
             "none": "Nenhuma versão disponível",
             "purge": "Excluir permanentemente esta versão",
-            "purgeConfirm": "Excluir permanentemente esta versão? Esta ação não pode ser desfeita."
+            "purgeConfirm": "Excluir permanentemente esta versão? Esta ação não pode ser desfeita.",
+            "restoreUnconfirmed": "A restauração foi enviada, mas o servidor não consegue confirmar qual versão é agora a atual. Verifique as versões antes de restaurar novamente."
         },
         "sharing": {
             "title": "Compartilhamento",

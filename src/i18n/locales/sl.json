@@ -2574,7 +2574,8 @@
             "restore": "Obnovi to različico",
             "none": "Ni razpoložljivih različic",
             "purge": "Trajno izbriši to različico",
-            "purgeConfirm": "Trajno izbrisati to različico? Tega dejanja ni mogoče razveljaviti."
+            "purgeConfirm": "Trajno izbrisati to različico? Tega dejanja ni mogoče razveljaviti.",
+            "restoreUnconfirmed": "Obnovitev je bila poslana, vendar strežnik ne more potrditi, katera različica je zdaj trenutna. Preverite različice, preden znova obnovite."
         },
         "sharing": {
             "title": "Deljenje",

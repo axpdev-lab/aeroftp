@@ -3784,7 +3784,11 @@ mod tests {
         assert_eq!(rows, ["F1:3.0", "F1:2.0", "F1:1.0"]);
         let outcome = provider.restore_version("/f.txt", "F1:1.0").await;
         server.abort();
-        assert!(outcome.is_ok(), "{outcome:?}");
+        // Restored, and not confirmed: Graph answers 204 and lists no hash.
+        assert!(
+            matches!(&outcome, Err(e) if crate::providers::was_applied(e) && e.to_string().contains("could not be confirmed")),
+            "{outcome:?}"
+        );
         assert!(
             seen.lock()
                 .unwrap()

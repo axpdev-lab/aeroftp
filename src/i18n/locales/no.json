@@ -2574,7 +2574,8 @@
             "restore": "Gjenopprett denne versjonen",
             "none": "Ingen versjoner tilgjengelig",
             "purge": "Slett denne versjonen permanent",
-            "purgeConfirm": "Slette denne versjonen permanent? Denne handlingen kan ikke angres."
+            "purgeConfirm": "Slette denne versjonen permanent? Denne handlingen kan ikke angres.",
+            "restoreUnconfirmed": "Gjenopprettingen ble sendt, men serveren kan ikke bekrefte hvilken versjon som nå er gjeldende. Sjekk versjonene før du gjenoppretter på nytt."
         },
         "sharing": {
             "title": "Deling",

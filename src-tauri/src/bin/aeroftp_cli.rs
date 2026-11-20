@@ -41719,9 +41719,16 @@ async fn cmd_versions_restore(
             0
         }
         Err(e) => {
+            // A restore the server took and AeroFTP could not confirm is no
+            // failure to send again: said as sent, not confirmed.
+            let what = if e.to_string().contains("Applied, not confirmed:") {
+                "versions restore sent, not confirmed"
+            } else {
+                "versions restore failed"
+            };
             print_error(
                 format,
-                &format!("versions restore failed: {}", e),
+                &format!("{what}: {e}"),
                 provider_error_to_exit_code(&e),
             );
             provider_error_to_exit_code(&e)

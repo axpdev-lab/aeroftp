@@ -18,35 +18,24 @@
 # `mega-ls -l --versions --show-handles /v.txt` lists v.txt and its chain of
 # three, the current one first, each with its handle, as MEGAcmd 2.6.0 lists
 # it (measured 2026-11-17); `/w.txt` has a current version older in time than
-# the one below it (a restore keeps the old time), `/x.txt` two versions of
-# one time, and `/y.txt` gains a new current version after its first listing
-# (a file put at the path by another client). Every
-# mega-get source is appended to get.log, its local target to
-# get-targets.log, and every mega-put target to put.log (its size to
-# put-size-<name>: /v.txt and /w.txt then list a new current version,
-# H:vAAAAAA4 or H:wAAAAAA4, of that size; /v.txt lists H:vAAAAAA5 (21 bytes)
-# below it when a file put-raced says another client put the file just
-# before); a file put-stdout-fails makes mega-put print its failure on stdout
-# and exit 1 with nothing put, put-same-bytes makes it put nothing and exit 0
-# (MEGA's answer to the current version's own bytes, measured 2026-11-18),
-# and with put-then-foreign another client then writes /v.txt (H:vAAAAAA5 on
-# top) after either; with a file versioning-off a put to /v.txt leaves
-# its new version listed; a file get-writes-then-fails makes mega-get write
-# 500 bytes and then refuse; get-short makes it write 3 bytes and exit 0;
-# get-stdout-fails makes it print its failure on stdout and exit 1. A version
-# handle is fetched filled with its last character and a path with its
-# current contents (what the last put wrote, or another client's write), so a
-# restore can be checked by its bytes; put-ignored makes mega-put exit 0 with
-# nothing changed, put-try-again fails on stdout with MEGAcmd's transient
-# text (every attempt logged), and get-partial-try-again makes the first
-# mega-get leave 500 bytes and fail so. mega-get never writes over a file at
-# its target: it writes a " (1)" sibling, as MEGAcmd does. With versioning-off the
-# listing after a put is the one file row MEGAcmd prints for a single version. `mega-thumbnail /photo.jpg <out>` writes the first bytes of a JPEG
-# to <out>; for `/plain.txt`, a file with no thumbnail, it writes nothing and
-# exits 9 with MEGAcmd's "Not found", as measured the same day. With
-# foreign-after-check another client writes /v.txt once the version a put
-# added was read back, and with head-get-prefix-of-1 a read of the head
-# H:vAAAAAA3 stops after 8 bytes equal to H:vAAAAAA1.
+# the one below it, `/x.txt` two versions of one time, `/z.txt` an empty past
+# version and `/docs` a folder with a versions part per child. A file
+# versions-fail makes the /v.txt listing fail after its rows. Every mega-get
+# source is appended to get.log and its local target to get-targets.log, and
+# every mega-put target to put.log. A version handle is fetched filled with
+# its last character, at the size its listing line says, and a path with the
+# contents of its current version. A file put-fails makes mega-put refuse,
+# put-stdout-fails makes it print its failure on stdout and exit 1 with
+# nothing put, put-slow and put-stalls pace or stop its progress. A file
+# get-fails makes mega-get refuse, get-writes-then-fails makes it write 500
+# bytes and then refuse, get-stdout-fails makes it print its failure on
+# stdout and exit 1, get-always-try-again and get-partial-try-again (once)
+# leave 500 bytes and fail with MEGAcmd's transient text, and z-get-three
+# makes the empty version arrive as 3 bytes. mega-get never writes over a
+# file at its target: it writes a " (1)" sibling, as MEGAcmd does.
+# `mega-thumbnail /photo.jpg <out>` writes the first bytes of a JPEG to
+# <out>; for `/plain.txt`, a file with no thumbnail, it writes nothing and
+# exits 9 with MEGAcmd's "Not found", as measured the same day.
 here=$(dirname "$0")
 case "$(basename "$0")" in
     mega-ls)
@@ -79,31 +68,10 @@ case "$(basename "$0")" in
             exit 0
         fi
         if [ "$1" = "-l" ] && [ "$2" = "--versions" ] && [ "$3" = "--show-handles" ] && [ "$4" = "/v.txt" ]; then
-            if [ -f "$here/ls-broken" ]; then
-                echo "Server busy" >&2
-                exit 1
-            fi
             echo 'FLAGS VERS      SIZE            DATE          HANDLE NAME'
-            if [ -f "$here/put-size-v.txt" ] && [ -f "$here/versioning-off" ]; then
-                # Versioning turned off: the upload replaced the file, which
-                # has one version, and MEGAcmd prints no "Versions of" part.
-                echo "----    1 $(cat "$here/put-size-v.txt") 16Nov2026 15:54:00 H:vAAAAAA4 v.txt"
-                exit 0
-            fi
             echo '----    3           13 16Nov2026 15:53:00 H:vAAAAAA3 v.txt'
             echo ''
             echo 'Versions of v.txt:'
-            if [ -f "$here/foreign-on-top" ]; then
-                echo "----    6 $(cat "$here/put-size-v.txt") 16Nov2026 15:55:00 H:vAAAAAA6 v.txt#1794840900"
-            fi
-            if [ -f "$here/put-size-v.txt" ]; then
-                echo "----    5 $(cat "$here/put-size-v.txt") 16Nov2026 15:54:00 H:vAAAAAA4 v.txt#1794840840"
-            fi
-            # Another client's version: put just before ours (put-raced, shown
-            # once ours is there) or just after a put that failed.
-            if { [ -f "$here/put-raced" ] && [ -f "$here/put-size-v.txt" ]; } || [ -f "$here/foreign-v.txt" ]; then
-                echo "----    4 $(cat "$here/foreign-size" 2>/dev/null || echo 21) 16Nov2026 15:53:30 H:vAAAAAA5 v.txt#1794840810"
-            fi
             echo '----    3           13 16Nov2026 15:53:00 H:vAAAAAA3 v.txt#1794840780'
             echo '----    2           12 16Nov2026 15:52:57 H:vAAAAAA2 v.txt#1794840777'
             echo '----    1            8 16Nov2026 15:52:55 H:vAAAAAA1 v.txt#1794840775'
@@ -113,9 +81,6 @@ case "$(basename "$0")" in
         fi
         if [ "$1" = "-l" ] && [ "$2" = "--versions" ] && [ "$3" = "--show-handles" ] && [ "$4" = "/w.txt" ]; then
             echo 'Versions of w.txt:'
-            if [ -f "$here/put-size-w.txt" ]; then
-                echo "----    4 $(cat "$here/put-size-w.txt") 16Nov2026 15:54:00 H:wAAAAAA4 w.txt#1794840840"
-            fi
             echo '----    3            8 16Nov2026 15:51:40 H:wAAAAAA3 w.txt#1794840700'
             echo '----    2           13 16Nov2026 15:53:10 H:wAAAAAA2 w.txt#1794840790'
             echo '----    1            8 16Nov2026 15:53:00 H:wAAAAAA1 w.txt#1794840780'
@@ -126,16 +91,6 @@ case "$(basename "$0")" in
             echo '----    3           13 16Nov2026 15:53:10 H:xAAAAAA3 x.txt#1794840790'
             echo '----    2           12 16Nov2026 15:52:57 H:xAAAAAA2 x.txt#1794840777'
             echo '----    1            8 16Nov2026 15:52:57 H:xAAAAAA1 x.txt#1794840777'
-            exit 0
-        fi
-        if [ "$1" = "-l" ] && [ "$2" = "--versions" ] && [ "$3" = "--show-handles" ] && [ "$4" = "/y.txt" ]; then
-            echo 'Versions of y.txt:'
-            if [ -f "$here/y-listed" ]; then
-                echo '----    4            9 16Nov2026 15:54:00 H:yAAAAAA9 y.txt#1794840840'
-            fi
-            touch "$here/y-listed"
-            echo '----    2            7 16Nov2026 15:53:00 H:yAAAAAA2 y.txt#1794840780'
-            echo '----    1            5 16Nov2026 15:52:00 H:yAAAAAA1 y.txt#1794840720'
             exit 0
         fi
         if [ "$1" = "-l" ] && [ "$2" = "--versions" ] && [ "$3" = "--show-handles" ] && [ "$4" = "/docs" ]; then
@@ -206,26 +161,6 @@ case "$(basename "$0")" in
     mega-mv)
         echo "$1 $2" >> "$here/mv.log"
         ;;
-    mega-userattr)
-        # The DISABLE_VERSIONS attribute as MEGAcmd 2.6 prints it (measured
-        # 2026-11-18): 1 with versioning-off, else 0; versioning-unreadable
-        # answers neither. MEGAcmd 2.6.0 source: an attribute never set is
-        # the SDK's API_ENOENT, exit 9 (versioning-absent); a name it does
-        # not know is MCMD_NOTFOUND, exit 53 (versioning-unrecognized).
-        if [ -f "$here/versioning-absent" ]; then
-            echo "[API:err: ...] Failed to get user attribute ^!dv: Not found" >&2
-            exit 9
-        elif [ -f "$here/versioning-unrecognized" ]; then
-            echo "[API:err: ...] Attribute not found: ^!dv" >&2
-            exit 53
-        elif [ -f "$here/versioning-unreadable" ]; then
-            echo "Unexpected answer"
-        elif [ -f "$here/versioning-off" ]; then
-            printf '\tDISABLE_VERSIONS (^!dv) = 1\n'
-        else
-            printf '\tDISABLE_VERSIONS (^!dv) = 0\n'
-        fi
-        ;;
     mega-put)
         # Progress lines as MEGAcmd 2.6 writes them through a pipe: on
         # stderr, each ended by a NUL and a carriage return, at 10, 50 and 90
@@ -239,42 +174,10 @@ case "$(basename "$0")" in
             echo "Upload failed: Access denied" >&2
             exit 2
         fi
-        # With put-then-foreign another client writes the file right after a
-        # put that wrote nothing (put-stdout-fails, put-same-bytes).
-        if [ -f "$here/put-then-foreign" ]; then
-            if [ -f "$here/put-stdout-fails" ] || [ -f "$here/put-same-bytes" ]; then
-                touch "$here/foreign-$(basename "$2")"
-            fi
-        fi
         if [ -f "$here/put-stdout-fails" ]; then
             # The failure on stdout and a non-zero exit, nothing put.
             echo "Upload failed: Access denied"
             exit 1
-        fi
-        if [ -f "$here/put-try-again" ]; then
-            # A transient failure on stdout, nothing put; every attempt logged.
-            echo "$2" >> "$here/put.log"
-            echo "Upload failed: Temporarily unavailable, try again"
-            exit 1
-        fi
-        if [ -f "$here/put-same-bytes" ]; then
-            # The bytes the current version already holds: MEGA adds no
-            # version and says it is done (measured 2026-11-18). Nothing
-            # changes: the current bytes are what they were.
-            echo "$2" >> "$here/put.log"
-            printf '\nUpload finished: %s\n' "$2"
-            exit 0
-        fi
-        if [ -f "$here/put-ignored" ]; then
-            # Done by its exit and its words, with nothing changed. With
-            # foreign-writes-put-bytes another client then writes the same
-            # bytes at the path, with no version in the listing yet.
-            echo "$2" >> "$here/put.log"
-            if [ -f "$here/foreign-writes-put-bytes" ]; then
-                cp "$1" "$here/put-bytes-$(basename "$2")"
-            fi
-            printf '\nUpload finished: %s\n' "$2"
-            exit 0
         fi
         if [ -f "$here/put-stalls" ]; then
             printf 'TRANSFERRING ||####..........||(3/30 MB:  10.00 %%) \000\r' >&2
@@ -291,8 +194,6 @@ case "$(basename "$0")" in
             done
         fi
         echo "$2" >> "$here/put.log"
-        cp "$1" "$here/put-bytes-$(basename "$2")"
-        wc -c < "$1" | tr -d ' ' > "$here/put-size-$(basename "$2")"
         printf '\nUpload finished: %s\n' "$2"
         printf 'TRANSFERRING ||##############||(30/30 MB: 100.00 %%) \000\n' >&2
         ;;
@@ -310,35 +211,6 @@ case "$(basename "$0")" in
         fi
         echo "$1" >> "$here/get.log"
         echo "$2" >> "$here/get-targets.log"
-        # check-get-fails: the read back of the version a put added fails.
-        if [ "$1" = H:vAAAAAA4 ] && [ -f "$here/check-get-fails" ]; then
-            echo "Download failed: Access denied" >&2
-            exit 2
-        fi
-        # final-ls-fails: once that version is read back, listing /v.txt
-        # fails.
-        if [ "$1" = H:vAAAAAA4 ] && [ -f "$here/final-ls-fails" ]; then
-            touch "$here/ls-broken"
-        fi
-        # version-get-slow: the get of an older version takes two seconds.
-        if [ "$1" = H:vAAAAAA2 ] && [ -f "$here/version-get-slow" ]; then
-            sleep 2
-        fi
-        # check-get-slow: the read back of the version a put added is slow.
-        if [ "$1" = H:vAAAAAA4 ] && [ -f "$here/check-get-slow" ]; then
-            sleep 3
-        fi
-        # foreign-after-check: another client writes /v.txt (H:vAAAAAA6 on
-        # top, the size of the put) once the version the put added was read.
-        if [ "$1" = H:vAAAAAA4 ] && [ -f "$here/foreign-after-check" ]; then
-            touch "$here/foreign-on-top"
-        fi
-        # head-get-prefix-of-1: a read of the 13-byte head H:vAAAAAA3 stops
-        # after 8 bytes that equal H:vAAAAAA1, with a zero exit.
-        if [ "$1" = H:vAAAAAA3 ] && [ -f "$here/head-get-prefix-of-1" ]; then
-            printf '11111111' > "$2"
-            exit 0
-        fi
         if [ -f "$here/get-writes-then-fails" ]; then
             dd if=/dev/zero of="$2" bs=500 count=1 2>/dev/null
             # Not a transient text: the provider would retry a reset.
@@ -389,60 +261,27 @@ case "$(basename "$0")" in
         [ -f "$2" ] && out="$2 (1)"
         # A version handle gets the size its listing line above says, filled
         # with its last character, so two versions differ in their bytes. A
-        # path gets its current contents: another client's write on top
-        # (foreign-<name>), else what the last put left (put-bytes-<name>).
+        # path gets the contents of the current version its listing starts
+        # with.
         n=1000
         fill=''
         case "$1" in
-            H:vAAAAAA4|H:wAAAAAA4)
-                # The version a put added holds what was put.
-                name=$(printf '%s' "$1" | cut -c3).txt
-                cp "$here/put-bytes-$name" "$out"
-                printf '\nDownload finished: %s\n' "$out"
-                exit 0
-                ;;
-            H:vAAAAAA5)
-                # Another client's version: its size and bytes as a path get
-                # of foreign-<name> gives them.
-                n=$(cat "$here/foreign-size" 2>/dev/null || echo 21)
-                fill=5
-                ;;
             H:*)
                 n=$(awk -v h="$1" '$1 == "echo" && $4 ~ /^[0-9]+$/ && index($0, " " h " ") { print $4; exit }' "$0")
                 fill=$(printf '%s' "$1" | tail -c 1)
-                # w-current-holds-w1: the current w.txt has H:wAAAAAA1's bytes.
-                if [ "$1" = H:wAAAAAA3 ] && [ -f "$here/w-current-holds-w1" ]; then
-                    fill=1
-                fi
                 ;;
             /*)
-                name=$(basename "$1")
-                if [ -f "$here/foreign-$name" ]; then
-                    n=$(cat "$here/foreign-size" 2>/dev/null || echo 21)
-                    fill=5
-                elif [ -f "$here/put-bytes-$name" ]; then
-                    cp "$here/put-bytes-$name" "$out"
-                    printf '\nDownload finished: %s\n' "$out"
-                    exit 0
-                else
-                    # The current version each listing above starts with.
-                    case "$name" in
-                        v.txt) head=H:vAAAAAA3 ;;
-                        w.txt) head=H:wAAAAAA3 ;;
-                        *) head='' ;;
-                    esac
-                    if [ -n "$head" ]; then
-                        n=$(awk -v h="$head" '$1 == "echo" && $4 ~ /^[0-9]+$/ && index($0, " " h " ") { print $4; exit }' "$0")
-                        fill=$(printf '%s' "$head" | tail -c 1)
-                    fi
+                case "$(basename "$1")" in
+                    v.txt) head=H:vAAAAAA3 ;;
+                    w.txt) head=H:wAAAAAA3 ;;
+                    *) head='' ;;
+                esac
+                if [ -n "$head" ]; then
+                    n=$(awk -v h="$head" '$1 == "echo" && $4 ~ /^[0-9]+$/ && index($0, " " h " ") { print $4; exit }' "$0")
+                    fill=$(printf '%s' "$head" | tail -c 1)
                 fi
                 ;;
         esac
-        if [ -f "$here/get-short" ]; then
-            # Cut midway with nothing said and a zero exit.
-            dd if=/dev/zero of="$2" bs=3 count=1 2>/dev/null
-            exit 0
-        fi
         if [ -f "$here/get-stdout-fails" ]; then
             # The failure on stdout and a non-zero exit, nothing written.
             echo "Download failed: Access denied"

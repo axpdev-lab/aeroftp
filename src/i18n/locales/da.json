@@ -2574,7 +2574,8 @@
             "restore": "Gendan denne version",
             "none": "Ingen versioner tilgængelige",
             "purge": "Slet denne version permanent",
-            "purgeConfirm": "Slet denne version permanent? Denne handling kan ikke fortrydes."
+            "purgeConfirm": "Slet denne version permanent? Denne handling kan ikke fortrydes.",
+            "restoreUnconfirmed": "Gendannelsen blev sendt, men serveren kan ikke bekræfte, hvilken version der nu er den aktuelle. Tjek versionerne, før du gendanner igen."
         },
         "sharing": {
             "title": "Deling",

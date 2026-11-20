@@ -3391,10 +3391,13 @@ mod tests {
         let versions = provider.list_versions("/a.txt").await.expect("versions");
         let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
         assert_eq!(ids, ["11:current", "11:3", "11:2"]);
-        provider
-            .restore_version("/a.txt", "11:2")
-            .await
-            .expect("a version of the second page is restored");
+        // Restored, and not confirmed: kDrive names no version made and
+        // lists no content hash.
+        let outcome = provider.restore_version("/a.txt", "11:2").await;
+        assert!(
+            matches!(&outcome, Err(e) if crate::providers::was_applied(e) && e.to_string().contains("could not be confirmed")),
+            "{outcome:?}"
+        );
         let seen = seen.lock().unwrap();
         assert!(
             seen.iter()

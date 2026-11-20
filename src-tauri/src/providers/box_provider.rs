@@ -3149,6 +3149,9 @@ impl StorageProvider for BoxProvider {
                  restoring again"
             )));
         };
+        // Bound below: the current version id is read back against the one
+        // the answer named.
+        let selected = selected.bound_by_the_caller();
         super::confirm_version_restored(self, path, Some(&selected)).await?;
         // The promotion is accepted by now: a failed read of the head must
         // not read as a restore to send again.

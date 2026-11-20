@@ -1024,6 +1024,8 @@ pub struct RestorePreflight {
     /// The id the server gave the version the restore made current (S3
     /// `x-amz-version-id`), when its answer names one: row 0 must then be it.
     pub made_current: Option<String>,
+    /// Set by [`Self::bound_by_the_caller`].
+    pub bound_by_the_caller: bool,
 }
 
 impl RestorePreflight {
@@ -1031,6 +1033,14 @@ impl RestorePreflight {
     /// version ([`Self::made_current`]); an empty one names nothing.
     pub fn made_current(mut self, id: Option<String>) -> Self {
         self.made_current = id.filter(|id| !id.trim().is_empty());
+        self
+    }
+
+    /// The caller binds the restore itself after the check (Box reads the
+    /// file's current version id back against the one its answer named):
+    /// the check passing without a version named is then not the last word.
+    pub fn bound_by_the_caller(mut self) -> Self {
+        self.bound_by_the_caller = true;
         self
     }
 }
@@ -1119,6 +1129,7 @@ pub(crate) fn restore_preflight(
         selected,
         before,
         made_current: None,
+        bound_by_the_caller: false,
     })
 }
 
@@ -1278,6 +1289,17 @@ pub(crate) fn restore_confirmed(
             "is still the one it was before the restore".into(),
         ));
     }
+    // The listing holds the size of the restored version and a row that
+    // changed, but neither a version id the restore named nor a content
+    // hash: a write of the same size by someone else, before or after the
+    // answer, passes as well. The restore was sent, and it is not confirmed.
+    if !preflight.bound_by_the_caller {
+        return Err(applied_unconfirmed(format!(
+            "the restore of {path} was sent and its current version now has the size of the \
+             restored one, but the server names no version and lists no content hash, so it \
+             could not be confirmed: list its versions again before restoring again"
+        )));
+    }
     Ok(())
 }
 
@@ -1350,7 +1372,46 @@ mod versions_order_tests {
         assert!(matches!(unchanged, Err(ProviderError::TransferFailed(_))));
         let mut restored = listed.clone();
         restored[0].modified = Some("2026-11-18T10:05:00Z".into());
-        assert!(restore_confirmed(Ok(restored), "/a.txt", &preflight).is_ok());
+        assert!(sent_not_confirmed(&restore_confirmed(
+            Ok(restored.clone()),
+            "/a.txt",
+            &preflight
+        )));
+        let bound = preflight.bound_by_the_caller();
+        assert!(restore_confirmed(Ok(restored), "/a.txt", &bound).is_ok());
+    }
+
+    /// The restore was sent, its checks passed, and nothing binds it: a
+    /// sent, not confirmed outcome, never retried.
+    fn sent_not_confirmed(outcome: &Result<(), ProviderError>) -> bool {
+        matches!(outcome, Err(e) if was_applied(e) && e.to_string().contains("could not be confirmed"))
+    }
+
+    /// Restoring F:2 (4 bytes) did not take effect, and another client wrote
+    /// four other bytes as F:4: the row on top changed, has the size and
+    /// names the same file, so every listing check passes. Without a version
+    /// the restore named, that is not a confirmation: sent, not confirmed.
+    /// The control: the restore named F:5, and F:5 on top confirms it while
+    /// F:4 on top refuses it.
+    #[test]
+    fn an_unrelated_write_of_the_same_size_does_not_confirm_a_restore() {
+        let listed = vec![
+            sized("F:3", 4, "2026-11-18T10:00:00Z"),
+            sized("F:2", 4, "2026-11-17T10:00:00Z"),
+        ];
+        let preflight = restore_preflight(&listed, "/f.txt", "F:2").unwrap();
+        let mut foreign = listed.clone();
+        foreign.insert(0, sized("F:4", 4, "2026-11-18T10:05:00Z"));
+        assert!(sent_not_confirmed(&restore_confirmed(
+            Ok(foreign.clone()),
+            "/f.txt",
+            &preflight
+        )));
+        let named = preflight.made_current(Some("F:5".into()));
+        assert!(restore_confirmed(Ok(foreign), "/f.txt", &named).is_err());
+        let mut restored = listed.clone();
+        restored.insert(0, sized("F:5", 4, "2026-11-18T10:05:00Z"));
+        assert!(restore_confirmed(Ok(restored), "/f.txt", &named).is_ok());
     }
 
     /// A delete marker is refused by the same matching that selects a row: by
@@ -1402,7 +1463,11 @@ mod versions_order_tests {
             sized("F1:4.0", 4, "2026-11-18T10:05:00Z"),
             sized("F1:3.0", 4, "2026-11-18T10:00:00Z"),
         ];
-        assert!(restore_confirmed(Ok(restored), "/f.txt", &preflight).is_ok());
+        assert!(sent_not_confirmed(&restore_confirmed(
+            Ok(restored),
+            "/f.txt",
+            &preflight
+        )));
     }
 
     /// Rows listed bound to file 42: a head bound to no file (`current`, `9`)
@@ -1426,7 +1491,11 @@ mod versions_order_tests {
             );
         }
         let after = vec![sized("42:current", 4, "2026-11-18T10:05:00Z")];
-        assert!(restore_confirmed(Ok(after), "/a.txt", &preflight).is_ok());
+        assert!(sent_not_confirmed(&restore_confirmed(
+            Ok(after),
+            "/a.txt",
+            &preflight
+        )));
     }
 
     #[test]
@@ -3628,6 +3697,13 @@ pub trait StorageProvider: Send + Sync {
     /// dialog offers Purge only then, as every other provider refuses it.
     fn supports_version_delete(&self) -> bool {
         false
+    }
+
+    /// Whether [`Self::restore_version`] restores a version here: the dialog
+    /// offers Restore only then. A provider that lists versions but cannot
+    /// bind a restore to the file it was meant for refuses it.
+    fn supports_version_restore(&self) -> bool {
+        self.supports_versions()
     }
 
     /// Check if provider supports file versions

@@ -2044,6 +2044,10 @@ impl StorageProvider for CryptOverlayProvider {
         self.inner.supports_version_delete()
     }
 
+    fn supports_version_restore(&self) -> bool {
+        self.inner.supports_version_restore()
+    }
+
     async fn list_versions(&mut self, path: &str) -> Result<Vec<FileVersion>, ProviderError> {
         self.settle_scope_alias().await?;
         let enc = self.map(path, false, AccessKind::Read)?;

@@ -109,7 +109,6 @@ const S3_MESSAGE: &str = "the S3 Code and Message only";
 const S3_ENDPOINT: &str = "the S3 endpoint, no secret by construction";
 
 const REVIEWED: &[Reviewed] = &[
-    ("providers/mega_df.rs", "format", "mega-userattr ended with {}: {}", ", other.map_or_else(|| \"a signal\".to_string(), |c| format!(\"exit {c}\")), served_origins_only(text.trim())", "the exit of mega-userattr and its output with each address cut to its origin (`mega_df::served_origins_only`)"),
     ("providers/webdav.rs", "format", "{}:{}", ", method, uri", "the Digest A2 input, hashed and never shown"),
     ("providers/webdav.rs", "format", "Digest username=\"{}\", realm=\"{}\", nonce=\"{}\", uri=\"{}\", response=\"{}\", algorithm=\"MD5\"", ", username, challenge.realm, challenge.nonce, uri, response", BUILDS_A_REQUEST),
     ("providers/webdav.rs", "format", "{}/", ", self.from.path()", "compares two paths, not text"),

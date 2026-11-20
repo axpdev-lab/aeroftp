@@ -2574,7 +2574,8 @@
             "restore": "Restaurer cette version",
             "none": "Aucune version disponible",
             "purge": "Supprimer définitivement cette version",
-            "purgeConfirm": "Supprimer définitivement cette version ? Cette action est irréversible."
+            "purgeConfirm": "Supprimer définitivement cette version ? Cette action est irréversible.",
+            "restoreUnconfirmed": "La restauration a été envoyée, mais le serveur ne peut pas confirmer quelle version est maintenant la version courante. Vérifiez les versions avant de restaurer à nouveau."
         },
         "sharing": {
             "title": "Partage",

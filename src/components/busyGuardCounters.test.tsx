@@ -142,7 +142,7 @@ it('FileVersionsDialog: the guard stays busy until every version operation finis
         return d.promise;
     });
     const onClose = vi.fn();
-    await render(createElement(FileVersionsDialog, { generation: 7, guiTarget: 3, filePath: '/f.txt', fileName: 'f.txt', onClose }));
+    await render(createElement(FileVersionsDialog, { generation: 7, guiTarget: 3, canRestore: true, filePath: '/f.txt', fileName: 'f.txt', onClose }));
     await flush();
     const restores = [...host.querySelectorAll<HTMLButtonElement>('button[title*="Restore"], button[title*="restore"]')];
     expect(restores.length).toBe(2);
@@ -174,7 +174,7 @@ it('FileVersionsDialog: every command carries the generation and the remote targ
         ];
         throw `refused ${cmd}`;
     });
-    await render(createElement(FileVersionsDialog, { generation: 7, guiTarget: 3, canPurge: true, filePath: '/f.txt', fileName: 'f.txt', onClose: vi.fn() }));
+    await render(createElement(FileVersionsDialog, { generation: 7, guiTarget: 3, canPurge: true, canRestore: true, filePath: '/f.txt', fileName: 'f.txt', onClose: vi.fn() }));
     await flush();
     const alert = () => host.querySelector('[role="alert"]')?.textContent ?? null;
     const rows = () => host.querySelectorAll('tbody tr').length;
@@ -195,6 +195,41 @@ it('FileVersionsDialog: every command carries the generation and the remote targ
     const sent = calls.map(([cmd]) => cmd);
     expect(sent).toEqual(['provider_list_versions', 'provider_download_version', 'provider_restore_version', 'provider_list_versions', 'provider_delete_version', 'provider_list_versions']);
     for (const [cmd, args] of calls) expect([cmd, args.generation, args.expectedGuiTarget]).toEqual([cmd, 7, 3]);
+});
+
+it('FileVersionsDialog: a provider that does not restore versions (MEGA) offers no Restore, only Download', async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd) => {
+        if (cmd === 'provider_list_versions') return [
+            { id: 'H:a', modified: null, size: 1, modified_by: null },
+            { id: 'H:b', modified: null, size: 1, modified_by: null },
+        ];
+        throw `unexpected ${cmd}`;
+    });
+    await render(createElement(FileVersionsDialog, { generation: 7, guiTarget: 3, filePath: '/f.txt', fileName: 'f.txt', onClose: vi.fn() }));
+    await flush();
+    expect(host.querySelectorAll('tbody tr').length).toBe(2);
+    expect(host.querySelector('button[title*="Restore"]')).toBeNull();
+    expect(host.querySelectorAll('button[title*="Download"]').length).toBe(2);
+});
+
+it('FileVersionsDialog: a restore sent and not confirmed is shown in the user language, not as a raw failure, and the versions are listed again', async () => {
+    const sent: string[] = [];
+    vi.mocked(invoke).mockImplementation(async (cmd) => {
+        sent.push(cmd);
+        if (cmd === 'provider_list_versions') return [
+            { id: 'v1', modified: null, size: 1, modified_by: null },
+            { id: 'v2', modified: null, size: 1, modified_by: null },
+        ];
+        throw 'Restore version failed: Applied, not confirmed: the restore of /f.txt was sent';
+    });
+    const onRestore = vi.fn();
+    await render(createElement(FileVersionsDialog, { generation: 7, guiTarget: 3, canRestore: true, filePath: '/f.txt', fileName: 'f.txt', onClose: vi.fn(), onRestore }));
+    await flush();
+    await click(host.querySelector<HTMLButtonElement>('button[title*="Restore"]')!);
+    await flush();
+    expect(host.querySelector('[role="alert"]')?.textContent).toBe(english.translations.versions.restoreUnconfirmed);
+    expect(onRestore).not.toHaveBeenCalled();
+    expect(sent).toEqual(['provider_list_versions', 'provider_restore_version', 'provider_list_versions']);
 });
 
 it('VersionBrowser: the guard stays busy until every restore finishes', async () => {
@@ -449,7 +484,7 @@ it('FileVersionsDialog: a deleted marker on top is Deleted, with no download and
         ];
         return {};
     });
-    await render(createElement(FileVersionsDialog, { generation: 7, guiTarget: 3, filePath: '/f.txt', fileName: 'f.txt', onClose: vi.fn() }));
+    await render(createElement(FileVersionsDialog, { generation: 7, guiTarget: 3, canRestore: true, filePath: '/f.txt', fileName: 'f.txt', onClose: vi.fn() }));
     await flush();
     const rows = [...host.querySelectorAll('tbody tr')];
     expect(rows).toHaveLength(3);

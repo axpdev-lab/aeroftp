@@ -6805,6 +6805,12 @@ impl StorageProvider for WebDavProvider {
         self.supports_nextcloud_versions()
     }
 
+    /// Only Nextcloud's versions are restored: MEGAcmd's are listed and
+    /// downloaded, never restored ([`super::mega::MEGA_RESTORE_REFUSED`]).
+    fn supports_version_restore(&self) -> bool {
+        self.supports_nextcloud_versions()
+    }
+
     async fn list_versions(
         &mut self,
         path: &str,
@@ -6842,9 +6848,9 @@ impl StorageProvider for WebDavProvider {
 
     async fn restore_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
         if super::mega_df::is_megacmd_webdav_provider_id(self.config.provider_id.as_deref()) {
-            self.megacmd_versions_at_account_root()?;
-            let path = self.resolve_root(path);
-            return super::mega_df::mega_restore_version(&path, version_id).await;
+            return Err(ProviderError::NotSupported(
+                super::mega::MEGA_RESTORE_REFUSED.into(),
+            ));
         }
         if self.supports_nextcloud_versions() {
             self.require_connected()?;
@@ -8108,7 +8114,6 @@ mod tests {
             provider
                 .download_version("/report.pdf", "H:v1", out.to_str().unwrap())
                 .await,
-            provider.restore_version("/report.pdf", "H:v1").await,
         ];
         for outcome in &below {
             assert!(
@@ -8121,11 +8126,26 @@ mod tests {
         assert!(provider.supports_versions());
         // MEGAcmd deletes no single version: no Purge is offered for it.
         assert!(!provider.supports_version_delete());
+        // Nor restores one (it writes by path, not by handle): no Restore is
+        // offered, and one sent anyway is refused, at the root as below it.
+        assert!(!provider.supports_version_restore());
+        for root in [false, true] {
+            provider.megacmd_serves_account_root = root;
+            let restored = provider.restore_version("/report.pdf", "H:v1").await;
+            assert!(
+                matches!(&restored, Err(ProviderError::NotSupported(m)) if m == super::super::mega::MEGA_RESTORE_REFUSED),
+                "{root}: {restored:?}"
+            );
+        }
         let mut nextcloud = test_config("https://cloud.example.com");
         nextcloud.provider_id = Some("nextcloud".into());
         let nextcloud = WebDavProvider::new(nextcloud).unwrap();
         assert_eq!(
             nextcloud.supports_version_delete(),
+            nextcloud.supports_nextcloud_versions()
+        );
+        assert_eq!(
+            nextcloud.supports_version_restore(),
             nextcloud.supports_nextcloud_versions()
         );
     }
@@ -9804,7 +9824,12 @@ mod tests {
             matches!(&unlisted, Err(ProviderError::TransferFailed(m)) if m.contains("no restore was sent")),
             "{unlisted:?}"
         );
-        bare.expect("a bare label of the unchanged file restores");
+        // A bare label of the unchanged file is restored, not confirmed.
+        let outcome = bare;
+        assert!(
+            matches!(&outcome, Err(e) if crate::providers::was_applied(e) && e.to_string().contains("could not be confirmed")),
+            "{outcome:?}"
+        );
         let log = log.lock().unwrap().clone();
         for absent in [
             "/versions/77/",
@@ -9910,10 +9935,11 @@ mod tests {
             matches!(&unchanged, Err(ProviderError::TransferFailed(m)) if m.contains("20 bytes")),
             "{unchanged:?}"
         );
-        provider
-            .restore_version("/r.txt", "1700000000")
-            .await
-            .expect("restore");
+        let outcome = provider.restore_version("/r.txt", "1700000000").await;
+        assert!(
+            matches!(&outcome, Err(e) if crate::providers::was_applied(e) && e.to_string().contains("could not be confirmed")),
+            "{outcome:?}"
+        );
         server.abort();
         let log = log.lock().unwrap().clone();
         let restore_move = format!(
@@ -9944,15 +9970,20 @@ mod tests {
         );
     }
 
-    /// Positive control: the file shows the restored version's 8 bytes after
-    /// the MOVE, and the restore is reported done.
+    /// The file shows the restored version's 8 bytes after the MOVE: the
+    /// restore is sent and reported as such, not confirmed, as Nextcloud
+    /// names no version made and its listing holds no content hash (a write
+    /// of the same size by someone else would pass as well).
     #[tokio::test]
-    async fn a_nextcloud_restore_the_file_shows_is_reported_done() {
+    async fn a_nextcloud_restore_the_file_shows_is_reported_sent_not_confirmed() {
         let (base, _log, server) = serve_nextcloud_versions().await;
         let mut provider = nextcloud_versions_provider(&base);
         let outcome = provider.restore_version("/r.txt", "50:1700000000").await;
         server.abort();
-        assert!(outcome.is_ok(), "{outcome:?}");
+        assert!(
+            matches!(&outcome, Err(e) if crate::providers::was_applied(e) && e.to_string().contains("could not be confirmed")),
+            "{outcome:?}"
+        );
     }
 
     #[tokio::test]
@@ -10049,11 +10080,12 @@ exit 1
         let _ = provider
             .download_version("/report.pdf", "H:rAAAAAA1", out.to_str().unwrap())
             .await;
+        // Refused before any command: MEGA versions are not restored.
         let _ = provider.restore_version("/report.pdf", "H:rAAAAAA1").await;
         super::super::mega_df::use_test_commands(None);
         let asked = std::fs::read_to_string(dir.path().join("ls.log")).unwrap_or_default();
         let asked: Vec<&str> = asked.lines().collect();
-        assert_eq!(asked, ["/Team/report.pdf"; 4], "{asked:?}");
+        assert_eq!(asked, ["/Team/report.pdf"; 3], "{asked:?}");
     }
 
     /// The versions gate is the one the GUI, CLI and MCP read. It opens for
@@ -12805,10 +12837,12 @@ exit 1
         answers.extend([ROTATED_401, CREATED_201, after, listed_after, after]);
         let (url, hits) = spawn_http_stub(answers).await;
         let mut provider = digest_provider(&format!("{url}/remote.php/dav/files/user/"));
-        provider
-            .restore_version("/a.txt", "42:1700000000")
-            .await
-            .expect("one rotation is survived");
+        let outcome = provider.restore_version("/a.txt", "42:1700000000").await;
+        // One rotation is survived: the restore is sent, not confirmed.
+        assert!(
+            matches!(&outcome, Err(e) if crate::providers::was_applied(e) && e.to_string().contains("could not be confirmed")),
+            "{outcome:?}"
+        );
         assert_eq!(
             hits.load(Ordering::SeqCst),
             10,

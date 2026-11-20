@@ -32,17 +32,24 @@ interface Props {
   /** The provider deletes a single version (`supports_version_delete`):
    * without it no Purge is offered, as the backend would refuse it. */
   canPurge?: boolean;
+  /** The provider restores a version (`supports_version_restore`): MEGA
+   * lists and downloads versions but refuses their restore. */
+  canRestore?: boolean;
   filePath: string;
   fileName: string;
   onClose: () => void;
   onRestore?: () => void;
 }
 
+/** The prefix the backend puts on an operation it sent and could not
+ * confirm (`APPLIED_UNCONFIRMED` in providers/mod.rs). */
+const APPLIED_UNCONFIRMED = 'Applied, not confirmed:';
+
 /** The row of the file as it is now, which a provider lists under its own
  * id (`current`, bound as `<file>:current`): it has no version to purge. */
 const isCurrentFileRow = (id: string) => id === 'current' || id.endsWith(':current');
 
-export function FileVersionsDialog({ generation, guiTarget, canPurge = false, filePath, fileName, onClose, onRestore }: Props) {
+export function FileVersionsDialog({ generation, guiTarget, canPurge = false, canRestore = false, filePath, fileName, onClose, onRestore }: Props) {
   const t = useTranslation();
   const modalDrag = useDraggableModal();
   const [versions, setVersions] = useState<FileVersion[]>([]);
@@ -108,7 +115,11 @@ export function FileVersionsDialog({ generation, guiTarget, canPurge = false, fi
       });
       onRestore?.();
     } catch (err) {
-      setActionError(String(err));
+      // A restore sent that the server cannot confirm is not a failure to retry: say so in the user's language.
+      const message = String(err);
+      setActionError(message.includes(APPLIED_UNCONFIRMED)
+        ? (t('versions.restoreUnconfirmed') || 'The restore was sent, but it could not be confirmed. Check the versions before restoring again.')
+        : message);
       // A refused or unconfirmed restore may still have changed the file: list again before another one.
       await loadVersions();
     } finally {
@@ -208,7 +219,7 @@ export function FileVersionsDialog({ generation, guiTarget, canPurge = false, fi
                           {ops.has(v.id) ? <RefreshCw size={13} className="animate-spin" /> : <Download size={13} />}
                         </button>
                         )}
-                        {i > 0 && !v.deleted && (
+                        {canRestore && i > 0 && !v.deleted && (
                           <button
                             onClick={() => handleRestore(v)}
                             disabled={ops.has(v.id)}

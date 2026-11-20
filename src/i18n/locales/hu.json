@@ -2574,7 +2574,8 @@
             "restore": "Verzió visszaállítása",
             "none": "Nincsenek elérhető verziók",
             "purge": "A verzió végleges törlése",
-            "purgeConfirm": "Véglegesen törli ezt a verziót? Ez a művelet nem vonható vissza."
+            "purgeConfirm": "Véglegesen törli ezt a verziót? Ez a művelet nem vonható vissza.",
+            "restoreUnconfirmed": "A visszaállítás elküldve, de a szerver nem tudja megerősíteni, hogy melyik verzió az aktuális. Ellenőrizd a verziókat, mielőtt újra visszaállítasz."
         },
         "sharing": {
             "title": "Megosztás",

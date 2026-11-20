@@ -214,6 +214,8 @@ fn zoho_workdrive_resolves_every_path_through_parent_folder_id() {
             "resolve_path_with_listing",
             "list",
             "cd",
+            // Clears it at the end of a connection: no path is resolved.
+            "forget_connection",
         ],
     );
     assert_confined(

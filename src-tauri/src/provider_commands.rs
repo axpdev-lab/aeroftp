@@ -10395,6 +10395,17 @@ pub async fn provider_supports_version_delete(
     Ok(provider.supports_version_delete())
 }
 
+#[tauri::command]
+pub async fn provider_supports_version_restore(
+    state: State<'_, ProviderState>,
+) -> Result<bool, String> {
+    let provider_guard = state.provider.lock().await;
+    let provider = provider_guard
+        .as_ref()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    Ok(provider.supports_version_restore())
+}
+
 /// What the version commands were read against: the generation the File
 /// Versions dialog was opened on, so an action sent after a switch to another
 /// connection never runs there (a purge cannot be undone).

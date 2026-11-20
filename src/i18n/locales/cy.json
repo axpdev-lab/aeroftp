@@ -2574,7 +2574,8 @@
             "restore": "Adfer y fersiwn hon",
             "none": "Dim fersiynau ar gael",
             "purge": "Dileu'r fersiwn hon yn barhaol",
-            "purgeConfirm": "Dileu'r fersiwn hon yn barhaol? Ni ellir dadwneud hyn."
+            "purgeConfirm": "Dileu'r fersiwn hon yn barhaol? Ni ellir dadwneud hyn.",
+            "restoreUnconfirmed": "Anfonwyd yr adferiad, ond ni all y gweinydd gadarnhau pa fersiwn sydd yn gyfredol nawr. Gwiriwch y fersiynau cyn adfer eto."
         },
         "sharing": {
             "title": "Rhannu",
