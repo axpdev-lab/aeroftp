@@ -5916,7 +5916,8 @@
             },
             "demoTabLabel": "ডেমো: {protocol}",
             "newTabLabel": "নতুন: {name}",
-            "protonSessionEndsAtUnlock": "প্রোফাইলটি সরানো হয়েছে। পরেরবার {account} আনলক করা হলে এর Proton Drive সেশন বন্ধ করা হবে।"
+            "protonSessionEndsAtUnlock": "প্রোফাইলটি সরানো হয়েছে। পরেরবার {account} আনলক করা হলে এর Proton Drive সেশন বন্ধ করা হবে।",
+            "profileSecretsNotRemoved": "প্রোফাইলটি সরানো হয়েছে, কিন্তু এর কিছু সংরক্ষিত শংসাপত্র ভল্ট থেকে মুছে ফেলা যায়নি."
         },
         "gitlab": {
             "projectPath": "প্রকল্পের পাথ",

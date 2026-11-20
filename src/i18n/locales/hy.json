@@ -5916,7 +5916,8 @@
             },
             "demoTabLabel": "Ցուցադրություն: {protocol}",
             "newTabLabel": "Նոր: {name}",
-            "protonSessionEndsAtUnlock": "Պրոֆիլը հեռացվել է։ Դրա Proton Drive սեսիան կփակվի {account}-ը հաջորդ անգամ ապակողպելիս։"
+            "protonSessionEndsAtUnlock": "Պրոֆիլը հեռացվել է։ Դրա Proton Drive սեսիան կփակվի {account}-ը հաջորդ անգամ ապակողպելիս։",
+            "profileSecretsNotRemoved": "Պրոֆիլը հեռացվեց, սակայն նրա պահպանված որոշ մուտքային տվյալներ չհաջողվեց ջնջել պահոցից։"
         },
         "gitlab": {
             "projectPath": "Նախագծի ուղի",

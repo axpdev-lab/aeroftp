@@ -5916,7 +5916,8 @@
             },
             "demoTabLabel": "Demo: {protocol}",
             "newTabLabel": "Nou: {name}",
-            "protonSessionEndsAtUnlock": "Profilul a fost eliminat. Sesiunea sa Proton Drive va fi închisă la următoarea deblocare a contului {account}."
+            "protonSessionEndsAtUnlock": "Profilul a fost eliminat. Sesiunea sa Proton Drive va fi închisă la următoarea deblocare a contului {account}.",
+            "profileSecretsNotRemoved": "Profilul a fost eliminat, dar unele dintre datele sale de autentificare salvate nu au putut fi șterse din seif."
         },
         "gitlab": {
             "projectPath": "Calea proiectului",

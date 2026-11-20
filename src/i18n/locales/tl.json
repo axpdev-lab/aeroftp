@@ -5935,7 +5935,8 @@
             },
             "demoTabLabel": "Demo: {protocol}",
             "newTabLabel": "Bago: {name}",
-            "protonSessionEndsAtUnlock": "Inalis ang profile. Isasara ang session nito sa Proton Drive sa susunod na pag-unlock ng {account}."
+            "protonSessionEndsAtUnlock": "Inalis ang profile. Isasara ang session nito sa Proton Drive sa susunod na pag-unlock ng {account}.",
+            "profileSecretsNotRemoved": "Naalis ang profile, ngunit hindi nabura sa vault ang ilan sa mga naka-save nitong kredensyal."
         },
         "gitlab": {
             "projectPath": "Path ng Project",

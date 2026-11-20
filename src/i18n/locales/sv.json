@@ -5916,7 +5916,8 @@
             },
             "demoTabLabel": "Demo: {protocol}",
             "newTabLabel": "Ny: {name}",
-            "protonSessionEndsAtUnlock": "Profilen har tagits bort. Dess Proton Drive-session avslutas nästa gång {account} låses upp."
+            "protonSessionEndsAtUnlock": "Profilen har tagits bort. Dess Proton Drive-session avslutas nästa gång {account} låses upp.",
+            "profileSecretsNotRemoved": "Profilen togs bort, men vissa av dess sparade inloggningsuppgifter kunde inte raderas från valvet."
         },
         "gitlab": {
             "projectPath": "Projektsökväg",

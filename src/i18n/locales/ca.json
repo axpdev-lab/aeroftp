@@ -5935,7 +5935,8 @@
             },
             "demoTabLabel": "Demo: {protocol}",
             "newTabLabel": "Nou: {name}",
-            "protonSessionEndsAtUnlock": "S'ha eliminat el perfil. La seva sessió de Proton Drive es tancarà la propera vegada que es desbloquegi {account}."
+            "protonSessionEndsAtUnlock": "S'ha eliminat el perfil. La seva sessió de Proton Drive es tancarà la propera vegada que es desbloquegi {account}.",
+            "profileSecretsNotRemoved": "El perfil s'ha eliminat, però algunes de les seves credencials desades no s'han pogut esborrar de la caixa forta."
         },
         "gitlab": {
             "projectPath": "Ruta del projecte",

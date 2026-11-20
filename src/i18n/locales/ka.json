@@ -5916,7 +5916,8 @@
             },
             "demoTabLabel": "დემო: {protocol}",
             "newTabLabel": "ახალი: {name}",
-            "protonSessionEndsAtUnlock": "პროფილი წაიშალა. მისი Proton Drive-ის სესია დაიხურება, როცა {account} შემდეგ ჯერზე განბლოკდება."
+            "protonSessionEndsAtUnlock": "პროფილი წაიშალა. მისი Proton Drive-ის სესია დაიხურება, როცა {account} შემდეგ ჯერზე განბლოკდება.",
+            "profileSecretsNotRemoved": "პროფილი წაიშალა, მაგრამ მისი შენახული ზოგიერთი რწმუნებათა სიგელი ვერ წაიშალა სეიფიდან."
         },
         "gitlab": {
             "projectPath": "პროექტის გზა",

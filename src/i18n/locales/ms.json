@@ -5916,7 +5916,8 @@
             },
             "demoTabLabel": "Demo: {protocol}",
             "newTabLabel": "Baharu: {name}",
-            "protonSessionEndsAtUnlock": "Profil telah dialih keluar. Sesi Proton Drive-nya akan ditutup pada kali seterusnya {account} dibuka kunci."
+            "protonSessionEndsAtUnlock": "Profil telah dialih keluar. Sesi Proton Drive-nya akan ditutup pada kali seterusnya {account} dibuka kunci.",
+            "profileSecretsNotRemoved": "Profil telah dialih keluar, tetapi sebahagian kelayakan tersimpannya tidak dapat dipadam daripada peti besi."
         },
         "gitlab": {
             "projectPath": "Laluan Projek",

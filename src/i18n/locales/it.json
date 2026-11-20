@@ -6275,7 +6275,8 @@
                 "months": "{count} mesi"
             },
             "demoTabLabel": "Demo: {protocol}",
-            "newTabLabel": "Nuovo: {name}"
+            "newTabLabel": "Nuovo: {name}",
+            "profileSecretsNotRemoved": "Il profilo è stato rimosso, ma non è stato possibile eliminare dal vault alcune delle sue credenziali salvate."
         },
         "gitlab": {
             "projectPath": "Percorso progetto",

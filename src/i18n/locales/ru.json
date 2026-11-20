@@ -5916,7 +5916,8 @@
             },
             "demoTabLabel": "Демо: {protocol}",
             "newTabLabel": "Новая: {name}",
-            "protonSessionEndsAtUnlock": "Профиль удалён. Его сеанс Proton Drive будет завершён при следующей разблокировке {account}."
+            "protonSessionEndsAtUnlock": "Профиль удалён. Его сеанс Proton Drive будет завершён при следующей разблокировке {account}.",
+            "profileSecretsNotRemoved": "Профиль удалён, но некоторые его сохранённые учётные данные не удалось удалить из хранилища."
         },
         "gitlab": {
             "projectPath": "Путь к проекту",

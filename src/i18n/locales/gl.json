@@ -5935,7 +5935,8 @@
             },
             "demoTabLabel": "Demo: {protocol}",
             "newTabLabel": "Novo: {name}",
-            "protonSessionEndsAtUnlock": "Eliminouse o perfil. A súa sesión de Proton Drive pecharase a próxima vez que se desbloquee {account}."
+            "protonSessionEndsAtUnlock": "Eliminouse o perfil. A súa sesión de Proton Drive pecharase a próxima vez que se desbloquee {account}.",
+            "profileSecretsNotRemoved": "O perfil elimináronse, pero algunhas das súas credenciais gardadas non se puideron borrar do cofre."
         },
         "gitlab": {
             "projectPath": "Ruta do proxecto",

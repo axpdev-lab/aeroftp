@@ -5916,7 +5916,8 @@
             },
             "demoTabLabel": "Bemutató: {protocol}",
             "newTabLabel": "Új: {name}",
-            "protonSessionEndsAtUnlock": "A profil el lett távolítva. A Proton Drive-munkamenete a(z) {account} következő feloldásakor lezárul."
+            "protonSessionEndsAtUnlock": "A profil el lett távolítva. A Proton Drive-munkamenete a(z) {account} következő feloldásakor lezárul.",
+            "profileSecretsNotRemoved": "A profil el lett távolítva, de néhány mentett hitelesítő adatát nem sikerült törölni a széfből."
         },
         "gitlab": {
             "projectPath": "Projekt útvonal",

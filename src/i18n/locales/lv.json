@@ -5916,7 +5916,8 @@
             },
             "demoTabLabel": "Demonstrācija: {protocol}",
             "newTabLabel": "Jauns: {name}",
-            "protonSessionEndsAtUnlock": "Profils tika noņemts. Tā Proton Drive sesija tiks beigta nākamreiz, kad {account} tiks atbloķēts."
+            "protonSessionEndsAtUnlock": "Profils tika noņemts. Tā Proton Drive sesija tiks beigta nākamreiz, kad {account} tiks atbloķēts.",
+            "profileSecretsNotRemoved": "Profils tika noņemts, bet dažus tā saglabātos akreditācijas datus neizdevās izdzēst no glabātuves."
         },
         "gitlab": {
             "projectPath": "Projekta ceļš",

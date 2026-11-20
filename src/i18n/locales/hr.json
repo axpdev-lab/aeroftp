@@ -5916,7 +5916,8 @@
             },
             "demoTabLabel": "Demo: {protocol}",
             "newTabLabel": "Novo: {name}",
-            "protonSessionEndsAtUnlock": "Profil je uklonjen. Njegova Proton Drive sesija bit će zatvorena sljedeći put kada se otključa {account}."
+            "protonSessionEndsAtUnlock": "Profil je uklonjen. Njegova Proton Drive sesija bit će zatvorena sljedeći put kada se otključa {account}.",
+            "profileSecretsNotRemoved": "Profil je uklonjen, ali neki od njegovih spremljenih vjerodajnica nisu se mogli izbrisati iz trezora."
         },
         "gitlab": {
             "projectPath": "Putanja projekta",

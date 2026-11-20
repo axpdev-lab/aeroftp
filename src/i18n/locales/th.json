@@ -5916,7 +5916,8 @@
             },
             "demoTabLabel": "สาธิต: {protocol}",
             "newTabLabel": "ใหม่: {name}",
-            "protonSessionEndsAtUnlock": "ลบโปรไฟล์แล้ว เซสชัน Proton Drive ของโปรไฟล์นี้จะถูกปิดเมื่อปลดล็อก {account} ครั้งถัดไป"
+            "protonSessionEndsAtUnlock": "ลบโปรไฟล์แล้ว เซสชัน Proton Drive ของโปรไฟล์นี้จะถูกปิดเมื่อปลดล็อก {account} ครั้งถัดไป",
+            "profileSecretsNotRemoved": "ลบโปรไฟล์แล้ว แต่ไม่สามารถลบข้อมูลรับรองที่บันทึกไว้บางส่วนออกจากตู้นิรภัยได้."
         },
         "gitlab": {
             "projectPath": "เส้นทางโปรเจกต์",

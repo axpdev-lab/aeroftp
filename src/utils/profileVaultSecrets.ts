@@ -68,12 +68,15 @@ export const copyProfileVaultSecrets = async (
   });
 
 /**
- * What a profile purge did: the keys it removed, and the account whose next
- * unlock closes the profile's native Proton Drive session, when that account
- * was locked and could not read it (`null` otherwise, the usual case).
+ * What a profile purge did: the keys it removed, the keys it found but could
+ * not remove (they stay in the vault under the deleted profile's id), and the
+ * account whose next unlock closes the profile's native Proton Drive session,
+ * when that account was locked and could not read it (`null` otherwise, the
+ * usual case).
  */
 export interface ProfileSecretsPurge {
   removed: string[];
+  failed: string[];
   protonSessionEndsAtUnlockOf: string | null;
 }
 

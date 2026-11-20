@@ -5916,7 +5916,8 @@
             },
             "demoTabLabel": "Demo: {protocol}",
             "newTabLabel": "Neu: {name}",
-            "protonSessionEndsAtUnlock": "Das Profil wurde entfernt. Seine Proton Drive-Sitzung wird beim nächsten Entsperren von {account} beendet."
+            "protonSessionEndsAtUnlock": "Das Profil wurde entfernt. Seine Proton Drive-Sitzung wird beim nächsten Entsperren von {account} beendet.",
+            "profileSecretsNotRemoved": "Das Profil wurde entfernt, aber einige seiner gespeicherten Zugangsdaten konnten nicht aus dem Tresor gelöscht werden."
         },
         "gitlab": {
             "projectPath": "Projektpfad",

@@ -77,7 +77,7 @@ function fixture(fail: 'read' | 'write' | 'none' = 'write') {
         createProfileCredentialJournal,
         useCallback: (fn: unknown) => fn, servers, setServers: vi.fn(), onServersChange: vi.fn(),
         setRenamingId: vi.fn(), deleteTarget: original, setDeleteTarget: vi.fn(), setGroups: vi.fn(),
-        copyProfileVaultSecrets: vi.fn(async () => ({})), deleteProfileVaultSecrets: vi.fn(async () => ({ removed: [], protonSessionEndsAtUnlockOf: null })),
+        copyProfileVaultSecrets: vi.fn(async () => ({})), deleteProfileVaultSecrets: vi.fn(async () => ({ removed: [], failed: [], protonSessionEndsAtUnlockOf: null })),
         pruneServerFromGroups: vi.fn(async () => undefined),
         visibleListRef: { current: servers }, dragServerIdRef: { current: 'old' },
         setDragIdx: vi.fn(), setOverIdx: vi.fn(), DRAG_SENTINEL_TOP: -1, DRAG_SENTINEL_BOTTOM: -2, reorderVisibleInFull,
@@ -549,7 +549,7 @@ describe('saved profile write rejection in production handlers', () => {
 
     it.each([['Target', 1], [null, 0]] as const)('IntroHub confirmDelete says when a locked account closes the Proton session later (%s)', async (account, toasts) => {
         const f = fixture('none');
-        f.context.deleteProfileVaultSecrets = vi.fn(async () => ({ removed: [], protonSessionEndsAtUnlockOf: account }));
+        f.context.deleteProfileVaultSecrets = vi.fn(async () => ({ removed: [], failed: [], protonSessionEndsAtUnlockOf: account }));
         const fn = await execute(hub, ['confirmDelete'], f.context);
         await fn.confirmDelete();
         await vi.waitFor(() => expect(f.context.deleteProfileVaultSecrets).toHaveBeenCalledOnce());
@@ -557,6 +557,22 @@ describe('saved profile write rejection in production handlers', () => {
         const said = f.events.filter(e => e.detail?.title === 'introHub.protonSessionEndsAtUnlock');
         expect(said).toHaveLength(toasts);
         expect(f.context.logger.warn).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        ['a key the purge could not remove', async () => ({ removed: [], failed: ['jottacloud_refresh_target'], protonSessionEndsAtUnlockOf: null }), 1],
+        ['a purge that failed', async () => { throw new Error('STORE_NOT_READY'); }, 1],
+        ['a complete purge', async () => ({ removed: ['server_target'], failed: [], protonSessionEndsAtUnlockOf: null }), 0],
+    ] as const)('IntroHub confirmDelete says when the deleted profile leaves secrets behind (%s)', async (_case, purge, toasts) => {
+        const f = fixture('none');
+        f.context.deleteProfileVaultSecrets = vi.fn(purge);
+        const fn = await execute(hub, ['confirmDelete'], f.context);
+        await fn.confirmDelete();
+        await vi.waitFor(() => expect(f.context.deleteProfileVaultSecrets).toHaveBeenCalledOnce());
+        await new Promise(resolve => setTimeout(resolve, 0));
+        const said = f.events.filter(e => e.detail?.title === 'introHub.profileSecretsNotRemoved');
+        expect(said).toHaveLength(toasts);
+        expect(f.context.logger.warn).toHaveBeenCalledTimes(toasts);
     });
 
     it('keeps the delete callback bound to the current translator', () => {

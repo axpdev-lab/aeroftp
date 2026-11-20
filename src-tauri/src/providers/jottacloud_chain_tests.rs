@@ -1063,3 +1063,52 @@ fn a_copy_that_did_not_follow_keeps_the_rotation_for_its_reader() {
     }
     assert!(failures.is_empty(), "{failures:#?}");
 }
+
+/// A profile purge names every key it found and could not remove: a refresh
+/// chain whose deletion cannot be recorded stays in the vault, and the purge
+/// says so instead of reporting a clean delete. Purged again once it can be
+/// recorded, the key goes.
+#[test]
+fn a_purge_names_the_keys_it_could_not_remove() {
+    use std::sync::atomic::Ordering::SeqCst;
+    if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+        "providers::jottacloud::chain_tests::a_purge_names_the_keys_it_could_not_remove",
+    ) {
+        return;
+    }
+    let chains = Chains::new();
+    let key = "jottacloud_refresh_purged";
+    partitions::store_active_credential_dual(&chains.store, key, &chains.chain("purged-chain"))
+        .unwrap();
+    let purge = || {
+        let purged = chains
+            .runtime()
+            .block_on(crate::purge_profile_secrets(
+                "purged".into(),
+                Some("jottacloud".into()),
+            ))
+            .expect("purge");
+        serde_json::to_value(purged).unwrap()
+    };
+    partitions::CHAIN_DELETION_BEGIN_REFUSED.store(true, SeqCst);
+    let refused = purge();
+    partitions::CHAIN_DELETION_BEGIN_REFUSED.store(false, SeqCst);
+    let mut failures = Vec::new();
+    if refused["failed"] != serde_json::json!([key]) || chains.stored(key) != "purged-chain" {
+        failures.push(format!(
+            "a key left behind is named: {refused}, the key holds {:?}",
+            chains.stored(key)
+        ));
+    }
+    let purged = purge();
+    if purged["failed"] != serde_json::json!([])
+        || purged["removed"] != serde_json::json!([key])
+        || !chains.stored(key).is_empty()
+    {
+        failures.push(format!(
+            "purged again, the key goes: {purged}, the key holds {:?}",
+            chains.stored(key)
+        ));
+    }
+    assert!(failures.is_empty(), "{failures:#?}");
+}

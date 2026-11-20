@@ -5916,7 +5916,8 @@
             },
             "demoTabLabel": "Демо: {protocol}",
             "newTabLabel": "Нов: {name}",
-            "protonSessionEndsAtUnlock": "Профилът беше премахнат. Сесията му в Proton Drive ще бъде прекратена при следващото отключване на {account}."
+            "protonSessionEndsAtUnlock": "Профилът беше премахнат. Сесията му в Proton Drive ще бъде прекратена при следващото отключване на {account}.",
+            "profileSecretsNotRemoved": "Профилът беше премахнат, но някои от запазените му данни за вход не можаха да бъдат изтрити от трезора."
         },
         "gitlab": {
             "projectPath": "Път на проекта",

@@ -24245,13 +24245,16 @@ async fn delete_credential_for_active_account(
     .map_err(|e| format!("Failed to delete credential: {}", e))
 }
 
-/// What a profile purge did: the keys it removed, and the account whose next
-/// unlock ends the profile's native Proton session, when the account was
-/// locked and could not read it (`None` otherwise, the usual case).
+/// What a profile purge did: the keys it removed, the keys it found and could
+/// not remove (they stay under the deleted profile's id, and the window says
+/// so), and the account whose next unlock ends the profile's native Proton
+/// session, when the account was locked and could not read it (`None`
+/// otherwise, the usual case).
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct PurgedProfileSecrets {
     removed: Vec<String>,
+    failed: Vec<String>,
     proton_session_ends_at_unlock_of: Option<String>,
 }
 
@@ -24260,7 +24263,8 @@ struct PurgedProfileSecrets {
 /// the keys from [`per_profile_vault_keys`] (the single source of truth shared
 /// with export and duplicate). Best-effort per key: a key absent for this
 /// profile kind is a no-op, never an error. Reports the keys that were actually
-/// present and removed. `protocol` lets the OAuth-token key be derived.
+/// present and removed, and those present whose delete failed. `protocol` lets
+/// the OAuth-token key be derived.
 #[tauri::command]
 async fn purge_profile_secrets(
     profile_id: String,
@@ -24274,7 +24278,7 @@ async fn purge_profile_secrets(
         end_purged_proton_session(&store, user_id, &profile_id).await?;
     #[cfg(not(feature = "proton-native"))]
     let proton_session_ends_at_unlock_of = None;
-    let removed = purge_profile_secret_keys(
+    let (removed, failed) = purge_profile_secret_keys(
         &profile_id,
         protocol.as_deref(),
         // Where the account reads it: another account's token is its row
@@ -24298,8 +24302,15 @@ async fn purge_profile_secrets(
             }
         },
     );
+    if !failed.is_empty() {
+        log::warn!(
+            "Profile purge: {} secret(s) could not be removed",
+            failed.len()
+        );
+    }
     Ok(PurgedProfileSecrets {
         removed,
+        failed,
         proton_session_ends_at_unlock_of,
     })
 }
@@ -24341,19 +24352,22 @@ async fn end_purged_proton_session(
     Ok(None)
 }
 
+/// The keys of `profile_id` that existed and were removed, and those that
+/// existed and whose delete failed: every key is tried either way.
 fn purge_profile_secret_keys<Exists, Delete, Unmirror>(
     profile_id: &str,
     protocol: Option<&str>,
     mut exists: Exists,
     mut delete: Delete,
     mut unmirror: Unmirror,
-) -> Vec<String>
+) -> (Vec<String>, Vec<String>)
 where
     Exists: FnMut(&str) -> bool,
     Delete: FnMut(&str) -> bool,
     Unmirror: FnMut(&str),
 {
     let mut removed = Vec::new();
+    let mut failed = Vec::new();
     for key in per_profile_vault_keys_for_delete(profile_id, protocol) {
         // The caller has already removed this entry under its session lease.
         // Never perform an unleased second delete of a concurrent new sign-in.
@@ -24369,9 +24383,11 @@ where
             if existed {
                 removed.push(key);
             }
+        } else if existed {
+            failed.push(key);
         }
     }
-    removed
+    (removed, failed)
 }
 
 /// Copy EVERY vault secret scoped to `source_id` onto `target_id`, so
@@ -27212,7 +27228,7 @@ mod profile_secret_purge_tests {
             "profile_auth_deadline_profile-1".to_string(),
         ]));
 
-        let removed = purge_profile_secret_keys(
+        let (removed, failed) = purge_profile_secret_keys(
             "profile-1",
             Some("dropbox"),
             |key| vault.borrow().contains(key),
@@ -27224,6 +27240,7 @@ mod profile_secret_purge_tests {
                 partition.borrow_mut().remove(key);
             },
         );
+        assert!(failed.is_empty());
 
         assert!(removed.contains(&"oauth_dropbox_profile-1".to_string()));
         assert!(
@@ -27236,6 +27253,32 @@ mod profile_secret_purge_tests {
         );
         assert!(vault.borrow().is_empty());
         assert_eq!(partition.borrow().len(), 1);
+    }
+
+    /// A key that existed and whose delete failed is reported as failed, not
+    /// left out; a failed delete of a key that was not there is no failure.
+    #[test]
+    fn profile_purge_reports_the_keys_it_could_not_remove() {
+        let vault = RefCell::new(HashSet::from([
+            "server_profile-1".to_string(),
+            "jottacloud_refresh_profile-1".to_string(),
+        ]));
+        let (removed, failed) = purge_profile_secret_keys(
+            "profile-1",
+            Some("jottacloud"),
+            |key| vault.borrow().contains(key),
+            |key| {
+                if key.starts_with("jottacloud_refresh_") || key.starts_with("oauth_") {
+                    return false;
+                }
+                vault.borrow_mut().remove(key);
+                true
+            },
+            |_| {},
+        );
+        assert_eq!(removed, vec!["server_profile-1".to_string()]);
+        assert_eq!(failed, vec!["jottacloud_refresh_profile-1".to_string()]);
+        assert!(vault.borrow().contains("jottacloud_refresh_profile-1"));
     }
 }
 

@@ -1436,7 +1436,11 @@ export function MyServersPanel({
                 // acts on the active account: after a switch it could miss them or hit
                 // another's, so they stay, unused under an id nothing refers to.
                 if (accountChangeGeneration() === accountBefore) {
-                    await deleteProfileVaultSecrets(newId, source.protocol).catch(e => logger.warn('Secrets of the unsaved copy could not be removed', e));
+                    await deleteProfileVaultSecrets(newId, source.protocol)
+                        .then(({ failed }) => {
+                            if (failed.length > 0) logger.warn('Secrets of the unsaved copy could not be removed', failed);
+                        })
+                        .catch(e => logger.warn('Secrets of the unsaved copy could not be removed', e));
                 }
                 throw err;
             }
@@ -1555,8 +1559,21 @@ export function MyServersPanel({
             const { profiles: currentServers, userId: profilesUserId, revision: profilesRevision } = await readSavedServerProfilesForWrite();
             const updated = currentServers.filter(s => s.id !== deleteTarget.id);
             setServers(await storeSavedServerProfiles(updated, false, profilesUserId, profilesRevision));
+            // The profile is gone either way; secrets the purge could not
+            // remove stay in the vault under its id, and the user is told.
+            const secretsLeft = (detail: unknown) => {
+                logger.warn('Secrets of the deleted profile could not be removed', detail);
+                window.dispatchEvent(new CustomEvent('aeroftp-toast', {
+                    detail: {
+                        type: 'warning',
+                        title: t('introHub.profileSecretsNotRemoved'),
+                        important: true,
+                    },
+                }));
+            };
             deleteProfileVaultSecrets(deleteTarget.id, deleteTarget.protocol)
-                .then(({ protonSessionEndsAtUnlockOf: account }) => {
+                .then(({ failed, protonSessionEndsAtUnlockOf: account }) => {
+                    if (failed.length > 0) secretsLeft(failed);
                     if (!account) return;
                     window.dispatchEvent(new CustomEvent('aeroftp-toast', {
                         detail: {
@@ -1566,7 +1583,7 @@ export function MyServersPanel({
                         },
                     }));
                 })
-                .catch(e => logger.warn('Secrets of the deleted profile could not be removed', e));
+                .catch(secretsLeft);
             // Drop the deleted profile from any group it belonged to (#320).
             pruneServerFromGroups(deleteTarget.id).catch(() => {});
             setGroups(prev => prev.map(g => (

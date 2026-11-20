@@ -4107,6 +4107,11 @@ pub(crate) static CHAIN_DELETIONS_REFUSED: std::sync::atomic::AtomicBool =
 pub(crate) static FOLLOW_REFUSED: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
+/// Every begin of a chain deletion fails (test only).
+#[cfg(test)]
+pub(crate) static CHAIN_DELETION_BEGIN_REFUSED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
 /// Every end of a chain deletion fails (test only).
 #[cfg(test)]
 pub(crate) static CHAIN_DELETION_END_REFUSED: std::sync::atomic::AtomicBool =
@@ -4166,6 +4171,10 @@ pub(crate) fn begin_chain_deletion(
     owner: Option<i64>,
     account: &str,
 ) -> Result<ChainDeletion, String> {
+    #[cfg(test)]
+    if CHAIN_DELETION_BEGIN_REFUSED.load(std::sync::atomic::Ordering::SeqCst) {
+        return Err("Begin chain deletion: refused (test)".to_string());
+    }
     init_or_migrate_cli(store)?;
     let conn = open_or_init_cli()?;
     let key = chain_deletion_key(store, owner, account)?;

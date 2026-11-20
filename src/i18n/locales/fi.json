@@ -5916,7 +5916,8 @@
             },
             "demoTabLabel": "Esittely: {protocol}",
             "newTabLabel": "Uusi: {name}",
-            "protonSessionEndsAtUnlock": "Profiili poistettiin. Sen Proton Drive -istunto suljetaan, kun {account} avataan seuraavan kerran."
+            "protonSessionEndsAtUnlock": "Profiili poistettiin. Sen Proton Drive -istunto suljetaan, kun {account} avataan seuraavan kerran.",
+            "profileSecretsNotRemoved": "Profiili poistettiin, mutta joitakin sen tallennettuja tunnistetietoja ei voitu poistaa holvista."
         },
         "gitlab": {
             "projectPath": "Projektipolku",

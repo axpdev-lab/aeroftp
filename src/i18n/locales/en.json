@@ -6096,6 +6096,7 @@
             "addFavorite": "Add to favorites",
             "removeFavorite": "Remove from favorites",
             "protonSessionEndsAtUnlock": "The profile was removed. Its Proton Drive session will be closed the next time {account} is unlocked.",
+            "profileSecretsNotRemoved": "The profile was removed, but some of its saved credentials could not be deleted from the vault.",
             "exportProfile": "Export...",
             "group": {
                 "newGroup": "New group",

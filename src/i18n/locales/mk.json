@@ -5935,7 +5935,8 @@
             },
             "demoTabLabel": "Демо: {protocol}",
             "newTabLabel": "Ново: {name}",
-            "protonSessionEndsAtUnlock": "Профилот е отстранет. Неговата сесија на Proton Drive ќе се затвори следниот пат кога ќе се отклучи {account}."
+            "protonSessionEndsAtUnlock": "Профилот е отстранет. Неговата сесија на Proton Drive ќе се затвори следниот пат кога ќе се отклучи {account}.",
+            "profileSecretsNotRemoved": "Профилот беше отстранет, но некои од неговите зачувани податоци за најава не можеа да се избришат од сефот."
         },
         "gitlab": {
             "projectPath": "Патека на проект",

@@ -5916,7 +5916,8 @@
             },
             "demoTabLabel": "Ukázka: {protocol}",
             "newTabLabel": "Nový: {name}",
-            "protonSessionEndsAtUnlock": "Profil byl odstraněn. Jeho relace Proton Drive bude ukončena při příštím odemknutí účtu {account}."
+            "protonSessionEndsAtUnlock": "Profil byl odstraněn. Jeho relace Proton Drive bude ukončena při příštím odemknutí účtu {account}.",
+            "profileSecretsNotRemoved": "Profil byl odstraněn, ale některé jeho uložené přihlašovací údaje se nepodařilo smazat z trezoru."
         },
         "gitlab": {
             "projectPath": "Cesta k projektu",

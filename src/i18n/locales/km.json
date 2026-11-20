@@ -5935,7 +5935,8 @@
             },
             "demoTabLabel": "សាកល្បង: {protocol}",
             "newTabLabel": "ថ្មី: {name}",
-            "protonSessionEndsAtUnlock": "ប្រូហ្វាល់ត្រូវបានលុប។ សម័យ Proton Drive របស់វានឹងត្រូវបិទ នៅពេលដែល {account} ត្រូវបានដោះសោលើកក្រោយ។"
+            "protonSessionEndsAtUnlock": "ប្រូហ្វាល់ត្រូវបានលុប។ សម័យ Proton Drive របស់វានឹងត្រូវបិទ នៅពេលដែល {account} ត្រូវបានដោះសោលើកក្រោយ។",
+            "profileSecretsNotRemoved": "ប្រូហ្វាល់ត្រូវបានលុប ប៉ុន្តែព័ត៌មានសម្ងាត់ដែលបានរក្សាទុកមួយចំនួនរបស់វាមិនអាចលុបចេញពីតូទទួលបានទេ។"
         },
         "gitlab": {
             "projectPath": "ផ្លូវគម្រោង",

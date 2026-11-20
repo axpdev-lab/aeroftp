@@ -5935,7 +5935,8 @@
             },
             "demoTabLabel": "Sýnishorn: {protocol}",
             "newTabLabel": "Nýtt: {name}",
-            "protonSessionEndsAtUnlock": "Prófílnum var eytt. Proton Drive lotu hans verður lokað næst þegar {account} er aflæstur."
+            "protonSessionEndsAtUnlock": "Prófílnum var eytt. Proton Drive lotu hans verður lokað næst þegar {account} er aflæstur.",
+            "profileSecretsNotRemoved": "Sniðið var fjarlægt, en ekki tókst að eyða sumum vistuðum auðkennisupplýsingum þess úr hvelfingunni."
         },
         "gitlab": {
             "projectPath": "Verkefnisslóð",

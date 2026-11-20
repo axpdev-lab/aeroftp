@@ -5935,7 +5935,8 @@
             },
             "demoTabLabel": "Demo: {protocol}",
             "newTabLabel": "Newydd: {name}",
-            "protonSessionEndsAtUnlock": "Mae'r proffil wedi'i dynnu. Bydd ei sesiwn Proton Drive yn cael ei chau y tro nesaf y caiff {account} ei ddatgloi."
+            "protonSessionEndsAtUnlock": "Mae'r proffil wedi'i dynnu. Bydd ei sesiwn Proton Drive yn cael ei chau y tro nesaf y caiff {account} ei ddatgloi.",
+            "profileSecretsNotRemoved": "Cafodd y proffil ei dynnu, ond nid oedd modd dileu rhai o'i fanylion mewngofnodi wedi'u cadw o'r gladdgell."
         },
         "gitlab": {
             "projectPath": "Llwybr y prosiect",
