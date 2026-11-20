@@ -362,12 +362,15 @@ test('npm collection: a lockfile without a packages map (lockfileVersion 1) or o
     write({ name: 'fixture-app', version: '1.0.0', dependencies: { foo: { version: '1.0.0' } } });
     assert.throws(() => collectNpmDependencies(lockPath, tmpDir), /package-lock\.json has no lockfileVersion;/);
     // A value that is not a number is described, never printed: it can be any text.
-    const secret = 'https://user:dummy-lockfile-secret@registry.example.com/';
+    // The URL is built from a dummy value, as in the other credential fixtures,
+    // so the source holds no literal that reads as a credential.
+    const dummyLockfileSecret = 'dummy-lockfile-secret';
+    const secret = `https://user:${dummyLockfileSecret}@registry.example.com/`;
     for (const lockfileVersion of [secret, { url: secret }, [secret], true]) {
       write({ lockfileVersion, packages: { '': {}, 'node_modules/foo': { version: '1.0.0', license: 'MIT' } } });
       assert.throws(
         () => collectNpmDependencies(lockPath, tmpDir),
-        (err) => /package-lock\.json has a lockfileVersion that is not a number;/.test(err.message) && !String(err.stack).includes('dummy-lockfile-secret'),
+        (err) => /package-lock\.json has a lockfileVersion that is not a number;/.test(err.message) && !String(err.stack).includes(dummyLockfileSecret),
         JSON.stringify(lockfileVersion)
       );
     }
