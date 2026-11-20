@@ -5012,11 +5012,36 @@ fn align_private_tokens_inner(
     read_secret: &SecretReader<'_>,
     delete_secret: &SecretDeleter<'_>,
 ) -> Result<usize, String> {
-    if private_tokens_aligned(conn, user_id)? {
+    align_private_tokens_of(
+        conn,
+        root_key,
+        user_id,
+        vault_keys,
+        None,
+        read_secret,
+        delete_secret,
+    )
+}
+
+/// [`align_private_tokens_inner`], over the keys in `only` alone when given:
+/// one pass of the same rule for an account already aligned, which neither
+/// reads nor sets its marker ([`realign_private_tokens_after_restore`]).
+fn align_private_tokens_of(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+    vault_keys: &[String],
+    only: Option<&[String]>,
+    read_secret: &SecretReader<'_>,
+    delete_secret: &SecretDeleter<'_>,
+) -> Result<usize, String> {
+    if only.is_none() && private_tokens_aligned(conn, user_id)? {
         return Ok(0);
     }
     if nonprofile_secret_owner(conn)? == Some(user_id) {
-        mark_private_tokens_aligned(conn, user_id)?;
+        if only.is_none() {
+            mark_private_tokens_aligned(conn, user_id)?;
+        }
         return Ok(0);
     }
     // Which profiles another account holds must not change until the vault has
@@ -5070,9 +5095,9 @@ fn align_private_tokens_inner(
                     |row| row.get(0),
                 )
                 .map_err(|e| format!("Read profile holders: {e}"))?;
-            let keys = private_token_keys_of_profile(id)
-                .into_iter()
-                .filter(|key| vault_keys.contains(key));
+            let keys = private_token_keys_of_profile(id).into_iter().filter(|key| {
+                vault_keys.contains(key) && only.is_none_or(|only| only.contains(key))
+            });
             if !shared {
                 sole.extend(keys);
                 continue;
@@ -5096,7 +5121,7 @@ fn align_private_tokens_inner(
             }
         }
         let unbound = format!("{PROTON_UNBOUND_USER_PREFIX}{uid}");
-        if vault_keys.contains(&unbound) {
+        if only.is_none() && vault_keys.contains(&unbound) {
             sole.push(unbound);
         }
         // The sessions other accounts hold in the vault, by UID.
@@ -5141,7 +5166,7 @@ fn align_private_tokens_inner(
     }
     // A pass that left them in the vault is not done: the next one that can
     // exclude the profile writers removes them.
-    if vault_lets_go || moved.is_empty() {
+    if only.is_none() && (vault_lets_go || moved.is_empty()) {
         mark_private_tokens_aligned(conn, user_id)?;
     }
     Ok(moved.len())
@@ -5269,14 +5294,32 @@ fn another_jottacloud_user(key: &str, row: &str, vault: &str) -> bool {
     another("username") && another("refresh_token")
 }
 
+/// The account active before a keystore restore, and what it held then, for
+/// [`realign_private_tokens_after_restore`].
+pub struct ActiveBeforeRestore<'a> {
+    pub store: &'a CredentialStore,
+    pub user_id: i64,
+    /// The ids of the profiles it listed before the import wrote anything.
+    pub profile_ids: &'a [String],
+    /// The private token keys the import wrote into the vault.
+    pub restored_keys: &'a [String],
+}
+
 /// After a keystore restore wrote private token keys into the vault: a backup
 /// made before tokens were kept to their account carries another account's
 /// under the key the legacy owner reads, so the alignment runs again for every
-/// account but the one active after the import. That one is left: the restore
-/// may have filled its list with the backup's profiles, whose vault keys are
-/// the backup's, and the import gives it those only where they are its own
-/// ([`vault_copy_is_another_accounts`]).
-pub fn realign_private_tokens_after_restore(db_path: &std::path::Path) -> Result<(), String> {
+/// account but the one active after the import. That one is not reset: the
+/// restore may have filled its list with the backup's profiles, whose vault
+/// keys are the backup's, and the import gives it those only where they are
+/// its own ([`vault_copy_is_another_accounts`]). Its own tokens are not left
+/// behind either: when it is the account that was active before the import
+/// (`active`), the alignment's rule runs once over the restored keys of the
+/// profiles it listed then, the ones a vault key can be its own for, so its
+/// token comes back to its row where it alone holds the profile.
+pub fn realign_private_tokens_after_restore(
+    db_path: &std::path::Path,
+    active_before: Option<ActiveBeforeRestore<'_>>,
+) -> Result<usize, String> {
     let conn = Connection::open(db_path).map_err(|e| format!("Open user partitions DB: {e}"))?;
     let active = active_user_id(&conn)?;
     for user in list_users(&conn)? {
@@ -5289,7 +5332,34 @@ pub fn realign_private_tokens_after_restore(db_path: &std::path::Path) -> Result
         )
         .map_err(|e| format!("Reset private token marker: {e}"))?;
     }
-    Ok(())
+    let Some(before) = active_before.filter(|before| Some(before.user_id) == active) else {
+        return Ok(0);
+    };
+    let held: Vec<String> = before
+        .profile_ids
+        .iter()
+        .flat_map(|id| private_token_keys_of_profile(id))
+        .filter(|key| before.restored_keys.contains(key))
+        .collect();
+    if held.is_empty() {
+        return Ok(0);
+    }
+    let vault_keys = before
+        .store
+        .list_accounts()
+        .map_err(|e| format!("List vault keys: {e}"))?;
+    let read_secret = |key: &str| get_optional_secret(before.store, key);
+    let delete_secret = |key: &str| delete_optional_secret(before.store, key);
+    let root_key = Zeroizing::new(before.store.derive_user_partition_wrapping_key());
+    align_private_tokens_of(
+        &conn,
+        &root_key,
+        before.user_id,
+        &vault_keys,
+        Some(&held),
+        &read_secret,
+        &delete_secret,
+    )
 }
 
 /// Reader-fallback net (sec 3.3), engine form: prefer the per-user encrypted

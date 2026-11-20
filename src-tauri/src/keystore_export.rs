@@ -2048,6 +2048,13 @@ fn import_keystore_with_store(
             crate::user_partitions::NO_FILE_LOCKS.to_string(),
         ));
     }
+    // The account active here and the profiles it lists, before anything is
+    // written: a restored vault key of one of those profiles may be its own
+    // token, which the realignment below gives back to its row.
+    let active_before = sections
+        .vault
+        .then(|| active_account_and_profiles(store, config_dir))
+        .flatten();
     // #347: read both profile lists and their secrets before anything is
     // written, so "keep this device's version" can put back what was here,
     // and refuse decisions that do not match this plan while nothing has
@@ -2253,7 +2260,7 @@ fn import_keystore_with_store(
     }
 
     let imported = committed.len() as u32;
-    let restored_private_tokens = committed
+    let restored_private_keys: Vec<String> = committed
         .iter()
         .any(|account| crate::user_partitions::private_token_type(account).is_some());
     zeroize_staged_entries(&mut staged);
@@ -2540,10 +2547,34 @@ fn import_keystore_with_store(
     }
 
     // A backup made before tokens were kept to their account can have put
-    // another account's back under the key the legacy owner reads.
-    if restored_private_tokens {
+    // another account's back under the key the legacy owner reads. The
+    // alignment takes the profile list lock itself, and every write of this
+    // import is done: the lock goes first.
+    drop(list_lock);
+    if !restored_private_keys.is_empty() {
         if let Some(db) = partition_db(config_dir) {
-            if let Err(e) = crate::user_partitions::realign_private_tokens_after_restore(&db) {
+            // The account active before the import gets its own tokens back
+            // when it is still the active one, in this device's partition.
+            let still_active = active_before.as_ref().filter(|(receiver, _)| {
+                !partition_in_restore
+                    && rusqlite::Connection::open(&db)
+                        .ok()
+                        .and_then(|conn| receiver_in(&conn).ok().flatten())
+                        .as_ref()
+                        == Some(receiver)
+            });
+            let realigned = crate::user_partitions::realign_private_tokens_after_restore(
+                &db,
+                still_active.map(
+                    |(receiver, ids)| crate::user_partitions::ActiveBeforeRestore {
+                        store,
+                        user_id: receiver.user_id,
+                        profile_ids: ids,
+                        restored_keys: &restored_private_keys,
+                    },
+                ),
+            );
+            if let Err(e) = realigned {
                 tracing::warn!("Keystore import: restored tokens not realigned: {e}");
             }
         }
@@ -4597,6 +4628,13 @@ mod tests {
         }
     }
 
+    const VAULT_ONLY: ImportSections = ImportSections {
+        vault: true,
+        sqlite_dbs: false,
+        files: false,
+        local_storage: false,
+    };
+
     /// Two databases each give id 2 to an account of their own: Bob here,
     /// Alice in the backup. Keeping this device's version of the profile
     /// both list gives Alice, the account the restore leaves active, nothing
@@ -4783,6 +4821,74 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["Drive"]
         );
+    }
+
+    /// A vault-only restore of an old backup puts the token of the account
+    /// active here, the sole holder of its profile and already aligned, back
+    /// under the vault key: the restore gives it back to the account's row
+    /// and the vault lets go of it. A token of a profile the account did not
+    /// hold before the import (here one only the restored list names) is not
+    /// proven its own, and stays in the vault.
+    #[test]
+    fn a_vault_restore_gives_the_active_sole_holder_its_token_back() {
+        let _guard = crate::user_partitions::test_lock();
+        crate::user_partitions::clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let cfg = dir.path().join("config");
+        partition_with(&store, &cfg, &[]);
+        let root = store.derive_user_partition_wrapping_key();
+        let mut conn = rusqlite::Connection::open(cfg.join("user_partitions.db")).unwrap();
+        let sole = crate::user_partitions::create_passphrase_less_user(
+            &mut conn, &root, "Sole", None, None,
+        )
+        .unwrap();
+        crate::user_partitions::replace_server_profiles_for(
+            &mut conn,
+            &root,
+            sole.id,
+            &[dropbox("srv_mine", "Mine")],
+        )
+        .unwrap();
+        crate::user_partitions::set_active_user(&conn, sole.id).unwrap();
+        crate::user_partitions::clear_user_session();
+        crate::user_partitions::migrate_credentials_eager_all(&conn, &store, &root).unwrap();
+        let (mine, new) = ("oauth_dropbox_srv_mine", "oauth_dropbox_srv_new");
+        let mut payload = ExportPayload::default();
+        payload.vault_entries.insert(
+            "config_server_profiles".to_string(),
+            serde_json::to_string(&[dropbox("srv_mine", "Mine"), dropbox("srv_new", "New")])
+                .unwrap(),
+        );
+        payload
+            .vault_entries
+            .insert(mine.to_string(), "sole-token".to_string());
+        payload
+            .vault_entries
+            .insert(new.to_string(), "new-token".to_string());
+        let backup = dir.path().join("vault.aeroftp-keystore");
+        seal_backup(&backup, PASSWORD_736, &payload);
+
+        import_keystore_with_store(
+            &store,
+            PASSWORD_736,
+            &backup,
+            "overwrite",
+            VAULT_ONLY,
+            Some(&cfg),
+            None,
+            None,
+        )
+        .unwrap();
+        crate::user_partitions::migrate_credentials_eager_all(&conn, &store, &root).unwrap();
+        assert_eq!(
+            row_in(&store, &cfg, sole.id, mine).as_deref(),
+            Some("sole-token"),
+            "the restored token was left in the vault"
+        );
+        assert!(store.get(mine).is_err());
+        assert_eq!(row_in(&store, &cfg, sole.id, new), None);
+        assert_eq!(store.get(new).unwrap(), "new-token");
     }
 
     /// The profile step writes to the account its plan was made for. When the
