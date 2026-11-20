@@ -3635,6 +3635,7 @@ fn replace_user_credential_where(
 /// row is never created, nor its account's key asked for. The migrations run
 /// first, as for [`store_credential_for_user`], so a copy their alignment
 /// drops is gone before the look.
+#[cfg(feature = "proton-native")]
 pub(crate) fn refresh_user_credential(
     store: &CredentialStore,
     user_id: i64,
@@ -5516,6 +5517,7 @@ pub(crate) fn profile_credential_owner_ids(
 /// `uid`: one of its rows holds that session, or it has a saved session this
 /// process cannot read (an account locked by its passphrase), which may be
 /// that one. A row that holds no session is no copy.
+#[cfg(feature = "proton-native")]
 pub(crate) fn another_account_may_hold_session(
     store: &CredentialStore,
     user: Option<i64>,
