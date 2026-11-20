@@ -109,7 +109,7 @@ fn session_writes() -> std::sync::MutexGuard<'static, ()> {
 /// What the tests observe of this module from outside it.
 #[cfg(test)]
 pub(crate) mod test_seams {
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::{mpsc, Mutex};
     use std::time::Duration;
 
@@ -192,11 +192,32 @@ pub(crate) mod test_seams {
         REVOKES.load(Ordering::SeqCst)
     }
 
+    static FAIL_REVOKES: AtomicBool = AtomicBool::new(false);
+    static FAILED_REVOKES: AtomicUsize = AtomicUsize::new(0);
+
+    /// Every sign-out on Proton from now on fails, as one sent offline does,
+    /// until called again with `false`.
+    pub(crate) fn fail_revokes(fail: bool) {
+        FAIL_REVOKES.store(fail, Ordering::SeqCst);
+    }
+
+    /// How many sign-outs on Proton failed in this process.
+    pub(crate) fn failed_revokes() -> usize {
+        FAILED_REVOKES.load(Ordering::SeqCst)
+    }
+
     /// Counts a sign-out on Proton in place of sending it, so a test never
-    /// reaches Proton's host. Always true: the sign-out is done.
-    pub(super) fn revoke_counted() -> bool {
+    /// reaches Proton's host: done, or failed while [`fail_revokes`] is on.
+    /// Always `Some`.
+    pub(super) fn revoke_counted() -> Option<super::RevokeOutcome> {
+        if FAIL_REVOKES.load(Ordering::SeqCst) {
+            FAILED_REVOKES.fetch_add(1, Ordering::SeqCst);
+            return Some(super::RevokeOutcome::Failed(
+                "the sign-out on Proton failed".into(),
+            ));
+        }
         REVOKES.fetch_add(1, Ordering::SeqCst);
-        true
+        Some(super::RevokeOutcome::Revoked)
     }
 }
 
@@ -754,6 +775,8 @@ pub async fn replace_session(
     refuse_moved_away(&store, owner, profile_id)?;
     let previous_key = saved_key(&store, owner, profile_id)?;
     let _lease = lease_of_saved(owner, &previous_key).await?;
+    // Best effort: the user asked for the new sign-in, which a failed
+    // sign-out of the old session does not stop (the outcome is logged).
     revoke_saved_session(owner, profile_id).await;
     let _writes = session_writes();
     if previous_key != owner.key(profile_id) {
@@ -973,6 +996,8 @@ pub async fn end_session(
     let store = open_store()?;
     let _keys = lock_keys(mutation_keys(owner, profile_id)?).await?;
     let _lease = lease_of_saved(owner, &saved_key(&store, owner, profile_id)?).await?;
+    // Best effort, as a sign-out or a delete asked for: the local session
+    // goes whatever the outcome, which is logged.
     revoke_saved_session(owner, profile_id).await;
     let _writes = session_writes();
     delete_session(owner, profile_id)
@@ -982,7 +1007,9 @@ pub async fn end_session(
 /// a synchronous caller: ended only when `left_by_the_purge`, given the UID
 /// of the session saved now, read under the key lock and the session's
 /// lease, says it is the session the purge left. A session saved there
-/// since stays. Whether one was ended.
+/// since stays. Whether one was ended. A sign-out on Proton that failed is an
+/// error, the row kept: a purged session is never dropped while it may still
+/// be live, and the next unlock tries again.
 pub fn end_purged_session_blocking(
     owner: SessionOwner,
     profile_id: &str,
@@ -1005,7 +1032,13 @@ pub fn end_purged_session_blocking(
             if !left_by_the_purge(&saved.tokens.uid).map_err(ProviderError::Other)? {
                 return Ok(false);
             }
-            revoke_saved_session(owner, Some(&profile_id)).await;
+            if let RevokeOutcome::Failed(error) =
+                revoke_saved_session(owner, Some(&profile_id)).await
+            {
+                return Err(ProviderError::Other(format!(
+                    "the purged Proton session was not ended on Proton, so it stays for the next unlock: {error}"
+                )));
+            }
             let _writes = session_writes();
             delete_session(owner, Some(&profile_id))?;
             Ok(true)
@@ -1039,66 +1072,80 @@ pub fn end_session_blocking(
         .map_err(|_| ProviderError::Other("Proton session cleanup stopped unexpectedly".into()))?
 }
 
-/// Revokes on Proton the session saved for `profile_id`, best effort, before
-/// a profile delete (or a new sign-in) replaces the key. A session that
-/// another key on this device also holds is left alive: another profile of
-/// the account, or another account the session index says holds it or may
-/// hold it ([`kept_for_another_account`]). Never fails the caller: errors are
-/// logged.
-pub async fn revoke_saved_session(owner: SessionOwner, profile_id: Option<&str>) {
+/// What [`revoke_saved_session`] did on Proton.
+#[derive(Debug, PartialEq, Eq)]
+pub enum RevokeOutcome {
+    /// No session is saved there.
+    NothingSaved,
+    /// The session was ended on Proton.
+    Revoked,
+    /// Kept alive on Proton: another saved profile of the account uses it.
+    KeptShared,
+    /// Kept alive on Proton: another account on this device holds it or may
+    /// hold it.
+    KeptForAnotherAccount,
+    /// Not ended, and it may still be live on Proton: the sign-out failed or
+    /// timed out, or the session, its copies or the other accounts' sessions
+    /// could not be read. The reason names no UID.
+    Failed(String),
+}
+
+/// Revokes on Proton the session saved for `profile_id`, before a profile
+/// delete (or a new sign-in) replaces the key. A session that another key on
+/// this device also holds is left alive: another profile of the account, or
+/// another account the session index says holds it or may hold it
+/// ([`kept_for_another_account`]). The outcome is logged and returned: a
+/// sign-out or a delete goes on whatever it is, a purge left to an unlock
+/// keeps the session while it is [`RevokeOutcome::Failed`].
+pub async fn revoke_saved_session(owner: SessionOwner, profile_id: Option<&str>) -> RevokeOutcome {
+    let failed = |what: &str, error: &dyn std::fmt::Display| {
+        log::warn!("Proton: saved session not revoked, {what}: {error}");
+        RevokeOutcome::Failed(format!("{what}: {error}"))
+    };
     let store = match open_store() {
         Ok(store) => store,
-        Err(_) => return,
+        Err(error) => return failed("the vault could not be opened", &error),
     };
     let key = match saved_key(&store, owner, profile_id) {
         Ok(key) => key,
-        Err(error) => {
-            log::warn!("Proton: saved session owner could not be read: {error}");
-            return;
-        }
+        Err(error) => return failed("its owner could not be read", &error),
     };
     let session = match read(&store, owner, &key) {
         Ok(Some(session)) => session,
-        Ok(None) => return,
-        Err(error) => {
-            log::warn!("Proton: saved session not revoked: {error}");
-            return;
-        }
+        Ok(None) => return RevokeOutcome::NothingSaved,
+        Err(error) => return failed("it could not be read", &error),
     };
     let shared = match another_profile_holds(&store, owner, &key, &session.tokens.uid) {
         Ok(shared) => shared,
-        Err(error) => {
-            log::warn!("Proton: saved session not revoked, its copies could not be read: {error}");
-            return;
-        }
+        Err(error) => return failed("its copies could not be read", &error),
     };
     if shared {
         log::info!("Proton: session kept, another saved profile uses it");
-        return;
+        return RevokeOutcome::KeptShared;
     }
     match kept_for_another_account(&store, owner, &session.tokens.uid) {
         Ok(None) => {}
         Ok(Some(reason)) => {
             log::info!("Proton: session dropped here and kept on Proton, {reason}");
-            return;
+            return RevokeOutcome::KeptForAnotherAccount;
         }
         Err(error) => {
-            log::warn!(
-                "Proton: saved session not revoked, the other accounts' sessions could not be read: {error}"
-            );
-            return;
+            return failed("the other accounts' sessions could not be read", &error);
         }
     }
     #[cfg(test)]
-    if test_seams::revoke_counted() {
-        return;
+    if let Some(outcome) = test_seams::revoke_counted() {
+        return outcome;
     }
     let api = ProtonApi::new(super::app_version::app_version());
     api.set_tokens(Some(session.tokens)).await;
     match tokio::time::timeout(REVOKE_TIMEOUT, super::auth::sign_out(&api)).await {
-        Ok(Ok(())) => log::info!("Proton: session revoked with its profile"),
-        Ok(Err(error)) => log::warn!("Proton: session revoke failed: {error}"),
-        Err(_) => log::warn!("Proton: session revoke timed out"),
+        Ok(Ok(())) => {
+            log::info!("Proton: session revoked with its profile");
+            RevokeOutcome::Revoked
+        }
+        Ok(Err(error)) => failed("the sign-out on Proton failed", &error),
+        Err(_) => failed("the sign-out on Proton", &"timed out"),
     }
 }
 

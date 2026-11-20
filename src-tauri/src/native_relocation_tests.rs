@@ -1635,3 +1635,52 @@ fn a_lease_storage_that_fails_stops_a_change_at_once() {
     );
     assert_eq!(loaded(owner, "lease-storage").as_deref(), Some("r1"));
 }
+
+/// An unlock whose sign-out on Proton fails (offline) ends nothing locally:
+/// the purged session's row and its mark stay, and the next unlock tries
+/// again, ends the session on Proton and removes both.
+#[test]
+fn a_deferred_revoke_that_fails_is_tried_again_at_the_next_unlock() {
+    if !in_isolated_child("a_deferred_revoke_that_fails_is_tried_again_at_the_next_unlock") {
+        return;
+    }
+    let accounts = Accounts::open();
+    defer_target_session(&accounts, "offline", "offline-uid");
+    let (revokes, failed) = (
+        vault::test_seams::revokes(),
+        vault::test_seams::failed_revokes(),
+    );
+    vault::test_seams::fail_revokes(true);
+    accounts.unlock_target();
+    vault::test_seams::fail_revokes(false);
+    assert_eq!(
+        vault::test_seams::failed_revokes(),
+        failed + 1,
+        "the unlock tried to end the session"
+    );
+    assert_eq!(vault::test_seams::revokes(), revokes);
+    assert_eq!(
+        accounts.target_row("offline").as_deref(),
+        Some("r1"),
+        "a session whose sign-out failed keeps its row"
+    );
+    assert_eq!(
+        deferred_revokes(&accounts.conn),
+        1,
+        "a session whose sign-out failed keeps its mark"
+    );
+
+    accounts.unlock_source();
+    accounts.unlock_target();
+    assert_eq!(
+        vault::test_seams::revokes(),
+        revokes + 1,
+        "the next unlock ends the session on Proton"
+    );
+    assert!(!has_row(
+        &accounts.conn,
+        accounts.target.id,
+        &key("offline")
+    ));
+    assert_eq!(deferred_revokes(&accounts.conn), 0);
+}
