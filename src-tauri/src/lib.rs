@@ -24791,6 +24791,51 @@ mod copy_profile_secrets_for_tests {
         );
     }
 
+    /// While a restore's profile tags wait, an account's row that may be a
+    /// copy of the legacy owner's token is not copied by a duplicate: under a
+    /// fresh id no other account holds, the next alignment would take the
+    /// copy for the account's own and keep it.
+    #[test]
+    fn a_duplicate_never_carries_a_row_that_may_be_the_owners_copy() {
+        let env = Accounts::new();
+        let key = "oauth_dropbox_srv_x";
+        env.store.store(key, "owners-token").unwrap();
+        user_partitions::store_credential_for_user_typed_dual(
+            &env.store,
+            env.other,
+            key,
+            "oauth",
+            "owners-token",
+        )
+        .unwrap();
+        user_partitions::open_or_init_cli()
+            .unwrap()
+            .execute_batch(&format!(
+                "DELETE FROM global_state WHERE key = 'private_tokens_aligned_{other}';
+                 INSERT INTO global_state(key, value, updated_at)
+                 VALUES ('profile_tags_pending_{owner}', '1', 0);",
+                other = env.other,
+                owner = env.owner,
+            ))
+            .unwrap();
+        assert_eq!(rows_of(env.other, key), 1);
+        let copied = copy_profile_secrets_for(
+            &env.store,
+            Some(env.other),
+            "srv_x",
+            "srv_y",
+            Some("dropbox"),
+        )
+        .unwrap();
+        assert_eq!(copied.get("oauth_dropbox"), Some(&false));
+        assert_eq!(rows_of(env.other, "oauth_dropbox_srv_y"), 0);
+        assert_eq!(
+            user_partitions::resolve_credential_for_user_owner_aware(&env.store, env.other, key)
+                .unwrap(),
+            None
+        );
+    }
+
     #[test]
     fn a_duplicated_oauth_token_stays_private_to_its_account() {
         let env = Accounts::new();

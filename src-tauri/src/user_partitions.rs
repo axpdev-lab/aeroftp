@@ -1055,6 +1055,8 @@ fn resolve_relocate_secret_with(
                 Err(e) => return Err(e),
             }
         };
+        // A row that may be another account's copy never moves with it.
+        let from_partition = checked_row(conn, user_id, key, from_partition, read_vault)?;
         if let Some(secret) = from_partition {
             if !secret.is_empty() {
                 return Ok(Some(secret));
@@ -2331,9 +2333,10 @@ fn retag_own_profiles_if_pending(
 
 /// An account other than the legacy owner whose passes read from the tags
 /// which profiles the others hold waits while any account's tags are
-/// pending ([`retag_restored_profiles`]).
+/// pending ([`retag_restored_profiles`]). The owner is read only while tags
+/// are pending: a reader of an account's own row consults it no sooner.
 fn waits_for_profile_tags(conn: &Connection, user_id: i64) -> Result<bool, String> {
-    Ok(nonprofile_secret_owner_unpersisted(conn)? != Some(user_id) && profile_tags_pending(conn)?)
+    Ok(profile_tags_pending(conn)? && nonprofile_secret_owner_unpersisted(conn)? != Some(user_id))
 }
 
 /// Puts right the profile lists of a partition database written whole rather
@@ -5087,14 +5090,7 @@ fn align_private_tokens_inner(
                 let Some(vault) = read_secret(&key)? else {
                     continue;
                 };
-                let copied = if is_proton_session_key(&key) {
-                    proton_session_uid(&row).is_some_and(|copy| {
-                        proton_session_uid(&vault).is_some_and(|held| held == copy)
-                    })
-                } else {
-                    !signed_in_row(&tx, uid, &key)? && !another_jottacloud_user(&key, &row, &vault)
-                };
-                if copied {
+                if row_may_be_a_copy(&tx, uid, &key, &row, Some(&vault))? {
                     delete_user_credential_for(&tx, uid, &key)?;
                 }
             }
@@ -5149,6 +5145,95 @@ fn align_private_tokens_inner(
         mark_private_tokens_aligned(conn, user_id)?;
     }
     Ok(moved.len())
+}
+
+/// Whether `row`, the row `key` of `user_id`, may be a copy of `vault`, the
+/// vault's value under that key: the one rule by which the alignment drops a
+/// copy on a profile id another account holds, and by which the readers hide
+/// a row while the alignment waits ([`unverified_while_tags_pending`]). A
+/// native Proton session is the same session by its UID, whatever pair a
+/// refresh has rotated it to since; any other row is a copy unless its own
+/// sign-in stamped it ([`signed_in_row`]) or it signs in to another
+/// Jottacloud user ([`another_jottacloud_user`]). No vault value, no copy.
+fn row_may_be_a_copy(
+    conn: &Connection,
+    user_id: i64,
+    key: &str,
+    row: &str,
+    vault: Option<&str>,
+) -> Result<bool, String> {
+    let Some(vault) = vault else {
+        return Ok(false);
+    };
+    if is_proton_session_key(key) {
+        return Ok(proton_session_uid(row)
+            .is_some_and(|copy| proton_session_uid(vault).is_some_and(|held| held == copy)));
+    }
+    Ok(!signed_in_row(conn, user_id, key)? && !another_jottacloud_user(key, row, vault))
+}
+
+/// Whether the private-token row `key` of `user_id`, read as `row`, must read
+/// as absent: the account is not the legacy owner and not yet aligned, and
+/// the alignment waits for profile tags ([`waits_for_profile_tags`]), so
+/// nothing yet tells whether another account holds the profile, while the
+/// row may be a copy of the vault's value ([`row_may_be_a_copy`]). A copy an
+/// earlier migration made of the legacy owner's token would otherwise sign
+/// this account in to the owner's cloud until an unrelated account is
+/// unlocked. A row the account's own sign-in stamped stays readable, and so
+/// does every row of an aligned account; only a restore sets the wait.
+fn unverified_while_tags_pending(
+    conn: &Connection,
+    user_id: i64,
+    key: &str,
+    row: &str,
+    read_secret: &SecretReader<'_>,
+) -> Result<bool, String> {
+    if private_token_type(key).is_none()
+        || !waits_for_profile_tags(conn, user_id)?
+        || private_tokens_aligned(conn, user_id)?
+    {
+        return Ok(false);
+    }
+    let vault = read_secret(key)?;
+    row_may_be_a_copy(
+        conn,
+        user_id,
+        key,
+        row,
+        vault.as_deref().map(|v| v.as_str()),
+    )
+}
+
+/// `row`, just read as the row `key` of `user_id`, as a reader may use it:
+/// `None` while it is unverified ([`unverified_while_tags_pending`]). Every
+/// reader of a row for use goes through this, so a copy cannot reach a
+/// connection, a backup, a duplicate or a relocation either.
+fn checked_row(
+    conn: &Connection,
+    user_id: i64,
+    key: &str,
+    row: Option<Zeroizing<String>>,
+    read_secret: &SecretReader<'_>,
+) -> Result<Option<Zeroizing<String>>, String> {
+    match row {
+        Some(value) if unverified_while_tags_pending(conn, user_id, key, &value, read_secret)? => {
+            Ok(None)
+        }
+        other => Ok(other),
+    }
+}
+
+/// [`checked_row`] for a reader outside this module, with the vault it reads.
+pub(crate) fn checked_row_in(
+    conn: &Connection,
+    store: &CredentialStore,
+    user_id: i64,
+    key: &str,
+    row: Option<Zeroizing<String>>,
+) -> Result<Option<Zeroizing<String>>, String> {
+    checked_row(conn, user_id, key, row, &|key: &str| {
+        get_optional_secret(store, key)
+    })
 }
 
 /// Whether `row`, this account's unstamped copy of the Jottacloud chain `key`
@@ -5217,10 +5302,9 @@ fn read_credential_with_fallback_inner(
     credential_id: &str,
     read_secret: &SecretReader<'_>,
 ) -> Result<Option<Zeroizing<String>>, String> {
-    match get_user_credential_for(conn, root_key, user_id, credential_id) {
-        Ok(Some(value)) => return Ok(Some(value)),
-        Ok(None) => {}
-        Err(e) => return Err(e),
+    let row = get_user_credential_for(conn, root_key, user_id, credential_id)?;
+    if let Some(value) = checked_row(conn, user_id, credential_id, row, read_secret)? {
+        return Ok(Some(value));
     }
     // Another account's private token lives in its partition alone: the vault
     // key of that name is the legacy owner's ([`private_token_user`]).
@@ -6618,7 +6702,8 @@ fn read_credential_owner_aware_inner(
     if nonprofile_secret_owner(conn)? == Some(user_id) {
         read_credential_with_fallback_inner(conn, root_key, user_id, credential_id, read_secret)
     } else {
-        get_user_credential_for(conn, root_key, user_id, credential_id)
+        let row = get_user_credential_for(conn, root_key, user_id, credential_id)?;
+        checked_row(conn, user_id, credential_id, row, read_secret)
     }
 }
 
@@ -6806,7 +6891,9 @@ pub fn user_credentials_of_type(
     let mut rows = Vec::with_capacity(ids.len());
     let mut failure = None;
     for id in ids {
-        match get_user_credential_for(&conn, &root_key, user_id, &id) {
+        match get_user_credential_for(&conn, &root_key, user_id, &id)
+            .and_then(|row| checked_row_in(&conn, store, user_id, &id, row))
+        {
             Ok(Some(value)) => rows.push((id, value)),
             Ok(None) => {}
             Err(e) => {
@@ -11581,6 +11668,93 @@ mod tests {
         assert_eq!(
             get_user_credential_for(&conn, &here, other.id, "oauth_dropbox_p").unwrap(),
             None
+        );
+    }
+
+    /// A partition restored from another machine with a passphrase account
+    /// still locked: its tags are pending, so the alignment cannot yet drop
+    /// the row an earlier migration copied from the legacy owner's token into
+    /// another account. Until it can, every reader of that account takes the
+    /// row for absent, so it never signs in to the owner's cloud; the owner
+    /// reads its token, a row the account's own sign-in stamped reads as
+    /// before, and so does every row once the account is aligned.
+    #[test]
+    fn an_unverified_copy_reads_as_absent_while_profile_tags_wait() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let (source, here) = (test_root(), [9u8; 32]);
+        let owner = nonprofile_secret_owner(&conn).unwrap().unwrap();
+        let profile = |id: &str| {
+            json!({"id": id, "name": id, "protocol": "dropbox", "host": "", "port": 0,
+                   "username": format!("{id}@example.test")})
+        };
+        let locked = create_user(&mut conn, &source, "Locked", None, None, Some("pass")).unwrap();
+        unlock_user(&conn, &source, locked.id, Some("pass")).unwrap();
+        replace_server_profiles_for(&mut conn, &source, locked.id, &[profile("elsewhere")])
+            .unwrap();
+        let other = create_passphrase_less_user(&mut conn, &source, "Other", None, None).unwrap();
+        replace_server_profiles_for(&mut conn, &source, other.id, &[profile("p"), profile("q")])
+            .unwrap();
+        clear_user_session();
+        let transport = export_transport_deks(&conn, &source, "backup password")
+            .unwrap()
+            .unwrap();
+        let rekey = rekey_transport_deks(
+            &conn,
+            &here,
+            "backup password",
+            &transport.salt,
+            &transport.kdf_params,
+            &transport.wrapped_deks,
+        )
+        .unwrap();
+        assert_eq!(retag_restored_profiles(&conn, &here, &rekey).unwrap(), 1);
+        set_user_credential_for(
+            &conn,
+            &here,
+            other.id,
+            "oauth_dropbox_p",
+            "oauth",
+            "owners-p",
+        )
+        .unwrap();
+        set_signed_in_credential_for(&conn, &here, other.id, "oauth_dropbox_q", "oauth", "own-q")
+            .unwrap();
+        let (_, read) = fake_vault(&[
+            ("oauth_dropbox_p", "owners-p"),
+            ("oauth_dropbox_q", "owners-q"),
+        ]);
+        let owner_aware = |user: i64, key: &str| {
+            read_credential_owner_aware_inner(&conn, &here, user, key, &read)
+                .unwrap()
+                .map(|value| value.to_string())
+        };
+        let with_fallback = |user: i64, key: &str| {
+            read_credential_with_fallback_inner(&conn, &here, user, key, &read)
+                .unwrap()
+                .map(|value| value.to_string())
+        };
+        assert_eq!(owner_aware(other.id, "oauth_dropbox_p"), None);
+        assert_eq!(with_fallback(other.id, "oauth_dropbox_p"), None);
+        assert_eq!(
+            resolve_relocate_secret_with(&conn, &here, other.id, None, "dropbox", "p", &read)
+                .unwrap(),
+            None,
+            "a relocation carried the unverified row"
+        );
+        assert_eq!(
+            owner_aware(other.id, "oauth_dropbox_q").as_deref(),
+            Some("own-q")
+        );
+        assert_eq!(
+            owner_aware(owner, "oauth_dropbox_p").as_deref(),
+            Some("owners-p")
+        );
+
+        mark_private_tokens_aligned(&conn, other.id).unwrap();
+        assert_eq!(
+            owner_aware(other.id, "oauth_dropbox_p").as_deref(),
+            Some("owners-p")
         );
     }
 

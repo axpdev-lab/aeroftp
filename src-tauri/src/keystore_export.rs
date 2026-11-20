@@ -1342,7 +1342,12 @@ fn read_effective_secret(
                 crate::user_partitions::vault_copy_is_another_accounts(conn, user_id, key)
                     .map_err(&unread)
             };
-            match crate::user_partitions::get_user_credential_for(conn, root_key, user_id, key) {
+            // A row that may be another account's copy is not this one's
+            // to back up or compare (`checked_row_in`).
+            match crate::user_partitions::get_user_credential_for(conn, root_key, user_id, key)
+                .and_then(|row| {
+                    crate::user_partitions::checked_row_in(conn, store, user_id, key, row)
+                }) {
                 Ok(Some(value)) => return Ok(Some(value)),
                 Ok(None) if private()? => return Ok(None),
                 Ok(None) => {}

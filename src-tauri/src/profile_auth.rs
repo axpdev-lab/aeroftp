@@ -53,8 +53,12 @@ impl AuthScope<'_> {
         users::init_or_migrate_cli(self.store)?;
         let conn = users::open_or_init_cli()?;
         let root_key = zeroize::Zeroizing::new(self.store.derive_user_partition_wrapping_key());
-        if let Some(secret) = users::get_user_credential_for(&conn, &root_key, user_id, key)? {
-            return Ok(Some(secret.to_string()));
+        let row = users::get_user_credential_for(&conn, &root_key, user_id, key)?;
+        if row.is_some() {
+            // A row that may be another account's copy reads as absent, and
+            // the vault under its key is that account's too.
+            return Ok(users::checked_row_in(&conn, self.store, user_id, key, row)?
+                .map(|secret| secret.to_string()));
         }
         let owners = users::profile_credential_owner_ids(self.store, profile_id, key)?;
         if owners.as_slice() == [user_id]
