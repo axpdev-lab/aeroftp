@@ -2193,3 +2193,61 @@ fn an_unlock_is_not_held_by_a_deferred_cleanup() {
         &key("slow-cleanup")
     ));
 }
+
+/// A configuration template's Proton Drive block brings its saved session,
+/// and its apply says the session is now shared with the external
+/// configuration only once the store took it: for the account that stored
+/// it, not for an account the store kept it out of because another account
+/// holds the session.
+#[test]
+fn a_template_import_says_shared_only_for_a_session_it_stored() {
+    if !in_isolated_child("a_template_import_says_shared_only_for_a_session_it_stored") {
+        return;
+    }
+    use crate::template_import::{apply_template_for_user, TemplateApplyOptions, TemplateInput};
+    let accounts = Accounts::open();
+    let template = "[pd]\ntype = protondrive\nusername = someone@example.test\n\
+        client_uid = template-uid\nclient_access_token = access-1\n\
+        client_refresh_token = refresh-1\nclient_salted_key_pass = a2V5LXBhc3N3b3JkLTE=\n";
+    let apply = |user: i64| {
+        let applied = apply_template_for_user(
+            &accounts.store,
+            user,
+            &TemplateInput::Text {
+                content: template.to_string(),
+            },
+            &TemplateApplyOptions {
+                default_secret_form: Some(crate::rclone_import::TemplateSecretForm::Clear),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let shared = applied
+            .warnings
+            .iter()
+            .any(|warning| warning.reason == crate::rclone_import::TEMPLATE_SESSION_SHARED);
+        (applied.applied[0].profile_id.clone(), shared)
+    };
+    let uid_of = |owner: vault::SessionOwner, id: &str| {
+        vault::load_session(owner, Some(id))
+            .unwrap()
+            .map(|session| session.tokens.uid)
+    };
+
+    let (owners_id, shared) = apply(accounts.legacy);
+    assert_eq!(
+        uid_of(accounts.owners_owner(), &owners_id).as_deref(),
+        Some("template-uid")
+    );
+    assert!(shared, "a stored session is reported shared");
+
+    cli_set_active_user(&accounts.store, accounts.source.id).unwrap();
+    accounts.unlock_source();
+    let (id, shared) = apply(accounts.source.id);
+    assert_eq!(
+        uid_of(accounts.owner(), &id),
+        None,
+        "the store kept out a session another account holds"
+    );
+    assert!(!shared, "a session left out is not reported shared");
+}
