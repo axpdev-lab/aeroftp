@@ -7188,7 +7188,10 @@
         },
         "openRequest": {
             "folderBusyTitle": "Priečinok sa stále načítava",
-            "folderBusy": "Otvorený súbor sa nezobrazil: keď sa požadoval priečinok {folder}, iný priečinok sa ešte načítaval. Otvorte ho znova."
+            "folderBusy": "Otvorený súbor sa nezobrazil: keď sa požadoval priečinok {folder}, iný priečinok sa ešte načítaval. Otvorte ho znova.",
+            "signInNeedsProfileTitle": "{provider} potrebuje svoje uložené prihlásenie",
+            "signInNeedsProfile": "{provider} sa prihlasuje vlastnou autorizáciou v prehliadači, ktorú odkaz nedokáže preniesť. Pridajte a autorizujte účet v Moje servery a potom otvorte {scheme}://<názov profilu>/priečinok.",
+            "signInNameTheProfile": "Je uložených viac účtov {provider}. Uveďte, ktorý otvoriť: {scheme}://<názov profilu>/priečinok."
         }
     }
 }

@@ -17,6 +17,7 @@
 //! folder with the file selected, and the window previews it there (#347).
 
 use serde::Serialize;
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager};
@@ -75,6 +76,17 @@ pub struct OpenRequest {
     pub initial_path: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub profile_name: Option<String>,
+    /// The saved-provider preset a launch URL resolves to (an S3 endpoint's
+    /// vendor), so the app applies that preset's region and path style.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_id: Option<String>,
+    /// Connection options a launch URL sets, in the app's spelling.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub options: Option<BTreeMap<String, serde_json::Value>>,
+    /// A sign-in provider (OAuth and the like): `server` names the saved
+    /// profile or account to open, and no secret is carried.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub sign_in: bool,
 }
 
 /// The surface for a file name. Matching is case-insensitive, and `.aeroftp`
@@ -124,142 +136,159 @@ fn without_verbatim_prefix(path: &Path) -> PathBuf {
     path.to_path_buf()
 }
 
-/// Schemes recognized as remote server connection requests.
-const REMOTE_SCHEMES: &[&str] = &[
-    "sftp://",
-    "scp://",
-    "ftp://",
-    "ftps://",
-    "ftpes://",
-    "webdav://",
-    "webdavs://",
-    "ssh://",
-];
-
-/// Whether `raw` starts with a supported remote URL scheme.
+/// Whether `raw` starts with a launch URL scheme (`launch_url::LAUNCH_SCHEMES`,
+/// the table the CLI reads too).
 pub fn is_remote_url(raw: &str) -> bool {
-    let lower = raw.to_ascii_lowercase();
-    REMOTE_SCHEMES
-        .iter()
-        .any(|scheme| lower.starts_with(scheme))
+    crate::launch_url::is_launch_url(raw)
 }
 
-/// Redact credentials in a URL so it is safe to log or serialize.
-pub fn redact_url_for_log(raw: &str) -> String {
-    if let Ok(mut u) = url::Url::parse(raw) {
-        if u.password().is_some() {
-            let _ = u.set_password(Some("***"));
-        }
-        u.to_string()
-    } else {
-        if let Some(scheme_end) = raw.find("://") {
-            let after_scheme = &raw[scheme_end + 3..];
-            if let Some(at_pos) = after_scheme.find('@') {
-                let user_info = &after_scheme[..at_pos];
-                if let Some(colon_pos) = user_info.find(':') {
-                    let user = &user_info[..colon_pos];
-                    let rest = &after_scheme[at_pos..];
-                    return format!("{}{user}:***{rest}", &raw[..scheme_end + 3]);
-                }
+/// The connection options a launch URL sets, in the spelling the app's
+/// connection params use (`ProviderOptions`): one field, `bucket`, carries
+/// the S3 and B2 bucket, the Azure container, the kDrive id and the
+/// Cloudinary cloud name, as the connection form stores them.
+fn frontend_options(
+    target: &crate::launch_url::LaunchTarget,
+) -> BTreeMap<String, serde_json::Value> {
+    let mut options = BTreeMap::new();
+    let mut fields = target.options.clone();
+    fields.extend(target.host_options());
+    for (key, value) in fields {
+        let (name, value) = match key.as_str() {
+            "bucket" | "container" | "drive_id" | "cloud_name" => {
+                ("bucket", serde_json::Value::String(value))
             }
-        }
-        raw.to_string()
+            "region" => ("region", serde_json::Value::String(value)),
+            "endpoint" => ("endpoint", serde_json::Value::String(value)),
+            "path_style" => ("pathStyle", serde_json::Value::Bool(value == "true")),
+            "tls_mode" => ("tlsMode", serde_json::Value::String(value)),
+            "branch" => ("githubBranch", serde_json::Value::String(value)),
+            _ => continue,
+        };
+        options.insert(name.to_string(), value);
+    }
+    if target.token() == "sftp" {
+        options.insert(
+            "allowScpFallback".to_string(),
+            serde_json::Value::Bool(true),
+        );
+    }
+    options
+}
+
+/// The port a launch URL dials: its own, else the protocol's (the manifest),
+/// with plain WebDAV on 80 and FTPS of the `ftps` scheme on 990.
+fn default_port(target: &crate::launch_url::LaunchTarget) -> u16 {
+    match target.scheme.scheme {
+        "webdav" | "http" => 80,
+        "webdavs" | "https" => 443,
+        _ => crate::connection_manifest::connection_spec(target.token())
+            .map_or(443, |spec| spec.default_port),
     }
 }
 
-/// Look up a password in environment variables for the given protocol.
-fn resolve_env_password(protocol: &str) -> Option<String> {
-    let specific_var = match protocol {
-        "sftp" | "scp" => "SFTP_PASSWORD",
-        "ftp" | "ftps" => "FTP_PASSWORD",
-        "webdav" => "WEBDAV_PASSWORD",
-        _ => "",
-    };
-    if !specific_var.is_empty() {
-        if let Ok(val) = std::env::var(specific_var) {
-            if !val.is_empty() {
-                return Some(val);
-            }
-        }
-    }
-    if let Ok(val) = std::env::var("AEROFTP_PASSWORD") {
-        if !val.is_empty() {
-            return Some(val);
-        }
-    }
-    None
-}
-
-/// Parse a remote connection URL into an OpenRequest.
+/// Read a launch URL into an OpenRequest. A sign-in provider's request names
+/// only the account (`server`, possibly empty) and the folder: the app opens
+/// it through a saved, authorized profile, never through the URL.
 pub fn parse_remote_url(raw: &str) -> Option<OpenRequest> {
-    if !is_remote_url(raw) {
-        return None;
-    }
-    let u = url::Url::parse(raw).ok()?;
-    let scheme = u.scheme().to_ascii_lowercase();
-    let protocol = match scheme.as_str() {
-        "sftp" | "ssh" => "sftp",
-        "scp" => "scp",
-        "ftp" => "ftp",
-        "ftps" | "ftpes" => "ftps",
-        "webdav" | "webdavs" => "webdav",
-        _ => return None,
-    };
-    let host = u.host_str()?;
-    if host.is_empty() {
-        return None;
-    }
-    let server = host.to_string();
-    let port = u.port().unwrap_or(match scheme.as_str() {
-        "sftp" | "scp" | "ssh" => 22,
-        "ftp" => 21,
-        "ftps" | "ftpes" => 990,
-        "webdavs" => 443,
-        "webdav" => 80,
-        _ => 22,
-    });
+    let target = crate::launch_url::parse(raw).ok()?;
+    let protocol = target.token();
+    let account = target.scheme.auth == crate::launch_url::LaunchAuth::Account;
 
-    let raw_user = u.username();
-    let user_decoded = urlencoding::decode(raw_user)
-        .map(|s| s.into_owned())
-        .unwrap_or_else(|_| raw_user.to_string());
-    let username = if !user_decoded.is_empty() {
-        Some(user_decoded)
-    } else if protocol == "ftp" || protocol == "ftps" {
-        Some("anonymous".to_string())
+    let (initial_path, folder, name, is_dir) = split_remote_path(&target.path);
+    if account {
+        return Some(OpenRequest {
+            kind: OpenKind::RemoteUrl,
+            path: crate::launch_url::redact(raw),
+            folder,
+            name,
+            is_dir,
+            protocol: Some(protocol.to_string()),
+            server: Some(target.host.clone()),
+            initial_path: Some(initial_path),
+            sign_in: true,
+            ..Default::default()
+        });
+    }
+
+    let (server, branch) = if protocol == "github" {
+        let (repo, branch) = crate::launch_url::github_repository(&target).ok()?;
+        (repo, branch)
     } else {
-        None
+        (target.connection_host(), None)
     };
-
-    let password = if let Some(raw_pass) = u.password() {
-        let pass_decoded = urlencoding::decode(raw_pass)
-            .map(|s| s.into_owned())
-            .unwrap_or_else(|_| raw_pass.to_string());
-        if !pass_decoded.is_empty() {
-            Some(pass_decoded)
-        } else {
-            resolve_env_password(protocol)
+    let username = target.connection_username();
+    let username = if username.is_empty() && matches!(protocol, "ftp" | "ftps") {
+        "anonymous".to_string()
+    } else {
+        username
+    };
+    let mut options = frontend_options(&target);
+    let (username, password, provider_id) = if protocol == "s3" {
+        let credentials = target.s3_credentials();
+        if let Some(region) = credentials.region {
+            options.insert("region".to_string(), serde_json::Value::String(region));
         }
+        if let Some(token) = credentials.session_token {
+            options.insert("sessionToken".to_string(), serde_json::Value::String(token));
+        }
+        (
+            credentials.access_key_id,
+            credentials.secret_access_key,
+            Some(target.s3_provider_id().to_string()),
+        )
     } else {
-        resolve_env_password(protocol)
+        let password = target
+            .url_secret
+            .clone()
+            .filter(|secret| !secret.is_empty())
+            .or_else(|| target.env_secret());
+        (username, password, None)
+    };
+    if let Some(branch) = branch {
+        options.insert(
+            "githubBranch".to_string(),
+            serde_json::Value::String(branch),
+        );
+    }
+    // A repository URL names no folder: its path is the repository.
+    let (initial_path, folder, name, is_dir) = if protocol == "github" {
+        ("/".to_string(), "/".to_string(), String::new(), true)
+    } else {
+        (initial_path, folder, name, is_dir)
     };
 
-    let raw_path = u.path();
-    let decoded_path = urlencoding::decode(raw_path)
-        .map(|s| s.into_owned())
-        .unwrap_or_else(|_| raw_path.to_string());
+    Some(OpenRequest {
+        kind: OpenKind::RemoteUrl,
+        path: crate::launch_url::redact(raw),
+        folder,
+        name,
+        is_dir,
+        protocol: Some(protocol.to_string()),
+        server: Some(server),
+        port: Some(target.port.unwrap_or_else(|| default_port(&target))),
+        username: (!username.is_empty()).then_some(username),
+        password,
+        initial_path: Some(initial_path),
+        profile_name: None,
+        provider_id,
+        options: (!options.is_empty()).then_some(options),
+        sign_in: false,
+    })
+}
 
-    let (initial_path, folder, name, is_dir) = if decoded_path.is_empty() || decoded_path == "/" {
-        (Some("/".to_string()), "/".to_string(), String::new(), true)
+/// The folder a remote path opens on, and the file to select in it.
+fn split_remote_path(decoded_path: &str) -> (String, String, String, bool) {
+    if decoded_path.is_empty() || decoded_path == "/" {
+        ("/".to_string(), "/".to_string(), String::new(), true)
     } else if decoded_path.ends_with('/') {
         (
-            Some(decoded_path.clone()),
-            decoded_path,
+            decoded_path.to_string(),
+            decoded_path.to_string(),
             String::new(),
             true,
         )
     } else {
-        let path_buf = Path::new(&decoded_path);
+        let path_buf = Path::new(decoded_path);
         let file_name = path_buf
             .file_name()
             .map(|n| n.to_string_lossy().to_string())
@@ -269,23 +298,8 @@ pub fn parse_remote_url(raw: &str) -> Option<OpenRequest> {
             .map(|p| p.to_string_lossy().to_string())
             .filter(|p| !p.is_empty())
             .unwrap_or_else(|| "/".to_string());
-        (Some(parent.clone()), parent, file_name, false)
-    };
-
-    Some(OpenRequest {
-        kind: OpenKind::RemoteUrl,
-        path: redact_url_for_log(raw),
-        folder,
-        name,
-        is_dir,
-        protocol: Some(protocol.to_string()),
-        server: Some(server),
-        port: Some(port),
-        username,
-        password,
-        initial_path,
-        profile_name: None,
-    })
+        (parent.clone(), parent, file_name, false)
+    }
 }
 
 /// The local path an argument names. The Linux packages launch
@@ -427,7 +441,7 @@ pub fn deliver(app: &AppHandle, requests: Vec<OpenRequest>) {
     }
     for request in &requests {
         let shown = match request.kind {
-            OpenKind::RemoteUrl => redact_url_for_log(&request.path),
+            OpenKind::RemoteUrl => crate::launch_url::redact(&request.path),
             OpenKind::Profile => request
                 .profile_name
                 .as_deref()
@@ -753,9 +767,15 @@ mod tests {
             ("ssh://example.com/", "sftp", 22),
             ("ftp://example.com/", "ftp", 21),
             ("ftps://example.com/", "ftps", 990),
-            ("ftpes://example.com/", "ftps", 990),
+            // FTP with explicit TLS on the FTP port (was FTPS on 990).
+            ("ftpes://example.com/", "ftp", 21),
             ("webdav://example.com/", "webdav", 80),
             ("webdavs://example.com/", "webdav", 443),
+            // The CLI's WebDAV aliases open in the app too (#1534).
+            ("http://example.com/", "webdav", 80),
+            ("https://example.com/", "webdav", 443),
+            ("s3://example.com/?bucket=b", "s3", 443),
+            ("immich://example.com/", "immich", 2283),
         ];
         for (raw, expected_proto, expected_port) in cases {
             let req = parse_remote_url(raw).unwrap();
@@ -779,6 +799,7 @@ mod tests {
 
     #[test]
     fn remote_url_env_var_password_fallback() {
+        let _guard = crate::test_env::lock();
         unsafe {
             std::env::set_var("SFTP_PASSWORD", "env_sftp_secret");
         }
@@ -829,16 +850,167 @@ mod tests {
     }
 
     #[test]
+    fn the_app_opens_every_scheme_the_launch_table_has() {
+        use crate::launch_url::{example_url, LaunchAuth, LAUNCH_SCHEMES};
+        for entry in LAUNCH_SCHEMES {
+            let url = example_url(entry);
+            assert!(is_remote_url(&url), "{url}");
+            let request = parse_remote_url(&url).unwrap_or_else(|| panic!("{url}"));
+            assert_eq!(request.kind, OpenKind::RemoteUrl, "{url}");
+            assert_eq!(request.protocol.as_deref(), Some(entry.token), "{url}");
+            assert_eq!(request.sign_in, entry.auth == LaunchAuth::Account, "{url}");
+            if request.sign_in {
+                assert_eq!(request.password, None, "{url}");
+            } else {
+                assert!(
+                    request.server.as_deref().is_some_and(|s| !s.is_empty()),
+                    "{url}"
+                );
+            }
+        }
+        assert!(parse_remote_url("gopher://host/").is_none());
+    }
+
+    #[test]
+    fn launch_urls_carry_the_account_fields_in_the_apps_option_spelling() {
+        let s3 = parse_remote_url(
+            "s3://AKID@minio.lan:9000/photos/?bucket=b1&region=eu-west-1&path_style=true",
+        )
+        .unwrap();
+        assert_eq!(s3.server.as_deref(), Some("minio.lan"));
+        assert_eq!(s3.port, Some(9000));
+        assert_eq!(s3.username.as_deref(), Some("AKID"));
+        let options = s3.options.unwrap();
+        assert_eq!(options["bucket"], "b1");
+        assert_eq!(options["region"], "eu-west-1");
+        assert_eq!(options["pathStyle"], true);
+        assert_eq!(s3.initial_path.as_deref(), Some("/photos/"));
+
+        let b2 = parse_remote_url("b2://KEYID@my-bucket/x/").unwrap();
+        assert_eq!(b2.protocol.as_deref(), Some("backblaze"));
+        assert_eq!(b2.server.as_deref(), Some("api.backblazeb2.com"));
+        assert_eq!(b2.username.as_deref(), Some("KEYID"));
+        assert_eq!(b2.options.unwrap()["bucket"], "my-bucket");
+
+        let kdrive = parse_remote_url("kdrive://123456/").unwrap();
+        assert_eq!(kdrive.options.unwrap()["bucket"], "123456");
+
+        let azure =
+            parse_remote_url("azure://acct@acct.blob.core.windows.net/?container=c1").unwrap();
+        assert_eq!(azure.options.unwrap()["bucket"], "c1");
+
+        let immich = parse_remote_url("immich://10.0.0.2:2283/?scheme=http").unwrap();
+        assert_eq!(immich.server.as_deref(), Some("http://10.0.0.2:2283"));
+
+        let github = parse_remote_url("github://owner/repo@dev").unwrap();
+        assert_eq!(github.server.as_deref(), Some("owner/repo"));
+        assert_eq!(github.options.unwrap()["githubBranch"], "dev");
+
+        let ftpes = parse_remote_url("ftpes://u@h/").unwrap();
+        assert_eq!(ftpes.protocol.as_deref(), Some("ftp"));
+        assert_eq!(ftpes.port, Some(21));
+        assert_eq!(ftpes.options.unwrap()["tlsMode"], "explicit");
+    }
+
+    /// Point the AWS tools' files at `dir` for one test, under the env lock.
+    fn with_aws_files<T>(credentials: &str, config: &str, run: impl FnOnce() -> T) -> T {
+        let dir = tempfile::tempdir().unwrap();
+        let credentials_path = dir.path().join("credentials");
+        let config_path = dir.path().join("config");
+        std::fs::write(&credentials_path, credentials).unwrap();
+        std::fs::write(&config_path, config).unwrap();
+        unsafe {
+            std::env::set_var("AWS_SHARED_CREDENTIALS_FILE", &credentials_path);
+            std::env::set_var("AWS_CONFIG_FILE", &config_path);
+        }
+        let result = run();
+        unsafe {
+            std::env::remove_var("AWS_SHARED_CREDENTIALS_FILE");
+            std::env::remove_var("AWS_CONFIG_FILE");
+        }
+        result
+    }
+
+    #[test]
+    fn an_s3_url_without_keys_reads_the_aws_chain() {
+        let _guard = crate::test_env::lock();
+        let request = with_aws_files(
+            "[default]\naws_access_key_id = FILEKEY\naws_secret_access_key = filesecret\naws_session_token = filetoken\n",
+            "[default]\nregion = eu-west-3\n",
+            || parse_remote_url("s3://minio.lan:9000/?bucket=b1").unwrap(),
+        );
+        assert_eq!(request.username.as_deref(), Some("FILEKEY"));
+        assert_eq!(request.password.as_deref(), Some("filesecret"));
+        let options = request.options.unwrap();
+        assert_eq!(options["sessionToken"], "filetoken");
+        assert_eq!(options["region"], "eu-west-3");
+        assert_eq!(request.provider_id.as_deref(), Some("minio"));
+        assert!(!request.path.contains("filesecret"));
+
+        // The AWS variables win over the files.
+        unsafe {
+            std::env::set_var("AWS_ACCESS_KEY_ID", "ENVKEY");
+            std::env::set_var("AWS_SECRET_ACCESS_KEY", "envsecret");
+        }
+        let request = with_aws_files(
+            "[default]\naws_access_key_id = FILEKEY\naws_secret_access_key = filesecret\n",
+            "",
+            || parse_remote_url("s3://minio.lan:9000/?bucket=b1").unwrap(),
+        );
+        unsafe {
+            std::env::remove_var("AWS_ACCESS_KEY_ID");
+            std::env::remove_var("AWS_SECRET_ACCESS_KEY");
+        }
+        assert_eq!(request.username.as_deref(), Some("ENVKEY"));
+        assert_eq!(request.password.as_deref(), Some("envsecret"));
+    }
+
+    #[test]
+    fn an_s3_endpoint_names_its_preset_and_the_region_it_carries() {
+        let _guard = crate::test_env::lock();
+        let request = with_aws_files("", "", || {
+            parse_remote_url(
+                "s3://KEY:secret@s3.eu-central-2.wasabisys.com/?bucket=b1&region=us-east-1",
+            )
+            .unwrap()
+        });
+        assert_eq!(request.provider_id.as_deref(), Some("wasabi"));
+        assert_eq!(request.options.unwrap()["region"], "eu-central-2");
+
+        let generic = with_aws_files("", "", || {
+            parse_remote_url("s3://KEY:secret@storage.example.net/?bucket=b1").unwrap()
+        });
+        assert_eq!(generic.provider_id.as_deref(), Some("custom-s3"));
+        assert!(!generic.options.unwrap().contains_key("region"));
+    }
+
+    #[test]
+    fn a_sign_in_url_names_the_account_and_never_a_secret() {
+        let request = parse_remote_url("dropbox://work:hunter2@/Photos/")
+            .or_else(|| parse_remote_url("dropbox://work/Photos/"));
+        let request = request.unwrap();
+        assert!(request.sign_in);
+        assert_eq!(request.password, None);
+        assert_eq!(request.username, None);
+        assert_eq!(request.initial_path.as_deref(), Some("/Photos/"));
+        assert!(!request.path.contains("hunter2"));
+        let named = parse_remote_url("onedrive://work/Reports").unwrap();
+        assert_eq!(named.server.as_deref(), Some("work"));
+    }
+
+    #[test]
     fn redact_url_for_log_masks_passwords() {
         assert_eq!(
-            redact_url_for_log("sftp://admin:VerySecret123@files.corp.internal:2222/var/log"),
+            crate::launch_url::redact(
+                "sftp://admin:VerySecret123@files.corp.internal:2222/var/log"
+            ),
             "sftp://admin:***@files.corp.internal:2222/var/log"
         );
         assert_eq!(
-            redact_url_for_log("ftp://guest@example.com/pub"),
+            crate::launch_url::redact("ftp://guest@example.com/pub"),
             "ftp://guest@example.com/pub"
         );
-        assert_eq!(redact_url_for_log("not-a-url"), "not-a-url");
+        assert_eq!(crate::launch_url::redact("not-a-url"), "not-a-url");
     }
 
     #[test]
@@ -846,7 +1018,6 @@ mod tests {
         assert_eq!(parse_remote_url("sftp://"), None);
         assert_eq!(parse_remote_url("sftp:///path"), None);
         assert_eq!(parse_remote_url("gopher://host/path"), None);
-        assert_eq!(parse_remote_url("https://example.com/"), None);
         assert_eq!(classify("gopher://host/path", None), None);
     }
 }

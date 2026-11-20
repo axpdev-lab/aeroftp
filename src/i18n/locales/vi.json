@@ -7188,7 +7188,10 @@
         },
         "openRequest": {
             "folderBusyTitle": "Thư mục vẫn đang tải",
-            "folderBusy": "Tệp bạn đã mở không được hiển thị: một thư mục khác vẫn đang tải khi {folder} được yêu cầu. Hãy mở lại tệp."
+            "folderBusy": "Tệp bạn đã mở không được hiển thị: một thư mục khác vẫn đang tải khi {folder} được yêu cầu. Hãy mở lại tệp.",
+            "signInNeedsProfileTitle": "{provider} cần thông tin đăng nhập đã lưu",
+            "signInNeedsProfile": "{provider} đăng nhập bằng cơ chế ủy quyền riêng trên trình duyệt, mà liên kết không thể mang theo. Hãy thêm và ủy quyền tài khoản trong Máy chủ của tôi, rồi mở {scheme}://<tên hồ sơ>/thư mục.",
+            "signInNameTheProfile": "Có nhiều tài khoản {provider} đã được lưu. Hãy nêu tên tài khoản cần mở: {scheme}://<tên hồ sơ>/thư mục."
         }
     }
 }

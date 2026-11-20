@@ -7188,7 +7188,10 @@
         },
         "openRequest": {
             "folderBusyTitle": "Dossier encore en cours de chargement",
-            "folderBusy": "Le fichier que vous avez ouvert n'a pas été affiché : un autre dossier était encore en cours de chargement lorsque {folder} a été demandé. Ouvrez-le à nouveau."
+            "folderBusy": "Le fichier que vous avez ouvert n'a pas été affiché : un autre dossier était encore en cours de chargement lorsque {folder} a été demandé. Ouvrez-le à nouveau.",
+            "signInNeedsProfileTitle": "{provider} nécessite sa connexion enregistrée",
+            "signInNeedsProfile": "{provider} utilise sa propre autorisation dans le navigateur, qu'un lien ne peut pas transporter. Ajoutez et autorisez le compte dans Mes serveurs, puis ouvrez {scheme}://<nom du profil>/dossier.",
+            "signInNameTheProfile": "Plusieurs comptes {provider} sont enregistrés. Indiquez celui à ouvrir : {scheme}://<nom du profil>/dossier."
         }
     }
 }

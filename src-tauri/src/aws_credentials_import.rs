@@ -70,7 +70,7 @@ pub fn default_aws_credentials_config_path() -> Option<PathBuf> {
 ///
 /// Chain: the `AWS_CONFIG_FILE` env var, then a `config` file sitting next
 /// to the credentials file (AWS keeps both inside `~/.aws/`).
-fn aws_config_path_for(cred_path: &Path) -> Option<PathBuf> {
+pub(crate) fn aws_config_path_for(cred_path: &Path) -> Option<PathBuf> {
     if let Ok(path) = std::env::var("AWS_CONFIG_FILE") {
         if !path.is_empty() {
             return Some(PathBuf::from(path));
@@ -111,7 +111,7 @@ pub fn import_aws_credentials(cred_path: &Path) -> Result<AwsImportResult, Strin
 ///
 /// The secondary config file is opened by us, not by the caller, so it bypasses
 /// the checks `import_bridge_config` / the CLI run on the primary path.
-fn is_readable_regular_file(path: &Path) -> bool {
+pub(crate) fn is_readable_regular_file(path: &Path) -> bool {
     match std::fs::metadata(path) {
         Ok(m) => m.is_file() && crate::bridge_shared::ensure_import_file_size_ok(path).is_ok(),
         Err(_) => false,

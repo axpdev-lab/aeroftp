@@ -7188,7 +7188,10 @@
         },
         "openRequest": {
             "folderBusyTitle": "Složka se stále načítá",
-            "folderBusy": "Otevřený soubor nebyl zobrazen: když byla požadována složka {folder}, načítala se ještě jiná složka. Otevřete jej prosím znovu."
+            "folderBusy": "Otevřený soubor nebyl zobrazen: když byla požadována složka {folder}, načítala se ještě jiná složka. Otevřete jej prosím znovu.",
+            "signInNeedsProfileTitle": "{provider} potřebuje své uložené přihlášení",
+            "signInNeedsProfile": "{provider} se přihlašuje vlastní autorizací v prohlížeči, kterou odkaz přenést nedokáže. Přidejte a autorizujte účet v Moje servery a poté otevřete {scheme}://<název profilu>/složka.",
+            "signInNameTheProfile": "Je uloženo několik účtů {provider}. Uveďte, který otevřít: {scheme}://<název profilu>/složka."
         }
     }
 }

@@ -4723,7 +4723,10 @@
         },
         "openRequest": {
             "folderBusyTitle": "Folder still loading",
-            "folderBusy": "The file you opened was not shown: another folder was still loading when {folder} was requested. Open it again."
+            "folderBusy": "The file you opened was not shown: another folder was still loading when {folder} was requested. Open it again.",
+            "signInNeedsProfileTitle": "{provider} needs its saved sign-in",
+            "signInNeedsProfile": "{provider} signs in through its own browser authorization, which a link cannot carry. Add and authorize the account in My Servers, then open {scheme}://<profile name>/folder.",
+            "signInNameTheProfile": "Several {provider} accounts are saved. Name the one to open: {scheme}://<profile name>/folder."
         },
         "tags": {
             "addTag": "Add Tag",

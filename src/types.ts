@@ -599,6 +599,12 @@ export interface OpenRequest {
   password?: string;
   initialPath?: string;
   profileName?: string;
+  /** The preset a launch URL resolves to (an S3 endpoint's vendor). */
+  providerId?: string;
+  /** Connection options a launch URL sets (bucket, region, ...). */
+  options?: ProviderOptions;
+  /** A sign-in provider: `server` names the saved profile or account. */
+  signIn?: boolean;
 }
 
 // Transfer progress event from backend

@@ -7188,7 +7188,10 @@
         },
         "openRequest": {
             "folderBusyTitle": "Mapa se još učitava",
-            "folderBusy": "Datoteka koju ste otvorili nije prikazana: druga se mapa još učitavala kada je zatražena mapa {folder}. Otvorite je ponovno."
+            "folderBusy": "Datoteka koju ste otvorili nije prikazana: druga se mapa još učitavala kada je zatražena mapa {folder}. Otvorite je ponovno.",
+            "signInNeedsProfileTitle": "{provider} treba svoju spremljenu prijavu",
+            "signInNeedsProfile": "{provider} se prijavljuje vlastitom autorizacijom u pregledniku, koju poveznica ne može prenijeti. Dodajte i autorizirajte račun u Moji poslužitelji, zatim otvorite {scheme}://<naziv profila>/mapa.",
+            "signInNameTheProfile": "Spremljeno je više računa za {provider}. Navedite koji otvoriti: {scheme}://<naziv profila>/mapa."
         }
     }
 }

@@ -30,7 +30,9 @@ import { listen } from '@tauri-apps/api/event';
 import { useTauriListener, guardedUnlisten } from './hooks/useTauriListener';
 import { useSelectionFolderSizes } from './hooks/useSelectionFolderSizes';
 import type { BackendSwapDetail } from './hooks/useOAuth2';
-import { getConnectionPreset } from './providers/connectionManifest';
+import { connectionProtocol, getConnectionPreset } from './providers/connectionManifest';
+import { matchSignInProfile, openSessionMatchesLaunch, savedProfileMatchesLaunch } from './utils/launchUrlProfile';
+import { protocolDisplayName } from './utils/protocolDisplayName';
 import { pickFile } from './utils/pickPath';
 import { homeDir, downloadDir } from '@tauri-apps/api/path';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -19438,7 +19440,11 @@ const App: React.FC = () => {
       );
       return;
     }
+    await openSavedProfile(matched);
+  };
 
+  // Open one saved profile: its live tab when it has one, else a connect.
+  const openSavedProfile = async (matched: ServerProfile, initialPath?: string) => {
     const existing = sessions.find(
       s => s.savedServerId === matched.id || s.connectionParams?.savedServerId === matched.id,
     );
@@ -19447,33 +19453,61 @@ const App: React.FC = () => {
       setShowRemotePanel(true);
       setShowLocalPreview(false);
       await goToActiveSession(matched.id);
+    } else if (profileConnector.current) {
+      const scope = new ConnectScope();
+      if (await profileConnector.current(matched.id, scope) !== 'connected') return;
+    } else {
       return;
     }
-
-    if (profileConnector.current) {
-      const scope = new ConnectScope();
-      await profileConnector.current(matched.id, scope);
+    if (initialPath && initialPath !== '/') {
+      await changeRemoteDirectory(initialPath, matched.protocol);
     }
   };
 
+  // A sign-in provider (OAuth and the like) opens only through a saved
+  // profile that holds its authorization: the link names which one, by
+  // profile name or account, and carries no token (launch_url.rs).
+  const openSignInUrlSession = async (req: OpenRequest) => {
+    const protocol = req.protocol || '';
+    const scheme = protocol;
+    const provider = getProviderById(protocol)?.name || protocolDisplayName(protocol) || protocol;
+    const profiles = await loadSavedServerProfiles().catch(() => [] as ServerProfile[]);
+    const match = matchSignInProfile(profiles, protocol, req.server);
+    if (match.kind === 'ambiguous') {
+      notify.warning(
+        t('openRequest.signInNeedsProfileTitle', { provider }),
+        t('openRequest.signInNameTheProfile', { provider, scheme }),
+      );
+      return;
+    }
+    if (match.kind === 'missing') {
+      notify.warning(
+        t('openRequest.signInNeedsProfileTitle', { provider }),
+        t('openRequest.signInNeedsProfile', { provider, scheme }),
+      );
+      return;
+    }
+    await openSavedProfile(match.profile, req.initialPath);
+  };
+
+  // The port a protocol listens on when a link names none: the manifest's
+  // (src/shared/connection-manifest.json), the table the backend reads too.
+  const manifestDefaultPort = (protocol: string) => connectionProtocol(protocol)?.defaultPort || 21;
+
   const openRemoteUrlSession = async (req: OpenRequest) => {
+    if (req.signIn) {
+      await openSignInUrlSession(req);
+      return;
+    }
     if (!req.server) return;
 
     const targetProtocol = (req.protocol as ProviderType) || 'sftp';
-    const defaultPort = targetProtocol === 'sftp' || targetProtocol === 'scp' ? 22 : targetProtocol === 'ftps' ? 990 : targetProtocol === 'webdav' ? 80 : 21;
+    const defaultPort = manifestDefaultPort(targetProtocol);
     const targetPort = req.port || defaultPort;
     const targetUser = req.username || '';
     const initialRemotePath = req.initialPath || '/';
 
-    const existingSession = sessions.find(s => {
-      const p = s.connectionParams;
-      const sProto = p.protocol || 'ftp';
-      if (sProto !== targetProtocol) return false;
-      if ((p.server || '').toLowerCase() !== req.server!.toLowerCase()) return false;
-      const sPort = p.port || (sProto === 'sftp' || sProto === 'scp' ? 22 : sProto === 'ftps' ? 990 : sProto === 'webdav' ? 80 : 21);
-      if (sPort !== targetPort) return false;
-      return (p.username || '') === targetUser;
-    });
+    const existingSession = sessions.find(s => openSessionMatchesLaunch(s.connectionParams, req));
 
     if (existingSession) {
       setShowConnectionScreen(false);
@@ -19493,26 +19527,21 @@ const App: React.FC = () => {
       protocol: targetProtocol,
       port: targetPort,
       displayName: req.server,
-      options: {
-        allowScpFallback: true,
-      },
+      providerId: req.providerId,
+      options: { ...req.options },
     };
 
     if (!params.password) {
       const all = await loadSavedServerProfiles().catch(() => [] as ServerProfile[]);
-      const match = all.find(s =>
-        (s.protocol || 'ftp') === targetProtocol &&
-        (s.host || '').toLowerCase() === req.server!.toLowerCase() &&
-        (s.port || defaultPort) === targetPort &&
-        (s.username || '') === targetUser
-      );
+      const match = all.find(s => savedProfileMatchesLaunch(s, req));
       if (match) {
         params.savedServerId = match.id;
         params.displayName = match.name;
-        params.providerId = match.providerId;
+        params.providerId = match.providerId ?? req.providerId;
         params.options = {
           ...match.options,
-          allowScpFallback: match.options?.allowScpFallback ?? true,
+          ...req.options,
+          allowScpFallback: match.options?.allowScpFallback ?? req.options?.allowScpFallback,
         };
         try {
           const stored = await getCredentialWithRetry(`server_${match.id}`, 2);
