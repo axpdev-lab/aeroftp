@@ -2981,6 +2981,83 @@ mod tests {
         );
     }
 
+    /// The root as a full page of 100 entries without `last_page`, holding
+    /// the configured start folder `target` (7) and the file `f50`: the
+    /// entry lookup finds `f50` on it, `connect` starts in `target`, and a
+    /// relative upload goes to `target`, where a lookup that asked for the
+    /// pages after an exact name connected at the root and uploaded there.
+    #[tokio::test]
+    async fn a_start_folder_on_a_full_page_without_last_page_takes_the_relative_upload() {
+        use std::sync::{Arc, Mutex};
+        let mut rows = vec![serde_json::json!({"id": 7, "name": "target", "type": "folder"})];
+        rows.extend(
+            (1..100).map(
+                |i| serde_json::json!({"id": 100 + i, "name": format!("f{i}"), "type": "file"}),
+            ),
+        );
+        let root = serde_json::json!({ "data": rows }).to_string();
+        let uploads: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&uploads);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let root = root.clone();
+                let seen = Arc::clone(&seen);
+                async move {
+                    let path = req.uri().path().to_string();
+                    let query = req.uri().query().unwrap_or_default().to_string();
+                    let body = axum::body::to_bytes(req.into_body(), usize::MAX)
+                        .await
+                        .unwrap();
+                    if path.ends_with("/cli/loggedUser") {
+                        return r#"{"user":{"id":1}}"#.to_string();
+                    }
+                    if path.ends_with("/uploads") {
+                        seen.lock()
+                            .unwrap()
+                            .push(String::from_utf8_lossy(&body).to_string());
+                        return r#"{"fileEntry":{"id":900,"name":"x.txt","type":"file"}}"#
+                            .to_string();
+                    }
+                    if query.contains("parentIds=7") {
+                        return r#"{"data":[]}"#.to_string();
+                    }
+                    root
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        TEST_API_BASE.with(|base| *base.borrow_mut() = Some(format!("http://{addr}")));
+        let mut provider = DrimeCloudProvider::new(DrimeCloudConfig {
+            api_token: secrecy::SecretString::from("test-token".to_string()),
+            initial_path: Some("/target".into()),
+        });
+        let connected = provider.connect().await;
+        let found = provider.find_file_in_folder("", "f50").await;
+        let local = tempfile::tempdir().unwrap();
+        let file = local.path().join("x.txt");
+        std::fs::write(&file, b"x").unwrap();
+        let uploaded = provider.upload(file.to_str().unwrap(), "x.txt", None).await;
+        TEST_API_BASE.with(|base| *base.borrow_mut() = None);
+        server.abort();
+        assert!(connected.is_ok(), "{connected:?}");
+        assert_eq!(provider.current_path, "/target");
+        assert_eq!(provider.current_folder_id, "7");
+        assert!(
+            matches!(&found, Ok(Some((id, false, _))) if id == "150"),
+            "{found:?}"
+        );
+        assert!(uploaded.is_ok(), "{uploaded:?}");
+        let uploads = uploads.lock().unwrap();
+        assert_eq!(uploads.len(), 1, "{uploads:?}");
+        let parent = uploads[0]
+            .split("name=\"parentId\"")
+            .nth(1)
+            .and_then(|rest| rest.split("\r\n\r\n").nth(1))
+            .and_then(|value| value.split("\r\n").next());
+        assert_eq!(parent, Some("7"), "{}", uploads[0]);
+    }
+
     #[tokio::test]
     async fn probe_contract_drime_requires_listing_data_and_names() {
         for body in [

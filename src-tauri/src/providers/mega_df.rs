@@ -29,7 +29,8 @@ thread_local! {
 }
 
 /// Run this thread's MEGAcmd commands from `dir` (None: as installed).
-#[cfg(test)]
+/// Only the unix tests link the shell stand-in.
+#[cfg(all(test, unix))]
 pub(crate) fn use_test_commands(dir: Option<&std::path::Path>) {
     TEST_CMD_DIR.with(|cmd_dir| *cmd_dir.borrow_mut() = dir.map(std::path::Path::to_path_buf));
 }

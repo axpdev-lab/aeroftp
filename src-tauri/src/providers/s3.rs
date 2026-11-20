@@ -16414,6 +16414,48 @@ mod tests {
         );
     }
 
+    /// A restore whose copy is answered 200 with an `<Error>` that repeats
+    /// the session token, plainly, as a character reference or split by a
+    /// CDATA section, fails without the token in its error: the restore
+    /// passes its own answer through the sent-token check.
+    #[tokio::test]
+    async fn a_restore_error_that_repeats_the_sent_token_withholds_it() {
+        const ANSWERS: [&str; 3] = [
+            "<Error><Code>AccessDenied</Code><Message>token SESSIONabc+defTOKEN refused</Message></Error>",
+            "<Error><Code>AccessDenied</Code><Message>token SESSIONabc&#43;defTOKEN refused</Message></Error>",
+            "<Error><Code>AccessDenied</Code><Message>token SESSIONabc<![CDATA[+]]>defTOKEN refused</Message></Error>",
+        ];
+        for answer in ANSWERS {
+            let config = TigrisDoubleConfig {
+                versions_denied: Some(403),
+                copy_answer: Some(("", answer)),
+                ..Default::default()
+            };
+            let (mut provider, _, log) = tigris_double(&[("docs/a.txt", "A")], config).await;
+            provider.config.session_token = Some(secrecy::SecretString::from(
+                "SESSIONabc+defTOKEN".to_string(),
+            ));
+            let restored = provider.restore_version("/docs/a.txt", "v2").await;
+            let Err(error) = restored else {
+                panic!("{answer}: {restored:?}");
+            };
+            let shown = format!("{error} {error:?}");
+            assert!(
+                shown.contains("Restore version failed"),
+                "{answer}: {shown}"
+            );
+            assert!(!shown.contains("SESSIONabc"), "{answer}: {shown}");
+            assert!(!shown.contains("defTOKEN"), "{answer}: {shown}");
+            assert!(
+                log.lock()
+                    .unwrap()
+                    .iter()
+                    .any(|seen| seen.method == "PUT" && seen.uri.contains("docs/a.txt")),
+                "{answer}: no copy was sent"
+            );
+        }
+    }
+
     #[tokio::test]
     async fn a_known_version_downloads_without_the_right_to_list_versions() {
         let config = TigrisDoubleConfig {

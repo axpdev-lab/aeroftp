@@ -2147,8 +2147,10 @@ impl ZohoWorkdriveProvider {
     }
 
     /// When the team folders were never read whole, read them again: true
-    /// once they are read (or the account has no team listing at all),
-    /// false while they stay unread.
+    /// once they are read, false while they stay unread. A later refusal of
+    /// both listings is not an answer: an offered listing that broke off
+    /// showed the team has folders, so a root name stays unknown rather
+    /// than be read as a private folder's.
     async fn reread_team_folders_if_unread(&mut self) -> bool {
         if !self.team_folders_unread {
             return true;
@@ -2161,11 +2163,7 @@ impl ZohoWorkdriveProvider {
                 self.keep_team_folders(source, found);
                 true
             }
-            Ok(None) => {
-                self.team_folders_unread = false;
-                true
-            }
-            Err(TeamFoldersUnread) => false,
+            Ok(None) | Err(TeamFoldersUnread) => false,
         }
     }
 
@@ -8503,6 +8501,40 @@ mod tests {
         assert_eq!(p.folder_cache.get("/a/b").map(String::as_str), Some("B2"));
     }
 
+    /// A delete with `a` itself moved to the archive while its child `b` was
+    /// read back: the file in the moved `b` is never trashed; the path is
+    /// walked to the folders there now and their file is the one trashed.
+    #[tokio::test]
+    async fn a_delete_with_an_ancestor_moved_after_its_read_trashes_the_file_there_now() {
+        let (mut p, requests, server) = listing_fixture(|id, _, _| {
+            let entries = match id {
+                "ROOT" => vec![("A2", "a", true)],
+                "A2" => vec![("B2", "b", true)],
+                "B" => vec![("F1", "f.txt", false)],
+                "B2" => vec![("F2", "f.txt", false)],
+                _ => vec![],
+            };
+            (200, vec![], listing_json(&entries, Some((false, None))))
+        })
+        .await;
+        cache_folder(&mut p, "/a", "A");
+        cache_folder(&mut p, "/a/b", "B");
+        MOVE_ON_READ
+            .with(|hook| *hook.borrow_mut() = Some(("B".into(), "A".into(), "ARCHIVE".into())));
+        p.delete("/a/b/f.txt")
+            .await
+            .expect("the file at the path is trashed");
+        server.abort();
+        let patched: Vec<String> = requests
+            .lock()
+            .unwrap()
+            .iter()
+            .filter_map(|(id, _)| id.strip_prefix("PATCH ").map(str::to_string))
+            .collect();
+        assert_eq!(patched, ["F2"]);
+        assert_eq!(listings_of(&requests, "B"), 0, "the moved b was listed");
+    }
+
     /// The team folder discovery found as `Docs` (T1) was renamed by another
     /// client and a new `Docs` (T2) made: T1 read back by id no longer says
     /// `Docs`, the team folders are discovered again, and the path resolves
@@ -8726,6 +8758,86 @@ mod tests {
         assert_eq!(found.unwrap(), "T2");
     }
 
+    /// A team folders discovery left unread at connect (a second page that
+    /// failed, a rate limited first page, an unparsable first page) stays
+    /// unread when a later read is refused by both listings (403 or 404 on
+    /// the team folders and on the workspaces): the root is not listed and
+    /// the private `Docs/f.txt` of a possible team folder's name is not
+    /// trashed, where before the refusal cleared the unread state and the
+    /// delete went to the private file.
+    #[tokio::test]
+    async fn a_later_refusal_of_both_listings_keeps_an_unread_discovery_unread() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        for (first, refusal) in [
+            ("cut short", 403u16),
+            ("cut short", 404),
+            ("rate limited", 403),
+            ("rate limited", 404),
+            ("unparsable", 403),
+            ("unparsable", 404),
+        ] {
+            let reread = std::sync::Arc::new(AtomicBool::new(false));
+            let rereading = std::sync::Arc::clone(&reread);
+            let (mut p, requests, server) = listing_fixture(move |id, query, _| {
+                let second = format!("page%5Boffset%5D={TEAM_FOLDER_PAGE_LIMIT}");
+                match id {
+                    "TEAM" if rereading.load(Ordering::SeqCst) => (refusal, vec![], String::new()),
+                    "TEAM" if first == "rate limited" => (429, vec![], String::new()),
+                    "TEAM" if first == "unparsable" && query.contains("page%5Boffset") => {
+                        (200, vec![], "not json".to_string())
+                    }
+                    "TEAM" if query.contains("page%5Boffset%5D=0") => {
+                        let page: Vec<serde_json::Value> = (0..TEAM_FOLDER_PAGE_LIMIT)
+                            .map(|i| {
+                                serde_json::json!({ "id": format!("F{i}"),
+                                "attributes": { "name": format!("Team {i}") } })
+                            })
+                            .collect();
+                        (200, vec![], serde_json::json!({ "data": page }).to_string())
+                    }
+                    "TEAM" if query.contains(&second) => (503, vec![], String::new()),
+                    "TEAM" => (refusal, vec![], String::new()),
+                    "ROOT" => (
+                        200,
+                        vec![],
+                        listing_json(&[("P1", "Docs", true)], Some((false, None))),
+                    ),
+                    "P1" => (
+                        200,
+                        vec![],
+                        listing_json(&[("F1", "f.txt", false)], Some((false, None))),
+                    ),
+                    _ => (200, vec![], listing_json(&[], Some((false, None)))),
+                }
+            })
+            .await;
+            p.privatespace_id = Some("ROOT".into());
+            p.team_id = Some("TEAM".into());
+            p.discover_team_folders("TEAM").await;
+            assert!(p.team_folders_unread, "{first} {refusal}");
+            reread.store(true, Ordering::SeqCst);
+            let root = p.list("/").await;
+            let deleted = p.delete("/Docs/f.txt").await;
+            server.abort();
+            assert!(root.is_err(), "{first} {refusal}: {root:?}");
+            assert!(deleted.is_err(), "{first} {refusal}: {deleted:?}");
+            assert!(p.team_folders_unread, "{first} {refusal}");
+            let requests = requests.lock().unwrap();
+            assert!(
+                !requests.iter().any(|(id, _)| id.starts_with("PATCH")),
+                "{first} {refusal}: {requests:?}"
+            );
+            assert!(
+                requests
+                    .iter()
+                    .filter(|(id, q)| id == "TEAM" && q.is_empty())
+                    .count()
+                    >= 1,
+                "{first} {refusal}: the workspaces were never asked: {requests:?}"
+            );
+        }
+    }
+
     /// A first team folders page that is rate limited, refused for its
     /// token, a server error or unparsable is no answer: discovery stays
     /// unread and the private `Docs/f.txt` of a team folder's name is not
@@ -8861,9 +8973,9 @@ mod tests {
             });
     }
 
-    /// A team folders page past the per-page cap is no answer: the team
-    /// folders kept stay as they were, and a complete listing then replaces
-    /// them.
+    /// A team folders page past the per-page cap is no answer, even when it
+    /// parses: the team folders kept stay as they were, and a complete
+    /// listing then replaces them.
     #[tokio::test]
     async fn an_oversized_team_folders_page_keeps_the_team_folders() {
         use std::sync::atomic::{AtomicBool, Ordering};
@@ -8873,7 +8985,12 @@ mod tests {
             "TEAM" if query.contains("page%5Boffset%5D=0") && big.load(Ordering::SeqCst) => (
                 200,
                 vec![],
-                " ".repeat(super::super::VERSION_LISTING_MAX_BYTES as usize + 1),
+                // A whole, parsable page, past the cap only by its padding:
+                // without the cap it would replace the team folders.
+                format!(
+                    r#"{{"data":[{{"id":"T9","attributes":{{"name":"Huge"}}}}],"pad":"{}"}}"#,
+                    "x".repeat(super::super::VERSION_LISTING_MAX_BYTES as usize + 1)
+                ),
             ),
             "TEAM" if query.contains("page%5Boffset%5D=0") => (
                 200,

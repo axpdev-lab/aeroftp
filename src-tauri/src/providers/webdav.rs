@@ -1918,6 +1918,20 @@ impl WebDavProvider {
         }
     }
 
+    /// The origin an href names: the scheme of an absolute URL (None for a
+    /// network-path reference `//host/...`, which takes the scheme of the
+    /// request) and the `host[:port]` after it. None for a path.
+    fn href_origin(href: &str) -> Option<(Option<&str>, &str)> {
+        let raw = href.split(['?', '#']).next().unwrap_or("");
+        let (scheme, rest) = if let Some(rest) = raw.strip_prefix("//") {
+            (None, rest)
+        } else {
+            let i = raw.find("://").filter(|i| !raw[..*i].contains('/'))?;
+            (Some(&raw[..i]), &raw[i + 3..])
+        };
+        Some((scheme, rest.split('/').next().unwrap_or("")))
+    }
+
     /// The path a PROPFIND href names, as its decoded segments, for an exact
     /// comparison. The scheme and authority of an absolute URL and any query
     /// or fragment are dropped, empty and `.` segments vanish, `..` removes
@@ -1925,19 +1939,6 @@ impl WebDavProvider {
     /// the collection `base` (segments already normalised). Each segment is
     /// decoded on its own, so an escaped `/` (`%2F`) inside a name stays part
     /// of that name. The root is no segment at all.
-    /// The `host[:port]` an href names: after the scheme of an absolute
-    /// URL, or after the `//` of a network-path reference. None for a path.
-    fn href_authority(href: &str) -> Option<&str> {
-        let raw = href.split(['?', '#']).next().unwrap_or("");
-        let rest = if let Some(rest) = raw.strip_prefix("//") {
-            rest
-        } else {
-            let i = raw.find("://").filter(|i| !raw[..*i].contains('/'))?;
-            &raw[i + 3..]
-        };
-        Some(rest.split('/').next().unwrap_or(""))
-    }
-
     fn dav_path_segments(href: &str, base: &[String]) -> Vec<String> {
         let raw = href.split(['?', '#']).next().unwrap_or("");
         let has_authority =
@@ -3707,14 +3708,19 @@ impl WebDavProvider {
             .filter(|row| !row.file_id.is_empty());
         match (rows.next(), rows.next()) {
             (Some(row), None) => {
-                // An href naming a server (`//host/a.txt`, `https://host/...`)
-                // names that server's entry: only this one's is the file, and
-                // its path alone would match the relative listing path.
-                if let Some(authority) = Self::href_authority(&row.href) {
+                // An href naming an origin (`//host/a.txt`, `https://host/...`)
+                // names that origin's entry: only this one's is the file (its
+                // scheme and authority, a scheme-relative href taking ours),
+                // and its path alone would match the relative listing path.
+                if let Some((scheme, authority)) = Self::href_origin(&row.href) {
                     let own = self.build_url(path);
-                    if !Self::href_authority(&own)
-                        .is_some_and(|mine| mine.eq_ignore_ascii_case(authority))
-                    {
+                    let same = Self::href_origin(&own).is_some_and(|(my_scheme, mine)| {
+                        mine.eq_ignore_ascii_case(authority)
+                            && scheme.is_none_or(|scheme| {
+                                my_scheme.is_some_and(|my| my.eq_ignore_ascii_case(scheme))
+                            })
+                    });
+                    if !same {
                         return Err(ProviderError::ServerError(format!(
                             "The file id answer for {path} names an entry of another server"
                         )));
@@ -8724,9 +8730,17 @@ mod tests {
         // r.txt (file 50) holds 20 bytes until its 8-byte version is moved
         // to the restore target, then those 8.
         let restored_r: std::sync::Arc<std::sync::atomic::AtomicBool> = Default::default();
+        // s.txt (file 65): its file id row names this server's authority
+        // under another scheme, `https://` where the requests go over
+        // `http://`: another origin.
+        let other_scheme = format!(
+            r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns"><d:response><d:href>{}/remote.php/dav/files/user/s.txt</d:href><d:propstat><d:prop><oc:fileid>65</oc:fileid><d:getetag>&quot;s1&quot;</d:getetag><d:getcontentlength>3</d:getcontentlength><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>"#,
+            base.replacen("http://", "https://", 1)
+        );
         let seen = log.clone();
         let app =
             axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let other_scheme = other_scheme.clone();
                 let seen = seen.clone();
                 let swap_listings = swap_listings.clone();
                 let gone_listings = gone_listings.clone();
@@ -8937,6 +8951,9 @@ mod tests {
                             207,
                             r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns"><d:response><d:href>/remote.php/dav/files/user/n.txt</d:href><d:propstat><d:prop><oc:fileid>63</oc:fileid><d:getetag>&quot;n1&quot;</d:getetag><d:getcontentlength>3</d:getcontentlength><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>"#,
                         ),
+                        ("PROPFIND", "/remote.php/dav/files/user/s.txt") => {
+                            reply(207, &other_scheme)
+                        }
                         // h.txt (file 64): its file id row names another
                         // server, `//elsewhere.example/h.txt`, whose path
                         // alone matches the relative listing path.
@@ -9065,6 +9082,24 @@ mod tests {
         );
         let log = log.lock().unwrap();
         assert!(!log.iter().any(|l| l.contains("/versions/64")), "{log:?}");
+    }
+
+    /// The file id answer for s.txt names this server's authority under
+    /// `https://` while the requests go over `http://`: another origin,
+    /// refused before any version request, where a check of the authority
+    /// alone took its id as s.txt's.
+    #[tokio::test]
+    async fn a_file_id_row_of_another_scheme_is_refused() {
+        let (base, log, server) = serve_nextcloud_versions().await;
+        let mut provider = nextcloud_versions_provider(&base);
+        let refused = provider.list_versions("/s.txt").await;
+        server.abort();
+        assert!(
+            matches!(&refused, Err(ProviderError::ServerError(m)) if m.contains("another server")),
+            "{refused:?}"
+        );
+        let log = log.lock().unwrap();
+        assert!(!log.iter().any(|l| l.contains("/versions/65")), "{log:?}");
     }
 
     /// The versions answer for d.txt (file id 46) also carries a row of

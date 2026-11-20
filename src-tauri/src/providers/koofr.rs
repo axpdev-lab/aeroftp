@@ -1974,7 +1974,11 @@ impl StorageProvider for KoofrProvider {
             resp.bytes_stream(),
             crate::transfer_dag::governor::TransferDirection::Download,
         ));
-        let mut atomic = super::atomic_write::AtomicFile::new(local_path)
+        // A bound current row is checked only once its bytes are read, so it
+        // is always staged, `--inplace` or not: written in place, bytes that
+        // are not the row's would already have replaced the destination.
+        let inplace = super::atomic_write::inplace_active() && listed.is_none();
+        let mut atomic = super::atomic_write::AtomicFile::new_in(local_path, inplace)
             .await
             .map_err(|e| ProviderError::TransferFailed(format!("Create file failed: {}", e)))?;
 
@@ -2640,6 +2644,29 @@ mod tests {
     /// are saved.
     #[tokio::test]
     async fn a_current_row_whose_bytes_are_not_its_hash_saves_nothing() {
+        current_row_downloads_keep_the_destination_unless_the_hash_matches().await;
+    }
+
+    /// With `--inplace` the bound current row is still staged: bytes whose
+    /// MD5 is not the row's hash leave the destination as it was, where a
+    /// write in place had already replaced it when the check refused them.
+    /// Alone in a child process: the in-place switch is process wide.
+    #[test]
+    fn a_current_row_not_its_hash_leaves_the_destination_in_place_mode_too() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::koofr::tests::a_current_row_not_its_hash_leaves_the_destination_in_place_mode_too",
+        ) {
+            return;
+        }
+        super::super::atomic_write::set_inplace_mode(true);
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(current_row_downloads_keep_the_destination_unless_the_hash_matches());
+    }
+
+    async fn current_row_downloads_keep_the_destination_unless_the_hash_matches() {
         use md5::{Digest, Md5};
         let listed_hash: String = Md5::digest(b"abcd")
             .iter()

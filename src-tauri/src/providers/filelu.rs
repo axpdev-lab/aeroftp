@@ -6534,12 +6534,14 @@ mod tests {
                     self.clone()
                 }
             }
-            // The v2 failure as a refusal, as JSON whose string `status` echoes
-            // the request, and as JSON whose `size` does: none reaches the log
-            // or the error. The legacy answer is JSON whose `size` is a string
+            // The v2 failure as a refusal, as an API refusal whose `msg` holds
+            // the bare key, as JSON whose string `status` echoes the request,
+            // and as JSON whose `size` does: none reaches the log or the
+            // error. The legacy answer is JSON whose `size` is a string
             // holding an echoed request URL: serde's own text would quote it.
             for v2 in [
                 "!500 GET /apiv2/folder/list?key=ECHO-SECRET-1",
+                r#"{"status":403,"msg":"Wrong key ECHO-SECRET-1 for GET /apiv2/folder/list"}"#,
                 r#"{"status":"GET /apiv2/folder/list?key=ECHO-SECRET-1","result":{}}"#,
                 r#"{"status":200,"result":{"files":[{"name":"a","size":"GET /apiv2/x?key=ECHO-SECRET-1"}],"folders":[]}}"#,
             ] {
