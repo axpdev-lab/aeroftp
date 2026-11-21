@@ -2384,6 +2384,45 @@ fn a_scan_records_each_write_in_a_row_of_its_own() {
     assert!(!has_row(&accounts.conn, accounts.legacy, &password));
 }
 
+/// A settle removes an account's row only while it still holds what the
+/// scan wrote, compared in the transaction of the removal: a value saved
+/// between the settle's read and its removal stays.
+#[test]
+fn a_settle_keeps_a_row_saved_between_its_read_and_its_removal() {
+    if !in_isolated_child("a_settle_keeps_a_row_saved_between_its_read_and_its_removal") {
+        return;
+    }
+    let accounts = Accounts::open();
+    let runtime = bridge_runtime();
+    let imported = scan_ftp_remotes(&runtime, &["files"]).unwrap();
+    let password = format!("server_{}", scanned_id(&imported, "files"));
+    let saved_between: fn(&CredentialStore, i64, &str) = |store, user, key| {
+        store_credential_dual_as(store, Some(user), key, "saved-between").unwrap();
+    };
+    *crate::bridge_import_scan::BETWEEN_READ_AND_REMOVAL
+        .lock()
+        .unwrap() = Some(saved_between);
+    let settled = settle_scan(&runtime, imported["scanId"].as_str());
+    *crate::bridge_import_scan::BETWEEN_READ_AND_REMOVAL
+        .lock()
+        .unwrap() = None;
+    settled.unwrap();
+    assert_eq!(
+        get_user_credential_for(
+            &accounts.conn,
+            &accounts.root_key,
+            accounts.legacy,
+            &password
+        )
+        .unwrap()
+        .as_deref()
+        .map(String::as_str),
+        Some("saved-between"),
+        "the row saved since the read stays"
+    );
+    assert_eq!(vault_value(&password).as_deref(), Some("saved-between"));
+}
+
 /// A session save is whole or not made. For the legacy owner, whose session
 /// is a vault key and its row, a row the account store refuses puts the
 /// vault key back as it was: an import reported as not restored leaves no

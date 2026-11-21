@@ -385,6 +385,15 @@ fn listed(
     Ok(ids(&profiles).collect())
 }
 
+/// A writer of an account's row: the store, the account and the key.
+#[cfg(test)]
+pub(crate) type RowWriter = fn(&CredentialStore, i64, &str);
+
+/// Runs between the read of an account's row and its removal (test only):
+/// a writer that saves the same key in between.
+#[cfg(test)]
+pub(crate) static BETWEEN_READ_AND_REMOVAL: Mutex<Option<RowWriter>> = Mutex::new(None);
+
 /// Removes one write of a scan, where it still holds what the scan wrote.
 fn discard(
     store: &CredentialStore,
@@ -407,8 +416,22 @@ fn discard(
                     user,
                     &written.key,
                 )?;
-                if row.is_some_and(|row| mac(key, &row) == written.mac) {
-                    crate::user_partitions::delete_user_credential_for(conn, user, &written.key)?;
+                #[cfg(test)]
+                if let Some(between) = *BETWEEN_READ_AND_REMOVAL.lock().unwrap() {
+                    between(store, user, &written.key);
+                }
+                if let Some(row) = row.filter(|row| mac(key, row) == written.mac) {
+                    // Compared again in the transaction of the removal: a
+                    // value saved since the read stays.
+                    crate::user_partitions::swap_user_credential_if(
+                        conn,
+                        &root_key,
+                        user,
+                        &written.key,
+                        "",
+                        Some(&row),
+                        None,
+                    )?;
                 }
             }
             match store.get(&written.key) {
