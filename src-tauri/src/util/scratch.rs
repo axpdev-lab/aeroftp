@@ -458,6 +458,14 @@ mod tests {
         assert_eq!(stats.errors, 0);
         assert!(!stage.exists());
         assert!(unrelated.is_file());
+
+        // The session name is reserved for a directory: a regular file that
+        // carries it is not AeroFTP staging and stays.
+        std::fs::write(&stage, b"not a session").unwrap();
+        set_file_mtime(&stage, old).unwrap();
+        let stats = sweep_stale_staging(root.path(), STALE_STAGING_AGE);
+        assert_eq!(stats.removed, 0);
+        assert_eq!(std::fs::read(&stage).unwrap(), b"not a session");
     }
 
     #[test]
