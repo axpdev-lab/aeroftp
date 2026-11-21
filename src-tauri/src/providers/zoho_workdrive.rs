@@ -179,8 +179,9 @@ struct PageLinks {
 /// `next` is the URL of the next page; its `page[next]` is the cursor.
 #[derive(Debug, Deserialize)]
 struct PageCursor {
+    /// Absent is not "no": a next page named without it is refused.
     #[serde(default)]
-    has_next: bool,
+    has_next: Option<bool>,
     #[serde(default)]
     next: Option<String>,
 }
@@ -342,10 +343,18 @@ const LIST_PAGE_LIMIT: usize = 1000;
 /// last. The answer's cursor decides, an empty page included. Without a
 /// cursor in the answer a short page is the last, as it was with offset
 /// paging; a full one is an error, since the entries after it could not be
-/// asked for and a listing without them reads them as deleted.
+/// asked for and a listing without them reads them as deleted. A cursor
+/// that names a next page without `has_next` says neither: an error, never
+/// the end (every caller, the folder, workspace and version listings).
 fn next_page_cursor(links: Option<&PageLinks>, count: usize) -> Result<Option<String>, String> {
-    match links.and_then(|links| links.cursor.as_ref()) {
-        Some(cursor) if cursor.has_next => cursor
+    let cursor = links
+        .and_then(|links| links.cursor.as_ref())
+        .filter(|cursor| cursor.has_next.is_some() || cursor.next.is_some());
+    match cursor {
+        Some(cursor) if cursor.has_next.is_none() => {
+            Err("the answer points to more entries without saying whether they follow".to_string())
+        }
+        Some(cursor) if cursor.has_next == Some(true) => cursor
             .next
             .as_deref()
             .and_then(|next| reqwest::Url::parse(next).ok())
@@ -622,15 +631,17 @@ struct WorkspaceResource {
 /// `GET /users/{id}/privatespace` body. Zoho answers either with a JSON:API
 /// list (`{"data": [...]}`) or with a single object (`{"data": {...}}`),
 /// depending on account type, so both shapes are accepted.
-fn parse_privatespace_id(body: &str) -> Option<String> {
+/// The private space a successful lookup names. `Ok(None)` only for an
+/// answer that lists none (`"data": []`): a body that is no such answer (cut
+/// short, empty, an error document) is `Err`, never an absent private space,
+/// which would connect with the team id as the root.
+fn parse_privatespace_id(body: &str) -> Result<Option<String>, ()> {
     if let Ok(list) = serde_json::from_str::<JsonApiListResponse<WorkspaceResource>>(body) {
-        if let Some(first) = list.data.into_iter().next() {
-            return Some(first.id);
-        }
+        return Ok(list.data.into_iter().next().map(|first| first.id));
     }
     serde_json::from_str::<JsonApiResponse<WorkspaceResource>>(body)
-        .ok()
-        .map(|single| single.data.id)
+        .map(|single| Some(single.data.id))
+        .map_err(|_| ())
 }
 
 /// Workspace list resource (for GET /teams/{id}/workspaces)
@@ -1090,6 +1101,10 @@ pub struct ZohoWorkdriveProvider {
     /// with no mapping kept from before: a root name is then not known to
     /// be private.
     team_folders_unread: bool,
+    /// The same account and team had team folders in the connection before:
+    /// an empty workspaces listing read in place of a team folders listing
+    /// not offered does not make it an empty team.
+    team_folders_known_before: bool,
     /// The team folders listing answered (a page offered, its body read or
     /// not) since a listing was last accepted: set before each page's body is
     /// read, so a listing that broke off or was dropped half way leaves it,
@@ -1195,6 +1210,7 @@ impl ZohoWorkdriveProvider {
             team_folders: Vec::new(),
             team_folders_source: None,
             team_folders_unread: false,
+            team_folders_known_before: false,
             team_folders_answered: std::sync::atomic::AtomicBool::new(false),
             team_folders_progress: std::sync::atomic::AtomicBool::new(false),
             team_folders_discovery_open: false,
@@ -2137,14 +2153,25 @@ impl ZohoWorkdriveProvider {
             return Ok(false);
         }
 
-        let body_text = resp.text().await.unwrap_or_default();
+        // An answer cut short says nothing of the private space either.
+        let body_text = resp.text().await.map_http_err(|e| {
+            ProviderError::ConnectionFailed(format!(
+                "Zoho WorkDrive private space lookup was cut short ({}), try again",
+                e.without_url()
+            ))
+        })?;
         debug!(
             "Zoho WorkDrive privatespace response: {}",
             log_preview(&body_text, 500)
         );
 
         match parse_privatespace_id(&body_text) {
-            Some(id) => {
+            Err(()) => Err(ProviderError::ParseError(format!(
+                "Zoho WorkDrive answered the private space lookup with {} bytes that are no \
+                 private space listing, try again",
+                body_text.len()
+            ))),
+            Ok(Some(id)) => {
                 self.privatespace_id = Some(id.clone());
                 self.current_folder_id = id.clone();
                 self.folder_cache.insert("/".to_string(), id);
@@ -2154,8 +2181,8 @@ impl ZohoWorkdriveProvider {
                 );
                 Ok(true)
             }
-            None => {
-                info!("Zoho WorkDrive privatespace parse failed for both array and object formats");
+            Ok(None) => {
+                info!("Zoho WorkDrive lists no private space for this user");
                 Ok(false)
             }
         }
@@ -2284,6 +2311,7 @@ impl ZohoWorkdriveProvider {
         self.team_folders.clear();
         self.team_folders_source = None;
         self.team_folders_unread = false;
+        self.team_folders_known_before = false;
         self.team_folders_discovery_open = false;
         self.team_folders_answered
             .store(false, std::sync::atomic::Ordering::SeqCst);
@@ -2326,6 +2354,14 @@ impl ZohoWorkdriveProvider {
     /// have listed when it answered and broke off (or was dropped), unless
     /// the same read found the team folders listing whole and empty.
     fn answers_for_the_team_folders(&self, listing: &TeamFolderListing) -> bool {
+        // No workspaces, the team folders listing not offered, say nothing
+        // of the team folders the same account and team had before.
+        if self.team_folders_known_before
+            && listing.source == TeamFolderSource::Workspaces
+            && listing.found.is_empty()
+        {
+            return false;
+        }
         // A team folders listing read whole and empty, the workspaces
         // refused, says nothing about a workspaces mapping kept: a refusal
         // may deny the listing of workspaces that still exist.
@@ -2352,14 +2388,17 @@ impl ZohoWorkdriveProvider {
         Ok(())
     }
 
-    /// Forget what a connection learned: the account, the root, the team,
-    /// the private space and the team folders. Not connected until a
-    /// connect succeeds.
     /// End the connection: what it learned of its team goes to
-    /// [`Self::retired_connection`], unless it found no account and team
-    /// (a connect that failed), which keeps the one retired before it.
+    /// [`Self::retired_connection`]. Only an established connection is
+    /// retired: a connect that failed, or was cancelled after it found its
+    /// account and team, keeps the one retired before it, whose trashed team
+    /// folders it never took.
     fn retire_connection(&mut self) {
-        if let (Some(account_id), Some(team_id)) = (self.account_id.clone(), self.team_id.clone()) {
+        if let (true, Some(account_id), Some(team_id)) = (
+            self.connected,
+            self.account_id.clone(),
+            self.team_id.clone(),
+        ) {
             self.retired_connection = Some(RetiredConnection {
                 account_id,
                 team_id,
@@ -2370,6 +2409,9 @@ impl ZohoWorkdriveProvider {
         self.forget_connection();
     }
 
+    /// Forget what a connection learned: the account, the root, the team,
+    /// the private space and the team folders. Not connected until a
+    /// connect succeeds.
     fn forget_connection(&mut self) {
         self.connected = false;
         self.account_email = None;
@@ -3885,8 +3927,17 @@ impl StorageProvider for ZohoWorkdriveProvider {
             if self.account_id.as_deref() == Some(retired.account_id.as_str())
                 && self.team_id.as_deref() == Some(retired.team_id.as_str())
             {
-                if retired.had_team_folders && self.team_folders_source.is_none() {
-                    self.team_folders_unread = true;
+                // Neither listing read, or only an empty workspaces listing in
+                // place of a team folders listing not offered: the team
+                // folders known before stay unread, not an empty team.
+                let read_as_none = self.team_folders_source.is_none()
+                    || (self.team_folders_source == Some(TeamFolderSource::Workspaces)
+                        && self.team_folders.is_empty());
+                if retired.had_team_folders {
+                    self.team_folders_known_before = true;
+                    if read_as_none {
+                        self.team_folders_unread = true;
+                    }
                 }
                 for entry in retired.trashed_team_folders {
                     let known = |(id, _): &(String, String)| id == &entry.0;
@@ -4955,9 +5006,9 @@ impl StorageProvider for ZohoWorkdriveProvider {
                 resp_text.len()
             );
             return Err(ProviderError::Other(format!(
-                "Create share link failed: {} - {}",
+                "Create share link failed: {} (an answer of {} bytes, not shown)",
                 status,
-                sanitize_api_error(&resp_text)
+                resp_text.len()
             )));
         }
 
@@ -4981,8 +5032,8 @@ impl StorageProvider for ZohoWorkdriveProvider {
             .or_else(|| parsed["data"]["attributes"]["permalink"].as_str())
             .ok_or_else(|| {
                 ProviderError::Other(format!(
-                    "No link URL in response: {}",
-                    sanitize_api_error(&resp_text)
+                    "No link URL in the share link answer (an answer of {} bytes, not shown)",
+                    resp_text.len()
                 ))
             })?;
 
@@ -5135,10 +5186,13 @@ impl StorageProvider for ZohoWorkdriveProvider {
         let mut seen = std::collections::HashSet::new();
         let mut budget = super::VersionListingBudget::default();
         loop {
-            let url = match &next {
-                Some(cursor) => format!("{base}?page%5Bnext%5D={}", urlencoding::encode(cursor)),
-                None => base.clone(),
-            };
+            // The documented first cursor (`0`) and the page size go with
+            // every page, as for a folder: without a limit the server's own
+            // page size would decide when a page is full.
+            let url = format!(
+                "{base}?page%5Blimit%5D={LIST_PAGE_LIMIT}&page%5Bnext%5D={}",
+                urlencoding::encode(next.as_deref().unwrap_or("0"))
+            );
             info!(
                 "Zoho WorkDrive list versions of {path}: page {}",
                 seen.len() + 1
@@ -5291,6 +5345,11 @@ impl StorageProvider for ZohoWorkdriveProvider {
 
         if !resp.status().is_success() {
             let status = resp.status();
+            if let Some(unknown) =
+                super::gateway_left_unknown(status, &format!("the restore of {path}"))
+            {
+                return Err(unknown);
+            }
             let text = super::version_listing_text(resp).await.unwrap_or_default();
             return Err(ProviderError::Other(format!(
                 "Restore version failed ({}): {}",
@@ -6853,7 +6912,13 @@ mod tests {
     fn a_listing_ends_only_where_the_answer_says_it_does() {
         let cursor = |has_next: bool, next: Option<&str>| PageLinks {
             cursor: Some(PageCursor {
-                has_next,
+                has_next: Some(has_next),
+                next: next.map(str::to_string),
+            }),
+        };
+        let unsaid = |next: Option<&str>| PageLinks {
+            cursor: Some(PageCursor {
+                has_next: None,
                 next: next.map(str::to_string),
             }),
         };
@@ -6881,6 +6946,19 @@ mod tests {
             Ok(None)
         );
         assert!(next_page_cursor(None, LIST_PAGE_LIMIT).is_err());
+        // A next page named without `has_next` is no end, whatever the
+        // count; a cursor that names nothing at all is no cursor.
+        for count in [0, 3, LIST_PAGE_LIMIT] {
+            assert!(
+                next_page_cursor(Some(&unsaid(Some(next))), count).is_err(),
+                "{count}"
+            );
+        }
+        assert_eq!(next_page_cursor(Some(&unsaid(None)), 3), Ok(None));
+        assert!(next_page_cursor(Some(&unsaid(None)), LIST_PAGE_LIMIT).is_err());
+        let parsed: PageLinks =
+            serde_json::from_str(&format!(r#"{{"cursor":{{"next":"{next}"}}}}"#)).unwrap();
+        assert!(next_page_cursor(Some(&parsed), 3).is_err());
     }
 
     /// A page that names an earlier page as the next, itself or the first,
@@ -7768,10 +7846,25 @@ mod tests {
     /// status: `/a` still resolved to the folder now in `/d`.
     #[tokio::test]
     async fn a_move_whose_rename_fails_in_transport_still_forgets_the_cache() {
+        use std::sync::atomic::{AtomicBool, Ordering};
         let listing = r#"{"data":[{"id":"A","attributes":{"name":"a","type":"folder"}}]}"#;
+        // The error is the rename's: its PATCH is reached, not a lookup
+        // before it that failed on a route the double lacks.
+        let reached = std::sync::Arc::new(AtomicBool::new(false));
+        let renamed = std::sync::Arc::clone(&reached);
+        let unrouted: std::sync::Arc<std::sync::Mutex<Vec<String>>> = Default::default();
+        let missed = std::sync::Arc::clone(&unrouted);
         let app = axum::Router::new()
+            .fallback(move |method: axum::http::Method, uri: axum::http::Uri| {
+                missed.lock().unwrap().push(format!("{method} {uri}"));
+                async { axum::http::StatusCode::NOT_FOUND }
+            })
             .route(
                 "/workdrive/api/v1/files/ROOT/files",
+                axum::routing::get(move || async move { listing }),
+            )
+            .route(
+                "/workdrive/api/v1/privatespace/ROOT/files",
                 axum::routing::get(move || async move { listing }),
             )
             .route(
@@ -7784,14 +7877,24 @@ mod tests {
                 axum::routing::patch(|| async { "{}" }),
             )
             .route(
+                // The destination folder, read by its id.
+                "/workdrive/api/v1/files/D",
+                axum::routing::get(|| async {
+                    r#"{"data":{"id":"D","attributes":{"name":"d","parent_id":"ROOT","status":1,"type":"folder"}}}"#
+                }),
+            )
+            .route(
                 // A handler that panics drops the connection without an
                 // answer: a transport failure, as when the network goes.
                 "/workdrive/api/v1/files/A",
-                axum::routing::patch(|| async {
-                    if std::hint::black_box(true) {
-                        panic!("connection dropped");
+                axum::routing::patch(move || {
+                    renamed.store(true, Ordering::SeqCst);
+                    async {
+                        if std::hint::black_box(true) {
+                            panic!("connection dropped");
+                        }
+                        ""
                     }
-                    ""
                 }),
             );
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -7801,12 +7904,20 @@ mod tests {
         p.endpoint_override = Some(format!("http://{addr}"));
         p.test_access_token = Some("test-token".into());
         p.connected = true;
+        // A real private root: with none, a root name that is no team
+        // folder is refused before any request.
+        p.privatespace_id = Some("ROOT".into());
         for (path, id) in [("/", "ROOT"), ("/a", "A"), ("/a/sub", "SUB"), ("/d", "D")] {
             p.folder_cache.insert(path.to_string(), id.to_string());
         }
         p.current_folder_id = "ROOT".to_string();
         let outcome = p.rename("/a", "/d/b").await;
         assert!(outcome.is_err(), "{outcome:?}");
+        assert!(
+            reached.load(Ordering::SeqCst),
+            "the rename was never sent: {outcome:?}, unrouted {:?}",
+            unrouted.lock().unwrap()
+        );
         assert!(!p.folder_cache.contains_key("/a"), "{:?}", p.folder_cache);
         assert!(
             !p.folder_cache.contains_key("/a/sub"),
@@ -8270,32 +8381,35 @@ mod tests {
         // Team accounts answer with a JSON:API list.
         let array = r#"{"data":[{"id":"fmip966f979e195e64ec78e6846976861eed5","attributes":{"name":"My Folders"}}]}"#;
         assert_eq!(
-            parse_privatespace_id(array).as_deref(),
-            Some("fmip966f979e195e64ec78e6846976861eed5")
+            parse_privatespace_id(array),
+            Ok(Some("fmip966f979e195e64ec78e6846976861eed5".to_string()))
         );
 
         // Personal accounts may answer with a single object.
         let object = r#"{"data":{"id":"fmip9personal0000000000000000000000","attributes":{}}}"#;
         assert_eq!(
-            parse_privatespace_id(object).as_deref(),
-            Some("fmip9personal0000000000000000000000")
+            parse_privatespace_id(object),
+            Ok(Some("fmip9personal0000000000000000000000".to_string()))
         );
 
         // First element wins when several workspaces are returned.
         let many = r#"{"data":[{"id":"first"},{"id":"second"}]}"#;
-        assert_eq!(parse_privatespace_id(many).as_deref(), Some("first"));
+        assert_eq!(parse_privatespace_id(many), Ok(Some("first".to_string())));
     }
 
     #[test]
     fn parse_privatespace_id_rejects_empty_and_malformed_bodies() {
-        assert_eq!(parse_privatespace_id(r#"{"data":[]}"#), None);
-        assert_eq!(parse_privatespace_id(r#"{"data":{}}"#), None);
-        assert_eq!(
-            parse_privatespace_id(r#"{"errors":[{"title":"F6016"}]}"#),
-            None
-        );
-        assert_eq!(parse_privatespace_id(""), None);
-        assert_eq!(parse_privatespace_id("not json"), None);
+        // Only a listing of none is no private space.
+        assert_eq!(parse_privatespace_id(r#"{"data":[]}"#), Ok(None));
+        for body in [
+            r#"{"data":{}}"#,
+            r#"{"errors":[{"title":"F6016"}]}"#,
+            r#"{"data":[{"id":"fmip9"#,
+            "",
+            "not json",
+        ] {
+            assert_eq!(parse_privatespace_id(body), Err(()), "{body}");
+        }
     }
 
     #[test]
@@ -8493,6 +8607,64 @@ mod tests {
         }
     }
 
+    /// A restore answered 504 by a gateway may have been applied behind it:
+    /// applied and unconfirmed, never a failure to send again; WorkDrive's
+    /// own 400 stays a plain refusal.
+    #[tokio::test]
+    async fn a_zoho_restore_a_gateway_answered_is_applied_and_not_confirmed() {
+        for (status, applied) in [(504u16, true), (400, false)] {
+            let app = axum::Router::new().fallback(axum::routing::any(
+                move |uri: axum::http::Uri| async move {
+                    use axum::response::IntoResponse;
+                    let version = |n: &str, at: u64, size: u64| {
+                        format!(r#"{{"id":"r{n}","attributes":{{"version_number":{n},"created_time_in_milliseconds":{at},"file_size":{size}}}}}"#)
+                    };
+                    match uri.path() {
+                        "/workdrive/api/v1/privatespace/PS/files" => {
+                            r#"{"data":[{"id":"FILE9","attributes":{"name":"f.txt","type":"file"}}]}"#
+                                .into_response()
+                        }
+                        "/workdrive/api/v1/files/FILE9/versions" => format!(
+                            r#"{{"data":[{},{}]}}"#,
+                            version("2.0", 1794841300000, 3),
+                            version("3.0", 1794841400000, 5)
+                        )
+                        .into_response(),
+                        "/workdrive/api/v1/versions" => (
+                            axum::http::StatusCode::from_u16(status).unwrap(),
+                            r#"{"errors":[{"id":"F000","title":"refused"}]}"#,
+                        )
+                            .into_response(),
+                        _ => String::new().into_response(),
+                    }
+                },
+            ));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+            let mut p = ZohoWorkdriveProvider::new(config("com"));
+            p.endpoint_override = Some(format!("http://{addr}"));
+            p.test_access_token = Some("test-token".into());
+            p.connected = true;
+            p.privatespace_id = Some("PS".into());
+            p.current_folder_id = "PS".into();
+            p.folder_cache.insert("/".into(), "PS".into());
+            let error = p
+                .restore_version("/f.txt", "FILE9:2.0")
+                .await
+                .expect_err("not confirmed");
+            server.abort();
+            assert_eq!(
+                super::super::was_applied(&error),
+                applied,
+                "{status}: {error:?}"
+            );
+            if applied {
+                assert!(error.to_string().contains("gateway"), "{error}");
+            }
+        }
+    }
+
     /// A restore whose answer breaks off names no version: it is reported
     /// applied but unconfirmed, even when a version of the restored size is
     /// then on top (another client's upload would pass for it).
@@ -8576,6 +8748,12 @@ mod tests {
                             ]}"#,
                         ),
                         "/workdrive/api/v1/versions" => (axum::http::StatusCode::OK, "{}"),
+                        // Version 3.0 answers a part: nothing is written.
+                        "/dl/v1/workdrive/download/FILE9"
+                            if uri.query().is_some_and(|q| q.contains("version=3.0")) =>
+                        {
+                            (axum::http::StatusCode::PARTIAL_CONTENT, "ol")
+                        }
                         "/dl/v1/workdrive/download/FILE9" => (axum::http::StatusCode::OK, "old"),
                         _ => (axum::http::StatusCode::NOT_FOUND, "unexpected endpoint"),
                     }
@@ -8606,8 +8784,20 @@ mod tests {
         p.download_version("/f.txt", "FILE9:2.0", out.to_str().unwrap())
             .await
             .expect("download");
+        let partial = p
+            .download_version("/f.txt", "FILE9:3.0", out.to_str().unwrap())
+            .await;
         server.abort();
+        assert!(partial.is_err(), "{partial:?}");
         assert_eq!(std::fs::read_to_string(&out).unwrap(), "old");
+        assert!(
+            calls
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|c| c == "GET /dl/v1/workdrive/download/FILE9?version=3.0"),
+            "the part was never asked for"
+        );
         let calls = calls.lock().unwrap().clone();
         let restore: Vec<&String> = calls.iter().filter(|c| c.starts_with("POST ")).collect();
         assert_eq!(restore.len(), 1, "{calls:?}");
@@ -9018,6 +9208,30 @@ mod tests {
     /// or another account of the same team.
     #[tokio::test]
     async fn a_reconnect_to_the_same_team_keeps_the_trashed_team_folders() {
+        // A connect cancelled after it found its account and team (not
+        // connected) leaves the connection retired before it as it was;
+        // an established one is retired in its place.
+        for connected in [false, true] {
+            let mut p = ZohoWorkdriveProvider::new(config("com"));
+            p.retired_connection = Some(RetiredConnection {
+                account_id: "U1".into(),
+                team_id: "TEAM".into(),
+                trashed_team_folders: vec![("ORIGINAL".into(), "Gone".into())],
+                had_team_folders: true,
+            });
+            p.connected = connected;
+            p.account_id = Some("U1".into());
+            p.team_id = Some("TEAM".into());
+            p.retire_connection();
+            let retired = p.retired_connection.as_ref().expect("a retired connection");
+            assert_eq!(
+                retired.trashed_team_folders.is_empty(),
+                connected,
+                "connected {connected}: {retired:?}"
+            );
+            assert!(!p.connected);
+        }
+
         for (team, account, email, kept) in [
             ("TEAM", "U1", false, true),
             ("TEAM2", "U1", true, false),
@@ -9054,6 +9268,7 @@ mod tests {
             p.account_email = Some("u@example.com".into());
             p.team_id = Some("TEAM".into());
             p.trashed_team_folders = vec![("RETIRED".into(), "Gone".into())];
+            p.connected = true;
             p.connect().await.expect("reconnect");
             let asked_before = requests.lock().unwrap().len();
             let _ = p.list_trash().await;
@@ -9100,6 +9315,7 @@ mod tests {
                 _ => (200, vec![], listing_json(&[], Some((false, None)))),
             })
             .await;
+            p.connected = true;
             p.account_id = Some("U1".into());
             p.team_id = Some("TEAM".into());
             p.keep_team_folders(
@@ -9111,6 +9327,71 @@ mod tests {
             if unread {
                 let deleted = p.delete("/Docs/f.txt").await;
                 assert!(deleted.is_err(), "{deleted:?}");
+                assert!(
+                    !requests
+                        .lock()
+                        .unwrap()
+                        .iter()
+                        .any(|(id, _)| id.starts_with("PATCH")),
+                    "the private Docs/f.txt was trashed"
+                );
+            }
+            server.abort();
+        }
+    }
+
+    /// A reconnect of the same account to the same team whose team folders
+    /// listing is not offered (403) and whose workspaces are none: the team
+    /// folders known before are not read as an empty team, at the connect
+    /// nor at the read again a delete makes, so the private `Docs/f.txt` is
+    /// not trashed; for another account the empty answer settles.
+    #[tokio::test]
+    async fn a_reconnect_with_no_workspaces_keeps_known_team_folders_unread() {
+        for (account, unread) in [("U1", true), ("U2", false)] {
+            let (mut p, requests, server) = listing_fixture(move |id, query, _| match id {
+                "me" => (
+                    200,
+                    vec![],
+                    serde_json::json!({ "data": { "id": account, "attributes": {} } }).to_string(),
+                ),
+                "" => (
+                    200,
+                    vec![],
+                    r#"{"data":[{"id":"TEAM","attributes":{"name":"Team"}}]}"#.to_string(),
+                ),
+                "TEAM" if query.contains("page%5Boffset") => (403, vec![], String::new()),
+                "TEAM" => (
+                    200,
+                    vec![],
+                    r#"{"data":[],"links":{"cursor":{"has_next":false}}}"#.to_string(),
+                ),
+                "U1" | "U2" => (200, vec![], r#"{"data":[{"id":"ROOT"}]}"#.to_string()),
+                "ROOT" => (
+                    200,
+                    vec![],
+                    listing_json(&[("P1", "Docs", true)], Some((false, None))),
+                ),
+                "P1" => (
+                    200,
+                    vec![],
+                    listing_json(&[("F1", "f.txt", false)], Some((false, None))),
+                ),
+                _ => (200, vec![], listing_json(&[], Some((false, None)))),
+            })
+            .await;
+            p.connected = true;
+            p.account_id = Some("U1".into());
+            p.team_id = Some("TEAM".into());
+            p.keep_team_folders(
+                TeamFolderSource::TeamFolders,
+                vec![("T1".into(), "Docs".into())],
+            );
+            p.connect().await.expect("reconnect");
+            assert_eq!(p.team_folders_unknown(), unread, "{account}");
+            if unread {
+                let deleted = p.delete("/Docs/f.txt").await;
+                assert!(deleted.is_err(), "{deleted:?}");
+                assert!(p.team_folders_unknown(), "the read again settled it");
                 assert!(
                     !requests
                         .lock()
@@ -10659,6 +10940,63 @@ mod tests {
         assert!(p.privatespace_id.is_none());
     }
 
+    /// A successful lookup whose body is cut short, empty or no listing is
+    /// no answer either: an error, never "no private space", which made the
+    /// team id the root. A listing of none is no private space.
+    #[tokio::test]
+    async fn a_privatespace_answer_that_is_no_listing_is_an_error() {
+        let cases: [(&str, bool); 3] = [
+            (r#"{"data":[{"id":"fmip9"#, false),
+            ("", false),
+            (r#"{"data":[]}"#, true),
+        ];
+        for (body, none) in cases {
+            let (mut p, _requests, server) =
+                listing_fixture(move |_id, _query, _| (200, vec![], body.to_string())).await;
+            p.privatespace_id = Some("EARLIER".into());
+            let found = p.discover_privatespace("USER").await;
+            server.abort();
+            if none {
+                assert!(matches!(found, Ok(false)), "{body}: {found:?}");
+            } else {
+                assert!(
+                    matches!(&found, Err(e) if e.to_string().contains("try again")),
+                    "{body}: {found:?}"
+                );
+            }
+            assert!(p.privatespace_id.is_none(), "{body}");
+        }
+        // A body cut short: the answer names 4096 bytes and the connection
+        // closes after 9 (axum refuses to send that, a bare socket does).
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let cut = tokio::spawn(async move {
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+            while let Ok((mut socket, _)) = listener.accept().await {
+                let mut request = [0u8; 8192];
+                let _ = socket.read(&mut request).await;
+                let _ = socket
+                    .write_all(
+                        b"HTTP/1.1 200 OK\r\ncontent-type: application/json\r\n\
+                          content-length: 4096\r\n\r\n{\"data\":[",
+                    )
+                    .await;
+            }
+        });
+        let mut p = ZohoWorkdriveProvider::new(config("com"));
+        p.endpoint_override = Some(format!("http://{addr}"));
+        p.test_access_token = Some("test-token".into());
+        p.connected = true;
+        p.privatespace_id = Some("EARLIER".into());
+        let found = p.discover_privatespace("USER").await;
+        cut.abort();
+        assert!(
+            matches!(&found, Err(ProviderError::ConnectionFailed(m)) if m.contains("try again")),
+            "{found:?}"
+        );
+        assert!(p.privatespace_id.is_none());
+    }
+
     /// A privatespace lookup that is rate limited or meets a server error is
     /// no answer: the connect fails and can be tried again, where it went on
     /// without the private space.
@@ -10922,7 +11260,8 @@ mod tests {
 
     /// A share link answer holds the link and can echo the password sent:
     /// neither reaches the log, on success or refusal, where before the
-    /// whole answer was logged.
+    /// whole answer was logged, nor the error of a refusal or of an answer
+    /// without its link.
     #[test]
     fn a_share_link_answer_is_not_logged() {
         // Alone in a child process: no other test's subscriber can
@@ -10954,17 +11293,23 @@ mod tests {
                     self.clone()
                 }
             }
-            for status in [200u16, 400] {
+            for (status, linked) in [(200u16, true), (400, true), (200, false)] {
                 let (mut p, _requests, server) = listing_fixture(move |id, _, _| match id {
                     "ROOT" => (
                         200,
                         vec![],
                         listing_json(&[("F1", "f.txt", false)], Some((false, None))),
                     ),
-                    _ => (
+                    _ if linked => (
                         status,
                         vec![],
                         r#"{"data":{"attributes":{"link":"https://workdrive.zoho.com/LINK-SECRET","password_text":"ECHO-PW"}}}"#
+                            .to_string(),
+                    ),
+                    _ => (
+                        status,
+                        vec![],
+                        r#"{"data":{"attributes":{"note":"LINK-SECRET","password_text":"ECHO-PW"}}}"#
                             .to_string(),
                     ),
                 })
@@ -10986,10 +11331,12 @@ mod tests {
                 let outcome = p.create_share_link("/f.txt", options).await;
                 server.abort();
                 let logged = String::from_utf8_lossy(&capture.0.lock().unwrap()).to_string();
-                assert_eq!(outcome.is_ok(), status == 200, "{outcome:?}");
+                assert_eq!(outcome.is_ok(), status == 200 && linked, "{outcome:?}");
                 assert!(logged.contains("share link"), "{logged}");
+                let refused = outcome.err().map(|e| e.to_string()).unwrap_or_default();
                 for secret in ["LINK-SECRET", "ECHO-PW"] {
                     assert!(!logged.contains(secret), "{status}: {logged}");
+                    assert!(!refused.contains(secret), "{status}: {refused}");
                 }
             }
             });
@@ -11281,6 +11628,18 @@ mod tests {
             1,
             "{calls:?}"
         );
+        // Every page asks for the documented page size, the first one from
+        // the documented first cursor.
+        let pages: Vec<&String> = calls
+            .iter()
+            .filter(|c| c.starts_with("GET /workdrive/api/v1/files/FILE9/versions?"))
+            .collect();
+        assert!(pages.len() >= 2, "{calls:?}");
+        assert!(
+            pages.iter().all(|c| c.contains("page%5Blimit%5D=1000")),
+            "{pages:?}"
+        );
+        assert!(pages[0].ends_with("page%5Bnext%5D=0"), "{pages:?}");
     }
 
     /// A versions double that names a new page on every answer, each answer
