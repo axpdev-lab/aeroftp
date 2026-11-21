@@ -2891,6 +2891,46 @@ mod tests {
     }
 
     #[test]
+    fn change_mode_that_fails_after_the_extract_leaves_the_original_untouched() {
+        use aerovault::v3::{CreateOptionsV3, VaultV3};
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("private.aerovault");
+        VaultV3::create(&CreateOptionsV3::new(&path, STRESS_PW)).unwrap();
+        let payload = dir.path().join("payload");
+        std::fs::write(&payload, b"kept across a failed change").unwrap();
+        {
+            let mut vault = VaultV3::open(&path, STRESS_PW).unwrap();
+            VaultV3::add_files(&mut vault, &[(payload.clone(), "payload".to_string())]).unwrap();
+        }
+        std::fs::remove_file(&payload).unwrap();
+        let before = std::fs::read(&path).unwrap();
+        let listing = || {
+            let mut names: Vec<_> = std::fs::read_dir(dir.path())
+                .unwrap()
+                .map(|entry| entry.unwrap().file_name())
+                .collect();
+            names.sort();
+            names
+        };
+        // The crate's persistent locks from the add above stay; the repack
+        // must add nothing next to them.
+        let names_before = listing();
+
+        // The profile is checked when the replacement is created, after the
+        // plaintext tree is already extracted beside the vault.
+        let target = RepackTarget {
+            security_level: None,
+            compression_profile: Some("not-a-profile".to_string()),
+            error_correction: false,
+            error_correction_pct: ERROR_CORRECTION_DEFAULT_PCT,
+        };
+        repack_vault_blocking(&path, STRESS_PW, &target).unwrap_err();
+
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        assert_eq!(listing(), names_before);
+    }
+
+    #[test]
     fn change_mode_retires_recognized_sidecar_and_keeps_its_lock() {
         use aerovault::v3::{CreateOptionsV3, VaultV3};
         let dir = tempfile::tempdir().unwrap();
