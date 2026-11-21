@@ -1008,6 +1008,43 @@ fn read_credential_with_dek(
     }
 }
 
+/// One credential row decrypted with an already-resolved DEK, with the digest
+/// of the very ciphertext decrypted ([`credential_blob_digest`]), both from
+/// one SELECT: what [`checked_row`] compares the sign-in stamp against, so
+/// the stamp is checked on the bytes the reader returns.
+fn read_credential_and_digest_with_dek(
+    conn: &Connection,
+    user_id: i64,
+    dek: &SecretKey,
+    credential_id: &str,
+) -> Result<Option<RowRead>, String> {
+    let row: Option<(Vec<u8>, Vec<u8>)> = conn
+        .query_row(
+            "SELECT encrypted_blob, nonce FROM user_credentials
+             WHERE user_id = ?1 AND credential_id = ?2",
+            params![user_id, credential_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()
+        .map_err(|e| format!("Read user credential: {e}"))?;
+    match row {
+        None => Ok(None),
+        Some((blob, nonce)) => {
+            let plaintext = user_crypto::decrypt_blob(dek, &nonce, &blob)?;
+            let secret = String::from_utf8(plaintext.to_vec())
+                .map_err(|_| "CREDENTIAL_NOT_UTF8".to_string())?;
+            Ok(Some((
+                Zeroizing::new(secret),
+                credential_blob_digest(&blob, &nonce),
+            )))
+        }
+    }
+}
+
+/// A decrypted row and the digest of its ciphertext
+/// ([`read_credential_and_digest_with_dek`]).
+type RowRead = (Zeroizing<String>, String);
+
 /// Resolve the first available identifying secret for `profile_id` from the
 /// user's partition (and, when present, the legacy vault as fallback).
 fn resolve_relocate_secret(
@@ -1044,10 +1081,10 @@ fn resolve_relocate_secret_with(
     let candidates = relocate_credential_key_candidates(protocol, profile_id);
     for key in &candidates {
         let from_partition = if let Some(dek) = user_dek {
-            read_credential_with_dek(conn, user_id, dek, key)?
+            read_credential_and_digest_with_dek(conn, user_id, dek, key)?
         } else {
             // Session / device-wrapped path for the source (active) user.
-            match get_user_credential_for(conn, root_key, user_id, key) {
+            match get_user_credential_and_digest_for(conn, root_key, user_id, key) {
                 Ok(v) => v,
                 // A locked passphrase target without an explicit DEK is not a
                 // fatal relocate error here: fall through to the vault.
@@ -3756,6 +3793,42 @@ pub fn get_user_credential_for(
     })
 }
 
+/// [`get_user_credential_for`] with the digest of the ciphertext decrypted
+/// ([`read_credential_and_digest_with_dek`]).
+fn get_user_credential_and_digest_for(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+    credential_id: &str,
+) -> Result<Option<RowRead>, String> {
+    let root_secret = user_crypto::secret_key_from_bytes(root_key);
+    with_user_dek(conn, &root_secret, user_id, |user_id, dek| {
+        read_credential_and_digest_with_dek(conn, user_id, dek, credential_id)
+    })
+}
+
+/// Whether `digest`, the digest of a row of `credential_id` of `user_id` as
+/// a reader decrypted it, is the one its account's sign-in stamped
+/// ([`stamp_sign_in`]): the stamp is compared with the bytes read, never with
+/// the row as a second query finds it after another writer rewrote it.
+fn stamp_matches(
+    conn: &Connection,
+    user_id: i64,
+    credential_id: &str,
+    digest: &str,
+) -> Result<bool, String> {
+    let stamp: Option<String> = conn
+        .query_row(
+            "SELECT blob_digest FROM private_token_sign_ins
+             WHERE user_id = ?1 AND credential_id = ?2",
+            params![user_id, credential_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| format!("Read sign-in stamp: {e}"))?;
+    Ok(stamp.as_deref() == Some(digest))
+}
+
 /// Conditional refresh of an existing owned credential. Resolve the DEK before
 /// SQLite's write reservation, preserving the session -> SQLite lock order.
 /// A missing or replaced row is never recreated with a stale refresh result.
@@ -5156,13 +5229,14 @@ fn align_private_tokens_of(
             // the same session by its UID, whatever pair a refresh has rotated
             // it to since.
             for key in keys {
-                let Some(row) = read_credential_with_dek(&tx, uid, dek, &key)? else {
+                let Some((row, digest)) = read_credential_and_digest_with_dek(&tx, uid, dek, &key)?
+                else {
                     continue;
                 };
                 let Some(vault) = read_secret(&key)? else {
                     continue;
                 };
-                if row_may_be_a_copy(&tx, uid, &key, &row, Some(&vault))? {
+                if row_may_be_a_copy(&tx, uid, &key, &row, &digest, Some(&vault))? {
                     delete_user_credential_for(&tx, uid, &key)?;
                 }
             }
@@ -5225,13 +5299,15 @@ fn align_private_tokens_of(
 /// a row while the alignment waits ([`unverified_while_tags_pending`]). A
 /// native Proton session is the same session by its UID, whatever pair a
 /// refresh has rotated it to since; any other row is a copy unless its own
-/// sign-in stamped it ([`signed_in_row`]) or it signs in to another
+/// sign-in stamped it ([`stamp_matches`], against `digest`, the digest of
+/// the ciphertext `row` was decrypted from) or it signs in to another
 /// Jottacloud user ([`another_jottacloud_user`]). No vault value, no copy.
 fn row_may_be_a_copy(
     conn: &Connection,
     user_id: i64,
     key: &str,
     row: &str,
+    digest: &str,
     vault: Option<&str>,
 ) -> Result<bool, String> {
     let Some(vault) = vault else {
@@ -5241,7 +5317,7 @@ fn row_may_be_a_copy(
         return Ok(proton_session_uid(row)
             .is_some_and(|copy| proton_session_uid(vault).is_some_and(|held| held == copy)));
     }
-    Ok(!signed_in_row(conn, user_id, key)? && !another_jottacloud_user(key, row, vault))
+    Ok(!stamp_matches(conn, user_id, key, digest)? && !another_jottacloud_user(key, row, vault))
 }
 
 /// Whether the private-token row `key` of `user_id`, read as `row`, must read
@@ -5258,6 +5334,7 @@ fn unverified_while_tags_pending(
     user_id: i64,
     key: &str,
     row: &str,
+    digest: &str,
     read_secret: &SecretReader<'_>,
 ) -> Result<bool, String> {
     if private_token_type(key).is_none()
@@ -5272,38 +5349,92 @@ fn unverified_while_tags_pending(
         user_id,
         key,
         row,
+        digest,
         vault.as_deref().map(|v| v.as_str()),
     )
 }
 
-/// `row`, just read as the row `key` of `user_id`, as a reader may use it:
-/// `None` while it is unverified ([`unverified_while_tags_pending`]). Every
-/// reader of a row for use goes through this, so a copy cannot reach a
-/// connection, a backup, a duplicate or a relocation either.
+/// `row`, just read as the row `key` of `user_id` with the digest of its
+/// ciphertext, as a reader may use it: `None` while it is unverified
+/// ([`unverified_while_tags_pending`]). Every reader of a row for use goes
+/// through this, so a copy cannot reach a connection, a backup, a duplicate
+/// or a relocation either.
 fn checked_row(
     conn: &Connection,
     user_id: i64,
     key: &str,
-    row: Option<Zeroizing<String>>,
+    row: Option<RowRead>,
     read_secret: &SecretReader<'_>,
 ) -> Result<Option<Zeroizing<String>>, String> {
     match row {
-        Some(value) if unverified_while_tags_pending(conn, user_id, key, &value, read_secret)? => {
+        Some((value, digest))
+            if unverified_while_tags_pending(conn, user_id, key, &value, &digest, read_secret)? =>
+        {
             Ok(None)
         }
-        other => Ok(other),
+        other => Ok(other.map(|(value, _)| value)),
     }
 }
 
-/// [`checked_row`] for a reader outside this module, with the vault it reads.
-pub(crate) fn checked_row_in(
+/// The row `key` of `user_id` as a reader may use it ([`read_checked_row`]).
+pub(crate) enum CheckedRow {
+    /// No row.
+    Absent,
+    /// A row that may be another account's copy, which reads as absent and
+    /// whose vault key is that account's too ([`checked_row`]).
+    Withheld,
+    Value(Zeroizing<String>),
+}
+
+impl CheckedRow {
+    pub(crate) fn value(self) -> Option<Zeroizing<String>> {
+        match self {
+            CheckedRow::Value(value) => Some(value),
+            CheckedRow::Absent | CheckedRow::Withheld => None,
+        }
+    }
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Runs once on this thread in the next [`read_checked_row_with`], after
+    /// its row is decrypted and before the row is checked: another writer
+    /// rewriting the row in between.
+    pub(crate) static AFTER_ROW_READ: RefCell<Option<Box<dyn FnOnce()>>> = const { RefCell::new(None) };
+}
+
+/// The row `key` of `user_id`, decrypted and checked ([`checked_row`]) on the
+/// bytes one read returned.
+fn read_checked_row_with(
     conn: &Connection,
-    store: &CredentialStore,
+    root_key: &[u8; 32],
     user_id: i64,
     key: &str,
-    row: Option<Zeroizing<String>>,
-) -> Result<Option<Zeroizing<String>>, String> {
-    checked_row(conn, user_id, key, row, &|key: &str| {
+    read_secret: &SecretReader<'_>,
+) -> Result<CheckedRow, String> {
+    let row = get_user_credential_and_digest_for(conn, root_key, user_id, key)?;
+    #[cfg(test)]
+    run_dual_write_hook(&AFTER_ROW_READ);
+    if row.is_none() {
+        return Ok(CheckedRow::Absent);
+    }
+    Ok(match checked_row(conn, user_id, key, row, read_secret)? {
+        Some(value) => CheckedRow::Value(value),
+        None => CheckedRow::Withheld,
+    })
+}
+
+/// [`read_checked_row_with`] for a reader outside this module, with the vault
+/// of `store`. A locked passphrase account is `Err("USER_LOCKED")`, as
+/// [`get_user_credential_for`] gives it.
+pub(crate) fn read_checked_row(
+    conn: &Connection,
+    store: &CredentialStore,
+    root_key: &[u8; 32],
+    user_id: i64,
+    key: &str,
+) -> Result<CheckedRow, String> {
+    read_checked_row_with(conn, root_key, user_id, key, &|key: &str| {
         get_optional_secret(store, key)
     })
 }
@@ -5419,8 +5550,9 @@ fn read_credential_with_fallback_inner(
     credential_id: &str,
     read_secret: &SecretReader<'_>,
 ) -> Result<Option<Zeroizing<String>>, String> {
-    let row = get_user_credential_for(conn, root_key, user_id, credential_id)?;
-    if let Some(value) = checked_row(conn, user_id, credential_id, row, read_secret)? {
+    if let Some(value) =
+        read_checked_row_with(conn, root_key, user_id, credential_id, read_secret)?.value()
+    {
         return Ok(Some(value));
     }
     // Another account's private token lives in its partition alone: the vault
@@ -6847,8 +6979,7 @@ fn read_credential_owner_aware_inner(
     if nonprofile_secret_owner(conn)? == Some(user_id) {
         read_credential_with_fallback_inner(conn, root_key, user_id, credential_id, read_secret)
     } else {
-        let row = get_user_credential_for(conn, root_key, user_id, credential_id)?;
-        checked_row(conn, user_id, credential_id, row, read_secret)
+        Ok(read_checked_row_with(conn, root_key, user_id, credential_id, read_secret)?.value())
     }
 }
 
@@ -7059,9 +7190,7 @@ pub fn user_credentials_of_type(
     let mut rows = Vec::with_capacity(ids.len());
     let mut failure = None;
     for id in ids {
-        match get_user_credential_for(&conn, &root_key, user_id, &id)
-            .and_then(|row| checked_row_in(&conn, store, user_id, &id, row))
-        {
+        match read_checked_row(&conn, store, &root_key, user_id, &id).map(CheckedRow::value) {
             Ok(Some(value)) => rows.push((id, value)),
             Ok(None) => {}
             Err(e) => {
@@ -11756,6 +11885,53 @@ mod tests {
         store_active_credential_typed_dual(&store, "oauth_box_x", "oauth", "o-token").unwrap();
         assert_eq!(row(owner, "oauth_box_x").as_deref(), Some("o-token"));
         assert_eq!(row(other, "oauth_box_x"), None, "the account switched to");
+    }
+
+    /// While profile tags are pending, an unstamped row of an account other
+    /// than the legacy owner reads as absent, and the stamp is checked on the
+    /// ciphertext the reader decrypted: a sign-in that rewrites and stamps the
+    /// row between the read and the check never lets the old bytes through.
+    #[test]
+    fn a_rows_stamp_is_checked_on_the_bytes_the_reader_returns() {
+        let _guard = test_lock();
+        clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("partitions.db");
+        let mut conn = open_or_init_path(path.clone()).expect("open");
+        let root = test_root();
+        migrate_legacy_payloads(&mut conn, Some("[]"), None, &root).expect("seed");
+        let owner = nonprofile_secret_owner(&conn).unwrap().unwrap();
+        let other = create_passphrase_less_user(&mut conn, &root, "Other", None, None)
+            .unwrap()
+            .id;
+        clear_user_session();
+        let key = "oauth_dropbox_p";
+        set_user_credential_for(&conn, &root, other, key, "oauth", "owners-token").unwrap();
+        conn.execute(
+            "INSERT INTO global_state(key, value, updated_at) VALUES (?1, '1', 0)",
+            params![profile_tags_pending_key(owner)],
+        )
+        .unwrap();
+        let (_, read) = fake_vault(&[(key, "owners-token")]);
+        let reads = || {
+            read_credential_owner_aware_inner(&conn, &root, other, key, &read)
+                .unwrap()
+                .map(|value| value.to_string())
+        };
+        assert_eq!(reads(), None, "an unstamped copy while tags are pending");
+
+        AFTER_ROW_READ.set(Some(Box::new(move || {
+            let conn = Connection::open(&path).unwrap();
+            set_signed_in_credential_for(&conn, &test_root(), other, key, "oauth", "n-new")
+                .unwrap();
+        })));
+        let raced = reads();
+        assert_ne!(
+            raced.as_deref(),
+            Some("owners-token"),
+            "the bytes read before the sign-in are not its own"
+        );
+        assert_eq!(reads().as_deref(), Some("n-new"), "the stamped row");
     }
 
     /// The alignment does not run while a profile writer holds the list lock,

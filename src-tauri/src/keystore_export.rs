@@ -1343,11 +1343,10 @@ fn read_effective_secret(
                     .map_err(&unread)
             };
             // A row that may be another account's copy is not this one's
-            // to back up or compare (`checked_row_in`).
-            match crate::user_partitions::get_user_credential_for(conn, root_key, user_id, key)
-                .and_then(|row| {
-                    crate::user_partitions::checked_row_in(conn, store, user_id, key, row)
-                }) {
+            // to back up or compare (`read_checked_row`).
+            match crate::user_partitions::read_checked_row(conn, store, root_key, user_id, key)
+                .map(crate::user_partitions::CheckedRow::value)
+            {
                 Ok(Some(value)) => return Ok(Some(value)),
                 Ok(None) if private()? => return Ok(None),
                 Ok(None) => {}
