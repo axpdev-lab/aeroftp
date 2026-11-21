@@ -104,13 +104,26 @@ struct Throttle {
 #[async_trait::async_trait]
 pub trait SessionStore: Send + Sync {
     /// A guard held for the length of one refresh, so only one process
-    /// refreshes at a time. `None` when exclusivity could not be had in a
-    /// bounded wait; the refresh then goes ahead without it.
-    async fn lock(&self) -> Option<Box<dyn Send>>;
+    /// refreshes at a time ([`RefreshLock`]).
+    async fn lock(&self) -> RefreshLock;
     /// The tokens saved now, which another process may have refreshed.
     fn load(&self) -> Option<SessionTokens>;
     /// Saves freshly refreshed tokens.
     fn save(&self, tokens: &SessionTokens);
+}
+
+/// What [`SessionStore::lock`] got.
+pub enum RefreshLock {
+    /// The guard, held for the length of the refresh.
+    Held(Box<dyn Send>),
+    /// Exclusivity could not be had in a bounded wait: the refresh goes
+    /// ahead without it.
+    TimedOut,
+    /// The lock itself could not be read or taken (its storage failed): no
+    /// refresh is sent, since one sent without the lock may race another
+    /// process's rotation of the refresh token, and the session is kept for
+    /// the next request.
+    Unavailable(String),
 }
 
 /// One part of a multipart form sent to the API host.
@@ -712,7 +725,16 @@ impl ProtonApi {
         }
         let store = self.session_store();
         let _lease = match store.as_ref() {
-            Some(store) => store.lock().await,
+            Some(store) => match store.lock().await {
+                RefreshLock::Held(lease) => Some(lease),
+                RefreshLock::TimedOut => None,
+                RefreshLock::Unavailable(error) => {
+                    log::warn!("Proton session refresh held off: {error}");
+                    return Err(ProtonError::LocalIo(std::io::Error::other(format!(
+                        "the Proton session refresh lease could not be taken: {error}"
+                    ))));
+                }
+            },
             None => None,
         };
         if let Some(saved) = self.newer_saved_tokens(store.as_deref(), &current) {
@@ -964,13 +986,17 @@ mod tests {
     struct MemoryStore {
         saved: StdMutex<Option<SessionTokens>>,
         locks: AtomicUsize,
+        lock_unavailable: StdMutex<bool>,
     }
 
     #[async_trait::async_trait]
     impl SessionStore for MemoryStore {
-        async fn lock(&self) -> Option<Box<dyn Send>> {
+        async fn lock(&self) -> RefreshLock {
             self.locks.fetch_add(1, Ordering::SeqCst);
-            None
+            if *self.lock_unavailable.lock().unwrap() {
+                return RefreshLock::Unavailable("synthetic lease storage failure".into());
+            }
+            RefreshLock::TimedOut
         }
         fn load(&self) -> Option<SessionTokens> {
             self.saved.lock().unwrap().clone()
@@ -1143,6 +1169,40 @@ mod tests {
         assert_eq!(refreshes.load(Ordering::SeqCst), 1);
         assert_eq!(store.locks.load(Ordering::SeqCst), 1);
         assert_eq!(store.saved_access().as_deref(), Some("access-2"));
+    }
+
+    /// A refresh lease whose storage fails holds the refresh off: nothing is
+    /// sent to `/auth/v4/refresh`, where a refresh without the lease could
+    /// race another process's rotation of the token, and the session is
+    /// kept, not ended, for the next request.
+    #[tokio::test]
+    async fn a_lease_storage_failure_sends_no_refresh_and_keeps_the_session() {
+        let refreshes = Arc::new(AtomicUsize::new(0));
+        let api = ProtonApi::with_base_url(
+            serve(users_app(Arc::clone(&refreshes), REFRESH_OK)).await,
+            "external-drive-aeroftp@1.2.3-alpha".into(),
+        )
+        .with_policy(FAST);
+        api.set_tokens(Some(tokens("access-1"))).await;
+        let store = Arc::new(MemoryStore::default());
+        store.save(&tokens("access-1"));
+        *store.lock_unavailable.lock().unwrap() = true;
+        api.set_session_store(Arc::clone(&store) as Arc<dyn SessionStore>);
+
+        let answer = api.get::<Value>("/core/v4/users", &[]).await;
+        assert!(
+            matches!(answer, Err(ProtonError::LocalIo(_))),
+            "the request fails as a local error, not an ended session: {answer:?}"
+        );
+        assert_eq!(
+            refreshes.load(Ordering::SeqCst),
+            0,
+            "no refresh is sent without the lease"
+        );
+        assert_eq!(store.locks.load(Ordering::SeqCst), 1);
+        let kept = api.tokens().await.expect("the session is kept");
+        assert_eq!(kept.access_token.expose_secret(), "access-1");
+        assert_eq!(store.saved_access().as_deref(), Some("access-1"));
     }
 
     /// Another process refreshed the shared session: its saved tokens are

@@ -33,7 +33,7 @@ use std::time::Duration;
 
 use zeroize::Zeroizing;
 
-use super::api::{ProtonApi, SessionStore};
+use super::api::{ProtonApi, RefreshLock, SessionStore};
 use super::session::{ProtonSession, SessionTokens, StoredSession};
 use crate::credential_store::{CredentialError, CredentialStore};
 use crate::providers::oauth2::RefreshLease;
@@ -1733,12 +1733,13 @@ impl VaultSession {
 
 #[async_trait::async_trait]
 impl SessionStore for VaultSession {
-    async fn lock(&self) -> Option<Box<dyn Send>> {
+    async fn lock(&self) -> RefreshLock {
         match acquire_exclusive(&refresh_lease_slug(&self.uid)).await {
-            Ok(lease) => lease.map(|lease| Box::new(lease) as Box<dyn Send>),
+            Ok(Some(lease)) => RefreshLock::Held(Box::new(lease)),
+            Ok(None) => RefreshLock::TimedOut,
             Err(error) => {
                 log::warn!("Proton: the refresh lease could not be taken: {error}");
-                None
+                RefreshLock::Unavailable(error.to_string())
             }
         }
     }

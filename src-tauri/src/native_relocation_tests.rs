@@ -6,7 +6,7 @@
 
 use super::*;
 use crate::providers::proton_native::{
-    api::SessionStore,
+    api::{RefreshLock, SessionStore},
     session::{ProtonSession, SessionTokens, StoredSession},
     vault,
 };
@@ -1673,7 +1673,10 @@ fn a_lease_storage_that_fails_stops_a_change_at_once() {
         held_for < std::time::Duration::from_secs(1),
         "the hold stops at once: {held_for:?}"
     );
-    assert!(refresh_lease.is_none());
+    assert!(
+        matches!(&refresh_lease, RefreshLock::Unavailable(error) if error.contains("lease storage unavailable")),
+        "the refresh is held off, not sent without its lease"
+    );
     assert!(
         refresh_waited < std::time::Duration::from_secs(1),
         "the refresh does not wait for a lease it cannot take: {refresh_waited:?}"
