@@ -32,7 +32,8 @@
 # stdout and exit 1, get-always-try-again and get-partial-try-again (once)
 # leave 500 bytes and fail with MEGAcmd's transient text, and z-get-three
 # makes the empty version arrive as 3 bytes. A file get-collides names a
-# path another writer saves to while the get runs. mega-get never writes over a
+# path another writer saves to while the get runs, and a file get-beside a
+# path written beside the target under another name. mega-get never writes over a
 # file at its target: it writes a " (1)" sibling, as MEGAcmd does.
 # `mega-thumbnail /photo.jpg <out>` writes the first bytes of a JPEG to
 # <out>; for `/plain.txt`, a file with no thumbnail, it writes nothing and
@@ -260,6 +261,11 @@ case "$(basename "$0")" in
         # runs (before the target is chosen).
         if [ -s "$here/get-collides" ]; then
             printf 'theirs' > "$(cat "$here/get-collides")"
+        fi
+        # get-beside holds a path another writer saves to while the get
+        # runs, beside the target, under another name.
+        if [ -s "$here/get-beside" ]; then
+            printf 'other' > "$(cat "$here/get-beside")"
         fi
         # MEGAcmd does not write over a file at the target: it writes a
         # " (1)" sibling (measured 2026-11-18).

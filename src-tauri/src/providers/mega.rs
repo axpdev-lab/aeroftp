@@ -2449,29 +2449,50 @@ fn child_appeared(child: &str) -> ProviderError {
 /// saves a download it may not write over the child (`f.dat (1)`). Empty
 /// when the folder cannot be read.
 fn names_beside(child: &Path) -> std::collections::HashSet<std::ffi::OsString> {
-    let stem = child
-        .file_stem()
-        .map(|stem| stem.to_string_lossy().into_owned())
+    let leaf = child
+        .file_name()
+        .map(|leaf| leaf.to_string_lossy().into_owned())
         .unwrap_or_default();
-    let leaf = child.file_name().map(std::ffi::OsStr::to_os_string);
     child
         .parent()
         .and_then(|folder| std::fs::read_dir(folder).ok())
         .into_iter()
         .flatten()
         .filter_map(|entry| entry.ok().map(|entry| entry.file_name()))
-        .filter(|name| Some(name) != leaf.as_ref() && name.to_string_lossy().starts_with(&stem))
+        .filter(|name| is_numbered_sibling(&leaf, &name.to_string_lossy()))
         .collect()
 }
 
-/// A download into a folder that MEGAcmd saved beside `child`, under a name
-/// that was not there before (`before`, from [`names_beside`]): the child is
-/// someone else's, made while the download ran, and the download is not at
-/// the name asked for. The file it saved is named, and left where it is.
+/// `name` is a numbered sibling of `leaf`, the name MEGAcmd gives a download
+/// whose target is taken: `<leaf> (N)` as measured 2026-11-18, or
+/// `<stem> (N).<ext>`. Another file that only shares the stem is not one.
+fn is_numbered_sibling(leaf: &str, name: &str) -> bool {
+    let numbered = |rest: Option<&str>| {
+        rest.is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+    };
+    let (stem, ext) = match leaf.rfind('.').filter(|&dot| dot > 0) {
+        Some(dot) => (&leaf[..dot], &leaf[dot..]),
+        None => (leaf, ""),
+    };
+    let after = |head: &str, tail: &str| {
+        name.strip_prefix(head)
+            .and_then(|rest| rest.strip_prefix(" ("))
+            .and_then(|rest| rest.strip_suffix(tail))
+            .and_then(|rest| rest.strip_suffix(')'))
+    };
+    numbered(after(leaf, "")) || (!ext.is_empty() && numbered(after(stem, ext)))
+}
+
+/// A download into a folder that MEGAcmd saved beside `child`, under a
+/// numbered name that was not there before (`before`, from
+/// [`names_beside`]) while a file sits at the child: the child is someone
+/// else's, made while the download ran, and the download is not at the
+/// name asked for. The file it saved is named, and left where it is.
 fn diverted_beside(
     child: &Path,
     before: &std::collections::HashSet<std::ffi::OsString>,
 ) -> Option<ProviderError> {
+    std::fs::symlink_metadata(child).ok()?;
     let mut new: Vec<_> = names_beside(child).difference(before).cloned().collect();
     new.sort();
     let saved = new.first()?;
@@ -4304,6 +4325,34 @@ Versions of r.txt:
                 // at the name asked for, and the child is not touched.
                 std::fs::remove_file(local.path().join("f.dat")).unwrap();
                 provider.test_after_target_check = None;
+
+                // Another file that only shares the stem, saved while
+                // mega-get runs, is no diversion: the download is at its
+                // name and the other file is left alone.
+                let other = local.path().join("f.txt");
+                std::fs::write(dir.path().join("get-beside"), other.to_str().unwrap()).unwrap();
+                let beside = provider
+                    .download("/f.dat", local.path().to_str().unwrap(), None)
+                    .await;
+                assert!(beside.is_ok(), "{beside:?}");
+                assert_eq!(std::fs::read(local.path().join("f.dat")).unwrap(), [b'1'; 1000]);
+                assert_eq!(std::fs::read(&other).unwrap(), b"other");
+                std::fs::remove_file(dir.path().join("get-beside")).unwrap();
+                std::fs::remove_file(local.path().join("f.dat")).unwrap();
+
+                // A numbered sibling that was there before the get is the
+                // user's own file, not where MEGAcmd saved this download.
+                let numbered = local.path().join("f.dat (1)");
+                std::fs::write(&numbered, b"mine").unwrap();
+                let kept = provider
+                    .download("/f.dat", local.path().to_str().unwrap(), None)
+                    .await;
+                assert!(kept.is_ok(), "{kept:?}");
+                assert_eq!(std::fs::read(local.path().join("f.dat")).unwrap(), [b'1'; 1000]);
+                assert_eq!(std::fs::read(&numbered).unwrap(), b"mine");
+                std::fs::remove_file(&numbered).unwrap();
+                std::fs::remove_file(local.path().join("f.dat")).unwrap();
+
                 std::fs::write(
                     dir.path().join("get-collides"),
                     local.path().join("f.dat").to_str().unwrap(),
