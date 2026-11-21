@@ -14251,18 +14251,35 @@ fn load_active_user_profiles(
     cli: &Cli,
     store: &ftp_client_gui_lib::credential_store::CredentialStore,
 ) -> Result<Vec<serde_json::Value>, String> {
+    let target = profile_target(cli, store)?;
+    load_profiles_of(cli, store, &target)
+}
+
+/// The account a profile command works on, resolved once (`--user`, else the
+/// persistent active account) and unlocked. A command that reads, writes and
+/// deletes passes it to every step, so an account switch made by another
+/// process meanwhile cannot send one half of the command to another account.
+fn profile_target(
+    cli: &Cli,
+    store: &ftp_client_gui_lib::credential_store::CredentialStore,
+) -> Result<ftp_client_gui_lib::user_partitions::UserMetadata, String> {
+    ensure_active_user_unlocked(cli, store)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())
+}
+
+/// [`load_active_user_profiles`] for an account already resolved.
+fn load_profiles_of(
+    cli: &Cli,
+    store: &ftp_client_gui_lib::credential_store::CredentialStore,
+    target: &ftp_client_gui_lib::user_partitions::UserMetadata,
+) -> Result<Vec<serde_json::Value>, String> {
     use ftp_client_gui_lib::user_partitions;
-    let target = match ensure_active_user_unlocked(cli, store)? {
-        Some(t) => t,
-        None => return Err("NO_ACTIVE_USER".to_string()),
-    };
     match user_partitions::cli_list_server_profiles_for_user(store, target.id) {
         Ok(mut profiles) => {
             // rclone-crypt secrets that `import rclone --apply` used to leave in
             // a profile's options move to the vault and a binding, once; the list
             // is re-read, merged and written in one transaction, and only when a
             // move applied.
-            let uid = scoped_credential_user_id(cli, store);
+            let uid = Some(target.id);
             let notes = ftp_client_gui_lib::bridge_commands::migrate_legacy_rclone_crypt_on_load(
                 &mut profiles,
                 |key, secret| dual_store_server_cred_checked(store, uid, key, secret),
@@ -14414,20 +14431,32 @@ fn update_active_user_profiles<R, E>(
     cli: &Cli,
     store: &ftp_client_gui_lib::credential_store::CredentialStore,
     store_error: impl Fn(String) -> E,
+    change: impl FnMut(&mut Vec<serde_json::Value>) -> Result<R, E>,
+) -> Result<(R, Vec<serde_json::Value>, Vec<serde_json::Value>), E> {
+    let target = profile_target(cli, store).map_err(|e| store_error(unreadable_profiles(&e)))?;
+    update_profiles_of(cli, store, &target, store_error, change)
+}
+
+/// What a profile change that could not read the list says.
+fn unreadable_profiles(error: &str) -> String {
+    format!(
+        "Failed to read profiles: {error}. Nothing was changed; unlock the account if it is locked, check that the AeroFTP data folder is readable, then run the command again"
+    )
+}
+
+/// [`update_active_user_profiles`] for an account already resolved.
+fn update_profiles_of<R, E>(
+    cli: &Cli,
+    store: &ftp_client_gui_lib::credential_store::CredentialStore,
+    target: &ftp_client_gui_lib::user_partitions::UserMetadata,
+    store_error: impl Fn(String) -> E,
     mut change: impl FnMut(&mut Vec<serde_json::Value>) -> Result<R, E>,
 ) -> Result<(R, Vec<serde_json::Value>, Vec<serde_json::Value>), E> {
     use ftp_client_gui_lib::user_partitions;
     // The read also moves what an older import left in a profile's options. A list
     // that cannot be read is an error, never an empty list: saved, that would keep
     // only the profiles of this change.
-    load_active_user_profiles(cli, store).map_err(|e| {
-        store_error(format!(
-            "Failed to read profiles: {e}. Nothing was changed; unlock the account if it is locked, check that the AeroFTP data folder is readable, then run the command again"
-        ))
-    })?;
-    let target = ensure_active_user_unlocked(cli, store)
-        .map_err(|e| store_error(format!("Failed to read profiles: {e}")))?
-        .ok_or_else(|| store_error("Failed to read profiles: NO_ACTIVE_USER".to_string()))?;
+    load_profiles_of(cli, store, target).map_err(|e| store_error(unreadable_profiles(&e)))?;
     let mut outcome = None;
     let mut sent = Vec::new();
     let written =
@@ -28691,9 +28720,12 @@ fn duplicate_or_convert_mode_in_vault(
     password: Option<&str>,
     replace_in_slot: bool,
 ) -> Result<(String, String, String, String), (String, i32)> {
-    let ((source_id, new_id, source_name), _, _) = update_active_user_profiles(
+    // One account for the list change and the secrets that follow it.
+    let target = profile_target(cli, store).map_err(|e| (unreadable_profiles(&e), 5))?;
+    let ((source_id, new_id, source_name), _, _) = update_profiles_of(
         cli,
         store,
+        &target,
         |e| (e, 5),
         |profiles| {
             let source_idx = resolve_profile_selector(profiles, selector)
@@ -28846,7 +28878,9 @@ fn duplicate_or_convert_mode_in_vault(
     // source's credential best-effort (works for same-credentials groups
     // like Koofr/OpenDrive; user must provide --password for the others).
     // MUV-3: same scoped user, dual-write.
-    let scoped_uid = scoped_credential_user_id(cli, store);
+    #[cfg(test)]
+    run_after_profile_target();
+    let scoped_uid = Some(target.id);
     if let Some(pwd) = password {
         dual_store_server_cred(store, scoped_uid, &format!("server_{}", new_id), pwd);
     } else if !source_id.is_empty() {
@@ -29351,6 +29385,21 @@ fn cmd_profile_convert_mode(
     }
 }
 
+#[cfg(test)]
+thread_local! {
+    /// Run once where a profile command has resolved its account and goes on
+    /// to the next step: a test switches the active account there.
+    static AFTER_PROFILE_TARGET: std::cell::RefCell<Option<Box<dyn FnOnce()>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(test)]
+fn run_after_profile_target() {
+    if let Some(hook) = AFTER_PROFILE_TARGET.with(|slot| slot.borrow_mut().take()) {
+        hook();
+    }
+}
+
 /// Remove a single profile by id from `config_server_profiles` and write the
 /// updated list back. Also clears the per-profile credential key
 /// (`server_<id>`) and removes the id from `config_favorite_servers` so the
@@ -29364,7 +29413,11 @@ fn delete_profile_in_vault(
     store: &CredentialStore,
     profile_id: &str,
 ) -> Result<(Vec<serde_json::Value>, Vec<String>), String> {
-    let profiles: Vec<serde_json::Value> = load_active_user_profiles(cli, store)
+    // One account for the whole delete: the list, the secrets and the Proton
+    // session all belong to the account the command started on.
+    let target =
+        profile_target(cli, store).map_err(|e| format!("Failed to read profiles: {}", e))?;
+    let profiles: Vec<serde_json::Value> = load_profiles_of(cli, store, &target)
         .map_err(|e| format!("Failed to read profiles: {}", e))?;
     // Capture the protocol before removing the entry, so the OAuth-token key can
     // be derived for the orphan cleanup below.
@@ -29384,7 +29437,7 @@ fn delete_profile_in_vault(
     // dual-delete from the vault + the scoped user's partition; every key is
     // tried, a key absent for this profile kind is a no-op, and a key found
     // and not removed is reported.
-    let scoped_uid = scoped_credential_user_id(cli, store);
+    let scoped_uid = Some(target.id);
     // A native Proton Drive session is ended on Proton before its key goes,
     // as the GUI delete does: for a Proton profile, or one that holds a
     // session key. Any other profile takes no Proton session lock.
@@ -29403,10 +29456,13 @@ fn delete_profile_in_vault(
                 .map_err(|error| error.to_string())?;
         }
     }
+    #[cfg(test)]
+    run_after_profile_target();
     // The protocol as it stands now decides which token keys go below.
-    let (protocol, _, stored) = update_active_user_profiles(
+    let (protocol, _, stored) = update_profiles_of(
         cli,
         store,
+        &target,
         |e| e,
         |profiles| {
             let current = profiles
@@ -88210,6 +88266,156 @@ mod tests {
             "the child resolves {} outside its private root {}",
             data.display(),
             std::path::Path::new(&root).display()
+        );
+    }
+
+    /// Two accounts in a child's private root: the active one (the first,
+    /// made by the migration) holding `profile`, and `other` holding one
+    /// profile of its own, each with its `server_<id>` secret.
+    fn two_accounts_one_profile_each(
+        store: &CredentialStore,
+        profile: serde_json::Value,
+    ) -> (i64, i64) {
+        use ftp_client_gui_lib::user_partitions as up;
+        let owner = up::cli_get_active_user(store)
+            .unwrap()
+            .expect("the migration makes an account")
+            .id;
+        let other = up::cli_create_user(store, "other", None, None, None)
+            .unwrap()
+            .id;
+        let id = profile["id"].as_str().unwrap().to_string();
+        up::cli_update_server_profiles_for_user(store, owner, |list| {
+            list.push(profile);
+            true
+        })
+        .unwrap();
+        up::cli_update_server_profiles_for_user(store, other, |list| {
+            list.push(serde_json::json!({"id": "kept", "name": "kept", "protocol": "sftp"}));
+            true
+        })
+        .unwrap();
+        up::store_credential_for_user_dual(store, owner, &format!("server_{id}"), "owner-secret")
+            .unwrap();
+        up::store_credential_for_user_dual(store, other, "server_kept", "other-secret").unwrap();
+        (owner, other)
+    }
+
+    /// The ids `user` lists, and how many `server_<id>` rows it holds for each
+    /// of `keys`.
+    fn listed_and_rows(
+        store: &CredentialStore,
+        user: i64,
+        keys: &[&str],
+    ) -> (Vec<String>, Vec<i64>) {
+        use ftp_client_gui_lib::user_partitions as up;
+        let listed = profile_ids(&up::cli_list_server_profiles_for_user(store, user).unwrap());
+        let db = rusqlite::Connection::open(up::cli_db_path().unwrap()).unwrap();
+        let rows = keys
+            .iter()
+            .map(|key| {
+                db.query_row(
+                    "SELECT COUNT(*) FROM user_credentials WHERE user_id = ?1 AND credential_id = ?2",
+                    rusqlite::params![user, key],
+                    |row| row.get(0),
+                )
+                .unwrap()
+            })
+            .collect();
+        (listed, rows)
+    }
+
+    /// Switch the active account to `user` at the next step of a profile command.
+    fn switch_account_midway(user: i64) {
+        super::AFTER_PROFILE_TARGET.with(|slot| {
+            *slot.borrow_mut() = Some(Box::new(move || {
+                let store = open_vault(&test_cli()).unwrap();
+                ftp_client_gui_lib::user_partitions::cli_set_active_user(&store, user).unwrap();
+            }));
+        });
+    }
+
+    #[test]
+    fn a_profile_delete_stays_on_the_account_it_began_with() {
+        const CHILD: &str = "AEROFTP_CLI_TEST_DELETE_ONE_ACCOUNT_CHILD";
+        if std::env::var_os(CHILD).is_some() {
+            assert_child_data_root_is_private();
+            on_big_stack(|| {
+                let cli = test_cli();
+                let store = open_vault(&cli).unwrap();
+                let profile = serde_json::json!({"id": "gone", "name": "gone", "protocol": "sftp"});
+                let (owner, other) = two_accounts_one_profile_each(&store, profile);
+                switch_account_midway(other);
+                delete_profile_in_vault(&cli, &store, "gone").unwrap();
+                assert_eq!(
+                    listed_and_rows(&store, owner, &["server_gone"]),
+                    (Vec::<String>::new(), vec![0]),
+                    "the profile and its secret leave the account the delete began on"
+                );
+                assert_eq!(
+                    listed_and_rows(&store, other, &["server_kept"]),
+                    (vec!["kept".to_string()], vec![1]),
+                    "the account switched to meanwhile keeps its list and its secret"
+                );
+            });
+            return;
+        }
+        assert_child_finishes_with_open_stdin(
+            "tests::a_profile_delete_stays_on_the_account_it_began_with",
+            &[(CHILD, "1")],
+        );
+    }
+
+    #[test]
+    fn a_mode_convert_stays_on_the_account_it_began_with() {
+        const CHILD: &str = "AEROFTP_CLI_TEST_CONVERT_ONE_ACCOUNT_CHILD";
+        if std::env::var_os(CHILD).is_some() {
+            assert_child_data_root_is_private();
+            on_big_stack(|| {
+                let cli = test_cli();
+                let store = open_vault(&cli).unwrap();
+                let profile = serde_json::json!({
+                    "id": "koofr-api", "name": "k", "protocol": "koofr", "host": "app.koofr.net"
+                });
+                let (owner, other) = two_accounts_one_profile_each(&store, profile);
+                switch_account_midway(other);
+                let (_, new_id, _, _) = duplicate_or_convert_mode_in_vault(
+                    &cli,
+                    &store,
+                    "koofr-api",
+                    "webdav",
+                    None,
+                    None,
+                    None,
+                    true,
+                )
+                .unwrap();
+                let new_key = format!("server_{new_id}");
+                assert_eq!(
+                    listed_and_rows(&store, owner, &["server_koofr-api", &new_key]),
+                    (vec![new_id.clone()], vec![0, 1]),
+                    "the converted profile's secret moves inside the account the convert began on"
+                );
+                assert_eq!(
+                    ftp_client_gui_lib::user_partitions::cli_read_credential_with_fallback(
+                        &store, owner, &new_key
+                    )
+                    .unwrap()
+                    .as_deref()
+                    .map(|secret| secret.as_str()),
+                    Some("owner-secret")
+                );
+                assert_eq!(
+                    listed_and_rows(&store, other, &["server_kept", &new_key]),
+                    (vec!["kept".to_string()], vec![1, 0]),
+                    "the account switched to meanwhile gets nothing"
+                );
+            });
+            return;
+        }
+        assert_child_finishes_with_open_stdin(
+            "tests::a_mode_convert_stays_on_the_account_it_began_with",
+            &[(CHILD, "1")],
         );
     }
 
