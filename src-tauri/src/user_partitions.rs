@@ -7734,19 +7734,19 @@ fn store_active_credential_typed_dual_as(
     secret: &str,
     signed_in: bool,
 ) -> Result<(), String> {
-    if let Some(user) = private_token_user(None, credential_type)? {
-        return store_credential_for_user_as(
+    // One lookup for both halves: an account switched to between the vault
+    // write and the mirror must not receive this account's token.
+    match active_user_id_for_write()? {
+        Some(user) => store_credential_for_user_typed_dual_as(
             store,
             user,
             credential_id,
             credential_type,
             secret,
             signed_in,
-        );
+        ),
+        None => store_vault_then_mirror(store, credential_id, secret, || Ok(())),
     }
-    store_vault_then_mirror(store, credential_id, secret, || {
-        mirror_active_credential(store, credential_id, credential_type, secret)
-    })
 }
 
 /// Explicitly-typed dual writer (CLI `--user`): vault first, then mirror into
@@ -11706,6 +11706,56 @@ mod tests {
         store.delete(key).unwrap();
         assert!(store_vault_then_mirror(&store, key, "f", refused).is_err());
         assert!(store.get(key).is_err(), "no value before, none after");
+    }
+
+    /// The CLI vault and partition database of an isolated child
+    /// ([`crate::provider_commands::isolated_account_fixture`]), opened and
+    /// migrated: the legacy owner is the active account.
+    fn isolated_cli_store() -> CredentialStore {
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("synthetic partition fixture").unwrap();
+        CredentialStore::unlock_with_master("synthetic partition fixture", None).unwrap();
+        let store = CredentialStore::from_cache().unwrap();
+        init_or_migrate_cli(&store).unwrap();
+        store
+    }
+
+    /// An active typed save reads the account once: the legacy owner's token
+    /// goes to its vault key and its own row, never to the row of an account
+    /// switched to between the vault write and the mirror.
+    #[test]
+    fn an_active_typed_save_mirrors_into_the_account_it_began_with() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "user_partitions::tests::an_active_typed_save_mirrors_into_the_account_it_began_with",
+        ) {
+            return;
+        }
+        let _guard = test_lock();
+        let store = isolated_cli_store();
+        let mut conn = open_or_init_cli().unwrap();
+        let root = Zeroizing::new(store.derive_user_partition_wrapping_key());
+        let owner = active_user_id(&conn).unwrap().unwrap();
+        let other = create_passphrase_less_user(&mut conn, &root, "Other", None, None)
+            .unwrap()
+            .id;
+        set_active_user(&conn, owner).unwrap();
+        let row = |user: i64, key: &str| {
+            get_user_credential_for(&open_or_init_cli().unwrap(), &root, user, key)
+                .unwrap()
+                .map(|value| value.to_string())
+        };
+
+        store_active_credential_typed_dual(&store, "oauth_box_steady", "oauth", "o-steady")
+            .unwrap();
+        assert_eq!(row(owner, "oauth_box_steady").as_deref(), Some("o-steady"));
+        assert_eq!(store.get("oauth_box_steady").unwrap(), "o-steady");
+
+        BEFORE_MIRROR.set(Some(Box::new(move || {
+            set_active_user(&open_or_init_cli().unwrap(), other).unwrap();
+        })));
+        store_active_credential_typed_dual(&store, "oauth_box_x", "oauth", "o-token").unwrap();
+        assert_eq!(row(owner, "oauth_box_x").as_deref(), Some("o-token"));
+        assert_eq!(row(other, "oauth_box_x"), None, "the account switched to");
     }
 
     /// The alignment does not run while a profile writer holds the list lock,
