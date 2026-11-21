@@ -146,11 +146,11 @@ describe('launchFolderToOpen', () => {
     const saved = body('openSavedProfile');
     expect(saved).toContain('if (await activateSavedSession(matched.id) !== true) return;');
     expect(saved).toContain('profileConnector.current(matched.id, scope)');
-    expect(saved).toMatch(/const folder = launchFolderToOpen\(initialPath\);\s*if \(folder\) await navigateAfterLaunch\(folder, matched\.protocol\);\s*$/);
+    expect(saved).toMatch(/const folder = launchFolderToOpen\(initialPath\);\s*if \(folder\) await navigateAfterLaunch\(folder, matched\.protocol, targetSessionId\);\s*$/);
     const remote = body('openRemoteUrlSession');
     // The open tab reads the link's own path: a link with no folder carries
     // none (open_request.rs) and leaves the tab where it is.
-    expect(remote).toMatch(/if \(!await switchSession\(existingSession\.id\)\) return;\s*const folder = launchFolderToOpen\(req\.initialPath\);\s*if \(folder\) await navigateAfterLaunch\(folder, targetProtocol\);/);
+    expect(remote).toMatch(/if \(!await switchSession\(existingSession\.id\)\) return;\s*const folder = launchFolderToOpen\(req\.initialPath\);\s*if \(folder\) await navigateAfterLaunch\(folder, targetProtocol, existingSession\.id\);/);
     expect(remote).toContain('await connectToFtp(params, { initialRemotePath: launchStartFolder(req.initialPath, matchedProfile) });');
     expect(remote).toMatch(/const match = all\.find\(s => savedProfileMatchesLaunch\(s, req\)\);\s*matchedProfile = match;/);
     expect(remote).not.toMatch(/req\.initialPath \|\| '\/'/);

@@ -19463,11 +19463,21 @@ const App: React.FC = () => {
   // the previous session's state (its AeroVault overlay, its path). The
   // barrier waits for the commit of the state those awaits set, then this runs
   // the body of that commit, the one of the session just opened.
+  // The wait gives the user time to pick another tab: every tab switch and
+  // connect takes a new phase, so the folder opens only if no phase began
+  // since the launch's own and, when the launch knows its tab, that tab is
+  // still the active one.
   const afterCommit = useCommitBarrier();
   const latestChangeRemoteDirectory = useLatestCallback((path: string, protocol?: string) =>
     changeRemoteDirectory(path, protocol));
-  const navigateAfterLaunch = async (path: string, protocol?: string) => {
+  const latestActiveSessionId = useLatestCallback(() => activeSessionId);
+  const navigateAfterLaunch = async (path: string, protocol: string | undefined, sessionId?: string) => {
+    const phase = remoteConnectPhaseVersionRef.current;
     await afterCommit();
+    if (phase !== remoteConnectPhaseVersionRef.current || (sessionId !== undefined && latestActiveSessionId() !== sessionId)) {
+      logger.debug('[navigateAfterLaunch] another tab or connect took the workspace: the link folder is not opened');
+      return null;
+    }
     return latestChangeRemoteDirectory(path, protocol);
   };
 
@@ -19476,6 +19486,9 @@ const App: React.FC = () => {
     const existing = sessions.find(
       s => s.savedServerId === matched.id || s.connectionParams?.savedServerId === matched.id,
     );
+    // The tab the launch made active, when it is a known one; a fresh
+    // connect is followed by its phase alone.
+    let targetSessionId: string | undefined;
     if (existing) {
       setShowConnectionScreen(false);
       setShowRemotePanel(true);
@@ -19483,6 +19496,7 @@ const App: React.FC = () => {
       // A refused host key or a failed reconnect leaves another tab active:
       // the link's folder is not opened there.
       if (await activateSavedSession(matched.id) !== true) return;
+      targetSessionId = existing.id;
     } else if (profileConnector.current) {
       const scope = new ConnectScope();
       if (await profileConnector.current(matched.id, scope) !== 'connected') return;
@@ -19493,7 +19507,7 @@ const App: React.FC = () => {
     // the link asks for too; a link that names none leaves the tab where it
     // is, or on the profile's start folder.
     const folder = launchFolderToOpen(initialPath);
-    if (folder) await navigateAfterLaunch(folder, matched.protocol);
+    if (folder) await navigateAfterLaunch(folder, matched.protocol, targetSessionId);
   };
 
   // A sign-in provider (OAuth and the like) opens only through a saved
@@ -19546,7 +19560,7 @@ const App: React.FC = () => {
       setShowLocalPreview(false);
       if (!await switchSession(existingSession.id)) return;
       const folder = launchFolderToOpen(req.initialPath);
-      if (folder) await navigateAfterLaunch(folder, targetProtocol);
+      if (folder) await navigateAfterLaunch(folder, targetProtocol, existingSession.id);
       return;
     }
 
