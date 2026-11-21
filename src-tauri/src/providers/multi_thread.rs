@@ -1336,19 +1336,6 @@ pub enum RangedAnswer {
     WholeObject,
 }
 
-/// Cut the window out of a whole-object answer.
-///
-/// One implementation rather than one per provider: an off-by-one here would
-/// otherwise have to be found and fixed seven times.
-pub fn slice_whole_object(bytes: &[u8], offset: u64, len: u64) -> Vec<u8> {
-    if offset >= bytes.len() as u64 {
-        return Vec::new();
-    }
-    let start = offset as usize;
-    let stop = std::cmp::min(start.saturating_add(len as usize), bytes.len());
-    bytes[start..stop].to_vec()
-}
-
 /// Classify the answer to a ranged read.
 ///
 /// The property has two halves and a reader that checks one is still open. A
@@ -2955,6 +2942,60 @@ pub(crate) mod window_server {
                 "{failure:?}"
             );
         }
+    }
+
+    /// A server that ignores the range: every request is answered `200` with
+    /// the object from its first byte, no length, and a connection held open
+    /// after `sent` bytes, as an object far larger than any window would be.
+    pub(crate) async fn start_range_ignored(sent: u64) -> SocketAddr {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        tokio::spawn(async move {
+            while let Ok((mut stream, _)) = listener.accept().await {
+                tokio::spawn(async move {
+                    if read_window_request(&mut stream).await.is_none() {
+                        return;
+                    }
+                    let head = "HTTP/1.1 200 OK\r\nETag: \"v1\"\r\nLast-Modified: Wed, 01 Jan 2025 00:00:00 GMT\r\nConnection: close\r\n\r\n";
+                    let body: Vec<u8> = (0..sent).map(byte_at).collect();
+                    if stream.write_all(head.as_bytes()).await.is_ok()
+                        && stream.write_all(&body).await.is_ok()
+                    {
+                        let _ = stream.flush().await;
+                    }
+                    std::future::pending::<()>().await;
+                });
+            }
+        });
+        addr
+    }
+
+    /// A `read_range` answered with the whole object (the range ignored) is
+    /// read only up to the window's end: the server sends the object's head
+    /// and then nothing more on an open connection, so a reader that waits
+    /// for the whole body never returns. `connect` gives a connected provider
+    /// that reads `/big.bin` from the server at the address.
+    pub(crate) async fn assert_a_range_ignored_answer_reads_only_the_window(
+        connect: impl Fn(SocketAddr) -> Box<dyn crate::providers::StorageProvider>,
+    ) {
+        const OFFSET: u64 = 1024 * 1024 + 4096;
+        const LEN: u64 = 64 * 1024;
+        let addr = start_range_ignored(OFFSET + LEN + 256 * 1024).await;
+        let mut provider = connect(addr);
+        let window = tokio::time::timeout(
+            std::time::Duration::from_secs(20),
+            provider.read_range("/big.bin", OFFSET, LEN),
+        )
+        .await
+        .expect("the window is read without waiting for the rest of the object")
+        .expect("the window");
+        assert_eq!(window.len() as u64, LEN);
+        assert!(
+            window.iter().zip(OFFSET..).all(|(&b, o)| b == byte_at(o)),
+            "the window is cut at its offset"
+        );
     }
 
     /// Read one request head; the window it asks for, or `None` for a
