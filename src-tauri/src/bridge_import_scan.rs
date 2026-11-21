@@ -368,21 +368,25 @@ fn ids(profiles: &[serde_json::Value]) -> impl Iterator<Item = String> + '_ {
         .map(str::to_string)
 }
 
-/// The profile ids `user` lists now. `None`, an install with no account,
-/// reads the list every reader of it reads.
-fn listed(
-    store: &CredentialStore,
-    conn: &Connection,
-    user: Option<i64>,
-) -> Result<Vec<String>, String> {
-    let profiles = match user {
-        Some(user) => {
-            let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
-            crate::user_partitions::list_server_profiles_for(conn, &root_key, user)?
-        }
-        None => crate::user_partitions::mcp_list_active_server_profiles(store)?,
-    };
-    Ok(ids(&profiles).collect())
+/// Whether account `user` still exists. Account ids are never reused, so one
+/// that does not names an account that was deleted.
+fn exists(conn: &Connection, user: i64) -> Result<bool, String> {
+    conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM users WHERE id = ?1)",
+        params![user],
+        |row| row.get(0),
+    )
+    .map_err(|e| format!("Read the import's account: {e}"))
+}
+
+/// Whose stores a settle reads the writes of a scan in.
+#[derive(Clone, Copy)]
+enum Owner {
+    /// The account the scan wrote to: its row, and the vault key.
+    Account(i64),
+    /// No account (the scan began with none), or one deleted since, whose
+    /// rows went with it: the vault key alone.
+    VaultOnly,
 }
 
 /// A writer of an account's row: the store, the account and the key.
@@ -394,12 +398,30 @@ pub(crate) type RowWriter = fn(&CredentialStore, i64, &str);
 #[cfg(test)]
 pub(crate) static BETWEEN_READ_AND_REMOVAL: Mutex<Option<RowWriter>> = Mutex::new(None);
 
+/// Removes the vault key `key` while it still holds a value `ours` accepts.
+fn discard_vault_key(
+    store: &CredentialStore,
+    key: &str,
+    ours: impl Fn(&str) -> bool,
+) -> Result<(), String> {
+    match store.get(key) {
+        Ok(value) if ours(&value) => {
+            store
+                .delete_secret_if_unchanged(key, &value)
+                .map_err(|e| format!("Remove an imported secret: {e}"))?;
+            Ok(())
+        }
+        Ok(_) | Err(CredentialError::NotFound(_)) => Ok(()),
+        Err(e) => Err(format!("Read an imported secret: {e}")),
+    }
+}
+
 /// Removes one write of a scan, where it still holds what the scan wrote.
 fn discard(
     store: &CredentialStore,
     conn: &Connection,
     key: &[u8; 32],
-    user: Option<i64>,
+    owner: Owner,
     written: &Written,
 ) -> Result<(), String> {
     #[cfg(test)]
@@ -408,7 +430,7 @@ fn discard(
     }
     match written.kind {
         Kind::Secret => {
-            if let Some(user) = user {
+            if let Owner::Account(user) = owner {
                 let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
                 let row = crate::user_partitions::get_user_credential_for(
                     conn,
@@ -434,33 +456,52 @@ fn discard(
                     )?;
                 }
             }
-            match store.get(&written.key) {
-                Ok(value) if mac(key, &value) == written.mac => {
-                    store
-                        .delete_secret_if_unchanged(&written.key, &value)
-                        .map_err(|e| format!("Remove an imported secret: {e}"))?;
-                }
-                Ok(_) | Err(CredentialError::NotFound(_)) => {}
-                Err(e) => return Err(format!("Read an imported secret: {e}")),
-            }
+            discard_vault_key(store, &written.key, |value| mac(key, value) == written.mac)?;
             Ok(())
         }
-        Kind::ProtonSession => {
-            #[cfg(feature = "proton-native")]
-            {
-                use crate::providers::proton_native::vault;
-                vault::discard_imported_session_blocking(
-                    vault::SessionOwner::for_user(user),
-                    &written.profile,
-                    |uid| mac(key, uid) == written.mac,
-                )
-                .map(|_| ())
-                .map_err(|e| e.to_string())
-            }
-            #[cfg(not(feature = "proton-native"))]
+        Kind::ProtonSession => discard_proton_session(store, key, owner, written),
+    }
+}
+
+/// [`discard`] of a Proton session: removed through the session's own locks
+/// for an account; for no account, or one deleted, the vault key alone (the
+/// session's row, if it had one, went with the account).
+#[cfg(feature = "proton-native")]
+fn discard_proton_session(
+    store: &CredentialStore,
+    key: &[u8; 32],
+    owner: Owner,
+    written: &Written,
+) -> Result<(), String> {
+    use crate::providers::proton_native::vault;
+    let ours = |uid: &str| mac(key, uid) == written.mac;
+    match owner {
+        Owner::Account(user) => vault::discard_imported_session_blocking(
+            vault::SessionOwner::for_user(Some(user)),
+            &written.profile,
+            ours,
+        )
+        .map(|_| ())
+        .map_err(|e| e.to_string()),
+        Owner::VaultOnly => {
+            discard_vault_key(store, &vault::session_key(Some(&written.profile)), |raw| {
+                vault::session_uid(raw).is_ok_and(|uid| ours(&uid))
+            })?;
             Ok(())
         }
     }
+}
+
+/// [`discard`] of a Proton session in a build without native Proton: there
+/// is none it could read here.
+#[cfg(not(feature = "proton-native"))]
+fn discard_proton_session(
+    _store: &CredentialStore,
+    _key: &[u8; 32],
+    _owner: Owner,
+    _written: &Written,
+) -> Result<(), String> {
+    Ok(())
 }
 
 /// Settles the scan `id`: every write for a profile its account does not
@@ -524,7 +565,24 @@ fn settle_ledger(store: &CredentialStore, id: &str) -> Result<(), String> {
                 .map_err(|e| format!("Read the import record: {e}"))
         })
         .collect::<Result<_, _>>()?;
-    let listed = listed(store, &conn, header.user)?;
+    let (owner, listed) = match header.user {
+        Some(user) if exists(&conn, user)? => {
+            let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
+            let profiles =
+                crate::user_partitions::list_server_profiles_for(&conn, &root_key, user)?;
+            (Owner::Account(user), ids(&profiles).collect())
+        }
+        // The account was deleted: its rows went with it, and no list of it
+        // holds a profile any more.
+        Some(_) => (Owner::VaultOnly, Vec::new()),
+        None => (
+            Owner::VaultOnly,
+            ids(&crate::user_partitions::mcp_list_active_server_profiles(
+                store,
+            )?)
+            .collect(),
+        ),
+    };
     let key = mac_key(store);
     let mut settled = Vec::new();
     let mut kept = false;
@@ -534,7 +592,7 @@ fn settle_ledger(store: &CredentialStore, id: &str) -> Result<(), String> {
             settled.push(entry);
             continue;
         }
-        match discard(store, &conn, &key, header.user, &written) {
+        match discard(store, &conn, &key, owner, &written) {
             Ok(()) => settled.push(entry),
             Err(error) => {
                 errors.push(format!("{}: {error}", written.key));

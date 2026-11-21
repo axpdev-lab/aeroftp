@@ -2423,6 +2423,42 @@ fn a_settle_keeps_a_row_saved_between_its_read_and_its_removal() {
     assert_eq!(vault_value(&password).as_deref(), Some("saved-between"));
 }
 
+/// A scan whose account was deleted before it was settled leaves no secret
+/// behind: the account's rows went with it, and the copy in the vault goes
+/// at the next settle. A locked account still exists: its scan waits for it.
+#[test]
+fn a_scan_of_a_deleted_account_takes_back_its_vault_copy() {
+    if !in_isolated_child("a_scan_of_a_deleted_account_takes_back_its_vault_copy") {
+        return;
+    }
+    let accounts = Accounts::open();
+    let runtime = bridge_runtime();
+    cli_set_active_user(&accounts.store, accounts.source.id).unwrap();
+    accounts.unlock_source();
+    let imported = scan_ftp_remotes(&runtime, &["files"]).unwrap();
+    let scan_id = imported["scanId"].as_str().unwrap().to_string();
+    let password = format!("server_{}", scanned_id(&imported, "files"));
+    assert_eq!(imported["importedUserId"], json!(accounts.source.id));
+    assert_eq!(vault_value(&password).as_deref(), Some("ftp-secret"));
+    assert!(has_row(&accounts.conn, accounts.source.id, &password));
+    crate::bridge_import_scan::forget_live_scans();
+
+    clear_user_session();
+    settle_scan(&runtime, None).unwrap();
+    assert_eq!(
+        vault_value(&password).as_deref(),
+        Some("ftp-secret"),
+        "a locked account's scan waits"
+    );
+    assert_eq!(ledger_rows(&scan_id).len(), 2);
+
+    let mut conn = open_or_init_cli().unwrap();
+    delete_user(&mut conn, accounts.source.id).unwrap();
+    settle_scan(&runtime, None).unwrap();
+    assert_eq!(vault_value(&password), None, "the vault copy goes");
+    assert_eq!(ledger_rows(&scan_id), Vec::new(), "and the ledger with it");
+}
+
 /// A session save is whole or not made. For the legacy owner, whose session
 /// is a vault key and its row, a row the account store refuses puts the
 /// vault key back as it was: an import reported as not restored leaves no
