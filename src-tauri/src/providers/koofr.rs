@@ -606,15 +606,15 @@ impl KoofrProvider {
         }
     }
 
-    /// [`Self::check_response`] for the version reads: only a final 2xx
-    /// carries version data. A 303 that was not followed (no `Location`) is
-    /// no answer, whatever its body looks like.
+    /// [`Self::check_response`] for the version reads and the restore: only
+    /// a final 2xx carries version data or confirms a restore. A 303 that was
+    /// not followed (no `Location`) is no answer, whatever its body looks like.
     async fn check_version_response(
         resp: reqwest::Response,
     ) -> Result<reqwest::Response, ProviderError> {
         if resp.status().as_u16() == 303 {
             return Err(ProviderError::ServerError(
-                "Koofr answered the version read with a redirect that was not followed".into(),
+                "Koofr answered the version request with a redirect that was not followed".into(),
             ));
         }
         Self::check_response(resp).await
@@ -730,7 +730,7 @@ impl StorageProvider for KoofrProvider {
     }
 
     async fn connect(&mut self) -> Result<(), ProviderError> {
-        koofr_log(&format!("Connecting as {}", self.config.email));
+        koofr_log("Connecting");
 
         // 1. Verify credentials by fetching user info
         let resp = self.get(&self.api_url("/user")).await?;
@@ -739,10 +739,8 @@ impl StorageProvider for KoofrProvider {
             ProviderError::ConnectionFailed(format!("Failed to read user body: {}", e))
         })?;
 
-        koofr_log(&format!(
-            "User response: {}",
-            &user_body[..user_body.floor_char_boundary(300)]
-        ));
+        // Byte counts only: the answers name the account (email, names).
+        koofr_log(&format!("User response: {} bytes", user_body.len()));
 
         let user: KoofrUser = serde_json::from_str(&user_body).map_err(|e| {
             ProviderError::ConnectionFailed(format!(
@@ -766,11 +764,7 @@ impl StorageProvider for KoofrProvider {
             ProviderError::ConnectionFailed(format!("Failed to read mounts body: {}", e))
         })?;
 
-        koofr_log(&format!(
-            "Mounts response ({} bytes): {}",
-            body.len(),
-            &body[..body.floor_char_boundary(500)]
-        ));
+        koofr_log(&format!("Mounts response: {} bytes", body.len()));
 
         // Try parsing as bare array first, then as wrapped { "mounts": [...] }
         let mounts: Vec<KoofrMount> = serde_json::from_str(&body)
@@ -803,8 +797,8 @@ impl StorageProvider for KoofrProvider {
             Ok(resp) => {
                 let detail_body = resp.text().await.unwrap_or_default();
                 koofr_log(&format!(
-                    "Mount detail response: {}",
-                    &detail_body[..detail_body.floor_char_boundary(500)]
+                    "Mount detail response: {} bytes",
+                    detail_body.len()
                 ));
 
                 // Try bare KoofrMount first, then raw Value extraction
@@ -1654,8 +1648,8 @@ impl StorageProvider for KoofrProvider {
             ProviderError::ServerError(format!("Failed to read mount response: {}", e))
         })?;
         koofr_log(&format!(
-            "storage_info mount response: {}",
-            &body[..body.floor_char_boundary(500)]
+            "storage_info mount response: {} bytes",
+            body.len()
         ));
 
         // Try typed parse first, then raw Value extraction
@@ -1667,8 +1661,8 @@ impl StorageProvider for KoofrProvider {
             self.space_used = val.get("spaceUsed").and_then(|v| v.as_i64()).unwrap_or(0) * MIB;
         } else {
             return Err(ProviderError::ServerError(format!(
-                "Failed to parse mount info. Body preview: {}",
-                &body[..body.floor_char_boundary(200)]
+                "Failed to parse mount info (an answer of {} bytes, not shown)",
+                body.len()
             )));
         }
 
@@ -2049,7 +2043,14 @@ impl StorageProvider for KoofrProvider {
             .post_json(&url, &serde_json::json!({}))
             .await
             .map_err(|e| super::sent_change_unconfirmed(e, &format!("the restore of {path}")))?;
-        Self::check_response(resp).await?;
+        if let Some(unknown) =
+            super::gateway_left_unknown(resp.status(), &format!("the restore of {path}"))
+        {
+            return Err(unknown);
+        }
+        // Only a final success goes to the confirmation: a redirect that was
+        // not followed (a 303 without a Location) is no answer to it.
+        Self::check_version_response(resp).await?;
         super::confirm_version_restored(self, path, Some(&selected)).await
     }
 
@@ -2107,31 +2108,7 @@ impl StorageProvider for KoofrProvider {
         // whole file answered to a ranged request would put the head of the
         // object there and still add up to the right length, and a 206 that
         // does not name its window would do the same with a success code.
-        let status = resp.status();
-        let answered = resp
-            .headers()
-            .get(reqwest::header::CONTENT_RANGE)
-            .and_then(|value| value.to_str().ok())
-            .map(|value| value.to_string());
-        let bytes = resp
-            .bytes()
-            .await
-            .map_err(super::multi_thread::range_read_error)?;
-        match super::multi_thread::ranged_answer(
-            status,
-            answered.as_deref(),
-            bytes.len() as u64,
-            offset,
-            end,
-        ) {
-            Ok(super::multi_thread::RangedAnswer::Window) => Ok(bytes.to_vec()),
-            Ok(super::multi_thread::RangedAnswer::WholeObject) => {
-                Ok(super::multi_thread::slice_whole_object(&bytes, offset, len))
-            }
-            Err(why) => Err(ProviderError::ParallelRefused(
-                super::multi_thread::parallel_refused("Koofr range read", path, &why),
-            )),
-        }
+        super::ranged_read_window(resp, offset, len, "Koofr range read", path).await
     }
 
     fn transfer_optimization_hints(&self) -> TransferOptimizationHints {
@@ -2571,6 +2548,38 @@ mod tests {
             err.to_string().len() < 4096,
             "{} bytes",
             err.to_string().len()
+        );
+        // The capped read keeps none of the body, so its Forbidden code is
+        // not read: a read of the whole body would classify it as a denial.
+        assert!(
+            matches!(&err, ProviderError::ServerError(m) if m.contains("403")),
+            "{err:?}"
+        );
+    }
+
+    /// A mount answer that does not parse is reported by its length: the
+    /// answer names the account, and none of it reaches the error.
+    #[tokio::test]
+    async fn a_mount_answer_that_does_not_parse_is_not_shown() {
+        let app = axum::Router::new().fallback(axum::routing::any(|| async {
+            "<html>owner SENTINEL.user@example.com quota</html>"
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = KoofrProvider::new(KoofrConfig {
+            email: "u@example.com".to_string(),
+            password: secrecy::SecretString::from("p".to_string()),
+            initial_path: None,
+        });
+        provider.connected = true;
+        provider.mount_id = "M".to_string();
+        provider.api_base_override = Some(format!("http://{addr}"));
+        let err = provider.storage_info().await.expect_err("unparsed");
+        let text = err.to_string();
+        assert!(
+            text.contains("not shown") && !text.contains("SENTINEL"),
+            "{text}"
         );
     }
 
