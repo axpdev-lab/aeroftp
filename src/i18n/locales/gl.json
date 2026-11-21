@@ -7208,7 +7208,10 @@
         },
         "openRequest": {
             "folderBusyTitle": "O cartafol aínda se está a cargar",
-            "folderBusy": "O ficheiro que abriches non se mostrou: outro cartafol aínda se estaba a cargar cando se solicitou {folder}. Ábreo de novo."
+            "folderBusy": "O ficheiro que abriches non se mostrou: outro cartafol aínda se estaba a cargar cando se solicitou {folder}. Ábreo de novo.",
+            "signInNeedsProfileTitle": "{provider} necesita o seu inicio de sesión gardado",
+            "signInNeedsProfile": "{provider} inicia sesión mediante a súa propia autorización no navegador, que unha ligazón non pode levar. Engade e autoriza a conta en Os meus servidores e despois abre {scheme}://<nome do perfil>/cartafol/.",
+            "signInNameTheProfile": "Hai varias contas de {provider} gardadas. Indica cal abrir: {scheme}://<nome do perfil>/cartafol/."
         }
     }
 }

@@ -465,11 +465,16 @@ fn s3_profile_static_endpoint(provider_id: &str) -> Option<&'static str> {
 /// not produce (a virtual-hosted `bucket.` host, another provider). Mirrors
 /// `regionFromS3Endpoint` in `src/providers/registry.ts`.
 fn region_from_s3_template(template: &str, endpoint: &str) -> Option<String> {
+    // A URI scheme is read in any case (`HTTPS://` as `https://`).
     fn without_scheme(value: &str) -> &str {
-        value
-            .strip_prefix("https://")
-            .or_else(|| value.strip_prefix("http://"))
-            .unwrap_or(value)
+        ["https://", "http://"]
+            .into_iter()
+            .find(|scheme| {
+                value
+                    .get(..scheme.len())
+                    .is_some_and(|head| head.eq_ignore_ascii_case(scheme))
+            })
+            .map_or(value, |scheme| &value[scheme.len()..])
     }
     let template = without_scheme(template);
     let (prefix, suffix) = template.split_once("{region}")?;
@@ -1157,6 +1162,16 @@ mod tests {
                 "https://bucket.eu-west-1.object.fastlystorage.app",
                 None,
             ),
+            (
+                "wasabi",
+                "https://s3.eu-central-2.wasabisys.com",
+                Some("eu-central-2"),
+            ),
+            (
+                "wasabi",
+                "HTTPS://s3.eu-central-2.wasabisys.com",
+                Some("eu-central-2"),
+            ),
         ] {
             assert_eq!(
                 s3_region_from_endpoint(preset, endpoint).as_deref(),
@@ -1389,6 +1404,13 @@ mod tests {
             !extra.contains_key("webdavScheme"),
             "raw camelCase key must not leak into provider config"
         );
+    }
+
+    #[test]
+    fn a_profile_saved_from_an_aws_chain_link_keeps_its_marker_for_every_caller() {
+        let mut extra = HashMap::new();
+        apply_profile_options(&mut extra, &json!({"options": {"awsChain": "chain"}}));
+        assert_eq!(extra.get("aws_chain").map(String::as_str), Some("chain"));
     }
 
     #[test]

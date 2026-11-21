@@ -7189,7 +7189,10 @@
         },
         "openRequest": {
             "folderBusyTitle": "Kausta laaditakse veel",
-            "folderBusy": "Avatud faili ei kuvatud: kui küsiti kausta {folder}, laaditi veel mõnda teist kausta. Avage fail uuesti."
+            "folderBusy": "Avatud faili ei kuvatud: kui küsiti kausta {folder}, laaditi veel mõnda teist kausta. Avage fail uuesti.",
+            "signInNeedsProfileTitle": "{provider} vajab salvestatud sisselogimist",
+            "signInNeedsProfile": "{provider} logib sisse oma brauseriautoriseerimisega, mida link edastada ei saa. Lisa ja autoriseeri konto jaotises Minu serverid ning ava seejärel {scheme}://<profiili nimi>/kaust/.",
+            "signInNameTheProfile": "Salvestatud on mitu {provider} kontot. Nimeta see, mida avada: {scheme}://<profiili nimi>/kaust/."
         }
     }
 }

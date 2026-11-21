@@ -274,7 +274,7 @@ describe('a connect parks the live tab before it ends the connection', () => {
         const body = APP.slice(start, APP.indexOf('\n  const ', start + 1));
         // Refused before anything of the current tab changes: a live tab
         // stays as it was, a parked one stays parked.
-        expect(body).toContain('if (!accepted) { if (fromParked) leaveNothingActive(); return; }');
+        expect(body).toContain('if (!accepted) { if (fromParked) leaveNothingActive(); return false; }');
         expect(body.indexOf('const leaveNothingActive')).toBeLessThan(body.indexOf('checkSftpHostKey('));
     });
 

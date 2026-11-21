@@ -7189,7 +7189,10 @@
         },
         "openRequest": {
             "folderBusyTitle": "Mapa se še nalaga",
-            "folderBusy": "Odprta datoteka ni bila prikazana: ko je bila zahtevana mapa {folder}, se je druga mapa še nalagala. Odprite jo znova."
+            "folderBusy": "Odprta datoteka ni bila prikazana: ko je bila zahtevana mapa {folder}, se je druga mapa še nalagala. Odprite jo znova.",
+            "signInNeedsProfileTitle": "{provider} potrebuje shranjeno prijavo",
+            "signInNeedsProfile": "{provider} se prijavi z lastno avtorizacijo v brskalniku, ki je povezava ne more prenesti. Dodajte in avtorizirajte račun v Moji strežniki, nato odprite {scheme}://<ime profila>/mapa/.",
+            "signInNameTheProfile": "Shranjenih je več računov {provider}. Navedite, katerega odpreti: {scheme}://<ime profila>/mapa/."
         }
     }
 }

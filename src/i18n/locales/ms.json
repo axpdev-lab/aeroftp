@@ -7189,7 +7189,10 @@
         },
         "openRequest": {
             "folderBusyTitle": "Folder masih dimuatkan",
-            "folderBusy": "Fail yang anda buka tidak dipaparkan: folder lain masih dimuatkan semasa {folder} diminta. Sila buka semula fail tersebut."
+            "folderBusy": "Fail yang anda buka tidak dipaparkan: folder lain masih dimuatkan semasa {folder} diminta. Sila buka semula fail tersebut.",
+            "signInNeedsProfileTitle": "{provider} memerlukan log masuk yang disimpan",
+            "signInNeedsProfile": "{provider} log masuk melalui kebenaran pelayarnya sendiri, yang tidak boleh dibawa oleh pautan. Tambah dan benarkan akaun dalam Pelayan Saya, kemudian buka {scheme}://<nama profil>/folder/.",
+            "signInNameTheProfile": "Beberapa akaun {provider} disimpan. Namakan yang hendak dibuka: {scheme}://<nama profil>/folder/."
         }
     }
 }

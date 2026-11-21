@@ -7189,7 +7189,10 @@
         },
         "openRequest": {
             "folderBusyTitle": "Kansiota ladataan vielä",
-            "folderBusy": "Avaamaasi tiedostoa ei näytetty: toista kansiota ladattiin vielä, kun kansiota {folder} pyydettiin. Avaa tiedosto uudelleen."
+            "folderBusy": "Avaamaasi tiedostoa ei näytetty: toista kansiota ladattiin vielä, kun kansiota {folder} pyydettiin. Avaa tiedosto uudelleen.",
+            "signInNeedsProfileTitle": "{provider} tarvitsee tallennetun kirjautumisen",
+            "signInNeedsProfile": "{provider} kirjautuu omalla selainvaltuutuksellaan, jota linkki ei voi sisältää. Lisää ja valtuuta tili kohdassa Omat palvelimet ja avaa sitten {scheme}://<profiilin nimi>/kansio/.",
+            "signInNameTheProfile": "{provider}-tilejä on tallennettu useita. Nimeä avattava: {scheme}://<profiilin nimi>/kansio/."
         }
     }
 }
