@@ -428,6 +428,7 @@ export interface ProviderOptions {
   sse_mode?: string; // S3 server-side encryption (AES256, aws:kms)
   sse_kms_key_id?: string; // S3 KMS key ARN for SSE-KMS
   sessionToken?: string; // AWS STS session token for temporary credentials (AssumeRole / SSO), issue #301
+  launchSecret?: string; // a launch URL's opaque handle in place of a secret it found in the environment or the AWS chain: provider_connect reads the secret in Rust for that link's connection only; never saved in a profile
   roleArn?: string; // AWS STS AssumeRole: ARN of the role to assume, issue #301 Fase 2
   roleExternalId?: string; // AWS STS AssumeRole: ExternalId for cross-account protection
   roleSessionName?: string; // AWS STS AssumeRole: RoleSessionName audit label (default aeroftp-session)
@@ -599,6 +600,12 @@ export interface OpenRequest {
   password?: string;
   initialPath?: string;
   profileName?: string;
+  /** The preset a launch URL resolves to (an S3 endpoint's vendor). */
+  providerId?: string;
+  /** Connection options a launch URL sets (bucket, region, ...). */
+  options?: ProviderOptions;
+  /** A sign-in provider: `server` names the saved profile or account. */
+  signIn?: boolean;
 }
 
 // Transfer progress event from backend

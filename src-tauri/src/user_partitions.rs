@@ -10831,10 +10831,11 @@ fn load_active_server_profiles_scoped(app: &AppHandle) -> Result<ScopedServerPro
 #[tauri::command]
 pub async fn user_partitions_save_active_server_profiles(
     app: AppHandle,
-    profiles: Vec<Value>,
+    mut profiles: Vec<Value>,
     expected_user_id: Option<i64>,
     expected_revision: Option<String>,
 ) -> Result<Vec<Value>, String> {
+    crate::launch_url::launch_secret::strip_from_profiles(&mut profiles);
     init_or_migrate(&app)?;
     let store = CredentialStore::from_cache().ok_or_else(|| "STORE_NOT_READY".to_string())?;
     let mut root_key = store.derive_user_partition_wrapping_key();
@@ -10904,9 +10905,10 @@ pub(crate) fn adopt_legacy_blob_under_lock(
 #[tauri::command]
 pub async fn user_partitions_store_legacy_server_profiles(
     app: AppHandle,
-    profiles: Vec<Value>,
+    mut profiles: Vec<Value>,
     expected_list: Option<Vec<Value>>,
 ) -> Result<Vec<Value>, String> {
+    crate::launch_url::launch_secret::strip_from_profiles(&mut profiles);
     let store = CredentialStore::from_cache().ok_or_else(|| "STORE_NOT_READY".to_string())?;
     let lock = ProfileListLock::acquire_for_path(&db_path(&app)?)?;
     if !lock.is_exclusive() {

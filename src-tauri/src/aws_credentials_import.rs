@@ -111,7 +111,7 @@ pub fn import_aws_credentials(cred_path: &Path) -> Result<AwsImportResult, Strin
 ///
 /// The secondary config file is opened by us, not by the caller, so it bypasses
 /// the checks `import_bridge_config` / the CLI run on the primary path.
-fn is_readable_regular_file(path: &Path) -> bool {
+pub(crate) fn is_readable_regular_file(path: &Path) -> bool {
     match std::fs::metadata(path) {
         Ok(m) => m.is_file() && crate::bridge_shared::ensure_import_file_size_ok(path).is_ok(),
         Err(_) => false,
@@ -448,6 +448,9 @@ region = eu-west-1
 
     #[test]
     fn test_parse_fixture_three_profiles_one_skipped() {
+        // The import reads AWS_CONFIG_FILE, which the launch URL tests set
+        // under the env lock: hold it so they never point this one elsewhere.
+        let _env = crate::test_env::lock();
         let cred = write_tmp("cred", CRED_FIXTURE);
         let cfg = write_tmp("cfg", CONFIG_FIXTURE);
 
@@ -490,6 +493,9 @@ region = eu-west-1
 
     #[test]
     fn test_secret_policy_plain_credential_populated() {
+        // The import reads AWS_CONFIG_FILE, which the launch URL tests set
+        // under the env lock: hold it so they never point this one elsewhere.
+        let _env = crate::test_env::lock();
         let cred = write_tmp("sec", CRED_FIXTURE);
         let result = import_aws_credentials_with_config(&cred, None).expect("should import");
         std::fs::remove_file(&cred).ok();
@@ -505,6 +511,9 @@ region = eu-west-1
 
     #[test]
     fn test_roundtrip_import_export_import_idempotent() {
+        // The import reads AWS_CONFIG_FILE, which the launch URL tests set
+        // under the env lock: hold it so they never point this one elsewhere.
+        let _env = crate::test_env::lock();
         let cred = write_tmp("rt-cred", CRED_FIXTURE);
         let cfg = cred.with_file_name("config");
         std::fs::write(&cfg, CONFIG_FIXTURE).unwrap();

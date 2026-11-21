@@ -7191,7 +7191,10 @@
         },
         "openRequest": {
             "folderBusyTitle": "La carpeta aún se está cargando",
-            "folderBusy": "El archivo que abriste no se mostró: otra carpeta aún se estaba cargando cuando se solicitó {folder}. Ábrelo de nuevo."
+            "folderBusy": "El archivo que abriste no se mostró: otra carpeta aún se estaba cargando cuando se solicitó {folder}. Ábrelo de nuevo.",
+            "signInNeedsProfileTitle": "{provider} necesita su inicio de sesión guardado",
+            "signInNeedsProfile": "{provider} inicia sesión mediante su propia autorización en el navegador, que un enlace no puede transportar. Añade y autoriza la cuenta en Mis servidores y luego abre {scheme}://<nombre del perfil>/carpeta/.",
+            "signInNameTheProfile": "Hay varias cuentas de {provider} guardadas. Indica cuál abrir: {scheme}://<nombre del perfil>/carpeta/."
         }
     }
 }

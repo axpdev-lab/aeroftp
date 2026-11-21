@@ -7210,7 +7210,10 @@
         },
         "openRequest": {
             "folderBusyTitle": "Naglo-load pa ang folder",
-            "folderBusy": "Hindi naipakita ang file na binuksan mo: may ibang folder na naglo-load pa nang hilingin ang {folder}. Buksan itong muli."
+            "folderBusy": "Hindi naipakita ang file na binuksan mo: may ibang folder na naglo-load pa nang hilingin ang {folder}. Buksan itong muli.",
+            "signInNeedsProfileTitle": "Kailangan ng {provider} ang naka-save nitong sign-in",
+            "signInNeedsProfile": "Nagsa-sign in ang {provider} sa sarili nitong awtorisasyon sa browser, na hindi madadala ng link. Idagdag at i-authorize ang account sa Aking mga Server, pagkatapos ay buksan ang {scheme}://<pangalan ng profile>/folder/.",
+            "signInNameTheProfile": "Maraming account ng {provider} ang naka-save. Pangalanan ang bubuksan: {scheme}://<pangalan ng profile>/folder/."
         }
     }
 }

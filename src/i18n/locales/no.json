@@ -7210,7 +7210,10 @@
         },
         "openRequest": {
             "folderBusyTitle": "Mappen lastes fortsatt inn",
-            "folderBusy": "Filen du åpnet ble ikke vist: en annen mappe ble fortsatt lastet inn da {folder} ble forespurt. Åpne den på nytt."
+            "folderBusy": "Filen du åpnet ble ikke vist: en annen mappe ble fortsatt lastet inn da {folder} ble forespurt. Åpne den på nytt.",
+            "signInNeedsProfileTitle": "{provider} trenger sin lagrede pålogging",
+            "signInNeedsProfile": "{provider} logger inn via sin egen godkjenning i nettleseren, som en lenke ikke kan bære. Legg til og godkjenn kontoen i Mine servere, og åpne deretter {scheme}://<profilnavn>/mappe/.",
+            "signInNameTheProfile": "Flere {provider}-kontoer er lagret. Oppgi hvilken som skal åpnes: {scheme}://<profilnavn>/mappe/."
         }
     }
 }

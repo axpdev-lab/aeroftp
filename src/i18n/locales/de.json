@@ -7191,7 +7191,10 @@
         },
         "openRequest": {
             "folderBusyTitle": "Ordner wird noch geladen",
-            "folderBusy": "Die geöffnete Datei wurde nicht angezeigt: Ein anderer Ordner wurde noch geladen, als {folder} angefordert wurde. Öffnen Sie die Datei erneut."
+            "folderBusy": "Die geöffnete Datei wurde nicht angezeigt: Ein anderer Ordner wurde noch geladen, als {folder} angefordert wurde. Öffnen Sie die Datei erneut.",
+            "signInNeedsProfileTitle": "{provider} benötigt die gespeicherte Anmeldung",
+            "signInNeedsProfile": "{provider} meldet sich über eine eigene Autorisierung im Browser an, die ein Link nicht übertragen kann. Fügen Sie das Konto unter Meine Server hinzu und autorisieren Sie es, öffnen Sie dann {scheme}://<Profilname>/Ordner/.",
+            "signInNameTheProfile": "Es sind mehrere {provider}-Konten gespeichert. Nennen Sie das zu öffnende: {scheme}://<Profilname>/Ordner/."
         }
     }
 }

@@ -7191,7 +7191,10 @@
         },
         "openRequest": {
             "folderBusyTitle": "Mappen läses fortfarande in",
-            "folderBusy": "Filen du öppnade visades inte: en annan mapp lästes fortfarande in när {folder} begärdes. Öppna den igen."
+            "folderBusy": "Filen du öppnade visades inte: en annan mapp lästes fortfarande in när {folder} begärdes. Öppna den igen.",
+            "signInNeedsProfileTitle": "{provider} behöver sin sparade inloggning",
+            "signInNeedsProfile": "{provider} loggar in via sin egen webbläsarbehörighet, som en länk inte kan bära. Lägg till och auktorisera kontot i Mina servrar och öppna sedan {scheme}://<profilnamn>/mapp/.",
+            "signInNameTheProfile": "Flera {provider}-konton är sparade. Ange vilket som ska öppnas: {scheme}://<profilnamn>/mapp/."
         }
     }
 }
