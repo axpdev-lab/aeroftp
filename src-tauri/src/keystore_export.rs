@@ -1403,6 +1403,30 @@ fn private_row_of(
 /// (`None`: absent), the one this import left there.
 type Expected<'a> = Option<Option<&'a str>>;
 
+/// A write of [`write_profile_secret_if`] that failed, and whether its vault
+/// half had landed before the failure: a caller putting back what it wrote
+/// knows which value the vault holds.
+struct SecretWriteError {
+    message: String,
+    vault_written: bool,
+}
+
+impl SecretWriteError {
+    fn before_vault(message: String) -> Self {
+        Self {
+            message,
+            vault_written: false,
+        }
+    }
+
+    fn after_vault(message: String) -> Self {
+        Self {
+            message,
+            vault_written: true,
+        }
+    }
+}
+
 /// Store (`Some`) or delete (`None`) one per-profile secret where `receiver`
 /// reads it: the vault and its row in the partition database at `db`.
 /// `store_active_credential_dual` would not do: it mirrors only `server_*` and
@@ -1418,7 +1442,8 @@ type Expected<'a> = Option<Option<&'a str>>;
 /// and written in one transaction, the vault under its write lock; the row
 /// that mirrors a vault value follows the vault. `Ok(false)`: another writer
 /// stored a value since (a token refreshed while the import ran), and
-/// nothing was written.
+/// nothing was written. A failure says whether the vault half had landed
+/// ([`SecretWriteError`]); the private row is one write, so it never has.
 fn write_profile_secret_if(
     store: &crate::credential_store::CredentialStore,
     db: Option<&Path>,
@@ -1426,10 +1451,14 @@ fn write_profile_secret_if(
     key: &str,
     expected: Expected<'_>,
     value: Option<&str>,
-) -> Result<bool, String> {
+) -> Result<bool, SecretWriteError> {
+    #[cfg(test)]
+    if tests::secret_write_fails(key, tests::WriteStage::BeforeVault) {
+        return Err(SecretWriteError::before_vault("refused (test)".to_string()));
+    }
     if let Some((db, receiver)) = private_row_of(db, receiver, key) {
-        let conn =
-            rusqlite::Connection::open(&db).map_err(|e| format!("open {}: {e}", db.display()))?;
+        let conn = rusqlite::Connection::open(&db)
+            .map_err(|e| SecretWriteError::before_vault(format!("open {}: {e}", db.display())))?;
         let kind = crate::user_partitions::private_token_type(key).unwrap_or("oauth");
         let mut root_key = store.derive_user_partition_wrapping_key();
         let written = match expected {
@@ -1460,29 +1489,38 @@ fn write_profile_secret_if(
         };
         root_key.zeroize();
         // No vault copy to fall back on: a locked account is reported.
-        return written.map_err(|e| format!("partition row not written: {e}"));
+        return written.map_err(|e| {
+            SecretWriteError::before_vault(format!("partition row not written: {e}"))
+        });
     }
+    let vault_refused =
+        |e: crate::credential_store::CredentialError| SecretWriteError::before_vault(e.to_string());
     match expected {
         Some(expected) => {
             if !store
                 .swap_secret_if(key, expected, value)
-                .map_err(|e| e.to_string())?
+                .map_err(vault_refused)?
             {
                 return Ok(false);
             }
         }
         None => match value {
-            Some(v) => store.store(key, v).map_err(|e| e.to_string())?,
+            Some(v) => store.store(key, v).map_err(vault_refused)?,
             None => match store.delete(key) {
                 Ok(_) | Err(crate::credential_store::CredentialError::NotFound(_)) => {}
-                Err(e) => return Err(e.to_string()),
+                Err(e) => return Err(vault_refused(e)),
             },
         },
     }
     let (Some(db), Some(receiver)) = (db, receiver) else {
         return Ok(true);
     };
-    let conn = rusqlite::Connection::open(db).map_err(|e| format!("open {}: {e}", db.display()))?;
+    #[cfg(test)]
+    if tests::secret_write_fails(key, tests::WriteStage::AfterVault) {
+        return Err(SecretWriteError::after_vault("refused (test)".to_string()));
+    }
+    let conn = rusqlite::Connection::open(db)
+        .map_err(|e| SecretWriteError::after_vault(format!("open {}: {e}", db.display())))?;
     if let Some(v) = value {
         let mut root_key = store.derive_user_partition_wrapping_key();
         let written = crate::user_partitions::set_user_credential_for(
@@ -1504,10 +1542,16 @@ fn write_profile_secret_if(
             // Any other failure is reported, so the caller puts back what it
             // wrote: removing the row here would delete the user's own value
             // and report the write as done.
-            Err(e) => return Err(format!("partition row not written: {e}")),
+            Err(e) => {
+                return Err(SecretWriteError::after_vault(format!(
+                    "partition row not written: {e}"
+                )))
+            }
         }
     }
-    crate::user_partitions::delete_user_credential_for(&conn, receiver.user_id, key).map(|()| true)
+    crate::user_partitions::delete_user_credential_for(&conn, receiver.user_id, key)
+        .map(|()| true)
+        .map_err(SecretWriteError::after_vault)
 }
 
 /// This device's active account and the ids of the profiles it lists, read
@@ -1882,7 +1926,7 @@ fn restore_profile_step(
         match write_profile_secret_if(store, db, snapshot.receiver, key, expected, value) {
             Ok(true) => {}
             Ok(false) => kept.push(key.clone()),
-            Err(e) => failures.push(format!("{key}: {e}")),
+            Err(e) => failures.push(format!("{key}: {}", e.message)),
         }
     }
     for (key, value, written) in &snapshot.vault {
@@ -1991,21 +2035,31 @@ fn apply_profile_decisions(
             // Over what the vault section wrote only: another writer's value
             // since (a refresh) is this device's latest, and stays.
             let expected = vault_value.map(|v| Some(v.as_str()));
-            // Recorded first: a write that fails half way (the vault taken,
-            // the row refused) is put back too.
-            written.insert(key.clone(), value.map(|v| Zeroizing::new(v.to_string())));
-            let landed = write_profile_secret_if(
+            // Recorded once it landed, also half way (the vault taken, the
+            // row refused), so the rollback compares against what is there:
+            // a write that failed before the vault changed left the vault
+            // section's value, which the rollback then puts back as for a key
+            // this step never wrote.
+            match write_profile_secret_if(
                 store,
                 db.as_deref(),
                 inputs.receiver,
                 key,
                 expected,
                 value,
-            )
-            .map_err(|e| format!("{key}: {e}"))?;
-            if !landed {
-                written.remove(key);
-                tracing::info!("Keystore import: {key} was rewritten during the import and kept");
+            ) {
+                Ok(true) => {
+                    written.insert(key.clone(), value.map(|v| Zeroizing::new(v.to_string())));
+                }
+                Ok(false) => tracing::info!(
+                    "Keystore import: {key} was rewritten during the import and kept"
+                ),
+                Err(e) => {
+                    if e.vault_written {
+                        written.insert(key.clone(), value.map(|v| Zeroizing::new(v.to_string())));
+                    }
+                    return Err(format!("{key}: {}", e.message));
+                }
             }
         }
         // The partition is the list My Servers loads, and loading it
@@ -3082,7 +3136,41 @@ mod tests {
         key: &str,
         value: Option<&str>,
     ) -> Result<(), String> {
-        write_profile_secret_if(store, db, receiver, key, None, value).map(drop)
+        write_profile_secret_if(store, db, receiver, key, None, value)
+            .map(drop)
+            .map_err(|e| e.message)
+    }
+
+    /// Where a test makes the next write of one key fail
+    /// ([`write_profile_secret_if`]): before anything is written, or once the
+    /// vault holds the value and before its row.
+    #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+    pub(super) enum WriteStage {
+        BeforeVault,
+        AfterVault,
+    }
+
+    thread_local! {
+        static FAIL_SECRET_WRITE: std::cell::RefCell<Option<(String, WriteStage)>> =
+            const { std::cell::RefCell::new(None) };
+    }
+
+    /// The next write of `key` fails at `stage`, once.
+    fn fail_secret_write(key: &str, stage: WriteStage) {
+        FAIL_SECRET_WRITE.with(|slot| *slot.borrow_mut() = Some((key.to_string(), stage)));
+    }
+
+    pub(super) fn secret_write_fails(key: &str, stage: WriteStage) -> bool {
+        FAIL_SECRET_WRITE.with(|slot| {
+            let mut slot = slot.borrow_mut();
+            let fails = slot
+                .as_ref()
+                .is_some_and(|(failing, at)| failing == key && *at == stage);
+            if fails {
+                *slot = None;
+            }
+            fails
+        })
     }
 
     pub(super) fn run_before_profile_decisions(store: &crate::credential_store::CredentialStore) {
@@ -5282,6 +5370,54 @@ mod tests {
         assert!(error.contains("disk full"), "{error}");
         assert_eq!(store.get(absent).unwrap(), "drive-refreshed");
         assert_eq!(store.get(carried).unwrap(), "yard-refreshed");
+    }
+
+    /// A decision's write that fails before the vault changed is not counted
+    /// as landed: the rollback puts this device's token back over the vault
+    /// section's value, and reports nothing as rewritten since. One that fails
+    /// once the vault holds the decision's value (its row refused) is put back
+    /// from there.
+    #[test]
+    fn a_write_that_failed_before_the_vault_is_not_put_back_as_written() {
+        for stage in [WriteStage::BeforeVault, WriteStage::AfterVault] {
+            let _guard = crate::user_partitions::test_lock();
+            crate::user_partitions::clear_user_session();
+            let dir = tempfile::tempdir().unwrap();
+            let store = throwaway_store(dir.path(), "vault.db");
+            let cfg = dir.path().join("config");
+            let key = "oauth_dropbox_srv_drive";
+            partition_with(&store, &cfg, &[dropbox("srv_drive", "Drive")]);
+            store.store(key, "local-token").unwrap();
+            let mut payload = ExportPayload::default();
+            payload.vault_entries.insert(
+                "config_server_profiles".to_string(),
+                serde_json::to_string(&[dropbox("srv_drive", "Drive B")]).unwrap(),
+            );
+            payload
+                .vault_entries
+                .insert(key.to_string(), "backup-token".to_string());
+            let backup = dir.path().join("vault.aeroftp-keystore");
+            seal_backup(&backup, PASSWORD_736, &payload);
+            before_profile_decisions(move |_| fail_secret_write(key, stage));
+
+            let result = import_deciding(
+                &store,
+                &cfg,
+                &backup,
+                VAULT_ONLY,
+                &[decide(
+                    "srv_drive",
+                    keystore_profile_plan::ProfileDecision::Reject,
+                )],
+            );
+            let error = result
+                .profile_decisions_error
+                .expect("the profile step did not fail");
+            assert!(error.contains("refused (test)"), "{stage:?}: {error}");
+            assert!(error.contains("put back"), "{stage:?}: {error}");
+            assert!(!error.contains("rewritten since"), "{stage:?}: {error}");
+            assert_eq!(store.get(key).unwrap(), "local-token", "{stage:?}");
+        }
     }
 
     /// The profile step writes to the account its plan was made for. When the
