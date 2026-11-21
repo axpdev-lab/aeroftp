@@ -5101,9 +5101,11 @@ mod tests {
         partitions::set_active_user(&conn, protected).expect("back to the protected account");
         let mut locked = bound();
         let refused = runtime.block_on(locked.try_connect_with_refresh());
+        // An error, not `Ok(false)`: only an error stops `connect` before
+        // it falls back to the login token.
         assert!(
-            !refused.unwrap_or(false),
-            "no exchange while the account is locked"
+            matches!(refused, Err(ProviderError::ConnectionFailed(_))),
+            "no exchange while the account is locked, and no fallback: {refused:?}"
         );
         assert_eq!(
             sent.lock().unwrap().len(),
