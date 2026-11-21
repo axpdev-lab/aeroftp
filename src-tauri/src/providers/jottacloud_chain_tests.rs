@@ -2140,6 +2140,77 @@ fn an_imported_chain_is_not_withheld_by_its_predecessors_source() {
     );
 }
 
+/// A rotation neither key could store, of a chain a profile's connection
+/// loaded from the singleton, is kept for both keys. The profile reconnects
+/// with it: its successor is written to the singleton too, which still holds
+/// the base the singleton's own kept rotation was filed on, so the
+/// singleton's reader is not handed the chain this exchange consumed.
+#[test]
+fn a_singletons_kept_successor_moves_on_with_its_profile() {
+    if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+        "providers::jottacloud::chain_tests::a_singletons_kept_successor_moves_on_with_its_profile",
+    ) {
+        return;
+    }
+    let chains = Chains::new();
+    let singleton = "jottacloud_refresh";
+    let profile = "keptboth";
+    let key = format!("jottacloud_refresh_{profile}");
+    chains
+        .store
+        .store(singleton, &chains.chain("singleton-keptboth"))
+        .unwrap();
+    let noted = chains.noted(profile).expect("count");
+    let source = partitions::chain_deletions(&chains.store, chains.owner, singleton)
+        .unwrap()
+        .generation;
+    // What a connection of the profile that loaded the singleton's chain and
+    // could store its rotation in neither key keeps.
+    let kept = |base: &str, generation: u64, from: Option<u64>| {
+        let mut filed: serde_json::Value =
+            serde_json::from_str(&chains.chain("kept-keptboth")).unwrap();
+        filed[PENDING_BASE] = base.into();
+        filed[PENDING_GEN] = generation.into();
+        if let Some(from) = from {
+            filed[PENDING_SOURCE] = singleton.into();
+            filed[PENDING_SOURCE_GEN] = from.into();
+        }
+        zeroize::Zeroizing::new(filed.to_string())
+    };
+    {
+        let mut pending = PENDING_ROTATIONS.lock().unwrap();
+        pending.insert((chains.owner, key.clone()), kept("", noted, Some(source)));
+        pending.insert(
+            (chains.owner, singleton.to_string()),
+            kept("singleton-keptboth", source, None),
+        );
+    }
+    let from = chains.submissions();
+    let mut connection = chains.bound(profile);
+    let connected = chains
+        .runtime()
+        .block_on(connection.try_connect_with_refresh());
+    let rotated = connection.refresh_token.expose_secret().to_string();
+    drop(connection);
+    let mut failures = Vec::new();
+    if !matches!(connected, Ok(true)) || chains.submitted_since(from) != ["kept-keptboth"] {
+        failures.push(format!(
+            "the kept rotation is exchanged: {connected:?}, sent {:?}",
+            chains.submitted_since(from)
+        ));
+    }
+    for written in [key.as_str(), singleton] {
+        if chains.stored(written) != rotated || chains.pending(written).is_some() {
+            failures.push(format!(
+                "{written} holds {} (expected {rotated}), kept {}",
+                chains.stored(written),
+                chains.pending(written).is_some()
+            ));
+        }
+    }
+    assert!(failures.is_empty(), "{failures:#?}");
+}
+
 /// A deletion whose end its process could not record, in a process that
 /// stays alive, does not hold the key for every other process for as long
 /// as it lives: that process settles it at its next connection, whatever

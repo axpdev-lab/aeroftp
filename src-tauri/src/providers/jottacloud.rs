@@ -1842,7 +1842,10 @@ impl JottacloudProvider {
             // A kept rotation's source that still holds the chain handed out
             // holds the token this exchange consumes: it is written with the
             // profile's key, so its reader (an unbound CLI) is not left with
-            // it. Holding another chain, it is only checked.
+            // it. So is a source whose own kept rotation is that same chain,
+            // filed on what the source still holds: that source's reader would
+            // be handed the consumed chain next. Holding another chain, it is
+            // only checked.
             let source_written = account != own
                 || depends_on.as_deref().is_some_and(|source| {
                     let source_now = crate::credential_store::off_async_worker(|| {
@@ -1850,7 +1853,19 @@ impl JottacloudProvider {
                             Self::stored_token_now(&store, self.credential_user, source)
                         })
                     });
-                    let holds = source_now.as_deref() == Some(rt.as_str());
+                    let kept_there = self.rotation_owner.is_some_and(|owner| {
+                        PENDING_ROTATIONS
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .get(&(owner, source.to_string()))
+                            .and_then(|json| serde_json::from_str::<serde_json::Value>(json).ok())
+                            .is_some_and(|filed| {
+                                filed["refresh_token"].as_str() == Some(rt.as_str())
+                                    && source_now.is_some()
+                                    && filed[PENDING_BASE].as_str() == source_now.as_deref()
+                            })
+                    });
+                    let holds = source_now.as_deref() == Some(rt.as_str()) || kept_there;
                     if let Some(source_now) = source_now.filter(|_| holds) {
                         self.stored_tokens
                             .lock()
