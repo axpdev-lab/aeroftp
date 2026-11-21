@@ -4873,7 +4873,9 @@ fn nonprofile_secret_owner(conn: &Connection) -> Result<Option<i64>, String> {
 /// [`nonprofile_secret_owner`] on a connection that may be read-only: the
 /// owner not yet persisted is the one the first writer would persist, and is
 /// returned without storing it.
-fn nonprofile_secret_owner_unpersisted(conn: &Connection) -> Result<Option<i64>, String> {
+pub(crate) fn nonprofile_secret_owner_unpersisted(
+    conn: &Connection,
+) -> Result<Option<i64>, String> {
     nonprofile_secret_owner_in(conn, false)
 }
 

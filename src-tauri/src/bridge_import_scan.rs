@@ -368,6 +368,28 @@ fn ids(profiles: &[serde_json::Value]) -> impl Iterator<Item = String> + '_ {
         .map(str::to_string)
 }
 
+/// The profile ids that may hold what a scan with no account wrote, to the
+/// vault alone: the legacy list while no account exists; once accounts
+/// exist, the legacy owner's list (the account the legacy vault went to)
+/// and the legacy list too, which keeps more and never removes a profile
+/// either of them lists. A legacy owner that cannot be read refuses, so the
+/// settle is retried.
+fn legacy_listed(store: &CredentialStore, conn: &Connection) -> Result<Vec<String>, String> {
+    let mut listed: Vec<String> = match store.get("config_server_profiles") {
+        Ok(raw) => ids(&serde_json::from_str::<Vec<serde_json::Value>>(&raw)
+            .map_err(|e| format!("Read the saved profiles: {e}"))?)
+        .collect(),
+        Err(CredentialError::NotFound(_)) => Vec::new(),
+        Err(e) => return Err(format!("Read the saved profiles: {e}")),
+    };
+    if let Some(owner) = crate::user_partitions::nonprofile_secret_owner_unpersisted(conn)? {
+        let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
+        let profiles = crate::user_partitions::list_server_profiles_for(conn, &root_key, owner)?;
+        listed.extend(ids(&profiles));
+    }
+    Ok(listed)
+}
+
 /// Whether account `user` still exists. Account ids are never reused, so one
 /// that does not names an account that was deleted.
 fn exists(conn: &Connection, user: i64) -> Result<bool, String> {
@@ -572,16 +594,9 @@ fn settle_ledger(store: &CredentialStore, id: &str) -> Result<(), String> {
                 crate::user_partitions::list_server_profiles_for(&conn, &root_key, user)?;
             (Owner::Account(user), ids(&profiles).collect())
         }
-        // The account was deleted: its rows went with it, and no list of it
-        // holds a profile any more.
-        Some(_) => (Owner::VaultOnly, Vec::new()),
-        None => (
-            Owner::VaultOnly,
-            ids(&crate::user_partitions::mcp_list_active_server_profiles(
-                store,
-            )?)
-            .collect(),
-        ),
+        // The account was deleted: its rows went with it, and what stays is
+        // in the vault, which the legacy owner reads.
+        Some(_) | None => (Owner::VaultOnly, legacy_listed(store, &conn)?),
     };
     let key = mac_key(store);
     let mut settled = Vec::new();

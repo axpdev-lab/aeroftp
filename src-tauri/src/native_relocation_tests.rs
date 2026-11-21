@@ -2459,6 +2459,64 @@ fn a_scan_of_a_deleted_account_takes_back_its_vault_copy() {
     assert_eq!(ledger_rows(&scan_id), Vec::new(), "and the ledger with it");
 }
 
+/// A scan that began with no account wrote to the vault alone. Settled once
+/// accounts exist, it keeps what the legacy owner, the account the legacy
+/// vault went to, lists, whichever account is active then; what nobody
+/// lists goes.
+#[test]
+fn a_scan_with_no_account_keeps_what_the_legacy_owner_lists() {
+    if !in_isolated_child("a_scan_with_no_account_keeps_what_the_legacy_owner_lists") {
+        return;
+    }
+    let _test = test_lock();
+    CredentialStore::init().unwrap();
+    let store = CredentialStore::from_cache().unwrap();
+    assert_eq!(active_user_for_save(), Ok(None), "no account yet");
+    let runtime = bridge_runtime();
+    let imported = scan_ftp_remotes(&runtime, &["kept", "dropped"]).unwrap();
+    assert_eq!(imported["importedUserId"], Value::Null);
+    let (kept, dropped) = (
+        scanned_id(&imported, "kept"),
+        scanned_id(&imported, "dropped"),
+    );
+    let (kept_password, dropped_password) = (format!("server_{kept}"), format!("server_{dropped}"));
+    assert_eq!(vault_value(&kept_password).as_deref(), Some("ftp-secret"));
+    assert_eq!(
+        vault_value(&dropped_password).as_deref(),
+        Some("ftp-secret")
+    );
+    crate::bridge_import_scan::forget_live_scans();
+
+    // The first account takes the legacy vault and lists the profile the
+    // confirm saved; another account is active when the scan is settled.
+    init_or_migrate_cli(&store).unwrap();
+    let mut conn = open_or_init_cli().unwrap();
+    let root_key = store.derive_user_partition_wrapping_key();
+    let owner = nonprofile_secret_owner_unpersisted(&conn).unwrap().unwrap();
+    replace_server_profiles_for(
+        &mut conn,
+        &root_key,
+        owner,
+        &[json!({"id": kept, "name": "kept", "protocol": "ftp", "host": "ftp.example.test", "port": 21, "username": "demo"})],
+    )
+    .unwrap();
+    let other = create_user(&mut conn, &root_key, "Other", None, None, None).unwrap();
+    cli_set_active_user(&store, other.id).unwrap();
+    store.store("config_server_profiles", "[]").unwrap();
+
+    settle_scan(&runtime, None).unwrap();
+    assert_eq!(
+        vault_value(&kept_password).as_deref(),
+        Some("ftp-secret"),
+        "the legacy owner's profile keeps its password"
+    );
+    assert_eq!(
+        vault_value(&dropped_password),
+        None,
+        "a profile nobody lists loses it"
+    );
+}
+
 /// A session save is whole or not made. For the legacy owner, whose session
 /// is a vault key and its row, a row the account store refuses puts the
 /// vault key back as it was: an import reported as not restored leaves no
