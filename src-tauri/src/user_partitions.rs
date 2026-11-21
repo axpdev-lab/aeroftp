@@ -3661,6 +3661,17 @@ pub(crate) fn signed_in_row(
     Ok(row.is_some_and(|(blob, nonce, digest)| credential_blob_digest(&blob, &nonce) == digest))
 }
 
+/// Removes the sign-in stamp of `credential_id` of `user_id`, if any, in the
+/// caller's transaction.
+fn forget_sign_in(conn: &Connection, user_id: i64, credential_id: &str) -> Result<(), String> {
+    conn.execute(
+        "DELETE FROM private_token_sign_ins WHERE user_id = ?1 AND credential_id = ?2",
+        params![user_id, credential_id],
+    )
+    .map(|_| ())
+    .map_err(|e| format!("Forget sign-in stamp: {e}"))
+}
+
 /// Stamps the row `credential_id` of `user_id`, as it is now, as written by
 /// that account's own sign-in: in the caller's transaction, the one that
 /// wrote the row.
@@ -7471,6 +7482,9 @@ pub struct CredentialSnapshot {
     vault: Option<Zeroizing<String>>,
     partition: Option<Zeroizing<String>>,
     credential_type: Option<String>,
+    /// Whether the account's own sign-in stamped the partition row, so a
+    /// restore of it puts the stamp back with it.
+    signed_in: bool,
 }
 
 /// Read what `credential_id` holds now, in both places a dual write reaches. An
@@ -7490,10 +7504,20 @@ pub fn snapshot_credential_for_user(
         )
         .optional()
         .map_err(|e| format!("Read credential type: {e}"))?;
+    // The row and its stamp from one read of its bytes.
+    let (partition, signed_in) =
+        match get_user_credential_and_digest_for(&conn, &root_key, user_id, credential_id)? {
+            Some((row, digest)) => (
+                Some(row),
+                stamp_matches(&conn, user_id, credential_id, &digest)?,
+            ),
+            None => (None, false),
+        };
     Ok(CredentialSnapshot {
         vault: get_optional_secret(store, credential_id)?,
-        partition: get_user_credential_for(&conn, &root_key, user_id, credential_id)?,
+        partition,
         credential_type,
+        signed_in,
     })
 }
 
@@ -7575,6 +7599,13 @@ pub fn restore_credential_op_for_user(
             )?
             .ok_or_else(|| format!("No credential type for {credential_id}"))?;
             set_user_credential_for(&tx, &root_key, user_id, credential_id, &kind, value)?;
+            // The value goes back as it was held: stamped by the account's own
+            // sign-in, or not, never stamped by the restore itself.
+            if before.signed_in {
+                stamp_sign_in(&tx, user_id, credential_id)?;
+            } else {
+                forget_sign_in(&tx, user_id, credential_id)?;
+            }
         }
         RollbackAction::Delete => delete_user_credential_for(&tx, user_id, credential_id)?,
     }

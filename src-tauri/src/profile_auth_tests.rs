@@ -2581,3 +2581,53 @@ fn a_sign_in_two_other_accounts_hold_is_refused_and_writes_nothing() {
     assert_eq!(row(active), None);
     assert!(store.get(key).is_err(), "no vault key");
 }
+
+/// Undoing an import write puts a private row back as it was held: one the
+/// account's own sign-in stamped comes back stamped, so the readers and the
+/// alignment keep taking it for the account's own, and one that was not
+/// stamped comes back unstamped.
+#[test]
+fn a_rollback_puts_a_rows_sign_in_stamp_back_with_it() {
+    if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+        "profile_auth::tests::a_rollback_puts_a_rows_sign_in_stamp_back_with_it",
+    ) {
+        return;
+    }
+    let _guard = users::test_lock();
+    let (store, _, others) = isolated_accounts(1);
+    let other = others[0];
+    hold_profiles(&store, other, &["p", "q"]);
+    let (stamped, unstamped) = ("oauth_dropbox_p", "oauth_dropbox_q");
+    users::store_signed_in_credential_for_user(&store, other, stamped, "oauth", "mine").unwrap();
+    users::store_imported_credential_for_user(&store, other, unstamped, Some("oauth"), "copied")
+        .unwrap();
+    let conn = users::open_or_init_cli().unwrap();
+    let root = zeroize::Zeroizing::new(store.derive_user_partition_wrapping_key());
+    for (key, held, signed_in) in [(stamped, "mine", true), (unstamped, "copied", false)] {
+        assert_eq!(users::signed_in_row(&conn, other, key).unwrap(), signed_in);
+        let before = users::snapshot_credential_for_user(&store, other, key).unwrap();
+        users::store_imported_credential_for_user(&store, other, key, Some("oauth"), "file-value")
+            .unwrap();
+        users::restore_credential_for_user(
+            &store,
+            other,
+            key,
+            Some("oauth"),
+            "file-value",
+            &before,
+        )
+        .unwrap();
+        assert_eq!(
+            users::get_user_credential_for(&conn, &root, other, key)
+                .unwrap()
+                .as_deref()
+                .map(|value| value.as_str()),
+            Some(held)
+        );
+        assert_eq!(
+            users::signed_in_row(&conn, other, key).unwrap(),
+            signed_in,
+            "{key} came back with another sign-in stamp than it had"
+        );
+    }
+}
