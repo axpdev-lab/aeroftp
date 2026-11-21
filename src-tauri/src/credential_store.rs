@@ -4459,7 +4459,24 @@ mod vault_lock_tests {
                     blank(&mut out, at, at + end);
                     at += end;
                 } else if rest.starts_with(b"/*") {
-                    let end = source[at + 2..].find("*/").map_or(rest.len(), |e| e + 4);
+                    // Block comments nest in Rust: the comment ends at the
+                    // `*/` that closes the first `/*`.
+                    let mut depth = 0;
+                    let mut end = 0;
+                    while end < rest.len() {
+                        if rest[end..].starts_with(b"/*") {
+                            depth += 1;
+                            end += 2;
+                        } else if rest[end..].starts_with(b"*/") {
+                            depth -= 1;
+                            end += 2;
+                            if depth == 0 {
+                                break;
+                            }
+                        } else {
+                            end += 1;
+                        }
+                    }
                     blank(&mut out, at, at + end);
                     at += end;
                 } else if rest[0] == b'r' && rest.get(1).is_some_and(|&b| b == b'"' || b == b'#') {
@@ -4535,6 +4552,42 @@ mod vault_lock_tests {
                 })
                 .collect()
         }
+        /// How many times `call` appears in the code of `source`, and how many
+        /// of them run off the worker: comments and strings are no calls.
+        fn calls(source: &str, call: &str) -> (usize, usize) {
+            let code = code_only(source);
+            let spans = worker_spans(source);
+            let all = code.matches(call).count();
+            let off = code
+                .match_indices(call)
+                .filter(|(at, _)| spans.iter().any(|span| span.contains(at)))
+                .count();
+            (all, off)
+        }
+        // The count: a name in a string or in a nested comment is no call,
+        // and a real call on the calling thread is still one.
+        let clock = "deletion_clock()";
+        assert_eq!(
+            calls(
+                "off_async_worker(|| deletion_clock()); log(\"deletion_clock()\")",
+                clock
+            ),
+            (1, 1)
+        );
+        assert_eq!(
+            calls(
+                "/* a /* b */ deletion_clock() */ off_async_worker(|| deletion_clock())",
+                clock
+            ),
+            (1, 1)
+        );
+        assert_eq!(
+            calls(
+                "deletion_clock(); off_async_worker(|| deletion_clock())",
+                clock
+            ),
+            (2, 1)
+        );
         // The scanner itself: a value computed before the closure is not off
         // the worker, and a parenthesis in a comment or a string is not code.
         assert!(worker_spans("off_async_worker({ let r = read(); move || r })").is_empty());
@@ -4596,7 +4649,7 @@ mod vault_lock_tests {
         }
         // A connection's reads of the partition database and the vault run off
         // the worker: every call of each is the closure handed to it.
-        for (signature, calls) in [
+        for (signature, expected) in [
             (
                 "async fn connect(&mut self) -> Result<(), ProviderError> {",
                 &["self.bind_credential_owner()", "self.begin_login_chain()"][..],
@@ -4614,13 +4667,8 @@ mod vault_lock_tests {
             ),
         ] {
             let connection = body(jotta, signature);
-            let spans = worker_spans(connection);
-            for call in calls {
-                let all = connection.matches(call).count();
-                let off = connection
-                    .match_indices(call)
-                    .filter(|(at, _)| spans.iter().any(|span| span.contains(at)))
-                    .count();
+            for call in expected {
+                let (all, off) = calls(connection, call);
                 assert!(all > 0, "{signature}: {call} not found");
                 assert_eq!(off, all, "{signature}: {call} runs on the async worker");
             }
