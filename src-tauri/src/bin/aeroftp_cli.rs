@@ -13991,6 +13991,37 @@ fn unlock_vault(cli: &Cli, asking: Asking) -> Result<(), String> {
     Ok(())
 }
 
+/// True when an AeroVault repair report leaves damaged chunks unrepaired, in a
+/// real run or a dry run. `vault repair` then exits non-zero after printing it.
+fn vault_repair_left_damage(report: &serde_json::Value) -> bool {
+    let count = |key: &str| report.get(key).and_then(|v| v.as_u64()).unwrap_or(0);
+    count("repaired") < count("damaged")
+}
+
+#[cfg(test)]
+mod vault_repair_exit_tests {
+    use super::vault_repair_left_damage;
+    use serde_json::json;
+
+    #[test]
+    fn a_repair_that_leaves_damage_is_a_failure() {
+        for dry_run in [false, true] {
+            assert!(vault_repair_left_damage(
+                &json!({"repaired": 0, "damaged": 3, "dry_run": dry_run})
+            ));
+            assert!(vault_repair_left_damage(
+                &json!({"repaired": 2, "damaged": 3, "dry_run": dry_run})
+            ));
+            assert!(!vault_repair_left_damage(
+                &json!({"repaired": 3, "damaged": 3, "dry_run": dry_run})
+            ));
+            assert!(!vault_repair_left_damage(
+                &json!({"repaired": 0, "damaged": 0, "dry_run": dry_run})
+            ));
+        }
+    }
+}
+
 #[cfg(test)]
 mod vault_once_tests {
     use super::{vault_once, Asking};
@@ -81941,7 +81972,14 @@ async fn main() {
                                         }
                                     }
                                 }
-                                0
+                                // Damage that stays after the run is a failure
+                                // for a script, as the crate's error was before
+                                // the GUI summary for it.
+                                if vault_repair_left_damage(&report) {
+                                    1
+                                } else {
+                                    0
+                                }
                             }
                             Err(e) => {
                                 print_error(format, &e, 1);

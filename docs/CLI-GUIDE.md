@@ -1435,7 +1435,8 @@ aeroftp-cli vault info myvault.aerovault --json   # has_error_correction: true, 
 # Scrub (returns checked + damaged list + the parity source repair would use)
 aeroftp-cli vault scrub myvault.aerovault
 
-# Repair (honest: "repaired R of D" or "vault left untouched"; --dry-run preview)
+# Repair (honest: "repaired R of D" or "vault left untouched"; --dry-run preview).
+# Exits 1 while any damaged chunk stays unrepaired, in a dry run as well.
 aeroftp-cli vault repair myvault.aerovault --dry-run
 aeroftp-cli vault repair myvault.aerovault
 ```
