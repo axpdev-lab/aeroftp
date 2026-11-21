@@ -2517,6 +2517,70 @@ fn a_scan_with_no_account_keeps_what_the_legacy_owner_lists() {
     );
 }
 
+/// A build that cannot remove a Proton session (one without native Proton)
+/// keeps its ledger entry for a build that can, and settles the rest
+/// without an error; the next settle in a build that can removes it.
+#[test]
+fn a_proton_entry_waits_for_a_build_that_can_remove_it() {
+    use std::sync::atomic::Ordering::SeqCst;
+    if !in_isolated_child("a_proton_entry_waits_for_a_build_that_can_remove_it") {
+        return;
+    }
+    let accounts = Accounts::open();
+    let runtime = bridge_runtime();
+    let conf = tempfile::NamedTempFile::new().unwrap();
+    let pass = crate::rclone_import::obscure_password("ftp-secret").unwrap();
+    std::fs::write(
+        conf.path(),
+        format!(
+            concat!(
+                "[pd]\ntype = protondrive\nusername = scan@example.test\n",
+                "client_uid = waiting-uid\nclient_access_token = access-1\n",
+                "client_refresh_token = refresh-1\nclient_salted_key_pass = a2V5LXBhc3N3b3JkLTE=\n",
+                "[files]\ntype = ftp\nhost = ftp.example.test\nuser = demo\npass = {pass}\n",
+            ),
+            pass = pass
+        ),
+    )
+    .unwrap();
+    let imported = runtime
+        .block_on(crate::bridge_commands::import_bridge_config(
+            "rclone".into(),
+            conf.path().to_string_lossy().into_owned(),
+            None,
+        ))
+        .unwrap();
+    let scan_id = imported["scanId"].as_str().unwrap().to_string();
+    let (pd, password) = (
+        scanned_id(&imported, "pd"),
+        format!("server_{}", scanned_id(&imported, "files")),
+    );
+    let uid = || {
+        vault::load_session(accounts.owners_owner(), Some(&pd))
+            .unwrap()
+            .map(|session| session.tokens.uid)
+    };
+    assert_eq!(uid().as_deref(), Some("waiting-uid"));
+
+    crate::bridge_import_scan::PROTON_UNAVAILABLE.store(true, SeqCst);
+    let settled = settle_scan(&runtime, Some(&scan_id));
+    crate::bridge_import_scan::PROTON_UNAVAILABLE.store(false, SeqCst);
+    settled.unwrap();
+    assert_eq!(vault_value(&password), None, "the rest is settled");
+    let rows = ledger_rows(&scan_id);
+    assert_eq!(
+        rows.len(),
+        2,
+        "the header and the Proton entry stay: {rows:#?}"
+    );
+    assert!(rows[0].1.contains("\"proton_session\""), "{rows:#?}");
+    assert_eq!(uid().as_deref(), Some("waiting-uid"));
+
+    settle_scan(&runtime, None).unwrap();
+    assert_eq!(uid(), None, "a build that can remove it does");
+    assert_eq!(ledger_rows(&scan_id), Vec::new());
+}
+
 /// A session save is whole or not made. For the legacy owner, whose session
 /// is a vault key and its row, a row the account store refuses puts the
 /// vault key back as it was: an import reported as not restored leaves no

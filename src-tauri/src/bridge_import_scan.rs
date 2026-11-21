@@ -411,6 +411,28 @@ enum Owner {
     VaultOnly,
 }
 
+/// What became of one write of a scan a settle looked at.
+#[derive(Debug, PartialEq, Eq)]
+enum Discarded {
+    /// Removed, or no longer the scan's own to remove.
+    Done,
+    /// Left for a build that can remove it (a Proton session in a build
+    /// without native Proton), its entry kept for that build's settle.
+    #[cfg_attr(
+        all(feature = "proton-native", not(test)),
+        expect(
+            dead_code,
+            reason = "made only by a build without native Proton, and by its test stand-in"
+        )
+    )]
+    Deferred,
+}
+
+/// Plays a build without native Proton (test only).
+#[cfg(all(test, feature = "proton-native"))]
+pub(crate) static PROTON_UNAVAILABLE: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
 /// A writer of an account's row: the store, the account and the key.
 #[cfg(test)]
 pub(crate) type RowWriter = fn(&CredentialStore, i64, &str);
@@ -445,7 +467,7 @@ fn discard(
     key: &[u8; 32],
     owner: Owner,
     written: &Written,
-) -> Result<(), String> {
+) -> Result<Discarded, String> {
     #[cfg(test)]
     if DISCARD_REFUSED.load(std::sync::atomic::Ordering::SeqCst) {
         return Err("the removal was refused (test)".to_string());
@@ -479,7 +501,7 @@ fn discard(
                 }
             }
             discard_vault_key(store, &written.key, |value| mac(key, value) == written.mac)?;
-            Ok(())
+            Ok(Discarded::Done)
         }
         Kind::ProtonSession => discard_proton_session(store, key, owner, written),
     }
@@ -494,8 +516,12 @@ fn discard_proton_session(
     key: &[u8; 32],
     owner: Owner,
     written: &Written,
-) -> Result<(), String> {
+) -> Result<Discarded, String> {
     use crate::providers::proton_native::vault;
+    #[cfg(test)]
+    if PROTON_UNAVAILABLE.load(std::sync::atomic::Ordering::SeqCst) {
+        return Ok(Discarded::Deferred);
+    }
     let ours = |uid: &str| mac(key, uid) == written.mac;
     match owner {
         Owner::Account(user) => vault::discard_imported_session_blocking(
@@ -503,32 +529,33 @@ fn discard_proton_session(
             &written.profile,
             ours,
         )
-        .map(|_| ())
+        .map(|_| Discarded::Done)
         .map_err(|e| e.to_string()),
         Owner::VaultOnly => {
             discard_vault_key(store, &vault::session_key(Some(&written.profile)), |raw| {
                 vault::session_uid(raw).is_ok_and(|uid| ours(&uid))
             })?;
-            Ok(())
+            Ok(Discarded::Done)
         }
     }
 }
 
-/// [`discard`] of a Proton session in a build without native Proton: there
-/// is none it could read here.
+/// [`discard`] of a Proton session in a build without native Proton: it
+/// cannot be read here, so its entry waits for a build that can.
 #[cfg(not(feature = "proton-native"))]
 fn discard_proton_session(
     _store: &CredentialStore,
     _key: &[u8; 32],
     _owner: Owner,
     _written: &Written,
-) -> Result<(), String> {
-    Ok(())
+) -> Result<Discarded, String> {
+    Ok(Discarded::Deferred)
 }
 
 /// Settles the scan `id`: every write for a profile its account does not
 /// list goes, and the ledger with it. A write that could not be removed
-/// stays in the ledger for the next settle, and the error says so.
+/// stays in the ledger for the next settle, and the error says so; one only
+/// a build with native Proton can remove stays too, without an error.
 /// Whatever the outcome, this process no longer holds the scan: every
 /// caller is done with it, so a ledger left behind is settled again as an
 /// abandoned one.
@@ -608,7 +635,8 @@ fn settle_ledger(store: &CredentialStore, id: &str) -> Result<(), String> {
             continue;
         }
         match discard(store, &conn, &key, owner, &written) {
-            Ok(()) => settled.push(entry),
+            Ok(Discarded::Done) => settled.push(entry),
+            Ok(Discarded::Deferred) => kept = true,
             Err(error) => {
                 errors.push(format!("{}: {error}", written.key));
                 kept = true;
