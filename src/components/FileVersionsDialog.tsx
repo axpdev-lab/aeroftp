@@ -39,6 +39,9 @@ interface Props {
   fileName: string;
   onClose: () => void;
   onRestore?: () => void;
+  /** The file listing may be stale: a restore was sent and the server
+   * could not confirm it. The dialog stays open with its warning. */
+  onFilesChanged?: () => void;
 }
 
 /** The prefix the backend puts on an operation it sent and could not
@@ -49,7 +52,7 @@ const APPLIED_UNCONFIRMED = 'Applied, not confirmed:';
  * id (`current`, bound as `<file>:current`): it has no version to purge. */
 const isCurrentFileRow = (id: string) => id === 'current' || id.endsWith(':current');
 
-export function FileVersionsDialog({ generation, guiTarget, canPurge = false, canRestore = false, filePath, fileName, onClose, onRestore }: Props) {
+export function FileVersionsDialog({ generation, guiTarget, canPurge = false, canRestore = false, filePath, fileName, onClose, onRestore, onFilesChanged }: Props) {
   const t = useTranslation();
   const modalDrag = useDraggableModal();
   const [versions, setVersions] = useState<FileVersion[]>([]);
@@ -117,9 +120,12 @@ export function FileVersionsDialog({ generation, guiTarget, canPurge = false, ca
     } catch (err) {
       // A restore sent that the server cannot confirm is not a failure to retry: say so in the user's language.
       const message = String(err);
-      setActionError(message.includes(APPLIED_UNCONFIRMED)
+      const unconfirmed = message.includes(APPLIED_UNCONFIRMED);
+      setActionError(unconfirmed
         ? (t('versions.restoreUnconfirmed') || 'The restore was sent, but it could not be confirmed. Check the versions before restoring again.')
         : message);
+      // The file may hold the restored contents already: the pane lists it again too.
+      if (unconfirmed) onFilesChanged?.();
       // A refused or unconfirmed restore may still have changed the file: list again before another one.
       await loadVersions();
     } finally {
@@ -229,7 +235,7 @@ export function FileVersionsDialog({ generation, guiTarget, canPurge = false, ca
                             <RotateCcw size={13} />
                           </button>
                         )}
-                        {canPurge && !isCurrentFileRow(v.id) && (
+                        {canPurge && !isCurrentFileRow(v.id) && (i > 0 || v.deleted) && (
                         <button
                           onClick={() => setPendingPurge(v)}
                           disabled={ops.has(v.id)}

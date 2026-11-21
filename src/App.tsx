@@ -20722,6 +20722,7 @@ const App: React.FC = () => {
             fileName={versionsDialog.name}
             onClose={() => setVersionsDialog(null)}
             onRestore={() => { setVersionsDialog(null); loadRemoteFiles(undefined, true); }}
+            onFilesChanged={() => { void loadRemoteFiles(undefined, true); }}
           />
         )}
         {sharePermissionsDialog && (

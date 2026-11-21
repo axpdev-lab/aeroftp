@@ -301,4 +301,40 @@ describe('the Nextcloud trash manager commands', () => {
         host.remove();
         vi.clearAllMocks();
     });
+
+    it('carry it on the destructive commands too', async () => {
+        const host = document.createElement('div');
+        document.body.appendChild(host);
+        const root = createRoot(host);
+        tauri.invoke.mockImplementation((cmd: string) => Promise.resolve(cmd.includes('list') ? [ENTRY] : undefined));
+        const flush = () => act(async () => { await Promise.resolve(); await Promise.resolve(); });
+        const button = (label: string) => [...document.querySelectorAll('button')].find(b => b.textContent?.includes(label)) as HTMLButtonElement;
+        const click = (el: HTMLElement) => act(() => { el.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+        act(() => root.render(<NextcloudTrashManager generation={9} onClose={() => undefined} />));
+        await flush();
+        click(button('contextMenu.trashSelectAll'));
+        click(button('contextMenu.permanentDelete'));
+        await flush();
+        click(button('contextMenu.emptyTrash'));
+        await flush();
+        // The toolbar button only opens the confirmation: its own button,
+        // rendered after the toolbar, sends.
+        const emptyButtons = [...document.querySelectorAll('button')]
+            .filter(b => b.textContent?.includes('contextMenu.emptyTrash'));
+        expect(emptyButtons).toHaveLength(2);
+        expect(tauri.invoke.mock.calls.some(([cmd]) => cmd === 'webdav_empty_trash')).toBe(false);
+        const confirm = emptyButtons[1] as HTMLButtonElement;
+        click(confirm);
+        await flush();
+        const calls = tauri.invoke.mock.calls.filter(([cmd]) => String(cmd).startsWith('webdav_'));
+        expect(calls.map(([cmd]) => cmd)).toEqual([
+            'webdav_list_trash', 'webdav_delete_trash', 'webdav_list_trash', 'webdav_empty_trash', 'webdav_list_trash',
+        ]);
+        expect(calls.find(([cmd]) => cmd === 'webdav_delete_trash')?.[1]).toEqual({ ids: [ENTRY.id], generation: 9 });
+        expect(calls.find(([cmd]) => cmd === 'webdav_empty_trash')?.[1]).toEqual({ generation: 9 });
+        for (const [, args] of calls) expect(args).toMatchObject({ generation: 9 });
+        act(() => root.unmount());
+        host.remove();
+        vi.clearAllMocks();
+    });
 });

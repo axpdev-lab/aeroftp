@@ -223,13 +223,35 @@ it('FileVersionsDialog: a restore sent and not confirmed is shown in the user la
         throw 'Restore version failed: Applied, not confirmed: the restore of /f.txt was sent';
     });
     const onRestore = vi.fn();
-    await render(createElement(FileVersionsDialog, { generation: 7, guiTarget: 3, canRestore: true, filePath: '/f.txt', fileName: 'f.txt', onClose: vi.fn(), onRestore }));
+    const onFilesChanged = vi.fn();
+    const onClose = vi.fn();
+    await render(createElement(FileVersionsDialog, { generation: 7, guiTarget: 3, canRestore: true, filePath: '/f.txt', fileName: 'f.txt', onClose, onRestore, onFilesChanged }));
     await flush();
     await click(host.querySelector<HTMLButtonElement>('button[title*="Restore"]')!);
     await flush();
     expect(host.querySelector('[role="alert"]')?.textContent).toBe(english.translations.versions.restoreUnconfirmed);
     expect(onRestore).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    // The pane is listed again as well: the file may hold the restored contents.
+    expect(onFilesChanged).toHaveBeenCalledTimes(1);
     expect(sent).toEqual(['provider_list_versions', 'provider_restore_version', 'provider_list_versions']);
+});
+
+it('FileVersionsDialog: a restore the server refused leaves the pane alone', async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd) => {
+        if (cmd === 'provider_list_versions') return [
+            { id: 'v1', modified: null, size: 1, modified_by: null },
+            { id: 'v2', modified: null, size: 1, modified_by: null },
+        ];
+        throw 'Restore version failed: 403';
+    });
+    const onFilesChanged = vi.fn();
+    await render(createElement(FileVersionsDialog, { generation: 7, guiTarget: 3, canRestore: true, filePath: '/f.txt', fileName: 'f.txt', onClose: vi.fn(), onRestore: vi.fn(), onFilesChanged }));
+    await flush();
+    await click(host.querySelector<HTMLButtonElement>('button[title*="Restore"]')!);
+    await flush();
+    expect(host.querySelector('[role="alert"]')?.textContent).toBe('Restore version failed: 403');
+    expect(onFilesChanged).not.toHaveBeenCalled();
 });
 
 it('VersionBrowser: the guard stays busy until every restore finishes', async () => {
@@ -473,6 +495,23 @@ it('FileVersionsDialog: Purge is offered only where the provider deletes a versi
     await render(createElement(FileVersionsDialog, { generation: 8, guiTarget: 3, canPurge: true, filePath: '/f.txt', fileName: 'f.txt', onClose: vi.fn() }));
     await flush();
     expect(purges()).toEqual([0, 1]);
+});
+
+it('FileVersionsDialog: the live version on top is never offered for purge under a native id, a delete marker on top is', async () => {
+    let top: Record<string, unknown> = { id: 'v3', modified: null, size: 3, modified_by: null };
+    vi.mocked(invoke).mockImplementation(async (cmd) => {
+        if (cmd === 'provider_list_versions') return [top, { id: 'v2', modified: null, size: 2, modified_by: null }];
+        return {};
+    });
+    const purges = () => [...host.querySelectorAll('tbody tr')]
+        .map(row => row.querySelectorAll('button[title*="Permanently"]').length);
+    await render(createElement(FileVersionsDialog, { generation: 7, guiTarget: 3, canPurge: true, filePath: '/f.txt', fileName: 'f.txt', onClose: vi.fn() }));
+    await flush();
+    expect(purges()).toEqual([0, 1]);
+    top = { id: 'marker-4', modified: null, size: 0, modified_by: null, deleted: true };
+    await render(createElement(FileVersionsDialog, { generation: 8, guiTarget: 3, canPurge: true, filePath: '/f.txt', fileName: 'f.txt', onClose: vi.fn() }));
+    await flush();
+    expect(purges()).toEqual([1, 1]);
 });
 
 it('FileVersionsDialog: a deleted marker on top is Deleted, with no download and no restore', async () => {

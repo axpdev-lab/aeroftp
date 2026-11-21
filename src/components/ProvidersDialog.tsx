@@ -272,8 +272,8 @@ const ALL_PROVIDERS: ProviderFeatures[] = [
   { name: 'Nextcloud', logoId: 'nextcloud',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash', 'versioning'],
     advanced: [] },
-  // versioning omitted: Felicloud answers 404 on the Nextcloud versions endpoint
-  // (the versions app is off; measured 2026-11-16).
+  // versioning omitted: Felicloud answered 404 on the Nextcloud versions
+  // endpoint (measured 2026-11-16).
   { name: 'Felicloud', logoId: 'felicloud',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash'],
     advanced: [] },
