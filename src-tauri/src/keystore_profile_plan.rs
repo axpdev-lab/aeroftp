@@ -182,6 +182,14 @@ pub struct PlanInputs {
     /// the import wrote anything: what a failed step puts back in the vault
     /// when the receiver's writes leave it alone.
     pub local_vault: HashMap<String, Option<Zeroizing<String>>>,
+    /// The receiver's row of each key written through the vault (the row
+    /// that mirrors a vault value), as the import leaves it, read when the
+    /// plan was made: the restored partition's row when the import restores
+    /// one, this device's otherwise. `None` = no row; a key whose row could
+    /// not be read is not in the map. A decision replaces the row only while
+    /// it still holds this (or the vault section's value), so a token
+    /// refreshed while the import runs is kept.
+    pub receiver_rows: HashMap<String, Option<Zeroizing<String>>>,
     /// What bringing the backup's profiles to their safe state reset: a
     /// restore takes no relaxing option from the backup (CodeRabbit on #1524).
     pub security_reset: Vec<crate::profile_security::ProfileReset>,
@@ -706,6 +714,7 @@ mod tests {
             receiver: None,
             targets_restored_partition: false,
             local_vault: HashMap::new(),
+            receiver_rows: HashMap::new(),
             security_reset: Vec::new(),
         }
     }

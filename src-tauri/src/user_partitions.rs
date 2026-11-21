@@ -3867,20 +3867,44 @@ pub(crate) fn swap_user_credential_if(
     expected: Option<&str>,
     value: Option<&str>,
 ) -> Result<bool, String> {
+    swap_user_credential_if_one_of(
+        conn,
+        root_key,
+        user_id,
+        credential_id,
+        credential_type,
+        &[expected],
+        value,
+    )
+}
+
+/// [`swap_user_credential_if`] while the row holds any one of `expected`
+/// (each `None`: no row), in the same one transaction.
+pub(crate) fn swap_user_credential_if_one_of(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+    credential_id: &str,
+    credential_type: &str,
+    expected: &[Option<&str>],
+    value: Option<&str>,
+) -> Result<bool, String> {
     let root_secret = user_crypto::secret_key_from_bytes(root_key);
     with_user_dek(conn, &root_secret, user_id, |user_id, dek| {
         let tx =
             rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
                 .map_err(|e| format!("Begin conditional credential write: {e}"))?;
         let current = read_credential_with_dek(&tx, user_id, dek, credential_id)?;
-        let holds = match (current.as_ref().map(|v| v.as_str()), expected) {
-            (None, None) => true,
-            (Some(current), Some(expected)) => {
-                use subtle::ConstantTimeEq;
-                bool::from(current.as_bytes().ct_eq(expected.as_bytes()))
+        let holds = expected.iter().any(|expected| {
+            match (current.as_ref().map(|v| v.as_str()), expected) {
+                (None, None) => true,
+                (Some(current), Some(expected)) => {
+                    use subtle::ConstantTimeEq;
+                    bool::from(current.as_bytes().ct_eq(expected.as_bytes()))
+                }
+                _ => false,
             }
-            _ => false,
-        };
+        });
         if !holds {
             return Ok(false);
         }

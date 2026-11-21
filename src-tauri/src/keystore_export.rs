@@ -1403,6 +1403,11 @@ fn private_row_of(
 /// (`None`: absent), the one this import left there.
 type Expected<'a> = Option<Option<&'a str>>;
 
+/// What the row that mirrors a vault value must hold for a compare-and-write
+/// to replace it: nothing (the row is written whatever is there), or any one
+/// of the values listed (`None`: no row), the ones this import left there.
+type ExpectedRow<'a> = Option<&'a [Option<&'a str>]>;
+
 /// A write of [`write_profile_secret_if`] that failed, and whether its vault
 /// half had landed before the failure: a caller putting back what it wrote
 /// knows which value the vault holds.
@@ -1440,9 +1445,11 @@ impl SecretWriteError {
 /// With `expected`, the write is made only while the secret holds it where
 /// the receiver reads it ([`Expected`]). The private row is compared
 /// and written in one transaction, the vault under its write lock; the row
-/// that mirrors a vault value follows the vault. `Ok(false)`: another writer
-/// stored a value since (a token refreshed while the import ran), and
-/// nothing was written. A failure says whether the vault half had landed
+/// that mirrors a vault value is compared with `expected_row` and written in
+/// one transaction too, after the vault. `Ok(false)`: another writer stored
+/// a value since (a token refreshed while the import ran), and nothing was
+/// written: a mirror row rewritten since keeps its value, and the vault is
+/// put back to `expected`. A failure says whether the vault half had landed
 /// ([`SecretWriteError`]); the private row is one write, so it never has.
 fn write_profile_secret_if(
     store: &crate::credential_store::CredentialStore,
@@ -1450,6 +1457,7 @@ fn write_profile_secret_if(
     receiver: Option<Receiver>,
     key: &str,
     expected: Expected<'_>,
+    expected_row: ExpectedRow<'_>,
     value: Option<&str>,
 ) -> Result<bool, SecretWriteError> {
     #[cfg(test)]
@@ -1519,39 +1527,68 @@ fn write_profile_secret_if(
     if tests::secret_write_fails(key, tests::WriteStage::AfterVault) {
         return Err(SecretWriteError::after_vault("refused (test)".to_string()));
     }
+    #[cfg(test)]
+    tests::run_before_row_write(store, key);
     let conn = rusqlite::Connection::open(db)
         .map_err(|e| SecretWriteError::after_vault(format!("open {}: {e}", db.display())))?;
-    if let Some(v) = value {
-        let mut root_key = store.derive_user_partition_wrapping_key();
-        let written = crate::user_partitions::set_user_credential_for(
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let written = match (expected_row, value) {
+        (Some(expected_row), _) => crate::user_partitions::swap_user_credential_if_one_of(
+            &conn,
+            &root_key,
+            receiver.user_id,
+            key,
+            crate::user_partitions::relocate_secret_kind(key),
+            expected_row,
+            value,
+        ),
+        (None, Some(v)) => crate::user_partitions::set_user_credential_for(
             &conn,
             &root_key,
             receiver.user_id,
             key,
             crate::user_partitions::relocate_secret_kind(key),
             v,
-        );
-        root_key.zeroize();
-        match written {
-            Ok(()) => return Ok(true),
-            // A locked passphrase account cannot take the row; removing the
-            // old one lets the app fall back to the vault value just stored.
-            Err(e) if e == "USER_LOCKED" => tracing::warn!(
-                "Import: partition row {key} not writable (account locked); removed so the vault copy applies"
-            ),
-            // Any other failure is reported, so the caller puts back what it
-            // wrote: removing the row here would delete the user's own value
-            // and report the write as done.
-            Err(e) => {
-                return Err(SecretWriteError::after_vault(format!(
-                    "partition row not written: {e}"
-                )))
-            }
+        )
+        .map(|()| true),
+        (None, None) => {
+            crate::user_partitions::delete_user_credential_for(&conn, receiver.user_id, key)
+                .map(|()| true)
         }
+    };
+    root_key.zeroize();
+    match written {
+        Ok(true) => Ok(true),
+        // Rewritten since the import left it (a token refreshed meanwhile):
+        // the row keeps its value, and the vault the value it held, so the
+        // two do not part.
+        Ok(false) => {
+            if let Some(expected) = expected {
+                store.swap_secret_if(key, value, expected).map_err(|e| {
+                    SecretWriteError::after_vault(format!(
+                        "partition row rewritten since the import, and the vault copy could not be put back: {e}"
+                    ))
+                })?;
+            }
+            Ok(false)
+        }
+        // A locked passphrase account cannot take the row; removing the old
+        // one lets the app fall back to the vault value just stored.
+        Err(e) if e == "USER_LOCKED" => {
+            tracing::warn!(
+                "Import: partition row {key} not writable (account locked); removed so the vault copy applies"
+            );
+            crate::user_partitions::delete_user_credential_for(&conn, receiver.user_id, key)
+                .map(|()| true)
+                .map_err(SecretWriteError::after_vault)
+        }
+        // Any other failure is reported, so the caller puts back what it
+        // wrote: removing the row here would delete the user's own value and
+        // report the write as done.
+        Err(e) => Err(SecretWriteError::after_vault(format!(
+            "partition row not written: {e}"
+        ))),
     }
-    crate::user_partitions::delete_user_credential_for(&conn, receiver.user_id, key)
-        .map(|()| true)
-        .map_err(SecretWriteError::after_vault)
 }
 
 /// This device's active account and the ids of the profiles it lists, read
@@ -1739,6 +1776,13 @@ fn profile_plan_inputs(
     let mut local_secrets = HashMap::new();
     let mut backup_secrets = HashMap::new();
     let mut local_vault = HashMap::new();
+    let mut receiver_rows = HashMap::new();
+    // The partition the receiver's rows are in once the import has run.
+    let rows_conn = if restores_partition {
+        backup_conn.as_ref()
+    } else {
+        local_conn.as_ref()
+    };
     let mut failure = None;
     'keys: for profile in local.iter().chain(backup.iter().flatten()) {
         for key in keystore_profile_plan::secret_keys(profile) {
@@ -1795,6 +1839,17 @@ fn profile_plan_inputs(
                     .flatten()
                     .map(|v| Zeroizing::new(v.clone()))
             });
+            // The row that mirrors the vault value, where the receiver's write
+            // goes through the vault, as the import leaves it.
+            if let Some((conn, r)) = rows_conn.zip(receiver) {
+                if !private || r.legacy_owner {
+                    if let Ok(row) = crate::user_partitions::get_user_credential_for(
+                        conn, &root_key, r.user_id, &key,
+                    ) {
+                        receiver_rows.insert(key.clone(), row);
+                    }
+                }
+            }
             if let Some(v) = value {
                 backup_secrets.insert(key, v);
             }
@@ -1818,6 +1873,7 @@ fn profile_plan_inputs(
         receiver,
         targets_restored_partition: restores_partition,
         local_vault,
+        receiver_rows,
         security_reset,
     })
 }
@@ -1846,6 +1902,7 @@ type SnapshotSecret = (
     String,
     Option<Zeroizing<String>>,
     Option<Option<Zeroizing<String>>>,
+    Option<Vec<Option<Zeroizing<String>>>>,
 );
 
 /// What a failed profile step puts back: this device's state from before the
@@ -1918,12 +1975,25 @@ fn restore_profile_step(
 ) -> (Vec<String>, Vec<String>) {
     let mut failures = Vec::new();
     let mut kept = Vec::new();
-    for (key, value, landed) in &snapshot.secrets {
+    for (key, value, landed, row_landed) in &snapshot.secrets {
         let value = value.as_ref().map(|v| v.as_str());
         let expected = landed
             .as_ref()
             .map(|landed| landed.as_ref().map(|v| v.as_str()));
-        match write_profile_secret_if(store, db, snapshot.receiver, key, expected, value) {
+        let row_landed: Option<Vec<Option<&str>>> = row_landed.as_ref().map(|rows| {
+            rows.iter()
+                .map(|row| row.as_ref().map(|v| v.as_str()))
+                .collect()
+        });
+        match write_profile_secret_if(
+            store,
+            db,
+            snapshot.receiver,
+            key,
+            expected,
+            row_landed.as_deref(),
+            value,
+        ) {
             Ok(true) => {}
             Ok(false) => kept.push(key.clone()),
             Err(e) => failures.push(format!("{key}: {}", e.message)),
@@ -2020,7 +2090,21 @@ fn apply_profile_decisions(
             .filter(|_| private_row_of(db.as_deref(), inputs.receiver, key).is_none())
     };
     let before_of = |key: &str| inputs.local_secrets.get(key).cloned().flatten();
+    // What the row that mirrors a vault value may hold for a write to replace
+    // it: what the import left there, the row as the plan read it or the
+    // vault section's value (`landed`). Unconditional when the plan could not
+    // read the row.
+    let row_accepts = |key: &str, row_landed: Option<Option<Zeroizing<String>>>| {
+        let row = row_landed.or_else(|| inputs.receiver_rows.get(key).cloned())?;
+        Some(
+            std::iter::once(row)
+                .chain(in_vault_written(key).map(|v| Some(v.clone())))
+                .collect::<Vec<_>>(),
+        )
+    };
     let mut written: HashMap<String, Option<Zeroizing<String>>> = HashMap::new();
+    // The rows of the keys the step wrote whole, as it left them.
+    let mut written_row: HashMap<String, Option<Zeroizing<String>>> = HashMap::new();
 
     let applied = (|| -> Result<(), String> {
         for (key, value) in &outcome.secret_ops {
@@ -2035,6 +2119,12 @@ fn apply_profile_decisions(
             // Over what the vault section wrote only: another writer's value
             // since (a refresh) is this device's latest, and stays.
             let expected = vault_value.map(|v| Some(v.as_str()));
+            let accepted = expected.and_then(|_| row_accepts(key, None));
+            let accepted: Option<Vec<Option<&str>>> = accepted.as_ref().map(|rows| {
+                rows.iter()
+                    .map(|row| row.as_ref().map(|v| v.as_str()))
+                    .collect()
+            });
             // Recorded once it landed, also half way (the vault taken, the
             // row refused), so the rollback compares against what is there:
             // a write that failed before the vault changed left the vault
@@ -2046,10 +2136,12 @@ fn apply_profile_decisions(
                 inputs.receiver,
                 key,
                 expected,
+                accepted.as_deref(),
                 value,
             ) {
                 Ok(true) => {
                     written.insert(key.clone(), value.map(|v| Zeroizing::new(v.to_string())));
+                    written_row.insert(key.clone(), value.map(|v| Zeroizing::new(v.to_string())));
                 }
                 Ok(false) => tracing::info!(
                     "Keystore import: {key} was rewritten during the import and kept"
@@ -2099,7 +2191,12 @@ fn apply_profile_decisions(
                     None => return None,
                 },
             };
-            Some((key.clone(), before_of(key), landed))
+            // The row: as the step left it, else as the plan read it.
+            let row_landed = landed
+                .is_some()
+                .then(|| row_accepts(key, written_row.get(key).cloned()))
+                .flatten();
+            Some((key.clone(), before_of(key), landed, row_landed))
         })
         .collect();
     let vault = if reads_vault_tokens(inputs.receiver) {
@@ -3136,7 +3233,7 @@ mod tests {
         key: &str,
         value: Option<&str>,
     ) -> Result<(), String> {
-        write_profile_secret_if(store, db, receiver, key, None, value)
+        write_profile_secret_if(store, db, receiver, key, None, None, value)
             .map(drop)
             .map_err(|e| e.message)
     }
@@ -3183,6 +3280,37 @@ mod tests {
         hook: impl FnOnce(&crate::credential_store::CredentialStore) + 'static,
     ) {
         BEFORE_PROFILE_DECISIONS.with(|slot| *slot.borrow_mut() = Some(Box::new(hook)));
+    }
+
+    thread_local! {
+        /// Runs once, in the next write of the key named, between its vault
+        /// write and the write of the row that mirrors it.
+        static BEFORE_ROW_WRITE: std::cell::RefCell<Option<(String, StoreHook)>> =
+            std::cell::RefCell::new(None);
+    }
+
+    pub(super) fn run_before_row_write(
+        store: &crate::credential_store::CredentialStore,
+        key: &str,
+    ) {
+        let hook = BEFORE_ROW_WRITE.with(|slot| {
+            let mut slot = slot.borrow_mut();
+            if slot.as_ref().is_some_and(|(named, _)| named == key) {
+                slot.take().map(|(_, hook)| hook)
+            } else {
+                None
+            }
+        });
+        if let Some(hook) = hook {
+            hook(store);
+        }
+    }
+
+    fn before_row_write(
+        key: &str,
+        hook: impl FnOnce(&crate::credential_store::CredentialStore) + 'static,
+    ) {
+        BEFORE_ROW_WRITE.with(|slot| *slot.borrow_mut() = Some((key.to_string(), Box::new(hook))));
     }
 
     /// The producer half of the exit-code contract.
@@ -5370,6 +5498,97 @@ mod tests {
         assert!(error.contains("disk full"), "{error}");
         assert_eq!(store.get(absent).unwrap(), "drive-refreshed");
         assert_eq!(store.get(carried).unwrap(), "yard-refreshed");
+    }
+
+    /// The legacy owner's row that mirrors its vault token is replaced by a
+    /// decision only while it holds what the import left there: a refresh
+    /// that rewrites the row while the import runs (before the step, or
+    /// between its vault write and its row write) is kept, and the vault keeps
+    /// the value it held, so the two do not part. Without a refresh both take
+    /// the decision's value.
+    #[test]
+    fn a_decision_keeps_the_owners_row_refreshed_while_the_import_runs() {
+        #[derive(Debug, Clone, Copy)]
+        enum Refresh {
+            None,
+            BeforeTheStep,
+            BetweenVaultAndRow,
+        }
+        for refresh in [
+            Refresh::None,
+            Refresh::BeforeTheStep,
+            Refresh::BetweenVaultAndRow,
+        ] {
+            let _guard = crate::user_partitions::test_lock();
+            crate::user_partitions::clear_user_session();
+            let dir = tempfile::tempdir().unwrap();
+            let store = throwaway_store(dir.path(), "vault.db");
+            let cfg = dir.path().join("config");
+            let key = "oauth_dropbox_srv_drive";
+            partition_with(&store, &cfg, &[dropbox("srv_drive", "Drive")]);
+            store.store(key, "local-token").unwrap();
+            set_partition_secret(&store, &cfg, key, "local-token");
+            let db = cfg.join("user_partitions.db");
+            let owner = active_receiver(&db).unwrap();
+            assert!(owner.legacy_owner);
+            let mut payload = ExportPayload::default();
+            payload.vault_entries.insert(
+                "config_server_profiles".to_string(),
+                serde_json::to_string(&[dropbox("srv_drive", "Drive B")]).unwrap(),
+            );
+            payload
+                .vault_entries
+                .insert(key.to_string(), "backup-token".to_string());
+            let backup = dir.path().join("vault.aeroftp-keystore");
+            seal_backup(&backup, PASSWORD_736, &payload);
+            let refresh_row = move |store: &crate::credential_store::CredentialStore| {
+                let conn = rusqlite::Connection::open(&db).unwrap();
+                let root = Zeroizing::new(store.derive_user_partition_wrapping_key());
+                assert!(
+                    crate::user_partitions::replace_user_credential_if_unchanged(
+                        &conn,
+                        &root,
+                        owner.user_id,
+                        key,
+                        "oauth",
+                        ("local-token", "refreshed-token"),
+                        false,
+                    )
+                    .unwrap()
+                );
+            };
+            match refresh {
+                Refresh::None => {}
+                Refresh::BeforeTheStep => before_profile_decisions(refresh_row),
+                Refresh::BetweenVaultAndRow => before_row_write(key, refresh_row),
+            }
+
+            let result = import_deciding(
+                &store,
+                &cfg,
+                &backup,
+                VAULT_ONLY,
+                &[decide(
+                    "srv_drive",
+                    keystore_profile_plan::ProfileDecision::Reject,
+                )],
+            );
+            assert!(
+                result.profile_decisions_error.is_none(),
+                "{refresh:?}: {:?}",
+                result.profile_decisions_error
+            );
+            let (row, vault) = match refresh {
+                Refresh::None => ("local-token", "local-token"),
+                _ => ("refreshed-token", "backup-token"),
+            };
+            assert_eq!(
+                row_in(&store, &cfg, owner.user_id, key).as_deref(),
+                Some(row),
+                "{refresh:?}"
+            );
+            assert_eq!(store.get(key).unwrap(), vault, "{refresh:?}");
+        }
     }
 
     /// A decision's write that fails before the vault changed is not counted
