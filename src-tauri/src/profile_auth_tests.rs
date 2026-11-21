@@ -2544,3 +2544,39 @@ fn github_readiness_reads_one_account_for_its_profile_and_credential() {
     })));
     assert_eq!(saved_github_readiness(&store, "gh", None, None), "valid");
 }
+
+/// A sign-in of a private token whose profile two accounts hold, while a
+/// third one is active, is refused through `store_profile_credential` and
+/// writes nothing: neither holder's row and no vault key.
+#[test]
+fn a_sign_in_two_other_accounts_hold_is_refused_and_writes_nothing() {
+    if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+        "profile_auth::tests::a_sign_in_two_other_accounts_hold_is_refused_and_writes_nothing",
+    ) {
+        return;
+    }
+    let _guard = users::test_lock();
+    let (store, _owner, others) = isolated_accounts(3);
+    let (first, second, active) = (others[0], others[1], others[2]);
+    let conn = users::open_or_init_cli().unwrap();
+    let root = zeroize::Zeroizing::new(store.derive_user_partition_wrapping_key());
+    let key = "oauth_box_owned";
+    for (user, token) in [(first, "first-token"), (second, "second-token")] {
+        hold_profiles(&store, user, &["owned"]);
+        users::set_user_credential_for(&conn, &root, user, key, "oauth", token).unwrap();
+    }
+    users::set_active_user(&conn, active).unwrap();
+    let row = |user: i64| {
+        users::get_user_credential_for(&conn, &root, user, key)
+            .unwrap()
+            .map(|value| value.to_string())
+    };
+
+    let refused =
+        users::store_profile_credential(&store, "owned", key, Some("oauth"), "x").unwrap_err();
+    assert!(refused.starts_with(users::ACCOUNT_CHANGED), "{refused}");
+    assert_eq!(row(first).as_deref(), Some("first-token"));
+    assert_eq!(row(second).as_deref(), Some("second-token"));
+    assert_eq!(row(active), None);
+    assert!(store.get(key).is_err(), "no vault key");
+}
