@@ -1970,6 +1970,62 @@ mod tests {
         }
     }
 
+    /// A listing whose second page is named outside the instance fails
+    /// whole after a first page with an entry: the entry read is not
+    /// returned as the folder's listing. A second page on the instance is
+    /// read and both pages are listed.
+    #[tokio::test]
+    async fn a_listing_with_an_invalid_continuation_fails_whole() {
+        use axum::response::IntoResponse;
+        let app = axum::Router::new().fallback(axum::routing::any(
+            |uri: axum::http::Uri| async move {
+                let doc = |id: &str, name: &str| {
+                    serde_json::json!({"id": id, "attributes": {"type": "file", "name": name, "size": 1}})
+                };
+                let query = uri.query().unwrap_or_default().to_string();
+                let body = match uri.path() {
+                    "/files/bad" => serde_json::json!({"included": [doc("A", "a.txt")],
+                        "links": {"next": "https://evil.example/files/bad?page[cursor]=c2"}}),
+                    "/files/good" if query.contains("c2") => {
+                        serde_json::json!({"included": [doc("B", "b.txt")], "links": {}})
+                    }
+                    "/files/good" => serde_json::json!({"included": [doc("A", "a.txt")],
+                        "links": {"next": "/files/good?page[cursor]=c2"}}),
+                    _ => return axum::http::StatusCode::NOT_FOUND.into_response(),
+                };
+                axum::Json(body).into_response()
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut p = TwakeProvider::new(TwakeConfig {
+            credentials: TwakeCredentials {
+                instance: format!("http://{addr}"),
+                client_id: "cid".into(),
+                client_secret: "s".into(),
+                registration_access_token: "r".into(),
+                refresh_token: "t".into(),
+            },
+            initial_path: None,
+        });
+        p.connected = true;
+        p.access_token = SecretString::from("live-token".to_string());
+        let bad = p.list_dir("bad").await;
+        let good = p.list_dir("good").await;
+        server.abort();
+        assert!(
+            matches!(&bad, Err(ProviderError::ServerError(m)) if m.contains("outside the configured API")),
+            "{bad:?}"
+        );
+        let names: Vec<String> = good
+            .expect("two pages")
+            .into_iter()
+            .map(|d| d.attributes.name)
+            .collect();
+        assert_eq!(names, ["a.txt", "b.txt"]);
+    }
+
     #[test]
     fn clone_for_transfer_requires_a_connection_and_shares_the_token() {
         let creds = TwakeCredentials {
