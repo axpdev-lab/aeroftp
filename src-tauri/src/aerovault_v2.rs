@@ -215,6 +215,19 @@ pub async fn vault_v2_extract_entry(
     // into a unique temp dir next to the destination, then move the produced file
     // onto `dest_path`, overwriting like v3's atomic write.
     if let Some(parent) = dest.parent() {
+        // A missing folder on the way is created below. A folder with a lock
+        // name would take the lock path of another vault and block its writers,
+        // so refuse it as the crate refuses it inside an extraction.
+        if let Some(name) = parent.components().find_map(|component| match component {
+            std::path::Component::Normal(name) => name
+                .to_str()
+                .filter(|name| crate::sync_exclude::is_vault_lock_name(name)),
+            _ => None,
+        }) {
+            return Err(format!(
+                "Cannot extract under {name}: that name is reserved for an AeroVault lock file"
+            ));
+        }
         if !parent.as_os_str().is_empty() {
             std::fs::create_dir_all(parent)
                 .map_err(|e| format!("Failed to create output directory: {}", e))?;
@@ -1378,6 +1391,30 @@ mod tests {
         .unwrap_err();
         assert!(error.contains("lock file"), "{error}");
         assert_eq!(std::fs::read(dest).unwrap(), b"existing lock");
+
+        // A missing folder with a lock name is refused and not created; an
+        // ordinary missing folder is still created.
+        let reserved = dir.path().join("third.aerovault.aerolock");
+        let error = vault_v2_extract_entry(
+            vault_path.to_str().unwrap().to_string(),
+            password.to_string(),
+            "file.txt".to_string(),
+            reserved.join("out.txt").to_str().unwrap().to_string(),
+        )
+        .await
+        .unwrap_err();
+        assert!(error.contains("reserved"), "{error}");
+        assert!(!reserved.exists());
+        let ordinary = dir.path().join("new-folder").join("out.txt");
+        vault_v2_extract_entry(
+            vault_path.to_str().unwrap().to_string(),
+            password.to_string(),
+            "file.txt".to_string(),
+            ordinary.to_str().unwrap().to_string(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(std::fs::read(ordinary).unwrap(), b"archived bytes");
     }
 
     /// Deep-scan 17: a folder on the way that is a link stops the entry.
