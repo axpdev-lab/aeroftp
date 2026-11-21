@@ -137,6 +137,8 @@ const REVIEWED: &[Reviewed] = &[
     ("providers/s3.rs", "format", "{}/?IncludeStats=true", ", self.endpoint()", BUILDS_A_REQUEST),
     ("providers/s3.rs", "format", "https://{endpoint}", "", BUILDS_A_REQUEST),
     ("providers/s3.rs", "ProviderError::NetworkError", "", "error.without_url().to_string()", "the reqwest error with its URL dropped"),
+    ("providers/s3.rs", "ProviderError::TransferFailed", "", "e.without_url().to_string()", "the reqwest error with its URL dropped"),
+    ("providers/s3.rs", "ProviderError::ParseError", "", "e.without_url().to_string()", "the reqwest error with its URL dropped"),
     ("providers/s3.rs", "format", "{}?{}", ", url, query", BUILDS_A_REQUEST),
     ("providers/s3.rs", "debug", "[S3] {} {} (bucket={} region={} path_style={})", ", method, url, self.config.bucket, self.config.region, self.config.path_style", S3_URL),
     ("providers/s3.rs", "warn", "S3 Response Status: {} for {} {}", ", status, method, url", S3_URL),
@@ -634,9 +636,7 @@ const S3_ERROR: &str = "a reqwest error on an S3 request URL, no secret by const
 const MEGACMD_OUTPUT: &str = "a MEGAcmd process error, its addresses cut to their origin";
 
 const REVIEWED_ERRORS: &[ReviewedError] = &[
-    ("providers/webdav.rs", "nextcloud_link_password_enforced", ".map_err(|e| ProviderError::ParseError(format!(\"ocs json: {}\", e)))?;", NOT_REQWEST),
-    ("providers/webdav.rs", "nextcloud_create_share", ".map_err(|e| ProviderError::ParseError(format!(\"ocs json: {}\", e)))?;", NOT_REQWEST),
-    ("providers/webdav.rs", "nextcloud_create_share", ".map_err(|e| ProviderError::ParseError(format!(\"ocs json: {}\", e)))?;", NOT_REQWEST),
+    ("providers/s3.rs", "restore_version", "be read ({e}): list its versions again before trying again\"", S3_ERROR),
     ("providers/s3.rs", "sts_client", ".map_err(|e| ProviderError::ConnectionFailed(format!(\"HTTP client init failed: {e}\")))", CLIENT_BUILD),
     ("providers/s3.rs", "new", ".map_err(|e| ProviderError::InvalidConfig(e.to_string()))?;", "a URL parse error of the endpoint, which has no query, fragment or userinfo by then"),
     ("providers/s3.rs", "new", "ProviderError::ConnectionFailed(format!(\"HTTP client init failed: {e}\"))", CLIENT_BUILD),
@@ -666,13 +666,8 @@ const REVIEWED_ERRORS: &[ReviewedError] = &[
     ("providers/s3.rs", "download_with_size_hint", "ProviderError::TransferFailed(format!(\"Failed to finalize download: {}\", e))", NOT_REQWEST),
     ("providers/s3.rs", "find", ".map_http_err(|e| ProviderError::ParseError(e.to_string()))?;", S3_ERROR),
     ("providers/s3.rs", "find", "return Err(ProviderError::ParseError(format!(\"xml: {e}\")));", NOT_REQWEST),
-    ("providers/s3.rs", "list_versions", ".map_http_err(|e| ProviderError::ParseError(e.to_string()))?;", S3_ERROR),
-    ("providers/s3.rs", "list_versions", "return Err(ProviderError::ParseError(format!(\"xml: {e}\")));", NOT_REQWEST),
-    ("providers/s3.rs", "download_version", "chunk.map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;", S3_ERROR),
     ("providers/s3.rs", "download_version", ".map_err(|e| ProviderError::TransferFailed(e.to_string()))?;", "a local file write error, no URL"),
     ("providers/s3.rs", "download_version", "ProviderError::TransferFailed(format!(\"Failed to finalize download: {}\", e))", NOT_REQWEST),
-    ("providers/s3.rs", "restore_version", ".map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;", S3_ERROR),
-    ("providers/s3.rs", "list_object_versions", ".map_http_err(|e| ProviderError::ParseError(e.to_string()))?;", S3_ERROR),
     ("providers/s3.rs", "batch_delete_objects", ".map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;", S3_ERROR),
     ("providers/s3.rs", "batch_delete_objects", ".map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;", S3_ERROR),
     ("providers/s3.rs", "batch_delete_objects", "Err(e) => failures.push((key.clone(), e.to_string())),", S3_ERROR),

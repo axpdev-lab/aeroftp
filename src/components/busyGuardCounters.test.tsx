@@ -9,6 +9,7 @@ import english from '../i18n/locales/en.json';
 import { PluginBrowser } from './AISettings/PluginBrowser';
 import { GitHubActionsBrowser } from './GitHubActionsBrowser';
 import { FileVersionsDialog } from './FileVersionsDialog';
+import { pickSave } from '../utils/pickPath';
 import { VersionBrowser } from './Sync/VersionBrowser';
 import { FileCommentsDialog } from './FileCommentsDialog';
 import { BoxCollaboratorsDialog } from './BoxCollaboratorsDialog';
@@ -141,7 +142,7 @@ it('FileVersionsDialog: the guard stays busy until every version operation finis
         return d.promise;
     });
     const onClose = vi.fn();
-    await render(createElement(FileVersionsDialog, { filePath: '/f.txt', fileName: 'f.txt', onClose }));
+    await render(createElement(FileVersionsDialog, { generation: 7, guiTarget: 3, canRestore: true, filePath: '/f.txt', fileName: 'f.txt', onClose }));
     await flush();
     const restores = [...host.querySelectorAll<HTMLButtonElement>('button[title*="Restore"], button[title*="restore"]')];
     expect(restores.length).toBe(2);
@@ -160,6 +161,97 @@ it('FileVersionsDialog: the guard stays busy until every version operation finis
     await flush();
     await click(closeButton()!);
     expect(onClose).toHaveBeenCalledTimes(1);
+});
+
+it('FileVersionsDialog: every command carries the generation and the remote target it was opened on, a refused action is shown, and a refused restore or purge lists again', async () => {
+    const calls: Array<[string, Record<string, unknown>]> = [];
+    vi.mocked(pickSave).mockResolvedValueOnce('/tmp/f_v1.txt');
+    vi.mocked(invoke).mockImplementation(async (cmd, args) => {
+        calls.push([cmd, args as Record<string, unknown>]);
+        if (cmd === 'provider_list_versions') return [
+            { id: 'v1', modified: null, size: 1, modified_by: null },
+            { id: 'v2', modified: null, size: 1, modified_by: null },
+        ];
+        throw `refused ${cmd}`;
+    });
+    await render(createElement(FileVersionsDialog, { generation: 7, guiTarget: 3, canPurge: true, canRestore: true, filePath: '/f.txt', fileName: 'f.txt', onClose: vi.fn() }));
+    await flush();
+    const alert = () => host.querySelector('[role="alert"]')?.textContent ?? null;
+    const rows = () => host.querySelectorAll('tbody tr').length;
+    await click(host.querySelector<HTMLButtonElement>('button[title*="Download"]')!);
+    await flush();
+    expect(alert()).toBe('refused provider_download_version');
+    expect(rows()).toBe(2);
+    await click(host.querySelector<HTMLButtonElement>('button[title*="Restore"]')!);
+    await flush();
+    expect(alert()).toBe('refused provider_restore_version');
+    expect(rows()).toBe(2);
+    await click(host.querySelector<HTMLButtonElement>('button[title*="Permanently"]')!);
+    const confirm = [...host.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].pop()!;
+    await click(confirm);
+    await flush();
+    expect(alert()).toBe('refused provider_delete_version');
+    expect(rows()).toBe(2);
+    const sent = calls.map(([cmd]) => cmd);
+    expect(sent).toEqual(['provider_list_versions', 'provider_download_version', 'provider_restore_version', 'provider_list_versions', 'provider_delete_version', 'provider_list_versions']);
+    for (const [cmd, args] of calls) expect([cmd, args.generation, args.expectedGuiTarget]).toEqual([cmd, 7, 3]);
+});
+
+it('FileVersionsDialog: a provider that does not restore versions (MEGA) offers no Restore, only Download', async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd) => {
+        if (cmd === 'provider_list_versions') return [
+            { id: 'H:a', modified: null, size: 1, modified_by: null },
+            { id: 'H:b', modified: null, size: 1, modified_by: null },
+        ];
+        throw `unexpected ${cmd}`;
+    });
+    await render(createElement(FileVersionsDialog, { generation: 7, guiTarget: 3, filePath: '/f.txt', fileName: 'f.txt', onClose: vi.fn() }));
+    await flush();
+    expect(host.querySelectorAll('tbody tr').length).toBe(2);
+    expect(host.querySelector('button[title*="Restore"]')).toBeNull();
+    expect(host.querySelectorAll('button[title*="Download"]').length).toBe(2);
+});
+
+it('FileVersionsDialog: a restore sent and not confirmed is shown in the user language, not as a raw failure, and the versions are listed again', async () => {
+    const sent: string[] = [];
+    vi.mocked(invoke).mockImplementation(async (cmd) => {
+        sent.push(cmd);
+        if (cmd === 'provider_list_versions') return [
+            { id: 'v1', modified: null, size: 1, modified_by: null },
+            { id: 'v2', modified: null, size: 1, modified_by: null },
+        ];
+        throw 'Restore version failed: Applied, not confirmed: the restore of /f.txt was sent';
+    });
+    const onRestore = vi.fn();
+    const onFilesChanged = vi.fn();
+    const onClose = vi.fn();
+    await render(createElement(FileVersionsDialog, { generation: 7, guiTarget: 3, canRestore: true, filePath: '/f.txt', fileName: 'f.txt', onClose, onRestore, onFilesChanged }));
+    await flush();
+    await click(host.querySelector<HTMLButtonElement>('button[title*="Restore"]')!);
+    await flush();
+    expect(host.querySelector('[role="alert"]')?.textContent).toBe(english.translations.versions.restoreUnconfirmed);
+    expect(onRestore).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    // The pane is listed again as well: the file may hold the restored contents.
+    expect(onFilesChanged).toHaveBeenCalledTimes(1);
+    expect(sent).toEqual(['provider_list_versions', 'provider_restore_version', 'provider_list_versions']);
+});
+
+it('FileVersionsDialog: a restore the server refused leaves the pane alone', async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd) => {
+        if (cmd === 'provider_list_versions') return [
+            { id: 'v1', modified: null, size: 1, modified_by: null },
+            { id: 'v2', modified: null, size: 1, modified_by: null },
+        ];
+        throw 'Restore version failed: 403';
+    });
+    const onFilesChanged = vi.fn();
+    await render(createElement(FileVersionsDialog, { generation: 7, guiTarget: 3, canRestore: true, filePath: '/f.txt', fileName: 'f.txt', onClose: vi.fn(), onRestore: vi.fn(), onFilesChanged }));
+    await flush();
+    await click(host.querySelector<HTMLButtonElement>('button[title*="Restore"]')!);
+    await flush();
+    expect(host.querySelector('[role="alert"]')?.textContent).toBe('Restore version failed: 403');
+    expect(onFilesChanged).not.toHaveBeenCalled();
 });
 
 it('VersionBrowser: the guard stays busy until every restore finishes', async () => {
@@ -385,4 +477,62 @@ it('SharePermissionsDialog: the guard stays busy until every remove finishes', a
     await flush();
     await click(closeButton()!);
     expect(onClose).toHaveBeenCalledTimes(1);
+});
+
+it('FileVersionsDialog: Purge is offered only where the provider deletes a version, and never on the file row', async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd) => {
+        if (cmd === 'provider_list_versions') return [
+            { id: '7:current', modified: null, size: 3, modified_by: null },
+            { id: '7:2', modified: null, size: 2, modified_by: null },
+        ];
+        return {};
+    });
+    const purges = () => [...host.querySelectorAll('tbody tr')]
+        .map(row => row.querySelectorAll('button[title*="Permanently"]').length);
+    await render(createElement(FileVersionsDialog, { generation: 7, guiTarget: 3, filePath: '/f.txt', fileName: 'f.txt', onClose: vi.fn() }));
+    await flush();
+    expect(purges()).toEqual([0, 0]);
+    await render(createElement(FileVersionsDialog, { generation: 8, guiTarget: 3, canPurge: true, filePath: '/f.txt', fileName: 'f.txt', onClose: vi.fn() }));
+    await flush();
+    expect(purges()).toEqual([0, 1]);
+});
+
+it('FileVersionsDialog: the live version on top is never offered for purge under a native id, a delete marker on top is', async () => {
+    let top: Record<string, unknown> = { id: 'v3', modified: null, size: 3, modified_by: null };
+    vi.mocked(invoke).mockImplementation(async (cmd) => {
+        if (cmd === 'provider_list_versions') return [top, { id: 'v2', modified: null, size: 2, modified_by: null }];
+        return {};
+    });
+    const purges = () => [...host.querySelectorAll('tbody tr')]
+        .map(row => row.querySelectorAll('button[title*="Permanently"]').length);
+    await render(createElement(FileVersionsDialog, { generation: 7, guiTarget: 3, canPurge: true, filePath: '/f.txt', fileName: 'f.txt', onClose: vi.fn() }));
+    await flush();
+    expect(purges()).toEqual([0, 1]);
+    top = { id: 'marker-4', modified: null, size: 0, modified_by: null, deleted: true };
+    await render(createElement(FileVersionsDialog, { generation: 8, guiTarget: 3, canPurge: true, filePath: '/f.txt', fileName: 'f.txt', onClose: vi.fn() }));
+    await flush();
+    expect(purges()).toEqual([1, 1]);
+});
+
+it('FileVersionsDialog: a deleted marker on top is Deleted, with no download and no restore', async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd) => {
+        if (cmd === 'provider_list_versions') return [
+            { id: 'hide-3', modified: null, size: 0, modified_by: null, deleted: true },
+            { id: 'v2', modified: null, size: 16, modified_by: null },
+            { id: 'v1', modified: null, size: 8, modified_by: null },
+        ];
+        return {};
+    });
+    await render(createElement(FileVersionsDialog, { generation: 7, guiTarget: 3, canRestore: true, filePath: '/f.txt', fileName: 'f.txt', onClose: vi.fn() }));
+    await flush();
+    const rows = [...host.querySelectorAll('tbody tr')];
+    expect(rows).toHaveLength(3);
+    expect(rows[0].textContent).toContain(english.translations.contextMenu.s3TrashDeleteMarker);
+    expect(rows[0].textContent).not.toContain(english.translations.versions.current);
+    const titled = (row: Element, word: string) =>
+        row.querySelectorAll(`button[title*="${word}"], button[title*="${word.toLowerCase()}"]`).length;
+    expect(titled(rows[0], 'Download')).toBe(0);
+    expect(titled(rows[0], 'Restore')).toBe(0);
+    expect(titled(rows[1], 'Download')).toBe(1);
+    expect(titled(rows[1], 'Restore')).toBe(1);
 });

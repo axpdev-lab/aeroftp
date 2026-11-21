@@ -8248,6 +8248,10 @@ impl StorageProvider for S3Provider {
         !self.is_mega_s4_endpoint() && !self.is_filebase_endpoint() && !self.is_fastly_endpoint()
     }
 
+    fn supports_version_delete(&self) -> bool {
+        self.supports_versions()
+    }
+
     async fn list_versions(&mut self, path: &str) -> Result<Vec<FileVersion>, ProviderError> {
         self.reject_fastly_versioning()?;
         if !self.connected {
@@ -8259,9 +8263,12 @@ impl StorageProvider for S3Provider {
 
         let key = path.trim_start_matches('/');
         let mut all_versions = Vec::new();
+        // Version ids S3 flags `IsLatest`: the current state of the key.
+        let mut latest_ids = std::collections::HashSet::new();
         let mut key_marker: Option<String> = None;
         let mut version_id_marker: Option<String> = None;
         let mut sent_markers: HashSet<(String, Option<String>)> = HashSet::new();
+        let mut budget = super::VersionListingBudget::default();
 
         loop {
             let mut params: Vec<(&str, &str)> = vec![("versions", ""), ("prefix", key)];
@@ -8286,18 +8293,32 @@ impl StorageProvider for S3Provider {
 
             let status = response.status();
             if !status.is_success() {
-                let body = response.text().await.unwrap_or_default();
-                return Err(ProviderError::ServerError(format!(
+                let body = super::version_listing_text(response)
+                    .await
+                    .unwrap_or_default();
+                let message = format!(
                     "ListObjectVersions failed ({}): {}",
                     status,
                     self.reply_text(&body)
-                )));
+                );
+                // A key without s3:ListBucketVersions is denied the listing
+                // only: a restore by version id may still go on. A denial of
+                // a later page is a listing cut short, which decides nothing.
+                let denied = matches!(status, StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED);
+                return Err(if denied && key_marker.is_none() {
+                    ProviderError::PermissionDenied(message)
+                } else if denied {
+                    ProviderError::TransferFailed(format!(
+                        "The versions of {path} were cut short: a later page was refused \
+                         ({message})"
+                    ))
+                } else {
+                    ProviderError::ServerError(message)
+                });
             }
 
-            let xml_str = response
-                .text()
-                .await
-                .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
+            let xml_str = super::version_listing_text(response).await?;
+            budget.count(xml_str.len(), path)?;
             let page_encoded = self.filen_listing_is_encoded(&xml_str);
 
             debug!("S3 ListObjectVersions response, {} bytes", xml_str.len());
@@ -8309,8 +8330,10 @@ impl StorageProvider for S3Provider {
             reader.config_mut().trim_text(false);
             let mut buf = Vec::new();
 
+            // A <DeleteMarker> is read like a <Version>: on top it is the
+            // file's current state, deleted.
             let mut in_version = false;
-            let mut _in_delete_marker = false;
+            let mut in_delete_marker = false;
             let mut current_tag = String::new();
 
             // Fields for <Version> elements
@@ -8322,6 +8345,9 @@ impl StorageProvider for S3Provider {
             // Tigris flags an entry of its soft-delete bin `SoftDeleted` (C4).
             let mut v_soft_deleted = false;
 
+            // A key past this one (`a.txt.bak` after `a.txt`) was listed.
+            let mut past_the_key = false;
+            let mut document_closed = false;
             // Pagination fields
             let mut is_truncated = false;
             let mut next_key_marker: Option<String> = None;
@@ -8335,17 +8361,15 @@ impl StorageProvider for S3Provider {
                     Ok(Event::Start(ref e)) => {
                         let tag_name = e.name().as_ref().to_string();
                         match tag_name.as_str() {
-                            "Version" => {
+                            "Version" | "DeleteMarker" => {
                                 in_version = true;
+                                in_delete_marker = tag_name == "DeleteMarker";
                                 v_key = None;
                                 v_version_id = None;
                                 v_is_latest = None;
                                 v_last_modified = None;
                                 v_size = None;
                                 v_soft_deleted = false;
-                            }
-                            "DeleteMarker" => {
-                                _in_delete_marker = true;
                             }
                             "IsTruncated" => in_is_truncated = true,
                             "NextKeyMarker" => in_next_key_marker = true,
@@ -8437,20 +8461,36 @@ impl StorageProvider for S3Provider {
                     Ok(Event::End(ref e)) => {
                         let tag_name = e.name().as_ref().to_string();
                         match tag_name.as_str() {
-                            "Version" => {
+                            "Version" | "DeleteMarker" => {
                                 // Only include versions whose key exactly matches.
                                 // A soft-deleted entry (Tigris) is a deleted object:
                                 // it is neither the current object nor a previous
                                 // version to restore with a CopyObject, which cannot
                                 // read it (C4).
                                 if let Some(ref vk) = v_key {
-                                    if filen_decode_listed_key(vk.clone(), page_encoded) == key
-                                        && !v_soft_deleted
-                                    {
+                                    let listed = filen_decode_listed_key(vk.clone(), page_encoded);
+                                    // Keys come in ascending order and the
+                                    // key is the shortest under its own
+                                    // prefix: a longer one means all its
+                                    // versions have been read.
+                                    if listed != key {
+                                        past_the_key = true;
+                                    }
+                                    if listed == key && !v_soft_deleted {
+                                        // Every row names its version (`null`
+                                        // in a bucket never versioned): a row
+                                        // without one would be acted on as
+                                        // the key itself, its current object.
                                         let version_id = v_version_id
                                             .as_ref()
                                             .map(|v| v.trim().to_string())
-                                            .unwrap_or_default();
+                                            .filter(|v| !v.is_empty())
+                                            .ok_or_else(|| {
+                                                ProviderError::ParseError(format!(
+                                                    "A version of {path} came without its \
+                                                     VersionId: the listing is not shown"
+                                                ))
+                                            })?;
                                         let is_latest =
                                             v_is_latest.as_deref().map(str::trim) == Some("true");
                                         let size: u64 = v_size
@@ -8458,8 +8498,11 @@ impl StorageProvider for S3Provider {
                                             .and_then(|s| s.trim().parse().ok())
                                             .unwrap_or(0);
 
-                                        let mut modified_by_str = None;
                                         if is_latest {
+                                            latest_ids.insert(version_id.clone());
+                                        }
+                                        let mut modified_by_str = None;
+                                        if is_latest && !in_delete_marker {
                                             modified_by_str = Some("(latest)".to_string());
                                         }
 
@@ -8468,19 +8511,19 @@ impl StorageProvider for S3Provider {
                                             modified: v_last_modified
                                                 .as_ref()
                                                 .map(|m| m.trim().to_string()),
-                                            size,
+                                            size: if in_delete_marker { 0 } else { size },
                                             modified_by: modified_by_str,
+                                            deleted: in_delete_marker,
                                         });
                                     }
                                 }
                                 in_version = false;
-                            }
-                            "DeleteMarker" => {
-                                _in_delete_marker = false;
+                                in_delete_marker = false;
                             }
                             "IsTruncated" => in_is_truncated = false,
                             "NextKeyMarker" => in_next_key_marker = false,
                             "NextVersionIdMarker" => in_next_version_id_marker = false,
+                            "ListVersionsResult" => document_closed = true,
                             _ => {}
                         }
                         current_tag.clear();
@@ -8494,6 +8537,18 @@ impl StorageProvider for S3Provider {
                 buf.clear();
             }
 
+            // A body that ends before `</ListVersionsResult>` is a page cut
+            // short: the rows it held may not be all of them.
+            if !document_closed {
+                return Err(ProviderError::ParseError(format!(
+                    "ListObjectVersions for {key} ended before its document closed"
+                )));
+            }
+            // The prefix also lists every longer key (`a` lists `assets/`):
+            // once one is reached the rest of the bucket under it is not read.
+            if past_the_key {
+                break;
+            }
             match next_versions_page(
                 is_truncated,
                 next_key_marker,
@@ -8501,6 +8556,11 @@ impl StorageProvider for S3Provider {
                 &mut sent_markers,
             )? {
                 Some((km, vm)) => {
+                    // New markers on every page never repeat: the page count
+                    // ends the listing.
+                    if sent_markers.len() >= super::VERSION_LISTING_MAX_PAGES {
+                        return Err(super::version_listing_too_long(path));
+                    }
                     key_marker = Some(km);
                     version_id_marker = vm;
                 }
@@ -8513,7 +8573,12 @@ impl StorageProvider for S3Provider {
             all_versions.len(),
             key
         );
-        Ok(all_versions)
+        super::versions_current_first(
+            all_versions,
+            |v| latest_ids.contains(&v.id),
+            || None,
+            |v| super::version_time_millis(v.modified.as_deref()),
+        )
     }
 
     async fn download_version(
@@ -8526,6 +8591,7 @@ impl StorageProvider for S3Provider {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
+        super::refuse_a_deleted_version(self, path, version_id).await?;
 
         let key = path.trim_start_matches('/');
         let response = self
@@ -8540,8 +8606,9 @@ impl StorageProvider for S3Provider {
                     .map_err(ProviderError::IoError)?;
 
                 while let Some(chunk) = stream.next().await {
-                    let chunk =
-                        chunk.map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+                    let chunk = chunk.map_http_err(|e| {
+                        ProviderError::TransferFailed(e.without_url().to_string())
+                    })?;
                     crate::transfer_dag::throttle::charge(
                         crate::transfer_dag::governor::TransferDirection::Download,
                         chunk.len() as u64,
@@ -8567,7 +8634,9 @@ impl StorageProvider for S3Provider {
                 version_id, path
             ))),
             status => {
-                let body = response.text().await.unwrap_or_default();
+                let body = super::version_listing_text(response)
+                    .await
+                    .unwrap_or_default();
                 Err(ProviderError::TransferFailed(format!(
                     "Download version failed ({}): {}",
                     status,
@@ -8582,6 +8651,9 @@ impl StorageProvider for S3Provider {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
+        let selected =
+            super::refuse_a_restore_that_changes_nothing_when_listed(self, path, version_id)
+                .await?;
         self.ensure_fresh_credentials().await?;
 
         let key = path.trim_start_matches('/');
@@ -8616,18 +8688,61 @@ impl StorageProvider for S3Provider {
         request = request.header("Authorization", &authorization);
         request = request.header("Content-Length", "0");
 
+        // The copy takes no precondition on the key's current version: a
+        // timeout may come after S3 wrote the copy on top.
         let response = request
             .send()
             .await
-            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_err(|e| super::change_send_error(e, &format!("the restore of {path}")))?;
 
         match response.status() {
             StatusCode::OK | StatusCode::CREATED | StatusCode::NO_CONTENT => {
+                // CopyObject can answer 200 before the copy ends and still
+                // fail in its body: the whole body is read, and an `<Error>`
+                // in it is the answer. The version the copy made is named in
+                // `x-amz-version-id`, and must then be the current one.
+                let made = response
+                    .headers()
+                    .get("x-amz-version-id")
+                    .and_then(|v| v.to_str().ok())
+                    .map(str::to_string);
+                let status = response.status();
+                // The copy was answered: an answer that cannot be read may
+                // come after S3 made the copy, so it is not a plain failure
+                // a caller would send again.
+                let body = super::version_listing_text(response).await.map_err(|e| {
+                    super::applied_unconfirmed(format!(
+                        "the restore of {path} was answered {status}, but its answer could not \
+                         be read ({e}): list its versions again before trying again"
+                    ))
+                })?;
+                match copy_answer_error(&body, &self.sent_secrets()) {
+                    Some(CopyAnswer::Failed(failure)) => {
+                        return Err(ProviderError::ServerError(format!(
+                            "Restore version failed ({status}): {failure}"
+                        )));
+                    }
+                    Some(CopyAnswer::Unknown(why)) => {
+                        return Err(super::applied_unconfirmed(format!(
+                            "the restore of {path} was answered {status}, but {why}: list its \
+                             versions again before trying again"
+                        )));
+                    }
+                    None => {}
+                }
                 info!("Restored '{}' to version '{}'", key, version_id);
-                Ok(())
+                let preflight = selected.map(|p| p.made_current(made));
+                super::confirm_version_restored(self, path, preflight.as_ref()).await
             }
             status => {
-                let body = response.text().await.unwrap_or_default();
+                if let Some(unknown) =
+                    super::gateway_left_unknown(status, &format!("the restore of {path}"))
+                {
+                    return Err(unknown);
+                }
+                let body = super::version_listing_text(response)
+                    .await
+                    .unwrap_or_default();
                 Err(ProviderError::ServerError(format!(
                     "Restore version failed ({}): {}",
                     status,
@@ -8647,6 +8762,17 @@ impl StorageProvider for S3Provider {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
+        // The `null` version is the one a bucket writes while versioning is
+        // off or suspended, and every such write replaces it in place under
+        // the same id: a row listed before names whatever holds it now, and
+        // S3 takes no condition on a version delete to bind it.
+        if version_id == "null" {
+            return Err(ProviderError::NotSupported(format!(
+                "The null version of {path} is replaced in place by every write while \
+                 versioning is suspended, so the row listed cannot be bound to it: nothing was \
+                 purged"
+            )));
+        }
         self.ensure_fresh_credentials().await?;
 
         let key = path.trim_start_matches('/');
@@ -8665,7 +8791,9 @@ impl StorageProvider for S3Provider {
                 Ok(())
             }
             status => {
-                let body = response.text().await.unwrap_or_default();
+                let body = super::version_listing_text(response)
+                    .await
+                    .unwrap_or_default();
                 Err(ProviderError::ServerError(format!(
                     "Delete version failed ({}): {}",
                     status,
@@ -8722,7 +8850,9 @@ impl StorageProvider for S3Provider {
 
             let status = response.status();
             if !status.is_success() {
-                let body = response.text().await.unwrap_or_default();
+                let body = super::version_listing_text(response)
+                    .await
+                    .unwrap_or_default();
                 return Err(ProviderError::ServerError(format!(
                     "ListObjectVersions failed ({}): {}",
                     status,
@@ -8733,7 +8863,7 @@ impl StorageProvider for S3Provider {
             let xml_str = response
                 .text()
                 .await
-                .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ParseError(e.without_url().to_string()))?;
 
             let (entries, is_truncated, next_key_marker, next_version_id_marker) =
                 parse_object_versions_page(&xml_str)?;
@@ -9057,7 +9187,9 @@ impl S3Provider {
                 ))
             }
             status => {
-                let body = response.text().await.unwrap_or_default();
+                let body = super::version_listing_text(response)
+                    .await
+                    .unwrap_or_default();
                 Err(ProviderError::ServerError(format!(
                     "Glacier restore failed ({}): {}",
                     status,
@@ -9635,6 +9767,114 @@ fn build_batch_delete_xml(chunk: &[(String, Option<String>)]) -> Vec<u8> {
     }
     xml.push_str("</Delete>");
     xml.into_bytes()
+}
+
+/// What a 2xx CopyObject body says other than a completed copy.
+#[derive(Debug, PartialEq)]
+enum CopyAnswer {
+    /// An `Error` root: the copy failed, its code and message shown as
+    /// [`s3_server_text`] allows.
+    Failed(String),
+    /// An empty, cut, unreadable or other body: the copy may have completed
+    /// all the same, so it is neither done nor refused.
+    Unknown(String),
+}
+
+/// The failure a 2xx CopyObject body carries, or `None` for a completed
+/// copy. CopyObject can answer 200 and fail in its body, so only a document
+/// whose root is a `CopyObjectResult` that closes is a completed copy: an
+/// `Error` root (with or without attributes) is the failure
+/// ([`CopyAnswer::Failed`]), and an empty, cut or other body is a copy not
+/// known to have completed or failed ([`CopyAnswer::Unknown`]).
+fn copy_answer_error(body: &str, sent: &SentSecrets) -> Option<CopyAnswer> {
+    let mut reader = Reader::from_str(body);
+    let mut buf = Vec::new();
+    let mut depth = 0u32;
+    let mut root: Option<String> = None;
+    let mut closed = false;
+    let mut field: Option<String> = None;
+    let (mut code, mut message) = (String::new(), String::new());
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Err(_) => {
+                return Some(CopyAnswer::Unknown(
+                    "the copy answer could not be read".into(),
+                ))
+            }
+            Ok(Event::Eof) => break,
+            Ok(Event::Start(event)) => {
+                let name = event.local_name().as_ref().to_string();
+                if depth == 0 {
+                    root = Some(name.clone());
+                }
+                depth += 1;
+                field = (depth == 2).then_some(name);
+            }
+            Ok(Event::Empty(event)) if depth == 0 => {
+                root = Some(event.local_name().as_ref().to_string());
+                closed = true;
+            }
+            Ok(Event::Text(text)) => match field.as_deref() {
+                Some("Code") => code.push_str(text.as_ref()),
+                Some("Message") => message.push_str(text.as_ref()),
+                _ => {}
+            },
+            // An entity reference (`&#43;`, `&amp;`) is its own event in
+            // quick-xml 0.42: decode it here, or the secret check in
+            // `s3_server_text` sees `abc` `def` where the server wrote `abc+def`.
+            Ok(Event::GeneralRef(reference)) => {
+                if let Some(expanded) = super::xml_text::xml_entity_to_str(reference.as_ref()) {
+                    match field.as_deref() {
+                        Some("Code") => code.push_str(&expanded),
+                        Some("Message") => message.push_str(&expanded),
+                        _ => {}
+                    }
+                }
+            }
+            // A CDATA section is text of the element as well: dropped, the
+            // text around it would join into a token the check misses
+            // (`abc<![CDATA[+]]>def` read as `abcdef`).
+            Ok(Event::CData(data)) => match field.as_deref() {
+                Some("Code") => code.push_str(&data),
+                Some("Message") => message.push_str(&data),
+                _ => {}
+            },
+            Ok(Event::End(_)) => {
+                depth = depth.saturating_sub(1);
+                field = None;
+                if depth == 0 {
+                    closed = true;
+                }
+            }
+            Ok(_) => {}
+        }
+        buf.clear();
+    }
+    match root.as_deref() {
+        Some("CopyObjectResult") if closed && depth == 0 => None,
+        Some("Error") => {
+            let shown = |text: &str, fallback: &str| {
+                let text = text.trim();
+                if text.is_empty() {
+                    fallback.to_string()
+                } else {
+                    s3_server_text(text, body.len(), sent)
+                }
+            };
+            Some(CopyAnswer::Failed(format!(
+                "{} - {}",
+                shown(&code, "CopyError"),
+                shown(&message, "the copy did not complete")
+            )))
+        }
+        Some("CopyObjectResult") => Some(CopyAnswer::Unknown(
+            "the copy answer ended before its result closed".into(),
+        )),
+        Some(_) => Some(CopyAnswer::Unknown(
+            "the copy answer is not a CopyObjectResult".into(),
+        )),
+        None => Some(CopyAnswer::Unknown("the copy answer was empty".into())),
+    }
 }
 
 /// Parse the `<Error>` elements of an S3 `DeleteResult` (batch delete) body.
@@ -13771,6 +14011,17 @@ mod tests {
         rename: RenameHeader,
         stats: Option<(u16, &'static str)>,
         versions_xml: Option<&'static str>,
+        /// ListObjectVersions answers this refusal (403 or 401: no
+        /// `s3:ListBucketVersions`).
+        versions_denied: Option<u16>,
+        /// The versions listed once a copy was answered (a restore made).
+        versions_after_copy: Option<&'static str>,
+        /// A copy's 200 answer: its `x-amz-version-id` (empty: none) and body.
+        copy_answer: Option<(&'static str, &'static str)>,
+        /// ListObjectVersions answers a chunked body larger than the cap.
+        versions_oversized: bool,
+        /// A copy's 200 answer breaks off after its first bytes.
+        copy_answer_breaks: bool,
     }
 
     impl Default for TigrisDoubleConfig {
@@ -13779,6 +14030,11 @@ mod tests {
                 rename: RenameHeader::Honor,
                 stats: None,
                 versions_xml: None,
+                versions_denied: None,
+                versions_after_copy: None,
+                copy_answer: None,
+                versions_oversized: false,
+                copy_answer_breaks: false,
             }
         }
     }
@@ -13801,9 +14057,11 @@ mod tests {
         ));
         let log: TigrisLog = Arc::default();
         let (store, seen) = (Arc::clone(&bucket), Arc::clone(&log));
+        let copied = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let app =
             axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
                 let (store, seen) = (Arc::clone(&store), Arc::clone(&seen));
+                let copied = Arc::clone(&copied);
                 async move {
                     let method = req.method().as_str().to_string();
                     let headers: HashMap<String, String> = req
@@ -13875,10 +14133,41 @@ mod tests {
                         );
                     }
                     match method.as_str() {
+                        "GET" if key.is_empty()
+                            && query.contains_key("versions")
+                            && config.versions_denied.is_some() =>
+                        {
+                            reply(
+                                config.versions_denied.unwrap_or(403),
+                                &[],
+                                b"<Error><Code>AccessDenied</Code></Error>".to_vec(),
+                            )
+                        }
+                        "GET" if key.is_empty()
+                            && query.contains_key("versions")
+                            && config.versions_oversized =>
+                        {
+                            // No Content-Length: the size shows only while it is read.
+                            let chunks = (0..9).map(|_| {
+                                Ok::<_, std::io::Error>(axum::body::Bytes::from(vec![b' '; 1 << 20]))
+                            });
+                            axum::response::Response::builder()
+                                .status(200)
+                                .body(axum::body::Body::from_stream(futures_util::stream::iter(
+                                    chunks,
+                                )))
+                                .unwrap()
+                        }
                         "GET" if key.is_empty() && query.contains_key("versions") => reply(
                             200,
                             &[],
-                            config.versions_xml.unwrap_or("<ListVersionsResult/>").as_bytes().to_vec(),
+                            config
+                                .versions_after_copy
+                                .filter(|_| copied.load(std::sync::atomic::Ordering::SeqCst))
+                                .or(config.versions_xml)
+                                .unwrap_or("<ListVersionsResult/>")
+                                .as_bytes()
+                                .to_vec(),
                         ),
                         "GET" if key.is_empty() => {
                             let prefix = query.get("prefix").cloned().unwrap_or_default();
@@ -13896,12 +14185,17 @@ mod tests {
                         }
                         "HEAD" | "GET" => match store.get(&key) {
                             Some(data) => {
-                                let length = data.len().to_string();
-                                let data = if method == "GET" {
-                                    data.clone()
-                                } else {
-                                    Vec::new()
+                                // A GET of a version by its id answers that
+                                // version's own bytes, never the current ones,
+                                // so a download that dropped `versionId` shows.
+                                let data = match query.get("versionId") {
+                                    Some(version) if method == "GET" => {
+                                        format!("{key} at {version}").into_bytes()
+                                    }
+                                    _ => data.clone(),
                                 };
+                                let length = data.len().to_string();
+                                let data = if method == "GET" { data } else { Vec::new() };
                                 reply(200, &[("content-length", length)], data)
                             }
                             None => reply(404, &[], Vec::new()),
@@ -13938,6 +14232,13 @@ mod tests {
                                         .unwrap()
                                         .trim_start_matches("/test-bucket/")
                                         .to_string();
+                                    // A versioned source (`?versionId=`) copies
+                                    // that version's own bytes, as a GET of it
+                                    // answers them: the double keeps one copy.
+                                    let (source, version) = match source.split_once("?versionId=") {
+                                        Some((key, version)) => (key.to_string(), Some(version.to_string())),
+                                        None => (source, None),
+                                    };
                                     // A source that cannot be read fails to copy
                                     // with or without the header.
                                     if source.contains("unreadable") {
@@ -13950,7 +14251,10 @@ mod tests {
                                     }
                                     match store.get(&source) {
                                         Some(data) => {
-                                            let data = data.clone();
+                                            let data = match &version {
+                                                Some(version) => format!("{source} at {version}").into_bytes(),
+                                                None => data.clone(),
+                                            };
                                             if rename && config.rename == RenameHeader::Honor {
                                                 store.remove(&source);
                                             }
@@ -13962,6 +14266,29 @@ mod tests {
                                 None => body.to_vec(),
                             };
                             store.insert(key, data);
+                            if headers.contains_key("x-amz-copy-source") {
+                                copied.store(true, std::sync::atomic::Ordering::SeqCst);
+                                if config.copy_answer_breaks {
+                                    let parts = [
+                                        Ok(axum::body::Bytes::from_static(b"<CopyObjectResult>")),
+                                        Err(std::io::Error::other("cut")),
+                                    ];
+                                    return axum::response::Response::builder()
+                                        .status(200)
+                                        .body(axum::body::Body::from_stream(
+                                            futures_util::stream::iter(parts),
+                                        ))
+                                        .unwrap();
+                                }
+                                if let Some((version, answer)) = config.copy_answer {
+                                    let named: Vec<(&str, String)> = if version.is_empty() {
+                                        Vec::new()
+                                    } else {
+                                        vec![("x-amz-version-id", version.to_string())]
+                                    };
+                                    return reply(200, &named, answer.as_bytes().to_vec());
+                                }
+                            }
                             reply(200, &[], b"<CopyObjectResult></CopyObjectResult>".to_vec())
                         }
                         "DELETE" => {
@@ -15673,6 +16000,600 @@ mod tests {
             1,
             "{purges:?}"
         );
+    }
+
+    /// A deleted key on a versioned bucket: the delete marker on top, two
+    /// versions under it, listed versions first as some servers do.
+    const DELETED_KEY_VERSIONS: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ListVersionsResult>
+  <IsTruncated>false</IsTruncated>
+  <Version>
+    <Key>docs/a.txt</Key>
+    <VersionId>v1</VersionId>
+    <IsLatest>false</IsLatest>
+    <LastModified>2026-11-05T10:00:00.000Z</LastModified>
+    <Size>8</Size>
+  </Version>
+  <Version>
+    <Key>docs/a.txt</Key>
+    <VersionId>v2</VersionId>
+    <IsLatest>false</IsLatest>
+    <LastModified>2026-11-05T11:00:00.000Z</LastModified>
+    <Size>16</Size>
+  </Version>
+  <DeleteMarker>
+    <Key>docs/a.txt</Key>
+    <VersionId>m3</VersionId>
+    <IsLatest>true</IsLatest>
+    <LastModified>2026-11-05T12:00:00.000Z</LastModified>
+  </DeleteMarker>
+</ListVersionsResult>"#;
+
+    /// The versions dialog reads row 0 as the current state: for a deleted
+    /// key that is its delete marker, marked deleted, then the contents it
+    /// had, newest first.
+    #[tokio::test]
+    async fn a_delete_marker_on_top_is_a_deleted_row_zero() {
+        let config = TigrisDoubleConfig {
+            versions_xml: Some(DELETED_KEY_VERSIONS),
+            ..Default::default()
+        };
+        let (mut provider, _, _) = tigris_double(&[("docs/a.txt", "A")], config).await;
+        let versions = provider
+            .list_versions("/docs/a.txt")
+            .await
+            .expect("versions");
+        let rows: Vec<(&str, bool, u64)> = versions
+            .iter()
+            .map(|v| (v.id.as_str(), v.deleted, v.size))
+            .collect();
+        assert_eq!(rows, [("m3", true, 0), ("v2", false, 16), ("v1", false, 8)]);
+        // The backend refuses the marker too, not only the dialog.
+        let local = tempfile::tempdir().unwrap();
+        let target = local.path().join("m3");
+        let downloaded = provider
+            .download_version("/docs/a.txt", "m3", target.to_str().unwrap())
+            .await;
+        assert!(
+            matches!(downloaded, Err(ProviderError::NotSupported(_))),
+            "{downloaded:?}"
+        );
+        assert!(!target.exists());
+        let restored = provider.restore_version("/docs/a.txt", "m3").await;
+        assert!(
+            matches!(restored, Err(ProviderError::NotSupported(_))),
+            "{restored:?}"
+        );
+    }
+
+    /// The latest version is the key's current contents: its restore would
+    /// copy them onto the key as one more version. It is refused before the
+    /// copy; a past version is still copied.
+    #[tokio::test]
+    async fn an_s3_restore_of_the_latest_version_is_refused_before_any_copy() {
+        const TWO_VERSIONS: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ListVersionsResult>
+  <IsTruncated>false</IsTruncated>
+  <Version>
+    <Key>docs/a.txt</Key>
+    <VersionId>v1</VersionId>
+    <IsLatest>false</IsLatest>
+    <LastModified>2026-11-05T10:00:00.000Z</LastModified>
+    <Size>8</Size>
+  </Version>
+  <Version>
+    <Key>docs/a.txt</Key>
+    <VersionId>v2</VersionId>
+    <IsLatest>true</IsLatest>
+    <LastModified>2026-11-05T11:00:00.000Z</LastModified>
+    <Size>16</Size>
+  </Version>
+</ListVersionsResult>"#;
+        // Listed oldest first: the latest is told by IsLatest, not by place.
+        let config = TigrisDoubleConfig {
+            versions_xml: Some(TWO_VERSIONS),
+            ..Default::default()
+        };
+        let (mut provider, _, log) = tigris_double(&[("docs/a.txt", "A")], config).await;
+        let copies = |log: &TigrisLog| {
+            log.lock()
+                .unwrap()
+                .iter()
+                .filter(|seen| {
+                    seen.method == "PUT" && seen.headers.contains_key("x-amz-copy-source")
+                })
+                .count()
+        };
+        let refused = provider.restore_version("/docs/a.txt", "v2").await;
+        assert!(
+            matches!(&refused, Err(ProviderError::NotSupported(m)) if m.contains("already the current")),
+            "{refused:?}"
+        );
+        assert_eq!(copies(&log), 0);
+        let restored = provider.restore_version("/docs/a.txt", "v1").await;
+        // The double lists the earlier current contents after the restore it
+        // answered with success: the request went out, and the restore is not
+        // reported done.
+        assert!(
+            matches!(&restored, Err(ProviderError::TransferFailed(m)) if m.contains("list its versions again")),
+            "{restored:?}"
+        );
+        assert_eq!(copies(&log), 1);
+    }
+
+    /// A CopyObject 200 can carry its failure in the body, and names the
+    /// version it made in `x-amz-version-id`: a restore is done only when the
+    /// body is a completed copy and that version is the one on top, so an
+    /// `<Error>` body, or a write of the same length by someone else, is not
+    /// taken for the restore.
+    #[tokio::test]
+    async fn an_s3_restore_is_done_only_when_its_own_copy_completed_and_is_on_top() {
+        const BEFORE: &str = r#"<ListVersionsResult><IsTruncated>false</IsTruncated>
+<Version><Key>docs/a.txt</Key><VersionId>v1</VersionId><IsLatest>false</IsLatest><LastModified>2026-11-05T10:00:00.000Z</LastModified><Size>4</Size></Version>
+<Version><Key>docs/a.txt</Key><VersionId>v2</VersionId><IsLatest>true</IsLatest><LastModified>2026-11-05T11:00:00.000Z</LastModified><Size>4</Size></Version>
+</ListVersionsResult>"#;
+        const AFTER: &str = r#"<ListVersionsResult><IsTruncated>false</IsTruncated>
+<Version><Key>docs/a.txt</Key><VersionId>v1</VersionId><IsLatest>false</IsLatest><LastModified>2026-11-05T10:00:00.000Z</LastModified><Size>4</Size></Version>
+<Version><Key>docs/a.txt</Key><VersionId>v2</VersionId><IsLatest>false</IsLatest><LastModified>2026-11-05T11:00:00.000Z</LastModified><Size>4</Size></Version>
+<Version><Key>docs/a.txt</Key><VersionId>v3</VersionId><IsLatest>true</IsLatest><LastModified>2026-11-05T12:00:00.000Z</LastModified><Size>4</Size></Version>
+</ListVersionsResult>"#;
+        let restore = |copy_answer: (&'static str, &'static str)| async move {
+            let config = TigrisDoubleConfig {
+                versions_xml: Some(BEFORE),
+                versions_after_copy: Some(AFTER),
+                copy_answer: Some(copy_answer),
+                ..Default::default()
+            };
+            let (mut provider, _, _) = tigris_double(&[("docs/a.txt", "AAAA")], config).await;
+            provider.restore_version("/docs/a.txt", "v1").await
+        };
+        let failed = restore((
+            "v3",
+            "<Error><Code>InternalError</Code><Message>late</Message></Error>",
+        ))
+        .await;
+        assert!(
+            matches!(&failed, Err(ProviderError::ServerError(m)) if m.contains("InternalError")),
+            "{failed:?}"
+        );
+        // The version the copy says it made is a header of the answer,
+        // server text: a mismatch is reported without it.
+        let foreign = restore((
+            "SYNTHETIC-made-9f3",
+            "<CopyObjectResult></CopyObjectResult>",
+        ))
+        .await;
+        assert!(
+            matches!(&foreign, Err(ProviderError::TransferFailed(m))
+                if m.contains("another version than the one the restore made")
+                    && !m.contains("SYNTHETIC")),
+            "{foreign:?}"
+        );
+        // An error with attributes is a failed copy; an empty body and a cut
+        // one say neither, so the restore is applied and not confirmed.
+        let refused = restore((
+            "v3",
+            r#"<Error xmlns="urn:s3"><Code>InternalError</Code></Error>"#,
+        ))
+        .await;
+        assert!(
+            matches!(&refused, Err(ProviderError::ServerError(m)) if m.contains("InternalError")),
+            "{refused:?}"
+        );
+        for (body, said) in [
+            ("", "empty"),
+            (
+                "<CopyObjectResult><ETag>\"e\"</ETag>",
+                "before its result closed",
+            ),
+        ] {
+            let unknown = restore(("v3", body)).await;
+            assert!(
+                matches!(&unknown, Err(e) if super::super::was_applied(e) && e.to_string().contains(said)),
+                "{body:?}: {unknown:?}"
+            );
+        }
+        let done = restore(("v3", "<CopyObjectResult></CopyObjectResult>")).await;
+        assert!(done.is_ok(), "{done:?}");
+    }
+
+    /// A version listing whose every page is truncated with new markers
+    /// ends at the page limit with an error, never a history cut short; a
+    /// page that ends before `</ListVersionsResult>` is an error too.
+    #[tokio::test]
+    async fn an_s3_version_listing_ends_at_the_page_limit_or_its_closed_document() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let pages = std::sync::Arc::new(AtomicUsize::new(0));
+        let served = std::sync::Arc::clone(&pages);
+        let app = axum::Router::new().fallback(axum::routing::get(
+            move |uri: axum::http::Uri| {
+                let served = std::sync::Arc::clone(&served);
+                async move {
+                    let n = served.fetch_add(1, Ordering::SeqCst);
+                    let row = "<Version><Key>a.txt</Key><VersionId>v</VersionId>\
+                        <IsLatest>true</IsLatest><LastModified>2026-11-05T10:00:00.000Z</LastModified>\
+                        <Size>1</Size></Version>";
+                    if uri.query().unwrap_or_default().contains("prefix=cut.txt") {
+                        return format!("<ListVersionsResult><IsTruncated>false</IsTruncated>{row}");
+                    }
+                    format!(
+                        "<ListVersionsResult><IsTruncated>true</IsTruncated>\
+                         <NextKeyMarker>k{n}</NextKeyMarker>{row}</ListVersionsResult>"
+                    )
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        let endless = provider.list_versions("/a.txt").await;
+        assert!(
+            matches!(&endless, Err(ProviderError::TransferFailed(m)) if m.contains("200 pages")),
+            "{endless:?}"
+        );
+        assert_eq!(
+            pages.load(Ordering::SeqCst),
+            super::super::VERSION_LISTING_MAX_PAGES
+        );
+        let cut = provider.list_versions("/cut.txt").await;
+        server.abort();
+        assert!(
+            matches!(&cut, Err(ProviderError::ParseError(m)) if m.contains("before its document closed")),
+            "{cut:?}"
+        );
+    }
+
+    /// With the version listing denied the restore has no preflight to
+    /// confirm against: only the copy answer says it completed, so a failed
+    /// copy in a 200 body is still refused, a body delivered whole that
+    /// cannot say (empty, a result that never closes) is applied and not
+    /// confirmed, and a completed one passes.
+    #[tokio::test]
+    async fn an_s3_restore_without_a_listing_is_done_only_by_a_completed_copy() {
+        let restore = |copy_answer: (&'static str, &'static str)| async move {
+            let config = TigrisDoubleConfig {
+                versions_denied: Some(403),
+                copy_answer: Some(copy_answer),
+                ..Default::default()
+            };
+            let (mut provider, _, _) = tigris_double(&[("docs/a.txt", "AAAA")], config).await;
+            provider.restore_version("/docs/a.txt", "v1").await
+        };
+        let refused = restore((
+            "v3",
+            r#"<Error xmlns="urn:s3"><Code>InternalError</Code></Error>"#,
+        ))
+        .await;
+        assert!(
+            matches!(&refused, Err(ProviderError::ServerError(_))),
+            "{refused:?}"
+        );
+        for body in ["", "<CopyObjectResult>", "<html>proxy</html>"] {
+            let unknown = restore(("v3", body)).await;
+            assert!(
+                matches!(&unknown, Err(e) if super::super::was_applied(e)),
+                "{body:?}: {unknown:?}"
+            );
+        }
+        let done = restore(("v3", "<CopyObjectResult></CopyObjectResult>")).await;
+        assert!(done.is_ok(), "{done:?}");
+    }
+
+    /// A copy answer that writes a sent token with an entity (`&#43;` for
+    /// `+`) is still recognised as repeating it: quick-xml hands the
+    /// reference over as its own event, and a parser that drops it compares
+    /// `abcdef` with `abc+def` and shows the rest of the token.
+    #[test]
+    fn a_copy_error_that_encodes_a_sent_token_is_withheld() {
+        let sent = SentSecrets::of(&["SESSIONabc+defTOKEN"]);
+        // The token written plainly, as a character reference, and split by
+        // a CDATA section: each is the token, withheld.
+        for token in [
+            "SESSIONabc+defTOKEN",
+            "SESSIONabc&#43;defTOKEN",
+            "SESSIONabc<![CDATA[+]]>defTOKEN",
+        ] {
+            let body = format!(
+                "<Error><Code>AccessDenied</Code><Message>token {token} refused</Message></Error>"
+            );
+            let Some(CopyAnswer::Failed(shown)) = copy_answer_error(&body, &sent) else {
+                panic!("{token}: an Error root is a failure");
+            };
+            assert!(!shown.contains("SESSIONabc"), "{token}: {shown}");
+            assert!(!shown.contains("defTOKEN"), "{token}: {shown}");
+        }
+        let plain = "<Error><Code>Slow&#68;own</Code><Message>try again</Message></Error>";
+        let Some(CopyAnswer::Failed(shown)) = copy_answer_error(plain, &sent) else {
+            panic!("an Error root is a failure");
+        };
+        assert!(shown.starts_with("SlowDown - try again"), "{shown}");
+    }
+
+    /// A key whose contents were purged and whose delete marker remains
+    /// still lists that marker: its id is what a delete of it needs.
+    #[tokio::test]
+    async fn a_key_with_only_its_delete_marker_lists_the_marker() {
+        const MARKER_ONLY: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ListVersionsResult>
+  <IsTruncated>false</IsTruncated>
+  <DeleteMarker>
+    <Key>docs/a.txt</Key>
+    <VersionId>m3</VersionId>
+    <IsLatest>true</IsLatest>
+    <LastModified>2026-11-05T12:00:00.000Z</LastModified>
+  </DeleteMarker>
+</ListVersionsResult>"#;
+        let config = TigrisDoubleConfig {
+            versions_xml: Some(MARKER_ONLY),
+            ..Default::default()
+        };
+        let (mut provider, _, _) = tigris_double(&[], config).await;
+        let versions = provider
+            .list_versions("/docs/a.txt")
+            .await
+            .expect("versions");
+        let rows: Vec<(&str, bool)> = versions
+            .iter()
+            .map(|v| (v.id.as_str(), v.deleted))
+            .collect();
+        assert_eq!(rows, [("m3", true)]);
+    }
+
+    /// The prefix of a key lists every longer key too (`docs/a.txt` lists
+    /// `docs/a.txt.d/...`): the listing stops at the first of them, so a
+    /// download or restore, which reads the list to refuse a delete marker,
+    /// does not page through everything under it.
+    #[tokio::test]
+    async fn the_versions_of_a_key_are_read_without_paging_past_it() {
+        const LONGER_KEYS: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ListVersionsResult>
+  <IsTruncated>true</IsTruncated>
+  <NextKeyMarker>docs/a.txt.d/0002</NextKeyMarker>
+  <NextVersionIdMarker>n2</NextVersionIdMarker>
+  <Version>
+    <Key>docs/a.txt</Key>
+    <VersionId>v2</VersionId>
+    <IsLatest>true</IsLatest>
+    <LastModified>2026-11-05T12:00:00.000Z</LastModified>
+    <Size>1</Size>
+  </Version>
+  <Version>
+    <Key>docs/a.txt.d/0001</Key>
+    <VersionId>n1</VersionId>
+    <IsLatest>true</IsLatest>
+    <LastModified>2026-11-05T12:00:00.000Z</LastModified>
+    <Size>1</Size>
+  </Version>
+</ListVersionsResult>"#;
+        let config = TigrisDoubleConfig {
+            versions_xml: Some(LONGER_KEYS),
+            ..Default::default()
+        };
+        let (mut provider, _, log) = tigris_double(&[("docs/a.txt", "A")], config).await;
+        let local = tempfile::tempdir().unwrap();
+        let target = local.path().join("v2");
+        provider
+            .download_version("/docs/a.txt", "v2", target.to_str().unwrap())
+            .await
+            .expect("download by version id");
+        let listings = log
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|seen| seen.method == "GET" && seen.uri.contains("versions"))
+            .count();
+        assert_eq!(listings, 1);
+    }
+
+    /// Reading a version by its id may be allowed where listing versions is
+    /// not: the marker check does not turn a refused listing into a refused
+    /// download.
+    /// A listing longer than the cap, sent chunked, is refused while it is
+    /// read, never buffered whole. A download still goes by the version id
+    /// named, but a restore is refused: only a listing denied decides
+    /// nothing, and one refused as too long cannot show the restore would
+    /// change anything.
+    #[tokio::test]
+    async fn an_oversized_version_listing_is_refused_and_decides_nothing() {
+        let config = TigrisDoubleConfig {
+            versions_oversized: true,
+            ..Default::default()
+        };
+        let (mut provider, _, log) = tigris_double(&[("docs/a.txt", "A")], config).await;
+        let listed = provider.list_versions("/docs/a.txt").await;
+        assert!(
+            matches!(&listed, Err(ProviderError::TransferFailed(m)) if m.contains("8 MB")),
+            "{listed:?}"
+        );
+        let local = tempfile::tempdir().unwrap();
+        let target = local.path().join("v2");
+        provider
+            .download_version("/docs/a.txt", "v2", target.to_str().unwrap())
+            .await
+            .expect("download by version id");
+        assert_eq!(
+            std::fs::read_to_string(&target).unwrap(),
+            "docs/a.txt at v2"
+        );
+        let restored = provider.restore_version("/docs/a.txt", "v2").await;
+        assert!(
+            matches!(&restored, Err(ProviderError::TransferFailed(m)) if m.contains("no restore was sent")),
+            "{restored:?}"
+        );
+        let seen = log.lock().unwrap();
+        assert!(seen
+            .iter()
+            .any(|s| s.method == "GET" && s.uri.contains("versionId=v2")));
+        let listings = seen
+            .iter()
+            .filter(|s| s.method == "GET" && s.uri.contains("versions"))
+            .count();
+        assert_eq!(listings, 3, "list, download preflight, restore preflight");
+        assert!(!seen
+            .iter()
+            .any(|s| s.method == "PUT" && s.headers.contains_key("x-amz-copy-source")));
+    }
+
+    /// A key denied the listing (403 or 401) may still restore by the
+    /// version id named: the copy goes out, as a listing denied decides
+    /// nothing, while a listing that broke off refuses it
+    /// (an_oversized_version_listing_is_refused_and_decides_nothing).
+    #[tokio::test]
+    async fn a_restore_denied_the_listing_still_copies_by_version_id() {
+        for status in [403u16, 401] {
+            let config = TigrisDoubleConfig {
+                versions_denied: Some(status),
+                ..Default::default()
+            };
+            let (mut provider, _, log) = tigris_double(&[("docs/a.txt", "A")], config).await;
+            let listed = provider.list_versions("/docs/a.txt").await;
+            assert!(
+                matches!(&listed, Err(ProviderError::PermissionDenied(_))),
+                "{status}: {listed:?}"
+            );
+            provider
+                .restore_version("/docs/a.txt", "v2")
+                .await
+                .unwrap_or_else(|e| panic!("{status}: the restore copies by version id: {e:?}"));
+            let sources: Vec<String> = log
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|s| s.method == "PUT")
+                .filter_map(|s| s.headers.get("x-amz-copy-source").cloned())
+                .collect();
+            assert_eq!(
+                sources,
+                ["/test-bucket/docs/a.txt?versionId=v2"],
+                "{status}: one copy, of this key at v2"
+            );
+            assert_eq!(
+                provider.download_to_bytes("/docs/a.txt").await.unwrap(),
+                b"docs/a.txt at v2",
+                "{status}: the bytes of v2 are current"
+            );
+        }
+    }
+
+    /// The `null` version is replaced in place by every write while
+    /// versioning is suspended: its purge is refused before any DELETE,
+    /// while a purge of a version by its own id goes out as asked.
+    #[tokio::test]
+    async fn a_purge_of_the_null_version_sends_no_delete() {
+        let (mut provider, _, log) =
+            tigris_double(&[("docs/a.txt", "A")], TigrisDoubleConfig::default()).await;
+        let refused = provider.delete_version("/docs/a.txt", "null").await;
+        assert!(
+            matches!(&refused, Err(ProviderError::NotSupported(m)) if m.contains("nothing was purged")),
+            "{refused:?}"
+        );
+        let deletes = |log: &TigrisLog| -> Vec<String> {
+            log.lock()
+                .unwrap()
+                .iter()
+                .filter(|s| s.method == "DELETE")
+                .map(|s| s.uri.clone())
+                .collect()
+        };
+        assert!(deletes(&log).is_empty(), "{:?}", deletes(&log));
+        provider
+            .delete_version("/docs/a.txt", "v2")
+            .await
+            .expect("a version purged by its own id");
+        let sent = deletes(&log);
+        assert_eq!(sent.len(), 1, "{sent:?}");
+        assert!(sent[0].contains("versionId=v2"), "{sent:?}");
+    }
+
+    /// A copy answered 200 whose answer breaks off may have restored the
+    /// version: the restore is applied, not confirmed, with the listing to
+    /// read before another try, where before it was a plain failure.
+    #[tokio::test]
+    async fn a_restore_whose_answer_breaks_off_is_applied_not_confirmed() {
+        let config = TigrisDoubleConfig {
+            versions_denied: Some(403),
+            copy_answer_breaks: true,
+            ..Default::default()
+        };
+        let (mut provider, _, _log) = tigris_double(&[("docs/a.txt", "A")], config).await;
+        let restored = provider.restore_version("/docs/a.txt", "v2").await;
+        let Err(error) = restored else {
+            panic!("{restored:?}");
+        };
+        assert!(super::super::was_applied(&error), "{error:?}");
+        assert!(
+            error.to_string().contains("list its versions again"),
+            "{error}"
+        );
+    }
+
+    /// A restore whose copy is answered 200 with an `<Error>` that repeats
+    /// the session token, plainly, as a character reference or split by a
+    /// CDATA section, fails without the token in its error: the restore
+    /// passes its own answer through the sent-token check.
+    #[tokio::test]
+    async fn a_restore_error_that_repeats_the_sent_token_withholds_it() {
+        const ANSWERS: [&str; 3] = [
+            "<Error><Code>AccessDenied</Code><Message>token SESSIONabc+defTOKEN refused</Message></Error>",
+            "<Error><Code>AccessDenied</Code><Message>token SESSIONabc&#43;defTOKEN refused</Message></Error>",
+            "<Error><Code>AccessDenied</Code><Message>token SESSIONabc<![CDATA[+]]>defTOKEN refused</Message></Error>",
+        ];
+        for answer in ANSWERS {
+            let config = TigrisDoubleConfig {
+                versions_denied: Some(403),
+                copy_answer: Some(("", answer)),
+                ..Default::default()
+            };
+            let (mut provider, _, log) = tigris_double(&[("docs/a.txt", "A")], config).await;
+            provider.config.session_token = Some(secrecy::SecretString::from(
+                "SESSIONabc+defTOKEN".to_string(),
+            ));
+            let restored = provider.restore_version("/docs/a.txt", "v2").await;
+            let Err(error) = restored else {
+                panic!("{answer}: {restored:?}");
+            };
+            let shown = format!("{error} {error:?}");
+            assert!(
+                shown.contains("Restore version failed"),
+                "{answer}: {shown}"
+            );
+            assert!(!shown.contains("SESSIONabc"), "{answer}: {shown}");
+            assert!(!shown.contains("defTOKEN"), "{answer}: {shown}");
+            assert!(
+                log.lock()
+                    .unwrap()
+                    .iter()
+                    .any(|seen| seen.method == "PUT" && seen.uri.contains("docs/a.txt")),
+                "{answer}: no copy was sent"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn a_known_version_downloads_without_the_right_to_list_versions() {
+        let config = TigrisDoubleConfig {
+            versions_denied: Some(403),
+            ..Default::default()
+        };
+        let (mut provider, _, log) = tigris_double(&[("docs/a.txt", "A")], config).await;
+        assert!(provider.list_versions("/docs/a.txt").await.is_err());
+        let local = tempfile::tempdir().unwrap();
+        let target = local.path().join("v2");
+        provider
+            .download_version("/docs/a.txt", "v2", target.to_str().unwrap())
+            .await
+            .expect("download by version id");
+        assert_eq!(
+            std::fs::read_to_string(&target).unwrap(),
+            "docs/a.txt at v2"
+        );
+        assert!(log
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|s| s.method == "GET" && s.uri.contains("versionId=v2")));
     }
 
     #[tokio::test]
@@ -21545,11 +22466,11 @@ mod tests {
     /// opaque token and is still trimmed.
     #[tokio::test]
     async fn version_listings_follow_markers_exactly_across_pages() {
-        const FIRST: &str = "<ListVersionsResult><IsTruncated>true</IsTruncated><NextKeyMarker>doc.txt </NextKeyMarker><NextVersionIdMarker> v2 </NextVersionIdMarker><Version><Key>doc.txt </Key><VersionId>v2</VersionId><IsLatest>false</IsLatest><Size>2</Size></Version></ListVersionsResult>";
+        const FIRST: &str = "<ListVersionsResult><IsTruncated>true</IsTruncated><NextKeyMarker>doc.txt </NextKeyMarker><NextVersionIdMarker> v2 </NextVersionIdMarker><Version><Key>doc.txt </Key><VersionId>v3</VersionId><IsLatest>true</IsLatest><Size>3</Size></Version><Version><Key>doc.txt </Key><VersionId>v2</VersionId><IsLatest>false</IsLatest><Size>2</Size></Version></ListVersionsResult>";
         const SECOND: &str = "<ListVersionsResult><IsTruncated>false</IsTruncated><Version><Key>doc.txt </Key><VersionId>v1</VersionId><IsLatest>false</IsLatest><Size>1</Size></Version></ListVersionsResult>";
         // A key can be a single space: the marker is whitespace only, and the
         // parser and both listings must still carry it to the next request.
-        const SPACE_FIRST: &str = "<ListVersionsResult><IsTruncated>true</IsTruncated><NextKeyMarker> </NextKeyMarker><NextVersionIdMarker>v2</NextVersionIdMarker><Version><Key> </Key><VersionId>v2</VersionId><IsLatest>false</IsLatest><Size>2</Size></Version></ListVersionsResult>";
+        const SPACE_FIRST: &str = "<ListVersionsResult><IsTruncated>true</IsTruncated><NextKeyMarker> </NextKeyMarker><NextVersionIdMarker>v2</NextVersionIdMarker><Version><Key> </Key><VersionId>v3</VersionId><IsLatest>true</IsLatest><Size>3</Size></Version><Version><Key> </Key><VersionId>v2</VersionId><IsLatest>false</IsLatest><Size>2</Size></Version></ListVersionsResult>";
         const SPACE_SECOND: &str = "<ListVersionsResult><IsTruncated>false</IsTruncated><Version><Key> </Key><VersionId>v1</VersionId><IsLatest>false</IsLatest><Size>1</Size></Version></ListVersionsResult>";
         for (path, key_marker, pages) in [
             ("/doc.txt ", "doc.txt ", vec![FIRST, SECOND]),
@@ -21558,9 +22479,16 @@ mod tests {
             for (name, prefix, outcome, seen) in both_version_listings(path, pages.clone()).await {
                 // Both pages, in order: a loop that fetched the first page
                 // twice would also return two versions.
+                // v3 is the current version: the history lists it first, the
+                // trash (non-current versions only) leaves it out.
+                let expected: &[&str] = if name == "list_versions" {
+                    &["v3", "v2", "v1"]
+                } else {
+                    &["v2", "v1"]
+                };
                 assert_eq!(
                     outcome.ok(),
-                    Some(vec!["v2".to_string(), "v1".to_string()]),
+                    Some(expected.iter().map(|v| v.to_string()).collect::<Vec<_>>()),
                     "{name} {path:?}"
                 );
                 assert_eq!(seen.len(), 2, "{name} {path:?}: {seen:?}");

@@ -2805,7 +2805,8 @@
             "restore": "Ripristina questa versione",
             "none": "Nessuna versione disponibile",
             "purge": "Elimina definitivamente questa versione",
-            "purgeConfirm": "Eliminare definitivamente questa versione? Questa operazione non può essere annullata."
+            "purgeConfirm": "Eliminare definitivamente questa versione? Questa operazione non può essere annullata.",
+            "restoreUnconfirmed": "Il ripristino è stato inviato, ma il server non può confermare quale versione sia ora quella corrente. Controlla le versioni prima di ripristinare di nuovo."
         },
         "sharing": {
             "title": "Condivisione",

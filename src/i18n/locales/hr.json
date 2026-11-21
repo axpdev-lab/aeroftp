@@ -2576,7 +2576,8 @@
             "restore": "Vrati ovu verziju",
             "none": "Nema dostupnih verzija",
             "purge": "Trajno izbriši ovu verziju",
-            "purgeConfirm": "Trajno izbrisati ovu verziju? Ova radnja se ne može poništiti."
+            "purgeConfirm": "Trajno izbrisati ovu verziju? Ova radnja se ne može poništiti.",
+            "restoreUnconfirmed": "Vraćanje je poslano, ali poslužitelj ne može potvrditi koja je verzija sada aktualna. Provjerite verzije prije ponovnog vraćanja."
         },
         "sharing": {
             "title": "Dijeljenje",

@@ -11,27 +11,56 @@ import { useDraggableModal } from '../hooks/useDraggableModal';
 import { useGuardedClose } from '../hooks/useGuardedClose';
 import { useInFlight } from '../hooks/useInFlight';
 import { GuardedCloseConfirm } from './GuardedCloseConfirm';
+import { versionDownloadName } from '../utils/versionDownloadName';
 
 interface FileVersion {
   id: string;
   modified: string | null;
   size: number;
   modified_by: string | null;
+  /** A delete or hide marker (S3, B2): no contents to download or restore. */
+  deleted?: boolean;
 }
 
 interface Props {
+  /** The backend connection generation the dialog was opened on: every
+   * command carries it, so nothing runs on a connection switched to since. */
+  generation: number;
+  /** The remote target the dialog was opened on: an overlay applied,
+   * cleared or locked since moves it, and every command is then refused. */
+  guiTarget: number;
+  /** The provider deletes a single version (`supports_version_delete`):
+   * without it no Purge is offered, as the backend would refuse it. */
+  canPurge?: boolean;
+  /** The provider restores a version (`supports_version_restore`): MEGA
+   * lists and downloads versions but refuses their restore. */
+  canRestore?: boolean;
   filePath: string;
   fileName: string;
   onClose: () => void;
   onRestore?: () => void;
+  /** The file listing may be stale: a restore was sent and the server
+   * could not confirm it. The dialog stays open with its warning. */
+  onFilesChanged?: () => void;
 }
 
-export function FileVersionsDialog({ filePath, fileName, onClose, onRestore }: Props) {
+/** The prefix the backend puts on an operation it sent and could not
+ * confirm (`APPLIED_UNCONFIRMED` in providers/mod.rs). */
+const APPLIED_UNCONFIRMED = 'Applied, not confirmed:';
+
+/** The row of the file as it is now, which a provider lists under its own
+ * id (`current`, bound as `<file>:current`): it has no version to purge. */
+const isCurrentFileRow = (id: string) => id === 'current' || id.endsWith(':current');
+
+export function FileVersionsDialog({ generation, guiTarget, canPurge = false, canRestore = false, filePath, fileName, onClose, onRestore, onFilesChanged }: Props) {
   const t = useTranslation();
   const modalDrag = useDraggableModal();
   const [versions, setVersions] = useState<FileVersion[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // The refusal of a Download, Restore or Purge (a file changed since the
+  // listing, a connection switched): shown above the list, which stays.
+  const [actionError, setActionError] = useState<string | null>(null);
   const ops = useInFlight<string>();
   const [pendingPurge, setPendingPurge] = useState<FileVersion | null>(null);
   // Operations on different versions can overlap: the guard counts every
@@ -41,13 +70,13 @@ export function FileVersionsDialog({ filePath, fileName, onClose, onRestore }: P
 
   useEffect(() => {
     loadVersions();
-  }, [filePath]);
+  }, [filePath, generation, guiTarget]);
 
   const loadVersions = async () => {
     setLoading(true);
     setError(null);
     try {
-      const result = await invoke<FileVersion[]>('provider_list_versions', { path: filePath });
+      const result = await invoke<FileVersion[]>('provider_list_versions', { path: filePath, generation, expectedGuiTarget: guiTarget });
       setVersions(result);
     } catch (err) {
       setError(String(err));
@@ -57,35 +86,48 @@ export function FileVersionsDialog({ filePath, fileName, onClose, onRestore }: P
   };
 
   const handleDownload = async (version: FileVersion) => {
-    const ext = fileName.includes('.') ? '.' + fileName.split('.').pop() : '';
-    const defaultName = `${fileName.replace(ext, '')}_v${version.id.slice(0, 8)}${ext}`;
-    const savePath = await pickSave({ defaultPath: defaultName });
+    const savePath = await pickSave({ defaultPath: versionDownloadName(fileName, version.id) });
     if (!savePath) return;
 
+    setActionError(null);
     ops.begin(version.id);
     try {
       await invoke('provider_download_version', {
         path: filePath,
         versionId: version.id,
         localPath: savePath,
+        generation,
+        expectedGuiTarget: guiTarget,
       });
     } catch (err) {
-      console.error('Download version failed:', err);
+      setActionError(String(err));
     } finally {
       ops.end(version.id);
     }
   };
 
   const handleRestore = async (version: FileVersion) => {
+    setActionError(null);
     ops.begin(version.id);
     try {
       await invoke('provider_restore_version', {
         path: filePath,
         versionId: version.id,
+        generation,
+        expectedGuiTarget: guiTarget,
       });
       onRestore?.();
     } catch (err) {
-      console.error('Restore version failed:', err);
+      // A restore sent that the server cannot confirm is not a failure to retry: say so in the user's language.
+      const message = String(err);
+      const unconfirmed = message.includes(APPLIED_UNCONFIRMED);
+      setActionError(unconfirmed
+        ? (t('versions.restoreUnconfirmed') || 'The restore was sent, but it could not be confirmed. Check the versions before restoring again.')
+        : message);
+      // The file may hold the restored contents already: the pane lists it again too.
+      if (unconfirmed) onFilesChanged?.();
+      // A refused or unconfirmed restore may still have changed the file: list again before another one.
+      await loadVersions();
     } finally {
       ops.end(version.id);
     }
@@ -93,16 +135,19 @@ export function FileVersionsDialog({ filePath, fileName, onClose, onRestore }: P
 
   const handlePurge = async (version: FileVersion) => {
     setPendingPurge(null);
+    setActionError(null);
     ops.begin(version.id);
     try {
       await invoke('provider_delete_version', {
         path: filePath,
         versionId: version.id,
+        generation,
+        expectedGuiTarget: guiTarget,
       });
       await loadVersions();
     } catch (err) {
-      console.error('Purge version failed:', err);
-      setError(String(err));
+      setActionError(String(err));
+      await loadVersions();
     } finally {
       ops.end(version.id);
     }
@@ -131,6 +176,12 @@ export function FileVersionsDialog({ filePath, fileName, onClose, onRestore }: P
           {fileName}
         </div>
 
+        {actionError && (
+          <div role="alert" className="px-5 py-2 text-xs text-red-500 border-b border-gray-100 dark:border-gray-700 break-words">
+            {actionError}
+          </div>
+        )}
+
         {/* Content */}
         <div className="flex-1 overflow-auto">
           {loading ? (
@@ -156,12 +207,15 @@ export function FileVersionsDialog({ filePath, fileName, onClose, onRestore }: P
                   <tr key={v.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                     <td className="px-4 py-2 text-xs whitespace-nowrap">
                       {v.modified || '-'}
-                      {i === 0 && <span className="ml-1.5 text-[10px] bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded">{t('versions.current') || 'Current'}</span>}
+                      {v.deleted
+                        ? <span className="ml-1.5 text-[10px] bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 px-1.5 py-0.5 rounded">{t('contextMenu.s3TrashDeleteMarker') || 'Deleted'}</span>
+                        : i === 0 && <span className="ml-1.5 text-[10px] bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded">{t('versions.current') || 'Current'}</span>}
                     </td>
                     <td className="px-4 py-2 text-xs text-gray-500">{formatBytes(v.size)}</td>
                     <td className="px-4 py-2 text-xs text-gray-500 truncate max-w-[120px]">{v.modified_by || '-'}</td>
                     <td className="px-4 py-2 text-right">
                       <div className="flex items-center justify-end gap-1">
+                        {!v.deleted && (
                         <button
                           onClick={() => handleDownload(v)}
                           disabled={ops.has(v.id)}
@@ -170,7 +224,8 @@ export function FileVersionsDialog({ filePath, fileName, onClose, onRestore }: P
                         >
                           {ops.has(v.id) ? <RefreshCw size={13} className="animate-spin" /> : <Download size={13} />}
                         </button>
-                        {i > 0 && (
+                        )}
+                        {canRestore && i > 0 && !v.deleted && (
                           <button
                             onClick={() => handleRestore(v)}
                             disabled={ops.has(v.id)}
@@ -180,6 +235,7 @@ export function FileVersionsDialog({ filePath, fileName, onClose, onRestore }: P
                             <RotateCcw size={13} />
                           </button>
                         )}
+                        {canPurge && !isCurrentFileRow(v.id) && (i > 0 || v.deleted) && (
                         <button
                           onClick={() => setPendingPurge(v)}
                           disabled={ops.has(v.id)}
@@ -188,6 +244,7 @@ export function FileVersionsDialog({ filePath, fileName, onClose, onRestore }: P
                         >
                           <Trash2 size={13} />
                         </button>
+                        )}
                       </div>
                     </td>
                   </tr>

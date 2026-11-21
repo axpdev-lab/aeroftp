@@ -2960,6 +2960,10 @@ pub struct FileVersion {
     pub size: u64,
     /// User who modified (if available)
     pub modified_by: Option<String>,
+    /// A delete or hide marker (S3, B2): the file was deleted at `modified`,
+    /// and the marker has no contents to download or restore.
+    #[serde(default)]
+    pub deleted: bool,
 }
 
 /// One row in the S3-family trash / version view (from ListObjectVersions).

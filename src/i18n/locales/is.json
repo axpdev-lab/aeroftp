@@ -2576,7 +2576,8 @@
             "restore": "Endurheimta þessa útgáfu",
             "none": "Engar útgáfur tiltækar",
             "purge": "Eyða þessari útgáfu varanlega",
-            "purgeConfirm": "Eyða þessari útgáfu varanlega? Þetta er ekki hægt að afturkalla."
+            "purgeConfirm": "Eyða þessari útgáfu varanlega? Þetta er ekki hægt að afturkalla.",
+            "restoreUnconfirmed": "Endurheimtin var send, en þjónninn getur ekki staðfest hvaða útgáfa er nú í gildi. Athugaðu útgáfurnar áður en þú endurheimtir aftur."
         },
         "sharing": {
             "title": "Deiling",

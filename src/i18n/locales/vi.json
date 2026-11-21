@@ -2576,7 +2576,8 @@
             "restore": "Khôi phục phiên bản này",
             "none": "Không có phiên bản nào",
             "purge": "Xóa vĩnh viễn phiên bản này",
-            "purgeConfirm": "Xóa vĩnh viễn phiên bản này? Thao tác này không thể hoàn tác."
+            "purgeConfirm": "Xóa vĩnh viễn phiên bản này? Thao tác này không thể hoàn tác.",
+            "restoreUnconfirmed": "Yêu cầu khôi phục đã được gửi, nhưng máy chủ không thể xác nhận phiên bản nào hiện là bản hiện tại. Hãy kiểm tra các phiên bản trước khi khôi phục lại."
         },
         "sharing": {
             "title": "Chia sẻ",

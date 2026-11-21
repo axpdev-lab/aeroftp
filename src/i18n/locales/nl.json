@@ -2576,7 +2576,8 @@
             "restore": "Deze versie herstellen",
             "none": "Geen versies beschikbaar",
             "purge": "Deze versie permanent verwijderen",
-            "purgeConfirm": "Deze versie permanent verwijderen? Dit kan niet ongedaan worden gemaakt."
+            "purgeConfirm": "Deze versie permanent verwijderen? Dit kan niet ongedaan worden gemaakt.",
+            "restoreUnconfirmed": "Het herstel is verzonden, maar de server kan niet bevestigen welke versie nu de huidige is. Controleer de versies voordat je opnieuw herstelt."
         },
         "sharing": {
             "title": "Delen",

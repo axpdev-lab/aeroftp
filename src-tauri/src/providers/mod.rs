@@ -378,6 +378,1382 @@ pub(crate) fn local_modified_rfc3339(path: &str) -> Option<String> {
 /// For larger files, use the streaming download() method instead.
 pub const MAX_DOWNLOAD_TO_BYTES: u64 = 500 * 1024 * 1024;
 
+/// The id of the row a version list gains when its API leaves the current
+/// version out: the file as it is now. A provider that adds it downloads it
+/// as the file and refuses to restore or delete it.
+pub const CURRENT_VERSION_ID: &str = "current";
+
+/// The cap on one answer a version listing reads (a page of versions, the
+/// lookup of the file they belong to): download and restore read the listing
+/// first, so an endless answer must end in an error, not in memory growth.
+pub const VERSION_LISTING_MAX_BYTES: u64 = 8 * 1024 * 1024;
+
+/// The most pages a version listing follows: a server that keeps naming a
+/// new page past it gets an error, never a history cut short.
+pub const VERSION_LISTING_MAX_PAGES: usize = 200;
+
+/// The most bytes a version listing reads over all its pages: each page is
+/// capped at [`VERSION_LISTING_MAX_BYTES`], and the rows kept from every page
+/// must not add up past this either.
+pub const VERSION_LISTING_MAX_TOTAL_BYTES: u64 = 64 * 1024 * 1024;
+
+/// The error of a version listing still announcing pages at
+/// [`VERSION_LISTING_MAX_PAGES`], or past [`VERSION_LISTING_MAX_TOTAL_BYTES`].
+pub(crate) fn version_listing_too_long(path: &str) -> ProviderError {
+    ProviderError::TransferFailed(format!(
+        "The versions of {path} did not end within {VERSION_LISTING_MAX_PAGES} pages or {} MiB, \
+         so none are shown: try again later",
+        VERSION_LISTING_MAX_TOTAL_BYTES / (1024 * 1024)
+    ))
+}
+
+/// The bytes a paged version listing has read so far, against
+/// [`VERSION_LISTING_MAX_TOTAL_BYTES`]: each page is counted as it is read,
+/// before its rows are kept.
+#[derive(Default)]
+pub(crate) struct VersionListingBudget {
+    read: u64,
+}
+
+impl VersionListingBudget {
+    /// Counts one page of `page_bytes`: an error once the pages read add up
+    /// past the budget, never a history cut short.
+    pub(crate) fn count(&mut self, page_bytes: usize, path: &str) -> Result<(), ProviderError> {
+        self.read = self.read.saturating_add(page_bytes as u64);
+        if self.read > VERSION_LISTING_MAX_TOTAL_BYTES {
+            return Err(version_listing_too_long(path));
+        }
+        Ok(())
+    }
+}
+
+/// A version listing answer as text, read up to [`VERSION_LISTING_MAX_BYTES`].
+pub async fn version_listing_text(resp: reqwest::Response) -> Result<String, ProviderError> {
+    version_listing_text_with(resp, |e| {
+        http_send_error(e, |e| ProviderError::TransferFailed(e.to_string()))
+    })
+    .await
+}
+
+/// [`version_listing_text`] with the provider's own mapping of a body that
+/// broke off.
+pub(crate) async fn version_listing_text_with(
+    resp: reqwest::Response,
+    body_error: impl FnOnce(reqwest::Error) -> ProviderError,
+) -> Result<String, ProviderError> {
+    let body = body_bytes_with_limit(resp, VERSION_LISTING_MAX_BYTES, body_error).await?;
+    String::from_utf8(body)
+        .map_err(|e| ProviderError::ParseError(format!("Version listing is not UTF-8: {e}")))
+}
+
+/// The next page URL a server named, accepted only on the origin of the API
+/// the provider is configured for: same scheme, host and port, and no user
+/// information. The caller sends its token or signature with the request
+/// that follows, so an answer that names another origin (a tampered or
+/// misbehaving server, a proxy that rewrites links) is refused before any
+/// request: the token never leaves the configured API. `what` names the
+/// listing in the error.
+pub(crate) fn next_page_on_api_origin(
+    api_base: &str,
+    next: &str,
+    what: &str,
+) -> Result<String, ProviderError> {
+    let refused = || {
+        ProviderError::ServerError(format!(
+            "{what}: the next page is outside the configured API, so it was not requested"
+        ))
+    };
+    let base = reqwest::Url::parse(api_base).map_err(|_| refused())?;
+    let url = reqwest::Url::parse(next).map_err(|_| refused())?;
+    let same_origin = url.scheme() == base.scheme()
+        && url.host_str() == base.host_str()
+        && url.port_or_known_default() == base.port_or_known_default()
+        && url.username().is_empty()
+        && url.password().is_none();
+    if same_origin {
+        Ok(next.to_string())
+    } else {
+        Err(refused())
+    }
+}
+
+/// Copy a fetched version over `to` the way every download writes it
+/// ([`atomic_write::AtomicFile`]): by default beside it first, renamed over it
+/// once whole, so a copy cut short (a full disk, a read error) leaves the
+/// file already there untouched. With --inplace the user asked for writes in
+/// place: the copy writes `to` directly, as every download then does.
+pub(crate) async fn copy_version_into_place(
+    from: &std::path::Path,
+    to: &str,
+) -> Result<(), ProviderError> {
+    copy_version_into_place_in(from, to, atomic_write::inplace_active()).await
+}
+
+/// [`copy_version_into_place`] with the in-place mode given.
+pub(crate) async fn copy_version_into_place_in(
+    from: &std::path::Path,
+    to: &str,
+    inplace: bool,
+) -> Result<(), ProviderError> {
+    let mut source = tokio::fs::File::open(from)
+        .await
+        .map_err(ProviderError::IoError)?;
+    let mut atomic = atomic_write::AtomicFile::new_in(to, inplace)
+        .await
+        .map_err(ProviderError::IoError)?;
+    tokio::io::copy(&mut source, atomic.file_mut())
+        .await
+        .map_err(ProviderError::IoError)?;
+    atomic.commit().await.map_err(ProviderError::IoError)
+}
+
+/// A request for a version's whole body is answered 200 only: a 206 or
+/// another 2xx carries part of it, or none, even with a Content-Length that
+/// matches what it sent. Checked after the provider's own refusal handling.
+pub fn require_whole_version_body(
+    resp: &reqwest::Response,
+    what: &str,
+) -> Result<(), ProviderError> {
+    match resp.status() {
+        reqwest::StatusCode::OK => Ok(()),
+        status => Err(ProviderError::TransferFailed(format!(
+            "{what}: the server answered HTTP {status}, not the whole version"
+        ))),
+    }
+}
+
+/// Write a version's whole body (checked by [`require_whole_version_body`])
+/// to `local_path` the way a download does: through an
+/// [`atomic_write::AtomicFile`], committed only once every byte the answer
+/// announced has arrived.
+pub async fn save_version_body(
+    resp: reqwest::Response,
+    local_path: &str,
+    what: &str,
+) -> Result<(), ProviderError> {
+    stage_version_body(resp, local_path, what)
+        .await?
+        .commit()
+        .await
+        .map_err(ProviderError::IoError)
+}
+
+/// The id of the row on top bound to its file and to what the listing saw
+/// of its contents: `{file}.{token}:current`, the token (a content tag, an
+/// ETag, a size with a time) hex-encoded so it holds no separator. A
+/// download of it reads the file only while it still shows that token,
+/// before and after the body ([`bound_current_row_of`]), so a write between
+/// the listing and the download, or during it, saves nothing.
+pub(crate) fn bound_current_row(file_id: &str, token: &str) -> String {
+    format!("{file_id}.{}:{CURRENT_VERSION_ID}", hex::encode(token))
+}
+
+/// The file id and the listed token of a row [`bound_current_row`] made;
+/// None for any other id.
+pub(crate) fn bound_current_row_of(version_id: &str) -> Option<(&str, String)> {
+    let bound = version_id
+        .strip_suffix(CURRENT_VERSION_ID)?
+        .strip_suffix(':')?;
+    let (file_id, token) = bound.rsplit_once('.')?;
+    let token = String::from_utf8(hex::decode(token).ok()?).ok()?;
+    (!file_id.is_empty()).then_some((file_id, token))
+}
+
+/// The refusal of a bound current row whose file no longer shows what its
+/// listing saw: nothing was written.
+pub(crate) fn current_row_changed(path: &str) -> ProviderError {
+    ProviderError::NotFound(format!(
+        "{path} is no longer the file whose versions were listed (it was written or replaced \
+         since): nothing was saved, list its versions again"
+    ))
+}
+
+/// [`stage_version_body`] staged whatever `--inplace` says: the body of a
+/// bound current row is checked once it is read, and written in place,
+/// bytes that are not the row's would already have replaced the destination.
+pub async fn stage_bound_current_body(
+    resp: reqwest::Response,
+    local_path: &str,
+    what: &str,
+) -> Result<atomic_write::AtomicFile, ProviderError> {
+    stage_version_body_in(resp, local_path, what, false).await
+}
+
+/// [`save_version_body`] up to the commit: the whole body written to the
+/// staged file, which the caller commits once it has checked what the body
+/// belongs to (dropped, it leaves the destination as it was, unless the user
+/// asked for `--inplace`).
+pub async fn stage_version_body(
+    resp: reqwest::Response,
+    local_path: &str,
+    what: &str,
+) -> Result<atomic_write::AtomicFile, ProviderError> {
+    stage_version_body_in(resp, local_path, what, atomic_write::inplace_active()).await
+}
+
+async fn stage_version_body_in(
+    resp: reqwest::Response,
+    local_path: &str,
+    what: &str,
+    inplace: bool,
+) -> Result<atomic_write::AtomicFile, ProviderError> {
+    use futures_util::StreamExt;
+    require_whole_version_body(&resp, what)?;
+    let expected = resp.content_length();
+    let mut stream = resp.bytes_stream();
+    let mut atomic = atomic_write::AtomicFile::new_in(local_path, inplace)
+        .await
+        .map_err(ProviderError::IoError)?;
+    let mut written: u64 = 0;
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| ProviderError::TransferFailed(format!("{what}: {e}")))?;
+        atomic
+            .write_all(&chunk)
+            .await
+            .map_err(ProviderError::IoError)?;
+        written += chunk.len() as u64;
+    }
+    if let Some(expected) = expected.filter(|expected| *expected != written) {
+        return Err(ProviderError::TransferFailed(format!(
+            "{what}: cut short, received {written} of {expected} bytes"
+        )));
+    }
+    Ok(atomic)
+}
+
+/// The id a listed version carries where the provider names versions by a
+/// label of the file (`1.0`, `2.0`): the file id with it, so an action sent
+/// after another file took the path cannot reach that file's `2.0`.
+pub fn bind_version_to_file(file_id: &str, label: &str) -> String {
+    format!("{file_id}:{label}")
+}
+
+/// The label of a version id from [`bind_version_to_file`], refused when the
+/// path now holds another file than the one it was listed from, or when the
+/// id was not listed bound.
+pub fn version_label_of_file<'a>(
+    version_id: &'a str,
+    file_id: &str,
+    path: &str,
+) -> Result<&'a str, ProviderError> {
+    match version_id.split_once(':') {
+        Some((listed, label)) if listed == file_id && !label.is_empty() => Ok(label),
+        Some((listed, _)) => Err(ProviderError::NotFound(format!(
+            "{path} is now another file (file id {file_id}, listed {listed}): \
+             list its versions again"
+        ))),
+        None => Err(ProviderError::InvalidPath(format!(
+            "{version_id} is not a version id listed for {path}: list its versions again"
+        ))),
+    }
+}
+
+/// Put a version list in the order every `list_versions` answers in, the one
+/// the versions dialog reads (FileVersionsDialog.tsx labels row 0 Current and
+/// offers no Restore on it): the current version first, then the others
+/// newest first by `newest`.
+///
+/// `is_current` tells the current version by the file's own metadata (a
+/// revision id, an mtime), never by its place in the API's answer, whose
+/// order most APIs leave unspecified. When no row is current, `current` (the
+/// file as it is now, or `None` for a file with no current state) becomes
+/// row 0. With neither, the list is refused: the dialog would label the
+/// newest past version Current by its place alone.
+pub fn versions_current_first(
+    versions: Vec<FileVersion>,
+    is_current: impl Fn(&FileVersion) -> bool,
+    current: impl FnOnce() -> Option<FileVersion>,
+    newest: impl Fn(&FileVersion) -> i64,
+) -> Result<Vec<FileVersion>, ProviderError> {
+    let (mut head, mut rest): (Vec<_>, Vec<_>) = versions.into_iter().partition(|v| is_current(v));
+    head.sort_by_key(|v| std::cmp::Reverse(newest(v)));
+    let mut head = head.into_iter();
+    let first = head.next().or_else(current);
+    rest.extend(head);
+    if first.is_none() && !rest.is_empty() {
+        return Err(ProviderError::ServerError(CURRENT_VERSION_UNKNOWN.into()));
+    }
+    rest.sort_by_key(|v| std::cmp::Reverse(newest(v)));
+    Ok(first.into_iter().chain(rest).collect())
+}
+
+/// Why a version list whose current version cannot be told is refused.
+pub const CURRENT_VERSION_UNKNOWN: &str = "The server listed versions of this file without \
+     saying which one is current, so none can be shown as current: list its versions again";
+
+/// [`versions_current_first`] for an API whose current version is, by its
+/// own definition, the latest one written (B2: a download by name serves the
+/// most recent upload); `modified` is the server's upload time.
+pub fn versions_latest_first(
+    versions: Vec<FileVersion>,
+) -> Result<Vec<FileVersion>, ProviderError> {
+    let time = |v: &FileVersion| version_time_millis(v.modified.as_deref());
+    let latest = versions.iter().map(time).max();
+    versions_current_first(versions, |v| Some(time(v)) == latest, || None, time)
+}
+
+/// [`versions_current_first`] for an API that lists only the versions a
+/// change replaced: the file as it is now becomes row 0, under
+/// [`CURRENT_VERSION_ID`], and the listed ones follow newest first.
+pub fn versions_after_the_file(
+    mut versions: Vec<FileVersion>,
+    file: &RemoteEntry,
+) -> Vec<FileVersion> {
+    versions.sort_by_key(|v| std::cmp::Reverse(version_time_millis(v.modified.as_deref())));
+    std::iter::once(current_version_of(file))
+        .chain(versions)
+        .collect()
+}
+
+/// A local temp path a version passes through (a MEGAcmd download, a Drive
+/// revision on its way back up), removed when the guard goes: after success,
+/// on an error, and when the operation is dropped (Stop).
+pub(crate) struct VersionTempFile(pub(crate) std::path::PathBuf);
+
+impl VersionTempFile {
+    /// A path under the temp folder that does not exist yet.
+    pub(crate) fn new(prefix: &str) -> Self {
+        Self(std::env::temp_dir().join(format!("{prefix}_{}", uuid::Uuid::new_v4())))
+    }
+
+    /// [`Self::new`], created empty and readable by its owner only (0600 on
+    /// Unix) before any byte of the version is written to it.
+    pub(crate) fn create_private(prefix: &str) -> std::io::Result<Self> {
+        let temp = Self::new(prefix);
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        options.open(&temp.0)?;
+        #[cfg(test)]
+        LAST_PRIVATE_VERSION_TEMP.with(|last| *last.borrow_mut() = Some(temp.0.clone()));
+        Ok(temp)
+    }
+}
+
+// The last private version temp file made on this thread, so a test checks
+// the cleanup of its own file and not a count of a directory that tests
+// running in parallel share.
+#[cfg(test)]
+thread_local! {
+    pub(crate) static LAST_PRIVATE_VERSION_TEMP: std::cell::RefCell<Option<std::path::PathBuf>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+impl Drop for VersionTempFile {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
+/// Class guards over every provider's version code, read from the sources:
+/// a provider added later meets them without a test of its own.
+#[cfg(test)]
+mod version_class_guards {
+    /// The body of the first `fn <name>` in `source`, up to the next item of
+    /// the same impl.
+    fn body<'a>(source: &'a str, name: &str) -> &'a str {
+        let start = source
+            .find(&format!("fn {name}("))
+            .unwrap_or_else(|| panic!("no fn {name}"));
+        let rest = &source[start..];
+        let end = [
+            "\n    async fn ",
+            "\n    fn ",
+            "\n    pub async fn ",
+            "\n    pub fn ",
+            "\n}\n",
+        ]
+        .iter()
+        .filter_map(|next| rest[1..].find(next))
+        .min()
+        .unwrap_or(rest.len() - 1);
+        &rest[..=end]
+    }
+
+    /// A version's whole body is accepted on 200 only (a 206 with a matching
+    /// Content-Length is still a part): each `download_version` that reads
+    /// the body itself checks it, in its own body or in the one helper named,
+    /// by a call in its code (a comment naming a helper is no check).
+    #[test]
+    fn every_version_body_is_accepted_on_200_only() {
+        const WHOLE: [&str; 5] = [
+            "require_whole_version_body(",
+            "save_version_body(",
+            "stage_version_body(",
+            "stage_bound_current_body(",
+            "StatusCode::OK =>",
+        ];
+        for (file, source, reader) in [
+            (
+                "box_provider.rs",
+                include_str!("box_provider.rs"),
+                "download_version",
+            ),
+            ("b2.rs", include_str!("b2.rs"), "do_download_by_id"),
+            ("dropbox.rs", include_str!("dropbox.rs"), "download_version"),
+            ("koofr.rs", include_str!("koofr.rs"), "download_version"),
+            ("kdrive.rs", include_str!("kdrive.rs"), "download_version"),
+            (
+                "zoho_workdrive.rs",
+                include_str!("zoho_workdrive.rs"),
+                "download_version",
+            ),
+            (
+                "onedrive.rs",
+                include_str!("onedrive.rs"),
+                "download_version",
+            ),
+            (
+                "google_drive.rs",
+                include_str!("google_drive.rs"),
+                "revision_response",
+            ),
+            ("s3.rs", include_str!("s3.rs"), "download_version"),
+            (
+                "webdav.rs",
+                include_str!("webdav.rs"),
+                "nextcloud_download_version",
+            ),
+        ] {
+            let code: String = body(source, reader)
+                .lines()
+                .filter(|line| !line.trim_start().starts_with("//"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            assert!(
+                WHOLE.iter().any(|check| code.contains(check)),
+                "{file}: {reader} accepts a version body without requiring 200"
+            );
+            assert!(
+                !code.contains("tokio::fs::write(local_path"),
+                "{file}: {reader} writes a version over the destination, not through AtomicFile"
+            );
+        }
+    }
+    /// A restore is sent only after its version listing was read: only S3
+    /// and B2 (list right apart from the copy right) may go on without it.
+    #[test]
+    fn only_s3_and_b2_restore_without_a_listing() {
+        for (file, source) in [
+            ("box_provider.rs", include_str!("box_provider.rs")),
+            ("dropbox.rs", include_str!("dropbox.rs")),
+            ("filelu.rs", include_str!("filelu.rs")),
+            ("google_drive.rs", include_str!("google_drive.rs")),
+            ("kdrive.rs", include_str!("kdrive.rs")),
+            ("koofr.rs", include_str!("koofr.rs")),
+            ("onedrive.rs", include_str!("onedrive.rs")),
+            ("webdav.rs", include_str!("webdav.rs")),
+            ("zoho_workdrive.rs", include_str!("zoho_workdrive.rs")),
+        ] {
+            assert!(
+                !source.contains("refuse_a_restore_that_changes_nothing_when_listed"),
+                "{file}: a restore goes on without its listing"
+            );
+            assert!(
+                !source.contains("Err(_) => None"),
+                "{file}: a failed listing is dropped before a restore"
+            );
+        }
+    }
+
+    /// A folder id cached before another client moved the folder answers
+    /// the old folder: every version action of a provider that caches
+    /// folder ids by path forgets the ones on the way to its file first, so
+    /// it acts on the file at the path now or on nothing.
+    #[test]
+    fn every_version_action_walks_its_path_again() {
+        for (file, source, marker) in [
+            (
+                "box_provider.rs",
+                include_str!("box_provider.rs"),
+                "forget_cached_ancestors",
+            ),
+            (
+                "kdrive.rs",
+                include_str!("kdrive.rs"),
+                "forget_cached_ancestors",
+            ),
+            (
+                "onedrive.rs",
+                include_str!("onedrive.rs"),
+                "forget_the_way_to",
+            ),
+        ] {
+            for action in ["list_versions", "download_version", "restore_version"] {
+                assert!(
+                    body(source, action).contains(marker),
+                    "{file}: {action} trusts a cached folder id"
+                );
+            }
+        }
+        let onedrive = body(include_str!("onedrive.rs"), "forget_the_way_to");
+        for cache in ["remote_roots", "plain_folders"] {
+            assert!(
+                onedrive.contains(cache),
+                "onedrive.rs keeps a cached {cache}"
+            );
+        }
+    }
+
+    /// Every operation, not only a version action, resolves through one
+    /// function per provider, and none of them answers a cached id without
+    /// the server confirming it: Box and kDrive confirm a walk that used the
+    /// cache with one request on the folder found, Zoho walks every name
+    /// (its API gives no path for an id in a documented shape), and
+    /// OneDrive caches no id at all (a lookup by path is the one request a
+    /// confirmation would cost) and reads each cached shortcut again.
+    #[test]
+    fn no_operation_acts_on_a_cached_id_the_server_did_not_confirm() {
+        let boxp = include_str!("box_provider.rs");
+        assert!(body(boxp, "resolve_folder_id").contains("self.folder_is_at("));
+        let kdrive = include_str!("kdrive.rs");
+        assert!(body(kdrive, "resolve_folder").contains("self.folder_is_at("));
+        let zoho = body(
+            include_str!("zoho_workdrive.rs"),
+            "resolve_path_with_listing",
+        );
+        assert!(
+            !zoho.contains("folder_cache.get(&"),
+            "zoho_workdrive.rs resolves a name from the cache"
+        );
+        let onedrive = include_str!("onedrive.rs");
+        assert!(!onedrive.contains("path_cache"), "onedrive.rs caches ids");
+        for reader in ["get_item", "learn_parents"] {
+            assert!(
+                body(onedrive, reader).contains("self.confirm_cached_shortcuts("),
+                "onedrive.rs {reader} trusts a cached shortcut"
+            );
+        }
+    }
+
+    #[test]
+    fn only_the_path_and_the_folders_on_its_way_are_forgotten() {
+        let mut cache: std::collections::HashMap<String, u8> = [
+            "/",
+            "",
+            "/docs",
+            "/Docs/Sub",
+            "/docs/sub/a.txt",
+            "/docs/subway",
+            "/x",
+            "docs",
+        ]
+        .into_iter()
+        .map(|k| (k.to_string(), 0))
+        .collect();
+        super::forget_cached_ancestors(&mut cache, "/docs/sub/a.txt");
+        let mut kept: Vec<&str> = cache.keys().map(String::as_str).collect();
+        kept.sort_unstable();
+        assert_eq!(kept, ["", "/", "/docs/subway", "/x"]);
+    }
+
+    /// A version listing is a preflight of every download and restore, so
+    /// none reads a body unbounded: each listing read, and each helper of
+    /// one named here, goes through [`super::version_listing_text`] or
+    /// [`super::response_bytes_with_limit`].
+    #[test]
+    fn every_version_listing_reads_a_bounded_body() {
+        const UNBOUNDED: [&str; 4] = [".text()", ".json()", ".json::<", ".bytes()"];
+        for (file, source, reader) in [
+            ("b2.rs", include_str!("b2.rs"), "list_file_versions_page"),
+            (
+                "box_provider.rs",
+                include_str!("box_provider.rs"),
+                "list_versions",
+            ),
+            (
+                "box_provider.rs",
+                include_str!("box_provider.rs"),
+                "file_entry_of_id",
+            ),
+            (
+                "drime_cloud.rs",
+                include_str!("drime_cloud.rs"),
+                "drime_versions",
+            ),
+            ("dropbox.rs", include_str!("dropbox.rs"), "list_versions"),
+            ("dropbox.rs", include_str!("dropbox.rs"), "version_metadata"),
+            ("filelu.rs", include_str!("filelu.rs"), "parse_versions_api"),
+            ("koofr.rs", include_str!("koofr.rs"), "version_file_info"),
+            (
+                "google_drive.rs",
+                include_str!("google_drive.rs"),
+                "list_versions",
+            ),
+            (
+                "google_drive.rs",
+                include_str!("google_drive.rs"),
+                "head_revision",
+            ),
+            ("kdrive.rs", include_str!("kdrive.rs"), "list_versions"),
+            ("kdrive.rs", include_str!("kdrive.rs"), "entry_of_file_id"),
+            ("koofr.rs", include_str!("koofr.rs"), "list_versions"),
+            ("onedrive.rs", include_str!("onedrive.rs"), "list_versions"),
+            ("s3.rs", include_str!("s3.rs"), "list_versions"),
+            (
+                "webdav.rs",
+                include_str!("webdav.rs"),
+                "nextcloud_list_versions",
+            ),
+            ("webdav.rs", include_str!("webdav.rs"), "nextcloud_file_of"),
+            (
+                "webdav.rs",
+                include_str!("webdav.rs"),
+                "nextcloud_list_file_ids",
+            ),
+            (
+                "zoho_workdrive.rs",
+                include_str!("zoho_workdrive.rs"),
+                "list_versions",
+            ),
+        ] {
+            let code = body(source, reader);
+            for read in UNBOUNDED {
+                assert!(
+                    !code.contains(read),
+                    "{file}: {reader} reads a body with {read}, not bounded"
+                );
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod version_temp_file_tests {
+    #[test]
+    fn a_private_version_temp_file_is_owner_only_and_gone_on_drop() {
+        let temp = super::VersionTempFile::create_private("aeroftp_temp_test").unwrap();
+        let path = temp.0.clone();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+            assert_eq!(mode & 0o777, 0o600);
+        }
+        assert!(path.exists());
+        drop(temp);
+        assert!(!path.exists());
+    }
+}
+
+/// The row [`CURRENT_VERSION_ID`] a provider that lists only past versions
+/// puts first: the file as it is now.
+pub fn current_version_of(file: &RemoteEntry) -> FileVersion {
+    FileVersion {
+        id: CURRENT_VERSION_ID.to_string(),
+        modified: file.modified.clone(),
+        size: file.size,
+        modified_by: None,
+        deleted: false,
+    }
+}
+
+/// Refuse to download or restore `version_id` of `path` when the list marks
+/// it [`FileVersion::deleted`]: a delete or hide marker has no contents, and
+/// the dialog hides both buttons on it, so the CLI and the agent tools get
+/// the same answer from the backend.
+///
+/// A listing that fails decides nothing: reading one version by its id may
+/// be allowed where listing them is not (S3 `s3:GetObjectVersion` without
+/// `s3:ListBucketVersions`), and the server itself refuses a marker's id.
+pub async fn refuse_a_deleted_version<P: StorageProvider + ?Sized>(
+    provider: &mut P,
+    path: &str,
+    version_id: &str,
+) -> Result<(), ProviderError> {
+    let Ok(versions) = provider.list_versions(path).await else {
+        return Ok(());
+    };
+    refuse_a_listed_marker(&versions, version_id)
+}
+
+/// What [`refuse_a_restore_that_changes_nothing`] listed before a restore,
+/// for [`confirm_version_restored`]: the row of the version selected and the
+/// row that was current then.
+#[derive(Debug, Clone)]
+pub struct RestorePreflight {
+    pub selected: FileVersion,
+    pub before: FileVersion,
+    /// The id the server gave the version the restore made current (S3
+    /// `x-amz-version-id`), when its answer names one: row 0 must then be it.
+    pub made_current: Option<String>,
+    /// Set by [`Self::bound_by_the_caller`].
+    pub bound_by_the_caller: bool,
+}
+
+impl RestorePreflight {
+    /// The preflight with the id the restore answer gave its new current
+    /// version ([`Self::made_current`]); an empty one names nothing.
+    pub fn made_current(mut self, id: Option<String>) -> Self {
+        self.made_current = id.filter(|id| !id.trim().is_empty());
+        self
+    }
+
+    /// The caller binds the restore itself after the check (Box reads the
+    /// file's current version id back against the one its answer named):
+    /// the check passing without a version named is then not the last word.
+    pub fn bound_by_the_caller(mut self) -> Self {
+        self.bound_by_the_caller = true;
+        self
+    }
+}
+
+/// Refuse to restore `version_id` of `path` when the restore cannot change
+/// anything: a delete marker, as [`refuse_a_deleted_version`], or row 0 of
+/// the list, the current version, which is the file itself (a restore of it
+/// would only add a copy of the current contents on top, or be refused by
+/// the server in its own words). A deleted file's row 0 is its deletion, so
+/// its last contents below stay restorable. A listing that fails decides
+/// nothing, as there; a listing that does not hold the id refuses it before
+/// any call (the path now holds another file, or the id was mistyped), so
+/// the listing must hold every version kept: each page of a paged one, and
+/// a version a capped one leaves out read on its own (Dropbox). A bare
+/// label (`1700000000`) is the listed row bound to a file with that label
+/// (`42:1700000000`), as the providers that bind ids still accept one.
+/// A listing that fails refuses the restore ([`restore_needs_its_listing`]):
+/// without its rows the restore can be checked neither before nor after.
+/// The rows listed come back, for [`confirm_version_restored`].
+pub async fn refuse_a_restore_that_changes_nothing<P: StorageProvider + ?Sized>(
+    provider: &mut P,
+    path: &str,
+    version_id: &str,
+) -> Result<RestorePreflight, ProviderError> {
+    let versions = provider
+        .list_versions(path)
+        .await
+        .map_err(|e| restore_needs_its_listing(path, e))?;
+    restore_preflight(&versions, path, version_id)
+}
+
+/// [`refuse_a_restore_that_changes_nothing`] for S3 and B2 only, where the
+/// right to list versions is granted apart from the right to copy one, and
+/// a key that may restore can be denied the listing: there a listing
+/// denied (`PermissionDenied`) decides nothing (`None`), and the copy names
+/// its target itself. Any other failure (a listing cut short, refused as
+/// too long, malformed) refuses the restore like
+/// [`refuse_a_restore_that_changes_nothing`].
+pub async fn refuse_a_restore_that_changes_nothing_when_listed<P: StorageProvider + ?Sized>(
+    provider: &mut P,
+    path: &str,
+    version_id: &str,
+) -> Result<Option<RestorePreflight>, ProviderError> {
+    match provider.list_versions(path).await {
+        Ok(versions) => restore_preflight(&versions, path, version_id).map(Some),
+        Err(ProviderError::PermissionDenied(_)) => Ok(None),
+        Err(e) => Err(restore_needs_its_listing(path, e)),
+    }
+}
+
+/// A purge of the version on top, refused before anything is sent: it is
+/// the file itself, and deleting it is a deletion, not a purge of history
+/// (the providers whose top row is `current` refuse it by that id already;
+/// S3 and B2 name it by a native id). A delete marker on top stays
+/// purgeable: that undeletes the file. The listing is read fresh; a listing
+/// denied (S3, B2) decides nothing, any other failure refuses the purge.
+pub async fn refuse_a_purge_of_the_live_version<P: StorageProvider + ?Sized>(
+    provider: &mut P,
+    path: &str,
+    version_id: &str,
+) -> Result<(), ProviderError> {
+    let versions = match provider.list_versions(path).await {
+        Ok(versions) => versions,
+        Err(ProviderError::PermissionDenied(_)) => return Ok(()),
+        Err(e @ (ProviderError::NotFound(_) | ProviderError::NotConnected)) => return Err(e),
+        Err(e) => {
+            return Err(ProviderError::TransferFailed(format!(
+                "The versions of {path} could not be listed ({e}), so nothing was purged: list \
+                 its versions again"
+            )))
+        }
+    };
+    match versions.first() {
+        Some(top) if listed_as(top, version_id) && !top.deleted => {
+            Err(ProviderError::NotSupported(
+                "This is the current version: it is the file itself, so nothing was purged".into(),
+            ))
+        }
+        _ => Ok(()),
+    }
+}
+
+/// The error of a restore whose version listing failed: a file gone or
+/// replaced, a disconnect or a provider without versions keep their own
+/// error; any other failure says no restore was sent.
+pub(crate) fn restore_needs_its_listing(path: &str, error: ProviderError) -> ProviderError {
+    match error {
+        e @ (ProviderError::NotFound(_)
+        | ProviderError::NotConnected
+        | ProviderError::NotSupported(_)) => e,
+        e => ProviderError::TransferFailed(format!(
+            "The versions of {path} could not be listed ({e}), so no restore was sent: \
+             list its versions again"
+        )),
+    }
+}
+
+/// [`refuse_a_restore_that_changes_nothing`] on the rows listed.
+pub(crate) fn restore_preflight(
+    versions: &[FileVersion],
+    path: &str,
+    version_id: &str,
+) -> Result<RestorePreflight, ProviderError> {
+    refuse_a_listed_marker(versions, version_id)?;
+    let Some(selected) = versions.iter().find(|v| listed_as(v, version_id)).cloned() else {
+        return Err(ProviderError::NotFound(format!(
+            "Version {version_id} is not among the versions {path} lists now: list its \
+             versions again"
+        )));
+    };
+    let before = versions[0].clone();
+    if before.id == selected.id && !before.deleted {
+        return Err(ProviderError::NotSupported(
+            "This is already the current version".into(),
+        ));
+    }
+    Ok(RestorePreflight {
+        selected,
+        before,
+        made_current: None,
+        bound_by_the_caller: false,
+    })
+}
+
+/// Whether `row` is the version `version_id` names: its own id, or, for a
+/// bare label, the label of a row bound to a file ([`bind_version_to_file`]).
+pub(crate) fn listed_as(row: &FileVersion, version_id: &str) -> bool {
+    row.id == version_id
+        || (!version_id.contains(':')
+            && row
+                .id
+                .split_once(':')
+                .is_some_and(|(_, label)| label == version_id))
+}
+
+/// The words every error opens with when the server took an operation but
+/// its outcome could not be confirmed: the operation may already be done,
+/// so nothing may send it again on its own (an auth-shaped text inside the
+/// error, from the read that checks it, is no proof the server refused it).
+pub(crate) const APPLIED_UNCONFIRMED: &str = "Applied, not confirmed:";
+
+/// An error of an operation the server may already have applied
+/// ([`APPLIED_UNCONFIRMED`]).
+pub(crate) fn applied_unconfirmed(detail: String) -> ProviderError {
+    ProviderError::TransferFailed(format!("{APPLIED_UNCONFIRMED} {detail}"))
+}
+
+/// The send error of a request that changes something and has no
+/// precondition a second copy would fail: one that never connected sent
+/// nothing; any other failure, a timeout included, may have come after the
+/// server applied it, so it is [`applied_unconfirmed`] and never retried.
+/// (`map_http_err` would make a timeout a plain [`ProviderError::Timeout`],
+/// which callers retry.)
+pub(crate) fn change_send_error(e: reqwest::Error, what: &str) -> ProviderError {
+    if e.is_connect() {
+        return ProviderError::ConnectionFailed(format!(
+            "{what} was not sent: {}",
+            e.without_url()
+        ));
+    }
+    applied_unconfirmed(format!(
+        "{what} was sent, but no answer came ({}): list its versions again before trying again",
+        e.without_url()
+    ))
+}
+
+/// The answer to a change that a gateway gave instead of the server (502,
+/// 503, 504): the proxy in front gave up, which says nothing of whether the
+/// server behind it applied the change, so it is [`applied_unconfirmed`].
+/// `None` for any other status: a refusal the caller reports as its own.
+pub(crate) fn gateway_left_unknown(
+    status: reqwest::StatusCode,
+    what: &str,
+) -> Option<ProviderError> {
+    matches!(status.as_u16(), 502..=504).then(|| {
+        applied_unconfirmed(format!(
+            "{what} was answered {status} by a gateway, which does not say whether it was \
+             applied: list its versions again before trying again"
+        ))
+    })
+}
+
+/// [`change_send_error`] for a sender that has already mapped its error:
+/// a timeout or any transport failure of a change with no precondition may
+/// have come after the server applied it (a refused connect, which sent
+/// nothing, cannot be told apart here and is taken as possibly applied
+/// too: the caller is sent to list again, never to send twice).
+pub(crate) fn sent_change_unconfirmed(e: ProviderError, what: &str) -> ProviderError {
+    match e {
+        ProviderError::Timeout
+        | ProviderError::ConnectionLost(_)
+        | ProviderError::ConnectionFailed(_)
+        | ProviderError::NetworkError(_) => applied_unconfirmed(format!(
+            "{what} was sent, but no answer came ({e}): list its versions again before trying \
+             again"
+        )),
+        other => other,
+    }
+}
+
+/// Whether `error` is one of [`applied_unconfirmed`]: never retried.
+pub(crate) fn was_applied(error: &ProviderError) -> bool {
+    matches!(error, ProviderError::TransferFailed(m) if m.starts_with(APPLIED_UNCONFIRMED))
+}
+
+/// After a restore the server answered with success: the file's current
+/// version, listed again, must hold what the selected one held, as far as a
+/// listing tells (its size, and not a deletion), and must not be the row
+/// that was current before, unchanged (same id, time and size: a restore
+/// the server dropped, which a size alone cannot tell when both versions
+/// have the same length). When the answer named the version it made current
+/// ([`RestorePreflight::made_current`]), row 0 must be that one, so a write
+/// of the same length by someone else meanwhile is not taken for the
+/// restore. Most restore answers prove nothing (204, `{}`, an empty 201),
+/// and a 200 can still carry a failure (S3 CopyObject). A preflight of
+/// `None` (an S3 or B2 listing denied before the restore,
+/// [`refuse_a_restore_that_changes_nothing_when_listed`]) decides nothing; a
+/// listing that fails now does not confirm the restore.
+pub async fn confirm_version_restored<P: StorageProvider + ?Sized>(
+    provider: &mut P,
+    path: &str,
+    preflight: Option<&RestorePreflight>,
+) -> Result<(), ProviderError> {
+    let Some(preflight) = preflight else {
+        return Ok(());
+    };
+    let versions = provider.list_versions(path).await;
+    restore_confirmed(versions, path, preflight)
+}
+
+/// [`confirm_version_restored`] on the listing read after the restore.
+pub(crate) fn restore_confirmed(
+    versions: Result<Vec<FileVersion>, ProviderError>,
+    path: &str,
+    preflight: &RestorePreflight,
+) -> Result<(), ProviderError> {
+    let selected = &preflight.selected;
+    let not_restored = |held: String| {
+        applied_unconfirmed(format!(
+            "the server answered the restore of {path}, but its current version {held}, not \
+             the {} bytes of the restored one: list its versions again",
+            selected.size
+        ))
+    };
+    let versions = versions.map_err(|e| not_restored(format!("could not be read ({e})")))?;
+    let Some(current) = versions.first() else {
+        return Err(not_restored("is not listed".into()));
+    };
+    if current.deleted {
+        return Err(not_restored("is a deletion".into()));
+    }
+    if current.size != selected.size {
+        return Err(not_restored(format!("holds {} bytes", current.size)));
+    }
+    if let Some(made) = &preflight.made_current {
+        // Neither id is shown: the one the restore made comes from a header
+        // of the answer (S3's `x-amz-version-id`), server text like any other.
+        if &current.id != made {
+            return Err(not_restored(
+                "is another version than the one the restore made".to_string(),
+            ));
+        }
+        return Ok(());
+    }
+    // Ids bound to a file (`<file>:<label>`, every row of the listing before)
+    // must name that file on top after the restore too: another file the
+    // path names now is no restore of the one listed, whatever its size, and
+    // neither is a row bound to no file, which cannot be shown to be it.
+    let file_of = |id: &str| id.split_once(':').map(|(file, _)| file.to_string());
+    if let Some(listed) =
+        file_of(&preflight.before.id).filter(|f| file_of(&selected.id).as_ref() == Some(f))
+    {
+        match file_of(&current.id) {
+            Some(now) if now == listed => {}
+            Some(now) => {
+                return Err(not_restored(format!(
+                    "is a version of another file ({now}, not {listed})"
+                )))
+            }
+            None => {
+                return Err(not_restored(format!(
+                    "is {}, bound to no file, so it cannot be shown to be one of {listed}",
+                    current.id
+                )))
+            }
+        }
+    }
+    let before = &preflight.before;
+    if current.id == before.id
+        && current.modified == before.modified
+        && current.size == before.size
+        && current.deleted == before.deleted
+    {
+        return Err(not_restored(
+            "is still the one it was before the restore".into(),
+        ));
+    }
+    // The listing holds the size of the restored version and a row that
+    // changed, but neither a version id the restore named nor a content
+    // hash: a write of the same size by someone else, before or after the
+    // answer, passes as well. The restore was sent, and it is not confirmed.
+    if !preflight.bound_by_the_caller {
+        return Err(applied_unconfirmed(format!(
+            "the restore of {path} was sent and its current version now has the size of the \
+             restored one, but the server names no version and lists no content hash, so it \
+             could not be confirmed: list its versions again before restoring again"
+        )));
+    }
+    Ok(())
+}
+
+fn refuse_a_listed_marker(versions: &[FileVersion], version_id: &str) -> Result<(), ProviderError> {
+    // The same matching as the selection: a bare label names its row too.
+    if versions
+        .iter()
+        .any(|v| listed_as(v, version_id) && v.deleted)
+    {
+        return Err(ProviderError::NotSupported(
+            "This version is a delete marker: the file was deleted then and it has no \
+             contents. Restore the version below it."
+                .to_string(),
+        ));
+    }
+    Ok(())
+}
+
+/// Milliseconds since the epoch of a provider version time, for
+/// [`versions_current_first`]'s `newest`; 0 when it reads none. Read by the
+/// single parser [`crate::parse_remote_mtime_millis`], which keeps the
+/// fraction (two B2 uploads in one second stay apart).
+pub fn version_time_millis(modified: Option<&str>) -> i64 {
+    modified
+        .and_then(crate::parse_remote_mtime_millis)
+        .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod versions_order_tests {
+    use super::*;
+
+    fn sized(id: &str, size: u64, modified: &str) -> FileVersion {
+        FileVersion {
+            id: id.to_string(),
+            modified: Some(modified.to_string()),
+            size,
+            modified_by: None,
+            deleted: false,
+        }
+    }
+
+    #[test]
+    fn a_version_the_listing_does_not_hold_is_refused_and_a_bare_label_is_its_bound_row() {
+        let listed = vec![
+            sized("12:current", 4, "2026-11-18T10:00:00Z"),
+            sized("12:2", 4, "2026-11-17T10:00:00Z"),
+        ];
+        assert!(matches!(
+            restore_preflight(&listed, "/a.txt", "11:2"),
+            Err(ProviderError::NotFound(_))
+        ));
+        let bare = restore_preflight(&listed, "/a.txt", "2").unwrap();
+        assert_eq!(bare.selected.id, "12:2");
+        assert_eq!(bare.before.id, "12:current");
+        assert!(matches!(
+            restore_preflight(&listed, "/a.txt", "current"),
+            Err(ProviderError::NotSupported(_))
+        ));
+    }
+
+    #[test]
+    fn a_same_size_restore_is_confirmed_only_when_the_current_row_changed() {
+        let listed = vec![
+            sized("7:current", 4, "2026-11-18T10:00:00Z"),
+            sized("7:2", 4, "2026-11-17T10:00:00Z"),
+        ];
+        let preflight = restore_preflight(&listed, "/a.txt", "7:2").unwrap();
+        let unchanged = restore_confirmed(Ok(listed.clone()), "/a.txt", &preflight);
+        assert!(matches!(unchanged, Err(ProviderError::TransferFailed(_))));
+        let mut restored = listed.clone();
+        restored[0].modified = Some("2026-11-18T10:05:00Z".into());
+        assert!(sent_not_confirmed(&restore_confirmed(
+            Ok(restored.clone()),
+            "/a.txt",
+            &preflight
+        )));
+        let bound = preflight.bound_by_the_caller();
+        assert!(restore_confirmed(Ok(restored), "/a.txt", &bound).is_ok());
+    }
+
+    /// The restore was sent, its checks passed, and nothing binds it: a
+    /// sent, not confirmed outcome, never retried.
+    fn sent_not_confirmed(outcome: &Result<(), ProviderError>) -> bool {
+        matches!(outcome, Err(e) if was_applied(e) && e.to_string().contains("could not be confirmed"))
+    }
+
+    /// Restoring F:2 (4 bytes) did not take effect, and another client wrote
+    /// four other bytes as F:4: the row on top changed, has the size and
+    /// names the same file, so every listing check passes. Without a version
+    /// the restore named, that is not a confirmation: sent, not confirmed.
+    /// The control: the restore named F:5, and F:5 on top confirms it while
+    /// F:4 on top refuses it.
+    #[test]
+    fn an_unrelated_write_of_the_same_size_does_not_confirm_a_restore() {
+        let listed = vec![
+            sized("F:3", 4, "2026-11-18T10:00:00Z"),
+            sized("F:2", 4, "2026-11-17T10:00:00Z"),
+        ];
+        let preflight = restore_preflight(&listed, "/f.txt", "F:2").unwrap();
+        let mut foreign = listed.clone();
+        foreign.insert(0, sized("F:4", 4, "2026-11-18T10:05:00Z"));
+        assert!(sent_not_confirmed(&restore_confirmed(
+            Ok(foreign.clone()),
+            "/f.txt",
+            &preflight
+        )));
+        let named = preflight.made_current(Some("F:5".into()));
+        assert!(restore_confirmed(Ok(foreign), "/f.txt", &named).is_err());
+        let mut restored = listed.clone();
+        restored.insert(0, sized("F:5", 4, "2026-11-18T10:05:00Z"));
+        assert!(restore_confirmed(Ok(restored), "/f.txt", &named).is_ok());
+    }
+
+    /// A delete marker is refused by the same matching that selects a row: by
+    /// its bare label as by its bound id, while a bare label of a content row
+    /// still selects that row.
+    #[test]
+    fn a_marker_is_refused_by_its_bare_label_as_by_its_bound_id() {
+        let mut marker = sized("42:v1", 0, "2026-11-17T10:00:00Z");
+        marker.deleted = true;
+        let listed = vec![
+            sized("42:v3", 4, "2026-11-18T10:00:00Z"),
+            sized("42:v2", 4, "2026-11-17T12:00:00Z"),
+            marker,
+        ];
+        for id in ["v1", "42:v1"] {
+            assert!(
+                matches!(
+                    restore_preflight(&listed, "/a.txt", id),
+                    Err(ProviderError::NotSupported(ref m)) if m.contains("delete marker")
+                ),
+                "{id}"
+            );
+        }
+        assert_eq!(
+            restore_preflight(&listed, "/a.txt", "v2")
+                .unwrap()
+                .selected
+                .id,
+            "42:v2"
+        );
+    }
+
+    /// OneDrive F1 restored, and F2 put at the path before the check with a
+    /// head of the same size: F2 is not F1's restore.
+    #[test]
+    fn a_restore_is_not_confirmed_by_another_file_at_the_path() {
+        let listed = vec![
+            sized("F1:3.0", 4, "2026-11-18T10:00:00Z"),
+            sized("F1:2.0", 4, "2026-11-17T10:00:00Z"),
+        ];
+        let preflight = restore_preflight(&listed, "/f.txt", "F1:2.0").unwrap();
+        let replaced = vec![sized("F2:1.0", 4, "2026-11-18T10:05:00Z")];
+        let outcome = restore_confirmed(Ok(replaced), "/f.txt", &preflight);
+        assert!(
+            matches!(&outcome, Err(ProviderError::TransferFailed(m)) if m.contains("another file")),
+            "{outcome:?}"
+        );
+        let restored = vec![
+            sized("F1:4.0", 4, "2026-11-18T10:05:00Z"),
+            sized("F1:3.0", 4, "2026-11-18T10:00:00Z"),
+        ];
+        assert!(sent_not_confirmed(&restore_confirmed(
+            Ok(restored),
+            "/f.txt",
+            &preflight
+        )));
+    }
+
+    /// Rows listed bound to file 42: a head bound to no file (`current`, `9`)
+    /// cannot be shown to be 42's restore, and a head of file 43 (its
+    /// `current`, same size, a new time) is another file's, both refused.
+    #[test]
+    fn a_restore_listed_bound_is_not_confirmed_by_an_unbound_or_foreign_head() {
+        let listed = vec![
+            sized("42:current", 4, "2026-11-18T10:00:00Z"),
+            sized("42:1700000000", 4, "2026-11-17T10:00:00Z"),
+        ];
+        let preflight = restore_preflight(&listed, "/a.txt", "42:1700000000").unwrap();
+        for head in ["current", "9", "43:current"] {
+            let after = vec![sized(head, 4, "2026-11-18T10:05:00Z")];
+            assert!(
+                matches!(
+                    restore_confirmed(Ok(after), "/a.txt", &preflight),
+                    Err(ProviderError::TransferFailed(_))
+                ),
+                "{head}"
+            );
+        }
+        let after = vec![sized("42:current", 4, "2026-11-18T10:05:00Z")];
+        assert!(sent_not_confirmed(&restore_confirmed(
+            Ok(after),
+            "/a.txt",
+            &preflight
+        )));
+    }
+
+    #[test]
+    fn a_restore_that_names_its_new_version_is_confirmed_only_by_that_version_on_top() {
+        let listed = vec![
+            sized("v2", 4, "2026-11-18T10:00:00Z"),
+            sized("v1", 4, "2026-11-17T10:00:00Z"),
+        ];
+        let preflight = restore_preflight(&listed, "/a.txt", "v1")
+            .unwrap()
+            .made_current(Some("v3".into()));
+        let mut foreign = listed.clone();
+        foreign.insert(0, sized("v9", 4, "2026-11-18T10:05:00Z"));
+        assert!(restore_confirmed(Ok(foreign), "/a.txt", &preflight).is_err());
+        let mut restored = listed.clone();
+        restored.insert(0, sized("v3", 4, "2026-11-18T10:05:00Z"));
+        assert!(restore_confirmed(Ok(restored), "/a.txt", &preflight).is_ok());
+        let failed = Err(ProviderError::NetworkError("cut".into()));
+        assert!(restore_confirmed(failed, "/a.txt", &preflight).is_err());
+    }
+
+    fn row(id: &str, secs: i64) -> FileVersion {
+        FileVersion {
+            id: id.to_string(),
+            modified: chrono::DateTime::from_timestamp(secs, 0).map(|t| t.to_rfc3339()),
+            size: secs as u64,
+            modified_by: None,
+            deleted: false,
+        }
+    }
+
+    fn ids(versions: &[FileVersion]) -> Vec<&str> {
+        versions.iter().map(|v| v.id.as_str()).collect()
+    }
+
+    fn newest(v: &FileVersion) -> i64 {
+        version_time_millis(v.modified.as_deref())
+    }
+
+    #[test]
+    fn the_current_version_is_told_by_metadata_not_by_its_place() {
+        let listed = vec![row("old", 10), row("head", 30), row("mid", 20)];
+        let ordered = versions_current_first(listed, |v| v.id == "head", || None, newest).unwrap();
+        assert_eq!(ids(&ordered), ["head", "mid", "old"]);
+    }
+
+    /// No row is current and the file's own state is unknown: the newest past
+    /// version would be labelled Current by its place. The list is refused;
+    /// an empty one stays empty.
+    #[test]
+    fn a_list_whose_current_version_is_unknown_is_refused() {
+        let listed = vec![row("v1", 10), row("v2", 20)];
+        let refused = versions_current_first(listed, |_| false, || None, newest);
+        assert!(
+            matches!(&refused, Err(ProviderError::ServerError(m)) if m == CURRENT_VERSION_UNKNOWN),
+            "{refused:?}"
+        );
+        let empty = versions_current_first(Vec::new(), |_| false, || None, newest).unwrap();
+        assert!(empty.is_empty());
+    }
+
+    #[test]
+    fn a_list_without_the_current_version_gains_the_file_as_row_zero() {
+        let listed = vec![row("v1", 10), row("v2", 20)];
+        let ordered = versions_current_first(
+            listed,
+            |_| false,
+            || Some(row(CURRENT_VERSION_ID, 40)),
+            newest,
+        )
+        .unwrap();
+        assert_eq!(ids(&ordered), [CURRENT_VERSION_ID, "v2", "v1"]);
+    }
+
+    #[test]
+    fn the_current_row_is_built_only_when_no_listed_row_is_current() {
+        let listed = vec![row("v1", 10), row("head", 20)];
+        let ordered = versions_current_first(
+            listed,
+            |v| v.id == "head",
+            || panic!("the listed current row is enough"),
+            newest,
+        )
+        .unwrap();
+        assert_eq!(ids(&ordered), ["head", "v1"]);
+    }
+
+    #[test]
+    fn a_list_holding_the_current_version_puts_the_latest_first() {
+        let listed = vec![row("v1", 10), row("v3", 30), row("v2", 20)];
+        assert_eq!(
+            ids(&versions_latest_first(listed).unwrap()),
+            ["v3", "v2", "v1"]
+        );
+    }
+
+    #[test]
+    fn a_list_of_past_versions_gains_the_file_as_row_zero() {
+        let file = RemoteEntry {
+            name: "v.txt".into(),
+            path: "/v.txt".into(),
+            is_dir: false,
+            size: 16,
+            modified: Some("2026-11-16T15:02:00Z".into()),
+            permissions: None,
+            owner: None,
+            group: None,
+            is_symlink: false,
+            link_target: None,
+            mime_type: None,
+            metadata: Default::default(),
+        };
+        let ordered = versions_after_the_file(vec![row("v1", 10), row("v2", 20)], &file);
+        assert_eq!(ids(&ordered), [CURRENT_VERSION_ID, "v2", "v1"]);
+        assert_eq!(ordered[0].size, 16);
+    }
+
+    #[test]
+    fn the_latest_of_two_uploads_in_one_second_comes_first() {
+        let at = |id: &str, time: &str| FileVersion {
+            modified: Some(time.to_string()),
+            ..row(id, 0)
+        };
+        let listed = vec![
+            at("older", "2026-11-16T19:54:44.100+00:00"),
+            at("newer", "2026-11-16T19:54:44.900+00:00"),
+        ];
+        assert_eq!(
+            ids(&versions_latest_first(listed).unwrap()),
+            ["newer", "older"]
+        );
+    }
+
+    #[test]
+    fn version_times_read_rfc3339_and_http_dates() {
+        assert_eq!(
+            version_time_millis(Some("2023-11-14T22:13:20Z")),
+            1_700_000_000_000
+        );
+        assert_eq!(
+            version_time_millis(Some("2023-11-14T22:13:20.250Z")),
+            1_700_000_000_250
+        );
+        assert_eq!(
+            version_time_millis(Some("Tue, 14 Nov 2023 22:13:20 GMT")),
+            1_700_000_000_000
+        );
+        assert_eq!(version_time_millis(Some("16Nov2026 15:53:00")), 0);
+        assert_eq!(version_time_millis(None), 0);
+    }
+}
+
 /// Defense-in-depth helper for the rare case where a server hands the full
 /// `Content-Length` body to the TLS layer and *then* closes the connection
 /// without sending a `close_notify` alert.
@@ -442,6 +1818,33 @@ pub fn http_send_error(
     } else {
         otherwise(e)
     }
+}
+
+/// A JSON parse error of a server reply as its category and position only,
+/// never its text: serde's message quotes the value it rejected, and a reply
+/// can echo the request (a URL with its `key=`, a token) in a field of the
+/// wrong type.
+pub(crate) fn json_parse_error(e: &serde_json::Error) -> String {
+    format!(
+        "{:?} at line {}, column {}",
+        e.classify(),
+        e.line(),
+        e.column()
+    )
+}
+
+/// [`json_parse_error`] of the serde error behind a reqwest decode error,
+/// if there is one. reqwest's own text for it ("error decoding response
+/// body") quotes nothing; this is for a caller that would show the cause.
+pub(crate) fn json_decode_error(e: &reqwest::Error) -> Option<String> {
+    let mut source = std::error::Error::source(e);
+    while let Some(inner) = source {
+        if let Some(parse) = inner.downcast_ref::<serde_json::Error>() {
+            return Some(json_parse_error(parse));
+        }
+        source = inner.source();
+    }
+    None
 }
 
 /// [`http_send_error`] as a `map_err` for a reqwest result, which is how the
@@ -521,6 +1924,73 @@ pub(crate) async fn range_window_with_limit(
     limit: u64,
 ) -> Result<Vec<u8>, ProviderError> {
     body_bytes_with_limit(resp, limit, multi_thread::range_read_error).await
+}
+
+/// The window of a ranged read (`offset`, `len` bytes, `len > 0`, its end
+/// checked not to wrap by the caller), read from its answer with a bound
+/// set by the window, not by the object: a 206 must name exactly the window
+/// and is refused at the first byte past it, and a 200 (the range ignored,
+/// the whole object sent) is read only up to the window's end, the bytes
+/// before it dropped as they arrive and the rest never read. `what` names
+/// the read in a refusal ([`multi_thread::parallel_refused`]).
+pub(crate) async fn ranged_read_window(
+    mut resp: reqwest::Response,
+    offset: u64,
+    len: u64,
+    what: &str,
+    path: &str,
+) -> Result<Vec<u8>, ProviderError> {
+    let end = offset + (len - 1);
+    let status = resp.status();
+    let answered = resp
+        .headers()
+        .get(reqwest::header::CONTENT_RANGE)
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_string);
+    let refused = |why: String| {
+        ProviderError::ParallelRefused(multi_thread::parallel_refused(what, path, &why))
+    };
+    // The header is checked before any byte is read, against the window.
+    let answer = multi_thread::ranged_answer(status, answered.as_deref(), len, offset, end)
+        .map_err(refused)?;
+    let mut window: Vec<u8> = Vec::with_capacity(len.min(8 * 1024 * 1024) as usize);
+    match answer {
+        multi_thread::RangedAnswer::Window => {
+            while let Some(chunk) = resp.chunk().await.map_err(multi_thread::range_read_error)? {
+                if window.len() as u64 + chunk.len() as u64 > len {
+                    return Err(refused(format!(
+                        "the server said bytes {offset}-{end} and sent more than {len} bytes"
+                    )));
+                }
+                window.extend_from_slice(&chunk);
+            }
+            if window.len() as u64 != len {
+                return Err(refused(format!(
+                    "the server said bytes {offset}-{end} and sent {} bytes instead of {len}",
+                    window.len()
+                )));
+            }
+        }
+        multi_thread::RangedAnswer::WholeObject => {
+            let mut read: u64 = 0;
+            while (window.len() as u64) < len {
+                let Some(chunk) = resp.chunk().await.map_err(multi_thread::range_read_error)?
+                else {
+                    break;
+                };
+                let chunk_start = read;
+                read += chunk.len() as u64;
+                if read <= offset {
+                    continue;
+                }
+                let from = offset.saturating_sub(chunk_start) as usize;
+                let wanted = (len - window.len() as u64) as usize;
+                let take = wanted.min(chunk.len() - from);
+                window.extend_from_slice(&chunk[from..from + take]);
+            }
+        }
+    }
+    Ok(window)
 }
 
 /// The reader behind [`response_bytes_with_limit`], with the mapping of a
@@ -772,6 +2242,147 @@ pub(crate) async fn error_body_excerpt(mut resp: reqwest::Response, max: usize) 
     }
     body.truncate(max);
     String::from_utf8_lossy(&body).trim().to_string()
+}
+
+#[cfg(test)]
+mod bound_current_row_tests {
+    use super::*;
+
+    /// A bound row round-trips its file id and token, dots and colons in the
+    /// token included; a plain `current`, a `{file}:current` and a label of
+    /// another row are not bound rows.
+    #[test]
+    fn a_bound_current_row_carries_its_file_and_token() {
+        for (file, token) in [
+            ("55", "11"),
+            ("01AB!12.x", "\"e:1.2\""),
+            ("7", "3.1700000000"),
+        ] {
+            let id = bound_current_row(file, token);
+            assert!(id.ends_with(":current"), "{id}");
+            assert_eq!(
+                bound_current_row_of(&id),
+                Some((file, token.to_string())),
+                "{id}"
+            );
+        }
+        for other in [
+            "current",
+            "55:current",
+            "55:3",
+            ".:current",
+            "55.zz:current",
+        ] {
+            assert_eq!(bound_current_row_of(other), None, "{other}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod gateway_left_unknown_tests {
+    use super::*;
+
+    /// A gateway's 502, 503 or 504 does not say whether the change behind
+    /// it was applied; any other status is the server's own answer.
+    #[test]
+    fn only_a_gateway_status_leaves_a_change_unknown() {
+        for code in [502u16, 503, 504] {
+            let status = reqwest::StatusCode::from_u16(code).unwrap();
+            let unknown = gateway_left_unknown(status, "the restore of v1 of /f").expect("unknown");
+            assert!(was_applied(&unknown), "{code}: {unknown:?}");
+            let text = unknown.to_string();
+            assert!(
+                text.contains("the restore of v1 of /f") && text.contains(&code.to_string()),
+                "{text}"
+            );
+        }
+        for code in [200u16, 400, 403, 404, 409, 412, 429, 500, 501, 505] {
+            let status = reqwest::StatusCode::from_u16(code).unwrap();
+            assert!(gateway_left_unknown(status, "x").is_none(), "{code}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod ranged_read_window_tests {
+    use super::*;
+
+    /// A server answering every request with `status`, `content_range` and
+    /// a body of `0123456789` repeated (`Some(n)` times, or without end).
+    async fn serve(
+        status: u16,
+        content_range: Option<&'static str>,
+        repeats: Option<usize>,
+    ) -> String {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let app = axum::Router::new().fallback(move || async move {
+            let chunk = || Ok::<_, std::io::Error>(bytes::Bytes::from_static(b"0123456789"));
+            let body = match repeats {
+                Some(n) => axum::body::Body::from_stream(futures_util::stream::iter(
+                    (0..n).map(move |_| chunk()),
+                )),
+                None => axum::body::Body::from_stream(futures_util::stream::repeat_with(chunk)),
+            };
+            let mut answer = axum::response::Response::builder().status(status);
+            if let Some(range) = content_range {
+                answer = answer.header("content-range", range);
+            }
+            answer.body(body).unwrap()
+        });
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        format!("http://{addr}/")
+    }
+
+    async fn window(url: &str, offset: u64, len: u64) -> Result<Vec<u8>, ProviderError> {
+        let resp = reqwest::get(url).await.unwrap();
+        tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            ranged_read_window(resp, offset, len, "test range read", "/f"),
+        )
+        .await
+        .expect("the read stops at the window")
+    }
+
+    /// A 200 is the whole object: a window across chunk edges is cut out of
+    /// it, and an object that never ends is read only up to the window.
+    #[tokio::test]
+    async fn a_whole_object_answer_is_read_only_up_to_the_window() {
+        let endless = serve(200, None, None).await;
+        assert_eq!(window(&endless, 25, 7).await.unwrap(), b"5678901");
+        assert_eq!(window(&endless, 0, 3).await.unwrap(), b"012");
+        let short = serve(200, None, Some(3)).await;
+        assert_eq!(window(&short, 28, 10).await.unwrap(), b"89");
+        assert!(window(&short, 40, 4).await.unwrap().is_empty());
+    }
+
+    /// A 206 must carry exactly its window: one byte more is refused as it
+    /// arrives (an endless body included), one fewer once the body ended.
+    #[tokio::test]
+    async fn a_partial_answer_is_refused_past_or_short_of_its_window() {
+        let exact = serve(206, Some("bytes 10-29/100"), Some(2)).await;
+        assert_eq!(
+            window(&exact, 10, 20).await.unwrap(),
+            b"01234567890123456789"
+        );
+        let endless = serve(206, Some("bytes 10-29/100"), None).await;
+        let over = window(&endless, 10, 20).await;
+        assert!(
+            matches!(&over, Err(ProviderError::ParallelRefused(m)) if m.contains("more than 20 bytes")),
+            "{over:?}"
+        );
+        let short = serve(206, Some("bytes 10-39/100"), Some(2)).await;
+        let cut = window(&short, 10, 30).await;
+        assert!(
+            matches!(&cut, Err(ProviderError::ParallelRefused(m)) if m.contains("sent 20 bytes instead of 30")),
+            "{cut:?}"
+        );
+        let other = serve(206, Some("bytes 0-19/100"), Some(2)).await;
+        assert!(matches!(
+            window(&other, 10, 20).await,
+            Err(ProviderError::ParallelRefused(_))
+        ));
+    }
 }
 
 #[cfg(test)]
@@ -2396,6 +4007,19 @@ pub trait StorageProvider: Send + Sync {
         Err(ProviderError::NotSupported("resume_upload".to_string()))
     }
 
+    /// Whether [`Self::delete_version`] removes a single version here: the
+    /// dialog offers Purge only then, as every other provider refuses it.
+    fn supports_version_delete(&self) -> bool {
+        false
+    }
+
+    /// Whether [`Self::restore_version`] restores a version here: the dialog
+    /// offers Restore only then. A provider that lists versions but cannot
+    /// bind a restore to the file it was meant for refuses it.
+    fn supports_version_restore(&self) -> bool {
+        self.supports_versions()
+    }
+
     /// Check if provider supports file versions
     fn supports_versions(&self) -> bool {
         false
@@ -2430,7 +4054,10 @@ pub trait StorageProvider: Send + Sync {
         Err(ProviderError::NotSupported("download_version".to_string()))
     }
 
-    /// Restore a file to a specific version
+    /// Restore a file to a specific version. The current version (row 0 of
+    /// `list_versions`) is the file itself: its restore is refused with
+    /// `NotSupported` before any restore request is sent (the versions are
+    /// still listed to tell which row is current).
     async fn restore_version(
         &mut self,
         _path: &str,
@@ -3929,6 +5556,30 @@ pub(crate) fn forget_cached_subtree_ignoring_case<V>(cache: &mut HashMap<String,
     });
 }
 
+/// Whether the cache key `cached` names `path` or a folder on the way to
+/// it, under any capitalization, with or without a leading slash. The root
+/// (an empty or `/` key) is never on the way: it is not a folder another
+/// client can move.
+pub(crate) fn is_on_the_way_to(cached: &str, path: &str) -> bool {
+    let cached = cached.trim_matches('/').to_lowercase();
+    let path = path.trim_matches('/').to_lowercase();
+    !cached.is_empty()
+        && (path == cached
+            || path
+                .strip_prefix(cached.as_str())
+                .is_some_and(|rest| rest.starts_with('/')))
+}
+
+/// Forget the cached ids of `path` and of every folder on the way to it,
+/// the root kept. A version action names one file and binds what it does
+/// to the id it finds there: a folder id cached before another client moved
+/// that folder away still answers the old folder, and the file found in it
+/// is no longer the file at the path. So a version action walks its path
+/// again, each name looked up in the folder the server just returned.
+pub(crate) fn forget_cached_ancestors<V>(cache: &mut HashMap<String, V>, path: &str) {
+    cache.retain(|cached, _| !is_on_the_way_to(cached, path));
+}
+
 /// Whether the item `stat(to)` found, named `found_name`, is the source of a
 /// rename that only changes the letter case, found again by a
 /// case-insensitive backend under the name it has stored.
@@ -5220,6 +6871,141 @@ mod tests {
         );
     }
 
+    /// A change sent with no precondition whose answer did not come is
+    /// applied as far as a retry goes; a refusal of its own stays what it
+    /// was.
+    #[test]
+    fn a_sent_change_without_an_answer_is_applied() {
+        for e in [
+            ProviderError::Timeout,
+            ProviderError::ConnectionLost("reset".into()),
+            ProviderError::NetworkError("broken".into()),
+            ProviderError::ConnectionFailed("ended".into()),
+        ] {
+            assert!(was_applied(&sent_change_unconfirmed(
+                e,
+                "the restore of /a"
+            )));
+        }
+        for e in [
+            ProviderError::NotFound("/a".into()),
+            ProviderError::PermissionDenied("no".into()),
+        ] {
+            assert!(!was_applied(&sent_change_unconfirmed(
+                e,
+                "the restore of /a"
+            )));
+        }
+    }
+
+    /// A reply of the wrong JSON type is shown by its category and position
+    /// only, from serde and from reqwest's `json()`: serde's own text quotes
+    /// the rejected value, here an echoed request URL with its key.
+    #[tokio::test]
+    async fn a_reply_of_the_wrong_json_type_is_shown_by_position_only() {
+        #[derive(Debug, serde::Deserialize)]
+        struct Sized {
+            #[allow(dead_code)]
+            size: u64,
+        }
+        let reply = r#"{"size":"GET /api/list?key=ECHO-SECRET-1"}"#;
+        let parsed = serde_json::from_str::<Sized>(reply).unwrap_err();
+        assert!(parsed.to_string().contains("ECHO-SECRET-1"), "{parsed}");
+        let shown = json_parse_error(&parsed);
+        assert!(shown.contains("line 1"), "{shown}");
+        assert!(!shown.contains("ECHO-SECRET-1"), "{shown}");
+
+        // reqwest's text for a body that is not the JSON expected names no
+        // value, and its cause is shown by position only.
+        let decoded = reqwest::Response::from(http::Response::new(reply.to_string()))
+            .json::<Sized>()
+            .await
+            .unwrap_err();
+        assert!(!decoded.to_string().contains("ECHO-SECRET-1"), "{decoded}");
+        let cause = json_decode_error(&decoded).expect("a serde cause");
+        assert!(
+            cause.contains("line 1") && !cause.contains("ECHO-SECRET-1"),
+            "{cause}"
+        );
+    }
+
+    /// Every JSON parse of a reply in the providers this guard reads shows
+    /// its error through [`json_parse_error`] only: a `map_err` that formats
+    /// the serde error itself, or `.to_string()` of it, would quote the value
+    /// it rejected. Decodes of AeroFTP's own handles and receipts are
+    /// exempt: their text is not a server reply.
+    #[test]
+    fn every_reply_parse_error_is_shown_by_its_position_only() {
+        let sources = [
+            ("b2.rs", include_str!("b2.rs")),
+            ("box_provider.rs", include_str!("box_provider.rs")),
+            ("drime_cloud.rs", include_str!("drime_cloud.rs")),
+            ("dropbox.rs", include_str!("dropbox.rs")),
+            ("filelu.rs", include_str!("filelu.rs")),
+            ("google_drive.rs", include_str!("google_drive.rs")),
+            ("kdrive.rs", include_str!("kdrive.rs")),
+            ("koofr.rs", include_str!("koofr.rs")),
+            ("onedrive.rs", include_str!("onedrive.rs")),
+            ("webdav.rs", include_str!("webdav.rs")),
+            ("zoho_workdrive.rs", include_str!("zoho_workdrive.rs")),
+        ];
+        let mut offenders = Vec::new();
+        for (file, source) in sources {
+            let production = source
+                .find("\n#[cfg(test)]\nmod tests")
+                .map_or(source, |end| &source[..end]);
+            for (at, _) in production.match_indices("serde_json::from_") {
+                let after = &production[at..];
+                let Some(start) = after.find(".map_err(|") else {
+                    continue;
+                };
+                // The map_err of this parse, not of a later call.
+                if after[..start].matches(';').count() > 0 {
+                    continue;
+                }
+                let closure = &after[start + ".map_err(|".len()..];
+                let var = &closure[..closure.find('|').unwrap_or(0)];
+                let mut depth = 1;
+                let end = closure
+                    .char_indices()
+                    .find(|&(_, c)| {
+                        match c {
+                            '(' => depth += 1,
+                            ')' => depth -= 1,
+                            _ => {}
+                        }
+                        depth == 0
+                    })
+                    .map_or(closure.len(), |(i, _)| i);
+                let body = &closure[var.len() + 1..end];
+                if body.contains("handle") || body.contains("receipt") {
+                    continue;
+                }
+                if var == "_" {
+                    continue;
+                }
+                // The category and position, which quote nothing.
+                let mut stripped = body.replace(&format!("json_parse_error(&{var})"), "");
+                for part in ["classify()", "line()", "column()"] {
+                    stripped = stripped.replace(&format!("{var}.{part}"), "");
+                }
+                let shown = ["(", " ", ",", "{"].iter().any(|before| {
+                    [")", ",", "}", "."]
+                        .iter()
+                        .any(|after| stripped.contains(&format!("{before}{var}{after}")))
+                }) || stripped.contains(&format!("{{{var}}}"));
+                if shown {
+                    let line = production[..at].matches('\n').count() + 1;
+                    offenders.push(format!("{file}:{line}"));
+                }
+            }
+        }
+        assert!(
+            offenders.is_empty(),
+            "these reply parses show serde's text, which quotes the rejected value: {offenders:?}"
+        );
+    }
+
     /// Row 4: only the first line survives a multi-line body, and an embedded
     /// API key is redacted (defence-in-depth via ai::sanitize_error_message).
     #[test]
@@ -5487,6 +7273,7 @@ mod non_recursive_delete_tests {
         list: Answer<Vec<RemoteEntry>>,
         delete: Answer<()>,
         rmdir: Answer<()>,
+        versions: Answer<Vec<FileVersion>>,
         calls: Vec<&'static str>,
     }
 
@@ -5497,6 +7284,7 @@ mod non_recursive_delete_tests {
                 list,
                 delete: || Ok(()),
                 rmdir: || Ok(()),
+                versions: || Ok(Vec::new()),
                 calls: Vec::new(),
             }
         }
@@ -5621,6 +7409,75 @@ mod non_recursive_delete_tests {
         async fn server_info(&mut self) -> Result<String, ProviderError> {
             Ok("scripted".to_string())
         }
+        async fn list_versions(&mut self, _path: &str) -> Result<Vec<FileVersion>, ProviderError> {
+            self.calls.push("list_versions");
+            (self.versions)()
+        }
+        async fn delete_version(
+            &mut self,
+            _path: &str,
+            _version_id: &str,
+        ) -> Result<(), ProviderError> {
+            self.calls.push("delete_version");
+            Ok(())
+        }
+    }
+
+    fn version(id: &str, deleted: bool) -> FileVersion {
+        FileVersion {
+            id: id.to_string(),
+            modified: None,
+            size: 1,
+            modified_by: None,
+            deleted,
+        }
+    }
+
+    #[tokio::test]
+    async fn a_purge_of_the_live_version_on_top_is_refused_and_older_rows_or_a_marker_are_not() {
+        let mut live = Scripted::new(file, no_child);
+        live.versions = || Ok(vec![version("v3", false), version("v2", false)]);
+        let refused = refuse_a_purge_of_the_live_version(&mut live, "/f", "v3").await;
+        assert!(
+            matches!(&refused, Err(ProviderError::NotSupported(m)) if m.contains("nothing was purged")),
+            "{refused:?}"
+        );
+        refuse_a_purge_of_the_live_version(&mut live, "/f", "v2")
+            .await
+            .unwrap();
+        assert_eq!(live.calls, ["list_versions", "list_versions"]);
+
+        let mut marker = Scripted::new(file, no_child);
+        marker.versions = || Ok(vec![version("m4", true), version("v3", false)]);
+        refuse_a_purge_of_the_live_version(&mut marker, "/f", "m4")
+            .await
+            .unwrap();
+
+        let mut bound = Scripted::new(file, no_child);
+        bound.versions = || Ok(vec![version("7:3", false), version("7:2", false)]);
+        assert!(refuse_a_purge_of_the_live_version(&mut bound, "/f", "3")
+            .await
+            .is_err());
+
+        let mut denied = Scripted::new(file, no_child);
+        denied.versions = || Err(ProviderError::PermissionDenied("listing".into()));
+        refuse_a_purge_of_the_live_version(&mut denied, "/f", "v3")
+            .await
+            .unwrap();
+
+        let mut cut = Scripted::new(file, no_child);
+        cut.versions = || Err(ProviderError::ConnectionLost("reset".into()));
+        let failed = refuse_a_purge_of_the_live_version(&mut cut, "/f", "v2").await;
+        assert!(
+            matches!(&failed, Err(ProviderError::TransferFailed(m)) if m.contains("nothing was purged")),
+            "{failed:?}"
+        );
+        let mut gone = Scripted::new(file, no_child);
+        gone.versions = not_found;
+        assert!(matches!(
+            refuse_a_purge_of_the_live_version(&mut gone, "/f", "v2").await,
+            Err(ProviderError::NotFound(_))
+        ));
     }
 
     #[tokio::test]
@@ -6853,7 +8710,7 @@ mod http_timeout_class_tests {
         // Logs and moves on; the upload it follows has already succeeded.
         ("onedrive.rs", "purge_old_versions"),
         // Optional discovery: the listing goes on without team folders.
-        ("zoho_workdrive.rs", "discover_team_folders"),
+        ("zoho_workdrive.rs", "fetch_team_folders"),
         // A probe: on any failure the v2 sign-in runs and reports its own.
         ("swift.rs", "detect_auth_version"),
         // An opportunistic probe: the provider's own download reports.
@@ -6953,6 +8810,11 @@ mod http_timeout_class_tests {
         // Spelled in two pieces so this test is not one of its own matches.
         let whole = concat!("response_bytes", "_with_limit(");
         let window = concat!("range_window", "_with_limit(");
+        // The shared window reader maps its own body (`range_read_error`):
+        // its result has to reach the caller, by `?` or as the value of
+        // the block it ends.
+        let shared = concat!("ranged_read", "_window(");
+        let block_value = regex::Regex::new(r"^\s*\}").expect("regex");
         let bytes = body.as_bytes();
         // Past the calls that keep the error as it is, the error has to go
         // to the caller: a classified error converted again is lost.
@@ -6966,6 +8828,18 @@ mod http_timeout_class_tests {
         reads
             .plain
             .extend(body.match_indices(whole).map(|(at, _)| at));
+        for (at, _) in body.match_indices(shared) {
+            let end = past_close(bytes, at + shared.len() - 1);
+            let kept = awaited.find(&body[end..]).is_some_and(|wait| {
+                let end = end + wait.end();
+                reaches_caller(end) || block_value.is_match(&body[end..])
+            });
+            if kept {
+                reads.bodies.push(at);
+            } else {
+                reads.plain.push(at);
+            }
+        }
         for (at, _) in body.match_indices(window) {
             let end = past_close(bytes, at + window.len() - 1);
             let kept = awaited

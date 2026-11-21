@@ -2576,7 +2576,8 @@
             "restore": "Przywróć tę wersję",
             "none": "Brak dostępnych wersji",
             "purge": "Usuń trwale tę wersję",
-            "purgeConfirm": "Usunąć trwale tę wersję? Tej operacji nie można cofnąć."
+            "purgeConfirm": "Usunąć trwale tę wersję? Tej operacji nie można cofnąć.",
+            "restoreUnconfirmed": "Przywracanie zostało wysłane, ale serwer nie może potwierdzić, która wersja jest teraz aktualna. Sprawdź wersje przed ponownym przywróceniem."
         },
         "sharing": {
             "title": "Udostępnianie",

@@ -953,11 +953,7 @@ impl TwakeProvider {
                     .into_iter()
                     .filter(|d| d.id != TRASH_DIR_ID && !d.attributes.trashed.unwrap_or(false)),
             );
-            next = page
-                .links
-                .next
-                .filter(|n| n.starts_with('/'))
-                .map(|n| ensure_page_limit(&n));
+            next = next_page_path(page.links.next)?;
         }
         Ok(docs)
     }
@@ -993,6 +989,24 @@ impl TwakeProvider {
 }
 
 /// `links.next` carries only the cursor; keep the page size on every page.
+/// The path of the next page, sent to the instance with its bearer token.
+/// Twake names it relative to the instance (`/files/...`); a link to any
+/// other origin (absolute, or protocol-relative `//host`) is refused before
+/// a request, rather than followed with the token or dropped, which would
+/// end the listing early and read the entries after it as deleted.
+fn next_page_path(next: Option<String>) -> Result<Option<String>, ProviderError> {
+    match next {
+        None => Ok(None),
+        Some(next) if next.starts_with('/') && !next.starts_with("//") => {
+            Ok(Some(ensure_page_limit(&next)))
+        }
+        Some(_) => Err(ProviderError::ServerError(
+            "Twake listing: the next page is outside the configured API, so it was not requested"
+                .into(),
+        )),
+    }
+}
+
 fn ensure_page_limit(next: &str) -> String {
     if next.contains("page%5Blimit%5D") || next.contains("page[limit]") {
         next.to_string()
@@ -1933,6 +1947,83 @@ mod tests {
             ensure_page_limit(page.links.next.as_deref().unwrap()),
             "/files/root?page[cursor]=abc&page%5Blimit%5D=100"
         );
+    }
+
+    /// The bearer token goes only to the instance: a next page on another
+    /// origin is refused, never followed and never silently dropped.
+    #[test]
+    fn a_next_page_outside_the_instance_is_refused() {
+        assert_eq!(next_page_path(None).unwrap(), None);
+        assert_eq!(
+            next_page_path(Some("/files/root?page[cursor]=abc".into())).unwrap(),
+            Some("/files/root?page[cursor]=abc&page%5Blimit%5D=100".into())
+        );
+        for next in [
+            "https://evil.example/files/root?page[cursor]=abc",
+            "//evil.example/files/root",
+            "files/root",
+        ] {
+            assert!(
+                matches!(next_page_path(Some(next.into())), Err(ProviderError::ServerError(ref m)) if m.contains("outside the configured API")),
+                "{next}"
+            );
+        }
+    }
+
+    /// A listing whose second page is named outside the instance fails
+    /// whole after a first page with an entry: the entry read is not
+    /// returned as the folder's listing. A second page on the instance is
+    /// read and both pages are listed.
+    #[tokio::test]
+    async fn a_listing_with_an_invalid_continuation_fails_whole() {
+        use axum::response::IntoResponse;
+        let app = axum::Router::new().fallback(axum::routing::any(
+            |uri: axum::http::Uri| async move {
+                let doc = |id: &str, name: &str| {
+                    serde_json::json!({"id": id, "attributes": {"type": "file", "name": name, "size": 1}})
+                };
+                let query = uri.query().unwrap_or_default().to_string();
+                let body = match uri.path() {
+                    "/files/bad" => serde_json::json!({"included": [doc("A", "a.txt")],
+                        "links": {"next": "https://evil.example/files/bad?page[cursor]=c2"}}),
+                    "/files/good" if query.contains("c2") => {
+                        serde_json::json!({"included": [doc("B", "b.txt")], "links": {}})
+                    }
+                    "/files/good" => serde_json::json!({"included": [doc("A", "a.txt")],
+                        "links": {"next": "/files/good?page[cursor]=c2"}}),
+                    _ => return axum::http::StatusCode::NOT_FOUND.into_response(),
+                };
+                axum::Json(body).into_response()
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut p = TwakeProvider::new(TwakeConfig {
+            credentials: TwakeCredentials {
+                instance: format!("http://{addr}"),
+                client_id: "cid".into(),
+                client_secret: "s".into(),
+                registration_access_token: "r".into(),
+                refresh_token: "t".into(),
+            },
+            initial_path: None,
+        });
+        p.connected = true;
+        p.access_token = SecretString::from("live-token".to_string());
+        let bad = p.list_dir("bad").await;
+        let good = p.list_dir("good").await;
+        server.abort();
+        assert!(
+            matches!(&bad, Err(ProviderError::ServerError(m)) if m.contains("outside the configured API")),
+            "{bad:?}"
+        );
+        let names: Vec<String> = good
+            .expect("two pages")
+            .into_iter()
+            .map(|d| d.attributes.name)
+            .collect();
+        assert_eq!(names, ["a.txt", "b.txt"]);
     }
 
     #[test]

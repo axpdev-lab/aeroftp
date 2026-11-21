@@ -3902,7 +3902,7 @@ enum Commands {
     /// List, download, or restore previous versions of a file
     ///
     /// Only providers that expose versioning answer (e.g. Filen, Dropbox,
-    /// Google Drive, OneDrive, pCloud, kDrive). Use `versions list` to get a
+    /// Google Drive, OneDrive, kDrive, Nextcloud). Use `versions list` to get a
     /// version id, then `versions get` to download it or `versions restore`
     /// to make it current.
     Versions {
@@ -41555,13 +41555,16 @@ fn print_versions(versions: &[FileVersion], path: &str, format: OutputFormat) {
                     .as_deref()
                     .map(|m| format!("  by {}", m))
                     .unwrap_or_default();
+                // A delete or hide marker: the file was deleted then.
+                let deleted = if v.deleted { "  [deleted]" } else { "" };
                 println!(
-                    "  {:>3}. {}  {:>10}  {}{}",
+                    "  {:>3}. {}  {:>10}  {}{}{}",
                     i + 1,
                     v.id,
                     format_size(v.size),
                     modified,
-                    by
+                    by,
+                    deleted
                 );
             }
         }
@@ -41728,9 +41731,16 @@ async fn cmd_versions_restore(
             0
         }
         Err(e) => {
+            // A restore the server took and AeroFTP could not confirm is no
+            // failure to send again: said as sent, not confirmed.
+            let what = if e.to_string().contains("Applied, not confirmed:") {
+                "versions restore sent, not confirmed"
+            } else {
+                "versions restore failed"
+            };
             print_error(
                 format,
-                &format!("versions restore failed: {}", e),
+                &format!("{what}: {e}"),
                 provider_error_to_exit_code(&e),
             );
             provider_error_to_exit_code(&e)
@@ -41789,7 +41799,17 @@ async fn cmd_versions_purge(
         return versions_unsupported(format);
     }
     let rpath = resolve_cli_remote_path(&initial_path, path);
-    let code = match provider.delete_version(&rpath, version_id).await {
+    let purged = match ftp_client_gui_lib::providers::refuse_a_purge_of_the_live_version(
+        provider.as_mut(),
+        &rpath,
+        version_id,
+    )
+    .await
+    {
+        Ok(()) => provider.delete_version(&rpath, version_id).await,
+        Err(e) => Err(e),
+    };
+    let code = match purged {
         Ok(()) => {
             let msg = format!("Purged version {} of {}", version_id, rpath);
             match format {
@@ -94576,6 +94596,9 @@ mod tests {
         /// asked for, and the local path a version was downloaded to, across
         /// the clones.
         asked: Arc<std::sync::Mutex<Vec<String>>>,
+        /// Each version call by its method, with the remote path it was
+        /// given, in the order made, across the clones.
+        version_calls: Arc<std::sync::Mutex<Vec<(&'static str, String)>>>,
     }
 
     impl StallingProvider {
@@ -94731,6 +94754,10 @@ mod tests {
         }
         async fn list_versions(&mut self, path: &str) -> Result<Vec<FileVersion>, ProviderError> {
             self.asked.lock().unwrap().push(path.to_string());
+            self.version_calls
+                .lock()
+                .unwrap()
+                .push(("list_versions", path.to_string()));
             Ok(Vec::new())
         }
         async fn download_version(
@@ -94758,6 +94785,10 @@ mod tests {
             _version_id: &str,
         ) -> Result<(), ProviderError> {
             self.asked.lock().unwrap().push(path.to_string());
+            self.version_calls
+                .lock()
+                .unwrap()
+                .push(("delete_version", path.to_string()));
             Ok(())
         }
         async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
@@ -95050,8 +95081,10 @@ mod tests {
             }),
             (0, vec![spaces()])
         );
+        // A purge lists the versions first (the live one is never purged),
+        // then deletes: each call gets the name as given.
         assert_eq!(
-            asked_of(|_| async {
+            version_calls_of(|_| async {
                 cmd_versions_purge(
                     "memory://",
                     "   ",
@@ -95062,7 +95095,10 @@ mod tests {
                 )
                 .await
             }),
-            (0, vec![spaces()])
+            (
+                0,
+                vec![("list_versions", spaces()), ("delete_version", spaces())]
+            )
         );
         assert_eq!(
             asked_of(|_| async {
@@ -95147,6 +95183,21 @@ mod tests {
         let code = against_stalling(provider, command);
         let asked = asked.lock().unwrap().clone();
         (code, asked)
+    }
+
+    /// [`asked_of`], with the version calls by method, in the order made.
+    fn version_calls_of<F: std::future::Future<Output = i32>>(
+        command: impl FnOnce(Arc<AtomicBool>) -> F + Send,
+    ) -> (i32, Vec<(&'static str, String)>) {
+        let provider = StallingProvider {
+            versions: true,
+            finish_upload: true,
+            ..StallingProvider::default()
+        };
+        let calls = Arc::clone(&provider.version_calls);
+        let code = against_stalling(provider, command);
+        let calls = calls.lock().unwrap().clone();
+        (code, calls)
     }
 
     /// `get` of `/f.bin` into a local file that already holds "keep me", with

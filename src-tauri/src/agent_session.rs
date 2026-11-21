@@ -330,8 +330,11 @@ pub fn capabilities_for_protocol(protocol: &str) -> Vec<&'static str> {
             "thumbnails",
         ],
         "box" => vec!["server_copy", "share_links", "versions"],
-        "pcloud" => vec!["server_copy", "share_links", "versions", "thumbnails"],
-        "mega" => vec!["server_copy", "share_links", "thumbnails"],
+        // No versions: pCloud refuses `listrevisions` to an OAuth token.
+        "pcloud" => vec!["server_copy", "share_links", "thumbnails"],
+        // Thumbnails and versions only on the MEGAcmd backend; a new MEGA
+        // connection opens the native API, which has neither.
+        "mega" => vec!["server_copy", "share_links"],
         "proton" | "protondrive" => vec!["server_copy", "share_links"],
         "filen" => vec!["server_copy", "share_links"],
         "internxt" => vec!["share_links"],
@@ -1090,6 +1093,18 @@ pub async fn build_agent_connect_payload_with(query: &str, no_scp_fallback: bool
 mod tests {
     use super::*;
     use std::collections::HashMap;
+
+    /// pCloud refuses `listrevisions` to an OAuth token and a new MEGA
+    /// connection opens the native API (no thumbnails, no versions): the
+    /// capabilities an agent is told must not claim them.
+    #[test]
+    fn pcloud_and_mega_claim_no_capability_their_backend_refuses() {
+        let pcloud = super::capabilities_for_protocol("pcloud");
+        assert!(!pcloud.contains(&"versions"), "{pcloud:?}");
+        let mega = super::capabilities_for_protocol("mega");
+        assert!(!mega.contains(&"versions"), "{mega:?}");
+        assert!(!mega.contains(&"thumbnails"), "{mega:?}");
+    }
 
     #[test]
     fn canonicalize_collapses_slashes_and_strips_trailing() {

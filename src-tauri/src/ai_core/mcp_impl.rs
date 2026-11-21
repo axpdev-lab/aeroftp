@@ -165,13 +165,21 @@ fn looks_like_auth_failure(msg: &str) -> bool {
 /// a write may already have reached the server. Every other failure,
 /// including a missing path and a permission error, leaves the entry in place.
 #[derive(Debug, PartialEq, Eq)]
-enum PooledSessionAction {
+pub(crate) enum PooledSessionAction {
     ReloadCredential,
     DropSession,
     KeepSession,
 }
 
-fn pooled_session_action(error: &crate::providers::ProviderError) -> PooledSessionAction {
+pub(crate) fn pooled_session_action(
+    error: &crate::providers::ProviderError,
+) -> PooledSessionAction {
+    // An operation the server may already have applied is never run again,
+    // whatever its text says: the auth-shaped words in it come from the read
+    // that checks the outcome, not from a refusal of the operation.
+    if crate::providers::was_applied(error) {
+        return PooledSessionAction::KeepSession;
+    }
     // Auth before transport. A dead-session variant whose text is an auth
     // failure still takes the one vault reload. `broken pipe` is not auth,
     // so it drops.
@@ -600,6 +608,23 @@ mod tests {
     use super::{looks_like_auth_failure, pooled_session_action, PooledSessionAction};
     use crate::providers::ProviderError;
     use crate::sync_core::scan::transport_failure_text;
+
+    /// A restore the server took, whose check read then failed on an expired
+    /// token, keeps the session: a vault reload would run the restore again
+    /// and make another version over any edit made since.
+    #[test]
+    fn an_applied_operation_is_never_run_again_whatever_its_text() {
+        let applied = crate::providers::applied_unconfirmed(
+            "the server answered the restore of /a.txt, but its current version could not be \
+             read (401 Unauthorized: access token expired)"
+                .into(),
+        );
+        assert!(looks_like_auth_failure(&applied.to_string()));
+        assert_eq!(
+            pooled_session_action(&applied),
+            PooledSessionAction::KeepSession
+        );
+    }
 
     #[test]
     fn pooled_session_action_classifies_reload_drop_and_keep() {
