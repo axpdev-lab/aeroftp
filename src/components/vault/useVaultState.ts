@@ -50,10 +50,13 @@ const ERROR_PATTERNS: [RegExp, string][] = [
 
 export function mapVaultError(e: unknown, t: (key: string) => string): string {
     const raw = String(e);
-    // A filename in the error can itself contain a generic cue like "corrupt".
-    // Preserve the writer's specific reason and recovery instruction.
-    const writerRefusal = /(?:is a symbolic link|vault is locked by another writer|damaged blocks: run repair)/i.test(raw);
-    if (!writerRefusal) {
+    // A filename or an OS error in the text can itself contain a generic cue
+    // like "corrupt" or "no such file". Keep the crate's specific reason and
+    // recovery instruction: writer refusals, and the vault/sidecar pair and
+    // strip recovery steps, which tell the user to preserve, reopen or keep
+    // retained files.
+    const actionable = /(?:is a symbolic link|vault is locked by another writer|damaged blocks: run repair|\b(?:preserve|retained|reopen)\b|recovery pending)/i.test(raw);
+    if (!actionable) {
         for (const [pattern, key] of ERROR_PATTERNS) {
             if (pattern.test(raw)) {
                 const mapped = t(key);
@@ -69,7 +72,7 @@ export function mapVaultError(e: unknown, t: (key: string) => string): string {
         .replace(/0x[0-9a-f]+/gi, '')
         // Unix absolute paths and Windows drive paths -> redacted placeholder.
         .replace(/(?:[A-Za-z]:)?[\\/][^\s'":]+(?:[\\/][^\s'":]+)+/g, (path) => {
-            const closing = path.match(/[);]+$/)?.[0] ?? '';
+            const closing = path.match(/[).,;]+$/)?.[0] ?? '';
             return `<path>${closing}`;
         })
         .replace(/\s{2,}/g, ' ')
