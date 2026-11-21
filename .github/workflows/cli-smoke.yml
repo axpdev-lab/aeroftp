@@ -2,7 +2,8 @@ name: CLI Smoke Test
 
 on:
   push:
-    branches: [main]
+    # Diagnostic: also on the diagnostic branch, to run coverage on a push event.
+    branches: [main, ci/coverage-diag-isolate]
     paths:
       - 'src-tauri/src/bin/aeroftp_cli.rs'
       - 'src-tauri/src/cli_dispatch.rs'
@@ -389,6 +390,25 @@ jobs:
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@9baf7c20ae8e70a5220bd48d08870afb205ab1ed # cargo-llvm-cov
 
+      # Diagnostic: the only change to this job. A sampler writes disk, memory,
+      # profraw and process figures to a file every 60 s and nothing to the
+      # log; "Generate coverage" below is unchanged.
+      - name: Start diagnostic sampler
+        working-directory: src-tauri
+        run: |
+          cat > "$RUNNER_TEMP/res.sh" <<'EOS'
+          #!/bin/bash
+          echo "== $(date -u +%H:%M:%SZ)"
+          df -h / | tail -1
+          free -m | sed -n '2,3p'
+          find target -maxdepth 2 -name '*.profraw' -printf '%s\n' 2>/dev/null \
+            | awk '{n++; s+=$1} END {printf "profraw files=%d size=%d MB\n", n, s/1048576}'
+          echo "processes=$(ps -e --no-headers | wc -l)"
+          ps -eo pid,ppid,etime,rss,args --sort=-rss | head -6 | cut -c1-160
+          EOS
+          chmod +x "$RUNNER_TEMP/res.sh"
+          nohup setsid bash -c 'while sleep 60; do "$0/res.sh" >> "$0/samples.log" 2>&1; done' "$RUNNER_TEMP" </dev/null >/dev/null 2>&1 &
+
       - name: Generate coverage
         working-directory: src-tauri
         shell: bash
@@ -407,6 +427,10 @@ jobs:
             --skip batch_dag_peak_bounded_by_min_of_file_slots_and_session_pool
           cargo llvm-cov report --lcov --output-path lcov.info
           cargo llvm-cov report --summary-only --fail-under-lines 10 | tee coverage-summary.txt
+
+      - name: Diagnostic samples
+        if: always()
+        run: cat "$RUNNER_TEMP/samples.log" || true
 
       - name: Upload coverage artifacts
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
