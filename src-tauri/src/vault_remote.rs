@@ -463,4 +463,62 @@ mod tests {
         assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 0);
         vault_v2_cleanup_temp_blocking(&local_path, &roots).unwrap();
     }
+
+    /// A session directory the cleanup must refuse, with its files intact.
+    fn assert_session_cleanup_refused(session: &Path, roots: &[PathBuf]) {
+        let names = [
+            STAGED_VAULT_FILENAME,
+            "vault.aerovault.aerolock",
+            "vault.aerovault.aerocorrect",
+            "sentinel.txt",
+        ];
+        for name in names {
+            std::fs::write(session.join(name), name.as_bytes()).unwrap();
+        }
+        let local_path = session.join(STAGED_VAULT_FILENAME);
+        vault_v2_cleanup_temp_blocking(local_path.to_str().unwrap(), roots).unwrap_err();
+        for name in names {
+            assert_eq!(
+                std::fs::read(session.join(name)).unwrap(),
+                name.as_bytes(),
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn cleanup_refuses_a_session_directory_outside_the_managed_roots() {
+        let root = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let roots = [root.path().canonicalize().unwrap()];
+        let session = outside.path().join("aerovault_remote_session_0123456789ab");
+        std::fs::create_dir(&session).unwrap();
+        assert_session_cleanup_refused(&session, &roots);
+
+        // With the vault already gone, the cleanup would remove the directory
+        // as a whole: the root check is then the only guard.
+        let emptied = outside.path().join("aerovault_remote_session_ba9876543210");
+        std::fs::create_dir(&emptied).unwrap();
+        std::fs::write(emptied.join("sentinel.txt"), b"kept").unwrap();
+        let gone = emptied.join(STAGED_VAULT_FILENAME);
+        vault_v2_cleanup_temp_blocking(gone.to_str().unwrap(), &roots).unwrap_err();
+        assert_eq!(
+            std::fs::read(emptied.join("sentinel.txt")).unwrap(),
+            b"kept"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cleanup_refuses_a_session_directory_that_is_a_link() {
+        let root = tempfile::tempdir().unwrap();
+        let roots = [root.path().canonicalize().unwrap()];
+        // The target passes the root check, so only the link check refuses.
+        let target = root.path().join("elsewhere");
+        std::fs::create_dir(&target).unwrap();
+        let link = root.path().join("aerovault_remote_session_0123456789ab");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert_session_cleanup_refused(&link, &roots);
+        assert!(link.symlink_metadata().unwrap().file_type().is_symlink());
+    }
 }
