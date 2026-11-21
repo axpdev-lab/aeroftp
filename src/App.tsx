@@ -588,6 +588,7 @@ import { usePanelSplit, dualLocalFlexToPercent, percentToDualLocalFlex } from '.
 import { StopCancelSpinner } from './components/StopCancelSpinner';
 import { markProfileHealthy } from './hooks/useProviderHealth';
 import { useHumanizedLog } from './hooks/useHumanizedLog';
+import { useCommitBarrier } from './hooks/useCommitBarrier';
 import { useLatestCallback } from './hooks/useLatestCallback';
 import { runCompletionRefresh, runTrackedSync } from './utils/completionRefresh';
 import { useResumeProfileGuard } from './hooks/useResumeProfileGuard';
@@ -19459,10 +19460,16 @@ const App: React.FC = () => {
 
   // A launch navigates after an await (a connect, a tab switch): by then the
   // render that started it is stale, and its changeRemoteDirectory would read
-  // the previous session's state (its AeroVault overlay, its path). This runs
-  // the body of the last commit, the one of the session just opened.
-  const navigateAfterLaunch = useLatestCallback((path: string, protocol?: string) =>
+  // the previous session's state (its AeroVault overlay, its path). The
+  // barrier waits for the commit of the state those awaits set, then this runs
+  // the body of that commit, the one of the session just opened.
+  const afterCommit = useCommitBarrier();
+  const latestChangeRemoteDirectory = useLatestCallback((path: string, protocol?: string) =>
     changeRemoteDirectory(path, protocol));
+  const navigateAfterLaunch = async (path: string, protocol?: string) => {
+    await afterCommit();
+    return latestChangeRemoteDirectory(path, protocol);
+  };
 
   // Open one saved profile: its live tab when it has one, else a connect.
   const openSavedProfile = async (matched: ServerProfile, initialPath?: string) => {

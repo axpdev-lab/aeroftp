@@ -66,6 +66,21 @@ describe('a launch navigates only on the tab it made active', () => {
         expect(await already('missing', scope)).toBe(false);
     });
 
+    it('navigates only once the state of the opened session has committed', async () => {
+        const order: string[] = [];
+        let commit!: () => void;
+        const navigateAfterLaunch = await load<(path: string, protocol?: string) => Promise<unknown>>('navigateAfterLaunch', {
+            afterCommit: () => new Promise<void>(resolve => { commit = () => { order.push('commit'); resolve(); }; }),
+            latestChangeRemoteDirectory: (path: string, protocol?: string) => { order.push(`navigate ${path} ${protocol}`); },
+        });
+        const navigation = navigateAfterLaunch('/b/', 'sftp');
+        await Promise.resolve();
+        expect(order).toEqual([]);
+        commit();
+        await navigation;
+        expect(order).toEqual(['commit', 'navigate /b/ sftp']);
+    });
+
     it("keeps My Servers' meaning: an open tab handled the request even when its switch was refused", async () => {
         const goToActiveSession = await load<(id: string) => Promise<boolean>>('goToActiveSession', {
             activateSavedSession: async (id: string) => (id === 'profile-b' ? false : null), ConnectScope: class {},

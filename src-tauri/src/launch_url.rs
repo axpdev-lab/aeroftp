@@ -284,6 +284,16 @@ fn decode(raw: &str) -> String {
         .unwrap_or_else(|_| raw.to_string())
 }
 
+/// A decoded host names one server: none of the characters that end a host
+/// in a URL, no percent sign left to decode again, no space or control.
+fn host_is_one_name(host: &str) -> bool {
+    !host.chars().any(|c| {
+        matches!(c, '/' | '\\' | '?' | '#' | '@' | '%' | ':' | '[' | ']')
+            || c.is_whitespace()
+            || c.is_control()
+    })
+}
+
 /// Read `raw` as a launch URL. `Err` names what is wrong without repeating
 /// any secret the URL holds.
 pub fn parse(raw: &str) -> Result<LaunchTarget, String> {
@@ -305,6 +315,19 @@ pub fn parse(raw: &str) -> Result<LaunchTarget, String> {
         );
     }
     let host = url.host_str().map(decode).unwrap_or_default();
+    // A host is percent-decoded, so `%2F` or `%40` would put a delimiter back
+    // into it, and a provider that builds its own URL from the host would split
+    // there: `gitlab%2Fother.example` would reach gitlab.com with the token. An
+    // Account scheme's host is a profile name, which may hold any character.
+    if !matches!(scheme.auth, LaunchAuth::Account)
+        && !matches!(url.host(), Some(url::Host::Ipv6(_)))
+        && !host_is_one_name(&host)
+    {
+        return Err(format!(
+            "The host of a {}:// URL must be a server name: it may not hold '/', '\\', '?', '#', '@', '%', ':', '[', ']' or spaces, encoded or not",
+            scheme.scheme
+        ));
+    }
     let needs_host = !matches!(scheme.auth, LaunchAuth::Account)
         && fixed_host(scheme.token).is_none()
         || matches!(
@@ -1158,6 +1181,61 @@ mod tests {
         );
         assert!(api_base("gitlab://gitlab/group/project").is_err());
         assert!(api_base("gitlab://gitlab:8443/group/project").is_err());
+        // An encoded delimiter never comes back into the host once decoded.
+        for raw in [
+            "gitlab://gitlab%2Fother.example/group/project",
+            "gitlab://user%40evil.example/group/project",
+            "gitlab://git.example.com%3A8443/group/project",
+            "gitlab://git.example.com%2523x/group/project",
+        ] {
+            let err = parse(raw).unwrap_err();
+            assert!(err.contains("must be a server name"), "{raw}: {err}");
+        }
+    }
+
+    #[test]
+    fn a_host_decoded_to_a_delimiter_is_refused_for_every_server_scheme() {
+        for raw in [
+            "sftp://files.example%2Fother.example/",
+            "sftp://files.example%40evil.example/",
+            "webdav://dav.example%3Fx/",
+            "ftp://ftp.example%23frag/",
+            "ftp://ftp%20example/",
+            "s3://AKID@s3.example%5Cother/?bucket=b",
+        ] {
+            assert!(parse(raw).is_err(), "{raw}");
+        }
+        // A host as written, an IPv6 literal and an encoded non-delimiter
+        // still read.
+        assert_eq!(
+            parse("sftp://files.example:2222/").unwrap().host,
+            "files.example"
+        );
+        assert_eq!(parse("sftp://[::1]:2222/").unwrap().host, "[::1]");
+        assert_eq!(
+            parse("ftp://ftp%2Dmirror.example/").unwrap().host,
+            "ftp-mirror.example"
+        );
+        // An international name reads, as Unicode or as punycode.
+        assert_eq!(
+            parse("sftp://bücher.example/").unwrap().host,
+            "bücher.example"
+        );
+        assert_eq!(
+            parse("sftp://xn--bcher-kva.example/").unwrap().host,
+            "xn--bcher-kva.example"
+        );
+        for raw in [
+            "https://dav.example%2Fother.example/",
+            "https://dav.example%40evil.example/",
+        ] {
+            assert!(parse(raw).is_err(), "{raw}");
+        }
+        // An Account scheme's host is a profile name: it keeps any character.
+        assert_eq!(
+            parse("dropbox://Work%20Files%2F2026/").unwrap().host,
+            "Work Files/2026"
+        );
     }
 
     #[test]
