@@ -9638,6 +9638,27 @@ pub fn mcp_list_active_server_profiles(store: &CredentialStore) -> Result<Vec<Va
     mcp_list_server_profiles(store, None)
 }
 
+/// The account whose list a connection that began with no account reads
+/// ([`LEGACY_ONLY_ACCOUNT`]): the legacy owner, whose stores its credentials
+/// come from, once accounts exist, since the legacy blob then mirrors
+/// whichever account is active. `None` while no account exists: the blob is
+/// the list. An owner that cannot be resolved refuses.
+fn legacy_only_list_owner() -> Result<Option<i64>, String> {
+    if !cli_db_path()?.exists() {
+        return Ok(None);
+    }
+    let conn = open_or_init_cli()?;
+    let accounts: bool = conn
+        .query_row("SELECT EXISTS(SELECT 1 FROM users)", [], |row| row.get(0))
+        .map_err(|e| format!("Read accounts: {e}"))?;
+    if !accounts {
+        return Ok(None);
+    }
+    nonprofile_secret_owner_unpersisted(&conn)?
+        .map(Some)
+        .ok_or_else(|| "The legacy account this connection began with no longer exists".to_string())
+}
+
 /// [`mcp_list_active_server_profiles`] for the account `user`, whichever is
 /// active now: a connection bound to the account it began with reads that
 /// account's list across a switch (`cloud_provider_factory`). `None` reads
@@ -9647,9 +9668,13 @@ pub fn mcp_list_server_profiles(
     store: &CredentialStore,
     user: Option<i64>,
 ) -> Result<Vec<Value>, String> {
-    if user == Some(LEGACY_ONLY_ACCOUNT) {
-        return read_legacy_server_profiles_blob(store);
-    }
+    let user = match user {
+        Some(LEGACY_ONLY_ACCOUNT) => match legacy_only_list_owner()? {
+            Some(owner) => Some(owner),
+            None => return read_legacy_server_profiles_blob(store),
+        },
+        other => other,
+    };
     init_or_migrate_cli(store)?;
     let conn = open_or_init_cli()?;
     let active = match user {
@@ -12078,6 +12103,65 @@ mod tests {
         let store = CredentialStore::from_cache().unwrap();
         init_or_migrate_cli(&store).unwrap();
         store
+    }
+
+    /// A connection that began with no account reads the legacy blob while no
+    /// account exists, and the legacy owner's list once one does: the blob
+    /// then mirrors whichever account is active, here another one.
+    #[test]
+    fn a_legacy_only_list_is_the_legacy_owners_once_accounts_exist() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "user_partitions::tests::a_legacy_only_list_is_the_legacy_owners_once_accounts_exist",
+        ) {
+            return;
+        }
+        let _guard = test_lock();
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("synthetic partition fixture").unwrap();
+        CredentialStore::unlock_with_master("synthetic partition fixture", None).unwrap();
+        let store = CredentialStore::from_cache().unwrap();
+        let list = |profiles: &[&str]| {
+            Value::Array(
+                profiles
+                    .iter()
+                    .map(|id| json!({"id": id, "name": id, "protocol": "sftp", "host": "h"}))
+                    .collect(),
+            )
+            .to_string()
+        };
+        let ids = |store: &CredentialStore| -> Vec<String> {
+            mcp_list_server_profiles(store, Some(LEGACY_ONLY_ACCOUNT))
+                .unwrap()
+                .iter()
+                .filter_map(|p| p["id"].as_str().map(str::to_string))
+                .collect()
+        };
+        store
+            .store("config_server_profiles", &list(&["p"]))
+            .unwrap();
+        assert_eq!(ids(&store), vec!["p".to_string()], "no account: the blob");
+        init_or_migrate_cli(&store).unwrap();
+        let mut conn = open_or_init_cli().unwrap();
+        let root = Zeroizing::new(store.derive_user_partition_wrapping_key());
+        let other = create_passphrase_less_user(&mut conn, &root, "Other", None, None).unwrap();
+        replace_server_profiles_for(
+            &mut conn,
+            &root,
+            other.id,
+            &[json!({
+                "id": "q", "name": "q", "protocol": "sftp", "host": "h"
+            })],
+        )
+        .unwrap();
+        set_active_user(&conn, other.id).unwrap();
+        store
+            .store("config_server_profiles", &list(&["q"]))
+            .unwrap();
+        assert_eq!(
+            ids(&store),
+            vec!["p".to_string()],
+            "the legacy-only list followed the active account's mirror"
+        );
     }
 
     /// An active typed save reads the account once: the legacy owner's token
