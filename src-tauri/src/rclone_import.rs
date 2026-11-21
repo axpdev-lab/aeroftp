@@ -6114,7 +6114,7 @@ pub fn export_rclone(
     // bridge exporters use: its temp file is O_EXCL/0600 (so a symlink planted
     // at a predictable sibling path cannot capture the secrets) and it unlinks
     // itself on any early return instead of leaving a partial cleartext file.
-    crate::bridge_shared::atomic_write_600(file_path, output.as_bytes())
+    crate::bridge_shared::write_export(outcome.exported, file_path, output.as_bytes())
         .map_err(|e| format!("Write rclone.conf: {}", e))?;
 
     Ok(outcome)
@@ -8296,8 +8296,20 @@ user = t
             tag,
             std::process::id()
         ));
+        std::fs::remove_file(&tmp).ok();
         let outcome = export_rclone(servers, &passwords, &tmp).expect("export");
-        let conf = std::fs::read_to_string(&tmp).expect("read export");
+        // An export that wrote no remote leaves the destination as it was:
+        // here, absent.
+        let conf = if outcome.exported == 0 {
+            assert!(
+                !tmp.exists(),
+                "an export of nothing wrote {}",
+                tmp.display()
+            );
+            String::new()
+        } else {
+            std::fs::read_to_string(&tmp).expect("read export")
+        };
         std::fs::remove_file(&tmp).ok();
         (outcome, conf)
     }
@@ -10460,22 +10472,23 @@ endpoint = https://ik.imagekit.io/demo_id
             provider_id: Some("zoho-workdrive".to_string()),
         }];
         let tmp = std::env::temp_dir().join("aeroftp-test-export-zoho-ca.conf");
-        let n = export_rclone(&servers, &HashMap::new(), &tmp)
-            .expect("export")
-            .exported;
-        let conf = std::fs::read_to_string(&tmp).expect("read");
         std::fs::remove_file(&tmp).ok();
+        let outcome = export_rclone(&servers, &HashMap::new(), &tmp).expect("export");
         assert_eq!(
-            n, 0,
-            "unusable zoho remote must not count as exported:\n{conf}"
+            outcome.exported, 0,
+            "unusable zoho remote must not count as exported"
         );
+        // Nothing exported, so nothing written: the skip is explained in the
+        // outcome the GUI and the CLI list.
+        assert!(!tmp.exists(), "must not write a file without a remote");
+        assert_eq!(outcome.skipped.len(), 1);
+        assert_eq!(outcome.skipped[0].name, "zoho-ca");
         assert!(
-            !conf.contains("[zoho-ca]"),
-            "must not emit a section rclone cannot reach:\n{conf}"
-        );
-        assert!(
-            conf.contains("skipped Zoho profile 'zoho-ca'"),
-            "skip must be explained:\n{conf}"
+            outcome.skipped[0]
+                .reason
+                .contains("cannot address region 'ca'"),
+            "{:?}",
+            outcome.skipped
         );
     }
 
@@ -11748,8 +11761,11 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
         assert_eq!(outcome.exported, 0, "{conf}");
         assert!(!conf.contains("url = "), "{conf}");
         assert!(
-            conf.contains(crate::connection_manifest::USERNAME_TEMPLATE_MISSING),
-            "{conf}"
+            outcome.skipped.iter().any(|s| s
+                .reason
+                .contains(crate::connection_manifest::USERNAME_TEMPLATE_MISSING)),
+            "{:?}",
+            outcome.skipped
         );
     }
 

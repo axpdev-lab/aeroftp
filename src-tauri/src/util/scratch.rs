@@ -18,28 +18,34 @@ pub const SCRATCH_HEADROOM: u64 = 256 * 1024 * 1024;
 /// folder is on disk. The room is checked before the transfer starts, so a
 /// file that cannot fit fails at once and says how much it needs.
 pub fn staging_dir(bytes: u64) -> Result<PathBuf, String> {
-    let dir = scratch_dir_with_room(&scratch_dir_path(), bytes)?;
+    let dir = scratch_dir_with_room(&try_scratch_dir_path()?, bytes)?;
     protect_scratch_process(&dir)
         .map_err(|e| format!("{} could not be protected from cleanup: {e}", dir.display()))?;
     Ok(dir)
 }
 
-/// Where [`staging_dir`] stages, resolved only: not created, no room check.
-/// For callers that need to know where a staged file would be (the vault
-/// confinement roots), or to attempt a metadata-only hardlink. A caller that
-/// falls back to copying must check room before writing the payload.
-pub fn scratch_dir_path() -> PathBuf {
-    if let Some(dir) = crate::portable::portable_scratch_dir() {
-        return dir;
+/// Where [`staging_dir`] stages, resolved only: returns `Err` while portable
+/// mode detection is unresolved (`Pending`) so a portable copy never stages
+/// into the host user's cache folder.
+pub fn try_scratch_dir_path() -> Result<PathBuf, String> {
+    if let Some(dir) = crate::portable::try_portable_scratch_dir()? {
+        return Ok(dir);
     }
-    match dirs::cache_dir() {
+    Ok(match dirs::cache_dir() {
         Some(cache) => cache
             .join(crate::portable::aeroftp_data_leaf_for_debug(cfg!(
                 debug_assertions
             )))
             .join("scratch"),
         None => std::env::temp_dir().join("aeroftp-scratch"),
-    }
+    })
+}
+
+/// Where [`staging_dir`] stages, resolved only: not created, no room check.
+/// For tests and callers that expect a confirmed mode.
+#[cfg(test)]
+pub fn scratch_dir_path() -> PathBuf {
+    try_scratch_dir_path().expect("scratch dir path requires resolved portable mode")
 }
 
 /// [`staging_dir`] on a given folder.
@@ -387,7 +393,11 @@ fn sweep_staging_entries(
 /// per startup. Never fails the caller; a folder that cannot be read simply
 /// reports through the log.
 pub fn sweep_staging_on_startup() {
-    let stats = sweep_stale_staging(&scratch_dir_path(), STALE_STAGING_AGE);
+    let Ok(dir) = try_scratch_dir_path() else {
+        log::debug!("Scratch sweep deferred: portable mode detection pending");
+        return;
+    };
+    let stats = sweep_stale_staging(&dir, STALE_STAGING_AGE);
     if stats.removed > 0 || stats.errors > 0 {
         log::info!(
             "Scratch sweep: removed {} stale staging {} ({}), {} kept fresh, {} kept active, {} errors",

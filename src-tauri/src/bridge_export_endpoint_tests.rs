@@ -682,3 +682,135 @@ fn rclone_ftp_tls_mode_survives_a_round_trip() {
     assert!(!section("exp").contains("\ntls = true"), "{text}");
     assert!(section("imp").contains("\ntls = true"), "{text}");
 }
+
+/// An export with nothing to write leaves the destination as it was: the
+/// exporters wrote a file holding only the format's header, which replaced
+/// one the user already had (a `WinSCP.ini`, an `~/.ssh/config` with hosts of
+/// its own) while the export reported nothing exported. Each exporter runs
+/// with no profile against a file that is already there. PuTTY writes the
+/// Windows registry, adds sessions only, and is left out.
+#[test]
+fn an_export_with_nothing_to_write_leaves_the_destination_as_it_was() {
+    use crate::*;
+    const MINE: &[u8] = b"the user's own file\n";
+    macro_rules! keeps {
+        ($f:path, $ty:ty, $file:expr) => {{
+            let dir = tempfile::tempdir().unwrap();
+            let dest = dir.path().join($file);
+            std::fs::write(&dest, MINE).unwrap();
+            // The AWS export writes `config` next to `credentials`.
+            let sibling = dir.path().join("config");
+            if $file != "config" {
+                std::fs::write(&sibling, MINE).unwrap();
+            }
+            let none: Vec<$ty> = Vec::new();
+            // Kopia, Dreamweaver and restic refuse an empty export with an
+            // error; the others report nothing exported. Neither may write.
+            let _ = $f(&none, &HashMap::new(), &dest);
+            assert_eq!(std::fs::read(&dest).unwrap(), MINE, "{}", stringify!($f));
+            assert_eq!(std::fs::read(&sibling).unwrap(), MINE, "{}", stringify!($f));
+        }};
+    }
+    keeps!(
+        aws_credentials_import::export_aws_credentials,
+        aws_credentials_import::AwsExportServer,
+        "credentials"
+    );
+    keeps!(
+        ssh_config_import::export_ssh_config,
+        ssh_config_import::SshExportServer,
+        "ssh_config"
+    );
+    keeps!(
+        mc_import::export_mc,
+        mc_import::McExportServer,
+        "config.json"
+    );
+    keeps!(
+        s3cmd_import::export_s3cmd,
+        s3cmd_import::S3cmdExportServer,
+        ".s3cfg"
+    );
+    keeps!(
+        lftp_import::export_lftp,
+        lftp_import::LftpExportServer,
+        "bookmarks.rc"
+    );
+    keeps!(
+        mobaxterm_import::export_mobaxterm,
+        mobaxterm_import::MobaxtermExportServer,
+        "MobaXterm.ini"
+    );
+    keeps!(
+        dreamweaver_import::export_dreamweaver,
+        dreamweaver_import::DreamweaverExportServer,
+        "site.ste"
+    );
+    keeps!(
+        kopia_import::export_kopia,
+        kopia_import::KopiaExportServer,
+        "repository.config"
+    );
+    keeps!(
+        duplicacy_import::export_duplicacy,
+        duplicacy_import::DuplicacyExportServer,
+        "preferences"
+    );
+    keeps!(
+        restic_import::export_restic,
+        restic_import::ResticExportServer,
+        "restic.sh"
+    );
+    keeps!(
+        rclone_import::export_rclone,
+        rclone_import::RcloneExportServer,
+        "rclone.conf"
+    );
+    keeps!(
+        winscp_import::export_winscp,
+        winscp_import::WinScpExportServer,
+        "WinSCP.ini"
+    );
+    keeps!(
+        filezilla_import::export_filezilla,
+        filezilla_import::FileZillaExportServer,
+        "sitemanager.xml"
+    );
+
+    // Cyberduck writes one file per bookmark into a folder, and created the
+    // folder before it knew whether any bookmark would go in it.
+    let dir = tempfile::tempdir().unwrap();
+    let bookmarks = dir.path().join("Bookmarks");
+    let none: Vec<cyberduck_import::CyberduckExportServer> = Vec::new();
+    let outcome = cyberduck_import::export_cyberduck(&none, &HashMap::new(), &bookmarks).unwrap();
+    assert_eq!(outcome.exported, 0);
+    assert!(!bookmarks.exists());
+}
+
+/// The same when the exporter itself refuses every profile it is handed,
+/// the case a protocol filter in front of it cannot catch: a host whose line
+/// break would add a line of its own.
+#[test]
+fn an_export_that_refuses_every_profile_leaves_the_destination_as_it_was() {
+    use crate::*;
+    const MINE: &[u8] = b"the user's own file\n";
+    let hostile = json!([{
+        "id": "id-1", "name": "Lab", "host": "lab.example.com\nProxyCommand x",
+        "port": 22, "username": "u", "protocol": "sftp",
+    }]);
+    let dir = tempfile::tempdir().unwrap();
+    let dest = dir.path().join("WinSCP.ini");
+    std::fs::write(&dest, MINE).unwrap();
+    let servers: Vec<winscp_import::WinScpExportServer> =
+        serde_json::from_value(hostile.clone()).unwrap();
+    let outcome = winscp_import::export_winscp(&servers, &HashMap::new(), &dest).unwrap();
+    assert_eq!((outcome.exported, outcome.skipped.len()), (0, 1));
+    assert_eq!(std::fs::read(&dest).unwrap(), MINE);
+
+    let dest = dir.path().join("ssh_config");
+    std::fs::write(&dest, MINE).unwrap();
+    let servers: Vec<ssh_config_import::SshExportServer> = serde_json::from_value(hostile).unwrap();
+    let outcome = ssh_config_import::export_ssh_config(&servers, &HashMap::new(), &dest).unwrap();
+    assert_eq!((outcome.exported, outcome.skipped.len()), (0, 1));
+    assert_eq!(std::fs::read(&dest).unwrap(), MINE);
+}

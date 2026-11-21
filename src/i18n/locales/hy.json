@@ -1873,7 +1873,9 @@
                 "osKeyring": "ՕՀ-ի բանալիների կապոց",
                 "vaultFormat": "Պահոցի ձևաչափ",
                 "zipArchives": "ZIP արխիվներ"
-            }
+            },
+            "thirdPartyLicenses": "Երրորդ կողմի լիցենզիաներ",
+            "thirdPartyLicensesOpenFailed": "Չհաջողվեց բացել լիցենզիայի ծանուցումները։ Դրանք առկա են առցանց՝ {url}"
         },
         "support": {
             "title": "Աջակցել AeroFTP-ին",
@@ -2365,9 +2367,7 @@
             "tabdigitalDesc": "TAB.DIGITAL (8 ԳԲ անվճար, Nextcloud-ի վրա հիմնված, EU/GDPR)",
             "tabdigitalTooltip": "TAB.DIGITAL: անկախ ԵՄ ամպային թիմ 2018 թվականից, Nextcloud-as-a-service 8GB անվճար, GDPR-ի համապատասխան, տարածաշրջանային ենթադոմեններ (fie.nl, fie.de, ...)",
             "discoverTabDigital": "TAB.DIGITAL (8 ԳԲ անվճար, Nextcloud-ի վրա հիմնված, EU/GDPR, տարածաշրջանային ենթադոմեններ)",
-            "webdavLocalScheme": "Արձանագրություն",
-            "webdavLocalSchemeHelp": "Համապատասխանեցրեք տեղական WebDAV կամրջի HTTP/HTTPS կարգավորմանը (Filen Desktop, MEGAcmd)։ HTTPS-ն օգտագործում է ինքնաստորագրված վկայական, ուստի վկայականի ստուգումն ինքնաշխատ կերպով անջատվում է։",
-            "webdavLocalSchemeAuto": "AeroFTP-ը միանալիս ինքնաշխատ հայտնաբերում է Filen կամրջի արձանագրությունը (HTTP կամ HTTPS), ուստի այստեղ կարգավորելու ոչինչ չկա։",
+            "webdavLocalSchemeAuto": "Լռելյայն 1900 նավահանգստում AeroFTP-ը միանալիս ինքնաշխատ հայտնաբերում է Filen կամրջի արձանագրությունը (HTTP կամ HTTPS), ուստի այստեղ կարգավորելու ոչինչ չկա։",
             "s3SessionToken": "Աշխատաշրջանի թոքեն",
             "s3SessionTokenPlaceholder": "AWS STS աշխատաշրջանի թոքեն",
             "s3SessionTokenHint": "AWS STS AssumeRole-ից կամ SSO-ից ստացված ժամանակավոր հավատարմագրերի համար։ Երկարաժամկետ IAM մուտքի բանալիների համար թողեք դատարկ։",

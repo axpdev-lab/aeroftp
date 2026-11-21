@@ -1880,7 +1880,9 @@
                 "osKeyring": "បណ្តុំសោរបស់ប្រព័ន្ធប្រតិបត្តិការ",
                 "vaultFormat": "ទម្រង់ឃ្លាំងសុវត្ថិភាព",
                 "zipArchives": "បណ្ណសារ ZIP"
-            }
+            },
+            "thirdPartyLicenses": "អាជ្ញាប័ណ្ណភាគីទីបី",
+            "thirdPartyLicensesOpenFailed": "មិនអាចបើកការជូនដំណឹងអំពីអាជ្ញាប័ណ្ណបានទេ។ អ្នកអាចមើលវាតាមអ៊ីនធឺណិតនៅ {url}"
         },
         "support": {
             "title": "គាំទ្រ AeroFTP",
@@ -2372,9 +2374,7 @@
             "tabdigitalDesc": "TAB.DIGITAL (ឥតគិតថ្លៃ 8 GB, ផ្អែកលើ Nextcloud, EU/GDPR)",
             "tabdigitalTooltip": "TAB.DIGITAL: ក្រុមពពកឯករាជ្យនៃសហភាពអឺរ៉ុបចាប់តាំងពីឆ្នាំ 2018, Nextcloud-as-a-service ដោយឥតគិតថ្លៃ 8GB, អនុលោមតាម GDPR, ដែនរងតាមតំបន់ (fie.nl, fie.de, ...)",
             "discoverTabDigital": "TAB.DIGITAL (ឥតគិតថ្លៃ 8 GB, ផ្អែកលើ Nextcloud, EU/GDPR, ដែនរងតាមតំបន់)",
-            "webdavLocalScheme": "ពិធីការ",
-            "webdavLocalSchemeHelp": "ផ្គូផ្គងការកំណត់ HTTP/HTTPS របស់ស្ពាន WebDAV ក្នុងមូលដ្ឋាន (Filen Desktop, MEGAcmd)។ HTTPS ប្រើវិញ្ញាបនបត្រដែលចុះហត្ថលេខាដោយខ្លួនឯង ដូច្នេះការផ្ទៀងផ្ទាត់វិញ្ញាបនបត្រត្រូវបានបិទដោយស្វ័យប្រវត្តិ។",
-            "webdavLocalSchemeAuto": "AeroFTP រកឃើញពិធីការនៃស្ពាន Filen (HTTP ឬ HTTPS) ដោយស្វ័យប្រវត្តិនៅពេលអ្នកភ្ជាប់ ដូច្នេះគ្មានអ្វីត្រូវកំណត់នៅទីនេះទេ។",
+            "webdavLocalSchemeAuto": "នៅលើច្រកលំនាំដើម 1900 AeroFTP រកឃើញពិធីការនៃស្ពាន Filen (HTTP ឬ HTTPS) ដោយស្វ័យប្រវត្តិនៅពេលអ្នកភ្ជាប់ ដូច្នេះគ្មានអ្វីត្រូវកំណត់នៅទីនេះទេ។",
             "s3SessionToken": "ថូខឹនវគ្គ",
             "s3SessionTokenPlaceholder": "ថូខឹនវគ្គ AWS STS",
             "s3SessionTokenHint": "សម្រាប់ព័ត៌មានសម្គាល់បណ្ដោះអាសន្នពី AWS STS AssumeRole ឬ SSO។ ទុកឱ្យនៅទទេសម្រាប់សោចូលប្រើ IAM អចិន្ត្រៃយ៍។",

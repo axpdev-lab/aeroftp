@@ -1880,7 +1880,9 @@
                 "osKeyring": "Chuỗi khóa hệ điều hành",
                 "vaultFormat": "Định dạng kho bảo mật",
                 "zipArchives": "Tệp nén ZIP"
-            }
+            },
+            "thirdPartyLicenses": "Giấy phép bên thứ ba",
+            "thirdPartyLicensesOpenFailed": "Không thể mở thông báo giấy phép. Bạn có thể xem trực tuyến tại {url}"
         },
         "support": {
             "title": "Hỗ trợ AeroFTP",
@@ -2372,9 +2374,7 @@
             "tabdigitalDesc": "TAB.DIGITAL (8 GB miễn phí, dựa trên Nextcloud, EU/GDPR)",
             "tabdigitalTooltip": "TAB.DIGITAL: nhóm đám mây EU độc lập từ năm 2018, Nextcloud-as-a-service với 8GB miễn phí, tuân thủ GDPR, tên miền phụ theo khu vực (fie.nl, fie.de, ...)",
             "discoverTabDigital": "TAB.DIGITAL (8 GB miễn phí, dựa trên Nextcloud, EU/GDPR, tên miền phụ theo khu vực)",
-            "webdavLocalScheme": "Giao thức",
-            "webdavLocalSchemeHelp": "Khớp với cài đặt HTTP/HTTPS của cầu WebDAV cục bộ (Filen Desktop, MEGAcmd). HTTPS sử dụng chứng chỉ tự ký, vì vậy việc xác minh chứng chỉ bị tự động vô hiệu hóa.",
-            "webdavLocalSchemeAuto": "AeroFTP tự động phát hiện giao thức của cầu nối Filen (HTTP hoặc HTTPS) khi bạn kết nối, vì vậy không có gì cần thiết lập ở đây.",
+            "webdavLocalSchemeAuto": "Trên cổng mặc định 1900, AeroFTP tự động phát hiện giao thức của cầu nối Filen (HTTP hoặc HTTPS) khi bạn kết nối, vì vậy không có gì cần thiết lập ở đây.",
             "s3SessionToken": "Mã thông báo phiên",
             "s3SessionTokenPlaceholder": "Mã thông báo phiên AWS STS",
             "s3SessionTokenHint": "Dành cho thông tin xác thực tạm thời từ AWS STS AssumeRole hoặc SSO. Để trống cho khóa truy cập IAM dài hạn.",

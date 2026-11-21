@@ -1436,11 +1436,9 @@ fn stage_local_as_dest(
     local_path: &str,
     dest_name: &str,
 ) -> Result<(PathBuf, PathBuf), ProviderError> {
-    stage_local_as_dest_in(
-        local_path,
-        dest_name,
-        &crate::util::scratch::scratch_dir_path(),
-    )
+    let scratch_root = crate::util::scratch::try_scratch_dir_path()
+        .map_err(|e| ProviderError::IoError(std::io::Error::other(e)))?;
+    stage_local_as_dest_in(local_path, dest_name, &scratch_root)
 }
 
 fn stage_local_as_dest_in(

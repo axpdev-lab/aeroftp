@@ -1880,7 +1880,9 @@
                 "osKeyring": "Ключодържател на ОС",
                 "vaultFormat": "Формат на трезора",
                 "zipArchives": "ZIP архиви"
-            }
+            },
+            "thirdPartyLicenses": "Лицензи на трети страни",
+            "thirdPartyLicensesOpenFailed": "Бележките за лицензите не можаха да бъдат отворени. Налични са онлайн на {url}"
         },
         "support": {
             "title": "Подкрепете AeroFTP",
@@ -2372,9 +2374,7 @@
             "tabdigitalDesc": "TAB.DIGITAL (8 GB безплатно, базиран на Nextcloud, EU/GDPR)",
             "tabdigitalTooltip": "TAB.DIGITAL: независим европейски облачен екип от 2018 г., Nextcloud-as-a-service с 8GB безплатно, съответства на GDPR, регионални поддомейни (fie.nl, fie.de, ...)",
             "discoverTabDigital": "TAB.DIGITAL (8 GB безплатно, базиран на Nextcloud, EU/GDPR, регионални поддомейни)",
-            "webdavLocalScheme": "Протокол",
-            "webdavLocalSchemeHelp": "Съответства на настройката HTTP/HTTPS на локалния WebDAV мост (Filen Desktop, MEGAcmd). HTTPS използва самоподписан сертификат, така че проверката на сертификата е автоматично деактивирана.",
-            "webdavLocalSchemeAuto": "AeroFTP автоматично разпознава протокола на моста Filen (HTTP или HTTPS) при свързване, така че тук няма какво да настройвате.",
+            "webdavLocalSchemeAuto": "На стандартния порт 1900 AeroFTP автоматично разпознава протокола на моста Filen (HTTP или HTTPS) при свързване, така че тук няма какво да настройвате.",
             "s3SessionToken": "Сесиен токен",
             "s3SessionTokenPlaceholder": "Сесиен токен на AWS STS",
             "s3SessionTokenHint": "За временни идентификационни данни от AWS STS AssumeRole или SSO. Оставете празно за постоянни IAM ключове за достъп.",

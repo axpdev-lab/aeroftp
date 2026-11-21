@@ -472,12 +472,11 @@ pub fn export_kopia(
     let secret = crate::bridge_shared::export_secret(passwords, &server.id);
     let doc = storage_block(server, secret)?;
     let body = serde_json::to_vec_pretty(&doc).map_err(|e| e.to_string())?;
-    crate::bridge_shared::atomic_write_600(out, &body)?;
-
     let mut outcome = crate::bridge_shared::BridgeExportOutcome {
         exported: 1,
         skipped: Vec::new(),
     };
+    crate::bridge_shared::write_export(outcome.exported, out, &body)?;
     for extra in &servers[1..] {
         outcome.skip(
             &extra.name,

@@ -7858,6 +7858,11 @@ fn strict_mode_violations(cli: &Cli) -> Vec<&'static str> {
 /// must be one every command accepts: a global flag, like `--timeout`.
 fn connect_failure_message(e: &ProviderError) -> String {
     let hint = match e {
+        ProviderError::ConnectionFailed(detail)
+            if detail.starts_with(ftp_client_gui_lib::providers::webdav::REFUSED_CERTIFICATE) =>
+        {
+            " (this computer does not trust the server's certificate: give the server one it trusts, or add its CA to the system's trusted certificates)"
+        }
         ProviderError::ConnectionFailed(_) => {
             " (check hostname/port and verify the service is running)"
         }
@@ -10732,17 +10737,29 @@ impl From<AimdTomlClassWindow> for ftp_client_gui_lib::transfer_dag::AimdClassWi
     }
 }
 
-/// Default TOML path used when `--aimd-config` is unset. Returns
-/// `<XDG_CONFIG_HOME>/aeroftp/aimd.toml` (or `~/.config/aeroftp/aimd.toml`),
-/// or `None` when neither environment variable resolves.
-fn default_aimd_config_path() -> Option<PathBuf> {
-    if ftp_client_gui_lib::portable::is_portable() {
-        return ftp_client_gui_lib::portable::aeroftp_data_root().map(|d| d.join("aimd.toml"));
+/// Default TOML path used when `--aimd-config` is unset. Pending portable
+/// detection is an operator-retryable error, never a fallback to host paths or
+/// default AIMD overrides.
+fn default_aimd_config_path() -> Result<Option<PathBuf>, String> {
+    if ftp_client_gui_lib::portable::is_confirmed_installed() {
+        return Ok(dirs::config_dir().or_else(dirs::home_dir).map(|base| {
+            base.join(ftp_client_gui_lib::portable::aeroftp_data_leaf_for_debug(
+                cfg!(debug_assertions),
+            ))
+            .join("aimd.toml")
+        }));
     }
-    let leaf = ftp_client_gui_lib::portable::aeroftp_data_leaf_for_debug(cfg!(debug_assertions));
-    dirs::config_dir()
-        .or_else(dirs::home_dir)
-        .map(|base| base.join(leaf).join("aimd.toml"))
+    default_aimd_config_path_for(ftp_client_gui_lib::portable::try_aeroftp_data_root())
+}
+
+/// A pending detection and a data directory that cannot be created are told
+/// apart: only the first is fixed by retrying after startup.
+fn default_aimd_config_path_for(
+    data_root: Result<PathBuf, ftp_client_gui_lib::portable::DataRootError>,
+) -> Result<Option<PathBuf>, String> {
+    data_root
+        .map(|root| Some(root.join("aimd.toml")))
+        .map_err(|e| e.to_string())
 }
 
 /// Load per-class AIMD window overrides from a TOML file. Returns
@@ -10825,7 +10842,7 @@ fn build_aimd_runtime_config(
     let file_overrides = match &cli.aimd_config {
         Some(explicit) => load_aimd_overrides_from_file(explicit)?
             .ok_or_else(|| format!("AIMD config file not found: {}", explicit.display()))?,
-        None => match default_aimd_config_path() {
+        None => match default_aimd_config_path()? {
             Some(default_path) => {
                 load_default_aimd_overrides_from_file(&default_path)?.unwrap_or_default()
             }
@@ -44156,8 +44173,21 @@ async fn cmd_export_winscp(
     };
 
     match export_winscp(&exportable, &collected.passwords, &target_path) {
-        Ok(count) => {
-            emit_export_success(json, "WinSCP.ini", count, &target_path, &collected.skipped);
+        Ok(outcome) => {
+            // The profiles this command filtered out, and the ones the
+            // exporter refused (a value that would break its line).
+            let mut skipped = collected.skipped.clone();
+            skipped.extend(
+                outcome
+                    .skipped
+                    .iter()
+                    .map(|s| (s.name.clone(), s.reason.clone())),
+            );
+            if outcome.exported == 0 {
+                emit_empty_export(json, &skipped);
+                return 4;
+            }
+            emit_export_success(json, "WinSCP.ini", outcome.exported, &target_path, &skipped);
             0
         }
         Err(e) => {
@@ -44237,6 +44267,12 @@ async fn cmd_export_filezilla(
     };
 
     match export_filezilla(&exportable, &collected.passwords, &target_path) {
+        // Nothing written, as for the other formats: the file at the
+        // destination is left as it was.
+        Ok(0) => {
+            emit_empty_export(json, &collected.skipped);
+            4
+        }
         Ok(count) => {
             emit_export_success(
                 json,
@@ -89531,6 +89567,23 @@ mod tests {
         assert!(!is_retryable_exit(code));
     }
 
+    /// A WebDAV server whose certificate this computer refused got "check
+    /// hostname/port and verify the service is running": advice for a server
+    /// that is down, about one that answered. The certificate gets its own.
+    #[test]
+    fn a_refused_certificate_is_not_reported_as_a_server_that_is_down() {
+        let failure = ProviderError::ConnectionFailed(format!(
+            "{} (error sending request to https://127.0.0.1:4443: certificate verify failed)",
+            ftp_client_gui_lib::providers::webdav::REFUSED_CERTIFICATE
+        ));
+        let message = connect_failure_message(&failure);
+        assert!(
+            message.contains("does not trust the server's certificate"),
+            "{message}"
+        );
+        assert!(!message.contains("service is running"), "{message}");
+    }
+
     #[test]
     fn test_provider_error_exit_codes() {
         assert_eq!(
@@ -90418,6 +90471,26 @@ mod tests {
         assert_eq!(cfg.cooldown, baseline.cooldown);
         assert_eq!(cfg.healthy_window, baseline.healthy_window);
         assert_eq!(cfg.recovery_window, baseline.recovery_window);
+    }
+
+    #[test]
+    fn test_default_aimd_config_pending_is_an_error_and_portable_path_is_preserved() {
+        use ftp_client_gui_lib::portable::DataRootError;
+        let pending = default_aimd_config_path_for(Err(DataRootError::Pending)).unwrap_err();
+        assert!(pending.contains("retry the command"));
+        // A directory that cannot be created is its own error: it names the
+        // failure and does not ask for a retry that cannot help.
+        let failed = default_aimd_config_path_for(Err(DataRootError::Unavailable(
+            "Failed to create /portable/data: Permission denied".to_string(),
+        )))
+        .unwrap_err();
+        assert!(failed.contains("Permission denied"), "{failed}");
+        assert!(!failed.contains("pending"), "{failed}");
+        assert!(!failed.contains("retry"), "{failed}");
+        assert_eq!(
+            default_aimd_config_path_for(Ok(PathBuf::from("/portable/data"))).unwrap(),
+            Some(PathBuf::from("/portable/data/aimd.toml"))
+        );
     }
 
     #[test]

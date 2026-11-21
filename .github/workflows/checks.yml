@@ -62,11 +62,30 @@ jobs:
       - name: AppImage .zsync pairing reads the published asset list
         run: python3 -m unittest discover -s .github/scripts -p test_pair_appimage_zsync.py -v
 
+      # The real unsquashfs reads a squashfs image appended to an ELF in one
+      # test; without it that test is skipped, so it is installed here.
+      - name: Install squashfs-tools for the AppImage sources test
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends squashfs-tools
+          # `unsquashfs -version` exits 1 without an image to read: the check is
+          # that it is installed.
+          command -v unsquashfs
+
+      - name: AppImage library sources are kept for the written offer
+        run: python3 -m unittest discover -s .github/scripts -p test_archive_appimage_sources.py -v
+
       - name: Snap stale-package audit reads every staged package
         run: node --test .github/scripts/test-snap-stale-packages.mjs
 
       - name: Security report counts each OSV finding once across lockfiles
         run: node --test .github/scripts/test-security-report.mjs
+
+      - name: Third-party license notices are up to date
+        run: |
+          npm run check:licenses
+          node --test .github/scripts/test-third-party-notices.mjs
 
       # Two checks that read a git command through a command substitution,
       # which hides its exit status: each now fails when git does.

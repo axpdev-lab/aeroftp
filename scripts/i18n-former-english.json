@@ -6,7 +6,7 @@
         "enHash is the SHA-256 of the flattened current en.json. Change English and run --write in the same commit.",
         "A value listed here fails the gate when a locale still equals it and the current English does not."
     ],
-    "enHash": "213b110d6a04fe2d1742de347889d20305757823fe1b1ce0671e8aff3962cdb2",
+    "enHash": "9402e9e26a6ee24a7a332575652dc20ba68a45100f09c2f62b30479611c8dd08",
     "former": {
         "about.aiCredits": [
             "AI: Claude Opus 4.5 + support models"
@@ -674,6 +674,9 @@
         ],
         "protocol.webdavDesc": [
             "Nextcloud, ownCloud, Synology"
+        ],
+        "protocol.webdavLocalSchemeAuto": [
+            "AeroFTP detects the Filen bridge protocol (HTTP or HTTPS) automatically when you connect, so there is nothing to set here."
         ],
         "protocol.zohoworkdriveDesc": [
             "Team Cloud Storage"

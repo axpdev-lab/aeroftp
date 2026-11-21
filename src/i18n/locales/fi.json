@@ -1880,7 +1880,9 @@
                 "osKeyring": "Käyttöjärjestelmän avainnippu",
                 "vaultFormat": "Holvin muoto",
                 "zipArchives": "ZIP-arkistot"
-            }
+            },
+            "thirdPartyLicenses": "Kolmannen osapuolen lisenssit",
+            "thirdPartyLicensesOpenFailed": "Lisenssi-ilmoituksia ei voitu avata. Ne ovat verkossa osoitteessa {url}"
         },
         "support": {
             "title": "Tue AeroFTP:tä",
@@ -2372,9 +2374,7 @@
             "tabdigitalDesc": "TAB.DIGITAL (8 GB ilmainen, Nextcloud-pohjainen, EU/GDPR)",
             "tabdigitalTooltip": "TAB.DIGITAL: itsenäinen EU-pilvitiimi vuodesta 2018, Nextcloud-as-a-service 8GB ilmaiseksi, GDPR-yhteensopiva, alueelliset alidomainit (fie.nl, fie.de, ...)",
             "discoverTabDigital": "TAB.DIGITAL (8 GB ilmainen, Nextcloud-pohjainen, EU/GDPR, alueelliset alidomainit)",
-            "webdavLocalScheme": "Protokolla",
-            "webdavLocalSchemeHelp": "Vastaa paikallisen WebDAV-sillan HTTP/HTTPS-asetusta (Filen Desktop, MEGAcmd). HTTPS käyttää itse allekirjoitettua varmennetta, joten varmenteen tarkistus poistetaan automaattisesti käytöstä.",
-            "webdavLocalSchemeAuto": "AeroFTP tunnistaa Filen-sillan protokollan (HTTP tai HTTPS) automaattisesti yhdistäessäsi, joten tässä ei tarvitse asettaa mitään.",
+            "webdavLocalSchemeAuto": "Oletusportissa 1900 AeroFTP tunnistaa Filen-sillan protokollan (HTTP tai HTTPS) automaattisesti yhdistäessäsi, joten tässä ei tarvitse asettaa mitään.",
             "s3SessionToken": "Istuntotunnus",
             "s3SessionTokenPlaceholder": "AWS STS -istuntotunnus",
             "s3SessionTokenHint": "Väliaikaisille tunnistetiedoille AWS STS AssumeRolesta tai SSO:sta. Jätä tyhjäksi pysyviä IAM-käyttöavaimia varten.",

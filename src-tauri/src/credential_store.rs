@@ -4062,7 +4062,11 @@ mod vault_lock_tests {
         let holder = lock_file_waiting(&dir.path().join(VAULT_LOCK_FILENAME), Duration::ZERO)
             .ok()
             .unwrap();
-        let wait = Duration::from_millis(300);
+        // Queued behind the first, a second writer would give up after two
+        // waits. Half a wait above one is the margin a busy runner gets, and
+        // a second wait is still past it.
+        let wait = Duration::from_secs(1);
+        let bound = wait * 3 / 2;
         let started = std::time::Instant::now();
         let writers: Vec<_> = (0..2)
             .map(|_| {
@@ -4077,9 +4081,9 @@ mod vault_lock_tests {
         for writer in writers {
             let (refused, took) = writer.join().unwrap();
             assert!(refused);
-            assert!(took < wait + Duration::from_millis(150), "{took:?}");
+            assert!(took < bound, "{took:?}");
         }
-        assert!(started.elapsed() < wait * 2, "{:?}", started.elapsed());
+        assert!(started.elapsed() < bound, "{:?}", started.elapsed());
         drop(holder);
     }
 

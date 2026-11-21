@@ -57,6 +57,7 @@ import { optionsAcrossSshSwitch, presetFitsProtocol, storedPresetForSave, SWITCH
 import { getProviderById, resolveS3Endpoint, resolveProfileS3Location, presetDefaultS3Region, parseS3EndpointParams, ProviderConfig } from '../providers';
 import { isBlompAuthUrl, swiftOptionsForAuthUrl } from './swiftAuthUrl';
 import { getProviderDocsUrl, PROVIDER_DOCS_INDEX } from '../providers/docsLinks';
+import { resolvePresetText } from '../providers/presetText';
 import { getMegaConnectionMode, normalizeMegaOptions } from '../utils/providerConnectionMeta';
 import { canonicalOptionsForEdit } from '../utils/profileSecurity';
 import { createProfileCredentialJournal, type ProfileCredentialJournal, type ProfileCredentialWriter } from '../utils/profileCredentialJournal';
@@ -431,6 +432,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
     const usernameField = formProvider?.fields?.find(f => f.key === 'username');
     const passwordField = formProvider?.fields?.find(f => f.key === 'password');
+    // A preset's own text names a control of this form by reference, resolved
+    // to the label the form shows in the current language.
+    const presetText = (text: string) => resolvePresetText(text, formProvider, t);
 
     // Track which preset fields have been unlocked for editing
     const [presetUnlocked, setPresetUnlocked] = useState<Record<string, boolean>>({});
@@ -2773,7 +2777,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     const getServerPlaceholder = () => {
         if (selectedProvider) {
             const serverField = selectedProvider.fields?.find(f => f.key === 'server');
-            if (serverField?.placeholder) return serverField.placeholder;
+            if (serverField?.placeholder) return presetText(serverField.placeholder);
             if (selectedProvider.defaults?.server) return selectedProvider.defaults.server.replace('https://', '');
         }
         switch (protocol) {
@@ -2815,7 +2819,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // (issue #215), which the generic WebDAV/opendrive default below would
         // otherwise mask, hiding from the user that AeroFTP tries "admin".
         const usernameField = selectedProvider?.fields?.find((f) => f.key === 'username');
-        if (usernameField?.placeholder) return usernameField.placeholder;
+        if (usernameField?.placeholder) return presetText(usernameField.placeholder);
         if (protocol === 's3') return 'AKIAIOSFODNN7EXAMPLE';
         if (protocol === 'azure') return 'aeroftp2026';
         if (protocol === 'opendrive' || protocol === 'webdav') return 'email@example.com';
@@ -6148,7 +6152,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             >
                                                 <ol className="list-decimal list-inside space-y-1">
                                                     {(selectedProvider?.setupInstructions || []).map((step) => (
-                                                        <li key={step}>{step}</li>
+                                                        <li key={step}>{presetText(step)}</li>
                                                     ))}
                                                 </ol>
                                             </CollapsibleSetupBox>
@@ -6220,7 +6224,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             >
                                                 <ol className="list-decimal list-inside space-y-1">
                                                     {selectedProvider.setupInstructions.map((step) => (
-                                                        <li key={step}>{step}</li>
+                                                        <li key={step}>{presetText(step)}</li>
                                                     ))}
                                                 </ol>
                                                 {selectedProvider.helpUrl && (
@@ -6373,7 +6377,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 )}
                                             </div>
                                             {!isFilenDesktopBridge && usernameField?.helpText && (
-                                                <p className="text-xs text-gray-500 mt-1">{usernameField.helpText}</p>
+                                                <p className="text-xs text-gray-500 mt-1">{presetText(usernameField.helpText)}</p>
                                             )}
                                         </div>
                                         {/* Password: not applicable to an AeroShare friend (peer carries
@@ -6403,7 +6407,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 </button>
                                             </div>
                                             {!isFilenDesktopBridge && passwordField?.helpText && (
-                                                <p className="text-xs text-gray-500 mt-1">{passwordField.helpText}</p>
+                                                <p className="text-xs text-gray-500 mt-1">{presetText(passwordField.helpText)}</p>
                                             )}
                                             {isFilenDesktopBridge && (
                                                 <p className={`mt-1.5 text-xs ${filenBridgeCredentialIssue ? 'text-amber-600 dark:text-amber-400' : 'text-gray-500 dark:text-gray-400'}`}>

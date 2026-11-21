@@ -30,6 +30,8 @@
     "gen:providers-table": "npx tsx scripts/gen-providers-table.ts",
     "gen:provider-inventory": "npx tsx scripts/gen-provider-inventory.ts",
     "check:provider-inventory": "npx tsx scripts/gen-provider-inventory.ts --check",
+    "gen:licenses": "npx tsx scripts/gen-third-party-notices.ts --write",
+    "check:licenses": "npx tsx scripts/gen-third-party-notices.ts --check",
     "check:version-sites": "node scripts/check-version-sites.mjs",
     "check:appstream": "node scripts/check-appstream.mjs"
   },
@@ -71,9 +73,11 @@
     "patch-package": "^8.0.1",
     "postcss": "^8.5.32",
     "tailwindcss": "^3.4.1",
+    "tsx": "4.23.15",
     "typescript": "^7.0.2",
     "vite": "^8.3.8",
-    "vitest": "^5.1.0"
+    "vitest": "^5.1.0",
+    "yaml": "^2.9.0"
   },
   "overrides": {
     "picomatch": ">=2.3.2",

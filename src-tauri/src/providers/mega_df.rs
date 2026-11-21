@@ -95,6 +95,7 @@ pub async fn mega_df_query() -> Result<(u64, u64, Option<u64>), ProviderError> {
         } else {
             stderr
         };
+        let detail = served_origins_only(&detail);
         if megacmd_not_logged_in(output.status.code(), &detail) {
             return Err(ProviderError::AuthenticationFailed(format!(
                 "mega-df: {}",
@@ -326,8 +327,21 @@ pub(crate) fn classify_mega_webdav_result(
     }
     Err(ProviderError::ServerError(format!(
         "mega-webdav /: {}",
-        combined.trim()
+        served_origins_only(combined.trim())
     )))
+}
+
+/// `output` with each address cut to its origin. MEGAcmd serves the account
+/// under `/<handle>/Cloud%20Drive`, and that handle is what lets any local
+/// process reach the drive with no password, so it stays out of an error.
+fn served_origins_only(output: &str) -> String {
+    static ADDRESS: std::sync::LazyLock<regex::Regex> =
+        std::sync::LazyLock::new(|| regex::Regex::new(r"(?i)https?://[^\s'\x22<>]+").unwrap());
+    ADDRESS
+        .replace_all(output, |found: &regex::Captures| {
+            crate::local_bridge::url_origin(&found[0])
+        })
+        .into_owned()
 }
 
 /// Ensure the local MEGAcmd WebDAV bridge is serving the account root.
@@ -444,7 +458,7 @@ pub async fn mega_webdav_url_query() -> Result<String, ProviderError> {
     parse_mega_webdav_url(&combined).ok_or_else(|| {
         ProviderError::ParseError(format!(
             "Could not parse the WebDAV URL from mega-webdav / output: {}",
-            combined.trim()
+            served_origins_only(combined.trim())
         ))
     })
 }
@@ -693,6 +707,31 @@ Total size taken up by file versions:     31457280 bytes (30.0 MB)
         assert!(!megacmd_not_logged_in(Some(53), "Couldn't find /x"));
         let err = classify_mega_webdav_result(false, None, "some other failure").unwrap_err();
         assert!(matches!(err, ProviderError::ServerError(_)));
+    }
+
+    /// A failed `mega-webdav /` can print the address it serves; the error
+    /// keeps its origin and drops the handle path, which opens the drive.
+    #[test]
+    fn a_mega_webdav_failure_names_the_origin_and_not_the_handle() {
+        let err = classify_mega_webdav_result(
+            false,
+            Some(1),
+            "[err: failed to serve http://127.0.0.1:4443/H4ndl3Tok/Cloud%20Drive: port busy]",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("http://127.0.0.1:4443 "), "{err}");
+        assert!(!err.contains("H4ndl3Tok"), "{err}");
+        assert!(!err.contains("Cloud%20Drive"), "{err}");
+        // A scheme is case-insensitive, and an echoed name can carry any case.
+        let err = classify_mega_webdav_result(
+            false,
+            Some(1),
+            "[err: failed HTTPS://127.0.0.1:4443/H4ndl3Tok/Cloud%20Drive]",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(!err.contains("H4ndl3Tok"), "{err}");
     }
 
     #[test]

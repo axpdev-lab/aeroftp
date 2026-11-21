@@ -1880,7 +1880,9 @@
                 "osKeyring": "OS キーリング",
                 "vaultFormat": "ボールト形式",
                 "zipArchives": "ZIP アーカイブ"
-            }
+            },
+            "thirdPartyLicenses": "サードパーティのライセンス",
+            "thirdPartyLicensesOpenFailed": "ライセンス通知を開けませんでした。オンラインの {url} で確認できます"
         },
         "support": {
             "title": "AeroFTPを支援",
@@ -2372,9 +2374,7 @@
             "tabdigitalDesc": "TAB.DIGITAL (8 GB 無料、Nextcloud ベース、EU/GDPR)",
             "tabdigitalTooltip": "TAB.DIGITAL: 2018年以来の独立したEUクラウドチーム、8GB 無料の Nextcloud-as-a-service、GDPR 準拠、地域別サブドメイン (fie.nl, fie.de, ...)",
             "discoverTabDigital": "TAB.DIGITAL (8 GB 無料、Nextcloud ベース、EU/GDPR、地域別サブドメイン)",
-            "webdavLocalScheme": "プロトコル",
-            "webdavLocalSchemeHelp": "ローカル WebDAV ブリッジ (Filen Desktop, MEGAcmd) の HTTP/HTTPS 設定に合わせてください。HTTPS は自己署名証明書を使用するため、証明書の検証は自動的に無効化されます。",
-            "webdavLocalSchemeAuto": "AeroFTP は接続時に Filen ブリッジのプロトコル（HTTP または HTTPS）を自動的に検出するため、ここで設定する必要はありません。",
+            "webdavLocalSchemeAuto": "既定のポート 1900 では、AeroFTP は接続時に Filen ブリッジのプロトコル（HTTP または HTTPS）を自動的に検出するため、ここで設定する必要はありません。",
             "s3SessionToken": "セッショントークン",
             "s3SessionTokenPlaceholder": "AWS STS セッショントークン",
             "s3SessionTokenHint": "AWS STS AssumeRole または SSO による一時的な認証情報用です。永続的な IAM アクセスキーの場合は空欄のままにしてください。",

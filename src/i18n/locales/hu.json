@@ -1880,7 +1880,9 @@
                 "osKeyring": "Rendszer-kulcstartó",
                 "vaultFormat": "Széfformátum",
                 "zipArchives": "ZIP-archívumok"
-            }
+            },
+            "thirdPartyLicenses": "Harmadik féltől származó licencek",
+            "thirdPartyLicensesOpenFailed": "A licencközlemények nem nyithatók meg. Online elérhetők a következő címen: {url}"
         },
         "support": {
             "title": "Támogassa az AeroFTP-t",
@@ -2372,9 +2374,7 @@
             "tabdigitalDesc": "TAB.DIGITAL (8 GB ingyenes, Nextcloud-alapú, EU/GDPR)",
             "tabdigitalTooltip": "TAB.DIGITAL: független EU felhő csapat 2018 óta, Nextcloud-as-a-service 8GB ingyenes tárhellyel, GDPR-kompatibilis, regionális aldomainek (fie.nl, fie.de, ...)",
             "discoverTabDigital": "TAB.DIGITAL (8 GB ingyenes, Nextcloud-alapú, EU/GDPR, regionális aldomainek)",
-            "webdavLocalScheme": "Protokoll",
-            "webdavLocalSchemeHelp": "Egyezzen meg a helyi WebDAV híd HTTP/HTTPS beállításával (Filen Desktop, MEGAcmd). A HTTPS önaláírt tanúsítványt használ, így a tanúsítvány-ellenőrzés automatikusan letiltásra kerül.",
-            "webdavLocalSchemeAuto": "Az AeroFTP csatlakozáskor automatikusan felismeri a Filen híd protokollját (HTTP vagy HTTPS), így itt nincs mit beállítani.",
+            "webdavLocalSchemeAuto": "Az alapértelmezett 1900-as porton az AeroFTP csatlakozáskor automatikusan felismeri a Filen híd protokollját (HTTP vagy HTTPS), így itt nincs mit beállítani.",
             "s3SessionToken": "Munkamenet-token",
             "s3SessionTokenPlaceholder": "AWS STS munkamenet-token",
             "s3SessionTokenHint": "Ideiglenes hitelesítő adatokhoz AWS STS AssumeRole vagy SSO révén. Állandó IAM hozzáférési kulcsokhoz hagyja üresen.",

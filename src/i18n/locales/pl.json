@@ -1880,7 +1880,9 @@
                 "osKeyring": "Pęk kluczy systemu",
                 "vaultFormat": "Format sejfu",
                 "zipArchives": "Archiwa ZIP"
-            }
+            },
+            "thirdPartyLicenses": "Licencje podmiotów trzecich",
+            "thirdPartyLicensesOpenFailed": "Nie udało się otworzyć informacji o licencjach. Są dostępne online pod adresem {url}"
         },
         "support": {
             "title": "Wesprzyj AeroFTP",
@@ -2372,9 +2374,7 @@
             "tabdigitalDesc": "TAB.DIGITAL (8 GB za darmo, oparty na Nextcloud, EU/GDPR)",
             "tabdigitalTooltip": "TAB.DIGITAL: niezależny zespół chmurowy z UE od 2018 r., Nextcloud-as-a-service z 8GB za darmo, zgodny z GDPR, regionalne subdomeny (fie.nl, fie.de, ...)",
             "discoverTabDigital": "TAB.DIGITAL (8 GB za darmo, oparty na Nextcloud, EU/GDPR, regionalne subdomeny)",
-            "webdavLocalScheme": "Protokół",
-            "webdavLocalSchemeHelp": "Dopasuj do ustawienia HTTP/HTTPS lokalnego mostu WebDAV (Filen Desktop, MEGAcmd). HTTPS używa certyfikatu samopodpisanego, więc weryfikacja certyfikatu jest automatycznie wyłączona.",
-            "webdavLocalSchemeAuto": "AeroFTP automatycznie wykrywa protokół mostu Filen (HTTP lub HTTPS) podczas łączenia, więc nie trzeba tu nic ustawiać.",
+            "webdavLocalSchemeAuto": "Na domyślnym porcie 1900 AeroFTP automatycznie wykrywa protokół mostu Filen (HTTP lub HTTPS) podczas łączenia, więc nie trzeba tu nic ustawiać.",
             "s3SessionToken": "Token sesji",
             "s3SessionTokenPlaceholder": "Token sesji AWS STS",
             "s3SessionTokenHint": "Do tymczasowych poświadczeń z AWS STS AssumeRole lub SSO. Pozostaw puste dla stałych kluczy dostępu IAM.",

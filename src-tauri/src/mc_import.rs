@@ -405,7 +405,7 @@ pub fn export_mc(
         "aliases": serde_json::Value::Object(aliases),
     });
     let body = serde_json::to_vec_pretty(&doc).map_err(|e| e.to_string())?;
-    crate::bridge_shared::atomic_write_600(out, &body)?;
+    crate::bridge_shared::write_export(outcome.exported, out, &body)?;
     Ok(outcome)
 }
 

@@ -1880,7 +1880,9 @@
                 "osKeyring": "พวงกุญแจของระบบปฏิบัติการ",
                 "vaultFormat": "รูปแบบห้องนิรภัย",
                 "zipArchives": "ไฟล์บีบอัด ZIP"
-            }
+            },
+            "thirdPartyLicenses": "สัญญาอนุญาตของบุคคลที่สาม",
+            "thirdPartyLicensesOpenFailed": "ไม่สามารถเปิดประกาศเกี่ยวกับสัญญาอนุญาตได้ ดูได้ทางออนไลน์ที่ {url}"
         },
         "support": {
             "title": "สนับสนุน AeroFTP",
@@ -2372,9 +2374,7 @@
             "tabdigitalDesc": "TAB.DIGITAL (8 GB ฟรี, ใช้ Nextcloud, EU/GDPR)",
             "tabdigitalTooltip": "TAB.DIGITAL: ทีมคลาวด์ EU อิสระตั้งแต่ปี 2018, Nextcloud-as-a-service พร้อม 8GB ฟรี, สอดคล้องกับ GDPR, โดเมนย่อยตามภูมิภาค (fie.nl, fie.de, ...)",
             "discoverTabDigital": "TAB.DIGITAL (8 GB ฟรี, ใช้ Nextcloud, EU/GDPR, โดเมนย่อยตามภูมิภาค)",
-            "webdavLocalScheme": "โปรโตคอล",
-            "webdavLocalSchemeHelp": "ให้ตรงกับการตั้งค่า HTTP/HTTPS ของบริดจ์ WebDAV ในเครื่อง (Filen Desktop, MEGAcmd) HTTPS ใช้ใบรับรองที่ลงนามด้วยตนเอง ดังนั้นการตรวจสอบใบรับรองจะถูกปิดใช้งานโดยอัตโนมัติ",
-            "webdavLocalSchemeAuto": "AeroFTP จะตรวจจับโปรโตคอลของบริดจ์ Filen (HTTP หรือ HTTPS) โดยอัตโนมัติเมื่อคุณเชื่อมต่อ ดังนั้นจึงไม่มีอะไรต้องตั้งค่าที่นี่",
+            "webdavLocalSchemeAuto": "ที่พอร์ตเริ่มต้น 1900 AeroFTP จะตรวจจับโปรโตคอลของบริดจ์ Filen (HTTP หรือ HTTPS) โดยอัตโนมัติเมื่อคุณเชื่อมต่อ ดังนั้นจึงไม่มีอะไรต้องตั้งค่าที่นี่",
             "s3SessionToken": "โทเค็นเซสชัน",
             "s3SessionTokenPlaceholder": "โทเค็นเซสชัน AWS STS",
             "s3SessionTokenHint": "สำหรับข้อมูลรับรองชั่วคราวจาก AWS STS AssumeRole หรือ SSO เว้นว่างไว้สำหรับคีย์การเข้าถึง IAM แบบถาวร",

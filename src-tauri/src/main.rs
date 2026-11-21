@@ -9,6 +9,14 @@ fn main() {
     // part-sized buffers it owns, are shared with the desktop app.
     ftp_client_gui_lib::alloc_tuning::tune_for_transfer_buffers();
 
+    // Windows portable auto-updater: a failed swap delegates batch cleanup
+    // back to this exe (`--discard-pending-docs <token>`) so the check and
+    // removal run under the same batch mutex. Exits immediately without UI.
+    #[cfg(windows)]
+    if ftp_client_gui_lib::windows_update_helper::try_handle_discard_pending_docs_arg() {
+        return;
+    }
+
     // Windows portable auto-updater: when the previous AeroFTP swapped its
     // .exe in place, it relaunches the new build with
     // `--post-update-cleanup <path-to-old-exe>`. Pick that up before Tauri
@@ -16,6 +24,11 @@ fn main() {
     // immediately. The arg is ignored on non-Windows builds.
     #[cfg(windows)]
     ftp_client_gui_lib::windows_update_helper::try_handle_post_update_cleanup_arg();
+    // The marker, README, LICENSE and notices a portable update staged
+    // beside the exes are installed before the window opens; one an editor
+    // holds is retried in the background.
+    #[cfg(windows)]
+    ftp_client_gui_lib::windows_update_helper::install_pending_docs_at_start();
 
     ftp_client_gui_lib::run();
 }

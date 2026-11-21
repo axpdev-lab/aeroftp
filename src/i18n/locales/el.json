@@ -1880,7 +1880,9 @@
                 "osKeyring": "Κλειδοθήκη ΛΣ",
                 "vaultFormat": "Μορφή θησαυροφυλακίου",
                 "zipArchives": "Αρχεία ZIP"
-            }
+            },
+            "thirdPartyLicenses": "Άδειες τρίτων",
+            "thirdPartyLicensesOpenFailed": "Δεν ήταν δυνατό το άνοιγμα των ειδοποιήσεων αδειών χρήσης. Είναι διαθέσιμες online στη διεύθυνση {url}"
         },
         "support": {
             "title": "Υποστηρίξτε το AeroFTP",
@@ -2372,9 +2374,7 @@
             "tabdigitalDesc": "TAB.DIGITAL (8 GB δωρεάν, βασισμένο σε Nextcloud, EU/GDPR)",
             "tabdigitalTooltip": "TAB.DIGITAL: ανεξάρτητη ομάδα cloud της ΕΕ από το 2018, Nextcloud-as-a-service με 8GB δωρεάν, συμβατό με GDPR, περιφερειακά υποτομέα (fie.nl, fie.de, ...)",
             "discoverTabDigital": "TAB.DIGITAL (8 GB δωρεάν, βασισμένο σε Nextcloud, EU/GDPR, περιφερειακά υποτομέα)",
-            "webdavLocalScheme": "Πρωτόκολλο",
-            "webdavLocalSchemeHelp": "Ταιριάξτε με τη ρύθμιση HTTP/HTTPS της τοπικής γέφυρας WebDAV (Filen Desktop, MEGAcmd). Το HTTPS χρησιμοποιεί αυτο-υπογεγραμμένο πιστοποιητικό, οπότε η επαλήθευση πιστοποιητικού απενεργοποιείται αυτόματα.",
-            "webdavLocalSchemeAuto": "Το AeroFTP εντοπίζει αυτόματα το πρωτόκολλο της γέφυρας Filen (HTTP ή HTTPS) κατά τη σύνδεση, οπότε δεν χρειάζεται να ρυθμίσετε τίποτα εδώ.",
+            "webdavLocalSchemeAuto": "Στην προεπιλεγμένη θύρα 1900, το AeroFTP εντοπίζει αυτόματα το πρωτόκολλο της γέφυρας Filen (HTTP ή HTTPS) κατά τη σύνδεση, οπότε δεν χρειάζεται να ρυθμίσετε τίποτα εδώ.",
             "s3SessionToken": "Διακριτικό συνεδρίας",
             "s3SessionTokenPlaceholder": "Διακριτικό συνεδρίας AWS STS",
             "s3SessionTokenHint": "Για προσωρινά διαπιστευτήρια από AWS STS AssumeRole ή SSO. Αφήστε το κενό για μόνιμα κλειδιά πρόσβασης IAM.",

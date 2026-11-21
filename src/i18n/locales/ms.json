@@ -1880,7 +1880,9 @@
                 "osKeyring": "Rantai kunci OS",
                 "vaultFormat": "Format peti besi",
                 "zipArchives": "Arkib ZIP"
-            }
+            },
+            "thirdPartyLicenses": "Lesen Pihak Ketiga",
+            "thirdPartyLicensesOpenFailed": "Tidak dapat membuka notis lesen. Notis tersebut tersedia dalam talian di {url}"
         },
         "support": {
             "title": "Sokong AeroFTP",
@@ -2372,9 +2374,7 @@
             "tabdigitalDesc": "TAB.DIGITAL (8 GB percuma, berasaskan Nextcloud, EU/GDPR)",
             "tabdigitalTooltip": "TAB.DIGITAL: pasukan awan EU bebas sejak 2018, Nextcloud-as-a-service dengan 8GB percuma, mematuhi GDPR, subdomain serantau (fie.nl, fie.de, ...)",
             "discoverTabDigital": "TAB.DIGITAL (8 GB percuma, berasaskan Nextcloud, EU/GDPR, subdomain serantau)",
-            "webdavLocalScheme": "Protokol",
-            "webdavLocalSchemeHelp": "Padankan dengan tetapan HTTP/HTTPS jambatan WebDAV tempatan (Filen Desktop, MEGAcmd). HTTPS menggunakan sijil yang ditandatangani sendiri, jadi pengesahan sijil dilumpuhkan secara automatik.",
-            "webdavLocalSchemeAuto": "AeroFTP mengesan protokol jambatan Filen (HTTP atau HTTPS) secara automatik apabila anda menyambung, jadi tiada apa-apa untuk ditetapkan di sini.",
+            "webdavLocalSchemeAuto": "Pada port lalai 1900, AeroFTP mengesan protokol jambatan Filen (HTTP atau HTTPS) secara automatik apabila anda menyambung, jadi tiada apa-apa untuk ditetapkan di sini.",
             "s3SessionToken": "Token sesi",
             "s3SessionTokenPlaceholder": "Token sesi AWS STS",
             "s3SessionTokenHint": "Untuk kelayakan sementara daripada AWS STS AssumeRole atau SSO. Biarkan kosong untuk kunci akses IAM kekal.",

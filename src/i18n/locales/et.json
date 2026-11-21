@@ -1880,7 +1880,9 @@
                 "osKeyring": "OS-i võtmehoidja",
                 "vaultFormat": "Hoidla vorming",
                 "zipArchives": "ZIP-arhiivid"
-            }
+            },
+            "thirdPartyLicenses": "Kolmandate osapoolte litsentsid",
+            "thirdPartyLicensesOpenFailed": "Litsentsiteavitusi ei õnnestunud avada. Need on veebis saadaval aadressil {url}"
         },
         "support": {
             "title": "Toeta AeroFTP-d",
@@ -2372,9 +2374,7 @@
             "tabdigitalDesc": "TAB.DIGITAL (8 GB tasuta, Nextcloud-põhine, EU/GDPR)",
             "tabdigitalTooltip": "TAB.DIGITAL: sõltumatu EU pilvemeeskond alates 2018. aastast, Nextcloud-as-a-service 8GB tasuta, GDPR-iga ühilduv, piirkondlikud alamdomeenid (fie.nl, fie.de, ...)",
             "discoverTabDigital": "TAB.DIGITAL (8 GB tasuta, Nextcloud-põhine, EU/GDPR, piirkondlikud alamdomeenid)",
-            "webdavLocalScheme": "Protokoll",
-            "webdavLocalSchemeHelp": "Sobita kohaliku WebDAV silla HTTP/HTTPS sättega (Filen Desktop, MEGAcmd). HTTPS kasutab iseallkirjastatud sertifikaati, seega on sertifikaadi kontroll automaatselt välja lülitatud.",
-            "webdavLocalSchemeAuto": "AeroFTP tuvastab ühendumisel automaatselt Fileni silla protokolli (HTTP või HTTPS), seega pole siin midagi seadistada.",
+            "webdavLocalSchemeAuto": "Vaikepordil 1900 tuvastab AeroFTP ühendumisel automaatselt Fileni silla protokolli (HTTP või HTTPS), seega pole siin midagi seadistada.",
             "s3SessionToken": "Seansiluba",
             "s3SessionTokenPlaceholder": "AWS STS seansiluba",
             "s3SessionTokenHint": "Ajutiste mandaatide jaoks AWS STS AssumeRole'ist või SSO-st. Püsivate IAM pääsuvõtmete puhul jätke tühjaks.",
