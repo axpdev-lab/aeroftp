@@ -240,6 +240,12 @@ struct DrimeRevertedEntry {
 }
 
 /// An id Drime answers as a number or as a string, as text.
+/// What a listing sees of a file's contents: Drime lists no content hash
+/// of the file itself, so its size and its last change.
+fn drime_content_token(file: &RemoteEntry) -> String {
+    format!("{}/{}", file.size, file.modified.as_deref().unwrap_or(""))
+}
+
 fn drime_id(value: &serde_json::Value) -> String {
     match value {
         serde_json::Value::Number(n) => n.to_string(),
@@ -922,13 +928,13 @@ impl DrimeCloudProvider {
         }
         // Return as-is if it looks like a date (safe truncation at char boundary)
         if date_str.len() >= 10 {
-            let end = 19.min(date_str.len());
-            let safe_end = if date_str.is_char_boundary(end) {
-                end
-            } else {
-                date_str.len().min(end)
-            };
-            return Some(date_str[..safe_end].to_string());
+            // Back to the last character boundary at or before byte 19: a
+            // multibyte character across it would panic the slice.
+            let mut end = 19.min(date_str.len());
+            while !date_str.is_char_boundary(end) {
+                end -= 1;
+            }
+            return Some(date_str[..end].to_string());
         }
         None
     }
@@ -1229,6 +1235,64 @@ impl DrimeCloudProvider {
             )));
         }
         Ok((file_id, versions))
+    }
+
+    /// The file at `path` now: its id, its download hash, and what a listing
+    /// sees of its contents ([`drime_content_token`]).
+    async fn drime_current_of(
+        &mut self,
+        path: &str,
+    ) -> Result<(String, Option<String>, String), ProviderError> {
+        let resolved = self.resolve_path(path);
+        let (parent_path, filename) = Self::split_path(&resolved);
+        let parent_id = self.resolve_folder_id(parent_path).await?;
+        let (file_id, _, hash) = self
+            .find_file_in_folder(&parent_id, filename)
+            .await?
+            .ok_or_else(|| ProviderError::NotFound(format!("'{}' not found", filename)))?;
+        let file = self.stat(path).await?;
+        Ok((file_id, hash, drime_content_token(&file)))
+    }
+
+    /// The current row as its listing saw it: the file it was listed from
+    /// (`listed`), showing the size and last change of the listing (`token`)
+    /// before its body is read and after, the body staged until then. A
+    /// write or a replacement between them saves nothing.
+    async fn download_bound_current(
+        &mut self,
+        path: &str,
+        listed: &str,
+        token: &str,
+        local_path: &str,
+    ) -> Result<(), ProviderError> {
+        let (file_id, hash, before) = self.drime_current_of(path).await?;
+        if file_id != listed || before != token {
+            return Err(super::current_row_changed(path));
+        }
+        let url = match hash {
+            Some(hash) => Self::api_url(&format!("/file-entries/download/{hash}")),
+            None => Self::api_url(&format!("/file-entries/{file_id}/download")),
+        };
+        let resp = self
+            .client
+            .get(&url)
+            .header(AUTHORIZATION, self.auth_header()?)
+            .send()
+            .await
+            .map_http_err(|e| ProviderError::NetworkError(e.without_url().to_string()))?;
+        if !resp.status().is_success() {
+            return Err(ProviderError::TransferFailed(format!(
+                "Download failed: {}",
+                resp.status()
+            )));
+        }
+        let staged = super::stage_bound_current_body(resp, local_path, "Download failed").await?;
+        // Dropped uncommitted on a change: the destination stays.
+        let (after_id, _, after) = self.drime_current_of(path).await?;
+        if after_id != listed || after != token {
+            return Err(super::current_row_changed(path));
+        }
+        staged.commit().await.map_err(ProviderError::IoError)
     }
 
     /// The file as it is now, then the versions Drime keeps, newest first.
@@ -2522,9 +2586,18 @@ impl StorageProvider for DrimeCloudProvider {
     }
 
     async fn list_versions(&mut self, path: &str) -> Result<Vec<FileVersion>, ProviderError> {
-        let (_, entries) = self.drime_versions(path).await?;
+        let (file_id, entries) = self.drime_versions(path).await?;
         let file = self.stat(path).await?;
-        Ok(Self::version_rows(entries, &file))
+        let mut rows = Self::version_rows(entries, &file);
+        // The file itself, bound to its id and to what this listing saw of
+        // it: its download reads the file only while it still shows that.
+        if let Some(row) = rows
+            .first_mut()
+            .filter(|row| row.id == super::CURRENT_VERSION_ID)
+        {
+            row.id = super::bound_current_row(&file_id, &drime_content_token(&file));
+        }
+        Ok(rows)
     }
 
     async fn download_version(
@@ -2533,6 +2606,11 @@ impl StorageProvider for DrimeCloudProvider {
         version_id: &str,
         local_path: &str,
     ) -> Result<(), ProviderError> {
+        if let Some((listed, token)) = super::bound_current_row_of(version_id) {
+            return self
+                .download_bound_current(path, listed, &token, local_path)
+                .await;
+        }
         if version_id == super::CURRENT_VERSION_ID {
             return self.download(path, local_path, None).await;
         }
@@ -2577,7 +2655,9 @@ impl StorageProvider for DrimeCloudProvider {
     /// become a new version, under a new id. The restore is confirmed only
     /// when the answer names the file and that stored object.
     async fn restore_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
-        if version_id == super::CURRENT_VERSION_ID {
+        if version_id == super::CURRENT_VERSION_ID
+            || super::bound_current_row_of(version_id).is_some()
+        {
             return Err(ProviderError::NotSupported(
                 "This is already the current version".into(),
             ));
@@ -2607,10 +2687,11 @@ impl StorageProvider for DrimeCloudProvider {
             .await
             .map_err(|e| super::change_send_error(e, &what))?;
         if !resp.status().is_success() {
-            return Err(ProviderError::Other(format!(
-                "Restore version failed: {}",
-                resp.status()
-            )));
+            return Err(
+                super::gateway_left_unknown(resp.status(), &what).unwrap_or_else(|| {
+                    ProviderError::Other(format!("Restore version failed: {}", resp.status()))
+                }),
+            );
         }
         // An answer that cannot be read leaves the revert accepted but not
         // bound: the check below then reports it unconfirmed.
@@ -2633,7 +2714,9 @@ impl StorageProvider for DrimeCloudProvider {
     }
 
     async fn delete_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
-        if version_id == super::CURRENT_VERSION_ID {
+        if version_id == super::CURRENT_VERSION_ID
+            || super::bound_current_row_of(version_id).is_some()
+        {
             return Err(ProviderError::NotSupported(
                 "The current version is the file itself: delete the file instead".into(),
             ));
@@ -3091,6 +3174,8 @@ mod tests {
         /// The double's backups answer `total` and `per_page`, not `last_page`.
         static REVERT_NAMES_ANOTHER_OBJECT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
         static DELETE_KEEPS_THE_VERSION: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+        /// The double's file is written (another size) while its body is read.
+        static WRITE_DURING_DOWNLOAD: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     }
     #[tokio::test]
     async fn probe_contract_drime_root_is_not_a_missing_child() {
@@ -3538,6 +3623,16 @@ mod tests {
                             }
                             return ok();
                         }
+                    }
+                    if let Some(id) = path
+                        .strip_prefix("/file-entries/")
+                        .and_then(|p| p.strip_suffix("/download"))
+                    {
+                        seen.lock().unwrap().push(format!("download {id}"));
+                        if WRITE_DURING_DOWNLOAD.with(|f| f.get()) {
+                            sizes.lock().unwrap().insert(id.parse().unwrap(), 99);
+                        }
+                        return format!("current of {id}").into_response();
                     }
                     if method == "GET" {
                         DOUBLE_LISTINGS.with(|n| n.set(n.get() + 1));
@@ -4217,7 +4312,8 @@ mod tests {
         let (mut provider, _, _) = provider_on_drime_entries(&[(7, "a.txt", "", "file")]).await;
         let versions = provider.list_versions("/a.txt").await.expect("versions");
         let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
-        assert_eq!(ids, [super::super::CURRENT_VERSION_ID, "5", "4"]);
+        let current = super::super::bound_current_row("7", "0/");
+        assert_eq!(ids, [current.as_str(), "5", "4"]);
         assert_eq!(versions[1].size, 3);
     }
 
@@ -4276,6 +4372,75 @@ mod tests {
         assert_eq!(*changes.lock().unwrap(), ["revert 5"]);
     }
 
+    /// The current row is bound to the file and to the size and last change
+    /// its listing saw: an unchanged file downloads by it, and a write since
+    /// the listing (a revert, which gives the file another size) saves
+    /// nothing, sends no download and leaves the destination as it was. A
+    /// write while the body is read saves nothing either.
+    #[tokio::test]
+    async fn a_drime_current_row_written_after_its_listing_saves_nothing() {
+        let (mut provider, _, changes) =
+            provider_on_drime_entries(&[(7, "a.txt", "", "file")]).await;
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("a.txt");
+        let out = out.to_str().unwrap();
+        let current = provider.list_versions("/a.txt").await.expect("versions")[0]
+            .id
+            .clone();
+        assert_eq!(current, super::super::bound_current_row("7", "0/"));
+        provider
+            .download_version("/a.txt", &current, out)
+            .await
+            .expect("an unchanged file downloads by its listed row");
+        assert_eq!(std::fs::read_to_string(out).unwrap(), "current of 7");
+
+        std::fs::write(out, "mine").unwrap();
+        let _ = provider.restore_version("/a.txt", "4").await;
+        assert!(
+            changes.lock().unwrap().iter().any(|c| c == "revert 4"),
+            "{changes:?}"
+        );
+        let before = changes.lock().unwrap().len();
+        let outcome = provider.download_version("/a.txt", &current, out).await;
+        assert!(
+            matches!(&outcome, Err(ProviderError::NotFound(m)) if m.contains("list its versions again")),
+            "{outcome:?}"
+        );
+        assert_eq!(std::fs::read_to_string(out).unwrap(), "mine");
+        assert!(
+            !changes.lock().unwrap()[before..]
+                .iter()
+                .any(|c| c.starts_with("download")),
+            "a file written since its listing was read: {changes:?}"
+        );
+        let restored = provider.restore_version("/a.txt", &current).await;
+        assert!(
+            matches!(restored, Err(ProviderError::NotSupported(_))),
+            "{restored:?}"
+        );
+
+        // Listed again, then written while its body is read: the download
+        // is sent, and the body read is not saved.
+        let current = provider.list_versions("/a.txt").await.expect("versions")[0]
+            .id
+            .clone();
+        let before = changes.lock().unwrap().len();
+        WRITE_DURING_DOWNLOAD.with(|f| f.set(true));
+        let during = provider.download_version("/a.txt", &current, out).await;
+        WRITE_DURING_DOWNLOAD.with(|f| f.set(false));
+        assert!(
+            matches!(&during, Err(ProviderError::NotFound(m)) if m.contains("list its versions again")),
+            "{during:?}"
+        );
+        assert_eq!(std::fs::read_to_string(out).unwrap(), "mine");
+        assert!(
+            changes.lock().unwrap()[before..]
+                .iter()
+                .any(|c| c.starts_with("download")),
+            "{changes:?}"
+        );
+    }
+
     /// A deleted version is gone from the listing read after the delete;
     /// one still listed is an error, not a deletion.
     #[tokio::test]
@@ -4288,7 +4453,8 @@ mod tests {
             .expect("deleted");
         let versions = provider.list_versions("/a.txt").await.expect("versions");
         let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
-        assert_eq!(ids, [super::super::CURRENT_VERSION_ID, "5"]);
+        let current = super::super::bound_current_row("7", "0/");
+        assert_eq!(ids, [current.as_str(), "5"]);
         DELETE_KEEPS_THE_VERSION.with(|f| f.set(true));
         let kept = provider.delete_version("/a.txt", "5").await;
         DELETE_KEEPS_THE_VERSION.with(|f| f.set(false));
@@ -4451,6 +4617,15 @@ mod tests {
         let with_frac = DrimeCloudProvider::parse_date("2025-01-15T10:30:00.000000Z").unwrap();
         assert!(with_frac.starts_with("2025-01-15"));
         // unparseable but date-like string gets safely truncated
+        // A multibyte character across byte 19 is cut before it, not split.
+        assert_eq!(
+            DrimeCloudProvider::parse_date("2025-01-15 10:30:0é server").as_deref(),
+            Some("2025-01-15 10:30:0")
+        );
+        assert_eq!(
+            DrimeCloudProvider::parse_date("2025-01-15 日本語").as_deref(),
+            Some("2025-01-15 日本")
+        );
         let fallback = DrimeCloudProvider::parse_date("2025-01-15 10:30:00 server time").unwrap();
         assert_eq!(fallback.len(), 19);
         assert_eq!(DrimeCloudProvider::parse_date("short"), None);
