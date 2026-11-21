@@ -2626,11 +2626,23 @@ fn the_deletion_clock_is_read_off_the_async_worker() {
     let mut failures = Vec::new();
     for case in ["a connection", "a new provider"] {
         let (locked_tx, locked_rx) = std::sync::mpsc::channel();
+        // A new provider signals once it is built: the lock is held until
+        // then (bounded), and a while after, so it is built while the lock
+        // is held only if it reads no clock. A connection waits for the
+        // lock, so that one is held for a fixed time only.
+        let (built_tx, built_rx) = std::sync::mpsc::channel::<()>();
         let holding = std::thread::spawn(move || {
             let _held = DELETED_CHAINS.lock().unwrap_or_else(|e| e.into_inner());
             locked_tx.send(()).unwrap();
+            let mut bounded = true;
+            if case == "a new provider" {
+                bounded = built_rx
+                    .recv_timeout(std::time::Duration::from_secs(5))
+                    .is_ok();
+            }
+            // Held long enough for the ticker beside the task to run.
             std::thread::sleep(std::time::Duration::from_millis(800));
-            Instant::now()
+            (Instant::now(), bounded)
         });
         locked_rx.recv().unwrap();
         let runtime = tokio::runtime::Builder::new_multi_thread()
@@ -2651,12 +2663,13 @@ fn the_deletion_clock_is_read_off_the_async_worker() {
                     let _ = connection.try_connect_with_refresh().await;
                 } else {
                     drop(bound_provider(first, "clockoff"));
+                    let _ = built_tx.send(());
                 }
                 Instant::now()
             });
             (ticker.await, task.await)
         });
-        let released = holding.join().unwrap();
+        let (released, bounded) = holding.join().unwrap();
         drop(runtime);
         let ended = ended.expect("the task did not panic");
         if ticked.expect("the ticker did not panic") >= released {
@@ -2664,6 +2677,11 @@ fn the_deletion_clock_is_read_off_the_async_worker() {
         }
         if case == "a connection" && ended < released {
             failures.push(format!("{case} did not wait for the lock"));
+        }
+        if case == "a new provider" && (!bounded || ended >= released) {
+            failures.push(format!(
+                "{case} was not built while the lock was held: it reads the clock"
+            ));
         }
     }
     assert!(failures.is_empty(), "{failures:#?}");
