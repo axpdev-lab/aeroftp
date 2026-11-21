@@ -2576,7 +2576,8 @@
             "restore": "Obnovit tuto verzi",
             "none": "Žádné dostupné verze",
             "purge": "Trvale smazat tuto verzi",
-            "purgeConfirm": "Trvale smazat tuto verzi? Tuto akci nelze vrátit zpět."
+            "purgeConfirm": "Trvale smazat tuto verzi? Tuto akci nelze vrátit zpět.",
+            "restoreUnconfirmed": "Obnovení bylo odesláno, ale server nemůže potvrdit, která verze je nyní aktuální. Před dalším obnovením zkontrolujte verze."
         },
         "sharing": {
             "title": "Sdílení",

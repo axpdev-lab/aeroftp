@@ -5712,6 +5712,7 @@
             "purge": "Permanently delete this version",
             "purgeConfirm": "Permanently delete this version? This cannot be undone.",
             "restore": "Restore this version",
+            "restoreUnconfirmed": "The restore was sent, but the server cannot confirm which version is now current. Check the versions before restoring again.",
             "size": "Size",
             "title": "File Versions"
         },

@@ -2576,7 +2576,8 @@
             "restore": "Rejesha toleo hili",
             "none": "Hakuna matoleo yanayopatikana",
             "purge": "Futa toleo hili kabisa",
-            "purgeConfirm": "Futa toleo hili kabisa? Kitendo hiki hakiwezi kutenduliwa."
+            "purgeConfirm": "Futa toleo hili kabisa? Kitendo hiki hakiwezi kutenduliwa.",
+            "restoreUnconfirmed": "Urejeshaji ulitumwa, lakini seva haiwezi kuthibitisha ni toleo gani sasa ndilo la sasa. Angalia matoleo kabla ya kurejesha tena."
         },
         "sharing": {
             "title": "Kushiriki",

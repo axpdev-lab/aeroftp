@@ -2576,7 +2576,8 @@
             "restore": "Lehengoratu bertsio hau",
             "none": "Ez dago bertsiorik eskuragarri",
             "purge": "Ezabatu bertsio hau behin betiko",
-            "purgeConfirm": "Bertsio hau behin betiko ezabatu? Ekintza hau ezin da desegin."
+            "purgeConfirm": "Bertsio hau behin betiko ezabatu? Ekintza hau ezin da desegin.",
+            "restoreUnconfirmed": "Berrezarpena bidali da, baina zerbitzariak ezin du baieztatu zein bertsio den orain uneko bertsioa. Egiaztatu bertsioak berriro berrezarri aurretik."
         },
         "sharing": {
             "title": "Partekatu",

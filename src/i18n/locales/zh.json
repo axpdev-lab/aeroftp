@@ -2576,7 +2576,8 @@
             "restore": "还原此版本",
             "none": "没有可用的版本",
             "purge": "永久删除此版本",
-            "purgeConfirm": "永久删除此版本? 此操作无法撤消。"
+            "purgeConfirm": "永久删除此版本? 此操作无法撤消。",
+            "restoreUnconfirmed": "恢复请求已发送,但服务器无法确认当前是哪个版本。再次恢复之前,请先检查各版本。"
         },
         "sharing": {
             "title": "共享",

@@ -118,6 +118,70 @@ fn box_retry_marker_tail(status: u16, retry_header: Option<&str>) -> Option<Stri
     ))
 }
 
+impl BoxProvider {
+    /// The file `file_id` as `GET /files/{id}` answers it, named for `path`.
+    async fn file_entry_of_id(
+        &mut self,
+        file_id: &str,
+        path: &str,
+    ) -> Result<RemoteEntry, ProviderError> {
+        let token = self.get_token().await?;
+        let resp = self
+            .client
+            .get(format!(
+                "{}/files/{}?fields=name,type,size,modified_at",
+                self.api_base(),
+                file_id
+            ))
+            .header(AUTHORIZATION, Self::bearer_header(&token)?)
+            .send()
+            .await
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        let resp = box_lookup_response(resp, path).await?;
+        let text = super::version_listing_text(resp).await?;
+        let item: BoxItem = serde_json::from_str(&text)
+            .map_err(|e| ProviderError::ParseError(super::json_parse_error(&e)))?;
+        let mut entry = RemoteEntry::directory(
+            crate::restricted_chars::decode_leaf(ProviderType::Box, &item.name),
+            Self::normalize_path(path),
+        );
+        entry.is_dir = false;
+        entry.size = item.size.unwrap_or(0);
+        entry.modified = item.modified_at;
+        Ok(entry)
+    }
+
+    /// The id of the current version of file `file_id` (`file_version.id`),
+    /// read up to the listing cap.
+    async fn current_version_of_id(
+        &mut self,
+        file_id: &str,
+        path: &str,
+    ) -> Result<Option<String>, ProviderError> {
+        let token = self.get_token().await?;
+        let resp = self
+            .client
+            .get(format!(
+                "{}/files/{}?fields=file_version",
+                self.api_base(),
+                file_id
+            ))
+            .header(AUTHORIZATION, Self::bearer_header(&token)?)
+            .send()
+            .await
+            .map_http_err(|e| ProviderError::NetworkError(e.without_url().to_string()))?;
+        let resp = box_lookup_response(resp, path).await?;
+        let text = super::version_listing_text(resp).await?;
+        let item: serde_json::Value = serde_json::from_str(&text)
+            .map_err(|e| ProviderError::ParseError(super::json_parse_error(&e)))?;
+        Ok(item
+            .get("file_version")
+            .and_then(|v| v.get("id"))
+            .and_then(|id| id.as_str())
+            .map(str::to_string))
+    }
+}
+
 /// Build a `ProviderError::Other` from a failed Box HTTP response,
 /// appending the Retry-After marker when the response is a throttle
 /// signal. The `context_prefix` is prepended verbatim.
@@ -251,10 +315,70 @@ struct BoxVersionUser {
     name: Option<String>,
 }
 
-/// Box versions collection
+/// Box versions collection: one page of `total_count` versions.
 #[derive(Debug, Deserialize)]
 struct BoxVersionCollection {
     entries: Vec<BoxFileVersion>,
+    #[serde(default)]
+    total_count: Option<u64>,
+    /// The slot this page starts at, and how many slots it covers: Box
+    /// pages by slot, and a page can hold fewer versions than its `limit`.
+    #[serde(default)]
+    offset: Option<u64>,
+    #[serde(default)]
+    limit: Option<u64>,
+}
+
+/// A `GET /files/:id/versions` answer in the order every `list_versions`
+/// answers in ([`super::versions_current_first`]): Box lists only the past
+/// versions, so the file as it is now becomes row 0.
+/// Past version ids are Box's own, one per version of every file; the current
+/// row is bound to the file id it was listed from
+/// ([`super::bind_version_to_file`]), so its download refuses another file
+/// that took the path since.
+/// `current` is the `file_version.id` the file had when it was listed: the
+/// current row then carries it ([`super::bound_current_row`]), so its
+/// download reads the file only while that version is still current.
+fn versions_in_dialog_order(
+    versions: BoxVersionCollection,
+    file: &RemoteEntry,
+    file_id: &str,
+    current: Option<&str>,
+) -> Vec<FileVersion> {
+    let mut rows = super::versions_after_the_file(
+        versions
+            .entries
+            .into_iter()
+            .map(|v| FileVersion {
+                id: v.id,
+                modified: v.modified_at,
+                size: v.size.unwrap_or(0),
+                modified_by: v.modified_by.and_then(|u| u.name),
+                deleted: false,
+            })
+            .collect(),
+        file,
+    );
+    for row in rows
+        .iter_mut()
+        .filter(|row| row.id == super::CURRENT_VERSION_ID)
+    {
+        row.id = match current {
+            Some(version) => super::bound_current_row(file_id, version),
+            None => super::bind_version_to_file(file_id, super::CURRENT_VERSION_ID),
+        };
+    }
+    rows
+}
+
+/// The listed current row of `file_id` (`<file id>:current`): `Some(true)`
+/// when it was listed from that file, `Some(false)` when from another one,
+/// `None` for any other version id.
+fn box_current_row_of(version_id: &str, file_id: &str) -> Option<bool> {
+    match version_id.split_once(':') {
+        Some((listed, super::CURRENT_VERSION_ID)) => Some(listed == file_id),
+        _ => None,
+    }
 }
 
 /// Box trash item (includes trashed_at)
@@ -631,47 +755,132 @@ impl BoxProvider {
         }
     }
 
-    /// Resolve a path to a folder ID, using cache or API calls
+    /// Resolve a path to a folder ID. A walk that took an id from the cache
+    /// is confirmed by one request: the path Box gives for the folder found
+    /// must be the path asked for. Another client may have moved a cached
+    /// folder away and made a new one under its name, and every operation
+    /// under the path would then act inside the moved one; on a mismatch
+    /// the ids on the way are forgotten and the path walked again, each name
+    /// looked up in the folder the server just returned.
     async fn resolve_folder_id(&mut self, path: &str) -> Result<String, ProviderError> {
         let normalized = Self::normalize_path(path);
-
-        if let Some(id) = self.id_cache.get(&normalized) {
-            return Ok(id.clone());
-        }
-
-        // Walk the path from root
         let parts: Vec<&str> = normalized.split('/').filter(|s| !s.is_empty()).collect();
-        let mut current_id = "0".to_string();
-        let mut built_path = String::new();
-
-        for part in parts {
-            built_path = format!("{}/{}", built_path, part);
-
-            if let Some(id) = self.id_cache.get(&built_path) {
-                current_id = id.clone();
-                continue;
+        // The deepest folder on the way with a cached id is confirmed before
+        // anything is looked up or cached below it: Box's answer lists its
+        // whole path, so one request confirms every folder above it too. A
+        // folder moved away since (or a path that no longer leads to it)
+        // forgets the ids on the way, and the path is walked from the root.
+        let deepest = (1..=parts.len()).rev().find_map(|depth| {
+            let prefix = format!("/{}", parts[..depth].join("/"));
+            self.id_cache
+                .get(&prefix)
+                .map(|id| (id.clone(), depth, prefix))
+        });
+        let (mut current_id, start) = match deepest {
+            Some((id, depth, prefix)) if self.folder_is_at(&id, &prefix).await? => (id, depth),
+            Some(_) => {
+                super::forget_cached_ancestors(&mut self.id_cache, &normalized);
+                ("0".to_string(), 0)
             }
+            None => ("0".to_string(), 0),
+        };
+        self.walk_folder_id(&parts, start, &mut current_id, path)
+            .await?;
+        Ok(current_id)
+    }
 
+    /// Whether the folder `folder_id` is at `normalized` now: its own name
+    /// and the names Box lists on its way from the root, in their stored
+    /// (encoded) form. A folder gone (404), or an answer without its
+    /// path, is not there.
+    async fn folder_is_at(
+        &mut self,
+        folder_id: &str,
+        normalized: &str,
+    ) -> Result<bool, ProviderError> {
+        #[derive(Deserialize)]
+        struct Step {
+            id: String,
+            name: String,
+        }
+        #[derive(Deserialize)]
+        struct Steps {
+            entries: Vec<Step>,
+        }
+        #[derive(Deserialize)]
+        struct Located {
+            name: String,
+            path_collection: Option<Steps>,
+        }
+        let token = self.get_token().await?;
+        let resp = self
+            .client
+            .get(format!(
+                "{}/folders/{}?fields=name,path_collection",
+                self.api_base(),
+                folder_id
+            ))
+            .header(AUTHORIZATION, Self::bearer_header(&token)?)
+            .send()
+            .await
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        if resp.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(false);
+        }
+        let resp = box_lookup_response(resp, normalized).await?;
+        let text = super::version_listing_text(resp).await?;
+        let located: Located = serde_json::from_str(&text)
+            .map_err(|e| ProviderError::ParseError(super::json_parse_error(&e)))?;
+        // An answer that does not say where the folder is confirms nothing.
+        let Some(steps) = located.path_collection else {
+            return Ok(false);
+        };
+        let found = steps
+            .entries
+            .iter()
+            .filter(|step| step.id != "0")
+            .map(|step| step.name.as_str())
+            .chain(std::iter::once(located.name.as_str()));
+        let wanted = normalized
+            .split('/')
+            .filter(|part| !part.is_empty())
+            .map(|part| crate::restricted_chars::encode_leaf(ProviderType::Box, part));
+        Ok(found.map(str::to_string).eq(wanted))
+    }
+
+    /// The walk behind [`Self::resolve_folder_id`]: from `current_id`, the
+    /// folder of the first `start` parts, each later part is looked up live
+    /// in the folder Box just returned, and its id cached.
+    async fn walk_folder_id(
+        &mut self,
+        parts: &[&str],
+        start: usize,
+        current_id: &mut String,
+        path: &str,
+    ) -> Result<(), ProviderError> {
+        for (depth, &part) in parts.iter().enumerate().skip(start) {
+            let built_path = format!("/{}", parts[..=depth].join("/"));
             // Box returns names in their stored ENCODED form (a name a user
             // could not otherwise create round-trips via reversible encoding),
             // so match the encoded leaf. The `id_cache` and error text keep the
             // user's original spelling.
             let encoded_part = crate::restricted_chars::encode_leaf(ProviderType::Box, part);
-            let items = self.lookup_items(&current_id, path, &encoded_part).await?;
+            let items = self
+                .lookup_items(current_id.as_str(), path, &encoded_part)
+                .await?;
             let found = items
                 .iter()
                 .find(|item| item.name == encoded_part && item.item_type == "folder");
 
             match found {
                 Some(folder) => {
-                    current_id = folder.id.clone();
-                    self.id_cache.insert(built_path.clone(), current_id.clone());
+                    *current_id = folder.id.clone();
+                    self.id_cache.insert(built_path, current_id.clone());
                 }
                 None => return Err(ProviderError::NotFound(part.to_string())),
             }
         }
-
-        Ok(current_id)
+        Ok(())
     }
 
     /// Resolve a file path to its ID
@@ -1776,8 +1985,12 @@ impl StorageProvider for BoxProvider {
     }
 
     async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+        // The current folder is resolved by its path like any other: the id
+        // stored at `cd` may be of a folder moved away since, and another
+        // folder may have taken its place.
         let folder_id = if path == "." || path.is_empty() {
-            self.current_folder_id.clone()
+            let current = self.current_path.clone();
+            self.resolve_folder_id(&current).await?
         } else {
             self.resolve_folder_id(path).await?
         };
@@ -2755,40 +2968,108 @@ impl StorageProvider for BoxProvider {
     }
 
     async fn list_versions(&mut self, path: &str) -> Result<Vec<FileVersion>, ProviderError> {
+        super::forget_cached_ancestors(&mut self.id_cache, &Self::normalize_path(path));
         let file_id = self.resolve_file_id(path).await?;
         let token = self.get_token().await?;
 
-        let url = format!("{}/files/{}/versions", self.api_base(), file_id);
-        let resp = self
-            .client
-            .get(&url)
-            .header(AUTHORIZATION, Self::bearer_header(&token)?)
-            .send()
-            .await
-            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        // Every page: Box answers `limit` versions from `offset` of
+        // `total_count`. A listing cut at its first page would refuse a
+        // restore of an older version as not listed.
+        let base = format!("{}/files/{}/versions", self.api_base(), file_id);
+        let mut versions = BoxVersionCollection {
+            entries: Vec::new(),
+            total_count: None,
+            offset: None,
+            limit: None,
+        };
+        let mut offset: u64 = 0;
+        let mut pages = 0usize;
+        let mut budget = super::VersionListingBudget::default();
+        loop {
+            let url = match offset {
+                0 => base.clone(),
+                offset => format!("{base}?offset={offset}"),
+            };
+            let resp = self
+                .client
+                .get(&url)
+                .header(AUTHORIZATION, Self::bearer_header(&token)?)
+                .send()
+                .await
+                .map_http_err(|e| ProviderError::NetworkError(e.without_url().to_string()))?;
 
-        if !resp.status().is_success() {
-            return Err(ProviderError::Other(format!(
-                "Failed to list versions: {}",
-                resp.status()
-            )));
+            if !resp.status().is_success() {
+                return Err(ProviderError::Other(format!(
+                    "Failed to list versions: {}",
+                    resp.status()
+                )));
+            }
+
+            let text = super::version_listing_text(resp).await?;
+            budget.count(text.len(), path)?;
+            let page: BoxVersionCollection = serde_json::from_str(&text)
+                .map_err(|e| ProviderError::ParseError(super::json_parse_error(&e)))?;
+            // The next page starts after the slots this one covers (its
+            // offset plus its limit), not after the versions it held: a short
+            // or empty page still moves on. A page that does not move on is
+            // refused.
+            // A page answered at another offset than asked would skip or
+            // repeat slots: refused.
+            if page.offset.is_some_and(|answered| answered != offset) {
+                return Err(ProviderError::ParseError(format!(
+                    "Box answered the versions page at offset {} for offset {offset}",
+                    page.offset.unwrap_or_default()
+                )));
+            }
+            pages += 1;
+            let next = offset
+                .checked_add(page.limit.unwrap_or(page.entries.len() as u64))
+                .ok_or_else(|| {
+                    ProviderError::ParseError(format!(
+                        "Box answered a versions page past the last offset after {offset}"
+                    ))
+                })?;
+            let full = page
+                .limit
+                .is_some_and(|limit| limit > 0 && page.entries.len() as u64 >= limit);
+            versions.entries.extend(page.entries);
+            match page.total_count {
+                Some(total) if next >= total => break,
+                Some(_) => {}
+                // Without a total only a short page says it is the last: a
+                // full one may be followed by more, and ending there would
+                // cut the history.
+                None if full => {
+                    return Err(ProviderError::ParseError(format!(
+                        "Box answered a full versions page of {path} without its total, so the \
+                         history cannot be read whole"
+                    )))
+                }
+                None => break,
+            }
+            if next <= offset {
+                return Err(ProviderError::ParseError(
+                    "Box versions pagination did not advance".into(),
+                ));
+            }
+            // A total that keeps growing never ends the listing: the page
+            // count does.
+            if pages >= super::VERSION_LISTING_MAX_PAGES {
+                return Err(super::version_listing_too_long(path));
+            }
+            offset = next;
         }
 
-        let versions: BoxVersionCollection = resp
-            .json()
-            .await
-            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
-
-        Ok(versions
-            .entries
-            .into_iter()
-            .map(|v| FileVersion {
-                id: v.id,
-                modified: v.modified_at,
-                size: v.size.unwrap_or(0),
-                modified_by: v.modified_by.and_then(|u| u.name),
-            })
-            .collect())
+        // The current row is the file whose versions were listed, read by
+        // its id, not the path looked up again.
+        let file = self.file_entry_of_id(&file_id, path).await?;
+        let current = self.current_version_of_id(&file_id, path).await?;
+        Ok(versions_in_dialog_order(
+            versions,
+            &file,
+            &file_id,
+            current.as_deref(),
+        ))
     }
 
     async fn download_version(
@@ -2797,22 +3078,55 @@ impl StorageProvider for BoxProvider {
         version_id: &str,
         local_path: &str,
     ) -> Result<(), ProviderError> {
+        super::forget_cached_ancestors(&mut self.id_cache, &Self::normalize_path(path));
         let file_id = self.resolve_file_id(path).await?;
+        // A current row bound to what its listing saw is read only while
+        // the file still has that version, before and after the body.
+        let bound = super::bound_current_row_of(version_id);
+        if let Some((listed, _)) = bound {
+            if listed != file_id {
+                return Err(ProviderError::NotFound(format!(
+                    "{path} is now another file (file id {file_id}): list its versions again"
+                )));
+            }
+        }
+        let listed_version = bound.map(|(_, version)| version);
+        if let Some(listed) = &listed_version {
+            if self.current_version_of_id(&file_id, path).await?.as_ref() != Some(listed) {
+                return Err(super::current_row_changed(path));
+            }
+        }
+        // A bare `current` is the file as it is now, read the same way as
+        // its bound row: a whole body only.
+        let current = match box_current_row_of(version_id, &file_id) {
+            _ if listed_version.is_some() || version_id == super::CURRENT_VERSION_ID => true,
+            Some(false) => {
+                return Err(ProviderError::NotFound(format!(
+                    "{path} is now another file (file id {file_id}): list its versions again"
+                )))
+            }
+            current => current.is_some(),
+        };
         let token = self.get_token().await?;
 
-        let url = format!(
-            "{}/files/{}/content?version={}",
-            self.api_base(),
-            file_id,
-            version_id
-        );
+        // The listed current row is the file it was listed from, by its id.
+        let url = if current {
+            format!("{}/files/{}/content", self.api_base(), file_id)
+        } else {
+            format!(
+                "{}/files/{}/content?version={}",
+                self.api_base(),
+                file_id,
+                version_id
+            )
+        };
         let resp = self
             .client
             .get(&url)
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
             .send()
             .await
-            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.without_url().to_string()))?;
 
         if !resp.status().is_success() {
             return Err(ProviderError::TransferFailed(format!(
@@ -2821,19 +3135,29 @@ impl StorageProvider for BoxProvider {
             )));
         }
 
-        let bytes = resp
-            .bytes()
-            .await
-            .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-
-        tokio::fs::write(local_path, &bytes)
-            .await
-            .map_err(ProviderError::IoError)?;
-
-        Ok(())
+        if let Some(listed) = &listed_version {
+            let staged =
+                super::stage_bound_current_body(resp, local_path, "Download version failed")
+                    .await?;
+            // Dropped uncommitted on a change: the destination stays.
+            if self.current_version_of_id(&file_id, path).await?.as_ref() != Some(listed) {
+                return Err(super::current_row_changed(path));
+            }
+            return staged.commit().await.map_err(ProviderError::IoError);
+        }
+        super::save_version_body(resp, local_path, "Download version failed").await
     }
 
     async fn restore_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
+        if version_id == super::CURRENT_VERSION_ID
+            || version_id.ends_with(&format!(":{}", super::CURRENT_VERSION_ID))
+        {
+            return Err(ProviderError::NotSupported(
+                "This is already the current version".into(),
+            ));
+        }
+        let selected = super::refuse_a_restore_that_changes_nothing(self, path, version_id).await?;
+        super::forget_cached_ancestors(&mut self.id_cache, &Self::normalize_path(path));
         let file_id = self.resolve_file_id(path).await?;
         let token = self.get_token().await?;
 
@@ -2849,12 +3173,81 @@ impl StorageProvider for BoxProvider {
             .json(&body)
             .send()
             .await
-            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            // A connection dropped before the answer, a timeout included, may
+            // come after Box promoted the version: a second promotion would
+            // make another. Only a request that never connected sent nothing.
+            .map_err(|e| {
+                super::change_send_error(
+                    e,
+                    &format!("the restore of version {version_id} of {path}"),
+                )
+            })?;
 
         if !resp.status().is_success() {
-            return Err(ProviderError::Other(format!(
-                "Restore version failed: {}",
-                resp.status()
+            let what = format!("the restore of version {version_id} of {path}");
+            return Err(
+                super::gateway_left_unknown(resp.status(), &what).unwrap_or_else(|| {
+                    ProviderError::Other(format!("Restore version failed: {}", resp.status()))
+                }),
+            );
+        }
+        // The answer is the version the promotion made: the file's current
+        // version must then be that one, not a write of the same size by
+        // someone else meanwhile.
+        // An answer that cannot be read leaves the promotion accepted but
+        // unconfirmed: sending it again would promote twice.
+        let promoted = super::version_listing_text(resp)
+            .await
+            .ok()
+            .and_then(|body| serde_json::from_str::<serde_json::Value>(&body).ok())
+            .and_then(|answer| answer.get("id")?.as_str().map(str::to_string));
+        let Some(promoted) = promoted else {
+            return Err(super::applied_unconfirmed(format!(
+                "Box accepted the restore of version {version_id} of {path}, but its answer could \
+                 not be read, so the restore is not confirmed: list its versions again before \
+                 restoring again"
+            )));
+        };
+        // The path must still lead to the file promoted: the checks below
+        // read the versions by path and the head by the file's id, so a file
+        // that took the path meanwhile would pass both unseen.
+        super::forget_cached_ancestors(&mut self.id_cache, &Self::normalize_path(path));
+        let at_path = self.resolve_file_id(path).await.map_err(|e| {
+            super::applied_unconfirmed(format!(
+                "Box accepted the restore of version {version_id} of {path}, but the file at its \
+                 path could not be read ({e}), so the restore is not confirmed: list its versions \
+                 again before restoring again"
+            ))
+        })?;
+        if at_path != file_id {
+            return Err(super::applied_unconfirmed(format!(
+                "Box promoted a version of {path}, but another file is at its path now: list its \
+                 versions again"
+            )));
+        }
+        // Bound below: the current version id is read back against the one
+        // the answer named.
+        let selected = selected.bound_by_the_caller();
+        super::confirm_version_restored(self, path, Some(&selected)).await?;
+        // The promotion is accepted by now: a failed read of the head must
+        // not read as a restore to send again.
+        let now = self
+            .current_version_of_id(&file_id, path)
+            .await
+            .map_err(|e| {
+                super::applied_unconfirmed(format!(
+                    "Box accepted the restore of version {version_id} of {path}, but its current \
+                     version could not be read ({e}), so the restore is not confirmed: list its \
+                     versions again before restoring again"
+                ))
+            })?;
+        // Promoted, then replaced: the promotion happened, so this is an
+        // applied change and never a restore to send again.
+        if now.as_deref() != Some(promoted.as_str()) {
+            return Err(super::applied_unconfirmed(format!(
+                "Box promoted version {promoted} of {path}, but its current version is now {}: \
+                 list its versions again",
+                now.as_deref().unwrap_or("unknown")
             )));
         }
         Ok(())
@@ -3493,6 +3886,989 @@ mod tests {
         let mut p = BoxProvider::connected_for_test(demo_cfg());
         p.test_access_token = Some("fixture-token".to_string());
         p
+    }
+
+    /// A Box double for the cache tests: `/docs` is folder NEW now, holding
+    /// `a.txt` (77) and folder `sub` (SUB, holding `a.txt`, 88); OLD is the folder once cached as `/docs`, moved to
+    /// `/archive/docs`, holding another `a.txt` (66). Every request is
+    /// recorded as `METHOD /path`.
+    async fn box_with_a_moved_folder(
+    ) -> (BoxProvider, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
+        use std::sync::{Arc, Mutex};
+        let calls: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&calls);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method, uri: axum::http::Uri| {
+                let seen = Arc::clone(&seen);
+                async move {
+                    use axum::response::IntoResponse;
+                    seen.lock()
+                        .unwrap()
+                        .push(format!("{method} {}", uri.path()));
+                    let items = |entries: serde_json::Value| {
+                        axum::Json(serde_json::json!({
+                            "entries": entries, "offset": 0, "limit": 1000, "total_count": 1
+                        }))
+                        .into_response()
+                    };
+                    let located = |crumbs: serde_json::Value| {
+                        axum::Json(serde_json::json!({
+                            "type": "folder", "name": "docs",
+                            "path_collection": {"total_count": 1, "entries": crumbs}
+                        }))
+                        .into_response()
+                    };
+                    match (method.as_str(), uri.path()) {
+                        ("GET", "/folders/0/items") => items(
+                            serde_json::json!([{"type": "folder", "id": "NEW", "name": "docs"}]),
+                        ),
+                        ("GET", "/folders/NEW") => located(
+                            serde_json::json!([{"type": "folder", "id": "0", "name": "All Files"}]),
+                        ),
+                        ("GET", "/folders/OLD") => located(serde_json::json!([
+                            {"type": "folder", "id": "0", "name": "All Files"},
+                            {"type": "folder", "id": "ARC", "name": "archive"}
+                        ])),
+                        ("GET", "/folders/NEW/items") => items(serde_json::json!([
+                            {"type": "file", "id": "77", "name": "a.txt"},
+                            {"type": "folder", "id": "SUB", "name": "sub"}
+                        ])),
+                        ("GET", "/folders/SUB/items") => items(
+                            serde_json::json!([{"type": "file", "id": "88", "name": "a.txt"}]),
+                        ),
+                        ("GET", "/files/88/content") => "in sub".into_response(),
+                        ("GET", "/folders/OLD/items") => items(
+                            serde_json::json!([{"type": "file", "id": "66", "name": "a.txt"}]),
+                        ),
+                        ("GET", "/files/77/content") => "new".into_response(),
+                        ("GET", "/files/66/content") => "moved".into_response(),
+                        ("DELETE", "/files/77") | ("DELETE", "/files/66") => {
+                            axum::http::StatusCode::NO_CONTENT.into_response()
+                        }
+                        _ => axum::http::StatusCode::NOT_FOUND.into_response(),
+                    }
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = fixture_connected();
+        provider.api_base_override = Some(format!("http://{addr}"));
+        (provider, calls)
+    }
+
+    /// The current folder `/docs` moved away (OLD, now `/archive/docs`) and
+    /// another took its path (NEW): a listing of `.` lists the folder at the
+    /// path now, never the one the id stored at `cd` names.
+    #[tokio::test]
+    async fn a_listing_of_the_current_folder_follows_its_path_not_its_stored_id() {
+        let (mut provider, calls) = box_with_a_moved_folder().await;
+        provider.current_path = "/docs".to_string();
+        provider.current_folder_id = "OLD".to_string();
+        provider.id_cache.insert("/docs".into(), "OLD".into());
+        let names: Vec<String> = provider
+            .list(".")
+            .await
+            .expect("listed")
+            .into_iter()
+            .map(|e| e.name)
+            .collect();
+        assert_eq!(names, ["a.txt", "sub"]);
+        let calls = calls.lock().unwrap();
+        assert!(
+            !calls.iter().any(|c| c == "GET /folders/OLD/items"),
+            "{calls:?}"
+        );
+    }
+
+    /// `/docs` cached, then moved away by another client and
+    /// made again under the same name. A download or a delete of
+    /// `/docs/a.txt` acts on the file at that path now, never on the one in
+    /// the moved folder.
+    #[tokio::test]
+    async fn a_folder_moved_after_caching_is_never_acted_in() {
+        let (mut provider, calls) = box_with_a_moved_folder().await;
+        provider.id_cache.insert("/docs".into(), "OLD".into());
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("a.txt");
+        provider
+            .download("/docs/a.txt", local.to_str().unwrap(), None)
+            .await
+            .expect("the file at the path is read");
+        assert_eq!(std::fs::read_to_string(&local).unwrap(), "new");
+        provider.id_cache.insert("/docs".into(), "OLD".into());
+        provider
+            .delete("/docs/a.txt")
+            .await
+            .expect("the file at the path is deleted");
+        let calls = calls.lock().unwrap();
+        assert!(calls.iter().any(|c| c == "DELETE /files/77"), "{calls:?}");
+        assert!(
+            !calls
+                .iter()
+                .any(|c| c.contains("/OLD/") || c.contains("/66")),
+            "the moved folder was acted in: {calls:?}"
+        );
+    }
+
+    /// Only the folder made again under the name holds `sub`: the cached
+    /// `/docs` is confirmed before `sub` is looked up in it, so the moved
+    /// folder's missing `sub` is never read as the path not being there.
+    #[tokio::test]
+    async fn a_cached_folder_is_confirmed_before_anything_below_it_is_looked_up() {
+        let (mut provider, calls) = box_with_a_moved_folder().await;
+        provider.id_cache.insert("/docs".into(), "OLD".into());
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("a.txt");
+        provider
+            .download("/docs/sub/a.txt", local.to_str().unwrap(), None)
+            .await
+            .expect("the file under the folder at the path is read");
+        assert_eq!(std::fs::read_to_string(&local).unwrap(), "in sub");
+        let calls = calls.lock().unwrap();
+        assert!(
+            !calls.iter().any(|c| c.contains("/OLD/")),
+            "the moved folder was looked in: {calls:?}"
+        );
+    }
+
+    /// A cache that is still right costs one request, the folder's path,
+    /// and no walk from the root.
+    #[tokio::test]
+    async fn a_cached_folder_still_in_place_costs_one_request() {
+        let (mut provider, calls) = box_with_a_moved_folder().await;
+        provider.id_cache.insert("/docs".into(), "NEW".into());
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("a.txt");
+        provider
+            .download("/docs/a.txt", local.to_str().unwrap(), None)
+            .await
+            .expect("download");
+        let calls = calls.lock().unwrap();
+        assert_eq!(
+            *calls,
+            [
+                "GET /folders/NEW",
+                "GET /folders/NEW/items",
+                "GET /files/77/content"
+            ]
+        );
+    }
+
+    /// D1: a folder id cached before another client moved the folder away
+    /// (and made a new one under its name) is not trusted by a version
+    /// action: the path is walked again from the root, so the file now at
+    /// the path is the one listed and read, and the moved folder is never
+    /// asked.
+    #[tokio::test]
+    async fn a_version_action_walks_again_past_a_folder_moved_after_caching() {
+        use std::sync::{Arc, Mutex};
+        let calls: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&calls);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method, uri: axum::http::Uri| {
+                let seen = Arc::clone(&seen);
+                async move {
+                    use axum::response::IntoResponse;
+                    seen.lock()
+                        .unwrap()
+                        .push(format!("{method} {}", uri.path()));
+                    let items = |entries: serde_json::Value| {
+                        axum::Json(serde_json::json!({
+                            "entries": entries, "offset": 0, "limit": 1000, "total_count": 1
+                        }))
+                        .into_response()
+                    };
+                    let file = |id: &str, size: u64| {
+                        axum::Json(serde_json::json!({
+                            "type": "file", "id": id, "name": "a.txt", "size": size,
+                            "modified_at": "2026-01-05T00:00:00Z",
+                            "file_version": {"type": "file_version", "id": format!("v{id}")}
+                        }))
+                        .into_response()
+                    };
+                    match (method.as_str(), uri.path()) {
+                        ("GET", "/folders/0/items") => items(
+                            serde_json::json!([{"type": "folder", "id": "NEW", "name": "docs"}]),
+                        ),
+                        ("GET", "/folders/NEW/items") => items(serde_json::json!([
+                            {"type": "file", "id": "77", "name": "a.txt"},
+                            {"type": "folder", "id": "SUB", "name": "sub"}
+                        ])),
+                        ("GET", "/folders/SUB/items") => items(
+                            serde_json::json!([{"type": "file", "id": "88", "name": "a.txt"}]),
+                        ),
+                        ("GET", "/files/88/content") => "in sub".into_response(),
+                        ("GET", "/folders/OLD/items") => items(
+                            serde_json::json!([{"type": "file", "id": "66", "name": "a.txt"}]),
+                        ),
+                        ("GET", "/files/77/versions") | ("GET", "/files/66/versions") => {
+                            axum::Json(serde_json::json!({
+                                "entries": [], "offset": 0, "limit": 1000, "total_count": 0
+                            }))
+                            .into_response()
+                        }
+                        ("GET", "/files/77") => file("77", 3),
+                        ("GET", "/files/66") => file("66", 5),
+                        ("GET", "/files/77/content") => "new".into_response(),
+                        ("GET", "/files/66/content") => "moved".into_response(),
+                        _ => axum::http::StatusCode::NOT_FOUND.into_response(),
+                    }
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = fixture_connected();
+        provider.api_base_override = Some(format!("http://{addr}"));
+
+        provider.id_cache.insert("/docs".into(), "OLD".into());
+        let versions = provider
+            .list_versions("/docs/a.txt")
+            .await
+            .expect("versions");
+        let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
+        assert_eq!(
+            ids,
+            ["77.763737:current"],
+            "the file at the path now is listed"
+        );
+
+        provider.id_cache.insert("/docs".into(), "OLD".into());
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("a.txt");
+        provider
+            .download_version("/docs/a.txt", "77.763737:current", local.to_str().unwrap())
+            .await
+            .expect("the file at the path is read");
+        assert_eq!(std::fs::read_to_string(&local).unwrap(), "new");
+        let calls = calls.lock().unwrap();
+        assert!(
+            !calls
+                .iter()
+                .any(|c| c.contains("/OLD/") || c.contains("/66")),
+            "the moved folder was asked: {calls:?}"
+        );
+    }
+
+    /// The current row is bound to the `file_version` its listing saw: an
+    /// unchanged file downloads by it, a write before its download or during
+    /// its body saves nothing and leaves the destination as it was, and the
+    /// row is never restored.
+    #[tokio::test]
+    async fn a_box_current_row_written_after_its_listing_saves_nothing() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::{Arc, Mutex};
+        let calls: Arc<Mutex<Vec<String>>> = Arc::default();
+        let written = Arc::new(AtomicBool::new(false));
+        let write_during_body = Arc::new(AtomicBool::new(false));
+        let (seen, w, during) = (
+            Arc::clone(&calls),
+            Arc::clone(&written),
+            Arc::clone(&write_during_body),
+        );
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method, uri: axum::http::Uri| {
+                let (seen, w, during) = (Arc::clone(&seen), Arc::clone(&w), Arc::clone(&during));
+                async move {
+                    use axum::response::IntoResponse;
+                    seen.lock()
+                        .unwrap()
+                        .push(format!("{method} {}", uri.path()));
+                    let version = if w.load(Ordering::SeqCst) { "v2" } else { "v1" };
+                    match (method.as_str(), uri.path()) {
+                        ("GET", "/folders/0/items") => axum::Json(serde_json::json!({
+                            "entries": [{"type": "file", "id": "55", "name": "a.txt"}],
+                            "offset": 0, "limit": 1000, "total_count": 1
+                        }))
+                        .into_response(),
+                        ("GET", "/files/55/versions") => axum::Json(serde_json::json!({
+                            "entries": [], "offset": 0, "limit": 1000, "total_count": 0
+                        }))
+                        .into_response(),
+                        ("GET", "/files/55") => axum::Json(serde_json::json!({
+                            "type": "file", "id": "55", "name": "a.txt", "size": 4,
+                            "modified_at": "2026-01-05T00:00:00Z",
+                            "file_version": {"type": "file_version", "id": version}
+                        }))
+                        .into_response(),
+                        ("GET", "/files/55/content") => {
+                            if during.load(Ordering::SeqCst) {
+                                w.store(true, Ordering::SeqCst);
+                            }
+                            "live".into_response()
+                        }
+                        _ => axum::http::StatusCode::NOT_FOUND.into_response(),
+                    }
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = fixture_connected();
+        provider.api_base_override = Some(format!("http://{addr}"));
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("a.txt");
+        let to = out.to_str().unwrap();
+
+        let current = provider.list_versions("/a.txt").await.expect("versions")[0]
+            .id
+            .clone();
+        assert_eq!(current, super::super::bound_current_row("55", "v1"));
+        provider
+            .download_version("/a.txt", &current, to)
+            .await
+            .expect("an unchanged file downloads by its listed row");
+        assert_eq!(std::fs::read_to_string(&out).unwrap(), "live");
+
+        std::fs::write(&out, "mine").unwrap();
+        written.store(true, Ordering::SeqCst);
+        let before = calls.lock().unwrap().len();
+        let outcome = provider.download_version("/a.txt", &current, to).await;
+        assert!(
+            matches!(&outcome, Err(ProviderError::NotFound(m)) if m.contains("list its versions again")),
+            "{outcome:?}"
+        );
+        assert!(
+            !calls.lock().unwrap()[before..]
+                .iter()
+                .any(|c| c.ends_with("/content")),
+            "a file written since its listing was read: {:?}",
+            calls.lock().unwrap()
+        );
+
+        written.store(false, Ordering::SeqCst);
+        write_during_body.store(true, Ordering::SeqCst);
+        let outcome = provider.download_version("/a.txt", &current, to).await;
+        assert!(
+            matches!(&outcome, Err(ProviderError::NotFound(m)) if m.contains("list its versions again")),
+            "{outcome:?}"
+        );
+        assert_eq!(std::fs::read_to_string(&out).unwrap(), "mine");
+        let restored = provider.restore_version("/a.txt", &current).await;
+        assert!(
+            matches!(restored, Err(ProviderError::NotSupported(_))),
+            "{restored:?}"
+        );
+    }
+
+    /// Box answers the versions `limit` at a time from `offset`, of
+    /// `total_count`: every page is read, so a version on the second page
+    /// is listed and restored, not refused as missing.
+    #[tokio::test]
+    async fn a_box_version_on_a_later_page_is_listed_and_restored() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::{Arc, Mutex};
+        let calls: Arc<Mutex<Vec<String>>> = Arc::default();
+        let restored = Arc::new(AtomicBool::new(false));
+        let (seen, done) = (Arc::clone(&calls), Arc::clone(&restored));
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method, uri: axum::http::Uri| {
+                let (seen, done) = (Arc::clone(&seen), Arc::clone(&done));
+                async move {
+                    use axum::response::IntoResponse;
+                    seen.lock().unwrap().push(format!("{method} {uri}"));
+                    let version = |id: &str, size: u64, at: &str| {
+                        serde_json::json!({"type": "file_version", "id": id, "size": size, "modified_at": at})
+                    };
+                    let restored = done.load(Ordering::SeqCst);
+                    match (method.as_str(), uri.path(), uri.query().unwrap_or("")) {
+                        ("GET", "/folders/0/items", _) => axum::Json(serde_json::json!({
+                            "entries": [{"type": "file", "id": "55", "name": "a.txt"}],
+                            "offset": 0, "limit": 1000, "total_count": 1
+                        }))
+                        .into_response(),
+                        ("GET", "/files/55", _) => axum::Json(serde_json::json!({
+                            "type": "file", "id": "55", "name": "a.txt",
+                            "size": if restored { 2 } else { 9 },
+                            "modified_at": if restored { "2026-01-09T00:00:00Z" } else { "2026-01-05T00:00:00Z" },
+                            "file_version": {"type": "file_version", "id": if restored { "14" } else { "11" }}
+                        }))
+                        .into_response(),
+                        ("GET", "/files/55/versions", "") => axum::Json(serde_json::json!({
+                            "entries": [version("13", 4, "2026-01-03T00:00:00Z")],
+                            "offset": 0, "limit": 1, "total_count": 2
+                        }))
+                        .into_response(),
+                        ("GET", "/files/55/versions", "offset=1") => axum::Json(serde_json::json!({
+                            "entries": [version("12", 2, "2026-01-02T00:00:00Z")],
+                            "offset": 1, "limit": 1, "total_count": 2
+                        }))
+                        .into_response(),
+                        ("POST", "/files/55/versions/current", _) => {
+                            done.store(true, Ordering::SeqCst);
+                            axum::Json(version("14", 2, "2026-01-09T00:00:00Z")).into_response()
+                        }
+                        _ => axum::http::StatusCode::NOT_FOUND.into_response(),
+                    }
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = fixture_connected();
+        provider.api_base_override = Some(format!("http://{addr}"));
+
+        let versions = provider.list_versions("/a.txt").await.expect("versions");
+        let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
+        assert_eq!(ids, ["55.3131:current", "13", "12"]);
+        provider
+            .restore_version("/a.txt", "12")
+            .await
+            .expect("a version of the second page is restored");
+        assert!(
+            calls
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|c| c == "POST /files/55/versions/current"),
+            "{calls:?}"
+        );
+    }
+
+    /// A versions listing whose `total_count` grows past every page ends at
+    /// the page limit with an error, and one that ends on that last page is
+    /// listed whole. A promotion whose connection ends
+    /// before Box answers may have been applied: it is reported applied but
+    /// unconfirmed, never as a failure that a retry would send again.
+    #[tokio::test]
+    async fn an_endless_box_listing_stops_and_a_cut_promotion_is_unconfirmed() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::{Arc, Mutex};
+        let calls: Arc<Mutex<Vec<String>>> = Arc::default();
+        let pages = Arc::new(AtomicUsize::new(0));
+        let (seen, served) = (Arc::clone(&calls), Arc::clone(&pages));
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method, uri: axum::http::Uri| {
+                let (seen, served) = (Arc::clone(&seen), Arc::clone(&served));
+                async move {
+                    use axum::response::IntoResponse;
+                    seen.lock().unwrap().push(format!("{method} {uri}"));
+                    let version = |id: &str| {
+                        serde_json::json!({"type": "file_version", "id": id, "size": 4,
+                            "modified_at": "2026-01-03T00:00:00Z"})
+                    };
+                    let offset: u64 = uri
+                        .query()
+                        .and_then(|q| q.strip_prefix("offset="))
+                        .and_then(|o| o.parse().ok())
+                        .unwrap_or(0);
+                    match (method.as_str(), uri.path()) {
+                        ("GET", "/folders/0/items") => axum::Json(serde_json::json!({
+                            "entries": [{"type": "file", "id": "55", "name": "a.txt"},
+                                        {"type": "file", "id": "66", "name": "b.txt"},
+                                        {"type": "file", "id": "77", "name": "c.txt"}],
+                            "offset": 0, "limit": 1000, "total_count": 3
+                        }))
+                        .into_response(),
+                        ("GET", "/files/55") | ("GET", "/files/66") | ("GET", "/files/77") => {
+                            let id = uri.path().trim_start_matches("/files/").to_string();
+                            axum::Json(serde_json::json!({
+                                "type": "file", "id": id, "name": "f", "size": 9,
+                                "modified_at": "2026-01-05T00:00:00Z",
+                                "file_version": {"type": "file_version", "id": "11"}
+                            }))
+                            .into_response()
+                        }
+                        ("GET", "/files/55/versions") => {
+                            served.fetch_add(1, Ordering::SeqCst);
+                            axum::Json(serde_json::json!({
+                                "entries": [version(&format!("v{offset}"))],
+                                "offset": offset, "limit": 1, "total_count": offset + 2
+                            }))
+                            .into_response()
+                        }
+                        // A history of exactly 200 one-version pages.
+                        ("GET", "/files/77/versions") => axum::Json(serde_json::json!({
+                            "entries": [version(&format!("w{offset}"))],
+                            "offset": offset, "limit": 1, "total_count": 200
+                        }))
+                        .into_response(),
+                        ("GET", "/files/66/versions") => axum::Json(serde_json::json!({
+                            "entries": [version("12")], "offset": 0, "limit": 1, "total_count": 1
+                        }))
+                        .into_response(),
+                        // The connection ends before an answer: the handler's
+                        // task goes down with it.
+                        ("POST", "/files/66/versions/current") => panic!("connection cut"),
+                        _ => axum::http::StatusCode::NOT_FOUND.into_response(),
+                    }
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = fixture_connected();
+        provider.api_base_override = Some(format!("http://{addr}"));
+
+        let endless = provider.list_versions("/a.txt").await;
+        assert!(
+            matches!(&endless, Err(ProviderError::TransferFailed(m)) if m.contains("200 pages")),
+            "{endless:?}"
+        );
+        assert_eq!(
+            pages.load(Ordering::SeqCst),
+            super::super::VERSION_LISTING_MAX_PAGES
+        );
+        // A history that ends on the last page allowed is listed whole.
+        let whole = provider
+            .list_versions("/c.txt")
+            .await
+            .expect("a history of exactly 200 pages");
+        for page in [0, 199] {
+            assert!(
+                whole.iter().any(|v| v.id == format!("w{page}")),
+                "w{page}: {:?}",
+                whole.iter().map(|v| &v.id).collect::<Vec<_>>()
+            );
+        }
+        let asked = calls
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|c| c.starts_with("GET /files/77/versions"))
+            .count();
+        assert_eq!(asked, super::super::VERSION_LISTING_MAX_PAGES);
+        let cut = provider.restore_version("/b.txt", "12").await;
+        server.abort();
+        let error = cut.expect_err("a promotion with no answer is not reported done");
+        assert!(super::super::was_applied(&error), "{error:?}");
+        let posts = calls
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|c| c.starts_with("POST "))
+            .count();
+        assert_eq!(posts, 1);
+    }
+
+    /// Box pages its versions by slot: a page holds up to `limit` versions
+    /// from `offset`, maybe fewer, maybe none. The next page starts at
+    /// offset plus limit, so a short page and an empty one both lead on to
+    /// the older version on the page after.
+    #[tokio::test]
+    async fn a_short_or_empty_box_version_page_leads_on_to_the_next() {
+        use axum::response::IntoResponse;
+        type Pages = fn(&str) -> serde_json::Value;
+        let version = |id: &str, at: &str| serde_json::json!({"type": "file_version", "id": id, "size": 4, "modified_at": at});
+        let older = serde_json::json!({
+            "entries": [version("13", "2026-01-03T00:00:00Z")],
+            "offset": 2, "limit": 2, "total_count": 3
+        });
+        let empty_first: Pages =
+            |_| serde_json::json!({"entries": [], "offset": 0, "limit": 2, "total_count": 3});
+        let short_first: Pages = |_| {
+            serde_json::json!({
+                "entries": [{"type": "file_version", "id": "14", "size": 4, "modified_at": "2026-01-04T00:00:00Z"}],
+                "offset": 0, "limit": 2, "total_count": 3
+            })
+        };
+        // A first page answered at offset 1: slot 0 would be skipped.
+        let wrong_first: Pages = |_| {
+            serde_json::json!({
+                "entries": [{"type": "file_version", "id": "14", "size": 4, "modified_at": "2026-01-04T00:00:00Z"}],
+                "offset": 1, "limit": 2, "total_count": 3
+            })
+        };
+        // Without a total: a short page is the last, a full one is refused.
+        let short_untotalled: Pages = |_| {
+            serde_json::json!({
+                "entries": [{"type": "file_version", "id": "14", "size": 4, "modified_at": "2026-01-04T00:00:00Z"}],
+                "offset": 0, "limit": 2
+            })
+        };
+        let full_untotalled: Pages = |_| {
+            serde_json::json!({
+                "entries": [
+                    {"type": "file_version", "id": "15", "size": 4, "modified_at": "2026-01-04T00:00:00Z"},
+                    {"type": "file_version", "id": "14", "size": 4, "modified_at": "2026-01-03T00:00:00Z"}
+                ],
+                "offset": 0, "limit": 2
+            })
+        };
+        for (first, expected) in [
+            (empty_first, Ok(vec!["55.3131:current", "13"])),
+            (short_first, Ok(vec!["55.3131:current", "14", "13"])),
+            (wrong_first, Err("offset 1 for offset 0")),
+            (short_untotalled, Ok(vec!["55.3131:current", "14"])),
+            (full_untotalled, Err("without its total")),
+        ] {
+            let older = older.clone();
+            let app =
+                axum::Router::new().fallback(axum::routing::any(move |uri: axum::http::Uri| {
+                    let older = older.clone();
+                    async move {
+                        match (uri.path(), uri.query().unwrap_or("")) {
+                            ("/folders/0/items", _) => axum::Json(serde_json::json!({
+                                "entries": [{"type": "file", "id": "55", "name": "a.txt"}],
+                                "offset": 0, "limit": 1000, "total_count": 1
+                            }))
+                            .into_response(),
+                            ("/files/55", _) => axum::Json(serde_json::json!({
+                                "type": "file", "id": "55", "name": "a.txt", "size": 9,
+                                "modified_at": "2026-01-05T00:00:00Z",
+                                "file_version": {"type": "file_version", "id": "11"}
+                            }))
+                            .into_response(),
+                            ("/files/55/versions", "") => axum::Json(first("")).into_response(),
+                            ("/files/55/versions", "offset=2") => axum::Json(older).into_response(),
+                            _ => axum::http::StatusCode::NOT_FOUND.into_response(),
+                        }
+                    }
+                }));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+            let mut provider = fixture_connected();
+            provider.api_base_override = Some(format!("http://{addr}"));
+            let listed = provider.list_versions("/a.txt").await;
+            server.abort();
+            let expected = match expected {
+                Ok(expected) => expected,
+                Err(said) => {
+                    assert!(
+                        matches!(&listed, Err(ProviderError::ParseError(m)) if m.contains(said)),
+                        "{listed:?}"
+                    );
+                    continue;
+                }
+            };
+            let ids: Vec<String> = listed
+                .expect("versions")
+                .into_iter()
+                .map(|v| v.id)
+                .collect();
+            assert_eq!(ids, expected);
+        }
+    }
+
+    /// The bare `current` id reads the file as its bound row does: a 206
+    /// fragment is refused and the destination stays as it was.
+    #[tokio::test]
+    async fn a_partial_answer_for_the_bare_current_row_is_not_saved() {
+        use axum::response::IntoResponse;
+        let app =
+            axum::Router::new().fallback(axum::routing::any(|uri: axum::http::Uri| async move {
+                match uri.path() {
+                    "/folders/0/items" => axum::Json(serde_json::json!({
+                        "entries": [{"type": "file", "id": "55", "name": "a.txt"}],
+                        "offset": 0, "limit": 1000, "total_count": 1
+                    }))
+                    .into_response(),
+                    "/files/55/content" => {
+                        (axum::http::StatusCode::PARTIAL_CONTENT, "li").into_response()
+                    }
+                    _ => axum::http::StatusCode::NOT_FOUND.into_response(),
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = fixture_connected();
+        provider.api_base_override = Some(format!("http://{addr}"));
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("a.txt");
+        std::fs::write(&out, "before").unwrap();
+        let partial = provider
+            .download_version(
+                "/a.txt",
+                super::super::CURRENT_VERSION_ID,
+                out.to_str().unwrap(),
+            )
+            .await;
+        assert!(
+            matches!(&partial, Err(ProviderError::TransferFailed(m)) if m.contains("206")),
+            "{partial:?}"
+        );
+        assert_eq!(std::fs::read_to_string(&out).unwrap(), "before");
+    }
+
+    /// A promotion whose answer does not come within the read timeout may
+    /// have been applied: it is an applied, unconfirmed restore, never a
+    /// `Timeout` a caller would retry into a second promotion.
+    #[tokio::test]
+    async fn a_box_promotion_that_times_out_is_applied_not_retried() {
+        let promotions = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counted = std::sync::Arc::clone(&promotions);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method, uri: axum::http::Uri| {
+                let counted = std::sync::Arc::clone(&counted);
+                async move {
+                    use axum::response::IntoResponse;
+                    let version = |id: &str| {
+                        serde_json::json!({"type": "file_version", "id": id, "size": 2,
+                        "modified_at": "2026-01-02T00:00:00Z"})
+                    };
+                    match (method.as_str(), uri.path()) {
+                        ("GET", "/folders/0/items") => axum::Json(serde_json::json!({
+                            "entries": [{"type": "file", "id": "55", "name": "a.txt"}],
+                            "offset": 0, "limit": 1000, "total_count": 1
+                        }))
+                        .into_response(),
+                        ("GET", "/files/55") => axum::Json(serde_json::json!({
+                            "type": "file", "id": "55", "name": "a.txt", "size": 9,
+                            "modified_at": "2026-01-05T00:00:00Z", "file_version": {"id": "11"}
+                        }))
+                        .into_response(),
+                        ("GET", "/files/55/versions") => axum::Json(serde_json::json!({
+                            "entries": [version("12")], "offset": 0, "limit": 1000, "total_count": 1
+                        }))
+                        .into_response(),
+                        ("POST", "/files/55/versions/current") => {
+                            counted.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                            axum::Json(version("14")).into_response()
+                        }
+                        _ => axum::http::StatusCode::NOT_FOUND.into_response(),
+                    }
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = fixture_connected();
+        provider.api_base_override = Some(format!("http://{addr}"));
+        provider.client = reqwest::Client::builder()
+            .read_timeout(std::time::Duration::from_millis(500))
+            .build()
+            .unwrap();
+        let outcome = provider.restore_version("/a.txt", "12").await;
+        assert!(
+            outcome.as_ref().is_err_and(super::super::was_applied),
+            "{outcome:?}"
+        );
+        // One promotion, never sent again after its timeout.
+        assert_eq!(promotions.load(std::sync::atomic::Ordering::SeqCst), 1);
+    }
+
+    /// Box answers a promotion with the version it made: a restore is done
+    /// when that version is the file's current one, and not when another
+    /// version of the same size took its place meanwhile, nor when the
+    /// answer naming it cannot be read (accepted, not confirmed).
+    #[tokio::test]
+    async fn a_box_restore_is_confirmed_by_the_version_the_promotion_made() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::Arc;
+        // (current version after, promotion answer readable, confirmed,
+        // the head read after the promotion fails, another file (99) at the
+        // path after the promotion)
+        for (current_after, readable, confirmed, head_fails, replaced) in [
+            ("14", true, true, false, false),
+            ("15", true, false, false, false),
+            ("14", false, false, false, false),
+            ("14", true, false, true, false),
+            ("14", true, false, false, true),
+        ] {
+            let restored = Arc::new(AtomicBool::new(false));
+            let done = Arc::clone(&restored);
+            let reads_after = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+            let app = axum::Router::new().fallback(axum::routing::any(
+                move |method: axum::http::Method, uri: axum::http::Uri| {
+                    let done = Arc::clone(&done);
+                    let reads_after = Arc::clone(&reads_after);
+                    async move {
+                        use axum::response::IntoResponse;
+                        let after = done.load(Ordering::SeqCst);
+                        let version = |id: &str| {
+                            serde_json::json!({"type": "file_version", "id": id, "size": 2,
+                                "modified_at": "2026-01-02T00:00:00Z"})
+                        };
+                        match (method.as_str(), uri.path()) {
+                            ("GET", "/folders/0/items") => axum::Json(serde_json::json!({
+                                "entries": [{"type": "file",
+                                    "id": if after && replaced { "99" } else { "55" },
+                                    "name": "a.txt"}],
+                                "offset": 0, "limit": 1000, "total_count": 1
+                            }))
+                            .into_response(),
+                            ("GET", "/files/99") => axum::Json(serde_json::json!({
+                                "type": "file", "id": "99", "name": "a.txt", "size": 2,
+                                "modified_at": "2026-01-09T00:00:00Z",
+                                "file_version": {"id": "21"}
+                            }))
+                            .into_response(),
+                            ("GET", "/files/99/versions") => axum::Json(serde_json::json!({
+                                "entries": [version("12")], "offset": 0, "limit": 1000, "total_count": 1
+                            }))
+                            .into_response(),
+                            ("GET", "/files/55")
+                                if after
+                                    && head_fails
+                                    && reads_after.fetch_add(1, Ordering::SeqCst) > 0 =>
+                            {
+                                axum::http::StatusCode::INTERNAL_SERVER_ERROR.into_response()
+                            }
+                            ("GET", "/files/55") => axum::Json(serde_json::json!({
+                                "type": "file", "id": "55", "name": "a.txt",
+                                "size": if after { 2 } else { 9 },
+                                "modified_at": if after { "2026-01-09T00:00:00Z" } else { "2026-01-05T00:00:00Z" },
+                                "file_version": {"id": if after { current_after } else { "11" }}
+                            }))
+                            .into_response(),
+                            ("GET", "/files/55/versions") => axum::Json(serde_json::json!({
+                                "entries": [version("12")], "offset": 0, "limit": 1000, "total_count": 1
+                            }))
+                            .into_response(),
+                            ("POST", "/files/55/versions/current") => {
+                                done.store(true, Ordering::SeqCst);
+                                if !readable {
+                                    // Accepted, the answer cut short.
+                                    return r#"{"type":"file_ver"#.into_response();
+                                }
+                                axum::Json(version("14")).into_response()
+                            }
+                            _ => axum::http::StatusCode::NOT_FOUND.into_response(),
+                        }
+                    }
+                },
+            ));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+            let mut provider = fixture_connected();
+            provider.api_base_override = Some(format!("http://{addr}"));
+            let outcome = provider.restore_version("/a.txt", "12").await;
+            if confirmed {
+                outcome.expect("the promoted version is current");
+            } else if head_fails {
+                assert!(
+                    matches!(&outcome, Err(ProviderError::TransferFailed(m)) if m.contains("answered the restore") && m.contains("could not be read")),
+                    "{outcome:?}"
+                );
+                assert!(
+                    super::super::was_applied(outcome.as_ref().unwrap_err()),
+                    "{outcome:?}"
+                );
+            } else if readable {
+                assert!(
+                    matches!(&outcome, Err(ProviderError::TransferFailed(m))
+                        if m.contains("list its versions again")
+                            && m.contains("another file") == replaced),
+                    "{outcome:?}"
+                );
+                assert!(
+                    super::super::was_applied(outcome.as_ref().unwrap_err()),
+                    "{outcome:?}"
+                );
+            } else {
+                assert!(
+                    matches!(&outcome, Err(ProviderError::TransferFailed(m)) if m.contains("accepted the restore") && m.contains("not confirmed")),
+                    "{outcome:?}"
+                );
+            }
+        }
+    }
+
+    /// Row 0 of the versions dialog, `current`, is the file itself: its
+    /// download is `/files/{id}/content` with no `version`, its restore sends
+    /// no request at all, and a past version still downloads by its own id.
+    #[tokio::test]
+    async fn the_current_row_is_the_file_itself_and_a_past_one_its_version() {
+        use std::sync::{Arc, Mutex};
+        let calls: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&calls);
+        // Every request is recorded whatever its method; the content is
+        // served with no `version` (the file) or exactly `version=12`.
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method, uri: axum::http::Uri| {
+                let seen = Arc::clone(&seen);
+                async move {
+                    use axum::response::IntoResponse;
+                    seen.lock().unwrap().push(format!("{method} {uri}"));
+                    let url = reqwest::Url::parse(&format!("http://h{uri}")).unwrap();
+                    let versions: Vec<String> = url
+                        .query_pairs()
+                        .filter(|(k, _)| k == "version")
+                        .map(|(_, v)| v.into_owned())
+                        .collect();
+                    if method != axum::http::Method::GET {
+                        return axum::http::StatusCode::METHOD_NOT_ALLOWED.into_response();
+                    }
+                    match (uri.path(), versions.as_slice()) {
+                        ("/folders/0/items", _) => axum::Json(serde_json::json!({
+                            "entries": [{"type": "file", "id": "55", "name": "a.txt"}],
+                            "offset": 0, "limit": 1000, "total_count": 1
+                        }))
+                        .into_response(),
+                        ("/files/55/content", []) => "live".into_response(),
+                        ("/files/55/content", [v]) if v == "12" => "twelve".into_response(),
+                        _ => axum::http::StatusCode::NOT_FOUND.into_response(),
+                    }
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = fixture_connected();
+        provider.api_base_override = Some(format!("http://{addr}"));
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("a.txt");
+        let out = out.to_str().unwrap();
+
+        provider
+            .download_version("/a.txt", super::super::CURRENT_VERSION_ID, out)
+            .await
+            .expect("the current row downloads the file");
+        assert_eq!(std::fs::read_to_string(out).unwrap(), "live");
+        assert!(
+            calls
+                .lock()
+                .unwrap()
+                .iter()
+                .all(|c| !c.contains("version=")),
+            "{calls:?}"
+        );
+
+        let before = calls.lock().unwrap().len();
+        let restored = provider
+            .restore_version("/a.txt", super::super::CURRENT_VERSION_ID)
+            .await;
+        assert!(
+            matches!(restored, Err(ProviderError::NotSupported(_))),
+            "{restored:?}"
+        );
+        assert_eq!(calls.lock().unwrap().len(), before, "{calls:?}");
+
+        provider
+            .download_version("/a.txt", "12", out)
+            .await
+            .expect("a past version downloads by its id");
+        assert_eq!(std::fs::read_to_string(out).unwrap(), "twelve");
+
+        // The listed current row: file 55 by its id; listed from file 56,
+        // it is refused before any content request and restores nothing.
+        provider
+            .download_version("/a.txt", "55:current", out)
+            .await
+            .expect("the listed current row downloads file 55");
+        assert_eq!(std::fs::read_to_string(out).unwrap(), "live");
+        let before = calls.lock().unwrap().len();
+        let refused = provider.download_version("/a.txt", "56:current", out).await;
+        assert!(
+            matches!(&refused, Err(ProviderError::NotFound(m)) if m.contains("list its versions again")),
+            "{refused:?}"
+        );
+        for id in ["55:current", "56:current"] {
+            let restored = provider.restore_version("/a.txt", id).await;
+            assert!(
+                matches!(restored, Err(ProviderError::NotSupported(_))),
+                "{restored:?}"
+            );
+        }
+        assert_eq!(std::fs::read_to_string(out).unwrap(), "live");
+        assert!(
+            calls.lock().unwrap()[before..]
+                .iter()
+                .all(|c| !c.contains("/content")),
+            "{calls:?}"
+        );
     }
 
     /// One item of [`provider_on_box`]: id, name, parent id, `file` or `folder`.
@@ -5021,5 +6397,25 @@ mod tests {
         assert!(err.is_err());
         assert!(primary.is_connected());
         server.abort();
+    }
+
+    /// Box lists only past versions; the versions dialog reads row 0 as the
+    /// current one, so the file itself comes first.
+    #[test]
+    fn box_versions_come_back_after_the_file_itself() {
+        let listed: super::BoxVersionCollection = serde_json::from_str(
+            r#"{"entries":[
+                {"id":"11","type":"file_version","size":8,"modified_at":"2026-11-16T15:00:00-08:00"},
+                {"id":"12","type":"file_version","size":12,"modified_at":"2026-11-16T15:01:00-08:00"}
+            ]}"#,
+        )
+        .expect("parse");
+        let mut file = super::RemoteEntry::directory("v.txt".into(), "/v.txt".into());
+        file.is_dir = false;
+        file.size = 16;
+        let versions = super::versions_in_dialog_order(listed, &file, "55", None);
+        let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
+        assert_eq!(ids, ["55:current", "12", "11"]);
+        assert_eq!(versions[0].size, 16);
     }
 }

@@ -521,29 +521,7 @@ impl StorageProvider for UploadcareProvider {
                 status
             )));
         }
-        let answered = resp
-            .headers()
-            .get(reqwest::header::CONTENT_RANGE)
-            .and_then(|value| value.to_str().ok())
-            .map(|value| value.to_string());
-        let bytes = super::range_window_with_limit(resp, MAX_DOWNLOAD_TO_BYTES).await?;
-        // A 206 that does not name the window it carries is written at this
-        // offset just the same, so it has to say which range it is.
-        match super::multi_thread::ranged_answer(
-            status,
-            answered.as_deref(),
-            bytes.len() as u64,
-            offset,
-            end,
-        ) {
-            Ok(super::multi_thread::RangedAnswer::Window) => Ok(bytes),
-            Ok(super::multi_thread::RangedAnswer::WholeObject) => {
-                Ok(super::multi_thread::slice_whole_object(&bytes, offset, len))
-            }
-            Err(why) => Err(ProviderError::ParallelRefused(
-                super::multi_thread::parallel_refused("Uploadcare range read", remote_path, &why),
-            )),
-        }
+        super::ranged_read_window(resp, offset, len, "Uploadcare range read", remote_path).await
     }
 
     async fn upload(
@@ -1106,20 +1084,37 @@ fn validate_cdn_url(url: &str) -> Result<(), ProviderError> {
     Ok(())
 }
 
+/// The listing follows Uploadcare's `next` URL with the account's secret key
+/// in the Authorization header, so the URL must stay on the API origin
+/// (scheme, host and port), the shared rule of every paged listing.
 fn validate_uploadcare_api_url(url: &str) -> Result<(), ProviderError> {
-    let parsed = url::Url::parse(url)
-        .map_err(|e| ProviderError::ServerError(format!("Invalid Uploadcare API URL: {}", e)))?;
-    if parsed.scheme() != "https" || parsed.host_str() != Some("api.uploadcare.com") {
-        return Err(ProviderError::ServerError(
-            "Unexpected Uploadcare pagination URL".to_string(),
-        ));
-    }
-    Ok(())
+    super::next_page_on_api_origin(API_BASE, url, "Uploadcare listing").map(|_| ())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The secret key goes only to api.uploadcare.com over https on its own
+    /// port: another host, scheme or port, or user information, is refused
+    /// before the request.
+    #[test]
+    fn a_next_page_outside_the_api_origin_is_refused() {
+        assert!(validate_uploadcare_api_url("https://api.uploadcare.com/files/?from=2").is_ok());
+        for next in [
+            "https://evil.example/files/?from=2",
+            "http://api.uploadcare.com/files/?from=2",
+            "https://api.uploadcare.com:8443/files/?from=2",
+            "https://user@api.uploadcare.com/files/?from=2",
+            "https://api.uploadcare.com.evil.example/files/",
+            "/files/?from=2",
+        ] {
+            assert!(
+                matches!(validate_uploadcare_api_url(next), Err(ProviderError::ServerError(ref m)) if m.contains("outside the configured API")),
+                "{next}"
+            );
+        }
+    }
 
     // Row 4 (#347): human text is taken from detail/error/message (in that order)
     // and the HTTP status selects the variant; auth folds 401 and 403 together.

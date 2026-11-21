@@ -2576,7 +2576,8 @@
             "restore": "Atjaunot šo versiju",
             "none": "Versijas nav pieejamas",
             "purge": "Dzēst šo versiju neatgriezeniski",
-            "purgeConfirm": "Vai neatgriezeniski dzēst šo versiju? Šo darbību nevar atsaukt."
+            "purgeConfirm": "Vai neatgriezeniski dzēst šo versiju? Šo darbību nevar atsaukt.",
+            "restoreUnconfirmed": "Atjaunošana tika nosūtīta, taču serveris nevar apstiprināt, kura versija tagad ir aktuālā. Pārbaudiet versijas, pirms atjaunojat vēlreiz."
         },
         "sharing": {
             "title": "Koplietojums",

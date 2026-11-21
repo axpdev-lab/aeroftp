@@ -334,6 +334,26 @@ impl ProviderState {
         Ok(Some(pin))
     }
 
+    /// The provider slot, locked, while the live connection is still the one
+    /// of `generation` (what [`provider_connection_generation`] answered when
+    /// a dialog opened): checked under the provider lock, which every connect,
+    /// disconnect and swap holds to bump the generation, and held by the
+    /// caller for its whole command, so no other connection can take the slot
+    /// meanwhile. `since` says what the dialog read ("the trash was opened").
+    pub(crate) async fn lock_connection_of_generation(
+        &self,
+        generation: u64,
+        since: &str,
+    ) -> Result<tokio::sync::MutexGuard<'_, Option<Box<dyn StorageProvider>>>, String> {
+        let slot = self.provider.lock().await;
+        if self.connection_generation.load(Ordering::SeqCst) != generation {
+            return Err(format!(
+                "{CONNECTION_CHANGED_MARKER}: the connection changed since {since}; nothing was changed"
+            ));
+        }
+        Ok(slot)
+    }
+
     /// Holds the connection whose generation is `expected` until the guard is
     /// dropped: swaps and disconnects take the write side of the gate first,
     /// so they wait. An error when another connection is live already. A read
@@ -10365,50 +10385,95 @@ pub async fn provider_supports_versions(state: State<'_, ProviderState>) -> Resu
 }
 
 #[tauri::command]
-pub async fn provider_list_versions(
+pub async fn provider_supports_version_delete(
     state: State<'_, ProviderState>,
-    path: String,
+) -> Result<bool, String> {
+    let provider_guard = state.provider.lock().await;
+    let provider = provider_guard
+        .as_ref()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    Ok(provider.supports_version_delete())
+}
+
+#[tauri::command]
+pub async fn provider_supports_version_restore(
+    state: State<'_, ProviderState>,
+) -> Result<bool, String> {
+    let provider_guard = state.provider.lock().await;
+    let provider = provider_guard
+        .as_ref()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    Ok(provider.supports_version_restore())
+}
+
+/// What the version commands were read against: the generation the File
+/// Versions dialog was opened on, so an action sent after a switch to another
+/// connection never runs there (a purge cannot be undone).
+const VERSIONS_OPENED: &str = "the File Versions dialog was opened";
+
+pub(crate) async fn list_versions_of(
+    state: &ProviderState,
+    path: &str,
+    generation: u64,
+    expected_gui_target: Option<u64>,
 ) -> Result<Vec<FileVersion>, String> {
-    let mut provider_guard = state.provider.lock().await;
+    // An overlay applied, cleared or locked since the dialog opened keeps
+    // the connection but moves the remote target: refused, nothing sent.
+    let _target = state.pin_gui_target(expected_gui_target).await?;
+    let mut provider_guard = state
+        .lock_connection_of_generation(generation, VERSIONS_OPENED)
+        .await?;
     let provider = provider_guard
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
     provider
-        .list_versions(&path)
+        .list_versions(path)
         .await
         .map_err(|e| format!("List versions failed: {}", e))
 }
 
-#[tauri::command]
-pub async fn provider_download_version(
-    state: State<'_, ProviderState>,
-    path: String,
-    version_id: String,
-    local_path: String,
+pub(crate) async fn download_version_of(
+    state: &ProviderState,
+    path: &str,
+    version_id: &str,
+    local_path: &str,
+    generation: u64,
+    expected_gui_target: Option<u64>,
 ) -> Result<String, String> {
-    let mut provider_guard = state.provider.lock().await;
+    // An overlay applied, cleared or locked since the dialog opened keeps
+    // the connection but moves the remote target: refused, nothing sent.
+    let _target = state.pin_gui_target(expected_gui_target).await?;
+    let mut provider_guard = state
+        .lock_connection_of_generation(generation, VERSIONS_OPENED)
+        .await?;
     let provider = provider_guard
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
     provider
-        .download_version(&path, &version_id, &local_path)
+        .download_version(path, version_id, local_path)
         .await
         .map_err(|e| format!("Download version failed: {}", e))?;
     Ok(format!("Downloaded version {} of {}", version_id, path))
 }
 
-#[tauri::command]
-pub async fn provider_restore_version(
-    state: State<'_, ProviderState>,
-    path: String,
-    version_id: String,
+pub(crate) async fn restore_version_of(
+    state: &ProviderState,
+    path: &str,
+    version_id: &str,
+    generation: u64,
+    expected_gui_target: Option<u64>,
 ) -> Result<(), String> {
-    let mut provider_guard = state.provider.lock().await;
+    // An overlay applied, cleared or locked since the dialog opened keeps
+    // the connection but moves the remote target: refused, nothing sent.
+    let _target = state.pin_gui_target(expected_gui_target).await?;
+    let mut provider_guard = state
+        .lock_connection_of_generation(generation, VERSIONS_OPENED)
+        .await?;
     let provider = provider_guard
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
     provider
-        .restore_version(&path, &version_id)
+        .restore_version(path, version_id)
         .await
         .map_err(|e| format!("Restore version failed: {}", e))
 }
@@ -10418,20 +10483,96 @@ pub async fn provider_restore_version(
 /// ciphertext (mirroring `provider_restore_version`). For a soft-deleted S3
 /// object, purging its delete marker's `version_id` "undeletes" it; purging a
 /// content version removes that version for good. Irreversible.
+pub(crate) async fn delete_version_of(
+    state: &ProviderState,
+    path: &str,
+    version_id: &str,
+    generation: u64,
+    expected_gui_target: Option<u64>,
+) -> Result<(), String> {
+    // An overlay applied, cleared or locked since the dialog opened keeps
+    // the connection but moves the remote target: refused, nothing sent.
+    let _target = state.pin_gui_target(expected_gui_target).await?;
+    let mut provider_guard = state
+        .lock_connection_of_generation(generation, VERSIONS_OPENED)
+        .await?;
+    let provider = provider_guard
+        .as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    crate::providers::refuse_a_purge_of_the_live_version(provider.as_mut(), path, version_id)
+        .await
+        .map_err(|e| format!("Delete version failed: {}", e))?;
+    provider
+        .delete_version(path, version_id)
+        .await
+        .map_err(|e| format!("Delete version failed: {}", e))
+}
+
+#[tauri::command]
+pub async fn provider_list_versions(
+    state: State<'_, ProviderState>,
+    path: String,
+    generation: u64,
+    expected_gui_target: u64,
+) -> Result<Vec<FileVersion>, String> {
+    list_versions_of(&state, &path, generation, Some(expected_gui_target)).await
+}
+
+#[tauri::command]
+pub async fn provider_download_version(
+    state: State<'_, ProviderState>,
+    path: String,
+    version_id: String,
+    local_path: String,
+    generation: u64,
+    expected_gui_target: u64,
+) -> Result<String, String> {
+    download_version_of(
+        &state,
+        &path,
+        &version_id,
+        &local_path,
+        generation,
+        Some(expected_gui_target),
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn provider_restore_version(
+    state: State<'_, ProviderState>,
+    path: String,
+    version_id: String,
+    generation: u64,
+    expected_gui_target: u64,
+) -> Result<(), String> {
+    restore_version_of(
+        &state,
+        &path,
+        &version_id,
+        generation,
+        Some(expected_gui_target),
+    )
+    .await
+}
+
+/// See [`delete_version_of`].
 #[tauri::command]
 pub async fn provider_delete_version(
     state: State<'_, ProviderState>,
     path: String,
     version_id: String,
+    generation: u64,
+    expected_gui_target: u64,
 ) -> Result<(), String> {
-    let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard
-        .as_mut()
-        .ok_or_else(|| "Not connected to any provider".to_string())?;
-    provider
-        .delete_version(&path, &version_id)
-        .await
-        .map_err(|e| format!("Delete version failed: {}", e))
+    delete_version_of(
+        &state,
+        &path,
+        &version_id,
+        generation,
+        Some(expected_gui_target),
+    )
+    .await
 }
 
 // --- File Locking ---

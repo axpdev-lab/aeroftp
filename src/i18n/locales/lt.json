@@ -2576,7 +2576,8 @@
             "restore": "Atkurti šią versiją",
             "none": "Versijų nėra",
             "purge": "Ištrinti šią versiją visam laikui",
-            "purgeConfirm": "Ištrinti šią versiją visam laikui? Šio veiksmo anuliuoti negalima."
+            "purgeConfirm": "Ištrinti šią versiją visam laikui? Šio veiksmo anuliuoti negalima.",
+            "restoreUnconfirmed": "Atkūrimas išsiųstas, bet serveris negali patvirtinti, kuri versija dabar yra dabartinė. Prieš atkurdami dar kartą, patikrinkite versijas."
         },
         "sharing": {
             "title": "Bendrinimas",

@@ -249,8 +249,8 @@ buckets, rclone uploads or mkdir may also need `--s3-no-check-bucket`.
 | **Server Copy** | - | - | - | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | - | - | - | Yes | - | Yes | Yes† | Yes | - |
 | **Remote Search** | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 | **Storage Quota** | - | - | Yes | Yes | - | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| **File Versions** | - | - | - | - | - | Yes | Yes | Yes | - | Yes | Yes | - | - | - | Yes | - | - | Yes | - | - |
-| **Thumbnails** | - | - | - | - | - | Yes | Yes | Yes | - | Yes | Yes | - | - | - | - | - | - | - | - | - |
+| **File Versions** | - | - | - | Yes¶ | - | Yes | Yes | Yes | Yes¶ | Yes | - | - | - | - | Yes | - | - | Yes | - | - |
+| **Thumbnails** | - | - | - | - | - | Yes | Yes | Yes | Yes¶ | Yes | Yes | - | - | - | - | - | - | - | - | - |
 | **Permissions** | - | - | - | - | - | Yes | - | Yes | - | - | - | - | - | - | - | - | - | - | - | - |
 | **Locking** | - | - | - | - | - | - | - | - | - | Yes‡ | - | - | - | - | - | - | - | - | - | - |
 | **Resume Transfer** | Yes | Yes | - | - | - | - | - | Yes | - | - | - | - | - | - | - | - | - | - | - | - |
@@ -272,6 +272,7 @@ buckets, rclone uploads or mkdir may also need `--s3-no-check-bucket`.
 
 †FileLu Server Copy = server-side clone (`filelu_clone_file`)
 ‡Box Enterprise only (Business/Enterprise plan required)
+¶WebDAV versions: Nextcloud servers (not ownCloud) with the Versions app on, and the MEGAcmd WebDAV bridge; a server with it off (Felicloud and Murena, measured 2026-11-16) answers 404 and AeroFTP says versions are not enabled there. MEGA versions and thumbnails: the MEGAcmd backend, not the native API. MEGA versions are listed and downloaded, not restored: MEGAcmd writes a file by its path, not by its handle, so a write by another client during a restore would be pushed down to a previous version (download the version and upload it instead). pCloud has no versions: it refuses `listrevisions` to the OAuth token AeroFTP signs in with (measured 2026-11-16). Drime versions are read, downloaded, restored and deleted through the routes of the Drime web app (`/file-versions`), not the documented `/file-backup`, which answered 500 to every request (measured 2026-11-20); an upload onto a Drime file goes onto its entry, so its previous contents become a version
 §`SITE <command>` through the open session (Connection > SITE Command..., `aeroftp-cli site`, `:site` in the TUI): the reply is shown whole with its code; a command is never sent twice; arguments and replies are not logged. A saved profile can keep named templates (`aeroftp-cli site-template`, `site --template`, `:site @name`): a password position is a `{name:secret}` hole and is never stored.
 
 ---
@@ -309,7 +310,7 @@ A backend's own scheme keeps its own name. Dropbox's `content_hash` is a SHA-256
 | Box | SHA-1 |  |
 | pCloud | MD5, SHA-1, SHA-256 |  |
 | Yandex Disk | MD5 |  |
-| Koofr | Koofr hash | Koofr's own opaque hash. Comparable only against another Koofr hash. |
+| Koofr | Koofr hash | The MD5 of the content (measured 2026-11-20), reported under its own name: compared only against another Koofr hash, and by the version download of the current row against the bytes read. |
 | Backblaze B2 | SHA-1 | Large files and uploads B2 recorded as `unverified:` carry no usable `contentSha1`; those are omitted. |
 | GitHub | Git blob SHA-1 | The git blob SHA-1, computed over `blob <len>\0` + content, so it does not match a plain SHA-1 of the same file. |
 | GitLab | - |  |

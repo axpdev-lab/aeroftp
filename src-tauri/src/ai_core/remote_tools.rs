@@ -2064,6 +2064,8 @@ async fn remote_versions(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolE
                         "modified": v.modified,
                         "size": v.size,
                         "modified_by": v.modified_by,
+                        // A delete or hide marker: nothing to download or restore.
+                        "deleted": v.deleted,
                     })
                 })
                 .collect();

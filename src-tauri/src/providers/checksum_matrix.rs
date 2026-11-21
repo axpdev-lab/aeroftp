@@ -64,7 +64,9 @@ pub fn caveat_text(token: &str) -> &str {
         DRIVE_WORKSPACE => "Native Google Workspace documents have no byte stream and therefore no digest.",
         ONEDRIVE_HASHES => "Which of the three is present depends on the account: personal OneDrive publishes QuickXorHash, business and SharePoint typically SHA-1 and SHA-256.",
         DROPBOX_CONTENT_HASH => "Not a plain file digest: a SHA-256 over the SHA-256 of each 4 MiB block. Comparable only against another Dropbox content hash.",
-        KOOFR_PROPRIETARY => "Koofr's own opaque hash. Comparable only against another Koofr hash.",
+        KOOFR_PROPRIETARY => {
+            "The MD5 of the content (measured 2026-11-20), reported under its own name: compared only against another Koofr hash, and by the version download of the current row against the bytes read."
+        }
         GITHUB_BLOB => "The git blob SHA-1, computed over `blob <len>\\0` + content, so it does not match a plain SHA-1 of the same file.",
         IMMICH_ASSET => "The asset checksum Immich records at upload time.",
         CIPHERTEXT => "Inside the Overlays Path the digest describes the encrypted bytes stored on the server, not the plaintext you see. It will not match a local hash of the same file, by design.",
