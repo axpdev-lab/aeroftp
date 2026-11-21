@@ -629,7 +629,8 @@ impl DropboxProvider {
                 error: ProviderError::Other(msg),
                 throttled: dropbox_is_rate_limited(status.as_u16(), &text),
                 retry_after: dropbox_retry_hint(&text, retry_header.as_deref()),
-                maybe_applied: false,
+                // A gateway that gave up says nothing of the change behind it.
+                maybe_applied: (502..=504).contains(&status.as_u16()),
             });
         }
 
@@ -2345,7 +2346,7 @@ impl StorageProvider for DropboxProvider {
             "path": format!("rev:{}", version_id)
         });
 
-        let url = format!("{}/files/download", CONTENT_BASE);
+        let url = format!("{}/files/download", self.content_api_base());
 
         let response = self
             .client
@@ -4031,6 +4032,51 @@ mod tests {
         }
         assert_eq!(calls.lock().unwrap().len(), before);
         assert!(!out.exists());
+    }
+
+    /// A revision answered 206 is a part, not the revision: nothing is
+    /// written and the destination keeps its bytes; a 200 is written.
+    #[tokio::test]
+    async fn a_dropbox_revision_answered_206_leaves_the_destination() {
+        use axum::response::IntoResponse;
+        let app = axum::Router::new().route(
+            "/files/download",
+            axum::routing::post(|headers: axum::http::HeaderMap| async move {
+                let arg = headers
+                    .get("Dropbox-API-Arg")
+                    .and_then(|v| v.to_str().ok())
+                    .unwrap_or_default()
+                    .to_string();
+                if arg.contains("rev:part") {
+                    (
+                        axum::http::StatusCode::PARTIAL_CONTENT,
+                        [("content-range", "bytes 0-1/5")],
+                        "wh",
+                    )
+                        .into_response()
+                } else {
+                    "whole".into_response()
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = fixture_connected();
+        provider.content_base_override = Some(format!("http://{addr}"));
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("a.txt");
+        std::fs::write(&out, "mine").unwrap();
+        let to = out.to_str().unwrap();
+        let partial = provider.download_version("/a.txt", "part", to).await;
+        assert!(partial.is_err(), "{partial:?}");
+        assert_eq!(std::fs::read_to_string(&out).unwrap(), "mine");
+        provider
+            .download_version("/a.txt", "r200", to)
+            .await
+            .expect("a whole revision");
+        server.abort();
+        assert_eq!(std::fs::read_to_string(&out).unwrap(), "whole");
     }
 
     /// A live file's history is asked by its id: by path Dropbox also answers
