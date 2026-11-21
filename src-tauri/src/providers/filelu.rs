@@ -2464,7 +2464,13 @@ impl StorageProvider for FileLuProvider {
         let resp = self.get_after_refusal(&url).await;
         // The file's code changes on success; the cache would keep the old one.
         self.path_cache.remove(&norm);
-        Self::ensure_api_ok(resp?).await?;
+        let resp = resp?;
+        if let Some(unknown) =
+            super::gateway_left_unknown(resp.status(), &format!("the restore of {path}"))
+        {
+            return Err(unknown);
+        }
+        Self::ensure_api_ok(resp).await?;
         // FileLu promotes the version under its own code: the file at the
         // path must then be that code, not only a file of the same size.
         let made = Some(super::bind_version_to_file(
@@ -2648,10 +2654,15 @@ impl StorageProvider for FileLuProvider {
         })?;
         if let Some(s) = server_info.status {
             if s != 200 {
-                let msg = server_info
-                    .msg
-                    .unwrap_or_else(|| format!("Upload server error {}", s));
-                return Err(ProviderError::ServerError(msg));
+                // The status only, as `parse_api` does: `msg` is server text
+                // that can quote the request, a bare API key included.
+                return Err(ProviderError::ServerError(match server_info.msg {
+                    Some(m) => format!(
+                        "Upload server error {s} (a message of {} bytes, not shown)",
+                        m.len()
+                    ),
+                    None => format!("Upload server error {s}"),
+                }));
             }
         }
         let sess_id = server_info.sess_id.ok_or_else(|| {
@@ -6337,6 +6348,50 @@ mod tests {
                 .any(|w| w.contains("/d/f.txt") && w.contains("could not be read back")),
             "{reported:?}"
         );
+    }
+
+    /// An upload server refusal quoting the request (a bare key in its
+    /// message) is reported by its status and length, never its text, and
+    /// no upload is sent.
+    #[tokio::test]
+    async fn an_upload_server_refusal_never_shows_its_message() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let sent = std::sync::Arc::new(AtomicBool::new(false));
+        let seen = std::sync::Arc::clone(&sent);
+        let (mut provider, _) = provider_against(move |_origin, path, query| {
+            let root = query.get("folder_path").map(String::as_str) == Some("/");
+            match path {
+                "/apiv2/folder/list" if root => {
+                    r#"{"status":200,"result":{"files":[],"folders":[{"name":"d","fld_id":7}]}}"#
+                        .to_string()
+                }
+                "/apiv2/folder/list" => {
+                    r#"{"status":200,"result":{"files":[],"folders":[]}}"#.to_string()
+                }
+                "/api/upload/server" => {
+                    r#"{"status":403,"msg":"bad request key=x BAREKEY0SECRET9 refused"}"#
+                        .to_string()
+                }
+                "/up" => {
+                    seen.store(true, Ordering::SeqCst);
+                    "[]".to_string()
+                }
+                _ => r#"{"status":200,"msg":"OK"}"#.to_string(),
+            }
+        })
+        .await;
+        let local = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(local.path(), b"x").unwrap();
+        let outcome = provider
+            .upload(&local.path().to_string_lossy(), "/d/f.txt", None)
+            .await;
+        assert!(
+            matches!(&outcome, Err(ProviderError::ServerError(m))
+                if m.contains("Upload server error 403") && m.contains("not shown")
+                    && !m.contains("BAREKEY0SECRET9")),
+            "{outcome:?}"
+        );
+        assert!(!sent.load(Ordering::SeqCst));
     }
 
     /// What the versions fixture does once a version is deleted.
