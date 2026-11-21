@@ -9907,6 +9907,20 @@ fn legacy_only_list_owner() -> Result<Option<i64>, String> {
         .ok_or_else(|| "The legacy account this connection began with no longer exists".to_string())
 }
 
+/// The account a capture of `account` reads its profile and that profile's
+/// secrets from, the same one for both: [`LEGACY_ONLY_ACCOUNT`] is the legacy
+/// owner once accounts exist ([`legacy_only_list_owner`]), whose list the
+/// profile comes from; its secrets then come from the owner's rows, and from
+/// the vault only where the owner is proven to hold the key. The vault alone
+/// is not the owner's: every account's save writes it. With no account the
+/// capture stays legacy-only.
+pub(crate) fn captured_list_owner(account: i64) -> Result<i64, String> {
+    if account != LEGACY_ONLY_ACCOUNT {
+        return Ok(account);
+    }
+    Ok(legacy_only_list_owner()?.unwrap_or(LEGACY_ONLY_ACCOUNT))
+}
+
 /// [`mcp_list_active_server_profiles`] for the account `user`, whichever is
 /// active now: a connection bound to the account it began with reads that
 /// account's list across a switch (`cloud_provider_factory`). `None` reads
