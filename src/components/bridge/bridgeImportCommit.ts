@@ -231,11 +231,16 @@ export async function commitImportedServers(
  * scan that ends after the panel closed is settled at once. A confirm in
  * flight is waited for first: settled while its profiles are still being
  * saved, the scan would take back the secrets of profiles about to be saved.
+ * Of scan requests that overlap (two files dropped before either was read),
+ * the one begun last owns the panel, and every other one is settled when it
+ * returns: a scan no panel holds would keep its secrets for the life of the
+ * process.
  */
 export function createScanSettler(settle: (scanId: string | null) => Promise<unknown>) {
     let current: string | null = null;
     let closed = false;
     let confirm: Promise<unknown> | null = null;
+    let generation = 0;
     const run = async (scanId: string | null) => {
         try {
             await settle(scanId);
@@ -250,6 +255,16 @@ export function createScanSettler(settle: (scanId: string | null) => Promise<unk
         await confirm?.catch(() => undefined);
         await run(scanId);
     };
+    /**
+     * Holds the scan just made; one made after the panel closed is settled,
+     * and so is the one it replaces.
+     */
+    const track = async (scanId: string | null | undefined) => {
+        const previous = current;
+        current = scanId ?? null;
+        if (previous && previous !== current) await run(previous);
+        if (closed) await release();
+    };
     return {
         /** Runs the confirm of the scan held; a settle meanwhile waits for it. */
         async confirming<T>(work: () => Promise<T>): Promise<T> {
@@ -261,10 +276,33 @@ export function createScanSettler(settle: (scanId: string | null) => Promise<unk
                 if (confirm === running) confirm = null;
             }
         },
-        /** Holds the scan just made; one made after the panel closed is settled. */
-        async track(scanId: string | null | undefined) {
-            current = scanId ?? null;
-            if (closed) await release();
+        track,
+        /** A new scan request: the one begun last owns the panel. */
+        begin(): number {
+            return ++generation;
+        },
+        /**
+         * Runs the scan request `request` begun: its response while it is
+         * still the last one begun, its scan then held. A request overtaken
+         * meanwhile resolves to null: it is not run if it has not started, its
+         * scan is settled, and its failure is dropped, so only the last
+         * request speaks to the panel.
+         */
+        async latest<T extends { scanId?: string | null }>(request: number, scan: () => Promise<T>): Promise<T | null> {
+            if (request !== generation) return null;
+            let response: T;
+            try {
+                response = await scan();
+            } catch (e) {
+                if (request !== generation) return null;
+                throw e;
+            }
+            if (request !== generation) {
+                if (response.scanId) await run(response.scanId);
+                return null;
+            }
+            await track(response.scanId);
+            return response;
         },
         /** Settles the scan held, if any, once. */
         release,

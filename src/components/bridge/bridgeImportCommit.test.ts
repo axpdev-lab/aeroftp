@@ -378,6 +378,62 @@ describe('createScanSettler', () => {
         expect(panelSource.match(/commitImportedServers\(/g)).toHaveLength(1);
     });
 
+    // Two files dropped before either was read: whichever scan returns first,
+    // the later request owns the preview and both scans are settled in the end.
+    it.each(['earlier', 'later'] as const)('of two overlapping scans publishes the later one and settles both, the %s one returning first', async (first) => {
+        const settle = vi.fn().mockResolvedValue(undefined);
+        const scans = createScanSettler(settle);
+        const answer: Record<string, (r: { scanId: string }) => void> = {};
+        const earlier = scans.begin();
+        const earlierDone = scans.latest(earlier, () => new Promise<{ scanId: string }>(r => { answer.earlier = r; }));
+        const later = scans.begin();
+        const laterDone = scans.latest(later, () => new Promise<{ scanId: string }>(r => { answer.later = r; }));
+        const second = first === 'earlier' ? 'later' : 'earlier';
+        answer[first]({ scanId: `scan-${first}` });
+        answer[second]({ scanId: `scan-${second}` });
+        await expect(earlierDone).resolves.toBeNull();
+        await expect(laterDone).resolves.toEqual({ scanId: 'scan-later' });
+        expect(settle.mock.calls).toEqual([['scan-earlier']]);
+        await scans.close();
+        expect(settle.mock.calls).toEqual([['scan-earlier'], ['scan-later']]);
+    });
+
+    it('does not run a scan request overtaken before it started, and drops the failure of one overtaken', async () => {
+        const settle = vi.fn().mockResolvedValue(undefined);
+        const scans = createScanSettler(settle);
+        const notStarted = scans.begin();
+        scans.begin();
+        const scan = vi.fn().mockResolvedValue({ scanId: 'never' });
+        await expect(scans.latest(notStarted, scan)).resolves.toBeNull();
+        expect(scan).not.toHaveBeenCalled();
+        let fail!: (e: Error) => void;
+        const failing = scans.latest(scans.begin(), () => new Promise<{ scanId: string }>((_, reject) => { fail = reject; }));
+        scans.begin();
+        fail(new Error('unreadable'));
+        await expect(failing).resolves.toBeNull();
+        await expect(scans.latest(scans.begin(), () => Promise.reject(new Error('unreadable')))).rejects.toThrow('unreadable');
+        expect(settle).not.toHaveBeenCalled();
+    });
+
+    it('settles a held scan that another one replaces', async () => {
+        const settle = vi.fn().mockResolvedValue(undefined);
+        const scans = createScanSettler(settle);
+        await scans.track('scan-1');
+        await scans.track('scan-2');
+        expect(settle.mock.calls).toEqual([['scan-1']]);
+        await scans.close();
+        expect(settle.mock.calls).toEqual([['scan-1'], ['scan-2']]);
+    });
+
+    it('is the scan the panel runs: the request is taken before the first await and published only while latest', () => {
+        const body = panelSource.slice(panelSource.indexOf('const runScan = async'), panelSource.indexOf('// Drag-and-drop entry point'));
+        expect(body.indexOf('const request = scans.begin();')).toBeGreaterThan(0);
+        expect(body.indexOf('const request = scans.begin();')).toBeLessThan(body.indexOf('await '));
+        expect(body).toMatch(/await scans\.latest\(request, \(\) => invoke<BridgeImportResult>\('import_bridge_config'/);
+        expect(body).toMatch(/if \(r === null\) \{ latest = false; return; \}\s*setResult\(r\);/);
+        expect(panelSource).not.toMatch(/scans\.track\(/);
+    });
+
     it('keeps going when a settle fails', async () => {
         const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
         const settle = vi.fn().mockRejectedValueOnce(new Error('locked')).mockResolvedValue(undefined);

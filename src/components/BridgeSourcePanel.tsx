@@ -197,22 +197,27 @@ export const BridgeSourcePanel: React.FC<Props> = ({
 
     const runScan = async (filePath: string) => {
         if (!filePath) return;
+        // Taken before the first await: of two files dropped in a row, the
+        // one dropped last owns the preview, and the other scan is settled.
+        const request = scans.begin();
         setLoading(true);
         setError(null);
         setResult(null);
         setKeptRelaxed(new Set());
         await scans.release();
+        let latest = true;
         try {
-            const r = await invoke<BridgeImportResult>('import_bridge_config', {
+            const r = await scans.latest(request, () => invoke<BridgeImportResult>('import_bridge_config', {
                 source: source.id, filePath,
-            });
-            void scans.track(r.scanId);
+            }));
+            // Overtaken by a later scan, which owns the panel state now.
+            if (r === null) { latest = false; return; }
             setResult(r);
             setSelectedIds(new Set(r.servers.map(s => s.id)));
         } catch (e) {
             setError(String(e));
         } finally {
-            setLoading(false);
+            if (latest) setLoading(false);
         }
     };
 
