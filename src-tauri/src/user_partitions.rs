@@ -427,7 +427,38 @@ pub fn init_db_schema(conn: &Connection) -> Result<(), String> {
              discovery_mode     TEXT NOT NULL DEFAULT 'both',
              rate_limit_per_min INTEGER NOT NULL DEFAULT 20,
              updated_at         INTEGER NOT NULL
-         );",
+         );
+
+         CREATE TABLE IF NOT EXISTS proton_session_index (
+             user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+             credential_id  TEXT NOT NULL,
+             fingerprint    TEXT NOT NULL,
+             blob_digest    TEXT NOT NULL,
+             key_tag        TEXT NOT NULL,
+             updated_at     INTEGER NOT NULL,
+             PRIMARY KEY(user_id, credential_id)
+         );
+
+         CREATE TRIGGER IF NOT EXISTS proton_session_index_leaves_with_its_row
+             AFTER DELETE ON user_credentials
+         BEGIN
+             DELETE FROM proton_session_index
+             WHERE user_id = OLD.user_id AND credential_id = OLD.credential_id;
+         END;
+
+         CREATE TABLE IF NOT EXISTS private_token_sign_ins (
+             user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+             credential_id  TEXT NOT NULL,
+             blob_digest    TEXT NOT NULL,
+             PRIMARY KEY(user_id, credential_id)
+         );
+
+         CREATE TRIGGER IF NOT EXISTS private_token_sign_in_leaves_with_its_row
+             AFTER DELETE ON user_credentials
+         BEGIN
+             DELETE FROM private_token_sign_ins
+             WHERE user_id = OLD.user_id AND credential_id = OLD.credential_id;
+         END;",
     )
     .map_err(|e| format!("User partitions schema init: {e}"))
 }
@@ -987,6 +1018,29 @@ fn resolve_relocate_secret(
     protocol: &str,
     profile_id: &str,
 ) -> Result<Option<Zeroizing<String>>, String> {
+    let read_vault =
+        |key: &str| Ok(CredentialStore::from_cache().and_then(|store| store.get_secret(key).ok()));
+    resolve_relocate_secret_with(
+        conn,
+        root_key,
+        user_id,
+        user_dek,
+        protocol,
+        profile_id,
+        &read_vault,
+    )
+}
+
+/// [`resolve_relocate_secret`] with the vault read given.
+fn resolve_relocate_secret_with(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+    user_dek: Option<&SecretKey>,
+    protocol: &str,
+    profile_id: &str,
+    read_vault: &SecretReader<'_>,
+) -> Result<Option<Zeroizing<String>>, String> {
     let candidates = relocate_credential_key_candidates(protocol, profile_id);
     for key in &candidates {
         let from_partition = if let Some(dek) = user_dek {
@@ -1001,17 +1055,22 @@ fn resolve_relocate_secret(
                 Err(e) => return Err(e),
             }
         };
+        // A row that may be another account's copy never moves with it.
+        let from_partition = checked_row(conn, user_id, key, from_partition, read_vault)?;
         if let Some(secret) = from_partition {
             if !secret.is_empty() {
                 return Ok(Some(secret));
             }
         }
+        // A private token of another account than the legacy owner is its
+        // partition row alone: the vault key of that name is the owner's.
+        if vault_copy_is_another_accounts(conn, user_id, key)? {
+            continue;
+        }
         // Dual-write fallback: vault still holds secrets not yet mirrored.
-        if let Some(store) = CredentialStore::from_cache() {
-            if let Ok(secret) = store.get_secret(key) {
-                if !secret.is_empty() {
-                    return Ok(Some(secret));
-                }
+        if let Ok(Some(secret)) = read_vault(key) {
+            if !secret.is_empty() {
+                return Ok(Some(secret));
             }
         }
     }
@@ -2157,7 +2216,127 @@ fn insert_profile_rows(
         )
         .map_err(|e| format!("Insert profile: {e}"))?;
     }
+    // Every tag of this list is now this machine's.
+    tx.execute(
+        "DELETE FROM global_state WHERE key = ?1",
+        params![profile_tags_pending_key(user_id)],
+    )
+    .map_err(|e| format!("Clear pending profile tags: {e}"))?;
     Ok(())
+}
+
+/// Marks an account whose profile tags may have been made with another
+/// machine's key (a keystore restore of another machine's partition): until
+/// its list is written here again, a holder lookup does not see its profiles.
+const PROFILE_TAGS_PENDING_PREFIX: &str = "profile_tags_pending_";
+
+fn profile_tags_pending_key(user_id: i64) -> String {
+    format!("{PROFILE_TAGS_PENDING_PREFIX}{user_id}")
+}
+
+/// Whether an existing account's profile tags are still pending: a lookup of
+/// who holds a profile id cannot be trusted until they are rebuilt.
+fn profile_tags_pending(conn: &Connection) -> Result<bool, String> {
+    conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM global_state g JOIN users u
+         ON g.key = ?1 || u.id)",
+        params![PROFILE_TAGS_PENDING_PREFIX],
+        |row| row.get(0),
+    )
+    .map_err(|e| format!("Read pending profile tags: {e}"))
+}
+
+/// After a keystore restore wrote `user_partitions.db` whole: the profile
+/// tags (`profile_uid`, `dedup_key`) are keyed by the root of the machine the
+/// backup was made on, and the transport re-key only re-wraps the DEKs. Every
+/// account this machine's key opens gets its list written again, which tags
+/// it with this machine's root; an account it cannot open now (a passphrase
+/// account, or one with no usable transport DEK) is marked pending, and is
+/// tagged by the first write of its list or at its unlock
+/// ([`migrate_credentials_for_user`]). While any is pending, the passes that
+/// infer from the tags which profiles another account holds wait. A restore
+/// of this machine's own partition (an account already opened by this key,
+/// none re-keyed or unreadable) has this machine's tags and is left alone.
+/// Returns the accounts left pending.
+pub fn retag_restored_profiles(
+    conn: &Connection,
+    local_root_key: &[u8; 32],
+    rekey: &TransportRekeyReport,
+) -> Result<usize, String> {
+    if rekey.already_local > 0 && rekey.rekeyed == 0 && rekey.unreadable == 0 {
+        return Ok(0);
+    }
+    let root_secret = user_crypto::secret_key_from_bytes(local_root_key);
+    let mut pending = 0;
+    for user in list_users(conn)? {
+        let tx =
+            rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
+                .map_err(|e| format!("Start profile tags: {e}"))?;
+        let row = read_user_key_row(&tx, user.id)?;
+        let opened = if row.has_passphrase {
+            None
+        } else {
+            unwrap_user_dek_with_key(&row, &root_secret).ok()
+        };
+        let listed = opened.and_then(|dek| {
+            read_profiles_with_dek(&tx, user.id, &dek)
+                .ok()
+                .map(|profiles| (profiles, dek))
+        });
+        match listed {
+            Some((profiles, dek)) => {
+                insert_profile_rows(&tx, &root_secret, user.id, &dek, &profiles)?
+            }
+            None => {
+                upsert_global_state(&tx, &profile_tags_pending_key(user.id), "1", now_ms())?;
+                pending += 1;
+            }
+        }
+        tx.commit()
+            .map_err(|e| format!("Commit profile tags: {e}"))?;
+    }
+    Ok(pending)
+}
+
+/// A pending account's list tagged with this machine's root, now that its
+/// DEK is reachable. Nothing to do when its tags are not pending, or while
+/// the account is locked or waits for a security reset.
+fn retag_own_profiles_if_pending(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+) -> Result<(), String> {
+    let pending = conn
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM global_state WHERE key = ?1)",
+            params![profile_tags_pending_key(user_id)],
+            |row| row.get::<_, bool>(0),
+        )
+        .map_err(|e| format!("Read pending profile tags: {e}"))?;
+    if !pending {
+        return Ok(());
+    }
+    let root_secret = user_crypto::secret_key_from_bytes(root_key);
+    let retagged = with_user_dek(conn, &root_secret, user_id, |uid, dek| {
+        let tx =
+            rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
+                .map_err(|e| format!("Start profile tags: {e}"))?;
+        let profiles = read_profiles_with_dek(&tx, uid, dek)?;
+        insert_profile_rows(&tx, &root_secret, uid, dek, &profiles)?;
+        tx.commit().map_err(|e| format!("Commit profile tags: {e}"))
+    });
+    match retagged {
+        Err(e) if e == "USER_LOCKED" || e == "SECURITY_RESET_PENDING" => Ok(()),
+        other => other,
+    }
+}
+
+/// An account other than the legacy owner whose passes read from the tags
+/// which profiles the others hold waits while any account's tags are
+/// pending ([`retag_restored_profiles`]). The owner is read only while tags
+/// are pending: a reader of an account's own row consults it no sooner.
+fn waits_for_profile_tags(conn: &Connection, user_id: i64) -> Result<bool, String> {
+    Ok(profile_tags_pending(conn)? && nonprofile_secret_owner_unpersisted(conn)? != Some(user_id))
 }
 
 /// Puts right the profile lists of a partition database written whole rather
@@ -2660,9 +2839,12 @@ pub fn relocate_server_profile(
     })
 }
 
-/// Production GUI/CLI entry point. Native sessions are committed with the
-/// profiles under their key/UID guards; the remaining legacy dual writes keep
-/// their existing best-effort behavior after the partition transaction.
+/// Production GUI/CLI entry point. A native Proton Drive session belongs to
+/// one account, so it never travels: the target is told the profile asks to
+/// sign in again (`secrets_not_copied`), and a Move drops the source's copy
+/// locally, without a sign-out on Proton that would end it for any other
+/// profile of the source account holding it. The remaining per-profile
+/// secrets keep their existing best-effort dual after the partition commit.
 #[allow(clippy::too_many_arguments)]
 fn relocate_server_profile_and_credentials(
     conn: &mut Connection,
@@ -2685,169 +2867,215 @@ fn relocate_server_profile_and_credentials(
     let root_secret = user_crypto::secret_key_from_bytes(root_key);
     let target_dek =
         resolve_user_dek_scoped(conn, &root_secret, target_user_id, target_passphrase)?;
-    // Copy the source DEK and RELEASE its SessionHold before either helper
-    // thread waits for a native guard. Refresh persistence may need that same
-    // session while it owns the UID lease we are waiting for.
-    let source_dek = with_user_dek(conn, &root_secret, source_user_id, |_, dek| {
-        Ok(user_crypto::secret_key_from_bytes(dek.expose_secret()))
-    })?;
-    let source_key = format!("proton_native_session_{profile_id}");
-    let new_key = format!("proton_native_session_{new_profile_id}");
-    let read_native = |user_id, dek: &SecretKey, key: &str| match read_credential_with_dek(
-        conn, user_id, dek, key,
-    )? {
-        Some(raw) => Ok(Some(raw)),
-        None => {
-            let profile = key
-                .strip_prefix("proton_native_session_")
-                .ok_or_else(|| "INVALID_NATIVE_SESSION_KEY".to_string())?;
-            let owners = profile_credential_owner_ids(store, profile, key)?;
-            // A global value cannot be attributed safely when several users
-            // own this key and the requested user's partition has no value.
-            if owners.as_slice() == [user_id]
-                || (owners.is_empty() && legacy_credential_owner_id()? == Some(user_id))
-            {
-                get_optional_secret(store, key)
-            } else {
-                Ok(None)
-            }
-        }
-    };
-
+    let source_key = format!("{PROTON_SESSION_PREFIX}{profile_id}");
+    let new_key = format!("{PROTON_SESSION_PREFIX}{new_profile_id}");
+    // A Move of a native Proton profile, or of one that holds a session key,
+    // holds the source's session from before it looks whether there is one
+    // until it has removed it: a sign-in, a restore or a refresh of the
+    // profile in between waits for the Move, and a lease it cannot take stops
+    // the Move here, before anything changed. A Proton profile with no session
+    // yet is held too, since a sign-in of it may be open. Any other profile
+    // takes no Proton lock. Taken outside any session hold, since a refresh
+    // in flight may need the account's session to save.
     #[cfg(feature = "proton-native")]
-    let native = {
-        use crate::providers::proton_native::vault;
-        let keys = vault::lock_relocation_keys_blocking(profile_id, new_profile_id)
-            .map_err(|error| error.to_string())?;
-        let source = read_native(source_user_id, &source_dek, &source_key)?;
-        let target = read_native(target_user_id, &target_dek, &new_key)?;
-        #[cfg(test)]
-        native_relocation_test_hook("captured");
-        keys.lock_sessions_blocking(
-            store,
-            source.as_ref().map(|raw| raw.as_str()),
-            target.as_ref().map(|raw| raw.as_str()),
-        )
-        .map_err(|error| error.to_string())?
-    };
-    #[cfg(not(feature = "proton-native"))]
-    if read_native(source_user_id, &source_dek, &source_key)?.is_some() {
-        return Err("Native Proton session relocation requires the proton-native feature".into());
-    }
-
-    // Reread after the UID leases: a refresh may have rotated R1 to R2 while
-    // the helper waited. The target passphrase remains scoped and never primes
-    // or replaces the active user's session.
-    #[cfg(feature = "proton-native")]
-    let source = read_native(source_user_id, &source_dek, &source_key)?;
-    #[cfg(feature = "proton-native")]
-    let target = read_native(target_user_id, &target_dek, &new_key)?;
-    #[cfg(feature = "proton-native")]
-    let remove_source_vault = native.source_vault_matches();
-    #[cfg(not(feature = "proton-native"))]
-    let remove_source_vault = false;
-    let apply = |native_raw: Option<&str>| {
-        // with_user_dek acquires the source SessionHold BEFORE SQLite's write
-        // reservation and verifies that the source is still unlocked.
-        let mut relocation =
-            with_user_dek(conn, &root_secret, source_user_id, |_, current_dek| {
-                let tx = Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
-                    .map_err(|error| format!("Start profile relocation: {error}"))?;
-                let source_row = read_user_key_row(&tx, source_user_id)?;
-                let target_row = read_user_key_row(&tx, target_user_id)?;
-                if !user_crypto::verify_dek(&source_dek, &source_row.dek_verifier)?
-                    || !user_crypto::verify_dek(&target_dek, &target_row.dek_verifier)?
-                {
-                    return Err("DEK_VERIFIER_MISMATCH".into());
-                }
-                let relocation = relocate_server_profile_in_transaction(
-                    &tx,
-                    root_key,
-                    &root_secret,
-                    source_user_id,
-                    current_dek,
-                    target_user_id,
-                    &target_dek,
-                    profile_id,
-                    new_profile_id,
-                    remove_from_source,
-                )?;
-                if relocation.inserted {
-                    if let Some(raw) = native_raw {
-                        set_user_credential_with_dek(
-                            &tx,
-                            target_user_id,
-                            &target_dek,
-                            &new_key,
-                            "proton_native_session",
-                            raw,
-                        )?;
-                    }
-                }
-                if relocation.moved {
-                    delete_user_credential_for(&tx, source_user_id, &source_key)?;
-                }
-                tx.commit()
-                    .map_err(|error| format!("Commit profile relocation: {error}"))?;
-                Ok(relocation)
-            })?;
-        // This loop skips native sessions entirely. It cannot overwrite the
-        // exact pair above or delete a source outside the native guards.
-        relocation.secrets_not_copied = relocate_server_credential_dual(
+    let held = (remove_from_source
+        && moves_a_proton_session(
             conn,
             store,
             root_key,
             source_user_id,
-            &relocation,
-            target_passphrase,
-        );
-        #[cfg(test)]
-        native_relocation_test_hook("committed");
-        if relocation.inserted {
-            if let Some(raw) = native_raw {
-                store.store(&new_key, raw).map_err(|error| format!(
-                    "RELOCATION_COMMITTED: profile {} is saved in target user {}; its valid Proton session is retained in that partition, but the vault copy failed: {error}",
-                    relocation.new_profile_id, target_user_id,
-                ))?;
-                if relocation.moved && remove_source_vault && source_key != new_key {
-                    store.delete(&source_key).map_err(|error| format!(
-                        "RELOCATION_COMMITTED: profile {} and its Proton session are saved in target user {}; removal of the source vault session failed: {error}",
-                        relocation.new_profile_id, target_user_id,
-                    ))?;
-                }
-            }
+            profile_id,
+            &source_key,
+        )?)
+    .then(|| {
+        use crate::providers::proton_native::vault;
+        vault::hold_session_blocking(
+            vault::SessionOwner::for_user(Some(source_user_id)),
+            profile_id,
+        )
+    })
+    .transpose()
+    .map_err(|error| error.to_string())?;
+    // The source's session, read as its own readers read it: its row, or the
+    // vault copy only for the legacy owner.
+    let source_has_session =
+        with_user_dek(conn, &root_secret, source_user_id, |_, dek| {
+            Ok(read_credential_with_dek(conn, source_user_id, dek, &source_key)?.is_some())
+        })? || (!vault_copy_is_another_accounts(conn, source_user_id, &source_key)?
+            && get_optional_secret(store, &source_key)?.is_some());
+    #[cfg(test)]
+    relocation_looked();
+    let mut relocation = with_user_dek(conn, &root_secret, source_user_id, |_, source_dek| {
+        let tx = Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
+            .map_err(|error| format!("Start profile relocation: {error}"))?;
+        let relocation = relocate_server_profile_in_transaction(
+            &tx,
+            root_key,
+            &root_secret,
+            source_user_id,
+            source_dek,
+            target_user_id,
+            &target_dek,
+            profile_id,
+            new_profile_id,
+            remove_from_source,
+        )?;
+        // Without native Proton nothing refreshes the session, so its row goes
+        // with the profile.
+        #[cfg(not(feature = "proton-native"))]
+        if relocation.moved {
+            delete_user_credential_for(&tx, source_user_id, &source_key)?;
         }
+        // A sign-in of the profile still open when the Move commits ends after
+        // it, under the key the Move holds until it returns: marked with the
+        // list it leaves, the id is refused that sign-in's save.
+        #[cfg(feature = "proton-native")]
+        if relocation.moved {
+            mark_moved_away(&tx, source_user_id, profile_id)?;
+        }
+        tx.commit()
+            .map_err(|error| format!("Commit profile relocation: {error}"))?;
         Ok(relocation)
-    };
-    #[cfg(feature = "proton-native")]
-    return native.with_current_session(
+    })?;
+    // This loop skips native sessions entirely.
+    relocation.secrets_not_copied = relocate_server_credential_dual(
+        conn,
         store,
-        source.as_ref().map(|raw| raw.as_str()),
-        target.as_ref().map(|raw| raw.as_str()),
-        apply,
+        root_key,
+        source_user_id,
+        &relocation,
+        target_passphrase,
     );
+    if source_has_session && relocation.inserted {
+        relocation.secrets_not_copied.push(new_key);
+    }
+    // A Move drops the source's session locally under the hold it took before
+    // it looked: a refresh in flight saved its pair before, and nothing writes
+    // the session back into the account the profile left. The legacy owner's
+    // vault copy goes with it.
+    #[cfg(feature = "proton-native")]
+    if let Some(held) = held
+        .as_ref()
+        .filter(|_| source_has_session && relocation.moved)
+    {
+        held.discard()
+            .map_err(|error| {
+                format!(
+                    "RELOCATION_COMMITTED: profile {} is saved in target user {}; removal of the source's Proton session failed: {error}",
+                    relocation.new_profile_id, target_user_id,
+                )
+            })?;
+    }
     #[cfg(not(feature = "proton-native"))]
-    apply(None)
+    if source_has_session
+        && relocation.moved
+        && !vault_copy_is_another_accounts(conn, source_user_id, &source_key)?
+    {
+        delete_optional_secret(store, &source_key).map_err(|error| {
+            format!(
+                "RELOCATION_COMMITTED: profile {} is saved in target user {}; removal of the source's Proton session from the vault failed: {error}",
+                relocation.new_profile_id, target_user_id,
+            )
+        })?;
+    }
+    Ok(relocation)
 }
 
-#[cfg(all(test, feature = "proton-native"))]
-type NativeRelocationHook = Option<Box<dyn FnMut(&str)>>;
+/// Whether the Move of `profile_id` out of `source_user_id` may carry a native
+/// Proton session, and so holds it: the profile is a Proton one in the source's
+/// list, read under the profile list lock the Move holds, or the source holds
+/// its session key, seen without decrypting it.
+#[cfg(feature = "proton-native")]
+fn moves_a_proton_session(
+    conn: &Connection,
+    store: &CredentialStore,
+    root_key: &[u8; 32],
+    source_user_id: i64,
+    profile_id: &str,
+    session_key: &str,
+) -> Result<bool, String> {
+    let proton = list_server_profiles_for(conn, root_key, source_user_id)?
+        .iter()
+        .find(|profile| value_str(profile, &["id", "uid", "profileUid"]) == Some(profile_id))
+        .and_then(|profile| value_str(profile, &["protocol"]))
+        .is_some_and(|protocol| protocol.eq_ignore_ascii_case("proton"));
+    Ok(proton
+        || partition_row_exists(conn, source_user_id, session_key)?
+        || (!vault_copy_is_another_accounts(conn, source_user_id, session_key)?
+            && get_optional_secret(store, session_key)?.is_some()))
+}
 
-#[cfg(all(test, feature = "proton-native"))]
-thread_local! {
-    static NATIVE_RELOCATION_HOOK: RefCell<NativeRelocationHook> = const { RefCell::new(None) };
+/// Marks a profile id a Move took out of an account ([`profile_moved_away`]).
+#[cfg(feature = "proton-native")]
+const MOVED_AWAY_PREFIX: &str = "proton_profile_moved_away_";
+
+#[cfg(feature = "proton-native")]
+fn moved_away_key(user_id: i64, profile_id: &str) -> String {
+    format!("{MOVED_AWAY_PREFIX}{user_id}_{profile_id}")
+}
+
+#[cfg(feature = "proton-native")]
+fn mark_moved_away(conn: &Connection, user_id: i64, profile_id: &str) -> Result<(), String> {
+    conn.execute(
+        "INSERT INTO global_state(key, value, updated_at)
+         VALUES (?1, '1', ?2)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+        params![moved_away_key(user_id, profile_id), now_ms()],
+    )
+    .map_err(|e| format!("Write moved profile marker: {e}"))?;
+    Ok(())
+}
+
+/// Whether a Move took profile `profile_id` out of account `user` and the
+/// account has not saved it again since: a sign-in begun before the Move and
+/// ended after it would save a session for a profile the account no longer
+/// has. An id the account never had is not marked, so a sign-in of a profile
+/// not saved yet goes ahead. The mark goes once the account lists the id.
+#[cfg(feature = "proton-native")]
+pub(crate) fn profile_moved_away(
+    store: &CredentialStore,
+    user: i64,
+    profile_id: &str,
+) -> Result<bool, String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    let key = moved_away_key(user, profile_id);
+    let marked = conn
+        .query_row(
+            "SELECT 1 FROM global_state WHERE key = ?1",
+            params![key],
+            |_| Ok(()),
+        )
+        .optional()
+        .map_err(|e| format!("Read moved profile marker: {e}"))?
+        .is_some();
+    if !marked {
+        return Ok(false);
+    }
+    let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
+    let listed = list_server_profiles_for(&conn, &root_key, user)?
+        .iter()
+        .any(|profile| value_str(profile, &["id", "uid", "profileUid"]) == Some(profile_id));
+    if listed {
+        conn.execute("DELETE FROM global_state WHERE key = ?1", params![key])
+            .map_err(|e| format!("Clear moved profile marker: {e}"))?;
+    }
+    Ok(!listed)
 }
 
 #[cfg(test)]
-fn native_relocation_test_hook(stage: &str) {
-    #[cfg(feature = "proton-native")]
-    NATIVE_RELOCATION_HOOK.with_borrow_mut(|hook| {
-        if let Some(hook) = hook {
-            hook(stage);
-        }
-    });
-    #[cfg(not(feature = "proton-native"))]
-    let _ = stage;
+thread_local! {
+    /// Runs once on the thread of a Copy or a Move, after it looked whether the
+    /// source holds a native session and before it commits, for a test to
+    /// play another writer there.
+    static RELOCATION_LOOKED: RefCell<Option<Box<dyn FnOnce()>>> = const { RefCell::new(None) };
+}
+
+#[cfg(test)]
+fn relocation_looked() {
+    if let Some(hook) = RELOCATION_LOOKED.take() {
+        hook();
+    }
 }
 
 /// Both profile lists are changed in the caller's transaction, after the
@@ -3060,8 +3288,14 @@ fn relocate_secret_key_dual(
                 copied = false;
             }
             Ok(Some(secret)) => {
-                // Vault stays in sync (source of truth + fallback + downgrade safe).
-                let in_vault = store.is_some_and(|store| store.store(new_key, &secret).is_ok());
+                // Vault stays in sync (source of truth + fallback + downgrade safe),
+                // except for a target's private token: the vault key of that
+                // name is the legacy owner's, so the target's row alone holds it.
+                let target_private =
+                    vault_copy_is_another_accounts(conn, relocation.target_user_id, new_key)
+                        .unwrap_or(true);
+                let in_vault = !target_private
+                    && store.is_some_and(|store| store.store(new_key, &secret).is_ok());
                 // Mirror onto the target partition under its scoped DEK.
                 let root_secret = user_crypto::secret_key_from_bytes(root_key);
                 let in_partition = resolve_user_dek_scoped(
@@ -3098,7 +3332,11 @@ fn relocate_secret_key_dual(
             tracing::warn!("Relocate: {source_key} kept, its copy {new_key} was not written");
             return false;
         }
-        if let Some(store) = store {
+        // A source's private token was its row alone: the vault key of that
+        // name is the legacy owner's and stays.
+        let source_private =
+            vault_copy_is_another_accounts(conn, source_user_id, source_key).unwrap_or(true);
+        if let Some(store) = store.filter(|_| !source_private) {
             let _ = store.delete(source_key);
         }
         let _ = delete_user_credential_for(conn, source_user_id, source_key);
@@ -3277,6 +3515,10 @@ pub fn set_user_credential_for(
     credential_type: &str,
     secret: &str,
 ) -> Result<(), String> {
+    #[cfg(test)]
+    if PARTITION_WRITE_REFUSED.swap(false, std::sync::atomic::Ordering::SeqCst) {
+        return Err("the account store refused the row (test)".to_string());
+    }
     if credential_id.is_empty() {
         return Err("CREDENTIAL_ID_REQUIRED".to_string());
     }
@@ -3357,6 +3599,145 @@ fn set_user_credential_with_dek(
     Ok(())
 }
 
+/// Whether the row `credential_id` of `user_id` holds the very ciphertext a
+/// sign-in of that account wrote, or a refresh of it since
+/// ([`stamp_sign_in`]). A row any other writer rewrote (a restore, an
+/// import, a migration copy, a relocation, the alignment) no longer matches
+/// its stamp.
+fn signed_in_row(conn: &Connection, user_id: i64, credential_id: &str) -> Result<bool, String> {
+    let row: Option<(Vec<u8>, Vec<u8>, String)> = conn
+        .query_row(
+            "SELECT c.encrypted_blob, c.nonce, s.blob_digest
+             FROM user_credentials c
+             JOIN private_token_sign_ins s
+                 ON s.user_id = c.user_id AND s.credential_id = c.credential_id
+             WHERE c.user_id = ?1 AND c.credential_id = ?2",
+            params![user_id, credential_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .optional()
+        .map_err(|e| format!("Read sign-in stamp: {e}"))?;
+    Ok(row.is_some_and(|(blob, nonce, digest)| credential_blob_digest(&blob, &nonce) == digest))
+}
+
+/// Stamps the row `credential_id` of `user_id`, as it is now, as written by
+/// that account's own sign-in: in the caller's transaction, the one that
+/// wrote the row.
+fn stamp_sign_in(conn: &Connection, user_id: i64, credential_id: &str) -> Result<(), String> {
+    let (blob, nonce): (Vec<u8>, Vec<u8>) = conn
+        .query_row(
+            "SELECT encrypted_blob, nonce FROM user_credentials
+             WHERE user_id = ?1 AND credential_id = ?2",
+            params![user_id, credential_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .map_err(|e| format!("Read signed-in credential: {e}"))?;
+    conn.execute(
+        "INSERT INTO private_token_sign_ins(user_id, credential_id, blob_digest)
+         VALUES (?1, ?2, ?3)
+         ON CONFLICT(user_id, credential_id) DO UPDATE SET blob_digest = excluded.blob_digest",
+        params![
+            user_id,
+            credential_id,
+            credential_blob_digest(&blob, &nonce)
+        ],
+    )
+    .map_err(|e| format!("Write sign-in stamp: {e}"))?;
+    Ok(())
+}
+
+/// [`set_user_credential_with_dek`] for a sign-in of `user_id`'s own: a
+/// private token ([`private_token_type`]) is stamped in the same write, so a
+/// stamped row always has its account's sign-in behind it. `conn` is the
+/// caller's transaction.
+fn set_signed_in_credential_with_dek(
+    conn: &Connection,
+    user_id: i64,
+    dek: &SecretKey,
+    credential_id: &str,
+    credential_type: &str,
+    secret: &str,
+) -> Result<(), String> {
+    set_user_credential_with_dek(conn, user_id, dek, credential_id, credential_type, secret)?;
+    if private_token_type(credential_id).is_some() {
+        stamp_sign_in(conn, user_id, credential_id)?;
+    }
+    Ok(())
+}
+
+/// [`set_user_credential_with_dek`] for a refresh of the row: a row a sign-in
+/// stamped stays stamped, any other stays unstamped. `conn` is the caller's
+/// transaction.
+fn set_refreshed_credential_with_dek(
+    conn: &Connection,
+    user_id: i64,
+    dek: &SecretKey,
+    credential_id: &str,
+    credential_type: &str,
+    secret: &str,
+) -> Result<(), String> {
+    let signed_in = signed_in_row(conn, user_id, credential_id)?;
+    set_user_credential_with_dek(conn, user_id, dek, credential_id, credential_type, secret)?;
+    if signed_in {
+        stamp_sign_in(conn, user_id, credential_id)?;
+    }
+    Ok(())
+}
+
+/// [`set_user_credential_for`] for a sign-in of `user_id`'s own
+/// ([`set_signed_in_credential_with_dek`]), the row and its stamp in one
+/// transaction.
+pub(crate) fn set_signed_in_credential_for(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+    credential_id: &str,
+    credential_type: &str,
+    secret: &str,
+) -> Result<(), String> {
+    if credential_id.is_empty() {
+        return Err("CREDENTIAL_ID_REQUIRED".to_string());
+    }
+    if credential_type.is_empty() {
+        return Err("CREDENTIAL_TYPE_REQUIRED".to_string());
+    }
+    let root_secret = user_crypto::secret_key_from_bytes(root_key);
+    with_user_dek(conn, &root_secret, user_id, |user_id, dek| {
+        let tx =
+            rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
+                .map_err(|e| format!("Begin signed-in credential write: {e}"))?;
+        set_signed_in_credential_with_dek(
+            &tx,
+            user_id,
+            dek,
+            credential_id,
+            credential_type,
+            secret,
+        )?;
+        tx.commit()
+            .map_err(|e| format!("Commit signed-in credential write: {e}"))
+    })
+}
+
+/// Forgets every sign-in stamp of the partition database at `db_path`: a
+/// restored database carries its rows, never the sign-ins behind them.
+pub fn forget_sign_in_stamps_in_db(db_path: &std::path::Path) -> Result<(), String> {
+    let conn = Connection::open(db_path).map_err(|e| format!("Open user partitions DB: {e}"))?;
+    let has_stamps: bool = conn
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master
+             WHERE type = 'table' AND name = 'private_token_sign_ins')",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|e| format!("Read sign-in stamps: {e}"))?;
+    if has_stamps {
+        conn.execute("DELETE FROM private_token_sign_ins", [])
+            .map_err(|e| format!("Forget sign-in stamps: {e}"))?;
+    }
+    Ok(())
+}
+
 /// Read one secret from a user's partition, decrypted with their DEK.
 ///
 /// Returns `Ok(None)` when no row exists. The decrypted secret is wrapped in
@@ -3387,6 +3768,81 @@ pub(crate) fn replace_user_credential_if_unchanged(
     update: (&str, &str),
     require_active_user: bool,
 ) -> Result<bool, String> {
+    use subtle::ConstantTimeEq;
+    replace_user_credential_where(
+        conn,
+        root_key,
+        user_id,
+        credential_id,
+        credential_type,
+        &|current| bool::from(current.as_bytes().ct_eq(update.0.as_bytes())),
+        update.1,
+        require_active_user,
+    )
+}
+
+/// Put `value` in the row `credential_id` of `user_id` (`None`: remove it),
+/// only while the row holds `expected` (`None`: no row). Read, comparison and
+/// write share one IMMEDIATE transaction, so a value another writer stored in
+/// between (a refresh of the token) is never replaced. Whether it was written.
+pub(crate) fn swap_user_credential_if(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+    credential_id: &str,
+    credential_type: &str,
+    expected: Option<&str>,
+    value: Option<&str>,
+) -> Result<bool, String> {
+    let root_secret = user_crypto::secret_key_from_bytes(root_key);
+    with_user_dek(conn, &root_secret, user_id, |user_id, dek| {
+        let tx =
+            rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
+                .map_err(|e| format!("Begin conditional credential write: {e}"))?;
+        let current = read_credential_with_dek(&tx, user_id, dek, credential_id)?;
+        let holds = match (current.as_ref().map(|v| v.as_str()), expected) {
+            (None, None) => true,
+            (Some(current), Some(expected)) => {
+                use subtle::ConstantTimeEq;
+                bool::from(current.as_bytes().ct_eq(expected.as_bytes()))
+            }
+            _ => false,
+        };
+        if !holds {
+            return Ok(false);
+        }
+        match value {
+            Some(value) => set_user_credential_with_dek(
+                &tx,
+                user_id,
+                dek,
+                credential_id,
+                credential_type,
+                value,
+            )?,
+            None => delete_user_credential_for(&tx, user_id, credential_id)?,
+        }
+        tx.commit()
+            .map_err(|e| format!("Commit conditional credential write: {e}"))?;
+        Ok(true)
+    })
+}
+
+/// [`replace_user_credential_if_unchanged`] for a row that must still hold a
+/// value `still_holds` accepts, not one exact value: the row is replaced by
+/// `replacement` only then, read and written in one IMMEDIATE transaction,
+/// and a missing row is never created.
+#[allow(clippy::too_many_arguments)]
+fn replace_user_credential_where(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+    credential_id: &str,
+    credential_type: &str,
+    still_holds: &dyn Fn(&str) -> bool,
+    replacement: &str,
+    require_active_user: bool,
+) -> Result<bool, String> {
     if credential_id.is_empty() || credential_type.is_empty() {
         return Err("CREDENTIAL_ID_AND_TYPE_REQUIRED".to_owned());
     }
@@ -3399,18 +3855,681 @@ pub(crate) fn replace_user_credential_if_unchanged(
             return Err(ACCOUNT_CHANGED.to_owned());
         }
         let current = read_credential_with_dek(&tx, user_id, dek, credential_id)?;
-        use subtle::ConstantTimeEq;
-        if !current
-            .as_ref()
-            .is_some_and(|secret| bool::from(secret.as_bytes().ct_eq(update.0.as_bytes())))
-        {
+        if !current.as_ref().is_some_and(|secret| still_holds(secret)) {
             return Ok(false);
         }
-        set_user_credential_with_dek(&tx, user_id, dek, credential_id, credential_type, update.1)?;
+        set_refreshed_credential_with_dek(
+            &tx,
+            user_id,
+            dek,
+            credential_id,
+            credential_type,
+            replacement,
+        )?;
         tx.commit()
             .map_err(|e| format!("Commit conditional credential refresh: {e}"))?;
         Ok(true)
     })
+}
+
+/// A refreshed secret written to `user_id`'s row only while the row holds a
+/// value `still_holds` accepts ([`replace_user_credential_where`]); a missing
+/// row is never created, nor its account's key asked for. The migrations run
+/// first, as for [`store_credential_for_user`], so a copy their alignment
+/// drops is gone before the look.
+#[cfg(feature = "proton-native")]
+pub(crate) fn refresh_user_credential(
+    store: &CredentialStore,
+    user_id: i64,
+    credential_id: &str,
+    credential_type: &str,
+    still_holds: &dyn Fn(&str) -> bool,
+    replacement: &str,
+) -> Result<bool, String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    if !partition_row_exists(&conn, user_id, credential_id)? {
+        return Ok(false);
+    }
+    let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
+    replace_user_credential_where(
+        &conn,
+        &root_key,
+        user_id,
+        credential_id,
+        credential_type,
+        still_holds,
+        replacement,
+        false,
+    )
+}
+
+/// Replace the copy of `credential_id` that [`resolve_credential_for_user_owner_aware`]
+/// (`user`, or [`resolve_active_credential_owner_aware`] for `None`) reads,
+/// only while it still holds `expected` (`None`: no copy at all, which is then
+/// created). Read, comparison and write share one lock: the partition's
+/// IMMEDIATE transaction, or the vault's cross-process write lock, taken
+/// inside that transaction when the legacy owner reads the vault, so no row
+/// appears in between. `Ok(false)`: the copy changed since `expected` was
+/// read, and nothing is written. The legacy owner's other copy (the vault
+/// key after a row write, the row after a vault-only write) then follows on
+/// a best-effort basis, by its own compare-and-write on what it holds, while
+/// `same_chain` says it holds the chain `expected` held (the same chain in
+/// other bytes included); a copy that holds another chain is left as it is.
+/// A follow that fails is [`COPY_NOT_FOLLOWED`]: the copy read was written,
+/// the other was not.
+///
+/// `unmoved` names, for `owner` ([`chain_deletions`]), each key whose
+/// deletions must still be the given generation with none running: checked
+/// in the same transaction, the one a deletion is recorded in, so a deletion
+/// that began after the caller last looked stops the write with
+/// [`CHAIN_DELETED`]. A vault-only write is made inside that transaction too
+/// (lock order: the database, then the vault; no vault lock is ever held
+/// while the database is waited for).
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn replace_owner_aware_if_unchanged(
+    store: &CredentialStore,
+    user: Option<i64>,
+    credential_id: &str,
+    credential_type: &str,
+    expected: Option<&str>,
+    replacement: &str,
+    same_chain: &dyn Fn(&str, &str) -> bool,
+    owner: Option<i64>,
+    unmoved: &[(&str, u64)],
+    signed_in: bool,
+) -> Result<bool, String> {
+    let unmoved_in = |conn: &Connection| -> Result<(), String> {
+        let now = now_ms();
+        for (account, generation) in unmoved {
+            let mut record =
+                DeletionRecord::read(conn, &chain_deletion_key(store, owner, account)?)?;
+            record.settle(now);
+            if record.generation != *generation || !record.running.is_empty() {
+                return Err(CHAIN_DELETED.to_string());
+            }
+        }
+        Ok(())
+    };
+    let vault = || -> Result<bool, String> {
+        match expected {
+            Some(expected) => {
+                store.replace_secret_if_unchanged(credential_id, expected, replacement)
+            }
+            None => store.store_secret_if_absent(credential_id, replacement),
+        }
+        .map_err(|e| format!("Conditional vault write: {e}"))
+    };
+    // A write with nothing to check needs no transaction of its own.
+    let vault_checked = || -> Result<bool, String> {
+        if unmoved.is_empty() {
+            return vault();
+        }
+        init_or_migrate_cli(store)?;
+        let conn = open_or_init_cli()?;
+        let tx =
+            rusqlite::Transaction::new_unchecked(&conn, rusqlite::TransactionBehavior::Immediate)
+                .map_err(|e| format!("Begin conditional credential write: {e}"))?;
+        unmoved_in(&tx)?;
+        let written = vault()?;
+        tx.commit()
+            .map_err(|e| format!("Commit conditional credential write: {e}"))?;
+        Ok(written)
+    };
+    if user == Some(LEGACY_ONLY_ACCOUNT) {
+        let written = vault_checked()?;
+        // The legacy owner's row of that key, when it still holds the chain
+        // the vault held, is the same chain: it follows, so a reader of the
+        // row is not left with a token Jotta consumed. A row that holds
+        // another chain is left as it is.
+        if let Some(expected) = expected.filter(|_| written) {
+            let follow = || -> Result<(), String> {
+                #[cfg(test)]
+                if FOLLOW_REFUSED.load(std::sync::atomic::Ordering::SeqCst) {
+                    return Err("refused (test)".to_string());
+                }
+                init_or_migrate_cli(store)?;
+                let conn = open_or_init_cli()?;
+                if let Some(owner) = nonprofile_secret_owner(&conn)? {
+                    let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
+                    let row = get_user_credential_for(&conn, &root_key, owner, credential_id)?;
+                    if let Some(row) = row.filter(|row| same_chain(expected, row)) {
+                        replace_user_credential_if_unchanged(
+                            &conn,
+                            &root_key,
+                            owner,
+                            credential_id,
+                            credential_type,
+                            (&row, replacement),
+                            false,
+                        )?;
+                    }
+                }
+                Ok(())
+            };
+            if let Err(e) = follow() {
+                log::warn!("Conditional credential write: the owner's row did not follow: {e}");
+                return Err(COPY_NOT_FOLLOWED.to_string());
+            }
+        }
+        return Ok(written);
+    }
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    let Some(user_id) = (match user {
+        Some(user) => Some(user),
+        // No active account: the vault, as the active reader reads it then
+        // (`resolve_active_credential_owner_aware`).
+        None => active_user_id(&conn)?,
+    }) else {
+        return vault_checked();
+    };
+    let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
+    let root_secret = user_crypto::secret_key_from_bytes(&root_key);
+    with_user_dek(&conn, &root_secret, user_id, |user_id, dek| {
+        let tx =
+            rusqlite::Transaction::new_unchecked(&conn, rusqlite::TransactionBehavior::Immediate)
+                .map_err(|e| format!("Begin conditional credential write: {e}"))?;
+        if user.is_none() && active_user_id(&tx)? != Some(user_id) {
+            return Err(ACCOUNT_CHANGED.to_owned());
+        }
+        unmoved_in(&tx)?;
+        let current = read_credential_with_dek(&tx, user_id, dek, credential_id)?;
+        let reads_vault = current.is_none() && nonprofile_secret_owner(&tx)? == Some(user_id);
+        if reads_vault {
+            let written = vault()?;
+            tx.commit()
+                .map_err(|e| format!("Commit conditional credential write: {e}"))?;
+            return Ok(written);
+        }
+        use subtle::ConstantTimeEq;
+        let unchanged = match (&current, expected) {
+            (Some(current), Some(expected)) => {
+                bool::from(current.as_bytes().ct_eq(expected.as_bytes()))
+            }
+            (None, None) => true,
+            _ => false,
+        };
+        if !unchanged {
+            return Ok(false);
+        }
+        if signed_in {
+            set_signed_in_credential_with_dek(
+                &tx,
+                user_id,
+                dek,
+                credential_id,
+                credential_type,
+                replacement,
+            )?;
+        } else {
+            set_refreshed_credential_with_dek(
+                &tx,
+                user_id,
+                dek,
+                credential_id,
+                credential_type,
+                replacement,
+            )?;
+        }
+        let owner = nonprofile_secret_owner(&tx)? == Some(user_id);
+        tx.commit()
+            .map_err(|e| format!("Commit conditional credential write: {e}"))?;
+        // The legacy owner's vault copy, read by a vault-only reader
+        // (`LEGACY_ONLY_ACCOUNT`), follows while it holds the same chain;
+        // after the commit, so no vault lock is taken inside the
+        // transaction. A copy that holds another chain stays.
+        if let Some(expected) = expected.filter(|_| owner) {
+            let follow = || -> Result<(), String> {
+                #[cfg(test)]
+                if FOLLOW_REFUSED.load(std::sync::atomic::Ordering::SeqCst) {
+                    return Err("refused (test)".to_string());
+                }
+                if let Some(copy) = get_optional_secret(store, credential_id)?
+                    .filter(|copy| same_chain(expected, copy))
+                {
+                    store
+                        .replace_secret_if_unchanged(credential_id, &copy, replacement)
+                        .map_err(|e| e.to_string())?;
+                }
+                Ok(())
+            };
+            if let Err(e) = follow() {
+                log::warn!("Conditional credential write: the vault copy did not follow: {e}");
+                return Err(COPY_NOT_FOLLOWED.to_string());
+            }
+        }
+        Ok(true)
+    })
+}
+
+/// The `global_state` key that counts the deletions of a refresh chain's
+/// key for one owner: tagged, so the shared database names neither.
+fn chain_deletion_key(
+    store: &CredentialStore,
+    owner: Option<i64>,
+    account: &str,
+) -> Result<String, String> {
+    let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
+    let root_secret = user_crypto::secret_key_from_bytes(&root_key);
+    let owner = owner.map_or_else(|| "none".to_string(), |o| o.to_string());
+    let tag = user_crypto::metadata_tag(
+        &root_secret,
+        b"chain-deleted",
+        &format!("{owner}|{account}"),
+    )?;
+    Ok(format!("chain_deleted:{tag}"))
+}
+
+/// The deletions of a refresh chain's key, by any process: how many
+/// completed, and how many are running now. A rotation filed before the last
+/// completed one is not handed out again, and none is handed out while one
+/// runs (`load_refresh_chain` in providers/jottacloud.rs).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct ChainDeletions {
+    /// Moved by every deletion that completed, and by every one its process
+    /// left unfinished: either may have removed the key.
+    pub(crate) generation: u64,
+    /// The deletions running now, each in a live process.
+    pub(crate) in_progress: usize,
+}
+
+impl ChainDeletions {
+    /// No deletion in progress.
+    pub(crate) fn settled(&self) -> bool {
+        self.in_progress == 0
+    }
+}
+
+/// Why a conditional write reports its key as not fully written: the copy it
+/// read was replaced, but the legacy owner's other copy, which held the same
+/// chain, did not follow, and its reader still reads the old one.
+pub(crate) const COPY_NOT_FOLLOWED: &str =
+    "COPY_NOT_FOLLOWED: the other copy of the chain did not follow";
+
+/// Why a conditional write of a refresh chain stopped: a deletion of a key
+/// it depends on began or completed since its connection began.
+pub(crate) const CHAIN_DELETED: &str =
+    "CHAIN_DELETED: the chain was deleted since its connection began";
+
+/// How long a deletion recorded by a process this one cannot look at (on
+/// another machine sharing the data folder, in another pid namespace, or on
+/// a system whose processes cannot be read) counts as running. A deletion
+/// takes milliseconds; this only bounds how long one left behind blocks.
+const CHAIN_DELETION_LEASE_MS: i64 = 10 * 60 * 1000;
+
+/// What the `global_state` row of one key's deletions holds.
+#[derive(Default, Serialize, Deserialize)]
+struct DeletionRecord {
+    generation: u64,
+    #[serde(default)]
+    running: Vec<RunningDeletion>,
+}
+
+/// One deletion in progress, and the process that runs it.
+#[derive(Serialize, Deserialize)]
+struct RunningDeletion {
+    id: String,
+    /// The process, by a token drawn when it started.
+    process: String,
+    /// Where `pid` and `start` can be looked up: the boot and the pid
+    /// namespace on Linux, hashed. `None` where processes are not read.
+    space: Option<String>,
+    pid: u32,
+    /// When the process started, in clock ticks since boot.
+    start: Option<u64>,
+    /// When the deletion began (`now_ms`), for the lease.
+    at: i64,
+}
+
+/// A deletion this process began: running until it is ended, or dropped.
+/// One dropped without its end recorded is over as far as this process
+/// knows, and the next read of its key's deletions here counts it as
+/// completed.
+#[derive(Debug)]
+pub(crate) struct ChainDeletion {
+    id: String,
+}
+
+impl Drop for ChainDeletion {
+    fn drop(&mut self) {
+        deletions_running_here().remove(&self.id);
+    }
+}
+
+fn deletions_running_here() -> MutexGuard<'static, HashSet<String>> {
+    static RUNNING: std::sync::LazyLock<Mutex<HashSet<String>>> =
+        std::sync::LazyLock::new(Default::default);
+    RUNNING.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// This process as a deletion records it.
+struct DeletingProcess {
+    token: String,
+    space: Option<String>,
+    pid: u32,
+    start: Option<u64>,
+}
+
+fn this_process() -> &'static DeletingProcess {
+    static THIS: std::sync::LazyLock<DeletingProcess> = std::sync::LazyLock::new(|| {
+        let pid = std::process::id();
+        DeletingProcess {
+            token: hex::encode(crate::crypto::random_bytes(16)),
+            space: pid_space(),
+            pid,
+            start: process_start(pid).ok().flatten(),
+        }
+    });
+    &THIS
+}
+
+/// The boot and pid namespace this process's pids belong to, hashed: a pid
+/// recorded in another one names some other process here.
+#[cfg(target_os = "linux")]
+fn pid_space() -> Option<String> {
+    let boot = std::fs::read_to_string("/proc/sys/kernel/random/boot_id").ok()?;
+    let namespace = std::fs::read_link("/proc/self/ns/pid").ok()?;
+    let mut hash = Sha256::new();
+    hash.update(boot.trim().as_bytes());
+    hash.update(b"|");
+    hash.update(namespace.to_string_lossy().as_bytes());
+    Some(hex::encode(&hash.finalize()[..16]))
+}
+
+#[cfg(not(target_os = "linux"))]
+fn pid_space() -> Option<String> {
+    None
+}
+
+/// When process `pid` started, in clock ticks since boot: `Ok(None)` when
+/// there is no such process, or only its zombie; `Err` when that cannot be
+/// read. Measured on Linux 7.0 (2026-11-20): about 10 microseconds for a
+/// live process, 2 for a gone one, and the same value at every read.
+#[cfg(target_os = "linux")]
+fn process_start(pid: u32) -> Result<Option<u64>, ()> {
+    let stat = match std::fs::read_to_string(format!("/proc/{pid}/stat")) {
+        Ok(stat) => stat,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(_) => return Err(()),
+    };
+    // `comm` may hold spaces and parentheses: the fields follow the last ')'.
+    let fields: Vec<&str> = stat
+        .get(stat.rfind(')').ok_or(())? + 1..)
+        .ok_or(())?
+        .split_whitespace()
+        .collect();
+    // Field 3 (the state) is at index 0, field 22 (the start time) at 19.
+    if matches!(fields.first(), Some(&"Z") | Some(&"X")) {
+        return Ok(None);
+    }
+    fields
+        .get(19)
+        .and_then(|start| start.parse().ok())
+        .map(Some)
+        .ok_or(())
+}
+
+#[cfg(not(target_os = "linux"))]
+fn process_start(_pid: u32) -> Result<Option<u64>, ()> {
+    Err(())
+}
+
+/// Whether `deletion` will never end: this process's own when it no longer
+/// runs here; one of a process on this machine when that process is gone
+/// (its pid is free, a zombie, or another process's); any other once its
+/// lease ran out.
+fn deletion_left_over(deletion: &RunningDeletion, now: i64) -> bool {
+    let this = this_process();
+    if deletion.process == this.token {
+        return !deletions_running_here().contains(&deletion.id);
+    }
+    if let (Some(space), Some(start)) = (&deletion.space, deletion.start) {
+        if this.space.as_ref() == Some(space) {
+            match process_start(deletion.pid) {
+                Ok(None) => return true,
+                Ok(Some(now_start)) => return now_start != start,
+                Err(()) => {}
+            }
+        }
+    }
+    now.saturating_sub(deletion.at) > CHAIN_DELETION_LEASE_MS
+}
+
+impl DeletionRecord {
+    fn read(conn: &Connection, key: &str) -> Result<Self, String> {
+        let value: Option<String> = conn
+            .query_row(
+                "SELECT value FROM global_state WHERE key = ?1",
+                params![key],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| format!("Read chain deletions: {e}"))?;
+        match value {
+            None => Ok(Self::default()),
+            Some(value) => serde_json::from_str(&value)
+                .map_err(|_| "Read chain deletions: unreadable value".to_string()),
+        }
+    }
+
+    fn view(&self) -> ChainDeletions {
+        ChainDeletions {
+            generation: self.generation,
+            in_progress: self.running.len(),
+        }
+    }
+
+    /// Count every deletion left over as completed: it may have removed the
+    /// key, so a rotation filed before it is not handed out again, and it
+    /// never ends, so the key is not held for ever. Whether any was.
+    fn settle(&mut self, now: i64) -> bool {
+        let before = self.running.len();
+        self.running
+            .retain(|deletion| !deletion_left_over(deletion, now));
+        let settled = (before - self.running.len()) as u64;
+        self.generation += settled;
+        settled > 0
+    }
+}
+
+/// Settle the deletions of `key` and apply `update`, in one IMMEDIATE
+/// transaction.
+fn update_chain_deletions(
+    conn: &Connection,
+    key: &str,
+    update: impl FnOnce(&mut DeletionRecord),
+) -> Result<ChainDeletions, String> {
+    let tx = rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
+        .map_err(|e| format!("Begin chain deletion: {e}"))?;
+    let mut record = DeletionRecord::read(&tx, key)?;
+    record.settle(now_ms());
+    update(&mut record);
+    let value = serde_json::to_string(&record).map_err(|e| format!("Chain deletions: {e}"))?;
+    upsert_global_state(&tx, key, &value, now_ms())?;
+    tx.commit()
+        .map_err(|e| format!("Commit chain deletion: {e}"))?;
+    Ok(record.view())
+}
+
+/// The next partition row written is refused, as an account store that
+/// fails does, on any thread (test only).
+#[cfg(test)]
+pub(crate) static PARTITION_WRITE_REFUSED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// Every read of a key's chain deletions fails (test only).
+#[cfg(test)]
+pub(crate) static CHAIN_DELETIONS_REFUSED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// Every follow of a chain's other copy fails (test only).
+#[cfg(test)]
+pub(crate) static FOLLOW_REFUSED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// Every begin of a chain deletion fails (test only).
+#[cfg(test)]
+pub(crate) static CHAIN_DELETION_BEGIN_REFUSED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// Every end of a chain deletion fails (test only).
+#[cfg(test)]
+pub(crate) static CHAIN_DELETION_END_REFUSED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// Write the raw deletion record of `account` for `owner` (test only).
+#[cfg(test)]
+pub(crate) fn set_chain_deletions_raw(
+    store: &CredentialStore,
+    owner: Option<i64>,
+    account: &str,
+    value: &str,
+) -> Result<(), String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    let tx = rusqlite::Transaction::new_unchecked(&conn, rusqlite::TransactionBehavior::Immediate)
+        .map_err(|e| e.to_string())?;
+    upsert_global_state(
+        &tx,
+        &chain_deletion_key(store, owner, account)?,
+        value,
+        now_ms(),
+    )?;
+    tx.commit().map_err(|e| e.to_string())
+}
+
+/// The deletions of `account` for `owner` ([`ChainDeletions`]); those left
+/// over are settled first.
+pub(crate) fn chain_deletions(
+    store: &CredentialStore,
+    owner: Option<i64>,
+    account: &str,
+) -> Result<ChainDeletions, String> {
+    #[cfg(test)]
+    if CHAIN_DELETIONS_REFUSED.load(std::sync::atomic::Ordering::SeqCst) {
+        return Err("Read chain deletions: refused (test)".to_string());
+    }
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    let key = chain_deletion_key(store, owner, account)?;
+    let record = DeletionRecord::read(&conn, &key)?;
+    let now = now_ms();
+    if !record
+        .running
+        .iter()
+        .any(|deletion| deletion_left_over(deletion, now))
+    {
+        return Ok(record.view());
+    }
+    update_chain_deletions(&conn, &key, |_| {})
+}
+
+/// Record a deletion of `account` for `owner` as running, before anything
+/// is deleted; [`end_chain_deletion`] ends it.
+pub(crate) fn begin_chain_deletion(
+    store: &CredentialStore,
+    owner: Option<i64>,
+    account: &str,
+) -> Result<ChainDeletion, String> {
+    #[cfg(test)]
+    if CHAIN_DELETION_BEGIN_REFUSED.load(std::sync::atomic::Ordering::SeqCst) {
+        return Err("Begin chain deletion: refused (test)".to_string());
+    }
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    let key = chain_deletion_key(store, owner, account)?;
+    let this = this_process();
+    let deletion = ChainDeletion {
+        id: hex::encode(crate::crypto::random_bytes(16)),
+    };
+    // Running here before it is recorded: no reader of this process takes
+    // it for one left over.
+    deletions_running_here().insert(deletion.id.clone());
+    update_chain_deletions(&conn, &key, |record| {
+        record.running.push(RunningDeletion {
+            id: deletion.id.clone(),
+            process: this.token.clone(),
+            space: this.space.clone(),
+            pid: this.pid,
+            start: this.start,
+            at: now_ms(),
+        })
+    })?;
+    Ok(deletion)
+}
+
+/// End `deletion` of `account` for `owner`: completed when `done`, else
+/// taken back, so a delete that failed leaves a rotation kept for the key as
+/// usable as before it. One a reader already settled as left over counts as
+/// completed either way. Tried three times; one whose end is never recorded
+/// is settled as completed by the next read of the key in this process,
+/// which [`settle_unended_chain_deletions`] makes.
+pub(crate) fn end_chain_deletion(
+    store: &CredentialStore,
+    owner: Option<i64>,
+    account: &str,
+    deletion: ChainDeletion,
+    done: bool,
+) -> Result<(), String> {
+    let end = || -> Result<(), String> {
+        #[cfg(test)]
+        if CHAIN_DELETION_END_REFUSED.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err("End chain deletion: refused (test)".to_string());
+        }
+        init_or_migrate_cli(store)?;
+        let conn = open_or_init_cli()?;
+        let key = chain_deletion_key(store, owner, account)?;
+        update_chain_deletions(&conn, &key, |record| {
+            let before = record.running.len();
+            record.running.retain(|running| running.id != deletion.id);
+            if done || record.running.len() == before {
+                record.generation += 1;
+            }
+        })
+        .map(|_| ())
+    };
+    let mut result = end();
+    for attempt in 1..3 {
+        if result.is_ok() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50 * attempt));
+        result = end();
+    }
+    if result.is_err() {
+        unended_chain_deletions().insert((owner, account.to_string()));
+    }
+    result
+}
+
+/// A deletion [`unended_chain_deletions`] keeps: (owner, key).
+type UnendedDeletion = (Option<i64>, String);
+
+/// The deletions this process began and could not record as ended, by
+/// (owner, key). This process counts each as completed at its next read of
+/// that key, but every other process takes it for one still running for as
+/// long as this one lives, and would refuse that key's chain meanwhile: so
+/// this process settles them again ([`settle_unended_chain_deletions`]) until
+/// that is recorded.
+fn unended_chain_deletions() -> MutexGuard<'static, HashSet<UnendedDeletion>> {
+    static UNENDED: std::sync::LazyLock<Mutex<HashSet<UnendedDeletion>>> =
+        std::sync::LazyLock::new(Default::default);
+    UNENDED.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// Settle every deletion this process could not record as ended
+/// ([`unended_chain_deletions`]): a read of the key's deletions here counts
+/// it as left over and commits that, for every process. One whose read fails
+/// is tried again next time. Called when a connection begins and before a
+/// deletion, wherever that connection's key is.
+pub(crate) fn settle_unended_chain_deletions(store: &CredentialStore) {
+    let unended: Vec<UnendedDeletion> = unended_chain_deletions().iter().cloned().collect();
+    for (owner, account) in unended {
+        if chain_deletions(store, owner, &account).is_ok() {
+            unended_chain_deletions().remove(&(owner, account));
+        }
+    }
 }
 
 /// Guard an implicit GUI account during a global/memory token update. Resolve
@@ -3554,8 +4673,45 @@ const CREDS_MIGRATED_PREFIX: &str = "creds_migrated_";
 /// `None`. Lets the migration engine run against a fake vault in tests.
 type SecretReader<'a> = dyn Fn(&str) -> Result<Option<Zeroizing<String>>, String> + 'a;
 
+/// Closure that removes one secret from the legacy vault; absent is not an error.
+type SecretDeleter<'a> = dyn Fn(&str) -> Result<(), String> + 'a;
+
+/// Marks an account whose private tokens left the vault ([`align_private_tokens_inner`]).
+const PRIVATE_TOKENS_ALIGNED_PREFIX: &str = "private_tokens_aligned_";
+
 fn creds_migrated_key(user_id: i64) -> String {
     format!("{CREDS_MIGRATED_PREFIX}{user_id}")
+}
+
+fn private_tokens_aligned(conn: &Connection, user_id: i64) -> Result<bool, String> {
+    let value: Option<String> = conn
+        .query_row(
+            "SELECT value FROM global_state WHERE key = ?1",
+            params![format!("{PRIVATE_TOKENS_ALIGNED_PREFIX}{user_id}")],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| format!("Read private token marker: {e}"))?;
+    Ok(value.as_deref() == Some("1"))
+}
+
+fn mark_private_tokens_aligned(conn: &Connection, user_id: i64) -> Result<(), String> {
+    conn.execute(
+        "INSERT INTO global_state(key, value, updated_at)
+         VALUES (?1, '1', ?2)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+        params![
+            format!("{PRIVATE_TOKENS_ALIGNED_PREFIX}{user_id}"),
+            now_ms()
+        ],
+    )
+    .map_err(|e| format!("Write private token marker: {e}"))?;
+    Ok(())
+}
+
+/// Both one-time passes over an account's legacy secrets are done.
+fn credentials_settled(conn: &Connection, user_id: i64) -> Result<bool, String> {
+    Ok(is_creds_migrated(conn, user_id)? && private_tokens_aligned(conn, user_id)?)
 }
 
 fn is_creds_migrated(conn: &Connection, user_id: i64) -> Result<bool, String> {
@@ -3596,6 +4752,17 @@ fn session_user_id() -> Option<i64> {
 /// moves it, and a deleted owner leaves no owner instead of handing its legacy
 /// secrets to the next admin. User ids are AUTOINCREMENT, so never reused.
 fn nonprofile_secret_owner(conn: &Connection) -> Result<Option<i64>, String> {
+    nonprofile_secret_owner_in(conn, true)
+}
+
+/// [`nonprofile_secret_owner`] on a connection that may be read-only: the
+/// owner not yet persisted is the one the first writer would persist, and is
+/// returned without storing it.
+fn nonprofile_secret_owner_unpersisted(conn: &Connection) -> Result<Option<i64>, String> {
+    nonprofile_secret_owner_in(conn, false)
+}
+
+fn nonprofile_secret_owner_in(conn: &Connection, persist: bool) -> Result<Option<i64>, String> {
     let read_stored = || {
         conn.query_row(
             "SELECT value FROM global_state WHERE key = ?1",
@@ -3619,6 +4786,9 @@ fn nonprofile_secret_owner(conn: &Connection) -> Result<Option<i64>, String> {
             let Some(first_admin) = first_admin else {
                 return Ok(None);
             };
+            if !persist {
+                return Ok(Some(first_admin));
+            }
             conn.execute(
                 "INSERT OR IGNORE INTO global_state(key, value, updated_at) VALUES (?1, ?2, ?3)",
                 params![LEGACY_OWNER_KEY, first_admin.to_string(), now_ms()],
@@ -3639,6 +4809,14 @@ fn nonprofile_secret_owner(conn: &Connection) -> Result<Option<i64>, String> {
         )
         .map_err(|e| format!("Read legacy credential owner: {e}"))?;
     Ok(exists.then_some(owner))
+}
+
+/// Remove one secret from the live store; one already absent is not an error.
+fn delete_optional_secret(store: &CredentialStore, account: &str) -> Result<(), String> {
+    match store.delete(account) {
+        Ok(()) | Err(CredentialError::NotFound(_)) => Ok(()),
+        Err(e) => Err(format!("Delete legacy secret: {e}")),
+    }
 }
 
 /// Read one optional secret from the live store, mapping NotFound to None.
@@ -3704,9 +4882,14 @@ fn copy_one_credential(
 /// When `owns_global_secrets` is true the user also receives the non-profile
 /// per-user globals (`ai_apikey_*`, `github_oauth_token`, `github_pat`).
 /// `github_pem_*` / `github_app_credentials` are machine-global (MUV-0) and are
-/// deliberately NOT migrated.
+/// deliberately NOT migrated. A `server_<id>` of a profile id another account
+/// also holds is taken by the legacy owner only: the vault entry may be that
+/// account's, and a copy would keep it in this partition after its owner
+/// changes or removes it. Reading is unchanged: the fallback reader still
+/// gives the vault entry to an account that has no row of its own.
 fn copy_user_secrets_with_dek(
     conn: &Connection,
+    root_secret: &SecretKey,
     user_id: i64,
     dek: &SecretKey,
     owns_global_secrets: bool,
@@ -3728,26 +4911,45 @@ fn copy_user_secrets_with_dek(
     let mut migrated = 0usize;
 
     for id in &profile_ids {
-        migrated += copy_one_credential(
-            &tx,
-            user_id,
-            dek,
-            &format!("server_{id}"),
-            "server",
-            read_secret,
-        )?;
-        migrated += copy_one_credential(
-            &tx,
-            user_id,
-            dek,
-            &format!("jottacloud_refresh_{id}"),
-            "jottacloud_refresh",
-            read_secret,
-        )?;
+        let shared = || -> Result<bool, String> {
+            let tag = user_crypto::metadata_tag(root_secret, b"profile-uid", id)?;
+            tx.query_row(
+                "SELECT EXISTS(SELECT 1 FROM server_profiles
+                 WHERE profile_uid = ?1 AND user_id <> ?2)",
+                params![tag, user_id],
+                |row| row.get(0),
+            )
+            .map_err(|e| format!("Read profile holders: {e}"))
+        };
+        if owns_global_secrets || !shared()? {
+            migrated += copy_one_credential(
+                &tx,
+                user_id,
+                dek,
+                &format!("server_{id}"),
+                "server",
+                read_secret,
+            )?;
+        }
+        // Another account's private tokens are not taken from the vault here:
+        // the vault key is the legacy owner's, also of a profile id both hold.
+        // [`align_private_tokens_inner`] moves the ones of its own profiles.
+        let taken = |key: &str| owns_global_secrets || private_token_type(key).is_none();
+        let jottacloud = format!("jottacloud_refresh_{id}");
+        if taken(&jottacloud) {
+            migrated += copy_one_credential(
+                &tx,
+                user_id,
+                dek,
+                &jottacloud,
+                "jottacloud_refresh",
+                read_secret,
+            )?;
+        }
         let suffix = format!("_{id}");
         for key in vault_keys
             .iter()
-            .filter(|k| k.starts_with("oauth_") && k.ends_with(&suffix))
+            .filter(|k| k.starts_with("oauth_") && k.ends_with(&suffix) && taken(k))
         {
             migrated += copy_one_credential(&tx, user_id, dek, key, "oauth", read_secret)?;
         }
@@ -3782,9 +4984,21 @@ fn migrate_user_credentials_inner(
         return Ok(0);
     }
     let owns_global_secrets = nonprofile_secret_owner(conn)? == Some(user_id);
+    // Which profile ids another account holds is read from the tags.
+    if !owns_global_secrets && profile_tags_pending(conn)? {
+        return Ok(0);
+    }
     let root_secret = user_crypto::secret_key_from_bytes(root_key);
     let outcome = with_user_dek(conn, &root_secret, user_id, |uid, dek| {
-        copy_user_secrets_with_dek(conn, uid, dek, owns_global_secrets, vault_keys, read_secret)
+        copy_user_secrets_with_dek(
+            conn,
+            &root_secret,
+            uid,
+            dek,
+            owns_global_secrets,
+            vault_keys,
+            read_secret,
+        )
     });
     match outcome {
         Ok(migrated) => {
@@ -3797,6 +5011,404 @@ fn migrate_user_credentials_inner(
     }
 }
 
+/// The private token keys ([`private_token_type`]) a profile's id gives.
+fn private_token_keys_of_profile(profile_id: &str) -> Vec<String> {
+    let mut keys = vec![
+        format!("jottacloud_refresh_{profile_id}"),
+        format!("{PROTON_SESSION_PREFIX}{profile_id}"),
+    ];
+    keys.extend(
+        OAUTH_TOKEN_SLUGS
+            .iter()
+            .map(|slug| format!("oauth_{slug}_{profile_id}")),
+    );
+    keys.extend(
+        crate::profile_auth::DURABLE_KEY_PREFIXES
+            .iter()
+            .chain(crate::profile_auth::TRANSIENT_KEY_PREFIXES.iter())
+            .map(|prefix| format!("{prefix}_{profile_id}")),
+    );
+    keys.retain(|key| private_token_type(key).is_some());
+    keys
+}
+
+/// MUV-6 for private tokens: the tokens an account other than the legacy owner
+/// saved before they were kept to its partition still sit in the vault, where
+/// the vault key reads as the owner's (a backup of the vault carries it, the
+/// owner's fallback answers it). Each one of this account's profiles is copied
+/// into its partition when no row is there yet, then removed from the vault.
+/// A profile id another account also holds is left: the vault copy cannot be
+/// told apart, and the legacy owner reads it as its own; a row of this account
+/// that its own sign-in did not stamp ([`signed_in_row`]), and that is not a
+/// Jottacloud chain of another user ([`another_jottacloud_user`]), may be a
+/// copy an earlier migration made of it, and is dropped. Idempotent via the
+/// `private_tokens_aligned_<id>` marker, set once the vault has let go of the
+/// keys moved; a locked passphrase account is left unmarked until its first
+/// unlock, as for [`migrate_user_credentials_inner`].
+///
+/// A native Proton Drive session belongs to one account: a copy of a session
+/// (same UID) that another account still holds in the vault is dropped here,
+/// row and vault copy, and the other account keeps it. The drop is local
+/// only, never a sign-out on Proton, which would end the session for the
+/// account that keeps it. This account signs in again.
+fn align_private_tokens_inner(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+    vault_keys: &[String],
+    read_secret: &SecretReader<'_>,
+    delete_secret: &SecretDeleter<'_>,
+) -> Result<usize, String> {
+    align_private_tokens_of(
+        conn,
+        root_key,
+        user_id,
+        vault_keys,
+        None,
+        read_secret,
+        delete_secret,
+    )
+}
+
+/// [`align_private_tokens_inner`], over the keys in `only` alone when given:
+/// one pass of the same rule for an account already aligned, which neither
+/// reads nor sets its marker ([`realign_private_tokens_after_restore`]).
+fn align_private_tokens_of(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+    vault_keys: &[String],
+    only: Option<&[String]>,
+    read_secret: &SecretReader<'_>,
+    delete_secret: &SecretDeleter<'_>,
+) -> Result<usize, String> {
+    if only.is_none() && private_tokens_aligned(conn, user_id)? {
+        return Ok(0);
+    }
+    if nonprofile_secret_owner(conn)? == Some(user_id) {
+        if only.is_none() {
+            mark_private_tokens_aligned(conn, user_id)?;
+        }
+        return Ok(0);
+    }
+    // Which profiles another account holds must not change until the vault has
+    // let go: a profile writer, or the save of a token for a profile, holds the
+    // list lock. It is not re-entrant and a caller may hold it (an import's
+    // secret writes reach this through `init_or_migrate_cli`), so a busy lock
+    // leaves the account unmarked for the next pass, as `mirror_after_load` does.
+    let lock = match conn.path() {
+        Some(path) if !path.is_empty() => {
+            match ProfileListLock::acquire_within(
+                std::path::Path::new(path),
+                std::time::Duration::ZERO,
+            ) {
+                Ok(lock) => Some(lock),
+                Err(e) if e == PROFILE_LIST_BUSY => {
+                    tracing::debug!("Private tokens not aligned by this pass: {e}");
+                    return Ok(0);
+                }
+                Err(e) => return Err(e),
+            }
+        }
+        _ => None,
+    };
+    // On a filesystem without file locks the list lock excludes nobody: the
+    // copies are still made, the holders read in the same transaction as every
+    // profile writer's, but the vault keeps its keys, since a holder added after
+    // the commit would lose the one it reads.
+    let vault_lets_go = lock.as_ref().is_none_or(ProfileListLock::is_exclusive);
+    let root_secret = user_crypto::secret_key_from_bytes(root_key);
+    let outcome = with_user_dek(conn, &root_secret, user_id, |uid, dek| {
+        let tx =
+            rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
+                .map_err(|e| format!("Start private token alignment: {e}"))?;
+        // The holders below are read from tags: one made with another
+        // machine's key would hide its account, so the pass waits for them.
+        if profile_tags_pending(&tx)? {
+            return Ok(None);
+        }
+        let profiles = read_profiles_with_dek(&tx, uid, dek)?;
+        let mut sole = Vec::new();
+        for id in profiles
+            .iter()
+            .filter_map(|p| value_str(p, &["id", "uid", "profileUid"]))
+        {
+            let tag = user_crypto::metadata_tag(&root_secret, b"profile-uid", id)?;
+            let shared: bool = tx
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM server_profiles
+                     WHERE profile_uid = ?1 AND user_id <> ?2)",
+                    params![tag, uid],
+                    |row| row.get(0),
+                )
+                .map_err(|e| format!("Read profile holders: {e}"))?;
+            let keys = private_token_keys_of_profile(id).into_iter().filter(|key| {
+                vault_keys.contains(key) && only.is_none_or(|only| only.contains(key))
+            });
+            if !shared {
+                sole.extend(keys);
+                continue;
+            }
+            // A profile id another account also holds: the vault key is the
+            // legacy owner's, and a row of this account is a copy of it, which
+            // an earlier migration made and a refresh may have rewritten since,
+            // unless its own sign-in stamped it. A native Proton session is
+            // the same session by its UID, whatever pair a refresh has rotated
+            // it to since.
+            for key in keys {
+                let Some(row) = read_credential_with_dek(&tx, uid, dek, &key)? else {
+                    continue;
+                };
+                let Some(vault) = read_secret(&key)? else {
+                    continue;
+                };
+                if row_may_be_a_copy(&tx, uid, &key, &row, Some(&vault))? {
+                    delete_user_credential_for(&tx, uid, &key)?;
+                }
+            }
+        }
+        let unbound = format!("{PROTON_UNBOUND_USER_PREFIX}{uid}");
+        if only.is_none() && vault_keys.contains(&unbound) {
+            sole.push(unbound);
+        }
+        // The sessions other accounts hold in the vault, by UID.
+        let mut held_elsewhere = HashSet::new();
+        for key in vault_keys
+            .iter()
+            .filter(|key| is_proton_session_key(key) && !sole.contains(key))
+        {
+            if let Some(held) = read_secret(key)?.and_then(|raw| proton_session_uid(&raw)) {
+                held_elsewhere.insert(held);
+            }
+        }
+        for key in &sole {
+            let kind = private_token_type(key).unwrap_or("oauth");
+            if is_proton_session_key(key) {
+                let copy_uid = match read_credential_with_dek(&tx, uid, dek, key)? {
+                    Some(row) => proton_session_uid(&row),
+                    None => read_secret(key)?.and_then(|raw| proton_session_uid(&raw)),
+                };
+                if copy_uid.is_some_and(|copy| held_elsewhere.contains(&copy)) {
+                    delete_user_credential_for(&tx, uid, key)?;
+                    continue;
+                }
+            }
+            copy_one_credential(&tx, uid, dek, key, kind, read_secret)?;
+        }
+        tx.commit()
+            .map_err(|e| format!("Commit private token alignment: {e}"))?;
+        Ok(Some(sole))
+    });
+    let moved = match outcome {
+        Ok(Some(moved)) => moved,
+        Ok(None) => return Ok(0),
+        Err(e) if e == "USER_LOCKED" => return Ok(0),
+        Err(e) => return Err(e),
+    };
+    // The copies are committed: only now does the vault let go of them.
+    if vault_lets_go {
+        for key in &moved {
+            delete_secret(key)?;
+        }
+    }
+    // A pass that left them in the vault is not done: the next one that can
+    // exclude the profile writers removes them.
+    if only.is_none() && (vault_lets_go || moved.is_empty()) {
+        mark_private_tokens_aligned(conn, user_id)?;
+    }
+    Ok(moved.len())
+}
+
+/// Whether `row`, the row `key` of `user_id`, may be a copy of `vault`, the
+/// vault's value under that key: the one rule by which the alignment drops a
+/// copy on a profile id another account holds, and by which the readers hide
+/// a row while the alignment waits ([`unverified_while_tags_pending`]). A
+/// native Proton session is the same session by its UID, whatever pair a
+/// refresh has rotated it to since; any other row is a copy unless its own
+/// sign-in stamped it ([`signed_in_row`]) or it signs in to another
+/// Jottacloud user ([`another_jottacloud_user`]). No vault value, no copy.
+fn row_may_be_a_copy(
+    conn: &Connection,
+    user_id: i64,
+    key: &str,
+    row: &str,
+    vault: Option<&str>,
+) -> Result<bool, String> {
+    let Some(vault) = vault else {
+        return Ok(false);
+    };
+    if is_proton_session_key(key) {
+        return Ok(proton_session_uid(row)
+            .is_some_and(|copy| proton_session_uid(vault).is_some_and(|held| held == copy)));
+    }
+    Ok(!signed_in_row(conn, user_id, key)? && !another_jottacloud_user(key, row, vault))
+}
+
+/// Whether the private-token row `key` of `user_id`, read as `row`, must read
+/// as absent: the account is not the legacy owner and not yet aligned, and
+/// the alignment waits for profile tags ([`waits_for_profile_tags`]), so
+/// nothing yet tells whether another account holds the profile, while the
+/// row may be a copy of the vault's value ([`row_may_be_a_copy`]). A copy an
+/// earlier migration made of the legacy owner's token would otherwise sign
+/// this account in to the owner's cloud until an unrelated account is
+/// unlocked. A row the account's own sign-in stamped stays readable, and so
+/// does every row of an aligned account; only a restore sets the wait.
+fn unverified_while_tags_pending(
+    conn: &Connection,
+    user_id: i64,
+    key: &str,
+    row: &str,
+    read_secret: &SecretReader<'_>,
+) -> Result<bool, String> {
+    if private_token_type(key).is_none()
+        || !waits_for_profile_tags(conn, user_id)?
+        || private_tokens_aligned(conn, user_id)?
+    {
+        return Ok(false);
+    }
+    let vault = read_secret(key)?;
+    row_may_be_a_copy(
+        conn,
+        user_id,
+        key,
+        row,
+        vault.as_deref().map(|v| v.as_str()),
+    )
+}
+
+/// `row`, just read as the row `key` of `user_id`, as a reader may use it:
+/// `None` while it is unverified ([`unverified_while_tags_pending`]). Every
+/// reader of a row for use goes through this, so a copy cannot reach a
+/// connection, a backup, a duplicate or a relocation either.
+fn checked_row(
+    conn: &Connection,
+    user_id: i64,
+    key: &str,
+    row: Option<Zeroizing<String>>,
+    read_secret: &SecretReader<'_>,
+) -> Result<Option<Zeroizing<String>>, String> {
+    match row {
+        Some(value) if unverified_while_tags_pending(conn, user_id, key, &value, read_secret)? => {
+            Ok(None)
+        }
+        other => Ok(other),
+    }
+}
+
+/// [`checked_row`] for a reader outside this module, with the vault it reads.
+pub(crate) fn checked_row_in(
+    conn: &Connection,
+    store: &CredentialStore,
+    user_id: i64,
+    key: &str,
+    row: Option<Zeroizing<String>>,
+) -> Result<Option<Zeroizing<String>>, String> {
+    checked_row(conn, user_id, key, row, &|key: &str| {
+        get_optional_secret(store, key)
+    })
+}
+
+/// Whether `row`, this account's unstamped copy of the Jottacloud chain `key`
+/// on a profile id another account also holds, signs in to another
+/// Jottacloud user than the vault's chain, with another refresh token: a
+/// copy of the owner's chain, refreshed or not, carries the owner's user, so
+/// another user is a sign-in of its own. A value that differs proves nothing
+/// else (every refresh of the vault's token rewrites it), nor does an OAuth
+/// record's own `v1:` family: a copy an earlier migration made keeps the
+/// family the owner had then, and the owner's next sign-in mints another.
+/// Only the sign-in stamp ([`signed_in_row`]) proves those; any other row
+/// is dropped, and that account signs in again.
+fn another_jottacloud_user(key: &str, row: &str, vault: &str) -> bool {
+    if !key.starts_with("jottacloud_refresh") {
+        return false;
+    }
+    let (Ok(row), Ok(vault)) = (
+        serde_json::from_str::<Value>(row),
+        serde_json::from_str::<Value>(vault),
+    ) else {
+        return false;
+    };
+    let field = |record: &Value, name: &str| {
+        record
+            .get(name)
+            .and_then(Value::as_str)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+    };
+    let another = |name: &str| {
+        field(&row, name).is_some_and(|own| field(&vault, name).as_deref() != Some(own.as_str()))
+    };
+    another("username") && another("refresh_token")
+}
+
+/// The account active before a keystore restore, and what it held then, for
+/// [`realign_private_tokens_after_restore`].
+pub struct ActiveBeforeRestore<'a> {
+    pub store: &'a CredentialStore,
+    pub user_id: i64,
+    /// The ids of the profiles it listed before the import wrote anything.
+    pub profile_ids: &'a [String],
+    /// The private token keys the import wrote into the vault.
+    pub restored_keys: &'a [String],
+}
+
+/// After a keystore restore wrote private token keys into the vault: a backup
+/// made before tokens were kept to their account carries another account's
+/// under the key the legacy owner reads, so the alignment runs again for every
+/// account but the one active after the import. That one is not reset: the
+/// restore may have filled its list with the backup's profiles, whose vault
+/// keys are the backup's, and the import gives it those only where they are
+/// its own ([`vault_copy_is_another_accounts`]). Its own tokens are not left
+/// behind either: when it is the account that was active before the import
+/// (`active`), the alignment's rule runs once over the restored keys of the
+/// profiles it listed then, the ones a vault key can be its own for, so its
+/// token comes back to its row where it alone holds the profile.
+pub fn realign_private_tokens_after_restore(
+    db_path: &std::path::Path,
+    active_before: Option<ActiveBeforeRestore<'_>>,
+) -> Result<usize, String> {
+    let conn = Connection::open(db_path).map_err(|e| format!("Open user partitions DB: {e}"))?;
+    let active = active_user_id(&conn)?;
+    for user in list_users(&conn)? {
+        if Some(user.id) == active {
+            continue;
+        }
+        conn.execute(
+            "DELETE FROM global_state WHERE key = ?1",
+            params![format!("{PRIVATE_TOKENS_ALIGNED_PREFIX}{}", user.id)],
+        )
+        .map_err(|e| format!("Reset private token marker: {e}"))?;
+    }
+    let Some(before) = active_before.filter(|before| Some(before.user_id) == active) else {
+        return Ok(0);
+    };
+    let held: Vec<String> = before
+        .profile_ids
+        .iter()
+        .flat_map(|id| private_token_keys_of_profile(id))
+        .filter(|key| before.restored_keys.contains(key))
+        .collect();
+    if held.is_empty() {
+        return Ok(0);
+    }
+    let vault_keys = before
+        .store
+        .list_accounts()
+        .map_err(|e| format!("List vault keys: {e}"))?;
+    let read_secret = |key: &str| get_optional_secret(before.store, key);
+    let delete_secret = |key: &str| delete_optional_secret(before.store, key);
+    let root_key = Zeroizing::new(before.store.derive_user_partition_wrapping_key());
+    align_private_tokens_of(
+        &conn,
+        &root_key,
+        before.user_id,
+        &vault_keys,
+        Some(&held),
+        &read_secret,
+        &delete_secret,
+    )
+}
+
 /// Reader-fallback net (sec 3.3), engine form: prefer the per-user encrypted
 /// store, falling back to the legacy vault only when its per-user row is absent.
 /// A locked partition refuses access; MUV-6 drops the fallback once purged.
@@ -3807,10 +5419,14 @@ fn read_credential_with_fallback_inner(
     credential_id: &str,
     read_secret: &SecretReader<'_>,
 ) -> Result<Option<Zeroizing<String>>, String> {
-    match get_user_credential_for(conn, root_key, user_id, credential_id) {
-        Ok(Some(value)) => return Ok(Some(value)),
-        Ok(None) => {}
-        Err(e) => return Err(e),
+    let row = get_user_credential_for(conn, root_key, user_id, credential_id)?;
+    if let Some(value) = checked_row(conn, user_id, credential_id, row, read_secret)? {
+        return Ok(Some(value));
+    }
+    // Another account's private token lives in its partition alone: the vault
+    // key of that name is the legacy owner's ([`private_token_user`]).
+    if vault_copy_is_another_accounts(conn, user_id, credential_id)? {
+        return Ok(None);
     }
     read_secret(credential_id)
 }
@@ -3821,7 +5437,7 @@ fn read_credential_with_fallback_inner(
 /// is done; a locked passphrase user is intentionally NOT "eager-pending".
 fn has_eager_pending_users(conn: &Connection) -> Result<bool, String> {
     for user in list_users(conn)? {
-        if is_creds_migrated(conn, user.id)? {
+        if credentials_settled(conn, user.id)? || waits_for_profile_tags(conn, user.id)? {
             continue;
         }
         if !user.has_passphrase || session_user_id() == Some(user.id) {
@@ -3842,7 +5458,7 @@ pub fn migrate_credentials_eager_all(
     let users = list_users(conn)?;
     let mut pending = Vec::new();
     for user in &users {
-        if is_creds_migrated(conn, user.id)? {
+        if credentials_settled(conn, user.id)? || waits_for_profile_tags(conn, user.id)? {
             continue;
         }
         if !user.has_passphrase || session_user_id() == Some(user.id) {
@@ -3856,6 +5472,7 @@ pub fn migrate_credentials_eager_all(
         .list_accounts()
         .map_err(|e| format!("List vault accounts: {e}"))?;
     let read_secret = |key: &str| get_optional_secret(store, key);
+    let delete_secret = |key: &str| delete_optional_secret(store, key);
     let mut total = 0usize;
     for user_id in pending {
         match migrate_user_credentials_inner(conn, root_key, user_id, &vault_keys, &read_secret) {
@@ -3863,6 +5480,15 @@ pub fn migrate_credentials_eager_all(
             // Leave unmarked; a transient failure is retried on the next boot.
             Err(_) => continue,
         }
+        // After the copy, which reads the same vault keys.
+        let _ = align_private_tokens_inner(
+            conn,
+            root_key,
+            user_id,
+            &vault_keys,
+            &read_secret,
+            &delete_secret,
+        );
     }
     Ok(total)
 }
@@ -3875,14 +5501,26 @@ pub fn migrate_credentials_for_user(
     root_key: &[u8; 32],
     user_id: i64,
 ) -> Result<usize, String> {
-    if is_creds_migrated(conn, user_id)? {
+    retag_own_profiles_if_pending(conn, root_key, user_id)?;
+    if credentials_settled(conn, user_id)? {
         return Ok(0);
     }
     let vault_keys = store
         .list_accounts()
         .map_err(|e| format!("List vault accounts: {e}"))?;
     let read_secret = |key: &str| get_optional_secret(store, key);
-    migrate_user_credentials_inner(conn, root_key, user_id, &vault_keys, &read_secret)
+    let delete_secret = |key: &str| delete_optional_secret(store, key);
+    let migrated =
+        migrate_user_credentials_inner(conn, root_key, user_id, &vault_keys, &read_secret)?;
+    align_private_tokens_inner(
+        conn,
+        root_key,
+        user_id,
+        &vault_keys,
+        &read_secret,
+        &delete_secret,
+    )?;
+    Ok(migrated)
 }
 
 /// Reader-fallback net (sec 3.3): store-backed wrapper of
@@ -3982,6 +5620,20 @@ pub(crate) fn active_user_id_for_write() -> Result<Option<i64>, String> {
     }
 }
 
+/// The one account a private token's sign-in is saved for, among the `owners`
+/// holding its profile: the active account when it holds it, or the single
+/// holder. Writing it to every holder would hand one account's token to the
+/// others, so several holders and none of them active is refused.
+fn private_token_signer(owners: Vec<i64>, active: Option<i64>) -> Result<Vec<i64>, String> {
+    match active.filter(|user| owners.contains(user)) {
+        Some(active) => Ok(vec![active]),
+        None if owners.len() == 1 => Ok(owners),
+        None => Err(format!(
+            "{ACCOUNT_CHANGED}: this profile belongs to other accounts, so the sign-in was not saved"
+        )),
+    }
+}
+
 /// The active account cannot be read (an unopenable partition DB), on every
 /// thread: a connection reads it on the runtime's. Set only inside an
 /// isolated child (`isolated_account_fixture::in_isolated_child`), whose
@@ -3992,8 +5644,8 @@ pub(crate) static ACCOUNT_LOOKUP_FAILS: std::sync::atomic::AtomicBool =
 
 /// Save a secret of `profile_id` for the accounts that hold that profile, whichever
 /// is active: another account's token must not land in the active one's partition.
-/// Every owner is tried, and the first failure is returned. A profile no account
-/// holds yet goes to the active account.
+/// Every owner is tried, and the first failure is returned; a private token goes
+/// to one of them only. A profile no account holds yet goes to the active account.
 pub(crate) fn store_profile_credential(
     store: &CredentialStore,
     profile_id: &str,
@@ -4012,16 +5664,26 @@ pub(crate) fn store_profile_credential(
     };
     if owners.is_empty() {
         return match credential_type {
-            Some(kind) => store_active_credential_typed_dual(store, credential_id, kind, secret),
+            Some(kind) => {
+                store_active_signed_in_credential_typed_dual(store, credential_id, kind, secret)
+            }
             None => store_active_credential_dual(store, credential_id, secret),
         };
     }
+    let owners = match private_token_type(credential_id) {
+        None => owners,
+        Some(_) => private_token_signer(owners, active_user_id(&conn)?)?,
+    };
     let mut first_failure = None;
     for owner in owners {
         let written = match credential_type {
-            Some(kind) => {
-                store_credential_for_user_typed_dual(store, owner, credential_id, kind, secret)
-            }
+            Some(kind) => store_signed_in_credential_for_user_typed_dual(
+                store,
+                owner,
+                credential_id,
+                kind,
+                secret,
+            ),
             None => store_credential_for_user_dual(store, owner, credential_id, secret),
         };
         if let Err(e) = written {
@@ -4031,8 +5693,9 @@ pub(crate) fn store_profile_credential(
     first_failure.map_or(Ok(()), Err)
 }
 
-/// Remove a secret of `profile_id` from the vault and from the accounts that hold it.
-/// A failure is an error: a row left behind would keep answering readers.
+/// Remove a secret of `profile_id` from the vault and from the accounts that hold it,
+/// a private token from the active account only. A failure is an error: a row left
+/// behind would keep answering readers.
 pub(crate) fn delete_profile_credential(
     store: &CredentialStore,
     profile_id: &str,
@@ -4052,16 +5715,34 @@ pub(crate) fn delete_profile_credential(
             "{ACCOUNT_CHANGED}: this profile belongs to another account, so it was not signed out"
         ));
     }
-    let mut users = owners;
+    // A private token is one account's sign-in: the active account signs out
+    // its own, and another account holding the profile keeps its token.
+    let mut users = if private_token_type(credential_id).is_some() {
+        Vec::new()
+    } else {
+        owners
+    };
     if let Some(active) = active {
         if !users.contains(&active) {
             users.push(active);
+        }
+    }
+    // The vault copy goes only when one of these accounts reads it: a private
+    // token of the others is their row alone, and the vault key of that name
+    // is the legacy owner's ([`vault_copy_is_another_accounts`]).
+    let mut vault_is_theirs = users.is_empty();
+    for user in &users {
+        if !vault_copy_is_another_accounts(&conn, *user, credential_id)? {
+            vault_is_theirs = true;
         }
     }
     // The rows first, as readers prefer them: a failure here leaves the vault for a
     // retry, and a retry after a vault failure finds the rows already gone.
     for user in users {
         delete_user_credential_for(&conn, user, credential_id)?;
+    }
+    if !vault_is_theirs {
+        return Ok(());
     }
     match store.delete(credential_id) {
         Ok(_) | Err(crate::credential_store::CredentialError::NotFound(_)) => Ok(()),
@@ -4113,8 +5794,9 @@ pub(crate) fn mirror_credential_for_user_typed(
 }
 
 /// A failure here is an error, because readers prefer the partition row: it would
-/// go on answering with the old secret after a save reported as done. The vault
-/// keeps the new value, since a rotated token cannot go back. A locked legacy owner
+/// go on answering with the old secret after a save reported as done. The writers
+/// that wrote the vault first put it back ([`store_vault_then_mirror`]); a rotation
+/// writes its one copy itself (Jottacloud) or never goes through here. A locked legacy owner
 /// with no row is the one exception: its readers fall back to the vault, and the MUV-2
 /// lazy pass mirrors it at the next unlock. Any other account reads only its partition.
 fn mirror_into_partition(
@@ -4161,6 +5843,24 @@ fn partition_row_exists(
     .optional()
     .map(|row| row.is_some())
     .map_err(|e| format!("Read credential row: {e}"))
+}
+
+/// Whether `user_id` holds `credential_id` where it reads it, decrypting
+/// nothing: its row, which a locked account has too and a delete by key
+/// removes, or else the vault copy when that is one it reads.
+pub fn holds_credential(
+    store: &CredentialStore,
+    user_id: i64,
+    credential_id: &str,
+) -> Result<bool, String> {
+    let conn = open_or_init_cli()?;
+    if partition_row_exists(&conn, user_id, credential_id)? {
+        return Ok(true);
+    }
+    if vault_copy_is_another_accounts(&conn, user_id, credential_id)? {
+        return Ok(false);
+    }
+    Ok(get_optional_secret(store, credential_id)?.is_some_and(|v| !v.is_empty()))
 }
 
 /// Best-effort removal of one secret from `user_id`'s partition, whatever its
@@ -4259,6 +5959,716 @@ pub(crate) fn profile_credential_owner_ids(
         .map_err(|e| format!("Read credential owner row: {e}"))
 }
 
+/// Whether an account other than `user` may hold the native Proton session
+/// `uid`: one of its rows holds that session, or it has a saved session this
+/// process cannot read (an account locked by its passphrase), which may be
+/// that one. A row that holds no session is no copy.
+#[cfg(feature = "proton-native")]
+pub(crate) fn another_account_may_hold_session(
+    store: &CredentialStore,
+    user: Option<i64>,
+    uid: &str,
+) -> Result<bool, String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    let rows = conn
+        .prepare(&format!(
+            "SELECT user_id, credential_id FROM user_credentials
+             WHERE (?1 IS NULL OR user_id <> ?1) AND {}
+             ORDER BY user_id, credential_id",
+            proton_session_key_sql("credential_id")
+        ))
+        .and_then(|mut statement| {
+            statement
+                .query_map(params![user], |row| {
+                    Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()
+        })
+        .map_err(|e| format!("Read saved sessions: {e}"))?;
+    let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
+    let root_secret = user_crypto::secret_key_from_bytes(&root_key);
+    for (other, key) in rows.iter().filter(|(_, key)| is_proton_session_key(key)) {
+        match with_user_dek(&conn, &root_secret, *other, |id, dek| {
+            read_credential_with_dek(&conn, id, dek, key)
+        }) {
+            Ok(None) => {}
+            Ok(Some(raw)) if proton_session_uid(&raw).as_deref() != Some(uid) => {}
+            _ => return Ok(true),
+        }
+    }
+    Ok(false)
+}
+
+/// The credential type of a native Proton session row.
+#[cfg(feature = "proton-native")]
+const PROTON_SESSION_TYPE: &str = "proton_native_session";
+
+/// The key of the native Proton session index: derived from the vault key, so
+/// that every account on this device computes the same fingerprint of a
+/// session without the key of any account's partition, and a copy of the
+/// partition database without the vault cannot confirm a guessed UID.
+#[cfg(feature = "proton-native")]
+fn session_index_key(root_key: &[u8; 32]) -> Zeroizing<[u8; 32]> {
+    let mut key = Zeroizing::new([0u8; 32]);
+    hkdf::Hkdf::<Sha256>::new(None, root_key)
+        .expand(b"aeroftp-proton-session-index-v1", key.as_mut())
+        .expect("HKDF expand");
+    key
+}
+
+#[cfg(feature = "proton-native")]
+fn session_index_mac(key: &[u8; 32], message: &[u8]) -> String {
+    use hmac::Mac;
+    let mut mac = hmac::Hmac::<Sha256>::new_from_slice(key).expect("HMAC takes any key length");
+    mac.update(message);
+    hex::encode(mac.finalize().into_bytes())
+}
+
+/// The fingerprint the index keeps of a session UID: an HMAC under
+/// [`session_index_key`], never the UID or a hash anyone could recompute.
+#[cfg(feature = "proton-native")]
+fn session_fingerprint(key: &[u8; 32], uid: &str) -> String {
+    session_index_mac(key, uid.as_bytes())
+}
+
+/// Which index key an entry was made with: an entry carried to another
+/// device (a backup restore) was made with another vault's key, and its
+/// fingerprint compares to nothing here.
+#[cfg(feature = "proton-native")]
+fn session_index_key_tag(key: &[u8; 32]) -> String {
+    session_index_mac(key, b"aeroftp proton session index key tag")[..16].to_string()
+}
+
+/// Which ciphertext of a credential row an entry describes (a session index
+/// entry, a sign-in stamp): a row rewritten by any writer that did not write
+/// the entry again no longer matches it.
+fn credential_blob_digest(blob: &[u8], nonce: &[u8]) -> String {
+    let mut digest = Sha256::new();
+    digest.update(nonce);
+    digest.update(blob);
+    hex::encode(digest.finalize())
+}
+
+/// Indexes the row `credential_id` of `user_id` as it is now: the fingerprint
+/// of the session UID its ciphertext holds, bound to that ciphertext. A row
+/// that is gone, or holds no session, has no entry.
+#[cfg(feature = "proton-native")]
+fn index_session_row(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+    dek: &SecretKey,
+    credential_id: &str,
+) -> Result<(), String> {
+    let row: Option<(Vec<u8>, Vec<u8>)> = conn
+        .query_row(
+            "SELECT encrypted_blob, nonce FROM user_credentials
+             WHERE user_id = ?1 AND credential_id = ?2",
+            params![user_id, credential_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()
+        .map_err(|e| format!("Read saved session: {e}"))?;
+    let uid = row.as_ref().and_then(|(blob, nonce)| {
+        let plaintext = user_crypto::decrypt_blob(dek, nonce, blob).ok()?;
+        proton_session_uid(std::str::from_utf8(&plaintext).ok()?)
+    });
+    match (row, uid) {
+        (Some((blob, nonce)), Some(uid)) => {
+            let key = session_index_key(root_key);
+            conn.execute(
+                "INSERT INTO proton_session_index(
+                     user_id, credential_id, fingerprint, blob_digest, key_tag, updated_at
+                 )
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                 ON CONFLICT(user_id, credential_id) DO UPDATE SET
+                     fingerprint = excluded.fingerprint,
+                     blob_digest = excluded.blob_digest,
+                     key_tag     = excluded.key_tag,
+                     updated_at  = excluded.updated_at",
+                params![
+                    user_id,
+                    credential_id,
+                    session_fingerprint(&key, &uid),
+                    credential_blob_digest(&blob, &nonce),
+                    session_index_key_tag(&key),
+                    now_ms()
+                ],
+            )
+            .map_err(|e| format!("Write session index: {e}"))?;
+        }
+        _ => {
+            conn.execute(
+                "DELETE FROM proton_session_index WHERE user_id = ?1 AND credential_id = ?2",
+                params![user_id, credential_id],
+            )
+            .map_err(|e| format!("Clear session index: {e}"))?;
+        }
+    }
+    Ok(())
+}
+
+/// Indexes the native Proton session `user_id` just saved or refreshed under
+/// `credential_id` (see [`other_accounts_holding_session`]).
+#[cfg(feature = "proton-native")]
+pub(crate) fn index_proton_session(
+    store: &CredentialStore,
+    user_id: i64,
+    credential_id: &str,
+) -> Result<(), String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
+    let root_secret = user_crypto::secret_key_from_bytes(&root_key);
+    with_user_dek(&conn, &root_secret, user_id, |id, dek| {
+        index_session_row(&conn, &root_key, id, dek, credential_id)
+    })
+}
+
+/// Indexes every native Proton session `user_id` holds, when the account is
+/// unlocked: the rows saved before the index, or rewritten without it, get
+/// their entry then.
+#[cfg(feature = "proton-native")]
+fn index_account_sessions(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+    dek: &SecretKey,
+) -> Result<(), String> {
+    for credential_id in user_credential_ids_of_type(conn, user_id, PROTON_SESSION_TYPE)? {
+        index_session_row(conn, root_key, user_id, dek, &credential_id)?;
+    }
+    Ok(())
+}
+
+/// What the index tells of the accounts other than one about a session.
+#[cfg(feature = "proton-native")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum OtherAccounts {
+    /// No other account holds it.
+    HoldNone,
+    /// Another account holds a session with the same fingerprint.
+    HoldIt,
+    /// Another account holds a session the index does not describe (saved
+    /// before it, or rewritten since, and not indexed at an unlock yet),
+    /// which may be this one.
+    MayHoldIt,
+}
+
+/// The rows of the accounts other than `user` that hold a native Proton
+/// session, with their index entries ([`other_accounts_holding_session`]).
+#[cfg(feature = "proton-native")]
+type SessionIndexRow = (
+    String,
+    Vec<u8>,
+    Vec<u8>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+);
+
+/// What selects a native Proton session row by its key in SQL, for
+/// `column`: the three shapes [`is_proton_session_key`] accepts (`_` taken
+/// literally, a non-empty tail), so no other secret's ciphertext is loaded.
+/// [`is_proton_session_key`] stays the authority over what is read.
+#[cfg(feature = "proton-native")]
+fn proton_session_key_sql(column: &str) -> String {
+    format!(
+        "({column} = '{PROTON_UNBOUND_SESSION}' \
+         OR {column} LIKE 'proton\\_native\\_session\\__%' ESCAPE '\\' \
+         OR {column} LIKE 'proton\\_native\\_unbound\\_user\\__%' ESCAPE '\\')"
+    )
+}
+
+#[cfg(feature = "proton-native")]
+fn other_accounts_session_rows(
+    conn: &Connection,
+    user: Option<i64>,
+) -> Result<Vec<SessionIndexRow>, String> {
+    let rows: Vec<SessionIndexRow> = conn
+        .prepare(&format!(
+            "SELECT c.credential_id, c.encrypted_blob, c.nonce,
+                    i.fingerprint, i.blob_digest, i.key_tag
+             FROM user_credentials c
+             LEFT JOIN proton_session_index i
+                 ON i.user_id = c.user_id AND i.credential_id = c.credential_id
+             WHERE (?1 IS NULL OR c.user_id <> ?1) AND {}",
+            proton_session_key_sql("c.credential_id")
+        ))
+        .and_then(|mut statement| {
+            statement
+                .query_map(params![user], |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                    ))
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()
+        })
+        .map_err(|e| format!("Read session index: {e}"))?;
+    Ok(rows
+        .into_iter()
+        .filter(|(credential_id, ..)| is_proton_session_key(credential_id))
+        .collect())
+}
+
+/// Whether an account other than `user` holds the native Proton session
+/// `uid`, read from the index alone: no account's partition is decrypted,
+/// so a locked account answers as an unlocked one does.
+#[cfg(feature = "proton-native")]
+pub(crate) fn other_accounts_holding_session(
+    store: &CredentialStore,
+    user: Option<i64>,
+    uid: &str,
+) -> Result<OtherAccounts, String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    let key = session_index_key(&store.derive_user_partition_wrapping_key());
+    let (fingerprint, key_tag) = (session_fingerprint(&key, uid), session_index_key_tag(&key));
+    let mut answer = OtherAccounts::HoldNone;
+    for (_, blob, nonce, entry, digest, tag) in other_accounts_session_rows(&conn, user)? {
+        let describes_the_row = tag.as_deref() == Some(key_tag.as_str())
+            && digest.as_deref() == Some(credential_blob_digest(&blob, &nonce).as_str());
+        match entry {
+            Some(entry) if describes_the_row => {
+                if entry == fingerprint {
+                    return Ok(OtherAccounts::HoldIt);
+                }
+            }
+            _ => answer = OtherAccounts::MayHoldIt,
+        }
+    }
+    Ok(answer)
+}
+
+/// Whether `user_id`'s partition is locked in this process: an account with
+/// a passphrase not entered here. Nothing is decrypted.
+#[cfg(feature = "proton-native")]
+pub(crate) fn partition_locked(store: &CredentialStore, user_id: i64) -> Result<bool, String> {
+    let conn = open_or_init_cli()?;
+    let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
+    let root_secret = user_crypto::secret_key_from_bytes(&root_key);
+    match with_user_dek(&conn, &root_secret, user_id, |_, _| Ok(())) {
+        Ok(()) => Ok(false),
+        Err(error) if error == "USER_LOCKED" => Ok(true),
+        Err(error) => Err(error),
+    }
+}
+
+/// Marks a native Proton session a profile purge left in a locked account,
+/// which cannot read it to end it on Proton ([`defer_proton_revoke`]).
+#[cfg(feature = "proton-native")]
+const DEFERRED_REVOKE_PREFIX: &str = "proton_deferred_revoke_";
+
+#[cfg(feature = "proton-native")]
+fn deferred_revoke_prefix(user_id: i64) -> String {
+    format!("{DEFERRED_REVOKE_PREFIX}{user_id}_")
+}
+
+#[cfg(feature = "proton-native")]
+fn deferred_revoke_key(user_id: i64, profile_id: &str) -> String {
+    format!("{}{profile_id}", deferred_revoke_prefix(user_id))
+}
+
+/// The session a purge left to an unlock, named without its key: the
+/// session index fingerprint of its UID. A refresh keeps the UID and a new
+/// sign-in gets another one, so the fingerprint follows the purged session
+/// through a refresh and never names a sign-in made after the purge. `None`
+/// while no fingerprint of the purged row could be taken: the account's
+/// unlock takes it from the row it reads then.
+#[cfg(feature = "proton-native")]
+#[derive(Serialize, Deserialize)]
+struct DeferredRevoke {
+    profile_id: String,
+    fingerprint: Option<String>,
+}
+
+/// The fingerprint of the session the row `credential_id` of `user_id` holds
+/// now: from its plaintext when this process can read the account's
+/// partition, otherwise from the index entry, while it describes that very
+/// ciphertext. `None` when neither tells.
+#[cfg(feature = "proton-native")]
+fn saved_session_fingerprint(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+    credential_id: &str,
+) -> Result<Option<String>, String> {
+    let Some((blob, nonce)) = conn
+        .query_row(
+            "SELECT encrypted_blob, nonce FROM user_credentials
+             WHERE user_id = ?1 AND credential_id = ?2",
+            params![user_id, credential_id],
+            |row| Ok((row.get::<_, Vec<u8>>(0)?, row.get::<_, Vec<u8>>(1)?)),
+        )
+        .optional()
+        .map_err(|e| format!("Read the purged session: {e}"))?
+    else {
+        return Ok(None);
+    };
+    let key = session_index_key(root_key);
+    let root_secret = user_crypto::secret_key_from_bytes(root_key);
+    let read = with_user_dek(conn, &root_secret, user_id, |_, dek| {
+        let plaintext = user_crypto::decrypt_blob(dek, &nonce, &blob)
+            .map_err(|_| "the saved session could not be decrypted".to_string())?;
+        Ok(std::str::from_utf8(&plaintext)
+            .ok()
+            .and_then(proton_session_uid))
+    });
+    match read {
+        Ok(uid) => return Ok(uid.map(|uid| session_fingerprint(&key, &uid))),
+        Err(error) if error == "USER_LOCKED" => {}
+        Err(error) => return Err(error),
+    }
+    conn.query_row(
+        "SELECT fingerprint FROM proton_session_index
+         WHERE user_id = ?1 AND credential_id = ?2 AND blob_digest = ?3 AND key_tag = ?4",
+        params![
+            user_id,
+            credential_id,
+            credential_blob_digest(&blob, &nonce),
+            session_index_key_tag(&key)
+        ],
+        |row| row.get(0),
+    )
+    .optional()
+    .map_err(|e| format!("Read session index: {e}"))
+}
+
+#[cfg(feature = "proton-native")]
+fn write_deferred_revoke(
+    conn: &Connection,
+    user_id: i64,
+    deferred: &DeferredRevoke,
+) -> Result<(), String> {
+    let mark = serde_json::to_string(deferred)
+        .map_err(|e| format!("Encode deferred Proton revoke: {e}"))?;
+    conn.execute(
+        "INSERT INTO global_state(key, value, updated_at)
+         VALUES (?1, ?2, ?3)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+        params![
+            deferred_revoke_key(user_id, &deferred.profile_id),
+            mark,
+            now_ms()
+        ],
+    )
+    .map_err(|e| format!("Write deferred Proton revoke: {e}"))?;
+    Ok(())
+}
+
+/// Leaves the native Proton session of the purged profile `profile_id` in
+/// the locked account `user_id`, its row as it is, marked with the session
+/// it holds ([`DeferredRevoke`]), so the account's next unlock ends it on
+/// Proton and removes it ([`end_deferred_proton_sessions`]): a session is
+/// never dropped without its revoke, and a session saved there after the
+/// purge is never ended by it.
+#[cfg(feature = "proton-native")]
+pub(crate) fn defer_proton_revoke(
+    store: &CredentialStore,
+    user_id: i64,
+    profile_id: &str,
+) -> Result<(), String> {
+    let conn = open_or_init_cli()?;
+    let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
+    let credential_id = crate::providers::proton_native::vault::session_key(Some(profile_id));
+    let fingerprint = saved_session_fingerprint(&conn, &root_key, user_id, &credential_id)?;
+    write_deferred_revoke(
+        &conn,
+        user_id,
+        &DeferredRevoke {
+            profile_id: profile_id.to_string(),
+            fingerprint,
+        },
+    )
+}
+
+/// Takes the mark a purge of `profile_id` left to `user_id`'s unlock: its
+/// value, removed, or `None` when there is none. For a writer that saves a
+/// session for the profile, under its key lock.
+#[cfg(feature = "proton-native")]
+pub(crate) fn take_deferred_proton_revoke(
+    user_id: i64,
+    profile_id: &str,
+) -> Result<Option<String>, String> {
+    let mut conn = open_or_init_cli()?;
+    let tx = conn
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(|e| format!("Take deferred Proton revoke: {e}"))?;
+    let key = deferred_revoke_key(user_id, profile_id);
+    let value: Option<String> = tx
+        .query_row(
+            "SELECT value FROM global_state WHERE key = ?1",
+            params![key],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| format!("Take deferred Proton revoke: {e}"))?;
+    if value.is_some() {
+        tx.execute("DELETE FROM global_state WHERE key = ?1", params![key])
+            .map_err(|e| format!("Take deferred Proton revoke: {e}"))?;
+    }
+    tx.commit()
+        .map_err(|e| format!("Take deferred Proton revoke: {e}"))?;
+    Ok(value)
+}
+
+/// Puts back a mark [`take_deferred_proton_revoke`] took, unless a newer
+/// one is there.
+#[cfg(feature = "proton-native")]
+pub(crate) fn put_back_deferred_proton_revoke(
+    user_id: i64,
+    profile_id: &str,
+    mark: &str,
+) -> Result<(), String> {
+    open_or_init_cli()?
+        .execute(
+            "INSERT OR IGNORE INTO global_state(key, value, updated_at) VALUES (?1, ?2, ?3)",
+            params![deferred_revoke_key(user_id, profile_id), mark, now_ms()],
+        )
+        .map_err(|e| format!("Put back deferred Proton revoke: {e}"))?;
+    Ok(())
+}
+
+/// Ends the sessions a purge left to `user_id`'s unlock, once the unlock
+/// has indexed the account's rows: each on Proton unless another account
+/// holds it (the session index decides, as at any sign-out), then its row
+/// and its mark go. A mark whose profile the account lists again, or whose
+/// row holds another session now, goes and the row stays. One that fails
+/// keeps its mark, with the fingerprint of the row read now, for the next
+/// unlock.
+#[cfg(feature = "proton-native")]
+fn end_deferred_proton_sessions(conn: &Connection, root_key: &[u8; 32], user_id: i64) {
+    let prefix = deferred_revoke_prefix(user_id);
+    let marks: Vec<(String, String)> = match conn
+        .prepare(
+            "SELECT key, value FROM global_state
+             WHERE substr(key, 1, length(?1)) = ?1 ORDER BY key",
+        )
+        .and_then(|mut statement| {
+            statement
+                .query_map(params![prefix], |row| Ok((row.get(0)?, row.get(1)?)))?
+                .collect::<rusqlite::Result<Vec<_>>>()
+        }) {
+        Ok(marks) => marks,
+        Err(error) => {
+            log::warn!("Unlock: the Proton sessions left by a purge could not be listed: {error}");
+            return;
+        }
+    };
+    for (mark, value) in marks {
+        // A mark that names no profile ends nothing.
+        let ended = match serde_json::from_str::<DeferredRevoke>(&value) {
+            Ok(deferred) => end_deferred_proton_session(conn, root_key, user_id, deferred),
+            Err(_) => Ok(false),
+        }
+        .and_then(|_| {
+            conn.execute("DELETE FROM global_state WHERE key = ?1", params![mark])
+                .map(|_| ())
+                .map_err(|error| error.to_string())
+        });
+        if let Err(error) = ended {
+            log::warn!(
+                "Unlock: a Proton session left by a purge stays for the next unlock: {error}"
+            );
+        }
+    }
+}
+
+/// How long an unlock waits for the sessions a purge left to it
+/// ([`end_deferred_proton_sessions`]) before it returns: past it they go on
+/// being ended in the background, and a mark not ended by then stays for
+/// the next unlock.
+#[cfg(all(feature = "proton-native", not(test)))]
+const DEFERRED_CLEANUP_BUDGET: std::time::Duration = std::time::Duration::from_secs(2);
+/// In a test the cleanup is waited for to its end, unless the test sets a
+/// budget ([`DEFERRED_CLEANUP_BUDGET_IN_TEST`]).
+#[cfg(all(feature = "proton-native", test))]
+const DEFERRED_CLEANUP_BUDGET: std::time::Duration = std::time::Duration::from_secs(120);
+
+/// [`DEFERRED_CLEANUP_BUDGET`], or the one a test set.
+#[cfg(feature = "proton-native")]
+fn deferred_cleanup_budget() -> std::time::Duration {
+    #[cfg(test)]
+    if let Some(budget) = *DEFERRED_CLEANUP_BUDGET_IN_TEST
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+    {
+        return budget;
+    }
+    DEFERRED_CLEANUP_BUDGET
+}
+
+/// The budget of an unlock's deferred cleanup a test set (test only).
+#[cfg(all(test, feature = "proton-native"))]
+pub(crate) static DEFERRED_CLEANUP_BUDGET_IN_TEST: Mutex<Option<std::time::Duration>> =
+    Mutex::new(None);
+
+/// [`end_deferred_proton_sessions`] for `user_id` on a thread of its own,
+/// with a connection of its own, waited for up to [`deferred_cleanup_budget`]:
+/// an unlock while Proton cannot be reached returns, and the cleanup goes on
+/// beyond it. One cleanup per account at a time; an unlock while one runs
+/// leaves the marks to it, and to the next unlock what it did not end.
+#[cfg(feature = "proton-native")]
+fn end_deferred_proton_sessions_within_budget(root_key: &[u8; 32], user_id: i64) {
+    static RUNNING: Mutex<Vec<i64>> = Mutex::new(Vec::new());
+    {
+        let mut running = RUNNING
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if running.contains(&user_id) {
+            return;
+        }
+        running.push(user_id);
+    }
+    let root_key = Zeroizing::new(*root_key);
+    let (done, finished) = std::sync::mpsc::channel::<()>();
+    let spawned = std::thread::Builder::new()
+        .name("proton-deferred-cleanup".into())
+        .spawn(move || {
+            match open_or_init_cli() {
+                Ok(conn) => end_deferred_proton_sessions(&conn, &root_key, user_id),
+                Err(error) => log::warn!(
+                    "Unlock: the Proton sessions left by a purge stay for the next unlock: {error}"
+                ),
+            }
+            RUNNING
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .retain(|running| *running != user_id);
+            let _ = done.send(());
+        });
+    if let Err(error) = spawned {
+        RUNNING
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .retain(|running| *running != user_id);
+        log::warn!("Unlock: the Proton sessions left by a purge stay for the next unlock: {error}");
+        return;
+    }
+    if finished.recv_timeout(deferred_cleanup_budget()).is_err() {
+        log::warn!(
+            "Unlock: the Proton sessions left by a purge are still being ended in the background"
+        );
+    }
+}
+
+/// Ends the session `deferred` names. A mark made without a fingerprint
+/// (the account locked and its row not indexed) gets the one of the row
+/// read now, which is the purged session or its refresh: a sign-in saved
+/// there since cleared the mark. Under the session's key lock and lease the
+/// account must not list the profile again and the row must hold that
+/// session (any session, for a row no fingerprint could be taken of, so
+/// none is left behind). Whether it was ended.
+#[cfg(feature = "proton-native")]
+fn end_deferred_proton_session(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+    mut deferred: DeferredRevoke,
+) -> Result<bool, String> {
+    use crate::providers::proton_native::vault;
+    #[cfg(test)]
+    if let Some(hook) = BEFORE_DEFERRED_SESSION_END
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .take()
+    {
+        hook();
+    }
+    let credential_id = vault::session_key(Some(&deferred.profile_id));
+    if deferred.fingerprint.is_none() {
+        deferred.fingerprint = saved_session_fingerprint(conn, root_key, user_id, &credential_id)?;
+        // Onto the mark only while it is there: a sign-in, an import or a
+        // duplicate that saved a session for the profile since cleared it,
+        // and the fingerprint just read is that session's.
+        if deferred.fingerprint.is_some() && !fingerprint_deferred_revoke(conn, user_id, &deferred)?
+        {
+            return Ok(false);
+        }
+    }
+    let root_key = Zeroizing::new(*root_key);
+    let profile_id = deferred.profile_id.clone();
+    vault::end_purged_session_blocking(
+        vault::SessionOwner::for_user(Some(user_id)),
+        &profile_id,
+        move |uid| {
+            let conn = open_or_init_cli()?;
+            // The mark as it is now, under the key lock every writer of a
+            // session for the profile holds while it clears the mark: one
+            // gone is a session saved since, never the purged one.
+            let Some(mark) = read_deferred_revoke(&conn, user_id, &deferred.profile_id)? else {
+                return Ok(false);
+            };
+            let listed = list_server_profiles_for(&conn, &root_key, user_id)?
+                .iter()
+                .any(|profile| {
+                    value_str(profile, &["id", "uid", "profileUid"])
+                        == Some(deferred.profile_id.as_str())
+                });
+            let fingerprint = session_fingerprint(&session_index_key(&root_key), uid);
+            Ok(!listed && mark.fingerprint.is_none_or(|purged| purged == fingerprint))
+        },
+    )
+    .map_err(|error| error.to_string())
+}
+
+/// Puts the fingerprint of `deferred` on its mark, only while the mark is
+/// there. Whether it was.
+#[cfg(feature = "proton-native")]
+fn fingerprint_deferred_revoke(
+    conn: &Connection,
+    user_id: i64,
+    deferred: &DeferredRevoke,
+) -> Result<bool, String> {
+    let mark = serde_json::to_string(deferred)
+        .map_err(|e| format!("Encode deferred Proton revoke: {e}"))?;
+    conn.execute(
+        "UPDATE global_state SET value = ?2, updated_at = ?3 WHERE key = ?1",
+        params![
+            deferred_revoke_key(user_id, &deferred.profile_id),
+            mark,
+            now_ms()
+        ],
+    )
+    .map(|updated| updated == 1)
+    .map_err(|e| format!("Write deferred Proton revoke: {e}"))
+}
+
+/// The mark a purge left for `profile_id` of `user_id`, as stored now. One
+/// that does not decode is an error: it ends nothing, and stays.
+#[cfg(feature = "proton-native")]
+fn read_deferred_revoke(
+    conn: &Connection,
+    user_id: i64,
+    profile_id: &str,
+) -> Result<Option<DeferredRevoke>, String> {
+    let value: Option<String> = conn
+        .query_row(
+            "SELECT value FROM global_state WHERE key = ?1",
+            params![deferred_revoke_key(user_id, profile_id)],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| format!("Read deferred Proton revoke: {e}"))?;
+    value
+        .map(|value| {
+            serde_json::from_str(&value).map_err(|e| format!("Read deferred Proton revoke: {e}"))
+        })
+        .transpose()
+}
+
+/// Runs once in the next deferred cleanup, after the marks are read and
+/// before the first is ended (test only).
+#[cfg(all(test, feature = "proton-native"))]
+pub(crate) static BEFORE_DEFERRED_SESSION_END: Mutex<Option<Box<dyn FnOnce() + Send>>> =
+    Mutex::new(None);
+
 /// The account that owns legacy unbound/global secrets, for one-time reads
 /// of sessions saved before native Proton had explicit user ownership.
 pub(crate) fn legacy_credential_owner_id() -> Result<Option<i64>, String> {
@@ -4350,19 +6760,55 @@ pub fn store_credential_for_user(
     credential_type: &str,
     secret: &str,
 ) -> Result<(), String> {
+    store_credential_for_user_as(
+        store,
+        user_id,
+        credential_id,
+        credential_type,
+        secret,
+        false,
+    )
+}
+
+/// [`store_credential_for_user`] for a sign-in of `user_id`'s own: a private
+/// token is stamped in the same write ([`set_signed_in_credential_for`]),
+/// which is what keeps it on a profile id another account also holds
+/// ([`align_private_tokens_inner`]). Only a sign-in writer of that account
+/// calls this; a restore, an import, a copy or a relocation never does.
+pub fn store_signed_in_credential_for_user(
+    store: &CredentialStore,
+    user_id: i64,
+    credential_id: &str,
+    credential_type: &str,
+    secret: &str,
+) -> Result<(), String> {
+    store_credential_for_user_as(store, user_id, credential_id, credential_type, secret, true)
+}
+
+fn store_credential_for_user_as(
+    store: &CredentialStore,
+    user_id: i64,
+    credential_id: &str,
+    credential_type: &str,
+    secret: &str,
+    signed_in: bool,
+) -> Result<(), String> {
     init_or_migrate_cli(store)?;
     let conn = open_or_init_cli()?;
-    let mut root_key = store.derive_user_partition_wrapping_key();
-    let result = set_user_credential_for(
+    let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
+    let write = if signed_in {
+        set_signed_in_credential_for
+    } else {
+        set_user_credential_for
+    };
+    write(
         &conn,
         &root_key,
         user_id,
         credential_id,
         credential_type,
         secret,
-    );
-    root_key.zeroize();
-    result
+    )
 }
 
 fn read_credential_for_user(
@@ -4401,7 +6847,8 @@ fn read_credential_owner_aware_inner(
     if nonprofile_secret_owner(conn)? == Some(user_id) {
         read_credential_with_fallback_inner(conn, root_key, user_id, credential_id, read_secret)
     } else {
-        get_user_credential_for(conn, root_key, user_id, credential_id)
+        let row = get_user_credential_for(conn, root_key, user_id, credential_id)?;
+        checked_row(conn, user_id, credential_id, row, read_secret)
     }
 }
 
@@ -4455,12 +6902,60 @@ fn store_credential_dual_with(
     mirror: impl FnOnce(i64) -> Result<(), String>,
 ) -> Result<(), String> {
     let user_id = active_user()?;
+    store_vault_then_mirror(store, credential_id, secret, || match user_id {
+        Some(user_id) => mirror(user_id),
+        None => Ok(()),
+    })
+}
+
+/// Writes `secret` to the vault key `credential_id`, then `mirror`, the
+/// account's half: whole or not at all. A mirror that fails puts the vault key
+/// back as it was ([`undo_vault_write`]), so a save reported as failed never
+/// leaves its value where a reader of the vault finds it.
+pub(crate) fn store_vault_then_mirror(
+    store: &CredentialStore,
+    credential_id: &str,
+    secret: &str,
+    mirror: impl FnOnce() -> Result<(), String>,
+) -> Result<(), String> {
+    let previous = match store.get(credential_id) {
+        Ok(previous) => Some(Zeroizing::new(previous)),
+        Err(crate::credential_store::CredentialError::NotFound(_)) => None,
+        Err(e) => return Err(format!("Read credential in vault: {e}")),
+    };
     store
         .store(credential_id, secret)
         .map_err(|e| format!("Store credential in vault: {e}"))?;
-    match user_id {
-        Some(user_id) => mirror(user_id),
-        None => Ok(()),
+    mirror().map_err(|error| {
+        undo_vault_write(
+            store,
+            credential_id,
+            secret,
+            previous.as_deref().map(String::as_str),
+            &error,
+        )
+    })
+}
+
+/// Puts the vault key `credential_id` back as it was before `written`: the
+/// `previous` value, or no key. Only while it still holds `written`, so a
+/// value another writer stored since stays. The error the caller returns,
+/// saying what became of the vault copy.
+pub(crate) fn undo_vault_write(
+    store: &CredentialStore,
+    credential_id: &str,
+    written: &str,
+    previous: Option<&str>,
+    error: &str,
+) -> String {
+    let undone = match previous {
+        Some(previous) => store.replace_secret_if_unchanged(credential_id, written, previous),
+        None => store.delete_secret_if_unchanged(credential_id, written),
+    };
+    match undone {
+        Ok(true) => format!("{error}; the vault copy was put back as it was"),
+        Ok(false) => format!("{error}; the vault copy was rewritten since, so it stays as written"),
+        Err(undo) => format!("{error}; the vault copy could not be put back: {undo}"),
     }
 }
 
@@ -4474,10 +6969,14 @@ pub fn store_credential_for_user_dual(
     credential_id: &str,
     secret: &str,
 ) -> Result<(), String> {
-    store
-        .store(credential_id, secret)
-        .map_err(|e| format!("Store credential in vault: {e}"))?;
-    mirror_credential_for_user(store, user_id, credential_id, secret)
+    // A private token keeps its type, so another account's stays in its
+    // partition (a profile copy, `profile duplicate`).
+    if let Some(kind) = private_token_type(credential_id) {
+        return store_credential_for_user_typed_dual(store, user_id, credential_id, kind, secret);
+    }
+    store_vault_then_mirror(store, credential_id, secret, || {
+        mirror_credential_for_user(store, user_id, credential_id, secret)
+    })
 }
 
 /// The type `credential_id` is stored with in a partition: `credential_type` when
@@ -4501,6 +7000,57 @@ fn partition_credential_type(
     .map_err(|e| format!("Read credential type: {e}"))
 }
 
+/// The keys of `user_id`'s rows of one `credential_type`, read without
+/// decrypting any of them: a caller that reads each row on its own is not
+/// stopped by one it cannot decrypt.
+pub fn user_credential_ids_of_type(
+    conn: &Connection,
+    user_id: i64,
+    credential_type: &str,
+) -> Result<Vec<String>, String> {
+    conn.prepare(
+        "SELECT credential_id FROM user_credentials
+         WHERE user_id = ?1 AND credential_type = ?2 ORDER BY credential_id",
+    )
+    .and_then(|mut statement| {
+        statement
+            .query_map(params![user_id, credential_type], |row| row.get(0))?
+            .collect::<rusqlite::Result<Vec<String>>>()
+    })
+    .map_err(|e| format!("Read user credentials: {e}"))
+}
+
+/// Every row of `user_id` of one `credential_type`, decrypted, by key: all the
+/// copies an account holds of one kind of token, for a caller that must see
+/// each of them (the profiles sharing one native Proton session). One row it
+/// cannot decrypt is an error.
+pub fn user_credentials_of_type(
+    store: &CredentialStore,
+    user_id: i64,
+    credential_type: &str,
+) -> Result<Vec<(String, Zeroizing<String>)>, String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    let ids = user_credential_ids_of_type(&conn, user_id, credential_type)?;
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let mut rows = Vec::with_capacity(ids.len());
+    let mut failure = None;
+    for id in ids {
+        match get_user_credential_for(&conn, &root_key, user_id, &id)
+            .and_then(|row| checked_row_in(&conn, store, user_id, &id, row))
+        {
+            Ok(Some(value)) => rows.push((id, value)),
+            Ok(None) => {}
+            Err(e) => {
+                failure = Some(e);
+                break;
+            }
+        }
+    }
+    root_key.zeroize();
+    failure.map_or(Ok(rows), Err)
+}
+
 /// Write one secret of an import to everything that reads it, for `user_id`: the
 /// partition alone for a token private to that user, otherwise the vault and the
 /// partition row a reader prefers. A partition write that fails is an error even
@@ -4513,29 +7063,21 @@ pub fn store_imported_credential_for_user(
     credential_type: Option<&str>,
     secret: &str,
 ) -> Result<(), String> {
-    if let Some(private) = credential_type
-        .map(|kind| private_token_user(Some(user_id), kind))
-        .transpose()?
-        .flatten()
-    {
-        return store_credential_for_user(
-            store,
-            private,
-            credential_id,
-            credential_type.unwrap_or_default(),
-            secret,
-        );
+    // A write that names no type still holds a token when its key does.
+    if let Some(kind) = credential_type.or_else(|| private_token_type(credential_id)) {
+        if let Some(private) = private_token_user(Some(user_id), kind)? {
+            return store_credential_for_user(store, private, credential_id, kind, secret);
+        }
     }
-    store
-        .store(credential_id, secret)
-        .map_err(|e| format!("Store credential in vault: {e}"))?;
-    let conn = open_or_init_cli()?;
-    let Some(kind) = partition_credential_type(&conn, user_id, credential_id, credential_type)?
-    else {
-        return Ok(());
-    };
-    let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
-    set_user_credential_for(&conn, &root_key, user_id, credential_id, &kind, secret)
+    store_vault_then_mirror(store, credential_id, secret, || {
+        let conn = open_or_init_cli()?;
+        let Some(kind) = partition_credential_type(&conn, user_id, credential_id, credential_type)?
+        else {
+            return Ok(());
+        };
+        let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
+        set_user_credential_for(&conn, &root_key, user_id, credential_id, &kind, secret)
+    })
 }
 
 /// Remove an imported credential from both the user's partition and the vault.
@@ -4545,13 +7087,20 @@ pub fn delete_imported_credential_for_user(
     user_id: i64,
     credential_id: &str,
 ) -> Result<(), String> {
-    let before_vault = get_optional_secret(store, credential_id)?;
     let mut conn = open_or_init_cli()?;
     let _session = hold_user_session(&conn, user_id);
     let tx = conn
         .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
         .map_err(|e| format!("Start credential delete: {e}"))?;
     delete_user_credential_for(&tx, user_id, credential_id)?;
+    // Another account's private token is its row alone: the vault key of that
+    // name is the legacy owner's and stays.
+    if vault_copy_is_another_accounts(&tx, user_id, credential_id)? {
+        return tx
+            .commit()
+            .map_err(|e| format!("Commit credential delete: {e}"));
+    }
+    let before_vault = get_optional_secret(store, credential_id)?;
     store
         .delete(credential_id)
         .map_err(|e| format!("Delete credential from vault: {e}"))?;
@@ -4649,7 +7198,14 @@ pub fn restore_credential_op_for_user(
         .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
         .map_err(|e| format!("Start credential restore: {e}"))?;
     let partition = get_user_credential_for(&tx, &root_key, user_id, credential_id)?;
-    let vault = get_optional_secret(store, credential_id)?;
+    // Another account's private token was written to its row alone: the vault
+    // key of that name is the legacy owner's, and the undo leaves it.
+    let vault_is_theirs = !vault_copy_is_another_accounts(&tx, user_id, credential_id)?;
+    let vault = if vault_is_theirs {
+        get_optional_secret(store, credential_id)?
+    } else {
+        None
+    };
     let write_op = if written_delete {
         SecretWrite::delete(credential_id.to_string(), None)
     } else {
@@ -4675,11 +7231,15 @@ pub fn restore_credential_op_for_user(
         }
         RollbackAction::Delete => delete_user_credential_for(&tx, user_id, credential_id)?,
     }
-    let vault_action = rollback_action_for_write(
-        vault.as_ref().map(|v| v.as_str()),
-        &write_op,
-        before.vault.as_ref().map(|v| v.as_str()),
-    );
+    let vault_action = if vault_is_theirs {
+        rollback_action_for_write(
+            vault.as_ref().map(|v| v.as_str()),
+            &write_op,
+            before.vault.as_ref().map(|v| v.as_str()),
+        )
+    } else {
+        RollbackAction::Leave
+    };
     let vault_changed = vault_action != RollbackAction::Leave;
     match vault_action {
         RollbackAction::Leave => {}
@@ -4709,8 +7269,9 @@ pub fn restore_credential_op_for_user(
     Ok(())
 }
 
-/// Active-user dual delete (GUI): delete from the vault and best-effort from the
-/// active user's partition. Part of an explicit user delete, never a purge.
+/// Active-user dual delete (GUI): delete from the vault and from the active
+/// user's partition, a row left behind being an error. Part of an explicit
+/// user delete, never a purge.
 /// The account is the one active when the call starts, as for
 /// [`store_active_credential_dual`]. A lookup that fails is an error before
 /// either copy changes: read as no account, it deleted the vault copy and
@@ -4737,26 +7298,22 @@ pub fn delete_credential_dual_as(
     )
 }
 
-/// The partition half of a delete. A Jottacloud refresh chain left in the
-/// partition is read ahead of the vault, so its removal must succeed or the
-/// delete fails, and no deletion is recorded; any other key is best-effort,
-/// as during the dual-write rollout.
+/// The partition half of a delete. Every reader takes the account's row
+/// ahead of the vault, so a row left behind is the value the app goes on
+/// using: its removal must succeed or the delete fails (and, for a
+/// Jottacloud refresh chain, no deletion is recorded), whatever the key.
 fn unmirror_deleted_credential(user_id: i64, credential_id: &str) -> Result<(), String> {
-    if crate::providers::jottacloud::is_refresh_chain(credential_id) {
-        #[cfg(test)]
-        if PARTITION_DELETE_REFUSED.with(std::cell::Cell::get) {
-            return Err("Delete credential from partition: refused".to_string());
-        }
-        return try_unmirror_active_credential(user_id, credential_id)
-            .map_err(|e| format!("Delete credential from partition: {e}"));
+    #[cfg(test)]
+    if PARTITION_DELETE_REFUSED.with(std::cell::Cell::get) {
+        return Err("Delete credential from partition: refused".to_string());
     }
-    unmirror_credential_for_user_best_effort_any(user_id, credential_id);
-    Ok(())
+    try_unmirror_active_credential(user_id, credential_id)
+        .map_err(|e| format!("Delete credential from partition: {e}"))
 }
 
 #[cfg(test)]
 thread_local! {
-    /// The partition refuses the delete of a refresh chain.
+    /// The partition refuses the row delete of a dual delete.
     pub(crate) static PARTITION_DELETE_REFUSED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
@@ -4768,6 +7325,10 @@ thread_local! {
 /// [`delete_refresh_chain`], so no connection begins between them and reads
 /// the one left.
 ///
+/// A private token of an account other than the legacy owner is its row
+/// alone ([`private_account_delete`]): the vault key of that name is the
+/// owner's and stays, and the row's removal must succeed.
+///
 /// [`delete_refresh_chain`]: crate::providers::jottacloud::delete_refresh_chain
 pub(crate) fn delete_credential_dual_with(
     store: &CredentialStore,
@@ -4776,7 +7337,10 @@ pub(crate) fn delete_credential_dual_with(
     unmirror: impl FnOnce(i64) -> Result<(), String>,
 ) -> Result<(), String> {
     let user_id = active_user();
-    crate::providers::jottacloud::delete_refresh_chain(user_id, credential_id, || {
+    crate::providers::jottacloud::delete_refresh_chain(store, user_id, credential_id, || {
+        if let Some(user) = private_account_delete(user_id, credential_id)? {
+            return delete_partition_credential_checked(user, credential_id);
+        }
         store
             .delete(credential_id)
             .map_err(|e| format!("Delete credential from vault: {e}"))?;
@@ -4787,19 +7351,44 @@ pub(crate) fn delete_credential_dual_with(
     })
 }
 
-/// Explicit-user dual delete (CLI `--user`): vault delete + best-effort removal
-/// from `user_id`'s partition.
+/// Explicit-user dual delete (CLI `--user`): vault delete + removal from
+/// `user_id`'s partition, both reported. Another account's private token: its
+/// row only, as [`delete_credential_dual_with`].
 pub fn delete_credential_for_user_dual(
     store: &CredentialStore,
     user_id: i64,
     credential_id: &str,
 ) -> Result<(), String> {
-    crate::providers::jottacloud::delete_refresh_chain(Some(user_id), credential_id, || {
+    crate::providers::jottacloud::delete_refresh_chain(store, Some(user_id), credential_id, || {
+        if let Some(user) = private_account_delete(Some(user_id), credential_id)? {
+            return delete_partition_credential_checked(user, credential_id);
+        }
         store
             .delete(credential_id)
             .map_err(|e| format!("Delete credential from vault: {e}"))?;
         unmirror_deleted_credential(user_id, credential_id)
     })
+}
+
+/// `Some(user)` when deleting `credential_id` for `user` must leave the vault
+/// alone: a private token of an account other than the legacy owner, whose
+/// vault key of that name is the owner's ([`vault_copy_is_another_accounts`]).
+/// A partition DB that cannot be opened is an error before anything changes,
+/// since only the DB tells whose the vault key is; any other key never opens it.
+fn private_account_delete(
+    user_id: Option<i64>,
+    credential_id: &str,
+) -> Result<Option<i64>, String> {
+    match user_id {
+        Some(user) if private_token_type(credential_id).is_some() => {
+            let conn = open_or_init_cli()?;
+            // A delete is a write: the owner it is checked against is
+            // recorded, so a later change of admins does not move it.
+            nonprofile_secret_owner(&conn)?;
+            Ok(vault_copy_is_another_accounts(&conn, user, credential_id)?.then_some(user))
+        }
+        _ => Ok(None),
+    }
 }
 
 /// Remove `credential_id` from `user_id`'s partition and return the error, for a
@@ -4813,16 +7402,50 @@ pub fn delete_partition_credential_checked(
 
 /// [`delete_credential_for_user_dual`] that reports both halves: the vault entry
 /// and the partition row are both attempted, and each failure is returned. For a
-/// rollback that must say which secrets it could not remove.
+/// rollback that must say which secrets it could not remove. A private token of
+/// an account other than the legacy owner is its row alone: the vault key of
+/// that name is the owner's ([`vault_copy_is_another_accounts`]) and stays.
 pub fn delete_credential_for_user_checked(
     store: &CredentialStore,
     user_id: i64,
     credential_id: &str,
 ) -> Result<(), String> {
+    let conn = open_or_init_cli();
+    delete_credential_checked_with(
+        store,
+        conn.as_ref().map_err(Clone::clone),
+        user_id,
+        credential_id,
+    )
+}
+
+/// [`delete_credential_for_user_checked`] on `conn`, the partition DB or why it
+/// could not be opened. Without it the vault entry of any other secret is still
+/// deleted, and the open error returned beside it; the vault key of a private
+/// token is kept, since only the DB tells whether it is this account's.
+pub(crate) fn delete_credential_checked_with(
+    store: &CredentialStore,
+    conn: Result<&Connection, String>,
+    user_id: i64,
+    credential_id: &str,
+) -> Result<(), String> {
+    let partition = conn
+        .clone()
+        .and_then(|conn| delete_user_credential_for(conn, user_id, credential_id));
+    if private_token_type(credential_id).is_some() {
+        match conn.and_then(|conn| vault_copy_is_another_accounts(conn, user_id, credential_id)) {
+            Ok(true) => return partition,
+            Ok(false) => {}
+            Err(error) => {
+                return Err(format!(
+                    "{error}; the vault key was kept, since without the partition database it cannot be told whose it is"
+                ))
+            }
+        }
+    }
     let vault = store
         .delete(credential_id)
         .map_err(|e| format!("Delete credential from vault: {e}"));
-    let partition = delete_partition_credential_checked(user_id, credential_id);
     match (vault, partition) {
         (Ok(()), Ok(())) => Ok(()),
         (Err(error), Ok(())) | (Ok(()), Err(error)) => Err(error),
@@ -4858,20 +7481,163 @@ pub fn mirror_active_credential(
     }
 }
 
-/// Best-effort removal of one secret from the active user's partition. The
-/// partition half of an explicit token delete (OAuth/Jottacloud logout). An
-/// account that cannot be read is logged, not taken for no account.
-pub fn unmirror_active_credential(credential_id: &str) {
-    match active_user_id_for_write() {
-        Ok(Some(user_id)) => unmirror_credential_for_user_best_effort_any(user_id, credential_id),
-        Ok(None) => {}
-        Err(e) => tracing::warn!("Partition copy of a credential not removed: {e}"),
+/// Removal of one secret from the active user's partition. The partition
+/// half of an explicit token delete (OAuth/Jottacloud logout), so a failure,
+/// and an account that cannot be read, are returned: the row left behind is
+/// the one every reader takes first.
+pub fn unmirror_active_credential(credential_id: &str) -> Result<(), String> {
+    match active_user_id_for_write()? {
+        Some(user_id) => unmirror_deleted_credential(user_id, credential_id),
+        None => Ok(()),
     }
 }
 
-/// Token types that belong to one user only: OAuth tokens and Jottacloud
-/// refresh chains.
-const PRIVATE_TOKEN_TYPES: [&str; 2] = ["oauth", "jottacloud_refresh"];
+/// Token types that belong to one user only: OAuth tokens, Jottacloud
+/// refresh chains and native Proton Drive sessions.
+const PRIVATE_TOKEN_TYPES: [&str; 3] = ["oauth", "jottacloud_refresh", "proton_native_session"];
+
+/// Prefix of a native Proton Drive session saved for one profile, and the key
+/// of the one saved before a profile was (the legacy owner's).
+const PROTON_SESSION_PREFIX: &str = "proton_native_session_";
+const PROTON_UNBOUND_SESSION: &str = "proton_native_session";
+/// Prefix of the session an account signed in to before saving the profile.
+const PROTON_UNBOUND_USER_PREFIX: &str = "proton_native_unbound_user_";
+
+/// Whether `key` holds a native Proton Drive session.
+fn is_proton_session_key(key: &str) -> bool {
+    key == PROTON_UNBOUND_SESSION
+        || key
+            .strip_prefix(PROTON_SESSION_PREFIX)
+            .is_some_and(|tail| !tail.is_empty())
+        || key
+            .strip_prefix(PROTON_UNBOUND_USER_PREFIX)
+            .is_some_and(|tail| !tail.is_empty())
+}
+
+/// The Proton session UID a saved session names, for telling copies of one
+/// session apart without a provider build.
+fn proton_session_uid(raw: &str) -> Option<String> {
+    serde_json::from_str::<Value>(raw)
+        .ok()?
+        .get("uid")?
+        .as_str()
+        .map(str::to_string)
+}
+
+/// The providers whose OAuth token lives under `oauth_<slug>` (the singleton)
+/// or `oauth_<slug>_<profile id>`.
+const OAUTH_TOKEN_SLUGS: [&str; 9] = [
+    "google",
+    "googlephotos",
+    "dropbox",
+    "onedrive",
+    "box",
+    "pcloud",
+    "zohoworkdrive",
+    "yandexdisk",
+    "fourshared",
+];
+
+/// The app settings that share the `oauth_<slug>_` prefix with the tokens:
+/// machine-wide, never one user's.
+const OAUTH_APP_SETTING_SUFFIXES: [&str; 3] = ["client_id", "client_secret", "region"];
+
+/// The machine-global key of a GitHub App's PEM, `github_pem_<app id>_<installation
+/// id>` (`github_pem_vault_key`): both are numeric GitHub ids, which a profile id
+/// (`srv_<millis>_<random>`) never is, so it is not the `github_pem_<profile>` of a
+/// profile.
+fn is_github_app_pem_key(credential_id: &str) -> bool {
+    let numeric = |part: &str| !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit());
+    credential_id
+        .strip_prefix("github_pem_")
+        .and_then(|tail| tail.split_once('_'))
+        .is_some_and(|(app, installation)| numeric(app) && numeric(installation))
+}
+
+/// The type of [`PRIVATE_TOKEN_TYPES`] a key holds, by the names its writers
+/// give it: the one place a reader, writer or delete that knows only the key
+/// learns that the key is one user's. An OAuth token (`oauth_<slug>`,
+/// `oauth_<slug>_<profile>`, not the app settings next to it), a profile's
+/// authorization state that [`crate::profile_auth`] writes as `oauth`
+/// (`profile_auth_*`, `github_oauth_<profile>`, `github_pem_<profile>`, not the
+/// globals `github_oauth_token`, `github_pat` and the GitHub App keys
+/// [`is_github_app_pem_key`]), or a Jottacloud refresh chain. `None` for every
+/// other key.
+pub fn private_token_type(credential_id: &str) -> Option<&'static str> {
+    if credential_id == "jottacloud_refresh" || credential_id.starts_with("jottacloud_refresh_") {
+        return Some("jottacloud_refresh");
+    }
+    if is_proton_session_key(credential_id) {
+        return Some("proton_native_session");
+    }
+    if let Some(rest) = credential_id.strip_prefix("oauth_") {
+        let token = OAUTH_TOKEN_SLUGS.iter().any(|slug| {
+            rest == *slug
+                || rest
+                    .strip_prefix(slug)
+                    .and_then(|tail| tail.strip_prefix('_'))
+                    .is_some_and(|tail| {
+                        !tail.is_empty() && !OAUTH_APP_SETTING_SUFFIXES.contains(&tail)
+                    })
+        });
+        return token.then_some("oauth");
+    }
+    if matches!(credential_id, "github_oauth_token" | "github_pat")
+        || is_github_app_pem_key(credential_id)
+    {
+        return None;
+    }
+    crate::profile_auth::DURABLE_KEY_PREFIXES
+        .iter()
+        .chain(crate::profile_auth::TRANSIENT_KEY_PREFIXES.iter())
+        .any(|prefix| {
+            credential_id
+                .strip_prefix(prefix)
+                .and_then(|tail| tail.strip_prefix('_'))
+                .is_some_and(|tail| !tail.is_empty())
+        })
+        .then_some("oauth")
+}
+
+/// Whether `user_id` is the legacy owner, whose private tokens are also the
+/// vault's ([`vault_copy_is_another_accounts`]); answered on a read-only
+/// connection too.
+pub(crate) fn is_legacy_owner(conn: &Connection, user_id: i64) -> Result<bool, String> {
+    Ok(nonprofile_secret_owner_unpersisted(conn)? == Some(user_id))
+}
+
+/// What tells account `user_id` apart from every other across databases:
+/// its DEK verifier, an HMAC tag of its random DEK. Each database numbers its
+/// accounts on its own, so two of them can give one id to two people; every
+/// copy of one account's database carries the same verifier (a transport
+/// re-key re-wraps the DEK and keeps it), and only an administrator's reset,
+/// which wipes the account's secrets, changes it. Read without unlocking.
+pub(crate) fn account_identity(conn: &Connection, user_id: i64) -> Result<[u8; 16], String> {
+    let verifier: Vec<u8> = conn
+        .query_row(
+            "SELECT dek_verifier FROM users WHERE id = ?1",
+            params![user_id],
+            |row| row.get(0),
+        )
+        .map_err(|e| format!("Read the identity of account {user_id}: {e}"))?;
+    verifier
+        .try_into()
+        .map_err(|_| format!("The identity of account {user_id} is not readable"))
+}
+
+/// Whether the vault copy of `credential_id` is someone else's for
+/// `user_id`: a private token ([`private_token_type`]) and an account other
+/// than the legacy owner, whose key of that name it is. Such an account reads
+/// and writes its own partition row only. Reads `conn` only, so a read-only
+/// connection does.
+pub(crate) fn vault_copy_is_another_accounts(
+    conn: &Connection,
+    user_id: i64,
+    credential_id: &str,
+) -> Result<bool, String> {
+    Ok(private_token_type(credential_id).is_some()
+        && nonprofile_secret_owner_unpersisted(conn)? != Some(user_id))
+}
 
 /// The user whose tokens of `credential_type` must stay in its own partition:
 /// anyone but the legacy owner. Written to the shared vault, a token would be
@@ -4898,13 +7664,66 @@ pub fn store_active_credential_typed_dual(
     credential_type: &str,
     secret: &str,
 ) -> Result<(), String> {
-    if let Some(user) = private_token_user(None, credential_type)? {
-        return store_credential_for_user(store, user, credential_id, credential_type, secret);
+    store_active_credential_typed_dual_as(store, credential_id, credential_type, secret, false)
+}
+
+/// [`store_active_credential_typed_dual`] for `user_id`, the account active
+/// when the request arrived ([`active_user_for_save`]): a writer of several
+/// secrets reads the account once, so a switch while one of them waits sends
+/// none of the others elsewhere. `None` (no account yet) writes the vault, as
+/// the active-account writer does then.
+pub fn store_typed_credential_dual_as(
+    store: &CredentialStore,
+    user_id: Option<i64>,
+    credential_id: &str,
+    credential_type: &str,
+    secret: &str,
+) -> Result<(), String> {
+    match user_id {
+        Some(user_id) => store_credential_for_user_typed_dual(
+            store,
+            user_id,
+            credential_id,
+            credential_type,
+            secret,
+        ),
+        None => store
+            .store(credential_id, secret)
+            .map_err(|e| format!("Store credential in vault: {e}")),
     }
-    store
-        .store(credential_id, secret)
-        .map_err(|e| format!("Store credential in vault: {e}"))?;
-    mirror_active_credential(store, credential_id, credential_type, secret)
+}
+
+/// [`store_active_credential_typed_dual`] for a sign-in of the active
+/// account's own ([`store_signed_in_credential_for_user`]).
+fn store_active_signed_in_credential_typed_dual(
+    store: &CredentialStore,
+    credential_id: &str,
+    credential_type: &str,
+    secret: &str,
+) -> Result<(), String> {
+    store_active_credential_typed_dual_as(store, credential_id, credential_type, secret, true)
+}
+
+fn store_active_credential_typed_dual_as(
+    store: &CredentialStore,
+    credential_id: &str,
+    credential_type: &str,
+    secret: &str,
+    signed_in: bool,
+) -> Result<(), String> {
+    if let Some(user) = private_token_user(None, credential_type)? {
+        return store_credential_for_user_as(
+            store,
+            user,
+            credential_id,
+            credential_type,
+            secret,
+            signed_in,
+        );
+    }
+    store_vault_then_mirror(store, credential_id, secret, || {
+        mirror_active_credential(store, credential_id, credential_type, secret)
+    })
 }
 
 /// Explicitly-typed dual writer (CLI `--user`): vault first, then mirror into
@@ -4916,13 +7735,56 @@ pub fn store_credential_for_user_typed_dual(
     credential_type: &str,
     secret: &str,
 ) -> Result<(), String> {
+    store_credential_for_user_typed_dual_as(
+        store,
+        user_id,
+        credential_id,
+        credential_type,
+        secret,
+        false,
+    )
+}
+
+/// [`store_credential_for_user_typed_dual`] for a sign-in of `user_id`'s own
+/// ([`store_signed_in_credential_for_user`]).
+pub fn store_signed_in_credential_for_user_typed_dual(
+    store: &CredentialStore,
+    user_id: i64,
+    credential_id: &str,
+    credential_type: &str,
+    secret: &str,
+) -> Result<(), String> {
+    store_credential_for_user_typed_dual_as(
+        store,
+        user_id,
+        credential_id,
+        credential_type,
+        secret,
+        true,
+    )
+}
+
+fn store_credential_for_user_typed_dual_as(
+    store: &CredentialStore,
+    user_id: i64,
+    credential_id: &str,
+    credential_type: &str,
+    secret: &str,
+    signed_in: bool,
+) -> Result<(), String> {
     if let Some(user) = private_token_user(Some(user_id), credential_type)? {
-        return store_credential_for_user(store, user, credential_id, credential_type, secret);
+        return store_credential_for_user_as(
+            store,
+            user,
+            credential_id,
+            credential_type,
+            secret,
+            signed_in,
+        );
     }
-    store
-        .store(credential_id, secret)
-        .map_err(|e| format!("Store credential in vault: {e}"))?;
-    mirror_credential_for_user_typed(store, user_id, credential_id, credential_type, secret)
+    store_vault_then_mirror(store, credential_id, secret, || {
+        mirror_credential_for_user_typed(store, user_id, credential_id, credential_type, secret)
+    })
 }
 
 /// MU-7: list other users that already store a profile with the SAME dedup
@@ -5147,9 +8009,20 @@ fn unlock_user_inner(
         } else {
             Vec::new()
         };
+    // The account's sessions saved before the index, or rewritten without
+    // it, are indexed now that its key is at hand.
+    #[cfg(feature = "proton-native")]
+    if let Err(error) = index_account_sessions(conn, root_key, user_id, &dek) {
+        log::warn!("Unlock: the account's Proton sessions were not indexed: {error}");
+    }
     if row.has_passphrase {
         set_user_session(user_id, dek)?;
     }
+    // Once the account reads its partition, the sessions a purge could not
+    // end while it was locked are ended, for a bounded time: offline, each
+    // waits for Proton, and the unlock is not held for that.
+    #[cfg(feature = "proton-native")]
+    end_deferred_proton_sessions_within_budget(root_key, user_id);
     let mut status = user_unlock_status(conn)?;
     status.security_reset = security_reset;
     Ok(status)
@@ -8047,6 +10920,120 @@ mod tests {
     use rusqlite::params;
     use serde_json::json;
 
+    /// A running deletion is settled as completed once it can never end
+    /// (its process gone, its pid another process's, its lease run out on a
+    /// machine this one cannot look at, or this process's own that no longer
+    /// runs here), and only then: a live process of this machine holds its
+    /// key however long it takes.
+    #[test]
+    fn a_deletion_is_settled_only_once_it_can_never_end() {
+        let this = this_process();
+        let now = now_ms();
+        let stale = now - CHAIN_DELETION_LEASE_MS - 1;
+        let running = |process: &str, space: Option<String>, pid: u32, start: Option<u64>, at| {
+            RunningDeletion {
+                id: hex::encode(crate::crypto::random_bytes(8)),
+                process: process.to_string(),
+                space,
+                pid,
+                start,
+                at,
+            }
+        };
+        let elsewhere = Some("another machine".to_string());
+        let mut cases = vec![
+            (
+                "another machine, just begun",
+                running("other", elsewhere.clone(), 1, Some(1), now),
+                false,
+            ),
+            (
+                "another machine, its lease run out",
+                running("other", elsewhere, 1, Some(1), stale),
+                true,
+            ),
+            (
+                "no pid space, just begun",
+                running("other", None, 1, None, now),
+                false,
+            ),
+            (
+                "no pid space, its lease run out",
+                running("other", None, 1, None, stale),
+                true,
+            ),
+        ];
+        #[cfg(target_os = "linux")]
+        {
+            // This test's own process stands for a live one: its stat is
+            // readable wherever the test runs (`hidepid` hides only other
+            // users' processes, PID 1 among them), and its token is not this
+            // deletion's, so the pid is what decides.
+            let live = std::process::id();
+            let live_start = process_start(live)
+                .expect("this process's own stat is readable")
+                .expect("this process runs");
+            let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+                .arg("--list")
+                .stdout(std::process::Stdio::null())
+                .spawn()
+                .unwrap();
+            let gone = child.id();
+            child.wait().unwrap();
+            let here = this.space.clone();
+            assert!(here.is_some(), "the pid space of this process is read");
+            cases.extend([
+                (
+                    "a live process here, past any lease",
+                    running("other", here.clone(), live, Some(live_start), stale),
+                    false,
+                ),
+                (
+                    "its pid now another process's",
+                    running("other", here.clone(), live, Some(live_start + 1), now),
+                    true,
+                ),
+                (
+                    "a process here that is gone",
+                    running("other", here, gone, Some(live_start), now),
+                    true,
+                ),
+            ]);
+        }
+        let ours = ChainDeletion {
+            id: hex::encode(crate::crypto::random_bytes(8)),
+        };
+        deletions_running_here().insert(ours.id.clone());
+        let mut own = running(&this.token, this.space.clone(), this.pid, this.start, stale);
+        own.id = ours.id.clone();
+        cases.extend([
+            ("this process's, running here", own, false),
+            (
+                "this process's, no longer running",
+                running(&this.token, this.space.clone(), this.pid, this.start, now),
+                true,
+            ),
+        ]);
+        let left_over = cases.iter().filter(|(_, _, left)| *left).count();
+        for (case, deletion, left) in &cases {
+            assert_eq!(deletion_left_over(deletion, now), *left, "{case}");
+        }
+        let mut record = DeletionRecord {
+            generation: 3,
+            running: cases.into_iter().map(|(_, deletion, _)| deletion).collect(),
+        };
+        let kept = record.running.len() - left_over;
+        assert!(record.settle(now));
+        assert_eq!(
+            record.view(),
+            ChainDeletions {
+                generation: 3 + left_over as u64,
+                in_progress: kept,
+            }
+        );
+        drop(ours);
+    }
+
     /// A partition call made under the session its thread holds reads the
     /// session from the hold: the lock is not reentrant, and taking it again
     /// would wait on its own thread for good.
@@ -8355,6 +11342,1190 @@ mod tests {
         ));
         assert_eq!(read(open.id, "server_new").as_deref(), Some("secret"));
         assert_eq!(read(source, "server_old"), None);
+    }
+
+    /// A token relocated between two accounts other than the legacy owner goes
+    /// row to row: the vault keys of those names are the owner's, so neither
+    /// the copy nor a Move's cleanup touches them. Into the owner's account
+    /// the copy still reaches the vault, which that account reads.
+    #[test]
+    fn a_token_relocated_between_other_accounts_leaves_the_owners_vault_keys() {
+        let _guard = test_lock();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_vault(dir.path());
+        let mut conn = open_or_init_path(dir.path().join("partitions.db")).expect("open");
+        let root = store.derive_user_partition_wrapping_key();
+        migrate_legacy_payloads(&mut conn, Some("[]"), None, &root).expect("seed");
+        let owner = nonprofile_secret_owner(&conn).unwrap().unwrap();
+        let source = create_passphrase_less_user(&mut conn, &root, "Source", None, None).unwrap();
+        let target = create_passphrase_less_user(&mut conn, &root, "Target", None, None).unwrap();
+        clear_user_session();
+        for key in ["oauth_dropbox_old", "oauth_dropbox_new"] {
+            store.store(key, "owners-token").unwrap();
+        }
+        set_user_credential_for(
+            &conn,
+            &root,
+            source.id,
+            "oauth_dropbox_old",
+            "oauth",
+            "token",
+        )
+        .unwrap();
+        let relocation = |target: i64, moved: bool| ProfileRelocation {
+            source_profile_id: "old".into(),
+            new_profile_id: "new".into(),
+            profile_name: "P".into(),
+            target_user_id: target,
+            moved,
+            inserted: true,
+            already_present: false,
+            protocol: "dropbox".into(),
+            secrets_not_copied: Vec::new(),
+        };
+        let read = |user: i64, key: &str| {
+            get_user_credential_for(&conn, &root, user, key)
+                .unwrap()
+                .map(|value| value.to_string())
+        };
+        assert!(relocate_secret_key_dual(
+            &conn,
+            Some(&store),
+            &root,
+            source.id,
+            &relocation(target.id, true),
+            None,
+            "oauth_dropbox_old",
+            "oauth_dropbox_new",
+            "oauth",
+        ));
+        assert_eq!(
+            read(target.id, "oauth_dropbox_new").as_deref(),
+            Some("token")
+        );
+        assert_eq!(read(source.id, "oauth_dropbox_old"), None);
+        assert_eq!(store.get("oauth_dropbox_new").unwrap(), "owners-token");
+        assert_eq!(store.get("oauth_dropbox_old").unwrap(), "owners-token");
+
+        store.delete("oauth_dropbox_new").unwrap();
+        assert!(relocate_secret_key_dual(
+            &conn,
+            Some(&store),
+            &root,
+            target.id,
+            &relocation(owner, false),
+            None,
+            "oauth_dropbox_new",
+            "oauth_dropbox_new",
+            "oauth",
+        ));
+        assert_eq!(store.get("oauth_dropbox_new").unwrap(), "token");
+        assert_eq!(
+            read(target.id, "oauth_dropbox_new").as_deref(),
+            Some("token")
+        );
+    }
+
+    /// The account a relocation compares is read like every other reader reads
+    /// it: another account's token from its row alone, never the owner's vault
+    /// key of the same name, which would make two different sign-ins match.
+    #[test]
+    fn a_relocation_fingerprints_another_accounts_token_from_its_row_alone() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let owner = nonprofile_secret_owner(&conn).unwrap().unwrap();
+        let other = create_passphrase_less_user(&mut conn, &root, "Other", None, None).unwrap();
+        clear_user_session();
+        let (_keys, read_vault) = fake_vault(&[("oauth_dropbox_p", "owners-token")]);
+        let resolve = |user: i64| {
+            resolve_relocate_secret_with(&conn, &root, user, None, "dropbox", "p", &read_vault)
+                .unwrap()
+                .map(|value| value.to_string())
+        };
+        assert_eq!(resolve(other.id), None);
+        assert_eq!(resolve(owner).as_deref(), Some("owners-token"));
+        set_user_credential_for(&conn, &root, other.id, "oauth_dropbox_p", "oauth", "own").unwrap();
+        assert_eq!(resolve(other.id).as_deref(), Some("own"));
+    }
+
+    /// MUV-6 for private tokens: what another account saved in the vault before
+    /// its tokens were kept to its partition moves there, its own row winning
+    /// over a stale vault copy, and leaves the vault. A profile id the legacy
+    /// owner also holds, the owner's singleton and the app settings stay. A
+    /// vault that refuses a delete leaves the account unmarked, and the next
+    /// pass finishes; a settled account, and the owner, are passed over.
+    #[test]
+    fn another_accounts_tokens_saved_in_the_vault_move_to_its_partition() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(1);
+        let root = test_root();
+        let owner = nonprofile_secret_owner(&conn).unwrap().unwrap();
+        let other = create_passphrase_less_user(&mut conn, &root, "Other", None, None).unwrap();
+        clear_user_session();
+        let profile = |id: &str| {
+            json!({"id": id, "name": id, "protocol": "dropbox", "host": "", "port": 0,
+                   "username": format!("{id}@example.test")})
+        };
+        replace_server_profiles_for(
+            &mut conn,
+            &root,
+            other.id,
+            &[
+                profile("mine"),
+                profile("held"),
+                profile("profile-0"),
+                profile("1234_5678"),
+            ],
+        )
+        .unwrap();
+        set_user_credential_for(&conn, &root, other.id, "oauth_dropbox_held", "oauth", "row")
+            .unwrap();
+        let (keys, read) = fake_vault(&[
+            ("github_pem_1234_5678", "-----PEM-----"),
+            ("oauth_dropbox_mine", "mine-token"),
+            ("profile_auth_config_mine", "mine-config"),
+            ("oauth_dropbox_held", "stale-token"),
+            ("oauth_dropbox_profile-0", "owners-token"),
+            ("server_mine", "password"),
+            ("oauth_dropbox", "owners-singleton"),
+            ("oauth_dropbox_client_id", "app-id"),
+        ]);
+        let deleted = RefCell::new(Vec::<String>::new());
+        let refuse = |_: &str| Err("vault busy".to_string());
+        let delete = |key: &str| {
+            deleted.borrow_mut().push(key.to_string());
+            Ok(())
+        };
+        let row = |key: &str| {
+            get_user_credential_for(&conn, &root, other.id, key)
+                .unwrap()
+                .map(|value| value.to_string())
+        };
+
+        assert!(align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &refuse).is_err());
+        assert!(!private_tokens_aligned(&conn, other.id).unwrap());
+        assert_eq!(row("oauth_dropbox_mine").as_deref(), Some("mine-token"));
+
+        let moved =
+            align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete).unwrap();
+        let mut gone = deleted.borrow().clone();
+        gone.sort();
+        assert_eq!(
+            gone,
+            [
+                "oauth_dropbox_held",
+                "oauth_dropbox_mine",
+                "profile_auth_config_mine"
+            ]
+        );
+        assert_eq!(moved, 3);
+        assert_eq!(row("oauth_dropbox_mine").as_deref(), Some("mine-token"));
+        assert_eq!(
+            row("profile_auth_config_mine").as_deref(),
+            Some("mine-config")
+        );
+        assert_eq!(row("oauth_dropbox_held").as_deref(), Some("row"));
+        assert_eq!(row("oauth_dropbox_profile-0"), None);
+        assert_eq!(row("server_mine"), None);
+        // A GitHub App's PEM is the machine's, whatever profile id reads like
+        // its key: it stays in the vault, and every account reads it there.
+        assert_eq!(row("github_pem_1234_5678"), None);
+        assert_eq!(
+            read_credential_with_fallback_inner(
+                &conn,
+                &root,
+                other.id,
+                "github_pem_1234_5678",
+                &read
+            )
+            .unwrap()
+            .as_deref()
+            .map(String::as_str),
+            Some("-----PEM-----")
+        );
+
+        deleted.borrow_mut().clear();
+        assert_eq!(
+            align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete).unwrap(),
+            0
+        );
+        assert_eq!(
+            align_private_tokens_inner(&conn, &root, owner, &keys, &read, &delete).unwrap(),
+            0
+        );
+        assert!(deleted.borrow().is_empty());
+        assert!(private_tokens_aligned(&conn, owner).unwrap());
+    }
+
+    /// A profile id the legacy owner and another account both hold: the vault
+    /// copy of its tokens is the owner's, so the other account's migration and
+    /// alignment leave it, and the other account signs in by itself. Each then
+    /// reads its own token. The other account's own profile still reaches its
+    /// partition.
+    #[test]
+    fn a_profile_both_hold_keeps_the_owners_token_from_the_other_account() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(1);
+        let root = test_root();
+        let owner = nonprofile_secret_owner(&conn).unwrap().unwrap();
+        let other = create_passphrase_less_user(&mut conn, &root, "Other", None, None).unwrap();
+        clear_user_session();
+        let profile = |id: &str| {
+            json!({"id": id, "name": id, "protocol": "dropbox", "host": "", "port": 0,
+                   "username": format!("{id}@example.test")})
+        };
+        replace_server_profiles_for(
+            &mut conn,
+            &root,
+            other.id,
+            &[profile("profile-0"), profile("mine")],
+        )
+        .unwrap();
+        let (keys, read) = fake_vault(&[
+            ("oauth_dropbox_profile-0", "owners-token"),
+            ("jottacloud_refresh_profile-0", "owners-chain"),
+            ("oauth_dropbox_mine", "mine-token"),
+        ]);
+        let deleted = RefCell::new(Vec::<String>::new());
+        let delete = |key: &str| {
+            deleted.borrow_mut().push(key.to_string());
+            Ok(())
+        };
+        let row = |key: &str| {
+            get_user_credential_for(&conn, &root, other.id, key)
+                .unwrap()
+                .map(|value| value.to_string())
+        };
+
+        migrate_user_credentials_inner(&conn, &root, other.id, &keys, &read).unwrap();
+        assert_eq!(row("oauth_dropbox_profile-0"), None);
+        assert_eq!(row("jottacloud_refresh_profile-0"), None);
+        align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete).unwrap();
+        assert_eq!(row("oauth_dropbox_profile-0"), None);
+        assert_eq!(row("jottacloud_refresh_profile-0"), None);
+        assert_eq!(row("oauth_dropbox_mine").as_deref(), Some("mine-token"));
+        assert_eq!(*deleted.borrow(), ["oauth_dropbox_mine"]);
+
+        set_user_credential_for(
+            &conn,
+            &root,
+            other.id,
+            "oauth_dropbox_profile-0",
+            "oauth",
+            "others-token",
+        )
+        .unwrap();
+        let reads = |user: i64| {
+            read_credential_with_fallback_inner(
+                &conn,
+                &root,
+                user,
+                "oauth_dropbox_profile-0",
+                &read,
+            )
+            .unwrap()
+            .map(|value| value.to_string())
+        };
+        assert_eq!(reads(other.id).as_deref(), Some("others-token"));
+        assert_eq!(reads(owner).as_deref(), Some("owners-token"));
+    }
+
+    /// A private token's sign-in is saved for one account: the active one when
+    /// it holds the profile, or the single holder; with several holders and
+    /// none of them active it is refused, never written to all of them.
+    #[test]
+    fn a_private_sign_in_is_saved_for_one_account_or_refused() {
+        assert_eq!(private_token_signer(vec![2, 3], Some(3)).unwrap(), [3]);
+        assert_eq!(private_token_signer(vec![2], Some(3)).unwrap(), [2]);
+        assert_eq!(private_token_signer(vec![2], None).unwrap(), [2]);
+        for active in [Some(4), None] {
+            let refused = private_token_signer(vec![2, 3], active).unwrap_err();
+            assert!(refused.starts_with(ACCOUNT_CHANGED), "{refused}");
+        }
+    }
+
+    /// The alignment does not run while a profile writer holds the list lock,
+    /// which also covers a caller holding it: the account stays unmarked, and
+    /// the next pass sees the holder the writer added meanwhile, so the token
+    /// stays in the vault for the legacy owner who now holds the profile.
+    #[test]
+    fn a_holder_added_during_the_alignment_keeps_its_token() {
+        let _guard = test_lock();
+        clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let mut conn = open_or_init_path(dir.path().join("partitions.db")).expect("open");
+        let root = test_root();
+        migrate_legacy_payloads(&mut conn, Some("[]"), None, &root).expect("seed");
+        let owner = nonprofile_secret_owner(&conn).unwrap().unwrap();
+        let other = create_passphrase_less_user(&mut conn, &root, "Other", None, None).unwrap();
+        clear_user_session();
+        let profile = json!({"id": "p", "name": "p", "protocol": "dropbox", "host": "",
+                             "port": 0, "username": "p@example.test"});
+        replace_server_profiles_for(&mut conn, &root, other.id, std::slice::from_ref(&profile))
+            .unwrap();
+        let (keys, read) = fake_vault(&[("oauth_dropbox_p", "owners-token")]);
+        let deleted = RefCell::new(Vec::<String>::new());
+        let delete = |key: &str| {
+            deleted.borrow_mut().push(key.to_string());
+            Ok(())
+        };
+
+        let writer = ProfileListLock::acquire(&conn).unwrap();
+        assert_eq!(
+            align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete).unwrap(),
+            0
+        );
+        assert!(!private_tokens_aligned(&conn, other.id).unwrap());
+        replace_server_profiles_under_lock(&mut conn, &root, owner, &[profile]).unwrap();
+        drop(writer);
+
+        assert_eq!(
+            align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete).unwrap(),
+            0
+        );
+        assert!(private_tokens_aligned(&conn, other.id).unwrap());
+        assert!(deleted.borrow().is_empty());
+        assert_eq!(
+            get_user_credential_for(&conn, &root, other.id, "oauth_dropbox_p").unwrap(),
+            None
+        );
+    }
+
+    /// An install migrated before the tokens were kept to their account: on a
+    /// profile id the legacy owner also holds, the other account's row holding
+    /// the vault's very value is the copy that migration made of the owner's
+    /// token, and is dropped; a row of its own sign-in (here a chain of another
+    /// Jottacloud user, a session of another UID) stays. The vault keeps the
+    /// owner's.
+    #[test]
+    fn a_copy_an_earlier_migration_made_of_a_shared_token_is_dropped() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(2);
+        let root = test_root();
+        let other = create_passphrase_less_user(&mut conn, &root, "Other", None, None).unwrap();
+        clear_user_session();
+        let profile = |id: &str| {
+            json!({"id": id, "name": id, "protocol": "dropbox", "host": "", "port": 0,
+                   "username": format!("{id}@example.test")})
+        };
+        replace_server_profiles_for(
+            &mut conn,
+            &root,
+            other.id,
+            &[profile("profile-0"), profile("profile-1")],
+        )
+        .unwrap();
+        mark_creds_migrated(&conn, other.id).unwrap();
+        let session = |uid: &str, pair: &str| {
+            json!({"uid": uid, "access_token": pair, "refresh_token": pair, "key_password": "k"})
+                .to_string()
+        };
+        let (rotated, copied) = (session("owners-uid", "r2"), session("owners-uid", "r1"));
+        let (owners_other, own) = (session("owners-other-uid", "r1"), session("own-uid", "r1"));
+        let chain = |refresh: &str, user: &str| {
+            json!({"refresh_token": refresh, "token_endpoint": "https://example.test/token",
+                   "username": user})
+            .to_string()
+        };
+        let (others_chain, owners_chain) = (chain("r-other", "other"), chain("r-owner", "owner"));
+        for (key, value) in [
+            ("oauth_dropbox_profile-0", "owners-token"),
+            ("jottacloud_refresh_profile-0", others_chain.as_str()),
+            ("proton_native_session_profile-0", copied.as_str()),
+            ("proton_native_session_profile-1", own.as_str()),
+        ] {
+            let kind = private_token_type(key).unwrap();
+            set_user_credential_for(&conn, &root, other.id, key, kind, value).unwrap();
+        }
+        let (keys, read) = fake_vault(&[
+            ("oauth_dropbox_profile-0", "owners-token"),
+            ("jottacloud_refresh_profile-0", &owners_chain),
+            ("proton_native_session_profile-0", &rotated),
+            ("proton_native_session_profile-1", &owners_other),
+        ]);
+        let deleted = RefCell::new(Vec::<String>::new());
+        let delete = |key: &str| {
+            deleted.borrow_mut().push(key.to_string());
+            Ok(())
+        };
+        let row = |key: &str| {
+            get_user_credential_for(&conn, &root, other.id, key)
+                .unwrap()
+                .map(|value| value.to_string())
+        };
+        align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete).unwrap();
+        assert_eq!(row("oauth_dropbox_profile-0"), None);
+        assert_eq!(
+            row("jottacloud_refresh_profile-0").as_deref(),
+            Some(others_chain.as_str())
+        );
+        // The owner's session, rotated since the copy, is the same session.
+        assert_eq!(row("proton_native_session_profile-0"), None);
+        assert_eq!(
+            row("proton_native_session_profile-1").as_deref(),
+            Some(own.as_str())
+        );
+        assert!(deleted.borrow().is_empty());
+        assert!(private_tokens_aligned(&conn, other.id).unwrap());
+    }
+
+    /// A partition restored from another machine: its profile tags are keyed
+    /// by that machine's root. The accounts this machine opens get their lists
+    /// tagged again; a passphrase account is pending until it is unlocked
+    /// here, and until then another account's alignment waits, since the
+    /// holders it reads would miss the pending account. Once that account is
+    /// tagged, the profile id both hold keeps its vault copy.
+    #[test]
+    fn a_restored_partitions_tags_are_rebuilt_before_the_alignment_reads_them() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let (source, here) = (test_root(), [9u8; 32]);
+        let owner = nonprofile_secret_owner(&conn).unwrap().unwrap();
+        let profile = json!({"id": "p", "name": "p", "protocol": "dropbox", "host": "",
+                             "port": 0, "username": "p@example.test"});
+        let locked = create_user(&mut conn, &source, "Locked", None, None, Some("pass")).unwrap();
+        unlock_user(&conn, &source, locked.id, Some("pass")).unwrap();
+        replace_server_profiles_for(
+            &mut conn,
+            &source,
+            locked.id,
+            std::slice::from_ref(&profile),
+        )
+        .unwrap();
+        let other = create_passphrase_less_user(&mut conn, &source, "Other", None, None).unwrap();
+        replace_server_profiles_for(&mut conn, &source, other.id, std::slice::from_ref(&profile))
+            .unwrap();
+        clear_user_session();
+        let transport = export_transport_deks(&conn, &source, "backup password")
+            .unwrap()
+            .unwrap();
+        let rekey = rekey_transport_deks(
+            &conn,
+            &here,
+            "backup password",
+            &transport.salt,
+            &transport.kdf_params,
+            &transport.wrapped_deks,
+        )
+        .unwrap();
+        assert_eq!(rekey.rekeyed, 2);
+        assert_eq!(retag_restored_profiles(&conn, &here, &rekey).unwrap(), 1);
+        mark_creds_migrated(&conn, owner).unwrap();
+        mark_private_tokens_aligned(&conn, owner).unwrap();
+        let (keys, read) = fake_vault(&[("oauth_dropbox_p", "token")]);
+        let deleted = RefCell::new(Vec::<String>::new());
+        let delete = |key: &str| {
+            deleted.borrow_mut().push(key.to_string());
+            Ok(())
+        };
+
+        assert_eq!(
+            align_private_tokens_inner(&conn, &here, other.id, &keys, &read, &delete).unwrap(),
+            0
+        );
+        assert!(!private_tokens_aligned(&conn, other.id).unwrap());
+        assert!(!has_eager_pending_users(&conn).unwrap());
+
+        unlock_user(&conn, &here, locked.id, Some("pass")).unwrap();
+        retag_own_profiles_if_pending(&conn, &here, locked.id).unwrap();
+        clear_user_session();
+        assert!(has_eager_pending_users(&conn).unwrap());
+        align_private_tokens_inner(&conn, &here, other.id, &keys, &read, &delete).unwrap();
+        assert!(private_tokens_aligned(&conn, other.id).unwrap());
+        assert!(deleted.borrow().is_empty(), "{:?}", deleted.borrow());
+        assert_eq!(
+            get_user_credential_for(&conn, &here, other.id, "oauth_dropbox_p").unwrap(),
+            None
+        );
+    }
+
+    /// The SQL that selects native Proton session rows takes the three key
+    /// shapes the Rust filter accepts and nothing else: no other secret's
+    /// ciphertext is loaded to be filtered out, an `_` is not a wildcard,
+    /// and a prefix with no tail is no session.
+    #[cfg(feature = "proton-native")]
+    #[test]
+    fn the_session_row_query_selects_session_keys_alone() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("CREATE TABLE k(credential_id TEXT)")
+            .unwrap();
+        let keys = [
+            "proton_native_session",
+            "proton_native_session_p1",
+            "proton_native_unbound_user_3",
+            "proton_native_session_",
+            "proton_native_unbound_user_",
+            "protonXnativeXsessionXp1",
+            "proton_native_sessionXp1",
+            "proton_native_unbound_userX3",
+            "server_proton_native_session_p1",
+            "server_p1",
+        ];
+        for key in keys {
+            conn.execute("INSERT INTO k VALUES (?1)", params![key])
+                .unwrap();
+        }
+        let selected: Vec<String> = conn
+            .prepare(&format!(
+                "SELECT credential_id FROM k WHERE {} ORDER BY rowid",
+                proton_session_key_sql("credential_id")
+            ))
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap();
+        let expected: Vec<String> = keys
+            .iter()
+            .filter(|key| is_proton_session_key(key))
+            .map(|key| key.to_string())
+            .collect();
+        assert_eq!(expected.len(), 3);
+        assert_eq!(selected, expected);
+    }
+
+    /// A partition restored from another machine with a passphrase account
+    /// still locked: its tags are pending, so the alignment cannot yet drop
+    /// the row an earlier migration copied from the legacy owner's token into
+    /// another account. Until it can, every reader of that account takes the
+    /// row for absent, so it never signs in to the owner's cloud; the owner
+    /// reads its token, a row the account's own sign-in stamped reads as
+    /// before, and so does every row once the account is aligned.
+    #[test]
+    fn an_unverified_copy_reads_as_absent_while_profile_tags_wait() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let (source, here) = (test_root(), [9u8; 32]);
+        let owner = nonprofile_secret_owner(&conn).unwrap().unwrap();
+        let profile = |id: &str| {
+            json!({"id": id, "name": id, "protocol": "dropbox", "host": "", "port": 0,
+                   "username": format!("{id}@example.test")})
+        };
+        let locked = create_user(&mut conn, &source, "Locked", None, None, Some("pass")).unwrap();
+        unlock_user(&conn, &source, locked.id, Some("pass")).unwrap();
+        replace_server_profiles_for(&mut conn, &source, locked.id, &[profile("elsewhere")])
+            .unwrap();
+        let other = create_passphrase_less_user(&mut conn, &source, "Other", None, None).unwrap();
+        replace_server_profiles_for(&mut conn, &source, other.id, &[profile("p"), profile("q")])
+            .unwrap();
+        clear_user_session();
+        let transport = export_transport_deks(&conn, &source, "backup password")
+            .unwrap()
+            .unwrap();
+        let rekey = rekey_transport_deks(
+            &conn,
+            &here,
+            "backup password",
+            &transport.salt,
+            &transport.kdf_params,
+            &transport.wrapped_deks,
+        )
+        .unwrap();
+        assert_eq!(retag_restored_profiles(&conn, &here, &rekey).unwrap(), 1);
+        set_user_credential_for(
+            &conn,
+            &here,
+            other.id,
+            "oauth_dropbox_p",
+            "oauth",
+            "owners-p",
+        )
+        .unwrap();
+        set_signed_in_credential_for(&conn, &here, other.id, "oauth_dropbox_q", "oauth", "own-q")
+            .unwrap();
+        let (_, read) = fake_vault(&[
+            ("oauth_dropbox_p", "owners-p"),
+            ("oauth_dropbox_q", "owners-q"),
+        ]);
+        let owner_aware = |user: i64, key: &str| {
+            read_credential_owner_aware_inner(&conn, &here, user, key, &read)
+                .unwrap()
+                .map(|value| value.to_string())
+        };
+        let with_fallback = |user: i64, key: &str| {
+            read_credential_with_fallback_inner(&conn, &here, user, key, &read)
+                .unwrap()
+                .map(|value| value.to_string())
+        };
+        assert_eq!(owner_aware(other.id, "oauth_dropbox_p"), None);
+        assert_eq!(with_fallback(other.id, "oauth_dropbox_p"), None);
+        assert_eq!(
+            resolve_relocate_secret_with(&conn, &here, other.id, None, "dropbox", "p", &read)
+                .unwrap(),
+            None,
+            "a relocation carried the unverified row"
+        );
+        assert_eq!(
+            owner_aware(other.id, "oauth_dropbox_q").as_deref(),
+            Some("own-q")
+        );
+        assert_eq!(
+            owner_aware(owner, "oauth_dropbox_p").as_deref(),
+            Some("owners-p")
+        );
+
+        mark_private_tokens_aligned(&conn, other.id).unwrap();
+        assert_eq!(
+            owner_aware(other.id, "oauth_dropbox_p").as_deref(),
+            Some("owners-p")
+        );
+    }
+
+    /// On a profile id the legacy owner also holds, another account's row stays
+    /// only when it shows a sign-in of its own. A copy of the owner's record
+    /// that the owner's refreshes have rewritten since holds other bytes but
+    /// the same sign-in family and refresh token, and is dropped; so is a
+    /// record with no family, which says nothing of where it came from, and a
+    /// Jottacloud chain of the vault's Jottacloud user. A record its own
+    /// sign-in stamped, and a chain of another Jottacloud user, stay.
+    #[test]
+    fn a_shared_profiles_row_stays_only_for_a_sign_in_of_its_own() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(3);
+        let root = test_root();
+        let other = create_passphrase_less_user(&mut conn, &root, "Other", None, None).unwrap();
+        clear_user_session();
+        let profile = |id: &str| {
+            json!({"id": id, "name": id, "protocol": "dropbox", "host": "", "port": 0,
+                   "username": format!("{id}@example.test")})
+        };
+        replace_server_profiles_for(
+            &mut conn,
+            &root,
+            other.id,
+            &[
+                profile("profile-0"),
+                profile("profile-1"),
+                profile("profile-2"),
+            ],
+        )
+        .unwrap();
+        mark_creds_migrated(&conn, other.id).unwrap();
+        let record = |access: &str, refresh: &str, family: Option<&str>| {
+            let mut record = json!({"access_token": access, "refresh_token": refresh,
+                                    "expires_at": 1, "token_type": "Bearer", "scopes": []});
+            if let Some(family) = family {
+                record["owner_family"] = json!(family);
+            }
+            record.to_string()
+        };
+        let chain = |refresh: &str, user: &str| {
+            json!({"refresh_token": refresh, "token_endpoint": "https://example.test/token",
+                   "username": user})
+            .to_string()
+        };
+        let owners = Some("v1:owners");
+        let rows = [
+            (
+                "oauth_dropbox_profile-0",
+                record("copied-access", "owners-refresh", owners),
+                record("refreshed-access", "owners-refresh", owners),
+            ),
+            (
+                "oauth_dropbox_profile-1",
+                record("own-access", "own-refresh", Some("v1:own")),
+                record("owners-access", "owners-refresh", owners),
+            ),
+            (
+                "oauth_dropbox_profile-2",
+                record("old-access", "old-refresh", None),
+                record("owners-access", "owners-refresh", owners),
+            ),
+            (
+                "jottacloud_refresh_profile-0",
+                chain("consumed", "owner"),
+                chain("rotated", "owner"),
+            ),
+            (
+                "jottacloud_refresh_profile-1",
+                chain("own", "other"),
+                chain("owners", "owner"),
+            ),
+        ];
+        for (key, row, _) in &rows {
+            let kind = private_token_type(key).unwrap();
+            set_user_credential_for(&conn, &root, other.id, key, kind, row).unwrap();
+        }
+        // The account's own sign-in, stamped as its sign-in writer stamps it.
+        set_signed_in_credential_for(&conn, &root, other.id, rows[1].0, "oauth", &rows[1].1)
+            .unwrap();
+        let held: Vec<(&str, &str)> = rows.iter().map(|(k, _, v)| (*k, v.as_str())).collect();
+        let (keys, read) = fake_vault(&held);
+        let delete = |_: &str| Ok(());
+        align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete).unwrap();
+        let row = |key: &str| {
+            get_user_credential_for(&conn, &root, other.id, key)
+                .unwrap()
+                .map(|value| value.to_string())
+        };
+        assert_eq!(
+            row("oauth_dropbox_profile-0"),
+            None,
+            "a copy of the owner's sign-in, refreshed since, was kept"
+        );
+        assert_eq!(row("oauth_dropbox_profile-1"), Some(rows[1].1.clone()));
+        assert_eq!(row("oauth_dropbox_profile-2"), None);
+        assert_eq!(row("jottacloud_refresh_profile-0"), None);
+        assert_eq!(row("jottacloud_refresh_profile-1"), Some(rows[4].1.clone()));
+    }
+
+    /// The alignment marker of `user` reset, as a restore that wrote private
+    /// token keys resets it ([`realign_private_tokens_after_restore`]).
+    fn reset_alignment(conn: &Connection, user: i64) {
+        conn.execute(
+            "DELETE FROM global_state WHERE key = ?1",
+            params![format!("{PRIVATE_TOKENS_ALIGNED_PREFIX}{user}")],
+        )
+        .unwrap();
+    }
+
+    /// An account other than the legacy owner that holds `profile-0`, a
+    /// profile id the owner of `conn` (`migrated_conn(1)`) also holds.
+    fn shares_the_owners_profile(conn: &mut Connection, root: &[u8; 32]) -> UserMetadata {
+        let other = create_passphrase_less_user(conn, root, "Other", None, None).unwrap();
+        clear_user_session();
+        let profile = json!({"id": "profile-0", "name": "p", "protocol": "dropbox",
+                             "host": "", "port": 0, "username": "p@example.test"});
+        replace_server_profiles_for(conn, root, other.id, &[profile]).unwrap();
+        mark_creds_migrated(conn, other.id).unwrap();
+        other
+    }
+
+    fn oauth_record(access: &str, refresh: &str, family: &str) -> String {
+        json!({"access_token": access, "refresh_token": refresh, "expires_at": 1,
+               "token_type": "Bearer", "scopes": [], "owner_family": family})
+        .to_string()
+    }
+
+    fn row_of(conn: &Connection, root: &[u8; 32], user: i64, key: &str) -> Option<String> {
+        get_user_credential_for(conn, root, user, key)
+            .unwrap()
+            .map(|value| value.to_string())
+    }
+
+    /// A non-owner signs in to GitHub again on a profile id the owner also
+    /// holds, with a token other than the owner's: its row is its own sign-in,
+    /// kept by the alignment, and kept again when a restore resets the marker.
+    #[test]
+    fn a_non_owners_own_github_sign_in_survives_the_alignment_and_a_restore() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(1);
+        let root = test_root();
+        let other = shares_the_owners_profile(&mut conn, &root);
+        let key = "github_oauth_profile-0";
+        set_signed_in_credential_for(&conn, &root, other.id, key, "oauth", "gho_other").unwrap();
+        let (keys, read) = fake_vault(&[(key, "gho_owner")]);
+        let delete = |_: &str| Ok(());
+        align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete).unwrap();
+        assert_eq!(
+            row_of(&conn, &root, other.id, key).as_deref(),
+            Some("gho_other"),
+            "the non-owner's own GitHub sign-in was dropped"
+        );
+        reset_alignment(&conn, other.id);
+        align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete).unwrap();
+        assert_eq!(
+            row_of(&conn, &root, other.id, key).as_deref(),
+            Some("gho_other"),
+            "the non-owner's own GitHub sign-in was dropped after a restore"
+        );
+    }
+
+    /// A row written before the stamp, on a profile id the owner also holds,
+    /// that differs from the vault (an OAuth record with a `v1:` family of
+    /// its own, a GitHub token) proves no sign-in: it is dropped once, the
+    /// owner's row and vault copy are left as they are, and a sign-in of the
+    /// account's own afterwards stays.
+    #[test]
+    fn an_unstamped_shared_row_is_dropped_once_and_the_owners_is_untouched() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(1);
+        let root = test_root();
+        let owner = nonprofile_secret_owner(&conn).unwrap().unwrap();
+        let other = shares_the_owners_profile(&mut conn, &root);
+        let (oauth, github) = ("oauth_dropbox_profile-0", "github_oauth_profile-0");
+        let owners = oauth_record("owners-access", "owners-refresh", "v1:owners");
+        let others = oauth_record("other-access", "other-refresh", "v1:other");
+        set_user_credential_for(&conn, &root, other.id, oauth, "oauth", &others).unwrap();
+        set_user_credential_for(&conn, &root, other.id, github, "oauth", "gho_other").unwrap();
+        set_user_credential_for(&conn, &root, owner, oauth, "oauth", &owners).unwrap();
+        let (keys, read) = fake_vault(&[(oauth, owners.as_str()), (github, "gho_owner")]);
+        let deleted = RefCell::new(Vec::<String>::new());
+        let delete = |key: &str| {
+            deleted.borrow_mut().push(key.to_string());
+            Ok(())
+        };
+        align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete).unwrap();
+        assert_eq!(
+            row_of(&conn, &root, other.id, oauth),
+            None,
+            "an unstamped record with a family of its own was kept"
+        );
+        assert_eq!(row_of(&conn, &root, other.id, github), None);
+        assert_eq!(row_of(&conn, &root, owner, oauth), Some(owners.clone()));
+        assert!(deleted.borrow().is_empty(), "{:?}", deleted.borrow());
+
+        set_signed_in_credential_for(&conn, &root, other.id, oauth, "oauth", &others).unwrap();
+        reset_alignment(&conn, other.id);
+        align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete).unwrap();
+        assert_eq!(row_of(&conn, &root, other.id, oauth), Some(others));
+        assert_eq!(row_of(&conn, &root, owner, oauth), Some(owners));
+        assert!(deleted.borrow().is_empty(), "{:?}", deleted.borrow());
+    }
+
+    /// An earlier migration copied the owner's OAuth record, family and all,
+    /// into another account's row; the owner then signed in again, which
+    /// minted a new family, while the copied token may still be valid. The
+    /// copy differs from the vault in family and tokens alike and is still
+    /// dropped; the account's own sign-in, stamped, stays.
+    #[test]
+    fn a_copied_v1_record_is_dropped_after_the_owner_signs_in_again() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(1);
+        let root = test_root();
+        let other = shares_the_owners_profile(&mut conn, &root);
+        let key = "oauth_dropbox_profile-0";
+        let copied = oauth_record("old-access", "old-refresh", "v1:owners-first");
+        set_user_credential_for(&conn, &root, other.id, key, "oauth", &copied).unwrap();
+        let signed_in_again = oauth_record("new-access", "new-refresh", "v1:owners-second");
+        let (keys, read) = fake_vault(&[(key, signed_in_again.as_str())]);
+        let delete = |_: &str| Ok(());
+        align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete).unwrap();
+        assert_eq!(
+            row_of(&conn, &root, other.id, key),
+            None,
+            "a copy of the owner's earlier sign-in was kept"
+        );
+
+        let own = oauth_record("own-access", "own-refresh", "v1:own");
+        set_signed_in_credential_for(&conn, &root, other.id, key, "oauth", &own).unwrap();
+        reset_alignment(&conn, other.id);
+        align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete).unwrap();
+        assert_eq!(row_of(&conn, &root, other.id, key), Some(own));
+    }
+
+    /// A stamp is never carried: a row a restore (or any writer other than
+    /// the account's sign-in) writes over a stamped one is unstamped, and a
+    /// restored partition database comes back with no stamp at all. Either
+    /// row is dropped on a profile id the owner also holds.
+    #[test]
+    fn a_restored_row_carries_no_sign_in_stamp() {
+        let _guard = test_lock();
+        clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("partitions.db");
+        let mut conn = open_or_init_path(path.clone()).expect("open");
+        let root = test_root();
+        let owners_list = json!([{"id": "profile-0", "name": "p", "protocol": "dropbox",
+                                  "host": "", "port": 0, "username": "p@example.test"}]);
+        migrate_legacy_payloads(&mut conn, Some(&owners_list.to_string()), None, &root)
+            .expect("seed");
+        let other = shares_the_owners_profile(&mut conn, &root);
+        let (oauth, github) = ("oauth_dropbox_profile-0", "github_oauth_profile-0");
+        let own = oauth_record("own-access", "own-refresh", "v1:own");
+        set_signed_in_credential_for(&conn, &root, other.id, oauth, "oauth", &own).unwrap();
+        set_signed_in_credential_for(&conn, &root, other.id, github, "oauth", "gho_other").unwrap();
+        // The backup's copy of the row, written back by a restore.
+        set_user_credential_for(&conn, &root, other.id, oauth, "oauth", &own).unwrap();
+        // A restored partition database.
+        forget_sign_in_stamps_in_db(&path).unwrap();
+        let owners = oauth_record("owners-access", "owners-refresh", "v1:owners");
+        let (keys, read) = fake_vault(&[(oauth, owners.as_str()), (github, "gho_owner")]);
+        let delete = |_: &str| Ok(());
+        align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete).unwrap();
+        assert_eq!(
+            row_of(&conn, &root, other.id, oauth),
+            None,
+            "a row a restore wrote kept its sign-in stamp"
+        );
+        assert_eq!(
+            row_of(&conn, &root, other.id, github),
+            None,
+            "a restored database kept its sign-in stamps"
+        );
+    }
+
+    /// The owner's own rows on a profile id another account also holds are
+    /// never touched: not by the owner's alignment, nor by the other's.
+    #[test]
+    fn the_alignment_never_touches_the_owners_rows() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(1);
+        let root = test_root();
+        let owner = nonprofile_secret_owner(&conn).unwrap().unwrap();
+        let other = shares_the_owners_profile(&mut conn, &root);
+        let (oauth, github) = ("oauth_dropbox_profile-0", "github_oauth_profile-0");
+        let owners = oauth_record("owners-access", "owners-refresh", "v1:owners");
+        set_user_credential_for(&conn, &root, owner, oauth, "oauth", &owners).unwrap();
+        set_user_credential_for(&conn, &root, owner, github, "oauth", "gho_owner_row").unwrap();
+        let vault = oauth_record("vault-access", "vault-refresh", "v1:vault");
+        let (keys, read) = fake_vault(&[(oauth, vault.as_str()), (github, "gho_vault")]);
+        let delete = |_: &str| Ok(());
+        for user in [owner, other.id, owner] {
+            reset_alignment(&conn, user);
+            align_private_tokens_inner(&conn, &root, user, &keys, &read, &delete).unwrap();
+        }
+        assert_eq!(row_of(&conn, &root, owner, oauth), Some(owners));
+        assert_eq!(
+            row_of(&conn, &root, owner, github).as_deref(),
+            Some("gho_owner_row")
+        );
+    }
+
+    /// A sign-in stamped by its writer and refreshed since (a record with no
+    /// family, as the headless OAuth finish writes it) is still the account's
+    /// own sign-in, and stays on a profile id the owner also holds.
+    #[test]
+    fn a_refreshed_sign_in_keeps_its_stamp() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(1);
+        let root = test_root();
+        let other = shares_the_owners_profile(&mut conn, &root);
+        let key = "oauth_dropbox_profile-0";
+        let record = |access: &str| {
+            json!({"access_token": access, "refresh_token": "own-refresh", "expires_at": 1,
+                   "token_type": "Bearer", "scopes": []})
+            .to_string()
+        };
+        set_signed_in_credential_for(&conn, &root, other.id, key, "oauth", &record("first"))
+            .unwrap();
+        assert!(replace_user_credential_if_unchanged(
+            &conn,
+            &root,
+            other.id,
+            key,
+            "oauth",
+            (&record("first"), &record("refreshed")),
+            false,
+        )
+        .unwrap());
+        let owners = oauth_record("owners-access", "owners-refresh", "v1:owners");
+        let (keys, read) = fake_vault(&[(key, owners.as_str())]);
+        let delete = |_: &str| Ok(());
+        align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete).unwrap();
+        assert_eq!(
+            row_of(&conn, &root, other.id, key),
+            Some(record("refreshed")),
+            "a refresh of the account's own sign-in lost its stamp"
+        );
+    }
+
+    /// The migration of an account other than the legacy owner takes the
+    /// `server_<id>` of its own profiles, and not the one of a profile id the
+    /// legacy owner also holds, whose vault entry may be the owner's. That
+    /// account still reads the vault entry through the fallback, as before.
+    #[test]
+    fn a_shared_profile_ids_password_is_not_copied_to_another_account() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(1);
+        let root = test_root();
+        let other = create_passphrase_less_user(&mut conn, &root, "Other", None, None).unwrap();
+        clear_user_session();
+        let profile = |id: &str| {
+            json!({"id": id, "name": id, "protocol": "sftp", "host": "example.com",
+                   "port": 22, "username": "u"})
+        };
+        replace_server_profiles_for(
+            &mut conn,
+            &root,
+            other.id,
+            &[profile("profile-0"), profile("own")],
+        )
+        .unwrap();
+        let (keys, read) = fake_vault(&[
+            ("server_profile-0", "owners-password"),
+            ("server_own", "own-password"),
+        ]);
+        migrate_user_credentials_inner(&conn, &root, other.id, &keys, &read).unwrap();
+        let row = |key: &str| {
+            get_user_credential_for(&conn, &root, other.id, key)
+                .unwrap()
+                .map(|value| value.to_string())
+        };
+        assert_eq!(row("server_own").as_deref(), Some("own-password"));
+        assert_eq!(row("server_profile-0"), None);
+        assert_eq!(
+            read_credential_with_fallback_inner(&conn, &root, other.id, "server_profile-0", &read)
+                .unwrap()
+                .map(|value| value.to_string())
+                .as_deref(),
+            Some("owners-password")
+        );
+    }
+
+    /// On a filesystem without file locks the list lock excludes nobody: the
+    /// alignment still copies an account's own tokens into its partition, but
+    /// the vault keeps its keys, which a holder added after the commit would
+    /// read, and the account is not done: the next pass that excludes the
+    /// writers keeps the row and removes the vault copy.
+    #[test]
+    fn without_file_locks_the_alignment_copies_and_a_later_pass_clears_the_vault() {
+        let _guard = test_lock();
+        clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let mut conn = open_or_init_path(dir.path().join("partitions.db")).expect("open");
+        let root = test_root();
+        migrate_legacy_payloads(&mut conn, Some("[]"), None, &root).expect("seed");
+        let other = create_passphrase_less_user(&mut conn, &root, "Other", None, None).unwrap();
+        clear_user_session();
+        let profile = json!({"id": "p", "name": "p", "protocol": "dropbox", "host": "",
+                             "port": 0, "username": "p@example.test"});
+        replace_server_profiles_for(&mut conn, &root, other.id, &[profile]).unwrap();
+        let (keys, read) = fake_vault(&[("oauth_dropbox_p", "mine-token")]);
+        let deleted = RefCell::new(Vec::<String>::new());
+        let delete = |key: &str| {
+            deleted.borrow_mut().push(key.to_string());
+            Ok(())
+        };
+        NO_FILE_LOCKS_IN_TEST.set(true);
+        let aligned = align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete);
+        NO_FILE_LOCKS_IN_TEST.set(false);
+        aligned.unwrap();
+        assert_eq!(
+            get_user_credential_for(&conn, &root, other.id, "oauth_dropbox_p")
+                .unwrap()
+                .as_deref()
+                .map(String::as_str),
+            Some("mine-token")
+        );
+        assert!(deleted.borrow().is_empty());
+        assert!(!private_tokens_aligned(&conn, other.id).unwrap());
+
+        align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete).unwrap();
+        assert_eq!(
+            get_user_credential_for(&conn, &root, other.id, "oauth_dropbox_p")
+                .unwrap()
+                .as_deref()
+                .map(String::as_str),
+            Some("mine-token")
+        );
+        assert_eq!(*deleted.borrow(), ["oauth_dropbox_p"]);
+        assert!(private_tokens_aligned(&conn, other.id).unwrap());
+    }
+
+    /// A native Proton session belongs to one account. A copy of a session
+    /// that another account also holds in the vault (same UID) is dropped from
+    /// this one, row and vault copy, locally: the other account's copy is not
+    /// touched, so it stays signed in. A session of this account alone moves
+    /// into its partition, also when two of its own profiles hold it, and so
+    /// does the session it signed in to before saving a profile.
+    #[test]
+    fn a_native_session_two_accounts_hold_stays_with_the_other_one() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(1);
+        let root = test_root();
+        let other = create_passphrase_less_user(&mut conn, &root, "Other", None, None).unwrap();
+        clear_user_session();
+        let profile = |id: &str| {
+            json!({"id": id, "name": id, "protocol": "proton", "host": "drive.proton.me",
+                   "port": 443, "username": format!("{id}@example.test")})
+        };
+        replace_server_profiles_for(
+            &mut conn,
+            &root,
+            other.id,
+            &[profile("copied"), profile("own-a"), profile("own-b")],
+        )
+        .unwrap();
+        let saved = |uid: &str| {
+            json!({"uid": uid, "access_token": "a", "refresh_token": "r", "key_password": "k"})
+                .to_string()
+        };
+        let (shared, own, pending) = (saved("shared"), saved("own"), saved("pending"));
+        set_user_credential_for(
+            &conn,
+            &root,
+            other.id,
+            "proton_native_session_copied",
+            "proton_native_session",
+            &shared,
+        )
+        .unwrap();
+        let unbound = format!("proton_native_unbound_user_{}", other.id);
+        let (keys, read) = fake_vault(&[
+            ("proton_native_session_profile-0", &shared),
+            ("proton_native_session_copied", &shared),
+            ("proton_native_session_own-a", &own),
+            ("proton_native_session_own-b", &own),
+            (&unbound, &pending),
+        ]);
+        let deleted = RefCell::new(Vec::<String>::new());
+        let delete = |key: &str| {
+            deleted.borrow_mut().push(key.to_string());
+            Ok(())
+        };
+        align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete).unwrap();
+        let mut gone = deleted.borrow().clone();
+        gone.sort();
+        let mut expected = vec![
+            "proton_native_session_copied".to_string(),
+            "proton_native_session_own-a".to_string(),
+            "proton_native_session_own-b".to_string(),
+            unbound.clone(),
+        ];
+        expected.sort();
+        assert_eq!(gone, expected);
+        let row = |key: &str| {
+            get_user_credential_for(&conn, &root, other.id, key)
+                .unwrap()
+                .and_then(|raw| proton_session_uid(&raw))
+        };
+        assert_eq!(row("proton_native_session_copied"), None);
+        assert_eq!(row("proton_native_session_own-a").as_deref(), Some("own"));
+        assert_eq!(row("proton_native_session_own-b").as_deref(), Some("own"));
+        assert_eq!(row(&unbound).as_deref(), Some("pending"));
+    }
+
+    /// An account whose private tokens are not aligned yet is work for the
+    /// boot pass, even when its secrets were copied long ago.
+    #[test]
+    fn an_account_not_aligned_yet_is_pending_for_the_boot_pass() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        create_passphrase_less_user(&mut conn, &root, "Other", None, None).unwrap();
+        clear_user_session();
+        for user in list_users(&conn).unwrap() {
+            mark_creds_migrated(&conn, user.id).unwrap();
+        }
+        assert!(has_eager_pending_users(&conn).unwrap());
+        for user in list_users(&conn).unwrap() {
+            mark_private_tokens_aligned(&conn, user.id).unwrap();
+        }
+        assert!(!has_eager_pending_users(&conn).unwrap());
+    }
+
+    /// Whose a private token's vault key is, asked on a read-only connection
+    /// before any owner is stored: answered, and nothing written.
+    #[test]
+    fn whose_vault_copy_it_is_is_answered_on_a_read_only_connection() {
+        let _guard = test_lock();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("partitions.db");
+        let mut conn = open_or_init_path(path.clone()).expect("open");
+        let root = test_root();
+        migrate_legacy_payloads(&mut conn, Some("[]"), None, &root).expect("seed");
+        let other = create_passphrase_less_user(&mut conn, &root, "Other", None, None).unwrap();
+        conn.execute(
+            "DELETE FROM global_state WHERE key = ?1",
+            params![LEGACY_OWNER_KEY],
+        )
+        .unwrap();
+        drop(conn);
+        let read_only =
+            Connection::open_with_flags(&path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
+        assert!(vault_copy_is_another_accounts(&read_only, other.id, "oauth_dropbox_p").unwrap());
+        assert!(!vault_copy_is_another_accounts(&read_only, other.id, "server_p").unwrap());
+        let stored: Option<String> = read_only
+            .query_row(
+                "SELECT value FROM global_state WHERE key = ?1",
+                params![LEGACY_OWNER_KEY],
+                |row| row.get(0),
+            )
+            .optional()
+            .unwrap();
+        assert_eq!(stored, None);
     }
 
     /// A locked account that is not the legacy owner cannot take a save: its readers
@@ -12474,7 +16645,7 @@ mod tests {
             ("github_pat", "ghp_x"),
             ("github_oauth_token", "gho_y"),
             // machine-global (MUV-0): must NOT migrate
-            ("github_pem_app_1", "-----PEM-----"),
+            ("github_pem_1234_5678", "-----PEM-----"),
             ("github_app_credentials", "{\"appId\":1}"),
             ("totp_secret", "vault-reserved"),
         ]);
@@ -12499,7 +16670,11 @@ mod tests {
         ] {
             assert!(ids.contains(present), "missing {present}");
         }
-        for absent in ["github_pem_app_1", "github_app_credentials", "totp_secret"] {
+        for absent in [
+            "github_pem_1234_5678",
+            "github_app_credentials",
+            "totp_secret",
+        ] {
             assert!(!ids.contains(absent), "unexpected {absent}");
         }
         assert_eq!(
@@ -12710,6 +16885,127 @@ mod tests {
         assert_eq!(vault_reads.get(), 1, "legacy owner migrates on a miss");
     }
 
+    /// Every key a private token is written under maps to its type, and only
+    /// those: the app settings and globals that share a prefix with them, and
+    /// every other credential, map to none. Each type of
+    /// `PRIVATE_TOKEN_TYPES` is reached.
+    #[test]
+    fn every_private_token_key_maps_to_its_type_and_no_other_key_does() {
+        let private = [
+            ("jottacloud_refresh", "jottacloud_refresh"),
+            ("jottacloud_refresh_srv_1", "jottacloud_refresh"),
+            ("oauth_google", "oauth"),
+            ("oauth_google_srv_1", "oauth"),
+            ("oauth_googlephotos", "oauth"),
+            ("oauth_googlephotos_srv_1", "oauth"),
+            ("oauth_dropbox_srv_1", "oauth"),
+            ("oauth_onedrive_srv_1", "oauth"),
+            ("oauth_box_srv_1", "oauth"),
+            ("oauth_pcloud_srv_1", "oauth"),
+            ("oauth_zohoworkdrive_srv_1", "oauth"),
+            ("oauth_yandexdisk_srv_1", "oauth"),
+            ("oauth_fourshared_srv_1", "oauth"),
+            ("profile_auth_config_srv_1", "oauth"),
+            ("profile_auth_pending_srv_1", "oauth"),
+            ("profile_auth_deadline_srv_1", "oauth"),
+            ("github_oauth_srv_1", "oauth"),
+            ("github_pem_srv_1", "oauth"),
+            ("github_pem_srv_1730000000000_123456789", "oauth"),
+            ("proton_native_session", "proton_native_session"),
+            ("proton_native_session_srv_1", "proton_native_session"),
+            ("proton_native_unbound_user_7", "proton_native_session"),
+        ];
+        for (key, kind) in private {
+            assert_eq!(private_token_type(key), Some(kind), "{key}");
+        }
+        for kind in PRIVATE_TOKEN_TYPES {
+            assert!(
+                private.iter().any(|(_, k)| *k == kind),
+                "no key reaches the private type {kind}"
+            );
+        }
+        for key in [
+            "oauth_google_client_id",
+            "oauth_dropbox_client_secret",
+            "oauth_pcloud_region",
+            "oauth_zohoworkdrive_region",
+            "oauth_rollback_app_client_id",
+            "oauth_token",
+            "oauth_",
+            "oauth_google_",
+            "github_oauth_token",
+            "github_pat",
+            "github_oauth",
+            // A GitHub App's PEM, keyed by its app and installation ids.
+            "github_pem_1234_5678",
+            "profile_auth_config",
+            "profile_auth_config_",
+            "jottacloud_refreshed",
+            "proton_native_session_",
+            "proton_native_unbound_user_",
+            "proton_native_sessions",
+            "server_srv_1",
+            "server_modes_srv_1",
+            "ai_apikey_openai",
+            "aerocrypt_overlay_pw_srv_1",
+            "filen_api_key_srv_1",
+            "onedrive_drive_id_srv_1",
+            "totp_secret",
+        ] {
+            assert_eq!(private_token_type(key), None, "{key}");
+        }
+    }
+
+    /// A private token of an account other than the legacy owner is read from
+    /// that account's partition alone: the vault key of the same name is the
+    /// legacy owner's, and the owner still reads it. Any other key keeps the
+    /// vault fallback for every account.
+    #[test]
+    fn a_private_token_is_never_read_from_the_vault_for_another_account() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let owner = get_active_user(&conn)
+            .expect("active")
+            .expect("default active");
+        let user = create_passphrase_less_user(&mut conn, &root, "private", None, None)
+            .expect("create user");
+        let vault_reads = std::cell::Cell::new(0u32);
+        let read = |_key: &str| {
+            vault_reads.set(vault_reads.get() + 1);
+            Ok(Some(Zeroizing::new("legacy-owners-token".to_string())))
+        };
+        for key in [
+            "oauth_dropbox_srv_1",
+            "jottacloud_refresh",
+            "github_oauth_srv_1",
+        ] {
+            vault_reads.set(0);
+            assert!(
+                read_credential_with_fallback_inner(&conn, &root, user.id, key, &read)
+                    .expect("private read")
+                    .is_none(),
+                "{key}"
+            );
+            assert_eq!(vault_reads.get(), 0, "{key}: the vault was read");
+            assert_eq!(
+                read_credential_with_fallback_inner(&conn, &root, owner.id, key, &read)
+                    .expect("owner read")
+                    .expect("owner value")
+                    .as_str(),
+                "legacy-owners-token",
+                "{key}"
+            );
+        }
+        assert_eq!(
+            read_credential_with_fallback_inner(&conn, &root, user.id, "server_srv_1", &read)
+                .expect("server read")
+                .expect("vault fallback")
+                .as_str(),
+            "legacy-owners-token"
+        );
+    }
+
     #[test]
     fn owner_aware_reader_never_reads_vault_for_nonowner() {
         let _guard = test_lock();
@@ -12878,14 +17174,28 @@ mod tests {
                 .as_str(),
             "token-v2"
         );
-        // A never-mirrored OAuth token resolves via the vault fallback.
+        // A never-mirrored OAuth token resolves via the vault fallback for the
+        // legacy owner, whose key it is, and for nobody else.
+        let owner = nonprofile_secret_owner(&conn)
+            .expect("owner")
+            .expect("legacy owner");
+        assert_ne!(owner, user.id);
         assert_eq!(
-            read_credential_with_fallback_inner(&conn, &root, user.id, "oauth_dropbox_99", &read)
+            read_credential_with_fallback_inner(&conn, &root, owner, "oauth_dropbox_99", &read)
                 .expect("read vault-only oauth")
                 .expect("present")
                 .as_str(),
             "vault-token"
         );
+        assert!(read_credential_with_fallback_inner(
+            &conn,
+            &root,
+            user.id,
+            "oauth_dropbox_99",
+            &read
+        )
+        .expect("read vault-only oauth")
+        .is_none());
     }
 
     // --- MUV-3: server_* reader/writer cutover ----------------------------

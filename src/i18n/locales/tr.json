@@ -5915,7 +5915,9 @@
                 "months": "{count} ay"
             },
             "demoTabLabel": "Demo: {protocol}",
-            "newTabLabel": "Yeni: {name}"
+            "newTabLabel": "Yeni: {name}",
+            "protonSessionEndsAtUnlock": "Bu profilin Proton oturumu, bu bilgisayardaki başka bir hesap kullanmadığı sürece bu hesabın kilidi bir sonraki açılışında sona erer.",
+            "profileSecretsNotRemoved": "Profil kaldırıldı, ancak kayıtlı kimlik bilgilerinden bazıları kasadan silinemedi."
         },
         "gitlab": {
             "projectPath": "Proje Yolu",

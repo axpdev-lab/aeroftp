@@ -5915,7 +5915,9 @@
                 "months": "{count} mån"
             },
             "demoTabLabel": "Demo: {protocol}",
-            "newTabLabel": "Ny: {name}"
+            "newTabLabel": "Ny: {name}",
+            "protonSessionEndsAtUnlock": "Proton-sessionen för den här profilen avslutas nästa gång det här kontot låses upp, såvida inte ett annat konto på den här datorn använder den.",
+            "profileSecretsNotRemoved": "Profilen togs bort, men vissa av dess sparade inloggningsuppgifter kunde inte raderas från valvet."
         },
         "gitlab": {
             "projectPath": "Projektsökväg",

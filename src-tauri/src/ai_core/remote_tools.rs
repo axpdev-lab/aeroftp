@@ -518,6 +518,19 @@ pub async fn dispatch_remote_tool(
     }
 }
 
+/// `read()` with the account it was read for: the active account read before
+/// and after it, or `None` when the two differ (a switch while it ran), so a
+/// list is never paired with another account's id.
+fn read_for_one_account<T>(
+    active: impl Fn() -> Option<i64>,
+    read: impl FnOnce() -> T,
+) -> (T, Option<Option<i64>>) {
+    let before = active();
+    let value = read();
+    let after = active();
+    (value, (before == after).then_some(before))
+}
+
 async fn list_servers(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
     let name_contains = get_str_opt(args, "name_contains").map(|s| s.to_lowercase());
     let protocol = get_str_opt(args, "protocol").map(|s| s.to_lowercase());
@@ -542,11 +555,20 @@ async fn list_servers(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErro
     // O(1) instead of one decryption per call. When the vault isn't open
     // (rare in MCP, possible in CLI agent context), derivation falls back
     // to "unknown", but here we have the cache.
-    let auth_lookup = crate::credential_store::CredentialStore::from_cache().map(|store| {
-        let user_id = crate::user_partitions::cli_get_active_user(&store)
-            .ok()
-            .flatten()
-            .map(|user| user.id);
+    // The states are the listing account's: an account switched to while
+    // the list was read leaves them unknown, never another account's.
+    let store = crate::credential_store::CredentialStore::from_cache();
+    let active = || {
+        store.as_ref().and_then(|store| {
+            crate::user_partitions::cli_get_active_user(store)
+                .ok()
+                .flatten()
+                .map(|user| user.id)
+        })
+    };
+    let (profiles, listed_for) = read_for_one_account(active, || ctx.credentials().list_servers());
+    let profiles = profiles.map_err(ToolError::Exec)?;
+    let auth_lookup = store.zip(listed_for).map(|(store, user_id)| {
         let accounts: std::collections::HashSet<String> = store
             .list_accounts()
             .unwrap_or_default()
@@ -554,7 +576,6 @@ async fn list_servers(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErro
             .collect();
         (store, accounts, user_id)
     });
-    let profiles = ctx.credentials().list_servers().map_err(ToolError::Exec)?;
     let filtered: Vec<Value> = profiles
         .into_iter()
         .filter(|p| {
@@ -5284,6 +5305,25 @@ mod tests {
         fn cancel_token(&self) -> Option<&tokio_util::sync::CancellationToken> {
             self.cancel.as_ref()
         }
+    }
+
+    /// A list read while the active account changed is paired with no
+    /// account, and one read for a single account with that account.
+    #[test]
+    fn a_list_is_paired_only_with_the_account_it_was_read_for() {
+        let active = std::cell::Cell::new(Some(1));
+        let switched = read_for_one_account(
+            || active.get(),
+            || {
+                active.set(Some(2));
+                "list of 1"
+            },
+        );
+        assert_eq!(switched, ("list of 1", None));
+        let steady = read_for_one_account(|| active.get(), || "list of 2");
+        assert_eq!(steady, ("list of 2", Some(Some(2))));
+        let none = read_for_one_account(|| None, || "pre-accounts list");
+        assert_eq!(none, ("pre-accounts list", Some(None)));
     }
 
     /// The search says when it stopped at its limit. A listing has no such

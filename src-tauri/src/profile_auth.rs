@@ -53,8 +53,12 @@ impl AuthScope<'_> {
         users::init_or_migrate_cli(self.store)?;
         let conn = users::open_or_init_cli()?;
         let root_key = zeroize::Zeroizing::new(self.store.derive_user_partition_wrapping_key());
-        if let Some(secret) = users::get_user_credential_for(&conn, &root_key, user_id, key)? {
-            return Ok(Some(secret.to_string()));
+        let row = users::get_user_credential_for(&conn, &root_key, user_id, key)?;
+        if row.is_some() {
+            // A row that may be another account's copy reads as absent, and
+            // the vault under its key is that account's too.
+            return Ok(users::checked_row_in(&conn, self.store, user_id, key, row)?
+                .map(|secret| secret.to_string()));
         }
         let owners = users::profile_credential_owner_ids(self.store, profile_id, key)?;
         if owners.as_slice() == [user_id]
@@ -66,9 +70,9 @@ impl AuthScope<'_> {
     }
     fn write(&self, key: &str, value: &str) -> Result<(), String> {
         match self.user_id {
-            Some(id) => {
-                users::store_credential_for_user_typed_dual(self.store, id, key, "oauth", value)
-            }
+            Some(id) => users::store_signed_in_credential_for_user_typed_dual(
+                self.store, id, key, "oauth", value,
+            ),
             None => self.store.store(key, value).map_err(|e| e.to_string()),
         }
     }
@@ -314,25 +318,28 @@ fn materialize_github_metadata(
     Ok(())
 }
 /// Only GitHub readiness belongs to this route; other auth-source rules remain shared.
+/// Without `profile`, the profile is the one `user_id` lists (the active
+/// account's when `None`): another account may hold a profile of the same id
+/// signed in another way, and its mode decides which credential is read.
 pub fn saved_github_readiness(
     store: &CredentialStore,
     id: &str,
     profile: Option<&Value>,
     user_id: Option<i64>,
 ) -> &'static str {
+    let found = if profile.is_none() {
+        users::mcp_list_server_profiles(store, user_id)
+            .ok()
+            .and_then(|profiles| profiles.into_iter().find(|p| field(p, "id") == id))
+    } else {
+        None
+    };
     let user_id = user_id.or_else(|| {
         users::cli_get_active_user(store)
             .ok()
             .flatten()
             .map(|user| user.id)
     });
-    let found = if profile.is_none() {
-        users::mcp_list_active_server_profiles(store)
-            .ok()
-            .and_then(|profiles| profiles.into_iter().find(|p| field(p, "id") == id))
-    } else {
-        None
-    };
     let fallback = json!({"id":id,"protocol":"github","host":""});
     readiness(
         &AuthScope { store, user_id },

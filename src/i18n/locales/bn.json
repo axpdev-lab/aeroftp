@@ -5915,7 +5915,9 @@
                 "months": "{count} মাস"
             },
             "demoTabLabel": "ডেমো: {protocol}",
-            "newTabLabel": "নতুন: {name}"
+            "newTabLabel": "নতুন: {name}",
+            "protonSessionEndsAtUnlock": "এই প্রোফাইলের Proton সেশনটি পরের বার এই অ্যাকাউন্টটি আনলক করা হলে শেষ হয়, যদি না এই কম্পিউটারের অন্য কোনো অ্যাকাউন্ট এটি ব্যবহার করে।",
+            "profileSecretsNotRemoved": "প্রোফাইলটি সরানো হয়েছে, কিন্তু এর কিছু সংরক্ষিত শংসাপত্র ভল্ট থেকে মুছে ফেলা যায়নি."
         },
         "gitlab": {
             "projectPath": "প্রকল্পের পাথ",

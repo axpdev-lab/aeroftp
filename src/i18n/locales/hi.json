@@ -5915,7 +5915,9 @@
                 "months": "{count} माह"
             },
             "demoTabLabel": "डेमो: {protocol}",
-            "newTabLabel": "नया: {name}"
+            "newTabLabel": "नया: {name}",
+            "protonSessionEndsAtUnlock": "इस प्रोफ़ाइल का Proton सत्र अगली बार इस खाते के अनलॉक होने पर समाप्त हो जाता है, जब तक कि इस कंप्यूटर पर कोई अन्य खाता इसका उपयोग न करे।",
+            "profileSecretsNotRemoved": "प्रोफ़ाइल हटा दी गई, लेकिन उसके कुछ सहेजे गए क्रेडेंशियल वॉल्ट से मिटाए नहीं जा सके."
         },
         "gitlab": {
             "projectPath": "प्रोजेक्ट पथ",

@@ -5915,7 +5915,9 @@
                 "months": "miezi {count}"
             },
             "demoTabLabel": "Onyesho: {protocol}",
-            "newTabLabel": "Mpya: {name}"
+            "newTabLabel": "Mpya: {name}",
+            "protonSessionEndsAtUnlock": "Kipindi cha Proton cha wasifu huu kinaisha akaunti hii itakapofunguliwa tena, isipokuwa akaunti nyingine kwenye kompyuta hii inakitumia.",
+            "profileSecretsNotRemoved": "Wasifu uliondolewa, lakini baadhi ya vitambulisho vyake vilivyohifadhiwa havikuweza kufutwa kwenye hifadhi salama."
         },
         "gitlab": {
             "projectPath": "Njia ya mradi",

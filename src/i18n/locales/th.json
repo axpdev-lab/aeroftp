@@ -5915,7 +5915,9 @@
                 "months": "{count} เดือน"
             },
             "demoTabLabel": "สาธิต: {protocol}",
-            "newTabLabel": "ใหม่: {name}"
+            "newTabLabel": "ใหม่: {name}",
+            "protonSessionEndsAtUnlock": "เซสชัน Proton ของโปรไฟล์นี้จะสิ้นสุดเมื่อปลดล็อกบัญชีนี้ครั้งถัดไป เว้นแต่บัญชีอื่นในคอมพิวเตอร์เครื่องนี้ใช้งานอยู่",
+            "profileSecretsNotRemoved": "ลบโปรไฟล์แล้ว แต่ไม่สามารถลบข้อมูลรับรองที่บันทึกไว้บางส่วนออกจากตู้นิรภัยได้."
         },
         "gitlab": {
             "projectPath": "เส้นทางโปรเจกต์",

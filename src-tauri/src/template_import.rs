@@ -1099,7 +1099,20 @@ fn apply_eval_with_slots<S: SecretSlots>(
         let mut applied = Vec::with_capacity(to_commit_servers.len());
         let mut oauth_apps_kept = Vec::new();
         let mut shared_secrets_failed = Vec::new();
+        let mut warnings = eval.warnings;
         for (server, meta) in to_commit_servers.iter().zip(meta_rows) {
+            // A stored session is said to be shared, only once the store took it.
+            if shared.restored_sessions.contains(&server.id) {
+                warnings.push(TemplateBlockWarning {
+                    start_line: eval
+                        .block_start_lines
+                        .get(&meta.block_name)
+                        .copied()
+                        .unwrap_or(1),
+                    name: meta.block_name.clone(),
+                    reason: crate::rclone_import::TEMPLATE_SESSION_SHARED.to_string(),
+                });
+            }
             let target_name = stored_list
                 .iter()
                 .find(|p| p.get("id").and_then(Value::as_str) == Some(server.id.as_str()))
@@ -1138,7 +1151,7 @@ fn apply_eval_with_slots<S: SecretSlots>(
             skipped_duplicate_in_template,
             skipped_unselected,
             skipped_invalid: eval.skipped,
-            warnings: eval.warnings,
+            warnings,
             parse_issues: eval.parse_issues,
             security,
             oauth_apps_kept,

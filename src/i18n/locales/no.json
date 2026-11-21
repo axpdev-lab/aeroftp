@@ -5934,7 +5934,9 @@
                 "months": "{count} md."
             },
             "demoTabLabel": "Demo: {protocol}",
-            "newTabLabel": "Ny: {name}"
+            "newTabLabel": "Ny: {name}",
+            "protonSessionEndsAtUnlock": "Proton-økten for denne profilen avsluttes neste gang denne kontoen låses opp, med mindre en annen konto på denne datamaskinen bruker den.",
+            "profileSecretsNotRemoved": "Profilen ble fjernet, men noen av de lagrede legitimasjonene kunne ikke slettes fra hvelvet."
         },
         "gitlab": {
             "projectPath": "Prosjektsti",

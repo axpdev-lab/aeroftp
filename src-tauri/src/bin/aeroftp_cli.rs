@@ -14221,31 +14221,23 @@ fn dual_store_server_cred(
     let _ = dual_store_server_cred_checked(store, uid, credential_id, secret);
 }
 
-/// Best-effort dual-delete a `server_<id>` secret (vault + the user's partition
-/// when `uid` is known).
+/// Dual-delete a profile secret: the vault entry and, when `uid` is known,
+/// the user's partition row. The row is read ahead of the vault, so a delete
+/// that leaves it fails, and the caller says what was left.
 fn dual_delete_server_cred(
     store: &ftp_client_gui_lib::credential_store::CredentialStore,
     uid: Option<i64>,
     credential_id: &str,
-) {
+) -> Result<(), String> {
     match uid {
-        Some(uid) => {
-            if ftp_client_gui_lib::user_partitions::delete_credential_for_user_dual(
-                store,
-                uid,
-                credential_id,
-            )
-            .is_ok()
-            {
-                ftp_client_gui_lib::user_partitions::unmirror_credential_for_user_best_effort_any(
-                    uid,
-                    credential_id,
-                );
-            }
-        }
-        None => {
-            let _ = store.delete(credential_id);
-        }
+        Some(uid) => ftp_client_gui_lib::user_partitions::delete_credential_for_user_dual(
+            store,
+            uid,
+            credential_id,
+        ),
+        None => store
+            .delete(credential_id)
+            .map_err(|error| error.to_string()),
     }
 }
 
@@ -18739,7 +18731,10 @@ fn tui_delete_profile(
         return None; // nothing to delete
     }
     prune_profile_from_groups_and_favorites(store, profile_id);
-    dual_delete_server_cred(store, Some(user.id), &format!("server_{}", profile_id));
+    let key = format!("server_{}", profile_id);
+    if let Err(error) = dual_delete_server_cred(store, Some(user.id), &key) {
+        log::warn!("Profile delete: {key} was not removed: {error}");
+    }
     Some(stored)
 }
 
@@ -24693,10 +24688,17 @@ fn interactive_profiles_loop(
                         continue;
                     }
                     match delete_profile_in_vault(cli, store, &id) {
-                        Ok(remaining) => {
+                        Ok((remaining, left_behind)) => {
                             current = remaining;
                             tombstones.push((zero, profile));
                             eprintln!("Profile '{}' removed.", name);
+                            if !left_behind.is_empty() {
+                                eprintln!(
+                                    "Warning: secrets of '{}' not removed: {}",
+                                    name,
+                                    left_behind.join(", ")
+                                );
+                            }
                         }
                         Err(e) => {
                             eprintln!("Delete '{}' failed: {}", name, e);
@@ -28854,10 +28856,13 @@ fn duplicate_or_convert_mode_in_vault(
     }
 
     // Convert: delete the source's profile-level credential too (the
-    // profile is gone from the list, the credential would orphan). Best-
-    // effort; ignore errors.
+    // profile is gone from the list, the credential would orphan). The
+    // conversion stands either way; a credential left behind is named.
     if replace_in_slot && !source_id.is_empty() {
-        dual_delete_server_cred(store, scoped_uid, &format!("server_{}", source_id));
+        let key = format!("server_{}", source_id);
+        if let Err(error) = dual_delete_server_cred(store, scoped_uid, &key) {
+            eprintln!("Warning: the source profile's credential {key} was not removed: {error}");
+        }
     }
 
     // Carry the ⭐ favourite flag onto the new profile so switching a profile's
@@ -29352,11 +29357,13 @@ fn cmd_profile_convert_mode(
 /// CLI matches the GUI's confirmDelete behaviour in `MyServersPanel`. Without
 /// these companion deletes the GUI would see a stale credential ghost or a
 /// dangling favourite after the next vault → state reconcile (issue #194).
+/// Returns the profiles left and the profile's secret keys found and not
+/// removed ([`ftp_client_gui_lib::purge_profile_secret_keys`]).
 fn delete_profile_in_vault(
     cli: &Cli,
     store: &CredentialStore,
     profile_id: &str,
-) -> Result<Vec<serde_json::Value>, String> {
+) -> Result<(Vec<serde_json::Value>, Vec<String>), String> {
     let profiles: Vec<serde_json::Value> = load_active_user_profiles(cli, store)
         .map_err(|e| format!("Failed to read profiles: {}", e))?;
     // Capture the protocol before removing the entry, so the OAuth-token key can
@@ -29374,17 +29381,28 @@ fn delete_profile_in_vault(
     // so a delete leaves nothing behind. Same single source of truth
     // (`per_profile_vault_keys`) the GUI `purge_profile_secrets` command and the
     // export-collect path use, so the CLI and GUI can never diverge. MUV-3:
-    // dual-delete from the vault + the scoped user's partition; best-effort per
-    // key (a key absent for this profile kind is a no-op).
+    // dual-delete from the vault + the scoped user's partition; every key is
+    // tried, a key absent for this profile kind is a no-op, and a key found
+    // and not removed is reported.
     let scoped_uid = scoped_credential_user_id(cli, store);
     // A native Proton Drive session is ended on Proton before its key goes,
-    // as the GUI delete does.
+    // as the GUI delete does: for a Proton profile, or one that holds a
+    // session key. Any other profile takes no Proton session lock.
     #[cfg(feature = "proton-native")]
-    ftp_client_gui_lib::providers::proton_native::vault::end_session_blocking(
-        ftp_client_gui_lib::providers::proton_native::vault::SessionOwner::for_user(scoped_uid),
-        Some(profile_id),
-    )
-    .map_err(|error| error.to_string())?;
+    {
+        use ftp_client_gui_lib::providers::proton_native::vault;
+        let owner = vault::SessionOwner::for_user(scoped_uid);
+        let proton = protocol
+            .as_deref()
+            .is_some_and(|protocol| protocol.eq_ignore_ascii_case("proton"));
+        if proton
+            || vault::holds_saved_session(store, owner, profile_id)
+                .map_err(|error| error.to_string())?
+        {
+            vault::end_session_blocking(owner, Some(profile_id))
+                .map_err(|error| error.to_string())?;
+        }
+    }
     // The protocol as it stands now decides which token keys go below.
     let (protocol, _, stored) = update_active_user_profiles(
         cli,
@@ -29400,15 +29418,21 @@ fn delete_profile_in_vault(
             Ok(current.or_else(|| protocol.clone()))
         },
     )?;
-    for key in
-        ftp_client_gui_lib::per_profile_vault_keys_for_delete(profile_id, protocol.as_deref())
-    {
-        #[cfg(feature = "proton-native")]
-        if key == format!("proton_native_session_{profile_id}") {
-            continue;
-        }
-        dual_delete_server_cred(store, scoped_uid, &key);
-    }
+    let (_, left_behind) = ftp_client_gui_lib::purge_profile_secret_keys(
+        profile_id,
+        protocol.as_deref(),
+        |key| match scoped_uid {
+            Some(uid) => ftp_client_gui_lib::user_partitions::holds_credential(store, uid, key),
+            None => match store.get(key) {
+                Ok(value) => Ok(!value.is_empty()),
+                Err(ftp_client_gui_lib::credential_store::CredentialError::NotFound(_)) => {
+                    Ok(false)
+                }
+                Err(error) => Err(error.to_string()),
+            },
+        },
+        |key| dual_delete_server_cred(store, scoped_uid, key),
+    );
 
     // Drop the id from the favourites set if present. Best-effort: a missing
     // or malformed entry leaves the favourites list untouched.
@@ -29425,7 +29449,7 @@ fn delete_profile_in_vault(
         }
     }
 
-    Ok(stored)
+    Ok((stored, left_behind))
 }
 
 /// `aeroftp profile-delete <SELECTOR> [--yes]` — public CLI surface for
@@ -29518,13 +29542,14 @@ fn cmd_profile_delete(cli: &Cli, format: OutputFormat, selector: &str, skip_conf
     }
 
     match delete_profile_in_vault(cli, &store, &target_id) {
-        Ok(remaining) => match format {
+        Ok((remaining, left_behind)) => match format {
             OutputFormat::Json => {
                 print_json(&serde_json::json!({
                     "status": "deleted",
                     "id": target_id,
                     "name": target_name,
                     "remaining": remaining.len(),
+                    "secrets_not_removed": left_behind,
                 }));
                 0
             }
@@ -29535,6 +29560,12 @@ fn cmd_profile_delete(cli: &Cli, format: OutputFormat, selector: &str, skip_conf
                     target_id,
                     remaining.len()
                 );
+                if !left_behind.is_empty() {
+                    eprintln!(
+                        "Warning: these secrets of the profile were not removed: {}",
+                        left_behind.join(", ")
+                    );
+                }
                 0
             }
         },
@@ -42348,6 +42379,7 @@ fn rclone_import_json(
             "profilesAppended": summary.profiles_appended,
             "profilesRenamed": summary.profiles_renamed,
             "oauthAppWarnings": summary.oauth_app_warnings,
+            "signInWarnings": summary.sign_in_warnings,
             "security": summary.security,
         });
     }
@@ -42408,7 +42440,7 @@ async fn cmd_import_rclone(
     }
 
     match rclone_import::import_rclone(&config_path) {
-        Ok(result) => {
+        Ok(mut result) => {
             // Issue #214: --apply mirrors the GUI `import_rclone_config` Tauri
             // command end-to-end: write the per-profile password under
             // `server_<id>`, the OAuth blob under `oauth_<slug>_<id>`, the
@@ -42419,7 +42451,22 @@ async fn cmd_import_rclone(
             let mut applied_summary: Option<RcloneApplySummary> = None;
             if apply {
                 match apply_rclone_import_to_vault(cli, &result, keep_insecure_options).await {
-                    Ok(summary) => applied_summary = Some(summary),
+                    Ok(summary) => {
+                        // A stored session is said to be shared with rclone, only
+                        // once the store took it.
+                        for id in &summary.shared_sessions {
+                            let name = result
+                                .servers
+                                .iter()
+                                .find(|server| &server.id == id)
+                                .map_or(id.as_str(), |server| server.name.as_str());
+                            result.warnings.push(rclone_import::RcloneImportWarning {
+                                name: name.to_string(),
+                                reason: rclone_import::RCLONE_SESSION_SHARED.to_string(),
+                            });
+                        }
+                        applied_summary = Some(summary);
+                    }
                     Err(err) => {
                         if json {
                             println!(
@@ -42493,6 +42540,12 @@ struct RcloneApplySummary {
     profiles_renamed: Vec<ftp_client_gui_lib::util::profile_name::RenamedProfile>,
     /// One line per profile whose OAuth app was not kept.
     oauth_app_warnings: Vec<String>,
+    /// One line per profile that signs in again: the session it carried was
+    /// not restored.
+    sign_in_warnings: Vec<String>,
+    /// The profiles whose native Proton session was stored, now shared with
+    /// rclone: said only once the store took it.
+    shared_sessions: Vec<String>,
     /// The security-relaxing options of the stored remotes: reset to their
     /// safe state, or kept with --keep-insecure-options (#1506 Requested 198).
     security: Vec<ftp_client_gui_lib::profile_import_plan::ImportedSecurity>,
@@ -42621,6 +42674,10 @@ async fn apply_rclone_import_to_vault(
             .find(|s| s.id == id)
             .map(|s| s.protocol.clone().unwrap_or_default().to_lowercase())
     };
+    // The native Proton sessions of the profiles the list takes, restored once
+    // it has taken them.
+    #[cfg(feature = "proton-native")]
+    let mut proton_sessions = Vec::new();
     // Secrets and list as one operation: a failure leaves neither, and a save made
     // meanwhile is kept. Existing entries are preserved; ids that already exist in
     // the list are skipped, with their secrets, to keep the operation idempotent.
@@ -42633,8 +42690,12 @@ async fn apply_rclone_import_to_vault(
                 profiles_appended: 0,
                 profiles_renamed: Vec::new(),
                 oauth_app_warnings: Vec::new(),
+                sign_in_warnings: Vec::new(),
+                shared_sessions: Vec::new(),
                 security: Vec::new(),
             };
+            #[cfg(feature = "proton-native")]
+            proton_sessions.clear();
             // Ids are minted per parse, so one is held only if the list took it since.
             // It then keeps its secrets, as a skipped `.aeroftp` profile does.
             let held = |id: &str| {
@@ -42683,13 +42744,10 @@ async fn apply_rclone_import_to_vault(
                 }
                 // The cached session of an rclone `protondrive` remote, under the
                 // key the native Proton Drive client reads.
+                #[cfg(feature = "proton-native")]
                 if let Some(ref session_json) = secrets.proton_native_session {
                     if protocol == "proton" {
-                        writes.push(SecretWrite::new(
-                            format!("proton_native_session_{profile_id}"),
-                            Some("proton_native_session"),
-                            session_json,
-                        ));
+                        proton_sessions.push((profile_id, session_json));
                     }
                 }
             }
@@ -42741,14 +42799,39 @@ async fn apply_rclone_import_to_vault(
             }
         }
     }
+    // As the GUI and an `.aeroftp` import restore one: never into an account
+    // while another on this device may hold it, since a sign-out here would
+    // revoke it there.
+    #[cfg(feature = "proton-native")]
+    let (sign_in_warnings, shared_sessions) = {
+        use ftp_client_gui_lib::providers::proton_native::vault;
+        let owner = vault::SessionOwner::for_user(Some(target.id));
+        let (mut sign_in_warnings, mut shared_sessions) = (Vec::new(), Vec::new());
+        for (profile_id, session_json) in proton_sessions {
+            match vault::import_session_blocking(owner, profile_id, session_json) {
+                Ok(true) => shared_sessions.push(profile_id.to_string()),
+                Ok(false) => {
+                    sign_in_warnings.push(format!("'{profile_id}': {}", vault::IMPORT_WITHHELD))
+                }
+                Err(e) => sign_in_warnings.push(format!(
+                    "the Proton session of '{profile_id}' was not stored, so it signs in again: {e}"
+                )),
+            }
+        }
+        (sign_in_warnings, shared_sessions)
+    };
+    #[cfg(not(feature = "proton-native"))]
+    let (sign_in_warnings, shared_sessions) = (Vec::new(), Vec::new());
     // Read from the list stored: only the write knows which profile had a
     // name first (an older list may hold two of one name).
-    for warning in &oauth_app_warnings {
+    for warning in oauth_app_warnings.iter().chain(&sign_in_warnings) {
         eprintln!("Warning: {}", sanitize_filename(warning));
     }
     Ok(RcloneApplySummary {
         profiles_renamed: renamed_by_write(&profiles, &stored),
         oauth_app_warnings,
+        sign_in_warnings,
+        shared_sessions,
         ..summary
     })
 }
@@ -64647,8 +64730,10 @@ fn store_headerless_init_config(
     if let Err(e) = dual_store_server_cred_checked(store, uid, &salt_key, salt_b64) {
         if let Some(old) = old_config {
             dual_store_server_cred(store, uid, &config_key, &old);
-        } else {
-            dual_delete_server_cred(store, uid, &config_key);
+        } else if let Err(error) = dual_delete_server_cred(store, uid, &config_key) {
+            return Err(format!(
+                "{e}; the overlay config written before it was not removed: {error}"
+            ));
         }
         return Err(e);
     }

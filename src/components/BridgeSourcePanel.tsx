@@ -14,7 +14,7 @@ import { useTranslation } from '../i18n';
 import { Checkbox } from './ui/Checkbox';
 import { BridgeSourceDescriptor, BridgeSourceMeta } from './bridge/bridgeSources';
 import { detectBridgeConfigBounded } from '../hooks/useDetectedBridgeConfigs';
-import { bridgeProfileKey, commitImportedServers, importedServerProfile, type ImportedServer } from './bridge/bridgeImportCommit';
+import { bridgeProfileKey, commitImportedServers, createScanSettler, importedServerProfile, type ImportedServer } from './bridge/bridgeImportCommit';
 import { ServerChecklistNoMatch, ServerChecklistSearch, ServerChecklistSummary, SelectShownButton, useServerChecklistFilter } from './ServerChecklistFilter';
 import { ImportSecurityReview, keptRelaxationId, type ImportedSecurity } from './ImportSecurityReview';
 import { securityRelaxations } from '../utils/profileSecurity';
@@ -28,6 +28,10 @@ interface BridgeImportResult {
     security?: ImportedSecurity[];
     sourcePath: string | null;
     totalRemotes: number;
+    /** The account the scan stored the secrets in (`null`: no account yet). */
+    importedUserId?: number | null;
+    /** The scan that stored them, settled once the panel is done with it. */
+    scanId?: string;
 }
 
 interface BridgeExportResult {
@@ -111,6 +115,15 @@ export const BridgeSourcePanel: React.FC<Props> = ({
         closeTimerRef.current = null;
     };
     useEffect(() => cancelDelayedClose, []);
+    // What a scan stored for profiles the panel never saves goes when the panel
+    // is done with the scan: confirmed, scanned again or closed. Opening the
+    // import side also settles what a window closed by a crash left.
+    const [scans] = useState(() => createScanSettler(scanId => invoke('settle_bridge_import', { scanId })));
+    useEffect(() => {
+        if (direction !== 'import') return;
+        void scans.open();
+        return () => { void scans.close(); };
+    }, [direction, scans]);
 
     // Pre-select exportable profiles (protocol supported by the target).
     const supported = meta?.supportedProtocols ?? [];
@@ -188,10 +201,12 @@ export const BridgeSourcePanel: React.FC<Props> = ({
         setError(null);
         setResult(null);
         setKeptRelaxed(new Set());
+        await scans.release();
         try {
             const r = await invoke<BridgeImportResult>('import_bridge_config', {
                 source: source.id, filePath,
             });
+            void scans.track(r.scanId);
             setResult(r);
             setSelectedIds(new Set(r.servers.map(s => s.id)));
         } catch (e) {
@@ -254,8 +269,13 @@ export const BridgeSourcePanel: React.FC<Props> = ({
         committingRef.current = true;
         setLoading(true);
         try {
-            const outcome = await commitImportedServers(selected, existingServerKeys, onImport);
+            // Closing the panel meanwhile settles the scan only once the
+            // profiles are saved, so their secrets stay.
+            const outcome = await scans.confirming(
+                () => commitImportedServers(selected, existingServerKeys, onImport, result.importedUserId),
+            );
             if (outcome.error) { setError(outcome.error); return; }
+            await scans.release();
             const parts: string[] = [];
             if (outcome.added > 0) parts.push(t('settings.importSuccess').replace('{count}', String(outcome.added)));
             if (outcome.updated > 0) parts.push(t('settings.serversUpdated').replace('{count}', String(outcome.updated)));

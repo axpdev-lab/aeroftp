@@ -5915,7 +5915,9 @@
                 "months": "{count} kk"
             },
             "demoTabLabel": "Esittely: {protocol}",
-            "newTabLabel": "Uusi: {name}"
+            "newTabLabel": "Uusi: {name}",
+            "protonSessionEndsAtUnlock": "Tämän profiilin Proton-istunto päättyy, kun tämän tilin lukitus avataan seuraavan kerran, ellei jokin toinen tämän tietokoneen tili käytä sitä.",
+            "profileSecretsNotRemoved": "Profiili poistettiin, mutta joitakin sen tallennettuja tunnistetietoja ei voitu poistaa holvista."
         },
         "gitlab": {
             "projectPath": "Projektipolku",

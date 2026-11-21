@@ -5915,7 +5915,9 @@
                 "months": "{count} mēn."
             },
             "demoTabLabel": "Demonstrācija: {protocol}",
-            "newTabLabel": "Jauns: {name}"
+            "newTabLabel": "Jauns: {name}",
+            "protonSessionEndsAtUnlock": "Šī profila Proton sesija beidzas nākamreiz, kad šis konts tiek atbloķēts, ja vien to neizmanto cits šī datora konts.",
+            "profileSecretsNotRemoved": "Profils tika noņemts, bet dažus tā saglabātos akreditācijas datus neizdevās izdzēst no glabātuves."
         },
         "gitlab": {
             "projectPath": "Projekta ceļš",

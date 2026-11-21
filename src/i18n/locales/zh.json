@@ -5915,7 +5915,9 @@
                 "months": "{count}个月"
             },
             "demoTabLabel": "演示：{protocol}",
-            "newTabLabel": "新建：{name}"
+            "newTabLabel": "新建：{name}",
+            "protonSessionEndsAtUnlock": "此配置文件的 Proton 会话将在下次解锁此账户时结束，除非此计算机上的其他账户正在使用它。",
+            "profileSecretsNotRemoved": "配置文件已删除，但其部分已保存的凭据无法从保险库中删除。"
         },
         "gitlab": {
             "projectPath": "项目路径",

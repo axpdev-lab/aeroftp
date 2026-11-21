@@ -772,9 +772,68 @@ fn vault_temporary(path: &Path) -> PathBuf {
 pub(crate) fn off_async_worker<T>(write: impl FnOnce() -> T) -> T {
     match tokio::runtime::Handle::try_current() {
         Ok(handle) if handle.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread => {
-            tokio::task::block_in_place(write)
+            tokio::task::block_in_place(|| {
+                #[cfg(test)]
+                let _off = off_worker_probe::Off::enter();
+                write()
+            })
         }
         _ => write(),
+    }
+}
+
+/// Mark a function that reads the partition database or the vault, or takes
+/// a lock held across them, as one that must not run on an async worker. In
+/// tests a call made on a multi-thread runtime outside [`off_async_worker`]
+/// is recorded ([`off_worker_probe::take`]); elsewhere it does nothing.
+#[inline]
+pub(crate) fn expect_off_worker(_what: &'static str) {
+    #[cfg(test)]
+    off_worker_probe::check(_what);
+}
+
+/// What [`expect_off_worker`] records, in tests.
+#[cfg(test)]
+pub(crate) mod off_worker_probe {
+    use std::cell::Cell;
+    use std::sync::Mutex;
+
+    thread_local! {
+        static OFF: Cell<bool> = const { Cell::new(false) };
+    }
+
+    static ON_WORKER: Mutex<Vec<&'static str>> = Mutex::new(Vec::new());
+
+    /// This thread runs a closure handed to `off_async_worker` while held.
+    pub(super) struct Off(bool);
+
+    impl Off {
+        pub(super) fn enter() -> Self {
+            Self(OFF.with(|off| off.replace(true)))
+        }
+    }
+
+    impl Drop for Off {
+        fn drop(&mut self) {
+            OFF.with(|off| off.set(self.0));
+        }
+    }
+
+    pub(super) fn check(what: &'static str) {
+        let on_runtime = tokio::runtime::Handle::try_current().is_ok_and(|handle| {
+            handle.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread
+        });
+        if on_runtime && !OFF.with(Cell::get) {
+            ON_WORKER
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .push(what);
+        }
+    }
+
+    /// What ran on an async worker since the last call, and forget it.
+    pub(crate) fn take() -> Vec<&'static str> {
+        std::mem::take(&mut *ON_WORKER.lock().unwrap_or_else(|e| e.into_inner()))
     }
 }
 
@@ -2480,6 +2539,58 @@ impl CredentialStore {
         Ok(true)
     }
 
+    /// Deletes `account` only while it still holds `expected`, so a write
+    /// being undone never removes a value another writer stored since.
+    /// Whether it was deleted.
+    pub(crate) fn delete_secret_if_unchanged(
+        &self,
+        account: &str,
+        expected: &str,
+    ) -> Result<bool, CredentialError> {
+        Self::reject_reserved_account(account)?;
+        let guard = VaultWriteGuard::acquire(Self::lock_dir(&self.vault_path)?)?;
+        let mut vault = Self::read_vault(&self.vault_path)?;
+        Self::ensure_vault_opens_with(&vault, &self.vault_key)?;
+        let Some(entry) = vault.entries.get(account) else {
+            return Ok(false);
+        };
+        let plaintext = Zeroizing::new(
+            crate::crypto::decrypt_aes_gcm(&self.vault_key, &entry.nonce, &entry.data)
+                .map_err(CredentialError::Encryption)?,
+        );
+        use subtle::ConstantTimeEq;
+        if !bool::from(plaintext.as_slice().ct_eq(expected.as_bytes())) {
+            return Ok(false);
+        }
+        vault.entries.remove(account);
+        Self::write_vault(&self.vault_path, &vault, &guard)?;
+        Ok(true)
+    }
+
+    /// Put `value` under `account` (`None`: remove it) only while it holds
+    /// `expected` (`None`: absent), under the cross-process vault lock, so a
+    /// write being undone never replaces a value another writer stored since.
+    /// Whether it was written.
+    pub(crate) fn swap_secret_if(
+        &self,
+        account: &str,
+        expected: Option<&str>,
+        value: Option<&str>,
+    ) -> Result<bool, CredentialError> {
+        match (expected, value) {
+            (Some(expected), Some(value)) => {
+                self.replace_secret_if_unchanged(account, expected, value)
+            }
+            (Some(expected), None) => self.delete_secret_if_unchanged(account, expected),
+            (None, Some(value)) => self.store_secret_if_absent(account, value),
+            (None, None) => match self.get(account) {
+                Ok(_) => Ok(false),
+                Err(CredentialError::NotFound(_)) => Ok(true),
+                Err(e) => Err(e),
+            },
+        }
+    }
+
     /// Legacy migration never replaces an authorization created in the meantime.
     pub(crate) fn store_secret_if_absent(
         &self,
@@ -2628,7 +2739,8 @@ impl CredentialStore {
 
     /// Flip one ciphertext byte of `account`'s entry, so reading it fails
     /// with an `Encryption` error while every other entry still reads.
-    // Used only by profile_auth_tests.rs, which builds on Linux alone.
+    // Used by profile_auth_tests.rs, which builds on Linux alone, and the
+    // profile purge tests, built there too.
     #[cfg(all(test, target_os = "linux"))]
     pub(crate) fn corrupt_entry_for_test(&self, account: &str) {
         let guard = VaultWriteGuard::acquire(Self::lock_dir(&self.vault_path).unwrap()).unwrap();
@@ -4290,6 +4402,113 @@ mod vault_lock_tests {
             let rest = &source[start..];
             &rest[..rest.find("\n    }\n").unwrap()]
         }
+        /// `source` with every comment, string and character literal blanked
+        /// out, byte for byte, so offsets stay where they were.
+        fn code_only(source: &str) -> String {
+            let bytes = source.as_bytes();
+            let mut out = bytes.to_vec();
+            let mut at = 0;
+            let blank = |out: &mut Vec<u8>, from: usize, to: usize| {
+                for byte in &mut out[from..to] {
+                    if *byte != b'\n' {
+                        *byte = b' ';
+                    }
+                }
+            };
+            while at < bytes.len() {
+                let rest = &bytes[at..];
+                if rest.starts_with(b"//") {
+                    let end = rest.iter().position(|&b| b == b'\n').unwrap_or(rest.len());
+                    blank(&mut out, at, at + end);
+                    at += end;
+                } else if rest.starts_with(b"/*") {
+                    let end = source[at + 2..].find("*/").map_or(rest.len(), |e| e + 4);
+                    blank(&mut out, at, at + end);
+                    at += end;
+                } else if rest[0] == b'r' && rest.get(1).is_some_and(|&b| b == b'"' || b == b'#') {
+                    let hashes = rest[1..].iter().take_while(|&&b| b == b'#').count();
+                    if rest.get(1 + hashes) != Some(&b'"') {
+                        at += 1;
+                        continue;
+                    }
+                    let close = format!("\"{}", "#".repeat(hashes));
+                    let end = source[at + 2 + hashes..]
+                        .find(&close)
+                        .map_or(rest.len(), |e| 2 + hashes + e + close.len());
+                    blank(&mut out, at, at + end);
+                    at += end;
+                } else if rest[0] == b'"' {
+                    let mut end = 1;
+                    while end < rest.len() && rest[end] != b'"' {
+                        end += if rest[end] == b'\\' { 2 } else { 1 };
+                    }
+                    let end = (end + 1).min(rest.len());
+                    blank(&mut out, at, at + end);
+                    at += end;
+                } else if rest[0] == b'\'' {
+                    // A character literal ('x', '\n', '\''), not a lifetime.
+                    let len = if rest.get(1) == Some(&b'\\') {
+                        rest[2..].iter().position(|&b| b == b'\'').map(|e| e + 3)
+                    } else {
+                        let width = source[at + 1..].chars().next().map_or(1, char::len_utf8);
+                        (rest.get(1 + width) == Some(&b'\'')).then_some(width + 2)
+                    };
+                    match len {
+                        Some(len) => {
+                            blank(&mut out, at, at + len);
+                            at += len;
+                        }
+                        None => at += 1,
+                    }
+                } else {
+                    at += 1;
+                }
+            }
+            String::from_utf8(out).expect("blanked source")
+        }
+        /// Where the body of the closure handed to each `off_async_worker(`
+        /// call in `source` lies, after its `||`, parentheses matched, in the
+        /// code alone: what runs off the worker. An argument that is not a
+        /// closure (a value computed on the calling thread) has no body.
+        fn worker_spans(source: &str) -> Vec<std::ops::Range<usize>> {
+            let code = code_only(source);
+            code.match_indices("off_async_worker(")
+                .filter_map(|(call, name)| {
+                    let open = call + name.len() - 1;
+                    let argument = code[open + 1..].trim_start();
+                    let argument = argument
+                        .strip_prefix("move")
+                        .map_or(argument, str::trim_start);
+                    let body = argument.strip_prefix("||")?;
+                    let start = code.len() - body.len();
+                    let mut depth = 1;
+                    for (at, c) in code[open + 1..].char_indices() {
+                        match c {
+                            '(' => depth += 1,
+                            ')' => {
+                                depth -= 1;
+                                if depth == 0 {
+                                    return Some(start..open + 1 + at);
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    panic!("unbalanced off_async_worker call")
+                })
+                .collect()
+        }
+        // The scanner itself: a value computed before the closure is not off
+        // the worker, and a parenthesis in a comment or a string is not code.
+        assert!(worker_spans("off_async_worker({ let r = read(); move || r })").is_empty());
+        let commented = "off_async_worker(|| { // (\n read() })\nafter()";
+        let spans = worker_spans(commented);
+        assert_eq!(spans.len(), 1);
+        assert!(spans[0].contains(&commented.find("read").unwrap()));
+        assert!(!spans[0].contains(&commented.find("after").unwrap()));
+        let quoted = "off_async_worker(|| log(\")\")); after()";
+        let spans = worker_spans(quoted);
+        assert!(!spans[0].contains(&quoted.find("after").unwrap()));
         let oauth = include_str!("providers/oauth2.rs");
         let refresh = body(oauth, "pub async fn refresh_tokens(");
         assert!(
@@ -4300,30 +4519,84 @@ mod vault_lock_tests {
             !refresh.contains("\n        self.store_tokens("),
             "oauth2 refresh_tokens"
         );
+        // `inner` is the call without its arguments, so renaming an argument
+        // keeps the property: only the wrapper makes the call.
         for (source, signature, inner) in [
             (
                 include_str!("providers/jottacloud.rs"),
                 "fn persist_refresh_token(&self) {",
-                "persist_refresh_token_now(&accounts)",
+                "self.persist_refresh_token_now(",
             ),
             (
                 include_str!("providers/mega_native.rs"),
                 "fn persist_session(&self) -> Result<(), ProviderError> {",
-                "persist_session_now()",
+                "self.persist_session_now(",
             ),
         ] {
             let wrapper = body(source, signature);
             assert!(wrapper.contains("off_async_worker("), "{signature}");
-            assert!(wrapper.contains(inner), "{signature}");
+            // The call is the closure handed to the worker, not a call made
+            // before it on the async thread.
+            assert!(
+                wrapper.contains(&format!("off_async_worker(|| {inner}")),
+                "{signature}"
+            );
             assert_eq!(
                 source.matches(inner).count(),
                 1,
                 "{inner} is called only by its wrapper"
             );
         }
+        // The Jottacloud wrapper reads nothing itself: the deletion checks are
+        // in the body it hands to the worker.
+        let jotta = include_str!("providers/jottacloud.rs");
+        let wrapper = body(jotta, "fn persist_refresh_token(&self) {");
+        for read in ["chain_deletions", "DELETED_CHAINS", "PENDING_ROTATIONS"] {
+            assert!(
+                !wrapper.contains(read),
+                "persist_refresh_token reads {read}"
+            );
+        }
+        // A connection's reads of the partition database and the vault run off
+        // the worker: every call of each is the closure handed to it.
+        for (signature, calls) in [
+            (
+                "async fn connect(&mut self) -> Result<(), ProviderError> {",
+                &["self.bind_credential_owner()", "self.begin_login_chain()"][..],
+            ),
+            (
+                "async fn try_connect_with_refresh(&mut self) -> Result<bool, ProviderError> {",
+                &[
+                    "self.bind_credential_owner()",
+                    "self.note_chain_generations()",
+                    "Self::load_refresh_chain(",
+                    "Self::stored_token_now(",
+                    "try_unmirror_active_credential(",
+                    "deletion_clock()",
+                ][..],
+            ),
+        ] {
+            let connection = body(jotta, signature);
+            let spans = worker_spans(connection);
+            for call in calls {
+                let all = connection.matches(call).count();
+                let off = connection
+                    .match_indices(call)
+                    .filter(|(at, _)| spans.iter().any(|span| span.contains(at)))
+                    .count();
+                assert!(all > 0, "{signature}: {call} not found");
+                assert_eq!(off, all, "{signature}: {call} runs on the async worker");
+            }
+        }
         let proton = include_str!("providers/proton_native/vault.rs");
+        let save = body(proton, "fn save(&self, tokens: &SessionTokens) {");
+        // The write is inside the closure handed to the worker, never before
+        // or after it.
+        assert_eq!(save.matches("save_refreshed(").count(), 1, "proton save");
+        let at = save.find("save_refreshed(").unwrap();
         assert!(
-            body(proton, "fn save(&self, tokens: &SessionTokens) {").contains("off_async_worker(")
+            worker_spans(save).iter().any(|span| span.contains(&at)),
+            "proton save writes outside the worker closure"
         );
     }
 
@@ -4346,19 +4619,23 @@ mod vault_lock_tests {
         runtime.block_on(async {
             // With one worker, a write that blocked it in place would starve
             // this task; block_in_place hands the other task to a new worker.
+            // When each ended: a timeout on the ticker cannot tell, since a
+            // blocked worker drives no timer, and the ticker and its timeout
+            // would come due together once the write is over.
             let ticker = tokio::spawn(async {
                 tokio::time::sleep(Duration::from_millis(20)).await;
-                true
+                std::time::Instant::now()
             });
             let ran = tokio::spawn(async {
                 off_async_worker(|| std::thread::sleep(Duration::from_millis(200)));
-                true
+                std::time::Instant::now()
             });
-            assert!(tokio::time::timeout(Duration::from_millis(150), ticker)
-                .await
-                .expect("the other task ran while the write waited")
-                .unwrap());
-            assert!(ran.await.unwrap());
+            let ticked = ticker.await.unwrap();
+            let written = ran.await.unwrap();
+            assert!(
+                ticked < written,
+                "the other task ran while the write waited"
+            );
         });
     }
 

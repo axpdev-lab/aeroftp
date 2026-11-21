@@ -5915,7 +5915,9 @@
                 "months": "{count} luni"
             },
             "demoTabLabel": "Demo: {protocol}",
-            "newTabLabel": "Nou: {name}"
+            "newTabLabel": "Nou: {name}",
+            "protonSessionEndsAtUnlock": "Sesiunea Proton a acestui profil se încheie la următoarea deblocare a acestui cont, cu excepția cazului în care o folosește un alt cont de pe acest computer.",
+            "profileSecretsNotRemoved": "Profilul a fost eliminat, dar unele dintre datele sale de autentificare salvate nu au putut fi șterse din seif."
         },
         "gitlab": {
             "projectPath": "Calea proiectului",

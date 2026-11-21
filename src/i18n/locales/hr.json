@@ -5915,7 +5915,9 @@
                 "months": "{count} mj."
             },
             "demoTabLabel": "Demo: {protocol}",
-            "newTabLabel": "Novo: {name}"
+            "newTabLabel": "Novo: {name}",
+            "protonSessionEndsAtUnlock": "Proton sesija ovog profila završava pri sljedećem otključavanju ovog računa, osim ako je koristi drugi račun na ovom računalu.",
+            "profileSecretsNotRemoved": "Profil je uklonjen, ali neki od njegovih spremljenih vjerodajnica nisu se mogli izbrisati iz trezora."
         },
         "gitlab": {
             "projectPath": "Putanja projekta",

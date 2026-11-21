@@ -5934,7 +5934,9 @@
                 "months": "{count} mes."
             },
             "demoTabLabel": "Demo: {protocol}",
-            "newTabLabel": "Novo: {name}"
+            "newTabLabel": "Novo: {name}",
+            "protonSessionEndsAtUnlock": "A sesión de Proton deste perfil remata a próxima vez que se desbloquee esta conta, agás que outra conta deste ordenador a utilice.",
+            "profileSecretsNotRemoved": "O perfil elimináronse, pero algunhas das súas credenciais gardadas non se puideron borrar do cofre."
         },
         "gitlab": {
             "projectPath": "Ruta do proxecto",

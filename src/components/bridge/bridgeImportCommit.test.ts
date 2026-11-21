@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ServerProfile } from '../../types';
-import { appendImportedProfiles, bridgeProfileKey, commitImportedServers, importedServerProfile, type ImportedServer } from './bridgeImportCommit';
+import { appendImportedProfiles, bridgeProfileKey, commitImportedServers, createScanSettler, importedServerProfile, type ImportedServer } from './bridgeImportCommit';
+import panelSource from '../BridgeSourcePanel.tsx?raw';
 import { readSavedServerProfilesForWrite, storeSavedServerProfiles } from '../../utils/serverProfileStore';
 
 vi.mock('../../utils/serverProfileStore', () => ({
@@ -226,6 +227,23 @@ describe('the import callback and the commit helper together', () => {
         expect(vault.writes).toBe(0);
         expect(vault.profiles.map(s => s.id)).toEqual(['base']);
     });
+
+    // The scan stored the tokens and sessions in account 4; account 3 is active
+    // at the confirm. Its profiles there would have none of them, so nothing is
+    // removed, stored or handed to the callback.
+    it('refuses a confirm in an account other than the one the scan stored the secrets in', async () => {
+        const vault = fakeVault([base]);
+        const onImport = vi.fn();
+        const replacement: ServerProfile = { ...base, id: 'replacement', name: 'Koofr renamed' };
+        const outcome = await commitImportedServers([replacement], new Set([bridgeProfileKey(base)]), onImport, 4);
+        expect(outcome).toEqual({ added: 0, updated: 0, error: expect.stringContaining('active account changed') });
+        expect(onImport).not.toHaveBeenCalled();
+        expect(vault.writes).toBe(0);
+        expect(vault.profiles.map(s => s.id)).toEqual(['base']);
+        // The account the scan stored into is the active one: the confirm goes on.
+        expect(await commitImportedServers([replacement], new Set([bridgeProfileKey(base)]),
+            servers => appendImportedProfiles(servers, 3).then(() => undefined), 3)).toEqual({ added: 0, updated: 1 });
+    });
 });
 
 describe('an imported Filen API key (#230)', () => {
@@ -303,5 +321,73 @@ describe('importedServerProfile security relaxations on bridge imports', () => {
 
         const keptFromRaw = importedServerProfile(winscpWebdavRawHttp, ['webdavScheme']);
         expect(keptFromRaw.options?.webdavScheme).toBe('http');
+    });
+});
+
+describe('createScanSettler', () => {
+    it('settles a scan once, and the scans of closed windows on opening', async () => {
+        const settle = vi.fn().mockResolvedValue(undefined);
+        const scans = createScanSettler(settle);
+        await scans.open();
+        expect(settle).toHaveBeenLastCalledWith(null);
+        await scans.track('scan-1');
+        await scans.release();
+        await scans.release();
+        expect(settle.mock.calls).toEqual([[null], ['scan-1']]);
+    });
+
+    it('settles the scan a closed panel held, and one that ends after it closed', async () => {
+        const settle = vi.fn().mockResolvedValue(undefined);
+        const scans = createScanSettler(settle);
+        await scans.track('scan-1');
+        await scans.close();
+        expect(settle.mock.calls).toEqual([['scan-1']]);
+        await scans.track('scan-2');
+        expect(settle.mock.calls).toEqual([['scan-1'], ['scan-2']]);
+        await scans.track(undefined);
+        expect(settle).toHaveBeenCalledTimes(2);
+    });
+
+    it('settles a panel closed during a confirm only once the confirm is done', async () => {
+        const settle = vi.fn().mockResolvedValue(undefined);
+        const scans = createScanSettler(settle);
+        await scans.track('scan-1');
+        let saved!: () => void;
+        const save = new Promise<void>(resolve => { saved = resolve; });
+        const confirmed = scans.confirming(() => save.then(() => 'stored'));
+        const closed = scans.close();
+        await new Promise(resolve => setTimeout(resolve, 0));
+        expect(settle).not.toHaveBeenCalled();
+        saved();
+        await expect(confirmed).resolves.toBe('stored');
+        await closed;
+        expect(settle.mock.calls).toEqual([['scan-1']]);
+    });
+
+    it('settles after a confirm that failed, and does not wait for one done', async () => {
+        const settle = vi.fn().mockResolvedValue(undefined);
+        const scans = createScanSettler(settle);
+        await scans.track('scan-1');
+        await expect(scans.confirming(() => Promise.reject(new Error('refused')))).rejects.toThrow('refused');
+        await scans.close();
+        expect(settle.mock.calls).toEqual([['scan-1']]);
+    });
+
+    it('is the confirm the panel runs, so its close waits for the save', () => {
+        expect(panelSource).toMatch(/await scans\.confirming\(\s*\(\) => commitImportedServers\(/);
+        expect(panelSource.match(/commitImportedServers\(/g)).toHaveLength(1);
+    });
+
+    it('keeps going when a settle fails', async () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        const settle = vi.fn().mockRejectedValueOnce(new Error('locked')).mockResolvedValue(undefined);
+        const scans = createScanSettler(settle);
+        await scans.track('scan-1');
+        await expect(scans.release()).resolves.toBeUndefined();
+        expect(warn).toHaveBeenCalled();
+        await scans.track('scan-2');
+        await scans.release();
+        expect(settle.mock.calls).toEqual([['scan-1'], ['scan-2']]);
+        warn.mockRestore();
     });
 });

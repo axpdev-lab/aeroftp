@@ -122,6 +122,107 @@ fn profile_add_saves_the_client_and_sign_in_reads_it_back() {
     }
 }
 
+/// An rclone import restores the session of a `protondrive` remote in the
+/// active account only while no other account on this device holds it:
+/// imported again into a second account, the profile is reported to sign in
+/// again and holds no session, and the first account keeps its own. Nothing
+/// reaches Proton: no sign-in, no sign-out.
+#[cfg(feature = "proton-native")]
+#[test]
+fn an_rclone_import_into_a_second_account_leaves_the_session_to_the_first() {
+    let root = isolated_cli::root();
+    let root = root.path();
+    let conf = root.join("rclone.conf");
+    std::fs::write(
+        &conf,
+        "[pd]\ntype = protondrive\nusername = someone@example.test\n\
+         client_uid = rclone-uid\nclient_access_token = access-1\n\
+         client_refresh_token = refresh-1\nclient_salted_key_pass = a2V5LXBhc3N3b3JkLTE=\n",
+    )
+    .unwrap();
+    let import = || {
+        let out = cli(
+            root,
+            &[
+                "import",
+                "rclone",
+                conf.to_str().unwrap(),
+                "--apply",
+                "--json",
+            ],
+        );
+        assert_eq!(out.status.code(), Some(0), "{}", describe(&out));
+        let imported = json(&out);
+        let id = imported["servers"][0]["id"]
+            .as_str()
+            .expect("id")
+            .to_string();
+        (id, imported)
+    };
+    let signed_in = |id: &str| {
+        let out = cli(root, &["--json", "proton", "status", id]);
+        assert_eq!(out.status.code(), Some(0), "{}", describe(&out));
+        json(&out)["signed_in"].clone()
+    };
+    let switch = |user: &str| {
+        let out = cli(root, &["users", "switch", user]);
+        assert_eq!(out.status.code(), Some(0), "{}", describe(&out));
+    };
+
+    // Whether the import's `warnings` say a session is now shared with rclone.
+    let says_shared = |imported: &serde_json::Value| {
+        imported["warnings"].as_array().is_some_and(|warnings| {
+            warnings.iter().any(|warning| {
+                warning["reason"] == ftp_client_gui_lib::rclone_import::RCLONE_SESSION_SHARED
+            })
+        })
+    };
+    let (first_id, imported) = import();
+    assert_eq!(signed_in(&first_id), serde_json::json!(true), "imported");
+    assert!(
+        says_shared(&imported),
+        "a stored session is reported shared: {imported}"
+    );
+    let listed = json(&cli(root, &["--json", "users", "list"]));
+    let first_user = listed["users"][0]["name"]
+        .as_str()
+        .expect("the account that imported first")
+        .to_string();
+    let added = cli(root, &["users", "add", "second"]);
+    assert_eq!(added.status.code(), Some(0), "{}", describe(&added));
+    switch("second");
+
+    let (second_id, imported) = import();
+    let warnings = imported["appliedSummary"]["signInWarnings"].clone();
+    // The reason is that another account may hold the session, never another
+    // failure that names the profile too.
+    assert!(
+        warnings
+            .as_array()
+            .is_some_and(
+                |warnings| warnings
+                    .iter()
+                    .any(|warning| warning.as_str().is_some_and(|warning| warning
+                        .contains(&second_id)
+                        && warning.contains(
+                            ftp_client_gui_lib::providers::proton_native::vault::IMPORT_WITHHELD
+                        )))
+            ),
+        "the profile is reported to sign in again: {imported}"
+    );
+    assert!(
+        !says_shared(&imported),
+        "a session left out is not reported imported: {imported}"
+    );
+    assert_eq!(
+        signed_in(&second_id),
+        serde_json::json!(false),
+        "an rclone import does not bring a session another account holds"
+    );
+    switch(&first_user);
+    assert_eq!(signed_in(&first_id), serde_json::json!(true));
+}
+
 #[test]
 fn proton_mode_and_sign_in_refuse_what_is_not_a_proton_profile() {
     let root = isolated_cli::root();
@@ -431,4 +532,120 @@ async fn proton_mode_switch_translates_the_initial_folder_both_ways() {
     // The root stays the sections; relative paths start in My Files.
     assert_eq!(json(&pwd)["resolved_root"], "/");
     assert_eq!(json(&pwd)["start_folder"], "/my-files");
+}
+
+/// Whether a directory named `name` exists anywhere under `dir`.
+#[cfg(feature = "proton-native")]
+fn has_directory(dir: &Path, name: &str) -> bool {
+    std::fs::read_dir(dir).is_ok_and(|entries| {
+        entries.flatten().any(|entry| {
+            let path = entry.path();
+            path.is_dir() && (entry.file_name() == name || has_directory(&path, name))
+        })
+    })
+}
+
+/// The delete of a profile that is not a Proton one takes no Proton session
+/// lock (a filesystem without file locks would refuse that lock, and with it
+/// the delete), while a native Proton profile's delete still goes through the
+/// session's lock to end its session.
+#[cfg(feature = "proton-native")]
+#[test]
+fn a_profile_delete_takes_a_proton_session_lock_only_for_proton() {
+    let root = isolated_cli::root();
+    let root = root.path();
+    let out = cli(
+        root,
+        &[
+            "--json",
+            "profile-add",
+            "--name",
+            "plain",
+            "--protocol",
+            "ftp",
+            "--host",
+            "127.0.0.1",
+        ],
+    );
+    assert_eq!(out.status.code(), Some(0), "{}", describe(&out));
+    let out = cli(root, &["profile-delete", "plain", "--yes"]);
+    assert_eq!(out.status.code(), Some(0), "{}", describe(&out));
+    assert!(
+        !has_directory(root, "proton_session_locks"),
+        "an FTP profile's delete takes no Proton session lock"
+    );
+
+    let (native_id, _) = add_proton(root, "native", Some("native"));
+    let out = cli(root, &["profile-delete", &native_id, "--yes"]);
+    assert_eq!(out.status.code(), Some(0), "{}", describe(&out));
+    assert!(
+        has_directory(root, "proton_session_locks"),
+        "a native Proton profile's delete goes through its session lock"
+    );
+}
+
+/// The first file named `name` under `dir`, at any depth.
+fn find_file(dir: &Path, name: &str) -> Option<std::path::PathBuf> {
+    std::fs::read_dir(dir).ok()?.flatten().find_map(|entry| {
+        let path = entry.path();
+        if path.is_dir() {
+            find_file(&path, name)
+        } else {
+            (entry.file_name() == name).then_some(path)
+        }
+    })
+}
+
+/// A profile delete whose credential row cannot be removed says so: the
+/// profile leaves the list, and the secret still saved under its id is named,
+/// instead of a plain "deleted" over a row every reader still takes first.
+#[test]
+fn a_profile_delete_names_the_secret_it_could_not_remove() {
+    let root = isolated_cli::root();
+    let root = root.path();
+    let mut add = isolated_cli::command(Path::new(env!("CARGO_BIN_EXE_aeroftp-cli")), root)
+        .args([
+            "--json",
+            "profile-add",
+            "--name",
+            "kept-secret",
+            "--protocol",
+            "ftp",
+            "--host",
+            "127.0.0.1",
+            "--password-stdin",
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("run aeroftp-cli");
+    {
+        use std::io::Write;
+        add.stdin.take().unwrap().write_all(b"hunter2\n").unwrap();
+    }
+    let out = add.wait_with_output().expect("aeroftp-cli output");
+    assert_eq!(out.status.code(), Some(0), "{}", describe(&out));
+    let added: serde_json::Value =
+        serde_json::from_slice(&out.stdout).unwrap_or_else(|e| panic!("{e}: {}", describe(&out)));
+    let id = added["id"].as_str().expect("id").to_string();
+    let db = find_file(root, "user_partitions.db").expect("the account database");
+    rusqlite::Connection::open(&db)
+        .unwrap()
+        .execute_batch(
+            "CREATE TRIGGER keep_rows BEFORE DELETE ON user_credentials
+             BEGIN SELECT RAISE(FAIL, 'disk full'); END;",
+        )
+        .unwrap();
+    let out = cli(root, &["--json", "profile-delete", &id, "--yes"]);
+    assert_eq!(out.status.code(), Some(0), "{}", describe(&out));
+    let deleted: serde_json::Value =
+        serde_json::from_slice(&out.stdout).unwrap_or_else(|e| panic!("{e}: {}", describe(&out)));
+    assert_eq!(deleted["status"], "deleted", "{}", describe(&out));
+    assert_eq!(
+        deleted["secrets_not_removed"],
+        serde_json::json!([format!("server_{id}")]),
+        "{}",
+        describe(&out)
+    );
 }

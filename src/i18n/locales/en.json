@@ -6095,6 +6095,8 @@
             "backToServers": "Back to servers",
             "addFavorite": "Add to favorites",
             "removeFavorite": "Remove from favorites",
+            "protonSessionEndsAtUnlock": "The Proton session of this profile ends when this account is next unlocked, unless another account on this computer uses it.",
+            "profileSecretsNotRemoved": "The profile was removed, but some of its saved credentials could not be deleted from the vault.",
             "exportProfile": "Export...",
             "group": {
                 "newGroup": "New group",

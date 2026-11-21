@@ -5915,7 +5915,9 @@
                 "months": "{count} bln"
             },
             "demoTabLabel": "Demo: {protocol}",
-            "newTabLabel": "Baru: {name}"
+            "newTabLabel": "Baru: {name}",
+            "protonSessionEndsAtUnlock": "Sesi Proton profil ini berakhir saat akun ini dibuka kuncinya berikutnya, kecuali akun lain di komputer ini menggunakannya.",
+            "profileSecretsNotRemoved": "Profil telah dihapus, tetapi beberapa kredensial tersimpannya tidak dapat dihapus dari brankas."
         },
         "gitlab": {
             "projectPath": "Jalur Proyek",

@@ -5915,7 +5915,9 @@
                 "months": "{count} ամս"
             },
             "demoTabLabel": "Ցուցադրություն: {protocol}",
-            "newTabLabel": "Նոր: {name}"
+            "newTabLabel": "Նոր: {name}",
+            "protonSessionEndsAtUnlock": "Այս պրոֆիլի Proton նիստն ավարտվում է այս հաշվի հաջորդ ապակողպման ժամանակ, եթե այն չի օգտագործում այս համակարգչի մեկ այլ հաշիվ։",
+            "profileSecretsNotRemoved": "Պրոֆիլը հեռացվեց, սակայն նրա պահպանված որոշ մուտքային տվյալներ չհաջողվեց ջնջել պահոցից։"
         },
         "gitlab": {
             "projectPath": "Նախագծի ուղի",

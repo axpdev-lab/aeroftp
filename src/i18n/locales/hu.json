@@ -5915,7 +5915,9 @@
                 "months": "{count} hó"
             },
             "demoTabLabel": "Bemutató: {protocol}",
-            "newTabLabel": "Új: {name}"
+            "newTabLabel": "Új: {name}",
+            "protonSessionEndsAtUnlock": "Ennek a profilnak a Proton-munkamenete a fiók következő feloldásakor véget ér, hacsak nem használja egy másik fiók ezen a számítógépen.",
+            "profileSecretsNotRemoved": "A profil el lett távolítva, de néhány mentett hitelesítő adatát nem sikerült törölni a széfből."
         },
         "gitlab": {
             "projectPath": "Projekt útvonal",

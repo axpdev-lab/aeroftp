@@ -201,6 +201,14 @@ const AEROFTP_OBSCURED_SWIFT_UNTIL: (&str, &str) = ("2026-06-16T18:48:54Z", "4.0
 /// path is meant to recover (a Swift password); S3, Azure and B2 keys are longer.
 const MIN_REVEALED_PLAIN_SECRET_LEN: usize = 8;
 
+/// What an rclone import says of a remote whose saved Proton session it
+/// stored: said by the writer after the store, never by the parser, since the
+/// store may keep the session out.
+pub const RCLONE_SESSION_SHARED: &str = "rclone's saved session was imported and is now shared with rclone: the first of the two to refresh it keeps it, the other signs in again";
+
+/// [`RCLONE_SESSION_SHARED`] for a configuration template.
+pub const TEMPLATE_SESSION_SHARED: &str = "the saved session in the template was imported and is now shared with the external configuration: the first of the two to refresh it keeps it, the other signs in again";
+
 /// Appends the notes about credentials left out to the warning the profile
 /// already carries.
 fn with_credential_notes(mut mapped: MappedProfile, notes: Vec<String>) -> MappedProfile {
@@ -1958,28 +1966,24 @@ fn map_remote(
                 .then(|| rclone_proton_session_to_aeroftp(remote))
                 .flatten();
             let warning = if mode != "native" {
-                match source {
+                Some(match source {
                     ImportSourceKind::RcloneFile => {
                         "this build reaches Proton Drive through the official CLI: sign in with `proton-drive auth login`; rclone's saved session was left out"
                     }
                     ImportSourceKind::Template => {
                         "this build reaches Proton Drive through the official CLI: sign in with `proton-drive auth login`; the saved session in the template was left out"
                     }
-                }
+                })
             } else if session.is_some() {
-                match source {
-                    ImportSourceKind::RcloneFile => {
-                        "rclone's saved session was imported and is now shared with rclone: the first of the two to refresh it keeps it, the other signs in again"
-                    }
-                    ImportSourceKind::Template => {
-                        "the saved session in the template was imported and is now shared with the external configuration: the first of the two to refresh it keeps it, the other signs in again"
-                    }
-                }
+                // Said by the writer once the session is stored
+                // ([`RCLONE_SESSION_SHARED`]), never here: the import may keep
+                // it out, and the profile then signs in again.
+                None
             } else {
-                concat!(
+                Some(concat!(
                     "the remote holds no complete saved session: after the import, ",
                     crate::providers::proton_sign_in_hint!()
-                )
+                ))
             };
             Ok(MappedProfile {
                 protocol: "proton".to_string(),
@@ -1993,7 +1997,7 @@ fn map_remote(
                 oauth_token: None,
                 jotta_refresh: None,
                 proton_session: session,
-                credential_warning: Some(warning.to_string()),
+                credential_warning: warning.map(str::to_string),
             })
         }
 
@@ -6512,13 +6516,27 @@ mod tests {
                 .and_then(|s| s.proton_native_session.as_ref())
                 .is_none());
         }
-        assert_eq!(result.warnings.len(), 1, "the shared session is reported");
+        // The native import's note comes from the writer, once the session is
+        // stored; the CLI-only build says why the session was left out.
+        if cfg!(feature = "proton-native") && imported_proton_mode() == "native" {
+            let reasons: Vec<&str> = result
+                .warnings
+                .iter()
+                .map(|warning| warning.reason.as_str())
+                .collect();
+            assert!(reasons.is_empty(), "{reasons:?}");
+        } else {
+            assert_eq!(result.warnings.len(), 1, "the left-out session is reported");
+        }
         // A Rust line continuation lost in an edit once left 18 spaces inside.
-        assert!(
-            !result.warnings[0].reason.contains("  "),
-            "{:?}",
-            result.warnings[0].reason
-        );
+        for text in result
+            .warnings
+            .iter()
+            .map(|warning| warning.reason.as_str())
+            .chain([RCLONE_SESSION_SHARED, TEMPLATE_SESSION_SHARED])
+        {
+            assert!(!text.contains("  "), "{text:?}");
+        }
     }
 
     #[test]

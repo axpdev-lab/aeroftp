@@ -5915,7 +5915,9 @@
                 "months": "{count} mnd"
             },
             "demoTabLabel": "Demo: {protocol}",
-            "newTabLabel": "Nieuw: {name}"
+            "newTabLabel": "Nieuw: {name}",
+            "protonSessionEndsAtUnlock": "De Proton-sessie van dit profiel eindigt wanneer dit account de volgende keer wordt ontgrendeld, tenzij een ander account op deze computer deze gebruikt.",
+            "profileSecretsNotRemoved": "Het profiel is verwijderd, maar een deel van de opgeslagen inloggegevens kon niet uit de kluis worden gewist."
         },
         "gitlab": {
             "projectPath": "Projectpad",

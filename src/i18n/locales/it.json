@@ -6120,6 +6120,7 @@
             "backToServers": "Torna ai server",
             "addFavorite": "Aggiungi ai preferiti",
             "removeFavorite": "Rimuovi dai preferiti",
+            "protonSessionEndsAtUnlock": "La sessione Proton di questo profilo termina al prossimo sblocco di questo account, a meno che non la usi un altro account su questo computer.",
             "group": {
                 "newGroup": "Nuovo gruppo",
                 "newGroupEllipsis": "Nuovo gruppo...",
@@ -6274,7 +6275,8 @@
                 "months": "{count} mesi"
             },
             "demoTabLabel": "Demo: {protocol}",
-            "newTabLabel": "Nuovo: {name}"
+            "newTabLabel": "Nuovo: {name}",
+            "profileSecretsNotRemoved": "Il profilo è stato rimosso, ma non è stato possibile eliminare dal vault alcune delle sue credenziali salvate."
         },
         "gitlab": {
             "projectPath": "Percorso progetto",

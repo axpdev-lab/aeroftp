@@ -5915,7 +5915,9 @@
                 "months": "{count} Mon."
             },
             "demoTabLabel": "Demo: {protocol}",
-            "newTabLabel": "Neu: {name}"
+            "newTabLabel": "Neu: {name}",
+            "protonSessionEndsAtUnlock": "Die Proton-Sitzung dieses Profils endet, wenn dieses Konto das nächste Mal entsperrt wird, es sei denn, ein anderes Konto auf diesem Computer verwendet sie.",
+            "profileSecretsNotRemoved": "Das Profil wurde entfernt, aber einige seiner gespeicherten Zugangsdaten konnten nicht aus dem Tresor gelöscht werden."
         },
         "gitlab": {
             "projectPath": "Projektpfad",

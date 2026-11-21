@@ -5915,7 +5915,9 @@
                 "months": "{count} k"
             },
             "demoTabLabel": "Demo: {protocol}",
-            "newTabLabel": "Uus: {name}"
+            "newTabLabel": "Uus: {name}",
+            "protonSessionEndsAtUnlock": "Selle profiili Protoni seanss lõpeb selle konto järgmisel avamisel, kui seda ei kasuta mõni teine selle arvuti konto.",
+            "profileSecretsNotRemoved": "Profiil eemaldati, kuid mõnda selle salvestatud mandaati ei õnnestunud hoidlast kustutada."
         },
         "gitlab": {
             "projectPath": "Projekti tee",

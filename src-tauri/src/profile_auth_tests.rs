@@ -550,6 +550,9 @@ async fn round_trip() {
         gaps.push("Corrupt non-object auth configuration is accepted");
     }
     durable_profile_auth_lifecycle(&store, &github, active.id, owner.id).await;
+    private_tokens_keep_to_their_account(&store, active.id, owner.id);
+    github_readiness_reads_the_asked_accounts_profile(&store, active.id, owner.id);
+    a_purge_reports_the_accounts_own_token(&store, active.id, owner.id).await;
     #[cfg(feature = "proton-native")]
     native_session_ownership(&store, active.id, owner.id).await;
     crate::crypt_overlay_provider::tests::captured_overlay_owner_survives_account_switch(
@@ -1121,7 +1124,8 @@ async fn durable_profile_auth_lifecycle(
         store.delete("oauth_rollback_app_client_id").unwrap();
 
         // An ordinary save that does not reach the row a reader prefers is an error
-        // that names the key, and never its value. The vault keeps the new value.
+        // that names the key, and never its value. The vault is put back as it
+        // was, so no reader finds the value of a save reported as failed.
         let conn = users::open_or_init_cli().unwrap();
         users::store_credential_for_user_dual(store, active_id, "server_dual-save", "old").unwrap();
         conn.execute_batch(
@@ -1148,7 +1152,7 @@ async fn durable_profile_auth_lifecycle(
         );
         assert!(refused.contains("server_dual-save"), "{refused}");
         assert!(!refused.contains("new-value"), "{refused}");
-        assert_eq!(store.get("server_dual-save").unwrap(), "new-value");
+        assert_eq!(store.get("server_dual-save").unwrap(), "old");
 
         // An app kept in the legacy settings blob counts as stored: a config with
         // another app must not put it in front of the one existing profiles use.
@@ -1170,8 +1174,7 @@ async fn durable_profile_auth_lifecycle(
         assert!(store.get("oauth_legacyapp_client_id").is_err());
         store.delete("config_oauth_clients").unwrap();
 
-        // A profile's token goes to the account holding it, not the active one, and a
-        // sign-out removes that row too.
+        // A profile's token goes to the account holding it, not the active one.
         let root = store.derive_user_partition_wrapping_key();
         users::set_user_credential_for(&conn, &root, other_id, "oauth_box_owned", "oauth", "old")
             .unwrap();
@@ -1191,10 +1194,23 @@ async fn durable_profile_auth_lifecycle(
         assert_eq!(row(other_id).as_deref(), Some("new"));
         users::set_user_credential_for(&conn, &root, active_id, "oauth_box_owned", "oauth", "own")
             .unwrap();
+        // Both accounts hold it now: a sign-in and a sign-out of the active one are
+        // its own, and the other account keeps its token.
+        users::store_profile_credential(
+            store,
+            "owned",
+            "oauth_box_owned",
+            Some("oauth"),
+            "active-new",
+        )
+        .unwrap();
+        assert_eq!(row(active_id).as_deref(), Some("active-new"));
+        assert_eq!(row(other_id).as_deref(), Some("new"));
         users::delete_profile_credential(store, "owned", "oauth_box_owned").unwrap();
-        assert_eq!(row(other_id), None);
+        assert_eq!(row(other_id).as_deref(), Some("new"));
         assert_eq!(row(active_id), None);
         assert!(store.get("oauth_box_owned").is_err());
+        users::unmirror_credential_for_user_best_effort_any(other_id, "oauth_box_owned");
 
         // A key outside the typed set follows its row, as a relocation leaves one.
         let root = store.derive_user_partition_wrapping_key();
@@ -1602,6 +1618,33 @@ async fn native_session_ownership(store: &CredentialStore, active_id: i64, selec
     );
     assert!(vault::load_session(selected, None).unwrap().is_none());
     vault::delete_session(active, None).unwrap();
+    // The legacy owner's session is its vault entry and its row: a delete
+    // that leaves the row, which the account reads first, is an error.
+    let kept = vault::session_key(Some("native-row-kept"));
+    vault::store_session(
+        active,
+        Some("native-row-kept"),
+        &session("kept-uid", "kept"),
+    )
+    .unwrap();
+    let rows = users::open_or_init_cli().unwrap();
+    rows.execute_batch(&format!(
+        "CREATE TRIGGER keep_session_row BEFORE DELETE ON user_credentials
+         WHEN OLD.credential_id = '{kept}'
+         BEGIN SELECT RAISE(FAIL, 'disk full'); END;"
+    ))
+    .unwrap();
+    let refused = vault::delete_session(active, Some("native-row-kept"));
+    rows.execute_batch("DROP TRIGGER keep_session_row;")
+        .unwrap();
+    assert!(
+        refused.is_err(),
+        "a session delete that left the account's row was reported done"
+    );
+    assert!(vault::load_session(active, Some("native-row-kept"))
+        .unwrap()
+        .is_some());
+    vault::delete_session(active, Some("native-row-kept")).unwrap();
     let scoped = session("scoped-native-uid", "access-before");
     vault::store_session(selected, Some("native-selected"), &scoped).unwrap();
     let db = users::open_or_init_cli().unwrap();
@@ -1617,8 +1660,9 @@ async fn native_session_ownership(store: &CredentialStore, active_id: i64, selec
     assert_eq!(count(selected_id, &selected_key), 1);
     assert_eq!(count(active_id, &selected_key), 0);
 
-    // Refreshes continue to update their captured owner after a user switch,
-    // and shared sessions reach the owners of the other profile keys.
+    // Refreshes continue to update their captured owner after a user switch.
+    // A session belongs to one account: a copy of it another account holds is
+    // not reached, and that account signs in again when its pair runs out.
     vault::store_session(active, Some("native-shared"), &scoped).unwrap();
     users::cli_set_active_user(store, selected_id).unwrap();
     let refresher = vault::VaultSession::new(selected, Some("native-selected"), &scoped);
@@ -1641,7 +1685,7 @@ async fn native_session_ownership(store: &CredentialStore, active_id: i64, selec
             .tokens
             .access_token
             .expose_secret(),
-        "access-after"
+        "access-before"
     );
     assert_eq!(count(active_id, &selected_key), 0);
     assert_eq!(
@@ -1695,6 +1739,10 @@ async fn native_session_ownership(store: &CredentialStore, active_id: i64, selec
         count(active_id, &vault::session_key(Some("native-gui-copy"))),
         0
     );
+    // An import brings no session another account may hold
+    // (`an_import_brings_no_session_another_account_may_hold`): the legacy
+    // owner's copy goes first, so the account's own export brings it back.
+    vault::delete_session(active, Some("native-shared")).unwrap();
     let directory = tempfile::tempdir().unwrap();
     let file = directory.path().join("native.aeroftp");
     let metadata = crate::export_server_profiles_core(
@@ -1827,6 +1875,422 @@ async fn native_session_ownership(store: &CredentialStore, active_id: i64, selec
         0
     );
     assert!(vault::load_session(active, None).unwrap().is_some());
+}
+
+/// The purge of a profile, run by an account other than the legacy owner,
+/// reports a private token as removed where that account reads it: its own
+/// row, never the owner's vault key of the same name.
+async fn a_purge_reports_the_accounts_own_token(
+    store: &CredentialStore,
+    legacy_id: i64,
+    private_id: i64,
+) {
+    let key = "oauth_dropbox_purge-target";
+    let purge = || crate::purge_profile_secrets("purge-target".into(), Some("dropbox".into()));
+    users::cli_set_active_user(store, private_id).unwrap();
+    store.store(key, "owners-token").unwrap();
+    // No owner recorded yet: the delete records the one it checks against.
+    let conn = users::open_or_init_cli().unwrap();
+    conn.execute(
+        "DELETE FROM global_state WHERE key = 'legacy_credential_owner_id'",
+        [],
+    )
+    .unwrap();
+    // The account's own delete, with no read before it.
+    users::delete_credential_dual_as(store, Some(private_id), key).unwrap();
+    let recorded: Option<String> = conn
+        .query_row(
+            "SELECT value FROM global_state WHERE key = 'legacy_credential_owner_id'",
+            [],
+            |row| row.get(0),
+        )
+        .ok();
+    let without_a_row = purge().await;
+    let after_the_first = store.get(key).ok();
+    // A change of admins after it does not hand the owner's key to another.
+    let set_admin = |id: i64, admin: i64| {
+        conn.execute(
+            "UPDATE users SET is_admin = ?2 WHERE id = ?1",
+            rusqlite::params![id, admin],
+        )
+        .unwrap();
+    };
+    set_admin(private_id, 1);
+    set_admin(legacy_id, 0);
+    users::store_credential_for_user_dual(store, private_id, key, "own-token").unwrap();
+    let with_its_row = purge().await;
+    set_admin(legacy_id, 1);
+    set_admin(private_id, 0);
+    users::cli_set_active_user(store, legacy_id).unwrap();
+    assert_eq!(recorded, Some(legacy_id.to_string()));
+    assert!(!without_a_row
+        .unwrap()
+        .removed
+        .iter()
+        .any(|removed| removed == key));
+    assert!(with_its_row
+        .unwrap()
+        .removed
+        .iter()
+        .any(|removed| removed == key));
+    // Neither purge took the owner's vault key of the same name.
+    assert_eq!(after_the_first.as_deref(), Some("owners-token"));
+    assert_eq!(store.get(key).unwrap(), "owners-token");
+    let conn = users::open_or_init_cli().unwrap();
+    let root = store.derive_user_partition_wrapping_key();
+    assert_eq!(
+        users::get_user_credential_for(&conn, &root, private_id, key).unwrap(),
+        None
+    );
+    // What the purge reports for a locked account: its row, seen by its key
+    // without the account's key, never the owner's vault copy of the same name.
+    let locked = {
+        let mut conn = users::open_or_init_cli().unwrap();
+        users::create_user(
+            &mut conn,
+            &root,
+            "Locked purge",
+            None,
+            None,
+            Some("purge pass"),
+        )
+        .unwrap()
+    };
+    users::cli_unlock_user(store, locked.id, Some("purge pass")).unwrap();
+    users::store_credential_for_user_dual(store, locked.id, key, "locked-token").unwrap();
+    users::clear_user_session();
+    let with_its_row = users::holds_credential(store, locked.id, key);
+    users::delete_user_credential_for(&conn, locked.id, key).unwrap();
+    let without_it = users::holds_credential(store, locked.id, key);
+    users::delete_user(&mut users::open_or_init_cli().unwrap(), locked.id).unwrap();
+    assert_eq!(
+        with_its_row,
+        Ok(true),
+        "a locked account's row was not seen"
+    );
+    assert_eq!(
+        without_it,
+        Ok(false),
+        "the owner's vault copy was counted as a locked account's"
+    );
+    assert_eq!(store.get(key).unwrap(), "owners-token");
+    let _ = store.delete(key);
+}
+
+/// A private token written through the untyped dual writer (a profile copy,
+/// `profile duplicate`) by an account other than the legacy owner lands in
+/// that account's partition only: the vault key of the same name, the legacy
+/// owner's, keeps its value. Read back, that account sees its own copy, or
+/// nothing once it is gone, never the owner's; the owner still reads its own.
+/// Any other key keeps the dual write.
+/// The GitHub readiness of a profile of `asked`, which is not the active
+/// account, reads that account's profile: the active account lists a
+/// profile of the same id in another sign-in mode, whose credential `asked`
+/// does not hold, and the answer would be that mode's.
+fn github_readiness_reads_the_asked_accounts_profile(
+    store: &CredentialStore,
+    active_id: i64,
+    asked: i64,
+) {
+    let id = "fixture-github-readiness";
+    let was_active = users::cli_get_active_user(store)
+        .unwrap()
+        .map(|user| user.id);
+    users::cli_set_active_user(store, active_id).unwrap();
+    let profile = |mode: &str| {
+        json!({"id": id, "name": id, "protocol": "github", "host": "",
+               "options": {"githubAuthMode": mode}})
+    };
+    let mut lists = Vec::new();
+    for (user, mode) in [(active_id, "app"), (asked, "authorize")] {
+        let mut before = Vec::new();
+        users::cli_update_server_profiles_for_user(store, user, |stored| {
+            before = stored.clone();
+            stored.push(profile(mode));
+            true
+        })
+        .unwrap();
+        lists.push((user, before));
+    }
+    let key = format!("github_oauth_{id}");
+    users::store_credential_for_user_typed_dual(store, asked, &key, "oauth", "gho_readiness")
+        .unwrap();
+    let readiness = saved_github_readiness(store, id, None, Some(asked));
+    users::delete_credential_for_user_dual(store, asked, &key).unwrap();
+    for (user, before) in lists {
+        users::cli_update_server_profiles_for_user(store, user, |stored| {
+            *stored = before.clone();
+            true
+        })
+        .unwrap();
+    }
+    if let Some(user) = was_active {
+        users::cli_set_active_user(store, user).unwrap();
+    }
+    assert_eq!(
+        readiness, "valid",
+        "the readiness read the active account's profile of the same id"
+    );
+}
+
+fn private_tokens_keep_to_their_account(store: &CredentialStore, legacy_id: i64, private_id: i64) {
+    for key in [
+        "oauth_dropbox_copy-target",
+        "jottacloud_refresh_copy-target",
+        "profile_auth_config_copy-target",
+        "github_oauth_copy-target",
+    ] {
+        store.store(key, "legacy-owners-token").unwrap();
+        users::store_credential_for_user_dual(store, private_id, key, "private-token").unwrap();
+        assert_eq!(store.get(key).unwrap(), "legacy-owners-token", "{key}");
+        let read = |user: i64| {
+            users::resolve_credential_for_user(store, user, key)
+                .unwrap()
+                .map(|value| value.to_string())
+        };
+        assert_eq!(read(private_id).as_deref(), Some("private-token"), "{key}");
+        users::unmirror_credential_for_user_best_effort_any(private_id, key);
+        assert_eq!(read(private_id), None, "{key}");
+        assert_eq!(
+            read(legacy_id).as_deref(),
+            Some("legacy-owners-token"),
+            "{key}"
+        );
+        // A sign-out or purge through the dual deletes removes the account's
+        // row, and the owner's vault key of the same name stays.
+        users::store_credential_for_user_dual(store, private_id, key, "private-token").unwrap();
+        users::delete_credential_for_user_dual(store, private_id, key).unwrap();
+        assert_eq!(read(private_id), None, "{key}");
+        assert_eq!(store.get(key).unwrap(), "legacy-owners-token", "{key}");
+        users::store_credential_for_user_dual(store, private_id, key, "private-token").unwrap();
+        users::delete_credential_dual_as(store, Some(private_id), key).unwrap();
+        assert_eq!(read(private_id), None, "{key}");
+        assert_eq!(store.get(key).unwrap(), "legacy-owners-token", "{key}");
+        // The rollback of a failed copy removes the account's row, and the
+        // owner's vault key of the same name stays.
+        users::store_credential_for_user_dual(store, private_id, key, "private-token").unwrap();
+        users::delete_credential_for_user_checked(store, private_id, key).unwrap();
+        assert_eq!(read(private_id), None, "{key}");
+        assert_eq!(store.get(key).unwrap(), "legacy-owners-token", "{key}");
+        store.delete(key).unwrap();
+    }
+    // With the partition DB unopenable, the rollback still removes a plain
+    // secret from the vault and returns the error; a private token's vault
+    // key, whose owner only the DB names, is kept.
+    let unopenable = || Err("Open partition DB: refused".to_string());
+    store
+        .store("oauth_dropbox_copy-target", "legacy-owners-token")
+        .unwrap();
+    let kept = users::delete_credential_checked_with(
+        store,
+        unopenable(),
+        private_id,
+        "oauth_dropbox_copy-target",
+    )
+    .unwrap_err();
+    assert!(kept.contains("Open partition DB: refused"), "{kept}");
+    assert_eq!(
+        store.get("oauth_dropbox_copy-target").unwrap(),
+        "legacy-owners-token"
+    );
+    store.delete("oauth_dropbox_copy-target").unwrap();
+    store.store("server_copy-target", "server").unwrap();
+    let removed = users::delete_credential_checked_with(
+        store,
+        unopenable(),
+        private_id,
+        "server_copy-target",
+    )
+    .unwrap_err();
+    assert!(removed.contains("Open partition DB: refused"), "{removed}");
+    assert!(store.get("server_copy-target").is_err());
+
+    users::store_credential_for_user_dual(store, private_id, "server_copy-target", "server")
+        .unwrap();
+    assert_eq!(store.get("server_copy-target").unwrap(), "server");
+    // The row itself, not a reader that falls back to the vault.
+    assert_eq!(
+        users::get_user_credential_for(
+            &users::open_or_init_cli().unwrap(),
+            &store.derive_user_partition_wrapping_key(),
+            private_id,
+            "server_copy-target",
+        )
+        .unwrap()
+        .map(|value| value.to_string())
+        .as_deref(),
+        Some("server")
+    );
+    users::unmirror_credential_for_user_best_effort_any(private_id, "server_copy-target");
+    store.delete("server_copy-target").unwrap();
+
+    // Readiness reads the same place: the owner's live token in the vault
+    // says nothing about the other account, whose own token, expired, is
+    // the one that counts for it.
+    let token = |expires_at: i64| {
+        serde_json::json!({
+            "access_token": "access",
+            "refresh_token": "refresh",
+            "expires_at": expires_at,
+            "token_type": "Bearer",
+            "scopes": [],
+        })
+        .to_string()
+    };
+    let now = chrono::Utc::now().timestamp();
+    store
+        .store("oauth_dropbox_copy-target", &token(now + 3600))
+        .unwrap();
+    let readiness = |user: i64| {
+        let accounts = store.list_accounts().unwrap().into_iter().collect();
+        crate::profile_auth_state::derive_profile_auth_state_for_user(
+            store,
+            &accounts,
+            "copy-target",
+            "dropbox",
+            crate::profile_auth_state::AuthSource::Vault,
+            Some(user),
+        )
+    };
+    assert_eq!(readiness(legacy_id), "valid");
+    assert_eq!(readiness(private_id), "no_credentials");
+    users::store_credential_for_user_dual(
+        store,
+        private_id,
+        "oauth_dropbox_copy-target",
+        &token(now - 3600),
+    )
+    .unwrap();
+    assert_eq!(readiness(private_id), "needs_refresh");
+    assert_eq!(readiness(legacy_id), "valid");
+    users::unmirror_credential_for_user_best_effort_any(private_id, "oauth_dropbox_copy-target");
+    store.delete("oauth_dropbox_copy-target").unwrap();
+    // The legacy owner's state is read where its connection reads the token:
+    // its row first, the vault after it, so a valid row counts whatever the
+    // vault holds.
+    let conn = users::open_or_init_cli().unwrap();
+    let root = store.derive_user_partition_wrapping_key();
+    users::set_user_credential_for(
+        &conn,
+        &root,
+        legacy_id,
+        "oauth_dropbox_copy-target",
+        "oauth",
+        &token(now + 3600),
+    )
+    .unwrap();
+    assert_eq!(
+        readiness(legacy_id),
+        "valid",
+        "a valid row and no vault copy"
+    );
+    store
+        .store("oauth_dropbox_copy-target", &token(now - 3600))
+        .unwrap();
+    assert_eq!(
+        readiness(legacy_id),
+        "valid",
+        "a valid row over an expired vault copy"
+    );
+    users::delete_user_credential_for(&conn, legacy_id, "oauth_dropbox_copy-target").unwrap();
+    store.delete("oauth_dropbox_copy-target").unwrap();
+
+    // The same for a Jottacloud chain, under the profile's key and under the
+    // singleton, for GitHub's own authorization, which is read for the account
+    // asked about rather than the active one, and for an account whose locked
+    // partition cannot say.
+    let state = |user: i64, profile: &str, protocol: &str| {
+        let accounts = store.list_accounts().unwrap().into_iter().collect();
+        crate::profile_auth_state::derive_profile_auth_state_for_user(
+            store,
+            &accounts,
+            profile,
+            protocol,
+            crate::profile_auth_state::AuthSource::Vault,
+            Some(user),
+        )
+    };
+    for key in ["jottacloud_refresh_copy-target", "jottacloud_refresh"] {
+        store.store(key, "owners-chain").unwrap();
+        assert_eq!(
+            state(legacy_id, "copy-target", "jottacloud"),
+            "valid",
+            "{key}"
+        );
+        assert_eq!(
+            state(private_id, "copy-target", "jottacloud"),
+            "no_credentials",
+            "{key}"
+        );
+        users::store_credential_for_user_dual(store, private_id, key, "others-chain").unwrap();
+        assert_eq!(
+            state(private_id, "copy-target", "jottacloud"),
+            "valid",
+            "{key}"
+        );
+        users::unmirror_credential_for_user_best_effort_any(private_id, key);
+        store.delete(key).unwrap();
+    }
+    store
+        .store("profile_auth_config_gh-target", r#"{"mode":"authorize"}"#)
+        .unwrap();
+    store.store("github_oauth_gh-target", "gho_owners").unwrap();
+    assert_eq!(state(legacy_id, "gh-target", "github"), "valid");
+    assert_eq!(state(private_id, "gh-target", "github"), "no_credentials");
+    store.delete("profile_auth_config_gh-target").unwrap();
+    store.delete("github_oauth_gh-target").unwrap();
+    let locked = {
+        let mut conn = users::open_or_init_cli().unwrap();
+        let root = store.derive_user_partition_wrapping_key();
+        users::create_user(
+            &mut conn,
+            &root,
+            "Locked",
+            None,
+            None,
+            Some("locked passphrase"),
+        )
+        .unwrap()
+    };
+    assert_eq!(state(locked.id, "copy-target", "dropbox"), "unknown");
+    users::delete_user(&mut users::open_or_init_cli().unwrap(), locked.id).unwrap();
+
+    // An import run by the other account writes, undoes and deletes its own
+    // row, also when the write names no type: the vault key of the same name
+    // keeps the owner's value throughout, and so does a sign-out.
+    let key = "oauth_box_import-target";
+    store.store(key, "owners-token").unwrap();
+    let row = |user: i64| {
+        let conn = users::open_or_init_cli().unwrap();
+        let root = store.derive_user_partition_wrapping_key();
+        users::get_user_credential_for(&conn, &root, user, key)
+            .unwrap()
+            .map(|value| value.to_string())
+    };
+    let before = users::snapshot_credential_for_user(store, private_id, key).unwrap();
+    users::store_imported_credential_for_user(store, private_id, key, None, "file-token").unwrap();
+    assert_eq!(store.get(key).unwrap(), "owners-token");
+    assert_eq!(row(private_id).as_deref(), Some("file-token"));
+    // The owner signs in meanwhile with the same value: the undo of the other
+    // account's write leaves it.
+    store.store(key, "file-token").unwrap();
+    users::restore_credential_for_user(store, private_id, key, None, "file-token", &before)
+        .unwrap();
+    assert_eq!(store.get(key).unwrap(), "file-token");
+    assert_eq!(row(private_id), None);
+    store.store(key, "owners-token").unwrap();
+    users::store_imported_credential_for_user(store, private_id, key, None, "file-token").unwrap();
+    users::delete_imported_credential_for_user(store, private_id, key).unwrap();
+    assert_eq!(store.get(key).unwrap(), "owners-token");
+    assert_eq!(row(private_id), None);
+    users::store_imported_credential_for_user(store, private_id, key, None, "file-token").unwrap();
+    users::cli_set_active_user(store, private_id).unwrap();
+    let signed_out = users::delete_profile_credential(store, "import-target", key);
+    users::cli_set_active_user(store, legacy_id).unwrap();
+    signed_out.unwrap();
+    assert_eq!(store.get(key).unwrap(), "owners-token");
+    assert_eq!(row(private_id), None);
+    store.delete(key).unwrap();
 }
 
 /// A fresh vault with no active user, for `test` to read and corrupt.

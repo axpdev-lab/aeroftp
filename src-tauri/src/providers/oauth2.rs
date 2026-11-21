@@ -1107,15 +1107,11 @@ impl RefreshLease {
     const POLL_MS: u64 = 150;
 
     /// Try to become the single cross-process owner of the refresh for
-    /// `slug`. `Some(lease)` => WE own it, perform the refresh. `None` =>
-    /// gave up waiting or no lock dir; caller must re-load tokens (the other
-    /// owner is refreshing) rather than refresh in parallel.
-    #[cfg(any(test, feature = "proton-native"))]
-    pub(crate) async fn acquire(slug: &str) -> Option<Self> {
-        Self::acquire_checked(slug).await.ok().flatten()
-    }
-
-    async fn acquire_checked(slug: &str) -> Result<Option<Self>, ProviderError> {
+    /// `slug`. `Ok(Some(lease))` => WE own it, perform the refresh.
+    /// `Ok(None)` => another owner held it past the wait; the caller must
+    /// re-load tokens (the other owner is refreshing) rather than refresh in
+    /// parallel. `Err` => the lease storage itself failed, which no wait cures.
+    pub(crate) async fn acquire_checked(slug: &str) -> Result<Option<Self>, ProviderError> {
         let dir = OAuth2Manager::token_dir().map_err(|_| {
             ProviderError::Other("Authorization refresh lease directory is unavailable".into())
         })?;
@@ -1272,6 +1268,29 @@ impl OAuth2Manager {
             crate::user_partitions::mirror_active_credential(store, account, "oauth", json)
         };
         mirrored.map_err(|e| ProviderError::Other(format!("Failed to store tokens: {e}")))
+    }
+
+    /// The vault half of a new authorization, then its partition mirror
+    /// (MUV-4, per-profile keys only; the legacy singleton stays vault-only):
+    /// whole or not at all, so tokens reported as not stored are never left
+    /// in the vault for a reader of it ([`crate::user_partitions::store_vault_then_mirror`]).
+    fn store_vault_tokens(
+        &self,
+        store: &crate::credential_store::CredentialStore,
+        account: &str,
+        profile_id: &str,
+        json: &str,
+    ) -> Result<(), ProviderError> {
+        if profile_id.is_empty() {
+            return store
+                .store(account, json)
+                .map_err(|e| ProviderError::Other(format!("Failed to store tokens: {}", e)));
+        }
+        crate::user_partitions::store_vault_then_mirror(store, account, json, || {
+            self.mirror_tokens(store, account, json)
+                .map_err(|e| e.to_string())
+        })
+        .map_err(ProviderError::Other)
     }
     pub async fn begin_headless(
         &self,
@@ -1620,7 +1639,7 @@ impl OAuth2Manager {
                         "Credential vault is not open; tokens not stored".to_string(),
                     )
                 })?;
-            crate::user_partitions::store_credential_for_user(
+            crate::user_partitions::store_signed_in_credential_for_user(
                 &store, user, &account, "oauth", &json,
             )
             .map_err(|e| ProviderError::Other(format!("Failed to store tokens: {}", e)))?;
@@ -1630,14 +1649,7 @@ impl OAuth2Manager {
 
         // Store in universal vault
         if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-            store
-                .store(&account, &json)
-                .map_err(|e| ProviderError::Other(format!("Failed to store tokens: {}", e)))?;
-            // MUV-4: mirror the refreshed token into the active user's partition
-            // (per-profile keys only; the legacy singleton stays vault-only).
-            if !profile_id.is_empty() {
-                self.mirror_tokens(&store, &account, &json)?;
-            }
+            self.store_vault_tokens(&store, &account, profile_id, &json)?;
             info!("Tokens stored in credential vault for {:?}", provider);
             return Ok(());
         }
@@ -1645,12 +1657,7 @@ impl OAuth2Manager {
         // Vault not open: try auto-initializing vault first
         if crate::credential_store::CredentialStore::init().is_ok() {
             if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-                store
-                    .store(&account, &json)
-                    .map_err(|e| ProviderError::Other(format!("Failed to store tokens: {}", e)))?;
-                if !profile_id.is_empty() {
-                    self.mirror_tokens(&store, &account, &json)?;
-                }
+                self.store_vault_tokens(&store, &account, profile_id, &json)?;
                 info!("Tokens stored in auto-initialized vault for {:?}", provider);
                 return Ok(());
             }
@@ -4183,7 +4190,10 @@ mod tests {
         let _ = std::fs::remove_file(&lock_path);
 
         // Fresh acquire wins and creates the lock file.
-        let lease = RefreshLease::acquire(&slug).await.expect("first acquire");
+        let lease = RefreshLease::acquire_checked(&slug)
+            .await
+            .unwrap()
+            .expect("first acquire");
         assert!(lock_path.exists(), "lock file must exist while held");
 
         // Drop releases and removes the file.
@@ -4198,8 +4208,9 @@ mod tests {
         let stale = std::time::SystemTime::now()
             - std::time::Duration::from_secs(RefreshLease::STALE_SECS + 5);
         filetime::set_file_mtime(&lock_path, filetime::FileTime::from_system_time(stale)).unwrap();
-        let stolen = RefreshLease::acquire(&slug)
+        let stolen = RefreshLease::acquire_checked(&slug)
             .await
+            .unwrap()
             .expect("stale lock must be stolen");
         assert!(lock_path.exists());
         drop(stolen);

@@ -5934,7 +5934,9 @@
                 "months": "{count} мес"
             },
             "demoTabLabel": "Демо: {protocol}",
-            "newTabLabel": "Ново: {name}"
+            "newTabLabel": "Ново: {name}",
+            "protonSessionEndsAtUnlock": "Сесијата Proton на овој профил завршува при следното отклучување на оваа сметка, освен ако ја користи друга сметка на овој компјутер.",
+            "profileSecretsNotRemoved": "Профилот беше отстранет, но некои од неговите зачувани податоци за најава не можеа да се избришат од сефот."
         },
         "gitlab": {
             "projectPath": "Патека на проект",

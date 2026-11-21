@@ -5915,7 +5915,9 @@
                 "months": "{count} თვე"
             },
             "demoTabLabel": "დემო: {protocol}",
-            "newTabLabel": "ახალი: {name}"
+            "newTabLabel": "ახალი: {name}",
+            "protonSessionEndsAtUnlock": "ამ პროფილის Proton სესია დასრულდება ამ ანგარიშის შემდეგი განბლოკვისას, თუ მას ამ კომპიუტერზე სხვა ანგარიში არ იყენებს.",
+            "profileSecretsNotRemoved": "პროფილი წაიშალა, მაგრამ მისი შენახული ზოგიერთი რწმუნებათა სიგელი ვერ წაიშალა სეიფიდან."
         },
         "gitlab": {
             "projectPath": "პროექტის გზა",

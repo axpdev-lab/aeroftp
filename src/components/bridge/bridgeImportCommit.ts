@@ -145,11 +145,18 @@ async function restoreRemovedProfiles(removed: ServerProfile[], userId: number |
  * the same add-vs-update split and rollback semantics used by the
  * legacy rclone/WinSCP/FileZilla confirm handlers. Single source of
  * truth so every bridge source behaves identically.
+ *
+ * @param importedUserId the account the scan stored the profiles' secrets in
+ *   (`importedUserId` of `import_bridge_config`, `null` for no account).
+ *   Undefined skips the check. A confirm in another account is refused before
+ *   anything is removed: its profiles would land where their tokens and
+ *   sessions are not.
  */
 export async function commitImportedServers(
     selected: ServerProfile[],
     existingServerKeys: Set<string>,
     onImport: (servers: ServerProfile[], expectedUserId?: number | null) => void | Promise<void>,
+    importedUserId?: number | null,
 ): Promise<CommitOutcome> {
     const key = bridgeProfileKey;
     const added = selected.filter(s => !existingServerKeys.has(key(s)));
@@ -172,6 +179,13 @@ export async function commitImportedServers(
             added: 0,
             updated: 0,
             error: 'Import failed. The saved profiles could not be read, so nothing was changed.',
+        };
+    }
+    if (importedUserId !== undefined && (backupUserId ?? null) !== importedUserId) {
+        return {
+            added: 0,
+            updated: 0,
+            error: 'The active account changed after the file was read, so nothing was saved. Make the account you imported into the active one again and import the same file again.',
         };
     }
 
@@ -207,4 +221,62 @@ export async function commitImportedServers(
     }
 
     return { added: added.length, updated: updated.length };
+}
+
+/**
+ * The bridge scan a panel has not settled yet (`scanId` of
+ * `import_bridge_config`). `settle` is `settle_bridge_import`: a scan id
+ * settles that scan, `null` the scans of windows that are gone. A failed
+ * settle is logged, never thrown: the next scan or opening settles again. A
+ * scan that ends after the panel closed is settled at once. A confirm in
+ * flight is waited for first: settled while its profiles are still being
+ * saved, the scan would take back the secrets of profiles about to be saved.
+ */
+export function createScanSettler(settle: (scanId: string | null) => Promise<unknown>) {
+    let current: string | null = null;
+    let closed = false;
+    let confirm: Promise<unknown> | null = null;
+    const run = async (scanId: string | null) => {
+        try {
+            await settle(scanId);
+        } catch (e) {
+            console.warn('Bridge import: settle failed:', e);
+        }
+    };
+    const release = async () => {
+        const scanId = current;
+        current = null;
+        if (!scanId) return;
+        await confirm?.catch(() => undefined);
+        await run(scanId);
+    };
+    return {
+        /** Runs the confirm of the scan held; a settle meanwhile waits for it. */
+        async confirming<T>(work: () => Promise<T>): Promise<T> {
+            const running = work();
+            confirm = running;
+            try {
+                return await running;
+            } finally {
+                if (confirm === running) confirm = null;
+            }
+        },
+        /** Holds the scan just made; one made after the panel closed is settled. */
+        async track(scanId: string | null | undefined) {
+            current = scanId ?? null;
+            if (closed) await release();
+        },
+        /** Settles the scan held, if any, once. */
+        release,
+        /** The panel is showing: settles the scans no window holds. */
+        async open() {
+            closed = false;
+            await run(null);
+        },
+        /** The panel closed: settles the scan held. */
+        async close() {
+            closed = true;
+            await release();
+        },
+    };
 }

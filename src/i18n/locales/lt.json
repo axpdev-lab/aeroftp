@@ -5915,7 +5915,9 @@
                 "months": "{count} mėn."
             },
             "demoTabLabel": "Demonstracija: {protocol}",
-            "newTabLabel": "Naujas: {name}"
+            "newTabLabel": "Naujas: {name}",
+            "protonSessionEndsAtUnlock": "Šio profilio Proton seansas baigiasi kitą kartą atrakinus šią paskyrą, nebent jį naudoja kita šio kompiuterio paskyra.",
+            "profileSecretsNotRemoved": "Profilis pašalintas, bet kai kurių jo išsaugotų prisijungimo duomenų nepavyko ištrinti iš saugyklos."
         },
         "gitlab": {
             "projectPath": "Projekto kelias",

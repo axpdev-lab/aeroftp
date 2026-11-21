@@ -574,7 +574,7 @@
     "mcp_tools_aliases": 38,
     "mcp_tools_primary": 40,
     "mcp_tools_total": 78,
-    "tauri_commands": 815
+    "tauri_commands": 816
   },
   "mcp": {
     "count": 78,
@@ -972,7 +972,7 @@
     ]
   },
   "parity": {
-    "name_matched_count": 475,
+    "name_matched_count": 476,
     "name_unmatched": [
       "app_ready",
       "set_close_to_tray",
@@ -1596,6 +1596,7 @@
       "bridge_source_meta",
       "bridge_identify",
       "import_bridge_config",
+      "settle_bridge_import",
       "export_bridge_config",
       "preview_configuration_template",
       "import_configuration_template",
@@ -2137,6 +2138,6 @@
       "checkpoint_endpoints",
       "checkpoint_forget_endpoint"
     ],
-    "count": 815
+    "count": 816
   }
 }

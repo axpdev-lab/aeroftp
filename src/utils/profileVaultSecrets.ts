@@ -68,17 +68,26 @@ export const copyProfileVaultSecrets = async (
   });
 
 /**
+ * What a profile purge did: the keys it removed, the keys it found but could
+ * not remove (they stay in the vault under the deleted profile's id), and the
+ * account whose next unlock closes the profile's native Proton Drive session,
+ * when that account was locked and could not read it (`null` otherwise, the
+ * usual case).
+ */
+export interface ProfileSecretsPurge {
+  removed: string[];
+  failed: string[];
+  protonSessionEndsAtUnlockOf: string | null;
+}
+
+/**
  * Remove EVERY vault secret scoped to a profile id so deleting a profile leaves
  * nothing behind. Delegates to the Rust `purge_profile_secrets` single source of
- * truth. `protocol` lets the backend derive the OAuth token key.
+ * truth. `protocol` lets the backend derive the OAuth token key. A failure is
+ * the caller's to report: the profile itself is already removed by then.
  */
-export const deleteProfileVaultSecrets = async (
+export const deleteProfileVaultSecrets = (
   profileId: string,
   protocol?: string,
-): Promise<void> => {
-  try {
-    await invoke('purge_profile_secrets', { profileId, protocol: protocol ?? null });
-  } catch {
-    // Best-effort cleanup: a purge failure must not block the profile removal.
-  }
-};
+): Promise<ProfileSecretsPurge> =>
+  invoke<ProfileSecretsPurge>('purge_profile_secrets', { profileId, protocol: protocol ?? null });

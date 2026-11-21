@@ -5915,7 +5915,9 @@
                 "months": "{count} md."
             },
             "demoTabLabel": "Demo: {protocol}",
-            "newTabLabel": "Ny: {name}"
+            "newTabLabel": "Ny: {name}",
+            "protonSessionEndsAtUnlock": "Proton-sessionen for denne profil afsluttes, næste gang denne konto låses op, medmindre en anden konto på denne computer bruger den.",
+            "profileSecretsNotRemoved": "Profilen blev fjernet, men visse af dens gemte legitimationsoplysninger kunne ikke slettes fra boksen."
         },
         "gitlab": {
             "projectPath": "Projektsti",

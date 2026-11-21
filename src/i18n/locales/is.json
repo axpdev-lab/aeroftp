@@ -5934,7 +5934,9 @@
                 "months": "{count} mán"
             },
             "demoTabLabel": "Sýnishorn: {protocol}",
-            "newTabLabel": "Nýtt: {name}"
+            "newTabLabel": "Nýtt: {name}",
+            "protonSessionEndsAtUnlock": "Proton-lotu þessa prófíls lýkur næst þegar þessi aðgangur er aflæstur, nema annar aðgangur á þessari tölvu noti hana.",
+            "profileSecretsNotRemoved": "Sniðið var fjarlægt, en ekki tókst að eyða sumum vistuðum auðkennisupplýsingum þess úr hvelfingunni."
         },
         "gitlab": {
             "projectPath": "Verkefnisslóð",
