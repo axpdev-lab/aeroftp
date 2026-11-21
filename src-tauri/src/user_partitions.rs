@@ -6726,18 +6726,28 @@ pub(crate) fn defer_proton_revoke(
     )
 }
 
-/// Takes the mark a purge of `profile_id` left to `user_id`'s unlock: its
-/// value, removed, or `None` when there is none. For a writer that saves a
-/// session for the profile, under its key lock.
+/// Pins the mark a purge of `profile_id` left to `user_id`'s unlock on the
+/// session saved there now, `uid` (`None` when none is), for a writer that
+/// saves a session for the profile, under its key lock, before it saves: a
+/// mark without a fingerprint gets the one of `uid`, so the mark names the
+/// purged session and never the one about to be saved, and a mark over no
+/// saved session goes, since nothing is left to end. The mark's value as it
+/// stands then, for [`clear_deferred_proton_revoke`] once the save is done,
+/// or `None` when no mark is left. The mark stays until then: a save that
+/// fails, or a process that exits before the clear, leaves it to the next
+/// unlock, which ends the purged session, or drops the mark without a revoke
+/// once the row holds another session.
 #[cfg(feature = "proton-native")]
-pub(crate) fn take_deferred_proton_revoke(
+pub(crate) fn pin_deferred_proton_revoke(
+    store: &CredentialStore,
     user_id: i64,
     profile_id: &str,
+    uid: Option<&str>,
 ) -> Result<Option<String>, String> {
     let mut conn = open_or_init_cli()?;
     let tx = conn
         .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
-        .map_err(|e| format!("Take deferred Proton revoke: {e}"))?;
+        .map_err(|e| format!("Pin deferred Proton revoke: {e}"))?;
     let key = deferred_revoke_key(user_id, profile_id);
     let value: Option<String> = tx
         .query_row(
@@ -6746,30 +6756,56 @@ pub(crate) fn take_deferred_proton_revoke(
             |row| row.get(0),
         )
         .optional()
-        .map_err(|e| format!("Take deferred Proton revoke: {e}"))?;
-    if value.is_some() {
-        tx.execute("DELETE FROM global_state WHERE key = ?1", params![key])
-            .map_err(|e| format!("Take deferred Proton revoke: {e}"))?;
+        .map_err(|e| format!("Pin deferred Proton revoke: {e}"))?;
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    // A mark that names no profile ends nothing: it is cleared as it is.
+    let Ok(mut deferred) = serde_json::from_str::<DeferredRevoke>(&value) else {
+        return Ok(Some(value));
+    };
+    if deferred.fingerprint.is_some() {
+        return Ok(Some(value));
     }
+    let Some(uid) = uid else {
+        tx.execute(
+            "DELETE FROM global_state WHERE key = ?1 AND value = ?2",
+            params![key, value],
+        )
+        .map_err(|e| format!("Pin deferred Proton revoke: {e}"))?;
+        tx.commit()
+            .map_err(|e| format!("Pin deferred Proton revoke: {e}"))?;
+        return Ok(None);
+    };
+    let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
+    deferred.fingerprint = Some(session_fingerprint(&session_index_key(&root_key), uid));
+    let pinned = serde_json::to_string(&deferred)
+        .map_err(|e| format!("Encode deferred Proton revoke: {e}"))?;
+    tx.execute(
+        "UPDATE global_state SET value = ?3, updated_at = ?4 WHERE key = ?1 AND value = ?2",
+        params![key, value, pinned, now_ms()],
+    )
+    .map_err(|e| format!("Pin deferred Proton revoke: {e}"))?;
     tx.commit()
-        .map_err(|e| format!("Take deferred Proton revoke: {e}"))?;
-    Ok(value)
+        .map_err(|e| format!("Pin deferred Proton revoke: {e}"))?;
+    Ok(Some(pinned))
 }
 
-/// Puts back a mark [`take_deferred_proton_revoke`] took, unless a newer
-/// one is there.
+/// Removes the mark [`pin_deferred_proton_revoke`] pinned, once the session
+/// saved over it is stored: only while it is still that mark, so one a later
+/// purge wrote stays.
 #[cfg(feature = "proton-native")]
-pub(crate) fn put_back_deferred_proton_revoke(
+pub(crate) fn clear_deferred_proton_revoke(
     user_id: i64,
     profile_id: &str,
-    mark: &str,
+    pinned: &str,
 ) -> Result<(), String> {
     open_or_init_cli()?
         .execute(
-            "INSERT OR IGNORE INTO global_state(key, value, updated_at) VALUES (?1, ?2, ?3)",
-            params![deferred_revoke_key(user_id, profile_id), mark, now_ms()],
+            "DELETE FROM global_state WHERE key = ?1 AND value = ?2",
+            params![deferred_revoke_key(user_id, profile_id), pinned],
         )
-        .map_err(|e| format!("Put back deferred Proton revoke: {e}"))?;
+        .map_err(|e| format!("Clear deferred Proton revoke: {e}"))?;
     Ok(())
 }
 

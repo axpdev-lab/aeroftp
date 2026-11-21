@@ -220,6 +220,28 @@ pub(crate) mod test_seams {
         MIRROR_REFUSED.swap(false, Ordering::SeqCst)
     }
 
+    /// Where the next save over a purge's mark stops, as a process that
+    /// exits there does: the save returns an error and nothing after the
+    /// stop runs.
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    pub(crate) enum DeferredSaveStop {
+        BeforeSave = 1,
+        BeforeClear = 2,
+    }
+
+    static DEFERRED_SAVE_STOP: AtomicUsize = AtomicUsize::new(0);
+
+    /// The next save over a purge's mark, on any thread, stops at `at`.
+    pub(crate) fn stop_next_deferred_save(at: DeferredSaveStop) {
+        DEFERRED_SAVE_STOP.store(at as usize, Ordering::SeqCst);
+    }
+
+    pub(super) fn deferred_save_stops(at: DeferredSaveStop) -> bool {
+        DEFERRED_SAVE_STOP
+            .compare_exchange(at as usize, 0, Ordering::SeqCst, Ordering::SeqCst)
+            .is_ok()
+    }
+
     static NO_FILE_LOCKS: AtomicBool = AtomicBool::new(false);
 
     /// Plays a filesystem without file locks for every session key lock, on
@@ -939,10 +961,12 @@ pub async fn replace_session(
 /// mark a purge of the profile left to the account's unlock
 /// ([`crate::user_partitions::defer_proton_revoke`]), under the key lock of
 /// the sign-in, import or duplicate: the session is the profile's own now,
-/// and the purged one it replaces goes with the save. The mark is taken
-/// first, and a mark that cannot be taken refuses the save, so no mark is
-/// left over a session saved since; a save that fails puts it back, so the
-/// purged session the key still holds is ended at the next unlock.
+/// and the purged one it replaces goes with the save. The mark is pinned on
+/// the session saved there before the save and cleared after it, never taken
+/// first: a save that fails, or a process that exits between the save and
+/// the clear, leaves a mark that still names the purged session, which the
+/// next unlock ends, and that never names the session saved since, which it
+/// keeps. A mark that cannot be pinned refuses the save.
 fn store_over_deferred_revoke(
     owner: SessionOwner,
     profile_id: Option<&str>,
@@ -951,24 +975,43 @@ fn store_over_deferred_revoke(
     let (Some(user), Some(profile_id)) = (owner.user_id, profile_id) else {
         return store_session(owner, profile_id, session);
     };
-    let taken = crate::user_partitions::take_deferred_proton_revoke(user, profile_id).map_err(
-        |error| {
-            ProviderError::Other(format!(
-                "the session was not saved: the mark of the profile's purged session could not be read: {error}"
-            ))
-        },
-    )?;
-    store_session(owner, Some(profile_id), session).inspect_err(|_| {
-        if let Some(mark) = taken {
-            if let Err(error) =
-                crate::user_partitions::put_back_deferred_proton_revoke(user, profile_id, &mark)
-            {
-                log::warn!(
-                    "Proton: the mark of a purged session was not put back after a failed save: {error}"
-                );
-            }
+    let refused = |error: &dyn std::fmt::Display| {
+        ProviderError::Other(format!(
+            "the session was not saved: the mark of the profile's purged session could not be read: {error}"
+        ))
+    };
+    let store = open_store()?;
+    let saved = read(&store, owner, &owner.key(Some(profile_id))).map_err(|e| refused(&e))?;
+    let pinned = crate::user_partitions::pin_deferred_proton_revoke(
+        &store,
+        user,
+        profile_id,
+        saved.as_ref().map(|saved| saved.tokens.uid.as_str()),
+    )
+    .map_err(|e| refused(&e))?;
+    #[cfg(test)]
+    if test_seams::deferred_save_stops(test_seams::DeferredSaveStop::BeforeSave) {
+        return Err(ProviderError::Other(
+            "the process stopped before the save".into(),
+        ));
+    }
+    store_session(owner, Some(profile_id), session)?;
+    #[cfg(test)]
+    if test_seams::deferred_save_stops(test_seams::DeferredSaveStop::BeforeClear) {
+        return Err(ProviderError::Other(
+            "the process stopped before the clear".into(),
+        ));
+    }
+    if let Some(pinned) = pinned {
+        // Left behind, the mark names the session the save replaced: the
+        // next unlock drops it without a revoke.
+        if let Err(error) =
+            crate::user_partitions::clear_deferred_proton_revoke(user, profile_id, &pinned)
+        {
+            log::warn!("Proton: the mark of a purged session stays for the next unlock: {error}");
         }
-    })
+    }
+    Ok(())
 }
 
 /// Refuses a sign-in's save for a profile a Move took out of the account

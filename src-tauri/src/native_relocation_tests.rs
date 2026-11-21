@@ -2378,6 +2378,86 @@ fn a_sign_in_during_the_unlock_cleanup_keeps_its_session() {
     assert_eq!(deferred_revokes(&accounts.conn), 0, "no mark is put back");
 }
 
+/// `future` run to its end on a runtime of its own.
+fn block_on<F: std::future::Future>(future: F) -> F::Output {
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(future)
+}
+
+/// An import over a purge's mark (the target open in another process) whose
+/// process exits before the save: the mark was not taken, so it still names
+/// the purged session, and the next unlock ends that session and removes its
+/// row and the mark.
+#[test]
+fn a_save_over_a_purge_stopped_before_it_keeps_the_mark() {
+    if !in_isolated_child("a_save_over_a_purge_stopped_before_it_keeps_the_mark") {
+        return;
+    }
+    let accounts = Accounts::open();
+    defer_unindexed_target_session(&accounts, "stopped-save", "stopped-purged-uid");
+    open_target_elsewhere(&accounts);
+    vault::test_seams::stop_next_deferred_save(vault::test_seams::DeferredSaveStop::BeforeSave);
+    let saved = block_on(vault::restore_session(
+        accounts.target_owner(),
+        "stopped-save",
+        &raw(&session("stopped-new-uid", "n1")),
+    ));
+    assert!(saved.is_err(), "the process stopped before the save");
+    clear_user_session();
+    assert_eq!(
+        deferred_revokes(&accounts.conn),
+        1,
+        "the mark of the purged session stays"
+    );
+    let revokes = vault::test_seams::revokes();
+    accounts.unlock_target();
+    assert_eq!(
+        vault::test_seams::revokes(),
+        revokes + 1,
+        "the unlock ends the purged session"
+    );
+    assert!(!has_row(
+        &accounts.conn,
+        accounts.target.id,
+        &key("stopped-save")
+    ));
+    assert_eq!(deferred_revokes(&accounts.conn), 0);
+}
+
+/// As above, for a process that exits after the save and before it clears
+/// the mark: the mark was pinned on the purged session first, so the next
+/// unlock keeps the session saved since, revokes nothing, and drops the mark.
+#[test]
+fn a_save_over_a_purge_stopped_before_the_clear_keeps_its_session() {
+    if !in_isolated_child("a_save_over_a_purge_stopped_before_the_clear_keeps_its_session") {
+        return;
+    }
+    let accounts = Accounts::open();
+    defer_unindexed_target_session(&accounts, "stopped-clear", "clear-purged-uid");
+    open_target_elsewhere(&accounts);
+    vault::test_seams::stop_next_deferred_save(vault::test_seams::DeferredSaveStop::BeforeClear);
+    let saved = block_on(vault::restore_session(
+        accounts.target_owner(),
+        "stopped-clear",
+        &raw(&session("clear-new-uid", "n1")),
+    ));
+    assert!(saved.is_err(), "the process stopped before the clear");
+    clear_user_session();
+    assert_eq!(deferred_revokes(&accounts.conn), 1, "the mark is left");
+    let revokes = vault::test_seams::revokes();
+    accounts.unlock_target();
+    assert_eq!(
+        vault::test_seams::revokes(),
+        revokes,
+        "the session saved over the purge is not ended"
+    );
+    assert_eq!(accounts.target_row("stopped-clear").as_deref(), Some("n1"));
+    assert_eq!(deferred_revokes(&accounts.conn), 0);
+}
+
 /// An unlock whose deferred cleanup cannot end its session in time (offline,
 /// here the purged session's lease held elsewhere) is not held by it: the
 /// unlock returns within the cleanup's budget with the row and the mark in
