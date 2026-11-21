@@ -237,7 +237,7 @@ describe('a reconnected tab', () => {
         };
         const tail = slice("      // Also refresh local files for this session's local path.", '    } catch (e) {', SWITCH_AT);
         // The switch still ends on its target: switchSession resolves true.
-        await expect(run(tail, ctx)).resolves.toBe(true);
+        await expect(run(tail, ctx, '')).resolves.toBe(true);
         expect(ctx.setLocalFiles).not.toHaveBeenCalled();
         expect(ctx.logger).toMatchObject({ warn: expect.any(Function) });
         expect((ctx.logger as { warn: Spy }).warn).toHaveBeenCalled();
