@@ -50,27 +50,6 @@ pub struct S3Credentials {
     pub key_from_url: bool,
 }
 
-/// The `awsChain` marker a launch hands the app instead of a chain secret:
-/// where the access key id came from, never a secret. `url` lets the key id
-/// pair with a bare `AWS_SECRET_ACCESS_KEY`, as the first resolution did;
-/// `chain` (`AWS_ACCESS_KEY_ID` or the files) never does.
-pub fn chain_marker(key_from_url: bool) -> &'static str {
-    if key_from_url {
-        "url"
-    } else {
-        "chain"
-    }
-}
-
-/// The key provenance an `awsChain` marker states; `None` for any other text.
-pub fn parse_chain_marker(marker: &str) -> Option<bool> {
-    match marker.trim() {
-        "url" => Some(true),
-        "chain" => Some(false),
-        _ => None,
-    }
-}
-
 /// The two AWS files, read as INI sections.
 #[derive(Debug, Default)]
 pub struct AwsFiles {
@@ -352,8 +331,8 @@ mod tests {
         );
     }
 
-    /// The launch resolves once and hands the marker; the connect resolves
-    /// again from it. Both must pick the same identity.
+    /// The launch resolves once and binds its provenance to a handle; the
+    /// connect resolves again from it. Both must pick the same identity.
     fn launch_then_connect(
         url_user: &str,
         env: &'static [(&'static str, &'static str)],
@@ -361,10 +340,9 @@ mod tests {
         let launch = resolve(url_user, None, None, env_of(env), || {
             files_with(CREDENTIALS, CONFIG)
         });
-        let marker = chain_marker(launch.key_from_url);
         let connect = resolve_chain_secret(
             &launch.access_key_id,
-            parse_chain_marker(marker).unwrap(),
+            launch.key_from_url,
             env_of(env),
             || files_with(CREDENTIALS, CONFIG),
         );
@@ -391,7 +369,6 @@ mod tests {
         assert_eq!(launch.access_key_id, "ENVKEY");
         assert!(!launch.key_from_url);
         assert_eq!(connect, Ok(("envsecret".into(), Some("envtoken".into()))));
-        assert_eq!(parse_chain_marker("true"), None);
     }
 
     #[test]

@@ -122,6 +122,11 @@ pub fn insert_profile_option(
     if normalized_key == "profile_id" {
         return;
     }
+    // A launch link's secret handle belongs to that link's session: a
+    // profile never carries one into a connection (launch_url::launch_secret).
+    if normalized_key == "launch_secret" {
+        return;
+    }
     // `ftpsMode` is only the fallback for profiles imported before the
     // importers wrote `tlsMode`: it never replaces a mode already set, so the
     // user's `tlsMode` wins whatever order the options are iterated in (the
@@ -1407,10 +1412,15 @@ mod tests {
     }
 
     #[test]
-    fn a_profile_saved_from_an_aws_chain_link_keeps_its_marker_for_every_caller() {
+    fn a_profile_never_carries_a_launch_handle_into_a_connection() {
         let mut extra = HashMap::new();
-        apply_profile_options(&mut extra, &json!({"options": {"awsChain": "chain"}}));
-        assert_eq!(extra.get("aws_chain").map(String::as_str), Some("chain"));
+        apply_profile_options(
+            &mut extra,
+            &json!({"options": {"launchSecret": "0123456789abcdef0123456789abcdef", "launch_secret": "x", "bucket": "b1"}}),
+        );
+        assert!(!extra.contains_key("launch_secret"), "{extra:?}");
+        assert!(!extra.contains_key("launchSecret"), "{extra:?}");
+        assert_eq!(extra.get("bucket").map(String::as_str), Some("b1"));
     }
 
     #[test]

@@ -8198,6 +8198,7 @@ const App: React.FC = () => {
       port: effectiveParams.port,
       username: effectiveParams.username,
       password: effectiveParams.password,
+      launch_secret: effectiveParams.options?.launchSecret || null,
       initial_path: initialPath,
       bucket: effectiveParams.options?.bucket,
       region: s3Location.signingRegion,
@@ -8208,7 +8209,6 @@ const App: React.FC = () => {
       sse_mode: effectiveParams.options?.sse_mode || null,
       sse_kms_key_id: effectiveParams.options?.sse_kms_key_id || null,
       session_token: effectiveParams.options?.sessionToken || null,
-      aws_chain: effectiveParams.options?.awsChain || null,
       role_arn: effectiveParams.options?.roleArn || null,
       role_external_id: effectiveParams.options?.roleExternalId || null,
       role_session_name: effectiveParams.options?.roleSessionName || null,
@@ -19607,10 +19607,11 @@ const App: React.FC = () => {
       options: { ...req.options },
     };
 
-    // A chain link has no password here by design: provider_connect resolves
-    // the AWS chain in Rust, so no saved profile's secret stands in for it.
+    // A link whose secret came from the environment has no password here by
+    // design: provider_connect reads it in Rust through the handle, so no
+    // saved profile's secret stands in for it.
     let matchedProfile: ServerProfile | undefined;
-    if (!params.password && !req.options?.awsChain) {
+    if (!params.password && !req.options?.launchSecret) {
       const all = await loadSavedServerProfiles().catch(() => [] as ServerProfile[]);
       const match = all.find(s => savedProfileMatchesLaunch(s, req));
       matchedProfile = match;

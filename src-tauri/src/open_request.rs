@@ -191,6 +191,36 @@ fn frontend_options(
     options
 }
 
+/// The [`secret_destination`](crate::launch_url::launch_secret::secret_destination)
+/// of the connection a launch request describes, built through the same
+/// `to_provider_config` the connect runs, from the fields the webview passes
+/// back unchanged (the port the way it fills an absent one: the protocol's).
+fn launch_destination(
+    protocol: &str,
+    server: &str,
+    port: u16,
+    username: &str,
+    provider_id: Option<&str>,
+    options: &BTreeMap<String, serde_json::Value>,
+) -> Result<String, String> {
+    let text = |key: &str| options.get(key).and_then(serde_json::Value::as_str);
+    let params: crate::provider_commands::ProviderConnectionParams =
+        serde_json::from_value(serde_json::json!({
+            "protocol": protocol,
+            "server": server,
+            "port": port,
+            "username": username,
+            "password": "",
+            "provider_id": provider_id,
+            "bucket": text("bucket"),
+            "region": text("region"),
+            "endpoint": text("endpoint"),
+            "path_style": options.get("pathStyle").and_then(serde_json::Value::as_bool),
+        }))
+        .map_err(|err| err.to_string())?;
+    crate::launch_url::launch_secret::secret_destination(&params.to_provider_config()?)
+}
+
 /// The port a launch URL dials: its own, else the protocol's (the manifest),
 /// with plain WebDAV on 80 and FTPS of the `ftps` scheme on 990.
 fn default_port(target: &crate::launch_url::LaunchTarget) -> u16 {
@@ -242,39 +272,51 @@ pub fn parse_remote_url(raw: &str) -> Option<OpenRequest> {
         username
     };
     let mut options = frontend_options(&target);
+    let mut pending_secret = None;
     let (username, password, provider_id) = if protocol == "s3" {
         let credentials = target.s3_credentials();
         if let Some(region) = credentials.region {
             options.insert("region".to_string(), serde_json::Value::String(region));
         }
-        // A secret from the AWS tools' chain (`AWS_*`, `~/.aws`) never enters
-        // the request the webview reads: it carries a marker, and
-        // provider_connect resolves the chain again in Rust. A secret the URL
-        // or AEROFTP_PASSWORD gave travels as for every other protocol.
-        let password = if credentials
-            .secret_source
-            .is_some_and(crate::launch_url::aws::CredentialSource::is_aws_chain)
-        {
-            // The marker says where the key id came from (`url` or
-            // `chain`), so the connect pairs it with the same secret.
-            options.insert(
-                "awsChain".to_string(),
-                serde_json::Value::String(
-                    crate::launch_url::aws::chain_marker(credentials.key_from_url).to_string(),
-                ),
-            );
-            None
-        } else {
-            credentials.secret_access_key
+        // A secret from the AWS tools' chain (`AWS_*`, `~/.aws`) or from
+        // AEROFTP_PASSWORD never enters the request the webview reads: it
+        // carries a handle bound to this connection, and provider_connect
+        // reads the secret again in Rust (`launch_url::launch_secret`). A
+        // URL password travels in the request, as the URL itself does.
+        use crate::launch_url::aws::CredentialSource;
+        use crate::launch_url::launch_secret::Provenance;
+        let provenance = match credentials.secret_source {
+            Some(source) if source.is_aws_chain() => Some(Provenance::AwsChain {
+                access_key_id: credentials.access_key_id.clone(),
+                key_from_url: credentials.key_from_url,
+            }),
+            Some(CredentialSource::AeroftpEnv) => Some(Provenance::Env("AEROFTP_PASSWORD")),
+            _ => None,
+        };
+        let password = match provenance {
+            Some(provenance) => {
+                pending_secret = Some(provenance);
+                None
+            }
+            None => credentials.secret_access_key,
         };
         (
             credentials.access_key_id,
             password,
             Some(target.s3_provider_id().to_string()),
         )
+    } else if let Some(var) = target
+        .env_secret_var()
+        .filter(|_| !crate::launch_url::env_secret_in_request(protocol))
+    {
+        // The environment first, as the CLI reads it; its secret stays in
+        // Rust behind a handle bound to this connection.
+        pending_secret = Some(crate::launch_url::launch_secret::Provenance::Env(var));
+        (username, None, None)
     } else {
         // The environment first, then the URL, as the CLI reads them
-        // (docs/CLI-GUIDE.md ranks the URL password last).
+        // (docs/CLI-GUIDE.md ranks the URL password last). FTP, SFTP and
+        // WebDAV keep an environment secret in the request (Requested 224).
         let password = target.env_secret().or_else(|| {
             target
                 .url_secret
@@ -288,6 +330,32 @@ pub fn parse_remote_url(raw: &str) -> Option<OpenRequest> {
             "githubBranch".to_string(),
             serde_json::Value::String(branch),
         );
+    }
+    // The handle binds the secret to the address the link's own connection
+    // reaches. A link whose connection cannot be described binds none: the
+    // connect then asks, or fails on the same missing field.
+    if let Some(provenance) = pending_secret {
+        let port = target.port.unwrap_or_else(|| default_port(&target));
+        match launch_destination(
+            protocol,
+            &server,
+            port,
+            &username,
+            provider_id.as_deref(),
+            &options,
+        ) {
+            Ok(destination) => {
+                options.insert(
+                    "launchSecret".to_string(),
+                    serde_json::Value::String(crate::launch_url::launch_secret::register(
+                        protocol,
+                        &destination,
+                        provenance,
+                    )),
+                );
+            }
+            Err(err) => tracing::debug!("launch secret not bound: {err}"),
+        }
     }
     // A repository URL names no folder: its path is the repository.
     let (initial_path, folder, name, is_dir) = if matches!(protocol, "github" | "gitlab") {
@@ -304,7 +372,10 @@ pub fn parse_remote_url(raw: &str) -> Option<OpenRequest> {
         is_dir,
         protocol: Some(protocol.to_string()),
         server: Some(server),
-        port: Some(target.port.unwrap_or_else(|| default_port(&target))),
+        // An S3 link's own endpoint carries its port (or none): the host's
+        // port, or the default one, is not added to it.
+        port: (!target.endpoint_given())
+            .then(|| target.port.unwrap_or_else(|| default_port(&target))),
         username: (!username.is_empty()).then_some(username),
         password,
         initial_path,
@@ -1055,11 +1126,11 @@ mod tests {
         );
         assert_eq!(request.username.as_deref(), Some("FILEKEY"));
         // The chain's secret and token stay in Rust: the request the webview
-        // reads carries only the marker provider_connect resolves.
+        // reads carries only the handle provider_connect resolves.
         assert_eq!(request.password, None);
         assert_never_serialized(&request, &["filesecret", "filetoken"]);
         let options = request.options.clone().unwrap();
-        assert_eq!(options["awsChain"], "chain");
+        assert!(is_handle(&options["launchSecret"]), "{options:?}");
         assert!(!options.contains_key("sessionToken"));
         assert_eq!(options["region"], "eu-west-3");
         assert_eq!(request.provider_id.as_deref(), Some("minio"));
@@ -1077,20 +1148,184 @@ mod tests {
         assert_eq!(request.username.as_deref(), Some("ENVKEY"));
         assert_eq!(request.password, None);
         assert_never_serialized(&request, &["envsecret", "filesecret"]);
-        assert_eq!(request.options.unwrap()["awsChain"], "chain");
+        assert!(is_handle(&request.options.unwrap()["launchSecret"]));
 
-        // A key id from the URL beside a bare AWS secret: the marker says so,
-        // and only then does the connect pair the two again.
-        let request = with_aws_files(
+        // A key id from the URL beside a bare AWS secret: the handle keeps
+        // that provenance, so the connect pairs the two again.
+        let (request, connect) = with_aws_files(
             "[default]\naws_access_key_id = FILEKEY\naws_secret_access_key = filesecret\n",
             "",
             &[("AWS_SECRET_ACCESS_KEY", "envsecret")],
-            || parse_remote_url("s3://URLKEY@minio.lan:9000/?bucket=b1").unwrap(),
+            || {
+                let request = parse_remote_url("s3://URLKEY@minio.lan:9000/?bucket=b1").unwrap();
+                let connect = webview_params(&request)
+                    .to_provider_config()
+                    .map(|config| config.password.unwrap_or_default());
+                (request, connect)
+            },
         );
         assert_eq!(request.username.as_deref(), Some("URLKEY"));
         assert_eq!(request.password, None);
         assert_never_serialized(&request, &["envsecret", "filesecret"]);
-        assert_eq!(request.options.unwrap()["awsChain"], "url");
+        assert_eq!(connect.as_deref(), Ok("envsecret"));
+    }
+
+    /// The connect parameters the webview builds from a launch request
+    /// (`openRemoteUrlSession` then `buildProviderParams` in App.tsx), for
+    /// the fields a connection reads: an absent port is the protocol's, and
+    /// an S3 endpoint is the stored one, else a non-AWS host
+    /// (`resolveProfileS3Location`).
+    fn webview_params(request: &OpenRequest) -> crate::provider_commands::ProviderConnectionParams {
+        let options = request.options.clone().unwrap_or_default();
+        let text = |key: &str| {
+            options
+                .get(key)
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string)
+        };
+        let protocol = request.protocol.clone().unwrap();
+        let server = request.server.clone().unwrap_or_default();
+        let endpoint = text("endpoint").or_else(|| {
+            (protocol == "s3"
+                && crate::bridge_shared::map_s3_provider_from_endpoint(&server) != "amazon-s3")
+                .then(|| server.clone())
+        });
+        let port = request.port.unwrap_or_else(|| {
+            crate::connection_manifest::connection_spec(&protocol)
+                .map_or(0, |spec| spec.default_port)
+        });
+        serde_json::from_value(serde_json::json!({
+            "protocol": protocol,
+            "provider_id": request.provider_id,
+            "server": server,
+            "port": port,
+            "username": request.username.clone().unwrap_or_default(),
+            "password": request.password.clone().unwrap_or_default(),
+            "launch_secret": text("launchSecret"),
+            "bucket": text("bucket"),
+            "region": text("region").unwrap_or_else(|| "us-east-1".to_string()),
+            "endpoint": endpoint,
+            "path_style": options.get("pathStyle").and_then(serde_json::Value::as_bool),
+            "verify_cert": true,
+            "allow_cleartext_endpoint": false,
+            "allow_cleartext_storage": false,
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn a_launch_secret_reaches_only_the_address_the_link_named() {
+        // The webview keeps the link's server and handle but moves what the
+        // connection reaches: an S3 endpoint, an AWS region spliced into the
+        // host, the bucket a virtual-hosted request puts in the host, the
+        // Azure account, a Swift auth host, or the TLS check. Each refuses
+        // and never yields the secret; the link's own connection reads it.
+        let _guard = crate::test_env::lock();
+        let sentinel = "sentinel-launch-destination-41c7";
+        type Edit = fn(&mut crate::provider_commands::ProviderConnectionParams);
+        type Case<'a> = (&'a str, &'a [(&'a str, &'a str)], &'a [(&'a str, Edit)]);
+        let cases: &[Case] = &[
+            (
+                "s3://minio.lan:9443/?bucket=b1",
+                &[
+                    ("AWS_ACCESS_KEY_ID", "ENVKEY"),
+                    ("AWS_SECRET_ACCESS_KEY", sentinel),
+                ],
+                &[
+                    ("endpoint to another host", |p| {
+                        p.endpoint = Some("https://evil.example".into())
+                    }),
+                    ("endpoint to another port", |p| {
+                        p.endpoint = Some("https://minio.lan:9000".into())
+                    }),
+                    ("endpoint in cleartext", |p| {
+                        p.endpoint = Some("http://minio.lan:9443".into())
+                    }),
+                    ("another bucket", |p| {
+                        p.bucket = Some("evil.example#".into())
+                    }),
+                    ("certificate check off", |p| p.verify_cert = Some(false)),
+                    ("cleartext allowed", |p| {
+                        p.allow_cleartext_endpoint = Some(true)
+                    }),
+                ],
+            ),
+            (
+                "s3://s3.amazonaws.com/?bucket=b1&region=eu-west-1",
+                &[
+                    ("AWS_ACCESS_KEY_ID", "ENVKEY"),
+                    ("AWS_SECRET_ACCESS_KEY", sentinel),
+                ],
+                &[
+                    ("a region that is a host", |p| {
+                        p.region = Some("evil.example/".into())
+                    }),
+                    ("an endpoint off AWS", |p| {
+                        p.endpoint = Some("s3.amazonaws.com.evil.example".into())
+                    }),
+                ],
+            ),
+            (
+                "azure://account@account.blob.core.windows.net/?container=c1",
+                &[("AZURE_STORAGE_KEY", sentinel)],
+                &[("another server", |p| p.server = "evil.example".into())],
+            ),
+            (
+                // The shared service host: the account names the endpoint.
+                "azure://account@blob.core.windows.net/?container=c1",
+                &[("AZURE_STORAGE_KEY", sentinel)],
+                &[("another account", |p| p.username = "evil".into())],
+            ),
+            (
+                "swift://user@keystone.example.com:5000/",
+                &[("ST_KEY", sentinel)],
+                &[
+                    ("another auth host", |p| {
+                        p.server = "evil.example:5000".into()
+                    }),
+                    ("cleartext storage", |p| {
+                        p.allow_cleartext_storage = Some(true)
+                    }),
+                ],
+            ),
+        ];
+        let vars = [
+            "AWS_ACCESS_KEY_ID",
+            "AWS_SECRET_ACCESS_KEY",
+            "AZURE_STORAGE_KEY",
+            "ST_KEY",
+            "OS_PASSWORD",
+            "AEROFTP_PASSWORD",
+        ];
+        for (url, env, edits) in cases {
+            with_env(&vars, &[], || {
+                with_aws_files("", "", env, || {
+                    let request = parse_remote_url(url).unwrap();
+                    assert_never_serialized(&request, &[sentinel]);
+                    let connected = webview_params(&request).to_provider_config();
+                    assert_eq!(
+                        connected.map(|config| config.password),
+                        Ok(Some(sentinel.to_string())),
+                        "{url}: the link's own connection"
+                    );
+                    for (what, edit) in *edits {
+                        let mut params = webview_params(&request);
+                        edit(&mut params);
+                        let outcome = params.to_provider_config();
+                        let err = outcome
+                            .err()
+                            .unwrap_or_else(|| panic!("{url}: {what} was accepted"));
+                        assert!(!err.contains(sentinel), "{url}: {what}: {err}");
+                    }
+                })
+            });
+        }
+    }
+
+    fn is_handle(value: &serde_json::Value) -> bool {
+        value.as_str().is_some_and(|handle| {
+            handle.len() == 32 && handle.chars().all(|c| c.is_ascii_hexdigit())
+        })
     }
 
     /// The JSON the webview receives through `take_open_requests` holds none
@@ -1106,18 +1341,71 @@ mod tests {
     }
 
     #[test]
-    fn an_s3_secret_the_url_or_aeroftp_password_gives_keeps_its_one_field() {
+    fn an_s3_url_password_travels_as_written_and_aeroftp_password_stays_in_rust() {
         let _guard = crate::test_env::lock();
         let request = with_aws_files("", "", &[], || {
             parse_remote_url("s3://KEY:urlsecret@minio.lan:9000/?bucket=b1").unwrap()
         });
         assert_eq!(request.password.as_deref(), Some("urlsecret"));
-        assert!(!request.options.unwrap().contains_key("awsChain"));
+        assert!(!request.options.unwrap().contains_key("launchSecret"));
         let request = with_aws_files("", "", &[("AEROFTP_PASSWORD", "aeroftpsecret")], || {
             parse_remote_url("s3://KEY@minio.lan:9000/?bucket=b1").unwrap()
         });
-        assert_eq!(request.password.as_deref(), Some("aeroftpsecret"));
-        assert!(!request.options.unwrap().contains_key("awsChain"));
+        assert_eq!(request.password, None);
+        assert_never_serialized(&request, &["aeroftpsecret"]);
+        assert!(is_handle(&request.options.unwrap()["launchSecret"]));
+    }
+
+    #[test]
+    fn no_environment_secret_of_a_provider_scheme_reaches_the_webview() {
+        // Every scheme with a secret variable, read from the table: a new
+        // one is covered when it is added.
+        let _guard = crate::test_env::lock();
+        let sentinel = "sentinel-provider-secret-5a9e";
+        for scheme in crate::launch_url::LAUNCH_SCHEMES
+            .iter()
+            .filter(|scheme| scheme.auth == crate::launch_url::LaunchAuth::Server)
+        {
+            for var in scheme
+                .secret_env
+                .iter()
+                .copied()
+                .chain(["AEROFTP_PASSWORD"])
+            {
+                let url = crate::launch_url::example_url(scheme);
+                // The outer call puts the variable back as it was.
+                let outcome = with_env(&[var], &[], || {
+                    with_aws_files("", "", &[(var, sentinel)], || {
+                        let request = parse_remote_url(&url)?;
+                        // The connect the webview makes from the request.
+                        let connected = webview_params(&request)
+                            .to_provider_config()
+                            .map(|config| config.password.unwrap_or_default());
+                        Some((request, connected))
+                    })
+                });
+                let Some((request, connected)) = outcome else {
+                    continue;
+                };
+                if crate::launch_url::env_secret_in_request(scheme.token) {
+                    // FTP, SFTP and WebDAV, as before (Requested 224).
+                    continue;
+                }
+                assert_never_serialized(&request, &[sentinel]);
+                let options = request.options.clone().unwrap_or_default();
+                assert!(
+                    options.get("launchSecret").is_some_and(is_handle),
+                    "{} with {var}: {options:?}",
+                    scheme.scheme
+                );
+                assert_eq!(
+                    connected.as_deref(),
+                    Ok(sentinel),
+                    "{} with {var}: the link's own connect reads the secret",
+                    scheme.scheme
+                );
+            }
+        }
     }
 
     #[test]

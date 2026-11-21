@@ -156,7 +156,7 @@ describe('launchFolderToOpen', () => {
     expect(remote).not.toMatch(/req\.initialPath \|\| '\/'/);
     expect(saved + remote).not.toMatch(/!== '\/'/);
     // A chain link has no password in the webview: no saved profile's secret stands in for it.
-    expect(remote).toContain('if (!params.password && !req.options?.awsChain) {');
+    expect(remote).toContain('if (!params.password && !req.options?.launchSecret) {');
   });
 });
 

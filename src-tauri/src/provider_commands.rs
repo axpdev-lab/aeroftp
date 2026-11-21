@@ -1834,6 +1834,11 @@ pub struct ProviderConnectionParams {
     pub username: String,
     /// Password or Secret Access Key
     pub password: String,
+    /// The handle a launch URL leaves in place of a secret it found in the
+    /// environment or the AWS chain (`launch_url::launch_secret`): opaque,
+    /// bound to that link's connection, never saved. Not a secret.
+    #[serde(default, alias = "launchSecret")]
+    pub launch_secret: Option<String>,
     /// Initial remote path to navigate to
     pub initial_path: Option<String>,
     /// S3 bucket name
@@ -1855,13 +1860,6 @@ pub struct ProviderConnectionParams {
     /// S3: AWS STS session token for temporary credentials (AssumeRole / SSO).
     /// AWS-only; ignored by S3-compatible backends without STS.
     pub session_token: Option<String>,
-    /// S3: the secret of `username` comes from the AWS tools' chain
-    /// (`AWS_*`, `~/.aws`), which a launch URL never hands to the webview;
-    /// the provider resolves it (`S3Config::from_provider_config`). The
-    /// value says where the key id came from, `url` or `chain`
-    /// (`launch_url::aws::chain_marker`). Not a secret.
-    #[serde(default)]
-    pub aws_chain: Option<String>,
     /// S3: ARN of an IAM role to assume via STS `AssumeRole` (issue #301).
     /// When set, `connect()` exchanges the access key/secret for temporary
     /// credentials. AWS-only.
@@ -2135,15 +2133,6 @@ impl ProviderConnectionParams {
                 .filter(|s| !s.is_empty())
             {
                 extra.insert("session_token".to_string(), token.to_string());
-            }
-            // A launch URL whose credentials came from the AWS chain: the
-            // provider reads the chain itself (S3Config), the webview never
-            // held the secret.
-            if let Some(marker) = self.aws_chain.as_deref() {
-                if crate::launch_url::aws::parse_chain_marker(marker).is_none() {
-                    return Err("aws_chain must be url or chain".to_string());
-                }
-                extra.insert("aws_chain".to_string(), marker.trim().to_string());
             }
             // STS AssumeRole config (issue #301, Fase 2). AWS-only.
             for (key, value) in [
@@ -2491,9 +2480,15 @@ impl ProviderConnectionParams {
             self.server.clone()
         };
 
-        let host = without_port_suffix(&host).to_string();
+        // Swift, GitLab and Immich build their address from the host alone:
+        // a port written there is the only one they have, so it stays.
+        let host = if host_carries_port(provider_type) {
+            host
+        } else {
+            without_port_suffix(&host).to_string()
+        };
 
-        Ok(ProviderConfig {
+        let mut config = ProviderConfig {
             name: format!("{}@{}", self.username, host),
             provider_type,
             host,
@@ -2502,7 +2497,33 @@ impl ProviderConnectionParams {
             password: Some(self.password.clone()),
             initial_path: self.initial_path.clone(),
             extra,
-        })
+        };
+
+        // A launch URL whose secret came from the environment or the AWS
+        // chain: the webview holds only the handle bound to that connection,
+        // and the secret is read here, for the address this configuration
+        // really reaches (`secret_destination`, after every option that can
+        // move it, such as an S3 endpoint) and only if it is the link's. A
+        // secret the caller holds (the vault's, the form's) wins.
+        if self.password.is_empty() {
+            if let Some(handle) = self.launch_secret.as_deref().filter(|h| !h.is_empty()) {
+                let destination = crate::launch_url::launch_secret::secret_destination(&config)?;
+                let resolved = crate::launch_url::launch_secret::resolve(
+                    handle,
+                    &self.protocol,
+                    &destination,
+                    &self.username,
+                )?;
+                config.password = Some(resolved.secret);
+                if let Some(token) = resolved.session_token {
+                    config
+                        .extra
+                        .entry("session_token".to_string())
+                        .or_insert(token);
+                }
+            }
+        }
+        Ok(config)
     }
 }
 
@@ -3893,6 +3914,15 @@ fn endpoint_of(text: &str) -> Endpoint<'_> {
 /// "127.0.0.1"): users sometimes write the port there, but the port is its own
 /// setting, and the connect ([`ProviderConnectionParams::to_provider_config`])
 /// builds its target from the host without it.
+/// The providers that never read `ProviderConfig::port`: their host (or
+/// base URL) is the only place a port can live.
+fn host_carries_port(provider_type: ProviderType) -> bool {
+    matches!(
+        provider_type,
+        ProviderType::Swift | ProviderType::GitLab | ProviderType::Immich
+    )
+}
+
 fn without_port_suffix(host: &str) -> &str {
     match host.rfind(':') {
         Some(colon_idx) if host[colon_idx + 1..].parse::<u16>().is_ok() => &host[..colon_idx],
@@ -19680,25 +19710,129 @@ mod tests {
     }
 
     #[test]
-    fn an_aws_chain_connect_hands_the_marker_to_the_provider() {
-        let mut params = s3_params(None);
-        params.password = String::new();
-        for marker in ["url", "chain"] {
-            params.aws_chain = Some(marker.to_string());
-            let config = params.to_provider_config().unwrap();
+    fn a_launch_handle_reads_its_secret_only_for_the_connection_it_was_bound_to() {
+        use crate::launch_url::launch_secret::{register, Provenance};
+        let _guard = crate::test_env::lock();
+        let sentinel = "sentinel-gitlab-token-7f31";
+        std::env::set_var("GITLAB_TOKEN", sentinel);
+        let gitlab = |server: &str, handle: Option<String>| {
+            let mut params = s3_params(None);
+            params.protocol = "gitlab".to_string();
+            params.server = server.to_string();
+            params.username = String::new();
+            params.password = String::new();
+            params.bucket = None;
+            params.region = None;
+            params.launch_secret = handle;
+            params
+        };
+        let destination = crate::launch_url::launch_secret::secret_destination(
+            &gitlab("git.example.com/group/project", None)
+                .to_provider_config()
+                .unwrap(),
+        )
+        .unwrap();
+        let handle = register("gitlab", &destination, Provenance::Env("GITLAB_TOKEN"));
+        let config = gitlab("git.example.com/group/project", Some(handle.clone()))
+            .to_provider_config()
+            .unwrap();
+        assert_eq!(config.password.as_deref(), Some(sentinel));
+        // A script's connect: no handle, an invented one, or the link's own
+        // handle sent to another host. None reads the variable.
+        for (server, handle) in [
+            ("evil.example/group/project", None),
+            (
+                "evil.example/group/project",
+                Some("GITLAB_TOKEN".to_string()),
+            ),
+            ("evil.example/group/project", Some(handle.clone())),
+        ] {
+            let outcome = gitlab(server, handle).to_provider_config();
+            let password = outcome.as_ref().ok().and_then(|c| c.password.clone());
+            assert_ne!(password.as_deref(), Some(sentinel), "{server}");
+            if let Err(err) = outcome {
+                assert!(!err.contains(sentinel), "{err}");
+            }
+        }
+        // A secret the caller holds wins; the handle is not read.
+        let mut typed = gitlab("evil.example/group/project", Some(handle));
+        typed.password = "typed".to_string();
+        assert_eq!(
+            typed.to_provider_config().unwrap().password.as_deref(),
+            Some("typed")
+        );
+        std::env::remove_var("GITLAB_TOKEN");
+    }
+
+    #[test]
+    fn swift_gitlab_and_immich_keep_the_port_their_host_carries_and_the_rest_strip_it() {
+        use crate::providers::{gitlab::GitLabConfig, swift::SwiftConfig};
+        let params = |protocol: &str, server: &str| {
+            let mut params = s3_params(None);
+            params.protocol = protocol.to_string();
+            params.server = server.to_string();
+            params.bucket = None;
+            params.region = None;
+            params.port = Some(443);
+            params
+        };
+        let swift = |server: &str| {
+            SwiftConfig::from_provider_config(
+                &params("swift", server).to_provider_config().unwrap(),
+            )
+            .unwrap()
+            .auth_url
+        };
+        assert_eq!(
+            swift("keystone.example.com:5000"),
+            "https://keystone.example.com:5000"
+        );
+        assert_eq!(
+            swift("keystone.example.com"),
+            "https://keystone.example.com"
+        );
+        assert_eq!(
+            swift("https://keystone.example.com:5000"),
+            "https://keystone.example.com:5000"
+        );
+        let gitlab = |server: &str| {
+            GitLabConfig::from_provider_config(
+                &params("gitlab", server).to_provider_config().unwrap(),
+            )
+            .unwrap()
+            .api_base
+        };
+        assert_eq!(
+            gitlab("git.example.com:8443/group/project"),
+            "https://git.example.com:8443/api/v4"
+        );
+        assert_eq!(
+            gitlab("git.example.com/group/project"),
+            "https://git.example.com/api/v4"
+        );
+        assert_eq!(
+            params("immich", "https://photos.example:2283")
+                .to_provider_config()
+                .unwrap()
+                .host,
+            "https://photos.example:2283"
+        );
+        // Every other provider still strips a port from the server field.
+        for protocol in ["ftp", "sftp", "webdav", "azure", "koofr"] {
             assert_eq!(
-                config.extra.get("aws_chain").map(String::as_str),
-                Some(marker)
+                params(protocol, "files.example:2121")
+                    .to_provider_config()
+                    .map(|c| c.host)
+                    .ok()
+                    .as_deref(),
+                Some(if protocol == "koofr" {
+                    "app.koofr.net"
+                } else {
+                    "files.example"
+                }),
+                "{protocol}"
             );
         }
-        params.aws_chain = Some("true".to_string());
-        assert!(params.to_provider_config().is_err());
-        params.aws_chain = None;
-        assert!(!params
-            .to_provider_config()
-            .unwrap()
-            .extra
-            .contains_key("aws_chain"));
     }
 
     fn s3_params(path_style: Option<bool>) -> ProviderConnectionParams {
@@ -19720,7 +19854,7 @@ mod tests {
             sse_mode: None,
             sse_kms_key_id: None,
             session_token: None,
-            aws_chain: None,
+            launch_secret: None,
             role_arn: None,
             role_external_id: None,
             role_session_name: None,

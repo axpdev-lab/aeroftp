@@ -13622,7 +13622,8 @@ fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, Strin
         None => (username, resolve_password(&url_obj, scheme, cli)?),
     };
 
-    let port = url_obj.port();
+    // An S3 link's own endpoint carries its port: the host's is not added.
+    let port = target.connection_port();
 
     // For WebDAV/GitHub, the URL path is part of the host - initial_path is always /
     let url_path = match provider_type {

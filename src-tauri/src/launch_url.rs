@@ -18,6 +18,7 @@
 //! URL.
 
 pub mod aws;
+pub mod launch_secret;
 
 use std::collections::BTreeMap;
 
@@ -191,6 +192,52 @@ pub fn fixed_host(token: &str) -> Option<&'static str> {
     })
 }
 
+/// What a port written in a launch URL does for a scheme.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PortRule {
+    /// The connection reads the port itself (FTP, SFTP, WebDAV; S3 folds it
+    /// into the endpoint it builds from the host).
+    Native,
+    /// The provider builds its address from the host alone, so the port
+    /// travels inside it (`host:port`, or the base URL).
+    InHost,
+    /// The host is an account, an owner or the service's own API host: a
+    /// port would not be used, so a link that writes one is refused.
+    Refused,
+}
+
+/// The port rule of `scheme`. `None` for a scheme not classified yet, which
+/// a test refuses, so a new scheme is classified when it is added.
+pub fn port_rule(scheme: &LaunchScheme) -> Option<PortRule> {
+    if scheme.auth == LaunchAuth::Account || fixed_host(scheme.token).is_some() {
+        return Some(PortRule::Refused);
+    }
+    Some(match scheme.token {
+        "ftp" | "ftps" | "sftp" | "scp" | "webdav" | "s3" => PortRule::Native,
+        "swift" | "gitlab" | "immich" => PortRule::InHost,
+        "azure" | "github" => PortRule::Refused,
+        _ => return None,
+    })
+}
+
+/// Whether a secret from the environment travels in the request the webview
+/// reads, as it did before launch URLs reached every provider (FTP, SFTP,
+/// WebDAV; Requested 224 in the 4.2.8 tracker). For every other scheme it
+/// stays in Rust behind a [`launch_secret`] handle.
+pub fn env_secret_in_request(token: &str) -> bool {
+    matches!(token, "ftp" | "ftps" | "sftp" | "scp" | "webdav")
+}
+
+/// Whether `var` is a secret variable of the scheme `token` connects as: one
+/// of its own list, or the generic `AEROFTP_PASSWORD`.
+pub fn secret_env_allowed(token: &str, var: &str) -> bool {
+    var == "AEROFTP_PASSWORD"
+        || LAUNCH_SCHEMES
+            .iter()
+            .filter(|scheme| scheme.token == token)
+            .any(|scheme| scheme.secret_env.contains(&var))
+}
+
 /// The scheme `raw` names, any case.
 pub fn launch_scheme(raw: &str) -> Option<&'static LaunchScheme> {
     LAUNCH_SCHEMES
@@ -337,6 +384,12 @@ pub fn parse(raw: &str) -> Result<LaunchTarget, String> {
     if needs_host && host.is_empty() {
         return Err(format!("Missing host in {}:// URL", scheme.scheme));
     }
+    if url.port().is_some() && port_rule(scheme) == Some(PortRule::Refused) {
+        return Err(format!(
+            "A {}:// URL takes no port: the service is reached on its own address, so the port would not be used",
+            scheme.scheme
+        ));
+    }
     let allowed = query_options(scheme.token);
     let mut options = BTreeMap::new();
     for (key, value) in url.query_pairs() {
@@ -429,13 +482,33 @@ impl LaunchTarget {
     /// The first non-empty secret among the scheme's variables, then
     /// `AEROFTP_PASSWORD`.
     pub fn env_secret(&self) -> Option<String> {
-        first_env(
-            self.scheme
-                .secret_env
-                .iter()
-                .copied()
-                .chain(["AEROFTP_PASSWORD"]),
-        )
+        self.env_secret_var()
+            .and_then(|var| std::env::var(var).ok())
+    }
+
+    /// The variable [`Self::env_secret`] reads: the first that holds a
+    /// non-empty value.
+    pub fn env_secret_var(&self) -> Option<&'static str> {
+        self.scheme
+            .secret_env
+            .iter()
+            .copied()
+            .chain(["AEROFTP_PASSWORD"])
+            .find(|var| std::env::var(var).is_ok_and(|value| !value.is_empty()))
+    }
+
+    /// The port the connection is given: none for an S3 link that names its
+    /// endpoint, whose own port (or none) wins over the host's.
+    pub fn connection_port(&self) -> Option<u16> {
+        if self.endpoint_given() {
+            return None;
+        }
+        self.port
+    }
+
+    /// Whether an S3 link names its endpoint (`?endpoint=`).
+    pub fn endpoint_given(&self) -> bool {
+        self.token() == "s3" && self.options.contains_key("endpoint")
     }
 
     /// An `s3://` URL's credentials and region through the AWS chain (see
@@ -513,6 +586,11 @@ impl LaunchTarget {
     pub fn connection_host(&self) -> String {
         if let Some(host) = fixed_host(self.token()) {
             return host.to_string();
+        }
+        if self.token() == "swift" {
+            if let Some(port) = self.port {
+                return format!("{}:{port}", url_host(&self.host));
+            }
         }
         if self.token() == "immich" {
             let scheme = self.options.get("scheme").map_or("https", String::as_str);
@@ -1191,6 +1269,87 @@ mod tests {
             let err = parse(raw).unwrap_err();
             assert!(err.contains("must be a server name"), "{raw}: {err}");
         }
+    }
+
+    #[test]
+    fn every_scheme_says_what_a_port_does_and_a_refused_one_names_the_scheme() {
+        let with_port = |entry: &LaunchScheme| {
+            let url = example_url(entry);
+            let (scheme, rest) = url.split_once("://").unwrap();
+            // Insert `:4443` after the authority, before the path.
+            let cut = rest.find(['/', '?']).unwrap_or(rest.len());
+            let (authority, tail) = rest.split_at(cut);
+            let authority = if authority.is_empty() {
+                "acct"
+            } else {
+                authority
+            };
+            // An example that already names a port (Immich) gets this one instead.
+            let authority = match authority.rsplit_once(':') {
+                Some((head, port)) if port.parse::<u16>().is_ok() => head,
+                _ => authority,
+            };
+            format!("{scheme}://{authority}:4443{tail}")
+        };
+        for entry in LAUNCH_SCHEMES {
+            let rule =
+                port_rule(entry).unwrap_or_else(|| panic!("{}:// has no port rule", entry.scheme));
+            let outcome = parse(&with_port(entry));
+            match rule {
+                PortRule::Refused => {
+                    let err = outcome
+                        .err()
+                        .unwrap_or_else(|| panic!("{} took a port", entry.scheme));
+                    assert!(
+                        err.contains(&format!("{}://", entry.scheme))
+                            && err.contains("port would not be used"),
+                        "{err}"
+                    );
+                }
+                PortRule::Native | PortRule::InHost => {
+                    let target = outcome.unwrap_or_else(|e| panic!("{}: {e}", entry.scheme));
+                    assert_eq!(target.port, Some(4443), "{}", entry.scheme);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_swift_link_keeps_its_port_in_the_address_its_provider_reads() {
+        use crate::providers::{swift::SwiftConfig, ProviderConfig, ProviderType};
+        let auth_url = |raw: &str| {
+            let target = parse(raw).unwrap();
+            let config = ProviderConfig {
+                name: "Swift".into(),
+                provider_type: ProviderType::Swift,
+                host: target.connection_host(),
+                port: target.port,
+                username: Some("user".into()),
+                password: Some("key".into()),
+                initial_path: Some("/".into()),
+                extra: Default::default(),
+            };
+            SwiftConfig::from_provider_config(&config).unwrap().auth_url
+        };
+        assert_eq!(
+            auth_url("swift://user@keystone.example.com:5000/backups/"),
+            "https://keystone.example.com:5000"
+        );
+        assert_eq!(
+            auth_url("swift://user@keystone.example.com/backups/"),
+            "https://keystone.example.com"
+        );
+        assert_eq!(auth_url("swift://user@[::1]:5000/"), "https://[::1]:5000");
+    }
+
+    #[test]
+    fn an_s3_links_own_endpoint_wins_over_the_port_of_its_host() {
+        let target = parse("s3://AKID@minio.lan:9000/?bucket=b1").unwrap();
+        assert_eq!(target.connection_port(), Some(9000));
+        let target =
+            parse("s3://AKID@minio.lan:9000/?bucket=b1&endpoint=https://s3.example.com").unwrap();
+        assert!(target.endpoint_given());
+        assert_eq!(target.connection_port(), None);
     }
 
     #[test]
