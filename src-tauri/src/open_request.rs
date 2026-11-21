@@ -334,12 +334,18 @@ pub fn parse_remote_url(raw: &str) -> Option<OpenRequest> {
     // The handle binds the secret to the address the link's own connection
     // reaches. A link whose connection cannot be described binds none: the
     // connect then asks, or fails on the same missing field.
+    // An S3 link's own endpoint carries its port (or none): the host's port,
+    // or the default one, is not added to it.
+    let port =
+        (!target.endpoint_given()).then(|| target.port.unwrap_or_else(|| default_port(&target)));
     if let Some(provenance) = pending_secret {
-        let port = target.port.unwrap_or_else(|| default_port(&target));
+        // The port the request carries, an absent one filled the way the
+        // webview fills it: the binding then sees the address the connect
+        // reaches, not the link host's port beside an endpoint of its own.
         match launch_destination(
             protocol,
             &server,
-            port,
+            port.unwrap_or_else(|| default_port(&target)),
             &username,
             provider_id.as_deref(),
             &options,
@@ -372,10 +378,7 @@ pub fn parse_remote_url(raw: &str) -> Option<OpenRequest> {
         is_dir,
         protocol: Some(protocol.to_string()),
         server: Some(server),
-        // An S3 link's own endpoint carries its port (or none): the host's
-        // port, or the default one, is not added to it.
-        port: (!target.endpoint_given())
-            .then(|| target.port.unwrap_or_else(|| default_port(&target))),
+        port,
         username: (!username.is_empty()).then_some(username),
         password,
         initial_path,
@@ -1211,6 +1214,39 @@ mod tests {
             "allow_cleartext_storage": false,
         }))
         .unwrap()
+    }
+
+    #[test]
+    fn an_s3_endpoint_without_a_port_beside_a_host_port_still_reads_its_secret() {
+        // The endpoint names no port and the host names 9000: the request
+        // drops the host's port, the webview fills 443, and the binding
+        // must see that same address.
+        let _guard = crate::test_env::lock();
+        let sentinel = "sentinel-endpoint-port-8d02";
+        let vars = [
+            "AWS_ACCESS_KEY_ID",
+            "AWS_SECRET_ACCESS_KEY",
+            "AEROFTP_PASSWORD",
+        ];
+        for env in [
+            &[("AWS_SECRET_ACCESS_KEY", sentinel)][..],
+            &[("AEROFTP_PASSWORD", sentinel)][..],
+        ] {
+            let connected = with_env(&vars, &[], || {
+                with_aws_files("", "", env, || {
+                    let request = parse_remote_url(
+                        "s3://KEY@minio.lan:9000/?bucket=b1&endpoint=https://storage.example.com",
+                    )
+                    .unwrap();
+                    assert_eq!(request.port, None);
+                    assert_never_serialized(&request, &[sentinel]);
+                    webview_params(&request)
+                        .to_provider_config()
+                        .map(|config| config.password)
+                })
+            });
+            assert_eq!(connected, Ok(Some(sentinel.to_string())), "{env:?}");
+        }
     }
 
     #[test]
