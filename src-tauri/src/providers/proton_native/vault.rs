@@ -187,6 +187,27 @@ pub(crate) mod test_seams {
         }
     }
 
+    static BEFORE_SESSION_VAULT_WRITE: Mutex<Option<RefreshWriteHook>> = Mutex::new(None);
+
+    /// Runs `hook` once, with the key, just before the next vault write of a
+    /// legacy owner's session save: another writer storing a session there
+    /// between the save's start and its write.
+    pub(crate) fn before_next_session_vault_write(hook: impl FnOnce(&str) + Send + 'static) {
+        *BEFORE_SESSION_VAULT_WRITE
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(Box::new(hook));
+    }
+
+    pub(super) fn session_vault_write(key: &str) {
+        let hook = BEFORE_SESSION_VAULT_WRITE
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .take();
+        if let Some(hook) = hook {
+            hook(key);
+        }
+    }
+
     static MIRROR_REFUSED: AtomicBool = AtomicBool::new(false);
 
     /// The next save of a session's partition row is refused, as an account
@@ -581,17 +602,12 @@ pub fn store_session(
         indexed(&store, user, &key);
         return Ok(());
     }
-    let previous = match store.get(&key) {
-        Ok(previous) => Some(Zeroizing::new(previous)),
-        Err(crate::credential_store::CredentialError::NotFound(_)) => None,
-        Err(error) => {
-            return Err(ProviderError::Other(format!(
-                "the saved session could not be read before its save: {error}"
-            )))
-        }
-    };
-    store
-        .store(&key, &json)
+    #[cfg(test)]
+    test_seams::session_vault_write(&key);
+    // The session this save replaces, read under the same vault lock as the
+    // write, so a put-back never undoes a session saved in between.
+    let previous = store
+        .store_returning_previous(&key, &json)
         .map_err(|error| ProviderError::Other(format!("the vault refused the session: {error}")))?;
     if let Some(user) = owner.user_id {
         if let Err(error) = mirror_session(&store, user, &key, &json) {

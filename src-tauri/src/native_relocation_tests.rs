@@ -2490,3 +2490,45 @@ fn a_template_import_says_shared_only_for_a_session_it_stored() {
     );
     assert!(!shared, "a session left out is not reported shared");
 }
+
+/// A legacy owner's session save whose row is refused puts the vault key back
+/// to the session it replaced, the one read under the lock of its own write:
+/// a session another writer saved between the start of this save and its
+/// write is kept, never undone to the one saved before it.
+#[test]
+fn a_refused_session_save_keeps_a_session_saved_while_it_began() {
+    if !in_isolated_child("a_refused_session_save_keeps_a_session_saved_while_it_began") {
+        return;
+    }
+    let accounts = Accounts::open();
+    let owners_owner = accounts.owners_owner();
+    accounts.add_profile(accounts.legacy, "raced");
+    vault::store_session(owners_owner, Some("raced"), &session("raced-uid", "a1")).unwrap();
+    let between = raw(&session("raced-uid", "b1"));
+    vault::test_seams::before_next_session_vault_write(move |key| {
+        CredentialStore::from_cache()
+            .unwrap()
+            .store(key, &between)
+            .unwrap();
+    });
+    vault::test_seams::refuse_next_mirror();
+    let refused = vault::store_session(owners_owner, Some("raced"), &session("raced-uid", "c1"));
+    assert!(
+        refused.is_err(),
+        "the refused save is an error: {refused:?}"
+    );
+    assert_eq!(
+        accounts.copies("raced").0.as_deref(),
+        Some("b1"),
+        "the vault keeps the session stored while the save began"
+    );
+
+    // Uncontended: the refused save puts back the session it replaced.
+    vault::test_seams::refuse_next_mirror();
+    let refused = vault::store_session(owners_owner, Some("raced"), &session("raced-uid", "d1"));
+    assert!(
+        refused.is_err(),
+        "the refused save is an error: {refused:?}"
+    );
+    assert_eq!(accounts.copies("raced").0.as_deref(), Some("b1"));
+}

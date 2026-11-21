@@ -6918,14 +6918,15 @@ pub(crate) fn store_vault_then_mirror(
     secret: &str,
     mirror: impl FnOnce() -> Result<(), String>,
 ) -> Result<(), String> {
-    let previous = match store.get(credential_id) {
-        Ok(previous) => Some(Zeroizing::new(previous)),
-        Err(crate::credential_store::CredentialError::NotFound(_)) => None,
-        Err(e) => return Err(format!("Read credential in vault: {e}")),
-    };
-    store
-        .store(credential_id, secret)
+    #[cfg(test)]
+    run_dual_write_hook(&BEFORE_VAULT_WRITE);
+    // The value this write replaces, read under the same vault lock: one read
+    // before it would be undone over a value another writer stored between.
+    let previous = store
+        .store_returning_previous(credential_id, secret)
         .map_err(|e| format!("Store credential in vault: {e}"))?;
+    #[cfg(test)]
+    run_dual_write_hook(&BEFORE_MIRROR);
     mirror().map_err(|error| {
         undo_vault_write(
             store,
@@ -6935,6 +6936,28 @@ pub(crate) fn store_vault_then_mirror(
             &error,
         )
     })
+}
+
+/// A step a test runs once inside [`store_vault_then_mirror`].
+#[cfg(test)]
+type DualWriteHook = RefCell<Option<Box<dyn FnOnce()>>>;
+
+#[cfg(test)]
+thread_local! {
+    /// Runs once on this thread at the start of the next
+    /// [`store_vault_then_mirror`], before its vault write: another writer
+    /// storing meanwhile.
+    pub(crate) static BEFORE_VAULT_WRITE: DualWriteHook = const { RefCell::new(None) };
+    /// Runs once on this thread in the next [`store_vault_then_mirror`],
+    /// between its vault write and its mirror.
+    pub(crate) static BEFORE_MIRROR: DualWriteHook = const { RefCell::new(None) };
+}
+
+#[cfg(test)]
+fn run_dual_write_hook(hook: &'static std::thread::LocalKey<DualWriteHook>) {
+    if let Some(hook) = hook.take() {
+        hook();
+    }
 }
 
 /// Puts the vault key `credential_id` back as it was before `written`: the
@@ -11643,6 +11666,46 @@ mod tests {
             let refused = private_token_signer(vec![2, 3], active).unwrap_err();
             assert!(refused.starts_with(ACCOUNT_CHANGED), "{refused}");
         }
+    }
+
+    /// A throwaway vault, outside any partition database.
+    /// A write whose mirror fails puts the vault key back to the value that
+    /// write replaced, read under its own vault lock: a value another writer
+    /// stored before the write (here between its start and its write) is
+    /// kept, and so is one stored after it; uncontended, the key goes back to
+    /// the value it held.
+    #[test]
+    fn a_failed_mirror_puts_back_the_value_its_write_replaced() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_vault(dir.path());
+        let key = "server_raced";
+        let refused = || Err::<(), _>("refused".to_string());
+
+        store.store(key, "a").unwrap();
+        let raced = throwaway_vault(dir.path());
+        BEFORE_VAULT_WRITE.set(Some(Box::new(move || raced.store(key, "b").unwrap())));
+        assert!(store_vault_then_mirror(&store, key, "c", refused).is_err());
+        assert_eq!(store.get(key).unwrap(), "b", "a value stored meanwhile");
+
+        let after = |value: &'static str| {
+            let store = &store;
+            move || {
+                store.store(key, value).unwrap();
+                Err::<(), _>("refused".to_string())
+            }
+        };
+        assert!(store_vault_then_mirror(&store, key, "c", after("d")).is_err());
+        assert_eq!(
+            store.get(key).unwrap(),
+            "d",
+            "a value stored after the write"
+        );
+
+        assert!(store_vault_then_mirror(&store, key, "e", refused).is_err());
+        assert_eq!(store.get(key).unwrap(), "d", "uncontended");
+        store.delete(key).unwrap();
+        assert!(store_vault_then_mirror(&store, key, "f", refused).is_err());
+        assert!(store.get(key).is_err(), "no value before, none after");
     }
 
     /// The alignment does not run while a profile writer holds the list lock,

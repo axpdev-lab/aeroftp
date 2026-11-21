@@ -2539,6 +2539,43 @@ impl CredentialStore {
         Ok(true)
     }
 
+    /// Stores `secret` under `account` and returns the value it replaced
+    /// (`None`: there was none), read and written under one cross-process
+    /// vault lock, so the value returned is the one this write replaced and
+    /// never one read before another writer stored its own. A previous value
+    /// that cannot be decrypted refuses the write.
+    pub(crate) fn store_returning_previous(
+        &self,
+        account: &str,
+        secret: &str,
+    ) -> Result<Option<Zeroizing<String>>, CredentialError> {
+        Self::reject_reserved_account(account)?;
+        let guard = VaultWriteGuard::acquire(Self::lock_dir(&self.vault_path)?)?;
+        let mut vault = Self::read_vault(&self.vault_path)?;
+        Self::ensure_vault_opens_with(&vault, &self.vault_key)?;
+        let previous = match vault.entries.get(account) {
+            Some(entry) => {
+                let plaintext = Zeroizing::new(
+                    crate::crypto::decrypt_aes_gcm(&self.vault_key, &entry.nonce, &entry.data)
+                        .map_err(CredentialError::Encryption)?,
+                );
+                let previous = std::str::from_utf8(&plaintext)
+                    .map_err(|e| CredentialError::Encryption(e.to_string()))?;
+                Some(Zeroizing::new(previous.to_owned()))
+            }
+            None => None,
+        };
+        let nonce = crate::crypto::random_bytes(12);
+        let data = crate::crypto::encrypt_aes_gcm(&self.vault_key, &nonce, secret.as_bytes())
+            .map_err(CredentialError::Encryption)?;
+        vault
+            .entries
+            .insert(account.to_owned(), VaultEntry { nonce, data });
+        Self::write_vault(&self.vault_path, &vault, &guard)?;
+        info!("Credential stored: {}", account);
+        Ok(previous)
+    }
+
     /// Deletes `account` only while it still holds `expected`, so a write
     /// being undone never removes a value another writer stored since.
     /// Whether it was deleted.
