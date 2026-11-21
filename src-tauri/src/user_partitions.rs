@@ -5370,11 +5370,11 @@ fn align_private_tokens_of(
                     |row| row.get(0),
                 )
                 .map_err(|e| format!("Read profile holders: {e}"))?;
-            let keys = private_token_keys_of_profile(id).into_iter().filter(|key| {
-                vault_keys.contains(key) && only.is_none_or(|only| only.contains(key))
-            });
+            let keys = private_token_keys_of_profile(id)
+                .into_iter()
+                .filter(|key| only.is_none_or(|only| only.contains(key)));
             if !shared {
-                sole.extend(keys);
+                sole.extend(keys.filter(|key| vault_keys.contains(key)));
                 continue;
             }
             // A profile id another account also holds: the vault key is the
@@ -5382,16 +5382,21 @@ fn align_private_tokens_of(
             // an earlier migration made and a refresh may have rewritten since,
             // unless its own sign-in stamped it. A native Proton session is
             // the same session by its UID, whatever pair a refresh has rotated
-            // it to since.
+            // it to since. A copy outlives its vault key when the owner signed
+            // out first: an unstamped row of such a key is dropped all the
+            // same, but a Proton session, whose owner's sign-out ended it.
             for key in keys {
                 let Some((row, digest)) = read_credential_and_digest_with_dek(&tx, uid, dek, &key)?
                 else {
                     continue;
                 };
-                let Some(vault) = read_secret(&key)? else {
-                    continue;
+                let copy = match read_secret(&key)? {
+                    Some(vault) => row_may_be_a_copy(&tx, uid, &key, &row, &digest, Some(&vault))?,
+                    None => {
+                        !is_proton_session_key(&key) && !stamp_matches(&tx, uid, &key, &digest)?
+                    }
                 };
-                if row_may_be_a_copy(&tx, uid, &key, &row, &digest, Some(&vault))? {
+                if copy {
                     delete_user_credential_for(&tx, uid, &key)?;
                 }
             }
@@ -12766,6 +12771,51 @@ mod tests {
         reset_alignment(&conn, other.id);
         align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete).unwrap();
         assert_eq!(row_of(&conn, &root, other.id, key), Some(own));
+    }
+
+    /// An earlier migration copied the owner's token into another account's
+    /// row on a profile id both hold, and the owner signed out before that
+    /// account's first alignment, which took the vault key away: the
+    /// unstamped copy is dropped all the same and the account is marked
+    /// aligned. A row its own sign-in stamped stays, and so does a native
+    /// Proton session, which the owner's sign-out ended.
+    #[test]
+    fn a_shared_copy_whose_vault_key_is_gone_is_dropped() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(1);
+        let root = test_root();
+        let other = shares_the_owners_profile(&mut conn, &root);
+        let (oauth, proton) = ("oauth_dropbox_profile-0", "proton_native_session_profile-0");
+        let copied = oauth_record("owners-access", "owners-refresh", "v1:owners");
+        set_user_credential_for(&conn, &root, other.id, oauth, "oauth", &copied).unwrap();
+        set_user_credential_for(
+            &conn,
+            &root,
+            other.id,
+            proton,
+            "proton_native_session",
+            "{}",
+        )
+        .unwrap();
+        let (keys, read) = fake_vault(&[]);
+        let delete = |_: &str| Ok(());
+        align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete).unwrap();
+        assert_eq!(
+            row_of(&conn, &root, other.id, oauth),
+            None,
+            "a copy of the owner's token outlived the owner's sign-out"
+        );
+        assert_eq!(
+            row_of(&conn, &root, other.id, proton).as_deref(),
+            Some("{}")
+        );
+        assert!(private_tokens_aligned(&conn, other.id).unwrap());
+
+        let own = oauth_record("own-access", "own-refresh", "v1:own");
+        set_signed_in_credential_for(&conn, &root, other.id, oauth, "oauth", &own).unwrap();
+        reset_alignment(&conn, other.id);
+        align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete).unwrap();
+        assert_eq!(row_of(&conn, &root, other.id, oauth), Some(own));
     }
 
     /// A stamp is never carried: a row a restore (or any writer other than
