@@ -2550,6 +2550,47 @@ fn an_unended_deletion_of_a_live_process_is_settled_by_it() {
     assert!(failures.is_empty(), "{failures:#?}");
 }
 
+/// A deletion whose end could not be recorded is settled by a sweep that
+/// runs right after it is queued: it is over in this process before the
+/// queue names it, so the sweep finds it left over and records that, instead
+/// of reading it as running and dropping it from the queue while every other
+/// process still takes it for one in progress. A later sweep finds nothing
+/// left to settle.
+#[test]
+fn an_unended_deletion_is_queued_only_once_it_is_over_here() {
+    use std::sync::atomic::Ordering::SeqCst;
+    if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+        "providers::jottacloud::chain_tests::an_unended_deletion_is_queued_only_once_it_is_over_here",
+    ) {
+        return;
+    }
+    let chains = Chains::new();
+    let key = "jottacloud_refresh_sweptbetween";
+    partitions::SWEEP_AFTER_UNENDED.store(true, SeqCst);
+    partitions::CHAIN_DELETION_END_REFUSED.store(true, SeqCst);
+    let deleted = delete_refresh_chain::<String>(&chains.store, Some(chains.first), key, || Ok(()));
+    partitions::CHAIN_DELETION_END_REFUSED.store(false, SeqCst);
+    partitions::SWEEP_AFTER_UNENDED.store(false, SeqCst);
+    assert!(deleted.is_ok(), "{deleted:?}");
+    let mut failures = Vec::new();
+    let running = partitions::chain_deletions_running_raw(&chains.store, chains.owner, key);
+    let queued = partitions::keeps_unended_deletion(chains.owner, key);
+    if running != 0 && !queued {
+        failures.push(format!(
+            "after the sweep in between: {running} running in the record, and none left to settle"
+        ));
+    }
+    partitions::settle_unended_chain_deletions(&chains.store);
+    let running = partitions::chain_deletions_running_raw(&chains.store, chains.owner, key);
+    let queued = partitions::keeps_unended_deletion(chains.owner, key);
+    if running != 0 || queued {
+        failures.push(format!(
+            "after a later sweep: {running} running in the record, still queued: {queued}"
+        ));
+    }
+    assert!(failures.is_empty(), "{failures:#?}");
+}
+
 /// A connection does not hold up the async worker while another thread
 /// holds the lock deletions and rotation writes are serialized by: the clock
 /// it begins at is read off the worker, and building a provider reads none.

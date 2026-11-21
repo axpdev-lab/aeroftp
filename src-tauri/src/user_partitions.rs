@@ -4714,16 +4714,31 @@ pub(crate) fn end_chain_deletion(
         result = end();
     }
     if result.is_err() {
-        unended_chain_deletions().insert((owner, account.to_string()));
+        // Over here first: a sweep that reads the record from now on finds
+        // it left over and settles it. Published while it still ran here, a
+        // sweep would read it as running, leave it, and drop the entry.
+        let id = deletion.id.clone();
+        drop(deletion);
+        unended_chain_deletions().insert((owner, account.to_string(), id));
+        #[cfg(test)]
+        if SWEEP_AFTER_UNENDED.load(std::sync::atomic::Ordering::SeqCst) {
+            settle_unended_chain_deletions(store);
+        }
     }
     result
 }
 
-/// A deletion [`unended_chain_deletions`] keeps: (owner, key).
-type UnendedDeletion = (Option<i64>, String);
+/// A sweep of the unended deletions runs right after one is recorded (test
+/// only).
+#[cfg(test)]
+pub(crate) static SWEEP_AFTER_UNENDED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// A deletion [`unended_chain_deletions`] keeps: (owner, key, its id).
+type UnendedDeletion = (Option<i64>, String, String);
 
 /// The deletions this process began and could not record as ended, by
-/// (owner, key). This process counts each as completed at its next read of
+/// (owner, key, id). This process counts each as completed at its next read of
 /// that key, but every other process takes it for one still running for as
 /// long as this one lives, and would refuse that key's chain meanwhile: so
 /// this process settles them again ([`settle_unended_chain_deletions`]) until
@@ -4739,13 +4754,59 @@ fn unended_chain_deletions() -> MutexGuard<'static, HashSet<UnendedDeletion>> {
 /// it as left over and commits that, for every process. One whose read fails
 /// is tried again next time. Called when a connection begins and before a
 /// deletion, wherever that connection's key is.
+/// An entry goes only once the record no longer lists its deletion as
+/// running: a read that left it (it still ran here) or failed keeps it.
 pub(crate) fn settle_unended_chain_deletions(store: &CredentialStore) {
     let unended: Vec<UnendedDeletion> = unended_chain_deletions().iter().cloned().collect();
-    for (owner, account) in unended {
-        if chain_deletions(store, owner, &account).is_ok() {
-            unended_chain_deletions().remove(&(owner, account));
+    for (owner, account, id) in unended {
+        if chain_deletions(store, owner, &account).is_err() {
+            continue;
+        }
+        if running_chain_deletions(store, owner, &account)
+            .is_ok_and(|running| !running.contains(&id))
+        {
+            unended_chain_deletions().remove(&(owner, account, id));
         }
     }
+}
+
+/// The ids of the deletions of `account` for `owner` the record lists as
+/// running, as stored.
+fn running_chain_deletions(
+    store: &CredentialStore,
+    owner: Option<i64>,
+    account: &str,
+) -> Result<Vec<String>, String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    let record = DeletionRecord::read(&conn, &chain_deletion_key(store, owner, account)?)?;
+    Ok(record
+        .running
+        .into_iter()
+        .map(|running| running.id)
+        .collect())
+}
+
+/// How many deletions of `account` for `owner` the record lists as running,
+/// read without settling any (test only).
+#[cfg(test)]
+pub(crate) fn chain_deletions_running_raw(
+    store: &CredentialStore,
+    owner: Option<i64>,
+    account: &str,
+) -> usize {
+    running_chain_deletions(store, owner, account)
+        .expect("read the record")
+        .len()
+}
+
+/// Whether this process still keeps an unended deletion of `account` for
+/// `owner` to settle (test only).
+#[cfg(test)]
+pub(crate) fn keeps_unended_deletion(owner: Option<i64>, account: &str) -> bool {
+    unended_chain_deletions()
+        .iter()
+        .any(|(o, a, _)| *o == owner && a == account)
 }
 
 /// Guard an implicit GUI account during a global/memory token update. Resolve
