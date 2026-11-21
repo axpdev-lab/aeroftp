@@ -920,6 +920,9 @@ pub struct WebDavProvider {
     /// a session rooted below another folder would list, download or
     /// restore the file of the same path at the account root instead.
     megacmd_serves_account_root: bool,
+    /// The account MEGAcmd was logged in to when this session connected
+    /// (`mega-whoami`): versions are read only while it still is.
+    megacmd_account: Option<String>,
 }
 
 /// How long a `Depth: infinity` that sent no headers keeps the next scans on
@@ -1301,8 +1304,15 @@ fn nextcloud_bound_version_id(file_id: &str, version: &str) -> String {
 }
 
 /// The file id a version id is bound to (`None` for a bare version, as a
-/// caller may type it) and the version segment itself.
+/// caller may type it) and the version segment itself. A current row bound
+/// to its listed ETag ([`super::bound_current_row`]) is the current version
+/// of its file.
 fn nextcloud_split_version_id(id: &str) -> (Option<&str>, &str) {
+    if let Some((file_id, _)) = super::bound_current_row_of(id) {
+        if file_id.bytes().all(|b| b.is_ascii_digit()) {
+            return (Some(file_id), super::CURRENT_VERSION_ID);
+        }
+    }
     match id.split_once(':') {
         Some((file_id, version))
             if !file_id.is_empty() && file_id.bytes().all(|b| b.is_ascii_digit()) =>
@@ -1489,13 +1499,17 @@ fn megacmd_session_is_account_root(session_url: &str, served: Option<&str>) -> b
 /// another file's id, or of the same id under another user's collection (a
 /// server or proxy answering more than was asked), is not this file's, and
 /// binding it would let a delete remove this file's version of that time.
-fn nextcloud_version_id_of_href(href: &str, collection_url: &str) -> Option<String> {
-    // The href is resolved against the collection as a browser would: an
-    // absolute URL and a scheme-relative `//host/...` name their own server,
-    // and one of another origin is not a row of this collection, whatever
-    // its path. A path-only href stays on the collection's origin.
+fn nextcloud_version_id_of_href(
+    href: &str,
+    collection_url: &str,
+    answered_from: &str,
+) -> Option<String> {
+    // The href is resolved as a browser would, against the URL the answer
+    // came from (after any redirect): an absolute URL and a scheme-relative
+    // `//host/...` name their own server, and one of another origin than
+    // the collection's is not a row of this collection, whatever its path.
     let base = url::Url::parse(collection_url).ok()?;
-    let resolved = base.join(href).ok()?;
+    let resolved = url::Url::parse(answered_from).ok()?.join(href).ok()?;
     if resolved.origin() != base.origin() {
         return None;
     }
@@ -1714,6 +1728,7 @@ impl WebDavProvider {
             infinity_timed_out_at: None,
             profile_url,
             megacmd_serves_account_root: false,
+            megacmd_account: None,
         })
     }
 
@@ -2734,8 +2749,11 @@ impl WebDavProvider {
     /// it must mean "this really is not Nextcloud", never "the user typed a
     /// short URL".
     fn nextcloud_base_url(&self) -> Option<String> {
-        if let Some(idx) = self.config.url.find("/remote.php/") {
-            return Some(self.config.url[..idx].trim_end_matches('/').to_string());
+        // `/remote.php/` is looked for in the path only: one in a query or a
+        // fragment (`?next=/remote.php/...`) is no route of this server.
+        let before_query = self.config.url.split(['?', '#']).next().unwrap_or_default();
+        if let Some(idx) = before_query.find("/remote.php/") {
+            return Some(before_query[..idx].trim_end_matches('/').to_string());
         }
         if self.is_nextcloud_for_dav() {
             // The Nextcloud routes (`/remote.php/...`) go on the URL's path:
@@ -3895,6 +3913,17 @@ impl WebDavProvider {
                 "Versions PROPFIND failed: HTTP {status}"
             )));
         }
+        // A listing redirected to another origin is that server's: its
+        // path-only hrefs would read as rows of this collection, and a purge
+        // of one would then go to this server.
+        let answered_from = resp.url().to_string();
+        let same_origin =
+            url::Url::parse(&url).is_ok_and(|asked| resp.url().origin() == asked.origin());
+        if !same_origin {
+            return Err(ProviderError::ServerError(format!(
+                "The versions listing of {path} was answered by another server"
+            )));
+        }
         let body = super::response_bytes_with_limit(resp, NEXTCLOUD_VERSIONS_MAX_BYTES).await?;
         let xml = String::from_utf8(body).map_err(|e| {
             ProviderError::ParseError(format!("Versions listing is not UTF-8: {e}"))
@@ -3921,14 +3950,18 @@ impl WebDavProvider {
         // from the versions endpoint, which may hold no body for it).
         // Nextcloud 25 leaves them out, and the file itself becomes row 0.
         // Its id is bound to the file id too, so a download of it refuses
-        // another file that took the path since.
-        let current_id = nextcloud_bound_version_id(&file_id, super::CURRENT_VERSION_ID);
+        // another file that took the path since, and to the strong ETag the
+        // listing saw, so a write since then is not read as the row.
+        let current_id = match current.etag.as_deref().and_then(strong_etag) {
+            Some(etag) => super::bound_current_row(&file_id, &etag),
+            None => nextcloud_bound_version_id(&file_id, super::CURRENT_VERSION_ID),
+        };
         let mtime = super::version_time_millis(current.modified.as_deref()) / 1000;
         let versions: Vec<super::FileVersion> = parse_nextcloud_versions_listing(&xml)?
             .into_iter()
             .filter(|row| !row.is_collection)
             .filter_map(|row| {
-                let version = nextcloud_version_id_of_href(&row.href, &url)?;
+                let version = nextcloud_version_id_of_href(&row.href, &url, &answered_from)?;
                 let epoch = version.parse::<i64>().unwrap_or(0);
                 let id = if mtime > 0 && epoch == mtime {
                     current_id.clone()
@@ -3983,8 +4016,9 @@ impl WebDavProvider {
     ) -> Result<(), ProviderError> {
         let (bound_to, version) = nextcloud_split_version_id(version_id);
         if version == super::CURRENT_VERSION_ID {
+            let listed_etag = super::bound_current_row_of(version_id).map(|(_, etag)| etag);
             return self
-                .nextcloud_download_current(path, bound_to, local_path)
+                .nextcloud_download_current(path, bound_to, listed_etag.as_deref(), local_path)
                 .await;
         }
         let url = self.nextcloud_version_url(path, version_id).await?;
@@ -4031,11 +4065,13 @@ impl WebDavProvider {
     /// before and after the body was read, and the body is read only while
     /// the path still has the ETag answered with the id. A replacement in
     /// between leaves the destination as it was (unless the user asked for
-    /// `--inplace`).
+    /// `--inplace`). A row bound to the ETag its listing saw (`listed_etag`)
+    /// is read only under that ETag: a write since the listing saves nothing.
     async fn nextcloud_download_current(
         &mut self,
         path: &str,
         listed: Option<&str>,
+        listed_etag: Option<&str>,
         local_path: &str,
     ) -> Result<(), ProviderError> {
         let replaced = |listed: &str, now: &str| {
@@ -4059,6 +4095,9 @@ impl WebDavProvider {
                  cannot be read bound to the file listed, download the file itself instead"
             )));
         };
+        if listed_etag.is_some_and(|listed| listed != etag) {
+            return Err(super::current_row_changed(path));
+        }
         let resp = self
             .send_replaying_digest(|| {
                 self.request(Method::GET, path)
@@ -4069,9 +4108,17 @@ impl WebDavProvider {
             return Err(ProviderError::NotFound(path.to_string()));
         }
         if resp.status() == StatusCode::PRECONDITION_FAILED {
-            return Err(replaced(&before, "another file"));
+            return Err(match listed_etag {
+                Some(_) => super::current_row_changed(path),
+                None => replaced(&before, "another file"),
+            });
         }
-        let staged = super::stage_version_body(resp, local_path, "Version download failed").await?;
+        let staged = match listed_etag {
+            Some(_) => {
+                super::stage_bound_current_body(resp, local_path, "Version download failed").await?
+            }
+            None => super::stage_version_body(resp, local_path, "Version download failed").await?,
+        };
         let after = self.nextcloud_file_id_of(path).await?;
         if after != before {
             return Err(replaced(&before, &after));
@@ -4166,9 +4213,12 @@ impl WebDavProvider {
         if !status.is_success() {
             // Status only: a server may echo the request, credentials and
             // all, in the body of a refusal.
-            return Err(ProviderError::ServerError(format!(
-                "Version restore failed: HTTP {status}"
-            )));
+            return Err(
+                super::gateway_left_unknown(status, &format!("the restore of {path}"))
+                    .unwrap_or_else(|| {
+                        ProviderError::ServerError(format!("Version restore failed: HTTP {status}"))
+                    }),
+            );
         }
         super::confirm_version_restored(self, path, Some(&selected)).await
     }
@@ -4252,6 +4302,12 @@ impl WebDavProvider {
                 response.status()
             )));
         }
+        // A relative href is relative to where the answer came from, after
+        // any redirect, and an absolute one may name another server: each
+        // row must name an entry of this server's origin
+        // ([`Self::href_of_our_origin`], as in `nextcloud_file_of`).
+        let answered_from = response.url().to_string();
+        let own = self.build_url(&collection);
         let body = super::response_bytes_with_limit(response, NEXTCLOUD_VERSIONS_MAX_BYTES).await?;
         let xml = String::from_utf8(body)
             .map_err(|e| ProviderError::ParseError(format!("File id listing is not UTF-8: {e}")))?;
@@ -4263,7 +4319,12 @@ impl WebDavProvider {
             }
             // Do not trim the href. A space at the end of the leaf is a
             // different file from the same letters without it.
-            let href_path = Self::dav_path_segments(&hit.href, &request_path);
+            let Some(resolved) = Self::href_of_our_origin(&hit.href, &answered_from, &own) else {
+                return Err(ProviderError::ServerError(format!(
+                    "The file id listing of {parent} names an entry of another server"
+                )));
+            };
+            let href_path = Self::dav_path_segments(resolved.as_str(), &request_path);
             if href_path == request_path || href_path == listing_path || href_path == root_path {
                 continue;
             }
@@ -4945,7 +5006,12 @@ fn validate_propfind_xml(xml: &str, path: &str) -> Result<(), ProviderError> {
         Ok(PropfindDocument::DavError) => Err(ProviderError::ServerError(
             "WebDAV returned an error document".into(),
         )),
-        Ok(_) => Ok(()),
+        Ok(PropfindDocument::Multistatus) => Ok(()),
+        // Another document (a login or proxy page in XHTML, say) lists
+        // nothing: read as an empty folder, it would let a removal go on.
+        Ok(PropfindDocument::Other) => Err(ProviderError::ParseError(
+            "WebDAV answered the listing with a document that is not a DAV multistatus".into(),
+        )),
         Err(error) => {
             // ownCloud 10.16 can interrupt the multistatus OPENING TAG and
             // append an independently declared DAV error document. Recover
@@ -5126,6 +5192,23 @@ struct NextcloudMultipartHandle {
 }
 
 impl NextcloudMultipartHandle {
+    /// The handle of an upload this connection's user began. A handle is
+    /// persisted for resume, and its chunks live under the user who began
+    /// it: one of another user (a profile signed in again as someone else)
+    /// is refused before any write, as the URLs would name this user's
+    /// uploads folder, not the one its chunks are in.
+    fn of_this_user(raw: &str, user: Option<&str>) -> Result<Self, ProviderError> {
+        let payload = Self::decode(raw)?;
+        if user != Some(payload.user_id.as_str()) {
+            return Err(ProviderError::PermissionDenied(
+                "This upload was begun by another Nextcloud user, so nothing was written: \
+                 start the upload again"
+                    .to_string(),
+            ));
+        }
+        Ok(payload)
+    }
+
     fn encode(&self) -> String {
         format!(
             "{}|{}|{}|{}",
@@ -5273,6 +5356,7 @@ impl StorageProvider for WebDavProvider {
         }
         if super::mega_df::is_megacmd_webdav_provider_id(self.config.provider_id.as_deref()) {
             self.megacmd_serves_account_root = false;
+            self.megacmd_account = None;
             // mega-df warms up the MEGAcmd Server when it has been quit/exited
             // (issue #253) and tells us whether a login session exists.
             match super::mega_df::mega_df_query().await {
@@ -5305,6 +5389,10 @@ impl StorageProvider for WebDavProvider {
                                 );
                                 self.config.url = url;
                             }
+                            // The account this session's versions are of:
+                            // the MEGAcmd daemon is shared, and a login to
+                            // another account switches it for every client.
+                            self.megacmd_account = super::mega_df::megacmd_account().await.ok();
                             self.megacmd_serves_account_root =
                                 megacmd_session_is_account_root(&self.config.url, served.as_deref());
                         }
@@ -6817,6 +6905,7 @@ impl StorageProvider for WebDavProvider {
     ) -> Result<Vec<super::FileVersion>, ProviderError> {
         if super::mega_df::is_megacmd_webdav_provider_id(self.config.provider_id.as_deref()) {
             self.megacmd_versions_at_account_root()?;
+            super::mega_df::require_megacmd_account(self.megacmd_account.as_deref()).await?;
             return super::mega_df::mega_list_versions(&self.resolve_root(path)).await;
         }
         if self.supports_nextcloud_versions() {
@@ -6834,6 +6923,7 @@ impl StorageProvider for WebDavProvider {
     ) -> Result<(), ProviderError> {
         if super::mega_df::is_megacmd_webdav_provider_id(self.config.provider_id.as_deref()) {
             self.megacmd_versions_at_account_root()?;
+            super::mega_df::require_megacmd_account(self.megacmd_account.as_deref()).await?;
             let path = self.resolve_root(path);
             return super::mega_df::mega_download_version(&path, version_id, local_path).await;
         }
@@ -7178,7 +7268,10 @@ impl StorageProvider for WebDavProvider {
             ));
         }
 
-        let payload = NextcloudMultipartHandle::decode(&handle.upload_id)?;
+        let payload = NextcloudMultipartHandle::of_this_user(
+            &handle.upload_id,
+            self.nextcloud_userid().as_deref(),
+        )?;
         let chunk_url = self
             .nextcloud_chunked_chunk_url(&payload.transfer_id, part_number)
             .ok_or_else(|| {
@@ -7229,7 +7322,10 @@ impl StorageProvider for WebDavProvider {
             return Err(ProviderError::NotConnected);
         }
 
-        let payload = NextcloudMultipartHandle::decode(&handle.upload_id)?;
+        let payload = NextcloudMultipartHandle::of_this_user(
+            &handle.upload_id,
+            self.nextcloud_userid().as_deref(),
+        )?;
         let assemble_url = self
             .nextcloud_chunked_assemble_url(&payload.transfer_id)
             .ok_or_else(|| {
@@ -7299,7 +7395,12 @@ impl StorageProvider for WebDavProvider {
         // graph runner only calls abort when one of the upload_part nodes
         // already failed; surfacing a second error from the cleanup path
         // would mask the real upload failure.
-        let payload = match NextcloudMultipartHandle::decode(&handle.upload_id) {
+        // A handle of another user names chunks this user cannot see:
+        // nothing to clean up from here.
+        let payload = match NextcloudMultipartHandle::of_this_user(
+            &handle.upload_id,
+            self.nextcloud_userid().as_deref(),
+        ) {
             Ok(p) => p,
             Err(_) => return Ok(()),
         };
@@ -7521,33 +7622,11 @@ impl StorageProvider for WebDavProvider {
 
         let status = response.status();
         match status {
+            // A 206 that does not name the window it carries is written at
+            // this offset just the same, so it has to say which range it is;
+            // a 200 is read only up to the window's end.
             StatusCode::PARTIAL_CONTENT | StatusCode::OK => {
-                let answered = response
-                    .headers()
-                    .get(reqwest::header::CONTENT_RANGE)
-                    .and_then(|value| value.to_str().ok())
-                    .map(|value| value.to_string());
-                let bytes = response
-                    .bytes()
-                    .await
-                    .map_err(super::multi_thread::range_read_error)?;
-                // A 206 that does not name the window it carries is written at
-                // this offset just the same, so it has to say which range it is.
-                match super::multi_thread::ranged_answer(
-                    status,
-                    answered.as_deref(),
-                    bytes.len() as u64,
-                    offset,
-                    end,
-                ) {
-                    Ok(super::multi_thread::RangedAnswer::Window) => Ok(bytes.to_vec()),
-                    Ok(super::multi_thread::RangedAnswer::WholeObject) => {
-                        Ok(super::multi_thread::slice_whole_object(&bytes, offset, len))
-                    }
-                    Err(why) => Err(ProviderError::ParallelRefused(
-                        super::multi_thread::parallel_refused("WebDAV range read", path, &why),
-                    )),
-                }
+                super::ranged_read_window(response, offset, len, "WebDAV range read", path).await
             }
             StatusCode::NOT_FOUND => Err(ProviderError::NotFound(path.to_string())),
             StatusCode::RANGE_NOT_SATISFIABLE => Err(ProviderError::NotSupported(
@@ -8870,6 +8949,28 @@ mod tests {
                         .and_then(|v| v.to_str().ok())
                         .unwrap_or_default()
                         .to_string();
+                    // rv.txt (file 78): its versions PROPFIND is redirected
+                    // to the other origin, which lists a path-only row.
+                    if path == "/remote.php/dav/versions/user/versions/78/" {
+                        return if host.starts_with("127.0.0.1") {
+                            axum::response::Response::builder()
+                                .status(307)
+                                .header(reqwest::header::LOCATION, format!("{redirect_to}{path}"))
+                                .body(axum::body::Body::empty())
+                                .unwrap()
+                        } else {
+                            reply(
+                                207,
+                                r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:"><d:response><d:href>/remote.php/dav/versions/user/versions/78/1700000000</d:href><d:propstat><d:prop><d:getcontentlength>2</d:getcontentlength><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>"#,
+                            )
+                        };
+                    }
+                    if path == "/remote.php/dav/files/user/rv.txt" && method == "PROPFIND" {
+                        return reply(
+                            207,
+                            r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns"><d:response><d:href>/remote.php/dav/files/user/rv.txt</d:href><d:propstat><d:prop><oc:fileid>78</oc:fileid><d:getetag>&quot;rv1&quot;</d:getetag><d:getcontentlength>3</d:getcontentlength><d:getlastmodified>Wed, 15 Nov 2023 10:00:00 GMT</d:getlastmodified><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>"#,
+                        );
+                    }
                     if path == "/remote.php/dav/files/user/rd.txt" {
                         return if host.starts_with("127.0.0.1") {
                             axum::response::Response::builder()
@@ -8885,6 +8986,15 @@ mod tests {
                         };
                     }
                     match (method.as_str(), path.as_str()) {
+                        // foreign/ lists f.txt under an absolute href of
+                        // another origin, its path the same as ours.
+                        ("PROPFIND", "/remote.php/dav/files/user/foreign/") => reply(
+                            207,
+                            r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns">
+<d:response><d:href>/remote.php/dav/files/user/foreign/</d:href><d:propstat><d:prop><oc:fileid>76</oc:fileid></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
+<d:response><d:href>https://other.example/remote.php/dav/files/user/foreign/f.txt</d:href><d:propstat><d:prop><oc:fileid>77</oc:fileid></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
+</d:multistatus>"#,
+                        ),
                         ("PROPFIND", "/remote.php/dav/files/user/") => reply(
                             207,
                             r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns">
@@ -8975,6 +9085,7 @@ mod tests {
                             )
                         }
                         ("GET", "/remote.php/dav/files/user/swap/e.txt") => reply(200, "e of 48"),
+                        ("GET", "/remote.php/dav/files/user/wr.txt") => reply(200, "w of now"),
                         // swapback/k.txt answers file 51 (ETag "e51") at every
                         // lookup, but file 52 ("e52") is at the path while its
                         // body is read: a read conditional on "e51" is refused.
@@ -9031,6 +9142,7 @@ mod tests {
                         ("PROPFIND", p @ ("/remote.php/dav/files/user/u.txt"
                         | "/remote.php/dav/files/user/t.txt"
                         | "/remote.php/dav/files/user/rb.txt"
+                        | "/remote.php/dav/files/user/wr.txt"
                         | "/remote.php/dav/files/user/lf.txt")) => {
                             let n = {
                                 let mut seen = later_lookups.lock().unwrap();
@@ -9043,6 +9155,8 @@ mod tests {
                                 "/remote.php/dav/files/user/t.txt" if n > 0 => return reply(500, ""),
                                 "/remote.php/dav/files/user/t.txt" => (53, "t1"),
                                 "/remote.php/dav/files/user/rb.txt" => (if n == 0 { 60 } else { 61 }, "r"),
+                                // Written after its listing (two lookups).
+                                "/remote.php/dav/files/user/wr.txt" => (79, if n < 2 { "w1" } else { "w2" }),
                                 _ => (62, "l"),
                             };
                             let leaf = p.rsplit('/').next().unwrap();
@@ -9052,6 +9166,7 @@ mod tests {
                             )
                         }
                         ("PROPFIND", p @ ("/remote.php/dav/versions/user/versions/54/"
+                        | "/remote.php/dav/versions/user/versions/79/"
                         | "/remote.php/dav/versions/user/versions/60/"
                         | "/remote.php/dav/versions/user/versions/61/")) => reply(
                             207,
@@ -9110,6 +9225,10 @@ mod tests {
                         ("MOVE", "/remote.php/dav/versions/user/versions/42/1700000500") => {
                             reply(500, "<error>user=user password=hunter2-pass token=tok-abc123</error>")
                         }
+                        // b.txt's restore MOVE is answered by a gateway.
+                        ("MOVE", "/remote.php/dav/versions/user/versions/43/1700000000") => {
+                            reply(502, "")
+                        }
                         ("PROPFIND", "/remote.php/dav/files/user/b.txt") => reply(
                             207,
                             r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns">
@@ -9126,6 +9245,10 @@ mod tests {
                         ),
                         ("GET", "/remote.php/dav/versions/user/versions/42/1700000000") => {
                             reply(200, "old body")
+                        }
+                        // A part of the version: never written as it.
+                        ("GET", "/remote.php/dav/versions/user/versions/42/1700000500") => {
+                            reply(206, "part")
                         }
                         ("MOVE", "/remote.php/dav/versions/user/versions/42/1700000000") => {
                             reply(201, "")
@@ -9195,7 +9318,10 @@ mod tests {
         let mut provider = nextcloud_versions_provider(&base);
         let versions = provider.list_versions("/n.txt").await.expect("versions");
         let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
-        assert_eq!(ids, ["63:current"]);
+        assert_eq!(
+            ids,
+            [super::super::bound_current_row("63", "\"n1\"").as_str()]
+        );
         let refused = provider.delete_version("/n.txt", "63:1700000000").await;
         server.abort();
         assert!(refused.is_err(), "{refused:?}");
@@ -9445,6 +9571,32 @@ mod tests {
         assert!(log.iter().any(|l| l.contains("/versions/74")), "{log:?}");
     }
 
+    /// The versions PROPFIND of rv.txt is redirected to another origin,
+    /// which lists a path-only row: that server's, so the listing is
+    /// refused, and a purge named after it sends no DELETE.
+    #[tokio::test]
+    async fn a_versions_listing_redirected_to_another_origin_is_refused() {
+        let (base, log, server) = serve_nextcloud_versions().await;
+        let mut provider = nextcloud_versions_provider(&base);
+        let listed = provider.list_versions("/rv.txt").await;
+        let purged = provider.delete_version("/rv.txt", "78:1700000000").await;
+        server.abort();
+        assert!(
+            matches!(&listed, Err(ProviderError::ServerError(m)) if m.contains("another server")),
+            "{listed:?}"
+        );
+        assert!(purged.is_err(), "{purged:?}");
+        let log = log.lock().unwrap();
+        assert!(!log.iter().any(|l| l.starts_with("DELETE ")), "{log:?}");
+        assert!(
+            log.iter()
+                .filter(|l| l.starts_with("PROPFIND /remote.php/dav/versions/user/versions/78/"))
+                .count()
+                >= 2,
+            "the redirect was followed: {log:?}"
+        );
+    }
+
     /// The file id PROPFIND for rd.txt is redirected (307) to another
     /// origin, which answers file 99 with the relative href `rd.txt`: that
     /// origin's file, refused before any version request, where the href was
@@ -9503,7 +9655,10 @@ mod tests {
             .list_versions("/swap/e.txt")
             .await
             .expect("versions");
-        assert_eq!(versions[0].id, "47:current");
+        assert_eq!(
+            versions[0].id,
+            super::super::bound_current_row("47", "\"e47\"")
+        );
         assert_eq!(versions[0].size, 9);
         // 47 before the body, 48 after it.
         let during = provider
@@ -9529,6 +9684,70 @@ mod tests {
             .count();
         assert_eq!(gets, 1, "the refused second download reads no body");
         assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
+
+    /// A version answered 206 is a part: nothing is written and the
+    /// destination keeps its bytes; the version answered 200 is written.
+    #[tokio::test]
+    async fn a_nextcloud_version_answered_206_leaves_the_destination() {
+        let (base, _log, server) = serve_nextcloud_versions().await;
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("a.txt");
+        std::fs::write(&local, "mine").unwrap();
+        let to = local.to_str().unwrap();
+        let mut provider = nextcloud_versions_provider(&base);
+        let partial = provider
+            .download_version("/a.txt", "42:1700000500", to)
+            .await;
+        assert!(partial.is_err(), "{partial:?}");
+        assert_eq!(std::fs::read_to_string(&local).unwrap(), "mine");
+        provider
+            .download_version("/a.txt", "42:1700000000", to)
+            .await
+            .expect("a whole version");
+        server.abort();
+        assert_eq!(std::fs::read_to_string(&local).unwrap(), "old body");
+    }
+
+    /// The current row carries the strong ETag its listing saw: the file
+    /// written since (same id, another ETag) is not read, the destination
+    /// stays, and a restore or purge of the row is refused as the file.
+    #[tokio::test]
+    async fn a_nextcloud_current_row_written_after_its_listing_saves_nothing() {
+        let (base, log, server) = serve_nextcloud_versions().await;
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("wr.txt");
+        std::fs::write(&local, "mine").unwrap();
+        let mut provider = nextcloud_versions_provider(&base);
+        let versions = provider.list_versions("/wr.txt").await.expect("versions");
+        let current = super::super::bound_current_row("79", "\"w1\"");
+        assert_eq!(versions[0].id, current);
+        let outcome = provider
+            .download_version("/wr.txt", &current, local.to_str().unwrap())
+            .await;
+        let restored = provider.restore_version("/wr.txt", &current).await;
+        let purged = provider.delete_version("/wr.txt", &current).await;
+        server.abort();
+        assert!(
+            matches!(&outcome, Err(ProviderError::NotFound(m)) if m.contains("list its versions again")),
+            "{outcome:?}"
+        );
+        assert_eq!(std::fs::read_to_string(&local).unwrap(), "mine");
+        assert!(
+            !log.lock()
+                .unwrap()
+                .iter()
+                .any(|l| l.starts_with("GET /remote.php/dav/files/user/wr.txt")),
+            "a file written since its listing was read"
+        );
+        assert!(
+            matches!(restored, Err(ProviderError::NotSupported(_))),
+            "{restored:?}"
+        );
+        assert!(
+            matches!(purged, Err(ProviderError::NotSupported(_))),
+            "{purged:?}"
+        );
     }
 
     /// File 51 moved away, file 52 put at the path while the body is read,
@@ -9583,7 +9802,8 @@ mod tests {
         let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
         // The file as it is now first, as the versions dialog reads the list.
         // Past versions are bound to the file id they were listed from.
-        assert_eq!(ids, ["42:current", "42:1700000500", "42:1700000000"]);
+        let current = super::super::bound_current_row("42", "\"e42\"");
+        assert_eq!(ids, [current.as_str(), "42:1700000500", "42:1700000000"]);
         assert_eq!(versions[0].size, 20);
         assert!(versions[0].modified.is_some());
         assert_eq!(versions[1].size, 12);
@@ -9633,7 +9853,8 @@ mod tests {
         let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
         // 1700000500 is the file's mtime: the current contents, first, as
         // the file itself.
-        assert_eq!(ids, ["43:current", "43:1700000000"]);
+        let current = super::super::bound_current_row("43", "\"e43\"");
+        assert_eq!(ids, [current.as_str(), "43:1700000000"]);
         assert_eq!(versions[0].size, 12);
     }
 
@@ -9716,6 +9937,25 @@ mod tests {
         assert!(!log.iter().any(|l| l.contains("/versions/99/")), "{log:?}");
     }
 
+    /// A row whose absolute href names another origin is that server's
+    /// entry, even with our path: the listing is refused, never read as
+    /// `f.txt` of this folder (a purge would then take file 77's id).
+    #[tokio::test]
+    async fn a_file_id_row_of_another_origin_refuses_the_listing() {
+        let (base, _log, server) = serve_nextcloud_versions().await;
+        let mut provider = nextcloud_versions_provider(&base);
+        let foreign = provider.nextcloud_list_file_ids("/foreign").await;
+        let own = provider.nextcloud_list_file_ids("/").await;
+        server.abort();
+        assert!(
+            matches!(&foreign, Err(ProviderError::ServerError(m)) if m.contains("another server")),
+            "{foreign:?}"
+        );
+        assert!(own
+            .expect("same-origin rows")
+            .contains(&("a.txt".to_string(), "42".to_string())));
+    }
+
     /// The Nextcloud version paths check what each answer names: a lookup
     /// whose lone row is another file (#26), a file written between the two
     /// reads of a listing (#25), a recheck that fails after a versions 404
@@ -9752,20 +9992,32 @@ mod tests {
         let collection = "https://cloud.example/remote.php/dav/versions/u/versions/42/";
         let row = "/remote.php/dav/versions/u/versions/42/1700000000";
         assert_eq!(
-            nextcloud_version_id_of_href(row, collection).as_deref(),
+            nextcloud_version_id_of_href(row, collection, collection).as_deref(),
             Some("1700000000")
         );
         assert_eq!(
-            nextcloud_version_id_of_href(&format!("https://cloud.example{row}"), collection)
-                .as_deref(),
+            nextcloud_version_id_of_href(
+                &format!("https://cloud.example{row}"),
+                collection,
+                collection
+            )
+            .as_deref(),
             Some("1700000000")
         );
         assert_eq!(
-            nextcloud_version_id_of_href(&format!("https://other.example{row}"), collection),
+            nextcloud_version_id_of_href(
+                &format!("https://other.example{row}"),
+                collection,
+                collection
+            ),
             None
         );
         assert_eq!(
-            nextcloud_version_id_of_href(&format!("http://cloud.example{row}"), collection),
+            nextcloud_version_id_of_href(
+                &format!("http://cloud.example{row}"),
+                collection,
+                collection
+            ),
             None
         );
         // A scheme-relative href names a host too: `//remote.php/...` is the
@@ -9773,12 +10025,14 @@ mod tests {
         assert_eq!(
             nextcloud_version_id_of_href(
                 "//remote.php/dav/versions/u/versions/42/1700000000",
+                collection,
                 collection
             ),
             None
         );
         assert_eq!(
-            nextcloud_version_id_of_href(&format!("//cloud.example{row}"), collection).as_deref(),
+            nextcloud_version_id_of_href(&format!("//cloud.example{row}"), collection, collection)
+                .as_deref(),
             Some("1700000000")
         );
     }
@@ -9949,6 +10203,29 @@ mod tests {
         assert!(log.contains(&restore_move), "{log:?}");
     }
 
+    /// A restore MOVE answered 502 by a gateway may have been applied behind
+    /// it: applied and unconfirmed, and sent once.
+    #[tokio::test]
+    async fn a_nextcloud_restore_a_gateway_answered_is_applied_and_not_confirmed() {
+        let (base, log, server) = serve_nextcloud_versions().await;
+        let mut provider = nextcloud_versions_provider(&base);
+        let behind_gateway = provider.restore_version("/b.txt", "43:1700000000").await;
+        server.abort();
+        assert!(
+            matches!(&behind_gateway, Err(e) if crate::providers::was_applied(e)
+                && e.to_string().contains("gateway")),
+            "{behind_gateway:?}"
+        );
+        let log = log.lock().unwrap().clone();
+        assert_eq!(
+            log.iter()
+                .filter(|l| l.starts_with("MOVE /remote.php/dav/versions/user/versions/43/"))
+                .count(),
+            1,
+            "{log:?}"
+        );
+    }
+
     /// Nextcloud answers the restore MOVE 201 even when its rollback failed
     /// (RestoreFolder::moveInto drops the rollback's result). Here the MOVE
     /// of version 1700000000 (8 bytes) is answered 201 and the file still
@@ -10068,11 +10345,19 @@ exit 1
         )
         .unwrap();
         std::fs::set_permissions(&ls, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let whoami = dir.path().join("mega-whoami");
+        std::fs::write(
+            &whoami,
+            "#!/bin/sh\necho 'Account e-mail: one@example.test'\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&whoami, std::fs::Permissions::from_mode(0o755)).unwrap();
         super::super::mega_df::use_test_commands(Some(dir.path()));
         let mut config = test_config("http://127.0.0.1:4443/H2");
         config.provider_id = Some("megacmd-webdav".into());
         let mut provider = WebDavProvider::new(config).unwrap();
         provider.megacmd_serves_account_root = true;
+        provider.megacmd_account = Some("Account e-mail: one@example.test".into());
         provider.server_root = Some("/Team".into());
         let out = dir.path().join("r.pdf");
         let _ = provider.list_versions("/report.pdf").await;
@@ -10086,6 +10371,66 @@ exit 1
         let asked = std::fs::read_to_string(dir.path().join("ls.log")).unwrap_or_default();
         let asked: Vec<&str> = asked.lines().collect();
         assert_eq!(asked, ["/Team/report.pdf"; 3], "{asked:?}");
+    }
+
+    /// The MEGAcmd daemon is shared: after a login to another account, the
+    /// same path names that account's file. Versions are read only while
+    /// MEGAcmd is still on the account the session connected with, and the
+    /// refusal names neither account.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn megacmd_versions_are_refused_once_the_daemon_is_on_another_account() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        for (name, body) in [
+            (
+                "mega-ls",
+                "#!/bin/sh\necho \"$@\" >> \"$(dirname \"$0\")/ls.log\"\nexit 1\n",
+            ),
+            ("mega-whoami", "#!/bin/sh\ncat \"$(dirname \"$0\")/who\"\n"),
+        ] {
+            let path = dir.path().join(name);
+            std::fs::write(&path, body).unwrap();
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let who = dir.path().join("who");
+        std::fs::write(&who, "Account e-mail: one@example.test\n").unwrap();
+        super::super::mega_df::use_test_commands(Some(dir.path()));
+        let mut config = test_config("http://127.0.0.1:4443/H2");
+        config.provider_id = Some("megacmd-webdav".into());
+        let mut provider = WebDavProvider::new(config).unwrap();
+        provider.megacmd_serves_account_root = true;
+        let out = dir.path().join("r.pdf");
+        std::fs::write(&out, "mine").unwrap();
+        let to = out.to_str().unwrap().to_string();
+        // No account read at connect: refused before any listing.
+        let unknown = provider.list_versions("/r.pdf").await;
+        provider.megacmd_account = Some("Account e-mail: one@example.test".into());
+        // The same account: the listing is asked for (the stand-in fails it).
+        let _ = provider.list_versions("/r.pdf").await;
+        std::fs::write(&who, "Account e-mail: two@example.test\n").unwrap();
+        let listed = provider.list_versions("/r.pdf").await;
+        let fetched = provider.download_version("/r.pdf", "H:rAAAAAA1", &to).await;
+        super::super::mega_df::use_test_commands(None);
+        assert!(
+            matches!(unknown, Err(ProviderError::NotSupported(_))),
+            "{unknown:?}"
+        );
+        assert!(
+            matches!(&listed, Err(ProviderError::AuthenticationFailed(_))),
+            "{listed:?}"
+        );
+        assert!(
+            matches!(fetched, Err(ProviderError::AuthenticationFailed(_))),
+            "{fetched:?}"
+        );
+        assert!(
+            !format!("{listed:?}").contains("example.test"),
+            "{listed:?}"
+        );
+        assert_eq!(std::fs::read_to_string(&out).unwrap(), "mine");
+        let asked = std::fs::read_to_string(dir.path().join("ls.log")).unwrap_or_default();
+        assert_eq!(asked.lines().count(), 1, "{asked:?}");
     }
 
     /// The versions gate is the one the GUI, CLI and MCP read. It opens for
@@ -10211,6 +10556,20 @@ exit 1
             p.nextcloud_versions_root().unwrap(),
             "https://cloud.example.com/nc/remote.php/dav/versions/alice/"
         );
+        // A `/remote.php/` inside the query or the fragment is no route.
+        for url in [
+            "https://cloud.example.com/nc/?next=/remote.php/dav/files/eve/",
+            "https://cloud.example.com/nc/#/remote.php/dav/files/eve/",
+        ] {
+            let mut cfg = test_config(url);
+            cfg.provider_id = Some("nextcloud".to_string());
+            let p = WebDavProvider::new(cfg).expect("provider");
+            assert_eq!(
+                p.nextcloud_base_url().as_deref(),
+                Some("https://cloud.example.com/nc"),
+                "{url}"
+            );
+        }
     }
 
     fn test_config(url: &str) -> WebDavConfig {
@@ -11396,11 +11755,13 @@ exit 1
     /// which RFC 4918 runs with `Depth: infinity`, so a member the caller's
     /// listing had left out went with the "empty" collection. The collection
     /// is listed first (PROPFIND `Depth: 1`): one that holds anything is
-    /// refused, with no DELETE sent.
+    /// refused, with no DELETE sent. A listing answered with another document
+    /// (an XHTML login page) is no empty collection: refused, no DELETE.
     #[tokio::test]
     async fn rmdir_lists_the_collection_and_refuses_one_that_holds_anything() {
         use std::sync::{Arc, Mutex};
-        for (member, expect_refusal) in [(true, true), (false, false)] {
+        for (listing, expect_refusal) in [("member", true), ("empty", false), ("xhtml", true)] {
+            let member = listing == "member";
             let calls: Arc<Mutex<Vec<String>>> = Arc::default();
             let seen = Arc::clone(&calls);
             let app = axum::Router::new().fallback(axum::routing::any(
@@ -11410,6 +11771,15 @@ exit 1
                         let method = req.method().to_string();
                         let path = req.uri().path().to_string();
                         seen.lock().unwrap().push(format!("{method} {path}"));
+                        if method == "PROPFIND" && listing == "xhtml" {
+                            return axum::response::Response::builder()
+                                .status(207)
+                                .header("content-type", "application/xml; charset=utf-8")
+                                .body(axum::body::Body::from(
+                                    "<html xmlns=\"http://www.w3.org/1999/xhtml\"><body>Sign in</body></html>",
+                                ))
+                                .unwrap();
+                        }
                         if method == "PROPFIND" {
                             let child = if member {
                                 "<d:response><d:href>/d/a.txt</d:href><d:propstat><d:prop>\
@@ -11447,10 +11817,17 @@ exit 1
             let outcome = p.rmdir("/d").await;
             let calls = calls.lock().unwrap();
             if expect_refusal {
-                assert!(
-                    matches!(outcome, Err(ProviderError::DirectoryNotEmpty(_))),
-                    "{outcome:?}"
-                );
+                if member {
+                    assert!(
+                        matches!(outcome, Err(ProviderError::DirectoryNotEmpty(_))),
+                        "{outcome:?}"
+                    );
+                } else {
+                    assert!(
+                        matches!(&outcome, Err(ProviderError::ParseError(m)) if m.contains("not a DAV multistatus")),
+                        "{outcome:?}"
+                    );
+                }
                 assert!(!calls.iter().any(|c| c.starts_with("DELETE ")), "{calls:?}");
             } else {
                 outcome.expect("an empty collection goes");
@@ -12007,6 +12384,71 @@ exit 1
 
     /// Wire format check: URLs target `/remote.php/dav/uploads/<userid>/<txid>/`
     /// regardless of the per-user `/files/<userid>/` server_root.
+    /// A persisted handle of another user is refused by the part and the
+    /// assembly before any request, and its abort sends nothing; the same
+    /// user's handle reaches the server.
+    #[tokio::test]
+    async fn a_chunked_upload_handle_of_another_user_writes_nothing() {
+        use std::sync::{Arc, Mutex};
+        let seen: Arc<Mutex<Vec<String>>> = Arc::default();
+        let log = Arc::clone(&seen);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let log = Arc::clone(&log);
+                async move {
+                    log.lock()
+                        .unwrap()
+                        .push(format!("{} {}", req.method(), req.uri().path()));
+                    axum::http::StatusCode::CREATED
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut cfg = test_config(&format!("http://{addr}"));
+        cfg.provider_id = Some("nextcloud".to_string());
+        let mut p = WebDavProvider::new(cfg).expect("provider");
+        p.server_root = Some("/remote.php/dav/files/alice/".to_string());
+        p.connected = true;
+        let handle_of = |user: &str| MultipartHandle {
+            upload_id: NextcloudMultipartHandle {
+                transfer_id: "tx-1".to_string(),
+                user_id: user.to_string(),
+                total_size: 3,
+            }
+            .encode(),
+            remote_path: "/f.bin".to_string(),
+        };
+        let foreign = handle_of("mallory");
+        let part = p.upload_part(&foreign, 1, b"abc".to_vec()).await;
+        assert!(
+            matches!(&part, Err(ProviderError::PermissionDenied(m)) if m.contains("another Nextcloud user")),
+            "{part:?}"
+        );
+        let done = p
+            .complete_multipart_upload(handle_of("mallory"), Vec::new())
+            .await;
+        assert!(
+            matches!(&done, Err(ProviderError::PermissionDenied(_))),
+            "{done:?}"
+        );
+        p.abort_multipart_upload(handle_of("mallory"))
+            .await
+            .expect("best effort");
+        assert!(
+            seen.lock().unwrap().is_empty(),
+            "{:?}",
+            seen.lock().unwrap()
+        );
+        p.abort_multipart_upload(handle_of("alice"))
+            .await
+            .expect("abort");
+        assert_eq!(
+            *seen.lock().unwrap(),
+            ["DELETE /remote.php/dav/uploads/alice/tx-1/"]
+        );
+    }
+
     #[test]
     fn nextcloud_chunked_url_layout_lives_under_uploads_root() {
         let mut p =
