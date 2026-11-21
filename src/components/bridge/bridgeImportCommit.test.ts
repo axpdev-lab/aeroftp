@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ServerProfile } from '../../types';
 import { appendImportedProfiles, bridgeProfileKey, commitImportedServers, createScanSettler, importedServerProfile, type ImportedServer } from './bridgeImportCommit';
+import panelSource from '../BridgeSourcePanel.tsx?raw';
 import { readSavedServerProfilesForWrite, storeSavedServerProfiles } from '../../utils/serverProfileStore';
 
 vi.mock('../../utils/serverProfileStore', () => ({
@@ -345,6 +346,36 @@ describe('createScanSettler', () => {
         expect(settle.mock.calls).toEqual([['scan-1'], ['scan-2']]);
         await scans.track(undefined);
         expect(settle).toHaveBeenCalledTimes(2);
+    });
+
+    it('settles a panel closed during a confirm only once the confirm is done', async () => {
+        const settle = vi.fn().mockResolvedValue(undefined);
+        const scans = createScanSettler(settle);
+        await scans.track('scan-1');
+        let saved!: () => void;
+        const save = new Promise<void>(resolve => { saved = resolve; });
+        const confirmed = scans.confirming(() => save.then(() => 'stored'));
+        const closed = scans.close();
+        await new Promise(resolve => setTimeout(resolve, 0));
+        expect(settle).not.toHaveBeenCalled();
+        saved();
+        await expect(confirmed).resolves.toBe('stored');
+        await closed;
+        expect(settle.mock.calls).toEqual([['scan-1']]);
+    });
+
+    it('settles after a confirm that failed, and does not wait for one done', async () => {
+        const settle = vi.fn().mockResolvedValue(undefined);
+        const scans = createScanSettler(settle);
+        await scans.track('scan-1');
+        await expect(scans.confirming(() => Promise.reject(new Error('refused')))).rejects.toThrow('refused');
+        await scans.close();
+        expect(settle.mock.calls).toEqual([['scan-1']]);
+    });
+
+    it('is the confirm the panel runs, so its close waits for the save', () => {
+        expect(panelSource).toMatch(/await scans\.confirming\(\s*\(\) => commitImportedServers\(/);
+        expect(panelSource.match(/commitImportedServers\(/g)).toHaveLength(1);
     });
 
     it('keeps going when a settle fails', async () => {

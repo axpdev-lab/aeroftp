@@ -269,7 +269,11 @@ export const BridgeSourcePanel: React.FC<Props> = ({
         committingRef.current = true;
         setLoading(true);
         try {
-            const outcome = await commitImportedServers(selected, existingServerKeys, onImport, result.importedUserId);
+            // Closing the panel meanwhile settles the scan only once the
+            // profiles are saved, so their secrets stay.
+            const outcome = await scans.confirming(
+                () => commitImportedServers(selected, existingServerKeys, onImport, result.importedUserId),
+            );
             if (outcome.error) { setError(outcome.error); return; }
             await scans.release();
             const parts: string[] = [];

@@ -228,11 +228,14 @@ export async function commitImportedServers(
  * `import_bridge_config`). `settle` is `settle_bridge_import`: a scan id
  * settles that scan, `null` the scans of windows that are gone. A failed
  * settle is logged, never thrown: the next scan or opening settles again. A
- * scan that ends after the panel closed is settled at once.
+ * scan that ends after the panel closed is settled at once. A confirm in
+ * flight is waited for first: settled while its profiles are still being
+ * saved, the scan would take back the secrets of profiles about to be saved.
  */
 export function createScanSettler(settle: (scanId: string | null) => Promise<unknown>) {
     let current: string | null = null;
     let closed = false;
+    let confirm: Promise<unknown> | null = null;
     const run = async (scanId: string | null) => {
         try {
             await settle(scanId);
@@ -243,9 +246,21 @@ export function createScanSettler(settle: (scanId: string | null) => Promise<unk
     const release = async () => {
         const scanId = current;
         current = null;
-        if (scanId) await run(scanId);
+        if (!scanId) return;
+        await confirm?.catch(() => undefined);
+        await run(scanId);
     };
     return {
+        /** Runs the confirm of the scan held; a settle meanwhile waits for it. */
+        async confirming<T>(work: () => Promise<T>): Promise<T> {
+            const running = work();
+            confirm = running;
+            try {
+                return await running;
+            } finally {
+                if (confirm === running) confirm = null;
+            }
+        },
         /** Holds the scan just made; one made after the panel closed is settled. */
         async track(scanId: string | null | undefined) {
             current = scanId ?? null;
