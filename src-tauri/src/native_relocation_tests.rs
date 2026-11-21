@@ -79,7 +79,11 @@ fn in_isolated_child(name: &str) -> bool {
     std::fs::write(root.path().join("portable.marker"), b"").unwrap();
     let empty_path = root.path().join("no-external-tools");
     std::fs::create_dir(&empty_path).unwrap();
-    let test = format!("user_partitions::native_relocation_tests::{name}");
+    // The path libtest names this module by, without the crate's name.
+    let module = module_path!()
+        .split_once("::")
+        .map_or(module_path!(), |(_, module)| module);
+    let test = format!("{module}::{name}");
     let output = std::process::Command::new(child)
         .args(["--exact", &test, "--nocapture", "--test-threads=1"])
         .env(MODE, "suite")
@@ -94,13 +98,25 @@ fn in_isolated_child(name: &str) -> bool {
         )
         .output()
         .unwrap();
+    // A name that selects no test exits with success too: only the test
+    // that ran and passed counts.
+    let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        output.status.success(),
-        "{}\n{}",
-        String::from_utf8_lossy(&output.stdout),
+        output.status.success()
+            && stdout.contains("running 1 test")
+            && stdout.contains(" 1 passed"),
+        "{stdout}\n{}",
         String::from_utf8_lossy(&output.stderr)
     );
     false
+}
+
+/// The parent's early return comes only after the child ran the named test
+/// and it passed: a name that selects no test fails the parent.
+#[test]
+#[should_panic(expected = "running 0 tests")]
+fn a_child_that_runs_no_test_fails_the_parent() {
+    in_isolated_child("no_such_test");
 }
 
 /// The legacy owner, a source account unlocked in this process and a target
