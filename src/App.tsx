@@ -8195,7 +8195,7 @@ const App: React.FC = () => {
       sse_mode: effectiveParams.options?.sse_mode || null,
       sse_kms_key_id: effectiveParams.options?.sse_kms_key_id || null,
       session_token: effectiveParams.options?.sessionToken || null,
-      aws_chain: effectiveParams.options?.awsChain === true || null,
+      aws_chain: effectiveParams.options?.awsChain || null,
       role_arn: effectiveParams.options?.roleArn || null,
       role_external_id: effectiveParams.options?.roleExternalId || null,
       role_session_name: effectiveParams.options?.roleSessionName || null,
@@ -9661,16 +9661,20 @@ const App: React.FC = () => {
   /** Makes `sessionId` the active tab and reconnects it, showing its cached
    *  view at once; the tab it leaves becomes `cached`, and a failed or
    *  cancelled reconnect leaves nothing active. */
-  const switchSession = async (sessionId: string, connectScope = new ConnectScope()) => {
+  // Resolves true only when `sessionId` is the active session at the end: a
+  // refused host key, a cancel or a failed reconnect resolve false, so a
+  // caller that acts on the tab next (a launch's navigation) does not act on
+  // the tab the user is still on.
+  const switchSession = async (sessionId: string, connectScope = new ConnectScope()): Promise<boolean> => {
     connectScope.assert();
     // Find the target session from current sessions state
     const targetSession = sessions.find(s => s.id === sessionId);
-    if (!targetSession) return;
+    if (!targetSession) return false;
 
     // If already on this session but in AeroFile mode, just restore remote panel
     if (activeSessionId === sessionId) {
       if (!showRemotePanel) setShowRemotePanel(true);
-      return;
+      return true;
     }
     // Once the switch has started replacing the backend, a switch that fails
     // or is cancelled leaves nothing active (the target tab goes back to
@@ -9690,7 +9694,7 @@ const App: React.FC = () => {
     if (isSshProtocol(targetSession.connectionParams?.protocol)) {
       const target = normalizeProviderConnectionParams(targetSession.connectionParams);
       const accepted = await connectScope.step(() => checkSftpHostKey(target.server, target.port || 22, connectScope));
-      if (!accepted) { if (fromParked) leaveNothingActive(); return; }
+      if (!accepted) { if (fromParked) leaveNothingActive(); return false; }
     }
 
     // Same reason as the disconnect path: the scan belongs to the session being
@@ -10148,7 +10152,9 @@ const App: React.FC = () => {
         connectScope.assert();
         logger.warn('[switchSession] local folder refresh failed after the reconnect', localError);
       }
-
+      // A newer switch or connect that took the workspace meanwhile owns the
+      // active tab: this one did not end on its target.
+      return phaseVersion === remoteConnectPhaseVersionRef.current;
     } catch (e) {
       // A newer switch or connect owns the workspace now: this one's failure
       // must not write over it (its tab, local path or active session).
@@ -10182,7 +10188,7 @@ const App: React.FC = () => {
           setCurrentLocalPath(targetSession.localPath);
           leaveNothingActive();
         }
-        return;
+        return false;
       }
       // W3.1: user-cancelled reconnect. Mark the session cached (not errored)
       // and close the activity entry cleanly; runConnect already toasted.
@@ -10196,7 +10202,7 @@ const App: React.FC = () => {
           setCurrentLocalPath(targetSession.localPath);
           leaveNothingActive();
         }
-        return;
+        return false;
       }
       logger.error('Reconnect error:', e);
       activityLog.updateEntry(reconnectLogId, {
@@ -10213,6 +10219,7 @@ const App: React.FC = () => {
       // and the provider now wants a fresh TOTP, surface the 2FA prompt so
       // the user can supply the code without re-opening Edit on the profile.
       tryShowTwoFactorPrompt(e, targetSession.connectionParams, targetSession.serverName, reconnectLogId);
+      return false;
     } finally {
       if (phaseVersion === remoteConnectPhaseVersionRef.current) remoteConnectPhaseRef.current = false;
     }
@@ -10226,11 +10233,13 @@ const App: React.FC = () => {
    * is still alive and only reconnects if another tab has displaced it. Returns
    * true when an open session was found and activated.
    */
-  const goToActiveSession = async (savedServerId: string, connectScope = new ConnectScope()): Promise<boolean> => {
+  // A saved profile's open tab, made active: null when it has none, else
+  // whether the switch made it active (switchSession).
+  const activateSavedSession = async (savedServerId: string, connectScope = new ConnectScope()): Promise<boolean | null> => {
     connectScope.assert();
-    if (!savedServerId) return false;
+    if (!savedServerId) return null;
     const existing = sessions.find(s => s.connectionParams?.savedServerId === savedServerId);
-    if (!existing) return false;
+    if (!existing) return null;
     // switchSession only switches the active tab; when invoked from the My
     // Servers grid (the connection screen is up) we must also leave that screen
     // and show the file panels, mirroring connectToFtp's own reuse path.
@@ -10240,9 +10249,13 @@ const App: React.FC = () => {
     // Not marked connected here: switchSession does it once the reconnect has
     // succeeded, so a parked tab's cached files take no remote action while
     // another server still holds the backend.
-    await connectScope.cancellable(() => { void cancelActiveConnect(); return cancelRemoteNavigation(); }, () => switchSession(existing.id, connectScope));
-    return true;
+    return connectScope.cancellable(() => { void cancelActiveConnect(); return cancelRemoteNavigation(); }, () => switchSession(existing.id, connectScope));
   };
+
+  // True when the profile has an open tab: the tab handled the request, so
+  // the caller opens no second connection, even when the switch was refused.
+  const goToActiveSession = async (savedServerId: string, connectScope = new ConnectScope()): Promise<boolean> =>
+    (await activateSavedSession(savedServerId, connectScope)) !== null;
 
   const closeSession = useLatestCallback(async (sessionId: string) => {
     const session = sessions.find(s => s.id === sessionId);
@@ -19460,7 +19473,9 @@ const App: React.FC = () => {
       setShowConnectionScreen(false);
       setShowRemotePanel(true);
       setShowLocalPreview(false);
-      await goToActiveSession(matched.id);
+      // A refused host key or a failed reconnect leaves another tab active:
+      // the link's folder is not opened there.
+      if (await activateSavedSession(matched.id) !== true) return;
     } else if (profileConnector.current) {
       const scope = new ConnectScope();
       if (await profileConnector.current(matched.id, scope) !== 'connected') return;
@@ -19522,7 +19537,7 @@ const App: React.FC = () => {
       setShowConnectionScreen(false);
       setShowRemotePanel(true);
       setShowLocalPreview(false);
-      await switchSession(existingSession.id);
+      if (!await switchSession(existingSession.id)) return;
       const folder = launchFolderToOpen(req.initialPath);
       if (folder) await navigateAfterLaunch(folder, targetProtocol);
       return;

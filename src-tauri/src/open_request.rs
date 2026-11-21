@@ -255,7 +255,14 @@ pub fn parse_remote_url(raw: &str) -> Option<OpenRequest> {
             .secret_source
             .is_some_and(crate::launch_url::aws::CredentialSource::is_aws_chain)
         {
-            options.insert("awsChain".to_string(), serde_json::Value::Bool(true));
+            // The marker says where the key id came from (`url` or
+            // `chain`), so the connect pairs it with the same secret.
+            options.insert(
+                "awsChain".to_string(),
+                serde_json::Value::String(
+                    crate::launch_url::aws::chain_marker(credentials.key_from_url).to_string(),
+                ),
+            );
             None
         } else {
             credentials.secret_access_key
@@ -1052,7 +1059,7 @@ mod tests {
         assert_eq!(request.password, None);
         assert_never_serialized(&request, &["filesecret", "filetoken"]);
         let options = request.options.clone().unwrap();
-        assert_eq!(options["awsChain"], true);
+        assert_eq!(options["awsChain"], "chain");
         assert!(!options.contains_key("sessionToken"));
         assert_eq!(options["region"], "eu-west-3");
         assert_eq!(request.provider_id.as_deref(), Some("minio"));
@@ -1070,7 +1077,20 @@ mod tests {
         assert_eq!(request.username.as_deref(), Some("ENVKEY"));
         assert_eq!(request.password, None);
         assert_never_serialized(&request, &["envsecret", "filesecret"]);
-        assert_eq!(request.options.unwrap()["awsChain"], true);
+        assert_eq!(request.options.unwrap()["awsChain"], "chain");
+
+        // A key id from the URL beside a bare AWS secret: the marker says so,
+        // and only then does the connect pair the two again.
+        let request = with_aws_files(
+            "[default]\naws_access_key_id = FILEKEY\naws_secret_access_key = filesecret\n",
+            "",
+            &[("AWS_SECRET_ACCESS_KEY", "envsecret")],
+            || parse_remote_url("s3://URLKEY@minio.lan:9000/?bucket=b1").unwrap(),
+        );
+        assert_eq!(request.username.as_deref(), Some("URLKEY"));
+        assert_eq!(request.password, None);
+        assert_never_serialized(&request, &["envsecret", "filesecret"]);
+        assert_eq!(request.options.unwrap()["awsChain"], "url");
     }
 
     /// The JSON the webview receives through `take_open_requests` holds none

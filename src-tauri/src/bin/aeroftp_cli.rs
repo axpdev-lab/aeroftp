@@ -90406,6 +90406,7 @@ mod tests {
             session_token: Some("envtoken".to_string()),
             region: None,
             secret_source: Some(CredentialSource::AwsEnv),
+            key_from_url: false,
         };
         let mut cli = test_cli();
         assert_eq!(

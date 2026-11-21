@@ -1409,8 +1409,8 @@ mod tests {
     #[test]
     fn a_profile_saved_from_an_aws_chain_link_keeps_its_marker_for_every_caller() {
         let mut extra = HashMap::new();
-        apply_profile_options(&mut extra, &json!({"options": {"awsChain": true}}));
-        assert_eq!(extra.get("aws_chain").map(String::as_str), Some("true"));
+        apply_profile_options(&mut extra, &json!({"options": {"awsChain": "chain"}}));
+        assert_eq!(extra.get("aws_chain").map(String::as_str), Some("chain"));
     }
 
     #[test]

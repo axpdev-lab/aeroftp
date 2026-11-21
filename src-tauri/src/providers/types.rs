@@ -656,7 +656,7 @@ mod s3_chain_tests {
         let mut extra = std::collections::HashMap::new();
         extra.insert("bucket".to_string(), "b1".to_string());
         if chain {
-            extra.insert("aws_chain".to_string(), "true".to_string());
+            extra.insert("aws_chain".to_string(), "chain".to_string());
         }
         ProviderConfig {
             name: "S3".into(),
@@ -711,6 +711,25 @@ mod s3_chain_tests {
         );
         // A chain that lost the key id is an error, never an empty secret.
         assert!(s3_secret_from_chain(&s3(None, true), |_| None, AwsFiles::default).is_err());
+        // A key id the chain gave never pairs with a bare AWS secret, and a
+        // marker that names no provenance is refused.
+        let bare = |name: &str| (name == "AWS_SECRET_ACCESS_KEY").then(|| "unrelated".to_string());
+        assert_eq!(
+            s3_secret_from_chain(&s3(None, true), bare, files).unwrap(),
+            ("filesecret".to_string(), Some("filetoken".to_string()))
+        );
+        let mut url_key = s3(None, true);
+        url_key
+            .extra
+            .insert("aws_chain".to_string(), "url".to_string());
+        assert_eq!(
+            s3_secret_from_chain(&url_key, bare, AwsFiles::default).unwrap(),
+            ("unrelated".to_string(), None)
+        );
+        url_key
+            .extra
+            .insert("aws_chain".to_string(), "true".to_string());
+        assert!(s3_secret_from_chain(&url_key, |_| None, files).is_err());
     }
 }
 
@@ -1428,15 +1447,19 @@ pub(crate) fn s3_secret_from_chain(
     files: impl FnOnce() -> crate::launch_url::aws::AwsFiles,
 ) -> Result<(String, Option<String>), ProviderError> {
     let password = config.password.clone().unwrap_or_default();
-    let marked = config
-        .extra
-        .get("aws_chain")
-        .is_some_and(|v| v.trim().eq_ignore_ascii_case("true"));
-    if !password.is_empty() || !marked {
+    let Some(marker) = config.extra.get("aws_chain") else {
+        return Ok((password, None));
+    };
+    if !password.is_empty() {
         return Ok((password, None));
     }
+    // The marker says where the key id came from: only one from the URL
+    // pairs with a bare `AWS_SECRET_ACCESS_KEY`, as at launch.
+    let key_from_url = crate::launch_url::aws::parse_chain_marker(marker).ok_or_else(|| {
+        ProviderError::InvalidConfig("aws_chain must be url or chain".to_string())
+    })?;
     let key_id = config.username.clone().unwrap_or_default();
-    crate::launch_url::aws::resolve_chain_secret(&key_id, env, files)
+    crate::launch_url::aws::resolve_chain_secret(&key_id, key_from_url, env, files)
         .map_err(ProviderError::InvalidConfig)
 }
 

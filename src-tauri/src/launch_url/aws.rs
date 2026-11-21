@@ -44,6 +44,31 @@ pub struct S3Credentials {
     pub session_token: Option<String>,
     pub region: Option<String>,
     pub secret_source: Option<CredentialSource>,
+    /// Whether the access key id came from the URL's user part. Only such a
+    /// key id pairs with a bare `AWS_SECRET_ACCESS_KEY`, so a connection that
+    /// resolves the chain again must know where its key id came from.
+    pub key_from_url: bool,
+}
+
+/// The `awsChain` marker a launch hands the app instead of a chain secret:
+/// where the access key id came from, never a secret. `url` lets the key id
+/// pair with a bare `AWS_SECRET_ACCESS_KEY`, as the first resolution did;
+/// `chain` (`AWS_ACCESS_KEY_ID` or the files) never does.
+pub fn chain_marker(key_from_url: bool) -> &'static str {
+    if key_from_url {
+        "url"
+    } else {
+        "chain"
+    }
+}
+
+/// The key provenance an `awsChain` marker states; `None` for any other text.
+pub fn parse_chain_marker(marker: &str) -> Option<bool> {
+    match marker.trim() {
+        "url" => Some(true),
+        "chain" => Some(false),
+        _ => None,
+    }
 }
 
 /// The two AWS files, read as INI sections.
@@ -104,6 +129,20 @@ pub fn resolve(
     env: impl Fn(&str) -> Option<String>,
     files: impl FnOnce() -> AwsFiles,
 ) -> S3Credentials {
+    let key_from_url = !url_user.trim().is_empty();
+    resolve_keyed(url_user, key_from_url, url_secret, url_region, env, files)
+}
+
+/// [`resolve`] with `key` chosen already, and `key_from_url` stating whether
+/// it came from the URL (which alone pairs with a bare AWS secret).
+fn resolve_keyed(
+    key: &str,
+    key_from_url: bool,
+    url_secret: Option<&str>,
+    url_region: Option<&str>,
+    env: impl Fn(&str) -> Option<String>,
+    files: impl FnOnce() -> AwsFiles,
+) -> S3Credentials {
     let env = |name: &str| env(name).filter(|value| !value.trim().is_empty());
     let non_empty = |value: Option<&str>| {
         value
@@ -112,7 +151,7 @@ pub fn resolve(
             .map(str::to_string)
     };
 
-    let url_user = non_empty(Some(url_user));
+    let given_key = non_empty(Some(key));
     let url_secret = url_secret.filter(|secret| !secret.is_empty());
     let url_region = non_empty(url_region);
     let aws_key = env("AWS_ACCESS_KEY_ID");
@@ -123,8 +162,7 @@ pub fn resolve(
     // The key id the URL and the environment settle on, before any file. The
     // files are read only when that key id has no secret of its own here, or
     // when the key id or the region is still open.
-    let key_from_url = url_user.is_some();
-    let key_before_files = url_user.clone().or_else(|| aws_key.clone());
+    let key_before_files = given_key.clone().or_else(|| aws_key.clone());
     let aws_secret_pairs = |key: &str| match &aws_key {
         Some(aws_key) => aws_key == key,
         None => key_from_url,
@@ -206,6 +244,7 @@ pub fn resolve(
         session_token,
         region,
         secret_source,
+        key_from_url: key_from_url && given_key.is_some(),
     }
 }
 
@@ -223,8 +262,12 @@ impl CredentialSource {
 /// credentials came from the chain. Only `AWS_*` and the AWS files count:
 /// `AEROFTP_PASSWORD` is not the chain, and a key id the chain no longer
 /// pairs with a secret is an error, never another key's secret.
+/// `key_from_url` is the marker's provenance: a key id the chain itself gave
+/// (`AWS_ACCESS_KEY_ID`, the files) never pairs with a bare
+/// `AWS_SECRET_ACCESS_KEY`, as it did not at launch.
 pub fn resolve_chain_secret(
     access_key_id: &str,
+    key_from_url: bool,
     env: impl Fn(&str) -> Option<String>,
     files: impl FnOnce() -> AwsFiles,
 ) -> Result<(String, Option<String>), String> {
@@ -235,7 +278,7 @@ pub fn resolve_chain_secret(
             env(name)
         }
     };
-    let resolved = resolve(access_key_id, None, None, chain_env, files);
+    let resolved = resolve_keyed(access_key_id, key_from_url, None, None, chain_env, files);
     match (resolved.secret_access_key, resolved.secret_source) {
         (Some(secret), Some(source))
             if source.is_aws_chain() && resolved.access_key_id == access_key_id =>
@@ -281,28 +324,74 @@ mod tests {
     #[test]
     fn a_connection_resolves_the_chain_secret_of_its_own_key_id() {
         assert_eq!(
-            resolve_chain_secret("ENVKEY", env_of(AWS_ENV), AwsFiles::default),
+            resolve_chain_secret("ENVKEY", false, env_of(AWS_ENV), AwsFiles::default),
             Ok(("envsecret".into(), Some("envtoken".into())))
         );
         assert_eq!(
-            resolve_chain_secret("FILEKEY", env_of(&[]), || files_with(CREDENTIALS, CONFIG)),
+            resolve_chain_secret("FILEKEY", false, env_of(&[]), || files_with(
+                CREDENTIALS,
+                CONFIG
+            )),
             Ok(("filesecret".into(), Some("filetoken".into())))
         );
         // AEROFTP_PASSWORD is not the chain: it never stands in for it.
         assert!(resolve_chain_secret(
             "FILEKEY",
+            false,
             env_of(&[("AEROFTP_PASSWORD", "aeroftp")]),
             AwsFiles::default
         )
         .is_err());
         // A key id the chain no longer pairs never gets another key's secret.
         assert!(
-            resolve_chain_secret("GONEKEY", env_of(AWS_ENV), || files_with(
+            resolve_chain_secret("GONEKEY", false, env_of(AWS_ENV), || files_with(
                 CREDENTIALS,
                 CONFIG
             ))
             .is_err()
         );
+    }
+
+    /// The launch resolves once and hands the marker; the connect resolves
+    /// again from it. Both must pick the same identity.
+    fn launch_then_connect(
+        url_user: &str,
+        env: &'static [(&'static str, &'static str)],
+    ) -> (S3Credentials, Result<(String, Option<String>), String>) {
+        let launch = resolve(url_user, None, None, env_of(env), || {
+            files_with(CREDENTIALS, CONFIG)
+        });
+        let marker = chain_marker(launch.key_from_url);
+        let connect = resolve_chain_secret(
+            &launch.access_key_id,
+            parse_chain_marker(marker).unwrap(),
+            env_of(env),
+            || files_with(CREDENTIALS, CONFIG),
+        );
+        (launch, connect)
+    }
+
+    #[test]
+    fn the_connect_pairs_the_key_id_with_the_secret_the_launch_chose() {
+        // No key id in the URL, a bare AWS secret in the environment: the
+        // launch takes the file pair, and so must the connect, token included.
+        let (launch, connect) = launch_then_connect("", &[("AWS_SECRET_ACCESS_KEY", "unrelated")]);
+        assert_eq!(launch.access_key_id, "FILEKEY");
+        assert_eq!(launch.secret_source, Some(CredentialSource::AwsFiles));
+        assert!(!launch.key_from_url);
+        assert_eq!(connect, Ok(("filesecret".into(), Some("filetoken".into()))));
+        // A key id from the URL still pairs with a bare AWS secret.
+        let (launch, connect) =
+            launch_then_connect("URLKEY", &[("AWS_SECRET_ACCESS_KEY", "envsecret")]);
+        assert!(launch.key_from_url);
+        assert_eq!(launch.secret_source, Some(CredentialSource::AwsEnv));
+        assert_eq!(connect, Ok(("envsecret".into(), None)));
+        // A matching AWS variable pair keeps its secret and token.
+        let (launch, connect) = launch_then_connect("", AWS_ENV);
+        assert_eq!(launch.access_key_id, "ENVKEY");
+        assert!(!launch.key_from_url);
+        assert_eq!(connect, Ok(("envsecret".into(), Some("envtoken".into()))));
+        assert_eq!(parse_chain_marker("true"), None);
     }
 
     #[test]

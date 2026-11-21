@@ -1837,10 +1837,11 @@ pub struct ProviderConnectionParams {
     pub session_token: Option<String>,
     /// S3: the secret of `username` comes from the AWS tools' chain
     /// (`AWS_*`, `~/.aws`), which a launch URL never hands to the webview;
-    /// the provider resolves it (`S3Config::from_provider_config`). Not a
-    /// secret.
+    /// the provider resolves it (`S3Config::from_provider_config`). The
+    /// value says where the key id came from, `url` or `chain`
+    /// (`launch_url::aws::chain_marker`). Not a secret.
     #[serde(default)]
-    pub aws_chain: Option<bool>,
+    pub aws_chain: Option<String>,
     /// S3: ARN of an IAM role to assume via STS `AssumeRole` (issue #301).
     /// When set, `connect()` exchanges the access key/secret for temporary
     /// credentials. AWS-only.
@@ -2118,8 +2119,11 @@ impl ProviderConnectionParams {
             // A launch URL whose credentials came from the AWS chain: the
             // provider reads the chain itself (S3Config), the webview never
             // held the secret.
-            if self.aws_chain == Some(true) {
-                extra.insert("aws_chain".to_string(), "true".to_string());
+            if let Some(marker) = self.aws_chain.as_deref() {
+                if crate::launch_url::aws::parse_chain_marker(marker).is_none() {
+                    return Err("aws_chain must be url or chain".to_string());
+                }
+                extra.insert("aws_chain".to_string(), marker.trim().to_string());
             }
             // STS AssumeRole config (issue #301, Fase 2). AWS-only.
             for (key, value) in [
@@ -19538,12 +19542,16 @@ mod tests {
     fn an_aws_chain_connect_hands_the_marker_to_the_provider() {
         let mut params = s3_params(None);
         params.password = String::new();
-        params.aws_chain = Some(true);
-        let config = params.to_provider_config().unwrap();
-        assert_eq!(
-            config.extra.get("aws_chain").map(String::as_str),
-            Some("true")
-        );
+        for marker in ["url", "chain"] {
+            params.aws_chain = Some(marker.to_string());
+            let config = params.to_provider_config().unwrap();
+            assert_eq!(
+                config.extra.get("aws_chain").map(String::as_str),
+                Some(marker)
+            );
+        }
+        params.aws_chain = Some("true".to_string());
+        assert!(params.to_provider_config().is_err());
         params.aws_chain = None;
         assert!(!params
             .to_provider_config()
