@@ -2434,3 +2434,75 @@ fn an_unreadable_jotta_token_fails_the_profile_export() {
         assert_eq!(secrets.jotta_refresh.as_deref(), Some("other-jotta"));
     });
 }
+
+/// The vault and partition database of an isolated child
+/// ([`crate::provider_commands::isolated_account_fixture`]), opened and
+/// migrated, the legacy owner active, and `others` more accounts without a
+/// passphrase, each one aligned already. Returns the owner and their ids.
+fn isolated_accounts(others: usize) -> (CredentialStore, i64, Vec<i64>) {
+    CredentialStore::clear_cache();
+    CredentialStore::bootstrap_master_password("synthetic profile auth fixture").unwrap();
+    CredentialStore::unlock_with_master("synthetic profile auth fixture", None).unwrap();
+    let store = CredentialStore::from_cache().unwrap();
+    users::init_or_migrate_cli(&store).unwrap();
+    let mut conn = users::open_or_init_cli().unwrap();
+    let root = zeroize::Zeroizing::new(store.derive_user_partition_wrapping_key());
+    let owner = users::active_user_id(&conn).unwrap().unwrap();
+    let ids = (0..others)
+        .map(|n| {
+            users::create_passphrase_less_user(&mut conn, &root, &format!("Other {n}"), None, None)
+                .unwrap()
+                .id
+        })
+        .collect();
+    users::set_active_user(&conn, owner).unwrap();
+    // Their one-time passes run now, before the test writes a vault key.
+    users::init_or_migrate_cli(&store).unwrap();
+    (store, owner, ids)
+}
+
+/// `user`'s list, with a profile of each id in `ids`.
+fn hold_profiles(store: &CredentialStore, user: i64, ids: &[&str]) {
+    let mut conn = users::open_or_init_cli().unwrap();
+    let root = zeroize::Zeroizing::new(store.derive_user_partition_wrapping_key());
+    let profiles: Vec<Value> = ids
+        .iter()
+        .map(|id| json!({"id": id, "name": id, "protocol": "dropbox", "host": "", "port": 0}))
+        .collect();
+    users::replace_server_profiles_for(&mut conn, &root, user, &profiles).unwrap();
+}
+
+/// A profile-bound read of a private token by an account other than the
+/// legacy owner is its row alone: holding the profile alone does not make the
+/// vault key of that name its own. The legacy owner keeps the vault fallback,
+/// and a key that is not a private token keeps the sole holder's.
+#[test]
+fn a_sole_holder_reads_no_vault_token_of_another_account() {
+    if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+        "profile_auth::tests::a_sole_holder_reads_no_vault_token_of_another_account",
+    ) {
+        return;
+    }
+    let _guard = users::test_lock();
+    let (store, owner, others) = isolated_accounts(1);
+    let other = others[0];
+    hold_profiles(&store, other, &["p"]);
+    hold_profiles(&store, owner, &["q"]);
+    store.store("oauth_dropbox_p", "owners-token").unwrap();
+    store.store("server_p", "p-password").unwrap();
+    store.store("oauth_dropbox_q", "q-token").unwrap();
+    let read = |user: i64, profile: &str, key: &str| {
+        AuthScope {
+            store: &store,
+            user_id: Some(user),
+        }
+        .read_profile(profile, key)
+        .unwrap()
+    };
+    assert_eq!(read(other, "p", "oauth_dropbox_p"), None);
+    assert_eq!(read(other, "p", "server_p").as_deref(), Some("p-password"));
+    assert_eq!(
+        read(owner, "q", "oauth_dropbox_q").as_deref(),
+        Some("q-token")
+    );
+}

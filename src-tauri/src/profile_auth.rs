@@ -60,6 +60,12 @@ impl AuthScope<'_> {
             users::CheckedRow::Withheld => return Ok(None),
             users::CheckedRow::Absent => {}
         }
+        // A private token of an account other than the legacy owner is its row
+        // alone: holding the profile does not make the vault key of that name
+        // its own (an import can give it a profile whose key is the owner's).
+        if users::vault_copy_is_another_accounts(&conn, user_id, key)? {
+            return Ok(None);
+        }
         let owners = users::profile_credential_owner_ids(self.store, profile_id, key)?;
         if owners.as_slice() == [user_id]
             || (owners.is_empty() && users::legacy_credential_owner_id()? == Some(user_id))
