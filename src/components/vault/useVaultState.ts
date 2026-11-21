@@ -75,6 +75,13 @@ export function mapVaultError(e: unknown, t: (key: string) => string): string {
             const closing = path.match(/[).,;]+$/)?.[0] ?? '';
             return `<path>${closing}`;
         })
+        // A path directly under a root (`/v.aerovault.aerolock`, `C:\v.aerovault`)
+        // has one segment; it starts the text or follows a space, a quote or a
+        // parenthesis, so `and/or` is left alone.
+        .replace(/(^|[\s('"])((?:[A-Za-z]:)?[\\/][^\s'":\\/]+)/g, (_match, lead: string, path: string) => {
+            const closing = path.match(/[).,;]+$/)?.[0] ?? '';
+            return `${lead}<path>${closing}`;
+        })
         .replace(/\s{2,}/g, ' ')
         .trim();
     return cleaned || raw;

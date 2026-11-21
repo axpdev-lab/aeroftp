@@ -28,6 +28,9 @@ describe('mapVaultError', () => {
         ['Vault has damaged blocks: run repair before writing to it', 'Vault has damaged blocks: run repair before writing to it'],
         ['vault is locked by another writer (/tmp/fixture/corrupt.aerovault.aerolock); retry when it has finished', 'vault is locked by another writer (<path>); retry when it has finished'],
         ['/tmp/fixture/corrupt.aerovault is a symbolic link; use the target path', '<path> is a symbolic link; use the target path'],
+        ['vault is locked by another writer (C:\\corrupt.aerovault.aerolock); retry when it has finished', 'vault is locked by another writer (<path>); retry when it has finished'],
+        ['/corrupt.aerovault is a symbolic link; use the target path', '<path> is a symbolic link; use the target path'],
+        ['vault is locked by another writer (/v.aerovault.aerolock); retry and/or wait', 'vault is locked by another writer (<path>); retry and/or wait'],
         // Pair and strip recovery (aerovault 0.7.0): the path or the OS error
         // carries a generic cue, the instruction must survive it.
         ['AeroVault vault/sidecar publication is pending; preserve the vault and sidecar and recover the pair before opening or replacing it: /tmp/fixture/corrupt.aerovault', 'AeroVault vault/sidecar publication is pending; preserve the vault and sidecar and recover the pair before opening or replacing it: <path>'],
