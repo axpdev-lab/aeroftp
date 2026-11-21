@@ -1507,6 +1507,36 @@ impl JottacloudProvider {
                 Err(e) => Err(format!("the deletions of {account} are not readable: {e}")),
             }
         };
+        // Whether the rotation still applies to the key comes first: a key
+        // written from outside since it was filed holds a chain of its own,
+        // which does not depend on the rotation's checks below (the key its
+        // chain was loaded from included), and wins.
+        if let Some(json) = pending.as_ref() {
+            let filed: serde_json::Value = serde_json::from_str(json).unwrap_or_default();
+            let base = filed[PENDING_BASE].as_str();
+            // A rotation filed while what its key held was unknown cannot be
+            // told from a chain written there since: the stored chain wins,
+            // and the rotation stays for when the key holds none.
+            if stored.is_some() && base.is_none() {
+                return hand_stored(stored);
+            }
+            // A key with no chain is not a replacement: its delete drops the
+            // rotation itself (`delete_refresh_chain`). Nor is a key that
+            // holds the rotation's own chain: a copy that was written while
+            // the other did not follow, whose reader still needs the rotation.
+            let own_chain = stored_refresh_token(Some(json.as_str())) == stored_token;
+            if stored.is_some() && !own_chain && base.is_some_and(|base| base != stored_token) {
+                // The key was written from outside since the rotation was
+                // filed (an import, a restore): that chain wins, and the
+                // rotation is dropped unless a newer one replaced it.
+                let mut kept = PENDING_ROTATIONS.lock().unwrap_or_else(|e| e.into_inner());
+                let key = (owner, account.to_string());
+                if kept.get(&key).is_some_and(|p| p.as_str() == json.as_str()) {
+                    kept.remove(&key);
+                }
+                return hand_stored(stored);
+            }
+        }
         // A rotation is handed out only while no deletion of its key has
         // completed since its connection began, none is in progress, and
         // that is known: one filed before the last completed deletion, by
@@ -1556,36 +1586,8 @@ impl JottacloudProvider {
             }
         }
         if let Some(json) = pending {
-            let filed: serde_json::Value = serde_json::from_str(&json).unwrap_or_default();
-            let base = filed[PENDING_BASE].as_str().map(str::to_string);
-            // A rotation filed while what its key held was unknown cannot be
-            // told from a chain written there since: the stored chain wins,
-            // and the rotation stays for when the key holds none.
-            if stored.is_some() && base.is_none() {
-                return hand_stored(stored);
-            }
-
-            // A key with no chain is not a replacement: its delete drops the
-            // rotation itself (`delete_refresh_chain`). Nor is a key that
-            // holds the rotation's own chain: a copy that was written while
-            // the other did not follow, whose reader still needs the rotation.
-            let own_chain = stored_refresh_token(Some(json.as_str())) == stored_token;
-            if stored.is_some()
-                && !own_chain
-                && base.as_ref().is_some_and(|base| *base != stored_token)
-            {
-                // The key was written from outside since the rotation was
-                // filed (an import, a restore): that chain wins, and the
-                // rotation is dropped unless a newer one replaced it.
-                let mut pending = PENDING_ROTATIONS.lock().unwrap_or_else(|e| e.into_inner());
-                let key = (owner, account.to_string());
-                if pending
-                    .get(&key)
-                    .is_some_and(|p| p.as_str() == json.as_str())
-                {
-                    pending.remove(&key);
-                }
-            } else if let Some(chain) = parse(json.to_string()) {
+            if let Some(chain) = parse(json.to_string()) {
+                let filed: serde_json::Value = serde_json::from_str(&json).unwrap_or_default();
                 // Its deletion dependency goes with it: the key its chain
                 // was loaded from, at the count the rotation was checked on.
                 let source = filed[PENDING_SOURCE]

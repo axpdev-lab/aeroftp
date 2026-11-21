@@ -2085,6 +2085,61 @@ fn a_rotation_handed_out_again_keeps_the_key_it_was_loaded_from() {
     assert!(failures.is_empty(), "{failures:#?}");
 }
 
+/// A rotation kept for a profile's key whose chain was loaded from the
+/// singleton does not withhold a chain imported into that key since: while a
+/// deletion of the singleton runs elsewhere, the profile's key hands out the
+/// imported chain, and the rotation, which no longer applies, is dropped.
+#[test]
+fn an_imported_chain_is_not_withheld_by_its_predecessors_source() {
+    if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+        "providers::jottacloud::chain_tests::an_imported_chain_is_not_withheld_by_its_predecessors_source",
+    ) {
+        return;
+    }
+    let chains = Chains::new();
+    let singleton = "jottacloud_refresh";
+    let profile = "importedover";
+    let key = format!("jottacloud_refresh_{profile}");
+    chains
+        .store
+        .store(singleton, &chains.chain("singleton-importedover"))
+        .unwrap();
+    chains
+        .store
+        .store(&key, &chains.chain("own-importedover"))
+        .unwrap();
+    let noted = chains.noted(profile).expect("count");
+    let source = partitions::chain_deletions(&chains.store, chains.owner, singleton)
+        .unwrap()
+        .generation;
+    let mut filed: serde_json::Value =
+        serde_json::from_str(&chains.chain("pending-importedover")).unwrap();
+    filed[PENDING_BASE] = "own-importedover".into();
+    filed[PENDING_GEN] = noted.into();
+    filed[PENDING_SOURCE] = singleton.into();
+    filed[PENDING_SOURCE_GEN] = source.into();
+    PENDING_ROTATIONS.lock().unwrap().insert(
+        (chains.owner, key.clone()),
+        zeroize::Zeroizing::new(filed.to_string()),
+    );
+    // An independent chain is imported into the profile's key, and the
+    // singleton's deletion runs elsewhere.
+    chains
+        .store
+        .store(&key, &chains.chain("imported-importedover"))
+        .unwrap();
+    let mut held = holder(singleton, chains.owner, chains.first, "serve");
+    let loaded = handed_out(&chains, &key);
+    let kept = chains.pending(&key).is_some();
+    held.run("end-failed");
+    drop(held);
+    assert_eq!(
+        (loaded.as_deref(), kept),
+        (Some("imported-importedover"), false),
+        "the imported chain is handed out and the rotation is dropped"
+    );
+}
+
 /// A deletion whose end its process could not record, in a process that
 /// stays alive, does not hold the key for every other process for as long
 /// as it lives: that process settles it at its next connection, whatever
