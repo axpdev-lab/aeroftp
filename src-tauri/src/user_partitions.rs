@@ -4102,22 +4102,27 @@ pub(crate) fn replace_owner_aware_if_unchanged(
                 }
                 init_or_migrate_cli(store)?;
                 let conn = open_or_init_cli()?;
-                if let Some(owner) = nonprofile_secret_owner(&conn)? {
-                    let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
-                    let row = get_user_credential_for(&conn, &root_key, owner, credential_id)?;
-                    if let Some(row) = row.filter(|row| same_chain(expected, row)) {
+                let Some(owner) = nonprofile_secret_owner(&conn)? else {
+                    return Ok(());
+                };
+                let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
+                follow_copy(
+                    || get_user_credential_for(&conn, &root_key, owner, credential_id),
+                    &|copy| same_chain(expected, copy),
+                    |row| {
+                        #[cfg(test)]
+                        rewrite_before_follow(store, Some(owner), credential_id, row);
                         replace_user_credential_if_unchanged(
                             &conn,
                             &root_key,
                             owner,
                             credential_id,
                             credential_type,
-                            (&row, replacement),
+                            (row, replacement),
                             false,
-                        )?;
-                    }
-                }
-                Ok(())
+                        )
+                    },
+                )
             };
             if let Err(e) = follow() {
                 log::warn!("Conditional credential write: the owner's row did not follow: {e}");
@@ -4197,14 +4202,17 @@ pub(crate) fn replace_owner_aware_if_unchanged(
                 if FOLLOW_REFUSED.load(std::sync::atomic::Ordering::SeqCst) {
                     return Err("refused (test)".to_string());
                 }
-                if let Some(copy) = get_optional_secret(store, credential_id)?
-                    .filter(|copy| same_chain(expected, copy))
-                {
-                    store
-                        .replace_secret_if_unchanged(credential_id, &copy, replacement)
-                        .map_err(|e| e.to_string())?;
-                }
-                Ok(())
+                follow_copy(
+                    || get_optional_secret(store, credential_id),
+                    &|copy| same_chain(expected, copy),
+                    |copy| {
+                        #[cfg(test)]
+                        rewrite_before_follow(store, None, credential_id, copy);
+                        store
+                            .replace_secret_if_unchanged(credential_id, copy, replacement)
+                            .map_err(|e| e.to_string())
+                    },
+                )
             };
             if let Err(e) = follow() {
                 log::warn!("Conditional credential write: the vault copy did not follow: {e}");
@@ -4213,6 +4221,70 @@ pub(crate) fn replace_owner_aware_if_unchanged(
         }
         Ok(true)
     })
+}
+
+/// Make the legacy owner's other copy of a chain follow a write: `read` it,
+/// and while it holds the same chain (`same_chain`), `replace` it on what it
+/// holds. A copy rewritten between the read and the replacement (`Ok(false)`)
+/// is read again: still the same chain in other bytes, it is replaced on what
+/// it holds now; another chain is left as it is. A copy that keeps being
+/// rewritten did not follow, and that is an error, so the rotation stays
+/// pending for its reader.
+fn follow_copy<C: std::ops::Deref<Target = String>>(
+    read: impl Fn() -> Result<Option<C>, String>,
+    same_chain: &dyn Fn(&str) -> bool,
+    replace: impl Fn(&str) -> Result<bool, String>,
+) -> Result<(), String> {
+    for _ in 0..3 {
+        let Some(copy) = read()?.filter(|copy| same_chain(copy)) else {
+            return Ok(());
+        };
+        if replace(&copy)? {
+            return Ok(());
+        }
+    }
+    Err("the copy kept being rewritten".to_string())
+}
+
+/// The other copy of `credential_id` (the vault key for `None`, else that
+/// account's row) rewritten once, with the same chain in other bytes, right
+/// before it follows a write (test only).
+#[cfg(test)]
+pub(crate) static REWRITTEN_BEFORE_FOLLOW: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+#[cfg(test)]
+fn rewrite_before_follow(
+    store: &CredentialStore,
+    row_of: Option<i64>,
+    credential_id: &str,
+    copy: &str,
+) {
+    if !REWRITTEN_BEFORE_FOLLOW.swap(false, std::sync::atomic::Ordering::SeqCst) {
+        return;
+    }
+    let mut chain: Value = serde_json::from_str(copy).expect("a stored chain");
+    chain["rewritten"] = Value::Bool(true);
+    let rewritten = chain.to_string();
+    match row_of {
+        None => store
+            .store(credential_id, &rewritten)
+            .expect("rewrite the vault copy"),
+        // The row alone: an imported write would rewrite the vault copy too.
+        Some(user) => {
+            let conn = open_or_init_cli().expect("partition DB");
+            let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
+            set_user_credential_for(
+                &conn,
+                &root_key,
+                user,
+                credential_id,
+                "jottacloud_refresh",
+                &rewritten,
+            )
+            .expect("rewrite the row")
+        }
+    }
 }
 
 /// The `global_state` key that counts the deletions of a refresh chain's

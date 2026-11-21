@@ -1371,6 +1371,89 @@ fn a_copy_that_did_not_follow_keeps_the_rotation_for_its_reader() {
     assert!(failures.is_empty(), "{failures:#?}");
 }
 
+/// The legacy owner's other copy, rewritten with the same chain in other
+/// bytes right before it follows a rotation, still follows: the failed
+/// comparison is read again, and the copy is replaced on what it holds now,
+/// so its reader is not left with the chain Jotta consumed.
+#[test]
+fn a_copy_rewritten_before_it_follows_still_follows() {
+    use std::sync::atomic::Ordering::SeqCst;
+    if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+        "providers::jottacloud::chain_tests::a_copy_rewritten_before_it_follows_still_follows",
+    ) {
+        return;
+    }
+    let chains = Chains::new();
+    assert_eq!(
+        chains.owner, None,
+        "the first account owns the shared vault"
+    );
+    let _ = chains.store.delete("jottacloud_refresh");
+    let mut failures = Vec::new();
+    let row = |key: &str| chains.stored(key);
+    let vault = |key: &str| stored_refresh_token(chains.store.get(key).ok().as_deref());
+    for (case, user, other) in [
+        (
+            "the row after a vault write",
+            partitions::LEGACY_ONLY_ACCOUNT,
+            chains.first,
+        ),
+        (
+            "the vault after a row write",
+            chains.first,
+            partitions::LEGACY_ONLY_ACCOUNT,
+        ),
+    ] {
+        let profile = if user == chains.first {
+            "rewrittenvault"
+        } else {
+            "rewrittenrow"
+        };
+        let key = format!("jottacloud_refresh_{profile}");
+        let both = chains.chain(&format!("both-{profile}"));
+        chains.store.store(&key, &both).unwrap();
+        partitions::store_imported_credential_for_user(
+            &chains.store,
+            chains.first,
+            &key,
+            Some("jottacloud_refresh"),
+            &both,
+        )
+        .unwrap();
+        let mut connection = chains.bound(profile);
+        connection.set_credential_user(Some(user));
+        partitions::REWRITTEN_BEFORE_FOLLOW.store(true, SeqCst);
+        let connected = chains
+            .runtime()
+            .block_on(connection.try_connect_with_refresh());
+        let rewritten = !partitions::REWRITTEN_BEFORE_FOLLOW.swap(false, SeqCst);
+        let latest = connection.refresh_token.expose_secret().to_string();
+        drop(connection);
+        if !matches!(connected, Ok(true)) || !rewritten {
+            failures.push(format!(
+                "{case}: {connected:?}, the copy was rewritten before it followed: {rewritten}"
+            ));
+        }
+        if row(&key) != latest || vault(&key) != latest {
+            failures.push(format!(
+                "{case}: both copies hold the rotation: row {} / vault {}, expected {latest}",
+                row(&key),
+                vault(&key)
+            ));
+        }
+        let loaded = JottacloudProvider::load_refresh_chain(Some(other), Some(chains.owner), &key)
+            .chain()
+            .map(|((rt, _, _), _)| rt);
+        if loaded.as_deref() != Some(latest.as_str()) {
+            failures.push(format!(
+                "{case}: the other copy's reader loads {loaded:?}, expected {latest}"
+            ));
+        }
+        PENDING_ROTATIONS.lock().unwrap().clear();
+    }
+    assert!(failures.is_empty(), "{failures:#?}");
+}
+
 /// A profile purge names every key it found and could not remove: a refresh
 /// chain whose deletion cannot be recorded stays in the vault, and the purge
 /// says so instead of reporting a clean delete. Purged again once it can be
