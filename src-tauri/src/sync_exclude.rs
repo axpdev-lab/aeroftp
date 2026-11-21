@@ -73,10 +73,13 @@ const VAULT_PRIVATE_DIR_PREFIXES: &[&str] = &[
     ".aeropassword-prepare-",
     ".aerorepair-private-",
     ".aerostrip-",
+    // Windows ownership probe of a new destination (creation, strip, extraction).
+    ".aerovault-security-",
 ];
 
 pub(crate) fn is_vault_sync_artifact(name: &str) -> bool {
     is_vault_lock_name(name)
+        || name.eq_ignore_ascii_case(".aerovault-state")
         || VAULT_PRIVATE_DIR_PREFIXES.iter().any(|prefix| {
             name.get(..prefix.len())
                 .is_some_and(|start| start.eq_ignore_ascii_case(prefix))
@@ -209,7 +212,22 @@ impl ExcludeMatcher {
     }
 
     pub(crate) fn excludes_vault_artifact_path(&self, rel_path: &str) -> bool {
-        self.exclude_vault_artifacts && rel_path.split(['/', '\\']).any(is_vault_sync_artifact)
+        if !self.exclude_vault_artifacts {
+            return false;
+        }
+        let mut in_aerovault = false;
+        for segment in rel_path
+            .split(['/', '\\'])
+            .filter(|segment| !segment.is_empty())
+        {
+            if is_vault_sync_artifact(segment)
+                || in_aerovault && segment.eq_ignore_ascii_case("journals")
+            {
+                return true;
+            }
+            in_aerovault = segment.eq_ignore_ascii_case("aerovault");
+        }
+        false
     }
 
     /// A matcher that excludes every path: the fail-closed stand-in for a list
@@ -631,6 +649,10 @@ mod tests {
             "nested/entry.aerolock/child",
             "nested/.aerovault-repack-Abc123/decrypted.txt",
             "nested/.aeropassword-prepare-abc/old-vault",
+            "nested/.aerovault-security-Abc123",
+            ".local/state/aerovault/journals/0123/old-vault",
+            "custom-state/AEROVAULT/journals/0123/old-sidecar",
+            ".aerovault-state/journals/0123/old-vault",
             "nested/.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.aerostrip/old-sidecar",
         ];
         let matchers = [
@@ -647,6 +669,8 @@ mod tests {
                 assert!(ignore.should_exclude(path, false, matcher), "{path}");
             }
             assert!(matcher.is_excluded_entry("encoded-entry", "file.aerolock"));
+            assert!(!matcher.is_excluded("docs/journals/meeting.md"));
+            assert!(!matcher.is_excluded("aerovault/docs/formats.md"));
             assert!(!matcher.is_excluded("nested/entry.aerovault"));
             assert!(!matcher.is_excluded("data/report.bin.aerolock.txt"));
         }

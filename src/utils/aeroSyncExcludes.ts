@@ -15,7 +15,8 @@ export const AEROSYNC_DEFAULT_EXCLUDES: readonly string[] = [
     '*.aerocorrect', '*.aerolock', '*.aerotmp',
     '.aerovault-repack-*', '.aerovault-v3-*', '.aerovault_extract_*',
     '.aerocreate-prepare-*', '.aeropassword-prepare-*',
-    '.aerorepair-private-*', '.aerostrip-*', '.*.aerostrip',
+    '.aerorepair-private-*', '.aerostrip-*', '.*.aerostrip', '.aerovault-security-*',
+    '.aerovault-state', 'aerovault/journals',
 ];
 
 /**

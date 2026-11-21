@@ -17,6 +17,12 @@ describe('AeroSync compare exclusions', () => {
         expect(cliExcludePatterns([], AEROSYNC_DEFAULT_BACKUP_DIR)).toContain('*.aerolock');
     });
 
+    it('excludes private vault journals from Compare and exported commands', () => {
+        const journals = ['.aerovault-state', 'aerovault/journals'];
+        expect(compareExcludePatterns([])).toEqual(expect.arrayContaining(journals));
+        expect(cliExcludePatterns([], AEROSYNC_DEFAULT_BACKUP_DIR)).toEqual(expect.arrayContaining(journals));
+    });
+
     it('sends the Plan tab patterns to every compare, after the defaults', () => {
         // Before the Plan had an exclude field, a remote compare ran with the
         // defaults only, so a file matching the user's pattern was planned
