@@ -519,16 +519,22 @@ pub async fn dispatch_remote_tool(
 }
 
 /// `read()` with the account it was read for: the active account read before
-/// and after it, or `None` when the two differ (a switch while it ran), so a
-/// list is never paired with another account's id.
+/// and after it, or `None` when the two differ (a switch while it ran) or
+/// either lookup failed, so a list is never paired with another account's id,
+/// and a lookup that failed is never taken for "no account" (whose states
+/// would be read from the legacy vault).
 fn read_for_one_account<T>(
-    active: impl Fn() -> Option<i64>,
+    active: impl Fn() -> Result<Option<i64>, String>,
     read: impl FnOnce() -> T,
 ) -> (T, Option<Option<i64>>) {
     let before = active();
     let value = read();
     let after = active();
-    (value, (before == after).then_some(before))
+    let listed_for = match (before, after) {
+        (Ok(before), Ok(after)) => (before == after).then_some(before),
+        _ => None,
+    };
+    (value, listed_for)
 }
 
 async fn list_servers(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
@@ -558,13 +564,11 @@ async fn list_servers(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErro
     // The states are the listing account's: an account switched to while
     // the list was read leaves them unknown, never another account's.
     let store = crate::credential_store::CredentialStore::from_cache();
-    let active = || {
-        store.as_ref().and_then(|store| {
-            crate::user_partitions::cli_get_active_user(store)
-                .ok()
-                .flatten()
-                .map(|user| user.id)
-        })
+    let active = || match store.as_ref() {
+        Some(store) => {
+            crate::user_partitions::cli_get_active_user(store).map(|user| user.map(|user| user.id))
+        }
+        None => Ok(None),
     };
     let (profiles, listed_for) = read_for_one_account(active, || ctx.credentials().list_servers());
     let profiles = profiles.map_err(ToolError::Exec)?;
@@ -5313,17 +5317,38 @@ mod tests {
     fn a_list_is_paired_only_with_the_account_it_was_read_for() {
         let active = std::cell::Cell::new(Some(1));
         let switched = read_for_one_account(
-            || active.get(),
+            || Ok(active.get()),
             || {
                 active.set(Some(2));
                 "list of 1"
             },
         );
         assert_eq!(switched, ("list of 1", None));
-        let steady = read_for_one_account(|| active.get(), || "list of 2");
+        let steady = read_for_one_account(|| Ok(active.get()), || "list of 2");
         assert_eq!(steady, ("list of 2", Some(Some(2))));
-        let none = read_for_one_account(|| None, || "pre-accounts list");
+        let none = read_for_one_account(|| Ok(None), || "pre-accounts list");
         assert_eq!(none, ("pre-accounts list", Some(None)));
+        // A lookup that failed is no account to pair the list with, on either
+        // side: never the legacy path of "no account".
+        let failed = read_for_one_account(|| Err("refused".to_string()), || "list");
+        assert_eq!(failed, ("list", None));
+        let calls = std::cell::Cell::new(0);
+        let one_side = |fail_at: usize| {
+            calls.set(0);
+            read_for_one_account(
+                || {
+                    calls.set(calls.get() + 1);
+                    if calls.get() == fail_at {
+                        Err("refused".to_string())
+                    } else {
+                        Ok(None)
+                    }
+                },
+                || "list",
+            )
+        };
+        assert_eq!(one_side(1), ("list", None), "the lookup before failed");
+        assert_eq!(one_side(2), ("list", None), "the lookup after failed");
     }
 
     /// The search says when it stopped at its limit. A listing has no such
