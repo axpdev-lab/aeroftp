@@ -242,6 +242,22 @@ pub(crate) mod test_seams {
             .is_ok()
     }
 
+    thread_local! {
+        static SESSION_PRESENCE_READ_FAILS: std::cell::Cell<bool> =
+            const { std::cell::Cell::new(false) };
+    }
+
+    /// Every read on this thread of whether a vault session is saved, with
+    /// no account, fails as a vault that cannot be read does, until called
+    /// again with `false`.
+    pub(crate) fn set_session_presence_read_fails(fails: bool) {
+        SESSION_PRESENCE_READ_FAILS.with(|cell| cell.set(fails));
+    }
+
+    pub(super) fn session_presence_read_fails() -> bool {
+        SESSION_PRESENCE_READ_FAILS.with(std::cell::Cell::get)
+    }
+
     static NO_FILE_LOCKS: AtomicBool = AtomicBool::new(false);
 
     /// Plays a filesystem without file locks for every session key lock, on
@@ -420,7 +436,21 @@ pub fn holds_saved_session(
     match owner.user_id {
         Some(user) => crate::user_partitions::holds_credential(store, user, &key)
             .map_err(ProviderError::Other),
-        None => Ok(store.get(&key).is_ok_and(|value| !value.is_empty())),
+        None => {
+            #[cfg(test)]
+            if test_seams::session_presence_read_fails() {
+                return Err(ProviderError::Other(
+                    "whether a session is saved could not be read (test)".into(),
+                ));
+            }
+            match store.get(&key) {
+                Ok(value) => Ok(!value.is_empty()),
+                Err(crate::credential_store::CredentialError::NotFound(_)) => Ok(false),
+                Err(error) => Err(ProviderError::Other(format!(
+                    "whether a session is saved could not be read: {error}"
+                ))),
+            }
+        }
     }
 }
 

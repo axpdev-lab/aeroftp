@@ -2572,6 +2572,43 @@ fn a_purged_session_another_account_may_hold_waits_for_that_account() {
     assert_eq!(deferred_revokes(&accounts.conn), 0);
 }
 
+/// A purge with no account that cannot read whether the vault holds the
+/// profile's session reports the session left behind, where it used to read
+/// as no session; a session that is not there leaves nothing behind.
+#[test]
+fn a_purge_that_cannot_read_a_session_reports_it_left_behind() {
+    if !in_isolated_child("a_purge_that_cannot_read_a_session_reports_it_left_behind") {
+        return;
+    }
+    let accounts = Accounts::open();
+    vault::test_seams::set_session_presence_read_fails(true);
+    let purged = block_on(crate::purge_profile_secrets_for(
+        &accounts.store,
+        None,
+        "unreadable-presence",
+        Some("ftp"),
+    ));
+    vault::test_seams::set_session_presence_read_fails(false);
+    let purged = purged.unwrap();
+    assert!(
+        purged.failed.contains(&key("unreadable-presence")),
+        "the session is reported left behind: {:?}",
+        purged.failed
+    );
+    let purged = block_on(crate::purge_profile_secrets_for(
+        &accounts.store,
+        None,
+        "no-session",
+        Some("ftp"),
+    ))
+    .unwrap();
+    assert!(
+        !purged.failed.contains(&key("no-session")),
+        "{:?}",
+        purged.failed
+    );
+}
+
 /// An unlock whose deferred cleanup cannot end its session in time (offline,
 /// here the purged session's lease held elsewhere) is not held by it: the
 /// unlock returns within the cleanup's budget with the row and the mark in
