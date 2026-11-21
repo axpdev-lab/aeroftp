@@ -4648,32 +4648,49 @@ mod vault_lock_tests {
 
     #[test]
     fn off_async_worker_hands_a_multi_thread_worker_back() {
-        let runtime = tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(1)
-            .enable_time()
-            .build()
-            .unwrap();
-        runtime.block_on(async {
-            // With one worker, a write that blocked it in place would starve
-            // this task; block_in_place hands the other task to a new worker.
-            // When each ended: a timeout on the ticker cannot tell, since a
-            // blocked worker drives no timer, and the ticker and its timeout
-            // would come due together once the write is over.
-            let ticker = tokio::spawn(async {
-                tokio::time::sleep(Duration::from_millis(20)).await;
-                std::time::Instant::now()
+        // Bounded by a thread of its own: a write that blocked the only worker
+        // in place drives no timer, so no timeout inside the runtime could.
+        let (done, finished) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let runtime = tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(1)
+                .enable_time()
+                .build()
+                .unwrap();
+            let times = runtime.block_on(async {
+                // With one worker, a write that blocked it in place would
+                // starve this task; block_in_place hands the other task to a
+                // new worker. When each began and ended: the ticker must come
+                // due after the write began and before it ended, which a
+                // ticker done before the write started would not show.
+                let started = std::sync::Arc::new(std::sync::Mutex::new(None));
+                let ticker = tokio::spawn(async {
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+                    std::time::Instant::now()
+                });
+                let mark = started.clone();
+                let ran = tokio::spawn(async move {
+                    off_async_worker(move || {
+                        *mark.lock().unwrap() = Some(std::time::Instant::now());
+                        std::thread::sleep(Duration::from_millis(200));
+                    });
+                    std::time::Instant::now()
+                });
+                let ticked = ticker.await.unwrap();
+                let written = ran.await.unwrap();
+                let started = started.lock().unwrap().expect("the write ran");
+                (started, ticked, written)
             });
-            let ran = tokio::spawn(async {
-                off_async_worker(|| std::thread::sleep(Duration::from_millis(200)));
-                std::time::Instant::now()
-            });
-            let ticked = ticker.await.unwrap();
-            let written = ran.await.unwrap();
-            assert!(
-                ticked < written,
-                "the other task ran while the write waited"
-            );
+            let _ = done.send(times);
         });
+        let (started, ticked, written) = finished
+            .recv_timeout(Duration::from_secs(5))
+            .expect("the runtime finished");
+        assert!(started < ticked, "the other task ran after the write began");
+        assert!(
+            ticked < written,
+            "the other task ran while the write waited"
+        );
     }
 
     /// No vault writer may bypass the unique temporaries again.
