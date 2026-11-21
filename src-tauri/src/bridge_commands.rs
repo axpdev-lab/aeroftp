@@ -250,7 +250,7 @@ fn dispatch_import(source: &str, path: &Path) -> Result<Value, String> {
 /// said only once it is.
 fn store_rclone_provider_secrets(
     result: &rclone_import::RcloneImportResult,
-    user: &Result<Option<i64>, String>,
+    user: Option<i64>,
     store: Option<&CredentialStore>,
     scan: Option<&bridge_import_scan::Scan>,
 ) -> Vec<(String, String)> {
@@ -293,12 +293,13 @@ fn store_rclone_provider_secrets(
             if let Some(slug) = crate::oauth_vault_slug_for_protocol(protocol) {
                 // MUV-4: dual-write into vault + the importing account's partition.
                 let key = format!("oauth_{}_{}", slug, profile_id);
-                if let Err(e) = user.clone().and_then(|user| {
-                    record(&key, bridge_import_scan::Kind::Secret, oauth_json)?;
-                    crate::user_partitions::store_typed_credential_dual_as(
-                        store, user, &key, "oauth", oauth_json,
-                    )
-                }) {
+                if let Err(e) =
+                    record(&key, bridge_import_scan::Kind::Secret, oauth_json).and_then(|()| {
+                        crate::user_partitions::store_typed_credential_dual_as(
+                            store, user, &key, "oauth", oauth_json,
+                        )
+                    })
+                {
                     log::warn!("rclone bridge: oauth token store failed for {profile_id}: {e}");
                     failures.push((
                         profile_id.clone(),
@@ -310,16 +311,17 @@ fn store_rclone_provider_secrets(
         if let Some(ref jotta_json) = secrets.jotta_refresh {
             if protocol == "jottacloud" {
                 let key = format!("jottacloud_refresh_{}", profile_id);
-                if let Err(e) = user.clone().and_then(|user| {
-                    record(&key, bridge_import_scan::Kind::Secret, jotta_json)?;
-                    crate::user_partitions::store_typed_credential_dual_as(
-                        store,
-                        user,
-                        &key,
-                        "jottacloud_refresh",
-                        jotta_json,
-                    )
-                }) {
+                if let Err(e) =
+                    record(&key, bridge_import_scan::Kind::Secret, jotta_json).and_then(|()| {
+                        crate::user_partitions::store_typed_credential_dual_as(
+                            store,
+                            user,
+                            &key,
+                            "jottacloud_refresh",
+                            jotta_json,
+                        )
+                    })
+                {
                     log::warn!("rclone bridge: jotta token store failed for {profile_id}: {e}");
                     failures.push((
                         profile_id.clone(),
@@ -337,26 +339,22 @@ fn store_rclone_provider_secrets(
         if let Some(ref session_json) = secrets.proton_native_session {
             if protocol == "proton" {
                 use crate::providers::proton_native::vault;
-                match user
-                    .clone()
-                    .map_err(crate::providers::ProviderError::Other)
-                    .and_then(|user| {
-                        let uid = vault::session_uid(session_json)?;
-                        if let Some(scan) = scan {
-                            scan.record_for(
-                                profile_id,
-                                &vault::session_key(Some(profile_id)),
-                                bridge_import_scan::Kind::ProtonSession,
-                                &uid,
-                            )
-                            .map_err(crate::providers::ProviderError::Other)?;
-                        }
-                        vault::import_session_blocking(
-                            vault::SessionOwner::for_user(user),
+                match vault::session_uid(session_json).and_then(|uid| {
+                    if let Some(scan) = scan {
+                        scan.record_for(
                             profile_id,
-                            session_json,
+                            &vault::session_key(Some(profile_id)),
+                            bridge_import_scan::Kind::ProtonSession,
+                            &uid,
                         )
-                    }) {
+                        .map_err(crate::providers::ProviderError::Other)?;
+                    }
+                    vault::import_session_blocking(
+                        vault::SessionOwner::for_user(user),
+                        profile_id,
+                        session_json,
+                    )
+                }) {
                     Ok(true) => failures.push((
                         profile_id.clone(),
                         rclone_import::RCLONE_SESSION_SHARED.into(),
@@ -757,8 +755,10 @@ pub async fn import_bridge_config(
     // write: a write may wait for a vault or a session lock, and an account
     // switched to meanwhile (in this window or another process) must receive
     // none of them. The response names it, for the window to refuse a confirm
-    // in another account.
-    let user = crate::user_partitions::active_user_for_save();
+    // in another account. An account that cannot be read refuses the scan: a
+    // preview naming no account would be confirmed in whichever is active
+    // then, its profiles without the secrets the scan could not store.
+    let user = crate::user_partitions::active_user_for_save()?;
     let store = CredentialStore::from_cache();
     // What an earlier scan wrote and no window confirmed (one closed by a
     // crash or a quit) goes before this one begins.
@@ -776,22 +776,21 @@ pub async fn import_bridge_config(
     };
     // Every secret the scan stores is recorded first, so the profiles it was
     // stored for take it back if the window never saves them.
-    let scan = match (&store, &user) {
-        (Some(store), Ok(user)) => Some(bridge_import_scan::Scan::begin(
+    let scan = match &store {
+        Some(store) => Some(bridge_import_scan::Scan::begin(
             store,
-            *user,
+            user,
             imported_profile_ids(&value),
         )?),
-        _ => None,
+        None => None,
     };
     let mut secret_failures: Vec<(String, String)> = Vec::new();
     if let Some(result) = &rclone {
         secret_failures =
-            store_rclone_provider_secrets(result, &user, store.as_ref(), scan.as_ref());
+            store_rclone_provider_secrets(result, user, store.as_ref(), scan.as_ref());
     }
     let mut write = |key: &str, secret: &str| -> Result<(), String> {
         let store = store.as_ref().ok_or("the credential vault is locked")?;
-        let user = user.clone()?;
         if let Some(scan) = &scan {
             scan.record(key, bridge_import_scan::Kind::Secret, secret)?;
         }
@@ -810,7 +809,7 @@ pub async fn import_bridge_config(
         }
         None => finish_bridge_import(&source, &value, secret_failures, vault),
     };
-    settle_unless_confirmable(store.as_ref(), scan.as_ref(), finished, &user)
+    settle_unless_confirmable(store.as_ref(), scan.as_ref(), finished, user)
 }
 
 /// The ids of the profiles an import parsed.
@@ -833,7 +832,7 @@ fn settle_unless_confirmable(
     store: Option<&CredentialStore>,
     scan: Option<&bridge_import_scan::Scan>,
     finished: Result<Value, String>,
-    user: &Result<Option<i64>, String>,
+    user: Option<i64>,
 ) -> Result<Value, String> {
     let settle = || {
         if let (Some(store), Some(scan)) = (store, scan) {
@@ -849,13 +848,11 @@ fn settle_unless_confirmable(
             return Err(error);
         }
     };
-    if let Ok(user) = user {
-        if scan.is_some() && crate::user_partitions::active_user_for_save().as_ref() != Ok(user) {
-            settle();
-            return Err(bridge_import_scan::SCAN_ACCOUNT_CHANGED.to_string());
-        }
-        response["importedUserId"] = json!(user);
+    if scan.is_some() && crate::user_partitions::active_user_for_save() != Ok(user) {
+        settle();
+        return Err(bridge_import_scan::SCAN_ACCOUNT_CHANGED.to_string());
     }
+    response["importedUserId"] = json!(user);
     if let Some(scan) = scan {
         response["scanId"] = json!(scan.id());
     }

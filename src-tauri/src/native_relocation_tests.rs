@@ -2581,6 +2581,33 @@ fn a_proton_entry_waits_for_a_build_that_can_remove_it() {
     assert_eq!(ledger_rows(&scan_id), Vec::new());
 }
 
+/// A scan whose account cannot be read is refused before it writes
+/// anything: a preview that names no account would be confirmed in
+/// whichever account is active then, its profiles without their secrets.
+#[test]
+fn a_scan_whose_account_cannot_be_read_is_refused() {
+    use std::sync::atomic::Ordering::SeqCst;
+    if !in_isolated_child("a_scan_whose_account_cannot_be_read_is_refused") {
+        return;
+    }
+    let accounts = Accounts::open();
+    let runtime = bridge_runtime();
+    ACCOUNT_LOOKUP_FAILS.store(true, SeqCst);
+    let refused = scan_ftp_remotes(&runtime, &["files"]);
+    ACCOUNT_LOOKUP_FAILS.store(false, SeqCst);
+    assert!(refused.is_err(), "the scan is refused: {refused:?}");
+    assert_eq!(vault_keys_like(&["server_"]), Vec::<String>::new());
+    let ledgers: i64 = accounts
+        .conn
+        .query_row(
+            "SELECT COUNT(*) FROM global_state WHERE substr(key, 1, 14) = 'bridge_import_'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(ledgers, 0, "no ledger is begun");
+}
+
 /// A session save is whole or not made. For the legacy owner, whose session
 /// is a vault key and its row, a row the account store refuses puts the
 /// vault key back as it was: an import reported as not restored leaves no
