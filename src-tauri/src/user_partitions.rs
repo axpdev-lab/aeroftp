@@ -4782,9 +4782,12 @@ fn mark_private_tokens_aligned(conn: &Connection, user_id: i64) -> Result<(), St
     Ok(())
 }
 
-/// Both one-time passes over an account's legacy secrets are done.
+/// Both one-time passes over an account's legacy secrets are done, and no
+/// targeted pass after a restore waits ([`defer_realign`]).
 fn credentials_settled(conn: &Connection, user_id: i64) -> Result<bool, String> {
-    Ok(is_creds_migrated(conn, user_id)? && private_tokens_aligned(conn, user_id)?)
+    Ok(is_creds_migrated(conn, user_id)?
+        && private_tokens_aligned(conn, user_id)?
+        && deferred_realign_tags(conn, user_id)?.is_none())
 }
 
 fn is_creds_migrated(conn: &Connection, user_id: i64) -> Result<bool, String> {
@@ -5132,7 +5135,15 @@ fn align_private_tokens_inner(
     read_secret: &SecretReader<'_>,
     delete_secret: &SecretDeleter<'_>,
 ) -> Result<usize, String> {
-    align_private_tokens_of(
+    let realigned = realign_deferred_tokens(
+        conn,
+        root_key,
+        user_id,
+        vault_keys,
+        read_secret,
+        delete_secret,
+    )?;
+    let aligned = align_private_tokens_of(
         conn,
         root_key,
         user_id,
@@ -5140,12 +5151,128 @@ fn align_private_tokens_inner(
         None,
         read_secret,
         delete_secret,
+    )?;
+    Ok(realigned + aligned.unwrap_or(0))
+}
+
+/// Marks the private token keys a targeted pass after a restore could not
+/// align yet ([`realign_private_tokens_after_restore`]), by their tags with
+/// this machine's root (a key names its profile id, which the partition
+/// keeps as a tag only), as a JSON array.
+const PRIVATE_TOKENS_REALIGN_PREFIX: &str = "private_tokens_realign_";
+
+fn realign_marker_key(user_id: i64) -> String {
+    format!("{PRIVATE_TOKENS_REALIGN_PREFIX}{user_id}")
+}
+
+/// The tags of the keys a targeted pass left to the next one, `None` when
+/// none waits.
+fn deferred_realign_tags(conn: &Connection, user_id: i64) -> Result<Option<Vec<String>>, String> {
+    let value: Option<String> = conn
+        .query_row(
+            "SELECT value FROM global_state WHERE key = ?1",
+            params![realign_marker_key(user_id)],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| format!("Read deferred private token alignment: {e}"))?;
+    value
+        .map(|raw| {
+            serde_json::from_str(&raw)
+                .map_err(|e| format!("Read deferred private token alignment: {e}"))
+        })
+        .transpose()
+}
+
+/// Leaves `keys` to the next pass of `user_id` ([`realign_deferred_tokens`]),
+/// with any it left before.
+fn defer_realign(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+    keys: &[String],
+) -> Result<(), String> {
+    let root_secret = user_crypto::secret_key_from_bytes(root_key);
+    let mut tags = deferred_realign_tags(conn, user_id)?.unwrap_or_default();
+    for key in keys {
+        tags.push(user_crypto::metadata_tag(
+            &root_secret,
+            b"realign-key",
+            key,
+        )?);
+    }
+    tags.sort();
+    tags.dedup();
+    let value =
+        serde_json::to_string(&tags).map_err(|e| format!("Defer private token alignment: {e}"))?;
+    conn.execute(
+        "INSERT INTO global_state(key, value, updated_at)
+         VALUES (?1, ?2, ?3)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+        params![realign_marker_key(user_id), value, now_ms()],
     )
+    .map_err(|e| format!("Defer private token alignment: {e}"))?;
+    Ok(())
+}
+
+/// The targeted pass a restore could not run ([`defer_realign`]), run by the
+/// next ordinary pass of the account over the same keys alone: the marker
+/// goes once it ran. Its aligned marker stays as the restore left it, so the
+/// profiles the restore brought get no pass of their own.
+fn realign_deferred_tokens(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+    vault_keys: &[String],
+    read_secret: &SecretReader<'_>,
+    delete_secret: &SecretDeleter<'_>,
+) -> Result<usize, String> {
+    let Some(tags) = deferred_realign_tags(conn, user_id)? else {
+        return Ok(0);
+    };
+    let root_secret = user_crypto::secret_key_from_bytes(root_key);
+    let mut only = Vec::new();
+    for key in vault_keys
+        .iter()
+        .filter(|key| private_token_type(key).is_some())
+    {
+        if tags.contains(&user_crypto::metadata_tag(
+            &root_secret,
+            b"realign-key",
+            key,
+        )?) {
+            only.push(key.clone());
+        }
+    }
+    let aligned = if only.is_empty() {
+        Some(0)
+    } else {
+        align_private_tokens_of(
+            conn,
+            root_key,
+            user_id,
+            vault_keys,
+            Some(&only),
+            read_secret,
+            delete_secret,
+        )?
+    };
+    let Some(aligned) = aligned else {
+        return Ok(0);
+    };
+    conn.execute(
+        "DELETE FROM global_state WHERE key = ?1",
+        params![realign_marker_key(user_id)],
+    )
+    .map_err(|e| format!("Clear deferred private token alignment: {e}"))?;
+    Ok(aligned)
 }
 
 /// [`align_private_tokens_inner`], over the keys in `only` alone when given:
 /// one pass of the same rule for an account already aligned, which neither
 /// reads nor sets its marker ([`realign_private_tokens_after_restore`]).
+/// `None`: the pass could not run now (the list lock busy, profile tags
+/// pending, the account locked) and changed nothing.
 fn align_private_tokens_of(
     conn: &Connection,
     root_key: &[u8; 32],
@@ -5154,15 +5281,15 @@ fn align_private_tokens_of(
     only: Option<&[String]>,
     read_secret: &SecretReader<'_>,
     delete_secret: &SecretDeleter<'_>,
-) -> Result<usize, String> {
+) -> Result<Option<usize>, String> {
     if only.is_none() && private_tokens_aligned(conn, user_id)? {
-        return Ok(0);
+        return Ok(Some(0));
     }
     if nonprofile_secret_owner(conn)? == Some(user_id) {
         if only.is_none() {
             mark_private_tokens_aligned(conn, user_id)?;
         }
-        return Ok(0);
+        return Ok(Some(0));
     }
     // Which profiles another account holds must not change until the vault has
     // let go: a profile writer, or the save of a token for a profile, holds the
@@ -5178,7 +5305,7 @@ fn align_private_tokens_of(
                 Ok(lock) => Some(lock),
                 Err(e) if e == PROFILE_LIST_BUSY => {
                     tracing::debug!("Private tokens not aligned by this pass: {e}");
-                    return Ok(0);
+                    return Ok(None);
                 }
                 Err(e) => return Err(e),
             }
@@ -5275,8 +5402,8 @@ fn align_private_tokens_of(
     });
     let moved = match outcome {
         Ok(Some(moved)) => moved,
-        Ok(None) => return Ok(0),
-        Err(e) if e == "USER_LOCKED" => return Ok(0),
+        Ok(None) => return Ok(None),
+        Err(e) if e == "USER_LOCKED" => return Ok(None),
         Err(e) => return Err(e),
     };
     // The copies are committed: only now does the vault let go of them.
@@ -5290,7 +5417,7 @@ fn align_private_tokens_of(
     if only.is_none() && (vault_lets_go || moved.is_empty()) {
         mark_private_tokens_aligned(conn, user_id)?;
     }
-    Ok(moved.len())
+    Ok(Some(moved.len()))
 }
 
 /// Whether `row`, the row `key` of `user_id`, may be a copy of `vault`, the
@@ -5529,7 +5656,7 @@ pub fn realign_private_tokens_after_restore(
     let read_secret = |key: &str| get_optional_secret(before.store, key);
     let delete_secret = |key: &str| delete_optional_secret(before.store, key);
     let root_key = Zeroizing::new(before.store.derive_user_partition_wrapping_key());
-    align_private_tokens_of(
+    match align_private_tokens_of(
         &conn,
         &root_key,
         before.user_id,
@@ -5537,7 +5664,15 @@ pub fn realign_private_tokens_after_restore(
         Some(&held),
         &read_secret,
         &delete_secret,
-    )
+    )? {
+        Some(aligned) => Ok(aligned),
+        // Not run now: the account's next ordinary pass runs it over the
+        // same keys, which its aligned marker would otherwise skip.
+        None => {
+            defer_realign(&conn, &root_key, before.user_id, &held)?;
+            Ok(0)
+        }
+    }
 }
 
 /// Reader-fallback net (sec 3.3), engine form: prefer the per-user encrypted
@@ -11979,6 +12114,90 @@ mod tests {
             get_user_credential_for(&conn, &root, other.id, "oauth_dropbox_p").unwrap(),
             None
         );
+    }
+
+    /// The targeted pass after a restore that cannot run now (the list lock
+    /// busy, profile tags pending) is left to the account's next ordinary
+    /// pass, over the same keys alone: the account's own token then reaches
+    /// its row and leaves the vault, while a profile only the restore brought
+    /// gets nothing.
+    #[test]
+    fn a_targeted_realignment_that_cannot_run_is_run_by_the_next_pass() {
+        let _guard = test_lock();
+        for blocked_by_tags in [false, true] {
+            clear_user_session();
+            let dir = tempfile::tempdir().unwrap();
+            let store = throwaway_vault(dir.path());
+            let root = store.derive_user_partition_wrapping_key();
+            let db = dir.path().join("partitions.db");
+            let mut conn = open_or_init_path(db.clone()).expect("open");
+            migrate_legacy_payloads(&mut conn, Some("[]"), None, &root).expect("seed");
+            let owner = nonprofile_secret_owner(&conn).unwrap().unwrap();
+            let other = create_passphrase_less_user(&mut conn, &root, "Other", None, None)
+                .unwrap()
+                .id;
+            clear_user_session();
+            set_active_user(&conn, other).unwrap();
+            let profile = |id: &str| {
+                json!({"id": id, "name": id, "protocol": "dropbox", "host": "", "port": 0,
+                       "username": format!("{id}@example.test")})
+            };
+            replace_server_profiles_for(&mut conn, &root, other, &[profile("p"), profile("q")])
+                .unwrap();
+            mark_creds_migrated(&conn, other).unwrap();
+            mark_private_tokens_aligned(&conn, other).unwrap();
+            store.store("oauth_dropbox_p", "n-token").unwrap();
+            store.store("oauth_dropbox_q", "backup-q").unwrap();
+            let row = |key: &str| {
+                get_user_credential_for(&conn, &root, other, key)
+                    .unwrap()
+                    .map(|value| value.to_string())
+            };
+
+            let writer = (!blocked_by_tags).then(|| ProfileListLock::acquire(&conn).unwrap());
+            if blocked_by_tags {
+                conn.execute(
+                    "INSERT INTO global_state(key, value, updated_at) VALUES (?1, '1', 0)",
+                    params![profile_tags_pending_key(owner)],
+                )
+                .unwrap();
+            }
+            let (ids, restored) = (["p".to_string()], ["oauth_dropbox_p".to_string()]);
+            let realigned = realign_private_tokens_after_restore(
+                &db,
+                Some(ActiveBeforeRestore {
+                    store: &store,
+                    user_id: other,
+                    profile_ids: &ids,
+                    restored_keys: &restored,
+                }),
+            )
+            .unwrap();
+            assert_eq!(realigned, 0, "tags pending: {blocked_by_tags}");
+            assert_eq!(row("oauth_dropbox_p"), None);
+            assert!(deferred_realign_tags(&conn, other).unwrap().is_some());
+            drop(writer);
+            conn.execute(
+                "DELETE FROM global_state WHERE key = ?1",
+                params![profile_tags_pending_key(owner)],
+            )
+            .unwrap();
+
+            migrate_credentials_eager_all(&conn, &store, &root).unwrap();
+            assert_eq!(
+                row("oauth_dropbox_p").as_deref(),
+                Some("n-token"),
+                "tags pending: {blocked_by_tags}"
+            );
+            assert!(store.get("oauth_dropbox_p").is_err(), "the vault let go");
+            assert!(deferred_realign_tags(&conn, other).unwrap().is_none());
+            assert_eq!(
+                row("oauth_dropbox_q"),
+                None,
+                "a profile the restore brought"
+            );
+            assert_eq!(store.get("oauth_dropbox_q").unwrap(), "backup-q");
+        }
     }
 
     /// An install migrated before the tokens were kept to their account: on a
