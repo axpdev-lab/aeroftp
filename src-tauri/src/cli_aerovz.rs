@@ -546,18 +546,54 @@ fn create_archive_inner(
     }
 
     let mut vault = open_plaintext_archive(out_path)?;
+    // The archive is built in a staging directory beside the output. When the
+    // output lies inside a directory input, the walk also picks up that
+    // staging directory and the archive being built in it: both are removed
+    // from the archive once every input is in.
+    let staging_dir = out_path.parent().and_then(|dir| dir.canonicalize().ok());
+    let mut staging_entries: Vec<String> = Vec::new();
     for source in sources {
         if source.is_dir {
             let prefix = archive_entry_basename(&source.path)?;
             aerovault::v3::VaultV3::add_directory(&mut vault, &source.path, Some(&prefix))
                 .map_err(aerovz_error)?;
+            if let Some(entry) = staging_dir
+                .as_deref()
+                .and_then(|staging| staging_entry_name(staging, &source.path, &prefix))
+            {
+                staging_entries.push(entry);
+            }
         } else {
             let entry_name = archive_entry_basename(&source.path)?;
             let mapped = [(source.path.clone(), entry_name)];
             aerovault::v3::VaultV3::add_files(&mut vault, &mapped).map_err(aerovz_error)?;
         }
     }
+    let present: std::collections::HashSet<String> = aerovault::v3::VaultV3::list(&vault)
+        .into_iter()
+        .map(|entry| entry.path)
+        .collect();
+    staging_entries.retain(|entry| present.contains(entry));
+    staging_entries.sort();
+    staging_entries.dedup();
+    if !staging_entries.is_empty() {
+        aerovault::v3::VaultV3::delete_entries(&mut vault, &staging_entries, true)
+            .map_err(aerovz_error)?;
+    }
     Ok(())
+}
+
+/// The archive entry the walk of the directory input `source` (added under
+/// `prefix`) gives to `staging`, when `staging` lies inside it.
+fn staging_entry_name(staging: &Path, source: &Path, prefix: &str) -> Option<String> {
+    let root = source.canonicalize().ok()?;
+    let relative = staging.strip_prefix(&root).ok()?;
+    let mut name = prefix.to_string();
+    for component in relative.components() {
+        name.push('/');
+        name.push_str(component.as_os_str().to_str()?);
+    }
+    (name.len() > prefix.len()).then_some(name)
 }
 
 fn extract_archive(archive: &str, outdir: &str) -> Result<AerovzExtractReport, ArchiveError> {
@@ -964,6 +1000,32 @@ mod tests {
             .collect();
         names.sort();
         assert_eq!(names, ["archive.aerozip", "payload"]);
+    }
+
+    #[test]
+    fn archive_created_inside_its_input_directory_holds_only_the_inputs() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("docs");
+        std::fs::create_dir_all(input.join("sub")).unwrap();
+        std::fs::write(input.join("a.txt"), b"alpha").unwrap();
+        std::fs::write(input.join("sub").join("b.txt"), b"beta").unwrap();
+        let output = input.join("sub").join("docs.aerozip");
+
+        create_archive(
+            output.to_str().unwrap(),
+            &[input.to_str().unwrap().to_string()],
+            "balanced",
+            "20",
+        )
+        .unwrap();
+
+        let vault = open_plaintext_archive(&output).unwrap();
+        let mut paths: Vec<_> = aerovault::v3::VaultV3::list(&vault)
+            .into_iter()
+            .map(|entry| entry.path)
+            .collect();
+        paths.sort();
+        assert_eq!(paths, ["docs", "docs/a.txt", "docs/sub", "docs/sub/b.txt"]);
     }
 
     #[cfg(unix)]
