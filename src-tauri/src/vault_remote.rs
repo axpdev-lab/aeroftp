@@ -34,6 +34,13 @@ fn is_managed_temp_vault_filename(file_name: &str) -> bool {
 
 const STAGED_VAULT_FILENAME: &str = "vault.aerovault";
 
+/// The private staging directory of a remote vault download, in the on-disk
+/// scratch folder (never the temporary folder, which is often a RAM-sized
+/// tmpfs), with room for `size` bytes checked first.
+fn new_remote_vault_staging(size: u64) -> Result<tempfile::TempDir, String> {
+    remote_vault_staging_dir(&scratch::staging_dir(size)?)
+}
+
 /// Keep the downloaded vault and its write/recovery sidecars in a private
 /// staging directory. The caller hands it to the GUI only after downloading.
 fn remote_vault_staging_dir(root: &Path) -> Result<tempfile::TempDir, String> {
@@ -123,7 +130,7 @@ pub async fn vault_v2_download_remote(
         .ok_or("No active connection. Connect to a server first.")?;
 
     let size = provider.size(&remote_path).await.unwrap_or(0);
-    let staging = remote_vault_staging_dir(&scratch::staging_dir(size)?)?;
+    let staging = new_remote_vault_staging(size)?;
     let local_path = staging.path().join(STAGED_VAULT_FILENAME);
 
     let local_str = local_path
@@ -393,6 +400,40 @@ mod tests {
         assert!(!is_managed_temp_vault_filename("aerovault_remote_"));
         assert!(!is_managed_temp_vault_filename(""));
         assert!(!is_managed_temp_vault_filename(".aerovault"));
+    }
+
+    /// The download staging directory lives in the on-disk scratch folder,
+    /// never in the temporary folder (on many Linux systems a tmpfs sized from
+    /// RAM, so a large vault staged there eats RAM and can fail), and the vault
+    /// staged in it passes the gate the upload-back and cleanup commands share.
+    #[test]
+    fn a_remote_vault_is_staged_on_disk_not_in_the_temporary_folder() {
+        let staging = new_remote_vault_staging(0).unwrap();
+        let dir = staging.path();
+        if dirs::cache_dir().is_some() {
+            assert!(
+                !dir.starts_with(std::env::temp_dir()),
+                "{} must not be in the temporary folder",
+                dir.display()
+            );
+            assert!(
+                dir.ancestors()
+                    .any(|a| a.file_name() == Some(std::ffi::OsStr::new("scratch"))),
+                "{} must live under a scratch folder",
+                dir.display()
+            );
+        } else {
+            // The documented fallback with no cache folder: scratch is
+            // temp_dir()/aeroftp-scratch.
+            assert!(
+                dir.starts_with(std::env::temp_dir().join("aeroftp-scratch")),
+                "{} must live under the scratch fallback",
+                dir.display()
+            );
+        }
+        let path = dir.join(STAGED_VAULT_FILENAME);
+        std::fs::write(&path, b"vault").unwrap();
+        assert!(validate_managed_temp_vault_path(&path, &managed_temp_vault_roots()).is_ok());
     }
 
     #[tokio::test]
