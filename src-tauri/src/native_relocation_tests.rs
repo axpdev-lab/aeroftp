@@ -2512,6 +2512,66 @@ fn a_purge_during_the_unlock_cleanup_keeps_its_mark() {
     assert_eq!(deferred_revokes(&accounts.conn), 0);
 }
 
+/// A purge left to the source's unlock while another account (the target,
+/// locked) holds a session the index does not describe, of another UID: the
+/// target may hold the purged one, so it is not ended on Proton, and it is
+/// not dropped either, row and mark kept. Once the target's unlock indexed
+/// its session, the source's next unlock ends the purged one.
+#[test]
+fn a_purged_session_another_account_may_hold_waits_for_that_account() {
+    if !in_isolated_child("a_purged_session_another_account_may_hold_waits_for_that_account") {
+        return;
+    }
+    let accounts = Accounts::open();
+    let source = accounts.source.id;
+    vault::store_session(
+        accounts.owner(),
+        Some("maybe-held"),
+        &session("maybe-held-uid", "r1"),
+    )
+    .unwrap();
+    accounts.unlock_target();
+    set_user_credential_with_dek(
+        &accounts.conn,
+        accounts.target.id,
+        &accounts.target_dek,
+        &key("target-unindexed"),
+        "proton_native_session",
+        &raw(&session("target-other-uid", "t1")),
+    )
+    .unwrap();
+    cli_set_active_user(&accounts.store, source).unwrap();
+    let purged = purge("maybe-held", "proton");
+    assert!(
+        purged
+            .as_ref()
+            .is_ok_and(|purged| purged.proton_session_ends_at_unlock_of.is_some()),
+        "the purge leaves the session to the source's unlock: {purged:?}"
+    );
+    let revokes = vault::test_seams::revokes();
+    accounts.unlock_source();
+    assert_eq!(
+        vault::test_seams::revokes(),
+        revokes,
+        "a session another account may hold is not ended on Proton"
+    );
+    assert!(
+        has_row(&accounts.conn, source, &key("maybe-held")),
+        "nor dropped"
+    );
+    assert_eq!(deferred_revokes(&accounts.conn), 1, "its mark stays");
+
+    accounts.unlock_target();
+    accounts.unlock_source();
+    assert_eq!(
+        vault::test_seams::revokes(),
+        revokes + 1,
+        "once the target is indexed the purged session is ended"
+    );
+    assert!(!has_row(&accounts.conn, source, &key("maybe-held")));
+    assert_eq!(deferred_revokes(&accounts.conn), 0);
+}
+
 /// An unlock whose deferred cleanup cannot end its session in time (offline,
 /// here the purged session's lease held elsewhere) is not held by it: the
 /// unlock returns within the cleanup's budget with the row and the mark in

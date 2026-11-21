@@ -1244,11 +1244,10 @@ pub fn end_purged_session_blocking(
             if !left_by_the_purge(&saved.tokens.uid).map_err(ProviderError::Other)? {
                 return Ok(false);
             }
-            if let RevokeOutcome::Failed(error) =
-                revoke_saved_session(owner, Some(&profile_id)).await
-            {
+            let outcome = revoke_saved_session(owner, Some(&profile_id)).await;
+            if let Some(why) = outcome.may_still_be_live() {
                 return Err(ProviderError::Other(format!(
-                    "the purged Proton session was not ended on Proton, so it stays for the next unlock: {error}"
+                    "the purged Proton session was not ended on Proton, so it stays for the next unlock: {why}"
                 )));
             }
             let _writes = session_writes();
@@ -1293,13 +1292,34 @@ pub enum RevokeOutcome {
     Revoked,
     /// Kept alive on Proton: another saved profile of the account uses it.
     KeptShared,
-    /// Kept alive on Proton: another account on this device holds it or may
-    /// hold it.
+    /// Kept alive on Proton: another account on this device holds it.
     KeptForAnotherAccount,
+    /// Kept alive on Proton for now: another account holds a session saved
+    /// before the session index, which may be this one, until that account
+    /// is unlocked. Not known to be another account's, so it may still be
+    /// live for this one alone.
+    MaybeKeptForAnotherAccount,
     /// Not ended, and it may still be live on Proton: the sign-out failed or
     /// timed out, or the session, its copies or the other accounts' sessions
     /// could not be read. The reason names no UID.
     Failed(String),
+}
+
+impl RevokeOutcome {
+    /// Why the session may still be live on Proton for the profile it was
+    /// saved for, `None` when it is ended or another key holds it: a purge
+    /// keeps such a session, where a sign-out lets it go.
+    pub fn may_still_be_live(&self) -> Option<&str> {
+        match self {
+            Self::Failed(why) => Some(why),
+            Self::MaybeKeptForAnotherAccount => Some(
+                "another account holds a session saved before the session index, which may be it, until that account is unlocked",
+            ),
+            Self::NothingSaved | Self::Revoked | Self::KeptShared | Self::KeptForAnotherAccount => {
+                None
+            }
+        }
+    }
 }
 
 /// Revokes on Proton the session saved for `profile_id`, before a profile
@@ -1337,9 +1357,13 @@ pub async fn revoke_saved_session(owner: SessionOwner, profile_id: Option<&str>)
     }
     match kept_for_another_account(&store, owner, &session.tokens.uid) {
         Ok(None) => {}
-        Ok(Some(reason)) => {
+        Ok(Some(Kept::Confirmed(reason))) => {
             log::info!("Proton: session dropped here and kept on Proton, {reason}");
             return RevokeOutcome::KeptForAnotherAccount;
+        }
+        Ok(Some(Kept::Unconfirmed(reason))) => {
+            log::info!("Proton: session kept on Proton, {reason}");
+            return RevokeOutcome::MaybeKeptForAnotherAccount;
         }
         Err(error) => {
             return failed("the other accounts' sessions could not be read", &error);
@@ -1371,24 +1395,31 @@ fn kept_for_another_account(
     store: &CredentialStore,
     owner: SessionOwner,
     uid: &str,
-) -> Result<Option<&'static str>, ProviderError> {
+) -> Result<Option<Kept>, ProviderError> {
     use crate::user_partitions::OtherAccounts;
     if private_account(owner)?.is_some()
         && vault_sessions(|| store.list_accounts(), |key| store.get(key))?
             .iter()
             .any(|(_, saved)| saved.tokens.uid == uid)
     {
-        return Ok(Some("the legacy owner's vault holds it"));
+        return Ok(Some(Kept::Confirmed("the legacy owner's vault holds it")));
     }
     let others = crate::user_partitions::other_accounts_holding_session(store, owner.user_id, uid)
         .map_err(ProviderError::Other)?;
     Ok(match others {
         OtherAccounts::HoldNone => None,
-        OtherAccounts::HoldIt => Some("another account on this device holds it"),
-        OtherAccounts::MayHoldIt => Some(
+        OtherAccounts::HoldIt => Some(Kept::Confirmed("another account on this device holds it")),
+        OtherAccounts::MayHoldIt => Some(Kept::Unconfirmed(
             "another account holds a session saved before the session index, which may be it, until that account is unlocked",
-        ),
+        )),
     })
+}
+
+/// Why [`kept_for_another_account`] keeps a session alive on Proton: an
+/// account known to hold it, or one that may, until it is unlocked.
+enum Kept {
+    Confirmed(&'static str),
+    Unconfirmed(&'static str),
 }
 
 /// The lease slug of a session's refresh: one per session UID, so the
