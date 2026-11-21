@@ -24542,9 +24542,12 @@ async fn purge_profile_secrets_for(
 /// Ends on Proton the native session of the profile a purge removes, before
 /// its key goes, so a deleted profile leaves no live session behind. Only a
 /// profile with a saved session, seen by its key and nothing decrypted,
-/// reaches Proton. A locked account cannot read its session to end it: the
-/// row stays as it is, marked, and the account's next unlock ends it; the
-/// account's name is returned for the window to say so.
+/// reaches Proton. A locked account cannot read its session to end it, and
+/// an unlocked one whose sign-out on Proton did not end it (failed, or a
+/// session another account may hold) cannot drop it: the row stays as it
+/// is, marked, and the account's next unlock ends it; the account's name is
+/// returned for the window to say so. With no account there is no unlock to
+/// leave it to: the session stays and the purge reports it left behind.
 #[cfg(feature = "proton-native")]
 async fn end_purged_proton_session(
     store: &credential_store::CredentialStore,
@@ -24561,20 +24564,29 @@ async fn end_purged_proton_session(
     {
         return Ok(None);
     }
+    let defer = |user: i64| -> Result<Option<String>, String> {
+        user_partitions::defer_proton_revoke(store, user, profile_id)?;
+        let name = user_partitions::cli_list_users(store)?
+            .into_iter()
+            .find(|account| account.id == user)
+            .map_or_else(|| user.to_string(), |account| account.name);
+        Ok(Some(name))
+    };
     if let Some(user) = user_id {
         if user_partitions::partition_locked(store, user)? {
-            user_partitions::defer_proton_revoke(store, user, profile_id)?;
-            let name = user_partitions::cli_list_users(store)?
-                .into_iter()
-                .find(|account| account.id == user)
-                .map_or_else(|| user.to_string(), |account| account.name);
-            return Ok(Some(name));
+            return defer(user);
         }
     }
-    vault::end_session(vault::SessionOwner::for_user(user_id), Some(profile_id))
+    let outcome = vault::end_session_reporting(vault::SessionOwner::for_user(user_id), profile_id)
         .await
         .map_err(|error| error.to_string())?;
-    Ok(None)
+    match (outcome.may_still_be_live(), user_id) {
+        (None, _) => Ok(None),
+        (Some(_), Some(user)) => defer(user),
+        (Some(why), None) => Err(format!(
+            "the Proton session was not ended on Proton, so it stays: {why}"
+        )),
+    }
 }
 
 /// The keys of `profile_id` a purge removed, and those it left behind: every

@@ -2572,6 +2572,57 @@ fn a_purged_session_another_account_may_hold_waits_for_that_account() {
     assert_eq!(deferred_revokes(&accounts.conn), 0);
 }
 
+/// The purge of a profile of an unlocked account whose sign-out on Proton
+/// fails: the session may still be live, so its row stays, marked, and the
+/// purge says it ends at the account's next unlock, which ends it.
+#[test]
+fn a_purge_whose_sign_out_fails_leaves_the_session_to_the_unlock() {
+    if !in_isolated_child("a_purge_whose_sign_out_fails_leaves_the_session_to_the_unlock") {
+        return;
+    }
+    let accounts = Accounts::open();
+    let source = accounts.source.id;
+    vault::store_session(
+        accounts.owner(),
+        Some("offline-purge"),
+        &session("offline-purge-uid", "r1"),
+    )
+    .unwrap();
+    // A switch locks the account switched to: unlocked again, as the
+    // window's unlock does.
+    cli_set_active_user(&accounts.store, source).unwrap();
+    accounts.unlock_source();
+    let (revokes, failed) = (
+        vault::test_seams::revokes(),
+        vault::test_seams::failed_revokes(),
+    );
+    vault::test_seams::fail_revokes(true);
+    let purged = purge("offline-purge", "proton");
+    vault::test_seams::fail_revokes(false);
+    assert!(
+        purged.as_ref().is_ok_and(
+            |purged| purged.proton_session_ends_at_unlock_of.as_deref() == Some("Source")
+        ),
+        "the purge says the session ends at the account's next unlock: {purged:?}"
+    );
+    assert_eq!(
+        vault::test_seams::failed_revokes(),
+        failed + 1,
+        "the purge tried to end the session on Proton"
+    );
+    assert!(
+        has_row(&accounts.conn, source, &key("offline-purge")),
+        "the row stays"
+    );
+    assert_eq!(deferred_revokes(&accounts.conn), 1);
+
+    accounts.unlock_target();
+    accounts.unlock_source();
+    assert_eq!(vault::test_seams::revokes(), revokes + 1);
+    assert!(!has_row(&accounts.conn, source, &key("offline-purge")));
+    assert_eq!(deferred_revokes(&accounts.conn), 0);
+}
+
 /// A purge with no account that cannot read whether the vault holds the
 /// profile's session reports the session left behind, where it used to read
 /// as no session; a session that is not there leaves nothing behind.

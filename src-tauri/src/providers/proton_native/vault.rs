@@ -1289,20 +1289,41 @@ pub fn end_purged_session_blocking(
     .map_err(|_| ProviderError::Other("Proton session cleanup stopped unexpectedly".into()))?
 }
 
-/// [`end_session`] for a synchronous caller (the CLI profile delete): it
-/// runs on a thread of its own with its own runtime, so it works whether or
-/// not the caller is inside a Tokio runtime.
-pub fn end_session_blocking(
+/// [`end_session`] of a profile a delete removes, strict where a sign-out
+/// is best effort: a session that may still be live on Proton
+/// ([`RevokeOutcome::may_still_be_live`]) is kept, row and all, for the
+/// caller to report or to leave to the account's next unlock; any other
+/// outcome removes it. The outcome.
+pub async fn end_session_reporting(
     owner: SessionOwner,
-    profile_id: Option<&str>,
-) -> Result<(), ProviderError> {
-    let profile_id = profile_id.map(str::to_string);
+    profile_id: &str,
+) -> Result<RevokeOutcome, ProviderError> {
+    let store = open_store()?;
+    let _keys = lock_keys(mutation_keys(owner, Some(profile_id))?).await?;
+    let _lease = lease_of_saved(owner, &saved_key(&store, owner, Some(profile_id))?).await?;
+    let outcome = revoke_saved_session(owner, Some(profile_id)).await;
+    if outcome.may_still_be_live().is_some() {
+        return Ok(outcome);
+    }
+    let _writes = session_writes();
+    delete_session(owner, Some(profile_id))?;
+    Ok(outcome)
+}
+
+/// [`end_session_reporting`] for a synchronous caller (the CLI profile
+/// delete): it runs on a thread of its own with its own runtime, so it works
+/// whether or not the caller is inside a Tokio runtime.
+pub fn end_session_reporting_blocking(
+    owner: SessionOwner,
+    profile_id: &str,
+) -> Result<RevokeOutcome, ProviderError> {
+    let profile_id = profile_id.to_string();
     let joined = std::thread::spawn(move || {
         match tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
         {
-            Ok(runtime) => runtime.block_on(end_session(owner, profile_id.as_deref())),
+            Ok(runtime) => runtime.block_on(end_session_reporting(owner, &profile_id)),
             Err(error) => Err(ProviderError::Other(format!(
                 "Proton session runtime: {error}"
             ))),

@@ -29441,8 +29441,11 @@ fn delete_profile_in_vault(
     // A native Proton Drive session is ended on Proton before its key goes,
     // as the GUI delete does: for a Proton profile, or one that holds a
     // session key. Any other profile takes no Proton session lock.
+    // A session the sign-out on Proton did not end (failed, or one another
+    // account may hold) stays, row and all: it is left to the account's next
+    // unlock and reported left behind.
     #[cfg(feature = "proton-native")]
-    {
+    let session_left = {
         use ftp_client_gui_lib::providers::proton_native::vault;
         let owner = vault::SessionOwner::for_user(scoped_uid);
         let proton = protocol
@@ -29452,10 +29455,20 @@ fn delete_profile_in_vault(
             || vault::holds_saved_session(store, owner, profile_id)
                 .map_err(|error| error.to_string())?
         {
-            vault::end_session_blocking(owner, Some(profile_id))
+            let outcome = vault::end_session_reporting_blocking(owner, profile_id)
                 .map_err(|error| error.to_string())?;
+            if outcome.may_still_be_live().is_some() {
+                ftp_client_gui_lib::user_partitions::defer_proton_revoke(
+                    store, target.id, profile_id,
+                )?;
+                Some(format!("proton_native_session_{profile_id}"))
+            } else {
+                None
+            }
+        } else {
+            None
         }
-    }
+    };
     #[cfg(test)]
     run_after_profile_target();
     // The protocol as it stands now decides which token keys go below.
@@ -29489,6 +29502,12 @@ fn delete_profile_in_vault(
         },
         |key| dual_delete_server_cred(store, scoped_uid, key),
     );
+    #[cfg(feature = "proton-native")]
+    let left_behind = {
+        let mut left_behind = left_behind;
+        left_behind.extend(session_left);
+        left_behind
+    };
 
     // Drop the id from the favourites set if present. Best-effort: a missing
     // or malformed entry leaves the favourites list untouched.

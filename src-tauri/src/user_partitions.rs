@@ -6712,7 +6712,7 @@ fn write_deferred_revoke(
 /// never dropped without its revoke, and a session saved there after the
 /// purge is never ended by it.
 #[cfg(feature = "proton-native")]
-pub(crate) fn defer_proton_revoke(
+pub fn defer_proton_revoke(
     store: &CredentialStore,
     user_id: i64,
     profile_id: &str,
