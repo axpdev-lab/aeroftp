@@ -698,4 +698,20 @@ fn a_profile_delete_names_the_secret_it_could_not_remove() {
         "{}",
         describe(&out)
     );
+    assert!(
+        !listed_ids(root).contains(&id),
+        "the profile leaves the list"
+    );
+    let rows: i64 = rusqlite::Connection::open(&db)
+        .unwrap()
+        .query_row(
+            "SELECT COUNT(*) FROM user_credentials WHERE credential_id = 'server_' || ?1",
+            [&id],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        rows, 1,
+        "the row the delete could not remove is still there"
+    );
 }
