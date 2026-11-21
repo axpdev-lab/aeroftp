@@ -172,22 +172,83 @@ async fn run_mega_cmd_capture_at(
         })
 }
 
-/// The deadline of a version transfer (its get, its put again, the read
-/// back that checks a restore): the command's own plus a second per 256 KiB
-/// of the version, so a large version that is still arriving is not cut as
-/// if MEGA had not answered.
-fn verification_secs(size: u64) -> u64 {
+/// How long a version transfer may say nothing before it counts as stalled:
+/// the native provider's transfer idle limit. A transfer that still writes
+/// its progress lines is never cut, however slow; a deadline on the whole
+/// command cut a version arriving below 256 KiB/s.
+fn transfer_idle_secs() -> u64 {
     #[cfg(test)]
-    if let Some(secs) = TEST_VERIFY_SECS.with(|secs| secs.get()) {
+    if let Some(secs) = TEST_IDLE_SECS.with(|secs| secs.get()) {
         return secs;
     }
-    MEGA_WEBDAV_TIMEOUT_SECS + size / (256 * 1024)
+    super::mega::MEGA_TRANSFER_IDLE_SECS
 }
 
 #[cfg(test)]
 thread_local! {
-    /// The verification deadline a test sets on its thread.
-    static TEST_VERIFY_SECS: std::cell::Cell<Option<u64>> = const { std::cell::Cell::new(None) };
+    /// The transfer idle limit a test sets on its thread.
+    static TEST_IDLE_SECS: std::cell::Cell<Option<u64>> = const { std::cell::Cell::new(None) };
+}
+
+/// Run a MEGAcmd transfer (`cmd` with `args`), cut only after
+/// [`transfer_idle_secs`] with nothing on either stream.
+async fn run_mega_transfer(
+    cmd: &str,
+    args: &[&str],
+) -> Result<std::process::Output, ProviderError> {
+    let resolved = resolve_mega_cmd(cmd);
+    let mut command = Command::new(&resolved);
+    command.args(args);
+    command.kill_on_drop(true);
+    #[cfg(windows)]
+    {
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    super::mega::MegaCmdProvider::run_transfer_once(command, transfer_idle_secs(), &|_| {})
+        .await
+        .map_err(|failure| match failure {
+            None => ProviderError::Timeout,
+            Some(e) => ProviderError::NotSupported(format!(
+                "{cmd} is not available (resolved: {resolved}): {e}"
+            )),
+        })
+}
+
+/// The account MEGAcmd is logged in to now, as `mega-whoami` prints it.
+pub async fn megacmd_account() -> Result<String, ProviderError> {
+    let output = run_mega_cmd_capture("mega-whoami", &[]).await?;
+    if !output.status.success() {
+        return Err(mega_cmd_failure("mega-whoami", &output));
+    }
+    let account = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if account.is_empty() {
+        return Err(ProviderError::ServerError(
+            "mega-whoami named no account".to_string(),
+        ));
+    }
+    Ok(account)
+}
+
+/// Refuse unless MEGAcmd is still logged in to `connected`, the account
+/// read when this session connected: the MEGAcmd daemon is shared, and a
+/// login to another account in the meantime would answer the versions of
+/// that account's file of the same path. The refusal names no account.
+pub async fn require_megacmd_account(connected: Option<&str>) -> Result<(), ProviderError> {
+    let Some(connected) = connected else {
+        return Err(ProviderError::NotSupported(
+            "MEGAcmd did not say which account it was logged in to when this connection \
+             opened: reconnect to read versions"
+                .to_string(),
+        ));
+    };
+    if megacmd_account().await? != connected {
+        return Err(ProviderError::AuthenticationFailed(
+            "MEGAcmd is now logged in to another account than the one this connection opened \
+             with: reconnect before reading versions"
+                .to_string(),
+        ));
+    }
+    Ok(())
 }
 
 /// MEGA-absolute path for a remote path arriving from the WebDAV bridge (which
@@ -286,14 +347,8 @@ async fn mega_fetch_version_to_temp(
     let size = listed_version_size(listed, path, version_id)?;
     let temp = super::VersionTempFile::new("aeroftp_megaver");
     let temp_str = temp.0.to_string_lossy().to_string();
-    // A deadline that grows with the version, as for the read back: the
-    // fixed one of a short command cut a large version mid-transfer.
-    let output = run_mega_cmd_capture_within(
-        "mega-get",
-        &[version_id, &temp_str],
-        verification_secs(size),
-    )
-    .await?;
+    // Cut on silence only: a slow version still arriving is not a stall.
+    let output = run_mega_transfer("mega-get", &[version_id, &temp_str]).await?;
     if !output.status.success() {
         return Err(mega_cmd_failure("mega-get version", &output));
     }
@@ -605,6 +660,73 @@ fn integer_tokens(text: &str) -> Vec<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Link `scripts` (name, body) into `dir` as this thread's MEGAcmd.
+    #[cfg(unix)]
+    fn link_scripts(dir: &std::path::Path, scripts: &[(&str, &str)]) {
+        use std::os::unix::fs::PermissionsExt;
+        for (name, body) in scripts {
+            let path = dir.join(name);
+            std::fs::write(&path, body).unwrap();
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        use_test_commands(Some(dir));
+    }
+
+    /// A version still sending its progress lines is not cut, however long
+    /// it takes; one that says nothing for the idle limit is, and the
+    /// destination keeps its bytes.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_slow_version_is_not_cut_and_a_silent_one_is() {
+        let dir = tempfile::tempdir().unwrap();
+        link_scripts(
+            dir.path(),
+            &[
+                (
+                    "mega-ls",
+                    "#!/bin/sh
+echo 'FLAGS VERS      SIZE            DATE          HANDLE NAME'
+echo '----    2            6 16Nov2026 15:53:00 H:sAAAAAA2 s.txt'
+echo ''
+echo 'Versions of s.txt:'
+echo '----    2            6 16Nov2026 15:53:00 H:sAAAAAA2 s.txt#1794840780'
+echo '----    1            6 16Nov2026 15:52:57 H:sAAAAAA1 s.txt#1794840777'
+",
+                ),
+                (
+                    "mega-get",
+                    "#!/bin/sh
+here=$(dirname \"$0\")
+if [ -f \"$here/silent\" ]; then sleep 3; exit 0; fi
+for p in 20 40 60 80; do
+    printf 'TRANSFERRING ||####..........||(%s/100 MB: %s.00 %%) \\000\\r' \"$p\" \"$p\" >&2
+    sleep 0.6
+done
+printf 'sixsix' > \"$2\"
+printf '\\nDownload finished: %s\\n' \"$2\"
+",
+                ),
+            ],
+        );
+        TEST_IDLE_SECS.with(|secs| secs.set(Some(1)));
+        let slow = dir.path().join("slow.txt");
+        std::fs::write(&slow, "mine").unwrap();
+        let fetched = mega_download_version("/s.txt", "H:sAAAAAA1", slow.to_str().unwrap()).await;
+        std::fs::write(dir.path().join("silent"), "").unwrap();
+        let silent = dir.path().join("silent.txt");
+        std::fs::write(&silent, "mine").unwrap();
+        let stalled = mega_download_version("/s.txt", "H:sAAAAAA1", silent.to_str().unwrap()).await;
+        TEST_IDLE_SECS.with(|secs| secs.set(None));
+        use_test_commands(None);
+        fetched.expect("a slow version that kept reporting progress");
+        assert_eq!(std::fs::read_to_string(&slow).unwrap(), "sixsix");
+        assert!(
+            matches!(stalled, Err(ProviderError::Timeout)),
+            "{stalled:?}"
+        );
+        assert_eq!(std::fs::read_to_string(&silent).unwrap(), "mine");
+    }
 
     #[test]
     fn parses_used_and_total_storage_rows() {

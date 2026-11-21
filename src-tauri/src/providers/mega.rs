@@ -31,7 +31,7 @@ const MEGA_CMD_TIMEOUT_SECS: u64 = 60;
 /// every other command has, failed every transfer that took longer than a
 /// minute while the MEGAcmd server went on sending the file in the
 /// background.
-const MEGA_TRANSFER_IDLE_SECS: u64 = 60;
+pub(super) const MEGA_TRANSFER_IDLE_SECS: u64 = 60;
 
 /// Maximum number of automatic retries for transient errors.
 const MAX_RETRIES: usize = 2;
@@ -388,7 +388,7 @@ impl MegaCmdProvider {
     /// is followed too. The command is cut
     /// when neither stream has said anything for `idle_secs`: `Err(None)` is
     /// that timeout, `Err(Some(_))` a failure to run the command at all.
-    async fn run_transfer_once(
+    pub(super) async fn run_transfer_once(
         mut command: Command,
         idle_secs: u64,
         on_percent: &(dyn Fn(f64) + Sync),
@@ -713,21 +713,23 @@ impl MegaCmdProvider {
     /// listing of the node itself cannot say: MEGAcmd 2.6 prints no header
     /// for an ordinary folder listed without `-R`, so its children read
     /// like a file's row. The row is the one of the handle when `address`
-    /// is one, else the one of the name; a root is a folder.
-    async fn remote_is_folder(
+    /// is one, else the one of the name; a root is a folder. With it, the
+    /// handle of that row (none for a root), so the node checked is the
+    /// node fetched.
+    async fn remote_node_kind(
         &mut self,
         abs_remote: &str,
         address: &str,
-    ) -> Result<bool, ProviderError> {
+    ) -> Result<(bool, Option<String>), ProviderError> {
         let trimmed = abs_remote.trim_end_matches('/');
         let special_root = trimmed
             .strip_prefix("//")
             .is_some_and(|rest| !rest.contains('/'));
         let Some((parent, name)) = trimmed.rsplit_once('/').filter(|_| !special_root) else {
-            return Ok(true);
+            return Ok((true, None));
         };
         if name.is_empty() {
-            return Ok(true);
+            return Ok((true, None));
         }
         let parent = if parent.is_empty() { "/" } else { parent };
         let listing = self
@@ -744,10 +746,15 @@ impl MegaCmdProvider {
             })
         });
         match (rows.next(), rows.next()) {
-            (Some(row), None) => Ok(row
-                .split_whitespace()
-                .next()
-                .is_some_and(|flags| flags.starts_with('d'))),
+            (Some(row), None) => Ok((
+                row.split_whitespace()
+                    .next()
+                    .is_some_and(|flags| flags.starts_with('d')),
+                parse_handle_line(row)
+                    .map(|(handle, _)| handle)
+                    .filter(|handle| is_mega_handle(handle))
+                    .map(str::to_string),
+            )),
             (None, _) => Err(ProviderError::NotFound(abs_remote.to_string())),
             (Some(_), Some(_)) => Err(ProviderError::InvalidPath(format!(
                 "more than one item is named '{name}' here, and MEGAcmd cannot tell them \
@@ -1038,13 +1045,18 @@ impl StorageProvider for MegaCmdProvider {
         // not write over a file in a folder target, and only a file target
         // the caller named is replaced.
         let local_is_folder = std::fs::metadata(l).is_ok_and(|meta| meta.is_dir());
+        // The file whose row passed the type check, by its handle: a path
+        // resolved again by mega-get could name a file put there since.
+        let mut checked_file: Option<String> = None;
         if local_is_folder {
             let address = self.node_address(&abs_remote).await?;
-            if self.remote_is_folder(&abs_remote, &address).await? {
+            let (is_folder, node) = self.remote_node_kind(&abs_remote, &address).await?;
+            if is_folder {
                 return self
                     .download_folder_into(&abs_remote, &address, l, progress)
                     .await;
             }
+            checked_file = node;
         }
         let into_folder = if local_is_folder {
             let leaf = local_leaf_of(&abs_remote)?;
@@ -1095,7 +1107,10 @@ impl StorageProvider for MegaCmdProvider {
 
         // Resolve the remote node first: a refused or failed lookup must leave
         // the local file where it is (Greptile on the 188/189 branch).
-        let remote_address = self.node_address(&abs_remote).await?;
+        let remote_address = match checked_file {
+            Some(handle) => handle,
+            None => self.node_address(&abs_remote).await?,
+        };
 
         // MEGAcmd's `mega-get` does NOT overwrite an existing local target: it
         // writes to a ` (1)`-suffixed sibling and leaves the original file
@@ -1138,6 +1153,14 @@ impl StorageProvider for MegaCmdProvider {
         let target = staging
             .as_ref()
             .map_or_else(|| l.to_string(), |s| s.0.to_string_lossy().to_string());
+        // In place into a folder nothing is staged: a child made at the name
+        // while mega-get runs makes MEGAcmd save beside it, at a numbered
+        // name, and still say it finished. What sits next to the name now is
+        // compared with what sits there after the get.
+        let beside_before = into_folder
+            .as_deref()
+            .filter(|_| inplace)
+            .map(|child| names_beside(Path::new(child)));
 
         // Download file (--resume removed: not supported by all MEGAcmd versions)
         // Issue #263: normalize `/` → `\` on Windows so the verbatim-path
@@ -1173,6 +1196,10 @@ impl StorageProvider for MegaCmdProvider {
                 .await
                 .map(|()| out)
                 .map_err(ProviderError::IoError),
+            (Ok(out), None) => match &beside_before {
+                Some(before) => diverted_beside(Path::new(l), before).map_or(Ok(out), Err),
+                None => Ok(out),
+            },
             (outcome, _) => outcome,
         };
         match fetched {
@@ -1210,7 +1237,10 @@ impl StorageProvider for MegaCmdProvider {
         // where we then read. The remote name is left out: a MEGA name may hold
         // `*`, `?` or other characters Windows refuses in a file name, now that
         // such nodes are addressed by handle (CodeRabbit on #1506 Requested 189).
-        let temp_path = std::env::temp_dir().join(format!("aeroftp_mega_{}", uuid::Uuid::new_v4()));
+        // Removed when it goes, on an error of the transfer too: MEGAcmd may
+        // have written part of the file before it failed.
+        let temp = MegaTempFile::new("aeroftp_mega");
+        let temp_path = temp.0.clone();
         let temp_str = temp_path.to_string_lossy().to_string();
 
         let address = self.node_address(&abs_remote).await?;
@@ -1226,7 +1256,6 @@ impl StorageProvider for MegaCmdProvider {
             .await
             .map_err(ProviderError::IoError)?;
         if metadata.len() > limit {
-            let _ = tokio::fs::remove_file(&temp_path).await;
             return Err(ProviderError::TransferFailed(format!(
                 "File too large for in-memory download ({:.1} MB). Use streaming download for files over {:.0} MB.",
                 metadata.len() as f64 / 1_048_576.0,
@@ -1234,16 +1263,9 @@ impl StorageProvider for MegaCmdProvider {
             )));
         }
 
-        let bytes = tokio::fs::read(&temp_path)
+        tokio::fs::read(&temp_path)
             .await
-            .map_err(ProviderError::IoError)?;
-
-        // Clean up temp file
-        if let Err(e) = tokio::fs::remove_file(&temp_path).await {
-            tracing::debug!(target: "mega", "[CLEANUP] Failed to remove temp file {:?}: {}", temp_path, e);
-        }
-
-        Ok(bytes)
+            .map_err(ProviderError::IoError)
     }
 
     async fn upload(
@@ -2262,20 +2284,26 @@ pub(crate) fn is_mega_handle(id: &str) -> bool {
 }
 
 /// The rows of [`parse_mega_ls_version_handles`] in the order every
-/// `list_versions` answers in: MEGAcmd lists the current one first, and its
-/// time can be older than an earlier version's (a restore uploads old
-/// contents with their old time), so the place tells it, not the time.
+/// `list_versions` answers in: MEGAcmd lists the chain newest first, the
+/// current one on top, and a version's time can be older than the one
+/// below it (a restore uploads old contents with their old time), so the
+/// place tells the order, of the current one and of every older one, never
+/// the time.
 pub(crate) fn mega_versions_current_first(
     rows: Vec<(FileVersion, i64)>,
 ) -> Result<Vec<FileVersion>, ProviderError> {
     let head = rows.first().map(|(v, _)| v.id.clone());
-    let times: std::collections::HashMap<String, i64> =
-        rows.iter().map(|(v, time)| (v.id.clone(), *time)).collect();
+    let count = rows.len() as i64;
+    let places: std::collections::HashMap<String, i64> = rows
+        .iter()
+        .enumerate()
+        .map(|(place, (v, _))| (v.id.clone(), count - place as i64))
+        .collect();
     super::versions_current_first(
         rows.into_iter().map(|(v, _)| v).collect(),
         |v| Some(&v.id) == head.as_ref(),
         || None,
-        |v| times.get(&v.id).copied().unwrap_or(0),
+        |v| places.get(&v.id).copied().unwrap_or(0),
     )
 }
 
@@ -2301,7 +2329,8 @@ pub(crate) const MEGA_RESTORE_REFUSED: &str = "MEGA versions are not restored he
 /// path refuses the whole listing, so no child's version passes for one of
 /// the folder's. A version row (one with a handle) without a numeric size
 /// refuses the whole listing: skipping it would make the next, older row
-/// pass for the current one. An empty version is listed at size 0.
+/// pass for the current one, and so does a version row without a handle
+/// MEGAcmd can fetch it by. An empty version is listed at size 0.
 pub(crate) fn parse_mega_ls_version_handles(
     output: &str,
     abs_path: &str,
@@ -2327,8 +2356,15 @@ pub(crate) fn parse_mega_ls_version_handles(
             continue;
         }
         let parts: Vec<&str> = trimmed.split_whitespace().collect();
-        if parts.len() < 7 || !is_mega_handle(parts[5]) {
+        // A version row: its flags, then its version number.
+        if parts.len() < 6 || parts[1].parse::<u64>().is_err() {
             continue;
+        }
+        if parts.len() < 7 || !is_mega_handle(parts[5]) {
+            return Err(ProviderError::ParseError(format!(
+                "a version of {abs_path} was listed without a handle to fetch it by: its \
+                 history was not read, so no row of it is taken"
+            )));
         }
         let Ok(size) = parts[2].parse::<u64>() else {
             return Err(ProviderError::ParseError(format!(
@@ -2407,6 +2443,44 @@ fn child_appeared(child: &str) -> ProviderError {
         "{child} appeared while the download ran: a download into a folder does not write \
          over it, download to that file to replace it"
     ))
+}
+
+/// The names in `child`'s folder that begin with its stem: where MEGAcmd
+/// saves a download it may not write over the child (`f.dat (1)`). Empty
+/// when the folder cannot be read.
+fn names_beside(child: &Path) -> std::collections::HashSet<std::ffi::OsString> {
+    let stem = child
+        .file_stem()
+        .map(|stem| stem.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let leaf = child.file_name().map(std::ffi::OsStr::to_os_string);
+    child
+        .parent()
+        .and_then(|folder| std::fs::read_dir(folder).ok())
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| entry.ok().map(|entry| entry.file_name()))
+        .filter(|name| Some(name) != leaf.as_ref() && name.to_string_lossy().starts_with(&stem))
+        .collect()
+}
+
+/// A download into a folder that MEGAcmd saved beside `child`, under a name
+/// that was not there before (`before`, from [`names_beside`]): the child is
+/// someone else's, made while the download ran, and the download is not at
+/// the name asked for. The file it saved is named, and left where it is.
+fn diverted_beside(
+    child: &Path,
+    before: &std::collections::HashSet<std::ffi::OsString>,
+) -> Option<ProviderError> {
+    let mut new: Vec<_> = names_beside(child).difference(before).cloned().collect();
+    new.sort();
+    let saved = new.first()?;
+    Some(ProviderError::AlreadyExists(format!(
+        "{} appeared while the download ran: MEGAcmd saved the download beside it as {}, so \
+         the file at that name is not this download",
+        child.display(),
+        child.with_file_name(saved).display()
+    )))
 }
 
 /// `staged` published at `target` only while nothing is there, in one step
@@ -3788,6 +3862,63 @@ Versions of z.txt:
         let rows = parse_mega_ls_version_handles(complete, "/z.txt").unwrap();
         let sizes: Vec<u64> = rows.iter().map(|(v, _)| v.size).collect();
         assert_eq!(sizes, [4, 0]);
+        // A version row without a handle, or with one that is none.
+        for row in [
+            "----    2           12 16Nov2026 15:52:57 v.txt#1794840777",
+            "----    2           12 16Nov2026 15:52:57 vAAAAAA2 v.txt#1794840777",
+        ] {
+            let listing = format!(
+                "Versions of v.txt:\n----    3           13 16Nov2026 15:53:00 H:vAAAAAA3 v.txt#1794840780\n{row}\n----    1            8 16Nov2026 15:52:55 H:vAAAAAA1 v.txt#1794840775\n"
+            );
+            let refused = parse_mega_ls_version_handles(&listing, "/v.txt");
+            assert!(
+                matches!(&refused, Err(ProviderError::ParseError(m)) if m.contains("without a handle")),
+                "{row}: {refused:?}"
+            );
+        }
+    }
+
+    /// After the current version the chain keeps MEGAcmd's order: a version
+    /// restored from old contents carries an old time, and sorting by time
+    /// put it below the versions it is newer than.
+    #[test]
+    fn the_megacmd_chain_keeps_its_order_whatever_the_times() {
+        let listing = "\
+Versions of r.txt:
+----    4            9 16Nov2026 15:54:00 H:rAAAAAA4 r.txt#1794840840
+----    3            8 16Nov2026 15:50:00 H:rAAAAAA3 r.txt#1794840600
+----    2            7 16Nov2026 15:53:00 H:rAAAAAA2 r.txt#1794840780
+----    1            6 16Nov2026 15:52:00 H:rAAAAAA1 r.txt#1794840720
+";
+        let listed =
+            mega_versions_current_first(parse_mega_ls_version_handles(listing, "/r.txt").unwrap())
+                .unwrap();
+        let ids: Vec<&str> = listed.iter().map(|v| v.id.as_str()).collect();
+        assert_eq!(
+            ids,
+            ["H:rAAAAAA4", "H:rAAAAAA3", "H:rAAAAAA2", "H:rAAAAAA1"]
+        );
+    }
+
+    /// A transfer that wrote part of its file and failed, on stderr or on
+    /// stdout only, leaves no temp file behind.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_failed_download_to_bytes_leaves_no_temp_file() {
+        for flag in ["get-writes-then-fails", "get-stdout-fails"] {
+            let (mut provider, dir) = provider_with_stand_in_versions();
+            std::fs::write(dir.path().join(flag), "").unwrap();
+            let outcome = provider.download_to_bytes("/f.dat").await;
+            assert!(outcome.is_err(), "{flag}: {outcome:?}");
+            let targets = stand_in_log(&dir, "get-targets.log");
+            assert!(!targets.is_empty(), "{flag}: no transfer was run");
+            for target in targets {
+                assert!(
+                    !std::path::Path::new(&target).exists(),
+                    "{flag}: {target} left"
+                );
+            }
+        }
     }
 
     #[cfg(unix)]
@@ -3947,16 +4078,20 @@ Versions of z.txt:
     #[cfg(unix)]
     #[tokio::test]
     async fn a_megacmd_download_into_a_folder_writes_the_file_in_it() {
-        let (mut provider, _dir) = provider_with_stand_in_versions();
+        let (mut provider, dir) = provider_with_stand_in_versions();
         let local = tempfile::tempdir().expect("tempdir");
         provider
             .download("/f.dat", local.path().to_str().unwrap(), None)
             .await
             .expect("download into the folder");
+        // The file is fetched by the handle of the row whose type was read,
+        // not by its path resolved again: the stand-in fills a handle's
+        // bytes with its last character, a path's with zeros.
         assert_eq!(
-            std::fs::metadata(local.path().join("f.dat")).unwrap().len(),
-            1000
+            std::fs::read(local.path().join("f.dat")).unwrap(),
+            [b'1'; 1000]
         );
+        assert_eq!(stand_in_log(&dir, "get.log"), ["H:fAAAAAA1"]);
         assert_eq!(std::fs::read_dir(local.path()).unwrap().count(), 1);
     }
 
@@ -4163,6 +4298,25 @@ Versions of z.txt:
                     b"editor"
                 );
                 assert!(stand_in_log(&dir, "get.log").is_empty());
+
+                // A child saved at the name while mega-get runs: MEGAcmd
+                // saves beside it and says it finished. That is no download
+                // at the name asked for, and the child is not touched.
+                std::fs::remove_file(local.path().join("f.dat")).unwrap();
+                provider.test_after_target_check = None;
+                std::fs::write(
+                    dir.path().join("get-collides"),
+                    local.path().join("f.dat").to_str().unwrap(),
+                )
+                .unwrap();
+                let diverted = provider
+                    .download("/f.dat", local.path().to_str().unwrap(), None)
+                    .await;
+                assert!(
+                    matches!(&diverted, Err(ProviderError::AlreadyExists(m)) if m.contains("f.dat (1)")),
+                    "{diverted:?}"
+                );
+                assert_eq!(std::fs::read(local.path().join("f.dat")).unwrap(), b"theirs");
             });
         std::fs::write(marker, b"").unwrap();
     }

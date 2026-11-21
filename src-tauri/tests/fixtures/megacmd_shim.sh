@@ -31,7 +31,8 @@
 # bytes and then refuse, get-stdout-fails makes it print its failure on
 # stdout and exit 1, get-always-try-again and get-partial-try-again (once)
 # leave 500 bytes and fail with MEGAcmd's transient text, and z-get-three
-# makes the empty version arrive as 3 bytes. mega-get never writes over a
+# makes the empty version arrive as 3 bytes. A file get-collides names a
+# path another writer saves to while the get runs. mega-get never writes over a
 # file at its target: it writes a " (1)" sibling, as MEGAcmd does.
 # `mega-thumbnail /photo.jpg <out>` writes the first bytes of a JPEG to
 # <out>; for `/plain.txt`, a file with no thumbnail, it writes nothing and
@@ -254,6 +255,11 @@ case "$(basename "$0")" in
             mkdir -p "$2/same" && printf 'seven!!' > "$2/same/same"
             printf '\nDownload finished: %s\n' "$2/same"
             exit 0
+        fi
+        # get-collides holds a path another writer saves to while the get
+        # runs (before the target is chosen).
+        if [ -s "$here/get-collides" ]; then
+            printf 'theirs' > "$(cat "$here/get-collides")"
         fi
         # MEGAcmd does not write over a file at the target: it writes a
         # " (1)" sibling (measured 2026-11-18).
