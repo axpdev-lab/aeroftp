@@ -2060,7 +2060,8 @@ mod tests {
     /// stack is composed: the session is not wrapped in the second account's
     /// overlay, and the inner remote sees no write (no marker restored with
     /// the other account's config). The legacy-only capture reads the legacy
-    /// owner's list, not the active one, the same way.
+    /// owner's partition list the same way, not the shared vault's blob, which
+    /// the partitions keep equal to the active account's list.
     #[test]
     fn the_overlay_stack_reads_the_captured_accounts_profile_across_a_switch() {
         use crate::credential_store::CredentialStore;
@@ -2110,8 +2111,15 @@ mod tests {
         )
         .expect("the second account's overlay password");
 
-        // V1: the legacy owner's own list (the shared vault's blob) holds the
-        // profile crypt-bound, its password in the shared vault.
+        // V1: the shared vault's blob as the partitions keep it, equal to the
+        // active account's list (`mirror_active_profiles_to_legacy_blob`):
+        // after the switch below that is the second account's crypt-bound
+        // profile, with an overlay password in the shared vault. The legacy
+        // owner is the first account, whose own list is the plain profile.
+        assert_eq!(
+            partitions::nonprofile_secret_owner_unpersisted(&conn).expect("legacy owner"),
+            Some(first.id)
+        );
         store
             .store(
                 "config_server_profiles",
@@ -2122,13 +2130,13 @@ mod tests {
                 }])
                 .to_string(),
             )
-            .expect("the legacy owner's profiles");
+            .expect("the active account's mirror");
         store
             .store(
                 "aerocrypt_overlay_pw_shared-profile",
                 "legacy-overlay-password",
             )
-            .expect("the legacy owner's overlay password");
+            .expect("an overlay password in the shared vault");
         let account = partitions::gui_account_snapshot().expect("capture account");
         assert_eq!(account.user, Some(first.id));
         partitions::set_active_user(&conn, second.id).expect("switch before the stack");
@@ -2163,15 +2171,17 @@ mod tests {
         assert_eq!(error, None, "the captured account's plain profile composes");
         assert_eq!(wrapped, Some(false), "not the other account's overlay");
         assert!(written.is_empty(), "{written:?}");
-        // V1: the legacy-only capture reads the legacy owner's crypt-bound
-        // profile and its vault secret, with the second account active: the
-        // wrap succeeds (the reserved id is the legacy scope, not a user).
+        // V1: the legacy-only capture reads the legacy owner's own list, the
+        // first account's plain profile, with the second account active: it
+        // does not follow the blob, the active account's mirror, into the
+        // second account's overlay.
         let (error, wrapped, written) = compose(partitions::LEGACY_ONLY_ACCOUNT);
+        assert_eq!(error, None, "the legacy owner's plain profile composes");
         assert_eq!(
-            error, None,
-            "the legacy owner's crypt-bound profile composes"
+            wrapped,
+            Some(false),
+            "the legacy owner's own list, not the active account's mirror"
         );
-        assert_eq!(wrapped, Some(true), "its own overlay");
         assert!(written.is_empty(), "{written:?}");
         // Control: the second account's own capture takes its overlay.
         let (error, wrapped, _) = compose(second.id);
