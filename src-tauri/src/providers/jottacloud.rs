@@ -1739,25 +1739,37 @@ impl JottacloudProvider {
         #[cfg(test)]
         chain_tests::after_note(&self.profile_id);
         let own = self.refresh_token_account();
-        for account in Self::refresh_chain_candidates(&self.profile_id) {
-            // Every key the exchange may write is checked against a deletion
-            // count read before the chain: without one, a rotation could be
-            // neither written nor checked later. Read again once, with the
-            // chain again after it (a count read after the chain could miss a
-            // deletion between the two); then the connection stops before the
-            // exchange, and does not go on to the login token.
-            let mut loaded = crate::credential_store::off_async_worker(|| {
-                Self::load_refresh_chain(self.credential_user, self.rotation_owner, &account)
-            });
-            if matches!(loaded, LoadedChain::Chain(..))
-                && !self.knows_deletions_of(&[&account, &own])
-            {
-                crate::credential_store::off_async_worker(|| self.note_chain_generations());
-                loaded = crate::credential_store::off_async_worker(|| {
+        // The candidates are tried again from the profile's key, once, when
+        // that key changed after its own load (an import while the next key
+        // was loaded): the chain written there is the profile's, and a
+        // successor of another key's chain must not be written over it.
+        let mut restarted = false;
+        'select: loop {
+            // What the profile's key held at its own load (empty for nothing).
+            let mut own_seen: Option<String> = None;
+            for account in Self::refresh_chain_candidates(&self.profile_id) {
+                // Every key the exchange may write is checked against a deletion
+                // count read before the chain: without one, a rotation could be
+                // neither written nor checked later. Read again once, with the
+                // chain again after it (a count read after the chain could miss a
+                // deletion between the two); then the connection stops before the
+                // exchange, and does not go on to the login token.
+                let mut loaded = crate::credential_store::off_async_worker(|| {
                     Self::load_refresh_chain(self.credential_user, self.rotation_owner, &account)
                 });
-            }
-            let Loaded {
+                if matches!(loaded, LoadedChain::Chain(..))
+                    && !self.knows_deletions_of(&[&account, &own])
+                {
+                    crate::credential_store::off_async_worker(|| self.note_chain_generations());
+                    loaded = crate::credential_store::off_async_worker(|| {
+                        Self::load_refresh_chain(
+                            self.credential_user,
+                            self.rotation_owner,
+                            &account,
+                        )
+                    });
+                }
+                let Loaded {
                 chain: (rt, te, un),
                 stored_token,
                 generation,
@@ -1765,7 +1777,14 @@ impl JottacloudProvider {
                 source,
             } = match loaded {
                 LoadedChain::Chain(loaded) => loaded,
-                LoadedChain::Nothing => continue,
+                LoadedChain::Nothing => {
+                    if account == own {
+                        own_seen = Some(String::new());
+                        #[cfg(test)]
+                        chain_tests::after_candidate_miss(&self.profile_id);
+                    }
+                    continue;
+                }
                 LoadedChain::Busy => {
                     return Err(ProviderError::ConnectionFailed(
                         "jottacloud: the stored refresh chain kept changing while it was read; try again"
@@ -1780,39 +1799,42 @@ impl JottacloudProvider {
                     )))
                 }
             };
-            {
-                // The counts the chain was read with are the ones its
-                // rotation is checked against: a deletion that completed
-                // before it was read removed some other chain. A kept
-                // rotation brings the count of the key its chain was loaded
-                // from, as its connection read it.
-                let mut generations = self
-                    .chain_generations
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner());
-                generations.insert(account.clone(), generation);
-                if let Some((source, generation)) = &source {
-                    generations.insert(source.clone(), *generation);
+                {
+                    // The counts the chain was read with are the ones its
+                    // rotation is checked against: a deletion that completed
+                    // before it was read removed some other chain. A kept
+                    // rotation brings the count of the key its chain was loaded
+                    // from, as its connection read it.
+                    let mut generations = self
+                        .chain_generations
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner());
+                    generations.insert(account.clone(), generation);
+                    if let Some((source, generation)) = &source {
+                        generations.insert(source.clone(), *generation);
+                    }
                 }
-            }
-            // And so is the clock: a delete of the key in this process before
-            // the read removed some other chain.
-            self.loaded_since = Some((account.clone(), clock));
-            // The key besides its own whose deletion drops this chain's
-            // rotation: the one it was loaded from, or, for a kept rotation
-            // loaded again from the profile's key, the one its chain was.
-            let depends_on = if account != own {
-                Some(account.clone())
-            } else {
-                source.map(|(source, _)| source)
-            };
-            if !self.knows_deletions_of(&[&account, &own]) {
-                return Err(ProviderError::ConnectionFailed(
+                // And so is the clock: a delete of the key in this process before
+                // the read removed some other chain.
+                self.loaded_since = Some((account.clone(), clock));
+                if account == own {
+                    own_seen = Some(stored_token.clone());
+                }
+                // The key besides its own whose deletion drops this chain's
+                // rotation: the one it was loaded from, or, for a kept rotation
+                // loaded again from the profile's key, the one its chain was.
+                let depends_on = if account != own {
+                    Some(account.clone())
+                } else {
+                    source.map(|(source, _)| source)
+                };
+                if !self.knows_deletions_of(&[&account, &own]) {
+                    return Err(ProviderError::ConnectionFailed(
                     "jottacloud: the deletions of the stored refresh chain could not be read; try again"
                         .to_string(),
                 ));
-            }
-            jotta_log(&format!(
+                }
+                jotta_log(&format!(
                 "Found persisted refresh token ({} chars) for {} under {}, attempting reconnection at {}",
                 rt.len(),
                 mask_credential(&un),
@@ -1820,171 +1842,201 @@ impl JottacloudProvider {
                 te
             ));
 
-            {
-                // What this connection knows the keys hold, read before the
-                // exchange: the one it loaded, and the profile's own key when
-                // the chain came from another (empty when it has none), so a
-                // chain imported into either meanwhile is not written over.
-                let mut known = self.stored_tokens.lock().unwrap_or_else(|e| e.into_inner());
-                known.clear();
-                known.insert(account.clone(), zeroize::Zeroizing::new(stored_token));
-                if account != own {
-                    let own_now = crate::credential_store::off_async_worker(|| {
-                        crate::credential_store::CredentialStore::from_cache().and_then(|store| {
-                            Self::stored_token_now(&store, self.credential_user, &own)
-                        })
-                    });
-                    if let Some(own_now) = own_now {
-                        known.insert(own.clone(), zeroize::Zeroizing::new(own_now));
+                let own_changed = {
+                    // What this connection knows the keys hold, read before the
+                    // exchange: the one it loaded, and the profile's own key when
+                    // the chain came from another (empty when it has none), so a
+                    // chain imported into either meanwhile is not written over.
+                    // The profile's key is the baseline only while it still holds
+                    // what its own load saw: one that holds a chain written since
+                    // is the profile's chain, not a destination for this one.
+                    let mut known = self.stored_tokens.lock().unwrap_or_else(|e| e.into_inner());
+                    known.clear();
+                    known.insert(account.clone(), zeroize::Zeroizing::new(stored_token));
+                    let mut changed = false;
+                    if account != own {
+                        let own_now = crate::credential_store::off_async_worker(|| {
+                            crate::credential_store::CredentialStore::from_cache().and_then(
+                                |store| Self::stored_token_now(&store, self.credential_user, &own),
+                            )
+                        });
+                        if let Some(own_now) = own_now {
+                            if !own_now.is_empty() && own_seen.as_deref() != Some(own_now.as_str())
+                            {
+                                changed = true;
+                            } else {
+                                known.insert(own.clone(), zeroize::Zeroizing::new(own_now));
+                            }
+                        }
                     }
+                    changed
+                };
+                if own_changed {
+                    if restarted {
+                        return Err(ProviderError::ConnectionFailed(
+                        "jottacloud: the profile's refresh chain changed while it was read; try again"
+                            .to_string(),
+                    ));
+                    }
+                    restarted = true;
+                    continue 'select;
                 }
-            }
-            // A kept rotation's source that still holds the chain handed out
-            // holds the token this exchange consumes: it is written with the
-            // profile's key, so its reader (an unbound CLI) is not left with
-            // it. So is a source whose own kept rotation is that same chain,
-            // filed on what the source still holds: that source's reader would
-            // be handed the consumed chain next. Holding another chain, it is
-            // only checked.
-            let source_written = account != own
-                || depends_on.as_deref().is_some_and(|source| {
-                    let source_now = crate::credential_store::off_async_worker(|| {
-                        crate::credential_store::CredentialStore::from_cache().and_then(|store| {
-                            Self::stored_token_now(&store, self.credential_user, source)
-                        })
+                // A kept rotation's source that still holds the chain handed out
+                // holds the token this exchange consumes: it is written with the
+                // profile's key, so its reader (an unbound CLI) is not left with
+                // it. So is a source whose own kept rotation is that same chain,
+                // filed on what the source still holds: that source's reader would
+                // be handed the consumed chain next. Holding another chain, it is
+                // only checked.
+                let source_written = account != own
+                    || depends_on.as_deref().is_some_and(|source| {
+                        let source_now = crate::credential_store::off_async_worker(|| {
+                            crate::credential_store::CredentialStore::from_cache().and_then(
+                                |store| {
+                                    Self::stored_token_now(&store, self.credential_user, source)
+                                },
+                            )
+                        });
+                        let kept_there = self.rotation_owner.is_some_and(|owner| {
+                            PENDING_ROTATIONS
+                                .lock()
+                                .unwrap_or_else(|e| e.into_inner())
+                                .get(&(owner, source.to_string()))
+                                .and_then(|json| {
+                                    serde_json::from_str::<serde_json::Value>(json).ok()
+                                })
+                                .is_some_and(|filed| {
+                                    filed["refresh_token"].as_str() == Some(rt.as_str())
+                                        && source_now.is_some()
+                                        && filed[PENDING_BASE].as_str() == source_now.as_deref()
+                                })
+                        });
+                        let holds = source_now.as_deref() == Some(rt.as_str()) || kept_there;
+                        if let Some(source_now) = source_now.filter(|_| holds) {
+                            self.stored_tokens
+                                .lock()
+                                .unwrap_or_else(|e| e.into_inner())
+                                .insert(source.to_string(), zeroize::Zeroizing::new(source_now));
+                        }
+                        holds
                     });
-                    let kept_there = self.rotation_owner.is_some_and(|owner| {
-                        PENDING_ROTATIONS
-                            .lock()
-                            .unwrap_or_else(|e| e.into_inner())
-                            .get(&(owner, source.to_string()))
-                            .and_then(|json| serde_json::from_str::<serde_json::Value>(json).ok())
-                            .is_some_and(|filed| {
-                                filed["refresh_token"].as_str() == Some(rt.as_str())
-                                    && source_now.is_some()
-                                    && filed[PENDING_BASE].as_str() == source_now.as_deref()
-                            })
-                    });
-                    let holds = source_now.as_deref() == Some(rt.as_str()) || kept_there;
-                    if let Some(source_now) = source_now.filter(|_| holds) {
-                        self.stored_tokens
-                            .lock()
-                            .unwrap_or_else(|e| e.into_inner())
-                            .insert(source.to_string(), zeroize::Zeroizing::new(source_now));
-                    }
-                    holds
-                });
-            *self.consumed.lock().unwrap_or_else(|e| e.into_inner()) =
-                Some(zeroize::Zeroizing::new(rt.clone()));
-            // J1 root cause: Jotta's OIDC rejects uppercase `REFRESH_TOKEN`
-            // as `unsupported_grant_type`. Use the RFC 6749 lowercase form.
-            let form_body = format!(
-                "grant_type=refresh_token&refresh_token={}&client_id=jottacli",
-                urlencoding::encode(&rt),
-            );
-            let resp = self
-                .client
-                .post(&te)
-                .header(CONTENT_TYPE, "application/x-www-form-urlencoded")
-                .body(form_body)
-                .send()
-                .await
-                .map_http_err(|e| {
-                    ProviderError::AuthenticationFailed(format!(
-                        "Refresh token exchange failed: {}",
-                        e
-                    ))
-                })?;
+                *self.consumed.lock().unwrap_or_else(|e| e.into_inner()) =
+                    Some(zeroize::Zeroizing::new(rt.clone()));
+                // J1 root cause: Jotta's OIDC rejects uppercase `REFRESH_TOKEN`
+                // as `unsupported_grant_type`. Use the RFC 6749 lowercase form.
+                let form_body = format!(
+                    "grant_type=refresh_token&refresh_token={}&client_id=jottacli",
+                    urlencoding::encode(&rt),
+                );
+                let resp = self
+                    .client
+                    .post(&te)
+                    .header(CONTENT_TYPE, "application/x-www-form-urlencoded")
+                    .body(form_body)
+                    .send()
+                    .await
+                    .map_http_err(|e| {
+                        ProviderError::AuthenticationFailed(format!(
+                            "Refresh token exchange failed: {}",
+                            e
+                        ))
+                    })?;
 
-            let status = resp.status();
-            if !status.is_success() {
-                let body = resp.text().await.unwrap_or_default();
-                jotta_log(&format!(
+                let status = resp.status();
+                if !status.is_success() {
+                    let body = resp.text().await.unwrap_or_default();
+                    jotta_log(&format!(
                     "Persisted refresh token under {} rejected by Jotta OIDC (status={}, body={}): trying the next chain",
                     account,
                     status,
                     sanitize_api_error(&body)
                 ));
-                // A refused chain is dead for everyone: clear it so no client
-                // reads it again and falls through to the login token. Both
-                // copies must go: the raw vault key AND the active user's
-                // partition mirror, which `resolve_active_credential` reads
-                // FIRST. Deleting only the vault key left the mirror in place,
-                // so every later read (this provider, the profile export)
-                // found the same dead chain again. Measured 2026-09-02: three
-                // exports in a row carried a 707-char chain Jotta refused
-                // with the same `invalid_grant` on the other station.
-                // Another user's chain lived only in its partition; the vault
-                // key of the same name belongs to the legacy owner.
-                // A pending rotation Jotta refused is dead too: dropped,
-                // unless a newer rotation has replaced it meanwhile.
-                crate::credential_store::off_async_worker(|| {
-                    if let Some(owner) = self.rotation_owner {
-                        let key = (owner, account.clone());
-                        let mut pending =
-                            PENDING_ROTATIONS.lock().unwrap_or_else(|e| e.into_inner());
-                        let refused = pending.get(&key).is_some_and(|json| {
-                            serde_json::from_str::<serde_json::Value>(json)
-                                .ok()
-                                .and_then(|v| v["refresh_token"].as_str().map(|t| t == rt))
-                                .unwrap_or(false)
-                        });
-                        if refused {
-                            pending.remove(&key);
+                    // A refused chain is dead for everyone: clear it so no client
+                    // reads it again and falls through to the login token. Both
+                    // copies must go: the raw vault key AND the active user's
+                    // partition mirror, which `resolve_active_credential` reads
+                    // FIRST. Deleting only the vault key left the mirror in place,
+                    // so every later read (this provider, the profile export)
+                    // found the same dead chain again. Measured 2026-09-02: three
+                    // exports in a row carried a 707-char chain Jotta refused
+                    // with the same `invalid_grant` on the other station.
+                    // Another user's chain lived only in its partition; the vault
+                    // key of the same name belongs to the legacy owner.
+                    // A pending rotation Jotta refused is dead too: dropped,
+                    // unless a newer rotation has replaced it meanwhile.
+                    crate::credential_store::off_async_worker(|| {
+                        if let Some(owner) = self.rotation_owner {
+                            let key = (owner, account.clone());
+                            let mut pending =
+                                PENDING_ROTATIONS.lock().unwrap_or_else(|e| e.into_inner());
+                            let refused = pending.get(&key).is_some_and(|json| {
+                                serde_json::from_str::<serde_json::Value>(json)
+                                    .ok()
+                                    .and_then(|v| v["refresh_token"].as_str().map(|t| t == rt))
+                                    .unwrap_or(false)
+                            });
+                            if refused {
+                                pending.remove(&key);
+                            }
                         }
-                    }
-                    let private = crate::user_partitions::private_token_user(
-                        self.credential_user,
-                        "jottacloud_refresh",
-                    )
-                    .map_or(true, |user| user.is_some());
-                    if !private {
-                        if let Some(store) = crate::credential_store::CredentialStore::from_cache()
-                        {
-                            let _ = store.delete(&account);
+                        let private = crate::user_partitions::private_token_user(
+                            self.credential_user,
+                            "jottacloud_refresh",
+                        )
+                        .map_or(true, |user| user.is_some());
+                        if !private {
+                            if let Some(store) =
+                                crate::credential_store::CredentialStore::from_cache()
+                            {
+                                let _ = store.delete(&account);
+                            }
                         }
-                    }
-                    let unmirrored = match self.credential_user {
-                        Some(user) => {
-                            crate::user_partitions::try_unmirror_active_credential(user, &account)
+                        let unmirrored = match self.credential_user {
+                            Some(user) => crate::user_partitions::try_unmirror_active_credential(
+                                user, &account,
+                            ),
+                            None => crate::user_partitions::unmirror_active_credential(&account),
+                        };
+                        if let Err(e) = unmirrored {
+                            jotta_log(&format!(
+                                "The refused chain {account} stays in the account's partition: {e}"
+                            ));
                         }
-                        None => crate::user_partitions::unmirror_active_credential(&account),
-                    };
-                    if let Err(e) = unmirrored {
-                        jotta_log(&format!(
-                            "The refused chain {account} stays in the account's partition: {e}"
-                        ));
-                    }
-                });
-                continue;
+                    });
+                    continue;
+                }
+
+                let token_resp: TokenResponse = resp.json().await.map_http_err(|e| {
+                    ProviderError::AuthenticationFailed(format!(
+                        "Refresh response parse failed: {}",
+                        e
+                    ))
+                })?;
+                if token_resp.access_token.is_none() {
+                    continue;
+                }
+
+                self.username = un;
+                self.access_token = SecretString::from(token_resp.access_token.unwrap_or_default());
+                // Jotta rotates the refresh token at every exchange. Persisting
+                // the rotated value is mandatory: if we keep the old one in the
+                // on-disk slot, the next invocation reads an already-consumed
+                // token and falls through to the (one-shot) login token, which
+                // returns "Login token expired or already used". The prior
+                // behaviour only updated the in-memory field (J1 finding).
+                self.refresh_token = SecretString::from(token_resp.refresh_token.unwrap_or(rt));
+                self.token_endpoint = te;
+                let expires_in = token_resp.expires_in.unwrap_or(3600);
+                self.token_expiry = Instant::now() + std::time::Duration::from_secs(expires_in);
+                self.refresh_source_account = depends_on;
+                self.refresh_source_written = source_written;
+                self.login_chain = false;
+
+                self.persist_refresh_token();
+                jotta_log("Reconnected using persisted refresh token; rotated token saved");
+                return Ok(true);
             }
-
-            let token_resp: TokenResponse = resp.json().await.map_http_err(|e| {
-                ProviderError::AuthenticationFailed(format!("Refresh response parse failed: {}", e))
-            })?;
-            if token_resp.access_token.is_none() {
-                continue;
-            }
-
-            self.username = un;
-            self.access_token = SecretString::from(token_resp.access_token.unwrap_or_default());
-            // Jotta rotates the refresh token at every exchange. Persisting
-            // the rotated value is mandatory: if we keep the old one in the
-            // on-disk slot, the next invocation reads an already-consumed
-            // token and falls through to the (one-shot) login token, which
-            // returns "Login token expired or already used". The prior
-            // behaviour only updated the in-memory field (J1 finding).
-            self.refresh_token = SecretString::from(token_resp.refresh_token.unwrap_or(rt));
-            self.token_endpoint = te;
-            let expires_in = token_resp.expires_in.unwrap_or(3600);
-            self.token_expiry = Instant::now() + std::time::Duration::from_secs(expires_in);
-            self.refresh_source_account = depends_on;
-            self.refresh_source_written = source_written;
-            self.login_chain = false;
-
-            self.persist_refresh_token();
-            jotta_log("Reconnected using persisted refresh token; rotated token saved");
-            return Ok(true);
+            break;
         }
         jotta_log("No usable persisted refresh token in vault: will use login token");
         Ok(false)

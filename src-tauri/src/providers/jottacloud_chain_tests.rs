@@ -2211,6 +2211,86 @@ fn a_singletons_kept_successor_moves_on_with_its_profile() {
     assert!(failures.is_empty(), "{failures:#?}");
 }
 
+/// A chain imported into a profile's key right after that key's own load
+/// found nothing (test only): `(profile, key, the chain)`, taken once.
+pub(super) static IMPORTED_AFTER_MISS: Mutex<Option<(String, String, String)>> = Mutex::new(None);
+
+pub(super) fn after_candidate_miss(profile: &str) {
+    let imported = IMPORTED_AFTER_MISS
+        .lock()
+        .unwrap()
+        .take_if(|(at, _, _)| at == profile);
+    if let Some((_, key, chain)) = imported {
+        CredentialStore::from_cache()
+            .unwrap()
+            .store(&key, &chain)
+            .unwrap();
+    }
+}
+
+/// A chain imported into the profile's key while the connection, which
+/// found that key empty, went on to the singleton is the profile's chain:
+/// the connection starts again from the profile's key and exchanges the
+/// imported chain, and the singleton's successor is never written over it.
+/// A profile key that stays empty still receives the singleton's successor.
+#[test]
+fn a_chain_imported_during_the_singleton_fallback_is_not_written_over() {
+    if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+        "providers::jottacloud::chain_tests::a_chain_imported_during_the_singleton_fallback_is_not_written_over",
+    ) {
+        return;
+    }
+    let chains = Chains::new();
+    let singleton = "jottacloud_refresh";
+    let mut failures = Vec::new();
+    for (case, imported) in [("imported meanwhile", true), ("left empty", false)] {
+        let profile = if imported {
+            "fallbackimport"
+        } else {
+            "fallbackempty"
+        };
+        let key = format!("jottacloud_refresh_{profile}");
+        chains
+            .store
+            .store(singleton, &chains.chain(&format!("singleton-{profile}")))
+            .unwrap();
+        if imported {
+            *IMPORTED_AFTER_MISS.lock().unwrap() = Some((
+                profile.to_string(),
+                key.clone(),
+                chains.chain(&format!("imported-{profile}")),
+            ));
+        }
+        let from = chains.submissions();
+        let mut connection = chains.bound(profile);
+        let connected = chains
+            .runtime()
+            .block_on(connection.try_connect_with_refresh());
+        *IMPORTED_AFTER_MISS.lock().unwrap() = None;
+        let rotated = connection.refresh_token.expose_secret().to_string();
+        drop(connection);
+        let sent = chains.submitted_since(from);
+        let expected_sent = if imported {
+            format!("imported-{profile}")
+        } else {
+            format!("singleton-{profile}")
+        };
+        if !matches!(connected, Ok(true)) || sent != [expected_sent.clone()] {
+            failures.push(format!(
+                "{case}: {connected:?}, sent {sent:?}, expected [{expected_sent}]"
+            ));
+        }
+        if chains.stored(&key) != rotated {
+            failures.push(format!(
+                "{case}: the profile's key holds {}, expected the successor {rotated} of {expected_sent}",
+                chains.stored(&key)
+            ));
+        }
+        PENDING_ROTATIONS.lock().unwrap().clear();
+    }
+    assert!(failures.is_empty(), "{failures:#?}");
+}
+
 /// A deletion whose end its process could not record, in a process that
 /// stays alive, does not hold the key for every other process for as long
 /// as it lives: that process settles it at its next connection, whatever
