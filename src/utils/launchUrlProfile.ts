@@ -2,6 +2,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { connectionProtocol } from '../providers/connectionManifest';
+import { resolveUsernameTemplate } from './cryptScope';
 import type { ConnectionParams, OpenRequest, ServerProfile } from '../types';
 
 export type SignInProfileMatch =
@@ -102,7 +103,15 @@ export const savedProfileMatchesLaunch = (profile: ServerProfile, req: OpenReque
 
 /** The folder a launch opens once its tab is up, the open one or a fresh
  *  connect: the link's own path, `/` included (a `dropbox://work/` link asks
- *  for the root, so a tab left in a subfolder moves there). `null` only when
- *  the request names no folder at all. */
+ *  for the root, so a tab left in a subfolder moves there). `null` when the
+ *  link names no folder (`sftp://host`, `dropbox://work`): the open tab stays
+ *  where it is, and a fresh connect keeps the profile's start folder. */
 export const launchFolderToOpen = (initialPath: string | undefined): string | null =>
   initialPath ? initialPath : null;
+
+/** The folder a fresh connect from a link opens on: the link's own path,
+ *  else the start folder of the saved profile it matched, else the root. */
+export const launchStartFolder = (
+  initialPath: string | undefined,
+  profile?: Pick<ServerProfile, 'initialPath' | 'username'>,
+): string => initialPath || resolveUsernameTemplate(profile?.initialPath, profile?.username) || '/';

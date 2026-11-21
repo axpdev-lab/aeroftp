@@ -268,6 +268,11 @@ pub struct LaunchTarget {
     pub url_secret: Option<String>,
     /// The URL path, decoded; `/` for none.
     pub path: String,
+    /// Whether the text names a path: a `/` right after the authority. The
+    /// parser gives `ftp://host` and `ftp://host/` the same `/`, and a
+    /// launch must tell "no folder" (stay where the tab is, or open the
+    /// profile's start folder) from the root (`dropbox://work/`).
+    pub path_given: bool,
     /// Validated query options, in the backend's spelling.
     pub options: BTreeMap<String, String>,
 }
@@ -376,8 +381,21 @@ pub fn parse(raw: &str) -> Result<LaunchTarget, String> {
         } else {
             path
         },
+        path_given: names_a_path(raw),
         options,
     })
+}
+
+/// Whether `raw` writes a path: the authority (after `://`) ends at the
+/// first `/`, `?` or `#`, and only a `/` there starts one. A raw `/`, `?` or
+/// `#` inside the user part is refused before this is read (see `parse`).
+fn names_a_path(raw: &str) -> bool {
+    raw.split_once("://")
+        .and_then(|(_, rest)| {
+            rest.find(['/', '?', '#'])
+                .map(|at| rest[at..].starts_with('/'))
+        })
+        .unwrap_or(false)
 }
 
 impl LaunchTarget {
@@ -1157,6 +1175,29 @@ mod tests {
             !masked.contains("hunter2") && !masked.contains("token=x"),
             "{masked}"
         );
+    }
+
+    #[test]
+    fn the_path_stays_the_cli_path_and_path_given_reads_the_text() {
+        // The url crate gives a special scheme (ftp) `/` either way; the CLI
+        // keeps reading `path`, the launch reads `path_given`.
+        for (raw, given) in [
+            ("ftp://h.example", false),
+            ("ftp://h.example/", true),
+            ("sftp://u:p%2Fq@h.example:22", false),
+            ("sftp://u@h.example/srv", true),
+            ("dropbox://work", false),
+            ("dropbox:///", true),
+        ] {
+            let target = parse(raw).unwrap();
+            assert_eq!(target.path_given, given, "{raw}");
+            if !raw.ends_with("/srv") {
+                assert_eq!(target.path, "/", "{raw}");
+            }
+        }
+        assert!(!names_a_path("sftp://h.example?x=1"));
+        assert!(!names_a_path("sftp://h.example#top"));
+        assert!(names_a_path("sftp://[::1]:22/"));
     }
 
     #[test]

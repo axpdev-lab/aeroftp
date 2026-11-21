@@ -211,6 +211,10 @@ pub fn parse_remote_url(raw: &str) -> Option<OpenRequest> {
     let account = target.scheme.auth == crate::launch_url::LaunchAuth::Account;
 
     let (initial_path, folder, name, is_dir) = split_remote_path(&target.path);
+    // A link that names no folder (`sftp://host`, `dropbox://work`) carries
+    // none: the app keeps an open tab where it is and a fresh connect opens
+    // the profile's start folder. `dropbox://work/` names the root.
+    let initial_path = target.path_given.then_some(initial_path);
     if account {
         return Some(OpenRequest {
             kind: OpenKind::RemoteUrl,
@@ -220,7 +224,7 @@ pub fn parse_remote_url(raw: &str) -> Option<OpenRequest> {
             is_dir,
             protocol: Some(protocol.to_string()),
             server: Some(target.host.clone()),
-            initial_path: Some(initial_path),
+            initial_path,
             sign_in: true,
             ..Default::default()
         });
@@ -280,7 +284,7 @@ pub fn parse_remote_url(raw: &str) -> Option<OpenRequest> {
     }
     // A repository URL names no folder: its path is the repository.
     let (initial_path, folder, name, is_dir) = if matches!(protocol, "github" | "gitlab") {
-        ("/".to_string(), "/".to_string(), String::new(), true)
+        (None, "/".to_string(), String::new(), true)
     } else {
         (initial_path, folder, name, is_dir)
     };
@@ -296,7 +300,7 @@ pub fn parse_remote_url(raw: &str) -> Option<OpenRequest> {
         port: Some(target.port.unwrap_or_else(|| default_port(&target))),
         username: (!username.is_empty()).then_some(username),
         password,
-        initial_path: Some(initial_path),
+        initial_path,
         profile_name: None,
         provider_id,
         options: (!options.is_empty()).then_some(options),
@@ -784,7 +788,8 @@ mod tests {
         assert_eq!(req.server.as_deref(), Some("ftp.example.com"));
         assert_eq!(req.port, Some(21));
         assert_eq!(req.username.as_deref(), Some("anonymous"));
-        assert_eq!(req.initial_path.as_deref(), Some("/"));
+        // No folder named: the app keeps an open tab where it is.
+        assert_eq!(req.initial_path, None);
         assert_eq!(req.folder, "/");
         assert_eq!(req.name, "");
         assert!(req.is_dir);
@@ -958,7 +963,7 @@ mod tests {
         // is the project, never a folder inside it.
         let gitlab = parse_remote_url("gitlab://gitlab.com/group/project@dev").unwrap();
         assert_eq!(gitlab.server.as_deref(), Some("gitlab.com/group/project"));
-        assert_eq!(gitlab.initial_path.as_deref(), Some("/"));
+        assert_eq!(gitlab.initial_path, None);
         assert_eq!(gitlab.options.unwrap()["githubBranch"], "dev");
 
         let ftpes = parse_remote_url("ftpes://u@h/").unwrap();
@@ -1149,6 +1154,23 @@ mod tests {
         });
         assert_eq!(generic.provider_id.as_deref(), Some("custom-s3"));
         assert!(!generic.options.unwrap().contains_key("region"));
+    }
+
+    #[test]
+    fn a_link_that_names_no_folder_carries_none_and_a_slash_names_the_root() {
+        for (bare, root) in [
+            ("sftp://u@h.example", "sftp://u@h.example/"),
+            ("ftp://h.example", "ftp://h.example/"),
+            ("dropbox://work", "dropbox://work/"),
+        ] {
+            let none = parse_remote_url(bare).unwrap();
+            assert_eq!(none.initial_path, None, "{bare}");
+            let slash = parse_remote_url(root).unwrap();
+            assert_eq!(slash.initial_path.as_deref(), Some("/"), "{root}");
+            assert_eq!(none.sign_in, slash.sign_in, "{bare}");
+        }
+        let empty_host = parse_remote_url("dropbox:///").unwrap();
+        assert_eq!(empty_host.initial_path.as_deref(), Some("/"));
     }
 
     #[test]

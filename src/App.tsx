@@ -31,7 +31,7 @@ import { useTauriListener, guardedUnlisten } from './hooks/useTauriListener';
 import { useSelectionFolderSizes } from './hooks/useSelectionFolderSizes';
 import type { BackendSwapDetail } from './hooks/useOAuth2';
 import { connectionProtocol, getConnectionPreset } from './providers/connectionManifest';
-import { launchFolderToOpen, matchSignInProfile, openSessionMatchesLaunch, savedProfileMatchesLaunch } from './utils/launchUrlProfile';
+import { launchFolderToOpen, launchStartFolder, matchSignInProfile, openSessionMatchesLaunch, savedProfileMatchesLaunch } from './utils/launchUrlProfile';
 import { protocolDisplayName } from './utils/protocolDisplayName';
 import { pickFile } from './utils/pickPath';
 import { homeDir, downloadDir } from '@tauri-apps/api/path';
@@ -19468,7 +19468,8 @@ const App: React.FC = () => {
       return;
     }
     // After either branch, the open tab or the fresh connect: `/` is a folder
-    // the link asks for too, never "stay where you are".
+    // the link asks for too; a link that names none leaves the tab where it
+    // is, or on the profile's start folder.
     const folder = launchFolderToOpen(initialPath);
     if (folder) await navigateAfterLaunch(folder, matched.protocol);
   };
@@ -19514,7 +19515,6 @@ const App: React.FC = () => {
     const defaultPort = manifestDefaultPort(targetProtocol);
     const targetPort = req.port || defaultPort;
     const targetUser = req.username || '';
-    const initialRemotePath = req.initialPath || '/';
 
     const existingSession = sessions.find(s => openSessionMatchesLaunch(s.connectionParams, req));
 
@@ -19523,7 +19523,7 @@ const App: React.FC = () => {
       setShowRemotePanel(true);
       setShowLocalPreview(false);
       await switchSession(existingSession.id);
-      const folder = launchFolderToOpen(initialRemotePath);
+      const folder = launchFolderToOpen(req.initialPath);
       if (folder) await navigateAfterLaunch(folder, targetProtocol);
       return;
     }
@@ -19541,9 +19541,11 @@ const App: React.FC = () => {
 
     // A chain link has no password here by design: provider_connect resolves
     // the AWS chain in Rust, so no saved profile's secret stands in for it.
+    let matchedProfile: ServerProfile | undefined;
     if (!params.password && !req.options?.awsChain) {
       const all = await loadSavedServerProfiles().catch(() => [] as ServerProfile[]);
       const match = all.find(s => savedProfileMatchesLaunch(s, req));
+      matchedProfile = match;
       if (match) {
         params.savedServerId = match.id;
         params.displayName = match.name;
@@ -19562,7 +19564,7 @@ const App: React.FC = () => {
       }
     }
 
-    await connectToFtp(params, { initialRemotePath });
+    await connectToFtp(params, { initialRemotePath: launchStartFolder(req.initialPath, matchedProfile) });
   };
 
   const handleOpenRequests = async (requests: OpenRequest[]) => {

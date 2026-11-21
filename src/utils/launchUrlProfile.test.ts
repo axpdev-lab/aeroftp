@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { ConnectionParams, OpenRequest, ServerProfile } from '../types';
-import { launchFolderToOpen, matchSignInProfile, openSessionMatchesLaunch, savedProfileMatchesLaunch } from './launchUrlProfile';
+import { launchFolderToOpen, launchStartFolder, matchSignInProfile, openSessionMatchesLaunch, savedProfileMatchesLaunch } from './launchUrlProfile';
 
 const profile = (id: string, name: string, protocol: string, username = ''): ServerProfile =>
   ({ id, name, protocol, username, host: '', port: 443 }) as ServerProfile;
@@ -148,9 +148,37 @@ describe('launchFolderToOpen', () => {
     expect(saved).toContain('profileConnector.current(matched.id, scope)');
     expect(saved).toMatch(/const folder = launchFolderToOpen\(initialPath\);\s*if \(folder\) await navigateAfterLaunch\(folder, matched\.protocol\);\s*$/);
     const remote = body('openRemoteUrlSession');
-    expect(remote).toMatch(/await switchSession\(existingSession\.id\);\s*const folder = launchFolderToOpen\(initialRemotePath\);\s*if \(folder\) await navigateAfterLaunch\(folder, targetProtocol\);/);
+    // The open tab reads the link's own path: a link with no folder carries
+    // none (open_request.rs) and leaves the tab where it is.
+    expect(remote).toMatch(/await switchSession\(existingSession\.id\);\s*const folder = launchFolderToOpen\(req\.initialPath\);\s*if \(folder\) await navigateAfterLaunch\(folder, targetProtocol\);/);
+    expect(remote).toContain('await connectToFtp(params, { initialRemotePath: launchStartFolder(req.initialPath, matchedProfile) });');
+    expect(remote).toMatch(/const match = all\.find\(s => savedProfileMatchesLaunch\(s, req\)\);\s*matchedProfile = match;/);
+    expect(remote).not.toMatch(/req\.initialPath \|\| '\/'/);
     expect(saved + remote).not.toMatch(/!== '\/'/);
     // A chain link has no password in the webview: no saved profile's secret stands in for it.
     expect(remote).toContain('if (!params.password && !req.options?.awsChain) {');
+  });
+});
+
+// Requests as open_request.rs builds them: `sftp://u@h`, `ftp://h` and
+// `dropbox://work` carry no initialPath, the same links with a final `/` carry `/`.
+describe('a link that names no folder', () => {
+  const links: Array<[string, OpenRequest, OpenRequest]> = [
+    ['sftp', { kind: 'remoteUrl', protocol: 'sftp', server: 'h' } as OpenRequest, { kind: 'remoteUrl', protocol: 'sftp', server: 'h', initialPath: '/' } as OpenRequest],
+    ['ftp', { kind: 'remoteUrl', protocol: 'ftp', server: 'h' } as OpenRequest, { kind: 'remoteUrl', protocol: 'ftp', server: 'h', initialPath: '/' } as OpenRequest],
+    ['dropbox', { kind: 'remoteUrl', protocol: 'dropbox', server: 'work', signIn: true } as OpenRequest, { kind: 'remoteUrl', protocol: 'dropbox', server: 'work', signIn: true, initialPath: '/' } as OpenRequest],
+  ];
+  const start = { initialPath: '/srv/{username}/', username: 'alice' } as Pick<ServerProfile, 'initialPath' | 'username'>;
+
+  it.each(links)('%s: an open tab in a subfolder stays there, a final / moves it to the root', (_, bare, root) => {
+    expect(launchFolderToOpen(bare.initialPath)).toBeNull();
+    expect(launchFolderToOpen(root.initialPath)).toBe('/');
+  });
+
+  it.each(links)("%s: a fresh connect opens the profile's start folder unless the link names one", (_, bare, root) => {
+    expect(launchStartFolder(bare.initialPath, start)).toBe('/srv/alice/');
+    expect(launchStartFolder(root.initialPath, start)).toBe('/');
+    expect(launchStartFolder(bare.initialPath)).toBe('/');
+    expect(launchStartFolder('/Photos/', start)).toBe('/Photos/');
   });
 });
