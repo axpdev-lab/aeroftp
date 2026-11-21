@@ -28038,9 +28038,13 @@ pub(crate) mod isolated_account_fixture {
                 }
             }
         };
+        // Only the one named test that ran and passed counts, the same rule as
+        // the parent in native_relocation_tests.rs: "11 passed" is not a pass.
         let stdout = String::from_utf8_lossy(&output.stdout);
         assert!(
-            output.status.success() && stdout.contains("1 passed"),
+            output.status.success()
+                && stdout.contains("running 1 test")
+                && stdout.contains(" 1 passed"),
             "{stdout}\n{}",
             String::from_utf8_lossy(&output.stderr)
         );
