@@ -538,6 +538,47 @@ pub async fn save_version_body(
         .map_err(ProviderError::IoError)
 }
 
+/// The id of the row on top bound to its file and to what the listing saw
+/// of its contents: `{file}.{token}:current`, the token (a content tag, an
+/// ETag, a size with a time) hex-encoded so it holds no separator. A
+/// download of it reads the file only while it still shows that token,
+/// before and after the body ([`bound_current_row_of`]), so a write between
+/// the listing and the download, or during it, saves nothing.
+pub(crate) fn bound_current_row(file_id: &str, token: &str) -> String {
+    format!("{file_id}.{}:{CURRENT_VERSION_ID}", hex::encode(token))
+}
+
+/// The file id and the listed token of a row [`bound_current_row`] made;
+/// None for any other id.
+pub(crate) fn bound_current_row_of(version_id: &str) -> Option<(&str, String)> {
+    let bound = version_id
+        .strip_suffix(CURRENT_VERSION_ID)?
+        .strip_suffix(':')?;
+    let (file_id, token) = bound.rsplit_once('.')?;
+    let token = String::from_utf8(hex::decode(token).ok()?).ok()?;
+    (!file_id.is_empty()).then_some((file_id, token))
+}
+
+/// The refusal of a bound current row whose file no longer shows what its
+/// listing saw: nothing was written.
+pub(crate) fn current_row_changed(path: &str) -> ProviderError {
+    ProviderError::NotFound(format!(
+        "{path} is no longer the file whose versions were listed (it was written or replaced \
+         since): nothing was saved, list its versions again"
+    ))
+}
+
+/// [`stage_version_body`] staged whatever `--inplace` says: the body of a
+/// bound current row is checked once it is read, and written in place,
+/// bytes that are not the row's would already have replaced the destination.
+pub async fn stage_bound_current_body(
+    resp: reqwest::Response,
+    local_path: &str,
+    what: &str,
+) -> Result<atomic_write::AtomicFile, ProviderError> {
+    stage_version_body_in(resp, local_path, what, false).await
+}
+
 /// [`save_version_body`] up to the commit: the whole body written to the
 /// staged file, which the caller commits once it has checked what the body
 /// belongs to (dropped, it leaves the destination as it was, unless the user
@@ -547,11 +588,20 @@ pub async fn stage_version_body(
     local_path: &str,
     what: &str,
 ) -> Result<atomic_write::AtomicFile, ProviderError> {
+    stage_version_body_in(resp, local_path, what, atomic_write::inplace_active()).await
+}
+
+async fn stage_version_body_in(
+    resp: reqwest::Response,
+    local_path: &str,
+    what: &str,
+    inplace: bool,
+) -> Result<atomic_write::AtomicFile, ProviderError> {
     use futures_util::StreamExt;
     require_whole_version_body(&resp, what)?;
     let expected = resp.content_length();
     let mut stream = resp.bytes_stream();
-    let mut atomic = atomic_write::AtomicFile::new(local_path)
+    let mut atomic = atomic_write::AtomicFile::new_in(local_path, inplace)
         .await
         .map_err(ProviderError::IoError)?;
     let mut written: u64 = 0;
@@ -726,12 +776,15 @@ mod version_class_guards {
 
     /// A version's whole body is accepted on 200 only (a 206 with a matching
     /// Content-Length is still a part): each `download_version` that reads
-    /// the body itself checks it, in its own body or in the one helper named.
+    /// the body itself checks it, in its own body or in the one helper named,
+    /// by a call in its code (a comment naming a helper is no check).
     #[test]
     fn every_version_body_is_accepted_on_200_only() {
-        const WHOLE: [&str; 3] = [
-            "require_whole_version_body",
-            "save_version_body",
+        const WHOLE: [&str; 5] = [
+            "require_whole_version_body(",
+            "save_version_body(",
+            "stage_version_body(",
+            "stage_bound_current_body(",
             "StatusCode::OK =>",
         ];
         for (file, source, reader) in [
@@ -766,7 +819,11 @@ mod version_class_guards {
                 "nextcloud_download_version",
             ),
         ] {
-            let code = body(source, reader);
+            let code: String = body(source, reader)
+                .lines()
+                .filter(|line| !line.trim_start().starts_with("//"))
+                .collect::<Vec<_>>()
+                .join("\n");
             assert!(
                 WHOLE.iter().any(|check| code.contains(check)),
                 "{file}: {reader} accepts a version body without requiring 200"
@@ -1091,6 +1148,38 @@ pub async fn refuse_a_restore_that_changes_nothing_when_listed<P: StorageProvide
     }
 }
 
+/// A purge of the version on top, refused before anything is sent: it is
+/// the file itself, and deleting it is a deletion, not a purge of history
+/// (the providers whose top row is `current` refuse it by that id already;
+/// S3 and B2 name it by a native id). A delete marker on top stays
+/// purgeable: that undeletes the file. The listing is read fresh; a listing
+/// denied (S3, B2) decides nothing, any other failure refuses the purge.
+pub async fn refuse_a_purge_of_the_live_version<P: StorageProvider + ?Sized>(
+    provider: &mut P,
+    path: &str,
+    version_id: &str,
+) -> Result<(), ProviderError> {
+    let versions = match provider.list_versions(path).await {
+        Ok(versions) => versions,
+        Err(ProviderError::PermissionDenied(_)) => return Ok(()),
+        Err(e @ (ProviderError::NotFound(_) | ProviderError::NotConnected)) => return Err(e),
+        Err(e) => {
+            return Err(ProviderError::TransferFailed(format!(
+                "The versions of {path} could not be listed ({e}), so nothing was purged: list \
+                 its versions again"
+            )))
+        }
+    };
+    match versions.first() {
+        Some(top) if listed_as(top, version_id) && !top.deleted => {
+            Err(ProviderError::NotSupported(
+                "This is the current version: it is the file itself, so nothing was purged".into(),
+            ))
+        }
+        _ => Ok(()),
+    }
+}
+
 /// The error of a restore whose version listing failed: a file gone or
 /// replaced, a disconnect or a provider without versions keep their own
 /// error; any other failure says no restore was sent.
@@ -1175,6 +1264,22 @@ pub(crate) fn change_send_error(e: reqwest::Error, what: &str) -> ProviderError 
     ))
 }
 
+/// The answer to a change that a gateway gave instead of the server (502,
+/// 503, 504): the proxy in front gave up, which says nothing of whether the
+/// server behind it applied the change, so it is [`applied_unconfirmed`].
+/// `None` for any other status: a refusal the caller reports as its own.
+pub(crate) fn gateway_left_unknown(
+    status: reqwest::StatusCode,
+    what: &str,
+) -> Option<ProviderError> {
+    matches!(status.as_u16(), 502..=504).then(|| {
+        applied_unconfirmed(format!(
+            "{what} was answered {status} by a gateway, which does not say whether it was \
+             applied: list its versions again before trying again"
+        ))
+    })
+}
+
 /// [`change_send_error`] for a sender that has already mapped its error:
 /// a timeout or any transport failure of a change with no precondition may
 /// have come after the server applied it (a refused connect, which sent
@@ -1248,11 +1353,12 @@ pub(crate) fn restore_confirmed(
         return Err(not_restored(format!("holds {} bytes", current.size)));
     }
     if let Some(made) = &preflight.made_current {
+        // Neither id is shown: the one the restore made comes from a header
+        // of the answer (S3's `x-amz-version-id`), server text like any other.
         if &current.id != made {
-            return Err(not_restored(format!(
-                "is {}, not the version {made} the restore made",
-                current.id
-            )));
+            return Err(not_restored(
+                "is another version than the one the restore made".to_string(),
+            ));
         }
         return Ok(());
     }
@@ -1820,6 +1926,73 @@ pub(crate) async fn range_window_with_limit(
     body_bytes_with_limit(resp, limit, multi_thread::range_read_error).await
 }
 
+/// The window of a ranged read (`offset`, `len` bytes, `len > 0`, its end
+/// checked not to wrap by the caller), read from its answer with a bound
+/// set by the window, not by the object: a 206 must name exactly the window
+/// and is refused at the first byte past it, and a 200 (the range ignored,
+/// the whole object sent) is read only up to the window's end, the bytes
+/// before it dropped as they arrive and the rest never read. `what` names
+/// the read in a refusal ([`multi_thread::parallel_refused`]).
+pub(crate) async fn ranged_read_window(
+    mut resp: reqwest::Response,
+    offset: u64,
+    len: u64,
+    what: &str,
+    path: &str,
+) -> Result<Vec<u8>, ProviderError> {
+    let end = offset + (len - 1);
+    let status = resp.status();
+    let answered = resp
+        .headers()
+        .get(reqwest::header::CONTENT_RANGE)
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_string);
+    let refused = |why: String| {
+        ProviderError::ParallelRefused(multi_thread::parallel_refused(what, path, &why))
+    };
+    // The header is checked before any byte is read, against the window.
+    let answer = multi_thread::ranged_answer(status, answered.as_deref(), len, offset, end)
+        .map_err(refused)?;
+    let mut window: Vec<u8> = Vec::with_capacity(len.min(8 * 1024 * 1024) as usize);
+    match answer {
+        multi_thread::RangedAnswer::Window => {
+            while let Some(chunk) = resp.chunk().await.map_err(multi_thread::range_read_error)? {
+                if window.len() as u64 + chunk.len() as u64 > len {
+                    return Err(refused(format!(
+                        "the server said bytes {offset}-{end} and sent more than {len} bytes"
+                    )));
+                }
+                window.extend_from_slice(&chunk);
+            }
+            if window.len() as u64 != len {
+                return Err(refused(format!(
+                    "the server said bytes {offset}-{end} and sent {} bytes instead of {len}",
+                    window.len()
+                )));
+            }
+        }
+        multi_thread::RangedAnswer::WholeObject => {
+            let mut read: u64 = 0;
+            while (window.len() as u64) < len {
+                let Some(chunk) = resp.chunk().await.map_err(multi_thread::range_read_error)?
+                else {
+                    break;
+                };
+                let chunk_start = read;
+                read += chunk.len() as u64;
+                if read <= offset {
+                    continue;
+                }
+                let from = offset.saturating_sub(chunk_start) as usize;
+                let wanted = (len - window.len() as u64) as usize;
+                let take = wanted.min(chunk.len() - from);
+                window.extend_from_slice(&chunk[from..from + take]);
+            }
+        }
+    }
+    Ok(window)
+}
+
 /// The reader behind [`response_bytes_with_limit`], with the mapping of a
 /// failed body read left to the caller.
 async fn body_bytes_with_limit(
@@ -2069,6 +2242,147 @@ pub(crate) async fn error_body_excerpt(mut resp: reqwest::Response, max: usize) 
     }
     body.truncate(max);
     String::from_utf8_lossy(&body).trim().to_string()
+}
+
+#[cfg(test)]
+mod bound_current_row_tests {
+    use super::*;
+
+    /// A bound row round-trips its file id and token, dots and colons in the
+    /// token included; a plain `current`, a `{file}:current` and a label of
+    /// another row are not bound rows.
+    #[test]
+    fn a_bound_current_row_carries_its_file_and_token() {
+        for (file, token) in [
+            ("55", "11"),
+            ("01AB!12.x", "\"e:1.2\""),
+            ("7", "3.1700000000"),
+        ] {
+            let id = bound_current_row(file, token);
+            assert!(id.ends_with(":current"), "{id}");
+            assert_eq!(
+                bound_current_row_of(&id),
+                Some((file, token.to_string())),
+                "{id}"
+            );
+        }
+        for other in [
+            "current",
+            "55:current",
+            "55:3",
+            ".:current",
+            "55.zz:current",
+        ] {
+            assert_eq!(bound_current_row_of(other), None, "{other}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod gateway_left_unknown_tests {
+    use super::*;
+
+    /// A gateway's 502, 503 or 504 does not say whether the change behind
+    /// it was applied; any other status is the server's own answer.
+    #[test]
+    fn only_a_gateway_status_leaves_a_change_unknown() {
+        for code in [502u16, 503, 504] {
+            let status = reqwest::StatusCode::from_u16(code).unwrap();
+            let unknown = gateway_left_unknown(status, "the restore of v1 of /f").expect("unknown");
+            assert!(was_applied(&unknown), "{code}: {unknown:?}");
+            let text = unknown.to_string();
+            assert!(
+                text.contains("the restore of v1 of /f") && text.contains(&code.to_string()),
+                "{text}"
+            );
+        }
+        for code in [200u16, 400, 403, 404, 409, 412, 429, 500, 501, 505] {
+            let status = reqwest::StatusCode::from_u16(code).unwrap();
+            assert!(gateway_left_unknown(status, "x").is_none(), "{code}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod ranged_read_window_tests {
+    use super::*;
+
+    /// A server answering every request with `status`, `content_range` and
+    /// a body of `0123456789` repeated (`Some(n)` times, or without end).
+    async fn serve(
+        status: u16,
+        content_range: Option<&'static str>,
+        repeats: Option<usize>,
+    ) -> String {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let app = axum::Router::new().fallback(move || async move {
+            let chunk = || Ok::<_, std::io::Error>(bytes::Bytes::from_static(b"0123456789"));
+            let body = match repeats {
+                Some(n) => axum::body::Body::from_stream(futures_util::stream::iter(
+                    (0..n).map(move |_| chunk()),
+                )),
+                None => axum::body::Body::from_stream(futures_util::stream::repeat_with(chunk)),
+            };
+            let mut answer = axum::response::Response::builder().status(status);
+            if let Some(range) = content_range {
+                answer = answer.header("content-range", range);
+            }
+            answer.body(body).unwrap()
+        });
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        format!("http://{addr}/")
+    }
+
+    async fn window(url: &str, offset: u64, len: u64) -> Result<Vec<u8>, ProviderError> {
+        let resp = reqwest::get(url).await.unwrap();
+        tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            ranged_read_window(resp, offset, len, "test range read", "/f"),
+        )
+        .await
+        .expect("the read stops at the window")
+    }
+
+    /// A 200 is the whole object: a window across chunk edges is cut out of
+    /// it, and an object that never ends is read only up to the window.
+    #[tokio::test]
+    async fn a_whole_object_answer_is_read_only_up_to_the_window() {
+        let endless = serve(200, None, None).await;
+        assert_eq!(window(&endless, 25, 7).await.unwrap(), b"5678901");
+        assert_eq!(window(&endless, 0, 3).await.unwrap(), b"012");
+        let short = serve(200, None, Some(3)).await;
+        assert_eq!(window(&short, 28, 10).await.unwrap(), b"89");
+        assert!(window(&short, 40, 4).await.unwrap().is_empty());
+    }
+
+    /// A 206 must carry exactly its window: one byte more is refused as it
+    /// arrives (an endless body included), one fewer once the body ended.
+    #[tokio::test]
+    async fn a_partial_answer_is_refused_past_or_short_of_its_window() {
+        let exact = serve(206, Some("bytes 10-29/100"), Some(2)).await;
+        assert_eq!(
+            window(&exact, 10, 20).await.unwrap(),
+            b"01234567890123456789"
+        );
+        let endless = serve(206, Some("bytes 10-29/100"), None).await;
+        let over = window(&endless, 10, 20).await;
+        assert!(
+            matches!(&over, Err(ProviderError::ParallelRefused(m)) if m.contains("more than 20 bytes")),
+            "{over:?}"
+        );
+        let short = serve(206, Some("bytes 10-39/100"), Some(2)).await;
+        let cut = window(&short, 10, 30).await;
+        assert!(
+            matches!(&cut, Err(ProviderError::ParallelRefused(m)) if m.contains("sent 20 bytes instead of 30")),
+            "{cut:?}"
+        );
+        let other = serve(206, Some("bytes 0-19/100"), Some(2)).await;
+        assert!(matches!(
+            window(&other, 10, 20).await,
+            Err(ProviderError::ParallelRefused(_))
+        ));
+    }
 }
 
 #[cfg(test)]
@@ -6959,6 +7273,7 @@ mod non_recursive_delete_tests {
         list: Answer<Vec<RemoteEntry>>,
         delete: Answer<()>,
         rmdir: Answer<()>,
+        versions: Answer<Vec<FileVersion>>,
         calls: Vec<&'static str>,
     }
 
@@ -6969,6 +7284,7 @@ mod non_recursive_delete_tests {
                 list,
                 delete: || Ok(()),
                 rmdir: || Ok(()),
+                versions: || Ok(Vec::new()),
                 calls: Vec::new(),
             }
         }
@@ -7093,6 +7409,75 @@ mod non_recursive_delete_tests {
         async fn server_info(&mut self) -> Result<String, ProviderError> {
             Ok("scripted".to_string())
         }
+        async fn list_versions(&mut self, _path: &str) -> Result<Vec<FileVersion>, ProviderError> {
+            self.calls.push("list_versions");
+            (self.versions)()
+        }
+        async fn delete_version(
+            &mut self,
+            _path: &str,
+            _version_id: &str,
+        ) -> Result<(), ProviderError> {
+            self.calls.push("delete_version");
+            Ok(())
+        }
+    }
+
+    fn version(id: &str, deleted: bool) -> FileVersion {
+        FileVersion {
+            id: id.to_string(),
+            modified: None,
+            size: 1,
+            modified_by: None,
+            deleted,
+        }
+    }
+
+    #[tokio::test]
+    async fn a_purge_of_the_live_version_on_top_is_refused_and_older_rows_or_a_marker_are_not() {
+        let mut live = Scripted::new(file, no_child);
+        live.versions = || Ok(vec![version("v3", false), version("v2", false)]);
+        let refused = refuse_a_purge_of_the_live_version(&mut live, "/f", "v3").await;
+        assert!(
+            matches!(&refused, Err(ProviderError::NotSupported(m)) if m.contains("nothing was purged")),
+            "{refused:?}"
+        );
+        refuse_a_purge_of_the_live_version(&mut live, "/f", "v2")
+            .await
+            .unwrap();
+        assert_eq!(live.calls, ["list_versions", "list_versions"]);
+
+        let mut marker = Scripted::new(file, no_child);
+        marker.versions = || Ok(vec![version("m4", true), version("v3", false)]);
+        refuse_a_purge_of_the_live_version(&mut marker, "/f", "m4")
+            .await
+            .unwrap();
+
+        let mut bound = Scripted::new(file, no_child);
+        bound.versions = || Ok(vec![version("7:3", false), version("7:2", false)]);
+        assert!(refuse_a_purge_of_the_live_version(&mut bound, "/f", "3")
+            .await
+            .is_err());
+
+        let mut denied = Scripted::new(file, no_child);
+        denied.versions = || Err(ProviderError::PermissionDenied("listing".into()));
+        refuse_a_purge_of_the_live_version(&mut denied, "/f", "v3")
+            .await
+            .unwrap();
+
+        let mut cut = Scripted::new(file, no_child);
+        cut.versions = || Err(ProviderError::ConnectionLost("reset".into()));
+        let failed = refuse_a_purge_of_the_live_version(&mut cut, "/f", "v2").await;
+        assert!(
+            matches!(&failed, Err(ProviderError::TransferFailed(m)) if m.contains("nothing was purged")),
+            "{failed:?}"
+        );
+        let mut gone = Scripted::new(file, no_child);
+        gone.versions = not_found;
+        assert!(matches!(
+            refuse_a_purge_of_the_live_version(&mut gone, "/f", "v2").await,
+            Err(ProviderError::NotFound(_))
+        ));
     }
 
     #[tokio::test]
@@ -8425,6 +8810,11 @@ mod http_timeout_class_tests {
         // Spelled in two pieces so this test is not one of its own matches.
         let whole = concat!("response_bytes", "_with_limit(");
         let window = concat!("range_window", "_with_limit(");
+        // The shared window reader maps its own body (`range_read_error`):
+        // its result has to reach the caller, by `?` or as the value of
+        // the block it ends.
+        let shared = concat!("ranged_read", "_window(");
+        let block_value = regex::Regex::new(r"^\s*\}").expect("regex");
         let bytes = body.as_bytes();
         // Past the calls that keep the error as it is, the error has to go
         // to the caller: a classified error converted again is lost.
@@ -8438,6 +8828,18 @@ mod http_timeout_class_tests {
         reads
             .plain
             .extend(body.match_indices(whole).map(|(at, _)| at));
+        for (at, _) in body.match_indices(shared) {
+            let end = past_close(bytes, at + shared.len() - 1);
+            let kept = awaited.find(&body[end..]).is_some_and(|wait| {
+                let end = end + wait.end();
+                reaches_caller(end) || block_value.is_match(&body[end..])
+            });
+            if kept {
+                reads.bodies.push(at);
+            } else {
+                reads.plain.push(at);
+            }
+        }
         for (at, _) in body.match_indices(window) {
             let end = past_close(bytes, at + window.len() - 1);
             let kept = awaited

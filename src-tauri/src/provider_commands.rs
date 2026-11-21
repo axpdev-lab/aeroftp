@@ -10499,6 +10499,9 @@ pub(crate) async fn delete_version_of(
     let provider = provider_guard
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
+    crate::providers::refuse_a_purge_of_the_live_version(provider.as_mut(), path, version_id)
+        .await
+        .map_err(|e| format!("Delete version failed: {}", e))?;
     provider
         .delete_version(path, version_id)
         .await

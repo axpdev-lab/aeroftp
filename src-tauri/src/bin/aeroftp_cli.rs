@@ -41799,7 +41799,17 @@ async fn cmd_versions_purge(
         return versions_unsupported(format);
     }
     let rpath = resolve_cli_remote_path(&initial_path, path);
-    let code = match provider.delete_version(&rpath, version_id).await {
+    let purged = match ftp_client_gui_lib::providers::refuse_a_purge_of_the_live_version(
+        provider.as_mut(),
+        &rpath,
+        version_id,
+    )
+    .await
+    {
+        Ok(()) => provider.delete_version(&rpath, version_id).await,
+        Err(e) => Err(e),
+    };
+    let code = match purged {
         Ok(()) => {
             let msg = format!("Purged version {} of {}", version_id, rpath);
             match format {

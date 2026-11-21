@@ -924,8 +924,11 @@ const SERVER_URL_MARKERS: &[&str] = &[
 /// `"next"` key): each match is listed by its lowercased text.
 const NEXT_PAGE_PATTERN: &str = r#"(?i)next.?(page|link|url|href)|"next""#;
 
-/// Every provider file that reads a server-given URL, by marker, and why
-/// the token or key it holds cannot go to a host the answer names. A page
+/// Every file directly under `src/providers/` that reads a server-given
+/// URL, by marker, and why the token or key it holds cannot go to a host
+/// the answer names. The scan reads those files only ([`provider_sources`]):
+/// a provider in a folder of its own (`filen/`, `github/`, `gitlab/`,
+/// `mega/`, `proton_native/` and the like) is not scanned here. A page
 /// URL followed with the account's credential must stay on the configured
 /// API's origin ([`super::next_page_on_api_origin`]); every other kind is
 /// said here.
@@ -979,8 +982,9 @@ const SERVER_URL_SITES: &[(&str, &str, &str)] = &[
     ("zoho_workdrive.rs", "upload_url", "built from the configured upload host, never read from an answer"),
 ];
 
-/// The scan behind the F9 review: every (file, marker) pair of a provider
-/// that reads a URL out of an answer is in [`SERVER_URL_SITES`] with its
+/// The scan behind the F9 review: every (file, marker) pair of a top-level
+/// provider file that reads a URL out of an answer is in
+/// [`SERVER_URL_SITES`] with its
 /// reason. The granularity is the pair, not the line: a provider that starts
 /// following a server-given URL under a new marker fails here until it says
 /// why its credential stays on the configured API, a second use of a marker
