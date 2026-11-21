@@ -336,10 +336,14 @@ struct BoxVersionCollection {
 /// row is bound to the file id it was listed from
 /// ([`super::bind_version_to_file`]), so its download refuses another file
 /// that took the path since.
+/// `current` is the `file_version.id` the file had when it was listed: the
+/// current row then carries it ([`super::bound_current_row`]), so its
+/// download reads the file only while that version is still current.
 fn versions_in_dialog_order(
     versions: BoxVersionCollection,
     file: &RemoteEntry,
     file_id: &str,
+    current: Option<&str>,
 ) -> Vec<FileVersion> {
     let mut rows = super::versions_after_the_file(
         versions
@@ -359,7 +363,10 @@ fn versions_in_dialog_order(
         .iter_mut()
         .filter(|row| row.id == super::CURRENT_VERSION_ID)
     {
-        row.id = super::bind_version_to_file(file_id, super::CURRENT_VERSION_ID);
+        row.id = match current {
+            Some(version) => super::bound_current_row(file_id, version),
+            None => super::bind_version_to_file(file_id, super::CURRENT_VERSION_ID),
+        };
     }
     rows
 }
@@ -1978,8 +1985,12 @@ impl StorageProvider for BoxProvider {
     }
 
     async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+        // The current folder is resolved by its path like any other: the id
+        // stored at `cd` may be of a folder moved away since, and another
+        // folder may have taken its place.
         let folder_id = if path == "." || path.is_empty() {
-            self.current_folder_id.clone()
+            let current = self.current_path.clone();
+            self.resolve_folder_id(&current).await?
         } else {
             self.resolve_folder_id(path).await?
         };
@@ -3018,9 +3029,23 @@ impl StorageProvider for BoxProvider {
                         "Box answered a versions page past the last offset after {offset}"
                     ))
                 })?;
+            let full = page
+                .limit
+                .is_some_and(|limit| limit > 0 && page.entries.len() as u64 >= limit);
             versions.entries.extend(page.entries);
-            if !page.total_count.is_some_and(|total| next < total) {
-                break;
+            match page.total_count {
+                Some(total) if next >= total => break,
+                Some(_) => {}
+                // Without a total only a short page says it is the last: a
+                // full one may be followed by more, and ending there would
+                // cut the history.
+                None if full => {
+                    return Err(ProviderError::ParseError(format!(
+                        "Box answered a full versions page of {path} without its total, so the \
+                         history cannot be read whole"
+                    )))
+                }
+                None => break,
             }
             if next <= offset {
                 return Err(ProviderError::ParseError(
@@ -3038,7 +3063,13 @@ impl StorageProvider for BoxProvider {
         // The current row is the file whose versions were listed, read by
         // its id, not the path looked up again.
         let file = self.file_entry_of_id(&file_id, path).await?;
-        Ok(versions_in_dialog_order(versions, &file, &file_id))
+        let current = self.current_version_of_id(&file_id, path).await?;
+        Ok(versions_in_dialog_order(
+            versions,
+            &file,
+            &file_id,
+            current.as_deref(),
+        ))
     }
 
     async fn download_version(
@@ -3049,10 +3080,26 @@ impl StorageProvider for BoxProvider {
     ) -> Result<(), ProviderError> {
         super::forget_cached_ancestors(&mut self.id_cache, &Self::normalize_path(path));
         let file_id = self.resolve_file_id(path).await?;
+        // A current row bound to what its listing saw is read only while
+        // the file still has that version, before and after the body.
+        let bound = super::bound_current_row_of(version_id);
+        if let Some((listed, _)) = bound {
+            if listed != file_id {
+                return Err(ProviderError::NotFound(format!(
+                    "{path} is now another file (file id {file_id}): list its versions again"
+                )));
+            }
+        }
+        let listed_version = bound.map(|(_, version)| version);
+        if let Some(listed) = &listed_version {
+            if self.current_version_of_id(&file_id, path).await?.as_ref() != Some(listed) {
+                return Err(super::current_row_changed(path));
+            }
+        }
         // A bare `current` is the file as it is now, read the same way as
         // its bound row: a whole body only.
         let current = match box_current_row_of(version_id, &file_id) {
-            _ if version_id == super::CURRENT_VERSION_ID => true,
+            _ if listed_version.is_some() || version_id == super::CURRENT_VERSION_ID => true,
             Some(false) => {
                 return Err(ProviderError::NotFound(format!(
                     "{path} is now another file (file id {file_id}): list its versions again"
@@ -3088,6 +3135,16 @@ impl StorageProvider for BoxProvider {
             )));
         }
 
+        if let Some(listed) = &listed_version {
+            let staged =
+                super::stage_bound_current_body(resp, local_path, "Download version failed")
+                    .await?;
+            // Dropped uncommitted on a change: the destination stays.
+            if self.current_version_of_id(&file_id, path).await?.as_ref() != Some(listed) {
+                return Err(super::current_row_changed(path));
+            }
+            return staged.commit().await.map_err(ProviderError::IoError);
+        }
         super::save_version_body(resp, local_path, "Download version failed").await
     }
 
@@ -3127,10 +3184,12 @@ impl StorageProvider for BoxProvider {
             })?;
 
         if !resp.status().is_success() {
-            return Err(ProviderError::Other(format!(
-                "Restore version failed: {}",
-                resp.status()
-            )));
+            let what = format!("the restore of version {version_id} of {path}");
+            return Err(
+                super::gateway_left_unknown(resp.status(), &what).unwrap_or_else(|| {
+                    ProviderError::Other(format!("Restore version failed: {}", resp.status()))
+                }),
+            );
         }
         // The answer is the version the promotion made: the file's current
         // version must then be that one, not a write of the same size by
@@ -3149,6 +3208,23 @@ impl StorageProvider for BoxProvider {
                  restoring again"
             )));
         };
+        // The path must still lead to the file promoted: the checks below
+        // read the versions by path and the head by the file's id, so a file
+        // that took the path meanwhile would pass both unseen.
+        super::forget_cached_ancestors(&mut self.id_cache, &Self::normalize_path(path));
+        let at_path = self.resolve_file_id(path).await.map_err(|e| {
+            super::applied_unconfirmed(format!(
+                "Box accepted the restore of version {version_id} of {path}, but the file at its \
+                 path could not be read ({e}), so the restore is not confirmed: list its versions \
+                 again before restoring again"
+            ))
+        })?;
+        if at_path != file_id {
+            return Err(super::applied_unconfirmed(format!(
+                "Box promoted a version of {path}, but another file is at its path now: list its \
+                 versions again"
+            )));
+        }
         // Bound below: the current version id is read back against the one
         // the answer named.
         let selected = selected.bound_by_the_caller();
@@ -3882,6 +3958,30 @@ mod tests {
         (provider, calls)
     }
 
+    /// The current folder `/docs` moved away (OLD, now `/archive/docs`) and
+    /// another took its path (NEW): a listing of `.` lists the folder at the
+    /// path now, never the one the id stored at `cd` names.
+    #[tokio::test]
+    async fn a_listing_of_the_current_folder_follows_its_path_not_its_stored_id() {
+        let (mut provider, calls) = box_with_a_moved_folder().await;
+        provider.current_path = "/docs".to_string();
+        provider.current_folder_id = "OLD".to_string();
+        provider.id_cache.insert("/docs".into(), "OLD".into());
+        let names: Vec<String> = provider
+            .list(".")
+            .await
+            .expect("listed")
+            .into_iter()
+            .map(|e| e.name)
+            .collect();
+        assert_eq!(names, ["a.txt", "sub"]);
+        let calls = calls.lock().unwrap();
+        assert!(
+            !calls.iter().any(|c| c == "GET /folders/OLD/items"),
+            "{calls:?}"
+        );
+    }
+
     /// `/docs` cached, then moved away by another client and
     /// made again under the same name. A download or a delete of
     /// `/docs/a.txt` acts on the file at that path now, never on the one in
@@ -4030,13 +4130,17 @@ mod tests {
             .await
             .expect("versions");
         let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
-        assert_eq!(ids, ["77:current"], "the file at the path now is listed");
+        assert_eq!(
+            ids,
+            ["77.763737:current"],
+            "the file at the path now is listed"
+        );
 
         provider.id_cache.insert("/docs".into(), "OLD".into());
         let dir = tempfile::tempdir().unwrap();
         let local = dir.path().join("a.txt");
         provider
-            .download_version("/docs/a.txt", "77:current", local.to_str().unwrap())
+            .download_version("/docs/a.txt", "77.763737:current", local.to_str().unwrap())
             .await
             .expect("the file at the path is read");
         assert_eq!(std::fs::read_to_string(&local).unwrap(), "new");
@@ -4046,6 +4150,108 @@ mod tests {
                 .iter()
                 .any(|c| c.contains("/OLD/") || c.contains("/66")),
             "the moved folder was asked: {calls:?}"
+        );
+    }
+
+    /// The current row is bound to the `file_version` its listing saw: an
+    /// unchanged file downloads by it, a write before its download or during
+    /// its body saves nothing and leaves the destination as it was, and the
+    /// row is never restored.
+    #[tokio::test]
+    async fn a_box_current_row_written_after_its_listing_saves_nothing() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::{Arc, Mutex};
+        let calls: Arc<Mutex<Vec<String>>> = Arc::default();
+        let written = Arc::new(AtomicBool::new(false));
+        let write_during_body = Arc::new(AtomicBool::new(false));
+        let (seen, w, during) = (
+            Arc::clone(&calls),
+            Arc::clone(&written),
+            Arc::clone(&write_during_body),
+        );
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method, uri: axum::http::Uri| {
+                let (seen, w, during) = (Arc::clone(&seen), Arc::clone(&w), Arc::clone(&during));
+                async move {
+                    use axum::response::IntoResponse;
+                    seen.lock()
+                        .unwrap()
+                        .push(format!("{method} {}", uri.path()));
+                    let version = if w.load(Ordering::SeqCst) { "v2" } else { "v1" };
+                    match (method.as_str(), uri.path()) {
+                        ("GET", "/folders/0/items") => axum::Json(serde_json::json!({
+                            "entries": [{"type": "file", "id": "55", "name": "a.txt"}],
+                            "offset": 0, "limit": 1000, "total_count": 1
+                        }))
+                        .into_response(),
+                        ("GET", "/files/55/versions") => axum::Json(serde_json::json!({
+                            "entries": [], "offset": 0, "limit": 1000, "total_count": 0
+                        }))
+                        .into_response(),
+                        ("GET", "/files/55") => axum::Json(serde_json::json!({
+                            "type": "file", "id": "55", "name": "a.txt", "size": 4,
+                            "modified_at": "2026-01-05T00:00:00Z",
+                            "file_version": {"type": "file_version", "id": version}
+                        }))
+                        .into_response(),
+                        ("GET", "/files/55/content") => {
+                            if during.load(Ordering::SeqCst) {
+                                w.store(true, Ordering::SeqCst);
+                            }
+                            "live".into_response()
+                        }
+                        _ => axum::http::StatusCode::NOT_FOUND.into_response(),
+                    }
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = fixture_connected();
+        provider.api_base_override = Some(format!("http://{addr}"));
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("a.txt");
+        let to = out.to_str().unwrap();
+
+        let current = provider.list_versions("/a.txt").await.expect("versions")[0]
+            .id
+            .clone();
+        assert_eq!(current, super::super::bound_current_row("55", "v1"));
+        provider
+            .download_version("/a.txt", &current, to)
+            .await
+            .expect("an unchanged file downloads by its listed row");
+        assert_eq!(std::fs::read_to_string(&out).unwrap(), "live");
+
+        std::fs::write(&out, "mine").unwrap();
+        written.store(true, Ordering::SeqCst);
+        let before = calls.lock().unwrap().len();
+        let outcome = provider.download_version("/a.txt", &current, to).await;
+        assert!(
+            matches!(&outcome, Err(ProviderError::NotFound(m)) if m.contains("list its versions again")),
+            "{outcome:?}"
+        );
+        assert!(
+            !calls.lock().unwrap()[before..]
+                .iter()
+                .any(|c| c.ends_with("/content")),
+            "a file written since its listing was read: {:?}",
+            calls.lock().unwrap()
+        );
+
+        written.store(false, Ordering::SeqCst);
+        write_during_body.store(true, Ordering::SeqCst);
+        let outcome = provider.download_version("/a.txt", &current, to).await;
+        assert!(
+            matches!(&outcome, Err(ProviderError::NotFound(m)) if m.contains("list its versions again")),
+            "{outcome:?}"
+        );
+        assert_eq!(std::fs::read_to_string(&out).unwrap(), "mine");
+        let restored = provider.restore_version("/a.txt", &current).await;
+        assert!(
+            matches!(restored, Err(ProviderError::NotSupported(_))),
+            "{restored:?}"
         );
     }
 
@@ -4109,7 +4315,7 @@ mod tests {
 
         let versions = provider.list_versions("/a.txt").await.expect("versions");
         let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
-        assert_eq!(ids, ["55:current", "13", "12"]);
+        assert_eq!(ids, ["55.3131:current", "13", "12"]);
         provider
             .restore_version("/a.txt", "12")
             .await
@@ -4269,10 +4475,28 @@ mod tests {
                 "offset": 1, "limit": 2, "total_count": 3
             })
         };
+        // Without a total: a short page is the last, a full one is refused.
+        let short_untotalled: Pages = |_| {
+            serde_json::json!({
+                "entries": [{"type": "file_version", "id": "14", "size": 4, "modified_at": "2026-01-04T00:00:00Z"}],
+                "offset": 0, "limit": 2
+            })
+        };
+        let full_untotalled: Pages = |_| {
+            serde_json::json!({
+                "entries": [
+                    {"type": "file_version", "id": "15", "size": 4, "modified_at": "2026-01-04T00:00:00Z"},
+                    {"type": "file_version", "id": "14", "size": 4, "modified_at": "2026-01-03T00:00:00Z"}
+                ],
+                "offset": 0, "limit": 2
+            })
+        };
         for (first, expected) in [
-            (empty_first, Some(vec!["55:current", "13"])),
-            (short_first, Some(vec!["55:current", "14", "13"])),
-            (wrong_first, None),
+            (empty_first, Ok(vec!["55.3131:current", "13"])),
+            (short_first, Ok(vec!["55.3131:current", "14", "13"])),
+            (wrong_first, Err("offset 1 for offset 0")),
+            (short_untotalled, Ok(vec!["55.3131:current", "14"])),
+            (full_untotalled, Err("without its total")),
         ] {
             let older = older.clone();
             let app =
@@ -4304,12 +4528,15 @@ mod tests {
             provider.api_base_override = Some(format!("http://{addr}"));
             let listed = provider.list_versions("/a.txt").await;
             server.abort();
-            let Some(expected) = expected else {
-                assert!(
-                    matches!(&listed, Err(ProviderError::ParseError(m)) if m.contains("offset 1 for offset 0")),
-                    "{listed:?}"
-                );
-                continue;
+            let expected = match expected {
+                Ok(expected) => expected,
+                Err(said) => {
+                    assert!(
+                        matches!(&listed, Err(ProviderError::ParseError(m)) if m.contains(said)),
+                        "{listed:?}"
+                    );
+                    continue;
+                }
             };
             let ids: Vec<String> = listed
                 .expect("versions")
@@ -4429,12 +4656,14 @@ mod tests {
         use std::sync::atomic::{AtomicBool, Ordering};
         use std::sync::Arc;
         // (current version after, promotion answer readable, confirmed,
-        // the head read after the promotion fails)
-        for (current_after, readable, confirmed, head_fails) in [
-            ("14", true, true, false),
-            ("15", true, false, false),
-            ("14", false, false, false),
-            ("14", true, false, true),
+        // the head read after the promotion fails, another file (99) at the
+        // path after the promotion)
+        for (current_after, readable, confirmed, head_fails, replaced) in [
+            ("14", true, true, false, false),
+            ("15", true, false, false, false),
+            ("14", false, false, false, false),
+            ("14", true, false, true, false),
+            ("14", true, false, false, true),
         ] {
             let restored = Arc::new(AtomicBool::new(false));
             let done = Arc::clone(&restored);
@@ -4452,8 +4681,20 @@ mod tests {
                         };
                         match (method.as_str(), uri.path()) {
                             ("GET", "/folders/0/items") => axum::Json(serde_json::json!({
-                                "entries": [{"type": "file", "id": "55", "name": "a.txt"}],
+                                "entries": [{"type": "file",
+                                    "id": if after && replaced { "99" } else { "55" },
+                                    "name": "a.txt"}],
                                 "offset": 0, "limit": 1000, "total_count": 1
+                            }))
+                            .into_response(),
+                            ("GET", "/files/99") => axum::Json(serde_json::json!({
+                                "type": "file", "id": "99", "name": "a.txt", "size": 2,
+                                "modified_at": "2026-01-09T00:00:00Z",
+                                "file_version": {"id": "21"}
+                            }))
+                            .into_response(),
+                            ("GET", "/files/99/versions") => axum::Json(serde_json::json!({
+                                "entries": [version("12")], "offset": 0, "limit": 1000, "total_count": 1
                             }))
                             .into_response(),
                             ("GET", "/files/55")
@@ -4497,12 +4738,18 @@ mod tests {
                 outcome.expect("the promoted version is current");
             } else if head_fails {
                 assert!(
-                    matches!(&outcome, Err(ProviderError::TransferFailed(m)) if m.contains("accepted the restore") && m.contains("could not be read")),
+                    matches!(&outcome, Err(ProviderError::TransferFailed(m)) if m.contains("answered the restore") && m.contains("could not be read")),
+                    "{outcome:?}"
+                );
+                assert!(
+                    super::super::was_applied(outcome.as_ref().unwrap_err()),
                     "{outcome:?}"
                 );
             } else if readable {
                 assert!(
-                    matches!(&outcome, Err(ProviderError::TransferFailed(m)) if m.contains("list its versions again")),
+                    matches!(&outcome, Err(ProviderError::TransferFailed(m))
+                        if m.contains("list its versions again")
+                            && m.contains("another file") == replaced),
                     "{outcome:?}"
                 );
                 assert!(
@@ -6166,7 +6413,7 @@ mod tests {
         let mut file = super::RemoteEntry::directory("v.txt".into(), "/v.txt".into());
         file.is_dir = false;
         file.size = 16;
-        let versions = super::versions_in_dialog_order(listed, &file, "55");
+        let versions = super::versions_in_dialog_order(listed, &file, "55", None);
         let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
         assert_eq!(ids, ["55:current", "12", "11"]);
         assert_eq!(versions[0].size, 16);
