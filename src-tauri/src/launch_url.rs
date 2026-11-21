@@ -640,7 +640,7 @@ pub fn redact(raw: &str) -> String {
     // The password is masked on the raw text first: a raw `?`, `#`, `/` or
     // `@` in it ends the authority early, and the parser then reads part of
     // the password as a port or a path (an all-digit one even parses).
-    let masked = mask_port_path_at(&mask_raw_password(raw));
+    let masked = mask_port_path_at(&mask_raw_password(&mask_bare_credentials(raw)));
     let raw = masked.as_str();
     if let Ok(mut url) = url::Url::parse(raw) {
         if url.password().is_some() {
@@ -725,6 +725,23 @@ fn mask_port_path_at(raw: &str) -> String {
         &authority[..colon],
         &rest[at..]
     )
+}
+
+/// A `user:password@host` typed without a scheme, with the password masked
+/// from the first `:` to the last `@` (`alice_smith:***@host/data`). Such a
+/// text is not a URL, so the error that echoes it back would otherwise print
+/// the password. A text with `://` is left to [`mask_raw_password`].
+fn mask_bare_credentials(raw: &str) -> String {
+    if raw.contains("://") {
+        return raw.to_string();
+    }
+    let Some(at) = raw.rfind('@') else {
+        return raw.to_string();
+    };
+    match raw[..at].find(':') {
+        Some(colon) if colon + 1 < at => format!("{}:***{}", &raw[..colon], &raw[at..]),
+        _ => raw.to_string(),
+    }
 }
 
 /// `raw` with the password of its user part replaced by `***`. The user part
@@ -1121,6 +1138,18 @@ mod tests {
             !masked.contains("hunter2") && !masked.contains("token=x"),
             "{masked}"
         );
+    }
+
+    #[test]
+    fn redact_masks_a_password_typed_without_a_scheme() {
+        assert_eq!(
+            redact("alice_smith:hunter2@host/data"),
+            "alice_smith:***@host/data"
+        );
+        assert_eq!(redact("1alice:p@ss@host"), "1alice:***@host");
+        assert_eq!(redact("/srv/data"), "/srv/data");
+        assert_eq!(redact("alice@host:/srv"), "alice@host:/srv");
+        assert_eq!(redact("alice:@host"), "alice:@host");
     }
 
     #[test]

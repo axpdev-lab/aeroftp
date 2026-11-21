@@ -13467,7 +13467,7 @@ fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, Strin
         if !url.contains("://") {
             format!(
                 "Invalid URL or unknown profile in '{}'. Use --profile <name> for saved profiles, protocol://host/path for direct URLs (supported: {}), or a local folder as /abs/path, ./rel/path or file:///abs/path.",
-                url,
+                ftp_client_gui_lib::launch_url::redact(url),
                 supported_url_schemes().join(", ")
             )
         } else {
@@ -90446,6 +90446,14 @@ mod tests {
         };
         let (config, _) = url_to_provider_config("mega://user:test@mega.nz", &cli).unwrap();
         assert_eq!(config.extra.get("mega_mode"), Some(&"native".to_string()));
+    }
+
+    #[test]
+    fn an_argument_that_is_not_a_url_is_echoed_without_its_password() {
+        let cli = test_cli();
+        let err = url_to_provider_config("alice_smith:hunter2@host/data", &cli).unwrap_err();
+        assert!(!err.contains("hunter2"), "{err}");
+        assert!(err.contains("'alice_smith:***@host/data'"), "{err}");
     }
 
     #[test]
