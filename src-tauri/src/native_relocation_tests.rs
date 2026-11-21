@@ -2458,6 +2458,60 @@ fn a_save_over_a_purge_stopped_before_the_clear_keeps_its_session() {
     assert_eq!(deferred_revokes(&accounts.conn), 0);
 }
 
+/// A sign-in that saves over a purge's mark while the unlock's cleanup is
+/// ending it, and a second purge of the profile after that end and before
+/// the cleanup removes the mark it read: the cleanup removes only the mark
+/// it read, so the second purge's mark stays, and the next unlock ends the
+/// session the second purge left.
+#[test]
+fn a_purge_during_the_unlock_cleanup_keeps_its_mark() {
+    if !in_isolated_child("a_purge_during_the_unlock_cleanup_keeps_its_mark") {
+        return;
+    }
+    let accounts = Accounts::open();
+    defer_target_session(&accounts, "purged-twice", "first-purged-uid");
+    let owner = accounts.target_owner();
+    *BEFORE_DEFERRED_SESSION_END.lock().unwrap() = Some(Box::new(move || {
+        block_on(vault::replace_session(
+            owner,
+            Some("purged-twice"),
+            &session("second-uid", "n1"),
+        ))
+        .unwrap();
+    }));
+    let target = accounts.target.id;
+    *AFTER_DEFERRED_SESSION_END.lock().unwrap() = Some(Box::new(move || {
+        let store = CredentialStore::from_cache().unwrap();
+        defer_proton_revoke(&store, target, "purged-twice").unwrap();
+    }));
+    accounts.unlock_target();
+    assert!(
+        BEFORE_DEFERRED_SESSION_END.lock().unwrap().is_none()
+            && AFTER_DEFERRED_SESSION_END.lock().unwrap().is_none(),
+        "the sign-in and the second purge ran"
+    );
+    assert_eq!(
+        accounts.target_row("purged-twice").as_deref(),
+        Some("n1"),
+        "the sign-in's session is kept by the first cleanup"
+    );
+    assert_eq!(
+        deferred_revokes(&accounts.conn),
+        1,
+        "the second purge's mark stays"
+    );
+    accounts.unlock_source();
+    let revokes = vault::test_seams::revokes();
+    accounts.unlock_target();
+    assert_eq!(
+        vault::test_seams::revokes(),
+        revokes + 1,
+        "the next unlock ends the session the second purge left"
+    );
+    assert!(!has_row(&accounts.conn, target, &key("purged-twice")));
+    assert_eq!(deferred_revokes(&accounts.conn), 0);
+}
+
 /// An unlock whose deferred cleanup cannot end its session in time (offline,
 /// here the purged session's lease held elsewhere) is not held by it: the
 /// unlock returns within the cleanup's budget with the row and the mark in

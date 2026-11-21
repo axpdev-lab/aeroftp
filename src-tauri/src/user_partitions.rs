@@ -6618,12 +6618,17 @@ fn deferred_revoke_key(user_id: i64, profile_id: &str) -> String {
 /// sign-in gets another one, so the fingerprint follows the purged session
 /// through a refresh and never names a sign-in made after the purge. `None`
 /// while no fingerprint of the purged row could be taken: the account's
-/// unlock takes it from the row it reads then.
+/// unlock takes it from the row it reads then. Each mark is written with a
+/// nonce of its own, so a mark that replaces another of the same profile is
+/// never the same value: what removes or rewrites a mark does it only while
+/// the mark is still the one it read (empty on a mark written before).
 #[cfg(feature = "proton-native")]
 #[derive(Serialize, Deserialize)]
 struct DeferredRevoke {
     profile_id: String,
     fingerprint: Option<String>,
+    #[serde(default)]
+    nonce: String,
 }
 
 /// The fingerprint of the session the row `credential_id` of `user_id` holds
@@ -6722,6 +6727,7 @@ pub(crate) fn defer_proton_revoke(
         &DeferredRevoke {
             profile_id: profile_id.to_string(),
             fingerprint,
+            nonce: uuid::Uuid::new_v4().simple().to_string(),
         },
     )
 }
@@ -6836,15 +6842,22 @@ fn end_deferred_proton_sessions(conn: &Connection, root_key: &[u8; 32], user_id:
         }
     };
     for (mark, value) in marks {
-        // A mark that names no profile ends nothing.
+        // A mark that names no profile ends nothing. What goes is the mark
+        // as this cleanup left it, and only while it is: a mark a later
+        // purge wrote meanwhile stays for its own unlock.
         let ended = match serde_json::from_str::<DeferredRevoke>(&value) {
-            Ok(deferred) => end_deferred_proton_session(conn, root_key, user_id, deferred),
-            Err(_) => Ok(false),
+            Ok(deferred) => end_deferred_proton_session(conn, root_key, user_id, deferred, &value),
+            Err(_) => Ok(Some(value)),
         }
-        .and_then(|_| {
-            conn.execute("DELETE FROM global_state WHERE key = ?1", params![mark])
+        .and_then(|done| match done {
+            Some(done) => conn
+                .execute(
+                    "DELETE FROM global_state WHERE key = ?1 AND value = ?2",
+                    params![mark, done],
+                )
                 .map(|_| ())
-                .map_err(|error| error.to_string())
+                .map_err(|error| error.to_string()),
+            None => Ok(()),
         });
         if let Err(error) = ended {
             log::warn!(
@@ -6938,14 +6951,17 @@ fn end_deferred_proton_sessions_within_budget(root_key: &[u8; 32], user_id: i64)
 /// there since cleared the mark. Under the session's key lock and lease the
 /// account must not list the profile again and the row must hold that
 /// session (any session, for a row no fingerprint could be taken of, so
-/// none is left behind). Whether it was ended.
+/// none is left behind). The mark's value once this is done with it, for
+/// the caller to remove while it is still that value, or `None` when the
+/// mark changed under it and is not this cleanup's any more.
 #[cfg(feature = "proton-native")]
 fn end_deferred_proton_session(
     conn: &Connection,
     root_key: &[u8; 32],
     user_id: i64,
     mut deferred: DeferredRevoke,
-) -> Result<bool, String> {
+    value: &str,
+) -> Result<Option<String>, String> {
     use crate::providers::proton_native::vault;
     #[cfg(test)]
     if let Some(hook) = BEFORE_DEFERRED_SESSION_END
@@ -6956,14 +6972,17 @@ fn end_deferred_proton_session(
         hook();
     }
     let credential_id = vault::session_key(Some(&deferred.profile_id));
+    let mut value = value.to_string();
     if deferred.fingerprint.is_none() {
         deferred.fingerprint = saved_session_fingerprint(conn, root_key, user_id, &credential_id)?;
-        // Onto the mark only while it is there: a sign-in, an import or a
-        // duplicate that saved a session for the profile since cleared it,
-        // and the fingerprint just read is that session's.
-        if deferred.fingerprint.is_some() && !fingerprint_deferred_revoke(conn, user_id, &deferred)?
-        {
-            return Ok(false);
+        // Onto the mark only while it is the one read: a sign-in, an import
+        // or a duplicate that saved a session for the profile since pinned
+        // or cleared it, and the fingerprint just read is that session's.
+        if deferred.fingerprint.is_some() {
+            match fingerprint_deferred_revoke(conn, user_id, &deferred, &value)? {
+                Some(fingerprinted) => value = fingerprinted,
+                None => return Ok(None),
+            }
         }
     }
     let root_key = Zeroizing::new(*root_key);
@@ -6989,28 +7008,39 @@ fn end_deferred_proton_session(
             Ok(!listed && mark.fingerprint.is_none_or(|purged| purged == fingerprint))
         },
     )
-    .map_err(|error| error.to_string())
+    .map_err(|error| error.to_string())?;
+    #[cfg(test)]
+    if let Some(hook) = AFTER_DEFERRED_SESSION_END
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .take()
+    {
+        hook();
+    }
+    Ok(Some(value))
 }
 
 /// Puts the fingerprint of `deferred` on its mark, only while the mark is
-/// there. Whether it was.
+/// still `value`. The mark's new value, or `None` when it was not.
 #[cfg(feature = "proton-native")]
 fn fingerprint_deferred_revoke(
     conn: &Connection,
     user_id: i64,
     deferred: &DeferredRevoke,
-) -> Result<bool, String> {
+    value: &str,
+) -> Result<Option<String>, String> {
     let mark = serde_json::to_string(deferred)
         .map_err(|e| format!("Encode deferred Proton revoke: {e}"))?;
     conn.execute(
-        "UPDATE global_state SET value = ?2, updated_at = ?3 WHERE key = ?1",
+        "UPDATE global_state SET value = ?3, updated_at = ?4 WHERE key = ?1 AND value = ?2",
         params![
             deferred_revoke_key(user_id, &deferred.profile_id),
+            value,
             mark,
             now_ms()
         ],
     )
-    .map(|updated| updated == 1)
+    .map(|updated| (updated == 1).then_some(mark))
     .map_err(|e| format!("Write deferred Proton revoke: {e}"))
 }
 
@@ -7041,6 +7071,12 @@ fn read_deferred_revoke(
 /// before the first is ended (test only).
 #[cfg(all(test, feature = "proton-native"))]
 pub(crate) static BEFORE_DEFERRED_SESSION_END: Mutex<Option<Box<dyn FnOnce() + Send>>> =
+    Mutex::new(None);
+
+/// Runs once in the next deferred cleanup, after a mark's session was ended
+/// or kept and before the mark is removed (test only).
+#[cfg(all(test, feature = "proton-native"))]
+pub(crate) static AFTER_DEFERRED_SESSION_END: Mutex<Option<Box<dyn FnOnce() + Send>>> =
     Mutex::new(None);
 
 /// The account that owns legacy unbound/global secrets, for one-time reads
