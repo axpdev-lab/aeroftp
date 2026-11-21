@@ -2189,6 +2189,25 @@ fn vault_value(key: &str) -> Option<String> {
     CredentialStore::from_cache().unwrap().get(key).ok()
 }
 
+/// The ledger rows (key and value) of the scan `id`, its entries first and
+/// its header last.
+fn ledger_rows(id: &str) -> Vec<(String, String)> {
+    let conn = open_or_init_cli().unwrap();
+    let mut statement = conn
+        .prepare(
+            "SELECT key, value FROM global_state
+             WHERE key = 'bridge_import_scan_' || ?1
+                OR substr(key, 1, length('bridge_import_entry_' || ?1 || '_')) = 'bridge_import_entry_' || ?1 || '_'
+             ORDER BY key",
+        )
+        .unwrap();
+    statement
+        .query_map(params![id], |row| Ok((row.get(0)?, row.get(1)?)))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect()
+}
+
 /// A bridge settle, as the panel runs it: the scan `scan_id`, then every
 /// scan no live window holds.
 fn settle_scan(runtime: &tokio::runtime::Runtime, scan_id: Option<&str>) -> Result<(), String> {
@@ -2278,6 +2297,91 @@ fn a_scan_without_file_locks_is_held_until_its_process_is_proven_gone() {
     }
     crate::bridge_import_scan::LOCKS_UNAVAILABLE.store(false, SeqCst);
     assert!(failures.is_empty(), "{failures:#?}");
+}
+
+/// A record writes the ledger row of its own write and nothing else: the
+/// header and the earlier entries are not written again, so a scan of N
+/// writes costs N rows, not N squared. A write that cannot be recorded is
+/// not made.
+#[test]
+fn a_scan_records_each_write_in_a_row_of_its_own() {
+    use std::sync::atomic::Ordering::SeqCst;
+    if !in_isolated_child("a_scan_records_each_write_in_a_row_of_its_own") {
+        return;
+    }
+    let accounts = Accounts::open();
+    accounts
+        .conn
+        .execute_batch(
+            "CREATE TABLE ledger_writes(key TEXT);
+             CREATE TRIGGER ledger_insert AFTER INSERT ON global_state
+               WHEN substr(NEW.key, 1, 14) = 'bridge_import_'
+               BEGIN INSERT INTO ledger_writes VALUES (NEW.key); END;
+             CREATE TRIGGER ledger_update AFTER UPDATE ON global_state
+               WHEN substr(NEW.key, 1, 14) = 'bridge_import_'
+               BEGIN INSERT INTO ledger_writes VALUES (NEW.key); END;",
+        )
+        .unwrap();
+    let writes = || {
+        let mut statement = accounts
+            .conn
+            .prepare("SELECT key FROM ledger_writes ORDER BY rowid")
+            .unwrap();
+        statement
+            .query_map([], |row| row.get::<_, String>(0))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect::<Vec<_>>()
+    };
+    let scan = crate::bridge_import_scan::Scan::begin(
+        &accounts.store,
+        Some(accounts.legacy),
+        vec!["profile".to_string()],
+    )
+    .unwrap();
+    let header = ledger_rows(scan.id());
+    assert_eq!(header.len(), 1, "a scan begins with its header alone");
+    assert_eq!(writes().len(), 1);
+    for written in 1..=3 {
+        scan.record(
+            &format!("secret_{written}_profile"),
+            crate::bridge_import_scan::Kind::Secret,
+            "value",
+        )
+        .unwrap();
+        let rows = ledger_rows(scan.id());
+        assert_eq!(rows.len(), written + 1);
+        assert_eq!(
+            rows.last(),
+            header.last(),
+            "the header is not written again"
+        );
+        let all = writes();
+        assert_eq!(
+            all.len(),
+            written + 1,
+            "one row written per record: {all:#?}"
+        );
+        assert_eq!(
+            all.last(),
+            rows.get(written - 1).map(|(key, _)| key),
+            "the row written is the new entry"
+        );
+    }
+    crate::bridge_import_scan::settle(&accounts.store, scan.id()).unwrap();
+    assert_eq!(ledger_rows(scan.id()), Vec::new());
+
+    let runtime = bridge_runtime();
+    crate::bridge_import_scan::RECORD_REFUSED.store(true, SeqCst);
+    let imported = scan_ftp_remotes(&runtime, &["files"]);
+    crate::bridge_import_scan::RECORD_REFUSED.store(false, SeqCst);
+    let password = format!("server_{}", scanned_id(&imported.unwrap(), "files"));
+    assert_eq!(
+        vault_value(&password),
+        None,
+        "no write the scan could not record"
+    );
+    assert!(!has_row(&accounts.conn, accounts.legacy, &password));
 }
 
 /// A session save is whole or not made. For the legacy owner, whose session

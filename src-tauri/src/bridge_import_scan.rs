@@ -9,26 +9,37 @@
 //! tokens, native Proton sessions, crypt and Filen keys) when it reads the
 //! file; the profiles are saved later, by the confirm. Every write is
 //! recorded first, in a ledger kept where every process reads it, by key and
-//! by a keyed MAC of what was written (never the secret). Settling the scan
-//! (the window confirmed it, closed it or scanned again) removes what it
-//! wrote for every profile the account does not list, and only while it is
-//! still what the scan wrote: a value saved since, or a profile the confirm
-//! saved, stays. A ledger no live scan holds (the window went with a crash or
-//! a quit, and its process with it) is settled at the next scan or the next
-//! opening of the bridge panel. A live scan holds a file lock of its own, so a
-//! scan of another process is never taken for one whose window is gone;
-//! where the filesystem has no file locks, the lock file names the process
-//! instead, and only a process proven gone gives its scan up.
+//! by a keyed MAC of what was written (never the secret): a header row that
+//! names the account, and one row per write, so a record costs one row
+//! whatever the scan wrote before it. Settling the scan (the window confirmed
+//! it, closed it or scanned again) removes what it wrote for every profile
+//! the account does not list, and only while it is still what the scan
+//! wrote: a value saved since, or a profile the confirm saved, stays. A
+//! ledger no live scan holds (the window went with a crash or a quit, and
+//! its process with it) is settled at the next scan or the next opening of
+//! the bridge panel. A live scan holds a file lock of its own, so a scan of
+//! another process is never taken for one whose window is gone; where the
+//! filesystem has no file locks, the lock file names the process instead,
+//! and only a process proven gone gives its scan up.
 
 use crate::credential_store::{CredentialError, CredentialStore};
-use rusqlite::{params, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use std::sync::Mutex;
 use zeroize::Zeroizing;
 
-/// Prefix of a scan's ledger in `global_state`.
+/// Prefix of a scan's ledger header in `global_state`.
 const LEDGER_PREFIX: &str = "bridge_import_scan_";
+
+/// Prefix of a scan's ledger entries in `global_state`: not a prefix of
+/// [`LEDGER_PREFIX`], so a listing of the headers never meets an entry.
+const ENTRY_PREFIX: &str = "bridge_import_entry_";
+
+/// The prefix of the entries of the scan `id`.
+fn entry_prefix(id: &str) -> String {
+    format!("{ENTRY_PREFIX}{id}_")
+}
 
 /// The scans of this process no window has settled yet, each with the lock
 /// file it holds while it lives (`None` on a filesystem without file locks).
@@ -183,10 +194,10 @@ fn release(id: &str) {
 /// the file was read.
 pub(crate) const SCAN_ACCOUNT_CHANGED: &str = "The active account changed while the file was read, so nothing was imported. Make the account you want to import into the active one again and import the same file again.";
 
+/// The header of a scan's ledger: the account its secrets went to.
 #[derive(Serialize, Deserialize, Default)]
-struct Ledger {
+struct Header {
     user: Option<i64>,
-    written: Vec<Written>,
 }
 
 /// One write of a scan: the profile it is for, its key, and the MAC of the
@@ -211,10 +222,10 @@ pub(crate) enum Kind {
 /// A scan in progress: the account its secrets go to and the profiles it read.
 pub(crate) struct Scan {
     id: String,
-    user: Option<i64>,
     profiles: Vec<String>,
     mac_key: Zeroizing<[u8; 32]>,
-    written: Mutex<Vec<Written>>,
+    /// The connection its entries are written on, and how many it wrote.
+    ledger: Mutex<(Connection, u64)>,
 }
 
 /// The key the ledger's MACs are made with: derived from this vault's
@@ -235,26 +246,14 @@ fn mac(key: &[u8; 32], value: &str) -> String {
     hex::encode(mac.finalize().into_bytes())
 }
 
-fn persist(id: &str, ledger: &Ledger) -> Result<(), String> {
-    let value =
-        serde_json::to_string(ledger).map_err(|e| format!("Encode the import record: {e}"))?;
-    crate::user_partitions::open_or_init_cli()?
-        .execute(
-            "INSERT INTO global_state(key, value, updated_at) VALUES (?1, ?2, ?3)
-             ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
-            params![
-                format!("{LEDGER_PREFIX}{id}"),
-                value,
-                chrono::Utc::now().timestamp_millis()
-            ],
-        )
-        .map_err(|e| format!("Write the import record: {e}"))?;
-    Ok(())
-}
+/// Refuses every record of a scan (test only), as a database that fails.
+#[cfg(test)]
+pub(crate) static RECORD_REFUSED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
 
 impl Scan {
     /// Begins a scan whose secrets go to `user`, for the profiles `profiles`
-    /// of the file, its empty ledger written before any secret is.
+    /// of the file, its header written before any secret is.
     pub(crate) fn begin(
         store: &CredentialStore,
         user: Option<i64>,
@@ -262,26 +261,36 @@ impl Scan {
     ) -> Result<Self, String> {
         let id = uuid::Uuid::new_v4().to_string();
         let lock = hold(&id)?;
-        if let Err(error) = persist(
-            &id,
-            &Ledger {
-                user,
-                written: Vec::new(),
-            },
-        ) {
-            drop(lock);
-            release(&id);
-            return Err(error);
-        }
+        let begun = crate::user_partitions::open_or_init_cli().and_then(|conn| {
+            let header = serde_json::to_string(&Header { user })
+                .map_err(|e| format!("Encode the import record: {e}"))?;
+            conn.execute(
+                "INSERT INTO global_state(key, value, updated_at) VALUES (?1, ?2, ?3)",
+                params![
+                    format!("{LEDGER_PREFIX}{id}"),
+                    header,
+                    chrono::Utc::now().timestamp_millis()
+                ],
+            )
+            .map_err(|e| format!("Write the import record: {e}"))?;
+            Ok(conn)
+        });
+        let conn = match begun {
+            Ok(conn) => conn,
+            Err(error) => {
+                drop(lock);
+                release(&id);
+                return Err(error);
+            }
+        };
         LIVE.lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .push((id.clone(), lock));
         Ok(Self {
             id,
-            user,
             profiles,
             mac_key: mac_key(store),
-            written: Mutex::new(Vec::new()),
+            ledger: Mutex::new((conn, 0)),
         })
     }
 
@@ -312,7 +321,8 @@ impl Scan {
         self.record_for(&self.profile_of(key), key, kind, value)
     }
 
-    /// [`Scan::record`] for a write whose profile is known: `profile`.
+    /// [`Scan::record`] for a write whose profile is known: `profile`. One
+    /// row is written, the entry's own.
     pub(crate) fn record_for(
         &self,
         profile: &str,
@@ -320,47 +330,65 @@ impl Scan {
         kind: Kind,
         value: &str,
     ) -> Result<(), String> {
-        let mut written = self
-            .written
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        written.push(Written {
+        let entry = serde_json::to_string(&Written {
             profile: profile.to_string(),
             key: key.to_string(),
             kind,
             mac: mac(&self.mac_key, value),
-        });
-        let ledger = Ledger {
-            user: self.user,
-            written: written.clone(),
-        };
-        persist(&self.id, &ledger).inspect_err(|_| {
-            written.pop();
         })
+        .map_err(|e| format!("Encode the import record: {e}"))?;
+        let mut ledger = self
+            .ledger
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        #[cfg(test)]
+        if RECORD_REFUSED.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err("Write the import record: refused (test)".to_string());
+        }
+        let (conn, count) = &mut *ledger;
+        conn.execute(
+            "INSERT INTO global_state(key, value, updated_at) VALUES (?1, ?2, ?3)",
+            params![
+                format!("{}{:010}", entry_prefix(&self.id), *count),
+                entry,
+                chrono::Utc::now().timestamp_millis()
+            ],
+        )
+        .map_err(|e| format!("Write the import record: {e}"))?;
+        *count += 1;
+        Ok(())
     }
+}
+
+/// The ids of `profiles`.
+fn ids(profiles: &[serde_json::Value]) -> impl Iterator<Item = String> + '_ {
+    profiles
+        .iter()
+        .filter_map(|profile| profile.get("id").and_then(|id| id.as_str()))
+        .map(str::to_string)
 }
 
 /// The profile ids `user` lists now. `None`, an install with no account,
 /// reads the list every reader of it reads.
-fn listed(store: &CredentialStore, user: Option<i64>) -> Result<Vec<String>, String> {
+fn listed(
+    store: &CredentialStore,
+    conn: &Connection,
+    user: Option<i64>,
+) -> Result<Vec<String>, String> {
     let profiles = match user {
         Some(user) => {
-            let conn = crate::user_partitions::open_or_init_cli()?;
             let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
-            crate::user_partitions::list_server_profiles_for(&conn, &root_key, user)?
+            crate::user_partitions::list_server_profiles_for(conn, &root_key, user)?
         }
         None => crate::user_partitions::mcp_list_active_server_profiles(store)?,
     };
-    Ok(profiles
-        .iter()
-        .filter_map(|profile| profile.get("id").and_then(|id| id.as_str()))
-        .map(str::to_string)
-        .collect())
+    Ok(ids(&profiles).collect())
 }
 
 /// Removes one write of a scan, where it still holds what the scan wrote.
 fn discard(
     store: &CredentialStore,
+    conn: &Connection,
     key: &[u8; 32],
     user: Option<i64>,
     written: &Written,
@@ -372,16 +400,15 @@ fn discard(
     match written.kind {
         Kind::Secret => {
             if let Some(user) = user {
-                let conn = crate::user_partitions::open_or_init_cli()?;
                 let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
                 let row = crate::user_partitions::get_user_credential_for(
-                    &conn,
+                    conn,
                     &root_key,
                     user,
                     &written.key,
                 )?;
                 if row.is_some_and(|row| mac(key, &row) == written.mac) {
-                    crate::user_partitions::delete_user_credential_for(&conn, user, &written.key)?;
+                    crate::user_partitions::delete_user_credential_for(conn, user, &written.key)?;
                 }
             }
             match store.get(&written.key) {
@@ -415,9 +442,10 @@ fn discard(
 
 /// Settles the scan `id`: every write for a profile its account does not
 /// list goes, and the ledger with it. A write that could not be removed
-/// stays in the ledger for the next settle, and the error says so. Whatever
-/// the outcome, this process no longer holds the scan: every caller is done
-/// with it, so a ledger left behind is settled again as an abandoned one.
+/// stays in the ledger for the next settle, and the error says so.
+/// Whatever the outcome, this process no longer holds the scan: every
+/// caller is done with it, so a ledger left behind is settled again as an
+/// abandoned one.
 pub(crate) fn settle(store: &CredentialStore, id: &str) -> Result<(), String> {
     let settled = settle_ledger(store, id);
     release(id);
@@ -439,48 +467,76 @@ pub(crate) static DISCARD_REFUSED: std::sync::atomic::AtomicBool =
 /// The body of [`settle`].
 fn settle_ledger(store: &CredentialStore, id: &str) -> Result<(), String> {
     let conn = crate::user_partitions::open_or_init_cli()?;
-    let ledger_key = format!("{LEDGER_PREFIX}{id}");
-    let value: Option<String> = conn
+    let header_key = format!("{LEDGER_PREFIX}{id}");
+    let header: Option<String> = conn
         .query_row(
             "SELECT value FROM global_state WHERE key = ?1",
-            params![ledger_key],
+            params![header_key],
             |row| row.get(0),
         )
         .optional()
         .map_err(|e| format!("Read the import record: {e}"))?;
-    let Some(value) = value else {
+    let Some(header) = header else {
         return Ok(());
     };
-    let ledger: Ledger =
-        serde_json::from_str(&value).map_err(|e| format!("Read the import record: {e}"))?;
-    let listed = listed(store, ledger.user)?;
+    let header: Header =
+        serde_json::from_str(&header).map_err(|e| format!("Read the import record: {e}"))?;
+    let prefix = entry_prefix(id);
+    let entries: Vec<(String, Written)> = conn
+        .prepare(
+            "SELECT key, value FROM global_state WHERE substr(key, 1, length(?1)) = ?1 ORDER BY key",
+        )
+        .and_then(|mut statement| {
+            statement
+                .query_map(params![prefix], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()
+        })
+        .map_err(|e| format!("Read the import record: {e}"))?
+        .into_iter()
+        .map(|(key, value)| {
+            serde_json::from_str(&value)
+                .map(|written| (key, written))
+                .map_err(|e| format!("Read the import record: {e}"))
+        })
+        .collect::<Result<_, _>>()?;
+    let listed = listed(store, &conn, header.user)?;
     let key = mac_key(store);
-    let mut kept = Vec::new();
+    let mut settled = Vec::new();
+    let mut kept = false;
     let mut errors = Vec::new();
-    for written in ledger.written {
+    for (entry, written) in entries {
         if listed.contains(&written.profile) {
+            settled.push(entry);
             continue;
         }
-        if let Err(error) = discard(store, &key, ledger.user, &written) {
-            errors.push(format!("{}: {error}", written.key));
-            kept.push(written);
+        match discard(store, &conn, &key, header.user, &written) {
+            Ok(()) => settled.push(entry),
+            Err(error) => {
+                errors.push(format!("{}: {error}", written.key));
+                kept = true;
+            }
         }
     }
-    if errors.is_empty() {
-        conn.execute(
+    let tx = rusqlite::Transaction::new_unchecked(&conn, rusqlite::TransactionBehavior::Immediate)
+        .map_err(|e| format!("Remove the import record: {e}"))?;
+    for entry in &settled {
+        tx.execute("DELETE FROM global_state WHERE key = ?1", params![entry])
+            .map_err(|e| format!("Remove the import record: {e}"))?;
+    }
+    if !kept {
+        tx.execute(
             "DELETE FROM global_state WHERE key = ?1",
-            params![ledger_key],
+            params![header_key],
         )
         .map_err(|e| format!("Remove the import record: {e}"))?;
+    }
+    tx.commit()
+        .map_err(|e| format!("Remove the import record: {e}"))?;
+    if errors.is_empty() {
         return Ok(());
     }
-    persist(
-        id,
-        &Ledger {
-            user: ledger.user,
-            written: kept,
-        },
-    )?;
     Err(format!(
         "Some secrets of an import that was not saved could not be removed yet: {}",
         errors.join("; ")
