@@ -2340,6 +2340,53 @@ fn a_secret_the_account_store_refuses_leaves_the_vault_as_it_was() {
         .map(String::as_str),
         Some("after")
     );
+    let row = |key: &str| {
+        get_user_credential_for(&accounts.conn, &accounts.root_key, legacy, key)
+            .unwrap()
+            .map(|value| value.as_str().to_string())
+    };
+    store_typed_credential_dual_as(
+        store,
+        Some(legacy),
+        "oauth_dropbox_refused-typed",
+        "oauth",
+        "imported-token",
+    )
+    .unwrap();
+    assert_eq!(
+        (
+            vault_value("oauth_dropbox_refused-typed").as_deref(),
+            row("oauth_dropbox_refused-typed").as_deref()
+        ),
+        (Some("imported-token"), Some("imported-token")),
+        "the typed writer saves both halves"
+    );
+    store_imported_credential_for_user(store, legacy, "server_refused-import", None, "x").unwrap();
+    assert_eq!(
+        (
+            vault_value("server_refused-import").as_deref(),
+            row("server_refused-import").as_deref()
+        ),
+        (Some("x"), Some("x")),
+        "the import writer saves both halves"
+    );
+    manager
+        .store_tokens(
+            crate::providers::oauth2::OAuthProvider::Dropbox,
+            "refused-oauth",
+            &tokens,
+        )
+        .unwrap();
+    let (vault_copy, row_copy) = (
+        vault_value("oauth_dropbox_refused-oauth"),
+        row("oauth_dropbox_refused-oauth"),
+    );
+    assert!(
+        vault_copy.is_some() && vault_copy == row_copy,
+        "the OAuth writer saves both halves: vault {:?}, row {:?}",
+        vault_copy.is_some(),
+        row_copy.is_some()
+    );
     assert!(failures.is_empty(), "{failures:#?}");
 }
 
