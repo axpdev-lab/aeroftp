@@ -324,8 +324,14 @@ const HOLDER_DONE: &str = "chain-deletion-holder-done";
 /// Another process holding a deletion of a key, killed when dropped.
 pub(super) struct Holder {
     pub(super) child: std::process::Child,
-    lines: std::io::Lines<std::io::BufReader<std::process::ChildStdout>>,
+    /// Its stdout, line by line, read on a thread of its own so a wait for a
+    /// marker is bounded even when the child stalls.
+    lines: std::sync::mpsc::Receiver<String>,
 }
+
+/// How long a holder is waited for at each marker: past it the wait panics,
+/// and the holder is killed and reaped as it is dropped.
+const HOLDER_MARKER_WAIT: std::time::Duration = std::time::Duration::from_secs(60);
 
 impl Holder {
     /// Have the holder run `command`, and wait until it did.
@@ -337,14 +343,19 @@ impl Holder {
     }
 
     fn wait_for(&mut self, marker: &str) {
+        let deadline = Instant::now() + HOLDER_MARKER_WAIT;
+        let mut seen = Vec::new();
         loop {
-            let line = self
-                .lines
-                .next()
-                .unwrap_or_else(|| panic!("the holder exited before {marker}"))
-                .unwrap();
-            if line.contains(marker) {
-                return;
+            let left = deadline.saturating_duration_since(Instant::now());
+            match self.lines.recv_timeout(left) {
+                Ok(line) if line.contains(marker) => return,
+                Ok(line) => seen.push(line),
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                    panic!("the holder did not print {marker} in {HOLDER_MARKER_WAIT:?}: {seen:#?}")
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                    panic!("the holder exited before {marker}: {seen:#?}")
+                }
             }
         }
     }
@@ -369,7 +380,16 @@ pub(super) fn holder(account: &str, owner: Option<i64>, user: i64, mode: &str) -
         .stderr(std::process::Stdio::null())
         .spawn()
         .unwrap();
-    let lines = std::io::BufReader::new(child.stdout.take().unwrap()).lines();
+    let stdout = child.stdout.take().unwrap();
+    let (sender, lines) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        for line in std::io::BufReader::new(stdout).lines() {
+            let Ok(line) = line else { break };
+            if sender.send(line).is_err() {
+                break;
+            }
+        }
+    });
     let mut holder = Holder { child, lines };
     holder.wait_for(HOLDER_BEGAN);
     holder
