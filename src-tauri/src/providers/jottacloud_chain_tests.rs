@@ -476,7 +476,12 @@ fn run_holder(role: &str) -> ! {
 /// one whose process exited, one whose process is killed once it began (the
 /// key is held while it lives: a login of it does not begin), one this
 /// process could not end, and one of another machine once its lease ran out. One a reader settled while it ran
-/// still counts when it ends.
+/// still counts when it ends. The exited and killed cases need a system that
+/// looks processes up ([`partitions::reads_process_identity`]): elsewhere a
+/// deletion another process left counts as running until its lease runs out
+/// (tracker #1533, Requested 225), which
+/// [`a_deletion_no_process_lookup_can_settle_waits_for_its_lease`] pins on
+/// every system.
 #[test]
 fn a_deletion_its_process_left_unfinished_settles() {
     if !crate::provider_commands::isolated_account_fixture::in_isolated_child(HOLDER_TEST) {
@@ -488,45 +493,52 @@ fn a_deletion_its_process_left_unfinished_settles() {
     let chains = Chains::new();
     let mut failures = Vec::new();
 
-    // The process exited halfway through its delete.
-    let mut crashed = holder(
-        "jottacloud_refresh_crashed",
-        chains.owner,
-        chains.first,
-        "exit",
-    );
-    assert!(crashed.child.wait().unwrap().success());
-    let after_crash = chains.login("crashed", "login-crashed");
-    if after_crash != "login-crashed" {
-        failures.push(format!(
-            "a deletion its exited process left: the login wrote {after_crash:?}"
-        ));
-    }
+    // The process exited halfway through its delete, or was killed: looked
+    // up where processes can be read.
+    if !partitions::reads_process_identity() {
+        eprintln!(
+            "skipped: the exited and killed process cases, this system does not look processes up"
+        );
+    } else {
+        // The process exited halfway through its delete.
+        let mut crashed = holder(
+            "jottacloud_refresh_crashed",
+            chains.owner,
+            chains.first,
+            "exit",
+        );
+        assert!(crashed.child.wait().unwrap().success());
+        let after_crash = chains.login("crashed", "login-crashed");
+        if after_crash != "login-crashed" {
+            failures.push(format!(
+                "a deletion its exited process left: the login wrote {after_crash:?}"
+            ));
+        }
 
-    // The process is alive: its deletion holds the key; killed, it does not.
-    let mut alive = holder(
-        "jottacloud_refresh_alive",
-        chains.owner,
-        chains.first,
-        "wait",
-    );
-    let while_alive = chains.try_login("alive", "login-while-alive");
-    if !matches!(while_alive, Err(ProviderError::ConnectionFailed(_)))
-        || !chains.stored("jottacloud_refresh_alive").is_empty()
-    {
-        failures.push(format!(
-            "a deletion its live process runs: the login began: {while_alive:?}"
-        ));
+        // The process is alive: its deletion holds the key; killed, it does not.
+        let mut alive = holder(
+            "jottacloud_refresh_alive",
+            chains.owner,
+            chains.first,
+            "wait",
+        );
+        let while_alive = chains.try_login("alive", "login-while-alive");
+        if !matches!(while_alive, Err(ProviderError::ConnectionFailed(_)))
+            || !chains.stored("jottacloud_refresh_alive").is_empty()
+        {
+            failures.push(format!(
+                "a deletion its live process runs: the login began: {while_alive:?}"
+            ));
+        }
+        alive.child.kill().unwrap();
+        alive.child.wait().unwrap();
+        let after_kill = chains.login("alive", "login-after-kill");
+        if after_kill != "login-after-kill" {
+            failures.push(format!(
+                "a deletion its killed process left: the login wrote {after_kill:?}"
+            ));
+        }
     }
-    alive.child.kill().unwrap();
-    alive.child.wait().unwrap();
-    let after_kill = chains.login("alive", "login-after-kill");
-    if after_kill != "login-after-kill" {
-        failures.push(format!(
-            "a deletion its killed process left: the login wrote {after_kill:?}"
-        ));
-    }
-
     // The delete succeeded, its end could not be recorded.
     partitions::CHAIN_DELETION_END_REFUSED.store(true, std::sync::atomic::Ordering::SeqCst);
     let unended = delete_refresh_chain::<String>(
@@ -603,6 +615,50 @@ fn a_deletion_its_process_left_unfinished_settles() {
                 "a deletion settled while it ran, ended done={done}: {after:?}, expected {expected:?}"
             ));
         }
+    }
+    assert!(failures.is_empty(), "{failures:#?}");
+}
+
+/// A deletion recorded by a process this one cannot look up (no pid space
+/// recorded, as off Linux, where every deletion is recorded so) holds its key
+/// while its lease runs: a login of the key does not begin and nothing is
+/// written. Once the lease ran out it is settled, and the login writes its
+/// chain. Run on every system: off Linux this is how a deletion its process
+/// left unfinished settles.
+#[test]
+fn a_deletion_no_process_lookup_can_settle_waits_for_its_lease() {
+    if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+        "providers::jottacloud::chain_tests::a_deletion_no_process_lookup_can_settle_waits_for_its_lease",
+    ) {
+        return;
+    }
+    let chains = Chains::new();
+    let mut failures = Vec::new();
+    let key = "jottacloud_refresh_unlookedup";
+    let left = |age_ms: i64| {
+        let at = chrono::Utc::now().timestamp_millis() - age_ms;
+        partitions::set_chain_deletions_raw(
+            &chains.store,
+            chains.owner,
+            key,
+            &format!(
+                r#"{{"generation":0,"running":[{{"id":"gone","process":"a gone process","space":null,"pid":1,"start":null,"at":{at}}}]}}"#
+            ),
+        )
+        .unwrap();
+    };
+    left(0);
+    let held = chains.try_login("unlookedup", "login-while-held");
+    if !matches!(held, Err(ProviderError::ConnectionFailed(_))) || !chains.stored(key).is_empty() {
+        failures.push(format!(
+            "while its lease runs: the login began: {held:?}, the key holds {:?}",
+            chains.stored(key)
+        ));
+    }
+    left(partitions::CHAIN_DELETION_LEASE_MS + 60 * 1000);
+    let after = chains.try_login("unlookedup", "login-after-lease");
+    if !matches!(after.as_deref(), Ok("login-after-lease")) {
+        failures.push(format!("once its lease ran out: the login wrote {after:?}"));
     }
     assert!(failures.is_empty(), "{failures:#?}");
 }

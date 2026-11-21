@@ -4372,7 +4372,7 @@ pub(crate) const CHAIN_DELETED: &str =
 /// another machine sharing the data folder, in another pid namespace, or on
 /// a system whose processes cannot be read) counts as running. A deletion
 /// takes milliseconds; this only bounds how long one left behind blocks.
-const CHAIN_DELETION_LEASE_MS: i64 = 10 * 60 * 1000;
+pub(crate) const CHAIN_DELETION_LEASE_MS: i64 = 10 * 60 * 1000;
 
 /// What the `global_state` row of one key's deletions holds.
 #[derive(Default, Serialize, Deserialize)]
@@ -4438,6 +4438,15 @@ fn this_process() -> &'static DeletingProcess {
         }
     });
     &THIS
+}
+
+/// Whether this system lets a process look another one up: then a deletion
+/// whose process exited or was killed settles at once, else only once its
+/// lease ran out ([`deletion_left_over`]). Tests choose their cases by it.
+#[cfg(test)]
+pub(crate) fn reads_process_identity() -> bool {
+    let this = this_process();
+    this.space.is_some() && this.start.is_some()
 }
 
 /// The boot and pid namespace this process's pids belong to, hashed: a pid
