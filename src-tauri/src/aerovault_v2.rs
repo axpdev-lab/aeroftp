@@ -215,15 +215,20 @@ pub async fn vault_v2_extract_entry(
     // into a unique temp dir next to the destination, then move the produced file
     // onto `dest_path`, overwriting like v3's atomic write.
     if let Some(parent) = dest.parent() {
-        // A missing folder on the way is created below. A folder with a lock
-        // name would take the lock path of another vault and block its writers,
-        // so refuse it as the crate refuses it inside an extraction.
-        if let Some(name) = parent.components().find_map(|component| match component {
-            std::path::Component::Normal(name) => name
-                .to_str()
-                .filter(|name| crate::sync_exclude::is_vault_lock_name(name)),
-            _ => None,
-        }) {
+        // A missing folder on the way is created below. A new folder with a
+        // lock name would take the lock path of another vault and block its
+        // writers, so refuse creating one, as the crate does inside an
+        // extraction. A folder that already exists is only written into.
+        if let Some(name) = parent
+            .ancestors()
+            .take_while(|folder| !folder.as_os_str().is_empty() && !folder.exists())
+            .find_map(|folder| {
+                folder
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .filter(|name| crate::sync_exclude::is_vault_lock_name(name))
+            })
+        {
             return Err(format!(
                 "Cannot extract under {name}: that name is reserved for an AeroVault lock file"
             ));
@@ -258,9 +263,16 @@ pub async fn vault_v2_extract_entry(
     let reserved =
         is_lock(dest) || (cfg!(windows) && dest.canonicalize().is_ok_and(|path| is_lock(&path)));
     if reserved {
-        let staged_size = std::fs::metadata(&extracted)
-            .map_err(|e| e.to_string())?
-            .len();
+        let staged_meta = std::fs::symlink_metadata(&extracted).map_err(|e| e.to_string())?;
+        // A lock path can only ever hold a regular file: a folder there would
+        // stop the writers of the vault it belongs to.
+        if !staged_meta.is_file() {
+            return Err(format!(
+                "{}: only a file can be extracted to a vault lock file name",
+                dest.display()
+            ));
+        }
+        let staged_size = staged_meta.len();
         let staged = tempfile::TempPath::try_from_path(extracted).map_err(|e| e.to_string())?;
         match staged.persist_noclobber(dest) {
             Ok(()) => return Ok(dest_path),
@@ -1415,6 +1427,39 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(std::fs::read(ordinary).unwrap(), b"archived bytes");
+
+        // An existing folder with a lock name is only written into.
+        let existing = dir.path().join("exports.aerolock");
+        std::fs::create_dir(&existing).unwrap();
+        vault_v2_extract_entry(
+            vault_path.to_str().unwrap().to_string(),
+            password.to_string(),
+            "file.txt".to_string(),
+            existing.join("renamed.txt").to_str().unwrap().to_string(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            std::fs::read(existing.join("renamed.txt")).unwrap(),
+            b"archived bytes"
+        );
+
+        // A folder entry is never published at a lock name.
+        Vault::open(&vault_path, password)
+            .unwrap()
+            .create_directory("docs")
+            .unwrap();
+        let lock_target = dir.path().join("fourth.aerovault.aerolock");
+        let error = vault_v2_extract_entry(
+            vault_path.to_str().unwrap().to_string(),
+            password.to_string(),
+            "docs".to_string(),
+            lock_target.to_str().unwrap().to_string(),
+        )
+        .await
+        .unwrap_err();
+        assert!(error.contains("only a file"), "{error}");
+        assert!(!lock_target.exists());
     }
 
     /// Deep-scan 17: a folder on the way that is a link stops the entry.
