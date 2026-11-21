@@ -2976,21 +2976,11 @@ impl StorageProvider for FilenProvider {
         // Sent, an answer that does not come or cannot be read leaves the
         // restore possibly applied.
         let what = format!("the restore of {path}");
-        let resp: GenericResponse = self
+        let resp = self
             .send_retry(request)
             .await
-            .map_err(|e| super::sent_change_unconfirmed(e, &what))?
-            .json()
-            .await
-            .map_http_err(|e| ProviderError::NetworkError(e.without_url().to_string()))
             .map_err(|e| super::sent_change_unconfirmed(e, &what))?;
-        if !resp.status {
-            return Err(ProviderError::ServerError(
-                resp.message
-                    .unwrap_or_else(|| "Failed to restore file version".to_string()),
-            ));
-        }
-        Ok(())
+        restore_answer(resp, &what).await
     }
 
     fn supports_find(&self) -> bool {
@@ -3659,8 +3649,88 @@ impl ChunkError {
     }
 }
 
+/// What the answer to a version restore says. A 4xx refuses it before
+/// anything is applied: a definite refusal, whose body (an HTML page, an
+/// error document) is not read or shown. A 5xx, or a success whose body
+/// cannot be read, may come after Filen applied it: applied, unconfirmed.
+async fn restore_answer(resp: reqwest::Response, what: &str) -> Result<(), ProviderError> {
+    let status = resp.status();
+    if status.is_client_error() {
+        return Err(ProviderError::ServerError(format!(
+            "Filen refused {what}: HTTP {status}"
+        )));
+    }
+    if !status.is_success() {
+        return Err(super::applied_unconfirmed(format!(
+            "{what} was answered HTTP {status}: list its versions before restoring again"
+        )));
+    }
+    let resp: GenericResponse = resp
+        .json()
+        .await
+        .map_http_err(|e| ProviderError::NetworkError(e.without_url().to_string()))
+        .map_err(|e| super::sent_change_unconfirmed(e, what))?;
+    if !resp.status {
+        return Err(ProviderError::ServerError(
+            resp.message
+                .unwrap_or_else(|| "Failed to restore file version".to_string()),
+        ));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
+
+    /// A restore refused with a 4xx (an HTML page here) is a definite
+    /// refusal, its body not shown; a 5xx or a success cut short may have
+    /// been applied; a readable answer decides.
+    #[tokio::test]
+    async fn a_filen_restore_refused_with_a_client_error_is_not_applied() {
+        use axum::response::IntoResponse;
+        let app =
+            axum::Router::new().fallback(axum::routing::any(|uri: axum::http::Uri| async move {
+                match uri.path() {
+                    "/403" => (
+                        axum::http::StatusCode::FORBIDDEN,
+                        "<html>forbidden SECRET-PAGE</html>",
+                    )
+                        .into_response(),
+                    "/500" => axum::http::StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+                    "/cut" => r#"{"status":tr"#.into_response(),
+                    "/no" => r#"{"status":false,"message":"refused"}"#.into_response(),
+                    _ => r#"{"status":true}"#.into_response(),
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut outcomes = Vec::new();
+        for route in ["403", "500", "cut", "no", "ok"] {
+            let resp = reqwest::get(format!("http://{addr}/{route}"))
+                .await
+                .unwrap();
+            outcomes.push(super::restore_answer(resp, "the restore of /a.txt").await);
+        }
+        server.abort();
+        let [refused, failed, cut, no, ok] = <[_; 5]>::try_from(outcomes).unwrap();
+        assert!(
+            matches!(&refused, Err(e @ ProviderError::ServerError(m))
+                if m.contains("403") && !m.contains("SECRET") && !crate::providers::was_applied(e)),
+            "{refused:?}"
+        );
+        for unknown in [&failed, &cut] {
+            assert!(
+                matches!(unknown, Err(e) if crate::providers::was_applied(e)),
+                "{unknown:?}"
+            );
+        }
+        assert!(
+            matches!(&no, Err(e) if !crate::providers::was_applied(e)),
+            "{no:?}"
+        );
+        assert!(ok.is_ok(), "{ok:?}");
+    }
 
     #[tokio::test]
     async fn a_read_only_post_listing_still_recovers_from_503() {
