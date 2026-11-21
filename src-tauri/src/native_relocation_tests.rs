@@ -2145,6 +2145,141 @@ fn a_scan_given_up_unsettled_is_settled_at_the_next_opening() {
     assert!(failures.is_empty(), "{failures:#?}");
 }
 
+/// A runtime for the bridge commands of one test.
+fn bridge_runtime() -> tokio::runtime::Runtime {
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+}
+
+/// A scan of an rclone file of one FTP remote for each of `names`, each with
+/// the password `ftp-secret`.
+fn scan_ftp_remotes(runtime: &tokio::runtime::Runtime, names: &[&str]) -> Result<Value, String> {
+    let conf = tempfile::NamedTempFile::new().unwrap();
+    let pass = crate::rclone_import::obscure_password("ftp-secret").unwrap();
+    let file: String = names
+        .iter()
+        .map(|name| {
+            format!("[{name}]\ntype = ftp\nhost = ftp.example.test\nuser = demo\npass = {pass}\n")
+        })
+        .collect();
+    std::fs::write(conf.path(), file).unwrap();
+    runtime.block_on(crate::bridge_commands::import_bridge_config(
+        "rclone".into(),
+        conf.path().to_string_lossy().into_owned(),
+        None,
+    ))
+}
+
+/// The profile id of the remote `name` of a scan's response.
+fn scanned_id(imported: &Value, name: &str) -> String {
+    imported["servers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|server| server["name"] == name)
+        .and_then(|server| server["id"].as_str())
+        .unwrap()
+        .to_string()
+}
+
+/// The vault value of `key`, if any.
+fn vault_value(key: &str) -> Option<String> {
+    CredentialStore::from_cache().unwrap().get(key).ok()
+}
+
+/// A bridge settle, as the panel runs it: the scan `scan_id`, then every
+/// scan no live window holds.
+fn settle_scan(runtime: &tokio::runtime::Runtime, scan_id: Option<&str>) -> Result<(), String> {
+    runtime.block_on(crate::bridge_commands::settle_bridge_import(
+        scan_id.map(str::to_string),
+    ))
+}
+
+/// Where the data folder has no file locks, the lock file of a scan names
+/// its process, and a settle of abandoned scans in another process takes
+/// it for abandoned only once that process is proven gone: its pid free, or
+/// reused by a process that started at another time. A live process, a
+/// name that cannot be read and one of another boot or pid namespace keep
+/// the scan, whose window may still confirm it.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_scan_without_file_locks_is_held_until_its_process_is_proven_gone() {
+    use std::sync::atomic::Ordering::SeqCst;
+    if !in_isolated_child("a_scan_without_file_locks_is_held_until_its_process_is_proven_gone") {
+        return;
+    }
+    let accounts = Accounts::open();
+    let runtime = bridge_runtime();
+    crate::bridge_import_scan::LOCKS_UNAVAILABLE.store(true, SeqCst);
+    let holder = |pid: u32, start: Option<u64>| {
+        json!({"space": pid_space(), "pid": pid, "start": start}).to_string()
+    };
+    let stored = |key: &str| {
+        (
+            vault_value(key),
+            has_row(&accounts.conn, accounts.legacy, key),
+        )
+    };
+    let kept = (Some("ftp-secret".to_string()), true);
+    // A scan whose window is in another process: the lock file it left.
+    let scan = || {
+        let imported = scan_ftp_remotes(&runtime, &["files"]).unwrap();
+        let scan_id = imported["scanId"].as_str().unwrap().to_string();
+        let lock = crate::bridge_import_scan::lock_path(&scan_id).unwrap();
+        crate::bridge_import_scan::forget_live_scans();
+        (lock, format!("server_{}", scanned_id(&imported, "files")))
+    };
+
+    let (lock, password) = scan();
+    let this = std::process::id();
+    assert_eq!(
+        serde_json::from_str::<Value>(&std::fs::read_to_string(&lock).unwrap()).unwrap(),
+        serde_json::from_str::<Value>(&holder(this, process_start(this).unwrap())).unwrap(),
+        "the lock file names the process that holds the scan"
+    );
+    let parent = std::os::unix::process::parent_id();
+    let parent_start = process_start(parent).unwrap();
+    assert!(parent_start.is_some(), "the parent test process is alive");
+    let mut failures = Vec::new();
+    for (case, name) in [
+        ("a live process", holder(parent, parent_start)),
+        ("a name that cannot be read", "not a process".to_string()),
+        (
+            "a process of another boot",
+            json!({"space": "another boot", "pid": parent, "start": parent_start}).to_string(),
+        ),
+    ] {
+        std::fs::write(&lock, name).unwrap();
+        settle_scan(&runtime, None).unwrap();
+        if stored(&password) != kept {
+            failures.push(format!("{case}: {:?}", stored(&password)));
+        }
+    }
+    std::fs::write(&lock, holder(parent, parent_start.map(|start| start + 1))).unwrap();
+    settle_scan(&runtime, None).unwrap();
+    if stored(&password) != (None, false) {
+        failures.push(format!("a reused pid: {:?}", stored(&password)));
+    }
+
+    let (lock, password) = scan();
+    let mut ended = std::process::Command::new(std::env::current_exe().unwrap())
+        .arg("--list")
+        .stdout(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    let gone = ended.id();
+    ended.wait().unwrap();
+    std::fs::write(&lock, holder(gone, Some(1))).unwrap();
+    settle_scan(&runtime, None).unwrap();
+    if stored(&password) != (None, false) {
+        failures.push(format!("a pid now free: {:?}", stored(&password)));
+    }
+    crate::bridge_import_scan::LOCKS_UNAVAILABLE.store(false, SeqCst);
+    assert!(failures.is_empty(), "{failures:#?}");
+}
+
 /// A session save is whole or not made. For the legacy owner, whose session
 /// is a vault key and its row, a row the account store refuses puts the
 /// vault key back as it was: an import reported as not restored leaves no

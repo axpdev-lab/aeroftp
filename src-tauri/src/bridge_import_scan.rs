@@ -16,7 +16,9 @@
 //! saved, stays. A ledger no live scan holds (the window went with a crash or
 //! a quit, and its process with it) is settled at the next scan or the next
 //! opening of the bridge panel. A live scan holds a file lock of its own, so a
-//! scan of another process is never taken for one whose window is gone.
+//! scan of another process is never taken for one whose window is gone;
+//! where the filesystem has no file locks, the lock file names the process
+//! instead, and only a process proven gone gives its scan up.
 
 use crate::credential_store::{CredentialError, CredentialStore};
 use rusqlite::{params, OptionalExtension};
@@ -33,7 +35,7 @@ const LEDGER_PREFIX: &str = "bridge_import_scan_";
 static LIVE: Mutex<Vec<(String, Option<std::fs::File>)>> = Mutex::new(Vec::new());
 
 /// The lock file a live scan `id` holds, beside the account database.
-fn lock_path(id: &str) -> Result<std::path::PathBuf, String> {
+pub(crate) fn lock_path(id: &str) -> Result<std::path::PathBuf, String> {
     let db = crate::user_partitions::cli_db_path()?;
     let dir = db
         .parent()
@@ -42,24 +44,89 @@ fn lock_path(id: &str) -> Result<std::path::PathBuf, String> {
     Ok(dir.join(format!("{id}.lock")))
 }
 
+/// Plays a filesystem without file locks (test only). Process wide, not per
+/// thread: a settle runs on a blocking thread of its own.
+#[cfg(test)]
+pub(crate) static LOCKS_UNAVAILABLE: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+fn try_lock(file: &std::fs::File) -> Result<(), std::fs::TryLockError> {
+    #[cfg(test)]
+    if LOCKS_UNAVAILABLE.load(std::sync::atomic::Ordering::SeqCst) {
+        return Err(std::fs::TryLockError::Error(std::io::Error::from(
+            std::io::ErrorKind::Unsupported,
+        )));
+    }
+    file.try_lock()
+}
+
+/// A process as a lock file without a lock names it: the boot and pid
+/// namespace its pid belongs to, the pid, and when it started, so a pid
+/// reused by another process is not taken for it.
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+pub(crate) struct Holder {
+    space: Option<String>,
+    pid: u32,
+    start: Option<u64>,
+}
+
+impl Holder {
+    fn this_process() -> Self {
+        let pid = std::process::id();
+        Self {
+            space: crate::user_partitions::pid_space(),
+            pid,
+            start: crate::user_partitions::process_start(pid).ok().flatten(),
+        }
+    }
+
+    /// Whether the process named is proven gone: this process, which holds
+    /// no such live scan (its `LIVE` was read first), or a process of this
+    /// boot and pid namespace whose pid is free, a zombie, or another
+    /// process's. Anything that cannot be read is not proof.
+    fn gone(&self) -> bool {
+        let this = Self::this_process();
+        let (Some(space), Some(start)) = (&self.space, self.start) else {
+            return false;
+        };
+        if this.space.as_ref() != Some(space) {
+            return false;
+        }
+        if *self == this {
+            return true;
+        }
+        match crate::user_partitions::process_start(self.pid) {
+            Ok(None) => true,
+            Ok(Some(now)) => now != start,
+            Err(()) => false,
+        }
+    }
+}
+
 /// Takes the lock of the new scan `id`: `None` where the filesystem has no
-/// file locks, and the scan is known live to this process only.
+/// file locks, and the lock file then names this process.
 fn hold(id: &str) -> Result<Option<std::fs::File>, String> {
     let path = lock_path(id)?;
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| format!("Create the import lock folder: {e}"))?;
     }
-    let file = std::fs::OpenOptions::new()
+    let mut file = std::fs::OpenOptions::new()
         .create(true)
         .truncate(false)
         .write(true)
         .open(&path)
         .map_err(|e| format!("Open the import lock: {e}"))?;
-    match file.try_lock() {
+    match try_lock(&file) {
         Ok(()) => Ok(Some(file)),
         Err(std::fs::TryLockError::Error(e))
             if crate::user_partitions::file_locks_unavailable(&e) =>
         {
+            use std::io::Write;
+            let holder = serde_json::to_vec(&Holder::this_process())
+                .map_err(|e| format!("Name the import lock's process: {e}"))?;
+            file.write_all(&holder)
+                .and_then(|()| file.sync_all())
+                .map_err(|e| format!("Name the import lock's process: {e}"))?;
             Ok(None)
         }
         Err(std::fs::TryLockError::Error(e)) => Err(format!("Take the import lock: {e}")),
@@ -67,8 +134,9 @@ fn hold(id: &str) -> Result<Option<std::fs::File>, String> {
     }
 }
 
-/// Whether a live scan holds the ledger `id`: one of this process, or the lock
-/// of one of another. A lock that cannot be read counts as held, so a scan is
+/// Whether a live scan holds the ledger `id`: one of this process, the lock
+/// of one of another, or, without file locks, the lock file of a process not
+/// proven gone. A lock that cannot be read counts as held, so a scan is
 /// never settled under a window that may still confirm it.
 fn held(id: &str) -> bool {
     if LIVE
@@ -87,10 +155,17 @@ fn held(id: &str) -> bool {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return false,
         Err(_) => return true,
     };
-    match file.try_lock() {
+    match try_lock(&file) {
         Ok(()) => false,
-        Err(std::fs::TryLockError::Error(e)) => !crate::user_partitions::file_locks_unavailable(&e),
-        Err(std::fs::TryLockError::WouldBlock) => true,
+        Err(std::fs::TryLockError::Error(e))
+            if crate::user_partitions::file_locks_unavailable(&e) =>
+        {
+            !std::fs::read(&path)
+                .ok()
+                .and_then(|holder| serde_json::from_slice::<Holder>(&holder).ok())
+                .is_some_and(|holder| holder.gone())
+        }
+        Err(std::fs::TryLockError::Error(_)) | Err(std::fs::TryLockError::WouldBlock) => true,
     }
 }
 

@@ -4339,7 +4339,7 @@ fn this_process() -> &'static DeletingProcess {
 /// The boot and pid namespace this process's pids belong to, hashed: a pid
 /// recorded in another one names some other process here.
 #[cfg(target_os = "linux")]
-fn pid_space() -> Option<String> {
+pub(crate) fn pid_space() -> Option<String> {
     let boot = std::fs::read_to_string("/proc/sys/kernel/random/boot_id").ok()?;
     let namespace = std::fs::read_link("/proc/self/ns/pid").ok()?;
     let mut hash = Sha256::new();
@@ -4350,7 +4350,7 @@ fn pid_space() -> Option<String> {
 }
 
 #[cfg(not(target_os = "linux"))]
-fn pid_space() -> Option<String> {
+pub(crate) fn pid_space() -> Option<String> {
     None
 }
 
@@ -4359,7 +4359,7 @@ fn pid_space() -> Option<String> {
 /// read. Measured on Linux 7.0 (2026-11-20): about 10 microseconds for a
 /// live process, 2 for a gone one, and the same value at every read.
 #[cfg(target_os = "linux")]
-fn process_start(pid: u32) -> Result<Option<u64>, ()> {
+pub(crate) fn process_start(pid: u32) -> Result<Option<u64>, ()> {
     let stat = match std::fs::read_to_string(format!("/proc/{pid}/stat")) {
         Ok(stat) => stat,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -4383,7 +4383,7 @@ fn process_start(pid: u32) -> Result<Option<u64>, ()> {
 }
 
 #[cfg(not(target_os = "linux"))]
-fn process_start(_pid: u32) -> Result<Option<u64>, ()> {
+pub(crate) fn process_start(_pid: u32) -> Result<Option<u64>, ()> {
     Err(())
 }
 
