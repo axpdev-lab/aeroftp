@@ -94590,6 +94590,8 @@ mod tests {
         refuse_hash_ranges: bool,
         /// Keeps file versions: each version call answers, none are listed.
         versions: bool,
+        /// The credentials may not list the versions.
+        deny_version_listing: bool,
         /// Completes an upload instead of stalling.
         finish_upload: bool,
         /// The remote paths `stat`, an upload and the version calls were
@@ -94758,6 +94760,9 @@ mod tests {
                 .lock()
                 .unwrap()
                 .push(("list_versions", path.to_string()));
+            if self.deny_version_listing {
+                return Err(ProviderError::PermissionDenied("listing".to_string()));
+            }
             Ok(Vec::new())
         }
         async fn download_version(
@@ -95198,6 +95203,35 @@ mod tests {
         let code = against_stalling(provider, command);
         let calls = calls.lock().unwrap().clone();
         (code, calls)
+    }
+
+    /// A purge whose versions these credentials may not list is refused, as
+    /// the live version cannot be told: no version is deleted, and the exit
+    /// code says permission.
+    #[test]
+    fn a_purge_whose_listing_is_denied_deletes_no_version() {
+        let provider = StallingProvider {
+            versions: true,
+            deny_version_listing: true,
+            ..StallingProvider::default()
+        };
+        let calls = Arc::clone(&provider.version_calls);
+        let code = against_stalling(provider, |_| async {
+            cmd_versions_purge(
+                "memory://",
+                "/f.bin",
+                "v1",
+                true,
+                &quiet_cli(),
+                OutputFormat::Json,
+            )
+            .await
+        });
+        assert_eq!(code, 3);
+        assert_eq!(
+            *calls.lock().unwrap(),
+            [("list_versions", "/f.bin".to_string())]
+        );
     }
 
     /// `get` of `/f.bin` into a local file that already holds "keep me", with
