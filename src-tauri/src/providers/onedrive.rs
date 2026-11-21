@@ -191,6 +191,17 @@ fn object_handle_is_invalid(body: &str) -> bool {
             .is_some_and(|m| m.contains("ObjectHandle is Invalid"))
 }
 
+/// The id of the item an upload's answer names (Graph answers the
+/// DriveItem it wrote), or None for an answer without one.
+async fn uploaded_item_id(response: reqwest::Response) -> Option<String> {
+    let body = super::version_listing_text(response).await.ok()?;
+    let item: serde_json::Value = serde_json::from_str(&body).ok()?;
+    item.get("id")?
+        .as_str()
+        .filter(|id| !id.is_empty())
+        .map(str::to_string)
+}
+
 async fn onedrive_error_from_response(
     response: reqwest::Response,
     context_prefix: &str,
@@ -799,6 +810,37 @@ impl OneDriveProvider {
     }
 
     /// Build path for item ID
+    /// An item's own contents: Graph answers `/content` with a redirect to
+    /// a pre-authenticated URL, fetched without the token, or with the body.
+    async fn item_content(&self, item_id: &str) -> Result<reqwest::Response, ProviderError> {
+        let url = format!("{}/content", self.api_item(item_id));
+        let response = self
+            .client
+            .get(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .send()
+            .await
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.without_url().to_string()))?;
+        let response =
+            if response.status().is_redirection() {
+                let location = response
+                    .headers()
+                    .get("Location")
+                    .and_then(|h| h.to_str().ok())
+                    .map(String::from)
+                    .ok_or_else(|| ProviderError::Other("No download URL".to_string()))?;
+                self.client.get(&location).send().await.map_http_err(|e| {
+                    ProviderError::ConnectionFailed(e.without_url().to_string())
+                })?
+            } else {
+                response
+            };
+        if !response.status().is_success() {
+            return Err(onedrive_error_from_response(response, "Download failed").await);
+        }
+        Ok(response)
+    }
+
     fn api_item(&self, item_id: &str) -> String {
         if item_id == "root" {
             format!("{}/me/drive/root", self.graph_api())
@@ -976,6 +1018,22 @@ impl OneDriveProvider {
                     }
                     return Err(e);
                 }
+            }
+            // Pointed elsewhere now, or gone: the folders learned plain
+            // below it were folders of the target it had, and a shortcut
+            // nested under one of them would be read as plain.
+            let confirmed = self
+                .remote_roots
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
+                .get(&shortcut_key(&root))
+                .cloned();
+            if confirmed != learned {
+                let below = format!("{}/", shortcut_key(&root));
+                self.plain_folders
+                    .write()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .retain(|folder| !folder.starts_with(&below));
             }
         }
         Ok(())
@@ -1244,14 +1302,22 @@ impl OneDriveProvider {
     /// KE-B3.1: the sweep after an upload with `--onedrive-no-versions`:
     /// resolve `path` afresh and delete the item's older versions. `stage`
     /// names the upload path in the warning when the resolve fails.
-    async fn purge_versions_after_upload(&mut self, path: &str, stage: &str) {
-        if let Ok(item_id) = self.live_item_id(path).await {
-            self.purge_old_versions(&item_id).await;
-        } else {
-            warn!(
-                "onedrive --onedrive-no-versions: {} resolve of {} failed; sweep skipped",
+    /// The sweep of `--onedrive-no-versions`, on the item the upload wrote
+    /// (its id from Graph's answer). Resolved again by path, a file that
+    /// took the path between the upload and the sweep would lose its own
+    /// history; an answer without an id skips the sweep.
+    async fn purge_versions_after_upload(
+        &mut self,
+        item_id: Option<&str>,
+        path: &str,
+        stage: &str,
+    ) {
+        match item_id {
+            Some(item_id) => self.purge_old_versions(item_id).await,
+            None => warn!(
+                "onedrive --onedrive-no-versions: the {} answer for {} named no item; sweep skipped",
                 stage, path
-            );
+            ),
         }
     }
 
@@ -2007,6 +2073,9 @@ impl StorageProvider for OneDriveProvider {
         if !response.status().is_success() {
             return Err(onedrive_error_from_response(response, "Upload failed:").await);
         }
+        // The item the upload wrote, named by Graph's answer: the sweep goes
+        // to its versions, never to whatever the path names by then.
+        let uploaded = uploaded_item_id(response).await;
 
         info!("Uploaded {} to {}", local_path, remote_path);
 
@@ -2018,7 +2087,8 @@ impl StorageProvider for OneDriveProvider {
             self.keep_local_date(&path, &date).await;
         }
         if self.no_versions {
-            self.purge_versions_after_upload(&path, "post-upload").await;
+            self.purge_versions_after_upload(uploaded.as_deref(), &path, "post-upload")
+                .await;
         }
 
         Ok(())
@@ -2656,10 +2726,17 @@ impl StorageProvider for OneDriveProvider {
         // answers. A sort by time would put a past version above a current
         // one that has no time or shares it. Graph names versions by a label
         // of the item (`1.0`, `2.0`): each id is bound to the item listed.
+        // Row 0 is the item itself, bound to the label it had on top, which
+        // Graph raises at every write ([`super::bound_current_row`]).
         Ok(value
             .iter()
-            .map(|v| super::FileVersion {
-                id: super::bind_version_to_file(&item_id, &v.id),
+            .enumerate()
+            .map(|(row, v)| super::FileVersion {
+                id: if row == 0 {
+                    super::bound_current_row(&item_id, &v.id)
+                } else {
+                    super::bind_version_to_file(&item_id, &v.id)
+                },
                 modified: v.last_modified_date_time.clone(),
                 size: v.size.unwrap_or(0),
                 modified_by: v
@@ -2680,6 +2757,29 @@ impl StorageProvider for OneDriveProvider {
     ) -> Result<(), ProviderError> {
         self.forget_the_way_to(path);
         let item_id = self.live_item_id(path).await?;
+        // Graph refuses the content of the current version (live 2026-11-20:
+        // 400 "You cannot get the content of the current version"): row 0 is
+        // the item's own contents, read only while the label it was listed
+        // with is still on top, before the body and after it.
+        if let Some((listed, _)) = super::bound_current_row_of(version_id) {
+            if listed != item_id {
+                return Err(super::current_row_changed(path));
+            }
+            let on_top =
+                |rows: &[super::FileVersion]| rows.first().is_some_and(|row| row.id == version_id);
+            if !on_top(&self.list_versions(path).await?) {
+                return Err(super::current_row_changed(path));
+            }
+            let response = self.item_content(&item_id).await?;
+            let staged =
+                super::stage_bound_current_body(response, local_path, "Download version failed")
+                    .await?;
+            // Dropped uncommitted on a change: the destination stays.
+            if !on_top(&self.list_versions(path).await?) {
+                return Err(super::current_row_changed(path));
+            }
+            return staged.commit().await.map_err(ProviderError::IoError);
+        }
         let label = super::version_label_of_file(version_id, &item_id, path)?;
         let url = format!(
             "{}/versions/{}/content",
@@ -2709,6 +2809,11 @@ impl StorageProvider for OneDriveProvider {
     }
 
     async fn restore_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
+        if super::bound_current_row_of(version_id).is_some() {
+            return Err(ProviderError::NotSupported(
+                "This is already the current version".into(),
+            ));
+        }
         let selected = super::refuse_a_restore_that_changes_nothing(self, path, version_id).await?;
         self.forget_the_way_to(path);
         let item_id = self.live_item_id(path).await?;
@@ -2730,6 +2835,11 @@ impl StorageProvider for OneDriveProvider {
             .map_err(|e| super::change_send_error(e, &format!("the restore of {path}")))?;
 
         if !response.status().is_success() && response.status().as_u16() != 204 {
+            if let Some(unknown) =
+                super::gateway_left_unknown(response.status(), &format!("the restore of {path}"))
+            {
+                return Err(unknown);
+            }
             let text = super::version_listing_text(response)
                 .await
                 .unwrap_or_default();
@@ -2965,6 +3075,7 @@ impl StorageProvider for OneDriveProvider {
         // Upload in 10MB chunks: read each chunk from file
         let chunk_size = 10 * 1024 * 1024u64;
         let mut offset = start_offset;
+        let mut uploaded: Option<String> = None;
 
         // Seek past already-uploaded bytes
         if offset > 0 {
@@ -3012,6 +3123,10 @@ impl StorageProvider for OneDriveProvider {
                 )));
             }
 
+            // The last chunk's answer is the item the session wrote.
+            if end == total_size {
+                uploaded = uploaded_item_id(resp).await;
+            }
             offset = end;
             if let Some(ref progress) = on_progress {
                 progress(offset, total_size);
@@ -3028,7 +3143,7 @@ impl StorageProvider for OneDriveProvider {
         // KE-B3.1: post-upload version sweep mirrors the small-file path, on
         // the path the session was created for.
         if self.no_versions {
-            self.purge_versions_after_upload(&path, "post-resume_upload")
+            self.purge_versions_after_upload(uploaded.as_deref(), &path, "post-resume_upload")
                 .await;
         }
 
@@ -3482,6 +3597,182 @@ mod tests {
         (provider, patches)
     }
 
+    /// A cached shortcut read again and found pointing at another target, or
+    /// gone, forgets the folders learned plain below it: they were folders of
+    /// the target it had. One that still points where it did keeps them.
+    #[tokio::test]
+    async fn a_shortcut_pointed_elsewhere_forgets_the_plain_folders_below_it() {
+        use axum::response::IntoResponse;
+        let app =
+            axum::Router::new().fallback(axum::routing::any(|uri: axum::http::Uri| async move {
+                let shortcut = |target: &str| {
+                    axum::Json(serde_json::json!({
+                        "id": "S", "name": "x", "size": 0,
+                        "remoteItem": {"id": target, "folder": {"childCount": 0},
+                            "parentReference": {"driveId": "drv2"}}
+                    }))
+                    .into_response()
+                };
+                match uri.path() {
+                    "/v1.0/me/drive/root:/Moved" => shortcut("NEW"),
+                    "/v1.0/me/drive/root:/Kept" => shortcut("SAME"),
+                    _ => axum::http::StatusCode::NOT_FOUND.into_response(),
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = test_provider();
+        provider.connected = true;
+        provider.api_origin_override = Some(format!("http://{addr}"));
+        provider.test_access_token = Some("t".to_string());
+        for (root, target) in [("moved", "OLD"), ("kept", "SAME"), ("gone", "OLD")] {
+            provider
+                .remote_roots
+                .get_mut()
+                .unwrap()
+                .insert(root.into(), ("drv2".into(), target.into()));
+            provider
+                .plain_folders
+                .get_mut()
+                .unwrap()
+                .insert(format!("{root}/inner"));
+        }
+        for path in [
+            "/Moved/inner/x.txt",
+            "/Kept/inner/x.txt",
+            "/Gone/inner/x.txt",
+        ] {
+            provider
+                .confirm_cached_shortcuts(path)
+                .await
+                .unwrap_or_else(|e| panic!("{path}: {e:?}"));
+        }
+        server.abort();
+        let plain = provider.plain_folders.read().unwrap().clone();
+        assert!(plain.contains("kept/inner"), "{plain:?}");
+        assert!(!plain.contains("moved/inner"), "{plain:?}");
+        assert!(!plain.contains("gone/inner"), "{plain:?}");
+    }
+
+    /// Graph refuses the content of the current version (live 2026-11-20):
+    /// row 0 downloads the item itself, through the redirect Graph answers,
+    /// and only while the label it was listed with is on top. A write
+    /// before the download or during its body saves nothing and leaves the
+    /// destination as it was; the row is never restored.
+    #[tokio::test]
+    async fn a_onedrive_current_row_downloads_the_item_only_as_listed() {
+        use axum::response::IntoResponse;
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::{Arc, Mutex};
+        let seen: Arc<Mutex<Vec<String>>> = Arc::default();
+        let written = Arc::new(AtomicBool::new(false));
+        let write_during_body = Arc::new(AtomicBool::new(false));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let (log, w, during) = (
+            Arc::clone(&seen),
+            Arc::clone(&written),
+            Arc::clone(&write_during_body),
+        );
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method, uri: axum::http::Uri| {
+                let (log, w, during) = (Arc::clone(&log), Arc::clone(&w), Arc::clone(&during));
+                async move {
+                    log.lock().unwrap().push(format!("{method} {}", uri.path()));
+                    let top = if w.load(Ordering::SeqCst) {
+                        "4.0"
+                    } else {
+                        "3.0"
+                    };
+                    match (method.as_str(), uri.path()) {
+                        ("GET", "/v1.0/me/drive/root:/f.txt") => axum::Json(serde_json::json!({
+                            "id": "F1", "name": "f.txt", "size": 4, "file": {},
+                            "parentReference": { "path": "/drive/root:" },
+                        }))
+                        .into_response(),
+                        ("GET", "/v1.0/me/drive/items/F1/versions") => {
+                            axum::Json(serde_json::json!({
+                                "value": [{"id": top, "size": 4}, {"id": "2.0", "size": 3}]
+                            }))
+                            .into_response()
+                        }
+                        ("GET", "/v1.0/me/drive/items/F1/content") => {
+                            if during.load(Ordering::SeqCst) {
+                                w.store(true, Ordering::SeqCst);
+                            }
+                            (
+                                axum::http::StatusCode::FOUND,
+                                [("location", format!("http://{addr}/dl/F1"))],
+                            )
+                                .into_response()
+                        }
+                        ("GET", "/dl/F1") => "live".into_response(),
+                        _ => axum::http::StatusCode::NOT_FOUND.into_response(),
+                    }
+                }
+            },
+        ));
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = test_provider();
+        provider.connected = true;
+        provider.api_origin_override = Some(format!("http://{addr}"));
+        provider.test_access_token = Some("t".to_string());
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("f.txt");
+        let to = out.to_str().unwrap();
+
+        let rows = provider.list_versions("/f.txt").await.expect("versions");
+        let current = rows[0].id.clone();
+        assert_eq!(current, super::super::bound_current_row("F1", "3.0"));
+        assert_eq!(rows[1].id, "F1:2.0");
+        provider
+            .download_version("/f.txt", &current, to)
+            .await
+            .expect("row 0 downloads the item itself");
+        assert_eq!(std::fs::read_to_string(&out).unwrap(), "live");
+
+        std::fs::write(&out, "mine").unwrap();
+        written.store(true, Ordering::SeqCst);
+        let before = seen.lock().unwrap().len();
+        let outcome = provider.download_version("/f.txt", &current, to).await;
+        assert!(
+            matches!(&outcome, Err(ProviderError::NotFound(m)) if m.contains("list its versions again")),
+            "{outcome:?}"
+        );
+        assert!(
+            !seen.lock().unwrap()[before..]
+                .iter()
+                .any(|l| l.ends_with("/content")),
+            "a file written since its listing was read: {:?}",
+            seen.lock().unwrap()
+        );
+
+        written.store(false, Ordering::SeqCst);
+        write_during_body.store(true, Ordering::SeqCst);
+        let outcome = provider.download_version("/f.txt", &current, to).await;
+        let restored = provider.restore_version("/f.txt", &current).await;
+        server.abort();
+        assert!(
+            matches!(&outcome, Err(ProviderError::NotFound(m)) if m.contains("list its versions again")),
+            "{outcome:?}"
+        );
+        assert_eq!(std::fs::read_to_string(&out).unwrap(), "mine");
+        assert!(
+            matches!(&restored, Err(ProviderError::NotSupported(m)) if m.contains("already the current")),
+            "{restored:?}"
+        );
+        assert!(
+            !seen
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|l| l.contains("/versions/3.0/")),
+            "{:?}",
+            seen.lock().unwrap()
+        );
+    }
+
     /// Graph lists the current version first (newest to oldest, documented).
     /// It stays row 0 even with no time of its own, its restore is refused
     /// before restoreVersion, and the past version below it still goes there.
@@ -3533,8 +3824,9 @@ mod tests {
             .into_iter()
             .map(|v| v.id)
             .collect();
-        assert_eq!(rows, ["F1:3.0", "F1:2.0"]);
-        let refused = provider.restore_version("/f.txt", "F1:3.0").await;
+        let current = super::super::bound_current_row("F1", "3.0");
+        assert_eq!(rows, [current.as_str(), "F1:2.0"]);
+        let refused = provider.restore_version("/f.txt", &current).await;
         let after_refusal = seen.lock().unwrap().clone();
         let restored = provider.restore_version("/f.txt", "F1:2.0").await;
         server.abort();
@@ -3617,9 +3909,10 @@ mod tests {
         let rows = provider.list_versions("/Shared/f.txt").await;
         server.abort();
         let rows: Vec<String> = rows.expect("versions").into_iter().map(|v| v.id).collect();
-        assert!(
-            !rows.is_empty() && rows.iter().all(|id| id.starts_with("MINE:")),
-            "the file at the path now is listed: {rows:?}"
+        assert_eq!(
+            rows,
+            [super::super::bound_current_row("MINE", "1.0")],
+            "the file at the path now is listed"
         );
         let seen = seen.lock().unwrap();
         assert!(
@@ -3781,7 +4074,8 @@ mod tests {
             .into_iter()
             .map(|v| v.id)
             .collect();
-        assert_eq!(rows, ["F1:3.0", "F1:2.0", "F1:1.0"]);
+        let current = super::super::bound_current_row("F1", "3.0");
+        assert_eq!(rows, [current.as_str(), "F1:2.0", "F1:1.0"]);
         let outcome = provider.restore_version("/f.txt", "F1:1.0").await;
         server.abort();
         // Restored, and not confirmed: Graph answers 204 and lists no hash.
@@ -4009,6 +4303,16 @@ mod tests {
             "{:?}",
             seen.lock().unwrap()
         );
+        // None of the three refusals read a version's contents, of F1 or of
+        // F2, and the destination still holds what it held.
+        assert!(
+            !seen.lock().unwrap().iter().any(|r| r.starts_with("GET")
+                && r.contains("/versions/")
+                && r.ends_with("/content")),
+            "{:?}",
+            seen.lock().unwrap()
+        );
+        assert_eq!(std::fs::read_to_string(&out).unwrap(), "mine");
         *at_path.lock().unwrap() = "F3";
         let partial = provider.download_version("/f.txt", "F3:2.0", to).await;
         assert!(
@@ -5628,6 +5932,66 @@ mod tests {
         server.abort();
     }
 
+    /// A restore answered 503 by a gateway may have been applied behind it:
+    /// it comes back applied and unconfirmed, never as a failure to send
+    /// again, while Graph's own 400 stays a plain refusal.
+    #[tokio::test]
+    async fn a_restore_a_gateway_answered_is_applied_and_not_confirmed() {
+        use axum::http::{Method, StatusCode};
+        let (mut p, requests, server) = graph_fixture(|method, path| {
+            let item = |id: &str, name: &str| {
+                serde_json::json!({ "id": id, "name": name, "size": 5, "file": {},
+                    "parentReference": { "path": "/drive/root:" } })
+            };
+            let versions = serde_json::json!({ "value": [
+                { "id": "2.0", "size": 5, "lastModifiedDateTime": "2026-01-02T00:00:00Z" },
+                { "id": "1.0", "size": 2, "lastModifiedDateTime": "2026-01-01T00:00:00Z" }
+            ] });
+            match (method, path) {
+                (&Method::GET, "/v1.0/me/drive/root:/f.txt") => {
+                    (StatusCode::OK, item("F1", "f.txt"))
+                }
+                (&Method::GET, "/v1.0/me/drive/root:/g.txt") => {
+                    (StatusCode::OK, item("G1", "g.txt"))
+                }
+                (&Method::GET, "/v1.0/me/drive/items/F1/versions")
+                | (&Method::GET, "/v1.0/me/drive/items/G1/versions") => (StatusCode::OK, versions),
+                (&Method::POST, "/v1.0/me/drive/items/F1/versions/1.0/restoreVersion") => (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    serde_json::json!({ "error": { "code": "serviceNotAvailable" } }),
+                ),
+                (&Method::POST, "/v1.0/me/drive/items/G1/versions/1.0/restoreVersion") => (
+                    StatusCode::BAD_REQUEST,
+                    serde_json::json!({ "error": { "code": "invalidRequest" } }),
+                ),
+                _ => (
+                    StatusCode::NOT_FOUND,
+                    serde_json::json!({ "error": { "code": "itemNotFound" } }),
+                ),
+            }
+        })
+        .await;
+        let behind_gateway = p.restore_version("/f.txt", "F1:1.0").await;
+        let refused = p.restore_version("/g.txt", "G1:1.0").await;
+        server.abort();
+        assert!(
+            matches!(&behind_gateway, Err(e) if crate::providers::was_applied(e)
+                && e.to_string().contains("gateway")),
+            "{behind_gateway:?}"
+        );
+        assert!(
+            matches!(&refused, Err(e) if !crate::providers::was_applied(e)),
+            "{refused:?}"
+        );
+        let posts = requests
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|r| r.starts_with("POST"))
+            .count();
+        assert_eq!(posts, 2, "{:?}", requests.lock().unwrap());
+    }
+
     /// With `--onedrive-no-versions`, an upload drops the id cached for the
     /// file so that the version sweep resolves it afresh. It dropped the key
     /// with its leading slash while the cache keys have none: the id from
@@ -5635,15 +5999,21 @@ mod tests {
     #[tokio::test]
     async fn the_no_versions_sweep_resolves_the_uploaded_file_afresh() {
         use axum::http::{Method, StatusCode};
+        // The path names OTHER by the time of the sweep (a file that took
+        // it): the sweep goes to NEW, the item the upload answered.
         let (mut p, requests, server) = graph_fixture(|method, path| match (method, path) {
             (&Method::PUT, "/v1.0/me/drive/root:/a.txt:/content") => {
                 (StatusCode::OK, serde_json::json!({ "id": "NEW" }))
             }
+            (&Method::PUT, "/v1.0/me/drive/root:/b.txt:/content") => {
+                (StatusCode::OK, serde_json::json!({ "name": "b.txt" }))
+            }
             (&Method::GET, "/v1.0/me/drive/root:/a.txt") => (
                 StatusCode::OK,
-                serde_json::json!({ "id": "NEW", "name": "a.txt", "size": 3, "file": {} }),
+                serde_json::json!({ "id": "OTHER", "name": "a.txt", "size": 3, "file": {} }),
             ),
-            (&Method::GET, "/v1.0/me/drive/items/NEW/versions") => {
+            (&Method::GET, "/v1.0/me/drive/items/NEW/versions")
+            | (&Method::GET, "/v1.0/me/drive/items/OTHER/versions") => {
                 (StatusCode::OK, serde_json::json!({ "value": [] }))
             }
             _ => (
@@ -5663,9 +6033,22 @@ mod tests {
             [
                 "PUT /v1.0/me/drive/root:/a.txt:/content",
                 "PATCH /v1.0/me/drive/root:/a.txt",
-                "GET /v1.0/me/drive/root:/a.txt",
                 "GET /v1.0/me/drive/items/NEW/versions",
             ]
+        );
+        // An answer that names no item skips the sweep.
+        requests.lock().unwrap().clear();
+        p.upload(file.path().to_str().unwrap(), "/b.txt", None)
+            .await
+            .expect("upload");
+        assert!(
+            !requests
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|r| r.contains("/versions")),
+            "{:?}",
+            requests.lock().unwrap()
         );
         server.abort();
     }
