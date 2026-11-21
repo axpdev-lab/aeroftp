@@ -10342,6 +10342,44 @@ pub async fn user_partitions_health(app: AppHandle) -> Result<PartitionHealth, S
     Ok(health)
 }
 
+/// Copy the partition database at `path` before a rebuild removes it, with
+/// every committed transaction: those still in its write-ahead log too, which
+/// a copy of the main file alone misses whenever another connection holds a
+/// read open or no checkpoint ran yet. `VACUUM INTO` writes one consistent
+/// file; a database it cannot read (a damaged one) is copied with its `-wal`
+/// and `-shm` files under matching names, from which SQLite recovers the
+/// log when the backup is opened. An error leaves nothing removed.
+fn snapshot_before_rebuild(path: &std::path::Path) -> Result<PathBuf, String> {
+    let stamp = chrono::Utc::now().format("%Y%m%dT%H%M%SZ");
+    let backup = path.with_file_name(format!("{DB_FILENAME}.pre-rebuild-{stamp}.bak"));
+    let vacuumed = Connection::open(path).and_then(|conn| {
+        // Best effort: a reader holding the log keeps it, and VACUUM INTO
+        // reads through it all the same.
+        let _ = conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(()));
+        conn.execute("VACUUM INTO ?1", params![backup.to_string_lossy()])
+    });
+    if let Err(vacuum) = vacuumed {
+        let _ = std::fs::remove_file(&backup);
+        std::fs::copy(path, &backup).map_err(|e| {
+            format!("Snapshot user_partitions.db before rebuild: {vacuum}; copy: {e}")
+        })?;
+        for suffix in ["-wal", "-shm"] {
+            let with = |file: &std::path::Path| {
+                let mut name = file.as_os_str().to_os_string();
+                name.push(suffix);
+                PathBuf::from(name)
+            };
+            let sidecar = with(path);
+            if sidecar.is_file() {
+                std::fs::copy(&sidecar, with(&backup)).map_err(|e| {
+                    format!("Snapshot user_partitions.db{suffix} before rebuild: {e}")
+                })?;
+            }
+        }
+    }
+    Ok(backup)
+}
+
 /// Rebuild the active partition from this device's legacy credential vault.
 /// Snapshots and removes the current (possibly machine-bound, unreadable)
 /// `user_partitions.db`, then re-runs the legacy migration so a fresh default
@@ -10357,10 +10395,7 @@ pub async fn user_partitions_repair_rebuild(
     let lock = ProfileListLock::acquire_for_path(&path)?;
 
     if path.is_file() {
-        let stamp = chrono::Utc::now().format("%Y%m%dT%H%M%SZ");
-        let backup = path.with_file_name(format!("{DB_FILENAME}.pre-rebuild-{stamp}.bak"));
-        std::fs::copy(&path, &backup)
-            .map_err(|e| format!("Snapshot user_partitions.db before rebuild: {e}"))?;
+        let backup = snapshot_before_rebuild(&path)?;
         report.backup_path = Some(backup.to_string_lossy().into_owned());
         // Drop any unlocked session, then remove the DB and its SQLite
         // sidecars. Connections are short-lived per command, so no open handle
@@ -12103,6 +12138,49 @@ mod tests {
         let store = CredentialStore::from_cache().unwrap();
         init_or_migrate_cli(&store).unwrap();
         store
+    }
+
+    /// The backup a rebuild takes holds a transaction still in the database's
+    /// write-ahead log (a reader keeps it from being checkpointed), not only
+    /// what the main file held.
+    #[test]
+    fn a_rebuild_snapshot_keeps_what_the_wal_holds() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(DB_FILENAME);
+        let writer = open_or_init_path(path.clone()).unwrap();
+        writer
+            .query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(()))
+            .unwrap();
+        let reader = Connection::open(&path).unwrap();
+        reader.execute_batch("BEGIN").unwrap();
+        let _: i64 = reader
+            .query_row("SELECT COUNT(*) FROM global_state", [], |row| row.get(0))
+            .unwrap();
+        writer
+            .execute(
+                "INSERT INTO global_state(key, value, updated_at) VALUES ('probe', 'kept', 0)",
+                [],
+            )
+            .unwrap();
+        let backup = snapshot_before_rebuild(&path).unwrap();
+        let alone = tempfile::tempdir().unwrap();
+        let copy = alone.path().join("copy.db");
+        std::fs::copy(&backup, &copy).unwrap();
+        let value: Option<String> = Connection::open(&copy)
+            .unwrap()
+            .query_row(
+                "SELECT value FROM global_state WHERE key = 'probe'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()
+            .unwrap();
+        assert_eq!(
+            value.as_deref(),
+            Some("kept"),
+            "the backup lost a committed write"
+        );
+        drop(reader);
     }
 
     /// A connection that began with no account reads the legacy blob while no
