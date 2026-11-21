@@ -222,6 +222,10 @@ struct Loaded {
     stored_token: String,
     /// The key's deletion count it was read with.
     generation: u64,
+    /// The [`DELETED_CHAINS`] clock it was read with: a delete of the key in
+    /// this process before the read removed some other chain, one after it
+    /// removed this one.
+    clock: u64,
     /// For a kept rotation whose chain was loaded from another key
     /// ([`PENDING_SOURCE`]): that key, and its deletion count when the
     /// rotation's connection began, still its count when it was handed out.
@@ -443,6 +447,12 @@ pub struct JottacloudProvider {
     /// (`try_connect_with_refresh`, `begin_login_chain`) sets this first, off
     /// the async worker, since the clock's lock is held across vault writes.
     chain_since: u64,
+    /// The key the live chain was loaded from, and the [`DELETED_CHAINS`]
+    /// clock it was read with ([`Loaded::clock`]): that key's deletions in
+    /// this process are counted from its load, not from `chain_since`, as its
+    /// deletions by other processes are counted from the count it was read
+    /// with.
+    loaded_since: Option<(String, u64)>,
     /// The refresh token this connection last read from or wrote to each
     /// key (empty for an empty key). A key found holding another one was
     /// written from outside since (an import, a restore): a rotation does
@@ -498,6 +508,7 @@ impl JottacloudProvider {
             credential_user: None,
             rotation_owner: None,
             chain_since: 0,
+            loaded_since: None,
             #[cfg(test)]
             jfs_base_override: None,
             #[cfg(test)]
@@ -825,7 +836,11 @@ impl JottacloudProvider {
             .unwrap_or_else(|e| e.into_inner())
             .clone();
         let state = |account: &str| {
-            if deleted.deleted_since(owner, account, self.chain_since) {
+            let since = match &self.loaded_since {
+                Some((loaded, clock)) if loaded == account => *clock,
+                _ => self.chain_since,
+            };
+            if deleted.deleted_since(owner, account, since) {
                 DeletionState::Moved
             } else {
                 deletion_state(owner, account, generations.get(account).copied())
@@ -1399,6 +1414,9 @@ impl JottacloudProvider {
         let counts = || crate::user_partitions::chain_deletions(&store, owner, account);
         let mut snapshot = None;
         for _ in 0..4 {
+            // This process's deletions too: a delete of the key that ran
+            // while it was read is not paired with what it read.
+            let clock = deletion_clock();
             let pending = read_pending();
             #[cfg(test)]
             tests::after_pending_read(owner, account);
@@ -1411,12 +1429,15 @@ impl JottacloudProvider {
             let after = counts();
             let same_pending =
                 read_pending().as_ref().map(|p| p.as_str()) == pending.as_ref().map(|p| p.as_str());
-            if same_pending && before.as_ref().ok() == after.as_ref().ok() {
-                snapshot = Some((pending, stored, after));
+            if same_pending
+                && before.as_ref().ok() == after.as_ref().ok()
+                && deletion_clock() == clock
+            {
+                snapshot = Some((pending, stored, after, clock));
                 break;
             }
         }
-        let Some((pending, stored, counted)) = snapshot else {
+        let Some((pending, stored, counted, clock)) = snapshot else {
             jotta_log(&format!(
                 "Refresh chain of {} not loaded: it kept changing while it was read",
                 account
@@ -1431,6 +1452,7 @@ impl JottacloudProvider {
                     chain,
                     stored_token,
                     generation,
+                    clock,
                     source,
                 }),
                 None => {
@@ -1623,6 +1645,7 @@ impl JottacloudProvider {
         // The login's chain begins now, on this process's clock too: a key
         // deleted while the refresh before it was tried removed nothing of it.
         self.chain_since = deletion_clock();
+        self.loaded_since = None;
         self.refresh_source_account = None;
         self.refresh_source_written = false;
         self.login_chain = true;
@@ -1707,6 +1730,7 @@ impl JottacloudProvider {
             // (`begin_login_chain`). Off the worker: the clock's lock is held
             // across vault writes and deletions.
             self.chain_since = deletion_clock();
+            self.loaded_since = None;
             self.note_chain_generations();
             Ok::<_, ProviderError>(())
         })?;
@@ -1735,6 +1759,7 @@ impl JottacloudProvider {
                 chain: (rt, te, un),
                 stored_token,
                 generation,
+                clock,
                 source,
             } = match loaded {
                 LoadedChain::Chain(loaded) => loaded,
@@ -1768,6 +1793,9 @@ impl JottacloudProvider {
                     generations.insert(source.clone(), *generation);
                 }
             }
+            // And so is the clock: a delete of the key in this process before
+            // the read removed some other chain.
+            self.loaded_since = Some((account.clone(), clock));
             // The key besides its own whose deletion drops this chain's
             // rotation: the one it was loaded from, or, for a kept rotation
             // loaded again from the profile's key, the one its chain was.

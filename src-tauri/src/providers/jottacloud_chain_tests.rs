@@ -1490,6 +1490,12 @@ pub(super) static REPLACED_AFTER_NOTE: Mutex<Option<ReplacedAfterNote>> = Mutex:
 
 type ReplacedAfterNote = (String, Option<i64>, String, String);
 
+/// A key signed out in this process (its clock moves) and given a new chain
+/// right after a connection read its keys' deletion counts (test only):
+/// `(profile, user, key, the new chain)`, taken once.
+pub(super) static DELETED_HERE_AFTER_NOTE: Mutex<Option<(String, i64, String, String)>> =
+    Mutex::new(None);
+
 pub(super) fn after_note(profile: &str) {
     let replaced = REPLACED_AFTER_NOTE
         .lock()
@@ -1498,6 +1504,18 @@ pub(super) fn after_note(profile: &str) {
     if let Some((_, owner, key, chain)) = replaced {
         let store = CredentialStore::from_cache().unwrap();
         delete_elsewhere(&store, owner, &key);
+        store.store(&key, &chain).unwrap();
+    }
+    let here = DELETED_HERE_AFTER_NOTE
+        .lock()
+        .unwrap()
+        .take_if(|(at, _, _, _)| at == profile);
+    if let Some((_, user, key, chain)) = here {
+        let store = CredentialStore::from_cache().unwrap();
+        delete_refresh_chain::<String>(&store, Some(user), &key, || {
+            remove_both_copies(&store, user, &key)
+        })
+        .expect("delete here");
         store.store(&key, &chain).unwrap();
     }
 }
@@ -1543,6 +1561,51 @@ fn a_chain_stored_again_before_its_load_is_rotated() {
         (chains.stored(key), chains.pending(key).is_some()),
         (rotated, false),
         "the new chain's rotation is written"
+    );
+}
+
+/// The same, signed out in this process: its delete moves this process's
+/// clock, not only the count. The connection counts that key's local deletes
+/// from its load, so the restored chain's rotation is written, not dropped
+/// as if the delete had removed it.
+#[test]
+fn a_chain_restored_here_before_its_load_is_rotated() {
+    if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+        "providers::jottacloud::chain_tests::a_chain_restored_here_before_its_load_is_rotated",
+    ) {
+        return;
+    }
+    let chains = Chains::new();
+    let _ = chains.store.delete("jottacloud_refresh");
+    let key = "jottacloud_refresh_restoredhere";
+    chains
+        .store
+        .store(key, &chains.chain("signed-out-here"))
+        .unwrap();
+    *DELETED_HERE_AFTER_NOTE.lock().unwrap() = Some((
+        "restoredhere".to_string(),
+        chains.first,
+        key.to_string(),
+        chains.chain("restored-here"),
+    ));
+    let mut connection = chains.bound("restoredhere");
+    let from = chains.submissions();
+    let connected = chains
+        .runtime()
+        .block_on(connection.try_connect_with_refresh());
+    *DELETED_HERE_AFTER_NOTE.lock().unwrap() = None;
+    let rotated = connection.refresh_token.expose_secret().to_string();
+    drop(connection);
+    assert!(matches!(connected, Ok(true)), "{connected:?}");
+    assert_eq!(
+        chains.submitted_since(from),
+        ["restored-here"],
+        "the exchange sends the restored chain"
+    );
+    assert_eq!(
+        (chains.stored(key), chains.pending(key).is_some()),
+        (rotated, false),
+        "the restored chain's rotation is written, not dropped as deleted"
     );
 }
 
