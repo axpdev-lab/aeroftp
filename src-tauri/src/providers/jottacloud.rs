@@ -36,9 +36,10 @@ const API_BASE: &str = "https://api.jottacloud.com";
 const TRASH_MOUNTPOINT: &str = "Trash";
 
 /// Why a login stopped when no credential vault could be opened, and what
-/// to do: it stops before the login token is sent, so the same token works
-/// for the retry.
-pub(crate) const NO_VAULT_FOR_LOGIN: &str = "jottacloud: no credential vault could be opened, so the login token cannot be stored; unlock or repair the vault and try again (the login token was not used and is still valid)";
+/// to do: it stops before the login token is sent. It says only what this
+/// attempt knows: it did not send the token, which may still have been used
+/// elsewhere or have expired.
+pub(crate) const NO_VAULT_FOR_LOGIN: &str = "jottacloud: no credential vault could be opened, so the login token cannot be stored; unlock or repair the vault and try again (this attempt did not send the login token)";
 
 fn jotta_log(msg: &str) {
     info!("[JOTTACLOUD] {}", msg);
@@ -1635,8 +1636,8 @@ impl JottacloudProvider {
                 .ok()
                 .and_then(|_| crate::credential_store::CredentialStore::from_cache())
         });
-        // Stopped before the login token is sent, so it stays valid for the
-        // retry the message asks for.
+        // Stopped before the login token is sent: this attempt does not spend
+        // it, whatever became of it elsewhere.
         let Some(store) = store else {
             return Err(ProviderError::ConnectionFailed(
                 NO_VAULT_FOR_LOGIN.to_string(),

@@ -1839,6 +1839,10 @@ fn a_login_with_no_vault_to_open_keeps_its_login_token() {
                 message,
                 super::NO_VAULT_FOR_LOGIN,
                 "the message says why and what to do"
+            );
+            assert!(
+                !message.contains("still valid"),
+                "the message claims only what this attempt knows: {message}"
             )
         }
         other => panic!("a login with no vault stops with a retryable error: {other:?}"),
