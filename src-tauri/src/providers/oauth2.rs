@@ -1880,11 +1880,12 @@ impl OAuth2Manager {
             let conn = crate::user_partitions::open_or_init_cli()
                 .map_err(|_| ProviderError::Other("Failed to open token owner".into()))?;
             let key = Zeroizing::new(store.derive_user_partition_wrapping_key());
+            // A row that may be another account's copy reads as absent, as
+            // for every other reader of a private row.
             let resolved =
-                crate::user_partitions::get_user_credential_for(&conn, &key, user, &account)
-                    .map_err(|e| {
-                        ProviderError::Other(format!("Failed to read user tokens: {e}"))
-                    })?;
+                crate::user_partitions::read_checked_row(&conn, &store, &key, user, &account)
+                    .map_err(|e| ProviderError::Other(format!("Failed to read user tokens: {e}")))?
+                    .value();
             if let Some(json) = resolved {
                 return Self::decode_record(&json, TokenSource::Partition(user), credential_user);
             }
@@ -3627,6 +3628,66 @@ mod tests {
             assert!(store.get(account).is_err());
             assert!(!json_path.exists());
             assert!(!claim.exists(), "the claim is purged with the rest");
+        });
+    }
+
+    /// While profile tags are pending after a restore, an account other than
+    /// the legacy owner whose row is an unstamped copy of the vault's token
+    /// loads no token at all, as every other reader of a private row reads it:
+    /// never the owner's. Its own sign-in stamps the row, which then loads.
+    #[test]
+    fn a_withheld_row_loads_no_token_for_another_account() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::oauth2::tests::a_withheld_row_loads_no_token_for_another_account",
+        ) {
+            return;
+        }
+        with_two_box_accounts(|store, first, second, account| {
+            let conn = crate::user_partitions::open_or_init_cli().unwrap();
+            let root = Zeroizing::new(store.derive_user_partition_wrapping_key());
+            let owners = store.get(account).unwrap();
+            assert!(owners.contains("first-token"), "the vault is the owner's");
+            crate::user_partitions::set_user_credential_for(
+                &conn, &root, second, account, "oauth", &owners,
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO global_state(key, value, updated_at)
+                 VALUES ('profile_tags_pending_' || ?1, '1', 0)",
+                rusqlite::params![first],
+            )
+            .unwrap();
+            conn.execute(
+                "DELETE FROM global_state WHERE key = 'private_tokens_aligned_' || ?1",
+                rusqlite::params![second],
+            )
+            .unwrap();
+            let load = || {
+                OAuth2Manager::new()
+                    .with_credential_user(Some(second))
+                    .load_token_record(OAuthProvider::Box, "shared-profile")
+                    .map(|record| record.tokens.access_token.clone())
+            };
+            let withheld = load();
+            assert!(
+                matches!(withheld, Err(ProviderError::AuthenticationFailed(_))),
+                "{withheld:?}"
+            );
+            OAuth2Manager::new()
+                .with_credential_user(Some(second))
+                .store_tokens(
+                    OAuthProvider::Box,
+                    "shared-profile",
+                    &StoredTokens {
+                        access_token: "second-new".into(),
+                        refresh_token: None,
+                        expires_at: None,
+                        token_type: "Bearer".into(),
+                        scopes: vec![],
+                    },
+                )
+                .unwrap();
+            assert_eq!(load().unwrap(), "second-new");
         });
     }
 
