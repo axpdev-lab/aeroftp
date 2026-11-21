@@ -602,7 +602,14 @@ fn staging_path_below(staging: &Path, source: &Path) -> Option<String> {
     let relative = staging.strip_prefix(&root).ok()?;
     let parts = relative
         .components()
-        .map(|component| component.as_os_str().to_str())
+        // The crate names entries with `/` and turns a backslash in a name
+        // into one as well, so match that namespace.
+        .map(|component| {
+            component
+                .as_os_str()
+                .to_str()
+                .map(|part| part.replace('\\', "/"))
+        })
         .collect::<Option<Vec<_>>>()?;
     (!parts.is_empty()).then(|| parts.join("/"))
 }
@@ -1054,6 +1061,33 @@ mod tests {
             .filter(|path| path.contains(".aerocreate-prepare-") || path.ends_with(".aerozip"))
             .collect();
         assert!(paths.is_empty(), "{paths:?}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn archive_created_below_a_folder_with_a_backslash_in_its_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("docs");
+        let parent = input.join("sub\\one");
+        std::fs::create_dir_all(&parent).unwrap();
+        std::fs::write(input.join("a.txt"), b"alpha").unwrap();
+        let output = parent.join("docs.aerozip");
+
+        create_archive(
+            output.to_str().unwrap(),
+            &[input.to_str().unwrap().to_string()],
+            "balanced",
+            "0",
+        )
+        .unwrap();
+
+        let vault = open_plaintext_archive(&output).unwrap();
+        let mut paths: Vec<_> = aerovault::v3::VaultV3::list(&vault)
+            .into_iter()
+            .map(|entry| entry.path)
+            .collect();
+        paths.sort();
+        assert_eq!(paths, ["docs", "docs/a.txt", "docs/sub", "docs/sub/one"]);
     }
 
     #[test]
