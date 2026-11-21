@@ -13993,9 +13993,13 @@ fn unlock_vault(cli: &Cli, asking: Asking) -> Result<(), String> {
 
 /// True when an AeroVault repair report leaves damaged chunks unrepaired, in a
 /// real run or a dry run. `vault repair` then exits non-zero after printing it.
+/// A report without both counts fails closed.
 fn vault_repair_left_damage(report: &serde_json::Value) -> bool {
-    let count = |key: &str| report.get(key).and_then(|v| v.as_u64()).unwrap_or(0);
-    count("repaired") < count("damaged")
+    let count = |key: &str| report.get(key).and_then(|v| v.as_u64());
+    match (count("repaired"), count("damaged")) {
+        (Some(repaired), Some(damaged)) => repaired < damaged,
+        _ => true,
+    }
 }
 
 #[cfg(test)]
@@ -14019,6 +14023,10 @@ mod vault_repair_exit_tests {
                 &json!({"repaired": 0, "damaged": 0, "dry_run": dry_run})
             ));
         }
+        assert!(vault_repair_left_damage(&json!({"repaired": 0})));
+        assert!(vault_repair_left_damage(
+            &json!({"repaired": 0, "damaged": "3"})
+        ));
     }
 }
 
