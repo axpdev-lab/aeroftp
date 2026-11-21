@@ -8545,9 +8545,12 @@ pub fn change_user_passphrase(
     let has_passphrase = new_passphrase.is_some();
     let wrapped_dek = user_crypto::wrap_dek(&wrapping_key, &dek)?;
     conn.execute(
+        // The default account opens without a prompt: one given a passphrase
+        // stops being the default.
         "UPDATE users
          SET has_passphrase = ?1, kdf_salt = ?2, kdf_params = ?3,
-             wrapped_dek = ?4, updated_at = ?5
+             wrapped_dek = ?4, updated_at = ?5,
+             is_default = CASE WHEN ?1 = 1 THEN 0 ELSE is_default END
          WHERE id = ?6",
         params![
             if has_passphrase { 1 } else { 0 },
@@ -8898,7 +8901,8 @@ pub fn admin_reset_user_passphrase(
             "UPDATE users
              SET has_passphrase = ?1, kdf_salt = ?2, kdf_params = ?3,
                  wrapped_dek = ?4, dek_verifier = ?5, last_unlocked_at = NULL,
-                 updated_at = ?6
+                 updated_at = ?6,
+                 is_default = CASE WHEN ?1 = 1 THEN 0 ELSE is_default END
              WHERE id = ?7",
             params![
                 if has_passphrase { 1 } else { 0 },
@@ -8995,8 +8999,15 @@ pub fn set_default_user(
     user_id: i64,
     make_default: bool,
 ) -> Result<(), String> {
+    let now = now_ms();
+    // The passphrase check and the flag share one write transaction, so a
+    // passphrase added meanwhile lands before it (and the flag is refused) or
+    // after it (and its write clears the flag).
+    let tx = conn
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(|e| format!("Start set default user: {e}"))?;
     if make_default {
-        let has_passphrase: Option<i64> = conn
+        let has_passphrase: Option<i64> = tx
             .query_row(
                 "SELECT has_passphrase FROM users WHERE id = ?1",
                 params![user_id],
@@ -9009,12 +9020,6 @@ pub fn set_default_user(
             Some(flag) if flag != 0 => return Err("DEFAULT_REQUIRES_NO_PASSPHRASE".to_string()),
             Some(_) => {}
         }
-    }
-    let now = now_ms();
-    let tx = conn
-        .transaction()
-        .map_err(|e| format!("Start set default user: {e}"))?;
-    if make_default {
         // Single-winner: drop the flag everywhere, then stamp the target.
         tx.execute(
             "UPDATE users SET is_default = 0, updated_at = ?1 WHERE is_default = 1",
@@ -16698,6 +16703,49 @@ mod tests {
         assert_eq!(
             set_user_admin(&mut conn, default.id, false),
             Err("CANNOT_DEMOTE_LAST_ADMIN".to_string())
+        );
+    }
+
+    /// The default account opens without a prompt: a passphrase added to it,
+    /// by its own change or an admin reset, clears the flag. A change that
+    /// leaves an account without a passphrase, and one of another account,
+    /// leave it.
+    #[test]
+    fn a_passphrase_clears_the_default_flag() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let admin = get_active_user(&conn).unwrap().unwrap().id;
+        let alice = create_passphrase_less_user(&mut conn, &root, "alice", None, None).unwrap();
+        let carol = create_passphrase_less_user(&mut conn, &root, "carol", None, None).unwrap();
+        let is_default = |conn: &Connection, id: i64| {
+            list_users(conn)
+                .unwrap()
+                .into_iter()
+                .find(|u| u.id == id)
+                .unwrap()
+                .is_default
+        };
+        set_default_user(&mut conn, alice.id, true).unwrap();
+        change_user_passphrase(&conn, &root, alice.id, None, None).unwrap();
+        change_user_passphrase(&conn, &root, carol.id, None, Some("carol's")).unwrap();
+        assert!(
+            is_default(&conn, alice.id),
+            "a change without a passphrase cleared it"
+        );
+        change_user_passphrase(&conn, &root, alice.id, None, Some("alice's")).unwrap();
+        assert!(
+            !is_default(&conn, alice.id),
+            "a protected account stayed the default"
+        );
+
+        change_user_passphrase(&conn, &root, alice.id, Some("alice's"), None).unwrap();
+        set_default_user(&mut conn, alice.id, true).unwrap();
+        set_active_user(&conn, admin).unwrap();
+        admin_reset_user_passphrase(&mut conn, &root, alice.id, Some("recovered")).unwrap();
+        assert!(
+            !is_default(&conn, alice.id),
+            "an admin reset left a protected default"
         );
     }
 
