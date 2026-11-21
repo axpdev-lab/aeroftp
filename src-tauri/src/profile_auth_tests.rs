@@ -2506,3 +2506,41 @@ fn a_sole_holder_reads_no_vault_token_of_another_account() {
         Some("q-token")
     );
 }
+
+/// GitHub readiness without a profile reads the account once: the profile is
+/// the one that account lists and the credential the one it holds, never the
+/// profile of one account paired with another's credentials after a switch.
+#[test]
+fn github_readiness_reads_one_account_for_its_profile_and_credential() {
+    if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+        "profile_auth::tests::github_readiness_reads_one_account_for_its_profile_and_credential",
+    ) {
+        return;
+    }
+    let _guard = users::test_lock();
+    let (store, owner, others) = isolated_accounts(1);
+    let other = others[0];
+    let mut conn = users::open_or_init_cli().unwrap();
+    let root = zeroize::Zeroizing::new(store.derive_user_partition_wrapping_key());
+    users::replace_server_profiles_for(
+        &mut conn,
+        &root,
+        owner,
+        &[json!({"id": "gh", "name": "gh", "protocol": "github", "host": ""})],
+    )
+    .unwrap();
+    users::set_user_credential_for(
+        &conn,
+        &root,
+        owner,
+        "server_gh",
+        users::relocate_secret_kind("server_gh"),
+        "ghp_synthetic",
+    )
+    .unwrap();
+    assert_eq!(saved_github_readiness(&store, "gh", None, None), "valid");
+    AFTER_READINESS_ACCOUNT.set(Some(Box::new(move || {
+        users::set_active_user(&users::open_or_init_cli().unwrap(), other).unwrap();
+    })));
+    assert_eq!(saved_github_readiness(&store, "gh", None, None), "valid");
+}

@@ -323,6 +323,14 @@ fn materialize_github_metadata(
     }
     Ok(())
 }
+#[cfg(test)]
+thread_local! {
+    /// Runs once on this thread in the next [`saved_github_readiness`],
+    /// between its two account lookups: a switch of the active account.
+    static AFTER_READINESS_ACCOUNT: std::cell::RefCell<Option<Box<dyn FnOnce()>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
 /// Only GitHub readiness belongs to this route; other auth-source rules remain shared.
 /// Without `profile`, the profile is the one `user_id` lists (the active
 /// account's when `None`): another account may hold a profile of the same id
@@ -333,6 +341,18 @@ pub fn saved_github_readiness(
     profile: Option<&Value>,
     user_id: Option<i64>,
 ) -> &'static str {
+    // The account is read once, so the profile and the credentials it is
+    // paired with are the same account's, whatever a switch does meanwhile.
+    let user_id = user_id.or_else(|| {
+        users::cli_get_active_user(store)
+            .ok()
+            .flatten()
+            .map(|user| user.id)
+    });
+    #[cfg(test)]
+    if let Some(hook) = AFTER_READINESS_ACCOUNT.take() {
+        hook();
+    }
     let found = if profile.is_none() {
         users::mcp_list_server_profiles(store, user_id)
             .ok()
@@ -340,12 +360,6 @@ pub fn saved_github_readiness(
     } else {
         None
     };
-    let user_id = user_id.or_else(|| {
-        users::cli_get_active_user(store)
-            .ok()
-            .flatten()
-            .map(|user| user.id)
-    });
     let fallback = json!({"id":id,"protocol":"github","host":""});
     readiness(
         &AuthScope { store, user_id },
