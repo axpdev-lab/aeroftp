@@ -232,9 +232,9 @@ dependencies = [
 
 [[package]]
 name = "aerovault"
-version = "0.6.8"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0fb3ceaf7f1fbd51ea703bae8683e4b6517fec0173eb7a3fbd3f88069325679b"
+checksum = "192719fe093f9d39c2b9a44d68ff7d35d1db87ecb35ee3fc522dccf7df3649b6"
 dependencies = [
  "aes-gcm-siv",
  "aes-kw",
@@ -250,11 +250,14 @@ dependencies = [
  "libc",
  "rand 0.8.8",
  "reed-solomon-erasure",
+ "same-file",
  "secrecy 0.8.0",
  "serde",
  "serde_json",
  "sha2 0.10.9",
  "tempfile",
+ "unicode-casefold",
+ "unicode-normalization",
  "walkdir",
  "zeroize",
  "zstd",
@@ -12350,6 +12353,12 @@ name = "unicase"
 version = "2.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dbc4bc3a9f746d862c45cb89d705aa10f187bb96c76001afab07a0d35ce60142"
+
+[[package]]
+name = "unicode-casefold"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b7f66b1c8f8caa2ab31dc6d3f35386f16efdab89668f93411e565ac368908e8f"
 
 [[package]]
 name = "unicode-ident"
