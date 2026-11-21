@@ -77,6 +77,9 @@ export const BridgeSourcePanel: React.FC<Props> = ({
     const [detectedPath, setDetectedPath] = useState<string | null>(null);
     const [result, setResult] = useState<BridgeImportResult | null>(null);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    // The preview on screen was confirmed: its selection and its confirm are
+    // closed (see `confirmImport`), until a new scan replaces it.
+    const [committed, setCommitted] = useState(false);
     const [keptRelaxed, setKeptRelaxed] = useState<Set<string>>(() => new Set());
 
     // export state
@@ -212,6 +215,7 @@ export const BridgeSourcePanel: React.FC<Props> = ({
             }));
             // Overtaken by a later scan, which owns the panel state now.
             if (r === null) { latest = false; return; }
+            setCommitted(false);
             setResult(r);
             setSelectedIds(new Set(r.servers.map(s => s.id)));
         } catch (e) {
@@ -266,7 +270,10 @@ export const BridgeSourcePanel: React.FC<Props> = ({
                     .map(r => r.key);
                 return importedServerProfile(s, keep);
             });
-        if (selected.length === 0 || committingRef.current) return;
+        // A preview confirmed once is settled at once: what its scan wrote for
+        // the profiles left out is gone, so a second confirm of the same
+        // preview would save those profiles without their secrets.
+        if (selected.length === 0 || committingRef.current || scans.isCommitted()) return;
         // The commit is not idempotent: onImport appends to the persisted list
         // and existingServerKeys still holds the pre-import snapshot, so a
         // second click while the first is in flight writes the same profiles
@@ -280,6 +287,8 @@ export const BridgeSourcePanel: React.FC<Props> = ({
                 () => commitImportedServers(selected, existingServerKeys, onImport, result.importedUserId),
             );
             if (outcome.error) { setError(outcome.error); return; }
+            scans.markCommitted();
+            setCommitted(true);
             await scans.release();
             const parts: string[] = [];
             if (outcome.added > 0) parts.push(t('settings.importSuccess').replace('{count}', String(outcome.added)));
@@ -291,6 +300,10 @@ export const BridgeSourcePanel: React.FC<Props> = ({
             committingRef.current = false;
             setLoading(false);
         }
+    };
+
+    const selectImport: React.Dispatch<React.SetStateAction<Set<string>>> = next => {
+        if (!committed) setSelectedIds(next);
     };
 
     const toggle = (id: string, set: React.Dispatch<React.SetStateAction<Set<string>>>) =>
@@ -407,7 +420,7 @@ export const BridgeSourcePanel: React.FC<Props> = ({
                                         selected={selectedIds}
                                         shownIds={importShownIds}
                                         filtering={importFilter.filtering}
-                                        onChange={setSelectedIds}
+                                        onChange={selectImport}
                                     />
                                 </div>
                                 <ServerChecklistSearch value={importFilter.query} onChange={importFilter.setQuery} />
@@ -420,8 +433,8 @@ export const BridgeSourcePanel: React.FC<Props> = ({
                                         return (
                                             <div key={s.id}
                                                 className={`flex items-center gap-3 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer border-b border-gray-100 dark:border-gray-700 last:border-b-0 ${dup ? 'opacity-50' : ''}`}
-                                                onClick={() => toggle(s.id, setSelectedIds)}>
-                                                <Checkbox checked={selectedIds.has(s.id)} onChange={() => toggle(s.id, setSelectedIds)} />
+                                                onClick={() => toggle(s.id, selectImport)}>
+                                                <Checkbox checked={selectedIds.has(s.id)} disabled={committed} onChange={() => toggle(s.id, selectImport)} />
                                                 <div className="min-w-0 flex-1">
                                                     <div className="text-sm font-medium truncate flex items-center gap-1.5">
                                                         {s.name}
@@ -510,7 +523,7 @@ export const BridgeSourcePanel: React.FC<Props> = ({
                     {result && result.servers.length > 0 && (
                         <button
                             onClick={confirmImport}
-                            disabled={loading || selectedIds.size === 0}
+                            disabled={loading || committed || selectedIds.size === 0}
                             className="flex-1 px-4 py-2 text-sm bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 disabled:opacity-50 flex items-center justify-center gap-2"
                         >
                             <Upload size={16} />

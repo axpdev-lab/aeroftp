@@ -430,8 +430,35 @@ describe('createScanSettler', () => {
         expect(body.indexOf('const request = scans.begin();')).toBeGreaterThan(0);
         expect(body.indexOf('const request = scans.begin();')).toBeLessThan(body.indexOf('await '));
         expect(body).toMatch(/await scans\.latest\(request, \(\) => invoke<BridgeImportResult>\('import_bridge_config'/);
-        expect(body).toMatch(/if \(r === null\) \{ latest = false; return; \}\s*setResult\(r\);/);
+        const overtaken = body.indexOf('if (r === null) { latest = false; return; }');
+        expect(overtaken).toBeGreaterThan(0);
+        expect(overtaken).toBeLessThan(body.indexOf('setResult(r);'));
         expect(panelSource).not.toMatch(/scans\.track\(/);
+    });
+
+    it('holds a confirmed preview as confirmed until a new scan replaces it', async () => {
+        const settle = vi.fn().mockResolvedValue(undefined);
+        const scans = createScanSettler(settle);
+        await scans.track('scan-1');
+        expect(scans.isCommitted()).toBe(false);
+        scans.markCommitted();
+        await scans.release();
+        expect(scans.isCommitted()).toBe(true);
+        await scans.latest(scans.begin(), async () => ({ scanId: 'scan-2' }));
+        expect(scans.isCommitted()).toBe(false);
+    });
+
+    // Confirm only A: the settle takes back B's secrets. A second confirm of
+    // that preview, B ticked before the close timer fires, must not save B.
+    it('is the confirm the panel runs: once a preview is confirmed it cannot be confirmed again', () => {
+        const body = panelSource.slice(panelSource.indexOf('const confirmImport = async'), panelSource.indexOf('const selectImport'));
+        const guard = body.indexOf('scans.isCommitted()) return;');
+        expect(guard).toBeGreaterThan(0);
+        expect(guard).toBeLessThan(body.indexOf('commitImportedServers('));
+        expect(body).toMatch(/if \(outcome\.error\) \{ setError\(outcome\.error\); return; \}\s*scans\.markCommitted\(\);\s*setCommitted\(true\);\s*await scans\.release\(\);/);
+        expect(panelSource).toMatch(/onClick=\{confirmImport\}\s*disabled=\{loading \|\| committed \|\| selectedIds\.size === 0\}/);
+        expect(panelSource).toMatch(/if \(!committed\) setSelectedIds\(next\);/);
+        expect(panelSource.match(/toggle\(s\.id, setSelectedIds\)|onChange=\{setSelectedIds\}/g)).toBeNull();
     });
 
     it('keeps going when a settle fails', async () => {

@@ -241,6 +241,7 @@ export function createScanSettler(settle: (scanId: string | null) => Promise<unk
     let closed = false;
     let confirm: Promise<unknown> | null = null;
     let generation = 0;
+    let committed = false;
     const run = async (scanId: string | null) => {
         try {
             await settle(scanId);
@@ -256,12 +257,13 @@ export function createScanSettler(settle: (scanId: string | null) => Promise<unk
         await run(scanId);
     };
     /**
-     * Holds the scan just made; one made after the panel closed is settled,
-     * and so is the one it replaces.
+     * Holds the scan just made, a new preview not yet confirmed; one made
+     * after the panel closed is settled, and so is the one it replaces.
      */
     const track = async (scanId: string | null | undefined) => {
         const previous = current;
         current = scanId ?? null;
+        committed = false;
         if (previous && previous !== current) await run(previous);
         if (closed) await release();
     };
@@ -303,6 +305,18 @@ export function createScanSettler(settle: (scanId: string | null) => Promise<unk
             }
             await track(response.scanId);
             return response;
+        },
+        /**
+         * The preview held was confirmed: its scan is settled next, which takes
+         * back what it wrote for the profiles left out, so the preview can be
+         * confirmed no more. A failed confirm does not call this.
+         */
+        markCommitted() {
+            committed = true;
+        },
+        /** Whether the preview held was confirmed (a new scan clears it). */
+        isCommitted(): boolean {
+            return committed;
         },
         /** Settles the scan held, if any, once. */
         release,
