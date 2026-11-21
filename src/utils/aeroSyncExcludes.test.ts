@@ -23,6 +23,12 @@ describe('AeroSync compare exclusions', () => {
         expect(cliExcludePatterns([], AEROSYNC_DEFAULT_BACKUP_DIR)).toEqual(expect.arrayContaining(journals));
     });
 
+    it('leaves an ordinary dot file ending in .aerostrip to the Rust journal rule', () => {
+        // The Rust artifact rule excludes only the 64-hex strip journals; a
+        // default glob ending in .aerostrip would also drop `.notes.aerostrip`.
+        expect(compareExcludePatterns([]).filter((p) => p.endsWith('.aerostrip'))).toEqual([]);
+    });
+
     it('sends the Plan tab patterns to every compare, after the defaults', () => {
         // Before the Plan had an exclude field, a remote compare ran with the
         // defaults only, so a file matching the user's pattern was planned

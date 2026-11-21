@@ -686,6 +686,7 @@ mod tests {
             ExcludeMatcher::for_sync(&empty).unwrap(),
             crate::sync::compile_excludes(&[]).unwrap(),
         ] {
+            assert!(!matcher.is_excluded(".notes.aerostrip"));
             if cfg!(windows) {
                 assert!(matcher.is_excluded("nested\\entry.aerolock\\child"));
             } else {
