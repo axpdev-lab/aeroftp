@@ -7208,7 +7208,10 @@
         },
         "openRequest": {
             "folderBusyTitle": "La carpeta encara s'està carregant",
-            "folderBusy": "El fitxer que ha obert no s'ha mostrat: una altra carpeta encara s'estava carregant quan es va sol·licitar {folder}. Torni'l a obrir."
+            "folderBusy": "El fitxer que ha obert no s'ha mostrat: una altra carpeta encara s'estava carregant quan es va sol·licitar {folder}. Torni'l a obrir.",
+            "signInNeedsProfileTitle": "{provider} necessita el seu inici de sessió desat",
+            "signInNeedsProfile": "{provider} inicia la sessió mitjançant la seva pròpia autorització al navegador, cosa que un enllaç no pot transportar. Afegiu i autoritzeu el compte a Els meus servidors i després obriu {scheme}://<nom del perfil>/carpeta/.",
+            "signInNameTheProfile": "Hi ha diversos comptes de {provider} desats. Indiqueu quin voleu obrir: {scheme}://<nom del perfil>/carpeta/."
         }
     }
 }

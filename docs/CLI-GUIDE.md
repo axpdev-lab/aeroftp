@@ -12,29 +12,64 @@ AeroFTP CLI is a production command-line client for multi-protocol file transfer
 
 ### Direct URL Protocols
 
-| Protocol | URL Scheme | Auth Method |
-|----------|-----------|-------------|
-| FTP | `ftp://` | Password |
-| FTPS | `ftps://` | Password + TLS |
-| SFTP | `sftp://` | Password / SSH Key |
-| SCP | `scp://` | Password / SSH Key |
-| WebDAV | `webdav://` / `webdavs://` | Password |
-| S3 | `s3://` | Access Key + Secret |
-| MEGA.nz | `mega://` | Password (E2E) |
-| Azure Blob | `azure://` | HMAC / SAS Token |
-| Filen | `filen://` | Password (E2E) |
-| Internxt | `internxt://` | Password (E2E) |
-| Jottacloud | `jottacloud://` | Bearer Token |
-| FileLu | `filelu://` | API Key |
-| Koofr | `koofr://` | OAuth2 Token |
-| OpenDrive | `opendrive://` | Password |
-| GitHub | `github://` | PAT / Device Flow |
-| Yandex Disk | `yandexdisk://` | OAuth2 (via `--profile`) |
+One table of URL schemes serves the CLI and the desktop app: `aeroftp-cli ls <url>` and `aeroftp <url>` (also a link handed to the running app) accept the same schemes and read them the same way, with one difference: a sign-in provider (see below) opens in the CLI only through `--profile <name>`, while the app opens the saved account a link names. A URL never has to carry a secret: each scheme reads it from its environment variable, then `AEROFTP_PASSWORD` (the CLI also takes `--password-stdin` and `--token`). A password written in the URL still works for tools that pass a single argument, and it is masked in every log.
+
+| Protocol | URL form | Secret from the environment |
+|----------|----------|-----------------------------|
+| FTP | `ftp://user@host/path` | `FTP_PASSWORD` |
+| FTP, explicit TLS | `ftpes://user@host/path` | `FTP_PASSWORD` |
+| FTPS, implicit TLS | `ftps://user@host/path` | `FTP_PASSWORD` |
+| SFTP | `sftp://user@host:22/path` (`ssh://` too) | `SFTP_PASSWORD`, or `--key` |
+| SCP | `scp://user@host/path` | `SFTP_PASSWORD`, or `--key` |
+| WebDAV | `webdav://user@host/path` (HTTP), `webdavs://user@host/path` (HTTPS) | `WEBDAV_PASSWORD` |
+| S3 and S3-compatible | `s3://ACCESS_KEY@endpoint/path?bucket=name&region=eu-central-1` (also `endpoint=`, `path_style=true`) | The AWS chain below |
+| Azure Blob | `azure://account@account.blob.core.windows.net/path?container=name` | `AZURE_STORAGE_KEY` |
+| Backblaze B2 | `backblaze://KEY_ID@bucket/path` (`b2://` too) | `B2_APPLICATION_KEY`; key id also from `B2_APPLICATION_KEY_ID` |
+| OpenStack Swift | `swift://user@auth-host/path` | `ST_KEY`, `OS_PASSWORD` |
+| MEGA | `mega://you%40example.com@mega.nz/path` | `AEROFTP_PASSWORD` |
+| Proton Drive | `proton://you%40proton.me@drive.proton.me/path` | `AEROFTP_PASSWORD` |
+| Filen | `filen://you%40example.com@gateway.filen.io/path` | `AEROFTP_PASSWORD` |
+| Internxt | `internxt://you%40example.com@drive.internxt.com/path` | `AEROFTP_PASSWORD` |
+| Jottacloud | `jottacloud://user@jfs.jottacloud.com/path` | `AEROFTP_PASSWORD` |
+| FileLu | `filelu://filelu.com/path` (the API key never goes in the URL) | `AEROFTP_PASSWORD` |
+| Koofr | `koofr://you%40example.com@app.koofr.net/path` | `AEROFTP_PASSWORD` |
+| OpenDrive | `opendrive://user@dev.opendrive.com/path` | `AEROFTP_PASSWORD` |
+| kDrive | `kdrive://DRIVE_ID/path` | `KDRIVE_TOKEN` |
+| Drime | `drime:///path` | `DRIME_TOKEN` |
+| Immich | `immich://host:2283/path` (`?scheme=http` for a plain-HTTP server) | `IMMICH_API_KEY` |
+| ImageKit | `imagekit://IMAGEKIT_ID/path` | `IMAGEKIT_PRIVATE_KEY` |
+| Uploadcare | `uploadcare://PUBLIC_KEY/path` | `UPLOADCARE_SECRET_KEY` |
+| Cloudinary | `cloudinary://API_KEY@cloud_name/path` (Cloudinary's own `CLOUDINARY_URL` form) | `CLOUDINARY_API_SECRET` |
+| GitHub | `github://owner/repo[@branch]` (or `?branch=`; a branch may hold `/`, as in `github://owner/repo@release/2026`) | `AEROFTP_PASSWORD`, or `--token` |
+| GitLab | `gitlab://host[:port]/group/project[@branch]` (or `?branch=`; subgroups allowed; the host is the instance's full name, such as `gitlab.com` or `git.example.com:8443`) | `GITLAB_TOKEN`, or `--token` |
+| Yandex Disk | `yandexdisk:///path` | `--token` (CLI); the app opens a saved profile |
 | Local folder | `/abs/path`, `./rel/path`, `file:///abs/path` | None (a folder of this machine) |
+
+A query string only takes the options listed above for its scheme; any other name, and any secret, is refused before connecting.
+
+### S3 credentials: the AWS chain
+
+An `s3://` URL reads the credentials the AWS tools read, highest first:
+
+| Source | Access key id | Secret key | Session token | Region |
+|--------|---------------|------------|---------------|--------|
+| The CLI flags | | `--token`, `--password-stdin` | | `--region` (below a host that spells its region) |
+| The URL | user part | password part | (never in a URL) | `?region=` |
+| AeroFTP environment | | `AEROFTP_PASSWORD` | | |
+| AWS environment | `AWS_ACCESS_KEY_ID` | `AWS_SECRET_ACCESS_KEY` | `AWS_SESSION_TOKEN` | `AWS_REGION`, `AWS_DEFAULT_REGION` |
+| AWS files | `aws_access_key_id` | `aws_secret_access_key` | `aws_session_token` | `region` |
+
+The files are `~/.aws/credentials` and `~/.aws/config` (or the paths in `AWS_SHARED_CREDENTIALS_FILE` and `AWS_CONFIG_FILE`), section `AWS_PROFILE` or `default`. A secret key and its session token are taken only together with their own access key id, so a key pair of another identity is never mixed in. A URL that names everything never reads `~/.aws`.
+
+The endpoint host selects its provider preset (Wasabi, Cloudflare R2, IBM COS, Backblaze S3, MinIO and the other S3 presets), with the preset's path style. A host that spells its region (`s3.eu-central-2.wasabisys.com`) signs with that region over any other source, `--region` included, as a saved profile of the same endpoint does: SigV4 signs with the region the host serves.
+
+### Sign-in providers
+
+Google Drive (`googledrive://`), Dropbox (`dropbox://`), OneDrive (`onedrive://`), Box (`box://`), pCloud (`pcloud://`), Zoho WorkDrive (`zohoworkdrive://`), 4shared (`fourshared://`) and Twake (`twake://`) sign in through the provider's own browser authorization, which no URL can carry. Authorize the account once in My Servers; then `--profile <name>` opens it in the CLI, and a link such as `dropbox://<profile name>/Photos/` opens it in the app on that folder (`dropbox:///Photos/` when only one Dropbox account is saved; without the final `/` the last name is read as a file). This is a limit of OAuth, not of AeroFTP: the token lives in the vault, never in a link.
 
 ### Profile-Backed Providers
 
-Use `--profile` for providers authorized or configured in the GUI vault. This includes Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho WorkDrive, Yandex Disk, 4shared, and Drime, and it also works for direct-auth providers when you prefer vault-backed credentials.
+Use `--profile` for any saved connection when you prefer vault-backed credentials over a URL.
 
 ---
 

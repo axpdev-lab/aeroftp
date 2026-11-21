@@ -7189,7 +7189,10 @@
         },
         "openRequest": {
             "folderBusyTitle": "Folder wciąż się wczytuje",
-            "folderBusy": "Otwarty plik nie został wyświetlony: gdy zażądano folderu {folder}, inny folder wciąż się wczytywał. Otwórz plik ponownie."
+            "folderBusy": "Otwarty plik nie został wyświetlony: gdy zażądano folderu {folder}, inny folder wciąż się wczytywał. Otwórz plik ponownie.",
+            "signInNeedsProfileTitle": "{provider} wymaga zapisanego logowania",
+            "signInNeedsProfile": "{provider} loguje się przez własną autoryzację w przeglądarce, której link nie może przenieść. Dodaj i autoryzuj konto w Moje serwery, a następnie otwórz {scheme}://<nazwa profilu>/folder/.",
+            "signInNameTheProfile": "Zapisano kilka kont {provider}. Podaj, które otworzyć: {scheme}://<nazwa profilu>/folder/."
         }
     }
 }

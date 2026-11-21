@@ -7208,7 +7208,10 @@
         },
         "openRequest": {
             "folderBusyTitle": "Karpeta oraindik kargatzen ari da",
-            "folderBusy": "Ireki duzun fitxategia ez da erakutsi: beste karpeta bat oraindik kargatzen ari zen {folder} eskatu zenean. Ireki berriro."
+            "folderBusy": "Ireki duzun fitxategia ez da erakutsi: beste karpeta bat oraindik kargatzen ari zen {folder} eskatu zenean. Ireki berriro.",
+            "signInNeedsProfileTitle": "{provider}(e)k gordetako saio-hasiera behar du",
+            "signInNeedsProfile": "{provider}(e)k bere nabigatzaile-baimenaren bidez hasten du saioa, eta esteka batek ezin du hori eraman. Gehitu eta baimendu kontua Nire zerbitzariak atalean, gero ireki {scheme}://<profilaren izena>/karpeta/.",
+            "signInNameTheProfile": "{provider} kontu bat baino gehiago gordeta daude. Adierazi zein ireki: {scheme}://<profilaren izena>/karpeta/."
         }
     }
 }
