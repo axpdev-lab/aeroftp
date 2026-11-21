@@ -1870,10 +1870,27 @@ fn profile_plan_inputs(
             // import: its row in the restored partition, else the backup's
             // vault entry (vault section only), which is a private token's
             // only when the receiver reads the vault.
+            // A row that may be a copy of another account's token is not the
+            // receiver's to copy under another key
+            // (`backup_row_if_own`), against the vault as the import leaves it.
+            let vault_after_import = if sections.vault && payload.vault_entries.contains_key(&key) {
+                payload.vault_entries.get(&key).map(String::as_str)
+            } else {
+                local_vault
+                    .get(&key)
+                    .and_then(Option::as_ref)
+                    .map(|v| v.as_str())
+            };
             let from_partition = backup_conn.as_ref().zip(receiver).and_then(|(conn, r)| {
-                crate::user_partitions::get_user_credential_for(conn, &root_key, r.user_id, &key)
-                    .ok()
-                    .flatten()
+                crate::user_partitions::backup_row_if_own(
+                    conn,
+                    &root_key,
+                    r.user_id,
+                    &key,
+                    vault_after_import,
+                )
+                .ok()
+                .flatten()
             });
             let value = from_partition.or_else(|| {
                 (sections.vault && (!private || reads_vault_tokens(receiver)))
@@ -4945,7 +4962,9 @@ mod tests {
             &backup_list,
         )
         .unwrap();
-        crate::user_partitions::set_user_credential_for(
+        // The other account's own sign-in: a row it did not stamp, on a
+        // profile id the owner also holds, may be a copy and is not copied.
+        crate::user_partitions::set_signed_in_credential_for(
             &conn,
             &root,
             other.id,
@@ -5219,6 +5238,85 @@ mod tests {
                 assert!(stamped, "the carried row keeps its sign-in stamp");
             } else {
                 assert_eq!(row, None, "the backup's account got this device's token");
+            }
+        }
+    }
+
+    /// "Keep both" copies a backup row under the new id only when it is the
+    /// account's own: a row of an account other than the legacy owner that
+    /// holds the very value the vault holds after the import, unstamped and
+    /// not yet aligned in the backup, may be the copy a migration made of the
+    /// owner's token, and the copy gets no token. A row the backup's sign-in
+    /// stamped is copied.
+    #[test]
+    fn keep_both_copies_no_backup_row_that_may_be_the_owners_token() {
+        for stamped in [false, true] {
+            let _guard = crate::user_partitions::test_lock();
+            crate::user_partitions::clear_user_session();
+            let dir = tempfile::tempdir().unwrap();
+            let store = throwaway_store(dir.path(), "vault.db");
+            let cfg = dir.path().join("config");
+            let key = "oauth_dropbox_srv_drive";
+            let db = cfg.join("user_partitions.db");
+            let bob = bob_with_his_token(&store, &cfg, key);
+            let root = Zeroizing::new(store.derive_user_partition_wrapping_key());
+            let mut conn = rusqlite::Connection::open(&db).unwrap();
+            if stamped {
+                crate::user_partitions::set_signed_in_credential_for(
+                    &conn,
+                    &root,
+                    bob,
+                    key,
+                    "oauth",
+                    "bob-token",
+                )
+                .unwrap();
+            }
+            let mut payload = ExportPayload::default();
+            payload.vault_entries.insert(
+                "config_server_profiles".to_string(),
+                serde_json::to_string(&[dropbox("srv_drive", "Drive")]).unwrap(),
+            );
+            payload
+                .vault_entries
+                .insert(key.to_string(), "bob-token".to_string());
+            payload.sqlite_dumps.insert(
+                "user_partitions.db".to_string(),
+                snapshot_sqlite_db(&db).unwrap().unwrap(),
+            );
+            let backup = dir.path().join("full.aeroftp-keystore");
+            seal_backup(&backup, PASSWORD_736, &payload);
+            crate::user_partitions::replace_server_profiles_for(
+                &mut conn,
+                &root,
+                bob,
+                &[dropbox("srv_drive", "Drive 2")],
+            )
+            .unwrap();
+            drop(conn);
+            crate::user_partitions::clear_user_session();
+
+            let result = import_deciding(
+                &store,
+                &cfg,
+                &backup,
+                ImportSections::default(),
+                &[decide(
+                    "srv_drive",
+                    keystore_profile_plan::ProfileDecision::Both,
+                )],
+            );
+            assert_eq!(result.profile_decisions_error, None, "stamped: {stamped}");
+            let copy = my_servers(&store, &cfg)
+                .into_iter()
+                .find(|p| p["name"] == "Drive (imported)")
+                .expect("the copy");
+            let copy_key = format!("oauth_dropbox_{}", copy["id"].as_str().unwrap());
+            let copied = row_in(&store, &cfg, bob, &copy_key);
+            if stamped {
+                assert_eq!(copied.as_deref(), Some("bob-token"));
+            } else {
+                assert_eq!(copied, None, "the copy got the owner's token");
             }
         }
     }

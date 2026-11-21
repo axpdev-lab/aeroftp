@@ -5594,6 +5594,33 @@ pub(crate) fn read_checked_row(
     })
 }
 
+/// The row `key` of `user_id` in a backup's partition `conn`, when it is that
+/// account's own to restore or copy elsewhere: any key that is not a private
+/// token, the backup's legacy owner, an account the backup had aligned, or a
+/// row that is no copy of `vault_after_import`, the value the vault holds
+/// under `key` once the import has run ([`row_may_be_a_copy`]). A backup made
+/// before tokens were kept to their account can carry, in another account's
+/// row, the copy a migration made of the owner's token; such a row is
+/// `None`. The restore readers and the alignment still see it once the
+/// partition is restored, but a decision never copies it under another key.
+pub(crate) fn backup_row_if_own(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+    key: &str,
+    vault_after_import: Option<&str>,
+) -> Result<Option<Zeroizing<String>>, String> {
+    let Some((row, digest)) = get_user_credential_and_digest_for(conn, root_key, user_id, key)?
+    else {
+        return Ok(None);
+    };
+    let own = private_token_type(key).is_none()
+        || is_legacy_owner(conn, user_id)?
+        || private_tokens_aligned(conn, user_id)?
+        || !row_may_be_a_copy(conn, user_id, key, &row, &digest, vault_after_import)?;
+    Ok(own.then_some(row))
+}
+
 /// Whether `row`, this account's unstamped copy of the Jottacloud chain `key`
 /// on a profile id another account also holds, signs in to another
 /// Jottacloud user than the vault's chain, with another refresh token: a
