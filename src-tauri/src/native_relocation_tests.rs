@@ -1844,6 +1844,21 @@ fn an_rclone_import_keeps_to_the_account_it_began_in() {
         ))
         .unwrap()
         .unwrap();
+    // Which accounts hold what the scan stored, read before its refusal
+    // takes it back.
+    let before_refusal = std::sync::Arc::new(std::sync::Mutex::new(None));
+    let observed = before_refusal.clone();
+    let (legacy, source) = (accounts.legacy, accounts.source.id);
+    *crate::bridge_commands::BEFORE_A_REFUSED_SCAN_SETTLES
+        .lock()
+        .unwrap() = Some(Box::new(move || {
+        let conn = open_or_init_cli().unwrap();
+        let parts = ["-pd-first-", "-pd-second-", "-box-"];
+        *observed.lock().unwrap() = Some((
+            rows_like(&conn, legacy, &parts),
+            rows_like(&conn, source, &parts),
+        ));
+    }));
     let waits = vault::test_seams::observe_waits();
     let path = conf.path().to_string_lossy().into_owned();
     let importing = std::thread::spawn(move || {
@@ -1871,12 +1886,30 @@ fn an_rclone_import_keeps_to_the_account_it_began_in() {
     }
     assert!(waited, "the first session's restore waits for its lease");
     cli_set_active_user(&accounts.store, accounts.source.id).unwrap();
+    // Unlocked, the switched-to account would take a write that resolved the
+    // active account again: none must reach it.
+    accounts.unlock_source();
     drop(lease);
     // The scan stored every secret in the account it began in, never in the
     // one switched to, and once it ends in another account it is refused and
     // takes back what it stored: nothing of it is left in either account.
     let refused = importing.join().unwrap().unwrap_err();
     assert_eq!(refused, crate::bridge_import_scan::SCAN_ACCOUNT_CHANGED);
+    *crate::bridge_commands::BEFORE_A_REFUSED_SCAN_SETTLES
+        .lock()
+        .unwrap() = None;
+    let (in_legacy, in_source) = before_refusal.lock().unwrap().take().unwrap();
+    assert_eq!(
+        in_source,
+        Vec::<String>::new(),
+        "nothing was stored in the account switched to"
+    );
+    for part in ["-pd-first-", "-pd-second-", "-box-"] {
+        assert!(
+            in_legacy.iter().any(|id| id.contains(part)),
+            "the account the scan began in held {part} before the refusal: {in_legacy:#?}"
+        );
+    }
     for user in [accounts.legacy, accounts.source.id] {
         assert_eq!(
             rows_like(

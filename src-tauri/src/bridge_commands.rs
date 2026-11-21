@@ -824,6 +824,12 @@ fn imported_profile_ids(value: &Value) -> Vec<String> {
         .collect()
 }
 
+/// Runs when a scan that ends refused is about to be settled (test only):
+/// what it stored is still there to look at.
+#[cfg(test)]
+pub(crate) static BEFORE_A_REFUSED_SCAN_SETTLES: std::sync::Mutex<Option<Box<dyn FnMut() + Send>>> =
+    std::sync::Mutex::new(None);
+
 /// The end of a scan: its response, which names the account and the scan for
 /// the window to confirm or settle, or, when the scan failed or the active
 /// account is no longer the one it stored in (176 point 4), its refusal, the
@@ -835,6 +841,10 @@ fn settle_unless_confirmable(
     user: Option<i64>,
 ) -> Result<Value, String> {
     let settle = || {
+        #[cfg(test)]
+        if let Some(observe) = BEFORE_A_REFUSED_SCAN_SETTLES.lock().unwrap().as_mut() {
+            observe();
+        }
         if let (Some(store), Some(scan)) = (store, scan) {
             if let Err(error) = bridge_import_scan::settle(store, scan.id()) {
                 log::warn!("Bridge import: {error}");
