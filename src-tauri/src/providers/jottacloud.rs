@@ -200,8 +200,11 @@ struct PersistOutcome {
 enum LoadedChain {
     /// A chain to exchange.
     Chain(Loaded),
-    /// Nothing to exchange.
-    Nothing,
+    /// Nothing to exchange: the refresh token the key held when it was read
+    /// (empty for no chain), `None` when it was not read. A key can hold a
+    /// chain that is not handed out (one with no token endpoint or user), so
+    /// nothing handed out is not an empty key.
+    Nothing(Option<String>),
     /// The key, its pending rotation or its deletions kept changing while
     /// they were read: nothing is handed out, and nothing else should be
     /// spent instead.
@@ -241,7 +244,7 @@ impl LoadedChain {
     fn chain(self) -> Option<((String, String, String), String)> {
         match self {
             Self::Chain(loaded) => Some((loaded.chain, loaded.stored_token)),
-            Self::Nothing | Self::Busy | Self::Withheld(_) => None,
+            Self::Nothing(_) | Self::Busy | Self::Withheld(_) => None,
         }
     }
 }
@@ -1374,7 +1377,7 @@ impl JottacloudProvider {
         // An owner that was never read reads nothing: the stored chain may be
         // the one a pending rotation replaced, which Jotta has consumed.
         let Some(owner) = owner else {
-            return LoadedChain::Nothing;
+            return LoadedChain::Nothing(None);
         };
         let read_pending = || {
             PENDING_ROTATIONS
@@ -1390,7 +1393,7 @@ impl JottacloudProvider {
             if pending {
                 LoadedChain::Withheld(format!("{account} {why}"))
             } else {
-                LoadedChain::Nothing
+                LoadedChain::Nothing(None)
             }
         };
         let Some(store) = crate::credential_store::CredentialStore::from_cache() else {
@@ -1445,6 +1448,7 @@ impl JottacloudProvider {
             return LoadedChain::Busy;
         };
         let generation = counted.as_ref().ok().map(|count| count.generation);
+        let held = stored_refresh_token(stored.as_deref().map(|j| j.as_str()));
         match Self::hand_out(&store, owner, account, pending, stored, counted) {
             // A chain is handed out only with a count that was read.
             Ok(Some((chain, stored_token, source))) => match generation {
@@ -1459,7 +1463,7 @@ impl JottacloudProvider {
                     LoadedChain::Withheld(format!("the deletions of {account} are not readable"))
                 }
             },
-            Ok(None) => LoadedChain::Nothing,
+            Ok(None) => LoadedChain::Nothing(Some(held)),
             Err(reason) => {
                 jotta_log(&format!(
                     "Refresh chain of {} withheld: {}",
@@ -1745,7 +1749,8 @@ impl JottacloudProvider {
         // successor of another key's chain must not be written over it.
         let mut restarted = false;
         'select: loop {
-            // What the profile's key held at its own load (empty for nothing).
+            // The refresh token the profile's key held at its own load (empty
+            // for none, `None` when it was not read).
             let mut own_seen: Option<String> = None;
             for account in Self::refresh_chain_candidates(&self.profile_id) {
                 // Every key the exchange may write is checked against a deletion
@@ -1777,9 +1782,12 @@ impl JottacloudProvider {
                 source,
             } = match loaded {
                 LoadedChain::Chain(loaded) => loaded,
-                LoadedChain::Nothing => {
+                LoadedChain::Nothing(held) => {
                     if account == own {
-                        own_seen = Some(String::new());
+                        // What the key holds, not what was handed out: a
+                        // chain that cannot be used is still there, and is not
+                        // a change when it is found again.
+                        own_seen = held;
                         #[cfg(test)]
                         chain_tests::after_candidate_miss(&self.profile_id);
                     }

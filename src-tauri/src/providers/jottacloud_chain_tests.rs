@@ -2520,7 +2520,11 @@ pub(super) fn after_candidate_miss(profile: &str) {
 /// found that key empty, went on to the singleton is the profile's chain:
 /// the connection starts again from the profile's key and exchanges the
 /// imported chain, and the singleton's successor is never written over it.
-/// A profile key that stays empty still receives the singleton's successor.
+/// A profile key that stays empty still receives the singleton's successor,
+/// and so does one that holds, unchanged, a chain that cannot be used (no
+/// token endpoint, as an rclone import writes it): that chain is not a
+/// change found during the fallback, and the singleton's successor replaces
+/// it as before.
 #[test]
 fn a_chain_imported_during_the_singleton_fallback_is_not_written_over() {
     if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
@@ -2531,13 +2535,26 @@ fn a_chain_imported_during_the_singleton_fallback_is_not_written_over() {
     let chains = Chains::new();
     let singleton = "jottacloud_refresh";
     let mut failures = Vec::new();
-    for (case, imported) in [("imported meanwhile", true), ("left empty", false)] {
+    for (case, imported, unusable) in [
+        ("imported meanwhile", true, false),
+        ("left empty", false, false),
+        ("an unusable chain left as it is", false, true),
+    ] {
         let profile = if imported {
             "fallbackimport"
+        } else if unusable {
+            "fallbackunusable"
         } else {
             "fallbackempty"
         };
         let key = format!("jottacloud_refresh_{profile}");
+        if unusable {
+            let chain = serde_json::json!({
+                "refresh_token": "unusable-fallbackunusable", "token_endpoint": "",
+                "username": "jotta-user",
+            });
+            chains.store.store(&key, &chain.to_string()).unwrap();
+        }
         chains
             .store
             .store(singleton, &chains.chain(&format!("singleton-{profile}")))
