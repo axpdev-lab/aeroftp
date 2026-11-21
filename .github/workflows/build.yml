@@ -173,7 +173,7 @@ jobs:
         run: /usr/bin/time -v cargo test --locked --no-run --jobs 1
 
       - name: Run all Rust tests
-        timeout-minutes: 60
+        timeout-minutes: 90
         working-directory: src-tauri
         run: /usr/bin/time -v cargo test --locked --jobs 1
 
