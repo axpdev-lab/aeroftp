@@ -340,7 +340,8 @@ impl ArchiveError {
     /// caller named. Mapping it to `RefuseOverwrite` would exit 9 and tell a
     /// script "your destination is occupied, choose another" about a file the
     /// caller never mentioned. `RefuseOverwrite` is produced at the explicit
-    /// output-exists check and nowhere else.
+    /// output-exists checks (before the build, and at the no-clobber publication
+    /// of the built archive) and nowhere else.
     pub(crate) fn io(context: &str, err: std::io::Error) -> Self {
         let failure = match err.kind() {
             std::io::ErrorKind::NotFound => ArchiveFailure::NotFound,
@@ -462,9 +463,33 @@ fn create_archive(
         .collect();
     let input_bytes = archive_input_size(&resolved_for_size);
 
-    // Let the crate own writes to the output. Unlinking the final path on a
-    // refusal could delete a link or a file published by a concurrent writer.
-    create_archive_inner(&out_path, &sources, profile, recovery_pct)?;
+    // Build the archive in a private directory beside the output, then publish
+    // it without replacing anything. A failure part way through the adds
+    // leaves nothing at the output, and the crate's lock files stay in the
+    // staging directory, removed with it. Never unlink the final path: it can
+    // be a link, or a file a concurrent writer published there.
+    let staging = tempfile::Builder::new()
+        .prefix(".aerocreate-prepare-")
+        .tempdir_in(parent)
+        .map_err(|e| ArchiveError::io("Create archive staging directory", e))?;
+    let staged = staging.path().join(
+        out_path
+            .file_name()
+            .ok_or_else(|| ArchiveError::other("Archive output needs a file name"))?,
+    );
+    create_archive_inner(&staged, &sources, profile, recovery_pct)?;
+    tempfile::TempPath::try_from_path(&staged)
+        .map_err(|e| ArchiveError::io("Stage archive", e))?
+        .persist_noclobber(&out_path)
+        .map_err(|e| {
+            if e.error.kind() == std::io::ErrorKind::AlreadyExists {
+                // The staged file is dropped (deleted) with the error.
+                overwrite()
+            } else {
+                ArchiveError::io("Publish archive", e.error)
+            }
+        })?;
+    drop(staging);
 
     let vault = open_plaintext_archive(&out_path)?;
     let summary = aerovault::v3::VaultV3::summary(&vault);
@@ -917,6 +942,63 @@ mod tests {
             archive_exit_code(&err),
             err.message()
         );
+    }
+
+    #[test]
+    fn archive_create_publishes_only_the_archive_beside_its_inputs() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("payload");
+        let output = dir.path().join("archive.aerozip");
+        std::fs::write(&input, b"payload").unwrap();
+
+        create_archive(
+            output.to_str().unwrap(),
+            &[input.to_str().unwrap().to_string()],
+            "balanced",
+            "20",
+        )
+        .unwrap();
+        let mut names: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect();
+        names.sort();
+        assert_eq!(names, ["archive.aerozip", "payload"]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn archive_create_that_fails_part_way_leaves_nothing_at_the_output() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let readable = dir.path().join("first");
+        let unreadable = dir.path().join("second");
+        let output = dir.path().join("archive.aerozip");
+        std::fs::write(&readable, b"first").unwrap();
+        std::fs::write(&unreadable, b"second").unwrap();
+        std::fs::set_permissions(&unreadable, std::fs::Permissions::from_mode(0o000)).unwrap();
+        if std::fs::read(&unreadable).is_ok() {
+            // Running with privileges that ignore file modes: nothing to show.
+            return;
+        }
+
+        let result = create_archive(
+            output.to_str().unwrap(),
+            &[
+                readable.to_str().unwrap().to_string(),
+                unreadable.to_str().unwrap().to_string(),
+            ],
+            "balanced",
+            "0",
+        );
+        std::fs::set_permissions(&unreadable, std::fs::Permissions::from_mode(0o600)).unwrap();
+        assert!(result.is_err());
+        let mut names: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect();
+        names.sort();
+        assert_eq!(names, ["first", "second"]);
     }
 
     #[cfg(unix)]
