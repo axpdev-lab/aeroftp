@@ -2,7 +2,8 @@ name: CLI Smoke Test
 
 on:
   push:
-    branches: [main]
+    # Diagnostic: also on the diagnostic branch, to run coverage on a push event.
+    branches: [main, ci/coverage-diag-split]
     paths:
       - 'src-tauri/src/bin/aeroftp_cli.rs'
       - 'src-tauri/src/cli_dispatch.rs'
@@ -399,51 +400,416 @@ jobs:
           find target -maxdepth 2 -name '*.profraw' -printf '%s\n' 2>/dev/null \
             | awk '{n++; s+=$1} END {printf "profraw files=%d size=%d MB\n", n, s/1048576}' || true
 
-      - name: Coverage tests (instrumented, no report)
+      # Diagnostic: one step per test binary, so the API's step timings name
+      # the binary a lost runner was running even when its log is gone. The
+      # sampler runs for the whole job and writes to a file every 60 s.
+      - name: Start diagnostic sampler
         working-directory: src-tauri
-        shell: bash
-        # Baseline at T8 Fase A (2026-04-21): 11.73% lines, 9.59% functions.
-        # Gate is set below baseline so CI passes today; raise per T8 Fase B/C/D
-        # as new tests land. Target after Fase C (16 zero-coverage providers): 25%.
         run: |
-          # Diagnostic sampler every 60 s; it is lost with the log if the runner dies.
-          (
-            set +e +o pipefail
-            while sleep 60; do
-              echo "::group::sample $(date -u +%H:%M:%SZ)"
-              df -h / | tail -1
-              free -m | sed -n '2,3p'
-              find target -maxdepth 2 -name '*.profraw' -printf '%s\n' 2>/dev/null \
-                | awk '{n++; s+=$1} END {printf "profraw files=%d size=%d MB\n", n, s/1048576}'
-              ps -eo rss=,args= --sort=-rss | head -3 | awk '{printf "rss %d MB %s\n", $1/1024, substr($0, index($0,$2), 120)}'
-              echo "::endgroup::"
-            done
-          ) &
-          sampler=$!
-          trap 'kill $sampler 2>/dev/null' EXIT
+          cat > "$RUNNER_TEMP/res.sh" <<'EOS'
+          #!/bin/bash
+          echo "::group::resources $(date -u +%H:%M:%SZ)"
+          df -h / | tail -1
+          free -m | sed -n '2,3p'
+          find target -maxdepth 2 -name '*.profraw' -printf '%s\n' 2>/dev/null \
+            | awk '{n++; s+=$1} END {printf "profraw files=%d size=%d MB\n", n, s/1048576}'
+          echo "processes=$(ps -e --no-headers | wc -l)"
+          ps -eo pid,ppid,etime,rss,args --sort=-rss | head -8 | cut -c1-160
+          echo "::endgroup::"
+          EOS
+          chmod +x "$RUNNER_TEMP/res.sh"
+          nohup setsid bash -c 'while sleep 60; do "$0/res.sh" >> "$0/samples.log" 2>&1; done' "$RUNNER_TEMP" </dev/null >/dev/null 2>&1 &
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: lib"
+        working-directory: src-tauri
+        run: |
           # The three batch rendezvous-barrier tests assert wall-clock scheduler
           # overlap; under llvm-cov instrumentation (10x+ slowdown on the shared
           # runner) the rendezvous can exceed even a 30s budget. They gate
           # uninstrumented in Build's Rust tests step and in the nightly
           # telemetry workflow, so skipping them here loses no coverage signal.
-          cargo llvm-cov --no-report --all-targets -- \
+          cargo llvm-cov --no-report --lib -- \
             --skip batch_dag_respects_file_slot_concurrency \
             --skip batch_dag_independent_file_overlap_for_enabled_executor \
             --skip batch_dag_peak_bounded_by_min_of_file_slots_and_session_pool
-          df -h / && free -m
-          find target -maxdepth 2 -name '*.profraw' -printf '%s\n' \
-            | awk '{n++; s+=$1} END {printf "profraw files=%d size=%d MB\n", n, s/1048576}' || true
-          du -sh target/llvm-cov-target || true
+          "$RUNNER_TEMP/res.sh"
 
-      # Diagnostic: a lost runner discards the whole log, but the API keeps each
-      # step's started_at/completed_at, so separate steps show where it died.
-      - name: Resources after tests
-        if: always()
+      - name: "Coverage tests: bins"
         working-directory: src-tauri
         run: |
-          df -h / && free -m && swapon --show
-          find target -maxdepth 2 -name '*.profraw' -printf '%s\n' 2>/dev/null \
-            | awk '{n++; s+=$1} END {printf "profraw files=%d size=%d MB\n", n, s/1048576}' || true
+          cargo llvm-cov --no-report --bins
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: cli_profile_import_existing + cli_proton_profiles"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test cli_profile_import_existing --test cli_proton_profiles
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: ai_tool_table_frame"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test ai_tool_table_frame
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: aimd_backpressure"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test aimd_backpressure
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: cli_aerocloud_strict"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test cli_aerocloud_strict
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: cli_agent_remote_tools"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test cli_agent_remote_tools
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: cli_closed_pipes"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test cli_closed_pipes
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: cli_crypt_init_kit_gate"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test cli_crypt_init_kit_gate
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: cli_crypt_marker_refusal"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test cli_crypt_marker_refusal
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: cli_export_profile_selectors"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test cli_export_profile_selectors
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: cli_export_secrets_by_id"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test cli_export_secrets_by_id
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: cli_import_duplicate_names"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test cli_import_duplicate_names
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: cli_json_modes"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test cli_json_modes
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: cli_mcp_worker_stack"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test cli_mcp_worker_stack
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: cli_multi_thread_cutoff"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test cli_multi_thread_cutoff
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: cli_profile_auth_state"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test cli_profile_auth_state
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: cli_serve_ftp_transfers"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test cli_serve_ftp_transfers
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: cli_serve_quiet_credential"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test cli_serve_quiet_credential
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: cli_serve_stops_cleanly"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test cli_serve_stops_cleanly
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: cli_serve_webdav_propfind"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test cli_serve_webdav_propfind
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: cli_size_local"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test cli_size_local
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: cli_test_isolation"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test cli_test_isolation
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: cli_timeout_silent_server"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test cli_timeout_silent_server
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: cli_url_target"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test cli_url_target
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: dag_b2_multipart"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test dag_b2_multipart
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: dag_s3_multipart"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test dag_s3_multipart
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: dag_s3_server_side_copy"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test dag_s3_server_side_copy
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: dag_webdav_copy"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test dag_webdav_copy
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: dispatcher_exec"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test dispatcher_exec
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: ftp_crlf_refusal"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test ftp_crlf_refusal
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: ftp_put_floor"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test ftp_put_floor
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: ftp_resume_and_421"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test ftp_resume_and_421
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: ftp_site_command"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test ftp_site_command
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: ftp_site_command_logs"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test ftp_site_command_logs
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: http_limits_override"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test http_limits_override
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: integration_b2"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test integration_b2
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: integration_b2_s3_compat"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test integration_b2_s3_compat
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: integration_delta_sync"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test integration_delta_sync
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: integration_ftp_missing_path"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test integration_ftp_missing_path
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: integration_ftp_mlsd"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test integration_ftp_mlsd
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: integration_ftp_pool"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test integration_ftp_pool
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: integration_gtc_wan_segmented"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test integration_gtc_wan_segmented
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: integration_sftp_pipeline"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test integration_sftp_pipeline
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: integration_sftp_pool"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test integration_sftp_pool
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: live_ftp_stall_retry"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test live_ftp_stall_retry
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: live_scp_channels"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test live_scp_channels
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: live_sftp_replace"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test live_sftp_replace
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: live_sftp_symlink_contract"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test live_sftp_symlink_contract
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: live_webdav_replace"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test live_webdav_replace
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: mcp_client_protocol"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test mcp_client_protocol
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: peer_link"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test peer_link
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: scp_fallback"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test scp_fallback
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: scp_openwrt"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test scp_openwrt
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: scp_session"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test scp_session
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: sftp_host_key_refusal"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test sftp_host_key_refusal
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: sftp_none_auth"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test sftp_none_auth
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: sftp_rename"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test sftp_rename
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: sftp_server_goes_away"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test sftp_server_goes_away
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: sftp_size_hint"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test sftp_size_hint
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: telemetry_nightly"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test telemetry_nightly
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: tool_parity"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --test tool_parity
+          "$RUNNER_TEMP/res.sh"
+
+      - name: "Coverage tests: examples"
+        working-directory: src-tauri
+        run: |
+          cargo llvm-cov --no-report --examples
+          "$RUNNER_TEMP/res.sh"
+
+      - name: Diagnostic samples
+        if: always()
+        run: cat "$RUNNER_TEMP/samples.log" || true
 
       - name: Coverage report (lcov)
         working-directory: src-tauri
