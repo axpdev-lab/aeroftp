@@ -2048,6 +2048,83 @@ fn a_scan_never_confirmed_takes_back_what_it_stored() {
     assert!(has_row(&accounts.conn, accounts.legacy, &password));
 }
 
+/// A scan the window gave up is no longer held by this process, whatever its
+/// settle did: one whose removal failed, and one given up while the vault was
+/// locked, keep their record and are settled at the next opening. Without the
+/// release both stay held by the live process, and their secrets stay until
+/// it exits.
+#[test]
+fn a_scan_given_up_unsettled_is_settled_at_the_next_opening() {
+    use std::sync::atomic::Ordering::SeqCst;
+    if !in_isolated_child("a_scan_given_up_unsettled_is_settled_at_the_next_opening") {
+        return;
+    }
+    let accounts = Accounts::open();
+    let conf = tempfile::NamedTempFile::new().unwrap();
+    let pass = crate::rclone_import::obscure_password("ftp-secret").unwrap();
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    // A scan of one FTP remote: its scan id and the key of its password.
+    let scan = || {
+        std::fs::write(
+            conf.path(),
+            format!("[files]\ntype = ftp\nhost = ftp.example.test\nuser = demo\npass = {pass}\n"),
+        )
+        .unwrap();
+        let imported = runtime
+            .block_on(crate::bridge_commands::import_bridge_config(
+                "rclone".into(),
+                conf.path().to_string_lossy().into_owned(),
+                None,
+            ))
+            .unwrap();
+        let id = imported["servers"][0]["id"].as_str().unwrap().to_string();
+        (
+            imported["scanId"].as_str().unwrap().to_string(),
+            format!("server_{id}"),
+        )
+    };
+    let settle = |scan_id: Option<String>| {
+        runtime.block_on(crate::bridge_commands::settle_bridge_import(scan_id))
+    };
+    let stored = |key: &str| {
+        (
+            CredentialStore::from_cache().unwrap().get(key).ok(),
+            has_row(&accounts.conn, accounts.legacy, key),
+        )
+    };
+
+    let mut failures = Vec::new();
+    // Its removal fails.
+    let (scan_id, password) = scan();
+    crate::bridge_import_scan::DISCARD_REFUSED.store(true, SeqCst);
+    let refused = settle(Some(scan_id));
+    crate::bridge_import_scan::DISCARD_REFUSED.store(false, SeqCst);
+    assert!(
+        refused.is_err(),
+        "the refused removal is reported: {refused:?}"
+    );
+    assert_eq!(stored(&password), (Some("ftp-secret".to_string()), true));
+    settle(None).unwrap();
+    if stored(&password) != (None, false) {
+        failures.push(format!("a failed settle: {:?}", stored(&password)));
+    }
+
+    // It is given up while the vault is locked.
+    let (scan_id, password) = scan();
+    CredentialStore::lock();
+    settle(Some(scan_id)).unwrap();
+    CredentialStore::unlock_with_master("synthetic native fixture master", None).unwrap();
+    assert_eq!(stored(&password), (Some("ftp-secret".to_string()), true));
+    settle(None).unwrap();
+    if stored(&password) != (None, false) {
+        failures.push(format!("a locked vault: {:?}", stored(&password)));
+    }
+    assert!(failures.is_empty(), "{failures:#?}");
+}
+
 /// A session save is whole or not made. For the legacy owner, whose session
 /// is a vault key and its row, a row the account store refuses puts the
 /// vault key back as it was: an import reported as not restored leaves no

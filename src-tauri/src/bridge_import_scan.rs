@@ -290,6 +290,10 @@ fn discard(
     user: Option<i64>,
     written: &Written,
 ) -> Result<(), String> {
+    #[cfg(test)]
+    if DISCARD_REFUSED.load(std::sync::atomic::Ordering::SeqCst) {
+        return Err("the removal was refused (test)".to_string());
+    }
     match written.kind {
         Kind::Secret => {
             if let Some(user) = user {
@@ -336,8 +340,29 @@ fn discard(
 
 /// Settles the scan `id`: every write for a profile its account does not
 /// list goes, and the ledger with it. A write that could not be removed
-/// stays in the ledger for the next settle, and the error says so.
+/// stays in the ledger for the next settle, and the error says so. Whatever
+/// the outcome, this process no longer holds the scan: every caller is done
+/// with it, so a ledger left behind is settled again as an abandoned one.
 pub(crate) fn settle(store: &CredentialStore, id: &str) -> Result<(), String> {
+    let settled = settle_ledger(store, id);
+    release(id);
+    settled
+}
+
+/// Lets go of the scan `id` a window is done with when it cannot be settled
+/// now (the vault is locked): its ledger stays, and the next scan or opening
+/// settles it as an abandoned one.
+pub(crate) fn give_up(id: &str) {
+    release(id);
+}
+
+/// Refuses every removal of a settle (test only), as a store that fails.
+#[cfg(test)]
+pub(crate) static DISCARD_REFUSED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// The body of [`settle`].
+fn settle_ledger(store: &CredentialStore, id: &str) -> Result<(), String> {
     let conn = crate::user_partitions::open_or_init_cli()?;
     let ledger_key = format!("{LEDGER_PREFIX}{id}");
     let value: Option<String> = conn
@@ -349,7 +374,6 @@ pub(crate) fn settle(store: &CredentialStore, id: &str) -> Result<(), String> {
         .optional()
         .map_err(|e| format!("Read the import record: {e}"))?;
     let Some(value) = value else {
-        release(id);
         return Ok(());
     };
     let ledger: Ledger =
@@ -373,7 +397,6 @@ pub(crate) fn settle(store: &CredentialStore, id: &str) -> Result<(), String> {
             params![ledger_key],
         )
         .map_err(|e| format!("Remove the import record: {e}"))?;
-        release(id);
         return Ok(());
     }
     persist(

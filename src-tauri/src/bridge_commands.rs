@@ -870,6 +870,11 @@ fn settle_unless_confirmable(
 pub async fn settle_bridge_import(scan_id: Option<String>) -> Result<(), String> {
     tokio::task::spawn_blocking(move || {
         let Some(store) = CredentialStore::from_cache() else {
+            // Locked: the window is done with the scan all the same, so it
+            // is no longer held, and the next scan or opening settles it.
+            if let Some(id) = scan_id.as_deref() {
+                bridge_import_scan::give_up(id);
+            }
             return Ok(());
         };
         let settled = match scan_id.as_deref() {
