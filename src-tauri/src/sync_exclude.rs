@@ -215,9 +215,13 @@ impl ExcludeMatcher {
         if !self.exclude_vault_artifacts {
             return false;
         }
+        // Scanner keys separate with `/`. A backslash is a separator only on
+        // Windows; elsewhere it is part of a file name, and an ordinary file
+        // must never fall under a rule that no exclude list can override.
+        let separators: &[char] = if cfg!(windows) { &['/', '\\'] } else { &['/'] };
         let mut in_aerovault = false;
         for segment in rel_path
-            .split(['/', '\\'])
+            .split(separators)
             .filter(|segment| !segment.is_empty())
         {
             if is_vault_sync_artifact(segment)
@@ -673,6 +677,22 @@ mod tests {
             assert!(!matcher.is_excluded("aerovault/docs/formats.md"));
             assert!(!matcher.is_excluded("nested/entry.aerovault"));
             assert!(!matcher.is_excluded("data/report.bin.aerolock.txt"));
+        }
+        // The rule that applies with an empty exclude list reads a backslash
+        // as a separator only on Windows. (The default `*.aerolock` pattern is
+        // an ordinary, removable pattern with the matcher's usual reading.)
+        let empty: [&str; 0] = [];
+        for matcher in [
+            ExcludeMatcher::for_sync(&empty).unwrap(),
+            crate::sync::compile_excludes(&[]).unwrap(),
+        ] {
+            if cfg!(windows) {
+                assert!(matcher.is_excluded("nested\\entry.aerolock\\child"));
+            } else {
+                // One POSIX file name each, not a lock or a journal and a child.
+                assert!(!matcher.is_excluded("notes.aerolock\\report.txt"));
+                assert!(!matcher.is_excluded("profile\\aerovault\\journals\\x"));
+            }
         }
     }
 
