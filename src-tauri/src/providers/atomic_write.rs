@@ -1627,8 +1627,12 @@ impl AtomicFile {
     /// Create a new atomic file writer. The temp file is created immediately.
     /// In inplace mode, writes directly to the final path.
     pub async fn new(final_path: &str) -> Result<Self, std::io::Error> {
+        Self::new_in(final_path, inplace_active()).await
+    }
+
+    /// [`Self::new`] with the in-place mode given.
+    pub(crate) async fn new_in(final_path: &str, inplace: bool) -> Result<Self, std::io::Error> {
         let final_path = PathBuf::from(final_path);
-        let inplace = inplace_active();
         let temp_path = if inplace {
             final_path.clone()
         } else {

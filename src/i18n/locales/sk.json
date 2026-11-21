@@ -2576,7 +2576,8 @@
             "restore": "Obnoviť túto verziu",
             "none": "Žiadne dostupné verzie",
             "purge": "Natrvalo odstrániť túto verziu",
-            "purgeConfirm": "Natrvalo odstrániť túto verziu? Túto akciu nie je možné vrátiť späť."
+            "purgeConfirm": "Natrvalo odstrániť túto verziu? Túto akciu nie je možné vrátiť späť.",
+            "restoreUnconfirmed": "Obnovenie bolo odoslané, ale server nemôže potvrdiť, ktorá verzia je teraz aktuálna. Pred ďalším obnovením skontrolujte verzie."
         },
         "sharing": {
             "title": "Zdieľanie",

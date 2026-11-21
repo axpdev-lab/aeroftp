@@ -6,7 +6,7 @@
         "enHash is the SHA-256 of the flattened current en.json. Change English and run --write in the same commit.",
         "A value listed here fails the gate when a locale still equals it and the current English does not."
     ],
-    "enHash": "dffaf9fb84f471158453ecb37bfbd4c50c2dee780aa09730381d74a2e0b184fa",
+    "enHash": "4934f384685c86efb21787e9f9e11fa8b78c1864e64cb15f9dd1373ee733df69",
     "former": {
         "about.aiCredits": [
             "AI: Claude Opus 4.5 + support models"

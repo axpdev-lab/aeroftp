@@ -290,6 +290,36 @@ struct VersionEntry {
     uploaded: Option<String>,
 }
 
+/// FileLu lists only past versions (live 2026-11-16: three uploads, two
+/// versions); the versions dialog reads row 0 as the current one, so the
+/// file comes first, then the versions newest first.
+/// The current row is the file the versions were read for, from that same
+/// lookup, bound to its file code ([`super::bind_version_to_file`]): its
+/// download refuses another file that took the path since.
+fn versions_in_dialog_order(versions: Vec<VersionEntry>, entry: &CacheEntry) -> Vec<FileVersion> {
+    let mut past: Vec<FileVersion> = versions
+        .into_iter()
+        .filter_map(|v| {
+            Some(FileVersion {
+                id: v.code?,
+                modified: v.uploaded,
+                size: v.size,
+                modified_by: None,
+                deleted: false,
+            })
+        })
+        .collect();
+    past.sort_by_key(|v| std::cmp::Reverse(super::version_time_millis(v.modified.as_deref())));
+    let current = FileVersion {
+        id: super::bind_version_to_file(&entry.file_code, super::CURRENT_VERSION_ID),
+        modified: entry.modified.clone(),
+        size: entry.size,
+        modified_by: None,
+        deleted: false,
+    };
+    std::iter::once(current).chain(past).collect()
+}
+
 /// Folder create response. FileLu inconsistently returns `fld_id` either as a
 /// JSON number or as a string (same as `deleted_ago_sec`, `size`, etc.), so we
 /// use the same tolerant deserializer to accept both shapes.
@@ -815,26 +845,41 @@ impl FileLuProvider {
             ))
         })?;
 
+        // The status and where parsing stopped, never the body: an answer
+        // can echo the request URL, and its `key=` with it.
         if !status.is_success() {
             return Err(ProviderError::ServerError(format!(
-                "HTTP {}: {}",
-                status, text
+                "HTTP {}: an answer of {} bytes, not shown",
+                status,
+                text.len()
             )));
         }
 
+        // The category and position of a parse error only: its own text can
+        // quote the rejected value, an echoed request URL with its `key=`.
         let api_resp: ApiResponse<T> = serde_json::from_str(&text).map_err(|e| {
             ProviderError::ParseError(format!(
-                "json: {}. Body: {}",
-                e,
-                &text[..text.floor_char_boundary(200)]
+                "json: {:?} at line {}, column {} (an answer of {} bytes, not shown)",
+                e.classify(),
+                e.line(),
+                e.column(),
+                text.len()
             ))
         })?;
 
         match api_resp.status {
-            Some(s) if s != 200 => {
-                let msg = api_resp.msg.unwrap_or_else(|| format!("API error {}", s));
-                Err(ProviderError::ServerError(msg))
-            }
+            // The status only: `msg` is server text, and FileLu has been
+            // seen to quote the request in it, a bare API key included
+            // (no `key=` in front, so `redact_key` does not see it).
+            Some(s) if s != 200 => Err(ProviderError::ServerError(match api_resp.msg {
+                // FileLu's fixed not-found string is kept, so path-aware
+                // callers still name the path (`name_missing_path`).
+                Some(m) if s == 404 && m.trim() == "No file found in specified folder" => {
+                    "No file found in specified folder".to_string()
+                }
+                Some(m) => format!("API error {s} (a message of {} bytes, not shown)", m.len()),
+                None => format!("API error {s}"),
+            })),
             _ => api_resp.result.ok_or_else(|| {
                 ProviderError::ParseError("API response missing 'result' field".to_string())
             }),
@@ -1865,8 +1910,44 @@ impl FileLuProvider {
         }
         let url = self.api_url_with("file/versions", &[("file_code", &entry.file_code)]);
         let resp = self.get_with_retry(&url).await?;
-        let result = Self::parse_api::<VersionsResult>(resp).await?;
+        let result = Self::parse_versions_api(resp).await?;
         Ok((norm, entry, result.versions))
+    }
+
+    /// A `file/versions` answer, read up to [`super::VERSION_LISTING_MAX_BYTES`].
+    /// Its errors name the HTTP or API status and where the JSON broke, never
+    /// the body: an error page can echo the request URL, and with it the API
+    /// key, and it reaches the dialog through a restore's readback.
+    async fn parse_versions_api(resp: reqwest::Response) -> Result<VersionsResult, ProviderError> {
+        let status = resp.status();
+        if !status.is_success() {
+            return Err(ProviderError::ServerError(format!(
+                "FileLu versions answer: HTTP {status}"
+            )));
+        }
+        let text = super::version_listing_text_with(resp, |e| {
+            ProviderError::NetworkError(format!(
+                "Failed to read the versions answer: {}",
+                redact_key(&e.without_url().to_string())
+            ))
+        })
+        .await?;
+        let api: ApiResponse<VersionsResult> = serde_json::from_str(&text).map_err(|e| {
+            ProviderError::ParseError(format!(
+                "FileLu versions answer is not the expected JSON ({:?} at line {}, column {})",
+                e.classify(),
+                e.line(),
+                e.column()
+            ))
+        })?;
+        match api.status {
+            Some(s) if s != 200 => Err(ProviderError::ServerError(format!(
+                "FileLu versions answer: API status {s}"
+            ))),
+            _ => api.result.ok_or_else(|| {
+                ProviderError::ParseError("API response missing 'result' field".to_string())
+            }),
+        }
     }
 
     /// [`versions_of`](Self::versions_of), and the one named `version_id`.
@@ -2313,21 +2394,15 @@ impl StorageProvider for FileLuProvider {
         true
     }
 
+    fn supports_version_delete(&self) -> bool {
+        true
+    }
+
     /// The earlier versions, newest first; the current content is the file
     /// itself and is not listed.
     async fn list_versions(&mut self, path: &str) -> Result<Vec<FileVersion>, ProviderError> {
-        let (_, _, versions) = self.versions_of(path).await?;
-        Ok(versions
-            .into_iter()
-            .filter_map(|v| {
-                Some(FileVersion {
-                    id: v.code?,
-                    modified: v.uploaded,
-                    size: v.size,
-                    modified_by: None,
-                })
-            })
-            .collect())
+        let (_, entry, versions) = self.versions_of(path).await?;
+        Ok(versions_in_dialog_order(versions, &entry))
     }
 
     async fn download_version(
@@ -2336,6 +2411,30 @@ impl StorageProvider for FileLuProvider {
         version_id: &str,
         local_path: &str,
     ) -> Result<(), ProviderError> {
+        // The current row is the file by its code: the one listed
+        // (`CODE:current`) or, bare, the one at the path now; a file that
+        // took the path since is refused, never saved under the listed name.
+        let (bound_to, label) = match version_id.split_once(':') {
+            Some((code, label)) => (Some(code), label),
+            None => (None, version_id),
+        };
+        if label == super::CURRENT_VERSION_ID {
+            let norm = self.resolve_path(path);
+            let entry = self.resolve_path_entry_with(&norm, false, false).await?;
+            if entry.is_dir || entry.file_code.is_empty() {
+                return Err(ProviderError::InvalidPath(format!(
+                    "{norm} is not a file: only files have versions"
+                )));
+            }
+            if bound_to.is_some_and(|code| code != entry.file_code) {
+                return Err(ProviderError::NotFound(format!(
+                    "{norm} is now another file than the one its versions were listed from: \
+                     list its versions again"
+                )));
+            }
+            let url = self.direct_url_by_code(&entry.file_code).await?;
+            return self.fetch_to_file(&url, local_path, None).await;
+        }
         self.version_of(path, version_id).await?;
         let url = self.direct_url_by_code(version_id).await?;
         self.fetch_to_file(&url, local_path, None).await
@@ -2344,6 +2443,14 @@ impl StorageProvider for FileLuProvider {
     /// The version becomes the current file, under its own file code, and the
     /// content it replaces becomes a version.
     async fn restore_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
+        if version_id == super::CURRENT_VERSION_ID
+            || version_id.ends_with(&format!(":{}", super::CURRENT_VERSION_ID))
+        {
+            return Err(ProviderError::NotSupported(
+                "This is the current version: it is the file itself".into(),
+            ));
+        }
+        let selected = super::refuse_a_restore_that_changes_nothing(self, path, version_id).await?;
         let (norm, entry) = self.version_of(path, version_id).await?;
         let url = self.api_url_with(
             "file/version_restore",
@@ -2357,13 +2464,38 @@ impl StorageProvider for FileLuProvider {
         let resp = self.get_after_refusal(&url).await;
         // The file's code changes on success; the cache would keep the old one.
         self.path_cache.remove(&norm);
-        Self::ensure_api_ok(resp?).await
+        let resp = resp?;
+        if let Some(unknown) =
+            super::gateway_left_unknown(resp.status(), &format!("the restore of {path}"))
+        {
+            return Err(unknown);
+        }
+        Self::ensure_api_ok(resp).await?;
+        // FileLu promotes the version under its own code: the file at the
+        // path must then be that code, not only a file of the same size.
+        let made = Some(super::bind_version_to_file(
+            version_id,
+            super::CURRENT_VERSION_ID,
+        ));
+        let preflight = Some(selected.made_current(made));
+        let confirmed = super::confirm_version_restored(self, path, preflight.as_ref()).await;
+        // The check listed the file again: no code it cached outlives the
+        // restore either.
+        self.path_cache.remove(&norm);
+        confirmed
     }
 
     /// Deletes one earlier version for good. The endpoint is undocumented and
     /// takes the code alone, so the versions are read again to confirm the
     /// deletion rather than trusting the OK.
     async fn delete_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
+        if version_id == super::CURRENT_VERSION_ID
+            || version_id.ends_with(&format!(":{}", super::CURRENT_VERSION_ID))
+        {
+            return Err(ProviderError::NotSupported(
+                "This is the current version: it is the file itself".into(),
+            ));
+        }
         self.version_of(path, version_id).await?;
         let url = self.api_url_with("file/version_delete", &[("version_code", version_id)]);
         // Same contract as restore: the GET deletes a version, so a 503 is
@@ -2513,17 +2645,24 @@ impl StorageProvider for FileLuProvider {
         })?;
         let server_info: UploadServerResponse = serde_json::from_str(&text).map_err(|e| {
             ProviderError::ParseError(format!(
-                "Upload server JSON error: {}. Body: {}",
-                e,
-                &text[..text.floor_char_boundary(200)]
+                "Upload server JSON error: {:?} at line {}, column {} (an answer of {} bytes, not shown)",
+                e.classify(),
+                e.line(),
+                e.column(),
+                text.len()
             ))
         })?;
         if let Some(s) = server_info.status {
             if s != 200 {
-                let msg = server_info
-                    .msg
-                    .unwrap_or_else(|| format!("Upload server error {}", s));
-                return Err(ProviderError::ServerError(msg));
+                // The status only, as `parse_api` does: `msg` is server text
+                // that can quote the request, a bare API key included.
+                return Err(ProviderError::ServerError(match server_info.msg {
+                    Some(m) => format!(
+                        "Upload server error {s} (a message of {} bytes, not shown)",
+                        m.len()
+                    ),
+                    None => format!("Upload server error {s}"),
+                }));
             }
         }
         let sess_id = server_info.sess_id.ok_or_else(|| {
@@ -2601,9 +2740,11 @@ impl StorageProvider for FileLuProvider {
         let upload_results: Vec<UploadResultEntry> =
             serde_json::from_str(&upload_body).map_err(|e| {
                 ProviderError::ParseError(format!(
-                    "Upload result JSON error: {}. Body: {}",
-                    e,
-                    &upload_body[..upload_body.floor_char_boundary(200)]
+                    "Upload result JSON error: {:?} at line {}, column {} (an answer of {} bytes, not shown)",
+                    e.classify(),
+                    e.line(),
+                    e.column(),
+                    upload_body.len()
                 ))
             })?;
         let uploaded_file_code = upload_results
@@ -3306,6 +3447,30 @@ fn mime_from_ext(ext: &str) -> &'static str {
 
 #[cfg(test)]
 mod tests {
+    /// FileLu lists only past versions; the versions dialog reads row 0 as
+    /// the current one, so the file comes first, then newest first.
+    #[test]
+    fn filelu_versions_come_back_after_the_file_newest_first() {
+        let listed: Vec<super::VersionEntry> = serde_json::from_str(
+            r#"[{"code":"old1","size":7,"uploaded":"2026-11-16 10:32:35"},
+                {"code":"old2","size":11,"uploaded":"2026-11-16 10:32:55"}]"#,
+        )
+        .expect("parse");
+        let file = super::CacheEntry {
+            is_dir: false,
+            fld_id: 0,
+            fld_token: None,
+            file_code: "CUR".into(),
+            size: 16,
+            modified: None,
+            hash: None,
+        };
+        let versions = super::versions_in_dialog_order(listed, &file);
+        let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
+        assert_eq!(ids, ["CUR:current", "old2", "old1"]);
+        assert_eq!(versions[0].size, 16);
+    }
+
     /// Retry a fixed-ID update, but never reinterpret a path after an
     /// ambiguous move/rename: it may then refer to a different occupant.
     #[tokio::test]
@@ -6185,6 +6350,50 @@ mod tests {
         );
     }
 
+    /// An upload server refusal quoting the request (a bare key in its
+    /// message) is reported by its status and length, never its text, and
+    /// no upload is sent.
+    #[tokio::test]
+    async fn an_upload_server_refusal_never_shows_its_message() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let sent = std::sync::Arc::new(AtomicBool::new(false));
+        let seen = std::sync::Arc::clone(&sent);
+        let (mut provider, _) = provider_against(move |_origin, path, query| {
+            let root = query.get("folder_path").map(String::as_str) == Some("/");
+            match path {
+                "/apiv2/folder/list" if root => {
+                    r#"{"status":200,"result":{"files":[],"folders":[{"name":"d","fld_id":7}]}}"#
+                        .to_string()
+                }
+                "/apiv2/folder/list" => {
+                    r#"{"status":200,"result":{"files":[],"folders":[]}}"#.to_string()
+                }
+                "/api/upload/server" => {
+                    r#"{"status":403,"msg":"bad request key=x BAREKEY0SECRET9 refused"}"#
+                        .to_string()
+                }
+                "/up" => {
+                    seen.store(true, Ordering::SeqCst);
+                    "[]".to_string()
+                }
+                _ => r#"{"status":200,"msg":"OK"}"#.to_string(),
+            }
+        })
+        .await;
+        let local = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(local.path(), b"x").unwrap();
+        let outcome = provider
+            .upload(&local.path().to_string_lossy(), "/d/f.txt", None)
+            .await;
+        assert!(
+            matches!(&outcome, Err(ProviderError::ServerError(m))
+                if m.contains("Upload server error 403") && m.contains("not shown")
+                    && !m.contains("BAREKEY0SECRET9")),
+            "{outcome:?}"
+        );
+        assert!(!sent.load(Ordering::SeqCst));
+    }
+
     /// What the versions fixture does once a version is deleted.
     #[derive(Clone, Copy, PartialEq)]
     enum AfterDelete {
@@ -6223,8 +6432,12 @@ mod tests {
     ) {
         let versions = std::sync::Arc::new(std::sync::Mutex::new(vec!["V2", "V1"]));
         let deleted = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        // A restore makes the version the current file under its own code
+        // (V1, with its own upload time), as FileLu does.
+        let restored = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         provider_against(move |origin, path, query| {
             let deleted_now = deleted.load(std::sync::atomic::Ordering::SeqCst);
+            let restored_now = restored.load(std::sync::atomic::Ordering::SeqCst);
             let root = query.get("folder_path").map(String::as_str) == Some("/");
             let page_one = query.get("page").is_none_or(|p| p == "1");
             match path {
@@ -6235,8 +6448,16 @@ mod tests {
                     r#"{"status":200,"result":{"files":[],"folders":[{"name":"d","fld_id":7}]}}"#
                         .to_string()
                 }
+                "/apiv2/folder/list" if restored_now => {
+                    r#"{"status":200,"result":{"files":[{"name":"f.txt","file_code":"V1","size":9,"uploaded":"2026-11-01 11:31:51"}],"folders":[]}}"#
+                        .to_string()
+                }
                 "/apiv2/folder/list" => {
-                    r#"{"status":200,"result":{"files":[{"name":"f.txt","file_code":"CUR","size":9}],"folders":[]}}"#
+                    r#"{"status":200,"result":{"files":[{"name":"f.txt","file_code":"CUR","size":9,"uploaded":"2026-11-01 11:32:01"}],"folders":[]}}"#
+                        .to_string()
+                }
+                "/api/file/versions" if query.get("file_code").map(String::as_str) == Some("V1") => {
+                    r#"{"status":200,"msg":"OK","result":{"versions":[],"file_code":"V1","keep":10,"days":30}}"#
                         .to_string()
                 }
                 "/api/file/versions"
@@ -6280,6 +6501,7 @@ mod tests {
                     if let Some(status) = mutation_failure {
                         format!("!{status} lost")
                     } else {
+                        restored.store(true, std::sync::atomic::Ordering::SeqCst);
                         r#"{"status":200,"msg":"OK"}"#.to_string()
                     }
                 }
@@ -6301,8 +6523,183 @@ mod tests {
         .await
     }
 
-    /// Versions are listed newest first, each by its own code, with its upload
-    /// time as a UTC instant.
+    /// The `file/versions` answer is read up to the listing cap, and its
+    /// errors carry the status, never the body: an error page can echo the
+    /// request with its API key, and a restore's readback shows the error.
+    #[tokio::test]
+    async fn a_versions_answer_is_bounded_and_its_errors_show_no_body() {
+        for (answer, shown) in [
+            (
+                "!500 GET /api/file/versions?key=ECHO-SECRET".to_string(),
+                "HTTP 500",
+            ),
+            (
+                " ".repeat(super::super::VERSION_LISTING_MAX_BYTES as usize + 1),
+                "MB",
+            ),
+        ] {
+            let (mut provider, _) = provider_against(move |_, path, query| match path {
+                "/apiv2/folder/list" if query.get("folder_path").map(String::as_str) == Some("/") => {
+                    r#"{"status":200,"result":{"files":[{"name":"f.txt","file_code":"CUR","size":9}],"folders":[]}}"#.to_string()
+                }
+                "/api/file/versions" => answer.clone(),
+                _ => r#"{"status":200,"result":{"files":[],"folders":[]}}"#.to_string(),
+            })
+            .await;
+            let outcome = provider.list_versions("/f.txt").await;
+            let message = format!("{outcome:?}");
+            assert!(outcome.is_err() && message.contains(shown), "{message}");
+            assert!(!message.contains("ECHO-SECRET"), "{message}");
+        }
+    }
+
+    /// A folder listing that fails twice, the v2 call and then the legacy
+    /// one, logs the first failure and returns the second with the status
+    /// or the parse category and position only: each answer echoes the
+    /// request with its API key, in the body or in a wrongly typed value
+    /// serde would quote, which reached both the log and the error before.
+    #[test]
+    fn a_failed_folder_listing_logs_and_returns_no_body() {
+        // Alone in a child process: no other test's subscriber can
+        // decide these callsites' interest first.
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::filelu::tests::a_failed_folder_listing_logs_and_returns_no_body",
+        ) {
+            return;
+        }
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+            #[derive(Clone, Default)]
+            struct Capture(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+            impl std::io::Write for Capture {
+                fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+                    self.0.lock().unwrap().extend_from_slice(buf);
+                    Ok(buf.len())
+                }
+                fn flush(&mut self) -> std::io::Result<()> {
+                    Ok(())
+                }
+            }
+            impl<'writer> tracing_subscriber::fmt::MakeWriter<'writer> for Capture {
+                type Writer = Capture;
+                fn make_writer(&'writer self) -> Self::Writer {
+                    self.clone()
+                }
+            }
+            // The v2 failure as a refusal, as an API refusal whose `msg` holds
+            // the bare key, as JSON whose string `status` echoes the request,
+            // and as JSON whose `size` does: none reaches the log or the
+            // error. The legacy answer is JSON whose `size` is a string
+            // holding an echoed request URL: serde's own text would quote it.
+            for v2 in [
+                "!500 GET /apiv2/folder/list?key=ECHO-SECRET-1",
+                r#"{"status":403,"msg":"Wrong key ECHO-SECRET-1 for GET /apiv2/folder/list"}"#,
+                r#"{"status":"GET /apiv2/folder/list?key=ECHO-SECRET-1","result":{}}"#,
+                r#"{"status":200,"result":{"files":[{"name":"a","size":"GET /apiv2/x?key=ECHO-SECRET-1"}],"folders":[]}}"#,
+            ] {
+                let (mut provider, _) = provider_against(move |_, path, _| match path {
+                    "/apiv2/folder/list" => v2.to_string(),
+                    _ => r#"{"status":200,"result":{"files":[{"name":"a","size":"GET /api/file/list?key=ECHO-SECRET-2"}],"folders":[{"name":"b","fld_id":"GET /api/folder/list?key=ECHO-SECRET-2"}]}}"#.to_string(),
+                })
+                .await;
+                let capture = Capture::default();
+                let subscriber = tracing_subscriber::fmt()
+                    .with_max_level(tracing::Level::INFO)
+                    .with_writer(capture.clone())
+                    .finish();
+                let _guard = tracing::subscriber::set_default(subscriber);
+                // Another test thread can cache this callsite's interest while no
+                // subscriber of its own wants it: read it again for this one.
+                tracing::callsite::rebuild_interest_cache();
+                let outcome = provider.list("/").await;
+                let logged = String::from_utf8_lossy(&capture.0.lock().unwrap()).to_string();
+                let shown = format!("{outcome:?}");
+                assert!(logged.contains("falling back"), "{logged}");
+                assert!(
+                    matches!(&outcome, Err(ProviderError::ParseError(m)) if m.contains("not shown")),
+                    "{shown}"
+                );
+                for secret in ["ECHO-SECRET-1", "ECHO-SECRET-2"] {
+                    assert!(!logged.contains(secret), "{logged}");
+                    assert!(!shown.contains(secret), "{shown}");
+                }
+            }
+            });
+    }
+
+    /// An API error's `msg` is server text that can quote the request, a
+    /// bare key with no `key=` in front of it: only its status and length
+    /// reach the error.
+    #[tokio::test]
+    async fn an_api_error_message_is_not_shown() {
+        let (mut provider, _) = provider_against(|_, path, _| match path {
+            "/apiv2/folder/list" => "!500 down".to_string(),
+            _ => r#"{"status":403,"msg":"Wrong key ECHO-SECRET-3 for GET /api/folder/list"}"#
+                .to_string(),
+        })
+        .await;
+        let outcome = provider.list("/").await;
+        let shown = format!("{outcome:?}");
+        assert!(
+            matches!(&outcome, Err(ProviderError::ServerError(m)) if m.starts_with("API error 403")),
+            "{shown}"
+        );
+        assert!(!shown.contains("ECHO-SECRET-3"), "{shown}");
+    }
+
+    /// FileLu promotes the version under its own code: a restore is done
+    /// only when the file at the path is then that code, not another file of
+    /// the same size uploaded in between.
+    #[tokio::test]
+    async fn a_restore_is_confirmed_by_the_code_of_the_version_promoted() {
+        let restored = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let (mut provider, calls) = provider_against(move |_, path, query| {
+            let done = restored.load(std::sync::atomic::Ordering::SeqCst);
+            match path {
+                "/apiv2/folder/list" if query.get("page").is_some_and(|p| p != "1") => {
+                    r#"{"status":200,"result":{"files":[],"folders":[]}}"#.to_string()
+                }
+                "/apiv2/folder/list" if done => {
+                    r#"{"status":200,"result":{"files":[{"name":"f.txt","file_code":"OTHER","size":9,"uploaded":"2026-11-01 11:40:00"}],"folders":[]}}"#.to_string()
+                }
+                "/apiv2/folder/list" => {
+                    r#"{"status":200,"result":{"files":[{"name":"f.txt","file_code":"CUR","size":9,"uploaded":"2026-11-01 11:32:01"}],"folders":[]}}"#.to_string()
+                }
+                "/api/file/versions" if query.get("file_code").map(String::as_str) == Some("CUR") => {
+                    r#"{"status":200,"msg":"OK","result":{"versions":[{"code":"V1","size":9,"uploaded":"2026-11-01 11:31:51"}]}}"#.to_string()
+                }
+                "/api/file/versions" => {
+                    r#"{"status":200,"msg":"OK","result":{"versions":[]}}"#.to_string()
+                }
+                "/api/file/version_restore" => {
+                    restored.store(true, std::sync::atomic::Ordering::SeqCst);
+                    r#"{"status":200,"msg":"OK"}"#.to_string()
+                }
+                _ => r#"{"status":200,"msg":"OK"}"#.to_string(),
+            }
+        })
+        .await;
+        let outcome = provider.restore_version("/f.txt", "V1").await;
+        assert!(
+            matches!(&outcome, Err(ProviderError::TransferFailed(m)) if m.contains("list its versions again")),
+            "{outcome:?}"
+        );
+        assert!(
+            calls
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|c| c.starts_with("/api/file/version_restore")),
+            "{:?}",
+            calls.lock().unwrap()
+        );
+    }
+
+    /// Versions are listed after the file itself, newest first, each by its
+    /// own code, with its upload time as a UTC instant.
     #[tokio::test]
     async fn versions_are_listed_newest_first_by_their_own_codes() {
         let (mut provider, _) = provider_with_versions(AfterDelete::Removes).await;
@@ -6310,8 +6707,11 @@ mod tests {
         let versions = provider.list_versions("/d/f.txt").await.unwrap();
         let listed: Vec<(&str, Option<&str>, u64)> = versions
             .iter()
+            .skip(1)
             .map(|v| (v.id.as_str(), v.modified.as_deref(), v.size))
             .collect();
+        assert_eq!(versions[0].id, "CUR:current");
+        assert_eq!(versions[0].size, 9);
         assert_eq!(
             listed,
             [
@@ -6319,6 +6719,65 @@ mod tests {
                 ("V1", Some("2026-11-01T16:31:51Z"), 9)
             ]
         );
+    }
+
+    /// Row 0 of the dialog, `current`, is the file itself: its download is
+    /// the file's own (the live link, here answered 404 "gone", never a
+    /// version code), and its restore and delete send no request at all.
+    #[tokio::test]
+    async fn the_current_row_is_the_file_itself_for_every_version_operation() {
+        let current = super::super::CURRENT_VERSION_ID;
+        let (mut provider, calls) = provider_with_versions(AfterDelete::Removes).await;
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("f.txt");
+        let outcome = provider
+            .download_version("/d/f.txt", current, out.to_str().unwrap())
+            .await;
+        assert!(
+            matches!(outcome, Err(ProviderError::TransferFailed(ref m)) if m.contains("404") && m.contains("gone")),
+            "{outcome:?}"
+        );
+        let seen = calls.lock().unwrap().clone();
+        assert!(
+            seen.iter()
+                .any(|c| c == "/api/file/direct_link?file_code=CUR"),
+            "{seen:?}"
+        );
+        assert!(seen.iter().all(|c| !c.contains("versions")), "{seen:?}");
+
+        // The listed current row is file CUR by its code; listed from
+        // another file, it is refused before any link is asked for.
+        let listed = provider.list_versions("/d/f.txt").await.unwrap();
+        assert_eq!(listed[0].id, "CUR:current");
+        let before = calls.lock().unwrap().len();
+        let other = provider
+            .download_version("/d/f.txt", "OTHER:current", out.to_str().unwrap())
+            .await;
+        assert!(
+            matches!(&other, Err(ProviderError::NotFound(m)) if m.contains("list its versions again")),
+            "{other:?}"
+        );
+        assert!(
+            calls.lock().unwrap()[before..]
+                .iter()
+                .all(|c| !c.contains("direct_link")),
+            "{:?}",
+            calls.lock().unwrap()
+        );
+
+        let before = calls.lock().unwrap().len();
+        for id in [current, "CUR:current"] {
+            assert!(matches!(
+                provider.restore_version("/d/f.txt", id).await,
+                Err(ProviderError::NotSupported(_))
+            ));
+            assert!(matches!(
+                provider.delete_version("/d/f.txt", id).await,
+                Err(ProviderError::NotSupported(_))
+            ));
+        }
+        let sent = calls.lock().unwrap().clone();
+        assert_eq!(sent.len(), before, "{sent:?}");
     }
 
     /// A direct link answered with an error status fails the download, and
@@ -6658,7 +7117,8 @@ mod tests {
             },
         );
         let versions = provider.list_versions("/d/f.txt").await.unwrap();
-        assert_eq!(versions.len(), 2, "{versions:?}");
+        // The file itself, then its two past versions.
+        assert_eq!(versions.len(), 3, "{versions:?}");
     }
 
     /// A parent folder too large to list whole still finds the file it
@@ -6697,7 +7157,8 @@ mod tests {
         .await;
         let versions = provider.list_versions("/d/f.txt").await;
         assert!(
-            matches!(versions, Ok(ref v) if v.len() == 1),
+            // The file itself, then its one past version.
+            matches!(versions, Ok(ref v) if v.len() == 2),
             "{versions:?}"
         );
         let calls = calls.lock().unwrap();

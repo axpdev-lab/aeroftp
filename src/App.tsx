@@ -954,13 +954,16 @@ const App: React.FC = () => {
   const [remoteSearchResults, setRemoteSearchResults] = useState<RemoteFile[] | null>(null);
   const [showRemoteSearchBar, setShowRemoteSearchBar] = useState(false);
   // File versions dialog
-  const [versionsDialog, setVersionsDialog] = useState<{ path: string; name: string } | null>(null);
+  // The connection the File Versions dialog was opened on: its commands carry
+  // that generation, and the dialog shows only while its session is active.
+  const [versionsDialog, setVersionsDialog] = useState<{ path: string; name: string; sessionId: string | null; generation: number; guiTarget: number } | null>(null);
+  const versionsOpenSeqRef = useRef(0);
   // Share permissions dialog
   const [sharePermissionsDialog, setSharePermissionsDialog] = useState<{ path: string; name: string } | null>(null);
   // WebDAV file locks
   const [lockedFiles, setLockedFiles] = useState<Map<string, string>>(new Map());
   // Provider capabilities (cached per session)
-  const [providerCaps, setProviderCaps] = useState<{ versions: boolean; thumbnails: boolean; permissions: boolean; locking: boolean }>({ versions: false, thumbnails: false, permissions: false, locking: false });
+  const [providerCaps, setProviderCaps] = useState<{ versions: boolean; versionDelete: boolean; versionRestore: boolean; thumbnails: boolean; permissions: boolean; locking: boolean }>({ versions: false, versionDelete: false, versionRestore: false, thumbnails: false, permissions: false, locking: false });
   const providerCapsVersionRef = useRef(0); // Guard against stale async capability responses across session switches/disconnects
   const [remoteFiles, setRemoteFiles] = useState<RemoteFile[]>([]);
   const localPanel = useLocalPanel({ panelId: 'local' });
@@ -1631,6 +1634,13 @@ const App: React.FC = () => {
   const [showKDriveTrash, setShowKDriveTrash] = useState(false);
   const [showAzureTrash, setShowAzureTrash] = useState(false);
   const [showNextcloudTrash, setShowNextcloudTrash] = useState(false);
+  // The session and the backend connection generation the Nextcloud trash was
+  // opened on: the manager is shown only while that session is on screen, and
+  // every trash command passes the generation, which the backend re-checks
+  // under its provider lock (a switch back that is still reconnecting, or
+  // another sessionless connection, has another one).
+  const [nextcloudTrashOwner, setNextcloudTrashOwner] = useState<{ sessionId: string | null; generation: number } | null>(null);
+  const nextcloudTrashOpenSeqRef = useRef(0);
   const [shareLinkDialog, setShareLinkDialog] = useState<{ path: string; fileName: string; providerName: string; providerIcon?: React.ReactNode } | null>(null);
   const [fileLuFolderSettingsDialog, setFileLuFolderSettingsDialog] = useState<{
     path: string; name: string; filedrop: boolean; isPublic: boolean;
@@ -4490,7 +4500,7 @@ const App: React.FC = () => {
       setLockedFiles(new Map());
     } else {
       providerCapsVersionRef.current++;
-      setProviderCaps({ versions: false, thumbnails: false, permissions: false, locking: false });
+      setProviderCaps({ versions: false, versionDelete: false, versionRestore: false, thumbnails: false, permissions: false, locking: false });
     }
   }, [isConnected, liveConnectionParams.protocol]);
 
@@ -7623,22 +7633,24 @@ const App: React.FC = () => {
     if (!protocol || ['ftp', 'ftps'].includes(protocol) || isSshProtocol(protocol)) {
       // FTP/SFTP/SCP don't use provider_* capability commands
       if (reqVersion === providerCapsVersionRef.current) {
-        setProviderCaps({ versions: false, thumbnails: false, permissions: false, locking: protocol === 'webdav' });
+        setProviderCaps({ versions: false, versionDelete: false, versionRestore: false, thumbnails: false, permissions: false, locking: protocol === 'webdav' });
       }
       return;
     }
     try {
-      const [versions, thumbnails, permissions, locking] = await Promise.all([
+      const [versions, versionDelete, versionRestore, thumbnails, permissions, locking] = await Promise.all([
         invoke<boolean>('provider_supports_versions').catch(() => false),
+        invoke<boolean>('provider_supports_version_delete').catch(() => false),
+        invoke<boolean>('provider_supports_version_restore').catch(() => false),
         invoke<boolean>('provider_supports_thumbnails').catch(() => false),
         invoke<boolean>('provider_supports_permissions').catch(() => false),
         invoke<boolean>('provider_supports_locking').catch(() => false),
       ]);
       if (reqVersion !== providerCapsVersionRef.current) return;
-      setProviderCaps({ versions, thumbnails, permissions, locking });
+      setProviderCaps({ versions, versionDelete, versionRestore, thumbnails, permissions, locking });
     } catch {
       if (reqVersion !== providerCapsVersionRef.current) return;
-      setProviderCaps({ versions: false, thumbnails: false, permissions: false, locking: false });
+      setProviderCaps({ versions: false, versionDelete: false, versionRestore: false, thumbnails: false, permissions: false, locking: false });
     }
   });
 
@@ -9753,7 +9765,7 @@ const App: React.FC = () => {
     quotaConnectionRef.current++; // ...and any scan of the session left behind
     setStorageQuota(null); // Clear stale quota while reconnecting
     providerCapsVersionRef.current++; // Invalidate any in-flight capability response from the previous session
-    setProviderCaps({ versions: false, thumbnails: false, permissions: false, locking: false });
+    setProviderCaps({ versions: false, versionDelete: false, versionRestore: false, thumbnails: false, permissions: false, locking: false });
     setLockedFiles(new Map());
 
     // Load cached data immediately (zero latency UX)
@@ -17818,7 +17830,27 @@ const App: React.FC = () => {
       items.push({
         label: t('versions.menu') || 'File Versions',
         icon: <History size={14} />,
-        action: () => setVersionsDialog({ path: file.path, name: file.name }),
+        action: async () => {
+          // Read only while the backend serves this tab, as the trash does: the
+          // generation must be the connection clicked from, still live.
+          const notServing = () => notify.error(t('common.failed'), t('toast.remoteTargetChanged'));
+          if (!backendServesLiveTab()) { notServing(); return; }
+          const target = snapshotQueuedTarget();
+          const sessionId = activeSessionId;
+          const seq = ++versionsOpenSeqRef.current;
+          let generation: number;
+          let guiTarget: number;
+          try {
+            generation = await invoke<number>('provider_connection_generation');
+            guiTarget = await captureGuiTarget(() => {});
+          } catch (e) {
+            if (seq === versionsOpenSeqRef.current) notify.error(t('common.failed'), String(e));
+            return;
+          }
+          if (seq !== versionsOpenSeqRef.current) return;
+          if (queuedTargetProblem(target)) { notServing(); return; }
+          setVersionsDialog({ path: file.path, name: file.name, sessionId, generation, guiTarget });
+        },
       });
     }
 
@@ -20756,12 +20788,18 @@ const App: React.FC = () => {
           fileName={permissionsDialog?.file.name || ''}
           currentPermissions={permissionsDialog?.file.permissions || undefined}
         />
-        {versionsDialog && (
+        {versionsDialog && versionsDialog.sessionId === activeSessionId && (
           <FileVersionsDialog
+            key={`${versionsDialog.generation}:${versionsDialog.guiTarget}`}
+            generation={versionsDialog.generation}
+            guiTarget={versionsDialog.guiTarget}
+            canPurge={providerCaps.versionDelete}
+            canRestore={providerCaps.versionRestore}
             filePath={versionsDialog.path}
             fileName={versionsDialog.name}
             onClose={() => setVersionsDialog(null)}
             onRestore={() => { setVersionsDialog(null); loadRemoteFiles(undefined, true); }}
+            onFilesChanged={() => { void loadRemoteFiles(undefined, true); }}
           />
         )}
         {sharePermissionsDialog && (
@@ -21287,9 +21325,11 @@ const App: React.FC = () => {
             onRefreshFiles={() => loadRemoteFiles(undefined, true)}
           />
         )}
-        {showNextcloudTrash && (
+        {showNextcloudTrash && nextcloudTrashOwner && nextcloudTrashOwner.sessionId === activeSessionId && (
           <NextcloudTrashManager
-            providerName={(liveConnectionParams.providerId) === 'felicloud' ? 'Felicloud' : 'Nextcloud'}
+            key={nextcloudTrashOwner.generation}
+            generation={nextcloudTrashOwner.generation}
+            providerName={getProviderById(liveConnectionParams.providerId ?? '')?.name ?? 'Nextcloud'}
             onClose={() => setShowNextcloudTrash(false)}
             onRefreshFiles={() => loadRemoteFiles(undefined, true)}
           />
@@ -22600,11 +22640,39 @@ const App: React.FC = () => {
                       if (isAzure) {
                         handler = () => setShowAzureTrash(true);
                       }
-                      // Nextcloud trash API only works on Nextcloud/FeliCloud WebDAV servers
+                      // The Nextcloud trash API: offered on the WebDAV presets whose
+                      // registry entry declares trash (the Nextcloud family), so the
+                      // flag and the button cannot disagree (featureClaims.test.ts).
                       if (proto === 'webdav') {
                         const pid = liveConnectionParams.providerId;
-                        if (pid === 'nextcloud' || pid === 'felicloud') {
-                          handler = () => setShowNextcloudTrash(true);
+                        if (pid && getProviderById(pid)?.features?.trash) {
+                          handler = async () => {
+                            // The backend connection this panel lists from; the
+                            // trash commands refuse once another one holds the slot.
+                            // Read only while the backend serves this tab: during a
+                            // switch back it still holds the other connection.
+                            const notServing = () => notify.error(t('common.failed'), t('toast.remoteTargetChanged'));
+                            if (!backendServesLiveTab()) { notServing(); return; }
+                            // The connection clicked from: a sessionless tab has
+                            // no id to tell it from the next one, its target does.
+                            const target = snapshotQueuedTarget();
+                            const sessionId = activeSessionId;
+                            const seq = ++nextcloudTrashOpenSeqRef.current;
+                            let generation: number;
+                            try {
+                              generation = await invoke<number>('provider_connection_generation');
+                            } catch (e) {
+                              if (seq === nextcloudTrashOpenSeqRef.current) notify.error(t('common.failed'), String(e));
+                              return;
+                            }
+                            if (seq !== nextcloudTrashOpenSeqRef.current) return;
+                            // A generation read while another connection took the
+                            // slot is that connection's: opened only on the one
+                            // clicked from, still live.
+                            if (queuedTargetProblem(target)) { notServing(); return; }
+                            setNextcloudTrashOwner({ sessionId, generation });
+                            setShowNextcloudTrash(true);
+                          };
                         }
                       }
                       return handler ? (

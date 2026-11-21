@@ -2576,7 +2576,8 @@
             "restore": "Restaurar aquesta versió",
             "none": "No hi ha versions disponibles",
             "purge": "Elimina permanentment aquesta versió",
-            "purgeConfirm": "Vol eliminar permanentment aquesta versió? Aquesta acció no es pot desfer."
+            "purgeConfirm": "Vol eliminar permanentment aquesta versió? Aquesta acció no es pot desfer.",
+            "restoreUnconfirmed": "La restauració s'ha enviat, però el servidor no pot confirmar quina versió és ara l'actual. Comprova les versions abans de tornar a restaurar."
         },
         "sharing": {
             "title": "Compartir",

@@ -2576,7 +2576,8 @@
             "restore": "Restaurați această versiune",
             "none": "Nicio versiune disponibilă",
             "purge": "Ștergeți definitiv această versiune",
-            "purgeConfirm": "Ștergeți definitiv această versiune? Această acțiune nu poate fi anulată."
+            "purgeConfirm": "Ștergeți definitiv această versiune? Această acțiune nu poate fi anulată.",
+            "restoreUnconfirmed": "Restaurarea a fost trimisă, dar serverul nu poate confirma care versiune este acum cea curentă. Verificați versiunile înainte de a restaura din nou."
         },
         "sharing": {
             "title": "Partajare",

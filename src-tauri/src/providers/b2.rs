@@ -34,6 +34,8 @@ const LARGE_FILE_MIN_PART_SIZE: u64 = 5 * 1024 * 1024; // B2 minimum (last part 
 /// and matches the in-repo S3 multipart fan-out for consistency.
 const LARGE_FILE_MAX_PARALLEL: usize = 4;
 const COPY_MAX_SIZE: u64 = 5 * 1024 * 1024 * 1024; // 5 GB hard limit on b2_copy_file
+/// Entries per page of the hidden-file scan ([`B2Provider::list_hidden_files`]).
+const HIDDEN_SCAN_PAGE_SIZE: u32 = 1_000;
 const COPY_PART_MAX_SIZE: u64 = 5 * 1024 * 1024 * 1024; // 5 GB per b2_copy_part call
 const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024 * 1024 * 1024; // 10 TB practical ceiling
 const DEFAULT_LIST_PAGE: u32 = 1000;
@@ -539,9 +541,17 @@ struct GetUploadUrlResponse {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct UploadFileResponse {
-    #[allow(dead_code)]
     file_id: String,
     file_name: String,
+}
+
+/// What `b2_get_file_info` says one file id names.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FileIdentity {
+    file_name: String,
+    bucket_id: String,
+    action: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -753,20 +763,19 @@ impl B2Provider {
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().await.unwrap_or_default();
-            return Err(map_b2_status(status, &body, "b2_authorize_account"));
+            return Err(authorize_refusal(status, &body));
         }
         let body_bytes = resp.bytes().await.map_http_err(|e| {
             ProviderError::ConnectionFailed(format!("authorize read body: {}", e))
         })?;
+        // The answer carries the account's token, under any spacing a mask
+        // could miss: the error names where the parse stopped and the size,
+        // never the body.
         let parsed: AuthorizeResponse = serde_json::from_slice(&body_bytes).map_err(|e| {
-            let preview = String::from_utf8_lossy(&body_bytes);
-            let masked = mask_authorize_secrets(&preview);
-            let truncated: String = masked.chars().take(800).collect();
             ProviderError::ServerError(format!(
-                "authorize parse: {} | body[{}B]: {}",
-                e,
-                body_bytes.len(),
-                truncated
+                "authorize parse: {} | body of {} bytes not shown",
+                super::json_parse_error(&e),
+                body_bytes.len()
             ))
         })?;
         self.account_id = parsed.account_id;
@@ -1378,6 +1387,9 @@ impl B2Provider {
         let url = format!("{}/b2api/v4/b2_copy_file", self.api_url);
         let body = serde_json::json!({
             "sourceFileId": source_file_id,
+            // The copy lands in this bucket whatever bucket the source id is
+            // in: without it B2 writes beside the source.
+            "destinationBucketId": self.bucket_id,
             "fileName": new_name,
             "metadataDirective": "COPY",
         });
@@ -1392,12 +1404,52 @@ impl B2Provider {
             .map_http_err(|e| ProviderError::ConnectionFailed(format!("copy_file: {}", e)))?;
         let status = resp.status();
         if !status.is_success() {
+            // A gateway that gave up says nothing of the copy behind it.
+            if let Some(unknown) =
+                super::gateway_left_unknown(status, &format!("the copy to {new_name}"))
+            {
+                return Err(unknown);
+            }
             let text = resp.text().await.unwrap_or_default();
             return Err(map_b2_status(status, &text, "b2_copy_file"));
         }
-        resp.json::<UploadFileResponse>()
+        // A success whose receipt cannot be read is a copy made, not a copy
+        // refused: sending it again would stack a second one.
+        // Any failure reading it, a timeout included, leaves the copy made:
+        // none of them is a request to retry.
+        resp.json::<UploadFileResponse>().await.map_err(|e| {
+            let what = format!("the copy to {new_name}");
+            let unreadable = super::http_send_error(e, |e| {
+                super::applied_unconfirmed(format!(
+                    "{what} was answered {status}, but its receipt could not be read ({}): list \
+                     its versions again before trying again",
+                    e.without_url()
+                ))
+            });
+            super::sent_change_unconfirmed(unreadable, &what)
+        })
+    }
+
+    /// `b2_get_file_info`: the name, bucket and action of one file id.
+    async fn file_identity(&self, file_id: &str) -> Result<FileIdentity, ProviderError> {
+        let url = format!("{}/b2api/v4/b2_get_file_info", self.api_url);
+        let resp = self
+            .client
+            .post(&url)
+            .header(AUTHORIZATION, self.auth_header()?)
+            .header(CONTENT_TYPE, "application/json")
+            .body(serde_json::json!({ "fileId": file_id }).to_string())
+            .send()
             .await
-            .map_http_err(|e| ProviderError::ServerError(format!("copy_file parse: {}", e)))
+            .map_http_err(|e| ProviderError::ConnectionFailed(format!("get_file_info: {}", e)))?;
+        let status = resp.status();
+        if !status.is_success() {
+            let text = resp.text().await.unwrap_or_default();
+            return Err(map_b2_status(status, &text, "b2_get_file_info"));
+        }
+        resp.json::<FileIdentity>()
+            .await
+            .map_http_err(|e| ProviderError::ParseError(format!("get_file_info parse: {}", e)))
     }
 
     /// `b2_copy_part`: server-side copy of a byte range from a source file
@@ -2289,11 +2341,11 @@ impl B2Provider {
             .send()
             .await
             .map_http_err(|e| {
-                ProviderError::ConnectionFailed(format!("delete_file_version: {}", e))
+                ProviderError::ConnectionFailed(format!("delete_file_version: {}", e.without_url()))
             })?;
         let status = resp.status();
         if !status.is_success() {
-            let text = resp.text().await.unwrap_or_default();
+            let text = super::version_listing_text(resp).await.unwrap_or_default();
             return Err(map_b2_status(status, &text, "b2_delete_file_version"));
         }
         Ok(())
@@ -2353,6 +2405,7 @@ impl B2Provider {
         start_file_name: Option<&str>,
         start_file_id: Option<&str>,
         max_count: u32,
+        budget: &mut super::VersionListingBudget,
     ) -> Result<ListFileVersionsResponse, ProviderError> {
         let url = format!("{}/b2api/v4/b2_list_file_versions", self.api_url);
         let mut body = serde_json::json!({
@@ -2374,7 +2427,10 @@ impl B2Provider {
             .body(body.to_string())
             .build()
             .map_err(|e| {
-                ProviderError::ConnectionFailed(format!("list_file_versions build: {}", e))
+                ProviderError::ConnectionFailed(format!(
+                    "list_file_versions build: {}",
+                    e.without_url()
+                ))
             })?;
         let resp = send_with_retry(
             &self.client,
@@ -2383,18 +2439,32 @@ impl B2Provider {
         )
         .await
         .map_http_err(|e| {
-            ProviderError::ConnectionFailed(format!("list_file_versions send: {}", e))
+            ProviderError::ConnectionFailed(format!("list_file_versions send: {}", e.without_url()))
         })?;
         let status = resp.status();
         if !status.is_success() {
-            let text = resp.text().await.unwrap_or_default();
-            return Err(map_b2_status(status, &text, "b2_list_file_versions"));
+            let text = super::version_listing_text(resp).await.unwrap_or_default();
+            let error = map_b2_status(status, &text, "b2_list_file_versions");
+            // A restore goes on without the listing only when the key is
+            // denied it: B2's documented `unauthorized` (no listFiles). Any
+            // other 401 is no such proof, and refuses the restore.
+            let denied_listing =
+                serde_json::from_str::<B2ApiError>(&text).is_ok_and(|e| e.code == "unauthorized");
+            if matches!(error, ProviderError::PermissionDenied(_)) && !denied_listing {
+                return Err(ProviderError::ServerError(error.to_string()));
+            }
+            return Err(error);
         }
-        resp.json::<ListFileVersionsResponse>()
-            .await
-            .map_http_err(|e| {
-                ProviderError::ServerError(format!("list_file_versions parse: {}", e))
-            })
+        // Every page of one listing counts toward its total: a server that
+        // answers each page under the per-answer cap still ends.
+        let text = super::version_listing_text(resp).await?;
+        budget.count(text.len(), prefix)?;
+        serde_json::from_str::<ListFileVersionsResponse>(&text).map_err(|e| {
+            ProviderError::ServerError(format!(
+                "list_file_versions parse: {}",
+                super::json_parse_error(&e)
+            ))
+        })
     }
 
     /// Streaming download of a specific version by `fileId` via
@@ -2427,6 +2497,8 @@ impl B2Provider {
             let body = resp.text().await.unwrap_or_default();
             return Err(map_b2_status(status, &body, "b2_download_file_by_id"));
         }
+        // A 206 is a fragment: it must not replace the destination.
+        super::require_whole_version_body(&resp, "b2_download_file_by_id")?;
         let total = resp.content_length().unwrap_or(0);
         // `<final>.aerotmp`, claimed (see `atomic_write::temp_claim`): the
         // extension used to be replaced, so an extensionless `x` wrote `x.aerotmp`
@@ -2672,8 +2744,10 @@ impl B2Provider {
     /// previous versions still exist and can be restored by calling
     /// `restore_hidden_file` on the same name.
     ///
-    /// Caps at 25 pages of 10 000 entries (250 000 versions scanned) to keep
-    /// the call bounded on huge buckets.
+    /// Caps at 250 pages of 1 000 entries (250 000 versions scanned) to keep
+    /// the call bounded on huge buckets. The pages are small because each is
+    /// read whole under the 8 MiB cap of one listing answer: 10 000 entries
+    /// with ordinary `fileInfo` can pass it, and the scan would then fail.
     pub async fn list_hidden_files(
         &mut self,
         prefix: &str,
@@ -2681,12 +2755,13 @@ impl B2Provider {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
-        const PAGE_SIZE: u32 = 10_000;
-        const MAX_PAGES: u32 = 25;
+        const PAGE_SIZE: u32 = HIDDEN_SCAN_PAGE_SIZE;
+        const MAX_PAGES: u32 = 250_000 / HIDDEN_SCAN_PAGE_SIZE;
         let resolved = self.resolved_path(prefix);
         let key_prefix = self.b2_key(&resolved);
         let mut out = Vec::new();
         let mut start_name: Option<String> = None;
+        let mut budget = super::VersionListingBudget::default();
         let mut start_id: Option<String> = None;
         for _ in 0..MAX_PAGES {
             let page = match self
@@ -2695,6 +2770,7 @@ impl B2Provider {
                     start_name.as_deref(),
                     start_id.as_deref(),
                     PAGE_SIZE,
+                    &mut budget,
                 )
                 .await
             {
@@ -2706,6 +2782,7 @@ impl B2Provider {
                             start_name.as_deref(),
                             start_id.as_deref(),
                             PAGE_SIZE,
+                            &mut budget,
                         )
                         .await?
                     } else {
@@ -2763,14 +2840,15 @@ impl B2Provider {
         }
         let resolved = self.resolved_path(path);
         let key = self.b2_key(&resolved);
+        let mut budget = super::VersionListingBudget::default();
         let page = match self
-            .list_file_versions_page(&key, Some(&key), None, 25)
+            .list_file_versions_page(&key, Some(&key), None, 25, &mut budget)
             .await
         {
             Ok(r) => r,
             Err(e) if is_b2_token_failure(&e) => {
                 if self.maybe_reauth(&e).await {
-                    self.list_file_versions_page(&key, Some(&key), None, 25)
+                    self.list_file_versions_page(&key, Some(&key), None, 25, &mut budget)
                         .await?
                 } else {
                     return Err(e);
@@ -2809,15 +2887,25 @@ impl B2Provider {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
-        const VERSION_CAP: u32 = 1_000;
+        const VERSION_CAP: usize = 1_000;
         let resolved = self.resolved_path(path);
         let key = self.b2_key(&resolved);
-        let mut deleted: u32 = 0;
+        let mut budget = super::VersionListingBudget::default();
+        // The whole bounded listing first: a later page refused (too long,
+        // malformed) must stop the purge before anything is deleted, not
+        // after some versions are gone.
+        let mut file_ids: Vec<String> = Vec::new();
         let mut start_name: Option<String> = Some(key.clone());
         let mut start_id: Option<String> = None;
-        loop {
+        while file_ids.len() < VERSION_CAP {
             let page = match self
-                .list_file_versions_page(&key, start_name.as_deref(), start_id.as_deref(), 100)
+                .list_file_versions_page(
+                    &key,
+                    start_name.as_deref(),
+                    start_id.as_deref(),
+                    100,
+                    &mut budget,
+                )
                 .await
             {
                 Ok(r) => r,
@@ -2828,6 +2916,7 @@ impl B2Provider {
                             start_name.as_deref(),
                             start_id.as_deref(),
                             100,
+                            &mut budget,
                         )
                         .await?
                     } else {
@@ -2836,31 +2925,15 @@ impl B2Provider {
                 }
                 Err(e) => return Err(e),
             };
-            let versions: Vec<_> = page
-                .files
-                .into_iter()
-                .filter(|f| f.file_name == key)
-                .collect();
-            if versions.is_empty() {
+            let before = file_ids.len();
+            file_ids.extend(
+                page.files
+                    .into_iter()
+                    .filter(|f| f.file_name == key)
+                    .filter_map(|f| f.file_id),
+            );
+            if file_ids.len() == before {
                 break;
-            }
-            for f in versions {
-                let Some(file_id) = f.file_id else { continue };
-                match self.do_delete_file_version(&key, &file_id).await {
-                    Ok(()) => deleted += 1,
-                    Err(e) if is_b2_token_failure(&e) => {
-                        if self.maybe_reauth(&e).await {
-                            self.do_delete_file_version(&key, &file_id).await?;
-                            deleted += 1;
-                        } else {
-                            return Err(e);
-                        }
-                    }
-                    Err(e) => return Err(e),
-                }
-                if deleted >= VERSION_CAP {
-                    return Ok(deleted);
-                }
             }
             match (page.next_file_name, page.next_file_id) {
                 (Some(n), Some(i)) if n == key && !i.is_empty() => {
@@ -2870,11 +2943,33 @@ impl B2Provider {
                 _ => break,
             }
         }
-        if deleted == 0 {
+        file_ids.truncate(VERSION_CAP);
+        if file_ids.is_empty() {
             return Err(ProviderError::NotFound(format!(
                 "no versions found for '{}'",
                 key
             )));
+        }
+        let total = file_ids.len();
+        let mut deleted: u32 = 0;
+        for file_id in &file_ids {
+            let outcome = match self.do_delete_file_version(&key, file_id).await {
+                Err(e) if is_b2_token_failure(&e) && self.maybe_reauth(&e).await => {
+                    self.do_delete_file_version(&key, file_id).await
+                }
+                outcome => outcome,
+            };
+            match outcome {
+                Ok(()) => deleted += 1,
+                // Nothing gone yet: the error as it came.
+                Err(e) if deleted == 0 => return Err(e),
+                Err(e) => {
+                    return Err(ProviderError::TransferFailed(format!(
+                        "{deleted} of the {total} versions of {path} were deleted, then one \
+                         was refused ({e}): the purge is incomplete, list its versions again"
+                    )))
+                }
+            }
         }
         Ok(deleted)
     }
@@ -3713,10 +3808,12 @@ impl StorageProvider for B2Provider {
         }
         let abs = self.resolved_path(path);
         let key = self.b2_key(&abs);
+        let mut budget = super::VersionListingBudget::default();
         let mut versions: Vec<FileVersion> = Vec::new();
         let mut start_name: Option<String> = None;
         let mut start_id: Option<String> = None;
         let mut first_call = true;
+        let mut cursors_seen = std::collections::HashSet::new();
         loop {
             // `b2_list_file_versions` returns versions across every key sharing
             // this prefix; we filter to the exact match. The cursor is
@@ -3727,6 +3824,7 @@ impl StorageProvider for B2Provider {
                     start_name.as_deref(),
                     start_id.as_deref(),
                     DEFAULT_LIST_PAGE,
+                    &mut budget,
                 )
                 .await
             {
@@ -3738,11 +3836,21 @@ impl StorageProvider for B2Provider {
                             start_name.as_deref(),
                             start_id.as_deref(),
                             DEFAULT_LIST_PAGE,
+                            &mut budget,
                         )
                         .await?
                     } else {
                         return Err(e);
                     }
+                }
+                // A denial after the first page is a listing cut short, not a
+                // listing denied: the restore preflight reads a denial as "no
+                // listing to check against" and would copy unchecked.
+                Err(ProviderError::PermissionDenied(detail)) if !first_call => {
+                    return Err(ProviderError::TransferFailed(format!(
+                        "The versions of {path} were cut short: a later page was refused \
+                         ({detail})"
+                    )));
                 }
                 Err(e) => return Err(e),
             };
@@ -3759,8 +3867,9 @@ impl StorageProvider for B2Provider {
                 }
                 if f.action == "hide" {
                     // Hide markers are versions, but they don't have downloadable
-                    // content: surface them with size 0 and an explicit modified
-                    // timestamp so the UI can render them as "deleted" markers.
+                    // content: surface them with size 0, their timestamp and
+                    // `deleted`, which the versions dialog shows as Deleted
+                    // with no download or restore (on top: the file is deleted).
                     if let Some(fid) = &f.file_id {
                         versions.push(FileVersion {
                             id: fid.clone(),
@@ -3770,8 +3879,14 @@ impl StorageProvider for B2Provider {
                                 .map(|dt| dt.to_rfc3339()),
                             size: 0,
                             modified_by: None,
+                            deleted: true,
                         });
                     }
+                    continue;
+                }
+                // `start` is a large file still uploading (and `folder` a
+                // placeholder): not contents a version can be.
+                if f.action != "upload" {
                     continue;
                 }
                 if let Some(fid) = &f.file_id {
@@ -3783,39 +3898,62 @@ impl StorageProvider for B2Provider {
                             .map(|dt| dt.to_rfc3339()),
                         size: f.content_length,
                         modified_by: None,
+                        deleted: false,
                     });
                 }
             }
             if diverged {
                 break;
             }
-            match (page.next_file_name, page.next_file_id) {
-                (Some(n), Some(i)) if !n.is_empty() && !i.is_empty() => {
+            let next_name = page.next_file_name.filter(|n| !n.is_empty());
+            let next_id = page.next_file_id.filter(|i| !i.is_empty());
+            match (next_name, next_id) {
+                (None, None) => break,
+                (Some(n), Some(i)) => {
                     if n > key {
                         // Cursor walked past our key.
                         break;
                     }
+                    // A cursor answered twice would list the same pages for
+                    // ever.
+                    if !cursors_seen.insert((n.clone(), i.clone())) {
+                        return Err(ProviderError::ServerError(format!(
+                            "b2_list_file_versions answered the cursor {n} {i} twice for {abs}"
+                        )));
+                    }
+                    // A new cursor on every page never repeats: the page
+                    // count ends it.
+                    if cursors_seen.len() >= super::VERSION_LISTING_MAX_PAGES {
+                        return Err(super::version_listing_too_long(path));
+                    }
                     start_name = Some(n);
                     start_id = Some(i);
                 }
-                _ => break,
+                // Half a cursor cannot continue the listing, and it is not
+                // its end either.
+                _ => {
+                    return Err(ProviderError::ParseError(format!(
+                        "b2_list_file_versions answered half a cursor for {abs}, so the listing is incomplete"
+                    )))
+                }
             }
         }
         if versions.is_empty() {
             return Err(ProviderError::NotFound(format!("file {}", abs)));
         }
-        Ok(versions)
+        super::versions_latest_first(versions)
     }
 
     async fn download_version(
         &mut self,
-        _path: &str,
+        path: &str,
         version_id: &str,
         local_path: &str,
     ) -> Result<(), ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
+        super::refuse_a_deleted_version(self, path, version_id).await?;
         let local_pb = std::path::PathBuf::from(local_path);
         // `_path` is unused here: the fileId is the canonical reference; B2
         // routes by id, not name. We still accept the parameter to match the
@@ -3837,22 +3975,53 @@ impl StorageProvider for B2Provider {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
+        let selected =
+            super::refuse_a_restore_that_changes_nothing_when_listed(self, path, version_id)
+                .await?;
         let abs = self.resolved_path(path);
         let key = self.b2_key(&abs);
+        // Without a listing nothing ties the id to this file: b2_copy_file
+        // copies any file id onto the name given, another file's or another
+        // bucket's. The id is then read on its own, and copied only when it
+        // is a finished upload of this very name in this bucket.
+        if selected.is_none() {
+            let not_this = || {
+                ProviderError::NotFound(format!(
+                    "Version {version_id} is not a version of {path}: nothing was restored"
+                ))
+            };
+            let identity = self.file_identity(version_id).await.map_err(|e| match e {
+                ProviderError::NotFound(_) => not_this(),
+                e => ProviderError::TransferFailed(format!(
+                    "Version {version_id} of {path} could not be checked ({e}), so no restore \
+                     was sent"
+                )),
+            })?;
+            if identity.file_name != key
+                || identity.bucket_id != self.bucket_id
+                || identity.action != "upload"
+            {
+                return Err(not_this());
+            }
+        }
         // B2 has no "restore" verb: we replay the chosen version as a fresh
         // upload via b2_copy_file (server-side, no client byte transfer). The
         // copy becomes the new latest version with the original fileName.
-        match self.copy_file_to(version_id, &key).await {
-            Ok(_) => Ok(()),
-            Err(e) if is_b2_token_failure(&e) => {
-                if self.maybe_reauth(&e).await {
-                    self.copy_file_to(version_id, &key).await.map(|_| ())
-                } else {
-                    Err(e)
-                }
-            }
-            Err(e) => Err(e),
-        }
+        // b2_copy_file takes no precondition: a copy whose answer did not
+        // come may be on top already, and a second one would stack another.
+        let unconfirmed = |e| super::sent_change_unconfirmed(e, &format!("the restore of {path}"));
+        let copied = match self.copy_file_to(version_id, &key).await {
+            Ok(copied) => copied,
+            Err(e) if is_b2_token_failure(&e) && self.maybe_reauth(&e).await => self
+                .copy_file_to(version_id, &key)
+                .await
+                .map_err(unconfirmed)?,
+            Err(e) => return Err(unconfirmed(e)),
+        };
+        // The copy answers with the file id it made, which must then be the
+        // version on top.
+        let preflight = selected.map(|p| p.made_current(Some(copied.file_id)));
+        super::confirm_version_restored(self, path, preflight.as_ref()).await
     }
 
     // ─── Share links ───────────────────────────────────────────────────────
@@ -4177,61 +4346,11 @@ impl StorageProvider for B2Provider {
         // whole file answered to a ranged request would put the head of the
         // object there and still add up to the right length, and a 206 that
         // does not name its window would do the same with a success code.
-        let answered = resp
-            .headers()
-            .get(reqwest::header::CONTENT_RANGE)
-            .and_then(|value| value.to_str().ok())
-            .map(|value| value.to_string());
-        let bytes = resp
-            .bytes()
-            .await
-            .map_err(super::multi_thread::range_read_error)?;
-        match super::multi_thread::ranged_answer(
-            status,
-            answered.as_deref(),
-            bytes.len() as u64,
-            offset,
-            end,
-        ) {
-            Ok(super::multi_thread::RangedAnswer::Window) => Ok(bytes.to_vec()),
-            Ok(super::multi_thread::RangedAnswer::WholeObject) => {
-                Ok(super::multi_thread::slice_whole_object(&bytes, offset, len))
-            }
-            Err(why) => Err(ProviderError::ParallelRefused(
-                super::multi_thread::parallel_refused("b2 range read", path, &why),
-            )),
-        }
+        super::ranged_read_window(resp, offset, len, "b2 range read", path).await
     }
 }
 
 // ─── Helpers ───
-
-/// Diagnostic helper: masks the `authorizationToken` value in a JSON body so
-/// the rest of the response can be safely included in error messages without
-/// leaking the bearer token. Keeps the first 6 chars for triage.
-fn mask_authorize_secrets(body: &str) -> String {
-    let needle = "\"authorizationToken\":\"";
-    let Some(start) = body.find(needle) else {
-        return body.to_string();
-    };
-    let value_start = start + needle.len();
-    let Some(end_offset) = body[value_start..].find('"') else {
-        return body.to_string();
-    };
-    let value_end = value_start + end_offset;
-    let value = &body[value_start..value_end];
-    let head_len = value.floor_char_boundary(6);
-    let masked = format!(
-        "{}…<{}B redacted>",
-        &value[..head_len],
-        value.len() - head_len
-    );
-    let mut out = String::with_capacity(body.len());
-    out.push_str(&body[..value_start]);
-    out.push_str(&masked);
-    out.push_str(&body[value_end..]);
-    out
-}
 
 fn short(s: &str) -> String {
     if s.len() <= 8 {
@@ -4370,12 +4489,42 @@ fn b2_upload_retry_delay(
     )
 }
 
+/// A refused `b2_authorize_account`, classified like [`map_b2_status`] but
+/// told in our own words: the answer to the request that carries the key can
+/// echo it, in a form no scrubber recognises (a bare key, no `key=` in
+/// front). A known B2 code keeps its meaning; anything else is its status
+/// and size.
+fn authorize_refusal(status: reqwest::StatusCode, body: &str) -> ProviderError {
+    let code = serde_json::from_str::<B2ApiError>(body)
+        .ok()
+        .map(|e| e.code)
+        .unwrap_or_default();
+    let known = match code.as_str() {
+        "unauthorized" | "bad_auth_token" | "expired_auth_token" => {
+            Some("the application key id or the application key was refused")
+        }
+        "transaction_cap_exceeded" => Some("the account's transaction cap is reached"),
+        "access_denied" => Some("the key may not authorize this account"),
+        "bad_request" => Some("the request was refused as malformed"),
+        _ => None,
+    };
+    let local = match known {
+        Some(message) => serde_json::json!({ "code": code, "message": message }),
+        None => serde_json::json!({
+            "code": "",
+            "message": format!("an answer of {} bytes, not shown", body.len()),
+        }),
+    };
+    map_b2_status(status, &local.to_string(), "b2_authorize_account")
+}
+
 fn map_b2_status(status: reqwest::StatusCode, body: &str, op: &str) -> ProviderError {
     let parsed: Option<B2ApiError> = serde_json::from_str(body).ok();
     let code = parsed.as_ref().map(|e| e.code.as_str()).unwrap_or("");
+    // B2's own message is server text like any other: scrubbed.
     let msg = parsed
         .as_ref()
-        .map(|e| e.message.clone())
+        .map(|e| sanitize_api_error(&e.message))
         .unwrap_or_else(|| sanitize_api_error(body));
     match status.as_u16() {
         401 => match code {
@@ -6908,6 +7057,36 @@ mod tests {
         (provider, ops)
     }
 
+    /// An authorize answer that does not parse carries the token, compact
+    /// or spaced: the error keeps where the parse stopped and the size, not
+    /// the body, where before a spaced token passed the mask.
+    #[tokio::test]
+    async fn an_unparsable_authorize_answer_does_not_show_its_body() {
+        for body in [
+            r#"{"authorizationToken":"4_secret-token-value","accountId":"acc"}"#,
+            r#"{ "authorizationToken" : "4_secret-token-value", "accountId" : "acc" }"#,
+        ] {
+            let app = axum::Router::new().fallback(axum::routing::get(move || async move { body }));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            let mut provider = empty_provider();
+            provider.authorize_url = format!("http://{addr}/b2api/v4/b2_authorize_account");
+            let refused = provider.authorize().await;
+            server.abort();
+            let Err(ProviderError::ServerError(message)) = refused else {
+                panic!("{refused:?}");
+            };
+            assert!(message.starts_with("authorize parse:"), "{message}");
+            assert!(
+                message.contains(&format!("{} bytes", body.len())),
+                "{message}"
+            );
+            assert!(!message.contains("secret-token"), "{message}");
+            assert!(!message.contains("acc\""), "{message}");
+        }
+    }
+
     /// A B2 double holding `d/x.txt` and `other/keep.txt` whose listing of the
     /// prefix `d/` also names `other/keep.txt`, as a defective listing might;
     /// every other listing is filtered by its prefix. Hides, copies and
@@ -7529,6 +7708,764 @@ mod tests {
             reported.load(Ordering::SeqCst),
             SIZE as u64,
             "the single-stream fallback must keep reporting progress"
+        );
+    }
+
+    /// A B2 double for the version reader: `b2_list_file_versions` lists an
+    /// unfinished large upload (`start`) above two finished ones, or, with
+    /// `repeat`, answers the same cursor on every page; a download by id
+    /// answers `part` with a 206 fragment and any other id whole; each
+    /// `b2_copy_file` body is recorded.
+    #[derive(Clone, Copy)]
+    enum NextCursor {
+        End,
+        Repeat,
+        Fresh,
+        Half,
+        /// A new cursor on every page, each page 7 MiB: under the per-answer
+        /// cap, past the total of a listing within ten pages.
+        FreshLarge,
+    }
+
+    async fn b2_version_reader_double(
+        next: NextCursor,
+    ) -> (B2Provider, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
+        use axum::response::IntoResponse;
+        use std::sync::{Arc, Mutex};
+        let seen: Arc<Mutex<Vec<String>>> = Arc::default();
+        let log = Arc::clone(&seen);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |uri: axum::http::Uri, body: String| {
+                let log = Arc::clone(&log);
+                async move {
+                    let asked = {
+                        let mut log = log.lock().unwrap();
+                        log.push(format!("{} {body}", uri.path()));
+                        log.len()
+                    };
+                    if uri.path().ends_with("b2_list_file_versions") {
+                        let (next_name, next_id) = match next {
+                            NextCursor::Repeat => {
+                                (serde_json::json!("v.txt"), serde_json::json!("up-1"))
+                            }
+                            NextCursor::Fresh | NextCursor::FreshLarge => (
+                                serde_json::json!("v.txt"),
+                                serde_json::json!(format!("up-page-{asked}")),
+                            ),
+                            NextCursor::Half => {
+                                (serde_json::json!("v.txt"), serde_json::Value::Null)
+                            }
+                            NextCursor::End => (serde_json::Value::Null, serde_json::Value::Null),
+                        };
+                        return serde_json::json!({
+                            "files": [
+                                {"fileName": "v.txt", "fileId": "start-9", "action": "start",
+                                 "uploadTimestamp": 1_794_841_700_000u64, "contentLength": 0},
+                                {"fileName": "v.txt", "fileId": "up-2", "action": "upload",
+                                 "uploadTimestamp": 1_794_841_545_000u64, "contentLength": 16},
+                                {"fileName": "v.txt", "fileId": "up-1", "action": "upload",
+                                 "uploadTimestamp": 1_794_841_500_000u64, "contentLength": 5}
+                            ],
+                            "nextFileName": next_name,
+                            "nextFileId": next_id,
+                            "padding": if matches!(next, NextCursor::FreshLarge) {
+                                "x".repeat(7 * 1024 * 1024)
+                            } else {
+                                String::new()
+                            }
+                        })
+                        .to_string()
+                        .into_response();
+                    }
+                    if uri.path().ends_with("b2_download_file_by_id") {
+                        if uri.query().is_some_and(|q| q.contains("fileId=part")) {
+                            return (axum::http::StatusCode::PARTIAL_CONTENT, "wh").into_response();
+                        }
+                        return "whole".into_response();
+                    }
+                    serde_json::json!({
+                        "fileId": "up-3", "fileName": "v.txt",
+                        "action": "upload", "contentLength": 5
+                    })
+                    .to_string()
+                    .into_response()
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = empty_provider();
+        provider.api_url = address.clone();
+        provider.download_url = address;
+        provider.auth_token = SecretString::new("master-token".into());
+        provider.bucket_id = "bucket".into();
+        provider.connected = true;
+        (provider, seen)
+    }
+
+    /// A B2 double whose version listing answers 401 with `listing`; every
+    /// other call succeeds as a copy would. Each call is recorded as
+    /// "{path} {body}".
+    async fn b2_refused_listing_double(
+        listing: &'static str,
+    ) -> (B2Provider, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
+        b2_restore_double(
+            vec![(401, listing.to_string())],
+            r#"{"fileName":"v.txt","bucketId":"bucket","action":"upload"}"#,
+            None,
+        )
+        .await
+    }
+
+    /// A B2 double for restores: the version listing answers `pages` in turn
+    /// (the last one again after), `b2_get_file_info` answers `identity`, and
+    /// the copy answers `copy` when given, a receipt otherwise. Each call is
+    /// recorded as "{path} {body}".
+    async fn b2_restore_double(
+        pages: Vec<(u16, String)>,
+        identity: &'static str,
+        copy: Option<(u16, &'static str)>,
+    ) -> (B2Provider, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
+        use axum::response::IntoResponse;
+        use std::sync::{Arc, Mutex};
+        let seen: Arc<Mutex<Vec<String>>> = Arc::default();
+        let log = Arc::clone(&seen);
+        let pages = Arc::new(pages);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |uri: axum::http::Uri, body: String| {
+                let log = Arc::clone(&log);
+                let pages = Arc::clone(&pages);
+                async move {
+                    let asked = {
+                        let mut log = log.lock().unwrap();
+                        log.push(format!("{} {body}", uri.path()));
+                        log.iter()
+                            .filter(|c| c.contains("b2_list_file_versions"))
+                            .count()
+                    };
+                    let status = |code: u16| axum::http::StatusCode::from_u16(code).unwrap();
+                    if uri.path().ends_with("b2_list_file_versions") {
+                        let (code, page) = &pages[(asked - 1).min(pages.len() - 1)];
+                        return (status(*code), page.clone()).into_response();
+                    }
+                    if uri.path().ends_with("b2_get_file_info") {
+                        return identity.into_response();
+                    }
+                    if let (true, Some((code, answer))) =
+                        (uri.path().ends_with("b2_copy_file"), copy)
+                    {
+                        return (status(code), answer).into_response();
+                    }
+                    serde_json::json!({
+                        "fileId": "up-3", "fileName": "v.txt",
+                        "action": "upload", "contentLength": 5
+                    })
+                    .to_string()
+                    .into_response()
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = empty_provider();
+        provider.api_url = address.clone();
+        provider.download_url = address;
+        provider.auth_token = SecretString::new("master-token".into());
+        provider.bucket_id = "bucket".into();
+        provider.connected = true;
+        (provider, seen)
+    }
+
+    /// A 401 that is not B2's documented `unauthorized` is no proof the key
+    /// lacks listFiles: the restore is refused before any copy, and the
+    /// server's message reaches the error scrubbed. Before, any 401 let the
+    /// restore copy without the listing.
+    #[tokio::test]
+    async fn a_listing_refused_by_another_401_refuses_the_restore() {
+        let (mut provider, seen) = b2_refused_listing_double(
+            r#"{"status":401,"code":"cap_exceeded","message":"refused sk-ant-1234567890abcdefghij"}"#,
+        )
+        .await;
+        let outcome = provider.restore_version("/v.txt", "up-1").await;
+        assert!(
+            matches!(&outcome, Err(ProviderError::TransferFailed(m))
+                if m.contains("no restore was sent")
+                    && m.contains("[REDACTED]")
+                    && !m.contains("sk-ant-1234567890abcdefghij")),
+            "{outcome:?}"
+        );
+        let seen = seen.lock().unwrap();
+        assert!(
+            seen.iter()
+                .all(|c| !c.starts_with("/b2api/v4/b2_copy_file")),
+            "{seen:?}"
+        );
+    }
+
+    /// A key without listFiles is denied the listing only: its restore still
+    /// copies by id, and the copy names this bucket as its destination.
+    #[tokio::test]
+    async fn a_restore_denied_the_listing_copies_into_this_bucket() {
+        let (mut provider, seen) = b2_refused_listing_double(
+            r#"{"status":401,"code":"unauthorized","message":"no listFiles"}"#,
+        )
+        .await;
+        provider
+            .restore_version("/v.txt", "up-1")
+            .await
+            .expect("the restore copies by id");
+        let copies: Vec<String> = seen
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|c| c.starts_with("/b2api/v4/b2_copy_file"))
+            .cloned()
+            .collect();
+        assert_eq!(copies.len(), 1, "{copies:?}");
+        assert!(
+            copies[0].contains(r#""destinationBucketId":"bucket""#),
+            "{copies:?}"
+        );
+    }
+
+    fn b2_copies(seen: &std::sync::Mutex<Vec<String>>) -> usize {
+        seen.lock()
+            .unwrap()
+            .iter()
+            .filter(|c| c.starts_with("/b2api/v4/b2_copy_file"))
+            .count()
+    }
+
+    /// Without the listing, the id alone ties nothing to the file: one of
+    /// another name, another bucket or an unfinished upload is refused
+    /// before any copy, and only a finished upload of this name is copied.
+    #[tokio::test]
+    async fn a_restore_denied_the_listing_copies_only_a_version_of_this_file() {
+        let denied = r#"{"status":401,"code":"unauthorized","message":"no listFiles"}"#;
+        for identity in [
+            r#"{"fileName":"other.txt","bucketId":"bucket","action":"upload"}"#,
+            r#"{"fileName":"v.txt","bucketId":"elsewhere","action":"upload"}"#,
+            r#"{"fileName":"v.txt","bucketId":"bucket","action":"start"}"#,
+        ] {
+            let (mut provider, seen) =
+                b2_restore_double(vec![(401, denied.to_string())], identity, None).await;
+            let outcome = provider.restore_version("/v.txt", "up-1").await;
+            assert!(
+                matches!(&outcome, Err(ProviderError::NotFound(m)) if m.contains("nothing was restored")),
+                "{identity}: {outcome:?}"
+            );
+            assert_eq!(
+                b2_copies(&seen),
+                0,
+                "{identity}: {:?}",
+                seen.lock().unwrap()
+            );
+        }
+        let (mut provider, seen) = b2_restore_double(
+            vec![(401, denied.to_string())],
+            r#"{"fileName":"v.txt","bucketId":"bucket","action":"upload"}"#,
+            None,
+        )
+        .await;
+        provider
+            .restore_version("/v.txt", "up-1")
+            .await
+            .expect("a finished upload of this name is copied");
+        let calls = seen.lock().unwrap().clone();
+        let info = calls.iter().position(|c| c.contains("b2_get_file_info"));
+        let copy = calls
+            .iter()
+            .position(|c| c.starts_with("/b2api/v4/b2_copy_file"));
+        assert!(
+            matches!((info, copy), (Some(i), Some(c)) if i < c),
+            "{calls:?}"
+        );
+    }
+
+    /// A denial of the second page is a history cut short, not a listing
+    /// denied: the restore is refused and no copy goes out.
+    #[tokio::test]
+    async fn a_listing_denied_on_its_second_page_refuses_the_restore() {
+        let first = serde_json::json!({
+            "files": [{"fileId": "up-2", "fileName": "v.txt", "action": "upload",
+                       "contentLength": 5, "uploadTimestamp": 2}],
+            "nextFileName": "v.txt", "nextFileId": "up-1"
+        })
+        .to_string();
+        let denied = r#"{"status":401,"code":"unauthorized","message":"no"}"#.to_string();
+        let (mut provider, seen) = b2_restore_double(
+            vec![(200, first), (401, denied)],
+            r#"{"fileName":"v.txt","bucketId":"bucket","action":"upload"}"#,
+            None,
+        )
+        .await;
+        let outcome = provider.restore_version("/v.txt", "up-1").await;
+        assert!(
+            matches!(&outcome, Err(ProviderError::TransferFailed(m)) if m.contains("no restore was sent")),
+            "{outcome:?}"
+        );
+        assert_eq!(b2_copies(&seen), 0, "{:?}", seen.lock().unwrap());
+    }
+
+    /// A copy answered 200 whose receipt cannot be read was made all the
+    /// same: the restore says so, as applied and not confirmed. A 503 from a
+    /// gateway is the same: the copy behind it may have been made.
+    #[tokio::test]
+    async fn a_copy_without_a_readable_receipt_is_applied_unconfirmed() {
+        let denied = r#"{"status":401,"code":"unauthorized","message":"no listFiles"}"#;
+        for copy in [(200, "{not json"), (503, "")] {
+            let (mut provider, seen) = b2_restore_double(
+                vec![(401, denied.to_string())],
+                r#"{"fileName":"v.txt","bucketId":"bucket","action":"upload"}"#,
+                Some(copy),
+            )
+            .await;
+            let outcome = provider.restore_version("/v.txt", "up-1").await;
+            assert!(
+                matches!(&outcome, Err(e) if super::super::was_applied(e)),
+                "{copy:?}: {outcome:?}"
+            );
+            assert_eq!(b2_copies(&seen), 1, "{copy:?}: {:?}", seen.lock().unwrap());
+        }
+    }
+
+    /// The answer to the request that carries the key can echo it in a form
+    /// no scrubber knows: a refused authorize is told in our words, with the
+    /// meaning of a known code kept.
+    #[tokio::test]
+    async fn a_refused_authorize_never_shows_its_answer() {
+        const SECRET: &str = "K005opaqueSecretValue";
+        for (answer, expect) in [
+            (
+                format!(r#"{{"status":401,"code":"unauthorized","message":"bad {SECRET}"}}"#),
+                "was refused",
+            ),
+            (
+                format!(r#"{{"status":401,"code":"weird","message":"bad {SECRET}"}}"#),
+                "bytes, not shown",
+            ),
+            (format!("<html>{SECRET}</html>"), "bytes, not shown"),
+        ] {
+            let app = axum::Router::new().fallback(axum::routing::any(move || {
+                let answer = answer.clone();
+                async move { (axum::http::StatusCode::UNAUTHORIZED, answer) }
+            }));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+            let mut provider = empty_provider();
+            provider.authorize_url = format!("http://{addr}/b2api/v4/b2_authorize_account");
+            let outcome = provider.authorize().await;
+            let shown = format!("{outcome:?}");
+            assert!(outcome.is_err() && shown.contains(expect), "{shown}");
+            assert!(!shown.contains(SECRET), "{shown}");
+        }
+    }
+
+    /// A B2 double whose every call goes to `answer(path, body, nth call of
+    /// that path)`; each call is recorded as "{path} {body}".
+    async fn b2_scripted_double(
+        answer: impl Fn(&str, &str, usize) -> (u16, String) + Clone + Send + Sync + 'static,
+    ) -> (B2Provider, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
+        use axum::response::IntoResponse;
+        use std::sync::{Arc, Mutex};
+        let seen: Arc<Mutex<Vec<String>>> = Arc::default();
+        let log = Arc::clone(&seen);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |uri: axum::http::Uri, body: String| {
+                let log = Arc::clone(&log);
+                let answer = answer.clone();
+                async move {
+                    let nth = {
+                        let mut log = log.lock().unwrap();
+                        log.push(format!("{} {body}", uri.path()));
+                        log.iter().filter(|c| c.starts_with(uri.path())).count()
+                    };
+                    let (code, text) = answer(uri.path(), &body, nth);
+                    (axum::http::StatusCode::from_u16(code).unwrap(), text).into_response()
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = empty_provider();
+        provider.api_url = address.clone();
+        provider.download_url = address;
+        provider.auth_token = SecretString::new("master-token".into());
+        provider.bucket_id = "bucket".into();
+        provider.connected = true;
+        (provider, seen)
+    }
+
+    /// The hidden-file scan asks pages small enough for the 8 MiB cap of
+    /// one answer: entries with ordinary `fileInfo` at the old 10 000 per page
+    /// passed it, and the scan failed. Two pages, the hide markers of both.
+    #[tokio::test]
+    async fn the_hidden_file_scan_reads_pages_that_fit_the_answer_cap() {
+        let (mut provider, seen) = b2_scripted_double(|path, body, nth| {
+            if !path.ends_with("b2_list_file_versions") {
+                return (404, String::new());
+            }
+            let asked: serde_json::Value = serde_json::from_str(body).unwrap();
+            let count = asked["maxFileCount"].as_u64().unwrap() as usize;
+            let info = "x".repeat(900);
+            let mut files: Vec<serde_json::Value> = (0..count - 1)
+                .map(|i| {
+                    serde_json::json!({
+                        "fileId": format!("f{nth}-{i}"), "fileName": format!("d/f{nth}-{i:05}"),
+                        "action": "upload", "contentLength": 1, "uploadTimestamp": 1,
+                        "fileInfo": {"note": info}
+                    })
+                })
+                .collect();
+            files.push(serde_json::json!({
+                "fileId": format!("h{nth}"), "fileName": format!("d/gone-{nth}"),
+                "action": "hide", "contentLength": 0, "uploadTimestamp": 1
+            }));
+            let next = (nth == 1).then_some(("d/next", "id-next"));
+            (
+                200,
+                serde_json::json!({
+                    "files": files,
+                    "nextFileName": next.map(|n| n.0), "nextFileId": next.map(|n| n.1)
+                })
+                .to_string(),
+            )
+        })
+        .await;
+        let hidden = provider
+            .list_hidden_files("/d")
+            .await
+            .expect("the scan fits the cap");
+        let names: Vec<&str> = hidden.iter().map(|e| e.name.as_str()).collect();
+        assert_eq!(names, ["gone-1", "gone-2"]);
+        let pages = seen
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|c| c.contains("b2_list_file_versions"))
+            .count();
+        assert_eq!(pages, 2);
+    }
+
+    fn b2_version_page(ids: &[&str], next: Option<&str>) -> String {
+        serde_json::json!({
+            "files": ids.iter().map(|id| serde_json::json!({
+                "fileId": id, "fileName": "v.txt", "action": "upload",
+                "contentLength": 1, "uploadTimestamp": 1
+            })).collect::<Vec<_>>(),
+            "nextFileName": next.map(|_| "v.txt"), "nextFileId": next,
+        })
+        .to_string()
+    }
+
+    /// The purge lists every version first: a second page past the answer
+    /// cap stops it before any version is deleted.
+    #[tokio::test]
+    async fn a_purge_whose_listing_fails_later_deletes_nothing() {
+        let (mut provider, seen) = b2_scripted_double(|path, _, nth| {
+            if path.ends_with("b2_list_file_versions") {
+                return match nth {
+                    1 => (200, b2_version_page(&["up-2"], Some("up-1"))),
+                    _ => (
+                        200,
+                        format!(r#"{{"files":[],"pad":"{}"}}"#, "x".repeat(9 * 1024 * 1024)),
+                    ),
+                };
+            }
+            (200, "{}".to_string())
+        })
+        .await;
+        let outcome = provider.permanent_delete_path("/v.txt").await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        let deletes = seen
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|c| c.contains("b2_delete_file_version"))
+            .count();
+        assert_eq!(deletes, 0, "{:?}", seen.lock().unwrap().len());
+    }
+
+    /// A delete refused after others went through says how many are gone
+    /// and that the purge is incomplete; a refusal of the first is its own.
+    #[tokio::test]
+    async fn a_purge_refused_half_way_says_how_much_it_deleted() {
+        let (mut provider, _) = b2_scripted_double(|path, _, nth| {
+            if path.ends_with("b2_list_file_versions") {
+                return (200, b2_version_page(&["up-3", "up-2", "up-1"], None));
+            }
+            if path.ends_with("b2_delete_file_version") && nth == 2 {
+                return (
+                    400,
+                    r#"{"status":400,"code":"bad_request","message":"no"}"#.to_string(),
+                );
+            }
+            (200, "{}".to_string())
+        })
+        .await;
+        let outcome = provider.permanent_delete_path("/v.txt").await;
+        assert!(
+            matches!(&outcome, Err(ProviderError::TransferFailed(m))
+                if m.contains("1 of the 3 versions") && m.contains("incomplete")),
+            "{outcome:?}"
+        );
+    }
+
+    /// History lists finished uploads only, so an unfinished large upload is
+    /// never row 0; and the version reader takes a whole body only: a 206
+    /// fragment leaves the destination as it was, a 200 replaces it.
+    #[tokio::test]
+    async fn b2_history_lists_finished_uploads_and_reads_whole_bodies_only() {
+        let (mut provider, _) = b2_version_reader_double(NextCursor::End).await;
+        let versions = provider.list_versions("/v.txt").await.expect("versions");
+        let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
+        assert_eq!(ids, ["up-2", "up-1"]);
+
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("v.txt");
+        std::fs::write(&out, "before").unwrap();
+        let partial = provider
+            .download_version("/v.txt", "part", out.to_str().unwrap())
+            .await;
+        assert!(
+            matches!(&partial, Err(ProviderError::TransferFailed(m)) if m.contains("206")),
+            "{partial:?}"
+        );
+        assert_eq!(std::fs::read_to_string(&out).unwrap(), "before");
+        provider
+            .download_version("/v.txt", "up-1", out.to_str().unwrap())
+            .await
+            .expect("a whole body is saved");
+        assert_eq!(std::fs::read_to_string(&out).unwrap(), "whole");
+    }
+
+    /// A listing that answers the same cursor again ends with an error
+    /// instead of reading pages for ever; a download by id still goes out,
+    /// and a restore is refused: only a listing denied decides nothing.
+    #[tokio::test]
+    async fn a_repeated_b2_cursor_ends_the_listing_and_refuses_the_restore() {
+        let (mut provider, seen) = b2_version_reader_double(NextCursor::Repeat).await;
+        let listed = provider.list_versions("/v.txt").await;
+        assert!(
+            matches!(&listed, Err(ProviderError::ServerError(m)) if m.contains("twice")),
+            "{listed:?}"
+        );
+        let pages = seen
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|c| c.contains("b2_list_file_versions"))
+            .count();
+        assert_eq!(pages, 2, "{:?}", seen.lock().unwrap());
+
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("v.txt");
+        provider
+            .download_version("/v.txt", "up-1", out.to_str().unwrap())
+            .await
+            .expect("the download by id does not need the listing");
+        assert_eq!(std::fs::read_to_string(&out).unwrap(), "whole");
+
+        // A listing that broke off is not a listing denied: the restore
+        // cannot show it would change anything, and no copy is sent.
+        let restored = provider.restore_version("/v.txt", "up-1").await;
+        assert!(
+            matches!(&restored, Err(ProviderError::TransferFailed(m)) if m.contains("no restore was sent")),
+            "{restored:?}"
+        );
+        assert!(
+            !seen
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|c| c.starts_with("/b2api/v4/b2_copy_file")),
+            "{:?}",
+            seen.lock().unwrap()
+        );
+    }
+
+    /// A new cursor on every page never repeats: the listing ends at the page
+    /// limit with an error, no page past it is asked, and the download by id
+    /// still works without the listing.
+    #[tokio::test]
+    async fn a_b2_listing_with_a_new_cursor_on_every_page_ends_at_the_page_limit() {
+        let (mut provider, seen) = b2_version_reader_double(NextCursor::Fresh).await;
+        let listed = provider.list_versions("/v.txt").await;
+        assert!(
+            matches!(&listed, Err(ProviderError::TransferFailed(m)) if m.contains("did not end within")),
+            "{listed:?}"
+        );
+        let pages = seen
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|c| c.contains("b2_list_file_versions"))
+            .count();
+        assert_eq!(pages, super::super::VERSION_LISTING_MAX_PAGES);
+
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("v.txt");
+        provider
+            .download_version("/v.txt", "up-1", out.to_str().unwrap())
+            .await
+            .expect("the download by id does not need the listing");
+        assert_eq!(std::fs::read_to_string(&out).unwrap(), "whole");
+    }
+
+    /// Pages each under the per-answer cap still end at the total of one
+    /// listing: with 7 MiB pages the tenth passes 64 MiB, and no page after
+    /// it is asked.
+    #[tokio::test]
+    async fn a_b2_listing_of_large_pages_ends_at_the_total_budget() {
+        let (mut provider, seen) = b2_version_reader_double(NextCursor::FreshLarge).await;
+        let listed = provider.list_versions("/v.txt").await;
+        assert!(
+            matches!(&listed, Err(ProviderError::TransferFailed(m)) if m.contains("MiB")),
+            "{listed:?}"
+        );
+        let pages = seen
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|c| c.contains("b2_list_file_versions"))
+            .count();
+        assert_eq!(pages, 10);
+    }
+
+    /// A next file name without a next file id is half a cursor: the listing
+    /// is incomplete, not ended, so no history is shown.
+    #[tokio::test]
+    async fn a_half_b2_cursor_is_an_incomplete_listing() {
+        let (mut provider, seen) = b2_version_reader_double(NextCursor::Half).await;
+        let listed = provider.list_versions("/v.txt").await;
+        assert!(
+            matches!(&listed, Err(ProviderError::ParseError(m)) if m.contains("half a cursor")),
+            "{listed:?}"
+        );
+        assert_eq!(seen.lock().unwrap().len(), 1);
+    }
+
+    /// A hidden file: B2 lists the hide marker on top. Row 0 is that marker,
+    /// marked deleted (the dialog shows Deleted, no download, no restore),
+    /// and the last contents follow, newest first.
+    #[tokio::test]
+    async fn a_hide_marker_on_top_is_a_deleted_row_zero() {
+        let app = axum::Router::new().fallback(axum::routing::any(|| async {
+            serde_json::json!({
+                "files": [
+                    {"fileName": "v.txt", "fileId": "hide-3", "action": "hide",
+                     "uploadTimestamp": 1_794_841_600_000u64, "contentLength": 0},
+                    {"fileName": "v.txt", "fileId": "up-1", "action": "upload",
+                     "uploadTimestamp": 1_794_841_500_000u64, "contentLength": 8},
+                    {"fileName": "v.txt", "fileId": "up-2", "action": "upload",
+                     "uploadTimestamp": 1_794_841_545_000u64, "contentLength": 16}
+                ],
+                "nextFileName": null,
+                "nextFileId": null
+            })
+            .to_string()
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut provider = empty_provider();
+        provider.api_url = address;
+        provider.auth_token = SecretString::new("master-token".into());
+        provider.bucket_id = "bucket".into();
+        provider.connected = true;
+        let versions = provider.list_versions("/v.txt").await.expect("versions");
+        let rows: Vec<(&str, bool)> = versions
+            .iter()
+            .map(|v| (v.id.as_str(), v.deleted))
+            .collect();
+        assert_eq!(rows, [("hide-3", true), ("up-2", false), ("up-1", false)]);
+        // The backend refuses the marker too, not only the dialog.
+        let restored = provider.restore_version("/v.txt", "hide-3").await;
+        let local = tempfile::tempdir().unwrap();
+        let target = local.path().join("hide-3");
+        let downloaded = provider
+            .download_version("/v.txt", "hide-3", target.to_str().unwrap())
+            .await;
+        server.abort();
+        assert!(
+            matches!(restored, Err(ProviderError::NotSupported(_))),
+            "{restored:?}"
+        );
+        assert!(
+            matches!(downloaded, Err(ProviderError::NotSupported(_))),
+            "{downloaded:?}"
+        );
+        assert!(!target.exists());
+    }
+
+    /// Row 0 is the current contents: its restore would only copy them on
+    /// top as one more version. It is refused before b2_copy_file; a past
+    /// version is still copied.
+    #[tokio::test]
+    async fn a_b2_restore_of_the_current_version_is_refused_before_any_copy() {
+        use std::sync::{Arc, Mutex};
+        let seen: Arc<Mutex<Vec<String>>> = Arc::default();
+        let log = Arc::clone(&seen);
+        let app = axum::Router::new().fallback(axum::routing::any(move |uri: axum::http::Uri| {
+            let log = Arc::clone(&log);
+            async move {
+                log.lock().unwrap().push(uri.path().to_string());
+                serde_json::json!({
+                    "files": [
+                        // Oldest first: the current one is told by its time.
+                        {"fileName": "v.txt", "fileId": "up-1", "action": "upload",
+                         "uploadTimestamp": 1_794_841_500_000u64, "contentLength": 8},
+                        {"fileName": "v.txt", "fileId": "up-2", "action": "upload",
+                         "uploadTimestamp": 1_794_841_545_000u64, "contentLength": 16}
+                    ],
+                    "nextFileName": null,
+                    "nextFileId": null,
+                    "fileId": "up-3",
+                    "fileName": "v.txt",
+                    "action": "upload",
+                    "contentLength": 8
+                })
+                .to_string()
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut provider = empty_provider();
+        provider.api_url = address;
+        provider.auth_token = SecretString::new("master-token".into());
+        provider.bucket_id = "bucket".into();
+        provider.connected = true;
+        let refused = provider.restore_version("/v.txt", "up-2").await;
+        let after_refusal = seen.lock().unwrap().clone();
+        let restored = provider.restore_version("/v.txt", "up-1").await;
+        server.abort();
+        assert!(
+            matches!(&refused, Err(ProviderError::NotSupported(m)) if m.contains("already the current")),
+            "{refused:?}"
+        );
+        assert!(
+            after_refusal.iter().all(|p| !p.ends_with("b2_copy_file")),
+            "{after_refusal:?}"
+        );
+        // The double lists the earlier current contents after the restore it
+        // answered with success: the request went out, and the restore is not
+        // reported done.
+        assert!(
+            matches!(&restored, Err(ProviderError::TransferFailed(m)) if m.contains("list its versions again")),
+            "{restored:?}"
+        );
+        assert!(
+            seen.lock()
+                .unwrap()
+                .iter()
+                .any(|p| p.ends_with("b2_copy_file")),
+            "{:?}",
+            seen.lock().unwrap()
         );
     }
 }

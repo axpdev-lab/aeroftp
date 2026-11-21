@@ -115,7 +115,6 @@ struct KDriveFile {
     size: Option<i64>,
     #[serde(rename = "last_modified_at")]
     last_modified: Option<i64>, // Unix timestamp
-    #[allow(dead_code)]
     #[serde(default)]
     path: Option<String>,
 }
@@ -154,13 +153,116 @@ struct ShareLinkData {
 #[derive(Debug, Deserialize)]
 struct KDriveVersion {
     id: i64,
-    #[allow(dead_code)]
     file_id: Option<i64>,
     size: Option<i64>,
     created_at: Option<i64>,
     #[allow(dead_code)]
     user_id: Option<i64>,
     version_number: Option<i64>,
+}
+
+/// One page of the v3 versions listing. `cursor` and `has_more` sit beside
+/// `data` at the top level of the envelope, as in the trash listing; the
+/// files listing also answers them nested (`data: {data, has_more, cursor}`,
+/// [`FilesPayload`]), and the versions endpoint is not documented, so both
+/// shapes are read and neither cuts the listing at its first page.
+#[derive(Debug, Deserialize)]
+struct VersionsPage {
+    data: Option<VersionsData>,
+    has_more: Option<bool>,
+    cursor: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum VersionsData {
+    Flat(Vec<KDriveVersion>),
+    Nested {
+        #[serde(default)]
+        data: Vec<KDriveVersion>,
+        has_more: Option<bool>,
+        cursor: Option<String>,
+    },
+}
+
+impl VersionsPage {
+    /// The versions of the page (None for a page without `data`), whether
+    /// more follow, and the cursor to them, from whichever shape the page
+    /// has (the nested one first).
+    fn into_parts(self) -> (Option<Vec<KDriveVersion>>, Option<bool>, Option<String>) {
+        match self.data {
+            Some(VersionsData::Flat(data)) => (Some(data), self.has_more, self.cursor),
+            Some(VersionsData::Nested {
+                data,
+                has_more,
+                cursor,
+            }) => (
+                Some(data),
+                has_more.or(self.has_more),
+                cursor.or(self.cursor),
+            ),
+            None => (None, self.has_more, self.cursor),
+        }
+    }
+}
+
+/// A versions answer in the order every `list_versions` answers in
+/// ([`super::versions_current_first`]): the API answers oldest first by
+/// default (`order=asc`), the dialog reads newest first.
+/// kDrive lists only past versions (live 2026-11-16: three uploads, two
+/// versions), oldest first; the versions dialog reads row 0 as the current
+/// one, so the file comes first, then the versions newest first.
+/// Each id is bound to the file id it was listed from
+/// ([`super::bind_version_to_file`]): a version id is an integer the API
+/// scopes by file in its URL, so a bare one sent after another file took the
+/// path could reach that file's version of the same number. A row that names
+/// another file (`file_id`) is not listed: its number would address the
+/// version of the same number of this file.
+/// `bind_current` binds the current row to what the listing saw of the
+/// file ([`content_token`]), so its download reads the file only while it
+/// still shows that size and that last change.
+fn versions_in_dialog_order(
+    mut versions: Vec<KDriveVersion>,
+    file: &RemoteEntry,
+    file_id: i64,
+    bind_current: bool,
+) -> Vec<FileVersion> {
+    versions.retain(|v| v.file_id.is_none_or(|listed| listed == file_id));
+    let file_id = file_id.to_string();
+    // Newest first; two versions of one second by their sequence, the
+    // version number (then the id, which kDrive hands out in order).
+    versions
+        .sort_by_key(|v| std::cmp::Reverse((v.created_at.unwrap_or(0), v.version_number, v.id)));
+    let past = versions.iter().map(|v| {
+        let modified = v.created_at.map(|ts| {
+            chrono::DateTime::from_timestamp(ts, 0)
+                .unwrap_or_default()
+                .format("%Y-%m-%d %H:%M:%SZ")
+                .to_string()
+        });
+        FileVersion {
+            id: super::bind_version_to_file(&file_id, &v.id.to_string()),
+            modified,
+            size: v.size.unwrap_or(0).max(0) as u64,
+            modified_by: v.version_number.map(|n| format!("v{}", n)),
+            deleted: false,
+        }
+    });
+    let current = FileVersion {
+        id: if bind_current {
+            super::bound_current_row(&file_id, &content_token(file))
+        } else {
+            super::bind_version_to_file(&file_id, super::CURRENT_VERSION_ID)
+        },
+        ..super::current_version_of(file)
+    };
+    std::iter::once(current).chain(past).collect()
+}
+
+/// What a listing sees of a file's contents: kDrive lists no content hash,
+/// so its size and its last change (to the second).
+fn content_token(file: &RemoteEntry) -> String {
+    format!("{}/{}", file.size, file.modified.as_deref().unwrap_or(""))
 }
 
 // KD-010: Trash types: ready for use when StorageProvider trait adds trash methods.
@@ -200,6 +302,9 @@ struct TrashListing {
 #[derive(Debug, Clone)]
 struct DirInfo {
     id: i64,
+    /// The path kDrive gave for the folder when it was cached, if it gave
+    /// one: the folder is still where it was while kDrive gives it again.
+    at: Option<String>,
 }
 
 // ─── Provider ────────────────────────────────────────────────────────────
@@ -292,6 +397,18 @@ impl KDriveProvider {
         self.dir_cache.insert(key, value);
     }
 
+    /// Cache the folder `id` under `path` only when kDrive placed it at that
+    /// very path (`at`): a folder seen elsewhere, its parent moved between
+    /// two reads, would hold the id of a folder that is not at the path, and
+    /// a later confirmation of the place it was seen would pass.
+    fn cache_folder_seen(&mut self, path: String, id: i64, at: Option<String>) {
+        if at.as_deref() == Some(path.as_str()) {
+            self.dir_cache_insert(path, DirInfo { id, at });
+        } else {
+            self.dir_cache.remove(&path);
+        }
+    }
+
     /// M7: Returns Result instead of silently falling back to an empty header on invalid tokens.
     /// An empty Authorization header would cause silent auth failures that are hard to debug.
     fn auth_header(&self) -> Result<HeaderValue, ProviderError> {
@@ -332,7 +449,10 @@ impl KDriveProvider {
             ));
         }
         let profile: serde_json::Value = serde_json::from_slice(&profile_body).map_err(|e| {
-            ProviderError::ServerError(format!("Profile discovery response parse failed: {e}"))
+            ProviderError::ServerError(format!(
+                "Profile discovery response parse failed: {}",
+                super::json_parse_error(&e)
+            ))
         })?;
         let account_id = Self::profile_account_id(&profile).ok_or_else(|| {
             ProviderError::ServerError(
@@ -358,7 +478,10 @@ impl KDriveProvider {
             ));
         }
         let parsed: ApiResponse<Vec<DriveInfo>> = serde_json::from_slice(&body).map_err(|e| {
-            ProviderError::ServerError(format!("Accessible drives response parse failed: {e}"))
+            ProviderError::ServerError(format!(
+                "Accessible drives response parse failed: {}",
+                super::json_parse_error(&e)
+            ))
         })?;
         let mut drives: Vec<(String, String)> = parsed
             .data
@@ -623,31 +746,87 @@ impl KDriveProvider {
     /// resolved (`cd /docs` beside only `Docs`) kept the id of `Docs` after
     /// another client made a real `docs`, and a later `rm` under `/docs`
     /// acted inside `Docs`.
+    ///
+    /// A walk that took a folder from the cache is confirmed by one request:
+    /// kDrive must still give the deepest cached folder the path it gave
+    /// when it was cached. Another client may have moved that folder away
+    /// and made a new one under its name, and every operation under the
+    /// path would then act inside the moved one; on a mismatch the ids on
+    /// the way are forgotten and the path walked again, each name looked up
+    /// in the folder the server just returned.
     async fn resolve_folder(&mut self, path: &str, other_case: bool) -> Result<i64, ProviderError> {
         let normalized = Self::normalize_path(path);
-
         if normalized == "/" {
             return Ok(self.root_file_id);
         }
-
-        // Check cache
-        if let Some(info) = self.dir_cache.get(&normalized) {
-            return Ok(info.id);
-        }
-
-        // Walk path components
         let parts: Vec<&str> = normalized.split('/').filter(|s| !s.is_empty()).collect();
-        let mut current_id = self.root_file_id;
+        // The deepest folder on the way with a cached id is confirmed before
+        // anything is looked up or cached below it, so a child of a folder
+        // moved away is never taken (or cached with the moved folder's path)
+        // for one at the path. A folder not where it was forgets the ids on
+        // the way, and the path is walked from the root.
+        let deepest = (1..=parts.len()).rev().find_map(|depth| {
+            let prefix = format!("/{}", parts[..depth].join("/"));
+            self.dir_cache
+                .get(&prefix)
+                .map(|info| (info.id, info.at.is_some().then_some(prefix), depth))
+        });
+        let (start_id, start) = match deepest {
+            Some((id, at, depth)) if self.folder_is_at(id, at.as_deref()).await? => (id, depth),
+            Some(_) => {
+                super::forget_cached_ancestors(&mut self.dir_cache, &normalized);
+                (self.root_file_id, 0)
+            }
+            None => (self.root_file_id, 0),
+        };
+        self.walk_folder(&parts, start, start_id, other_case).await
+    }
+
+    /// Whether kDrive gives the folder `folder_id` the path `at` now, the
+    /// path it was asked for (kDrive's paths start at the drive root, id 1,
+    /// which is this provider's root). A folder cached with no path cannot
+    /// be confirmed, and a folder gone (404) is not there.
+    async fn folder_is_at(&self, folder_id: i64, at: Option<&str>) -> Result<bool, ProviderError> {
+        let Some(at) = at else {
+            return Ok(false);
+        };
+        let url = self.api_url_v3(&format!("/files/{folder_id}?with=path"));
+        let resp = self.get_with_retry(&url).await?;
+        if resp.status().as_u16() == 404 {
+            return Ok(false);
+        }
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(api_failure("Look up folder failed", Some(status), &body));
+        }
+        let found: ApiResponse<KDriveFile> = resp.json().await.map_http_err(|e| {
+            ProviderError::ServerError(format!("Parse folder response failed: {}", e))
+        })?;
+        Ok(found.data.is_some_and(|folder| {
+            folder.file_type.as_deref() == Some("dir") && folder.path.as_deref() == Some(at)
+        }))
+    }
+
+    /// The walk behind [`Self::resolve_folder`]: from `start_id`, the
+    /// folder of the first `start` parts, each later part is looked up live
+    /// in the folder kDrive just returned.
+    async fn walk_folder(
+        &mut self,
+        parts: &[&str],
+        start: usize,
+        start_id: i64,
+        other_case: bool,
+    ) -> Result<i64, ProviderError> {
+        let mut current_id = start_id;
         let mut current_path = String::new();
+        for part in &parts[..start] {
+            current_path = format!("{}/{}", current_path, part);
+        }
         let mut exact_so_far = true;
 
-        for part in &parts {
+        for part in &parts[start..] {
             current_path = format!("{}/{}", current_path, part);
-
-            if let Some(info) = self.dir_cache.get(&current_path) {
-                current_id = info.id;
-                continue;
-            }
 
             // KD-011: List children with pagination to handle directories with >200 entries
             let base_url = self.api_url_v3(&format!("/files/{}/files", current_id));
@@ -692,11 +871,26 @@ impl KDriveProvider {
                     if file.file_type.as_deref() == Some("dir") {
                         if let Some(ref name) = file.name {
                             if name == *part {
+                                // A child kDrive places elsewhere than the
+                                // path walked: its folder moved after it was
+                                // confirmed, and the child is not the one
+                                // at the path. Not `NotFound`: the path may
+                                // well hold its item, and a sync that read
+                                // absence would upload over it.
+                                if exact_so_far
+                                    && file.path.as_deref().is_some_and(|at| at != current_path)
+                                {
+                                    return Err(ProviderError::ServerError(format!(
+                                        "'{current_path}' moved while it was looked up: \
+                                         nothing was changed, try again"
+                                    )));
+                                }
                                 // Exact match: use immediately
                                 if exact_so_far {
-                                    self.dir_cache_insert(
+                                    self.cache_folder_seen(
                                         current_path.clone(),
-                                        DirInfo { id: file.id },
+                                        file.id,
+                                        file.path.clone(),
                                     );
                                 }
                                 current_id = file.id;
@@ -896,6 +1090,7 @@ impl StorageProvider for KDriveProvider {
             "/".to_string(),
             DirInfo {
                 id: self.root_file_id,
+                at: None,
             },
         );
 
@@ -1030,7 +1225,7 @@ impl StorageProvider for KDriveProvider {
                         format!("{}/{}", resolved, name)
                     };
                     if cache_children {
-                        self.dir_cache_insert(dir_path, DirInfo { id: file.id });
+                        self.cache_folder_seen(dir_path, file.id, file.path.clone());
                     }
                 }
 
@@ -1347,7 +1542,7 @@ impl StorageProvider for KDriveProvider {
             error: None,
         });
         if let (true, Some(file)) = (cache_new, api_resp.data) {
-            self.dir_cache_insert(resolved, DirInfo { id: file.id });
+            self.cache_folder_seen(resolved, file.id, file.path);
         }
 
         Ok(())
@@ -1568,49 +1763,8 @@ impl StorageProvider for KDriveProvider {
             .await?
             .ok_or_else(|| ProviderError::NotFound(format!("'{}' not found", filename)))?;
 
-        let url = self.api_url_v3(&format!("/files/{}", file_id));
-        let resp = self.get_with_retry(&url).await?;
-
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let body = resp.text().await.unwrap_or_default();
-            return Err(api_failure("Stat failed", Some(status), &body));
-        }
-
-        let api_resp: ApiResponse<KDriveFile> = resp.json().await.map_http_err(|e| {
-            ProviderError::ServerError(format!("Parse stat response failed: {}", e))
-        })?;
-
-        let file = api_resp.data.ok_or_else(|| {
-            ProviderError::ParseError(format!(
-                "Missing metadata for '{}' after a successful lookup",
-                filename
-            ))
-        })?;
-
-        let is_dir = file.file_type.as_deref() == Some("dir");
-        let size = file.size.unwrap_or(0).max(0) as u64;
-        let modified = file.last_modified.map(|ts| {
-            chrono::DateTime::from_timestamp(ts, 0)
-                .unwrap_or_default()
-                .format("%Y-%m-%d %H:%M:%SZ")
-                .to_string()
-        });
-
-        Ok(RemoteEntry {
-            name: file.name.unwrap_or_else(|| filename.to_string()),
-            path: resolved,
-            is_dir,
-            size,
-            modified,
-            permissions: None,
-            owner: None,
-            group: None,
-            is_symlink: false,
-            link_target: None,
-            metadata: HashMap::new(),
-            mime_type: None,
-        })
+        self.entry_of_file_id(file_id, filename, resolved.clone())
+            .await
     }
 
     async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
@@ -1896,6 +2050,7 @@ impl StorageProvider for KDriveProvider {
 
     async fn list_versions(&mut self, path: &str) -> Result<Vec<FileVersion>, ProviderError> {
         let resolved = self.resolve_path(path);
+        super::forget_cached_ancestors(&mut self.dir_cache, &resolved);
         let (parent_path, filename) = Self::split_path(&resolved);
         let parent_id = self.resolve_folder_id(parent_path).await?;
 
@@ -1904,37 +2059,74 @@ impl StorageProvider for KDriveProvider {
             .await?
             .ok_or_else(|| ProviderError::NotFound(format!("'{}' not found", filename)))?;
 
-        let url = self.api_url_v3(&format!("/files/{}/versions", file_id));
-        let resp = self.get_with_retry(&url).await?;
+        // Every page: the v3 listing answers a page at a time, with
+        // `has_more` and the `cursor` to the next one beside `data`. A
+        // listing cut at its first page would refuse a restore of an older
+        // version as not listed.
+        let base = self.api_url_v3(&format!("/files/{}/versions", file_id));
+        let mut listed = Vec::new();
+        let mut cursor: Option<String> = None;
+        let mut seen = std::collections::HashSet::new();
+        let mut budget = super::VersionListingBudget::default();
+        loop {
+            let url = match &cursor {
+                Some(cursor) => format!("{base}?cursor={}", urlencoding::encode(cursor)),
+                None => base.clone(),
+            };
+            let resp = self.get_with_retry(&url).await?;
 
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let body = resp.text().await.unwrap_or_default();
-            return Err(api_failure("List versions failed", Some(status), &body));
+            if !resp.status().is_success() {
+                let status = resp.status();
+                let body = super::version_listing_text(resp).await.unwrap_or_default();
+                return Err(api_failure("List versions failed", Some(status), &body));
+            }
+
+            let text = super::version_listing_text(resp).await?;
+            budget.count(text.len(), path)?;
+            let page: VersionsPage = serde_json::from_str(&text).map_err(|e| {
+                ProviderError::ServerError(format!(
+                    "Parse versions response failed: {}",
+                    super::json_parse_error(&e)
+                ))
+            })?;
+            // A page without its versions is no page, and a page after the
+            // first that does not say whether more follow cannot end the
+            // listing: either would list the versions read so far as all.
+            let continuation = cursor.is_some();
+            let (data, has_more, next) = page.into_parts();
+            let Some(data) = data else {
+                return Err(ProviderError::ParseError(
+                    "kDrive versions page came without its versions".into(),
+                ));
+            };
+            if continuation && has_more.is_none() {
+                return Err(ProviderError::ParseError(
+                    "kDrive versions page did not say whether more follow".into(),
+                ));
+            }
+            listed.extend(data);
+            match (has_more, next) {
+                (Some(true), Some(next)) if !next.is_empty() && seen.insert(next.clone()) => {
+                    if seen.len() >= super::VERSION_LISTING_MAX_PAGES {
+                        return Err(super::version_listing_too_long(path));
+                    }
+                    cursor = Some(next)
+                }
+                (Some(true), _) => {
+                    return Err(ProviderError::ParseError(
+                        "kDrive versions pagination did not advance".into(),
+                    ))
+                }
+                _ => break,
+            }
         }
 
-        let api_resp: ApiResponse<Vec<KDriveVersion>> = resp.json().await.map_http_err(|e| {
-            ProviderError::ServerError(format!("Parse versions response failed: {}", e))
-        })?;
-
-        let versions = api_resp.data.unwrap_or_default();
-        Ok(versions
-            .iter()
-            .map(|v| {
-                let modified = v.created_at.map(|ts| {
-                    chrono::DateTime::from_timestamp(ts, 0)
-                        .unwrap_or_default()
-                        .format("%Y-%m-%d %H:%M:%SZ")
-                        .to_string()
-                });
-                FileVersion {
-                    id: v.id.to_string(),
-                    modified,
-                    size: v.size.unwrap_or(0).max(0) as u64,
-                    modified_by: v.version_number.map(|n| format!("v{}", n)),
-                }
-            })
-            .collect())
+        // The current row is the file whose versions were listed, read by
+        // its id, not the path read again.
+        let file = self
+            .entry_of_file_id(file_id, filename, resolved.clone())
+            .await?;
+        Ok(versions_in_dialog_order(listed, &file, file_id, true))
     }
 
     async fn download_version(
@@ -1944,6 +2136,7 @@ impl StorageProvider for KDriveProvider {
         local_path: &str,
     ) -> Result<(), ProviderError> {
         let resolved = self.resolve_path(path);
+        super::forget_cached_ancestors(&mut self.dir_cache, &resolved);
         let (parent_path, filename) = Self::split_path(&resolved);
         let parent_id = self.resolve_folder_id(parent_path).await?;
 
@@ -1952,21 +2145,68 @@ impl StorageProvider for KDriveProvider {
             .await?
             .ok_or_else(|| ProviderError::NotFound(format!("'{}' not found", filename)))?;
 
-        let url = self.api_url_v3(&format!(
-            "/files/{}/versions/{}/download",
-            file_id, version_id
-        ));
+        // A current row bound to what its listing saw is read only while
+        // the file still shows it, before and after the body.
+        let bound = super::bound_current_row_of(version_id);
+        if let Some((listed, _)) = &bound {
+            if *listed != file_id.to_string() {
+                return Err(ProviderError::NotFound(format!(
+                    "{path} is now another file (file id {file_id}): list its versions again"
+                )));
+            }
+        }
+        let listed_token = bound.map(|(_, token)| token);
+        // A bare `current` is the file as it is now, read the same way as
+        // its bound row: a whole body only.
+        let label = if version_id == super::CURRENT_VERSION_ID || listed_token.is_some() {
+            super::CURRENT_VERSION_ID
+        } else {
+            super::version_label_of_file(version_id, &file_id.to_string(), path)?
+        };
+        if label == super::CURRENT_VERSION_ID {
+            if let Some(token) = &listed_token {
+                let now = self
+                    .entry_of_file_id(file_id, filename, resolved.clone())
+                    .await?;
+                if content_token(&now) != *token {
+                    return Err(super::current_row_changed(path));
+                }
+            }
+            // The listed current row: the file it was listed from, by its id.
+            let url = self.api_url_v2(&format!("/files/{}/download", file_id));
+            let resp = self.get_with_retry(&url).await?;
+            if !resp.status().is_success() {
+                let status = resp.status();
+                let body = super::version_listing_text(resp).await.unwrap_or_default();
+                return Err(api_failure("Download failed", Some(status), &body));
+            }
+            if let Some(token) = &listed_token {
+                let staged =
+                    super::stage_bound_current_body(resp, local_path, "Download failed").await?;
+                // Dropped uncommitted on a change: the destination stays.
+                let now = self
+                    .entry_of_file_id(file_id, filename, resolved.clone())
+                    .await?;
+                if content_token(&now) != *token {
+                    return Err(super::current_row_changed(path));
+                }
+                return staged.commit().await.map_err(ProviderError::IoError);
+            }
+            return super::save_version_body(resp, local_path, "Download failed").await;
+        }
+        let url = self.api_url_v3(&format!("/files/{}/versions/{}/download", file_id, label));
         let resp = self.get_with_retry(&url).await?;
 
         if !resp.status().is_success() {
             let status = resp.status();
-            let body = resp.text().await.unwrap_or_default();
+            let body = super::version_listing_text(resp).await.unwrap_or_default();
             return Err(api_failure("Download version failed", Some(status), &body));
         }
 
         // Stream version download to file
         use futures_util::StreamExt;
 
+        super::require_whole_version_body(&resp, "Download version failed")?;
         let mut stream = resp.bytes_stream();
         let mut atomic = super::atomic_write::AtomicFile::new(local_path)
             .await
@@ -1974,7 +2214,10 @@ impl StorageProvider for KDriveProvider {
 
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.map_http_err(|e| {
-                ProviderError::TransferFailed(format!("Version download error: {}", e))
+                ProviderError::TransferFailed(format!(
+                    "Version download error: {}",
+                    e.without_url()
+                ))
             })?;
             atomic
                 .write_all(&chunk)
@@ -1989,7 +2232,15 @@ impl StorageProvider for KDriveProvider {
     }
 
     async fn restore_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
+        if version_id == super::CURRENT_VERSION_ID
+            || super::bound_current_row_of(version_id).is_some()
+        {
+            return Err(ProviderError::NotSupported(
+                "This is already the current version".into(),
+            ));
+        }
         let resolved = self.resolve_path(path);
+        super::forget_cached_ancestors(&mut self.dir_cache, &resolved);
         let (parent_path, filename) = Self::split_path(&resolved);
         let parent_id = self.resolve_folder_id_exact(parent_path).await?;
 
@@ -1998,21 +2249,31 @@ impl StorageProvider for KDriveProvider {
             .await?
             .ok_or_else(|| ProviderError::NotFound(format!("'{}' not found", filename)))?;
 
-        let url = self.api_url_v3(&format!(
-            "/files/{}/versions/{}/restore",
-            file_id, version_id
-        ));
+        let label = super::version_label_of_file(version_id, &file_id.to_string(), path)?;
+        if label == super::CURRENT_VERSION_ID {
+            return Err(ProviderError::NotSupported(
+                "This is already the current version".into(),
+            ));
+        }
+        let url = self.api_url_v3(&format!("/files/{}/versions/{}/restore", file_id, label));
+        let selected = super::refuse_a_restore_that_changes_nothing(self, path, version_id).await?;
         let resp = self
             .post_with_retry(&url, "application/json", vec![])
-            .await?;
+            .await
+            .map_err(|e| super::sent_change_unconfirmed(e, &format!("the restore of {path}")))?;
 
         if !resp.status().is_success() {
             let status = resp.status();
-            let body = resp.text().await.unwrap_or_default();
+            if let Some(unknown) =
+                super::gateway_left_unknown(status, &format!("the restore of {path}"))
+            {
+                return Err(unknown);
+            }
+            let body = super::version_listing_text(resp).await.unwrap_or_default();
             return Err(api_failure("Restore version failed", Some(status), &body));
         }
 
-        Ok(())
+        super::confirm_version_restored(self, path, Some(&selected)).await
     }
 
     // ─── KD-010: Trash management via kDrive trash API ────────────────
@@ -2030,6 +2291,64 @@ impl StorageProvider for KDriveProvider {
 // =============================================================================
 
 impl KDriveProvider {
+    /// The entry of the file `file_id` (`GET /files/{id}`), named `filename`
+    /// at `resolved`: read by id, so it is the file a lookup found and not
+    /// whatever the path holds by the time of the read.
+    async fn entry_of_file_id(
+        &self,
+        file_id: i64,
+        filename: &str,
+        resolved: String,
+    ) -> Result<RemoteEntry, ProviderError> {
+        let url = self.api_url_v3(&format!("/files/{}", file_id));
+        let resp = self.get_with_retry(&url).await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = super::version_listing_text(resp).await.unwrap_or_default();
+            return Err(api_failure("Stat failed", Some(status), &body));
+        }
+
+        let text = super::version_listing_text(resp).await?;
+        let api_resp: ApiResponse<KDriveFile> = serde_json::from_str(&text).map_err(|e| {
+            ProviderError::ServerError(format!(
+                "Parse stat response failed: {}",
+                super::json_parse_error(&e)
+            ))
+        })?;
+
+        let file = api_resp.data.ok_or_else(|| {
+            ProviderError::ParseError(format!(
+                "Missing metadata for '{}' after a successful lookup",
+                filename
+            ))
+        })?;
+
+        let is_dir = file.file_type.as_deref() == Some("dir");
+        let size = file.size.unwrap_or(0).max(0) as u64;
+        let modified = file.last_modified.map(|ts| {
+            chrono::DateTime::from_timestamp(ts, 0)
+                .unwrap_or_default()
+                .format("%Y-%m-%d %H:%M:%SZ")
+                .to_string()
+        });
+
+        Ok(RemoteEntry {
+            name: file.name.unwrap_or_else(|| filename.to_string()),
+            path: resolved,
+            is_dir,
+            size,
+            modified,
+            permissions: None,
+            owner: None,
+            group: None,
+            is_symlink: false,
+            link_target: None,
+            metadata: HashMap::new(),
+            mime_type: None,
+        })
+    }
+
     /// List items in the kDrive trash.
     pub async fn list_trash(&mut self) -> Result<Vec<RemoteEntry>, ProviderError> {
         if !self.connected {
@@ -2296,6 +2615,28 @@ mod api_failure_tests {
 
 #[cfg(test)]
 mod tests {
+    /// A versions page is read in both envelope shapes, with `has_more` and
+    /// `cursor` beside `data` or nested inside it, so neither stops the
+    /// listing at its first page.
+    #[test]
+    fn a_versions_page_is_read_flat_or_nested() {
+        let version = r#"{"id":7,"file_id":42,"size":3,"created_at":1700000000}"#;
+        for body in [
+            format!(r#"{{"result":"success","data":[{version}],"has_more":true,"cursor":"c2"}}"#),
+            format!(
+                r#"{{"result":"success","data":{{"data":[{version}],"has_more":true,"cursor":"c2"}}}}"#
+            ),
+        ] {
+            let page: super::VersionsPage = serde_json::from_str(&body).expect(&body);
+            let (data, has_more, cursor) = page.into_parts();
+            let data = data.expect(&body);
+            assert_eq!(data.len(), 1, "{body}");
+            assert_eq!(data[0].id, 7);
+            assert_eq!(has_more, Some(true), "{body}");
+            assert_eq!(cursor.as_deref(), Some("c2"), "{body}");
+        }
+    }
+
     #[tokio::test]
     async fn probe_contract_kdrive_root_is_not_a_missing_child() {
         let (mut provider, _) = provider_on_kdrive_root(false, None).await;
@@ -2602,6 +2943,798 @@ mod tests {
         (provider, moves)
     }
 
+    /// The bare `current` id reads the file as its bound row does: a 206
+    /// fragment is refused and the destination stays as it was.
+    #[tokio::test]
+    async fn a_partial_answer_for_the_bare_current_row_is_not_saved() {
+        use axum::response::IntoResponse;
+        let app =
+            axum::Router::new().fallback(axum::routing::any(|uri: axum::http::Uri| async move {
+                match uri.path() {
+                    "/3/drive/987654/files/1/files" => axum::Json(serde_json::json!({
+                        "result": "success",
+                        "data": [{ "id": 11, "name": "a.txt", "type": "file", "size": 6 }]
+                    }))
+                    .into_response(),
+                    "/2/drive/987654/files/11/download" => {
+                        (axum::http::StatusCode::PARTIAL_CONTENT, "li").into_response()
+                    }
+                    _ => axum::http::StatusCode::NOT_FOUND.into_response(),
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = test_provider();
+        provider.connected = true;
+        provider.api_base_override = Some(format!("http://{addr}"));
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("a.txt");
+        std::fs::write(&out, "before").unwrap();
+        let partial = provider
+            .download_version(
+                "/a.txt",
+                super::super::CURRENT_VERSION_ID,
+                out.to_str().unwrap(),
+            )
+            .await;
+        assert!(
+            matches!(&partial, Err(ProviderError::TransferFailed(m)) if m.contains("206")),
+            "{partial:?}"
+        );
+        assert_eq!(std::fs::read_to_string(&out).unwrap(), "before");
+    }
+
+    /// Row 0 of the versions dialog, `current`, is the file itself: its
+    /// download is the file's own (`/2/.../download`, never a versions URL),
+    /// its restore sends no request at all, and a past version still
+    /// downloads by its own id.
+    #[tokio::test]
+    async fn the_current_row_is_the_file_itself_and_a_past_one_its_version() {
+        use axum::response::IntoResponse;
+        use std::sync::{Arc, Mutex};
+        let seen: Arc<Mutex<Vec<String>>> = Arc::default();
+        let log = Arc::clone(&seen);
+        // Every request is recorded whatever its method; only GETs are served.
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method, uri: axum::http::Uri| {
+                let log = Arc::clone(&log);
+                async move {
+                    let path = uri.path().to_string();
+                    log.lock().unwrap().push(format!("{method} {path}"));
+                    if method != axum::http::Method::GET {
+                        return axum::http::StatusCode::METHOD_NOT_ALLOWED.into_response();
+                    }
+                    let file =
+                        serde_json::json!({ "id": 11, "name": "a.txt", "type": "file", "size": 4 });
+                    match path.as_str() {
+                        "/3/drive/987654/files/1/files" => {
+                            axum::Json(serde_json::json!({ "result": "success", "data": [file] }))
+                                .into_response()
+                        }
+                        "/2/drive/987654/files/11/download" => "live".into_response(),
+                        "/3/drive/987654/files/11/versions/2/download" => "two".into_response(),
+                        _ => axum::http::StatusCode::NOT_FOUND.into_response(),
+                    }
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = test_provider();
+        provider.connected = true;
+        provider.api_base_override = Some(format!("http://{addr}"));
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("a.txt");
+        let out = out.to_str().unwrap();
+
+        provider
+            .download_version("/a.txt", super::super::CURRENT_VERSION_ID, out)
+            .await
+            .expect("the current row downloads the file");
+        assert_eq!(std::fs::read_to_string(out).unwrap(), "live");
+        assert!(
+            seen.lock()
+                .unwrap()
+                .iter()
+                .all(|p| !p.contains("/versions")),
+            "{seen:?}"
+        );
+
+        let before = seen.lock().unwrap().len();
+        let restored = provider
+            .restore_version("/a.txt", super::super::CURRENT_VERSION_ID)
+            .await;
+        assert!(
+            matches!(restored, Err(ProviderError::NotSupported(_))),
+            "{restored:?}"
+        );
+        assert_eq!(seen.lock().unwrap().len(), before, "{seen:?}");
+
+        provider
+            .download_version("/a.txt", "11:2", out)
+            .await
+            .expect("a past version downloads by its id");
+        assert_eq!(std::fs::read_to_string(out).unwrap(), "two");
+        // The listed current row is file 11 by its id.
+        provider
+            .download_version("/a.txt", "11:current", out)
+            .await
+            .expect("the listed current row downloads file 11");
+        assert_eq!(std::fs::read_to_string(out).unwrap(), "live");
+        // Listed from file 12, or not bound at all: refused before any
+        // request on a version, and the destination keeps its bytes.
+        let before = seen.lock().unwrap().len();
+        for id in ["12:2", "12:current", "2"] {
+            let outcome = provider.download_version("/a.txt", id, out).await;
+            assert!(outcome.is_err(), "{id}: {outcome:?}");
+            let restored = provider.restore_version("/a.txt", id).await;
+            assert!(restored.is_err(), "{id}: {restored:?}");
+        }
+        assert_eq!(std::fs::read_to_string(out).unwrap(), "live");
+        assert!(
+            seen.lock().unwrap()[before..]
+                .iter()
+                .all(|p| !p.contains("/versions/") && !p.contains("/download")),
+            "{seen:?}"
+        );
+    }
+
+    /// A kDrive double for the cache tests: `/docs` is folder 60 now,
+    /// holding `a.txt` (11); folder 50 was cached as `/docs` and moved to
+    /// `/archive/docs`, holding another `a.txt` (99). Each holds a folder
+    /// `sub` (61 at the path, 51 in the moved one) with its own `a.txt` (12,
+    /// 98). Every request is
+    /// recorded as `METHOD target`.
+    async fn kdrive_with_a_moved_folder() -> (
+        KDriveProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        use axum::response::IntoResponse;
+        use std::sync::{Arc, Mutex};
+        let seen: Arc<Mutex<Vec<String>>> = Arc::default();
+        let log = Arc::clone(&seen);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method, uri: axum::http::Uri| {
+                let log = Arc::clone(&log);
+                async move {
+                    let target = uri.to_string();
+                    log.lock().unwrap().push(format!("{method} {target}"));
+                    let file = |id: i64| {
+                        serde_json::json!({ "id": id, "name": "a.txt", "type": "file", "size": 3 })
+                    };
+                    let dir = |id: i64, path: &str| {
+                        serde_json::json!({ "id": id, "name": "docs", "type": "dir", "path": path })
+                    };
+                    let sub = |id: i64, path: &str| {
+                        serde_json::json!({ "id": id, "name": "sub", "type": "dir", "path": path })
+                    };
+                    let body = match (method.as_str(), target.as_str()) {
+                        ("GET", "/3/drive/987654/files/1/files?with=path") => {
+                            serde_json::json!({ "result": "success", "data": [dir(60, "/docs")] })
+                        }
+                        ("GET", "/3/drive/987654/files/60?with=path") => {
+                            serde_json::json!({ "result": "success", "data": dir(60, "/docs") })
+                        }
+                        ("GET", "/3/drive/987654/files/50?with=path") => serde_json::json!({
+                            "result": "success", "data": dir(50, "/archive/docs") }),
+                        ("GET", "/3/drive/987654/files/60/files") => {
+                            serde_json::json!({ "result": "success", "data": [file(11)] })
+                        }
+                        ("GET", "/3/drive/987654/files/50/files") => {
+                            serde_json::json!({ "result": "success", "data": [file(99)] })
+                        }
+                        // `sub`: 61 in the folder at the path, 51 in the moved one.
+                        ("GET", "/3/drive/987654/files/60/files?with=path") => serde_json::json!({
+                            "result": "success", "data": [sub(61, "/docs/sub")] }),
+                        ("GET", "/3/drive/987654/files/50/files?with=path")
+                        | ("GET", "/3/drive/987654/files/70/files?with=path") => serde_json::json!({
+                            "result": "success", "data": [sub(51, "/archive/docs/sub")] }),
+                        // 70: confirmed at `/docs`, then moved before its
+                        // children were listed.
+                        ("GET", "/3/drive/987654/files/70?with=path") => {
+                            serde_json::json!({ "result": "success", "data": dir(70, "/docs") })
+                        }
+                        ("GET", "/3/drive/987654/files/61/files?with=path")
+                        | ("GET", "/3/drive/987654/files/51/files?with=path") => {
+                            serde_json::json!({ "result": "success", "data": [] })
+                        }
+                        ("GET", "/3/drive/987654/files/61?with=path") => serde_json::json!({
+                            "result": "success", "data": sub(61, "/docs/sub") }),
+                        ("GET", "/3/drive/987654/files/51?with=path") => serde_json::json!({
+                            "result": "success", "data": sub(51, "/archive/docs/sub") }),
+                        ("GET", "/3/drive/987654/files/61/files") => {
+                            serde_json::json!({ "result": "success", "data": [file(12)] })
+                        }
+                        ("GET", "/3/drive/987654/files/51/files") => {
+                            serde_json::json!({ "result": "success", "data": [file(98)] })
+                        }
+                        ("DELETE", "/2/drive/987654/files/12") | ("DELETE", "/2/drive/987654/files/98") => {
+                            serde_json::json!({ "result": "success", "data": true })
+                        }
+                        ("GET", "/2/drive/987654/files/11/download") => return "new".into_response(),
+                        ("GET", "/2/drive/987654/files/99/download") => return "moved".into_response(),
+                        ("DELETE", "/2/drive/987654/files/11") | ("DELETE", "/2/drive/987654/files/99") => {
+                            serde_json::json!({ "result": "success", "data": true })
+                        }
+                        _ => return axum::http::StatusCode::NOT_FOUND.into_response(),
+                    };
+                    axum::Json(body).into_response()
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = test_provider();
+        provider.connected = true;
+        provider.api_base_override = Some(format!("http://{addr}"));
+        (provider, seen)
+    }
+
+    fn cache_docs_as(provider: &mut KDriveProvider, id: i64) {
+        provider.dir_cache_insert(
+            "/docs".to_string(),
+            DirInfo {
+                id,
+                at: Some("/docs".into()),
+            },
+        );
+    }
+
+    /// `/docs` cached, then moved away by another client and
+    /// made again under the same name. A download or a delete of
+    /// `/docs/a.txt` acts on the file at that path now, never on the one in
+    /// the moved folder.
+    #[tokio::test]
+    async fn a_folder_moved_after_caching_is_never_acted_in() {
+        let (mut provider, seen) = kdrive_with_a_moved_folder().await;
+        cache_docs_as(&mut provider, 50);
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("a.txt");
+        provider
+            .download("/docs/a.txt", local.to_str().unwrap(), None)
+            .await
+            .expect("the file at the path is read");
+        assert_eq!(std::fs::read_to_string(&local).unwrap(), "new");
+        cache_docs_as(&mut provider, 50);
+        provider
+            .delete("/docs/a.txt")
+            .await
+            .expect("the file at the path is deleted");
+        let seen = seen.lock().unwrap();
+        assert!(
+            seen.iter().any(|l| l == "DELETE /2/drive/987654/files/11"),
+            "{seen:?}"
+        );
+        assert!(
+            !seen
+                .iter()
+                .any(|l| l.contains("/files/50/") || l.contains("/files/99")),
+            "the moved folder was acted in: {seen:?}"
+        );
+    }
+
+    /// A lookup under a cached `/docs` that moved away confirms `/docs`
+    /// before it looks in it: a lookup that fails below it caches nothing of
+    /// the moved folder (its `sub` with the moved path), so a later delete of
+    /// `/docs/sub/a.txt` deletes the file at the path, not the moved one.
+    #[tokio::test]
+    async fn a_failed_lookup_under_a_moved_folder_caches_nothing_of_it() {
+        let (mut provider, seen) = kdrive_with_a_moved_folder().await;
+        cache_docs_as(&mut provider, 50);
+        let missing = provider.stat("/docs/sub/missing/x.txt").await;
+        assert!(
+            matches!(missing, Err(ProviderError::NotFound(_))),
+            "{missing:?}"
+        );
+        provider
+            .delete("/docs/sub/a.txt")
+            .await
+            .expect("the file at the path is deleted");
+        let seen = seen.lock().unwrap();
+        assert!(
+            seen.iter().any(|l| l == "DELETE /2/drive/987654/files/12"),
+            "{seen:?}"
+        );
+        assert!(
+            !seen.iter().any(|l| l.contains("/files/50/")
+                || l.contains("/files/51")
+                || l.contains("/files/98")),
+            "the moved folder was acted in: {seen:?}"
+        );
+    }
+
+    /// `/docs` confirmed at its path, then moved before its children were
+    /// listed: the listing places `sub` under the archive. Nothing is cached
+    /// under `/docs/sub` and the moved child is never acted in; once the
+    /// folder is no longer confirmed, the path is walked from the root.
+    #[tokio::test]
+    async fn a_folder_moved_between_its_confirmation_and_its_listing_is_not_acted_in() {
+        let (mut provider, seen) = kdrive_with_a_moved_folder().await;
+        cache_docs_as(&mut provider, 70);
+        let raced = provider.delete("/docs/sub/a.txt").await;
+        assert!(
+            matches!(&raced, Err(ProviderError::ServerError(m)) if m.contains("moved while")),
+            "{raced:?}"
+        );
+        assert!(!provider.dir_cache.contains_key("/docs/sub"));
+        cache_docs_as(&mut provider, 50);
+        provider
+            .delete("/docs/sub/a.txt")
+            .await
+            .expect("the file at the path is deleted");
+        let seen = seen.lock().unwrap();
+        assert!(
+            seen.iter().any(|l| l == "DELETE /2/drive/987654/files/12"),
+            "{seen:?}"
+        );
+        assert!(
+            !seen
+                .iter()
+                .any(|l| l.contains("/files/51") || l.contains("/files/98")),
+            "the moved folder was acted in: {seen:?}"
+        );
+    }
+
+    /// A folder is cached under a path only when kDrive placed it there.
+    #[test]
+    fn a_folder_seen_at_another_path_is_not_cached() {
+        let mut provider = test_provider();
+        provider.cache_folder_seen("/docs/sub".into(), 51, Some("/archive/docs/sub".into()));
+        provider.cache_folder_seen("/docs/x".into(), 52, None);
+        assert!(!provider.dir_cache.contains_key("/docs/sub"));
+        assert!(!provider.dir_cache.contains_key("/docs/x"));
+        provider.cache_folder_seen("/docs/sub".into(), 61, Some("/docs/sub".into()));
+        assert_eq!(provider.dir_cache.get("/docs/sub").map(|i| i.id), Some(61));
+    }
+
+    /// A cache that is still right costs one request, the folder's path,
+    /// and no walk from the root.
+    #[tokio::test]
+    async fn a_cached_folder_still_in_place_costs_one_request() {
+        let (mut provider, seen) = kdrive_with_a_moved_folder().await;
+        cache_docs_as(&mut provider, 60);
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("a.txt");
+        provider
+            .download("/docs/a.txt", local.to_str().unwrap(), None)
+            .await
+            .expect("download");
+        let seen = seen.lock().unwrap();
+        assert_eq!(
+            *seen,
+            [
+                "GET /3/drive/987654/files/60?with=path",
+                "GET /3/drive/987654/files/60/files",
+                "GET /2/drive/987654/files/11/download",
+            ]
+        );
+    }
+
+    /// D1: a folder id cached before another client moved the folder away
+    /// (and made a new one under its name) is not trusted by a version
+    /// action: the path is walked again from the root, so the file now at
+    /// the path is the one listed, and the moved folder is never asked.
+    #[tokio::test]
+    async fn a_version_action_walks_again_past_a_folder_moved_after_caching() {
+        use axum::response::IntoResponse;
+        use std::sync::{Arc, Mutex};
+        let seen: Arc<Mutex<Vec<String>>> = Arc::default();
+        let log = Arc::clone(&seen);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method, uri: axum::http::Uri| {
+                let log = Arc::clone(&log);
+                async move {
+                    let target = uri.to_string();
+                    log.lock().unwrap().push(format!("{method} {target}"));
+                    let file = |id: i64, size: i64| {
+                        serde_json::json!({ "id": id, "name": "a.txt", "type": "file",
+                            "size": size, "last_modified_at": 1_700_000_500 })
+                    };
+                    let body = match (method.as_str(), target.as_str()) {
+                        ("GET", "/3/drive/987654/files/1/files?with=path") => serde_json::json!({
+                            "result": "success",
+                            "data": [{ "id": 60, "name": "docs", "type": "dir" }] }),
+                        ("GET", "/3/drive/987654/files/60/files") => {
+                            serde_json::json!({ "result": "success", "data": [file(11, 3)] })
+                        }
+                        ("GET", "/3/drive/987654/files/50/files") => {
+                            serde_json::json!({ "result": "success", "data": [file(99, 5)] })
+                        }
+                        ("GET", "/3/drive/987654/files/11") => {
+                            serde_json::json!({ "result": "success", "data": file(11, 3) })
+                        }
+                        ("GET", "/3/drive/987654/files/99") => {
+                            serde_json::json!({ "result": "success", "data": file(99, 5) })
+                        }
+                        ("GET", "/3/drive/987654/files/11/versions")
+                        | ("GET", "/3/drive/987654/files/99/versions") => serde_json::json!({
+                            "result": "success", "data": [], "has_more": false, "cursor": null }),
+                        _ => return axum::http::StatusCode::NOT_FOUND.into_response(),
+                    };
+                    axum::Json(body).into_response()
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = test_provider();
+        provider.connected = true;
+        provider.api_base_override = Some(format!("http://{addr}"));
+        provider.dir_cache_insert(
+            "/docs".to_string(),
+            DirInfo {
+                id: 50,
+                at: Some("/docs".into()),
+            },
+        );
+
+        let versions = provider
+            .list_versions("/docs/a.txt")
+            .await
+            .expect("versions");
+        let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
+        assert_eq!(
+            ids,
+            [super::super::bound_current_row("11", "3/2023-11-14 22:21:40Z").as_str()],
+            "the file at the path now is listed"
+        );
+        let seen = seen.lock().unwrap();
+        assert!(
+            !seen
+                .iter()
+                .any(|l| l.contains("/files/50/") || l.contains("/files/99")),
+            "the moved folder was asked: {seen:?}"
+        );
+    }
+
+    /// The current row is bound to the size and last change its listing
+    /// saw: a write before its download or during its body saves nothing
+    /// and leaves the destination as it was; an unchanged file downloads.
+    #[tokio::test]
+    async fn a_kdrive_current_row_written_after_its_listing_saves_nothing() {
+        use axum::response::IntoResponse;
+        use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
+        use std::sync::{Arc, Mutex};
+        let seen: Arc<Mutex<Vec<String>>> = Arc::default();
+        let written = Arc::new(AtomicI64::new(0));
+        let write_during_body = Arc::new(AtomicBool::new(false));
+        let (log, at, during) = (
+            Arc::clone(&seen),
+            Arc::clone(&written),
+            Arc::clone(&write_during_body),
+        );
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method, uri: axum::http::Uri| {
+                let (log, at, during) = (Arc::clone(&log), Arc::clone(&at), Arc::clone(&during));
+                async move {
+                    let target = uri.to_string();
+                    log.lock().unwrap().push(format!("{method} {target}"));
+                    let file = serde_json::json!({ "id": 11, "name": "a.txt", "type": "file",
+                        "size": 4, "last_modified_at": 1_700_000_500 + at.load(Ordering::SeqCst) });
+                    let body = match (method.as_str(), target.as_str()) {
+                        ("GET", "/3/drive/987654/files/1/files") => {
+                            serde_json::json!({ "result": "success", "data": [file] })
+                        }
+                        ("GET", "/3/drive/987654/files/11") => {
+                            serde_json::json!({ "result": "success", "data": file })
+                        }
+                        ("GET", "/3/drive/987654/files/11/versions") => serde_json::json!({
+                            "result": "success", "data": [], "has_more": false, "cursor": null }),
+                        ("GET", "/2/drive/987654/files/11/download") => {
+                            if during.load(Ordering::SeqCst) {
+                                at.fetch_add(1, Ordering::SeqCst);
+                            }
+                            return "live".into_response();
+                        }
+                        _ => return axum::http::StatusCode::NOT_FOUND.into_response(),
+                    };
+                    axum::Json(body).into_response()
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = test_provider();
+        provider.connected = true;
+        provider.api_base_override = Some(format!("http://{addr}"));
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("out.txt");
+        let out = out.to_str().unwrap();
+
+        let current = provider.list_versions("/a.txt").await.expect("versions")[0]
+            .id
+            .clone();
+        provider
+            .download_version("/a.txt", &current, out)
+            .await
+            .expect("an unchanged file downloads by its listed row");
+        assert_eq!(std::fs::read_to_string(out).unwrap(), "live");
+
+        std::fs::write(out, "mine").unwrap();
+        written.store(1, Ordering::SeqCst);
+        let before = seen.lock().unwrap().len();
+        let outcome = provider.download_version("/a.txt", &current, out).await;
+        assert!(
+            matches!(&outcome, Err(ProviderError::NotFound(m)) if m.contains("list its versions again")),
+            "{outcome:?}"
+        );
+        assert_eq!(std::fs::read_to_string(out).unwrap(), "mine");
+        assert!(
+            !seen.lock().unwrap()[before..]
+                .iter()
+                .any(|l| l.contains("/download")),
+            "a file written since its listing was read: {seen:?}"
+        );
+
+        let current = provider.list_versions("/a.txt").await.expect("versions")[0]
+            .id
+            .clone();
+        write_during_body.store(true, Ordering::SeqCst);
+        let outcome = provider.download_version("/a.txt", &current, out).await;
+        assert!(
+            matches!(&outcome, Err(ProviderError::NotFound(m)) if m.contains("list its versions again")),
+            "{outcome:?}"
+        );
+        assert_eq!(std::fs::read_to_string(out).unwrap(), "mine");
+        let restored = provider.restore_version("/a.txt", &current).await;
+        assert!(
+            matches!(restored, Err(ProviderError::NotSupported(_))),
+            "{restored:?}"
+        );
+    }
+
+    /// The versions listing answers a page at a time: every page is read,
+    /// so a version on the second page is listed and restored, not refused
+    /// as missing.
+    #[tokio::test]
+    async fn a_kdrive_version_on_a_later_page_is_listed_and_restored() {
+        use axum::response::IntoResponse;
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::{Arc, Mutex};
+        let seen: Arc<Mutex<Vec<String>>> = Arc::default();
+        let restored = Arc::new(AtomicBool::new(false));
+        let (log, done) = (Arc::clone(&seen), Arc::clone(&restored));
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method, uri: axum::http::Uri| {
+                let (log, done) = (Arc::clone(&log), Arc::clone(&done));
+                async move {
+                    let target = uri.to_string();
+                    log.lock().unwrap().push(format!("{method} {target}"));
+                    let size = if done.load(Ordering::SeqCst) { 2 } else { 4 };
+                    let file = serde_json::json!({ "id": 11, "name": "a.txt", "type": "file",
+                        "size": size, "last_modified_at": if size == 2 { 1_700_000_900 } else { 1_700_000_500 } });
+                    let version = |id: i64, size: i64, at: i64| {
+                        serde_json::json!({ "id": id, "file_id": 11, "size": size, "created_at": at })
+                    };
+                    let body = match (method.as_str(), target.as_str()) {
+                        ("GET", "/3/drive/987654/files/1/files") => {
+                            serde_json::json!({ "result": "success", "data": [file] })
+                        }
+                        ("GET", "/3/drive/987654/files/11") => {
+                            serde_json::json!({ "result": "success", "data": file })
+                        }
+                        ("GET", "/3/drive/987654/files/11/versions") => serde_json::json!({
+                            "result": "success", "data": [version(3, 3, 1_700_000_300)],
+                            "has_more": true, "cursor": "c2" }),
+                        ("GET", "/3/drive/987654/files/11/versions?cursor=c2") => serde_json::json!({
+                            "result": "success", "data": [version(2, 2, 1_700_000_200)],
+                            "has_more": false, "cursor": null }),
+                        ("POST", "/3/drive/987654/files/11/versions/2/restore") => {
+                            done.store(true, Ordering::SeqCst);
+                            serde_json::json!({ "result": "success", "data": true })
+                        }
+                        _ => return axum::http::StatusCode::NOT_FOUND.into_response(),
+                    };
+                    axum::Json(body).into_response()
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = test_provider();
+        provider.connected = true;
+        provider.api_base_override = Some(format!("http://{addr}"));
+
+        let versions = provider.list_versions("/a.txt").await.expect("versions");
+        let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
+        let current = super::super::bound_current_row("11", "4/2023-11-14 22:21:40Z");
+        assert_eq!(ids, [current.as_str(), "11:3", "11:2"]);
+        // Restored, and not confirmed: kDrive names no version made and
+        // lists no content hash.
+        let outcome = provider.restore_version("/a.txt", "11:2").await;
+        assert!(
+            matches!(&outcome, Err(e) if crate::providers::was_applied(e) && e.to_string().contains("could not be confirmed")),
+            "{outcome:?}"
+        );
+        let seen = seen.lock().unwrap();
+        assert!(
+            seen.iter()
+                .any(|l| l == "POST /3/drive/987654/files/11/versions/2/restore"),
+            "{seen:?}"
+        );
+    }
+
+    /// A restore answered 503 by a gateway may have been applied behind it:
+    /// it is applied and unconfirmed, sent once, never a failure to retry.
+    #[tokio::test]
+    async fn a_kdrive_restore_a_gateway_answered_is_applied_and_not_confirmed() {
+        use axum::response::IntoResponse;
+        use std::sync::{Arc, Mutex};
+        let seen: Arc<Mutex<Vec<String>>> = Arc::default();
+        let log = Arc::clone(&seen);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method, uri: axum::http::Uri| {
+                let log = Arc::clone(&log);
+                async move {
+                    let target = uri.to_string();
+                    log.lock().unwrap().push(format!("{method} {target}"));
+                    let file = serde_json::json!({ "id": 11, "name": "a.txt", "type": "file",
+                        "size": 4, "last_modified_at": 1_700_000_500 });
+                    let body = match (method.as_str(), target.as_str()) {
+                        ("GET", "/3/drive/987654/files/1/files") => {
+                            serde_json::json!({ "result": "success", "data": [file] })
+                        }
+                        ("GET", "/3/drive/987654/files/11") => {
+                            serde_json::json!({ "result": "success", "data": file })
+                        }
+                        ("GET", "/3/drive/987654/files/11/versions") => serde_json::json!({
+                            "result": "success",
+                            "data": [{ "id": 2, "file_id": 11, "size": 2, "created_at": 1_700_000_200 }],
+                            "has_more": false, "cursor": null }),
+                        ("POST", "/3/drive/987654/files/11/versions/2/restore") => {
+                            return axum::http::StatusCode::SERVICE_UNAVAILABLE.into_response()
+                        }
+                        _ => return axum::http::StatusCode::NOT_FOUND.into_response(),
+                    };
+                    axum::Json(body).into_response()
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = test_provider();
+        provider.connected = true;
+        provider.api_base_override = Some(format!("http://{addr}"));
+        let outcome = provider.restore_version("/a.txt", "11:2").await;
+        assert!(
+            matches!(&outcome, Err(e) if crate::providers::was_applied(e) && e.to_string().contains("gateway")),
+            "{outcome:?}"
+        );
+        let posts = seen
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|l| l.starts_with("POST "))
+            .count();
+        assert_eq!(posts, 1);
+    }
+
+    /// A second versions page with no `data`, or with no `has_more`, is
+    /// not the end of the listing: the listing is refused, where before
+    /// `{}` ended it with the first page's versions shown as all of them.
+    #[tokio::test]
+    async fn a_continuation_page_without_its_versions_or_its_end_is_refused() {
+        use axum::response::IntoResponse;
+        use std::sync::{Arc, Mutex};
+        for second in [
+            serde_json::json!({}),
+            serde_json::json!({ "result": "success",
+                "data": [{ "id": 2, "file_id": 11, "size": 2, "created_at": 1_700_000_200 }] }),
+        ] {
+            let seen: Arc<Mutex<Vec<String>>> = Arc::default();
+            let log = Arc::clone(&seen);
+            let app = axum::Router::new().fallback(axum::routing::any(
+                move |method: axum::http::Method, uri: axum::http::Uri| {
+                    let (log, second) = (Arc::clone(&log), second.clone());
+                    async move {
+                        let target = uri.to_string();
+                        log.lock().unwrap().push(format!("{method} {target}"));
+                        let file = serde_json::json!({ "id": 11, "name": "a.txt",
+                            "type": "file", "size": 4, "last_modified_at": 1_700_000_500 });
+                        let body = match (method.as_str(), target.as_str()) {
+                            ("GET", "/3/drive/987654/files/1/files") => {
+                                serde_json::json!({ "result": "success", "data": [file] })
+                            }
+                            ("GET", "/3/drive/987654/files/11") => {
+                                serde_json::json!({ "result": "success", "data": file })
+                            }
+                            ("GET", "/3/drive/987654/files/11/versions") => serde_json::json!({
+                                "result": "success",
+                                "data": [{ "id": 3, "file_id": 11, "size": 3, "created_at": 1_700_000_300 }],
+                                "has_more": true, "cursor": "c2" }),
+                            ("GET", "/3/drive/987654/files/11/versions?cursor=c2") => second,
+                            _ => return axum::http::StatusCode::NOT_FOUND.into_response(),
+                        };
+                        axum::Json(body).into_response()
+                    }
+                },
+            ));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+            let mut provider = test_provider();
+            provider.connected = true;
+            provider.api_base_override = Some(format!("http://{addr}"));
+            let listed = provider.list_versions("/a.txt").await;
+            server.abort();
+            assert!(
+                matches!(listed, Err(ProviderError::ParseError(_))),
+                "{listed:?}"
+            );
+            let seen = seen.lock().unwrap();
+            assert!(
+                seen.iter().any(|l| l.ends_with("versions?cursor=c2")),
+                "{seen:?}"
+            );
+        }
+    }
+
+    /// A versions listing that still names a new page at the page limit is
+    /// refused, not shown cut short, and does not page on for ever.
+    #[tokio::test]
+    async fn a_version_listing_past_the_page_limit_is_refused() {
+        use axum::response::IntoResponse;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let pages = std::sync::Arc::new(AtomicUsize::new(0));
+        let read = std::sync::Arc::clone(&pages);
+        let app = axum::Router::new().fallback(axum::routing::any(move |uri: axum::http::Uri| {
+            let read = std::sync::Arc::clone(&read);
+            async move {
+            let target = uri.to_string();
+            if target.starts_with("/3/drive/987654/files/11/versions") {
+                read.fetch_add(1, Ordering::SeqCst);
+            }
+            let file = serde_json::json!({ "id": 11, "name": "a.txt", "type": "file",
+                "size": 4, "last_modified_at": 1_700_000_500 });
+            let body = if target == "/3/drive/987654/files/1/files" {
+                serde_json::json!({ "result": "success", "data": [file] })
+            } else if target == "/3/drive/987654/files/11" {
+                serde_json::json!({ "result": "success", "data": file })
+            } else if target.starts_with("/3/drive/987654/files/11/versions") {
+                let n: i64 = target
+                    .split_once("cursor=c")
+                    .and_then(|(_, n)| n.parse().ok())
+                    .unwrap_or(0);
+                serde_json::json!({ "result": "success",
+                    "data": [{ "id": n + 1, "file_id": 11, "size": 3, "created_at": 1_700_000_000 + n }],
+                    "has_more": true, "cursor": format!("c{}", n + 1) })
+            } else {
+                return axum::http::StatusCode::NOT_FOUND.into_response();
+            };
+            axum::Json(body).into_response()
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = test_provider();
+        provider.connected = true;
+        provider.api_base_override = Some(format!("http://{addr}"));
+        let listed = tokio::time::timeout(
+            std::time::Duration::from_secs(60),
+            provider.list_versions("/a.txt"),
+        )
+        .await
+        .expect("the listing ends");
+        server.abort();
+        assert!(
+            matches!(&listed, Err(ProviderError::TransferFailed(m)) if m.contains("did not end within")),
+            "{listed:?}"
+        );
+        // Exactly the cap: page 200 is read, the page it names is not.
+        assert_eq!(
+            pages.load(Ordering::SeqCst),
+            super::super::VERSION_LISTING_MAX_PAGES
+        );
+    }
+
     /// kDrive's move names no conflict behaviour, so the destination is
     /// looked up first and a taken one refused before any move.
     #[tokio::test]
@@ -2766,7 +3899,7 @@ mod tests {
             ("/gone/deep/er", 33),
             ("/dstx", 23),
         ] {
-            provider.dir_cache_insert(path.to_string(), DirInfo { id });
+            provider.dir_cache_insert(path.to_string(), DirInfo { id, at: None });
         }
         provider.rename("/dst", "/moved").await.expect("rename");
         provider.delete("/gone").await.expect("delete");
@@ -2809,7 +3942,7 @@ mod tests {
             ("/GONE/deep", 33),
             ("/Dstx", 23),
         ] {
-            provider.dir_cache_insert(path.to_string(), DirInfo { id });
+            provider.dir_cache_insert(path.to_string(), DirInfo { id, at: None });
         }
         provider.rename("/dst", "/moved").await.expect("rename");
         provider.delete("/gone").await.expect("delete");
@@ -3268,7 +4401,7 @@ mod tests {
             matches!(removed, Err(ProviderError::NotFound(_))),
             "{removed:?}"
         );
-        let restored = provider.restore_version("/a.txt", "7").await;
+        let restored = provider.restore_version("/a.txt", "10:7").await;
         assert!(
             matches!(restored, Err(ProviderError::NotFound(_))),
             "{restored:?}"
@@ -3424,5 +4557,59 @@ mod tests {
         let mut p2 = test_provider();
         p2.current_path = "/".to_string();
         assert_eq!(p2.resolve_path("child"), "/child");
+    }
+
+    /// kDrive answers past versions oldest first; the versions dialog reads
+    /// row 0 as the current one, then newest first.
+    #[test]
+    fn kdrive_versions_come_back_after_the_file_newest_first() {
+        let listed: Vec<super::KDriveVersion> = serde_json::from_str(
+            r#"[{"id":1,"size":7,"created_at":1794841200,"version_number":1},
+                {"id":2,"size":11,"created_at":1794841300,"version_number":2},
+                {"id":3,"size":16,"created_at":1794841400,"version_number":3}]"#,
+        )
+        .expect("parse");
+        let mut file = super::RemoteEntry::directory("v.txt".into(), "/v.txt".into());
+        file.is_dir = false;
+        file.size = 20;
+        let versions = super::versions_in_dialog_order(listed, &file, 7, false);
+        let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
+        assert_eq!(ids, ["7:current", "7:3", "7:2", "7:1"]);
+        assert_eq!(versions[0].size, 20);
+    }
+
+    /// Two versions of one second, listed oldest first: the later one in
+    /// the version sequence comes first.
+    #[test]
+    fn kdrive_versions_of_one_second_come_newest_first_by_their_number() {
+        let listed: Vec<super::KDriveVersion> = serde_json::from_str(
+            r#"[{"id":5,"size":7,"created_at":1794841200,"version_number":1},
+                {"id":6,"size":11,"created_at":1794841300,"version_number":2},
+                {"id":7,"size":16,"created_at":1794841300,"version_number":3}]"#,
+        )
+        .expect("parse");
+        let mut file = super::RemoteEntry::directory("v.txt".into(), "/v.txt".into());
+        file.is_dir = false;
+        let versions = super::versions_in_dialog_order(listed, &file, 9, false);
+        let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
+        assert_eq!(ids, ["9:current", "9:7", "9:6", "9:5"]);
+    }
+
+    /// A row of file 12 in the answer for file 11 would be bound `11:2`, and
+    /// its number would then fetch or restore revision 2 of file 11: it is
+    /// not listed. A row that names no file stays.
+    #[test]
+    fn a_kdrive_version_row_of_another_file_is_not_listed() {
+        let listed: Vec<super::KDriveVersion> = serde_json::from_str(
+            r#"[{"id":2,"file_id":12,"size":7,"created_at":1794841200},
+                {"id":3,"file_id":11,"size":9,"created_at":1794841300},
+                {"id":4,"size":5,"created_at":1794841400}]"#,
+        )
+        .expect("parse");
+        let mut file = super::RemoteEntry::directory("v.txt".into(), "/v.txt".into());
+        file.is_dir = false;
+        let versions = super::versions_in_dialog_order(listed, &file, 11, false);
+        let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
+        assert_eq!(ids, ["11:current", "11:4", "11:3"]);
     }
 }

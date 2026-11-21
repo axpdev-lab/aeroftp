@@ -2576,7 +2576,8 @@
             "restore": "Återställ denna version",
             "none": "Inga versioner tillgängliga",
             "purge": "Ta bort den här versionen permanent",
-            "purgeConfirm": "Ta bort den här versionen permanent? Detta kan inte ångras."
+            "purgeConfirm": "Ta bort den här versionen permanent? Detta kan inte ångras.",
+            "restoreUnconfirmed": "Återställningen skickades, men servern kan inte bekräfta vilken version som nu är aktuell. Kontrollera versionerna innan du återställer igen."
         },
         "sharing": {
             "title": "Delning",

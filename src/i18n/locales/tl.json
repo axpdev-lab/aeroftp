@@ -2576,7 +2576,8 @@
             "restore": "Ibalik ang bersyon na ito",
             "none": "Walang available na bersyon",
             "purge": "Permanenteng burahin ang bersyon na ito",
-            "purgeConfirm": "Permanenteng burahin ang bersyon na ito? Hindi na ito maaaring i-undo."
+            "purgeConfirm": "Permanenteng burahin ang bersyon na ito? Hindi na ito maaaring i-undo.",
+            "restoreUnconfirmed": "Naipadala ang pag-restore, ngunit hindi makumpirma ng server kung aling bersyon ang kasalukuyan na ngayon. Suriin ang mga bersyon bago mag-restore muli."
         },
         "sharing": {
             "title": "Pagbabahagi",

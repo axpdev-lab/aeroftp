@@ -17,7 +17,7 @@ use super::types::PCloudConfig;
 use super::{
     http_retry::{send_with_retry, HttpRetryConfig},
     oauth2::{OAuth2Manager, OAuthConfig},
-    sanitize_api_error, FileVersion, MultipartHandle, ProviderError, ProviderType, RemoteEntry,
+    sanitize_api_error, MultipartHandle, ProviderError, ProviderType, RemoteEntry,
     ShareLinkCapabilities, ShareLinkInfo, ShareLinkOptions, ShareLinkResult, StorageInfo,
     StorageProvider, UploadedPart,
 };
@@ -269,27 +269,6 @@ struct PCloudPubLinkEntry {
 struct PCloudPubLinkMeta {
     path: Option<String>,
     name: Option<String>,
-}
-
-/// pCloud revision entry
-#[derive(Debug, Deserialize)]
-#[allow(dead_code)]
-struct PCloudRevision {
-    revisionid: u64,
-    #[serde(default)]
-    size: u64,
-    #[serde(default, deserialize_with = "iso_modified")]
-    modified: Option<String>,
-}
-
-/// pCloud revisions response
-#[derive(Debug, Deserialize)]
-struct PCloudRevisions {
-    result: u32,
-    #[serde(default)]
-    error: Option<String>,
-    #[serde(default)]
-    revisions: Vec<PCloudRevision>,
 }
 
 /// pCloud thumb link response
@@ -1940,104 +1919,16 @@ impl StorageProvider for PCloudProvider {
         Ok(format!("data:image/jpeg;base64,{}", BASE64.encode(&bytes)))
     }
 
-    // PA-013: Version support implemented via pCloud revisions API (listrevisions/getfilelink?revisionid)
+    /// No versions: pCloud answers `listrevisions` with `1000 "Log in
+    /// required."` to an OAuth access token, the only way AeroFTP signs in,
+    /// the same refusal as its trash endpoints ([`PCLOUD_RESULT_LOGIN_REQUIRED`]).
+    /// Measured live on 2026-11-16 twice, with the token in the `access_token`
+    /// query parameter and with an `Authorization: Bearer` header (as rclone
+    /// sends it), each between a successful upload and a successful delete on
+    /// the same token. rclone never calls `listrevisions`. A gate that said yes
+    /// would only open a dialog that fails.
     fn supports_versions(&self) -> bool {
-        true
-    }
-
-    async fn list_versions(&mut self, path: &str) -> Result<Vec<FileVersion>, ProviderError> {
-        let resolved = self.resolve_path(path);
-        let url = format!(
-            "{}/listrevisions?path={}",
-            self.api_base(),
-            urlencoding::encode(&resolved)
-        );
-
-        // pCloud listrevisions rejects Bearer header: use query param auth
-        let resp: PCloudRevisions = self
-            .get_with_token_param(&url)
-            .await?
-            .json()
-            .await
-            .map_http_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
-
-        if resp.result != 0 {
-            return Err(ProviderError::Other(sanitize_api_error(
-                &resp
-                    .error
-                    .unwrap_or_else(|| "Failed to list revisions".to_string()),
-            )));
-        }
-
-        Ok(resp
-            .revisions
-            .into_iter()
-            .map(|r| FileVersion {
-                id: r.revisionid.to_string(),
-                modified: r.modified,
-                size: r.size,
-                modified_by: None,
-            })
-            .collect())
-    }
-
-    async fn download_version(
-        &mut self,
-        path: &str,
-        version_id: &str,
-        local_path: &str,
-    ) -> Result<(), ProviderError> {
-        let resolved = self.resolve_path(path);
-
-        // Get download link for specific revision (query param auth)
-        let url = format!(
-            "{}/getfilelink?path={}&revisionid={}",
-            self.api_base(),
-            urlencoding::encode(&resolved),
-            version_id
-        );
-
-        let link_resp: PCloudFileLink = self
-            .get_with_token_param(&url)
-            .await?
-            .json()
-            .await
-            .map_http_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
-
-        if link_resp.result != 0 {
-            return Err(ProviderError::TransferFailed(sanitize_api_error(
-                &link_resp
-                    .error
-                    .unwrap_or_else(|| "Failed to get version link".to_string()),
-            )));
-        }
-
-        let host = link_resp
-            .hosts
-            .and_then(|h| h.into_iter().next())
-            .ok_or_else(|| ProviderError::TransferFailed("No download host".to_string()))?;
-        let dl_path = link_resp
-            .path
-            .ok_or_else(|| ProviderError::TransferFailed("No download path".to_string()))?;
-
-        let download_url = self.content_url(&host, &dl_path);
-        let resp = self
-            .client
-            .get(&download_url)
-            .send()
-            .await
-            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
-        let bytes = Self::content_response(resp)
-            .await?
-            .bytes()
-            .await
-            .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-
-        tokio::fs::write(local_path, &bytes)
-            .await
-            .map_err(ProviderError::IoError)?;
-
-        Ok(())
+        false
     }
 
     fn supports_checksum(&self) -> bool {
@@ -2588,9 +2479,6 @@ mod tests {
         let link: PCloudPubLinkEntry =
             serde_json::from_str(&format!(r#"{{"linkid":1,{DATE}}}"#)).unwrap();
         assert_eq!(link.modified.as_deref(), Some("2026-10-31T07:18:16Z"));
-        let revision: PCloudRevision =
-            serde_json::from_str(&format!(r#"{{"revisionid":1,{DATE}}}"#)).unwrap();
-        assert_eq!(revision.modified.as_deref(), Some("2026-10-31T07:18:16Z"));
     }
 
     use super::*;
@@ -3295,18 +3183,6 @@ mod tests {
         let mut provider = provider_with_content(404).await;
         let outcome = provider.download_to_bytes("/f.txt").await;
         assert!(refused_with_404(&outcome), "{outcome:?}");
-    }
-
-    #[tokio::test]
-    async fn a_version_download_answered_with_an_http_error_fails_and_writes_nothing() {
-        let mut provider = provider_with_content(404).await;
-        let dir = tempfile::tempdir().unwrap();
-        let out = dir.path().join("v.txt");
-        let outcome = provider
-            .download_version("/f.txt", "7", out.to_str().unwrap())
-            .await;
-        assert!(refused_with_404(&outcome), "{outcome:?}");
-        assert!(!out.exists());
     }
 
     /// An error page is not a thumbnail: it would be shown as a broken image.
@@ -4053,5 +3929,55 @@ mod tests {
             "{refused:?}"
         );
         assert_eq!(*calls.lock().unwrap(), ["GET /deletepublink?linkid=42"]);
+    }
+
+    /// The versions gate stays shut: pCloud refuses `listrevisions` to an
+    /// OAuth token (see `supports_versions`), so neither the dialog, the CLI
+    /// nor the agent tools offer versions they cannot list. Every version
+    /// call answers NotSupported before any request: a gate or an override
+    /// brought back without a backend that answers turns this red.
+    #[tokio::test]
+    async fn pcloud_offers_no_versions_to_an_oauth_session() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+        let requests = Arc::new(AtomicUsize::new(0));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let app = axum::Router::new().fallback({
+            let requests = requests.clone();
+            move || async move {
+                requests.fetch_add(1, Ordering::SeqCst);
+                r#"{"result":0,"revisions":[]}"#
+            }
+        });
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = fixture_connected();
+        provider.api_base_override = Some(format!("http://{addr}"));
+        assert!(!provider.supports_versions());
+
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("v.txt");
+        let listed = provider.list_versions("/f.txt").await;
+        let downloaded = provider
+            .download_version("/f.txt", "7", out.to_str().unwrap())
+            .await;
+        let restored = provider.restore_version("/f.txt", "7").await;
+        server.abort();
+        assert!(
+            matches!(listed, Err(ProviderError::NotSupported(_))),
+            "{listed:?}"
+        );
+        assert!(
+            matches!(downloaded, Err(ProviderError::NotSupported(_))),
+            "{downloaded:?}"
+        );
+        assert!(
+            matches!(restored, Err(ProviderError::NotSupported(_))),
+            "{restored:?}"
+        );
+        assert_eq!(requests.load(Ordering::SeqCst), 0);
+        assert!(!out.exists());
     }
 }

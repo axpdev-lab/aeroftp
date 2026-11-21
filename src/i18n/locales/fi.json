@@ -2576,7 +2576,8 @@
             "restore": "Palauta tämä versio",
             "none": "Ei versioita saatavilla",
             "purge": "Poista tämä versio pysyvästi",
-            "purgeConfirm": "Poistetaanko tämä versio pysyvästi? Tätä toimintoa ei voi kumota."
+            "purgeConfirm": "Poistetaanko tämä versio pysyvästi? Tätä toimintoa ei voi kumota.",
+            "restoreUnconfirmed": "Palautus lähetettiin, mutta palvelin ei voi vahvistaa, mikä versio on nyt nykyinen. Tarkista versiot ennen kuin palautat uudelleen."
         },
         "sharing": {
             "title": "Jakaminen",

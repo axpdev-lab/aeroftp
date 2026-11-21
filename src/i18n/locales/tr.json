@@ -2576,7 +2576,8 @@
             "restore": "Bu sürümü geri yükle",
             "none": "Sürüm mevcut değil",
             "purge": "Bu sürümü kalıcı olarak sil",
-            "purgeConfirm": "Bu sürüm kalıcı olarak silinsin mi? Bu işlem geri alınamaz."
+            "purgeConfirm": "Bu sürüm kalıcı olarak silinsin mi? Bu işlem geri alınamaz.",
+            "restoreUnconfirmed": "Geri yükleme gönderildi, ancak sunucu şu anda hangi sürümün geçerli olduğunu doğrulayamıyor. Tekrar geri yüklemeden önce sürümleri kontrol edin."
         },
         "sharing": {
             "title": "Paylaşım",
