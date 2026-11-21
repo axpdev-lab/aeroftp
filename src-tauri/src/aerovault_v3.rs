@@ -2924,7 +2924,11 @@ mod tests {
             error_correction: false,
             error_correction_pct: ERROR_CORRECTION_DEFAULT_PCT,
         };
-        repack_vault_blocking(&path, STRESS_PW, &target).unwrap_err();
+        let error = repack_vault_blocking(&path, STRESS_PW, &target).unwrap_err();
+        assert!(
+            error.contains("Unknown AeroVault v3 compression profile"),
+            "{error}"
+        );
 
         assert_eq!(std::fs::read(&path).unwrap(), before);
         assert_eq!(listing(), names_before);
