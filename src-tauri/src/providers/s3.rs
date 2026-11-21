@@ -8302,14 +8302,19 @@ impl StorageProvider for S3Provider {
                     self.reply_text(&body)
                 );
                 // A key without s3:ListBucketVersions is denied the listing
-                // only: a restore by version id may still go on.
-                return Err(
-                    if matches!(status, StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED) {
-                        ProviderError::PermissionDenied(message)
-                    } else {
-                        ProviderError::ServerError(message)
-                    },
-                );
+                // only: a restore by version id may still go on. A denial of
+                // a later page is a listing cut short, which decides nothing.
+                let denied = matches!(status, StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED);
+                return Err(if denied && key_marker.is_none() {
+                    ProviderError::PermissionDenied(message)
+                } else if denied {
+                    ProviderError::TransferFailed(format!(
+                        "The versions of {path} were cut short: a later page was refused \
+                         ({message})"
+                    ))
+                } else {
+                    ProviderError::ServerError(message)
+                });
             }
 
             let xml_str = super::version_listing_text(response).await?;
@@ -8711,16 +8716,30 @@ impl StorageProvider for S3Provider {
                          be read ({e}): list its versions again before trying again"
                     ))
                 })?;
-                if let Some(failure) = copy_answer_error(&body, &self.sent_secrets()) {
-                    return Err(ProviderError::ServerError(format!(
-                        "Restore version failed ({status}): {failure}"
-                    )));
+                match copy_answer_error(&body, &self.sent_secrets()) {
+                    Some(CopyAnswer::Failed(failure)) => {
+                        return Err(ProviderError::ServerError(format!(
+                            "Restore version failed ({status}): {failure}"
+                        )));
+                    }
+                    Some(CopyAnswer::Unknown(why)) => {
+                        return Err(super::applied_unconfirmed(format!(
+                            "the restore of {path} was answered {status}, but {why}: list its \
+                             versions again before trying again"
+                        )));
+                    }
+                    None => {}
                 }
                 info!("Restored '{}' to version '{}'", key, version_id);
                 let preflight = selected.map(|p| p.made_current(made));
                 super::confirm_version_restored(self, path, preflight.as_ref()).await
             }
             status => {
+                if let Some(unknown) =
+                    super::gateway_left_unknown(status, &format!("the restore of {path}"))
+                {
+                    return Err(unknown);
+                }
                 let body = super::version_listing_text(response)
                     .await
                     .unwrap_or_default();
@@ -8742,6 +8761,17 @@ impl StorageProvider for S3Provider {
         self.reject_fastly_versioning()?;
         if !self.connected {
             return Err(ProviderError::NotConnected);
+        }
+        // The `null` version is the one a bucket writes while versioning is
+        // off or suspended, and every such write replaces it in place under
+        // the same id: a row listed before names whatever holds it now, and
+        // S3 takes no condition on a version delete to bind it.
+        if version_id == "null" {
+            return Err(ProviderError::NotSupported(format!(
+                "The null version of {path} is replaced in place by every write while \
+                 versioning is suspended, so the row listed cannot be bound to it: nothing was \
+                 purged"
+            )));
         }
         self.ensure_fresh_credentials().await?;
 
@@ -9739,13 +9769,24 @@ fn build_batch_delete_xml(chunk: &[(String, Option<String>)]) -> Vec<u8> {
     xml.into_bytes()
 }
 
+/// What a 2xx CopyObject body says other than a completed copy.
+#[derive(Debug, PartialEq)]
+enum CopyAnswer {
+    /// An `Error` root: the copy failed, its code and message shown as
+    /// [`s3_server_text`] allows.
+    Failed(String),
+    /// An empty, cut, unreadable or other body: the copy may have completed
+    /// all the same, so it is neither done nor refused.
+    Unknown(String),
+}
+
 /// The failure a 2xx CopyObject body carries, or `None` for a completed
 /// copy. CopyObject can answer 200 and fail in its body, so only a document
 /// whose root is a `CopyObjectResult` that closes is a completed copy: an
-/// `Error` root (with or without attributes) is the failure, its code and
-/// message shown as [`s3_server_text`] allows, and an empty, cut or other
-/// body is a copy not known to have completed.
-fn copy_answer_error(body: &str, sent: &SentSecrets) -> Option<String> {
+/// `Error` root (with or without attributes) is the failure
+/// ([`CopyAnswer::Failed`]), and an empty, cut or other body is a copy not
+/// known to have completed or failed ([`CopyAnswer::Unknown`]).
+fn copy_answer_error(body: &str, sent: &SentSecrets) -> Option<CopyAnswer> {
     let mut reader = Reader::from_str(body);
     let mut buf = Vec::new();
     let mut depth = 0u32;
@@ -9755,7 +9796,11 @@ fn copy_answer_error(body: &str, sent: &SentSecrets) -> Option<String> {
     let (mut code, mut message) = (String::new(), String::new());
     loop {
         match reader.read_event_into(&mut buf) {
-            Err(_) => return Some("CopyError - the copy answer could not be read".into()),
+            Err(_) => {
+                return Some(CopyAnswer::Unknown(
+                    "the copy answer could not be read".into(),
+                ))
+            }
             Ok(Event::Eof) => break,
             Ok(Event::Start(event)) => {
                 let name = event.local_name().as_ref().to_string();
@@ -9816,17 +9861,19 @@ fn copy_answer_error(body: &str, sent: &SentSecrets) -> Option<String> {
                     s3_server_text(text, body.len(), sent)
                 }
             };
-            Some(format!(
+            Some(CopyAnswer::Failed(format!(
                 "{} - {}",
                 shown(&code, "CopyError"),
                 shown(&message, "the copy did not complete")
-            ))
+            )))
         }
-        Some("CopyObjectResult") => {
-            Some("CopyError - the copy answer ended before its result closed".into())
-        }
-        Some(_) => Some("CopyError - the copy answer is not a CopyObjectResult".into()),
-        None => Some("CopyError - the copy answer was empty".into()),
+        Some("CopyObjectResult") => Some(CopyAnswer::Unknown(
+            "the copy answer ended before its result closed".into(),
+        )),
+        Some(_) => Some(CopyAnswer::Unknown(
+            "the copy answer is not a CopyObjectResult".into(),
+        )),
+        None => Some(CopyAnswer::Unknown("the copy answer was empty".into())),
     }
 }
 
@@ -14185,11 +14232,12 @@ mod tests {
                                         .unwrap()
                                         .trim_start_matches("/test-bucket/")
                                         .to_string();
-                                    // A versioned source (`?versionId=`) is read
-                                    // from the key: the double keeps one copy.
-                                    let source = match source.split_once("?versionId=") {
-                                        Some((key, _)) => key.to_string(),
-                                        None => source,
+                                    // A versioned source (`?versionId=`) copies
+                                    // that version's own bytes, as a GET of it
+                                    // answers them: the double keeps one copy.
+                                    let (source, version) = match source.split_once("?versionId=") {
+                                        Some((key, version)) => (key.to_string(), Some(version.to_string())),
+                                        None => (source, None),
                                     };
                                     // A source that cannot be read fails to copy
                                     // with or without the header.
@@ -14203,7 +14251,10 @@ mod tests {
                                     }
                                     match store.get(&source) {
                                         Some(data) => {
-                                            let data = data.clone();
+                                            let data = match &version {
+                                                Some(version) => format!("{source} at {version}").into_bytes(),
+                                                None => data.clone(),
+                                            };
                                             if rename && config.rename == RenameHeader::Honor {
                                                 store.remove(&source);
                                             }
@@ -16105,28 +16156,41 @@ mod tests {
             matches!(&failed, Err(ProviderError::ServerError(m)) if m.contains("InternalError")),
             "{failed:?}"
         );
-        let foreign = restore(("v4", "<CopyObjectResult></CopyObjectResult>")).await;
+        // The version the copy says it made is a header of the answer,
+        // server text: a mismatch is reported without it.
+        let foreign = restore((
+            "SYNTHETIC-made-9f3",
+            "<CopyObjectResult></CopyObjectResult>",
+        ))
+        .await;
         assert!(
-            matches!(&foreign, Err(ProviderError::TransferFailed(m)) if m.contains("v4")),
+            matches!(&foreign, Err(ProviderError::TransferFailed(m))
+                if m.contains("another version than the one the restore made")
+                    && !m.contains("SYNTHETIC")),
             "{foreign:?}"
         );
-        // An error with attributes, an empty body and a cut one are no
-        // completed copy either.
+        // An error with attributes is a failed copy; an empty body and a cut
+        // one say neither, so the restore is applied and not confirmed.
+        let refused = restore((
+            "v3",
+            r#"<Error xmlns="urn:s3"><Code>InternalError</Code></Error>"#,
+        ))
+        .await;
+        assert!(
+            matches!(&refused, Err(ProviderError::ServerError(m)) if m.contains("InternalError")),
+            "{refused:?}"
+        );
         for (body, said) in [
-            (
-                r#"<Error xmlns="urn:s3"><Code>InternalError</Code></Error>"#,
-                "InternalError",
-            ),
             ("", "empty"),
             (
                 "<CopyObjectResult><ETag>\"e\"</ETag>",
                 "before its result closed",
             ),
         ] {
-            let refused = restore(("v3", body)).await;
+            let unknown = restore(("v3", body)).await;
             assert!(
-                matches!(&refused, Err(ProviderError::ServerError(m)) if m.contains(said)),
-                "{body:?}: {refused:?}"
+                matches!(&unknown, Err(e) if super::super::was_applied(e) && e.to_string().contains(said)),
+                "{body:?}: {unknown:?}"
             );
         }
         let done = restore(("v3", "<CopyObjectResult></CopyObjectResult>")).await;
@@ -16183,7 +16247,9 @@ mod tests {
 
     /// With the version listing denied the restore has no preflight to
     /// confirm against: only the copy answer says it completed, so a failed
-    /// copy in a 200 body is still refused, and a completed one passes.
+    /// copy in a 200 body is still refused, a body delivered whole that
+    /// cannot say (empty, a result that never closes) is applied and not
+    /// confirmed, and a completed one passes.
     #[tokio::test]
     async fn an_s3_restore_without_a_listing_is_done_only_by_a_completed_copy() {
         let restore = |copy_answer: (&'static str, &'static str)| async move {
@@ -16195,15 +16261,20 @@ mod tests {
             let (mut provider, _, _) = tigris_double(&[("docs/a.txt", "AAAA")], config).await;
             provider.restore_version("/docs/a.txt", "v1").await
         };
-        for body in [
+        let refused = restore((
+            "v3",
             r#"<Error xmlns="urn:s3"><Code>InternalError</Code></Error>"#,
-            "",
-            "<CopyObjectResult>",
-        ] {
-            let refused = restore(("v3", body)).await;
+        ))
+        .await;
+        assert!(
+            matches!(&refused, Err(ProviderError::ServerError(_))),
+            "{refused:?}"
+        );
+        for body in ["", "<CopyObjectResult>", "<html>proxy</html>"] {
+            let unknown = restore(("v3", body)).await;
             assert!(
-                matches!(&refused, Err(ProviderError::ServerError(_))),
-                "{body:?}: {refused:?}"
+                matches!(&unknown, Err(e) if super::super::was_applied(e)),
+                "{body:?}: {unknown:?}"
             );
         }
         let done = restore(("v3", "<CopyObjectResult></CopyObjectResult>")).await;
@@ -16227,12 +16298,16 @@ mod tests {
             let body = format!(
                 "<Error><Code>AccessDenied</Code><Message>token {token} refused</Message></Error>"
             );
-            let shown = copy_answer_error(&body, &sent).expect("an Error root is a failure");
+            let Some(CopyAnswer::Failed(shown)) = copy_answer_error(&body, &sent) else {
+                panic!("{token}: an Error root is a failure");
+            };
             assert!(!shown.contains("SESSIONabc"), "{token}: {shown}");
             assert!(!shown.contains("defTOKEN"), "{token}: {shown}");
         }
         let plain = "<Error><Code>Slow&#68;own</Code><Message>try again</Message></Error>";
-        let shown = copy_answer_error(plain, &sent).expect("an Error root is a failure");
+        let Some(CopyAnswer::Failed(shown)) = copy_answer_error(plain, &sent) else {
+            panic!("an Error root is a failure");
+        };
         assert!(shown.starts_with("SlowDown - try again"), "{shown}");
     }
 
@@ -16382,14 +16457,54 @@ mod tests {
                 .restore_version("/docs/a.txt", "v2")
                 .await
                 .unwrap_or_else(|e| panic!("{status}: the restore copies by version id: {e:?}"));
-            assert!(
-                log.lock()
-                    .unwrap()
-                    .iter()
-                    .any(|s| s.method == "PUT" && s.headers.contains_key("x-amz-copy-source")),
-                "{status}"
+            let sources: Vec<String> = log
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|s| s.method == "PUT")
+                .filter_map(|s| s.headers.get("x-amz-copy-source").cloned())
+                .collect();
+            assert_eq!(
+                sources,
+                ["/test-bucket/docs/a.txt?versionId=v2"],
+                "{status}: one copy, of this key at v2"
+            );
+            assert_eq!(
+                provider.download_to_bytes("/docs/a.txt").await.unwrap(),
+                b"docs/a.txt at v2",
+                "{status}: the bytes of v2 are current"
             );
         }
+    }
+
+    /// The `null` version is replaced in place by every write while
+    /// versioning is suspended: its purge is refused before any DELETE,
+    /// while a purge of a version by its own id goes out as asked.
+    #[tokio::test]
+    async fn a_purge_of_the_null_version_sends_no_delete() {
+        let (mut provider, _, log) =
+            tigris_double(&[("docs/a.txt", "A")], TigrisDoubleConfig::default()).await;
+        let refused = provider.delete_version("/docs/a.txt", "null").await;
+        assert!(
+            matches!(&refused, Err(ProviderError::NotSupported(m)) if m.contains("nothing was purged")),
+            "{refused:?}"
+        );
+        let deletes = |log: &TigrisLog| -> Vec<String> {
+            log.lock()
+                .unwrap()
+                .iter()
+                .filter(|s| s.method == "DELETE")
+                .map(|s| s.uri.clone())
+                .collect()
+        };
+        assert!(deletes(&log).is_empty(), "{:?}", deletes(&log));
+        provider
+            .delete_version("/docs/a.txt", "v2")
+            .await
+            .expect("a version purged by its own id");
+        let sent = deletes(&log);
+        assert_eq!(sent.len(), 1, "{sent:?}");
+        assert!(sent[0].contains("versionId=v2"), "{sent:?}");
     }
 
     /// A copy answered 200 whose answer breaks off may have restored the
