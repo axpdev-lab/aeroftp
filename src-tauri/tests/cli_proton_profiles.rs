@@ -575,13 +575,63 @@ fn a_profile_delete_takes_a_proton_session_lock_only_for_proton() {
         "an FTP profile's delete takes no Proton session lock"
     );
 
+    // The native profile's session lock, held here: the delete waits for it
+    // (up to 45 s) and goes on once it is released.
     let (native_id, _) = add_proton(root, "native", Some("native"));
-    let out = cli(root, &["profile-delete", &native_id, "--yes"]);
+    let data = find_file(root, "user_partitions.db")
+        .expect("the account database")
+        .parent()
+        .unwrap()
+        .to_path_buf();
+    let locks = data.join("proton_session_locks");
+    std::fs::create_dir_all(&locks).unwrap();
+    let lock = {
+        use sha2::{Digest, Sha256};
+        let key = format!("proton_native_session_{native_id}");
+        locks.join(format!(
+            "{}.lock",
+            hex::encode(Sha256::digest(key.as_bytes()))
+        ))
+    };
+    let held = std::fs::File::create(&lock).unwrap();
+    held.try_lock()
+        .expect("the session lock is free before the delete");
+    let mut delete = isolated_cli::command(Path::new(env!("CARGO_BIN_EXE_aeroftp-cli")), root)
+        .args(["profile-delete", &native_id, "--yes"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("run aeroftp-cli");
+    std::thread::sleep(std::time::Duration::from_millis(1500));
+    assert!(
+        delete.try_wait().unwrap().is_none(),
+        "a native Proton profile's delete waits for its session lock"
+    );
+    assert!(
+        listed_ids(root).contains(&native_id),
+        "the profile stays saved while its session lock is held"
+    );
+    held.unlock().unwrap();
+    let out = delete.wait_with_output().expect("aeroftp-cli output");
     assert_eq!(out.status.code(), Some(0), "{}", describe(&out));
     assert!(
-        has_directory(root, "proton_session_locks"),
-        "a native Proton profile's delete goes through its session lock"
+        !listed_ids(root).contains(&native_id),
+        "the delete goes on once the lock is released"
     );
+}
+
+/// The ids `profiles --json` lists.
+fn listed_ids(root: &Path) -> Vec<String> {
+    let listed = json(&cli(root, &["profiles", "--json"]));
+    listed
+        .get("profiles")
+        .and_then(|p| p.as_array())
+        .or_else(|| listed.as_array())
+        .unwrap_or_else(|| panic!("no profile list in {listed}"))
+        .iter()
+        .filter_map(|profile| profile["id"].as_str().map(str::to_string))
+        .collect()
 }
 
 /// The first file named `name` under `dir`, at any depth.
