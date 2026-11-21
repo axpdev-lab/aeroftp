@@ -2,7 +2,8 @@ name: CLI Smoke Test
 
 on:
   push:
-    branches: [main]
+    # Diagnostic: also on the diagnostic branch, to run coverage on a push event.
+    branches: [main, ci/coverage-diag-replica]
     paths:
       - 'src-tauri/src/bin/aeroftp_cli.rs'
       - 'src-tauri/src/cli_dispatch.rs'
@@ -407,6 +408,12 @@ jobs:
             --skip batch_dag_peak_bounded_by_min_of_file_slots_and_session_pool
           cargo llvm-cov report --lcov --output-path lcov.info
           cargo llvm-cov report --summary-only --fail-under-lines 10 | tee coverage-summary.txt
+
+      # Diagnostic: the only change to this job. It keeps the runner alive for
+      # 15 more minutes after the unchanged "Generate coverage", past the 54-55
+      # minutes of job time at which the runner was lost on main.
+      - name: Hold the runner
+        run: sleep 900
 
       - name: Upload coverage artifacts
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
