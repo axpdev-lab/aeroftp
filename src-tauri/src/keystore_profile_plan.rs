@@ -190,6 +190,12 @@ pub struct PlanInputs {
     /// it still holds this (or the vault section's value), so a token
     /// refreshed while the import runs is kept.
     pub receiver_rows: HashMap<String, Option<Zeroizing<String>>>,
+    /// The receiver is this device's own account, by its identity: its
+    /// local values are its own.
+    pub receiver_is_here: bool,
+    /// The private token keys whose local row the receiver's own sign-in
+    /// stamped (`receiver_is_here` only): a carried row keeps its stamp.
+    pub local_signed_in: HashSet<String>,
     /// What bringing the backup's profiles to their safe state reset: a
     /// restore takes no relaxing option from the backup (CodeRabbit on #1524).
     pub security_reset: Vec<crate::profile_security::ProfileReset>,
@@ -425,6 +431,44 @@ fn copy_of(
     copy
 }
 
+/// "Skip existing" over a partition the import restores whole, for this
+/// device's own account other than the legacy owner: a private token it
+/// signed in to after the backup lives in its row alone, which the restored
+/// partition does not have, so the key the backup does not carry would be
+/// lost with it. Every profile the final list keeps gets this device's value
+/// of such a key back, unless a write of the key is already planned.
+fn carry_local_private_tokens(
+    inputs: &PlanInputs,
+    profiles: &[Value],
+    local_by_id: &HashMap<&str, &Value>,
+    backup_by_id: &HashMap<&str, &Value>,
+    ops: &mut Vec<SecretOp>,
+) {
+    if !(inputs.targets_restored_partition
+        && inputs.keep_local_by_default
+        && inputs.receiver_is_here
+        && inputs.receiver.is_some_and(|r| !r.legacy_owner))
+    {
+        return;
+    }
+    let mut planned: HashSet<String> = ops.iter().map(|(k, _)| k.clone()).collect();
+    for id in profiles.iter().filter_map(profile_id) {
+        let keys = keys_for(local_by_id.get(id).copied(), backup_by_id.get(id).copied());
+        for key in keys {
+            if crate::user_partitions::private_token_type(&key).is_none()
+                || inputs.backup_secrets.contains_key(&key)
+                || planned.contains(&key)
+            {
+                continue;
+            }
+            if let Some(Some(local)) = inputs.local_secrets.get(&key) {
+                planned.insert(key.clone());
+                ops.push((key, Some(local.clone())));
+            }
+        }
+    }
+}
+
 /// Build the list the user chose, and the secret writes that make each
 /// profile's credentials match the version kept.
 ///
@@ -452,13 +496,14 @@ pub fn fingerprint(inputs: &PlanInputs) -> String {
     };
     field(
         format!(
-            "{:?}|{:?}|{}|{}|{}|{:?}",
+            "{:?}|{:?}|{}|{}|{}|{:?}|{}",
             inputs.source,
             inputs.local_source,
             inputs.replaces_list,
             inputs.keep_local_by_default,
             inputs.backup_unreadable,
-            inputs.receiver
+            inputs.receiver,
+            inputs.receiver_is_here
         )
         .as_bytes(),
     );
@@ -650,6 +695,7 @@ pub fn apply(
     // applies (`util::profile_name`), against the list the plan was read
     // from: the partition the write lands in may already be the backup's.
     let (profiles, _) = crate::util::profile_name::unique_profile_names(&inputs.local, &profiles);
+    carry_local_private_tokens(inputs, &profiles, &local_by_id, &backup_by_id, &mut ops);
 
     Ok(PlanOutcome {
         profiles,
@@ -715,6 +761,8 @@ mod tests {
             targets_restored_partition: false,
             local_vault: HashMap::new(),
             receiver_rows: HashMap::new(),
+            receiver_is_here: false,
+            local_signed_in: HashSet::new(),
             security_reset: Vec::new(),
         }
     }

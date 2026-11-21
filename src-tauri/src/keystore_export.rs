@@ -1591,6 +1591,36 @@ fn write_profile_secret_if(
     }
 }
 
+/// [`write_profile_secret_if`] of `value` as a sign-in of the receiver's own
+/// ([`crate::user_partitions::set_signed_in_credential_for`]), into its row
+/// alone: a private token of an account other than the legacy owner. Any
+/// other key is written as [`write_profile_secret_if`] writes it.
+fn write_signed_in_row(
+    store: &crate::credential_store::CredentialStore,
+    db: Option<&Path>,
+    receiver: Option<Receiver>,
+    key: &str,
+    value: &str,
+) -> Result<bool, SecretWriteError> {
+    let Some((db, receiver)) = private_row_of(db, receiver, key) else {
+        return write_profile_secret_if(store, db, receiver, key, None, None, Some(value));
+    };
+    let conn = rusqlite::Connection::open(&db)
+        .map_err(|e| SecretWriteError::before_vault(format!("open {}: {e}", db.display())))?;
+    let kind = crate::user_partitions::private_token_type(key).unwrap_or("oauth");
+    let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
+    crate::user_partitions::set_signed_in_credential_for(
+        &conn,
+        &root_key,
+        receiver.user_id,
+        key,
+        kind,
+        value,
+    )
+    .map(|()| true)
+    .map_err(|e| SecretWriteError::before_vault(format!("partition row not written: {e}")))
+}
+
 /// This device's active account and the ids of the profiles it lists, read
 /// before an import writes; `None` when either cannot be read.
 fn active_account_and_profiles(
@@ -1777,6 +1807,8 @@ fn profile_plan_inputs(
     let mut backup_secrets = HashMap::new();
     let mut local_vault = HashMap::new();
     let mut receiver_rows = HashMap::new();
+    let receiver_is_here = receiver.is_some() && receiver == here;
+    let mut local_signed_in = HashSet::new();
     // The partition the receiver's rows are in once the import has run.
     let rows_conn = if restores_partition {
         backup_conn.as_ref()
@@ -1815,6 +1847,16 @@ fn profile_plan_inputs(
             } else {
                 read_effective_secret(store, local_conn.as_ref(), &root_key, &key)
             };
+            // A row of this device's own account that its sign-in stamped.
+            if let (true, Some(conn), Some(r)) =
+                (private && receiver_is_here, local_conn.as_ref(), receiver)
+            {
+                if !r.legacy_owner
+                    && crate::user_partitions::signed_in_row(conn, r.user_id, &key).unwrap_or(false)
+                {
+                    local_signed_in.insert(key.clone());
+                }
+            }
             match local_value {
                 Ok(v) => {
                     local_secrets.insert(key.clone(), v);
@@ -1874,6 +1916,8 @@ fn profile_plan_inputs(
         targets_restored_partition: restores_partition,
         local_vault,
         receiver_rows,
+        receiver_is_here,
+        local_signed_in,
         security_reset,
     })
 }
@@ -2125,20 +2169,32 @@ fn apply_profile_decisions(
                     .map(|row| row.as_ref().map(|v| v.as_str()))
                     .collect()
             });
+            // This device's own sign-in, carried into its row again: with its
+            // stamp, which is what keeps it on a profile id another account
+            // also holds.
+            let signed_in = inputs.local_signed_in.contains(key)
+                && value.is_some()
+                && value == before_of(key).as_ref().map(|v| v.as_str());
             // Recorded once it landed, also half way (the vault taken, the
             // row refused), so the rollback compares against what is there:
             // a write that failed before the vault changed left the vault
             // section's value, which the rollback then puts back as for a key
             // this step never wrote.
-            match write_profile_secret_if(
-                store,
-                db.as_deref(),
-                inputs.receiver,
-                key,
-                expected,
-                accepted.as_deref(),
-                value,
-            ) {
+            let landed = match (signed_in, value) {
+                (true, Some(value)) => {
+                    write_signed_in_row(store, db.as_deref(), inputs.receiver, key, value)
+                }
+                _ => write_profile_secret_if(
+                    store,
+                    db.as_deref(),
+                    inputs.receiver,
+                    key,
+                    expected,
+                    accepted.as_deref(),
+                    value,
+                ),
+            };
+            match landed {
                 Ok(true) => {
                     written.insert(key.clone(), value.map(|v| Zeroizing::new(v.to_string())));
                     written_row.insert(key.clone(), value.map(|v| Zeroizing::new(v.to_string())));
@@ -5076,6 +5132,96 @@ mod tests {
         files: false,
         local_storage: false,
     };
+
+    /// "Skip existing" over a partition restored whole from a backup of this
+    /// device's own account: a token Bob signed in to after the backup is in
+    /// his row alone, which the backup's partition does not have, so the
+    /// import carries it into the restored row, stamped as his sign-in. A
+    /// backup whose active account is another one under the same id gets
+    /// none of it.
+    #[test]
+    fn skip_existing_keeps_a_token_signed_in_after_the_backup() {
+        for same_account in [true, false] {
+            let _guard = crate::user_partitions::test_lock();
+            crate::user_partitions::clear_user_session();
+            let dir = tempfile::tempdir().unwrap();
+            let store = throwaway_store(dir.path(), "vault.db");
+            let cfg = dir.path().join("config");
+            let key = "oauth_dropbox_srv_drive";
+            let db = cfg.join("user_partitions.db");
+            let root = Zeroizing::new(store.derive_user_partition_wrapping_key());
+            let list = [dropbox("srv_drive", "Drive")];
+            let bob = bob_with_his_token(&store, &cfg, key);
+            let conn = rusqlite::Connection::open(&db).unwrap();
+            crate::user_partitions::delete_user_credential_for(&conn, bob, key).unwrap();
+            let backup = if same_account {
+                full_backup(dir.path(), &db, &list)
+            } else {
+                let source_cfg = dir.path().join("source");
+                partition_with(&store, &source_cfg, &[]);
+                let source_db = source_cfg.join("user_partitions.db");
+                let mut source = rusqlite::Connection::open(&source_db).unwrap();
+                let alice = crate::user_partitions::create_passphrase_less_user(
+                    &mut source,
+                    &root,
+                    "Alice",
+                    None,
+                    None,
+                )
+                .unwrap();
+                assert_eq!(alice.id, bob, "both databases give the id to an account");
+                crate::user_partitions::replace_server_profiles_for(
+                    &mut source,
+                    &root,
+                    alice.id,
+                    &list,
+                )
+                .unwrap();
+                crate::user_partitions::set_active_user(&source, alice.id).unwrap();
+                drop(source);
+                full_backup(dir.path(), &source_db, &list)
+            };
+            crate::user_partitions::clear_user_session();
+            // Bob signs in after the backup was made.
+            crate::user_partitions::set_signed_in_credential_for(
+                &conn,
+                &root,
+                bob,
+                key,
+                "oauth",
+                "bob-signed-in",
+            )
+            .unwrap();
+            drop(conn);
+
+            let result = import_keystore_with_store(
+                &store,
+                PASSWORD_736,
+                &backup,
+                "skip_existing",
+                ImportSections::default(),
+                Some(&cfg),
+                None,
+                None,
+            )
+            .unwrap();
+            assert!(
+                result.sqlite_dbs_failed.is_empty(),
+                "{:?}",
+                result.sqlite_dbs_failed
+            );
+            assert_eq!(result.profile_decisions_error, None);
+            let row = row_in(&store, &cfg, bob, key);
+            let conn = rusqlite::Connection::open(&db).unwrap();
+            let stamped = crate::user_partitions::signed_in_row(&conn, bob, key).unwrap();
+            if same_account {
+                assert_eq!(row.as_deref(), Some("bob-signed-in"));
+                assert!(stamped, "the carried row keeps its sign-in stamp");
+            } else {
+                assert_eq!(row, None, "the backup's account got this device's token");
+            }
+        }
+    }
 
     /// Two databases each give id 2 to an account of their own: Bob here,
     /// Alice in the backup. Keeping this device's version of the profile

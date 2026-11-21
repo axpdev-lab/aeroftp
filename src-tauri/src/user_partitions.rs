@@ -3641,7 +3641,11 @@ fn set_user_credential_with_dek(
 /// ([`stamp_sign_in`]). A row any other writer rewrote (a restore, an
 /// import, a migration copy, a relocation, the alignment) no longer matches
 /// its stamp.
-fn signed_in_row(conn: &Connection, user_id: i64, credential_id: &str) -> Result<bool, String> {
+pub(crate) fn signed_in_row(
+    conn: &Connection,
+    user_id: i64,
+    credential_id: &str,
+) -> Result<bool, String> {
     let row: Option<(Vec<u8>, Vec<u8>, String)> = conn
         .query_row(
             "SELECT c.encrypted_blob, c.nonce, s.blob_digest
