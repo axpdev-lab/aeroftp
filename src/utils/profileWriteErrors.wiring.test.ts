@@ -337,6 +337,23 @@ describe('saved profile write rejection in production handlers', () => {
         expect(f.context.setDeleteTarget).not.toHaveBeenCalled();
     });
 
+    it('IntroHub purges the secrets of the account the profile list was read for', async () => {
+        const deleted = fixture('none');
+        const fn = await execute(hub, ['confirmDelete'], deleted.context);
+        await fn.confirmDelete();
+        await vi.waitFor(() => expect(deleted.context.deleteProfileVaultSecrets).toHaveBeenCalledOnce());
+        expect(deleted.context.deleteProfileVaultSecrets).toHaveBeenCalledWith('old', 'ftp', 7);
+        // A copy whose list write failed after an account switch: its secrets
+        // are still removed, from the account they were copied in.
+        const copied = fixture('write');
+        let generation = 0;
+        copied.context.accountChangeGeneration = () => generation++;
+        const dup = await execute(hub, ['handleDuplicate'], copied.context);
+        await dup.handleDuplicate(copied.servers[0]);
+        expect(copied.context.deleteProfileVaultSecrets).toHaveBeenCalledOnce();
+        expect(copied.context.deleteProfileVaultSecrets).toHaveBeenCalledWith(expect.stringMatching(/^srv_/), 'ftp', 7);
+    });
+
     it('closes the primary editor after a successful persisted save', async () => {
         const f = fixture('none');
         const fn = await execute(connection, ['saveToServers', 'handleConnectAndSave'], f.context);

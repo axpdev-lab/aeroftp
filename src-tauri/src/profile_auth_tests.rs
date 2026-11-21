@@ -662,7 +662,7 @@ async fn durable_profile_auth_lifecycle(
     for prefix in TRANSIENT_KEY_PREFIXES {
         assert!(!encoded.contains(prefix));
     }
-    crate::purge_profile_secrets(source.into(), Some("github".into()))
+    crate::purge_profile_secrets(source.into(), Some("github".into()), None)
         .await
         .unwrap();
     for prefix in DURABLE_KEY_PREFIXES
@@ -753,7 +753,7 @@ async fn durable_profile_auth_lifecycle(
     }
     assert_eq!(read(&stale_key).unwrap().as_str(), "stale-local");
     users::store_active_credential_typed_dual(store, &stale_key, "oauth", expected).unwrap();
-    crate::purge_profile_secrets(copy_id.into(), Some("github".into()))
+    crate::purge_profile_secrets(copy_id.into(), Some("github".into()), None)
         .await
         .unwrap();
     assert!(overwrite.jotta_chains.is_empty());
@@ -826,7 +826,7 @@ async fn durable_profile_auth_lifecycle(
                 store.get("jottacloud_refresh").unwrap(),
                 "other-profile-chain"
             );
-            crate::purge_profile_secrets(copy.into(), Some("jottacloud".into()))
+            crate::purge_profile_secrets(copy.into(), Some("jottacloud".into()), None)
                 .await
                 .unwrap();
         }
@@ -1756,7 +1756,7 @@ async fn native_session_ownership(store: &CredentialStore, active_id: i64, selec
     .await
     .unwrap();
     assert!(metadata.has_credentials);
-    crate::purge_profile_secrets("native-selected".into(), Some("proton".into()))
+    crate::purge_profile_secrets("native-selected".into(), Some("proton".into()), None)
         .await
         .unwrap();
     assert_eq!(count(selected_id, &selected_key), 0);
@@ -1787,7 +1787,7 @@ async fn native_session_ownership(store: &CredentialStore, active_id: i64, selec
     // Another account is active than the one the import is for: nothing is
     // written, for either of them.
     users::cli_set_active_user(store, selected_id).unwrap();
-    crate::purge_profile_secrets("native-selected".into(), Some("proton".into()))
+    crate::purge_profile_secrets("native-selected".into(), Some("proton".into()), None)
         .await
         .unwrap();
     users::cli_set_active_user(store, active_id).unwrap();
@@ -1886,7 +1886,8 @@ async fn a_purge_reports_the_accounts_own_token(
     private_id: i64,
 ) {
     let key = "oauth_dropbox_purge-target";
-    let purge = || crate::purge_profile_secrets("purge-target".into(), Some("dropbox".into()));
+    let purge =
+        || crate::purge_profile_secrets("purge-target".into(), Some("dropbox".into()), None);
     users::cli_set_active_user(store, private_id).unwrap();
     store.store(key, "owners-token").unwrap();
     // No owner recorded yet: the delete records the one it checks against.

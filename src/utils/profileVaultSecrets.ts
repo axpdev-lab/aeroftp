@@ -83,11 +83,18 @@ export interface ProfileSecretsPurge {
 /**
  * Remove EVERY vault secret scoped to a profile id so deleting a profile leaves
  * nothing behind. Delegates to the Rust `purge_profile_secrets` single source of
- * truth. `protocol` lets the backend derive the OAuth token key. A failure is
- * the caller's to report: the profile itself is already removed by then.
+ * truth. `protocol` lets the backend derive the OAuth token key. `expectedUserId`
+ * is the account whose list the profile left: its secrets are purged even when
+ * another account became active meanwhile (none given: the active account). A
+ * failure is the caller's to report: the profile itself is already removed by then.
  */
 export const deleteProfileVaultSecrets = (
   profileId: string,
   protocol?: string,
+  expectedUserId?: number,
 ): Promise<ProfileSecretsPurge> =>
-  invoke<ProfileSecretsPurge>('purge_profile_secrets', { profileId, protocol: protocol ?? null });
+  invoke<ProfileSecretsPurge>('purge_profile_secrets', {
+    profileId,
+    protocol: protocol ?? null,
+    expectedUserId: expectedUserId ?? null,
+  });

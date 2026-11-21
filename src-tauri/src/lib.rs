@@ -24372,16 +24372,44 @@ struct PurgedProfileSecrets {
 /// with export and duplicate). Every key is tried: a key absent for this
 /// profile kind is a no-op, never an error. Reports the keys removed and those
 /// left behind ([`purge_profile_secret_keys`]). `protocol` lets the
-/// OAuth-token key be derived.
+/// OAuth-token key be derived. `expected_user_id` is the account whose list
+/// the profile was removed from: its secrets are the ones purged, whichever
+/// account is active by then.
 #[tauri::command]
 async fn purge_profile_secrets(
     profile_id: String,
     protocol: Option<String>,
+    expected_user_id: Option<i64>,
 ) -> Result<PurgedProfileSecrets, String> {
     let store = credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "STORE_NOT_READY".to_string())?;
-    let user_id = user_partitions::cli_get_active_user(&store)?.map(|user| user.id);
+    let user_id = purge_account(&store, expected_user_id)?;
     purge_profile_secrets_for(&store, user_id, &profile_id, protocol.as_deref()).await
+}
+
+/// The account a profile purge works on: the one the caller removed the
+/// profile from when it names one (an account deleted since is an error, and
+/// nothing is purged), else the active account. An account switch between
+/// the list write and the purge never sends the purge to the other account.
+fn purge_account(
+    store: &credential_store::CredentialStore,
+    expected_user_id: Option<i64>,
+) -> Result<Option<i64>, String> {
+    match expected_user_id {
+        Some(user) => {
+            if user_partitions::cli_list_users(store)?
+                .iter()
+                .any(|account| account.id == user)
+            {
+                Ok(Some(user))
+            } else {
+                Err(format!(
+                    "The account {user} the profile was removed from no longer exists; no secret was removed"
+                ))
+            }
+        }
+        None => Ok(user_partitions::cli_get_active_user(store)?.map(|user| user.id)),
+    }
 }
 
 /// The body of [`purge_profile_secrets`] for an explicit store and account.
@@ -24782,6 +24810,39 @@ mod copy_profile_secrets_for_tests {
             )
             .unwrap(),
             None
+        );
+    }
+
+    /// The profile was removed from the owner's list, and the other account
+    /// (holding a profile of the same id) became active before the purge: the
+    /// purge removes the owner's secret and leaves the other account's. An
+    /// account deleted meanwhile purges nothing.
+    #[test]
+    fn a_purge_removes_the_secrets_of_the_account_the_profile_left() {
+        let env = Accounts::new();
+        let key = "server_srv_both";
+        for (user, secret) in [(env.owner, "owner-pw"), (env.other, "other-pw")] {
+            user_partitions::store_credential_dual_as(&env.store, Some(user), key, secret).unwrap();
+        }
+        assert_eq!((rows_of(env.owner, key), rows_of(env.other, key)), (1, 1));
+        let refused = tauri::async_runtime::block_on(purge_profile_secrets(
+            "srv_both".into(),
+            None,
+            Some(i64::MAX),
+        ));
+        assert!(refused.is_err(), "a deleted account's purge went on");
+        assert_eq!((rows_of(env.owner, key), rows_of(env.other, key)), (1, 1));
+        let purged = tauri::async_runtime::block_on(purge_profile_secrets(
+            "srv_both".into(),
+            None,
+            Some(env.owner),
+        ))
+        .unwrap();
+        assert!(purged.failed.is_empty(), "{:?}", purged.failed);
+        assert_eq!(
+            (rows_of(env.owner, key), rows_of(env.other, key)),
+            (0, 1),
+            "the purge went to the active account instead of the one the profile left"
         );
     }
 

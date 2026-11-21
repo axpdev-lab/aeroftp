@@ -1327,6 +1327,7 @@ fn a_purge_names_the_keys_it_could_not_remove() {
             .block_on(crate::purge_profile_secrets(
                 "purged".into(),
                 Some("jottacloud".into()),
+                None,
             ))
             .expect("purge");
         serde_json::to_value(purged).unwrap()

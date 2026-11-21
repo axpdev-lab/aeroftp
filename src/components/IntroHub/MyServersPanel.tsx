@@ -1432,16 +1432,13 @@ export function MyServersPanel({
             try {
                 stored = await storeSavedServerProfiles(updated, false, profilesUserId, profilesRevision);
             } catch (err) {
-                // The copy was not listed, so its secrets have no profile. The delete
-                // acts on the active account: after a switch it could miss them or hit
-                // another's, so they stay, unused under an id nothing refers to.
-                if (accountChangeGeneration() === accountBefore) {
-                    await deleteProfileVaultSecrets(newId, source.protocol)
-                        .then(({ failed }) => {
-                            if (failed.length > 0) logger.warn('Secrets of the unsaved copy could not be removed', failed);
-                        })
-                        .catch(e => logger.warn('Secrets of the unsaved copy could not be removed', e));
-                }
+                // The copy was not listed, so its secrets have no profile: they are
+                // removed from the account they were copied in, even after a switch.
+                await deleteProfileVaultSecrets(newId, source.protocol, profilesUserId)
+                    .then(({ failed }) => {
+                        if (failed.length > 0) logger.warn('Secrets of the unsaved copy could not be removed', failed);
+                    })
+                    .catch(e => logger.warn('Secrets of the unsaved copy could not be removed', e));
                 throw err;
             }
             // A switch meanwhile brings its own re-read: this list is the previous account's.
@@ -1571,7 +1568,7 @@ export function MyServersPanel({
                     },
                 }));
             };
-            deleteProfileVaultSecrets(deleteTarget.id, deleteTarget.protocol)
+            deleteProfileVaultSecrets(deleteTarget.id, deleteTarget.protocol, profilesUserId)
                 .then(({ failed, protonSessionEndsAtUnlockOf: account }) => {
                     if (failed.length > 0) secretsLeft(failed);
                     if (!account) return;

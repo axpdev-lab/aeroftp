@@ -984,6 +984,7 @@ fn purge(id: &str, protocol: &str) -> Result<crate::PurgedProfileSecrets, String
         .block_on(crate::purge_profile_secrets(
             id.into(),
             Some(protocol.into()),
+            None,
         ))
 }
 
