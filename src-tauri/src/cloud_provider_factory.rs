@@ -2340,6 +2340,107 @@ mod tests {
         }
     }
 
+    /// A connection that began with no account reads its secrets as the
+    /// legacy owner's: the owner's own row where it holds one, even when
+    /// another account saved the same key after it and so wrote the vault;
+    /// the vault only where no other account holds the key; and a refreshed
+    /// token it writes lands in the owner's row, which its readers prefer.
+    #[test]
+    fn a_legacy_only_read_takes_the_legacy_owners_own_secret() {
+        use crate::credential_store::CredentialStore;
+        use crate::user_partitions as partitions;
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "cloud_provider_factory::tests::a_legacy_only_read_takes_the_legacy_owners_own_secret",
+        ) {
+            return;
+        }
+
+        let _env = crate::test_env::lock();
+        let _partition = partitions::test_lock();
+        let temporary = tempfile::TempDir::new().expect("temporary config");
+        std::env::set_var("XDG_CONFIG_HOME", temporary.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("legacy-read-test-pass")
+            .expect("bootstrap vault");
+        CredentialStore::unlock_with_master("legacy-read-test-pass", None).expect("unlock vault");
+        let store = CredentialStore::from_cache().expect("cached vault");
+        partitions::init_or_migrate_cli(&store).expect("init partitions");
+        let mut conn = partitions::open_or_init_cli().expect("partition DB");
+        let root_key = store.derive_user_partition_wrapping_key();
+        let first = partitions::get_active_user(&conn)
+            .expect("active user")
+            .expect("first account");
+        let second = partitions::create_user(&mut conn, &root_key, "Second", None, None, None)
+            .expect("create second account");
+        assert_eq!(
+            partitions::nonprofile_secret_owner_unpersisted(&conn).expect("legacy owner"),
+            Some(first.id)
+        );
+        let shared = "server_shared-profile";
+        partitions::store_credential_dual_as(&store, Some(first.id), shared, "owner-password")
+            .expect("the owner's save");
+        partitions::store_credential_dual_as(&store, Some(second.id), shared, "second-password")
+            .expect("the second account's save");
+        let second_only = "server_second-profile";
+        partitions::store_credential_dual_as(&store, Some(second.id), second_only, "second-only")
+            .expect("a key only the second account saved");
+        assert_eq!(store.get(shared).ok().as_deref(), Some("second-password"));
+        assert_eq!(store.get(second_only).ok().as_deref(), Some("second-only"));
+        let migrated = "server_migrated-profile";
+        store
+            .store(migrated, "migrated-owner-password")
+            .expect("a vault copy no account has a row of");
+        partitions::set_active_user(&conn, second.id).expect("the second account is active");
+
+        let legacy = partitions::LEGACY_ONLY_ACCOUNT;
+        let read = |key: &str| {
+            [
+                partitions::resolve_credential_for_user(&store, legacy, key),
+                partitions::resolve_credential_for_user_owner_aware(&store, legacy, key),
+            ]
+            .map(|read| read.expect("read").map(|secret| secret.to_string()))
+        };
+        assert_eq!(
+            read(shared),
+            [
+                Some("owner-password".to_string()),
+                Some("owner-password".to_string())
+            ]
+        );
+        assert_eq!(
+            read(second_only),
+            [None, None],
+            "the vault copy is the second account's"
+        );
+        assert_eq!(
+            read(migrated),
+            [
+                Some("migrated-owner-password".to_string()),
+                Some("migrated-owner-password".to_string())
+            ]
+        );
+
+        let token = "oauth_googledrive_legacy-profile";
+        partitions::store_credential_for_user(&store, first.id, token, "oauth", "first-token")
+            .expect("the owner's token row");
+        partitions::mirror_credential_for_user_typed(&store, legacy, token, "oauth", "refreshed")
+            .expect("the refreshed token's mirror");
+        assert_eq!(
+            partitions::get_user_credential_for(&conn, &root_key, first.id, token)
+                .expect("the owner's row")
+                .map(|secret| secret.to_string())
+                .as_deref(),
+            Some("refreshed"),
+            "the refresh reaches the row the owner's readers prefer"
+        );
+        assert_eq!(
+            partitions::get_user_credential_for(&conn, &root_key, second.id, token)
+                .expect("the second account's rows"),
+            None
+        );
+    }
+
     /// Two accounts hold a direct-auth profile under one id, each with its
     /// own host and its own `server_<id>` password. The connection captures
     /// the first; the second is activated between the profile read and the

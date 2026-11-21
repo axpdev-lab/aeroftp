@@ -6292,8 +6292,11 @@ pub(crate) fn mirror_credential_for_user_typed(
     credential_type: &str,
     secret: &str,
 ) -> Result<(), String> {
+    // A connection that began with no account writes as the legacy owner,
+    // whose row its readers prefer to the vault ([`read_legacy_only_credential`]).
+    let user_id = captured_list_owner(user_id)?;
     if user_id == LEGACY_ONLY_ACCOUNT {
-        // The legacy owner has no partition: the vault entry is its copy.
+        // No account yet: the vault entry is the only copy.
         return Ok(());
     }
     let conn = open_or_init_cli()?;
@@ -6413,11 +6416,53 @@ pub fn resolve_credential_for_user(
     credential_id: &str,
 ) -> Result<Option<Zeroizing<String>>, String> {
     if user_id == LEGACY_ONLY_ACCOUNT {
-        return get_optional_secret(store, credential_id);
+        return read_legacy_only_credential(store, credential_id);
     }
     init_or_migrate_cli(store)?;
     let conn = open_or_init_cli()?;
     read_credential_for_user(&conn, store, user_id, credential_id)
+}
+
+/// The secret `credential_id` for a connection that began with no account
+/// ([`LEGACY_ONLY_ACCOUNT`]), read as the legacy owner's, the account whose
+/// list that connection reads ([`captured_list_owner`]): its row first, and the
+/// vault only where no other account holds a row of that key. Every account's
+/// save writes the vault ([`store_vault_then_mirror`]) and leaves its own row,
+/// so with another account's row there the vault copy may be that account's.
+/// With no account yet the vault is the only copy.
+fn read_legacy_only_credential(
+    store: &CredentialStore,
+    credential_id: &str,
+) -> Result<Option<Zeroizing<String>>, String> {
+    let owner = captured_list_owner(LEGACY_ONLY_ACCOUNT)?;
+    if owner == LEGACY_ONLY_ACCOUNT {
+        return get_optional_secret(store, credential_id);
+    }
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
+    let read_secret = |key: &str| get_optional_secret(store, key);
+    match read_checked_row_with(&conn, &root_key, owner, credential_id, &read_secret)? {
+        CheckedRow::Value(value) => Ok(Some(value)),
+        CheckedRow::Withheld => Ok(None),
+        CheckedRow::Absent if another_account_holds_row(&conn, owner, credential_id)? => Ok(None),
+        CheckedRow::Absent => read_secret(credential_id),
+    }
+}
+
+/// Whether an account other than `user_id` has a row of `credential_id`,
+/// decrypting nothing (a locked account's row counts).
+fn another_account_holds_row(
+    conn: &Connection,
+    user_id: i64,
+    credential_id: &str,
+) -> Result<bool, String> {
+    conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM user_credentials WHERE credential_id = ?1 AND user_id != ?2)",
+        params![credential_id, user_id],
+        |row| row.get(0),
+    )
+    .map_err(|e| format!("Read credential rows: {e}"))
 }
 
 /// Owner-aware active-user reader. Only the proven legacy owner may fall back
@@ -6441,7 +6486,8 @@ pub fn resolve_credential_for_user_owner_aware(
     credential_id: &str,
 ) -> Result<Option<Zeroizing<String>>, String> {
     if user_id == LEGACY_ONLY_ACCOUNT {
-        return get_optional_secret(store, credential_id);
+        // The legacy owner is the one account the vault fallback is for.
+        return read_legacy_only_credential(store, credential_id);
     }
     init_or_migrate_cli(store)?;
     let conn = open_or_init_cli()?;
