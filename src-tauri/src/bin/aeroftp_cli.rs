@@ -94596,6 +94596,9 @@ mod tests {
         /// asked for, and the local path a version was downloaded to, across
         /// the clones.
         asked: Arc<std::sync::Mutex<Vec<String>>>,
+        /// Each version call by its method, with the remote path it was
+        /// given, in the order made, across the clones.
+        version_calls: Arc<std::sync::Mutex<Vec<(&'static str, String)>>>,
     }
 
     impl StallingProvider {
@@ -94751,6 +94754,10 @@ mod tests {
         }
         async fn list_versions(&mut self, path: &str) -> Result<Vec<FileVersion>, ProviderError> {
             self.asked.lock().unwrap().push(path.to_string());
+            self.version_calls
+                .lock()
+                .unwrap()
+                .push(("list_versions", path.to_string()));
             Ok(Vec::new())
         }
         async fn download_version(
@@ -94778,6 +94785,10 @@ mod tests {
             _version_id: &str,
         ) -> Result<(), ProviderError> {
             self.asked.lock().unwrap().push(path.to_string());
+            self.version_calls
+                .lock()
+                .unwrap()
+                .push(("delete_version", path.to_string()));
             Ok(())
         }
         async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
@@ -95070,8 +95081,10 @@ mod tests {
             }),
             (0, vec![spaces()])
         );
+        // A purge lists the versions first (the live one is never purged),
+        // then deletes: each call gets the name as given.
         assert_eq!(
-            asked_of(|_| async {
+            version_calls_of(|_| async {
                 cmd_versions_purge(
                     "memory://",
                     "   ",
@@ -95082,7 +95095,10 @@ mod tests {
                 )
                 .await
             }),
-            (0, vec![spaces()])
+            (
+                0,
+                vec![("list_versions", spaces()), ("delete_version", spaces())]
+            )
         );
         assert_eq!(
             asked_of(|_| async {
@@ -95167,6 +95183,21 @@ mod tests {
         let code = against_stalling(provider, command);
         let asked = asked.lock().unwrap().clone();
         (code, asked)
+    }
+
+    /// [`asked_of`], with the version calls by method, in the order made.
+    fn version_calls_of<F: std::future::Future<Output = i32>>(
+        command: impl FnOnce(Arc<AtomicBool>) -> F + Send,
+    ) -> (i32, Vec<(&'static str, String)>) {
+        let provider = StallingProvider {
+            versions: true,
+            finish_upload: true,
+            ..StallingProvider::default()
+        };
+        let calls = Arc::clone(&provider.version_calls);
+        let code = against_stalling(provider, command);
+        let calls = calls.lock().unwrap().clone();
+        (code, calls)
     }
 
     /// `get` of `/f.bin` into a local file that already holds "keep me", with
