@@ -4661,7 +4661,7 @@ mod vault_lock_tests {
                     "self.note_chain_generations()",
                     "Self::load_refresh_chain(",
                     "Self::stored_token_now(",
-                    "try_unmirror_active_credential(",
+                    "delete_user_credential_where(",
                     "deletion_clock()",
                 ][..],
             ),

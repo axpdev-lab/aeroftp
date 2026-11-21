@@ -1852,7 +1852,10 @@ impl JottacloudProvider {
                     // is the profile's chain, not a destination for this one.
                     let mut known = self.stored_tokens.lock().unwrap_or_else(|e| e.into_inner());
                     known.clear();
-                    known.insert(account.clone(), zeroize::Zeroizing::new(stored_token));
+                    known.insert(
+                        account.clone(),
+                        zeroize::Zeroizing::new(stored_token.clone()),
+                    );
                     let mut changed = false;
                     if account != own {
                         let own_now = crate::credential_store::off_async_worker(|| {
@@ -1964,6 +1967,11 @@ impl JottacloudProvider {
                     // key of the same name belongs to the legacy owner.
                     // A pending rotation Jotta refused is dead too: dropped,
                     // unless a newer rotation has replaced it meanwhile.
+                    // Each copy goes only while it still holds the chain this
+                    // connection saw in the key (`stored_token`), compared on its
+                    // own: a chain imported while the exchange was with Jotta
+                    // stays, and so does a vault copy holding another chain than
+                    // the row this connection read.
                     crate::credential_store::off_async_worker(|| {
                         if let Some(owner) = self.rotation_owner {
                             let key = (owner, account.clone());
@@ -1979,24 +1987,57 @@ impl JottacloudProvider {
                                 pending.remove(&key);
                             }
                         }
+                        let observed = stored_token.as_str();
+                        let holds_observed = |copy: &str| {
+                            !observed.is_empty() && stored_refresh_token(Some(copy)) == observed
+                        };
+                        let Some(store) = crate::credential_store::CredentialStore::from_cache()
+                        else {
+                            jotta_log(&format!(
+                                "The refused chain {account} stays: the vault is not open"
+                            ));
+                            return;
+                        };
                         let private = crate::user_partitions::private_token_user(
                             self.credential_user,
                             "jottacloud_refresh",
                         )
                         .map_or(true, |user| user.is_some());
                         if !private {
-                            if let Some(store) =
-                                crate::credential_store::CredentialStore::from_cache()
-                            {
-                                let _ = store.delete(&account);
+                            let vault = match store.get_secret(&account) {
+                                Ok(copy) if holds_observed(&copy) => store
+                                    .delete_secret_if_unchanged(&account, &copy)
+                                    .map(|_| ())
+                                    .map_err(|e| e.to_string()),
+                                Ok(_)
+                                | Err(crate::credential_store::CredentialError::NotFound(_)) => {
+                                    Ok(())
+                                }
+                                Err(e) => Err(e.to_string()),
+                            };
+                            if let Err(e) = vault {
+                                jotta_log(&format!(
+                                    "The refused chain {account} stays in the vault: {e}"
+                                ));
                             }
                         }
-                        let unmirrored = match self.credential_user {
-                            Some(user) => crate::user_partitions::try_unmirror_active_credential(
-                                user, &account,
-                            ),
-                            None => crate::user_partitions::unmirror_active_credential(&account),
+                        // The row of the account this connection reads (the active
+                        // one when unbound); the vault-only scope has none.
+                        let user = match self.credential_user {
+                            Some(crate::user_partitions::LEGACY_ONLY_ACCOUNT) => Ok(None),
+                            Some(user) => Ok(Some(user)),
+                            None => crate::user_partitions::active_user_id_for_write(),
                         };
+                        let unmirrored = user.and_then(|user| match user {
+                            Some(user) => crate::user_partitions::delete_user_credential_where(
+                                &store,
+                                user,
+                                &account,
+                                &holds_observed,
+                            )
+                            .map(|_| ()),
+                            None => Ok(()),
+                        });
                         if let Err(e) = unmirrored {
                             jotta_log(&format!(
                                 "The refused chain {account} stays in the account's partition: {e}"

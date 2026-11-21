@@ -28,6 +28,25 @@ pub(super) struct Chains {
 
 pub(super) const PASSWORD: &str = "jotta-chain-test-pass";
 
+/// A chain imported into both copies of a key (the vault key and the row of
+/// an account) while the endpoint is about to refuse an exchange (test
+/// only): `(user, key, the chain)`, taken once.
+pub(super) static IMPORT_BEFORE_REFUSAL: Mutex<Option<(i64, String, String)>> = Mutex::new(None);
+
+/// Store `chain` as both copies of `key` the legacy owner `user` reads.
+pub(super) fn import_both_copies(user: i64, key: &str, chain: &str) {
+    let store = CredentialStore::from_cache().unwrap();
+    store.store(key, chain).unwrap();
+    partitions::store_imported_credential_for_user(
+        &store,
+        user,
+        key,
+        Some("jottacloud_refresh"),
+        chain,
+    )
+    .unwrap();
+}
+
 impl Chains {
     pub(super) fn new() -> Self {
         let env = crate::test_env::lock();
@@ -75,6 +94,10 @@ impl Chains {
                             *calls
                         };
                         if token.starts_with("refused") {
+                            let import = IMPORT_BEFORE_REFUSAL.lock().unwrap().take();
+                            if let Some((user, key, chain)) = import {
+                                import_both_copies(user, &key, &chain);
+                            }
                             return (
                                 axum::http::StatusCode::BAD_REQUEST,
                                 axum::Json(serde_json::json!({"error": "invalid_grant"})),
@@ -1450,6 +1473,112 @@ fn a_copy_rewritten_before_it_follows_still_follows() {
             ));
         }
         PENDING_ROTATIONS.lock().unwrap().clear();
+    }
+    assert!(failures.is_empty(), "{failures:#?}");
+}
+
+/// A chain Jotta refuses is deleted only where it still is: a chain imported
+/// into the key while the exchange was with Jotta stays, in both copies, and
+/// is the one the next connection exchanges; and when the row held the
+/// refused chain while the vault held another, the row goes and the vault
+/// copy stays.
+#[test]
+fn a_refused_chain_deletes_only_the_copies_that_hold_it() {
+    if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+        "providers::jottacloud::chain_tests::a_refused_chain_deletes_only_the_copies_that_hold_it",
+    ) {
+        return;
+    }
+    let chains = Chains::new();
+    assert_eq!(
+        chains.owner, None,
+        "the first account owns the shared vault"
+    );
+    let _ = chains.store.delete("jottacloud_refresh");
+    let mut failures = Vec::new();
+    let row = |key: &str| {
+        let conn = partitions::open_or_init_cli().unwrap();
+        let root_key = zeroize::Zeroizing::new(chains.store.derive_user_partition_wrapping_key());
+        stored_refresh_token(
+            partitions::get_user_credential_for(&conn, &root_key, chains.first, key)
+                .unwrap()
+                .as_deref()
+                .map(|value| value.as_str()),
+        )
+    };
+    let vault = |key: &str| stored_refresh_token(chains.store.get(key).ok().as_deref());
+
+    // Imported into both copies while the refused exchange was with Jotta.
+    let key = "jottacloud_refresh_refusedimport";
+    import_both_copies(chains.first, key, &chains.chain("refused-import"));
+    *IMPORT_BEFORE_REFUSAL.lock().unwrap() = Some((
+        chains.first,
+        key.to_string(),
+        chains.chain("imported-meanwhile"),
+    ));
+    let mut connection = chains.bound("refusedimport");
+    let refused = chains
+        .runtime()
+        .block_on(connection.try_connect_with_refresh());
+    *IMPORT_BEFORE_REFUSAL.lock().unwrap() = None;
+    drop(connection);
+    if !matches!(refused, Ok(false))
+        || row(key) != "imported-meanwhile"
+        || vault(key) != "imported-meanwhile"
+    {
+        failures.push(format!(
+            "an import during the refused exchange: {refused:?}, row {:?}, vault {:?}",
+            row(key),
+            vault(key)
+        ));
+    }
+    let from = chains.submissions();
+    let mut connection = chains.bound("refusedimport");
+    let connected = chains
+        .runtime()
+        .block_on(connection.try_connect_with_refresh());
+    drop(connection);
+    if !matches!(connected, Ok(true)) || chains.submitted_since(from) != ["imported-meanwhile"] {
+        failures.push(format!(
+            "the next connection exchanges the imported chain: {connected:?}, sent {:?}",
+            chains.submitted_since(from)
+        ));
+    }
+
+    // The row holds the refused chain, the vault an independent one.
+    let key = "jottacloud_refresh_refusedrow";
+    chains
+        .store
+        .store(key, &chains.chain("vault-independent"))
+        .unwrap();
+    // The row alone: an imported write would write the vault copy too.
+    let conn = partitions::open_or_init_cli().unwrap();
+    let root_key = zeroize::Zeroizing::new(chains.store.derive_user_partition_wrapping_key());
+    partitions::set_user_credential_for(
+        &conn,
+        &root_key,
+        chains.first,
+        key,
+        "jottacloud_refresh",
+        &chains.chain("refused-row"),
+    )
+    .unwrap();
+    let from = chains.submissions();
+    let mut connection = chains.bound("refusedrow");
+    let refused = chains
+        .runtime()
+        .block_on(connection.try_connect_with_refresh());
+    drop(connection);
+    let sent = chains.submitted_since(from);
+    if sent.first().map(String::as_str) != Some("refused-row")
+        || !row(key).is_empty()
+        || vault(key) != "vault-independent"
+    {
+        failures.push(format!(
+            "the row refused, the vault independent: {refused:?}, sent {sent:?}, row {:?}, vault {:?}",
+            row(key),
+            vault(key)
+        ));
     }
     assert!(failures.is_empty(), "{failures:#?}");
 }

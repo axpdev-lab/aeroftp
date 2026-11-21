@@ -3984,6 +3984,38 @@ fn replace_user_credential_where(
     })
 }
 
+/// Delete `user_id`'s row of `credential_id` only while it holds a value
+/// `still_holds` accepts: read and deleted in one IMMEDIATE transaction, so a
+/// value written since (an import while a refused chain was with Jotta) is
+/// never removed. Whether it was deleted; a missing row is `Ok(false)`.
+pub(crate) fn delete_user_credential_where(
+    store: &CredentialStore,
+    user_id: i64,
+    credential_id: &str,
+    still_holds: &dyn Fn(&str) -> bool,
+) -> Result<bool, String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    if !partition_row_exists(&conn, user_id, credential_id)? {
+        return Ok(false);
+    }
+    let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
+    let root_secret = user_crypto::secret_key_from_bytes(&root_key);
+    with_user_dek(&conn, &root_secret, user_id, |user_id, dek| {
+        let tx =
+            rusqlite::Transaction::new_unchecked(&conn, rusqlite::TransactionBehavior::Immediate)
+                .map_err(|e| format!("Begin conditional credential delete: {e}"))?;
+        let current = read_credential_with_dek(&tx, user_id, dek, credential_id)?;
+        if !current.as_ref().is_some_and(|secret| still_holds(secret)) {
+            return Ok(false);
+        }
+        delete_user_credential_for(&tx, user_id, credential_id)?;
+        tx.commit()
+            .map_err(|e| format!("Commit conditional credential delete: {e}"))?;
+        Ok(true)
+    })
+}
+
 /// A refreshed secret written to `user_id`'s row only while the row holds a
 /// value `still_holds` accepts ([`replace_user_credential_where`]); a missing
 /// row is never created, nor its account's key asked for. The migrations run
