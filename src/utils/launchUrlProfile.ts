@@ -99,3 +99,10 @@ export const savedProfileMatchesLaunch = (profile: ServerProfile, req: OpenReque
     && (!target.bucket || (profile.options?.bucket || '') === target.bucket)
     && (!target.endpoint || normalizedEndpoint(profile.options?.endpoint) === target.endpoint);
 };
+
+/** The folder a launch opens once its tab is up, the open one or a fresh
+ *  connect: the link's own path, `/` included (a `dropbox://work/` link asks
+ *  for the root, so a tab left in a subfolder moves there). `null` only when
+ *  the request names no folder at all. */
+export const launchFolderToOpen = (initialPath: string | undefined): string | null =>
+  initialPath ? initialPath : null;

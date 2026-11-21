@@ -90454,6 +90454,9 @@ mod tests {
         let err = url_to_provider_config("alice_smith:hunter2@host/data", &cli).unwrap_err();
         assert!(!err.contains("hunter2"), "{err}");
         assert!(err.contains("'alice_smith:***@host/data'"), "{err}");
+        let err = url_to_provider_config("alice_smith:hunter2", &cli).unwrap_err();
+        assert!(!err.contains("hunter2"), "{err}");
+        assert!(err.contains("'alice_smith:***'"), "{err}");
     }
 
     #[test]

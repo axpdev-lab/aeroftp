@@ -727,21 +727,40 @@ fn mask_port_path_at(raw: &str) -> String {
     )
 }
 
-/// A `user:password@host` typed without a scheme, with the password masked
-/// from the first `:` to the last `@` (`alice_smith:***@host/data`). Such a
+/// A `user:password@host` or `user:password` typed without a scheme, with
+/// the password masked from the first `:` to the last `@`, or to the end when
+/// no `@` follows it (`alice_smith:***@host/data`, `alice_smith:***`). Such a
 /// text is not a URL, so the error that echoes it back would otherwise print
-/// the password. A text with `://` is left to [`mask_raw_password`].
+/// the password. Only a text that starts with a valid scheme and `://` is
+/// left to [`mask_raw_password`]; `alice_smith:pa://ss@host` does not. The
+/// rule over-masks a text with a `:` and no secret (`myserver:/data` becomes
+/// `myserver:***`), which only ever reaches an error or a log line.
 fn mask_bare_credentials(raw: &str) -> String {
-    if raw.contains("://") {
+    if raw
+        .find("://")
+        .is_some_and(|end| is_scheme_syntax(&raw[..end]))
+    {
         return raw.to_string();
     }
-    let Some(at) = raw.rfind('@') else {
+    let Some(colon) = raw.find(':') else {
         return raw.to_string();
     };
-    match raw[..at].find(':') {
-        Some(colon) if colon + 1 < at => format!("{}:***{}", &raw[..colon], &raw[at..]),
-        _ => raw.to_string(),
+    match raw.rfind('@').filter(|at| *at > colon) {
+        Some(at) if colon + 1 < at => format!("{}:***{}", &raw[..colon], &raw[at..]),
+        Some(_) => raw.to_string(),
+        None if colon + 1 < raw.len() => format!("{}:***", &raw[..colon]),
+        None => raw.to_string(),
     }
+}
+
+/// Whether `text` is a URL scheme by its syntax (RFC 3986): an ASCII letter,
+/// then letters, digits, `+`, `-` or `.`.
+fn is_scheme_syntax(text: &str) -> bool {
+    let mut chars = text.chars();
+    chars
+        .next()
+        .is_some_and(|first| first.is_ascii_alphabetic())
+        && chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
 }
 
 /// `raw` with the password of its user part replaced by `***`. The user part
@@ -1147,9 +1166,20 @@ mod tests {
             "alice_smith:***@host/data"
         );
         assert_eq!(redact("1alice:p@ss@host"), "1alice:***@host");
+        assert_eq!(
+            redact("alice_smith:pa://ss@host/data"),
+            "alice_smith:***@host/data"
+        );
+        assert_eq!(redact("alice_smith:hunter2"), "alice_smith:***");
         assert_eq!(redact("/srv/data"), "/srv/data");
-        assert_eq!(redact("alice@host:/srv"), "alice@host:/srv");
         assert_eq!(redact("alice:@host"), "alice:@host");
+        assert_eq!(redact("alice_smith:"), "alice_smith:");
+        // A `:` with no secret behind it is over-masked: the text only ever
+        // reaches an error or a log line, where hiding a path costs nothing.
+        assert_eq!(redact("myserver:/data"), "myserver:***");
+        assert_eq!(redact("alice@host:/srv"), "alice@host:***");
+        // A text with a valid scheme stays on the URL path.
+        assert_eq!(redact("sftp://u:hunter2@h/p"), "sftp://u:***@h/p");
     }
 
     #[test]

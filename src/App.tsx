@@ -31,7 +31,7 @@ import { useTauriListener, guardedUnlisten } from './hooks/useTauriListener';
 import { useSelectionFolderSizes } from './hooks/useSelectionFolderSizes';
 import type { BackendSwapDetail } from './hooks/useOAuth2';
 import { connectionProtocol, getConnectionPreset } from './providers/connectionManifest';
-import { matchSignInProfile, openSessionMatchesLaunch, savedProfileMatchesLaunch } from './utils/launchUrlProfile';
+import { launchFolderToOpen, matchSignInProfile, openSessionMatchesLaunch, savedProfileMatchesLaunch } from './utils/launchUrlProfile';
 import { protocolDisplayName } from './utils/protocolDisplayName';
 import { pickFile } from './utils/pickPath';
 import { homeDir, downloadDir } from '@tauri-apps/api/path';
@@ -8195,6 +8195,7 @@ const App: React.FC = () => {
       sse_mode: effectiveParams.options?.sse_mode || null,
       sse_kms_key_id: effectiveParams.options?.sse_kms_key_id || null,
       session_token: effectiveParams.options?.sessionToken || null,
+      aws_chain: effectiveParams.options?.awsChain === true || null,
       role_arn: effectiveParams.options?.roleArn || null,
       role_external_id: effectiveParams.options?.roleExternalId || null,
       role_session_name: effectiveParams.options?.roleSessionName || null,
@@ -19466,9 +19467,10 @@ const App: React.FC = () => {
     } else {
       return;
     }
-    if (initialPath && initialPath !== '/') {
-      await navigateAfterLaunch(initialPath, matched.protocol);
-    }
+    // After either branch, the open tab or the fresh connect: `/` is a folder
+    // the link asks for too, never "stay where you are".
+    const folder = launchFolderToOpen(initialPath);
+    if (folder) await navigateAfterLaunch(folder, matched.protocol);
   };
 
   // A sign-in provider (OAuth and the like) opens only through a saved
@@ -19521,9 +19523,8 @@ const App: React.FC = () => {
       setShowRemotePanel(true);
       setShowLocalPreview(false);
       await switchSession(existingSession.id);
-      if (initialRemotePath && initialRemotePath !== '/' && initialRemotePath !== '') {
-        await navigateAfterLaunch(initialRemotePath, targetProtocol);
-      }
+      const folder = launchFolderToOpen(initialRemotePath);
+      if (folder) await navigateAfterLaunch(folder, targetProtocol);
       return;
     }
 
@@ -19538,7 +19539,9 @@ const App: React.FC = () => {
       options: { ...req.options },
     };
 
-    if (!params.password) {
+    // A chain link has no password here by design: provider_connect resolves
+    // the AWS chain in Rust, so no saved profile's secret stands in for it.
+    if (!params.password && !req.options?.awsChain) {
       const all = await loadSavedServerProfiles().catch(() => [] as ServerProfile[]);
       const match = all.find(s => savedProfileMatchesLaunch(s, req));
       if (match) {

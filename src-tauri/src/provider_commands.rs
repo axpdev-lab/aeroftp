@@ -1835,6 +1835,12 @@ pub struct ProviderConnectionParams {
     /// S3: AWS STS session token for temporary credentials (AssumeRole / SSO).
     /// AWS-only; ignored by S3-compatible backends without STS.
     pub session_token: Option<String>,
+    /// S3: the secret of `username` comes from the AWS tools' chain
+    /// (`AWS_*`, `~/.aws`), which a launch URL never hands to the webview;
+    /// the provider resolves it (`S3Config::from_provider_config`). Not a
+    /// secret.
+    #[serde(default)]
+    pub aws_chain: Option<bool>,
     /// S3: ARN of an IAM role to assume via STS `AssumeRole` (issue #301).
     /// When set, `connect()` exchanges the access key/secret for temporary
     /// credentials. AWS-only.
@@ -2108,6 +2114,12 @@ impl ProviderConnectionParams {
                 .filter(|s| !s.is_empty())
             {
                 extra.insert("session_token".to_string(), token.to_string());
+            }
+            // A launch URL whose credentials came from the AWS chain: the
+            // provider reads the chain itself (S3Config), the webview never
+            // held the secret.
+            if self.aws_chain == Some(true) {
+                extra.insert("aws_chain".to_string(), "true".to_string());
             }
             // STS AssumeRole config (issue #301, Fase 2). AWS-only.
             for (key, value) in [
@@ -19522,6 +19534,24 @@ mod tests {
         );
     }
 
+    #[test]
+    fn an_aws_chain_connect_hands_the_marker_to_the_provider() {
+        let mut params = s3_params(None);
+        params.password = String::new();
+        params.aws_chain = Some(true);
+        let config = params.to_provider_config().unwrap();
+        assert_eq!(
+            config.extra.get("aws_chain").map(String::as_str),
+            Some("true")
+        );
+        params.aws_chain = None;
+        assert!(!params
+            .to_provider_config()
+            .unwrap()
+            .extra
+            .contains_key("aws_chain"));
+    }
+
     fn s3_params(path_style: Option<bool>) -> ProviderConnectionParams {
         ProviderConnectionParams {
             protocol: "s3".to_string(),
@@ -19541,6 +19571,7 @@ mod tests {
             sse_mode: None,
             sse_kms_key_id: None,
             session_token: None,
+            aws_chain: None,
             role_arn: None,
             role_external_id: None,
             role_session_name: None,

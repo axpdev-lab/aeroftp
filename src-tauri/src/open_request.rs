@@ -243,12 +243,22 @@ pub fn parse_remote_url(raw: &str) -> Option<OpenRequest> {
         if let Some(region) = credentials.region {
             options.insert("region".to_string(), serde_json::Value::String(region));
         }
-        if let Some(token) = credentials.session_token {
-            options.insert("sessionToken".to_string(), serde_json::Value::String(token));
-        }
+        // A secret from the AWS tools' chain (`AWS_*`, `~/.aws`) never enters
+        // the request the webview reads: it carries a marker, and
+        // provider_connect resolves the chain again in Rust. A secret the URL
+        // or AEROFTP_PASSWORD gave travels as for every other protocol.
+        let password = if credentials
+            .secret_source
+            .is_some_and(crate::launch_url::aws::CredentialSource::is_aws_chain)
+        {
+            options.insert("awsChain".to_string(), serde_json::Value::Bool(true));
+            None
+        } else {
+            credentials.secret_access_key
+        };
         (
             credentials.access_key_id,
-            credentials.secret_access_key,
+            password,
             Some(target.s3_provider_id().to_string()),
         )
     } else {
@@ -1032,12 +1042,15 @@ mod tests {
             || parse_remote_url("s3://minio.lan:9000/?bucket=b1").unwrap(),
         );
         assert_eq!(request.username.as_deref(), Some("FILEKEY"));
-        assert_eq!(request.password.as_deref(), Some("filesecret"));
-        let options = request.options.unwrap();
-        assert_eq!(options["sessionToken"], "filetoken");
+        // The chain's secret and token stay in Rust: the request the webview
+        // reads carries only the marker provider_connect resolves.
+        assert_eq!(request.password, None);
+        assert_never_serialized(&request, &["filesecret", "filetoken"]);
+        let options = request.options.clone().unwrap();
+        assert_eq!(options["awsChain"], true);
+        assert!(!options.contains_key("sessionToken"));
         assert_eq!(options["region"], "eu-west-3");
         assert_eq!(request.provider_id.as_deref(), Some("minio"));
-        assert!(!request.path.contains("filesecret"));
 
         // The AWS variables win over the files.
         let request = with_aws_files(
@@ -1050,7 +1063,36 @@ mod tests {
             || parse_remote_url("s3://minio.lan:9000/?bucket=b1").unwrap(),
         );
         assert_eq!(request.username.as_deref(), Some("ENVKEY"));
-        assert_eq!(request.password.as_deref(), Some("envsecret"));
+        assert_eq!(request.password, None);
+        assert_never_serialized(&request, &["envsecret", "filesecret"]);
+        assert_eq!(request.options.unwrap()["awsChain"], true);
+    }
+
+    /// The JSON the webview receives through `take_open_requests` holds none
+    /// of `secrets`.
+    fn assert_never_serialized(request: &OpenRequest, secrets: &[&str]) {
+        let json = serde_json::to_string(request).unwrap();
+        for secret in secrets {
+            assert!(
+                !json.contains(secret),
+                "{secret} reaches the webview: {json}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_s3_secret_the_url_or_aeroftp_password_gives_keeps_its_one_field() {
+        let _guard = crate::test_env::lock();
+        let request = with_aws_files("", "", &[], || {
+            parse_remote_url("s3://KEY:urlsecret@minio.lan:9000/?bucket=b1").unwrap()
+        });
+        assert_eq!(request.password.as_deref(), Some("urlsecret"));
+        assert!(!request.options.unwrap().contains_key("awsChain"));
+        let request = with_aws_files("", "", &[("AEROFTP_PASSWORD", "aeroftpsecret")], || {
+            parse_remote_url("s3://KEY@minio.lan:9000/?bucket=b1").unwrap()
+        });
+        assert_eq!(request.password.as_deref(), Some("aeroftpsecret"));
+        assert!(!request.options.unwrap().contains_key("awsChain"));
     }
 
     #[test]
@@ -1074,7 +1116,8 @@ mod tests {
             || parse_remote_url("s3://minio.lan:9000/?bucket=b1").unwrap(),
         );
         assert_eq!(request.username.as_deref(), Some("FILEKEY"));
-        assert_eq!(request.password.as_deref(), Some("filesecret"));
+        assert_eq!(request.password, None);
+        assert_never_serialized(&request, &["filesecret", "shellsecret"]);
         assert_eq!(
             std::env::var("AWS_ACCESS_KEY_ID").as_deref(),
             Ok("SHELLKEY")

@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { ConnectionParams, OpenRequest, ServerProfile } from '../types';
-import { matchSignInProfile, openSessionMatchesLaunch, savedProfileMatchesLaunch } from './launchUrlProfile';
+import { launchFolderToOpen, matchSignInProfile, openSessionMatchesLaunch, savedProfileMatchesLaunch } from './launchUrlProfile';
 
 const profile = (id: string, name: string, protocol: string, username = ''): ServerProfile =>
   ({ id, name, protocol, username, host: '', port: 443 }) as ServerProfile;
@@ -121,5 +123,34 @@ describe('a launch URL and the sessions and profiles it can reuse', () => {
     expect(savedProfileMatchesLaunch(minio, req({}))).toBe(true);
     expect(savedProfileMatchesLaunch(minio, req({ options: { bucket: 'b1', endpoint: 'https://MINIO.example.com/' } }))).toBe(true);
     expect(savedProfileMatchesLaunch(minio, req({ options: { bucket: 'b1', endpoint: 'https://other.example.com' } }))).toBe(false);
+  });
+});
+
+describe('launchFolderToOpen', () => {
+  it('opens the root a link asks for, like any other folder', () => {
+    expect(launchFolderToOpen('/')).toBe('/');
+    expect(launchFolderToOpen('/Photos/')).toBe('/Photos/');
+    expect(launchFolderToOpen('')).toBeNull();
+    expect(launchFolderToOpen(undefined)).toBeNull();
+  });
+
+  // Both ways a launch reaches its tab, the open one and a fresh connect, go
+  // through the helper in App.tsx, so neither can skip a root link again.
+  it('is what both launch paths in App.tsx navigate by', () => {
+    const app = readFileSync(resolve(__dirname, '../App.tsx'), 'utf8');
+    const body = (name: string) => {
+      const start = app.indexOf(`const ${name} = async`);
+      expect(start).toBeGreaterThan(-1);
+      return app.slice(start, app.indexOf('\n  };\n', start));
+    };
+    const saved = body('openSavedProfile');
+    expect(saved).toContain('await goToActiveSession(matched.id)');
+    expect(saved).toContain('profileConnector.current(matched.id, scope)');
+    expect(saved).toMatch(/const folder = launchFolderToOpen\(initialPath\);\s*if \(folder\) await navigateAfterLaunch\(folder, matched\.protocol\);\s*$/);
+    const remote = body('openRemoteUrlSession');
+    expect(remote).toMatch(/await switchSession\(existingSession\.id\);\s*const folder = launchFolderToOpen\(initialRemotePath\);\s*if \(folder\) await navigateAfterLaunch\(folder, targetProtocol\);/);
+    expect(saved + remote).not.toMatch(/!== '\/'/);
+    // A chain link has no password in the webview: no saved profile's secret stands in for it.
+    expect(remote).toContain('if (!params.password && !req.options?.awsChain) {');
   });
 });

@@ -209,6 +209,45 @@ pub fn resolve(
     }
 }
 
+impl CredentialSource {
+    /// Whether the secret came from the AWS tools' own chain (`AWS_*` or
+    /// `~/.aws`), which a launch URL never hands to the webview: the
+    /// connection resolves it again in Rust ([`resolve_chain_secret`]).
+    pub fn is_aws_chain(self) -> bool {
+        matches!(self, Self::AwsEnv | Self::AwsFiles)
+    }
+}
+
+/// The secret and session token the AWS chain holds for `access_key_id`, as
+/// a connection resolves them at connect time for a launch URL whose
+/// credentials came from the chain. Only `AWS_*` and the AWS files count:
+/// `AEROFTP_PASSWORD` is not the chain, and a key id the chain no longer
+/// pairs with a secret is an error, never another key's secret.
+pub fn resolve_chain_secret(
+    access_key_id: &str,
+    env: impl Fn(&str) -> Option<String>,
+    files: impl FnOnce() -> AwsFiles,
+) -> Result<(String, Option<String>), String> {
+    let chain_env = |name: &str| {
+        if name == "AEROFTP_PASSWORD" {
+            None
+        } else {
+            env(name)
+        }
+    };
+    let resolved = resolve(access_key_id, None, None, chain_env, files);
+    match (resolved.secret_access_key, resolved.secret_source) {
+        (Some(secret), Some(source))
+            if source.is_aws_chain() && resolved.access_key_id == access_key_id =>
+        {
+            Ok((secret, resolved.session_token))
+        }
+        _ => Err(format!(
+            "The AWS credentials (AWS_* variables or ~/.aws) no longer hold a secret for access key {access_key_id}"
+        )),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -238,6 +277,33 @@ mod tests {
         ("AWS_SESSION_TOKEN", "envtoken"),
         ("AWS_REGION", "us-west-2"),
     ];
+
+    #[test]
+    fn a_connection_resolves_the_chain_secret_of_its_own_key_id() {
+        assert_eq!(
+            resolve_chain_secret("ENVKEY", env_of(AWS_ENV), AwsFiles::default),
+            Ok(("envsecret".into(), Some("envtoken".into())))
+        );
+        assert_eq!(
+            resolve_chain_secret("FILEKEY", env_of(&[]), || files_with(CREDENTIALS, CONFIG)),
+            Ok(("filesecret".into(), Some("filetoken".into())))
+        );
+        // AEROFTP_PASSWORD is not the chain: it never stands in for it.
+        assert!(resolve_chain_secret(
+            "FILEKEY",
+            env_of(&[("AEROFTP_PASSWORD", "aeroftp")]),
+            AwsFiles::default
+        )
+        .is_err());
+        // A key id the chain no longer pairs never gets another key's secret.
+        assert!(
+            resolve_chain_secret("GONEKEY", env_of(AWS_ENV), || files_with(
+                CREDENTIALS,
+                CONFIG
+            ))
+            .is_err()
+        );
+    }
 
     #[test]
     fn the_url_wins_over_every_other_source() {

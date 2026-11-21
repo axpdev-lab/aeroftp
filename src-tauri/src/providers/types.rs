@@ -648,6 +648,73 @@ impl WebDavConfig {
 }
 
 #[cfg(test)]
+mod s3_chain_tests {
+    use super::*;
+    use crate::launch_url::aws::AwsFiles;
+
+    fn s3(password: Option<&str>, chain: bool) -> ProviderConfig {
+        let mut extra = std::collections::HashMap::new();
+        extra.insert("bucket".to_string(), "b1".to_string());
+        if chain {
+            extra.insert("aws_chain".to_string(), "true".to_string());
+        }
+        ProviderConfig {
+            name: "S3".into(),
+            provider_type: ProviderType::S3,
+            host: "minio.lan".into(),
+            port: Some(9000),
+            username: Some("FILEKEY".into()),
+            password: password.map(str::to_string),
+            initial_path: None,
+            extra,
+        }
+    }
+
+    fn files() -> AwsFiles {
+        AwsFiles {
+            credentials: crate::bridge_shared::parse_ini_sections(
+                "[default]\naws_access_key_id = FILEKEY\naws_secret_access_key = filesecret\naws_session_token = filetoken\n",
+            ),
+            config: Default::default(),
+        }
+    }
+
+    #[test]
+    fn a_chain_marked_connection_reads_the_chain_only_without_a_secret_of_its_own() {
+        assert_eq!(
+            s3_secret_from_chain(&s3(None, true), |_| None, files).unwrap(),
+            ("filesecret".to_string(), Some("filetoken".to_string()))
+        );
+        assert_eq!(
+            s3_secret_from_chain(&s3(Some(""), true), |_| None, files).unwrap(),
+            ("filesecret".to_string(), Some("filetoken".to_string()))
+        );
+        // A stored secret (the vault's) wins: the chain is not read at all.
+        assert_eq!(
+            s3_secret_from_chain(
+                &s3(Some("saved"), true),
+                |_| None,
+                || { panic!("the chain must not be read when a secret is stored") }
+            )
+            .unwrap(),
+            ("saved".to_string(), None)
+        );
+        // Without the marker nothing changes, an empty secret stays empty.
+        assert_eq!(
+            s3_secret_from_chain(
+                &s3(None, false),
+                |_| None,
+                || { panic!("an unmarked connection never reads the chain") }
+            )
+            .unwrap(),
+            (String::new(), None)
+        );
+        // A chain that lost the key id is an error, never an empty secret.
+        assert!(s3_secret_from_chain(&s3(None, true), |_| None, AwsFiles::default).is_err());
+    }
+}
+
+#[cfg(test)]
 mod webdav_config_tests {
     use super::*;
 
@@ -1348,6 +1415,31 @@ fn mega_s4_regions(zone: MegaS4Zone) -> &'static [&'static str] {
     }
 }
 
+/// The secret an S3 connection signs with, and the session token the AWS
+/// chain adds. A profile or connect marked `aws_chain` (a launch URL whose
+/// credentials came from `AWS_*` or `~/.aws`, never handed to the webview,
+/// or a profile saved from one) reads the chain here, for every caller: the
+/// app, the CLI, MCP, sync. A secret the caller holds (the vault's, the
+/// form's) wins, so the chain is read only when there is none; a chain that
+/// no longer pairs a secret with the key id is an error, never an empty one.
+pub(crate) fn s3_secret_from_chain(
+    config: &ProviderConfig,
+    env: impl Fn(&str) -> Option<String>,
+    files: impl FnOnce() -> crate::launch_url::aws::AwsFiles,
+) -> Result<(String, Option<String>), ProviderError> {
+    let password = config.password.clone().unwrap_or_default();
+    let marked = config
+        .extra
+        .get("aws_chain")
+        .is_some_and(|v| v.trim().eq_ignore_ascii_case("true"));
+    if !password.is_empty() || !marked {
+        return Ok((password, None));
+    }
+    let key_id = config.username.clone().unwrap_or_default();
+    crate::launch_url::aws::resolve_chain_secret(&key_id, env, files)
+        .map_err(ProviderError::InvalidConfig)
+}
+
 impl S3Config {
     pub fn from_provider_config(config: &ProviderConfig) -> Result<Self, ProviderError> {
         let bucket = config
@@ -1410,12 +1502,19 @@ impl S3Config {
         let skip_dir_markers = s3_skip_dir_markers(config);
         let filen_desktop_bridge = s3_provider_id(config) == Some("filen-desktop-s3");
 
+        let (secret_access_key, chain_token) = s3_secret_from_chain(
+            config,
+            |name| std::env::var(name).ok(),
+            crate::launch_url::aws::AwsFiles::from_environment,
+        )?;
         let session_token = config
             .extra
             .get("session_token")
             .map(|s| s.trim())
             .filter(|s| !s.is_empty())
-            .map(|s| secrecy::SecretString::from(s.to_string()));
+            .map(str::to_string)
+            .or(chain_token)
+            .map(secrecy::SecretString::from);
 
         // STS AssumeRole (Fase 2): trimmed, blank-as-absent.
         let trimmed_extra = |key: &str| {
@@ -1445,9 +1544,7 @@ impl S3Config {
             endpoint,
             region,
             access_key_id: config.username.clone().unwrap_or_default(),
-            secret_access_key: secrecy::SecretString::from(
-                config.password.clone().unwrap_or_default(),
-            ),
+            secret_access_key: secrecy::SecretString::from(secret_access_key),
             session_token,
             role_arn,
             role_external_id,
