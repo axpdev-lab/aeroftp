@@ -389,13 +389,38 @@ jobs:
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@9baf7c20ae8e70a5220bd48d08870afb205ab1ed # cargo-llvm-cov
 
-      - name: Generate coverage
+      # Diagnostic: a lost runner discards the whole log, but the API keeps each
+      # step's started_at/completed_at, so separate steps show where it died.
+      - name: Resources before tests
+        if: always()
+        working-directory: src-tauri
+        run: |
+          df -h / && free -m && swapon --show
+          find target -maxdepth 2 -name '*.profraw' -printf '%s\n' 2>/dev/null \
+            | awk '{n++; s+=$1} END {printf "profraw files=%d size=%d MB\n", n, s/1048576}' || true
+
+      - name: Coverage tests (instrumented, no report)
         working-directory: src-tauri
         shell: bash
         # Baseline at T8 Fase A (2026-04-21): 11.73% lines, 9.59% functions.
         # Gate is set below baseline so CI passes today; raise per T8 Fase B/C/D
         # as new tests land. Target after Fase C (16 zero-coverage providers): 25%.
         run: |
+          # Diagnostic sampler every 60 s; it is lost with the log if the runner dies.
+          (
+            set +e +o pipefail
+            while sleep 60; do
+              echo "::group::sample $(date -u +%H:%M:%SZ)"
+              df -h / | tail -1
+              free -m | sed -n '2,3p'
+              find target -maxdepth 2 -name '*.profraw' -printf '%s\n' 2>/dev/null \
+                | awk '{n++; s+=$1} END {printf "profraw files=%d size=%d MB\n", n, s/1048576}'
+              ps -eo rss=,args= --sort=-rss | head -3 | awk '{printf "rss %d MB %s\n", $1/1024, substr($0, index($0,$2), 120)}'
+              echo "::endgroup::"
+            done
+          ) &
+          sampler=$!
+          trap 'kill $sampler 2>/dev/null' EXIT
           # The three batch rendezvous-barrier tests assert wall-clock scheduler
           # overlap; under llvm-cov instrumentation (10x+ slowdown on the shared
           # runner) the rendezvous can exceed even a 30s budget. They gate
@@ -405,8 +430,38 @@ jobs:
             --skip batch_dag_respects_file_slot_concurrency \
             --skip batch_dag_independent_file_overlap_for_enabled_executor \
             --skip batch_dag_peak_bounded_by_min_of_file_slots_and_session_pool
-          cargo llvm-cov report --lcov --output-path lcov.info
-          cargo llvm-cov report --summary-only --fail-under-lines 10 | tee coverage-summary.txt
+          df -h / && free -m
+          find target -maxdepth 2 -name '*.profraw' -printf '%s\n' \
+            | awk '{n++; s+=$1} END {printf "profraw files=%d size=%d MB\n", n, s/1048576}' || true
+          du -sh target/llvm-cov-target || true
+
+      # Diagnostic: a lost runner discards the whole log, but the API keeps each
+      # step's started_at/completed_at, so separate steps show where it died.
+      - name: Resources after tests
+        if: always()
+        working-directory: src-tauri
+        run: |
+          df -h / && free -m && swapon --show
+          find target -maxdepth 2 -name '*.profraw' -printf '%s\n' 2>/dev/null \
+            | awk '{n++; s+=$1} END {printf "profraw files=%d size=%d MB\n", n, s/1048576}' || true
+
+      - name: Coverage report (lcov)
+        working-directory: src-tauri
+        run: cargo llvm-cov report --lcov --output-path lcov.info
+
+      # Diagnostic: a lost runner discards the whole log, but the API keeps each
+      # step's started_at/completed_at, so separate steps show where it died.
+      - name: Resources after lcov
+        if: always()
+        working-directory: src-tauri
+        run: |
+          df -h / && free -m && swapon --show
+          find target -maxdepth 2 -name '*.profraw' -printf '%s\n' 2>/dev/null \
+            | awk '{n++; s+=$1} END {printf "profraw files=%d size=%d MB\n", n, s/1048576}' || true
+
+      - name: Coverage report (summary)
+        working-directory: src-tauri
+        run: cargo llvm-cov report --summary-only --fail-under-lines 10 | tee coverage-summary.txt
 
       - name: Upload coverage artifacts
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
