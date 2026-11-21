@@ -1671,8 +1671,12 @@ impl JottacloudProvider {
                     .to_string(),
             ));
         }
-        // Nor while a deletion of its key runs: its chain could be neither
-        // written nor kept beyond this process until that deletion ends.
+        #[cfg(test)]
+        chain_tests::after_login_note(&self.profile_id);
+        // Nor while a deletion of its key runs, nor once one completed since
+        // the count was noted: its chain could be neither written nor kept
+        // beyond this process, and the login token is single-use. A retry
+        // begins again, and reads the keys and their counts anew.
         let noted = self
             .chain_generations
             .lock()
@@ -1680,11 +1684,16 @@ impl JottacloudProvider {
             .get(&own)
             .copied();
         if let Some(owner) = self.rotation_owner {
-            if deletion_state(owner, &own, noted) == DeletionState::Unsettled {
-                return Err(ProviderError::ConnectionFailed(
+            match deletion_state(owner, &own, noted) {
+                DeletionState::Unchanged => {}
+                DeletionState::Unsettled => return Err(ProviderError::ConnectionFailed(
                     "jottacloud: a deletion of the stored refresh chain is in progress; try again"
                         .to_string(),
-                ));
+                )),
+                DeletionState::Moved => return Err(ProviderError::ConnectionFailed(
+                    "jottacloud: a deletion of the stored refresh chain just completed; try again"
+                        .to_string(),
+                )),
             }
         }
         Ok(())

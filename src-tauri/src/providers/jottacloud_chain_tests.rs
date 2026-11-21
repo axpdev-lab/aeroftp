@@ -1040,6 +1040,72 @@ fn a_load_reads_the_key_its_rotation_and_its_deletions_together() {
     assert!(failures.is_empty(), "{failures:#?}");
 }
 
+/// A key deleted by another process right after a login noted its keys'
+/// deletion counts (test only): `(profile, owner, key)`, taken once.
+pub(super) static DELETED_AFTER_LOGIN_NOTE: Mutex<Option<(String, Option<i64>, String)>> =
+    Mutex::new(None);
+
+pub(super) fn after_login_note(profile: &str) {
+    let deleted = DELETED_AFTER_LOGIN_NOTE
+        .lock()
+        .unwrap()
+        .take_if(|(at, _, _)| at == profile);
+    if let Some((_, owner, key)) = deleted {
+        delete_elsewhere(&CredentialStore::from_cache().unwrap(), owner, &key);
+    }
+}
+
+/// A deletion another process completes between a login's count read and
+/// its check stops the login before its token is sent: `connect` returns a
+/// retryable error with no OIDC discovery, since the chain the login starts
+/// would be kept nowhere. The retry begins again and writes its chain.
+#[test]
+fn a_login_whose_key_was_just_deleted_sends_nothing() {
+    use std::sync::atomic::Ordering::SeqCst;
+    if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+        "providers::jottacloud::chain_tests::a_login_whose_key_was_just_deleted_sends_nothing",
+    ) {
+        return;
+    }
+    let chains = Chains::new();
+    let _ = chains.store.delete("jottacloud_refresh");
+    let profile = "justdeleted";
+    let key = format!("jottacloud_refresh_{profile}");
+    let mut login = JottacloudProvider::new(JottacloudConfig {
+        login_token: SecretString::from(unanswered_login_token()),
+        device: "Jotta".into(),
+        mountpoint: "Archive".into(),
+        initial_path: None,
+    })
+    .with_profile_id(profile);
+    login.set_credential_user(Some(chains.first));
+    *DELETED_AFTER_LOGIN_NOTE.lock().unwrap() =
+        Some((profile.to_string(), chains.owner, key.clone()));
+    let (sent, discovered) = (chains.submissions(), super::tests::DISCOVERIES.load(SeqCst));
+    let connected = chains.runtime().block_on(login.connect());
+    *DELETED_AFTER_LOGIN_NOTE.lock().unwrap() = None;
+    let mut failures = Vec::new();
+    if !matches!(&connected, Err(ProviderError::ConnectionFailed(m)) if m.contains("just completed"))
+    {
+        failures.push(format!(
+            "the login stops with a retryable error: {connected:?}"
+        ));
+    }
+    let discoveries = super::tests::DISCOVERIES.load(SeqCst) - discovered;
+    if discoveries != 0 || !chains.submitted_since(sent).is_empty() {
+        failures.push(format!(
+            "nothing is sent: {discoveries} discovery(ies), exchanges {:?}",
+            chains.submitted_since(sent)
+        ));
+    }
+    // The retry begins again, on the counts it reads now.
+    let retried = chains.login(profile, "login-justdeleted");
+    if retried != "login-justdeleted" {
+        failures.push(format!("the retry writes its chain: {retried:?}"));
+    }
+    assert!(failures.is_empty(), "{failures:#?}");
+}
+
 /// A login that follows a failed refresh begins its own chain then: a
 /// delete of its key while the refresh was tried does not stop the login's
 /// chain, one after the login began does.
