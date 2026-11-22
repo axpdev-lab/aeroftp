@@ -5952,7 +5952,8 @@
             "mrTitle": "MR-titel",
             "mrBody": "Beskrivelse (valgfri)",
             "sourceCode": "Kildekode",
-            "downloadAssetTitle": "Hent {name}"
+            "downloadAssetTitle": "Hent {name}",
+            "tokenGoesTo": "Tokenet sendes til {instance}"
         },
         "mcp": {
             "title": "MCP Server",

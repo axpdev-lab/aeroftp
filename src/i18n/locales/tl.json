@@ -5971,7 +5971,8 @@
             "mrTitle": "Titulo ng MR",
             "mrBody": "Paglalarawan (optional)",
             "sourceCode": "Pinagmulang code",
-            "downloadAssetTitle": "I-download ang {name}"
+            "downloadAssetTitle": "I-download ang {name}",
+            "tokenGoesTo": "Ipapadala ang token sa {instance}"
         },
         "mcp": {
             "title": "MCP Server",

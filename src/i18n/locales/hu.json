@@ -5952,7 +5952,8 @@
             "mrTitle": "MR címe",
             "mrBody": "Leírás (opcionális)",
             "sourceCode": "Forráskód",
-            "downloadAssetTitle": "{name} letöltése"
+            "downloadAssetTitle": "{name} letöltése",
+            "tokenGoesTo": "A token ide lesz elküldve: {instance}"
         },
         "mcp": {
             "title": "MCP Server",

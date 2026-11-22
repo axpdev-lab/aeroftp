@@ -3,7 +3,9 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import appSource from '../App.tsx?raw';
-import { namesSelfHostedGitLab, openOnGitLab } from './gitlabWeb';
+import connectionScreenSource from '../components/ConnectionScreen.tsx?raw';
+import GITLAB_INSTANCES from '../shared/gitlab-instance-cases.json';
+import { gitlabInstanceOf, namesSelfHostedGitLab, openOnGitLab } from './gitlabWeb';
 
 /** The GitLab single-selection block of the remote context menu, from its guard to its closing brace. */
 const gitlabMenuBlock = (src: string): string => {
@@ -57,31 +59,30 @@ describe('View on GitLab', () => {
 });
 
 /**
- * The self-signed certificate option follows the backend's instance rule: a
- * local instance named by localhost, an IP, IPv6 or a short name with its
- * port is self-hosted (before, only a name with a dot was), and `owner/repo`
- * or gitlab.com is not.
+ * The form names where the token goes before it leaves, by the backend's rule.
+ * The table is shared with the Rust test of `instance_authority`
+ * (`a_self_hosted_host_field_names_its_instance_never_gitlab_com`), so a case
+ * cannot be added to one reader alone. A username holding a dot reads as an
+ * instance: the backend cannot tell it apart, so the form names it.
  */
-describe('namesSelfHostedGitLab', () => {
-    it('reads the server field as the backend does', () => {
-        for (const server of [
-            'git.example.com/group/project',
-            'https://git.example.com:8443/group/project',
-            'localhost:8443/group/project',
-            'LOCALHOST/group/project',
-            'gitlab:8443/group/project',
-            '127.0.0.1:8080/group/project',
-            '[::1]:8443/group/project',
-        ]) {
-            expect(namesSelfHostedGitLab(server), server).toBe(true);
+describe('gitlabInstanceOf', () => {
+    it('names the instance the backend sends the token to', () => {
+        expect(GITLAB_INSTANCES.cases.some((c) => c.instance === null)).toBe(true);
+        for (const { server, instance } of GITLAB_INSTANCES.cases) {
+            expect(gitlabInstanceOf(server), server).toBe(instance);
         }
-        for (const server of [
-            'owner/repo',
-            'gitlab/group/project',
-            'gitlab.com/group/project',
-            'https://GitLab.com:443/group/project',
-        ]) {
-            expect(namesSelfHostedGitLab(server), server).toBe(false);
+    });
+
+    it('offers the self-signed option only for a self-hosted instance', () => {
+        for (const { server, instance } of GITLAB_INSTANCES.cases) {
+            expect(namesSelfHostedGitLab(server), server).toBe(instance !== null && instance !== 'gitlab.com');
         }
+    });
+
+    it('is shown under the project path in the connection form', () => {
+        const start = connectionScreenSource.indexOf("protocol === 'gitlab' ? (");
+        const block = connectionScreenSource.slice(start, connectionScreenSource.indexOf("t('gitlab.accessToken')", start));
+        expect(start).toBeGreaterThan(-1);
+        expect(block).toContain("t('gitlab.tokenGoesTo', { instance: gitlabInstanceOf(connectionParams.server)");
     });
 });

@@ -5952,7 +5952,8 @@
             "mrTitle": "MR-otsikko",
             "mrBody": "Kuvaus (valinnainen)",
             "sourceCode": "Lähdekoodi",
-            "downloadAssetTitle": "Lataa {name}"
+            "downloadAssetTitle": "Lataa {name}",
+            "tokenGoesTo": "Tunnus lähetetään palvelimelle {instance}"
         },
         "mcp": {
             "title": "MCP Server",

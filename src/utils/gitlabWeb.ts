@@ -25,16 +25,35 @@ export async function openOnGitLab(
 }
 
 /**
- * Whether a GitLab server field names a self-hosted instance, by the rule the
- * backend uses (`instance_authority` in `providers/gitlab/mod.rs`): its first
- * segment holds a dot, is `localhost`, carries a port or is an IP address,
- * and is not gitlab.com. `owner/repo` is a project on gitlab.com. The
- * self-signed certificate option is offered only for such an instance.
+ * The instance a GitLab server field sends its token to, by the rule the
+ * backend uses (`instance_authority` in `providers/gitlab/mod.rs`): a first
+ * segment that holds a dot, a colon or a bracket, or is `localhost`, is the
+ * instance (`host[:port]`, lowercased, 443 dropped); any other first segment
+ * is a project owner, so the instance is gitlab.com. `null` when the field
+ * names no address the backend accepts, which it then refuses. A username
+ * that holds a dot (`john.doe/repo`) reads as the instance `john.doe`: the
+ * form shows the result so that case is seen before the token leaves.
+ */
+export function gitlabInstanceOf(server: string): string | null {
+    const segment = server.trim().replace(/^https?:\/\//i, '').split('/')[0];
+    if (!segment) return null;
+    const marked = /[.:[]/.test(segment) || segment.toLowerCase() === 'localhost';
+    if (!marked) return 'gitlab.com';
+    if (/[@?#\\]/.test(segment)) return null;
+    try {
+        const url = new URL(`https://${segment}/`);
+        return url.host || null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Whether a GitLab server field names a self-hosted instance (see
+ * `gitlabInstanceOf`). The self-signed certificate option is offered only
+ * for such an instance.
  */
 export function namesSelfHostedGitLab(server: string): boolean {
-    const segment = server.trim().replace(/^https?:\/\//i, '').split('/')[0].toLowerCase();
-    const marked = /[.:[]/.test(segment) || segment === 'localhost';
-    if (!marked) return false;
-    const host = segment.replace(/:443$/, '');
-    return host !== 'gitlab.com';
+    const instance = gitlabInstanceOf(server);
+    return instance !== null && instance !== 'gitlab.com';
 }

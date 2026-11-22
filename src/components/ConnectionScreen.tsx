@@ -14,7 +14,7 @@ import { latestSettledBackendSwapToken, swapBackend } from '../hooks/useOAuth2';
 import { ProtonModeSwitchDialog } from './ProtonModeSwitchDialog';
 import { protonModeOf, runProtonModeSwitch, type ProtonSwitchPlan } from '../utils/protonModeSwitch';
 import { pickFile, pickSave } from '../utils/pickPath';
-import { namesSelfHostedGitLab } from '../utils/gitlabWeb';
+import { gitlabInstanceOf, namesSelfHostedGitLab } from '../utils/gitlabWeb';
 import { FolderOpen, ChevronDown, Save, Copy, Cloud, Check, Settings, Clock, Folder, X, Lock, Eye, EyeOff, ExternalLink, Shield, ShieldCheck, KeyRound, Loader2, Image, Info, Pencil, Link2, ArrowRightLeft, RefreshCw, Usb } from 'lucide-react';
 import { ConnectionParams, ProviderType, ProviderOptions, DeviceFingerprint, isOAuthProvider, isAeroCloudProvider, isFourSharedProvider, isNativeApiProtocol, isSshProtocol, providerServesQuota, providerSupportsCryptOverlay, ServerProfile } from '../types';
 import type { CryptSecretForm } from '../types';
@@ -5887,6 +5887,11 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             <p className="text-xs text-gray-400 mt-1.5">
                                                 {t('gitlab.projectPathHint')}
                                             </p>
+                                            {connectionParams.server.includes('/') && gitlabInstanceOf(connectionParams.server) && (
+                                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1" data-testid="gitlab-token-destination">
+                                                    {t('gitlab.tokenGoesTo', { instance: gitlabInstanceOf(connectionParams.server) ?? '' })}
+                                                </p>
+                                            )}
                                         </div>
                                         <div>
                                             <label className="block text-sm font-medium mb-1.5">{t('gitlab.accessToken')}</label>

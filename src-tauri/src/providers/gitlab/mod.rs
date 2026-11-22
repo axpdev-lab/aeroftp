@@ -1453,73 +1453,38 @@ mod tests {
     /// localhost or by an IP address is that instance, port kept: on 4.2.7
     /// these sent the token to gitlab.com. A bare name stays a project owner
     /// on gitlab.com, and a segment that names an instance but is not a valid
-    /// address is refused, never read as an owner.
+    /// address is refused, never read as an owner. The table is shared with
+    /// `gitlabInstanceOf` in the connection form, so the two rules cannot
+    /// drift apart.
     #[test]
     fn a_self_hosted_host_field_names_its_instance_never_gitlab_com() {
-        for (host, api, project) in [
-            (
-                "localhost:8080/group/project",
-                "https://localhost:8080/api/v4",
-                "group/project",
-            ),
-            ("LOCALHOST/team/svc", "https://localhost/api/v4", "team/svc"),
-            (
-                "gitlab:8443/group/project",
-                "https://gitlab:8443/api/v4",
-                "group/project",
-            ),
-            (
-                "127.0.0.1:8080/group/project",
-                "https://127.0.0.1:8080/api/v4",
-                "group/project",
-            ),
-            (
-                "10.0.0.5/group/sub/project",
-                "https://10.0.0.5/api/v4",
-                "group/sub/project",
-            ),
-            (
-                "[::1]:8443/group/project",
-                "https://[::1]:8443/api/v4",
-                "group/project",
-            ),
-            (
-                "https://[::1]:8443/group/project",
-                "https://[::1]:8443/api/v4",
-                "group/project",
-            ),
-            (
-                "gitlab.com:443/group/project",
-                "https://gitlab.com/api/v4",
-                "group/project",
-            ),
-            ("owner/repo", "https://gitlab.com/api/v4", "owner/repo"),
-            (
-                "gitlab/group/project",
-                "https://gitlab.com/api/v4",
-                "gitlab/group/project",
-            ),
-        ] {
-            assert_eq!(
-                parse_host_field(host).unwrap(),
-                (api.to_string(), project.to_string()),
-                "{host}"
-            );
-        }
-        for host in [
-            "::1/group/project",
-            "[::1/group/project",
-            "gitlab:99999/group/project",
-            "user@git.example.com/group/project",
-            ":8443/group/project",
-        ] {
-            assert!(parse_host_field(host).is_err(), "{host}");
+        let table: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../src/shared/gitlab-instance-cases.json"
+        ))
+        .expect("the shared table parses");
+        let cases = table["cases"].as_array().expect("cases");
+        assert!(cases.iter().any(|case| case["instance"].is_null()));
+        for case in cases {
+            let server = case["server"].as_str().unwrap();
+            match case["instance"].as_str() {
+                Some(instance) => assert_eq!(
+                    parse_host_field(server).unwrap(),
+                    (
+                        format!("https://{instance}/api/v4"),
+                        case["project"].as_str().unwrap().to_string()
+                    ),
+                    "{server}"
+                ),
+                None => assert!(parse_host_field(server).is_err(), "{server}"),
+            }
         }
     }
 
     /// The proof that nothing reaches gitlab.com: a connect to a saved
     /// profile naming a local instance by IP, by localhost or by IPv6 dials
-    /// that listener (the TLS handshake then fails on it, which is fine).
+    /// that listener. The connect is stopped at the first accept, so the
+    /// client's retry budget (the TLS handshake fails on the listener) never
+    /// runs and the test takes milliseconds.
     #[tokio::test]
     async fn a_self_hosted_instance_named_by_ip_or_localhost_is_dialed_itself() {
         use std::sync::atomic::{AtomicUsize, Ordering};
@@ -1552,9 +1517,12 @@ mod tests {
             let config = GitLabConfig::from_provider_config(&config).unwrap();
             assert_eq!(config.api_base, format!("https://{name}:{port}/api/v4"));
             let mut provider = GitLabProvider::new(config).unwrap();
-            let outcome =
-                tokio::time::timeout(std::time::Duration::from_secs(60), provider.connect()).await;
-            assert!(matches!(outcome, Ok(Err(_))), "{name}: {outcome:?}");
+            let connect = tokio::spawn(async move { provider.connect().await });
+            let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
+            while accepted.load(Ordering::SeqCst) == 0 && tokio::time::Instant::now() < deadline {
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            }
+            connect.abort();
             assert!(accepted.load(Ordering::SeqCst) > 0, "{name}: no dial");
             server.abort();
         }

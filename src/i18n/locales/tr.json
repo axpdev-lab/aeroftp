@@ -5952,7 +5952,8 @@
             "mrTitle": "MR başlığı",
             "mrBody": "Açıklama (isteğe bağlı)",
             "sourceCode": "Kaynak kodu",
-            "downloadAssetTitle": "{name} indir"
+            "downloadAssetTitle": "{name} indir",
+            "tokenGoesTo": "Belirteç {instance} adresine gönderilecek"
         },
         "mcp": {
             "title": "MCP Server",

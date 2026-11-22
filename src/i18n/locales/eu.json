@@ -5971,7 +5971,8 @@
             "mrTitle": "MR izenburua",
             "mrBody": "Deskribapena (aukerakoa)",
             "sourceCode": "Iturburu-kodea",
-            "downloadAssetTitle": "Deskargatu {name}"
+            "downloadAssetTitle": "Deskargatu {name}",
+            "tokenGoesTo": "Tokena {instance} zerbitzarira bidaliko da"
         },
         "mcp": {
             "title": "MCP Server",

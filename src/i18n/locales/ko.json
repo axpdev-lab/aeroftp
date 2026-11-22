@@ -5952,7 +5952,8 @@
             "mrTitle": "MR 제목",
             "mrBody": "설명 (선택 사항)",
             "sourceCode": "소스 코드",
-            "downloadAssetTitle": "{name} 다운로드"
+            "downloadAssetTitle": "{name} 다운로드",
+            "tokenGoesTo": "토큰이 {instance}(으)로 전송됩니다"
         },
         "mcp": {
             "title": "MCP Server",
