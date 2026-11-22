@@ -14,6 +14,7 @@ import { latestSettledBackendSwapToken, swapBackend } from '../hooks/useOAuth2';
 import { ProtonModeSwitchDialog } from './ProtonModeSwitchDialog';
 import { protonModeOf, runProtonModeSwitch, type ProtonSwitchPlan } from '../utils/protonModeSwitch';
 import { pickFile, pickSave } from '../utils/pickPath';
+import { namesSelfHostedGitLab } from '../utils/gitlabWeb';
 import { FolderOpen, ChevronDown, Save, Copy, Cloud, Check, Settings, Clock, Folder, X, Lock, Eye, EyeOff, ExternalLink, Shield, ShieldCheck, KeyRound, Loader2, Image, Info, Pencil, Link2, ArrowRightLeft, RefreshCw, Usb } from 'lucide-react';
 import { ConnectionParams, ProviderType, ProviderOptions, DeviceFingerprint, isOAuthProvider, isAeroCloudProvider, isFourSharedProvider, isNativeApiProtocol, isSshProtocol, providerServesQuota, providerSupportsCryptOverlay, ServerProfile } from '../types';
 import type { CryptSecretForm } from '../types';
@@ -5952,7 +5953,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     </button>
                                                 </div>
                                                 {/* Self-hosted TLS toggle: only show when host looks self-hosted */}
-                                                {connectionParams.server && !connectionParams.server.includes('gitlab.com') && connectionParams.server.includes('.') && (
+                                                {connectionParams.server && namesSelfHostedGitLab(connectionParams.server) && (
                                                     <label className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 cursor-pointer">
                                                         <input
                                                             type="checkbox"

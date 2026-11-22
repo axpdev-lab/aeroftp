@@ -19810,6 +19810,23 @@ mod tests {
             gitlab("git.example.com/group/project"),
             "https://git.example.com/api/v4"
         );
+        // A saved profile naming a local instance keeps its port and its
+        // instance: 4.2.7 dropped the port of `127.0.0.1:8080` and sent the
+        // others to gitlab.com.
+        for (server, api) in [
+            (
+                "127.0.0.1:8080/group/project",
+                "https://127.0.0.1:8080/api/v4",
+            ),
+            (
+                "localhost:8080/group/project",
+                "https://localhost:8080/api/v4",
+            ),
+            ("gitlab:8443/group/project", "https://gitlab:8443/api/v4"),
+            ("[::1]:8443/group/project", "https://[::1]:8443/api/v4"),
+        ] {
+            assert_eq!(gitlab(server), api, "{server}");
+        }
         assert_eq!(
             params("immich", "https://photos.example:2283")
                 .to_provider_config()

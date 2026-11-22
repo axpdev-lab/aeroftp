@@ -23,3 +23,18 @@ export async function openOnGitLab(
         throw new Error('Could not open the GitLab page in the browser');
     }
 }
+
+/**
+ * Whether a GitLab server field names a self-hosted instance, by the rule the
+ * backend uses (`instance_authority` in `providers/gitlab/mod.rs`): its first
+ * segment holds a dot, is `localhost`, carries a port or is an IP address,
+ * and is not gitlab.com. `owner/repo` is a project on gitlab.com. The
+ * self-signed certificate option is offered only for such an instance.
+ */
+export function namesSelfHostedGitLab(server: string): boolean {
+    const segment = server.trim().replace(/^https?:\/\//i, '').split('/')[0].toLowerCase();
+    const marked = /[.:[]/.test(segment) || segment === 'localhost';
+    if (!marked) return false;
+    const host = segment.replace(/:443$/, '');
+    return host !== 'gitlab.com';
+}

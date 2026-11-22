@@ -3,7 +3,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import appSource from '../App.tsx?raw';
-import { openOnGitLab } from './gitlabWeb';
+import { namesSelfHostedGitLab, openOnGitLab } from './gitlabWeb';
 
 /** The GitLab single-selection block of the remote context menu, from its guard to its closing brace. */
 const gitlabMenuBlock = (src: string): string => {
@@ -53,5 +53,35 @@ describe('View on GitLab', () => {
         // window.open does not reach the browser from the Tauri 2 webview
         // (see utils/openUrl.ts): View on GitHub and File History used it.
         expect(appSource).not.toMatch(/window\.open\(/);
+    });
+});
+
+/**
+ * The self-signed certificate option follows the backend's instance rule: a
+ * local instance named by localhost, an IP, IPv6 or a short name with its
+ * port is self-hosted (before, only a name with a dot was), and `owner/repo`
+ * or gitlab.com is not.
+ */
+describe('namesSelfHostedGitLab', () => {
+    it('reads the server field as the backend does', () => {
+        for (const server of [
+            'git.example.com/group/project',
+            'https://git.example.com:8443/group/project',
+            'localhost:8443/group/project',
+            'LOCALHOST/group/project',
+            'gitlab:8443/group/project',
+            '127.0.0.1:8080/group/project',
+            '[::1]:8443/group/project',
+        ]) {
+            expect(namesSelfHostedGitLab(server), server).toBe(true);
+        }
+        for (const server of [
+            'owner/repo',
+            'gitlab/group/project',
+            'gitlab.com/group/project',
+            'https://GitLab.com:443/group/project',
+        ]) {
+            expect(namesSelfHostedGitLab(server), server).toBe(false);
+        }
     });
 });

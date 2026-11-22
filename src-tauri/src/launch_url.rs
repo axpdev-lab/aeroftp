@@ -667,8 +667,10 @@ pub fn github_repository(target: &LaunchTarget) -> Result<(String, Option<String
 /// `?branch=`): `gitlab://gitlab.com/group[/subgroup]/project[@branch]`. The
 /// whole path is the project, so the URL opens it at its root. A port stays
 /// in the host (`git.example.com:8443/group/project`), the only place the
-/// backend reads one, and a host without a dot is refused: the backend would
-/// read it as a project owner on gitlab.com and send the token there.
+/// backend reads one. The host must be one the backend reads as an instance
+/// (a dot, `localhost`, a port or an IP address): a bare name is refused,
+/// because the backend would read it as a project owner on gitlab.com and
+/// send the token there.
 pub fn gitlab_project(target: &LaunchTarget) -> Result<(String, Option<String>), String> {
     const SHAPE: &str =
         "GitLab URL must be gitlab://host/group/project or gitlab://host/group/project@branch";
@@ -685,18 +687,22 @@ pub fn gitlab_project(target: &LaunchTarget) -> Result<(String, Option<String>),
     if target.host.is_empty() || !project.contains('/') {
         return Err(SHAPE.to_string());
     }
-    if !target.host.contains('.') {
-        return Err(format!(
-            "GitLab URL host '{}' must be the instance's full name (gitlab.com, git.example.com): \
-             a name without a dot would be read as a project on gitlab.com",
-            target.host
-        ));
-    }
-    let branch = repository_branch(target, branch)?;
     let host = match target.port {
         Some(port) => format!("{}:{port}", target.host),
         None => target.host.clone(),
     };
+    if !matches!(
+        crate::providers::gitlab::instance_authority(&host),
+        Ok(Some(_))
+    ) {
+        return Err(format!(
+            "GitLab URL host '{}' must name the instance (gitlab.com, git.example.com, localhost, \
+             10.0.0.5, [::1], or a name with its port such as gitlab:8443): a bare name would be \
+             read as a project on gitlab.com",
+            target.host
+        ));
+    }
+    let branch = repository_branch(target, branch)?;
     Ok((format!("{host}/{project}"), branch))
 }
 
@@ -1257,8 +1263,39 @@ mod tests {
             api_base("gitlab://gitlab.com/group/project").unwrap(),
             ("https://gitlab.com/api/v4".into(), "group/project".into())
         );
-        assert!(api_base("gitlab://gitlab/group/project").is_err());
-        assert!(api_base("gitlab://gitlab:8443/group/project").is_err());
+        // A self-hosted instance named by a short name with its port, by
+        // localhost or by an IP address is that instance, port kept.
+        for (raw, api) in [
+            (
+                "gitlab://gitlab:8443/group/project",
+                "https://gitlab:8443/api/v4",
+            ),
+            (
+                "gitlab://localhost:8080/group/project",
+                "https://localhost:8080/api/v4",
+            ),
+            (
+                "gitlab://localhost/group/project",
+                "https://localhost/api/v4",
+            ),
+            (
+                "gitlab://127.0.0.1:8080/group/project",
+                "https://127.0.0.1:8080/api/v4",
+            ),
+            (
+                "gitlab://[::1]:8443/group/project",
+                "https://[::1]:8443/api/v4",
+            ),
+        ] {
+            assert_eq!(
+                api_base(raw).unwrap(),
+                (api.into(), "group/project".into()),
+                "{raw}"
+            );
+        }
+        // A bare name is a project owner to the backend: refused, never gitlab.com.
+        let err = api_base("gitlab://gitlab/group/project").unwrap_err();
+        assert!(err.contains("must name the instance"), "{err}");
         // An encoded delimiter never comes back into the host once decoded.
         for raw in [
             "gitlab://gitlab%2Fother.example/group/project",
