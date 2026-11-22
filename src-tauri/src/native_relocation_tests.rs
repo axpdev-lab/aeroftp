@@ -4054,3 +4054,58 @@ fn a_write_another_open_scan_shares_is_left_only_for_the_same_account() {
     settle(&b);
     assert!(!has_row(&accounts.conn, accounts.source.id, key));
 }
+
+/// The move of a pre-partition install's list holds no list lock: a settle
+/// in a database it has not run on yet (a scan with no account keeps its
+/// ledger there) settles nothing, so it cannot remove a write for a profile
+/// the move lists meanwhile; once the move ran, the next settle does.
+#[test]
+fn a_settle_waits_for_the_move_of_the_legacy_list() {
+    if !in_isolated_child("a_settle_waits_for_the_move_of_the_legacy_list") {
+        return;
+    }
+    let accounts = Accounts::open();
+    let runtime = bridge_runtime();
+    let imported = scan_ftp_remotes(&runtime, &["files"]).unwrap();
+    let id = imported["scanId"].as_str().unwrap().to_string();
+    let password = format!("server_{}", scanned_id(&imported, "files"));
+    assert!(vault_value(&password).is_some());
+    let version: String = accounts
+        .conn
+        .query_row(
+            "SELECT value FROM global_state WHERE key = ?1",
+            params![SCHEMA_VERSION_KEY],
+            |row| row.get(0),
+        )
+        .unwrap();
+    accounts
+        .conn
+        .execute(
+            "DELETE FROM global_state WHERE key = ?1",
+            params![SCHEMA_VERSION_KEY],
+        )
+        .unwrap();
+    settle_scan(&runtime, Some(&id)).unwrap();
+    assert!(
+        !ledger_rows(&id).is_empty(),
+        "nothing is settled before the move ran"
+    );
+    assert!(
+        vault_value(&password).is_some(),
+        "the write stays meanwhile"
+    );
+    accounts
+        .conn
+        .execute(
+            "INSERT INTO global_state(key, value, updated_at) VALUES (?1, ?2, 0)",
+            params![SCHEMA_VERSION_KEY, version],
+        )
+        .unwrap();
+    settle_scan(&runtime, None).unwrap();
+    assert_eq!(
+        ledger_rows(&id),
+        Vec::new(),
+        "the next settle after the move settles it"
+    );
+    assert_eq!(vault_value(&password), None);
+}

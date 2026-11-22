@@ -700,6 +700,13 @@ fn current_schema_version(conn: &Connection) -> Result<Option<String>, String> {
     .map_err(|e| format!("Read schema version: {e}"))
 }
 
+/// Whether the database `conn` has been through the move of the legacy
+/// payloads ([`migrate_legacy_payloads`]), which sets the schema version in
+/// the transaction that inserts the list and never runs again after.
+pub(crate) fn legacy_payloads_moved(conn: &Connection) -> Result<bool, String> {
+    Ok(current_schema_version(conn)?.as_deref() == Some(SCHEMA_VERSION))
+}
+
 pub(crate) fn active_user_id(conn: &Connection) -> Result<Option<i64>, String> {
     let value = conn
         .query_row(
@@ -1422,6 +1429,11 @@ pub fn migrate_legacy_payloads(
             .map_err(|e| format!("Migrate legacy profile: {e}"))?;
         migrated_profiles += inserted;
     }
+    // A bridge scan with no account yet keeps its ledger in this database
+    // before the move (it opens it through `open_or_init_cli`, schema but no
+    // version): the list moved adopts the OAuth apps its profiles use, as
+    // every other list writer's does.
+    crate::bridge_import_scan::adopt_oauth_apps(&tx, &legacy_profiles)?;
 
     let mut migrated_settings_scopes = 0usize;
     if let Some(settings) = legacy_settings.as_ref() {
@@ -15936,6 +15948,56 @@ mod tests {
         )
         .expect("migrate");
         conn
+    }
+
+    /// A bridge scan with no account yet writes its ledger into a database
+    /// that has its schema and no schema version. The move of the legacy list
+    /// that follows adopts the OAuth apps its profiles use, as every other
+    /// list writer does, so the scan's settle cannot take back an app a moved
+    /// profile uses; the record of an app no moved profile uses stays.
+    #[test]
+    fn the_move_of_a_legacy_list_adopts_the_oauth_apps_its_profiles_use() {
+        let _guard = test_lock();
+        clear_user_session();
+        let mut conn = Connection::open_in_memory().expect("memory db");
+        init_db_schema(&conn).unwrap();
+        for (entry, slot) in [
+            (
+                "bridge_import_entry_scan-a_0000000000",
+                "oauth_dropbox_client_id",
+            ),
+            (
+                "bridge_import_entry_scan-a_0000000001",
+                "oauth_box_client_id",
+            ),
+        ] {
+            let written = json!({"profile": "scanned", "key": slot, "kind": "oauth_app",
+                                 "mac": "m", "holders": ["scanned"]});
+            conn.execute(
+                "INSERT INTO global_state(key, value, updated_at) VALUES (?1, ?2, 0)",
+                params![entry, written.to_string()],
+            )
+            .unwrap();
+        }
+        let profiles = json!([{"id": "legacy-dropbox", "name": "D", "protocol": "dropbox",
+                               "host": "", "port": 0}])
+        .to_string();
+        migrate_legacy_payloads(&mut conn, Some(&profiles), None, &test_root()).unwrap();
+        let left: Vec<String> = conn
+            .prepare(
+                "SELECT key FROM global_state
+                 WHERE substr(key, 1, 20) = 'bridge_import_entry_' ORDER BY key",
+            )
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert_eq!(
+            left,
+            vec!["bridge_import_entry_scan-a_0000000001".to_string()],
+            "the moved Dropbox profile adopts its app; the Box record stays"
+        );
     }
 
     #[test]

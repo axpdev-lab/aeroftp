@@ -475,14 +475,13 @@ fn oauth_app_slots(profiles: &[serde_json::Value]) -> Vec<String> {
 /// any scan filled, which a settle would take back when the scan's own
 /// profiles are not saved, are no longer the scan's to remove once a profile
 /// of another scan's confirm, or of any save, uses the app. Called by every
-/// writer of a profile list that a scan's record can meet
-/// ([`crate::user_partitions`]), inside its transaction, under the list lock
-/// a settle holds too ([`settle_ledger`]), so a list saved and a settle
-/// cannot interleave. The one-time move of a pre-partition install's list
-/// ([`crate::user_partitions::migrate_legacy_payloads`]) does not call it: it
-/// runs when the database is opened, before a scan can write its header
-/// there ([`Scan::begin`] opens it through
-/// [`crate::user_partitions::open_or_init_cli`]), so no record exists yet.
+/// writer of a profile list ([`crate::user_partitions`]), the one-time move
+/// of a pre-partition install's list included
+/// ([`crate::user_partitions::migrate_legacy_payloads`]: a scan with no
+/// account yet keeps its ledger in the database before that move), inside
+/// its transaction. Every other list writer holds the list lock a settle
+/// holds too ([`settle_ledger`]), and a settle waits for the move, so a list
+/// saved and a settle cannot interleave.
 pub(crate) fn adopt_oauth_apps(
     tx: &Connection,
     profiles: &[serde_json::Value],
@@ -815,6 +814,13 @@ fn settle_ledger(store: &CredentialStore, id: &str) -> Result<(), String> {
         .take()
     {
         hook();
+    }
+    // A database the legacy move has not run on yet (a scan with no account
+    // keeps its ledger there): the move inserts a list without the list lock,
+    // so this settle could not tell a profile it moves meanwhile. Nothing is
+    // settled until it ran, and the ledger waits for the next settle.
+    if !crate::user_partitions::legacy_payloads_moved(&conn)? {
+        return Ok(());
     }
     let header_key = format!("{LEDGER_PREFIX}{id}");
     let header: Option<String> = conn
