@@ -4962,7 +4962,7 @@
             "relocateError": "Seva haikuweza kuhamishwa: {error}",
             "relocateWrongPassword": "Nenosiri si sahihi kwa {user}.",
             "relocateSecretsNotCopied": "\"{name}\" imefika kwa {user}, lakini nywila au tokeni zilizohifadhiwa hazikufika, kwa hivyo itaziomba tena huko.",
-            "relocateMovedCleanupFailed": "\"{name}\" imehamishiwa kwa {user}, lakini kipindi chake cha Proton Drive hakikuweza kuondolewa kwenye akaunti hii."
+            "relocateMovedCleanupFailed": "\"{name}\" imehamishiwa kwa {user}, lakini kipindi chake cha Proton Drive hakikuweza kuondolewa kwenye akaunti ya chanzo."
         },
         "cyberTools": {
             "title": "Zana za Usalama",

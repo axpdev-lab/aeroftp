@@ -4962,7 +4962,7 @@
             "relocateError": "Hindi mailipat ang server: {error}",
             "relocateWrongPassword": "Maling password para sa {user}.",
             "relocateSecretsNotCopied": "Nakarating ang \"{name}\" sa {user}, pero hindi nakarating ang naka-save na password o token, kaya hihingin ang mga ito muli roon.",
-            "relocateMovedCleanupFailed": "Inilipat ang \"{name}\" kay {user}, ngunit hindi naalis ang Proton Drive session nito sa account na ito."
+            "relocateMovedCleanupFailed": "Inilipat ang \"{name}\" kay {user}, ngunit hindi naalis ang Proton Drive session nito sa pinagmulang account."
         },
         "cyberTools": {
             "title": "Security Tools",

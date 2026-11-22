@@ -6,7 +6,7 @@
         "enHash is the SHA-256 of the flattened current en.json. Change English and run --write in the same commit.",
         "A value listed here fails the gate when a locale still equals it and the current English does not."
     ],
-    "enHash": "5e8df9fe395e03e0c2f057212d3b838ffb4f7d9c46c6bf3da9d465febe977e3d",
+    "enHash": "35e132e72896d3f8c7015484b74d593e1d8db9a1319af868a555bf17ec554e4e",
     "former": {
         "about.aiCredits": [
             "AI: Claude Opus 4.5 + support models"
@@ -695,6 +695,9 @@
         ],
         "providers.versioning": [
             "Versioning"
+        ],
+        "savedServers.relocateMovedCleanupFailed": [
+            "Moved \"{name}\" to {user}, but its Proton Drive session could not be removed from this account."
         ],
         "savedServers.s3Provider": [
             "{bucket} — {provider}",

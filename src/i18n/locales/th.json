@@ -4962,7 +4962,7 @@
             "relocateError": "ไม่สามารถถ่ายโอนเซิร์ฟเวอร์ได้: {error}",
             "relocateWrongPassword": "รหัสผ่านไม่ถูกต้องสำหรับ {user}",
             "relocateSecretsNotCopied": "\"{name}\" ไปถึง {user} แล้ว แต่รหัสผ่านหรือโทเค็นที่บันทึกไว้ไม่ได้ตามไปด้วย จึงจะขอใหม่อีกครั้งที่นั่น",
-            "relocateMovedCleanupFailed": "ย้าย \"{name}\" ไปให้ {user} แล้ว แต่ไม่สามารถลบเซสชัน Proton Drive ของรายการนี้ออกจากบัญชีนี้ได้"
+            "relocateMovedCleanupFailed": "ย้าย \"{name}\" ไปให้ {user} แล้ว แต่ไม่สามารถลบเซสชัน Proton Drive ของรายการนี้ออกจากบัญชีต้นทางได้"
         },
         "cyberTools": {
             "title": "เครื่องมือความปลอดภัย",

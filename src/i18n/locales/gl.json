@@ -4962,7 +4962,7 @@
             "relocateError": "Non se puido transferir o servidor: {error}",
             "relocateWrongPassword": "Contrasinal incorrecto para {user}.",
             "relocateSecretsNotCopied": "«{name}» chegou a {user}, pero o contrasinal ou o token gardados non, así que os volverá pedir alí.",
-            "relocateMovedCleanupFailed": "Moveuse \"{name}\" a {user}, pero non se puido eliminar a súa sesión de Proton Drive desta conta."
+            "relocateMovedCleanupFailed": "Moveuse \"{name}\" a {user}, pero non se puido eliminar a súa sesión de Proton Drive da conta de orixe."
         },
         "cyberTools": {
             "title": "Ferramentas de seguridade",

@@ -4962,7 +4962,7 @@
             "relocateError": "Sunucu aktarılamadı: {error}",
             "relocateWrongPassword": "{user} için yanlış parola.",
             "relocateSecretsNotCopied": "\"{name}\" {user} hesabına ulaştı, ancak kayıtlı parola veya token ulaşmadı, bu yüzden orada yeniden istenecek.",
-            "relocateMovedCleanupFailed": "\"{name}\", {user} kullanıcısına taşındı ancak Proton Drive oturumu bu hesaptan kaldırılamadı."
+            "relocateMovedCleanupFailed": "\"{name}\", {user} kullanıcısına taşındı ancak Proton Drive oturumu kaynak hesaptan kaldırılamadı."
         },
         "cyberTools": {
             "title": "Güvenlik Araçları",

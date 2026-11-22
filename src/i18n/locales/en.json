@@ -3825,7 +3825,7 @@
             "relocateError": "Could not transfer the server: {error}",
             "relocateWrongPassword": "Wrong password for {user}.",
             "relocateSecretsNotCopied": "{name} reached {user}, but its saved password or token did not, so it will ask for them again there.",
-            "relocateMovedCleanupFailed": "Moved \"{name}\" to {user}, but its Proton Drive session could not be removed from this account."
+            "relocateMovedCleanupFailed": "Moved \"{name}\" to {user}, but its Proton Drive session could not be removed from the source account."
         },
         "search": {
             "clear": "Clear search",

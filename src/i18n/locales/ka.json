@@ -4962,7 +4962,7 @@
             "relocateError": "სერვერის გადატანა ვერ მოხერხდა: {error}",
             "relocateWrongPassword": "არასწორი პაროლი {user}-ისთვის.",
             "relocateSecretsNotCopied": "„{name}“ {user}-ს მიაღწია, მაგრამ შენახული პაროლი ან ტოკენი ვერ მივიდა, ამიტომ იქ მათ ხელახლა მოითხოვს.",
-            "relocateMovedCleanupFailed": "\"{name}\" გადატანილია {user}-თან, მაგრამ მისი Proton Drive სესიის ამ ანგარიშიდან წაშლა ვერ მოხერხდა."
+            "relocateMovedCleanupFailed": "\"{name}\" გადატანილია {user}-თან, მაგრამ მისი Proton Drive სესიის საწყისი ანგარიშიდან წაშლა ვერ მოხერხდა."
         },
         "cyberTools": {
             "title": "უსაფრთხოების ხელსაწყოები",

@@ -4962,7 +4962,7 @@
             "relocateError": "Serveren kunne ikke overføres: {error}",
             "relocateWrongPassword": "Forkert adgangskode til {user}.",
             "relocateSecretsNotCopied": "\"{name}\" nåede frem til {user}, men den gemte adgangskode eller det gemte token kom ikke med, så der bliver spurgt efter dem igen dér.",
-            "relocateMovedCleanupFailed": "\"{name}\" blev flyttet til {user}, men dens Proton Drive-session kunne ikke fjernes fra denne konto."
+            "relocateMovedCleanupFailed": "\"{name}\" blev flyttet til {user}, men dens Proton Drive-session kunne ikke fjernes fra kildekontoen."
         },
         "cyberTools": {
             "title": "Sikkerhedsværktøjer",

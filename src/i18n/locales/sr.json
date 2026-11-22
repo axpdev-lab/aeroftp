@@ -4962,7 +4962,7 @@
             "relocateError": "Сервер није могуће пренети: {error}",
             "relocateWrongPassword": "Погрешна лозинка за {user}.",
             "relocateSecretsNotCopied": "„{name}“ је стигао на {user}, али сачувана лозинка или токен нису, па ће их тамо поново затражити.",
-            "relocateMovedCleanupFailed": "\"{name}\" је премештен код корисника {user}, али се његова Proton Drive сесија није могла уклонити са овог налога."
+            "relocateMovedCleanupFailed": "\"{name}\" је премештен код корисника {user}, али се његова Proton Drive сесија није могла уклонити са изворног налога."
         },
         "cyberTools": {
             "title": "Безбедносни алати",

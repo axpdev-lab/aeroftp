@@ -4962,7 +4962,7 @@
             "relocateError": "No s'ha pogut transferir el servidor: {error}",
             "relocateWrongPassword": "Contrasenya incorrecta per a {user}.",
             "relocateSecretsNotCopied": "«{name}» ha arribat a {user}, però la contrasenya o el token desats no, així que els tornarà a demanar allà.",
-            "relocateMovedCleanupFailed": "S'ha mogut \"{name}\" a {user}, però no s'ha pogut eliminar la seva sessió de Proton Drive d'aquest compte."
+            "relocateMovedCleanupFailed": "S'ha mogut \"{name}\" a {user}, però no s'ha pogut eliminar la seva sessió de Proton Drive del compte d'origen."
         },
         "cyberTools": {
             "title": "Eines de seguretat",

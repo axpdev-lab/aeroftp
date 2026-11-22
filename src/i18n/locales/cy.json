@@ -4962,7 +4962,7 @@
             "relocateError": "Methu trosglwyddo'r gweinydd: {error}",
             "relocateWrongPassword": "Cyfrinair anghywir ar gyfer {user}.",
             "relocateSecretsNotCopied": "Cyrhaeddodd \"{name}\" {user}, ond ni chyrhaeddodd y cyfrinair neu'r token a gadwyd, felly bydd yn gofyn amdanynt eto yno.",
-            "relocateMovedCleanupFailed": "Symudwyd \"{name}\" i {user}, ond nid oedd modd dileu ei sesiwn Proton Drive o'r cyfrif hwn."
+            "relocateMovedCleanupFailed": "Symudwyd \"{name}\" i {user}, ond nid oedd modd dileu ei sesiwn Proton Drive o'r cyfrif ffynhonnell."
         },
         "cyberTools": {
             "title": "Offer diogelwch",

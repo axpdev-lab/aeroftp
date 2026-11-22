@@ -4962,7 +4962,7 @@
             "relocateError": "Δεν ήταν δυνατή η μεταφορά του διακομιστή: {error}",
             "relocateWrongPassword": "Λάθος κωδικός για {user}.",
             "relocateSecretsNotCopied": "Το «{name}» έφτασε στο {user}, αλλά ο αποθηκευμένος κωδικός ή το token δεν έφτασαν, οπότε θα τα ζητήσει ξανά εκεί.",
-            "relocateMovedCleanupFailed": "Το \"{name}\" μεταφέρθηκε στον χρήστη {user}, αλλά η συνεδρία του Proton Drive δεν ήταν δυνατό να αφαιρεθεί από αυτόν τον λογαριασμό."
+            "relocateMovedCleanupFailed": "Το \"{name}\" μεταφέρθηκε στον χρήστη {user}, αλλά η συνεδρία του Proton Drive δεν ήταν δυνατό να αφαιρεθεί από τον λογαριασμό προέλευσης."
         },
         "cyberTools": {
             "title": "Εργαλεία Ασφαλείας",

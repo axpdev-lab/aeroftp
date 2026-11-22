@@ -4962,7 +4962,7 @@
             "relocateError": "No se pudo transferir el servidor: {error}",
             "relocateWrongPassword": "Contraseña incorrecta para {user}.",
             "relocateSecretsNotCopied": "«{name}» llegó a {user}, pero su contraseña o token guardados no, así que los volverá a pedir allí.",
-            "relocateMovedCleanupFailed": "Se movió \"{name}\" a {user}, pero no se pudo eliminar su sesión de Proton Drive de esta cuenta."
+            "relocateMovedCleanupFailed": "Se movió \"{name}\" a {user}, pero no se pudo eliminar su sesión de Proton Drive de la cuenta de origen."
         },
         "cyberTools": {
             "title": "Herramientas de seguridad",

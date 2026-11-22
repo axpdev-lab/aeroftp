@@ -4962,7 +4962,7 @@
             "relocateError": "Serverul nu a putut fi transferat: {error}",
             "relocateWrongPassword": "Parolă greșită pentru {user}.",
             "relocateSecretsNotCopied": "„{name}” a ajuns la {user}, dar parola sau tokenul salvate nu, așa că le va cere din nou acolo.",
-            "relocateMovedCleanupFailed": "\"{name}\" a fost mutat la {user}, dar sesiunea sa Proton Drive nu a putut fi eliminată din acest cont."
+            "relocateMovedCleanupFailed": "\"{name}\" a fost mutat la {user}, dar sesiunea sa Proton Drive nu a putut fi eliminată din contul sursă."
         },
         "cyberTools": {
             "title": "Instrumente de Securitate",

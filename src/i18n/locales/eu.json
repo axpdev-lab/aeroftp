@@ -4962,7 +4962,7 @@
             "relocateError": "Ezin izan da zerbitzaria transferitu: {error}",
             "relocateWrongPassword": "Pasahitz okerra {user}(r)entzat.",
             "relocateSecretsNotCopied": "«{name}» {user}(e)ra iritsi da, baina gordetako pasahitza edo tokena ez, beraz, han berriro eskatuko ditu.",
-            "relocateMovedCleanupFailed": "\"{name}\" {user} erabiltzailearengana eraman da, baina bere Proton Drive saioa ezin izan da kontu honetatik kendu."
+            "relocateMovedCleanupFailed": "\"{name}\" {user} erabiltzailearengana eraman da, baina bere Proton Drive saioa ezin izan da jatorrizko kontutik kendu."
         },
         "cyberTools": {
             "title": "Segurtasun tresnak",

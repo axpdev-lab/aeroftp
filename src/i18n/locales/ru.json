@@ -4962,7 +4962,7 @@
             "relocateError": "Не удалось перенести сервер: {error}",
             "relocateWrongPassword": "Неверный пароль для {user}.",
             "relocateSecretsNotCopied": "«{name}» оказался в {user}, но сохранённые пароль или токен не попали туда, поэтому там они будут запрошены снова.",
-            "relocateMovedCleanupFailed": "\"{name}\" перемещён к пользователю {user}, но его сеанс Proton Drive не удалось удалить из этой учётной записи."
+            "relocateMovedCleanupFailed": "\"{name}\" перемещён к пользователю {user}, но его сеанс Proton Drive не удалось удалить из исходной учётной записи."
         },
         "cyberTools": {
             "title": "Инструменты безопасности",

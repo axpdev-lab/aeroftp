@@ -4962,7 +4962,7 @@
             "relocateError": "Palvelinta ei voitu siirtää: {error}",
             "relocateWrongPassword": "Väärä salasana tilille {user}.",
             "relocateSecretsNotCopied": "”{name}” pääsi tilille {user}, mutta sen tallennettu salasana tai avain ei päässyt, joten se kysyy ne siellä uudelleen.",
-            "relocateMovedCleanupFailed": "\"{name}\" siirrettiin käyttäjälle {user}, mutta sen Proton Drive -istuntoa ei voitu poistaa tältä tililtä."
+            "relocateMovedCleanupFailed": "\"{name}\" siirrettiin käyttäjälle {user}, mutta sen Proton Drive -istuntoa ei voitu poistaa lähdetililtä."
         },
         "cyberTools": {
             "title": "Turvallisuustyö­kalut",

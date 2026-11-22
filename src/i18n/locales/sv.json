@@ -4962,7 +4962,7 @@
             "relocateError": "Det gick inte att överföra servern: {error}",
             "relocateWrongPassword": "Fel lösenord för {user}.",
             "relocateSecretsNotCopied": "”{name}” kom fram till {user}, men det sparade lösenordet eller tokenet följde inte med, så de efterfrågas på nytt där.",
-            "relocateMovedCleanupFailed": "\"{name}\" flyttades till {user}, men dess Proton Drive-session kunde inte tas bort från det här kontot."
+            "relocateMovedCleanupFailed": "\"{name}\" flyttades till {user}, men dess Proton Drive-session kunde inte tas bort från källkontot."
         },
         "cyberTools": {
             "title": "Säkerhetsverktyg",

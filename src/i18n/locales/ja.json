@@ -4926,7 +4926,7 @@
             "relocateError": "サーバーを転送できませんでした: {error}",
             "relocateWrongPassword": "{user} のパスワードが違います。",
             "relocateSecretsNotCopied": "「{name}」は {user} に反映されましたが、保存済みのパスワードまたはトークンは引き継がれなかったため、そちらで再度入力を求められます。",
-            "relocateMovedCleanupFailed": "\"{name}\" を {user} に移動しましたが、このアカウントから Proton Drive のセッションを削除できませんでした。"
+            "relocateMovedCleanupFailed": "\"{name}\" を {user} に移動しましたが、移動元のアカウントから Proton Drive のセッションを削除できませんでした。"
         },
         "cyberTools": {
             "title": "セキュリティツール",

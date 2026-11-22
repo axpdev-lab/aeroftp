@@ -5465,7 +5465,7 @@
             "relocateError": "Impossibile trasferire il server: {error}",
             "relocateWrongPassword": "Password errata per {user}.",
             "relocateSecretsNotCopied": "\"{name}\" è arrivato in {user}, ma la password o il token salvati no, quindi li chiederà di nuovo lì.",
-            "relocateMovedCleanupFailed": "\"{name}\" è stato spostato a {user}, ma non è stato possibile rimuovere la sua sessione Proton Drive da questo account."
+            "relocateMovedCleanupFailed": "\"{name}\" è stato spostato a {user}, ma non è stato possibile rimuovere la sua sessione Proton Drive dall'account di origine."
         },
         "dialog": {
             "deleteFile": "Eliminare \"{name}\"?",
