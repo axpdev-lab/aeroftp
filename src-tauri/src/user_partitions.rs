@@ -485,10 +485,31 @@ pub(crate) fn clear_user_session() {
         *session = None;
         SESSION_GENERATION.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     }
-    // Partition lock and user switch keep the vault cache, so MCP OAuth freshness
-    // checks alone would not see them: cancel every pending and in-flight attempt.
+    invalidate_session_consumers();
+}
+
+/// Partition lock and user switch keep the vault cache, so MCP OAuth freshness
+/// checks alone would not see them: cancel every pending and in-flight attempt.
+fn invalidate_session_consumers() {
     crate::mcp_client_oauth::lifecycle::shared().invalidate_all();
     crate::mcp_client_install::invalidate_all();
+}
+
+impl SessionHold {
+    /// [`clear_user_session`] through this hold, for a caller that took the
+    /// session before SQLite's write lock and must drop it while it still
+    /// holds both. The consumers are told once the hold is let go
+    /// ([`invalidate_session_consumers`]). An empty hold (a poisoned lock)
+    /// has nothing it can clear.
+    fn clear(&mut self) {
+        #[cfg(test)]
+        assert_test_lock_held();
+        if let Some(session) = self.0.as_mut() {
+            **session = None;
+            SESSION_GENERATION.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            HELD_SESSION.set(Some(None));
+        }
+    }
 }
 
 fn set_user_session(user_id: i64, dek: SecretKey) -> Result<(), String> {
@@ -10940,6 +10961,11 @@ fn remove_partitions_db_for_rebuild(path: &std::path::Path) -> Result<Option<Pat
     // Best effort, before the guard: a reader holding the log keeps it, and
     // VACUUM INTO reads through it all the same.
     let _ = guard.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(()));
+    // The session before SQLite's write lock, the order every writer takes
+    // them in ([`SessionHold`]): taken after it, a passphrase account's writer
+    // holding the session while it waits on the database would wait out its
+    // busy timeout, and its write would fail.
+    let mut session = hold_session().unwrap_or(SessionHold(None));
     match guard.execute_batch("BEGIN IMMEDIATE") {
         Ok(()) => {}
         Err(rusqlite::Error::SqliteFailure(e, _))
@@ -10956,16 +10982,20 @@ fn remove_partitions_db_for_rebuild(path: &std::path::Path) -> Result<Option<Pat
     #[cfg(test)]
     run_dual_write_hook(&AFTER_REBUILD_SNAPSHOT);
     // Drop any unlocked session, then remove the DB and its SQLite sidecars.
-    clear_user_session();
+    session.clear();
     #[cfg(windows)]
     drop(guard);
-    std::fs::remove_file(path)
-        .map_err(|e| format!("Remove user_partitions.db for rebuild: {e}"))?;
-    let _ = std::fs::remove_file(path.with_extension("db-wal"));
-    let _ = std::fs::remove_file(path.with_extension("db-shm"));
+    let removed = std::fs::remove_file(path)
+        .map_err(|e| format!("Remove user_partitions.db for rebuild: {e}"));
+    if removed.is_ok() {
+        let _ = std::fs::remove_file(path.with_extension("db-wal"));
+        let _ = std::fs::remove_file(path.with_extension("db-shm"));
+    }
     #[cfg(not(windows))]
     drop(guard);
-    Ok(Some(backup))
+    drop(session);
+    invalidate_session_consumers();
+    removed.map(|()| Some(backup))
 }
 
 /// Rebuild the active partition from this device's legacy credential vault.
@@ -12857,6 +12887,44 @@ mod tests {
             .map(String::as_str),
             Some("old")
         );
+    }
+
+    /// A rebuild takes the session before the database's write lock, the order
+    /// a passphrase account's credential writer takes them in: while the
+    /// rebuild holds the write lock no other thread can take the session, so a
+    /// writer that holds the session is never left waiting on the rebuild's
+    /// write lock until its busy timeout fails the write. The session is gone
+    /// after the rebuild.
+    #[test]
+    fn a_rebuild_takes_the_session_before_its_write_lock() {
+        let _guard = test_lock();
+        clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(DB_FILENAME);
+        let mut conn = open_or_init_path(path.clone()).expect("open");
+        let root = test_root();
+        migrate_legacy_payloads(&mut conn, Some("[]"), None, &root).expect("seed");
+        let locked = create_user(&mut conn, &root, "Locked", None, None, Some("pass")).unwrap();
+        unlock_user(&conn, &root, locked.id, Some("pass")).unwrap();
+        assert_eq!(session_user_id(), Some(locked.id));
+        drop(conn);
+        let free = std::rc::Rc::new(RefCell::new(None));
+        let seen = free.clone();
+        AFTER_REBUILD_SNAPSHOT.set(Some(Box::new(move || {
+            // A passphrase account's writer, on its own thread, taking the
+            // session while the rebuild holds the database's write lock.
+            let taken = std::thread::spawn(|| USER_SESSION.try_lock().is_ok())
+                .join()
+                .unwrap();
+            *seen.borrow_mut() = Some(taken);
+        })));
+        remove_partitions_db_for_rebuild(&path).unwrap().unwrap();
+        assert_eq!(
+            *free.borrow(),
+            Some(false),
+            "the session is the rebuild's while it holds the write lock"
+        );
+        assert_eq!(session_user_id(), None, "the rebuild dropped the session");
     }
 
     /// A connection that began with no account reads the legacy blob while no
