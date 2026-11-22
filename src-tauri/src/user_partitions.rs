@@ -196,10 +196,12 @@ fn open_or_init_path(path: PathBuf) -> Result<Connection, String> {
     Ok(conn)
 }
 
-/// Opens a partition database a keystore restore wrote whole (its staged
-/// copy, or the preview's copy of the backup's) for a writer, its schema
-/// first brought to this build's ([`init_db_schema`]) as
-/// [`open_or_init_path`] brings the live database's. A backup made by an
+/// Opens a partition database a keystore import writes, for a writer: the
+/// copy a restore wrote whole (its staged copy, or the preview's copy of the
+/// backup's), or the live one when the backup publishes none, which an
+/// import may be the first open of since an upgrade. Its schema is first
+/// brought to this build's ([`init_db_schema`]) as [`open_or_init_path`]
+/// brings the live database's. A backup made by an
 /// older build lacks what this build's writers name (the
 /// `server_profiles.token_uid` column, the sign-in stamp table), and the
 /// first write of a profile list would fail on it. The schema step adds
@@ -6410,7 +6412,7 @@ pub fn realign_private_tokens_after_restore(
     db_path: &std::path::Path,
     active_before: Option<ActiveBeforeRestore<'_>>,
 ) -> Result<usize, String> {
-    let conn = Connection::open(db_path).map_err(|e| format!("Open user partitions DB: {e}"))?;
+    let conn = open_restored_db(db_path)?;
     let active = active_user_id(&conn)?;
     for user in list_users(&conn)? {
         if Some(user.id) == active {

@@ -1495,7 +1495,7 @@ fn write_profile_secret_slots_if(
         return Err(SecretWriteError::before_vault("refused (test)".to_string()));
     }
     if let Some((db, receiver)) = private_row_of(db, receiver, key) {
-        let conn = rusqlite::Connection::open(&db)
+        let conn = crate::user_partitions::open_restored_db(&db)
             .map_err(|e| SecretWriteError::before_vault(format!("open {}: {e}", db.display())))?;
         let kind = crate::user_partitions::private_token_type(key).unwrap_or("oauth");
         let mut root_key = store.derive_user_partition_wrapping_key();
@@ -1559,7 +1559,7 @@ fn write_profile_secret_slots_if(
     }
     #[cfg(test)]
     tests::run_before_row_write(store, key);
-    let conn = rusqlite::Connection::open(db)
+    let conn = crate::user_partitions::open_restored_db(db)
         .map_err(|e| SecretWriteError::after_vault(format!("open {}: {e}", db.display())))?;
     let mut root_key = store.derive_user_partition_wrapping_key();
     let written = match (expected_row, value) {
@@ -1635,7 +1635,7 @@ fn write_signed_in_row(
     let Some((db, receiver)) = private_row_of(db, receiver, key) else {
         return write_profile_secret_if(store, db, receiver, key, None, None, Some(value));
     };
-    let conn = rusqlite::Connection::open(&db)
+    let conn = crate::user_partitions::open_restored_db(&db)
         .map_err(|e| SecretWriteError::before_vault(format!("open {}: {e}", db.display())))?;
     let kind = crate::user_partitions::private_token_type(key).unwrap_or("oauth");
     let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
@@ -2035,8 +2035,8 @@ fn save_partition_list(
     db: &Path,
     profiles: &[serde_json::Value],
 ) -> Result<Vec<serde_json::Value>, String> {
-    let mut conn =
-        rusqlite::Connection::open(db).map_err(|e| format!("open {}: {e}", db.display()))?;
+    let mut conn = crate::user_partitions::open_restored_db(db)
+        .map_err(|e| format!("open {}: {e}", db.display()))?;
     let mut root_key = store.derive_user_partition_wrapping_key();
     // Under the lock of the import that calls this.
     let saved = crate::user_partitions::replace_active_server_profiles_under_lock(
@@ -2053,8 +2053,8 @@ fn adopt_restored_list(
     db: &Path,
     allow_empty: bool,
 ) -> Result<(), String> {
-    let mut conn =
-        rusqlite::Connection::open(db).map_err(|e| format!("open {}: {e}", db.display()))?;
+    let mut conn = crate::user_partitions::open_restored_db(db)
+        .map_err(|e| format!("open {}: {e}", db.display()))?;
     let mut root_key = store.derive_user_partition_wrapping_key();
     let adopted = crate::user_partitions::adopt_legacy_blob_under_lock(
         &mut conn,
@@ -4620,6 +4620,32 @@ mod tests {
             .unwrap();
         assert_eq!(pending, 0, "the marker is cleared");
         crate::user_partitions::clear_user_session();
+    }
+
+    /// An import whose backup publishes no partition writes this device's
+    /// live database, which the import may be the first open of since an
+    /// upgrade: the list write and the alignment after a restore bring its
+    /// schema to this build's first, as the staged copy's writers do. Red
+    /// with a bare open in `save_partition_list` or in
+    /// `realign_private_tokens_after_restore`: the list write names
+    /// `token_uid`, which a live file last written by an older build lacks.
+    #[test]
+    fn an_import_into_a_live_database_of_an_older_build_brings_its_schema_first() {
+        let _guard = crate::user_partitions::test_lock();
+        crate::user_partitions::clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let cfg = dir.path().join("config");
+        partition_with(&store, &cfg, &[]);
+        let db = cfg.join("user_partitions.db");
+        as_a_build_before_token_tags(&db);
+        save_partition_list(&store, &db, &[profile("srv_a", "Lab")])
+            .expect("the list is written into the older live file");
+        assert_eq!(my_servers(&store, &cfg), vec![profile("srv_a", "Lab")]);
+
+        as_a_build_before_token_tags(&db);
+        crate::user_partitions::realign_private_tokens_after_restore(&db, None)
+            .expect("the alignment runs on the older live file");
     }
 
     /// CodeRabbit on #1524: a restore takes no option that turns a security
