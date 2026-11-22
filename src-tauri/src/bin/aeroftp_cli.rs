@@ -14271,11 +14271,41 @@ fn load_active_user_profiles(
 /// persistent active account) and unlocked. A command that reads, writes and
 /// deletes passes it to every step, so an account switch made by another
 /// process meanwhile cannot send one half of the command to another account.
+/// The persistent active account is resolved once per command thread
+/// ([`PROFILE_ACCOUNT`]): a command that selects a profile in one step and
+/// changes it in a helper that resolves the account again works on the
+/// account it selected from, whatever another process switched to between
+/// the two. Only this process's own switch ([`unpin_profile_account`]) moves
+/// it.
 fn profile_target(
     cli: &Cli,
     store: &ftp_client_gui_lib::credential_store::CredentialStore,
 ) -> Result<ftp_client_gui_lib::user_partitions::UserMetadata, String> {
-    ensure_active_user_unlocked(cli, store)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())
+    if cli.user.is_none() {
+        if let Some(pinned) = PROFILE_ACCOUNT.with(|slot| slot.borrow().clone()) {
+            return Ok(pinned);
+        }
+    }
+    let target =
+        ensure_active_user_unlocked(cli, store)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())?;
+    if cli.user.is_none() {
+        PROFILE_ACCOUNT.with(|slot| *slot.borrow_mut() = Some(target.clone()));
+    }
+    Ok(target)
+}
+
+thread_local! {
+    /// The persistent active account this command thread first resolved for
+    /// its profiles ([`profile_target`]).
+    static PROFILE_ACCOUNT: std::cell::RefCell<Option<ftp_client_gui_lib::user_partitions::UserMetadata>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Forget the account [`profile_target`] resolved, after this process
+/// switched the active account itself: the next profile step reads the new
+/// one.
+fn unpin_profile_account() {
+    PROFILE_ACCOUNT.with(|slot| *slot.borrow_mut() = None);
 }
 
 /// [`load_active_user_profiles`] for an account already resolved.
@@ -14914,6 +14944,7 @@ fn cmd_users(cli: &Cli, command: &UsersCommands, format: OutputFormat) -> i32 {
             }
             match result {
                 Ok(status) => {
+                    unpin_profile_account();
                     if matches!(format, OutputFormat::Json) {
                         print_json(
                             &serde_json::json!({"status": "ok", "unlock": status, "user": user.name}),
@@ -24433,6 +24464,7 @@ fn interactive_profiles_loop(
             }
             match result {
                 Ok(_) => {
+                    unpin_profile_account();
                     eprintln!("Switched to user '{}'.", user.name);
                     match load_active_user_profiles(cli, store) {
                         Ok(p) => {
@@ -29589,6 +29621,9 @@ fn cmd_profile_delete(cli: &Cli, format: OutputFormat, selector: &str, skip_conf
         return 5;
     }
 
+    // The confirmation may wait: a switch here must not move the delete.
+    #[cfg(test)]
+    run_after_profile_target();
     if !skip_confirm {
         use std::io::IsTerminal;
         if !std::io::stdin().is_terminal() {
@@ -88413,6 +88448,53 @@ mod tests {
         }
         assert_child_finishes_with_open_stdin(
             "tests::a_profile_delete_stays_on_the_account_it_began_with",
+            &[(CHILD, "1")],
+        );
+    }
+
+    /// Both accounts hold a profile under one id. `profile delete` selects it
+    /// from the active account and the account is switched by another process
+    /// before the delete (the confirmation may wait): the delete stays on the
+    /// account it selected from, and the other account keeps its profile and
+    /// its secret.
+    #[test]
+    fn a_profile_delete_command_deletes_from_the_account_it_selected_from() {
+        const CHILD: &str = "AEROFTP_CLI_TEST_DELETE_COMMAND_ONE_ACCOUNT_CHILD";
+        if std::env::var_os(CHILD).is_some() {
+            assert_child_data_root_is_private();
+            on_big_stack(|| {
+                use ftp_client_gui_lib::user_partitions as up;
+                let cli = test_cli();
+                let store = open_vault(&cli).unwrap();
+                let profile = serde_json::json!({"id": "gone", "name": "gone", "protocol": "sftp"});
+                let (owner, other) = two_accounts_one_profile_each(&store, profile.clone());
+                up::cli_update_server_profiles_for_user(&store, other, |list| {
+                    list.push(profile);
+                    true
+                })
+                .unwrap();
+                up::store_credential_for_user_dual(&store, other, "server_gone", "other-gone")
+                    .unwrap();
+                switch_account_midway(other);
+                assert_eq!(
+                    cmd_profile_delete(&cli, OutputFormat::Json, "gone", true),
+                    0
+                );
+                assert_eq!(
+                    listed_and_rows(&store, owner, &["server_gone"]),
+                    (Vec::<String>::new(), vec![0]),
+                    "the profile leaves the account it was selected from"
+                );
+                assert_eq!(
+                    listed_and_rows(&store, other, &["server_gone", "server_kept"]),
+                    (vec!["kept".to_string(), "gone".to_string()], vec![1, 1]),
+                    "the account switched to meanwhile keeps its profile of that id"
+                );
+            });
+            return;
+        }
+        assert_child_finishes_with_open_stdin(
+            "tests::a_profile_delete_command_deletes_from_the_account_it_selected_from",
             &[(CHILD, "1")],
         );
     }
