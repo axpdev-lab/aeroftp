@@ -327,18 +327,24 @@ impl Scan {
         &self.id
     }
 
-    /// The profile of the file that `key` belongs to: the longest id the key
-    /// ends with, after an underscore.
+    /// The profile of the file that `key` belongs to, by the keys each
+    /// profile's readers compose ([`crate::per_profile_vault_keys_for_target_reset`]:
+    /// an OAuth token's key lowercases the id, so `oauth_dropbox_team` is
+    /// `Team`'s), the id the key ends with as it is (after an underscore)
+    /// first, then the longest. A key no profile composes is the longest id
+    /// it ends with.
     fn profile_of(&self, key: &str) -> String {
+        let ends_with = |id: &str| key.strip_suffix(id).is_some_and(|head| head.ends_with('_'));
         self.profiles
             .iter()
+            .filter(|id| !id.is_empty())
             .filter(|id| {
-                !id.is_empty()
-                    && key
-                        .strip_suffix(id.as_str())
-                        .is_some_and(|head| head.ends_with('_'))
+                ends_with(id)
+                    || crate::per_profile_vault_keys_for_target_reset(id, &[])
+                        .iter()
+                        .any(|composed| composed == key)
             })
-            .max_by_key(|id| id.len())
+            .max_by_key(|id| (ends_with(id), id.len()))
             .cloned()
             .unwrap_or_default()
     }

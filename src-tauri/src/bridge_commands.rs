@@ -255,8 +255,11 @@ fn store_rclone_provider_secrets(
     scan: Option<&bridge_import_scan::Scan>,
 ) -> Vec<(String, String)> {
     let mut failures = Vec::new();
-    let record = |key: &str, kind: bridge_import_scan::Kind, value: &str| match scan {
-        Some(scan) => scan.record(key, kind, value),
+    // Recorded for the profile the write is for: its key may not end with
+    // the id as it is (an OAuth token's lowercases it).
+    let record = |profile: &str, key: &str, kind: bridge_import_scan::Kind, value: &str| match scan
+    {
+        Some(scan) => scan.record_for(profile, key, kind, value),
         None => Ok(()),
     };
     let store = match store {
@@ -293,13 +296,17 @@ fn store_rclone_provider_secrets(
             if let Some(slug) = crate::oauth_vault_slug_for_protocol(protocol) {
                 // MUV-4: dual-write into vault + the importing account's partition.
                 let key = crate::providers::oauth2::oauth_token_key(slug, profile_id);
-                if let Err(e) =
-                    record(&key, bridge_import_scan::Kind::Secret, oauth_json).and_then(|()| {
-                        crate::user_partitions::store_typed_credential_dual_as(
-                            store, user, &key, "oauth", oauth_json,
-                        )
-                    })
-                {
+                if let Err(e) = record(
+                    profile_id,
+                    &key,
+                    bridge_import_scan::Kind::Secret,
+                    oauth_json,
+                )
+                .and_then(|()| {
+                    crate::user_partitions::store_typed_credential_dual_as(
+                        store, user, &key, "oauth", oauth_json,
+                    )
+                }) {
                     log::warn!("rclone bridge: oauth token store failed for {profile_id}: {e}");
                     failures.push((
                         profile_id.clone(),
@@ -311,17 +318,21 @@ fn store_rclone_provider_secrets(
         if let Some(ref jotta_json) = secrets.jotta_refresh {
             if protocol == "jottacloud" {
                 let key = format!("jottacloud_refresh_{}", profile_id);
-                if let Err(e) =
-                    record(&key, bridge_import_scan::Kind::Secret, jotta_json).and_then(|()| {
-                        crate::user_partitions::store_typed_credential_dual_as(
-                            store,
-                            user,
-                            &key,
-                            "jottacloud_refresh",
-                            jotta_json,
-                        )
-                    })
-                {
+                if let Err(e) = record(
+                    profile_id,
+                    &key,
+                    bridge_import_scan::Kind::Secret,
+                    jotta_json,
+                )
+                .and_then(|()| {
+                    crate::user_partitions::store_typed_credential_dual_as(
+                        store,
+                        user,
+                        &key,
+                        "jottacloud_refresh",
+                        jotta_json,
+                    )
+                }) {
                     log::warn!("rclone bridge: jotta token store failed for {profile_id}: {e}");
                     failures.push((
                         profile_id.clone(),
@@ -3434,5 +3445,104 @@ mod tests {
                 "kept": [{ "key": "webdavScheme", "value": "http" }],
             }])
         );
+    }
+
+    /// A scan records each OAuth token it writes for the profile it is for,
+    /// and reads a key's profile by the keys the profiles compose: a profile
+    /// id with capitals (`Team`) names `oauth_dropbox_team`, which ends with
+    /// another profile's id (`team`) as it is. Once the window confirms
+    /// `Team` alone, the settle keeps `Team`'s token, whether its write was
+    /// recorded for its profile or read from its key.
+    #[test]
+    fn a_confirmed_mixed_case_profile_keeps_its_scanned_token() {
+        use crate::credential_store::CredentialStore;
+        use crate::user_partitions as partitions;
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "bridge_commands::tests::a_confirmed_mixed_case_profile_keeps_its_scanned_token",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = partitions::test_lock();
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("scan-case-pass").expect("bootstrap");
+        CredentialStore::unlock_with_master("scan-case-pass", None).expect("unlock");
+        let store = CredentialStore::from_cache().expect("cached vault");
+        partitions::init_or_migrate_cli(&store).expect("init partitions");
+        let mut conn = partitions::open_or_init_cli().expect("partition DB");
+        let user = partitions::get_active_user(&conn)
+            .expect("active user")
+            .expect("first account")
+            .id;
+        let root_key = store.derive_user_partition_wrapping_key();
+        let profile =
+            |id: &str| json!({"id": id, "name": id, "host": "", "port": 0, "protocol": "dropbox"});
+        let key = crate::providers::oauth2::oauth_token_key("dropbox", "Team");
+        assert_eq!(key, "oauth_dropbox_team");
+        let token = r#"{"access_token":"team-access","refresh_token":"team-refresh"}"#;
+        let stored = |what: &str| {
+            assert_eq!(
+                store.get(&key).ok().as_deref(),
+                Some(token),
+                "{what}: vault"
+            );
+            assert_eq!(
+                partitions::resolve_credential_for_user(&store, user, &key)
+                    .unwrap()
+                    .as_deref()
+                    .map(|value| value.as_str()),
+                Some(token),
+                "{what}: row"
+            );
+        };
+
+        // The bridge's own write: `Team` and `team` scanned, `Team` alone
+        // with a token and confirmed.
+        let result = crate::rclone_import::RcloneImportResult {
+            servers: ["Team", "team"]
+                .iter()
+                .map(|id| serde_json::from_value(profile(id)).unwrap())
+                .collect(),
+            skipped: Vec::new(),
+            warnings: Vec::new(),
+            source_path: String::new(),
+            total_remotes: 2,
+            provider_secrets: HashMap::from([(
+                "Team".to_string(),
+                crate::profile_export::ProviderSecrets {
+                    oauth: Some(token.to_string()),
+                    ..Default::default()
+                },
+            )]),
+        };
+        let scan = bridge_import_scan::Scan::begin(
+            &store,
+            Some(user),
+            vec!["Team".to_string(), "team".to_string()],
+        )
+        .unwrap();
+        let failures =
+            store_rclone_provider_secrets(&result, Some(user), Some(&store), Some(&scan));
+        assert!(failures.is_empty(), "{failures:?}");
+        stored("written");
+        partitions::replace_server_profiles_for(&mut conn, &root_key, user, &[profile("Team")])
+            .unwrap();
+        bridge_import_scan::settle(&store, scan.id()).unwrap();
+        stored("a write recorded for its profile");
+
+        // A write whose profile is read from its key.
+        partitions::replace_server_profiles_for(&mut conn, &root_key, user, &[]).unwrap();
+        partitions::delete_credential_for_user_dual(&store, user, &key).unwrap();
+        let scan =
+            bridge_import_scan::Scan::begin(&store, Some(user), vec!["Team".to_string()]).unwrap();
+        scan.record(&key, bridge_import_scan::Kind::Secret, token)
+            .unwrap();
+        partitions::store_typed_credential_dual_as(&store, Some(user), &key, "oauth", token)
+            .unwrap();
+        partitions::replace_server_profiles_for(&mut conn, &root_key, user, &[profile("Team")])
+            .unwrap();
+        bridge_import_scan::settle(&store, scan.id()).unwrap();
+        stored("a write read by its key");
     }
 }
