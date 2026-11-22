@@ -159,6 +159,68 @@ fn the_keystore_family_answers_in_json_under_machine_and_format_json() {
 }
 
 #[test]
+fn import_warning_reports_keep_stdout_for_data() {
+    let config = isolated_cli::root();
+    let dir = config.path();
+    let filezilla = dir.join("filezilla.xml");
+    let sitemanager = dir.join("sitemanager.xml");
+    std::fs::write(
+        &sitemanager,
+        r#"<?xml version="1.0"?><FileZilla3><Servers><Server><Host>sftp.example.invalid</Host><Protocol>1</Protocol><Name>Proxied SFTP</Name></Server></Servers></FileZilla3>"#,
+    )
+    .unwrap();
+    std::fs::write(
+        &filezilla,
+        r#"<?xml version="1.0"?><FileZilla3><Settings><Setting name="Proxy type">4</Setting></Settings></FileZilla3>"#,
+    )
+    .unwrap();
+    let winscp = dir.join("WinSCP.ini");
+    std::fs::write(
+        &winscp,
+        "[Sessions\\Proxied]\nHostName=sftp.example.invalid\nUserName=user\nFSProtocol=2\nProxyMethod=2\n",
+    )
+    .unwrap();
+    let cyberduck = dir.join("ActiveFTP.duck");
+    std::fs::write(
+        &cyberduck,
+        r#"<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>Protocol</key><string>ftp</string><key>Nickname</key><string>Active FTP</string><key>Hostname</key><string>ftp.example.invalid</string><key>Port</key><integer>21</integer><key>Username</key><string>user</string><key>FTP Connect Mode</key><string>active</string></dict></plist>"#,
+    )
+    .unwrap();
+    let rclone = dir.join("proxy-rclone.conf");
+    std::fs::write(
+        &rclone,
+        "[proxied]\ntype = sftp\nhost = sftp.example.invalid\nuser = user\nsocks_proxy = localhost:9005\n",
+    )
+    .unwrap();
+
+    for (source, path) in [
+        ("filezilla", &sitemanager),
+        ("winscp", &winscp),
+        ("cyberduck", &cyberduck),
+        ("rclone", &rclone),
+    ] {
+        let path = path.to_str().unwrap();
+        let text = cli(dir, &["import", source, path]);
+        assert!(text.status.success(), "{source}: {}", describe(&text));
+        let stdout = String::from_utf8_lossy(&text.stdout);
+        let stderr = String::from_utf8_lossy(&text.stderr);
+        assert!(!stdout.contains("Warnings ("), "{source}: {stdout}");
+        assert!(stderr.contains("Warnings (1)"), "{source}: {stderr}");
+
+        let json = cli(dir, &["import", source, path, "--json"]);
+        assert!(json.status.success(), "{source}: {}", describe(&json));
+        let json_stderr = String::from_utf8_lossy(&json.stderr);
+        assert!(
+            !json_stderr.contains("Warnings ("),
+            "{source}: {json_stderr}"
+        );
+        let report: serde_json::Value = serde_json::from_slice(&json.stdout)
+            .unwrap_or_else(|err| panic!("{source}: invalid JSON {err}: {}", describe(&json)));
+        assert_eq!(report["warnings"].as_array().unwrap().len(), 1, "{source}");
+    }
+}
+
+#[test]
 fn text_mode_stays_text() {
     let config = isolated_cli::root();
     let dir = config.path();

@@ -2993,6 +2993,152 @@ struct MappedSectionsOutcome {
     total_remotes: usize,
 }
 
+/// Error returned when goconfig `%(var)s` substitution exceeds depth or byte limits.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct SubstitutionOverflow;
+
+/// Resolved transport flags for one rclone section (cached per `base_name` so
+/// aliases over a deeply nested dotted base do not repeat parent walks).
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
+struct EffectiveRcloneTransport {
+    has_socks_proxy: bool,
+    has_http_proxy: bool,
+    has_external_ssh: bool,
+    substitution_overflow: bool,
+}
+
+/// Expand goconfig `%(var)s` substitutions in `raw` using `[DEFAULT]` first and
+/// `owning_section` second (`Unknwon/goconfig` `conf.go:207-210`, verified live
+/// against rclone v1.75.2), replacing undefined variables with `""`.
+/// Returns `Err(SubstitutionOverflow)` on byte-length or recursion-depth overflow
+/// instead of returning a truncated prefix.
+fn expand_goconfig_substitutions(
+    owning_section: &RcloneRemote,
+    default_section: Option<&RcloneRemote>,
+    raw: &str,
+) -> Result<String, SubstitutionOverflow> {
+    const MAX_DEPTH: usize = 32;
+    const MAX_EXPANDED_BYTES: usize = 4096;
+
+    if !raw.contains("%(") {
+        return Ok(raw.to_string());
+    }
+
+    let mut current = raw.to_string();
+    for _ in 0..MAX_DEPTH {
+        let mut next = String::with_capacity(current.len().min(MAX_EXPANDED_BYTES));
+        let mut rest = current.as_str();
+        let mut replaced_any = false;
+
+        while let Some(start) = rest.find("%(") {
+            if next.len().saturating_add(start) > MAX_EXPANDED_BYTES {
+                return Err(SubstitutionOverflow);
+            }
+            next.push_str(&rest[..start]);
+            let after_open = &rest[start + 2..];
+            if let Some(end) = after_open.find(")s") {
+                let var_name = after_open[..end].trim();
+                let var_key = var_name.to_lowercase();
+                // goconfig checks `[DEFAULT]` before the owning section.
+                let replacement = default_section
+                    .and_then(|d| d.get(&var_key))
+                    .or_else(|| owning_section.get(&var_key))
+                    .map(String::as_str)
+                    .unwrap_or("");
+                if next.len().saturating_add(replacement.len()) > MAX_EXPANDED_BYTES {
+                    return Err(SubstitutionOverflow);
+                }
+                next.push_str(replacement);
+                replaced_any = true;
+                rest = &after_open[end + 2..];
+            } else {
+                if next.len().saturating_add(2) > MAX_EXPANDED_BYTES {
+                    return Err(SubstitutionOverflow);
+                }
+                next.push_str("%(");
+                rest = after_open;
+            }
+        }
+        if next.len().saturating_add(rest.len()) > MAX_EXPANDED_BYTES {
+            return Err(SubstitutionOverflow);
+        }
+        next.push_str(rest);
+        current = next;
+        if !replaced_any || !current.contains("%(") {
+            return Ok(current);
+        }
+    }
+    Err(SubstitutionOverflow)
+}
+
+/// Resolve a key from `section_name` using rclone's goconfig dotted-parent
+/// lookup (`[a.b.c]` -> `[a.b]` -> `[a]`). Stops at the first section that
+/// explicitly defines `key` (including an empty override such as
+/// `socks_proxy =`) or when the immediate dotted parent section is absent,
+/// and resolves `%(var)s` substitutions (`[DEFAULT]` first, then owning section).
+fn effective_rclone_section_value(
+    sections: &HashMap<String, RcloneRemote>,
+    section_name: &str,
+    key: &str,
+    section_hops: &mut usize,
+) -> Result<Option<String>, SubstitutionOverflow> {
+    let default_section = sections.get("DEFAULT");
+    let mut current = section_name;
+    loop {
+        *section_hops += 1;
+        let Some(section) = sections.get(current) else {
+            return Ok(None);
+        };
+        if let Some(value) = section.get(key) {
+            return expand_goconfig_substitutions(section, default_section, value).map(Some);
+        }
+        let Some((parent, _)) = current.rsplit_once('.') else {
+            return Ok(None);
+        };
+        current = parent;
+    }
+}
+
+/// Resolve and cache the three transport-warning flags (`socks_proxy`,
+/// `http_proxy`, `ssh`) for `base_name`.
+fn resolve_rclone_transport_cached(
+    cache: &mut HashMap<String, EffectiveRcloneTransport>,
+    sections: &HashMap<String, RcloneRemote>,
+    app_section: &RcloneRemote,
+    base_name: &str,
+    source: ImportSourceKind,
+    section_hops: &mut usize,
+) -> EffectiveRcloneTransport {
+    if let Some(&cached) = cache.get(base_name) {
+        return cached;
+    }
+    let mut overflow = false;
+    let mut is_active = |key: &str, hops: &mut usize| -> bool {
+        match source {
+            ImportSourceKind::RcloneFile => {
+                match effective_rclone_section_value(sections, base_name, key, hops) {
+                    Ok(val) => val.is_some_and(|value| !value.trim().is_empty()),
+                    Err(SubstitutionOverflow) => {
+                        overflow = true;
+                        false
+                    }
+                }
+            }
+            ImportSourceKind::Template => app_section
+                .get(key)
+                .is_some_and(|value| !value.trim().is_empty()),
+        }
+    };
+    let resolved = EffectiveRcloneTransport {
+        has_socks_proxy: is_active("socks_proxy", section_hops),
+        has_http_proxy: is_active("http_proxy", section_hops),
+        has_external_ssh: is_active("ssh", section_hops),
+        substitution_overflow: overflow,
+    };
+    cache.insert(base_name.to_string(), resolved);
+    resolved
+}
+
 fn import_parsed_sections(
     mut sections: HashMap<String, RcloneRemote>,
     ordered_names: Option<&[String]>,
@@ -3012,6 +3158,8 @@ fn import_parsed_sections(
     let mut servers = Vec::new();
     let mut skipped = Vec::new();
     let mut warnings = Vec::new();
+    let mut transport_cache: HashMap<String, EffectiveRcloneTransport> = HashMap::new();
+    let mut _transport_hops = 0usize;
     let mut provider_secrets: HashMap<String, crate::profile_export::ProviderSecrets> =
         HashMap::new();
 
@@ -3116,18 +3264,57 @@ fn import_parsed_sections(
         match mapped {
             Ok((mapped, base_name)) => {
                 if matches!(mapped.protocol.as_str(), "ftp" | "ftps" | "sftp") {
-                    for (key, kind) in [("socks_proxy", "SOCKS5"), ("http_proxy", "HTTP CONNECT")] {
-                        if app_section
-                            .get(key)
-                            .is_some_and(|value| !value.trim().is_empty())
-                        {
-                            warnings.push(RcloneImportWarning {
-                                name: name.clone(),
-                                reason: format!(
-                                    "{source_name} uses a {kind} proxy (`{key}`) for this remote; the proxy is not imported and AeroFTP will connect directly"
-                                ),
-                            });
-                        }
+                    let transport = resolve_rclone_transport_cached(
+                        &mut transport_cache,
+                        &sections,
+                        app_section,
+                        &base_name,
+                        source,
+                        &mut _transport_hops,
+                    );
+                    if transport.substitution_overflow {
+                        skipped.push(RcloneSkippedRemote {
+                            name: name.clone(),
+                            rclone_type: rclone_type.to_string(),
+                            reason: format!(
+                                "{source_name} transport option (`socks_proxy`, `http_proxy`, or `ssh`) exceeded substitution expansion limits; skipped so AeroFTP does not import it as a direct connection"
+                            ),
+                        });
+                        continue;
+                    }
+                    // `backend/sftp/sftp.go:1277-1279`: when `ssh` is set, rclone
+                    // ignores `host`, `user`, and `port` and delegates to the
+                    // external command (which may target a completely different
+                    // server or jump host) and bypasses its internal proxy dialer.
+                    // Skip with a reason rather than saving a profile that could
+                    // connect to the wrong host. Never echo or run the command.
+                    if mapped.protocol == "sftp" && transport.has_external_ssh {
+                        skipped.push(RcloneSkippedRemote {
+                            name: name.clone(),
+                            rclone_type: rclone_type.to_string(),
+                            reason: format!(
+                                "{source_name} uses an external ssh command (`ssh`) that can target a different host or login than the profile fields; skipped so AeroFTP does not connect to the wrong server. Create the direct SFTP profile manually if needed"
+                            ),
+                        });
+                        continue;
+                    }
+                    // `backend/ftp/ftp.go:465-480` and `backend/sftp/sftp.go`:
+                    // when both `socks_proxy` and `http_proxy` are non-empty,
+                    // rclone dials SOCKS5 only and does not fall back to HTTP CONNECT.
+                    if transport.has_socks_proxy {
+                        warnings.push(RcloneImportWarning {
+                            name: name.clone(),
+                            reason: format!(
+                                "{source_name} uses a SOCKS5 proxy (`socks_proxy`) for this remote; the proxy is not imported and AeroFTP will connect directly"
+                            ),
+                        });
+                    } else if transport.has_http_proxy {
+                        warnings.push(RcloneImportWarning {
+                            name: name.clone(),
+                            reason: format!(
+                                "{source_name} uses an HTTP CONNECT proxy (`http_proxy`) for this remote; the proxy is not imported and AeroFTP will connect directly"
+                            ),
+                        });
                     }
                 }
                 if let Some(reason) = &mapped.credential_warning {
@@ -6861,12 +7048,14 @@ region = eu-west-1
     fn ftp_and_sftp_proxy_options_are_warned_without_copying_secrets() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("rclone.conf");
+        let proxy_user = "proxy-user";
+        let proxy_secret = "proxy-secret";
         std::fs::write(
             &path,
-            concat!(
-                "[ftp-proxy]\ntype = ftp\nhost = ftp.example.com\nuser = user\nsocks_proxy = proxy-user:proxy-secret@localhost:9005\n",
-                "[sftp-proxy]\ntype = sftp\nhost = sftp.example.com\nuser = user\nhttp_proxy = http://proxy-user:proxy-secret@proxy.example.com:8080\n",
-                "[direct]\ntype = sftp\nhost = direct.example.com\nuser = user\n",
+            format!(
+                "[ftp-proxy]\ntype = ftp\nhost = ftp.example.com\nuser = user\nsocks_proxy = {proxy_user}:{proxy_secret}@localhost:9005\n\
+                 [sftp-proxy]\ntype = sftp\nhost = sftp.example.com\nuser = user\nhttp_proxy = http://{proxy_user}:{proxy_secret}@proxy.example.com:8080\n\
+                 [direct]\ntype = sftp\nhost = direct.example.com\nuser = user\n"
             ),
         )
         .unwrap();
@@ -6883,8 +7072,346 @@ region = eu-west-1
             warning.name == "sftp-proxy" && warning.reason.contains("HTTP CONNECT")
         }));
         let serialized = serde_json::to_string(&result.warnings).unwrap();
-        assert!(!serialized.contains("proxy-secret"));
-        assert!(!serialized.contains("proxy-user"));
+        assert!(!serialized.contains(proxy_secret));
+        assert!(!serialized.contains(proxy_user));
+    }
+
+    #[test]
+    fn inherited_dotted_section_proxies_warn_unless_explicitly_cleared() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("rclone.conf");
+        std::fs::write(
+            &path,
+            "\
+[base]
+type = sftp
+host = base.example.com
+user = user
+socks_proxy = localhost:9005
+
+[base.child]
+type = sftp
+host = child.example.com
+user = user
+
+[base.child.grand]
+type = ftp
+host = grand.example.com
+user = user
+
+[base.cleared]
+type = sftp
+host = cleared.example.com
+user = user
+socks_proxy =
+
+[base.orphan.leaf]
+type = sftp
+host = leaf.example.com
+user = user
+
+[child-alias]
+type = alias
+remote = base.child:sub
+
+[hbase]
+type = sftp
+host = hbase.example.com
+user = user
+http_proxy = http://proxy.example.com:8080
+
+[hbase.child]
+type = sftp
+host = hchild.example.com
+user = user
+
+[hbase.cleared]
+type = sftp
+host = hcleared.example.com
+user = user
+http_proxy =
+",
+        )
+        .unwrap();
+
+        let result = import_rclone(&path).unwrap();
+        assert_eq!(
+            result.servers.len(),
+            9,
+            "skipped: {:?}",
+            result.skipped.len()
+        );
+        let socks_warned: Vec<&str> = result
+            .warnings
+            .iter()
+            .filter(|w| w.reason.contains("SOCKS5"))
+            .map(|w| w.name.as_str())
+            .collect();
+        for expected in ["base", "base.child", "base.child.grand", "child-alias"] {
+            assert!(
+                socks_warned.contains(&expected),
+                "expected SOCKS5 warning for {expected}, got {socks_warned:?}"
+            );
+        }
+        for unexpected in ["base.cleared", "base.orphan.leaf"] {
+            assert!(
+                !socks_warned.contains(&unexpected),
+                "did not expect SOCKS5 warning for {unexpected}, got {socks_warned:?}"
+            );
+        }
+
+        let http_warned: Vec<&str> = result
+            .warnings
+            .iter()
+            .filter(|w| w.reason.contains("HTTP CONNECT"))
+            .map(|w| w.name.as_str())
+            .collect();
+        for expected in ["hbase", "hbase.child"] {
+            assert!(
+                http_warned.contains(&expected),
+                "expected HTTP CONNECT warning for {expected}, got {http_warned:?}"
+            );
+        }
+        assert!(
+            !http_warned.contains(&"hbase.cleared"),
+            "did not expect HTTP CONNECT warning for hbase.cleared, got {http_warned:?}"
+        );
+    }
+
+    #[test]
+    fn external_ssh_sftp_remotes_are_skipped_without_echoing_command() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("rclone.conf");
+        std::fs::write(
+            &path,
+            concat!(
+                "[jumped]\ntype = sftp\nhost = old.example.test\nuser = u\nsocks_proxy = localhost:9005\nssh = ssh -J bastion.example.com -i /home/u/.ssh/jump_key alice@files.example.test\n",
+                "[jumped.child]\ntype = sftp\nhost = 10.0.0.6\nuser = u\n",
+                "[jumped.direct]\ntype = sftp\nhost = 10.0.0.7\nuser = u\nssh =\nsocks_proxy =\n",
+                "[direct-only]\ntype = sftp\nhost = direct.example.test\nuser = u\n",
+            ),
+        )
+        .unwrap();
+
+        let result = import_rclone(&path).unwrap();
+        let server_names: Vec<&str> = result.servers.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(server_names, vec!["direct-only", "jumped.direct"]);
+        assert!(
+            result.warnings.is_empty(),
+            "skipped ssh remotes must not emit proxy warnings: {:?}",
+            result
+                .warnings
+                .iter()
+                .map(|w| (&w.name, &w.reason))
+                .collect::<Vec<_>>()
+        );
+        let skipped_names: Vec<&str> = result.skipped.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(skipped_names, vec!["jumped", "jumped.child"]);
+        for skip in &result.skipped {
+            assert!(skip.reason.contains("`ssh`"), "{}", skip.reason);
+            assert!(skip.reason.contains("manually"), "{}", skip.reason);
+            assert!(!skip.reason.contains("bastion"));
+            assert!(!skip.reason.contains("jump_key"));
+            assert!(!skip.reason.contains("files.example.test"));
+        }
+    }
+
+    #[test]
+    fn rclone_proxy_precedence_reports_socks5_only_when_both_proxies_are_set() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("rclone.conf");
+        std::fs::write(
+            &path,
+            concat!(
+                "[both]\ntype = ftp\nhost = ftp.example.com\nuser = u\nsocks_proxy = localhost:9005\nhttp_proxy = http://proxy.example.com:8080\n",
+                "[http-only]\ntype = sftp\nhost = sftp.example.com\nuser = u\nhttp_proxy = http://proxy.example.com:8080\n",
+            ),
+        )
+        .unwrap();
+
+        let result = import_rclone(&path).unwrap();
+        assert_eq!(result.servers.len(), 2);
+        let both: Vec<_> = result
+            .warnings
+            .iter()
+            .filter(|w| w.name == "both")
+            .collect();
+        assert_eq!(
+            both.len(),
+            1,
+            "SOCKS5 must take precedence over HTTP CONNECT"
+        );
+        assert!(both[0].reason.contains("SOCKS5"));
+        assert!(!both[0].reason.contains("HTTP CONNECT"));
+
+        let http_only: Vec<_> = result
+            .warnings
+            .iter()
+            .filter(|w| w.name == "http-only")
+            .collect();
+        assert_eq!(http_only.len(), 1);
+        assert!(http_only[0].reason.contains("HTTP CONNECT"));
+    }
+
+    #[test]
+    fn rclone_goconfig_substitutions_resolve_before_proxy_checks() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("rclone.conf");
+        let secret_proxy = "127.0.0.1:9994";
+        std::fs::write(
+            &path,
+            format!(
+                "[DEFAULT]\ndef_proxy = {secret_proxy}\ntransport_cmd = ssh alice@files.example.test\n\n\
+                 [unset-subst]\ntype = sftp\nhost = a.example.com\nuser = u\nsocks_proxy = %(unset)s\n\n\
+                 [default-subst]\ntype = sftp\nhost = b.example.com\nuser = u\nsocks_proxy = %(def_proxy)s\n\n\
+                 [collide-empty-local-proxy]\ntype = sftp\nhost = c1.example.com\nuser = u\ndef_proxy =\nsocks_proxy = %(def_proxy)s\n\n\
+                 [collide-empty-local-ssh]\ntype = sftp\nhost = old.example.test\nuser = u\ntransport_cmd =\nssh = %(transport_cmd)s\n\n\
+                 [parent]\ntype = sftp\nhost = c.example.com\nuser = u\nmy_proxy = {secret_proxy}\nsocks_proxy = %(my_proxy)s\n\n\
+                 [parent.child]\ntype = sftp\nhost = d.example.com\nuser = u\n"
+            ),
+        )
+        .unwrap();
+
+        let result = import_rclone(&path).unwrap();
+        let socks_warned: Vec<&str> = result
+            .warnings
+            .iter()
+            .filter(|w| w.reason.contains("SOCKS5"))
+            .map(|w| w.name.as_str())
+            .collect();
+        assert!(
+            !socks_warned.contains(&"unset-subst"),
+            "unset %(var)s resolves to empty in rclone: {socks_warned:?}"
+        );
+        for expected in [
+            "default-subst",
+            "collide-empty-local-proxy",
+            "parent",
+            "parent.child",
+        ] {
+            assert!(
+                socks_warned.contains(&expected),
+                "expected SOCKS5 warning for {expected}: {socks_warned:?}"
+            );
+        }
+        assert!(
+            !result
+                .servers
+                .iter()
+                .any(|s| s.name == "collide-empty-local-ssh"),
+            "[DEFAULT] transport_cmd must beat empty local transport_cmd and skip the SFTP remote"
+        );
+        assert!(
+            result
+                .skipped
+                .iter()
+                .any(|s| s.name == "collide-empty-local-ssh" && s.reason.contains("`ssh`")),
+            "expected external ssh skip for collide-empty-local-ssh"
+        );
+        let serialized_warnings = serde_json::to_string(&result.warnings).unwrap();
+        let serialized_skipped = serde_json::to_string(&result.skipped).unwrap();
+        assert!(!serialized_warnings.contains(secret_proxy));
+        assert!(!serialized_skipped.contains("files.example.test"));
+    }
+
+    #[test]
+    fn rclone_oversized_and_cyclic_substitutions_skip_remote_without_leaking_values() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("rclone.conf");
+        let long_cmd = format!(
+            "ssh -J secret-jump-host.invalid {} alice@target.invalid",
+            "x".repeat(4200)
+        );
+        std::fs::write(
+            &path,
+            format!(
+                "[oversized-ssh]\ntype = sftp\nhost = old.example.test\nuser = u\ncmd = {long_cmd}\nssh = %(cmd)s\n\n\
+                 [cyclic-proxy]\ntype = sftp\nhost = cyc.example.test\nuser = u\na = %(b)s\nb = %(a)s\nsocks_proxy = %(a)s\n\n\
+                 [direct-control]\ntype = sftp\nhost = ok.example.test\nuser = u\n"
+            ),
+        )
+        .unwrap();
+
+        let result = import_rclone(&path).unwrap();
+        let server_names: Vec<&str> = result.servers.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(server_names, vec!["direct-control"]);
+        for expected_skip in ["oversized-ssh", "cyclic-proxy"] {
+            let skip = result
+                .skipped
+                .iter()
+                .find(|s| s.name == expected_skip)
+                .unwrap_or_else(|| panic!("expected overflow skip for {expected_skip}"));
+            assert!(
+                skip.reason.contains("substitution expansion limits"),
+                "{}",
+                skip.reason
+            );
+            assert!(!skip.reason.contains("secret-jump-host"));
+            assert!(!skip.reason.contains("target.invalid"));
+        }
+    }
+
+    #[test]
+    fn dotted_parent_transport_lookup_is_cached_across_aliases() {
+        let mut sections: HashMap<String, RcloneRemote> = HashMap::new();
+        let mut root = RcloneRemote::new();
+        root.insert("type".into(), "sftp".into());
+        root.insert("host".into(), "base.example.com".into());
+        root.insert("socks_proxy".into(), "localhost:9005".into());
+        sections.insert("a".into(), root);
+
+        let mut name = "a".to_string();
+        for level in 1..=12 {
+            name.push_str(&format!(".l{level}"));
+            let mut sec = RcloneRemote::new();
+            sec.insert("type".into(), "sftp".into());
+            sec.insert("host".into(), format!("h{level}.example.com"));
+            sections.insert(name.clone(), sec);
+        }
+        let deep_base = name.clone();
+        let mut cleared = RcloneRemote::new();
+        cleared.insert("type".into(), "sftp".into());
+        cleared.insert("host".into(), "cleared.example.com".into());
+        cleared.insert("socks_proxy".into(), String::new());
+        let cleared_name = format!("{deep_base}.cleared");
+        sections.insert(cleared_name.clone(), cleared);
+
+        let mut cache = HashMap::new();
+        let mut hops = 0usize;
+        let deep_sec = &sections[&deep_base];
+        for _ in 0..200 {
+            let t = resolve_rclone_transport_cached(
+                &mut cache,
+                &sections,
+                deep_sec,
+                &deep_base,
+                ImportSourceKind::RcloneFile,
+                &mut hops,
+            );
+            assert!(t.has_socks_proxy);
+            assert!(!t.has_http_proxy);
+            assert!(!t.has_external_ssh);
+        }
+        // Only the first lookup walks the 13-level chain (3 keys * 13 = 39 hops);
+        // the remaining 199 alias lookups hit the cache with 0 extra hops.
+        assert_eq!(
+            hops, 39,
+            "expected cached lookup across 200 aliases, got {hops} hops"
+        );
+
+        let cleared_sec = &sections[&cleared_name];
+        let cleared_t = resolve_rclone_transport_cached(
+            &mut cache,
+            &sections,
+            cleared_sec,
+            &cleared_name,
+            ImportSourceKind::RcloneFile,
+            &mut hops,
+        );
+        assert!(
+            !cleared_t.has_socks_proxy,
+            "explicit empty child override must stay cleared"
+        );
     }
 
     #[test]

@@ -195,17 +195,16 @@ pub(crate) fn map_webdav_vendor(vendor: &str) -> &'static str {
 
 // ============ URL / host helpers ============
 
-/// Strip scheme and path from an endpoint, keeping `host[:port]`.
+/// Strip scheme, userinfo, path, query, and fragment from an endpoint, keeping `host[:port]`.
 pub(crate) fn endpoint_host(endpoint: &str) -> String {
-    endpoint
-        .split_once("://")
-        .map(|(_, r)| r)
-        .unwrap_or(endpoint)
-        .split('/')
-        .next()
-        .unwrap_or(endpoint)
-        .trim_end_matches('/')
-        .to_string()
+    let trimmed = endpoint.trim();
+    let after_scheme = trimmed.split_once("://").map(|(_, r)| r).unwrap_or(trimmed);
+    let authority = after_scheme.split(['/', '?', '#']).next().unwrap_or("");
+    let host_port = authority
+        .rsplit_once('@')
+        .map(|(_, h)| h)
+        .unwrap_or(authority);
+    host_port.trim().to_string()
 }
 
 /// Default TCP port for a protocol token.
@@ -1737,5 +1736,22 @@ mod tests {
         let mut names = ExportEntryNames::exact(Vec::<String>::new());
         assert_eq!(names.claim("x"), "x");
         assert_eq!(names.claim("x"), "x-2");
+    }
+
+    #[test]
+    fn endpoint_host_strips_userinfo_query_and_fragment() {
+        let user = "alice";
+        let secret = "p@ssSecret";
+        let token = "tokSecret";
+        let with_creds =
+            format!("https://{user}:{secret}@s3.example.com:9000/bucket?token={token}#frag");
+        assert_eq!(endpoint_host(&with_creds), "s3.example.com:9000");
+
+        let bare_query = format!("{user}:{secret}@s3.example.com?token={token}");
+        assert_eq!(endpoint_host(&bare_query), "s3.example.com");
+
+        assert_eq!(endpoint_host("s3.example.com#section"), "s3.example.com");
+        assert_eq!(endpoint_host("[::1]:9000/path"), "[::1]:9000");
+        assert_eq!(endpoint_host("s3.amazonaws.com"), "s3.amazonaws.com");
     }
 }

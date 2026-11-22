@@ -35,7 +35,26 @@ const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024;
 /// one tag per line, but a sitemanager.xml that went through a minifier or was
 /// written by another tool is still valid XML, and a line parser silently
 /// imported nothing from it.
+#[cfg(test)]
 fn parse_sitemanager_xml(content: &str) -> Vec<FileZillaServer> {
+    parse_sitemanager_xml_checked(content).servers
+}
+
+/// What [`parse_sitemanager_xml_checked`] read, and whether it read all of it.
+struct SiteManagerParse {
+    servers: Vec<FileZillaServer>,
+    /// The document closed its `<FileZilla3>` root without a parse error. A
+    /// file that stops early (a crash while saving, a cut copy) keeps the
+    /// sites before the break, and the sites after it are not in the result.
+    complete: bool,
+    /// Parsing stopped at [`MAX_SERVERS`].
+    capped: bool,
+    /// Root matched AeroFTP v4.1.0..v4.2.7's own exporter signature
+    /// (`version="3.67.1"` and `platform="*"`, which real FileZilla never writes).
+    legacy_aeroftp_export: bool,
+}
+
+fn parse_sitemanager_xml_checked(content: &str) -> SiteManagerParse {
     use quick_xml::events::Event;
     use quick_xml::Reader;
 
@@ -52,6 +71,9 @@ fn parse_sitemanager_xml(content: &str) -> Vec<FileZillaServer> {
     let mut current_parameter_name = String::new();
     let mut pass_encoding = String::new();
     let mut capped = false;
+    let mut malformed = false;
+    let mut root_closed = false;
+    let mut legacy_aeroftp_export = false;
     // Text since the last tag. quick-xml hands it over in pieces: a character
     // or entity reference is its own `GeneralRef` event between two `Text`
     // fragments, and a CDATA section is a `CData` event. The pieces are joined
@@ -64,8 +86,15 @@ fn parse_sitemanager_xml(content: &str) -> Vec<FileZillaServer> {
     let mut buf = Vec::new();
 
     // Malformed XML ends iteration while preserving every server parsed
-    // cleanly before the error.
-    while let Ok(event) = reader.read_event_into(&mut buf) {
+    // cleanly before the error; the caller is told the file was not read whole.
+    loop {
+        let event = match reader.read_event_into(&mut buf) {
+            Ok(event) => event,
+            Err(_) => {
+                malformed = true;
+                break;
+            }
+        };
         match event {
             Event::Eof => break,
             Event::Text(e) => text.push_str(&e.xml_content(quick_xml::XmlVersion::Implicit1_0)),
@@ -90,6 +119,25 @@ fn parse_sitemanager_xml(content: &str) -> Vec<FileZillaServer> {
                 }
                 let tag = e.name().as_ref().to_string();
                 match tag.as_str() {
+                    "FileZilla3" if !in_server => {
+                        let version = e
+                            .try_get_attribute("version")
+                            .ok()
+                            .flatten()
+                            .map(|a| a.value.into_owned());
+                        let platform = e
+                            .try_get_attribute("platform")
+                            .ok()
+                            .flatten()
+                            .map(|a| a.value.into_owned());
+                        // Real FileZilla writes platform "windows", "mac", or "*nix"
+                        // (`src/commonui/xml_file.cpp:177-185`). Only AeroFTP
+                        // v4.1.0..v4.2.7 wrote `version="3.67.1"` with `platform="*"`.
+                        if version.as_deref() == Some("3.67.1") && platform.as_deref() == Some("*")
+                        {
+                            legacy_aeroftp_export = true;
+                        }
+                    }
                     "Folder" if !in_server => {
                         folder_stack.push((String::new(), servers.len()));
                     }
@@ -129,6 +177,9 @@ fn parse_sitemanager_xml(content: &str) -> Vec<FileZillaServer> {
             // Self-closing element, e.g. <Name/>: an empty value.
             Event::Empty(e) => {
                 let run = std::mem::take(&mut text);
+                if !in_server && e.name().as_ref() == "FileZilla3" {
+                    root_closed = true;
+                }
                 if !in_server {
                     note_folder_text(&mut folder_stack, run.trim());
                     continue;
@@ -153,6 +204,9 @@ fn parse_sitemanager_xml(content: &str) -> Vec<FileZillaServer> {
                 let run = std::mem::take(&mut text);
                 let run = run.trim();
                 let tag = e.name().as_ref().to_string();
+                if !in_server && tag == "FileZilla3" {
+                    root_closed = true;
+                }
                 if in_server && tag == "Server" {
                     let display_name = if current_name.is_empty() {
                         current_fields
@@ -210,7 +264,50 @@ fn parse_sitemanager_xml(content: &str) -> Vec<FileZillaServer> {
     if capped {
         log::warn!("filezilla import: stopped at the {MAX_SERVERS}-server cap");
     }
-    servers
+    SiteManagerParse {
+        servers,
+        // A capped parse stops before the root closes; that is reported as the cap.
+        complete: !malformed && (root_closed || capped),
+        capped,
+        legacy_aeroftp_export,
+    }
+}
+
+/// Read at most `max_bytes` UTF-8 bytes from `reader`, refusing oversized input
+/// without reading past `max_bytes + 1` bytes.
+fn read_bounded_utf8<R: std::io::Read>(reader: R, max_bytes: u64) -> Result<String, String> {
+    use std::io::Read;
+
+    let mut bytes = Vec::new();
+    reader
+        .take(max_bytes.saturating_add(1))
+        .read_to_end(&mut bytes)
+        .map_err(|e| format!("read: {e}"))?;
+    if bytes.len() as u64 > max_bytes {
+        return Err(format!(
+            "File too large (max {} MB)",
+            max_bytes.div_ceil(1024 * 1024)
+        ));
+    }
+    String::from_utf8(bytes).map_err(|e| format!("invalid UTF-8: {e}"))
+}
+
+/// Read a regular UTF-8 file from a single opened handle, enforcing `max_bytes`
+/// during the read so a file growing or swapped after a metadata check cannot
+/// consume unbounded memory.
+fn read_bounded_utf8_file(path: &Path, max_bytes: u64) -> Result<String, String> {
+    let file = std::fs::File::open(path).map_err(|e| format!("open: {e}"))?;
+    let metadata = file.metadata().map_err(|e| format!("metadata: {e}"))?;
+    if !metadata.is_file() {
+        return Err("not a regular file".to_string());
+    }
+    if metadata.len() > max_bytes {
+        return Err(format!(
+            "File too large (max {} MB)",
+            max_bytes.div_ceil(1024 * 1024)
+        ));
+    }
+    read_bounded_utf8(file, max_bytes)
 }
 
 /// Text found directly inside a `<Folder>`, outside its servers, is the
@@ -241,20 +338,26 @@ impl Default for FileZillaGlobalSettings {
 }
 
 fn filezilla_global_settings(sitemanager_path: &Path) -> Option<FileZillaGlobalSettings> {
+    filezilla_global_settings_with_limit(sitemanager_path, MAX_FILE_SIZE)
+}
+
+fn filezilla_global_settings_with_limit(
+    sitemanager_path: &Path,
+    max_bytes: u64,
+) -> Option<FileZillaGlobalSettings> {
     use quick_xml::events::Event;
 
     let path = sitemanager_path.with_file_name("filezilla.xml");
-    let Ok(metadata) = std::fs::metadata(&path) else {
-        return None;
-    };
-    if !metadata.is_file() || metadata.len() > MAX_FILE_SIZE {
-        return None;
-    }
-    let Ok(content) = std::fs::read_to_string(path) else {
+    let Ok(content) = read_bounded_utf8_file(&path, max_bytes) else {
         return None;
     };
     let mut reader = quick_xml::Reader::from_str(&content);
     let mut settings = FileZillaGlobalSettings::default();
+    let mut depth: usize = 0;
+    let mut in_root = false;
+    let mut in_settings = false;
+    let mut saw_completed_settings = false;
+    let mut saw_completed_root = false;
     let mut setting_name = None;
     let mut setting_value = String::new();
     let mut buf = Vec::new();
@@ -263,22 +366,56 @@ fn filezilla_global_settings(sitemanager_path: &Path) -> Option<FileZillaGlobalS
             return None;
         };
         match event {
-            Event::Eof => break,
-            Event::Start(e) if e.name().as_ref() == "Setting" => {
-                setting_name = e
-                    .try_get_attribute("name")
-                    .ok()
-                    .flatten()
-                    .map(|a| a.value.into_owned());
-                setting_value.clear();
+            Event::Eof => {
+                return (depth == 0
+                    && saw_completed_root
+                    && saw_completed_settings
+                    && setting_name.is_none())
+                .then_some(settings);
             }
-            Event::Text(e) if setting_name.is_some() => {
+            Event::Start(e) => {
+                let name = e.name();
+                if depth == 0 && name.as_ref() == "FileZilla3" {
+                    in_root = true;
+                } else if in_root && depth == 1 && name.as_ref() == "Settings" {
+                    in_settings = true;
+                } else if in_settings && depth == 2 && name.as_ref() == "Setting" {
+                    setting_name = e
+                        .try_get_attribute("name")
+                        .ok()
+                        .flatten()
+                        .map(|a| a.value.into_owned());
+                    setting_value.clear();
+                }
+                depth += 1;
+            }
+            Event::Empty(e) => {
+                let name = e.name();
+                if in_root && depth == 1 && name.as_ref() == "Settings" {
+                    saw_completed_settings = true;
+                } else if in_settings && depth == 2 && name.as_ref() == "Setting" {
+                    if let Some(attr) = e
+                        .try_get_attribute("name")
+                        .ok()
+                        .flatten()
+                        .map(|a| a.value.into_owned())
+                    {
+                        match attr.as_str() {
+                            "Proxy type" => settings.generic_type = 0,
+                            "FTP Proxy type" => settings.ftp_type = 0,
+                            "Use Pasv mode" => settings.use_pasv_mode = 1,
+                            _ => {}
+                        }
+                    }
+                }
+            }
+            Event::Text(e) if depth == 3 && setting_name.is_some() => {
                 setting_value.push_str(&e.xml_content(quick_xml::XmlVersion::Implicit1_0));
             }
-            Event::CData(e) if setting_name.is_some() => {
+            Event::CData(e) if depth == 3 && setting_name.is_some() => {
                 setting_value.push_str(&e.xml_content(quick_xml::XmlVersion::Implicit1_0));
             }
-            Event::GeneralRef(e) if setting_name.is_some() => {
+            Event::GeneralRef(e) if depth == 3 && setting_name.is_some() => {
                 match crate::providers::xml_text::xml_entity_to_str(&e) {
                     Some(expansion) => setting_value.push_str(&expansion),
                     None => {
@@ -288,22 +425,45 @@ fn filezilla_global_settings(sitemanager_path: &Path) -> Option<FileZillaGlobalS
                     }
                 }
             }
-            Event::End(e) if e.name().as_ref() == "Setting" => {
-                let value = setting_value.trim();
-                match setting_name.as_deref() {
-                    Some("Proxy type") => settings.generic_type = value.parse().unwrap_or(0),
-                    Some("FTP Proxy type") => settings.ftp_type = value.parse().unwrap_or(0),
-                    Some("Use Pasv mode") => settings.use_pasv_mode = value.parse().unwrap_or(1),
-                    _ => {}
+            Event::End(e) => {
+                if depth == 0 {
+                    return None;
                 }
-                setting_name = None;
-                setting_value.clear();
+                depth -= 1;
+                let name = e.name();
+                if in_settings && depth == 2 && name.as_ref() == "Setting" {
+                    let value = setting_value.trim();
+                    match setting_name.as_deref() {
+                        Some("Proxy type") => settings.generic_type = value.parse().unwrap_or(0),
+                        Some("FTP Proxy type") => settings.ftp_type = value.parse().unwrap_or(0),
+                        Some("Use Pasv mode") => {
+                            settings.use_pasv_mode = value.parse().unwrap_or(1)
+                        }
+                        _ => {}
+                    }
+                    setting_name = None;
+                    setting_value.clear();
+                } else if in_settings && depth == 1 && name.as_ref() == "Settings" {
+                    in_settings = false;
+                    saw_completed_settings = true;
+                } else if in_root && depth == 0 && name.as_ref() == "FileZilla3" {
+                    in_root = false;
+                    saw_completed_root = true;
+                }
             }
             _ => {}
         }
         buf.clear();
     }
-    Some(settings)
+}
+
+/// FileZilla 3.72 `ProxyType` (`src/engine/proxy.h:7-15`):
+/// `NONE = 0, HTTP = 1, SOCKS5 = 2, SOCKS4 = 3, SSH = 4, count = 5`.
+/// Both `controlsocket.cpp:848` and `ftp/logon.cpp:52` treat only
+/// `NONE < proxy_type < count` as an active generic proxy; out-of-range
+/// values do not force passive mode or suppress the FTP proxy.
+fn is_known_generic_proxy(proxy_type: u32) -> bool {
+    (1..=4).contains(&proxy_type)
 }
 
 fn generic_proxy_kind(proxy_type: u32) -> String {
@@ -312,7 +472,7 @@ fn generic_proxy_kind(proxy_type: u32) -> String {
         2 => "SOCKS5".to_string(),
         3 => "SOCKS4".to_string(),
         4 => "SSH".to_string(),
-        other => format!("type {other}"),
+        other => format!("unknown proxy type {other}"),
     }
 }
 
@@ -368,8 +528,44 @@ struct MappedProfile {
     initial_path: Option<String>,
 }
 
+/// Whether a server entry in a FileZilla XML document is an S3 profile written
+/// by AeroFTP v4.1.0..v4.2.7 (which emitted `Protocol=6` under
+/// `<FileZilla3 version="3.67.1" platform="*">` without any native FileZilla
+/// site fields such as `Type`, `PasvMode`, `EncodingType`, `BypassProxy`, or
+/// `Parameter`). Real FileZilla never writes `platform="*"`.
+fn is_legacy_aeroftp_s3_server(legacy_aeroftp_export: bool, server: &FileZillaServer) -> bool {
+    if !legacy_aeroftp_export || server.fields.get("Protocol").map(String::as_str) != Some("6") {
+        return false;
+    }
+    const NATIVE_FILEZILLA_FIELDS: &[&str] = &[
+        "Type",
+        "PasvMode",
+        "EncodingType",
+        "BypassProxy",
+        "TimezoneOffset",
+        "MaximumMultipleConnections",
+        "SyncBrowsing",
+        "DirectoryComparison",
+    ];
+    !NATIVE_FILEZILLA_FIELDS
+        .iter()
+        .any(|key| server.fields.contains_key(*key))
+        && !server
+            .fields
+            .keys()
+            .any(|key| key.starts_with("_parameter_"))
+}
+
 /// Map a FileZilla server entry to an AeroFTP profile.
+#[cfg(test)]
 fn map_server(server: &FileZillaServer) -> Option<MappedProfile> {
+    map_server_with_context(server, false)
+}
+
+fn map_server_with_context(
+    server: &FileZillaServer,
+    legacy_aeroftp_s3: bool,
+) -> Option<MappedProfile> {
     let host = server.fields.get("Host").filter(|h| !h.is_empty())?;
     let fz_protocol: u32 = server
         .fields
@@ -398,23 +594,31 @@ fn map_server(server: &FileZillaServer) -> Option<MappedProfile> {
         .fields
         .get("RemoteDir")
         .filter(|d| !d.is_empty())
-        .map(|d| parse_filezilla_remote_dir(d));
+        .map(|d| parse_filezilla_remote_dir(d))
+        .filter(|d| !d.is_empty());
 
-    // FileZilla protocol values:
-    // 0 = FTP, 1 = SFTP, 3 = FTPS implicit, 4 = FTPS explicit, 6 = S3
-    let (protocol, default_port) = match fz_protocol {
-        0 => ("ftp", 21u32),
-        1 => ("sftp", 22),
-        3 => ("ftps", 990), // implicit
-        4 => ("ftps", 21),  // explicit
-        6 => ("s3", 443),
-        _ => {
-            log::info!(
-                "FileZilla server '{}': unsupported Protocol={}",
-                server.name,
-                fz_protocol
-            );
-            return None;
+    // FileZilla 3.72 `ServerProtocol` (`src/include/server.h:11-24`, values
+    // never change): 0 = FTP (explicit TLS if available), 1 = SFTP, 2 = HTTP,
+    // 3 = FTPS implicit, 4 = FTPES explicit, 5 = HTTPS, 6 = INSECURE_FTP
+    // (plain FTP only), 7 = S3.
+    let (protocol, default_port) = if legacy_aeroftp_s3 {
+        ("s3", 443u32)
+    } else {
+        match fz_protocol {
+            0 => ("ftp", 21u32),
+            1 => ("sftp", 22),
+            3 => ("ftps", 990), // implicit
+            4 => ("ftps", 21),  // explicit
+            6 => ("ftp", 21),   // plain FTP only
+            7 => ("s3", 443),
+            _ => {
+                log::info!(
+                    "FileZilla server '{}': unsupported Protocol={}",
+                    server.name,
+                    fz_protocol
+                );
+                return None;
+            }
         }
     };
 
@@ -422,6 +626,7 @@ fn map_server(server: &FileZillaServer) -> Option<MappedProfile> {
 
     // Build protocol-specific options
     let mut options = serde_json::Map::new();
+    let mut initial_path = remote_dir;
 
     // Implicit vs explicit, under `tlsMode`: the key the GUI stores and the
     // connection reads (an `ftpsMode` was read by nothing, so an explicit site
@@ -438,6 +643,46 @@ fn map_server(server: &FileZillaServer) -> Option<MappedProfile> {
                 serde_json::Value::String("explicit".to_string()),
             );
         }
+    } else if protocol == "ftp" && fz_protocol == 6 {
+        // "Only use plain FTP (insecure)": no AUTH TLS attempt.
+        options.insert(
+            "tlsMode".to_string(),
+            serde_json::Value::String("none".to_string()),
+        );
+    } else if protocol == "s3" && !legacy_aeroftp_s3 {
+        // FileZilla Pro S3 stores `/bucket` or `/bucket/prefix/...` in
+        // `<RemoteDir>`. AeroFTP's `S3Config::from_provider_config` reads the
+        // bucket from `options.bucket` and starts inside `initial_path`.
+        // Split the bucket off once so empty interior segments (e.g.
+        // `/reports//2026`) survive verbatim. Older AeroFTP v4.1.0..v4.2.7
+        // exports (`legacy_aeroftp_s3`) wrote only `initial_path` without the
+        // bucket, so we must not infer a bucket from their prefix.
+        if let Some(ref decoded) = initial_path {
+            let trimmed_root = decoded.strip_prefix('/').unwrap_or(decoded.as_str());
+            if !trimmed_root.is_empty() {
+                match trimmed_root.split_once('/') {
+                    Some((bucket, rest)) if !bucket.is_empty() => {
+                        options.insert(
+                            "bucket".to_string(),
+                            serde_json::Value::String(bucket.to_string()),
+                        );
+                        initial_path = if rest.is_empty() {
+                            None
+                        } else {
+                            Some(format!("/{rest}"))
+                        };
+                    }
+                    None => {
+                        options.insert(
+                            "bucket".to_string(),
+                            serde_json::Value::String(trimmed_root.to_string()),
+                        );
+                        initial_path = None;
+                    }
+                    _ => {}
+                }
+            }
+        }
     }
 
     let options_val = if options.is_empty() {
@@ -453,51 +698,114 @@ fn map_server(server: &FileZillaServer) -> Option<MappedProfile> {
         username,
         password,
         options: options_val,
-        initial_path: remote_dir,
+        initial_path,
     })
 }
 
-/// Parse FileZilla's encoded remote directory format.
-/// FileZilla uses a custom format: "1 0 <len> <path>" or just a plain path.
+/// Encode a POSIX path into FileZilla's `CServerPath::GetSafePath()` format
+/// (`FileZilla_3.72.1_src/src/commonui/site_manager.cpp:63-65, 202` and
+/// `src/engine/serverpath.cpp:290-446`): `"1 0"` for `/` or
+/// `"1 0 <len> <segment>..."` (ServerType::UNIX = 1, prefix_len = 0).
+/// Because FileZilla's `DoSetSafePath` rejects zero-length segments, an empty
+/// segment produced by `//` or a trailing `/` is folded as a trailing `/` onto
+/// the preceding segment so exact S3 prefixes like `/reports//2026` round-trip.
+fn format_filezilla_remote_dir(path: &str) -> String {
+    let without_root = path.strip_prefix('/').unwrap_or(path);
+    if without_root.is_empty() {
+        return "1 0".to_string();
+    }
+    let mut segments: Vec<String> = Vec::new();
+    for raw in without_root.split('/') {
+        if raw.is_empty() {
+            if let Some(prev) = segments.last_mut() {
+                prev.push('/');
+            }
+        } else {
+            segments.push(raw.to_string());
+        }
+    }
+    if segments.is_empty() {
+        return "1 0".to_string();
+    }
+    let mut out = String::from("1 0");
+    for seg in &segments {
+        out.push(' ');
+        out.push_str(&seg.chars().count().to_string());
+        out.push(' ');
+        out.push_str(seg);
+    }
+    out
+}
+
+/// Parse FileZilla's encoded remote directory format (`CServerPath::GetSafePath`,
+/// `src/engine/serverpath.cpp:290-446`): `"1 0"` (root) or
+/// `"1 0 <len> <segment> <len> <segment>..."`, or a plain path (for legacy
+/// AeroFTP exports). Never pre-allocates the declared segment length before
+/// verifying it fits in the remaining input.
 fn parse_filezilla_remote_dir(encoded: &str) -> String {
-    // FileZilla encodes paths as: "1 0 <length> <path> 0"
-    // Example: "1 0 4 /var 0 4 /www 0" -> "/var/www"
-    // Simple paths are just the path string
-    if encoded.starts_with("1 0") {
-        // Parse the encoded format
-        let parts: Vec<&str> = encoded.split_whitespace().collect();
-        let mut path = String::new();
-        let mut i = 2; // Skip "1" and "0"
-        while i + 1 < parts.len() {
-            if let Ok(len) = parts[i].parse::<usize>() {
-                if i + 1 < parts.len() {
-                    let segment = parts[i + 1];
-                    if segment.len() == len || segment == "0" {
-                        if segment != "0" {
-                            path.push_str(segment);
-                        }
-                    } else {
-                        path.push_str(segment);
-                    }
-                }
-                i += 2;
-            } else {
+    let trimmed = encoded.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    if trimmed == "1 0" {
+        return "/".to_string();
+    }
+    if let Some(rest) = trimmed.strip_prefix("1 0 ") {
+        let mut chars = rest.chars().peekable();
+        let mut segments: Vec<String> = Vec::new();
+        let mut parsed_ok = true;
+
+        while chars.peek().is_some() {
+            while matches!(chars.peek(), Some(' ')) {
+                chars.next();
+            }
+            if chars.peek().is_none() {
                 break;
             }
+            let mut len_str = String::new();
+            while let Some(&ch) = chars.peek() {
+                if ch.is_ascii_digit() {
+                    len_str.push(ch);
+                    chars.next();
+                } else {
+                    break;
+                }
+            }
+            let Ok(seg_len) = len_str.parse::<usize>() else {
+                parsed_ok = false;
+                break;
+            };
+            if seg_len == 0 || seg_len > rest.len() {
+                parsed_ok = false;
+                break;
+            }
+            if chars.next() != Some(' ') {
+                parsed_ok = false;
+                break;
+            }
+            let mut segment = String::new();
+            for _ in 0..seg_len {
+                match chars.next() {
+                    Some(ch) => segment.push(ch),
+                    None => {
+                        parsed_ok = false;
+                        break;
+                    }
+                }
+            }
+            if !parsed_ok {
+                break;
+            }
+            if !segment.is_empty() {
+                segments.push(segment);
+            }
         }
-        if path.is_empty() {
-            return String::new();
+
+        if parsed_ok && !segments.is_empty() {
+            return format!("/{}", segments.join("/"));
         }
-        if !path.starts_with('/') {
-            format!("/{}", path)
-        } else {
-            path
-        }
-    } else if !encoded.is_empty() {
-        encoded.to_string()
-    } else {
-        String::new()
     }
+    trimmed.to_string()
 }
 
 // ============ Default config path detection ============
@@ -576,17 +884,11 @@ pub struct FileZillaSkippedServer {
 
 /// Import all supported servers from a FileZilla sitemanager.xml file.
 pub fn import_filezilla(config_path: &Path) -> Result<FileZillaImportResult, String> {
-    // Check file size before reading
-    let metadata = std::fs::metadata(config_path)
-        .map_err(|e| format!("Read FileZilla config metadata: {}", e))?;
-    if metadata.len() > MAX_FILE_SIZE {
-        return Err("File too large (max 10 MB)".to_string());
-    }
-
-    let content = std::fs::read_to_string(config_path)
+    let content = read_bounded_utf8_file(config_path, MAX_FILE_SIZE)
         .map_err(|e| format!("Read FileZilla config: {}", e))?;
 
-    let fz_servers = parse_sitemanager_xml(&content);
+    let parsed = parse_sitemanager_xml_checked(&content);
+    let fz_servers = parsed.servers;
     let total_servers = fz_servers.len();
     let global_settings = filezilla_global_settings(config_path);
     let mut servers = Vec::new();
@@ -602,15 +904,28 @@ pub fn import_filezilla(config_path: &Path) -> Result<FileZillaImportResult, Str
             .get("Protocol")
             .cloned()
             .unwrap_or_default();
+        let legacy_aeroftp_s3 =
+            is_legacy_aeroftp_s3_server(parsed.legacy_aeroftp_export, fz_server);
 
-        match map_server(fz_server) {
+        match map_server_with_context(fz_server, legacy_aeroftp_s3) {
             Some(mapped) => {
-                let bypass_proxy =
-                    fz_server.fields.get("BypassProxy").map(String::as_str) == Some("1");
+                if legacy_aeroftp_s3 {
+                    warnings.push(FileZillaImportWarning {
+                        name: fz_server.name.clone(),
+                        reason: "Recovered as S3 from an older AeroFTP FileZilla export that wrote S3 as Protocol=6 without exporting the S3 bucket; set the bucket name before connecting (RemoteDir was kept as the start path)".to_string(),
+                    });
+                }
+                // FileZilla 3.72 reads BypassProxy as an integer
+                // (`src/commonui/xml_file.cpp:541`: `GetTextElementInt(node, "BypassProxy", false) == 1`).
+                let bypass_proxy = fz_server
+                    .fields
+                    .get("BypassProxy")
+                    .and_then(|value| value.trim().parse::<i64>().ok())
+                    == Some(1);
                 let uses_generic_proxy = !bypass_proxy
                     && global_settings
                         .as_ref()
-                        .is_some_and(|settings| settings.generic_type != 0);
+                        .is_some_and(|settings| is_known_generic_proxy(settings.generic_type));
                 if matches!(mapped.protocol.as_str(), "ftp" | "ftps") {
                     let data_mode = match fz_server
                         .fields
@@ -693,17 +1008,29 @@ pub fn import_filezilla(config_path: &Path) -> Result<FileZillaImportResult, Str
     match global_settings {
         Some(settings) => {
             if settings.generic_type != 0 && generic_proxy_sites > 0 {
-                warnings.push(FileZillaImportWarning {
-                    name: "FileZilla global settings".to_string(),
-                    reason: format!(
-                        "FileZilla's global {} proxy is not imported; {} affected {} will connect directly through AeroFTP",
-                        generic_proxy_kind(settings.generic_type),
+                let proxy_label = generic_proxy_kind(settings.generic_type);
+                let reason = if is_known_generic_proxy(settings.generic_type) {
+                    format!(
+                        "FileZilla's global {proxy_label} proxy is not imported; {} affected {} will connect directly through AeroFTP",
                         generic_proxy_sites,
                         if generic_proxy_sites == 1 { "site" } else { "sites" },
-                    ),
+                    )
+                } else {
+                    format!(
+                        "FileZilla's global settings specify {proxy_label}, which is not imported; {} affected {} will connect directly through AeroFTP",
+                        generic_proxy_sites,
+                        if generic_proxy_sites == 1 { "site" } else { "sites" },
+                    )
+                };
+                warnings.push(FileZillaImportWarning {
+                    name: "FileZilla global settings".to_string(),
+                    reason,
                 });
             }
-            if settings.generic_type == 0 && settings.ftp_type != 0 && ftp_proxy_sites > 0 {
+            if !is_known_generic_proxy(settings.generic_type)
+                && settings.ftp_type != 0
+                && ftp_proxy_sites > 0
+            {
                 warnings.push(FileZillaImportWarning {
                     name: "FileZilla global settings".to_string(),
                     reason: format!(
@@ -737,6 +1064,25 @@ pub fn import_filezilla(config_path: &Path) -> Result<FileZillaImportResult, Str
             });
         }
         None => {}
+    }
+
+    if !parsed.complete {
+        warnings.push(FileZillaImportWarning {
+            name: "FileZilla site manager".to_string(),
+            reason: format!(
+                "sitemanager.xml is malformed or ends before its closing tag; {} {} read before that point, and any sites after it were not imported",
+                total_servers,
+                if total_servers == 1 { "site was" } else { "sites were" },
+            ),
+        });
+    }
+    if parsed.capped {
+        warnings.push(FileZillaImportWarning {
+            name: "FileZilla site manager".to_string(),
+            reason: format!(
+                "the import stopped at the {MAX_SERVERS}-site limit; later sites were not imported"
+            ),
+        });
     }
 
     Ok(FileZillaImportResult {
@@ -774,7 +1120,9 @@ pub fn export_filezilla(
     output_path: &Path,
 ) -> Result<usize, String> {
     let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
-    xml.push_str("<FileZilla3 version=\"3.67.1\" platform=\"*\">\n");
+    // Export with version 3.72.1 so Protocol=6 (plain FTP) and Protocol=7 (S3)
+    // stay unambiguous from older AeroFTP v4.1.0..v4.2.7 `3.67.1` exports.
+    xml.push_str("<FileZilla3 version=\"3.72.1\" platform=\"*\">\n");
     xml.push_str("  <Servers>\n");
     let mut exported = 0;
     // FileZilla addresses a site by its name (`--site 0/<name>`): two of one
@@ -789,16 +1137,18 @@ pub fn export_filezilla(
             "sftp" => 1,
             // FTP follows the TLS mode the connection uses
             // (`bridge_shared::ftp_tls_mode_for_export`): 3 implicit,
-            // 4 explicit, 0 explicit if the server offers it.
+            // 4 explicit, 6 plain FTP only, 0 explicit if the server offers it.
             "ftp" | "ftps" => match crate::bridge_shared::ftp_tls_mode_for_export(
                 protocol,
                 server.options.as_ref(),
             ) {
                 Some("implicit") => 3,
                 Some("explicit") => 4,
+                Some("none") => 6,
                 _ => 0,
             },
-            "s3" => 6,
+            // FileZilla's S3 is 7; 6 is INSECURE_FTP.
+            "s3" => 7,
             _ => continue,
         };
 
@@ -832,14 +1182,45 @@ pub fn export_filezilla(
             xml.push_str("      <Logontype>0</Logontype>\n"); // Anonymous
         }
 
-        // Remote directory
-        if let Some(ref path) = server.initial_path {
-            if !path.is_empty() {
-                xml.push_str(&format!(
-                    "      <RemoteDir>{}</RemoteDir>\n",
-                    sanitize(path)
-                ));
+        // Remote directory: encode in FileZilla's `CServerPath::GetSafePath()`
+        // format for all protocols (`site_manager.cpp:63-65, 202`), because
+        // FileZilla loads `<RemoteDir>` only through `SetSafePath`. For S3,
+        // prepend `/<bucket>` while preserving exact prefix separators (such
+        // as `/reports//2026`).
+        let exported_remote_dir: Option<String> = if protocol == "s3" {
+            let bucket = server
+                .options
+                .as_ref()
+                .and_then(|o| o.get("bucket"))
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|b| !b.is_empty());
+            match (bucket, server.initial_path.as_deref()) {
+                (Some(b), Some(p)) if !p.is_empty() => {
+                    let suffix = p.strip_prefix('/').unwrap_or(p);
+                    if suffix.is_empty() {
+                        Some(format!("/{b}"))
+                    } else {
+                        Some(format!("/{b}/{suffix}"))
+                    }
+                }
+                (Some(b), _) => Some(format!("/{b}")),
+                (None, Some(p)) if !p.is_empty() => Some(p.to_string()),
+                _ => None,
             }
+        } else {
+            server
+                .initial_path
+                .as_ref()
+                .filter(|p| !p.is_empty())
+                .cloned()
+        };
+        if let Some(ref path) = exported_remote_dir {
+            let safe_path = format_filezilla_remote_dir(path);
+            xml.push_str(&format!(
+                "      <RemoteDir>{}</RemoteDir>\n",
+                sanitize(&safe_path)
+            ));
         }
 
         xml.push_str(&format!(
@@ -961,7 +1342,7 @@ mod tests {
             name: "test".to_string(),
             fields: [
                 ("Host".to_string(), "s3.amazonaws.com".to_string()),
-                ("Protocol".to_string(), "6".to_string()),
+                ("Protocol".to_string(), "7".to_string()),
                 ("User".to_string(), "AKIAEXAMPLE".to_string()),
             ]
             .into(),
@@ -1309,27 +1690,61 @@ mod tests {
 
     #[test]
     fn malformed_global_settings_produce_proxy_and_transfer_mode_warnings() {
-        let dir = tempfile::tempdir().unwrap();
-        let sitemanager = dir.path().join("sitemanager.xml");
-        std::fs::write(
-            &sitemanager,
-            r#"<?xml version="1.0"?><FileZilla3><Servers><Server><Host>ftp.example.com</Host><Protocol>0</Protocol><Name>Default mode</Name></Server></Servers></FileZilla3>"#,
-        )
-        .unwrap();
-        std::fs::write(
-            dir.path().join("filezilla.xml"),
+        for malformed in [
+            "",
             r#"<?xml version="1.0"?><FileZilla3><Settings><Setting name="Proxy type""#,
-        )
-        .unwrap();
+            r#"<?xml version="1.0"?><FileZilla3><Settings>"#,
+            r#"<?xml version="1.0"?><FileZilla3><Settings><Setting name="Proxy type">4</Setting></Settings>"#,
+            r#"<?xml version="1.0"?><FileZilla3/>"#,
+            r#"<?xml version="1.0"?><FileZilla3></FileZilla3>"#,
+            r#"<?xml version="1.0"?><Other><Settings></Settings></Other>"#,
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let sitemanager = dir.path().join("sitemanager.xml");
+            std::fs::write(
+                &sitemanager,
+                r#"<?xml version="1.0"?><FileZilla3><Servers><Server><Host>ftp.example.com</Host><Protocol>0</Protocol><Name>Default mode</Name></Server></Servers></FileZilla3>"#,
+            )
+            .unwrap();
+            std::fs::write(dir.path().join("filezilla.xml"), malformed).unwrap();
 
-        let result = import_filezilla(&sitemanager).unwrap();
-        assert_eq!(result.warnings.len(), 1);
-        assert!(result.warnings[0]
-            .reason
-            .contains("proxy settings were not included"));
-        assert!(result.warnings[0]
-            .reason
-            .contains("global transfer mode was not read"));
+            let result = import_filezilla(&sitemanager).unwrap();
+            assert_eq!(result.warnings.len(), 1, "{malformed}");
+            assert!(result.warnings[0]
+                .reason
+                .contains("proxy settings were not included"));
+            assert!(result.warnings[0]
+                .reason
+                .contains("global transfer mode was not read"));
+        }
+    }
+
+    #[test]
+    fn complete_empty_settings_document_is_accepted_as_defaults() {
+        for valid_empty in [
+            r#"<?xml version="1.0"?><FileZilla3><Settings/></FileZilla3>"#,
+            r#"<?xml version="1.0"?><FileZilla3><Settings></Settings></FileZilla3>"#,
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let sitemanager = dir.path().join("sitemanager.xml");
+            std::fs::write(
+                &sitemanager,
+                r#"<?xml version="1.0"?><FileZilla3><Servers><Server><Host>ftp.example.com</Host><Protocol>0</Protocol><Name>Default mode</Name></Server></Servers></FileZilla3>"#,
+            )
+            .unwrap();
+            std::fs::write(dir.path().join("filezilla.xml"), valid_empty).unwrap();
+
+            let result = import_filezilla(&sitemanager).unwrap();
+            assert!(
+                result.warnings.is_empty(),
+                "expected no warnings for valid empty settings {valid_empty}: {:?}",
+                result
+                    .warnings
+                    .iter()
+                    .map(|w| (&w.name, &w.reason))
+                    .collect::<Vec<_>>()
+            );
+        }
     }
 
     #[test]
@@ -1434,6 +1849,471 @@ mod tests {
         assert_eq!(result.warnings.len(), 1);
         assert_eq!(result.warnings[0].name, "FileZilla global settings");
         assert!(result.warnings[0].reason.contains("1 site may use a proxy"));
+    }
+
+    #[test]
+    fn insecure_ftp_protocol_6_imports_as_plain_ftp_with_its_transfer_mode_warning() {
+        let dir = tempfile::tempdir().unwrap();
+        let sitemanager = dir.path().join("sitemanager.xml");
+        std::fs::write(
+            &sitemanager,
+            concat!(
+                r#"<?xml version="1.0"?><FileZilla3><Servers><Server>"#,
+                r#"<Host>ftp.example.com</Host><Protocol>6</Protocol>"#,
+                r#"<Parameter Name="data_mode_override">active</Parameter>"#,
+                r#"<BypassProxy>1</BypassProxy><Name>Plain FTP</Name></Server>"#,
+                r#"</Servers></FileZilla3>"#,
+            ),
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join("filezilla.xml"),
+            r#"<?xml version="1.0"?><FileZilla3><Settings></Settings></FileZilla3>"#,
+        )
+        .unwrap();
+
+        let result = import_filezilla(&sitemanager).unwrap();
+        assert_eq!(result.servers.len(), 1);
+        let server = &result.servers[0];
+        assert_eq!(server.protocol.as_deref(), Some("ftp"));
+        assert_eq!(server.port, 21);
+        assert_eq!(
+            server.options.as_ref().and_then(|o| o.get("tlsMode")),
+            Some(&serde_json::json!("none"))
+        );
+        assert_eq!(result.warnings.len(), 1);
+        assert!(result.warnings[0].reason.contains("active FTP"));
+    }
+
+    #[test]
+    fn s3_is_filezilla_protocol_7_on_import_and_export() {
+        let dir = tempfile::tempdir().unwrap();
+        let sitemanager = dir.path().join("sitemanager.xml");
+        std::fs::write(
+            &sitemanager,
+            r#"<?xml version="1.0"?><FileZilla3><Servers><Server><Host>s3.amazonaws.com</Host><Protocol>7</Protocol><User>AKIAEXAMPLE</User><Name>Bucket</Name></Server></Servers></FileZilla3>"#,
+        )
+        .unwrap();
+        let result = import_filezilla(&sitemanager).unwrap();
+        assert!(result.skipped.is_empty());
+        assert_eq!(result.servers.len(), 1);
+        assert_eq!(result.servers[0].protocol.as_deref(), Some("s3"));
+
+        let out = dir.path().join("export.xml");
+        let servers = [
+            FileZillaExportServer {
+                id: "s3".to_string(),
+                name: "S3".to_string(),
+                host: "s3.amazonaws.com".to_string(),
+                port: 443,
+                username: "AKIAEXAMPLE".to_string(),
+                protocol: Some("s3".to_string()),
+                options: None,
+                initial_path: None,
+            },
+            FileZillaExportServer {
+                id: "plain".to_string(),
+                name: "Plain".to_string(),
+                host: "ftp.example.com".to_string(),
+                port: 21,
+                username: "u".to_string(),
+                protocol: Some("ftp".to_string()),
+                options: Some(serde_json::json!({ "tlsMode": "none" })),
+                initial_path: None,
+            },
+        ];
+        assert_eq!(export_filezilla(&servers, &HashMap::new(), &out), Ok(2));
+        let written = parse_sitemanager_xml(&std::fs::read_to_string(&out).unwrap());
+        let protocol_of = |name: &str| {
+            written
+                .iter()
+                .find(|s| s.name == name)
+                .and_then(|s| s.fields.get("Protocol").cloned())
+        };
+        assert_eq!(protocol_of("S3").as_deref(), Some("7"));
+        assert_eq!(protocol_of("Plain").as_deref(), Some("6"));
+    }
+
+    #[test]
+    fn a_cut_sitemanager_reports_that_later_sites_were_not_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let sitemanager = dir.path().join("sitemanager.xml");
+        std::fs::write(
+            &sitemanager,
+            concat!(
+                r#"<?xml version="1.0"?><FileZilla3><Servers>"#,
+                r#"<Server><Host>h1</Host><Protocol>1</Protocol><BypassProxy>1</BypassProxy><Name>good</Name></Server>"#,
+                r#"<Server><Host>h2</Host><Name>trunc"#,
+            ),
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join("filezilla.xml"),
+            r#"<?xml version="1.0"?><FileZilla3><Settings/></FileZilla3>"#,
+        )
+        .unwrap();
+
+        let result = import_filezilla(&sitemanager).unwrap();
+        assert_eq!(result.servers.len(), 1);
+        assert_eq!(result.warnings.len(), 1);
+        assert_eq!(result.warnings[0].name, "FileZilla site manager");
+        assert!(result.warnings[0].reason.contains("not imported"));
+    }
+
+    #[test]
+    fn bypass_proxy_is_read_as_an_integer_like_filezilla() {
+        let dir = tempfile::tempdir().unwrap();
+        let sitemanager = dir.path().join("sitemanager.xml");
+        std::fs::write(
+            &sitemanager,
+            r#"<?xml version="1.0"?><FileZilla3><Servers><Server><Host>ftp.example.com</Host><Protocol>0</Protocol><Parameter Name="data_mode_override">active</Parameter><BypassProxy>01</BypassProxy><Name>Bypass</Name></Server></Servers></FileZilla3>"#,
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join("filezilla.xml"),
+            r#"<?xml version="1.0"?><FileZilla3><Settings><Setting name="Proxy type">2</Setting></Settings></FileZilla3>"#,
+        )
+        .unwrap();
+
+        let result = import_filezilla(&sitemanager).unwrap();
+        assert_eq!(result.warnings.len(), 1);
+        assert!(result.warnings[0].reason.contains("active FTP"));
+    }
+
+    #[test]
+    fn out_of_range_generic_proxy_warns_without_hiding_active_or_ftp_proxy_warnings() {
+        let dir = tempfile::tempdir().unwrap();
+        let sitemanager = dir.path().join("sitemanager.xml");
+        std::fs::write(
+            &sitemanager,
+            r#"<?xml version="1.0"?><FileZilla3><Servers><Server><Host>ftp.example.com</Host><Protocol>0</Protocol><Parameter Name="data_mode_override">active</Parameter><Name>Active FTP</Name></Server></Servers></FileZilla3>"#,
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join("filezilla.xml"),
+            r#"<?xml version="1.0"?><FileZilla3><Settings><Setting name="Proxy type">99</Setting><Setting name="FTP Proxy type">2</Setting></Settings></FileZilla3>"#,
+        )
+        .unwrap();
+
+        let result = import_filezilla(&sitemanager).unwrap();
+        assert_eq!(result.warnings.len(), 3);
+        assert!(result
+            .warnings
+            .iter()
+            .any(|w| w.name == "Active FTP" && w.reason.contains("active FTP")));
+        assert!(result
+            .warnings
+            .iter()
+            .any(|w| w.reason.contains("unknown proxy type 99")));
+        assert!(result
+            .warnings
+            .iter()
+            .any(|w| w.reason.contains("FTP SITE proxy")));
+    }
+
+    #[test]
+    fn sidecar_size_limit_is_enforced_during_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let sitemanager = dir.path().join("sitemanager.xml");
+        let valid_empty = r#"<?xml version="1.0"?><FileZilla3><Settings/></FileZilla3>"#;
+        std::fs::write(&sitemanager, valid_empty).unwrap();
+        let sidecar = dir.path().join("filezilla.xml");
+        std::fs::write(&sidecar, valid_empty).unwrap();
+
+        let exact_len = valid_empty.len() as u64;
+        assert!(filezilla_global_settings_with_limit(&sitemanager, exact_len).is_some());
+        assert!(filezilla_global_settings_with_limit(&sitemanager, exact_len - 1).is_none());
+        assert!(read_bounded_utf8_file(&sidecar, exact_len).is_ok());
+        assert!(read_bounded_utf8_file(&sidecar, exact_len - 1).is_err());
+        // Read-time enforcement independent of metadata.len() (growing file).
+        assert!(read_bounded_utf8(std::io::Cursor::new(valid_empty.as_bytes()), exact_len).is_ok());
+        assert!(
+            read_bounded_utf8(std::io::Cursor::new(valid_empty.as_bytes()), exact_len - 1).is_err()
+        );
+    }
+
+    #[test]
+    fn legacy_aeroftp_protocol_6_s3_export_recovers_as_s3_while_native_protocol_6_stays_ftp() {
+        let dir = tempfile::tempdir().unwrap();
+        // Exact shape produced by AeroFTP v4.1.0..v4.2.7 `export_filezilla`:
+        // `options.bucket` was never written, and `<RemoteDir>` carried only
+        // `initial_path` (e.g. `/media/2026` inside bucket `archive`).
+        let legacy_xml = concat!(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n",
+            "<FileZilla3 version=\"3.67.1\" platform=\"*\">\n",
+            "  <Servers>\n",
+            "    <Server>\n",
+            "      <Host>s3.amazonaws.com</Host>\n",
+            "      <Port>443</Port>\n",
+            "      <Protocol>6</Protocol>\n",
+            "      <User>DEMOACCESSKEY</User>\n",
+            "      <Pass encoding=\"base64\">c2VjcmV0</Pass>\n",
+            "      <Logontype>1</Logontype>\n",
+            "      <RemoteDir>/media/2026</RemoteDir>\n",
+            "      <Name>Legacy S3</Name>\n",
+            "    </Server>\n",
+            "  </Servers>\n",
+            "</FileZilla3>\n",
+        );
+        let legacy_path = dir.path().join("legacy-sitemanager.xml");
+        std::fs::write(&legacy_path, legacy_xml).unwrap();
+        let legacy = import_filezilla(&legacy_path).unwrap();
+        assert_eq!(legacy.servers.len(), 1);
+        assert_eq!(legacy.servers[0].protocol.as_deref(), Some("s3"));
+        assert_eq!(legacy.servers[0].port, 443);
+        assert_eq!(
+            legacy.servers[0]
+                .options
+                .as_ref()
+                .and_then(|o| o.get("bucket")),
+            None,
+            "legacy v4.1.0..v4.2.7 exports carry only initial_path and must not infer a bucket"
+        );
+        assert_eq!(
+            legacy.servers[0].initial_path.as_deref(),
+            Some("/media/2026")
+        );
+        assert!(legacy.warnings.iter().any(|w| w.name == "Legacy S3"
+            && w.reason.contains("Recovered as S3")
+            && w.reason.contains("bucket")));
+
+        // Real FileZilla (platform="*nix") or a site with native FileZilla fields stays plain FTP.
+        for native_xml in [
+            r#"<?xml version="1.0"?><FileZilla3 version="3.67.1" platform="*nix"><Servers><Server><Host>ftp.example.com</Host><Port>21</Port><Protocol>6</Protocol><User>u</User><Name>Real FZ</Name></Server></Servers></FileZilla3>"#,
+            r#"<?xml version="1.0"?><FileZilla3 version="3.67.1" platform="*"><Servers><Server><Host>ftp.example.com</Host><Port>21</Port><Protocol>6</Protocol><BypassProxy>0</BypassProxy><Name>Native Field</Name></Server></Servers></FileZilla3>"#,
+            r#"<?xml version="1.0"?><FileZilla3 version="3.72.1" platform="*"><Servers><Server><Host>ftp.example.com</Host><Port>21</Port><Protocol>6</Protocol><Name>New Export Plain</Name></Server></Servers></FileZilla3>"#,
+        ] {
+            let native_path = dir.path().join("native.xml");
+            std::fs::write(&native_path, native_xml).unwrap();
+            let native = import_filezilla(&native_path).unwrap();
+            assert_eq!(native.servers.len(), 1, "{native_xml}");
+            assert_eq!(
+                native.servers[0].protocol.as_deref(),
+                Some("ftp"),
+                "{native_xml}"
+            );
+            assert_eq!(
+                native.servers[0]
+                    .options
+                    .as_ref()
+                    .and_then(|o| o.get("tlsMode")),
+                Some(&serde_json::json!("none")),
+                "{native_xml}"
+            );
+        }
+    }
+
+    #[test]
+    fn filezilla_s3_protocol_7_preserves_bucket_and_prefix_from_remote_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let sitemanager = dir.path().join("sitemanager.xml");
+        std::fs::write(
+            &sitemanager,
+            concat!(
+                r#"<?xml version="1.0"?><FileZilla3 version="3.72.1" platform="*nix"><Servers><Server>"#,
+                r#"<Host>s3.amazonaws.com</Host><Port>443</Port><Protocol>7</Protocol>"#,
+                r#"<User>DEMOACCESSKEY</User><Pass encoding="base64">c2VjcmV0</Pass>"#,
+                r#"<RemoteDir>1 0 5 media 4 2026 6 photos</RemoteDir>"#,
+                r#"<Name>Photos S3</Name></Server></Servers></FileZilla3>"#,
+            ),
+        )
+        .unwrap();
+
+        let imported = import_filezilla(&sitemanager).unwrap();
+        assert_eq!(imported.servers.len(), 1);
+        let s3 = &imported.servers[0];
+        assert_eq!(s3.protocol.as_deref(), Some("s3"));
+        assert_eq!(
+            s3.options.as_ref().and_then(|o| o.get("bucket")),
+            Some(&serde_json::json!("media"))
+        );
+        assert_eq!(s3.initial_path.as_deref(), Some("/2026/photos"));
+
+        // Verify the imported S3 profile satisfies S3Config::from_provider_config.
+        let mut extra = HashMap::new();
+        if let Some(obj) = s3.options.as_ref().and_then(|v| v.as_object()) {
+            for (k, v) in obj {
+                if let Some(sv) = v.as_str() {
+                    extra.insert(k.clone(), sv.to_string());
+                }
+            }
+        }
+        let provider_cfg = crate::providers::types::ProviderConfig {
+            name: s3.name.clone(),
+            provider_type: crate::providers::types::ProviderType::S3,
+            host: s3.host.clone(),
+            port: Some(s3.port as u16),
+            username: Some(s3.username.clone()),
+            password: s3.credential.clone(),
+            initial_path: s3.initial_path.clone(),
+            extra,
+        };
+        let s3_cfg = crate::providers::types::S3Config::from_provider_config(&provider_cfg)
+            .expect("S3Config must accept imported bucket");
+        assert_eq!(s3_cfg.bucket, "media");
+
+        // Round-trip export -> import preserves bucket and prefix.
+        let exported_path = dir.path().join("exported.xml");
+        let export_row = FileZillaExportServer {
+            id: "s3-rt".to_string(),
+            name: s3.name.clone(),
+            host: s3.host.clone(),
+            port: s3.port,
+            username: s3.username.clone(),
+            protocol: s3.protocol.clone(),
+            options: s3.options.clone(),
+            initial_path: s3.initial_path.clone(),
+        };
+        assert_eq!(
+            export_filezilla(&[export_row], &HashMap::new(), &exported_path),
+            Ok(1)
+        );
+        let roundtripped = import_filezilla(&exported_path).unwrap();
+        assert_eq!(roundtripped.servers.len(), 1);
+        assert_eq!(roundtripped.servers[0].protocol.as_deref(), Some("s3"));
+        assert_eq!(
+            roundtripped.servers[0]
+                .options
+                .as_ref()
+                .and_then(|o| o.get("bucket")),
+            Some(&serde_json::json!("media"))
+        );
+        assert_eq!(
+            roundtripped.servers[0].initial_path.as_deref(),
+            Some("/2026/photos")
+        );
+    }
+
+    #[test]
+    fn remote_dir_decoder_rejects_oversized_segment_length_without_allocating() {
+        let oversized = "1 0 9223372036854775808 x";
+        assert_eq!(parse_filezilla_remote_dir(oversized), oversized);
+        assert_eq!(
+            parse_filezilla_remote_dir("1 0 5 media 4 2026"),
+            "/media/2026"
+        );
+    }
+
+    #[test]
+    fn s3_prefix_with_empty_segments_round_trips_verbatim() {
+        let dir = tempfile::tempdir().unwrap();
+        let exported_path = dir.path().join("s3-empty-seg.xml");
+        let export_rows = [
+            FileZillaExportServer {
+                id: "s3-double-slash".to_string(),
+                name: "DoubleSlash".to_string(),
+                host: "s3.amazonaws.com".to_string(),
+                port: 443,
+                username: "DEMOACCESSKEY".to_string(),
+                protocol: Some("s3".to_string()),
+                options: Some(serde_json::json!({ "bucket": "media" })),
+                initial_path: Some("/reports//2026".to_string()),
+            },
+            FileZillaExportServer {
+                id: "s3-ordinary".to_string(),
+                name: "Ordinary".to_string(),
+                host: "s3.amazonaws.com".to_string(),
+                port: 443,
+                username: "DEMOACCESSKEY".to_string(),
+                protocol: Some("s3".to_string()),
+                options: Some(serde_json::json!({ "bucket": "media" })),
+                initial_path: Some("/2026/photos".to_string()),
+            },
+        ];
+        assert_eq!(
+            export_filezilla(&export_rows, &HashMap::new(), &exported_path),
+            Ok(2)
+        );
+        let imported = import_filezilla(&exported_path).unwrap();
+        assert_eq!(imported.servers.len(), 2);
+        let double_slash = imported
+            .servers
+            .iter()
+            .find(|s| s.name == "DoubleSlash")
+            .unwrap();
+        assert_eq!(
+            double_slash.options.as_ref().and_then(|o| o.get("bucket")),
+            Some(&serde_json::json!("media"))
+        );
+        assert_eq!(double_slash.initial_path.as_deref(), Some("/reports//2026"));
+
+        let ordinary = imported
+            .servers
+            .iter()
+            .find(|s| s.name == "Ordinary")
+            .unwrap();
+        assert_eq!(
+            ordinary.options.as_ref().and_then(|o| o.get("bucket")),
+            Some(&serde_json::json!("media"))
+        );
+        assert_eq!(ordinary.initial_path.as_deref(), Some("/2026/photos"));
+    }
+
+    #[test]
+    fn export_writes_filezilla_get_safe_path_remote_dir_for_all_protocols() {
+        let dir = tempfile::tempdir().unwrap();
+        let exported_path = dir.path().join("all-protocols.xml");
+        let export_rows = [
+            FileZillaExportServer {
+                id: "ftp".to_string(),
+                name: "FTP".to_string(),
+                host: "ftp.example.com".to_string(),
+                port: 21,
+                username: "u".to_string(),
+                protocol: Some("ftp".to_string()),
+                options: None,
+                initial_path: Some("/var/www".to_string()),
+            },
+            FileZillaExportServer {
+                id: "sftp".to_string(),
+                name: "SFTP".to_string(),
+                host: "sftp.example.com".to_string(),
+                port: 22,
+                username: "u".to_string(),
+                protocol: Some("sftp".to_string()),
+                options: None,
+                initial_path: Some("/".to_string()),
+            },
+            FileZillaExportServer {
+                id: "s3".to_string(),
+                name: "S3".to_string(),
+                host: "s3.amazonaws.com".to_string(),
+                port: 443,
+                username: "DEMOACCESSKEY".to_string(),
+                protocol: Some("s3".to_string()),
+                options: Some(serde_json::json!({ "bucket": "media" })),
+                initial_path: Some("/2026/photos".to_string()),
+            },
+        ];
+        assert_eq!(
+            export_filezilla(&export_rows, &HashMap::new(), &exported_path),
+            Ok(3)
+        );
+        let raw_xml = std::fs::read_to_string(&exported_path).unwrap();
+        let raw_parsed = parse_sitemanager_xml(&raw_xml);
+        let raw_dir = |name: &str| {
+            raw_parsed
+                .iter()
+                .find(|s| s.name == name)
+                .and_then(|s| s.fields.get("RemoteDir").cloned())
+        };
+        assert_eq!(raw_dir("FTP").as_deref(), Some("1 0 3 var 3 www"));
+        assert_eq!(raw_dir("SFTP").as_deref(), Some("1 0"));
+        assert_eq!(
+            raw_dir("S3").as_deref(),
+            Some("1 0 5 media 4 2026 6 photos")
+        );
+
+        let reimported = import_filezilla(&exported_path).unwrap();
+        assert_eq!(reimported.servers.len(), 3);
+        let by_name = |name: &str| reimported.servers.iter().find(|s| s.name == name).unwrap();
+        assert_eq!(by_name("FTP").initial_path.as_deref(), Some("/var/www"));
+        assert_eq!(by_name("SFTP").initial_path.as_deref(), Some("/"));
+        assert_eq!(
+            by_name("S3").options.as_ref().and_then(|o| o.get("bucket")),
+            Some(&serde_json::json!("media"))
+        );
+        assert_eq!(by_name("S3").initial_path.as_deref(), Some("/2026/photos"));
     }
 
     /// Two profiles of one name (a list saved before names were unique) were

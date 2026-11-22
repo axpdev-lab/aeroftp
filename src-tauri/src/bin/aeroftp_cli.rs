@@ -42363,8 +42363,19 @@ fn rclone_import_listing(result: &ftp_client_gui_lib::rclone_import::RcloneImpor
         out.push('\n');
     }
 
+    out
+}
+
+/// Format the human-readable warning block for `import rclone` (printed to
+/// stderr so stdout carries data only, matching `AGENTS.md`).
+fn rclone_import_warnings_listing(
+    result: &ftp_client_gui_lib::rclone_import::RcloneImportResult,
+) -> String {
+    use std::fmt::Write as _;
+
+    let mut out = String::new();
     // Imported, but not whole: e.g. a password that does not reveal left the
-    // profile without a credential.
+    // profile without a credential, or an unimported proxy/ssh setting.
     if !result.warnings.is_empty() {
         let _ = writeln!(out, "Warnings ({}):", result.warnings.len());
         for w in &result.warnings {
@@ -42519,6 +42530,10 @@ async fn cmd_import_rclone(
                 );
             } else {
                 print!("{}", rclone_import_listing(&result));
+                let warnings_text = rclone_import_warnings_listing(&result);
+                if !warnings_text.is_empty() {
+                    eprint!("{warnings_text}");
+                }
 
                 if let Some(summary) = &applied_summary {
                     println!(
@@ -43475,16 +43490,20 @@ fn print_bridge_import(v: &serde_json::Value, json: bool, source_label: &str) ->
         }
 
         if !warnings.is_empty() {
-            println!("Warnings ({}):", warnings.len());
+            eprintln!("Warnings ({}):", warnings.len());
             for warning in &warnings {
                 let name = warning.get("name").and_then(|x| x.as_str()).unwrap_or("?");
                 let reason = warning
                     .get("reason")
                     .and_then(|x| x.as_str())
                     .unwrap_or("?");
-                println!("  {} - {}", name, reason);
+                eprintln!(
+                    "  {} - {}",
+                    sanitize_filename(name),
+                    sanitize_filename(reason)
+                );
             }
-            println!();
+            eprintln!();
         }
 
         println!(
@@ -46942,11 +46961,15 @@ async fn cmd_import_winscp(path: Option<String>, json: bool) -> i32 {
                 }
 
                 if !result.warnings.is_empty() {
-                    println!("Warnings ({}):", result.warnings.len());
+                    eprintln!("Warnings ({}):", result.warnings.len());
                     for warning in &result.warnings {
-                        println!("  {} - {}", warning.name, warning.reason);
+                        eprintln!(
+                            "  {} - {}",
+                            sanitize_filename(&warning.name),
+                            sanitize_filename(&warning.reason)
+                        );
                     }
-                    println!();
+                    eprintln!();
                 }
 
                 println!(
@@ -47065,11 +47088,15 @@ async fn cmd_import_filezilla(path: Option<String>, json: bool) -> i32 {
                 }
 
                 if !result.warnings.is_empty() {
-                    println!("Warnings ({}):", result.warnings.len());
+                    eprintln!("Warnings ({}):", result.warnings.len());
                     for warning in &result.warnings {
-                        println!("  {} - {}", warning.name, warning.reason);
+                        eprintln!(
+                            "  {} - {}",
+                            sanitize_filename(&warning.name),
+                            sanitize_filename(&warning.reason)
+                        );
                     }
-                    println!();
+                    eprintln!();
                 }
 
                 println!(
@@ -96988,9 +97015,18 @@ mod tests {
         assert_eq!(result.warnings.len(), 1);
 
         let listing = rclone_import_listing(&result);
+        let warnings_listing = rclone_import_warnings_listing(&result);
         assert!(
             !listing.chars().any(|c| c == '\x1b' || c == '\x07'),
             "a control sequence reaches the terminal: {listing:?}"
+        );
+        assert!(
+            !warnings_listing.chars().any(|c| c == '\x1b' || c == '\x07'),
+            "a control sequence reaches stderr warnings: {warnings_listing:?}"
+        );
+        assert!(
+            !listing.contains("Warnings ("),
+            "warnings must be written to stderr, not stdout: {listing:?}"
         );
         for kept in [
             "okcleared",
@@ -96998,9 +97034,14 @@ mod tests {
             "ixblink",
             "Importable (2)",
             "Skipped (1)",
-            "Warnings (1)",
         ] {
             assert!(listing.contains(kept), "'{kept}' missing: {listing:?}");
+        }
+        for kept in ["Warnings (1)", "ixblink"] {
+            assert!(
+                warnings_listing.contains(kept),
+                "'{kept}' missing from warnings: {warnings_listing:?}"
+            );
         }
     }
 

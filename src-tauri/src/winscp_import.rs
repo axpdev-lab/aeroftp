@@ -472,11 +472,24 @@ pub fn import_winscp(config_path: &Path) -> Result<WinScpImportResult, String> {
 
         match map_session(name, fields) {
             Some(mapped) => {
+                let is_ftp = matches!(mapped.protocol.as_str(), "ftp" | "ftps");
                 let proxy_method = fields
                     .get("ProxyMethod")
                     .and_then(|value| value.trim().parse::<u32>().ok())
                     .unwrap_or(0);
-                if proxy_method != 0 {
+                // WinSCP `TFTPFileSystem::GetOptionVal(OPTION_PROXYTYPE)`
+                // (`winscp/winscp` `source/core/FtpFileSystem.cpp:2777-2802`)
+                // activates only SOCKS4 (1), SOCKS5 (2), and HTTP (3) for FTP;
+                // Telnet (4), local command (5), and SSH TCP/IP (6) map to
+                // PROXYTYPE_NOPROXY on FTP sessions.
+                let effective_generic_proxy = if is_ftp {
+                    matches!(proxy_method, 1..=3)
+                } else {
+                    proxy_method != 0
+                };
+                if effective_generic_proxy {
+                    // WinSCP `TProxyMethod` (`winscp/winscp` `source/core/SessionData.h:19`):
+                    // pmNone, pmSocks4, pmSocks5, pmHTTP, pmTelnet, pmCmd, pmSshTcpIp.
                     let kind = match proxy_method {
                         1 => "SOCKS4",
                         2 => "SOCKS5",
@@ -497,15 +510,29 @@ pub fn import_winscp(config_path: &Path) -> Result<WinScpImportResult, String> {
                     .get("FtpProxyLogonType")
                     .and_then(|value| value.trim().parse::<u32>().ok())
                     .unwrap_or(0);
-                if matches!(mapped.protocol.as_str(), "ftp" | "ftps")
-                    && proxy_method == 0
-                    && ftp_proxy_logon_type != 0
-                {
+                // WinSCP hands both options to its FTP engine independently
+                // (`source/core/FtpFileSystem.cpp:2777-2816`: OPTION_PROXYTYPE
+                // and OPTION_LOGONTYPE), so a generic proxy does not hide the
+                // FTP proxy logon setting.
+                if is_ftp && ftp_proxy_logon_type != 0 {
                     warnings.push(WinScpImportWarning {
                         name: name.clone(),
                         reason: format!(
                             "WinSCP uses FTP proxy logon type {ftp_proxy_logon_type} for this session; the proxy is not imported and AeroFTP will connect directly"
                         ),
+                    });
+                }
+                // Connection > Tunnel: WinSCP opens an SSH connection to
+                // `TunnelHostName` and reaches `HostName` through it, for
+                // every protocol. Omit `TunnelHostName` and tunnel credentials.
+                if fields
+                    .get("Tunnel")
+                    .and_then(|value| value.trim().parse::<i64>().ok())
+                    == Some(1)
+                {
+                    warnings.push(WinScpImportWarning {
+                        name: name.clone(),
+                        reason: "WinSCP reaches this session through an SSH tunnel (Tunnel=1); the tunnel is not imported and AeroFTP will connect directly".to_string(),
                     });
                 }
                 if matches!(mapped.protocol.as_str(), "ftp" | "ftps")
@@ -1220,11 +1247,47 @@ FSProtocol=1
     }
 
     #[test]
-    fn ftp_proxy_logon_type_and_ssh_proxy_method_are_warned() {
+    fn ftp_proxy_logon_type_is_warned_beside_a_generic_proxy_and_ssh_proxy_method() {
         let ini = concat!(
             "[Sessions\\FtpProxy]\nHostName=ftp.example.com\nUserName=user\nFSProtocol=5\nProxyMethod=0\nFtpProxyLogonType=2\n",
             "[Sessions\\SshProxy]\nHostName=ssh.example.com\nUserName=user\nFSProtocol=2\nProxyMethod=6\n",
-            "[Sessions\\GenericWins]\nHostName=ftp2.example.com\nUserName=user\nFSProtocol=5\nProxyMethod=3\nFtpProxyLogonType=2\n",
+            "[Sessions\\UnknownMethod]\nHostName=ssh2.example.com\nUserName=user\nFSProtocol=2\nProxyMethod=7\n",
+            "[Sessions\\Both]\nHostName=ftp2.example.com\nUserName=user\nFSProtocol=5\nProxyMethod=3\nFtpProxyLogonType=2\n",
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("WinSCP.ini");
+        std::fs::write(&path, ini).unwrap();
+
+        let result = import_winscp(&path).unwrap();
+        assert_eq!(result.servers.len(), 4);
+        assert_eq!(result.warnings.len(), 5);
+        assert!(result.warnings.iter().any(|warning| {
+            warning.name == "FtpProxy" && warning.reason.contains("FTP proxy logon type 2")
+        }));
+        assert!(result.warnings.iter().any(|warning| {
+            warning.name == "SshProxy" && warning.reason.contains("SSH TCP/IP")
+        }));
+        assert!(result.warnings.iter().any(|warning| {
+            warning.name == "UnknownMethod" && warning.reason.contains("unknown proxy method 7")
+        }));
+        let both: Vec<_> = result
+            .warnings
+            .iter()
+            .filter(|warning| warning.name == "Both")
+            .collect();
+        assert_eq!(both.len(), 2);
+        assert!(both.iter().any(|warning| warning.reason.contains("HTTP")));
+        assert!(both
+            .iter()
+            .any(|warning| warning.reason.contains("FTP proxy logon type 2")));
+    }
+
+    #[test]
+    fn ftp_suppresses_non_ftp_proxy_methods_while_sftp_still_warns() {
+        let ini = concat!(
+            "[Sessions\\FtpTelnet]\nHostName=ftp.example.com\nUserName=user\nFSProtocol=5\nProxyMethod=4\nFtpProxyLogonType=0\n",
+            "[Sessions\\SftpTelnet]\nHostName=sftp.example.com\nUserName=user\nFSProtocol=2\nProxyMethod=4\n",
+            "[Sessions\\FtpHttpAndLogon]\nHostName=ftp2.example.com\nUserName=user\nFSProtocol=5\nProxyMethod=3\nFtpProxyLogonType=2\n",
         );
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("WinSCP.ini");
@@ -1232,20 +1295,44 @@ FSProtocol=1
 
         let result = import_winscp(&path).unwrap();
         assert_eq!(result.servers.len(), 3);
-        assert_eq!(result.warnings.len(), 3);
-        assert!(result.warnings.iter().any(|warning| {
-            warning.name == "FtpProxy" && warning.reason.contains("FTP proxy logon type 2")
-        }));
-        assert!(result.warnings.iter().any(|warning| {
-            warning.name == "SshProxy" && warning.reason.contains("SSH TCP/IP")
-        }));
-        let generic = result
+        assert!(
+            !result.warnings.iter().any(|w| w.name == "FtpTelnet"),
+            "FTP must not warn on Telnet proxy when FtpProxyLogonType=0"
+        );
+        assert!(result
             .warnings
             .iter()
-            .find(|warning| warning.name == "GenericWins")
-            .unwrap();
-        assert!(generic.reason.contains("HTTP"));
-        assert!(!generic.reason.contains("FTP proxy logon"));
+            .any(|w| w.name == "SftpTelnet" && w.reason.contains("Telnet")));
+        let both: Vec<_> = result
+            .warnings
+            .iter()
+            .filter(|w| w.name == "FtpHttpAndLogon")
+            .collect();
+        assert_eq!(both.len(), 2);
+        assert!(both.iter().any(|w| w.reason.contains("HTTP")));
+        assert!(both
+            .iter()
+            .any(|w| w.reason.contains("FTP proxy logon type 2")));
+    }
+
+    #[test]
+    fn ssh_tunnel_sessions_import_with_a_direct_connection_warning() {
+        let ini = concat!(
+            "[Sessions\\Tunnelled]\nHostName=10.0.0.5\nUserName=user\nFSProtocol=2\nTunnel=1\nTunnelHostName=bastion.example.com\nTunnelUserName=jump\n",
+            "[Sessions\\Direct]\nHostName=direct.example.com\nUserName=user\nFSProtocol=5\nTunnel=0\n",
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("WinSCP.ini");
+        std::fs::write(&path, ini).unwrap();
+
+        let result = import_winscp(&path).unwrap();
+        assert_eq!(result.servers.len(), 2);
+        assert_eq!(result.warnings.len(), 1);
+        assert_eq!(result.warnings[0].name, "Tunnelled");
+        assert!(result.warnings[0].reason.contains("SSH tunnel"));
+        assert!(result.warnings[0].reason.contains("connect directly"));
+        assert!(!result.warnings[0].reason.contains("bastion"));
+        assert!(!result.warnings[0].reason.contains("jump"));
     }
 
     /// Two profiles of one name (a list saved before names were unique) were

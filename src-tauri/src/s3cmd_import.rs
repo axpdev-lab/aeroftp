@@ -533,6 +533,31 @@ bucket_location = us-east-1
     }
 
     #[test]
+    fn proxy_warning_name_strips_userinfo_and_query_secrets_from_host_base() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("s3cfg");
+        let user = "s3user";
+        let secret = "topSecretPass";
+        let token = "querySecretTok";
+        std::fs::write(
+            &path,
+            format!(
+                "[default]\naccess_key = DEMOACCESSKEY123456\nsecret_key = demosecret\nhost_base = https://{user}:{secret}@s3.example.com:9000?token={token}#frag\nproxy_host = proxy.example.com\n"
+            ),
+        )
+        .unwrap();
+
+        let result = import_s3cmd(&path).unwrap();
+        assert_eq!(result.servers.len(), 1);
+        assert_eq!(result.warnings.len(), 1);
+        assert_eq!(result.warnings[0].name, "s3cmd s3.example.com:9000");
+        let serialized = serde_json::to_string(&result.warnings).unwrap();
+        assert!(!serialized.contains(user));
+        assert!(!serialized.contains(secret));
+        assert!(!serialized.contains(token));
+    }
+
+    #[test]
     fn test_import_s3cmd_skips_empty_access_key() {
         use std::io::Write;
         let tmp = std::env::temp_dir().join("aeroftp-test-s3cmd-noaccess.cfg");
