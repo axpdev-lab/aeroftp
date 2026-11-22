@@ -6,8 +6,9 @@
 //! confirmed.
 //!
 //! A scan stores each profile's secrets (passwords, OAuth and Jottacloud
-//! tokens, native Proton sessions, crypt and Filen keys) when it reads the
-//! file; the profiles are saved later, by the confirm. Every write is
+//! tokens, native Proton sessions, crypt and Filen keys) and the OAuth app a
+//! provider has none of when it reads the file; the profiles are saved
+//! later, by the confirm. Every write is
 //! recorded first, in a ledger kept where every process reads it, by key and
 //! by a keyed MAC of what was written (never the secret): a header row that
 //! names the account, and one row per write, so a record costs one row
@@ -201,13 +202,24 @@ struct Header {
 }
 
 /// One write of a scan: the profile it is for, its key, and the MAC of the
-/// secret (of the session UID for a Proton session).
+/// secret (of the session UID for a Proton session). An OAuth app's slot is
+/// shared by the provider's profiles: `holders` names every profile of the
+/// scan that uses it.
 #[derive(Serialize, Deserialize, Clone)]
 struct Written {
     profile: String,
     key: String,
     kind: Kind,
     mac: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    holders: Vec<String>,
+}
+
+impl Written {
+    /// Whether a profile the account lists, among `listed`, keeps this write.
+    fn kept_by(&self, listed: &[String]) -> bool {
+        listed.contains(&self.profile) || self.holders.iter().any(|id| listed.contains(id))
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
@@ -217,6 +229,8 @@ pub(crate) enum Kind {
     Secret,
     /// A native Proton Drive session saved for the profile.
     ProtonSession,
+    /// A slot of a provider's OAuth app, in the vault alone.
+    OauthApp,
 }
 
 /// A scan in progress: the account its secrets go to and the profiles it read.
@@ -345,13 +359,38 @@ impl Scan {
         kind: Kind,
         value: &str,
     ) -> Result<(), String> {
-        let entry = serde_json::to_string(&Written {
+        self.record_entry(Written {
             profile: profile.to_string(),
             key: key.to_string(),
             kind,
             mac: mac(&self.mac_key, value),
+            holders: Vec::new(),
         })
-        .map_err(|e| format!("Encode the import record: {e}"))?;
+    }
+
+    /// Records, before the write, that the scan fills the slot `key` of an
+    /// OAuth app with `value`, for the profiles `holders` of the file that
+    /// use the app: it is taken back only when the account lists none of
+    /// them.
+    pub(crate) fn record_app(
+        &self,
+        holders: &[String],
+        key: &str,
+        value: &str,
+    ) -> Result<(), String> {
+        self.record_entry(Written {
+            profile: holders.first().cloned().unwrap_or_default(),
+            key: key.to_string(),
+            kind: Kind::OauthApp,
+            mac: mac(&self.mac_key, value),
+            holders: holders.to_vec(),
+        })
+    }
+
+    /// Writes the ledger row of `written`.
+    fn record_entry(&self, written: Written) -> Result<(), String> {
+        let entry = serde_json::to_string(&written)
+            .map_err(|e| format!("Encode the import record: {e}"))?;
         let mut ledger = self
             .ledger
             .lock()
@@ -519,6 +558,10 @@ fn discard(
             Ok(Discarded::Done)
         }
         Kind::ProtonSession => discard_proton_session(store, key, owner, written),
+        Kind::OauthApp => {
+            discard_vault_key(store, &written.key, |value| mac(key, value) == written.mac)?;
+            Ok(Discarded::Done)
+        }
     }
 }
 
@@ -645,7 +688,7 @@ fn settle_ledger(store: &CredentialStore, id: &str) -> Result<(), String> {
     let mut kept = false;
     let mut errors = Vec::new();
     for (entry, written) in entries {
-        if listed.contains(&written.profile) {
+        if written.kept_by(&listed) {
             settled.push(entry);
             continue;
         }

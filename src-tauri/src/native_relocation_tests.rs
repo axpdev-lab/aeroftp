@@ -3462,7 +3462,6 @@ fn a_refused_session_save_keeps_a_session_saved_while_it_began() {
     assert_eq!(accounts.copies("raced").0.as_deref(), Some("b1"));
 }
 
-
 /// A strict sign-out with no account whose read of the session fails after
 /// the session's lease was taken keeps the session, where the read used to
 /// say there was none and the session went without its revoke.
@@ -3649,4 +3648,68 @@ fn an_import_stores_no_session_for_a_profile_deleted_since_its_list() {
     );
     assert!(matches!(kept, Ok(Some(true))), "{kept:?}");
     assert_eq!(loaded(owner, "import-kept").as_deref(), Some("r1"));
+}
+
+/// A scan that fills a provider's OAuth app, which this device had none of,
+/// records the slots it filled: settled without a confirm, it takes them
+/// back, and a later import of a config with another app is not held off by
+/// them. Confirmed for a profile of the provider, the app stays.
+#[test]
+fn a_scan_never_confirmed_takes_back_the_oauth_app_it_filled() {
+    if !in_isolated_child("a_scan_never_confirmed_takes_back_the_oauth_app_it_filled") {
+        return;
+    }
+    let accounts = Accounts::open();
+    let runtime = bridge_runtime();
+    let conf = tempfile::NamedTempFile::new().unwrap();
+    let scan = |app: &str| {
+        std::fs::write(
+            conf.path(),
+            format!(
+                concat!(
+                    "[box]\ntype = dropbox\nclient_id = {app}-id\nclient_secret = {app}-secret\n",
+                    "token = {{\"access_token\":\"box-access\",\"token_type\":\"bearer\",\"refresh_token\":\"box-refresh\"}}\n",
+                ),
+                app = app,
+            ),
+        )
+        .unwrap();
+        runtime
+            .block_on(crate::bridge_commands::import_bridge_config(
+                "rclone".into(),
+                conf.path().to_string_lossy().into_owned(),
+                None,
+            ))
+            .unwrap()
+    };
+    let app = || {
+        (
+            vault_value("oauth_dropbox_client_id"),
+            vault_value("oauth_dropbox_client_secret"),
+        )
+    };
+    assert_eq!(app(), (None, None));
+
+    let imported = scan("first");
+    assert_eq!(
+        app(),
+        (Some("first-id".into()), Some("first-secret".into())),
+        "the scan fills the app"
+    );
+    settle_scan(&runtime, imported["scanId"].as_str()).unwrap();
+    assert_eq!(app(), (None, None), "a scan never confirmed takes it back");
+
+    let imported = scan("second");
+    assert_eq!(
+        app(),
+        (Some("second-id".into()), Some("second-secret".into())),
+        "another app's config is not held off"
+    );
+    accounts.add_profile(accounts.legacy, &scanned_id(&imported, "box"));
+    settle_scan(&runtime, imported["scanId"].as_str()).unwrap();
+    assert_eq!(
+        app(),
+        (Some("second-id".into()), Some("second-secret".into())),
+        "the app of a profile the confirm saved stays"
+    );
 }

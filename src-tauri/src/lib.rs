@@ -24232,6 +24232,20 @@ pub fn fill_oauth_app(
     client_id: Option<&str>,
     client_secret: Option<&str>,
 ) -> Result<bool, String> {
+    fill_oauth_app_recorded(store, provider, client_id, client_secret, |_, _| Ok(()))
+}
+
+/// [`fill_oauth_app`] that hands `record` each slot it fills, by key and
+/// value, before it writes any: a bridge scan keeps them in its ledger
+/// ([`bridge_import_scan`]), so a scan never confirmed takes them back. A
+/// record refused writes nothing.
+pub(crate) fn fill_oauth_app_recorded(
+    store: &credential_store::CredentialStore,
+    provider: &str,
+    client_id: Option<&str>,
+    client_secret: Option<&str>,
+    record: impl Fn(&str, &str) -> Result<(), String>,
+) -> Result<bool, String> {
     let conn = user_partitions::open_or_init_cli()?;
     let _lock = user_partitions::ProfileListLock::acquire(&conn)?;
     let (stored_id, stored_secret) = stored_oauth_app(store, provider)?;
@@ -24251,6 +24265,11 @@ pub fn fill_oauth_app(
         client_id,
         client_secret,
     );
+    for (name, value) in [("client_id", client_id), ("client_secret", client_secret)] {
+        if let Some(value) = value {
+            record(&format!("oauth_{provider}_{name}"), value)?;
+        }
+    }
     write_oauth_app(
         &VaultOnlySlots { store },
         provider,

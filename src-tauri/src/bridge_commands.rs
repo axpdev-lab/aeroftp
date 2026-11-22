@@ -377,11 +377,24 @@ fn store_rclone_provider_secrets(
         // imported token. Store only when the singleton is not already set, so
         // importing a config never clobbers an app the user already configured.
         if let Some(cred_key) = rclone_oauth_client_cred_key(protocol) {
-            match crate::fill_oauth_app(
+            // The app is shared by every profile of the provider: what this
+            // scan fills is taken back only when none of its profiles of the
+            // provider is saved.
+            let mut holders: Vec<String> = protocol_by_id
+                .iter()
+                .filter(|(_, other)| rclone_oauth_client_cred_key(other) == Some(cred_key))
+                .map(|(id, _)| id.to_string())
+                .collect();
+            holders.sort();
+            match crate::fill_oauth_app_recorded(
                 store,
                 cred_key,
                 secrets.oauth_client_id.as_deref(),
                 secrets.oauth_client_secret.as_deref(),
+                |key, value| match scan {
+                    Some(scan) => scan.record_app(&holders, key, value),
+                    None => Ok(()),
+                },
             ) {
                 Ok(false) => {}
                 Ok(true) => failures.push((
