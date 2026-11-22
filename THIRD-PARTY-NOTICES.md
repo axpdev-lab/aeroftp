@@ -790,7 +790,7 @@ source version and its SHA-256.
 | rsa | 0.9.10 | MIT OR Apache-2.0 | [Link](https://github.com/RustCrypto/RSA) |
 | rtoolbox | 0.0.6 | Apache-2.0 | [Link](https://github.com/conradkleinespel/rtoolbox) |
 | rusqlite | 0.32.1 | MIT | [Link](https://github.com/rusqlite/rusqlite) |
-| russh | 0.65.3 | Apache-2.0 | [Link](https://github.com/warp-tech/russh) |
+| russh | 0.65.4 | Apache-2.0 | [Link](https://github.com/warp-tech/russh) |
 | russh-cryptovec | 0.62.0 | Apache-2.0 | [Link](https://github.com/warp-tech/russh) |
 | russh-sftp | 2.4.0 | Apache-2.0 | [Link](https://github.com/AspectUnk/russh-sftp) |
 | russh-util | 0.52.0 | Apache-2.0 | [Link](https://github.com/warp-tech/russh) |
@@ -46209,7 +46209,7 @@ Authors for the following components as listed in package manifests or reviewed 
   - Copyright (C) 2017-2023 Red Hat, Inc. (AUTHORS)
   - Copyright (C) 2019-2023 Microsoft Corporation (AUTHORS)
   - Copyright (C) 2022-2023 David Rheinsberg (AUTHORS)
-- `russh@0.65.3` - SPDX: `Apache-2.0` (authors: Pierre-Étienne Meunier <pe@pijul.org>)
+- `russh@0.65.4` - SPDX: `Apache-2.0` (authors: Pierre-Étienne Meunier <pe@pijul.org>)
   - Copyright 2016 Pierre-Étienne Meunier (src/auth.rs)
 - `russh-cryptovec@0.62.0` - SPDX: `Apache-2.0` (authors: Pierre-Étienne Meunier <pe@pijul.org>, Eugeny <e@ajenti.org)
   - Copyright 2016 Pierre-Étienne Meunier (src/lib.rs)
