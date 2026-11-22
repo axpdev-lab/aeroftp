@@ -3020,6 +3020,47 @@ fn a_save_over_a_purge_stopped_before_the_clear_keeps_its_session() {
     assert_eq!(deferred_revokes(&accounts.conn), 0);
 }
 
+/// The legacy owner's save of a new session for a purged profile stops
+/// after its vault write and before its row: the row still holds the purged
+/// session and the vault the new one. The next unlock ends the purged
+/// session and removes its row, and the session saved since stays in the
+/// vault, where the account reads it.
+#[test]
+fn a_save_stopped_before_its_row_keeps_the_vaults_new_session_at_the_unlock() {
+    if !in_isolated_child(
+        "a_save_stopped_before_its_row_keeps_the_vaults_new_session_at_the_unlock",
+    ) {
+        return;
+    }
+    let accounts = Accounts::open();
+    let owner = accounts.owners_owner();
+    vault::store_session(owner, Some("partial"), &session("purged-uid", "r1")).unwrap();
+    defer_proton_revoke(&accounts.store, accounts.legacy, "partial").unwrap();
+    assert_eq!(deferred_revokes(&accounts.conn), 1);
+    vault::test_seams::stop_next_save_before_its_row();
+    let saved = vault::store_session(owner, Some("partial"), &session("new-uid", "n1"));
+    assert!(saved.is_err(), "the process stopped before the row");
+    let (vault_copy, row, _) = accounts.copies("partial");
+    assert_eq!(
+        (vault_copy.as_deref(), row.as_deref()),
+        (Some("n1"), Some("r1"))
+    );
+    let revokes = vault::test_seams::revokes();
+    unlock_user_transient(&accounts.conn, &accounts.root_key, accounts.legacy, None).unwrap();
+    assert_eq!(
+        vault::test_seams::revokes(),
+        revokes + 1,
+        "the purged session is ended"
+    );
+    let (vault_copy, row, _) = accounts.copies("partial");
+    assert_eq!(
+        (vault_copy.as_deref(), row.as_deref()),
+        (Some("n1"), None),
+        "the session saved since stays in the vault"
+    );
+    assert_eq!(deferred_revokes(&accounts.conn), 0);
+}
+
 /// A sign-in that saves over a purge's mark while the unlock's cleanup is
 /// ending it, and a second purge of the profile after that end and before
 /// the cleanup removes the mark it read: the cleanup removes only the mark

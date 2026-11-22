@@ -236,6 +236,19 @@ pub(crate) mod test_seams {
         DEFERRED_SAVE_STOP.store(at as usize, Ordering::SeqCst);
     }
 
+    static STOP_BEFORE_MIRROR: AtomicBool = AtomicBool::new(false);
+
+    /// The next save of a session shared with the vault, on any thread,
+    /// stops after its vault write and before its row, as a process that
+    /// exits there does: nothing is put back.
+    pub(crate) fn stop_next_save_before_its_row() {
+        STOP_BEFORE_MIRROR.store(true, Ordering::SeqCst);
+    }
+
+    pub(super) fn save_stops_before_its_row() -> bool {
+        STOP_BEFORE_MIRROR.swap(false, Ordering::SeqCst)
+    }
+
     pub(super) fn deferred_save_stops(at: DeferredSaveStop) -> bool {
         DEFERRED_SAVE_STOP
             .compare_exchange(at as usize, 0, Ordering::SeqCst, Ordering::SeqCst)
@@ -666,6 +679,12 @@ pub fn store_session(
     let previous = store
         .store_returning_previous(&key, &json)
         .map_err(|error| ProviderError::Other(format!("the vault refused the session: {error}")))?;
+    #[cfg(test)]
+    if test_seams::save_stops_before_its_row() {
+        return Err(ProviderError::Other(
+            "the process stopped before the row (test)".into(),
+        ));
+    }
     if let Some(user) = owner.user_id {
         if let Err(error) = mirror_session(&store, user, &key, &json) {
             return Err(undo_vault_write(
@@ -1286,12 +1305,46 @@ pub fn end_purged_session_blocking(
                 )));
             }
             let _writes = session_writes();
-            delete_session(owner, Some(&profile_id))?;
+            remove_purged(&store, owner, &key, &saved.tokens.uid)?;
             Ok(true)
         })
     })
     .join()
     .map_err(|_| ProviderError::Other("Proton session cleanup stopped unexpectedly".into()))?
+}
+
+/// [`remove_saved`] of the purged session `uid` just ended. An account that
+/// shares the vault reads its row first: a save stopped between its vault
+/// write and its row leaves the row on the purged session and the vault on
+/// the one saved since, which stays, and the account reads it once the row
+/// is gone. Any other vault value under the key goes with the row.
+fn remove_purged(
+    store: &CredentialStore,
+    owner: SessionOwner,
+    key: &str,
+    uid: &str,
+) -> Result<(), ProviderError> {
+    if private_account(owner)?.is_some() {
+        return remove_saved(store, owner, key);
+    }
+    let saved_since = match store.get(key) {
+        Ok(raw) => parse(&raw).is_ok_and(|vault| vault.tokens.uid != uid),
+        Err(crate::credential_store::CredentialError::NotFound(_)) => false,
+        Err(error) => {
+            return Err(ProviderError::Other(format!(
+                "the purged session's vault copy could not be read: {error}"
+            )))
+        }
+    };
+    if !saved_since {
+        return remove_saved(store, owner, key);
+    }
+    if let Some(user) = owner.user_id {
+        crate::user_partitions::try_unmirror_active_credential(user, key).map_err(|error| {
+            ProviderError::Other(format!("the purged session's row was not removed: {error}"))
+        })?;
+    }
+    Ok(())
 }
 
 /// [`end_session`] of a profile a delete removes, strict where a sign-out
