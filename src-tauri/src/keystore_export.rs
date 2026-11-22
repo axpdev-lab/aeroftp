@@ -2213,20 +2213,29 @@ fn apply_profile_decisions(
     // before the import: what the vault section replaced, else what the vault
     // holds as the step begins, which the import did not write. A rollback
     // puts the vault back from it, and the row from `before_of`, the value
-    // the receiver read: the two differ where a row shadowed the vault.
-    let vault_at_start: HashMap<String, Option<Zeroizing<String>>> = outcome
-        .secret_ops
-        .iter()
-        .filter(|(key, _)| {
-            !vault_before.contains_key(key)
-                && private_row_of(db.as_deref(), inputs.receiver, key).is_none()
-        })
-        .filter_map(|(key, _)| match store.get(key) {
-            Ok(v) => Some((key.clone(), Some(Zeroizing::new(v)))),
-            Err(crate::credential_store::CredentialError::NotFound(_)) => Some((key.clone(), None)),
-            Err(_) => None,
-        })
-        .collect();
+    // the receiver read: the two differ where a row shadowed the vault. A
+    // value that cannot be read stops the step before it writes: without it
+    // a rollback would put the row's value in the vault in its place.
+    let unread = |key: &str, e: crate::credential_store::CredentialError| {
+        format!("{key}: the vault could not be read, so no profile decision was applied: {e}")
+    };
+    let mut vault_at_start: HashMap<String, Option<Zeroizing<String>>> = HashMap::new();
+    for (key, _) in outcome.secret_ops.iter().filter(|(key, _)| {
+        !vault_before.contains_key(key)
+            && private_row_of(db.as_deref(), inputs.receiver, key).is_none()
+    }) {
+        #[cfg(test)]
+        let read = tests::vault_read_at_start(store, key);
+        #[cfg(not(test))]
+        let read = store.get(key);
+        match read {
+            Ok(v) => vault_at_start.insert(key.clone(), Some(Zeroizing::new(v))),
+            Err(crate::credential_store::CredentialError::NotFound(_)) => {
+                vault_at_start.insert(key.clone(), None)
+            }
+            Err(e) => return Err(unread(key, e)),
+        };
+    }
     let vault_baseline = |key: &str| {
         vault_before
             .get(key)
@@ -3476,6 +3485,37 @@ mod tests {
             }
             fails
         })
+    }
+
+    thread_local! {
+        /// A key whose next read of the vault's own value at the start of the
+        /// profile step fails, once, as a vault that cannot be read does.
+        static FAIL_VAULT_READ_AT_START: std::cell::RefCell<Option<String>> =
+            const { std::cell::RefCell::new(None) };
+    }
+
+    fn fail_vault_read_at_start(key: &str) {
+        FAIL_VAULT_READ_AT_START.with(|slot| *slot.borrow_mut() = Some(key.to_string()));
+    }
+
+    /// The profile step's read of the vault's own value of `key`, refused
+    /// once for the key [`fail_vault_read_at_start`] names.
+    pub(super) fn vault_read_at_start(
+        store: &crate::credential_store::CredentialStore,
+        key: &str,
+    ) -> Result<String, crate::credential_store::CredentialError> {
+        let fails = FAIL_VAULT_READ_AT_START.with(|slot| {
+            let mut slot = slot.borrow_mut();
+            let fails = slot.as_deref() == Some(key);
+            if fails {
+                *slot = None;
+            }
+            fails
+        });
+        if fails {
+            return Err(std::io::Error::other("refused (test)").into());
+        }
+        store.get(key)
     }
 
     pub(super) fn run_before_profile_decisions(store: &crate::credential_store::CredentialStore) {
@@ -6212,6 +6252,73 @@ mod tests {
             Some("row-token"),
             "the row's own value"
         );
+    }
+
+    /// A vault value the profile step cannot read at its start stops the step
+    /// before it writes anything: the legacy owner's vault held V and its row
+    /// R, and an accepted removal would delete both, then a failed list save
+    /// would put R in the vault in the place of V. Both stay as they were.
+    #[test]
+    fn a_vault_value_that_cannot_be_read_stops_the_step_before_it_writes() {
+        let _guard = crate::user_partitions::test_lock();
+        crate::user_partitions::clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let cfg = dir.path().join("config");
+        let key = "oauth_dropbox_srv_drive";
+        partition_with(&store, &cfg, &[dropbox("srv_drive", "Drive")]);
+        store.store(key, "vault-token").unwrap();
+        set_partition_secret(&store, &cfg, key, "row-token");
+        let db = cfg.join("user_partitions.db");
+        let owner = active_receiver(&db).unwrap();
+        assert!(owner.legacy_owner);
+        let mut payload = ExportPayload::default();
+        payload.vault_entries.insert(
+            "config_server_profiles".to_string(),
+            serde_json::to_string(&[dropbox("srv_photos", "Photos")]).unwrap(),
+        );
+        let backup = dir.path().join("vault.aeroftp-keystore");
+        seal_backup(&backup, PASSWORD_736, &payload);
+        let hook_db = db.clone();
+        before_profile_decisions(move |_| {
+            fail_vault_read_at_start(key);
+            rusqlite::Connection::open(&hook_db)
+                .unwrap()
+                .execute_batch(
+                    "CREATE TRIGGER refuse_list BEFORE INSERT ON server_profiles
+                     BEGIN SELECT RAISE(ABORT, 'disk full'); END;",
+                )
+                .unwrap();
+        });
+
+        let result = import_deciding(
+            &store,
+            &cfg,
+            &backup,
+            VAULT_ONLY,
+            &[decide(
+                "srv_drive",
+                keystore_profile_plan::ProfileDecision::Accept,
+            )],
+        );
+        rusqlite::Connection::open(&db)
+            .unwrap()
+            .execute_batch("DROP TRIGGER IF EXISTS refuse_list;")
+            .unwrap();
+        assert_eq!(
+            store.get(key).unwrap(),
+            "vault-token",
+            "the vault's own value"
+        );
+        assert_eq!(
+            row_in(&store, &cfg, owner.user_id, key).as_deref(),
+            Some("row-token"),
+            "the row's own value"
+        );
+        let error = result
+            .profile_decisions_error
+            .expect("the profile step did not fail");
+        assert!(error.contains("refused (test)"), "{error}");
     }
 
     /// A private token's only row in a partition the import restored, rotated
