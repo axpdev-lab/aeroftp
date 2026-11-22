@@ -341,8 +341,9 @@ fn ensure_users_is_default_column(conn: &Connection) -> Result<(), String> {
 
 /// Idempotent migration adding the `token_uid` column to an existing
 /// `server_profiles` table ([`profile_token_tag`]). Rows written before it
-/// hold none until their list is written again ([`retag_own_profiles_if_pending`]); a
-/// no-op on fresh installs, whose CREATE TABLE below carries the column.
+/// hold none until [`fill_profile_token_tags`] gives them theirs, once their
+/// account's DEK is reachable, or their list is written again; a no-op on
+/// fresh installs, whose CREATE TABLE below carries the column.
 fn ensure_server_profiles_token_uid_column(conn: &Connection) -> Result<(), String> {
     let mut stmt = match conn.prepare("PRAGMA table_info(server_profiles)") {
         Ok(s) => s,
