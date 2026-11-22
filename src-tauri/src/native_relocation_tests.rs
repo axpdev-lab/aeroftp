@@ -3697,6 +3697,80 @@ fn an_import_stores_no_session_for_a_profile_deleted_since_its_list() {
     assert_eq!(loaded(owner, "import-kept").as_deref(), Some("r1"));
 }
 
+/// The OAuth app scan A filled is the provider's, read by every profile of
+/// it: scan B, whose config carries the same app, fills nothing and records
+/// nothing, and its confirm saves profile `b`. Settling A unconfirmed then
+/// leaves the app `b` uses. Without B's confirm A takes it back, as before.
+#[test]
+fn an_oauth_app_another_confirm_adopted_outlives_the_scan_that_filled_it() {
+    if !in_isolated_child("an_oauth_app_another_confirm_adopted_outlives_the_scan_that_filled_it") {
+        return;
+    }
+    let accounts = Accounts::open();
+    let runtime = bridge_runtime();
+    let conf = tempfile::NamedTempFile::new().unwrap();
+    let scan = |remote: &str| {
+        std::fs::write(
+            conf.path(),
+            format!(
+                concat!(
+                    "[{remote}]\ntype = dropbox\nclient_id = shared-id\nclient_secret = shared-secret\n",
+                    "token = {{\"access_token\":\"{remote}-access\",\"token_type\":\"bearer\",\"refresh_token\":\"{remote}-refresh\"}}\n",
+                ),
+                remote = remote,
+            ),
+        )
+        .unwrap();
+        runtime
+            .block_on(crate::bridge_commands::import_bridge_config(
+                "rclone".into(),
+                conf.path().to_string_lossy().into_owned(),
+                None,
+            ))
+            .unwrap()
+    };
+    let app = || {
+        (
+            vault_value("oauth_dropbox_client_id"),
+            vault_value("oauth_dropbox_client_secret"),
+        )
+    };
+    let filled = (
+        Some("shared-id".to_string()),
+        Some("shared-secret".to_string()),
+    );
+    let confirm = |imported: &Value, remote: &str| {
+        let mut db = open_or_init_cli().unwrap();
+        let mut profiles =
+            list_server_profiles_for(&db, &accounts.root_key, accounts.legacy).unwrap();
+        profiles.push(json!({"id": scanned_id(imported, remote), "name": remote,
+            "protocol": "dropbox", "host": "", "port": 0}));
+        replace_server_profiles_for(&mut db, &accounts.root_key, accounts.legacy, &profiles)
+            .unwrap();
+    };
+    assert_eq!(app(), (None, None));
+
+    let a = scan("a");
+    assert_eq!(app(), filled, "A fills the app");
+    let b = scan("b");
+    assert_eq!(app(), filled);
+    confirm(&b, "b");
+    settle_scan(&runtime, b["scanId"].as_str()).unwrap();
+    settle_scan(&runtime, a["scanId"].as_str()).unwrap();
+    assert_eq!(app(), filled, "the app b uses stays");
+
+    // No profile of the provider saved: A's settle takes its app back.
+    let mut db = open_or_init_cli().unwrap();
+    replace_server_profiles_for(&mut db, &accounts.root_key, accounts.legacy, &[]).unwrap();
+    for slot in ["oauth_dropbox_client_id", "oauth_dropbox_client_secret"] {
+        accounts.store.delete(slot).unwrap();
+    }
+    let a = scan("a");
+    assert_eq!(app(), filled);
+    settle_scan(&runtime, a["scanId"].as_str()).unwrap();
+    assert_eq!(app(), (None, None), "an app no profile uses goes");
+}
+
 /// A scan that fills a provider's OAuth app, which this device had none of,
 /// records the slots it filled: settled without a confirm, it takes them
 /// back, and a later import of a config with another app is not held off by

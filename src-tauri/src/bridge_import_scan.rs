@@ -420,6 +420,56 @@ impl Scan {
     }
 }
 
+/// The OAuth app slots the profiles `profiles` use: the provider's app is
+/// read by every profile of it on the machine
+/// ([`crate::bridge_commands::oauth_client_cred_key`]).
+fn oauth_app_slots(profiles: &[serde_json::Value]) -> Vec<String> {
+    let mut slots: Vec<String> = profiles
+        .iter()
+        .filter_map(|profile| profile.get("protocol").and_then(|p| p.as_str()))
+        .filter_map(crate::bridge_commands::oauth_client_cred_key)
+        .flat_map(|app| {
+            ["client_id", "client_secret", "region"].map(|slot| format!("oauth_{app}_{slot}"))
+        })
+        .collect();
+    slots.sort();
+    slots.dedup();
+    slots
+}
+
+/// A saved list of profiles adopts the OAuth apps its profiles use: the slots
+/// any scan filled, which a settle would take back when the scan's own
+/// profiles are not saved, are no longer the scan's to remove once a profile
+/// of another scan's confirm, or of any save, uses the app. Called by every
+/// writer of a profile list ([`crate::user_partitions`]), inside its
+/// transaction, so a list saved and a settle cannot interleave.
+pub(crate) fn adopt_oauth_apps(
+    tx: &Connection,
+    profiles: &[serde_json::Value],
+) -> Result<(), String> {
+    let slots = oauth_app_slots(profiles);
+    if slots.is_empty() {
+        return Ok(());
+    }
+    let entries: Vec<(String, String)> = tx
+        .prepare("SELECT key, value FROM global_state WHERE substr(key, 1, length(?1)) = ?1")
+        .and_then(|mut statement| {
+            statement
+                .query_map(params![ENTRY_PREFIX], |row| Ok((row.get(0)?, row.get(1)?)))?
+                .collect::<rusqlite::Result<Vec<_>>>()
+        })
+        .map_err(|e| format!("Read the import records: {e}"))?;
+    for (entry, value) in entries {
+        let adopted = serde_json::from_str::<Written>(&value)
+            .is_ok_and(|written| written.kind == Kind::OauthApp && slots.contains(&written.key));
+        if adopted {
+            tx.execute("DELETE FROM global_state WHERE key = ?1", params![entry])
+                .map_err(|e| format!("Adopt an imported OAuth app: {e}"))?;
+        }
+    }
+    Ok(())
+}
+
 /// The ids of `profiles`.
 fn ids(profiles: &[serde_json::Value]) -> impl Iterator<Item = String> + '_ {
     profiles

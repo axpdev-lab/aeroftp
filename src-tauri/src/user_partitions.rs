@@ -2284,6 +2284,7 @@ fn insert_profile_rows(
         params![profile_tags_pending_key(user_id)],
     )
     .map_err(|e| format!("Clear pending profile tags: {e}"))?;
+    crate::bridge_import_scan::adopt_oauth_apps(tx, profiles)?;
     Ok(())
 }
 
