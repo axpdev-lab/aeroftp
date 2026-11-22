@@ -4455,7 +4455,13 @@
             "modeNonIdentical": "Неидентично",
             "groupsCount": "Групе: {count}",
             "duplicateFilesCount": "Дуплиране датотеке: {count}",
-            "copiesCount": "{count} ком."
+            "copiesCount": "{count} ком.",
+            "refreshTooltip": "Провери да ли откривени дупликати још увек постоје и уклони датотеке које недостају без поновног скенирања",
+            "refreshRemoved": "{count} недостајућих датотека уклоњено са листе",
+            "refreshUpToDate": "Све датотеке још увек постоје",
+            "refreshChanged": "{count} измењених датотека уклоњено са листе",
+            "refreshUnverified": "{count} није било могуће проверити",
+            "refreshFailed": "Освежавање није успело: {error}"
         },
         "diskUsage": {
             "title": "Коришћење диска",

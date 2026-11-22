@@ -4455,7 +4455,13 @@
             "modeNonIdentical": "Nem azonos",
             "groupsCount": "{count} csoport",
             "duplicateFilesCount": "{count} ismétlődő fájl",
-            "copiesCount": "{count} példány"
+            "copiesCount": "{count} példány",
+            "refreshTooltip": "Ellenőrzi, hogy az észlelt duplikátumok léteznek-e még, és újravizsgálat nélkül eltávolítja a hiányzó fájlokat",
+            "refreshRemoved": "{count} hiányzó fájl eltávolítva a listából",
+            "refreshUpToDate": "Minden fájl létezik még",
+            "refreshChanged": "{count} módosult fájl eltávolítva a listáról",
+            "refreshUnverified": "{count} nem volt ellenőrizhető",
+            "refreshFailed": "A frissítés sikertelen: {error}"
         },
         "diskUsage": {
             "title": "Lemezfoglalás",

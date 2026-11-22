@@ -4455,7 +4455,13 @@
             "modeNonIdentical": "არაიდენტური",
             "groupsCount": "{count} ჯგუფი",
             "duplicateFilesCount": "{count} დუბლიკატი ფაილი",
-            "copiesCount": "{count} ასლი"
+            "copiesCount": "{count} ასლი",
+            "refreshTooltip": "შეამოწმეთ, აღმოჩენილი დუბლიკატები კვლავ არსებობს თუ არა და წაშალეთ დაკარგული ფაილები ხელახალი სკანირების გარეშე",
+            "refreshRemoved": "სიიდან ამოღებულია {count} არარსებული ფაილი",
+            "refreshUpToDate": "ყველა ფაილი კვლავ არსებობს",
+            "refreshChanged": "{count} შეცვლილი ფაილი ამოღებულია სიიდან",
+            "refreshUnverified": "{count} ვერ შემოწმდა",
+            "refreshFailed": "განახლება ვერ მოხერხდა: {error}"
         },
         "diskUsage": {
             "title": "დისკის გამოყენება",

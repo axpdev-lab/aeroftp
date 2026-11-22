@@ -4455,7 +4455,13 @@
             "modeNonIdentical": "Μη πανομοιότυπα",
             "groupsCount": "Ομάδες: {count}",
             "duplicateFilesCount": "Διπλότυπα αρχεία: {count}",
-            "copiesCount": "{count} αντίγραφα"
+            "copiesCount": "{count} αντίγραφα",
+            "refreshTooltip": "Έλεγχος αν τα εντοπισμένα διπλότυπα υπάρχουν ακόμα και αφαίρεση των αρχείων που λείπουν χωρίς νέα σάρωση",
+            "refreshRemoved": "Αφαιρέθηκαν {count} αρχεία που λείπουν από τη λίστα",
+            "refreshUpToDate": "Όλα τα αρχεία υπάρχουν ακόμα",
+            "refreshChanged": "{count} τροποποιημένα αρχεία αφαιρέθηκαν από τη λίστα",
+            "refreshUnverified": "{count} δεν ήταν δυνατό να ελεγχθούν",
+            "refreshFailed": "Η ανανέωση απέτυχε: {error}"
         },
         "diskUsage": {
             "title": "Χρήση Δίσκου",

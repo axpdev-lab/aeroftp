@@ -2715,7 +2715,13 @@
             "modeNonIdentical": "Non-identical",
             "groupsCount": "Groups: {count}",
             "duplicateFilesCount": "Duplicate files: {count}",
-            "copiesCount": "{count} copies"
+            "copiesCount": "{count} copies",
+            "refreshTooltip": "Check if detected duplicates still exist and remove missing files without rescanning",
+            "refreshRemoved": "{count} missing files dropped from the list",
+            "refreshChanged": "{count} changed files dropped from the list",
+            "refreshUnverified": "{count} could not be checked",
+            "refreshFailed": "Refresh failed: {error}",
+            "refreshUpToDate": "All files still exist"
         },
         "error": {
             "description": "AeroFTP encountered an unexpected error. You can try to recover or reload the application.",

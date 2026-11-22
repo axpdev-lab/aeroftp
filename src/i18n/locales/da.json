@@ -4455,7 +4455,13 @@
             "modeNonIdentical": "Ikke identisk",
             "groupsCount": "Grupper: {count}",
             "duplicateFilesCount": "Dubletfiler: {count}",
-            "copiesCount": "{count} kopier"
+            "copiesCount": "{count} kopier",
+            "refreshTooltip": "Kontrollér, om fundne dubletter stadig findes, og fjern manglende filer uden at scanne igen",
+            "refreshRemoved": "{count} manglende filer fjernet fra listen",
+            "refreshUpToDate": "Alle filer findes stadig",
+            "refreshChanged": "{count} ændrede filer fjernet fra listen",
+            "refreshUnverified": "{count} kunne ikke kontrolleres",
+            "refreshFailed": "Opdatering mislykkedes: {error}"
         },
         "diskUsage": {
             "title": "Diskforbrug",

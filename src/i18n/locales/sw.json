@@ -4455,7 +4455,13 @@
             "modeNonIdentical": "Zisizofanana",
             "groupsCount": "Vikundi: {count}",
             "duplicateFilesCount": "Faili rudufu {count}",
-            "copiesCount": "Nakala {count}"
+            "copiesCount": "Nakala {count}",
+            "refreshTooltip": "Kagua kama nakala zilizogunduliwa bado zipo na uondoe faili zinazokosekana bila kuchanganua tena",
+            "refreshRemoved": "Faili {count} zinazokosekana zimeondolewa kwenye orodha",
+            "refreshUpToDate": "Faili zote bado zipo",
+            "refreshChanged": "Faili {count} zilizobadilika zimeondolewa kwenye orodha",
+            "refreshUnverified": "{count} hazikuweza kukaguliwa",
+            "refreshFailed": "Kusasisha kumeshindikana: {error}"
         },
         "diskUsage": {
             "title": "Matumizi ya Diski",

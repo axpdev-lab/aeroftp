@@ -4455,7 +4455,13 @@
             "modeNonIdentical": "Ez berdina",
             "groupsCount": "{count} talde",
             "duplicateFilesCount": "{count} fitxategi bikoiztu",
-            "copiesCount": "{count} kopia"
+            "copiesCount": "{count} kopia",
+            "refreshTooltip": "Egiaztatu hautemandako bikoiztuak oraindik existitzen diren eta kendu falta diren fitxategiak berriro eskaneatu gabe",
+            "refreshRemoved": "Falta diren {count} fitxategi zerrendatik kendu dira",
+            "refreshUpToDate": "Fitxategi guztiak oraindik existitzen dira",
+            "refreshChanged": "Aldatutako {count} fitxategi zerrendatik kendu dira",
+            "refreshUnverified": "{count} ezin izan dira egiaztatu",
+            "refreshFailed": "Freskatzeak huts egin du: {error}"
         },
         "diskUsage": {
             "title": "Diskoaren erabilera",

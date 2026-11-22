@@ -4455,7 +4455,13 @@
             "modeNonIdentical": "गैर-समान",
             "groupsCount": "समूह: {count}",
             "duplicateFilesCount": "डुप्लिकेट फ़ाइलें: {count}",
-            "copiesCount": "{count} प्रतियाँ"
+            "copiesCount": "{count} प्रतियाँ",
+            "refreshTooltip": "जाँचें कि पहचाने गए डुप्लिकेट अभी भी मौजूद हैं या नहीं और दोबारा स्कैन किए बिना अनुपस्थित फ़ाइलें हटाएँ",
+            "refreshRemoved": "सूची से {count} अनुपलब्ध फ़ाइलें हटाई गईं",
+            "refreshUpToDate": "सभी फ़ाइलें अभी भी मौजूद हैं",
+            "refreshChanged": "{count} बदली हुई फ़ाइलें सूची से हटाई गईं",
+            "refreshUnverified": "{count} की जाँच नहीं की जा सकी",
+            "refreshFailed": "रीफ़्रेश विफल: {error}"
         },
         "diskUsage": {
             "title": "डिस्क उपयोग",

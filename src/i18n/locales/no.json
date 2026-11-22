@@ -4455,7 +4455,13 @@
             "modeNonIdentical": "Ikke identisk",
             "groupsCount": "Grupper: {count}",
             "duplicateFilesCount": "Duplikatfiler: {count}",
-            "copiesCount": "{count} kopier"
+            "copiesCount": "{count} kopier",
+            "refreshTooltip": "Kontroller om funnede duplikater fortsatt finnes, og fjern manglende filer uten å skanne på nytt",
+            "refreshRemoved": "{count} manglende filer fjernet fra listen",
+            "refreshUpToDate": "Alle filer finnes fortsatt",
+            "refreshChanged": "{count} endrede filer fjernet fra listen",
+            "refreshUnverified": "{count} kunne ikke kontrolleres",
+            "refreshFailed": "Oppdatering mislyktes: {error}"
         },
         "diskUsage": {
             "title": "Diskbruk",

@@ -4455,7 +4455,13 @@
             "modeNonIdentical": "Mitteidentne",
             "groupsCount": "Rühmad: {count}",
             "duplicateFilesCount": "Duplikaatfailid: {count}",
-            "copiesCount": "{count} koopiat"
+            "copiesCount": "{count} koopiat",
+            "refreshTooltip": "Kontrolli, kas leitud duplikaadid on endiselt olemas, ja eemalda puuduvad failid uuesti skannimata",
+            "refreshRemoved": "{count} puuduvat faili nimekirjast eemaldatud",
+            "refreshUpToDate": "Kõik failid on endiselt olemas",
+            "refreshChanged": "{count} muutunud faili eemaldati loendist",
+            "refreshUnverified": "{count} ei saanud kontrollida",
+            "refreshFailed": "Värskendamine ebaõnnestus: {error}"
         },
         "diskUsage": {
             "title": "Kettakasutus",

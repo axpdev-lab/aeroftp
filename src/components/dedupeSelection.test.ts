@@ -122,7 +122,7 @@ describe('every copy can be ticked (#347)', () => {
         // feedback was a tooltip on a dead control. The invariant is still
         // watched, but it now costs a confirmation rather than the action.
         expect(dialogRaw).toMatch(/fullyTickedGroups/);
-        expect(dialogRaw).toMatch(/disabled=\{selectedCount === 0 \|\| isDeleting\}/);
+        expect(dialogRaw).toMatch(/disabled=\{selectedCount === 0 \|\| isDeleting \|\| isRefreshing\}/);
         expect(dialogRaw).not.toMatch(/disabled=\{[^}]*fullyTickedGroups[^}]*\}/);
     });
 

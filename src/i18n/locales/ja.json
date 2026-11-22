@@ -4419,7 +4419,13 @@
             "modeNonIdentical": "非同一",
             "groupsCount": "{count} グループ",
             "duplicateFilesCount": "{count} 個の重複ファイル",
-            "copiesCount": "{count} 個のコピー"
+            "copiesCount": "{count} 個のコピー",
+            "refreshTooltip": "検出された重複ファイルがまだ存在するか確認し、再スキャンせずに存在しないファイルを除外します",
+            "refreshRemoved": "存在しない {count} 件のファイルを一覧から除外しました",
+            "refreshUpToDate": "すべてのファイルが存在しています",
+            "refreshChanged": "変更された {count} 件のファイルを一覧から除外しました",
+            "refreshUnverified": "{count} 件を確認できませんでした",
+            "refreshFailed": "更新に失敗しました: {error}"
         },
         "diskUsage": {
             "title": "ディスク使用量",

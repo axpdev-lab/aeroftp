@@ -4455,7 +4455,13 @@
             "modeNonIdentical": "Neidentično",
             "groupsCount": "Skupine: {count}",
             "duplicateFilesCount": "Podvojene datoteke: {count}",
-            "copiesCount": "{count} kos."
+            "copiesCount": "{count} kos.",
+            "refreshTooltip": "Preveri, ali zaznani dvojniki še obstajajo, in odstrani manjkajoče datoteke brez ponovnega pregleda",
+            "refreshRemoved": "{count} manjkajočih datotek odstranjenih s seznama",
+            "refreshUpToDate": "Vse datoteke še obstajajo",
+            "refreshChanged": "{count} spremenjenih datotek odstranjenih s seznama",
+            "refreshUnverified": "{count} ni bilo mogoče preveriti",
+            "refreshFailed": "Osveževanje ni uspelo: {error}"
         },
         "diskUsage": {
             "title": "Zasedenost diska",

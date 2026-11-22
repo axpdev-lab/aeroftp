@@ -4455,7 +4455,13 @@
             "modeNonIdentical": "Neidentic",
             "groupsCount": "Grupuri: {count}",
             "duplicateFilesCount": "Fișiere duplicate: {count}",
-            "copiesCount": "{count} buc."
+            "copiesCount": "{count} buc.",
+            "refreshTooltip": "Verifică dacă duplicatele detectate mai există și elimină fișierele lipsă fără a rescana",
+            "refreshRemoved": "{count} fișiere lipsă eliminate din listă",
+            "refreshUpToDate": "Toate fișierele există încă",
+            "refreshChanged": "{count} fișiere modificate eliminate din listă",
+            "refreshUnverified": "{count} nu au putut fi verificate",
+            "refreshFailed": "Reîmprospătarea a eșuat: {error}"
         },
         "diskUsage": {
             "title": "Utilizarea discului",

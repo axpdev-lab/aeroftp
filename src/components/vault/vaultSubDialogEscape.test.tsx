@@ -91,6 +91,11 @@ it.each([
     expect(onClose).toHaveBeenCalledTimes(1);
 });
 
+it('shows a busy indicator before the vault command reports byte progress', async () => {
+    await render(<VaultBrowse state={vaultState({ loading: true, vaultProgress: null })} />);
+    expect(host.querySelector('[role=status]')?.textContent).toBe('Loading...');
+});
+
 it('a running repair keeps its dialog: backdrop inert, X and Close ask, Wait keeps it', async () => {
     const onClose = vi.fn();
     const state = vaultState({ showRepairDialog: true, isRepairing: true });
