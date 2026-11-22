@@ -131,7 +131,7 @@ fn oauth_kind(kind: ProviderType) -> Option<OAuthProvider> {
     })
 }
 fn oauth_key(provider: OAuthProvider, id: &str) -> String {
-    format!("oauth_{provider:?}_{id}").to_lowercase()
+    crate::providers::oauth2::oauth_token_key(&format!("{provider:?}"), id)
 }
 fn client_settings(scope: &AuthScope<'_>, profile: &Value, config: &Value) -> (String, String) {
     let mut legacy = crate::bridge_commands::resolve_oauth_client_config(

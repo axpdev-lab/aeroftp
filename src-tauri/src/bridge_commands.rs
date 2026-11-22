@@ -292,7 +292,7 @@ fn store_rclone_provider_secrets(
         if let Some(ref oauth_json) = secrets.oauth {
             if let Some(slug) = crate::oauth_vault_slug_for_protocol(protocol) {
                 // MUV-4: dual-write into vault + the importing account's partition.
-                let key = format!("oauth_{}_{}", slug, profile_id);
+                let key = crate::providers::oauth2::oauth_token_key(slug, profile_id);
                 if let Err(e) =
                     record(&key, bridge_import_scan::Kind::Secret, oauth_json).and_then(|()| {
                         crate::user_partitions::store_typed_credential_dual_as(
@@ -1279,7 +1279,7 @@ pub fn resolve_profile_oauth_token_for(
         .filter(|value| !value.is_empty()))
     };
     if !profile_id.is_empty() {
-        if let Some(value) = read(format!("oauth_{}_{}", slug, profile_id))? {
+        if let Some(value) = read(crate::providers::oauth2::oauth_token_key(slug, profile_id))? {
             return Ok(Some(value));
         }
     }

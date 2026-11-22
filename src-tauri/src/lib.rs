@@ -25377,7 +25377,7 @@ pub fn per_profile_vault_keys(profile_id: &str, protocol: Option<&str>) -> Vec<S
     // The per-profile OAuth token lives under `oauth_<slug>_<id>`; the slug is
     // provider-specific, so it is only added when the protocol maps to one.
     if let Some(slug) = protocol.and_then(oauth_vault_slug_for_protocol) {
-        keys.push(format!("oauth_{}_{}", slug, profile_id));
+        keys.push(providers::oauth2::oauth_token_key(slug, profile_id));
     }
     keys
 }
@@ -25413,7 +25413,7 @@ pub fn per_profile_vault_keys_for_target_reset(
 ) -> Vec<String> {
     let mut keys = per_profile_vault_keys_for_delete(profile_id, None);
     for slug in ALL_OAUTH_VAULT_SLUGS {
-        keys.push(format!("oauth_{slug}_{profile_id}"));
+        keys.push(providers::oauth2::oauth_token_key(slug, profile_id));
     }
     keys.retain(|k| !preserve_keys.iter().any(|keep| keep == k));
     keys
@@ -25437,7 +25437,7 @@ fn collect_provider_secrets_for_server(
     // MUV-4: read the per-profile token from the active user's partition (vault
     // fallback inside resolve), then the legacy singleton key from the vault.
     if let Some(slug) = oauth_vault_slug_for_protocol(&protocol) {
-        let per_profile = format!("oauth_{}_{}", slug, server.id);
+        let per_profile = providers::oauth2::oauth_token_key(slug, &server.id);
         let read = |key: &str| {
             user_partitions::resolve_active_credential_owner_aware(store, key)
                 .map_err(|e| format!("{}: cannot read its OAuth token: {e}", server.name))
@@ -26446,7 +26446,7 @@ pub(crate) fn import_secret_writes(
         if let Some(oauth_json) = &secrets.oauth {
             if let Some(slug) = oauth_vault_slug_for_protocol(&protocol) {
                 writes.push(SecretWrite::new(
-                    format!("oauth_{slug}_{id}"),
+                    providers::oauth2::oauth_token_key(slug, id),
                     Some("oauth"),
                     oauth_json,
                 ));

@@ -1239,6 +1239,21 @@ impl Clone for OAuth2Manager {
     }
 }
 
+/// The vault key of the OAuth token of `slug` for `profile_id`:
+/// `oauth_<slug>_<profile_id>`, or the legacy singleton `oauth_<slug>` for an
+/// empty `profile_id`, lowercased whole, as [`OAuth2Manager`] stores and
+/// loads it. Every other place that names a profile's OAuth token (the
+/// alignment, an export or an import, the readiness and auth-state reads)
+/// composes it here, so a profile id with capitals names one key everywhere.
+pub fn oauth_token_key(slug: &str, profile_id: &str) -> String {
+    if profile_id.is_empty() {
+        format!("oauth_{slug}")
+    } else {
+        format!("oauth_{slug}_{profile_id}")
+    }
+    .to_lowercase()
+}
+
 impl OAuth2Manager {
     /// Bind refresh reads and writes to the account that owns the profile.
     pub fn with_credential_user(mut self, user_id: Option<i64>) -> Self {
@@ -1594,11 +1609,7 @@ impl OAuth2Manager {
     /// Compose the per-profile vault key when `profile_id` is non-empty,
     /// falling back to the legacy singleton key otherwise. Issue #214.
     fn token_account_key(provider: OAuthProvider, profile_id: &str) -> String {
-        if profile_id.is_empty() {
-            format!("oauth_{:?}", provider).to_lowercase()
-        } else {
-            format!("oauth_{:?}_{}", provider, profile_id).to_lowercase()
-        }
+        oauth_token_key(&format!("{:?}", provider), profile_id)
     }
 
     /// Legacy singleton vault key, used as fallback by `load_tokens` and

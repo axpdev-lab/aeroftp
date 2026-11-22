@@ -42867,7 +42867,9 @@ async fn apply_rclone_import_to_vault(
                 if let Some(ref oauth_json) = secrets.oauth {
                     if let Some(slug) = cli_oauth_vault_slug_for_protocol(&protocol) {
                         writes.push(SecretWrite::new(
-                            format!("oauth_{slug}_{profile_id}"),
+                            ftp_client_gui_lib::providers::oauth2::oauth_token_key(
+                                slug, profile_id,
+                            ),
                             Some("oauth"),
                             oauth_json,
                         ));

@@ -84,6 +84,27 @@ pub fn remove_copied_secret(
     }
 }
 
+/// The base of `key`, a per-profile key of `profile_id` (`<base>_<profile_id>`),
+/// an OAuth token's included, whose key the OAuth runtime lowercases whole
+/// ([`crate::providers::oauth2::oauth_token_key`]).
+fn per_profile_key_base<'a>(key: &'a str, profile_id: &str) -> Option<&'a str> {
+    let suffix = format!("_{profile_id}");
+    key.strip_suffix(&suffix).or_else(|| {
+        key.starts_with("oauth_")
+            .then(|| key.strip_suffix(&suffix.to_lowercase()))
+            .flatten()
+    })
+}
+
+/// The per-profile key of `base` for `profile_id`, composed as its reader
+/// composes it: an OAuth token by [`crate::providers::oauth2::oauth_token_key`].
+fn per_profile_key(base: &str, profile_id: &str) -> String {
+    match base.strip_prefix("oauth_") {
+        Some(slug) => crate::providers::oauth2::oauth_token_key(slug, profile_id),
+        None => format!("{base}_{profile_id}"),
+    }
+}
+
 /// Copy the secrets named by `source_keys` (each `<base>_<source_id>`) onto
 /// `<base>_<target_id>`, all or nothing.
 ///
@@ -113,11 +134,10 @@ where
     Write: FnMut(&str, &str, &Zeroizing<String>) -> Result<(), String>,
     Remove: FnMut(&str, &str) -> Result<(), String>,
 {
-    let source_suffix = format!("_{source_id}");
     let mut copied = HashMap::new();
     let mut to_write = Vec::new();
     for source_key in source_keys {
-        let Some(base) = source_key.strip_suffix(&source_suffix) else {
+        let Some(base) = per_profile_key_base(&source_key, source_id) else {
             continue;
         };
         match read(&source_key) {
@@ -134,7 +154,7 @@ where
     }
     let mut written: Vec<(String, String)> = Vec::new();
     for (base, value) in to_write {
-        let target_key = format!("{base}_{target_id}");
+        let target_key = per_profile_key(&base, target_id);
         if let Err(error) = write(&base, &target_key, &value) {
             let mut left = Vec::new();
             if remove(&base, &target_key).is_err() {
@@ -170,6 +190,42 @@ mod tests {
 
     const SOURCE: &str = "srv_source";
     const TARGET: &str = "srv_copy";
+
+    /// A profile id with capitals: its OAuth token is read under the key the
+    /// OAuth runtime writes (lowercased whole) and copied under the key it
+    /// reads for the copy, while every other secret keeps the id as it is.
+    #[test]
+    fn a_mixed_case_profile_ids_oauth_token_is_copied_under_the_runtime_key() {
+        let entries = RefCell::new(BTreeMap::from([
+            ("oauth_dropbox_team".to_string(), "token".to_string()),
+            ("server_Team".to_string(), "password".to_string()),
+        ]));
+        let copied = copy_profile_secret_keys(
+            "Team",
+            "Crew",
+            crate::per_profile_vault_keys("Team", Some("dropbox")),
+            |key| Ok(entries.borrow().get(key).cloned().map(Zeroizing::new)),
+            |_, key, value| {
+                entries
+                    .borrow_mut()
+                    .insert(key.to_string(), value.to_string());
+                Ok(())
+            },
+            |_, _| Ok(()),
+        )
+        .unwrap();
+        assert_eq!(copied.get("oauth_dropbox"), Some(&true));
+        assert_eq!(copied.get("server"), Some(&true));
+        let entries = entries.borrow();
+        assert_eq!(
+            entries.get("oauth_dropbox_crew").map(String::as_str),
+            Some("token")
+        );
+        assert_eq!(
+            entries.get("server_Crew").map(String::as_str),
+            Some("password")
+        );
+    }
 
     fn keys(bases: &[&str]) -> Vec<String> {
         bases

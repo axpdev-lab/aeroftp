@@ -966,8 +966,12 @@ fn relocate_credential_key_candidates(protocol: &str, profile_id: &str) -> Vec<S
     let mut keys = vec![format!("server_{profile_id}")];
     if let Some(oauth_base) = oauth_vault_key_for_protocol(protocol) {
         // oauth_vault_key_for_protocol returns e.g. "oauth_pcloud" or
-        // "jottacloud_refresh"; append the profile id for the per-profile key.
-        keys.push(format!("{oauth_base}_{profile_id}"));
+        // "jottacloud_refresh"; append the profile id for the per-profile key,
+        // as the OAuth runtime composes it for an OAuth token.
+        keys.push(match oauth_base.strip_prefix("oauth_") {
+            Some(slug) => crate::providers::oauth2::oauth_token_key(slug, profile_id),
+            None => format!("{oauth_base}_{profile_id}"),
+        });
     }
     keys
 }
@@ -5332,7 +5336,7 @@ fn private_token_keys_of_profile(profile_id: &str) -> Vec<String> {
     keys.extend(
         OAUTH_TOKEN_SLUGS
             .iter()
-            .map(|slug| format!("oauth_{slug}_{profile_id}")),
+            .map(|slug| crate::providers::oauth2::oauth_token_key(slug, profile_id)),
     );
     keys.extend(
         crate::profile_auth::DURABLE_KEY_PREFIXES
@@ -13689,6 +13693,84 @@ mod tests {
         );
         assert_eq!(*deleted.borrow(), ["oauth_dropbox_p"]);
         assert!(private_tokens_aligned(&conn, other.id).unwrap());
+    }
+
+    /// A profile id with capitals: the alignment names its OAuth token as the
+    /// OAuth runtime does (`oauth_dropbox_team` for `Team`). On a profile id
+    /// of this account alone the token moves into its row and leaves the
+    /// vault; on one the legacy owner also holds, the unstamped copy is
+    /// dropped while the account's own stamped sign-in stays readable.
+    #[test]
+    fn a_mixed_case_profile_id_is_aligned_under_the_runtime_key() {
+        let _guard = test_lock();
+        let profile = |id: &str| {
+            json!({"id": id, "name": id, "protocol": "dropbox", "host": "", "port": 0,
+                   "username": format!("{id}@example.test")})
+        };
+        let key = |id: &str| crate::providers::oauth2::oauth_token_key("Dropbox", id);
+        assert_eq!(key("Team"), "oauth_dropbox_team");
+        let (team, crew) = (key("Team"), key("Crew"));
+        for shared in [false, true] {
+            clear_user_session();
+            let dir = tempfile::tempdir().unwrap();
+            let mut conn = open_or_init_path(dir.path().join("partitions.db")).expect("open");
+            let root = test_root();
+            migrate_legacy_payloads(&mut conn, Some("[]"), None, &root).expect("seed");
+            let owner = nonprofile_secret_owner(&conn).unwrap().unwrap();
+            let other = create_passphrase_less_user(&mut conn, &root, "Other", None, None)
+                .unwrap()
+                .id;
+            clear_user_session();
+            let list = [profile("Team"), profile("Crew")];
+            replace_server_profiles_for(&mut conn, &root, other, &list).unwrap();
+            if shared {
+                replace_server_profiles_for(&mut conn, &root, owner, &list).unwrap();
+            }
+            let deleted = RefCell::new(Vec::<String>::new());
+            let delete = |key: &str| {
+                deleted.borrow_mut().push(key.to_string());
+                Ok(())
+            };
+            let row = |key: &str| {
+                get_user_credential_for(&conn, &root, other, key)
+                    .unwrap()
+                    .map(|value| value.to_string())
+            };
+            if !shared {
+                let (keys, read) = fake_vault(&[(team.as_str(), "mine-token")]);
+                align_private_tokens_inner(&conn, &root, other, &keys, &read, &delete).unwrap();
+                assert_eq!(row(&team).as_deref(), Some("mine-token"), "moved");
+                assert_eq!(
+                    *deleted.borrow(),
+                    std::slice::from_ref(&team),
+                    "the vault let go"
+                );
+                assert!(private_tokens_aligned(&conn, other).unwrap());
+                continue;
+            }
+            set_user_credential_for(&conn, &root, other, &team, "oauth", "owners-token").unwrap();
+            set_signed_in_credential_for(&conn, &root, other, &crew, "oauth", "own-sign-in")
+                .unwrap();
+            let (keys, read) = fake_vault(&[
+                (team.as_str(), "owners-token"),
+                (crew.as_str(), "owners-crew"),
+            ]);
+            align_private_tokens_inner(&conn, &root, other, &keys, &read, &delete).unwrap();
+            assert_eq!(row(&team), None, "the unstamped copy is dropped");
+            assert_eq!(
+                read_credential_owner_aware_inner(&conn, &root, other, &crew, &read)
+                    .unwrap()
+                    .map(|value| value.to_string())
+                    .as_deref(),
+                Some("own-sign-in"),
+                "the stamped sign-in stays readable"
+            );
+            assert!(
+                deleted.borrow().is_empty(),
+                "the owner keeps its vault keys"
+            );
+            assert!(private_tokens_aligned(&conn, other).unwrap());
+        }
     }
 
     /// A native Proton session belongs to one account. A copy of a session

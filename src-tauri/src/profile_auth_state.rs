@@ -153,7 +153,7 @@ fn auth_token_account(
     }
     if let Some(slug) = oauth_vault_slug_for_oauth_protocol(protocol) {
         if !profile_id.is_empty() {
-            let per_profile = format!("oauth_{}_{}", slug, profile_id);
+            let per_profile = crate::providers::oauth2::oauth_token_key(slug, profile_id);
             if accounts.contains(&per_profile) {
                 return Some(per_profile);
             }
@@ -274,7 +274,7 @@ fn partition_token_state(
     }
     if let Some(slug) = oauth_vault_slug_for_oauth_protocol(protocol) {
         if !profile_id.is_empty() {
-            keys.push(format!("oauth_{}_{}", slug, profile_id));
+            keys.push(crate::providers::oauth2::oauth_token_key(slug, profile_id));
         }
     }
     keys.extend(oauth_vault_key_for_protocol(protocol).map(str::to_string));
