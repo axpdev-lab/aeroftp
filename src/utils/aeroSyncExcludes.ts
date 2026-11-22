@@ -12,7 +12,11 @@
 export const AEROSYNC_DEFAULT_EXCLUDES: readonly string[] = [
     'node_modules', '.git', '.DS_Store', 'Thumbs.db',
     '__pycache__', '*.pyc', '.env', 'target',
-    '*.aerocorrect', '*.aerotmp',
+    '*.aerocorrect', '*.aerolock', '*.aerotmp',
+    '.aerovault-repack-*', '.aerovault-v3-*', '.aerovault_extract_*',
+    '.aerocreate-prepare-*', '.aeropassword-prepare-*',
+    '.aerorepair-private-*', '.aerostrip-*', '.aerovault-security-*',
+    '.aerovault-state', 'aerovault/journals',
 ];
 
 /**

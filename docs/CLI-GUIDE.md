@@ -1176,6 +1176,8 @@ aeroftp-cli correct repair ./report.bin --parity ./report.bin.aerocorrect --expe
 
 Replace the hash placeholder before running the command. A bare `correct repair` checks the sidecar's own content hash for integrity, but that hash does not authenticate a sidecar supplied by an attacker who can replace both objects. Detached recovery data must be refreshed after content changes.
 
+A repair that writes the file leaves a persistent `<file>.aerolock` beside it. `correct gen` likewise leaves locks next to the source and the sidecar it writes. Leave these files in place so readers and writers continue to coordinate on the same lock. A read-only verify leaves no new lock. AeroFTP sync excludes these locks even when Error Correction is off.
+
 EC covers damage within the selected Reed-Solomon budget. It does not recover
 logical deletes, ransomware replacing a whole file, complete file loss or damage
 beyond that budget. Each protected file adds a remote object and the selected
@@ -1433,7 +1435,8 @@ aeroftp-cli vault info myvault.aerovault --json   # has_error_correction: true, 
 # Scrub (returns checked + damaged list + the parity source repair would use)
 aeroftp-cli vault scrub myvault.aerovault
 
-# Repair (honest: "repaired R of D" or "vault left untouched"; --dry-run preview)
+# Repair (honest: "repaired R of D" or "vault left untouched"; --dry-run preview).
+# Exits 1 while any damaged chunk stays unrepaired, in a dry run as well.
 aeroftp-cli vault repair myvault.aerovault --dry-run
 aeroftp-cli vault repair myvault.aerovault
 ```
@@ -1473,6 +1476,8 @@ Repair resolves the parity source in priority order: explicit `--parity` ->
 `<vault>.aerocorrect` sidecar -> embedded extension, and reports which it used
 (`parity_source` in `--json`). Detached parity tracks a fixed data set, so re-run
 `export-parity` after editing a detached/both vault.
+
+**Memory and interrupted updates.** Before it loads a v3 vault into memory, AeroVault compares the data section with the memory the system reports (on Linux including reclaimable cache and the swap the cgroup allows), and Error Correction checks its own buffers the same way. When the check finds that they do not fit, open, save or repair fails with the number of bytes it needs. This is a preflight estimate for the buffers it checks, not a limit on the memory of the whole process. For a trusted vault on a host with enough memory, set `AEROVAULT_V3_DATA_BUDGET_BYTES` to a byte count before starting the GUI or the CLI: it replaces that estimate (a value outside the supported range makes every v3 open fail with an error naming the range). In the GUI, AeroFTP's own check on the size of the files being added still applies. On Linux, an update that publishes a vault together with its detached sidecar keeps a recovery journal under `$XDG_STATE_HOME/aerovault/journals` (default `~/.local/state/aerovault/journals`, fallback `~/.aerovault-state/journals`), and the next open finishes or rolls back an interrupted one. If that update ran with a different `XDG_STATE_HOME`, set it back before reopening the vault. AeroFTP sync never transfers these journal folders.
 
 See `aeroftp-cli vault --help`, [AEROVAULT-V3-SPEC §11](AEROVAULT-V3-SPEC.md#11-v4-evolution-note-t-aerovault-ecc-shipped), and [AGENTS.md](../AGENTS.md) (use direct paths for vault; `--profile` for remote servers). Receipts (`--receipt` or GUI) now include error_correction_* fields when present (P3-03). All via the shared engine (22 tests, live verified 20.1% overhead + full corrupt→repair→extract SHA-256 match).
 

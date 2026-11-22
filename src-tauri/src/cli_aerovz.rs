@@ -1,6 +1,5 @@
 use clap::Subcommand;
 use serde::Serialize;
-use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use super::{
@@ -341,7 +340,8 @@ impl ArchiveError {
     /// caller named. Mapping it to `RefuseOverwrite` would exit 9 and tell a
     /// script "your destination is occupied, choose another" about a file the
     /// caller never mentioned. `RefuseOverwrite` is produced at the explicit
-    /// output-exists check and nowhere else.
+    /// output-exists checks (before the build, and at the no-clobber publication
+    /// of the built archive) and nowhere else.
     pub(crate) fn io(context: &str, err: std::io::Error) -> Self {
         let failure = match err.kind() {
             std::io::ErrorKind::NotFound => ArchiveFailure::NotFound,
@@ -439,29 +439,59 @@ fn create_archive(
     let out_string = resolve_local_path(output);
     ensure_aerozip_path(&out_string)?;
     let out_path = PathBuf::from(&out_string);
-    if out_path.exists() {
-        return Err(ArchiveError::refuse_overwrite(format!(
+    let overwrite = || {
+        ArchiveError::refuse_overwrite(format!(
             "Refusing to overwrite existing .aerozip archive: {}",
             out_path.display()
-        )));
-    }
-    if let Some(parent) = out_path.parent().filter(|p| !p.as_os_str().is_empty()) {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| ArchiveError::io("Create output directory", e))?;
+        ))
+    };
+    // Resolve the inputs first: creating a missing output folder must never
+    // make a missing input that lies on the same path appear to exist.
+    let sources = resolve_archive_sources(paths)?;
+    let parent = out_path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    std::fs::create_dir_all(parent).map_err(|e| ArchiveError::io("Create output directory", e))?;
+    match out_path.symlink_metadata() {
+        Ok(_) => return Err(overwrite()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(ArchiveError::io("Read archive destination", e)),
     }
 
-    let sources = resolve_archive_sources(paths)?;
     let resolved_for_size: Vec<String> = sources
         .iter()
         .map(|source| source.path.to_string_lossy().to_string())
         .collect();
     let input_bytes = archive_input_size(&resolved_for_size);
 
-    let create_result = create_archive_inner(&out_path, &sources, profile, recovery_pct);
-    if let Err(e) = create_result {
-        let _ = std::fs::remove_file(&out_path);
-        return Err(e);
-    }
+    // Build the archive in a private directory beside the output, then publish
+    // it without replacing anything. A failure part way through the adds
+    // leaves nothing at the output, and the crate's lock files stay in the
+    // staging directory, removed with it. Never unlink the final path: it can
+    // be a link, or a file a concurrent writer published there.
+    let staging = tempfile::Builder::new()
+        .prefix(".aerocreate-prepare-")
+        .tempdir_in(parent)
+        .map_err(|e| ArchiveError::io("Create archive staging directory", e))?;
+    let staged = staging.path().join(
+        out_path
+            .file_name()
+            .ok_or_else(|| ArchiveError::other("Archive output needs a file name"))?,
+    );
+    create_archive_inner(&staged, &sources, profile, recovery_pct)?;
+    tempfile::TempPath::try_from_path(&staged)
+        .map_err(|e| ArchiveError::io("Stage archive", e))?
+        .persist_noclobber(&out_path)
+        .map_err(|e| {
+            if e.error.kind() == std::io::ErrorKind::AlreadyExists {
+                // The staged file is dropped (deleted) with the error.
+                overwrite()
+            } else {
+                ArchiveError::io("Publish archive", e.error)
+            }
+        })?;
+    drop(staging);
 
     let vault = open_plaintext_archive(&out_path)?;
     let summary = aerovault::v3::VaultV3::summary(&vault);
@@ -518,18 +548,70 @@ fn create_archive_inner(
     }
 
     let mut vault = open_plaintext_archive(out_path)?;
+    // The archive is built in a staging directory beside the output. When the
+    // output lies inside a directory input, the walk also picks up that
+    // staging directory and the archive being built in it: both are removed
+    // from the archive once every input is in. The crate normalizes the entry
+    // prefix, so the staging directory is found by its path below the input,
+    // which starts with its own randomly named folder.
+    let staging_dir = out_path.parent().and_then(|dir| dir.canonicalize().ok());
+    let mut staging_tails: Vec<String> = Vec::new();
     for source in sources {
         if source.is_dir {
             let prefix = archive_entry_basename(&source.path)?;
             aerovault::v3::VaultV3::add_directory(&mut vault, &source.path, Some(&prefix))
                 .map_err(aerovz_error)?;
+            if let Some(tail) = staging_dir
+                .as_deref()
+                .and_then(|staging| staging_path_below(staging, &source.path))
+            {
+                staging_tails.push(tail);
+            }
         } else {
             let entry_name = archive_entry_basename(&source.path)?;
             let mapped = [(source.path.clone(), entry_name)];
             aerovault::v3::VaultV3::add_files(&mut vault, &mapped).map_err(aerovz_error)?;
         }
     }
+    let mut staging_entries: Vec<String> = aerovault::v3::VaultV3::list(&vault)
+        .into_iter()
+        .filter(|entry| {
+            entry.is_dir
+                && staging_tails.iter().any(|tail| {
+                    entry
+                        .path
+                        .strip_suffix(tail.as_str())
+                        .is_some_and(|head| head.ends_with('/'))
+                })
+        })
+        .map(|entry| entry.path)
+        .collect();
+    staging_entries.sort();
+    staging_entries.dedup();
+    if !staging_entries.is_empty() {
+        aerovault::v3::VaultV3::delete_entries(&mut vault, &staging_entries, true)
+            .map_err(aerovz_error)?;
+    }
     Ok(())
+}
+
+/// The path of `staging` below the directory input `source`, `/`-separated,
+/// when `staging` lies inside it.
+fn staging_path_below(staging: &Path, source: &Path) -> Option<String> {
+    let root = source.canonicalize().ok()?;
+    let relative = staging.strip_prefix(&root).ok()?;
+    let parts = relative
+        .components()
+        // The crate names entries with `/` and turns a backslash in a name
+        // into one as well, so match that namespace.
+        .map(|component| {
+            component
+                .as_os_str()
+                .to_str()
+                .map(|part| part.replace('\\', "/"))
+        })
+        .collect::<Option<Vec<_>>>()?;
+    (!parts.is_empty()).then(|| parts.join("/"))
 }
 
 fn extract_archive(archive: &str, outdir: &str) -> Result<AerovzExtractReport, ArchiveError> {
@@ -697,25 +779,15 @@ fn recovery_report(path: &Path, overhead_pct: u32) -> Result<AerovzRecoveryRepor
 fn open_plaintext_archive(path: &Path) -> Result<aerovault::v3::OpenVaultV3, ArchiveError> {
     if matches!(v3_plaintext_flag(path)?, Some(false)) {
         return Err(ArchiveError::other(
-            "Not a plaintext .aerozip archive (it is encrypted)",
+            "Not a plaintext .aerozip archive (encrypted or damaged header)",
         ));
     }
     aerovault::v3::VaultV3::open_plaintext(path).map_err(aerovz_error)
 }
 
 fn v3_plaintext_flag(path: &Path) -> Result<Option<bool>, ArchiveError> {
-    let mut file = std::fs::File::open(path).map_err(|e| ArchiveError::io("Open archive", e))?;
-    let mut header_prefix = [0u8; 12];
-    file.read_exact(&mut header_prefix)
-        .map_err(|e| ArchiveError::io("Read archive header", e))?;
-    if &header_prefix[..10] != aerovault::v3::constants::MAGIC
-        || header_prefix[10] != aerovault::v3::constants::VERSION
-    {
-        return Ok(None);
-    }
-    Ok(Some(
-        header_prefix[11] & aerovault::v3::constants::FLAG_PLAINTEXT_CONTENT != 0,
-    ))
+    ftp_client_gui_lib::aerovault_v3::aerovz_plaintext_flag(path)
+        .map_err(|e| ArchiveError::io("Read archive header", e))
 }
 
 /// Refusal message shared by every password entry point on the plaintext lane
@@ -750,8 +822,7 @@ pub(crate) fn is_aerozip_path(path: &str) -> bool {
 }
 
 fn is_plaintext_archive_file(path: &str) -> bool {
-    let p = Path::new(path);
-    p.exists() && aerovault::v3::VaultV3::open_plaintext(p).is_ok()
+    matches!(v3_plaintext_flag(Path::new(path)), Ok(Some(true)))
 }
 
 fn archive_entry_basename(path: &Path) -> Result<String, ArchiveError> {
@@ -925,6 +996,181 @@ mod tests {
             archive_exit_code(&err),
             err.message()
         );
+    }
+
+    #[test]
+    fn archive_create_publishes_only_the_archive_beside_its_inputs() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("payload");
+        let output = dir.path().join("archive.aerozip");
+        std::fs::write(&input, b"payload").unwrap();
+
+        create_archive(
+            output.to_str().unwrap(),
+            &[input.to_str().unwrap().to_string()],
+            "balanced",
+            "20",
+        )
+        .unwrap();
+        let mut names: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect();
+        names.sort();
+        assert_eq!(names, ["archive.aerozip", "payload"]);
+    }
+
+    #[test]
+    fn archive_create_with_a_missing_input_does_not_create_it_as_the_output_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("reports");
+        let output = input.join("backup.aerozip");
+
+        let error = create_archive(
+            output.to_str().unwrap(),
+            &[input.to_str().unwrap().to_string()],
+            "balanced",
+            "0",
+        )
+        .unwrap_err();
+        assert_eq!(archive_exit_code(&error), 2, "{}", error.message());
+        assert!(!input.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn archive_created_inside_an_input_whose_name_the_crate_normalizes() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("docs ");
+        std::fs::create_dir(&input).unwrap();
+        std::fs::write(input.join("a.txt"), b"alpha").unwrap();
+        let output = input.join("docs.aerozip");
+
+        create_archive(
+            output.to_str().unwrap(),
+            &[input.to_str().unwrap().to_string()],
+            "balanced",
+            "0",
+        )
+        .unwrap();
+
+        let vault = open_plaintext_archive(&output).unwrap();
+        let paths: Vec<_> = aerovault::v3::VaultV3::list(&vault)
+            .into_iter()
+            .map(|entry| entry.path)
+            .filter(|path| path.contains(".aerocreate-prepare-") || path.ends_with(".aerozip"))
+            .collect();
+        assert!(paths.is_empty(), "{paths:?}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn archive_created_below_a_folder_with_a_backslash_in_its_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("docs");
+        let parent = input.join("sub\\one");
+        std::fs::create_dir_all(&parent).unwrap();
+        std::fs::write(input.join("a.txt"), b"alpha").unwrap();
+        let output = parent.join("docs.aerozip");
+
+        create_archive(
+            output.to_str().unwrap(),
+            &[input.to_str().unwrap().to_string()],
+            "balanced",
+            "0",
+        )
+        .unwrap();
+
+        let vault = open_plaintext_archive(&output).unwrap();
+        let mut paths: Vec<_> = aerovault::v3::VaultV3::list(&vault)
+            .into_iter()
+            .map(|entry| entry.path)
+            .collect();
+        paths.sort();
+        assert_eq!(paths, ["docs", "docs/a.txt", "docs/sub", "docs/sub/one"]);
+    }
+
+    #[test]
+    fn archive_created_inside_its_input_directory_holds_only_the_inputs() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("docs");
+        std::fs::create_dir_all(input.join("sub")).unwrap();
+        std::fs::write(input.join("a.txt"), b"alpha").unwrap();
+        std::fs::write(input.join("sub").join("b.txt"), b"beta").unwrap();
+        let output = input.join("sub").join("docs.aerozip");
+
+        create_archive(
+            output.to_str().unwrap(),
+            &[input.to_str().unwrap().to_string()],
+            "balanced",
+            "20",
+        )
+        .unwrap();
+
+        let vault = open_plaintext_archive(&output).unwrap();
+        let mut paths: Vec<_> = aerovault::v3::VaultV3::list(&vault)
+            .into_iter()
+            .map(|entry| entry.path)
+            .collect();
+        paths.sort();
+        assert_eq!(paths, ["docs", "docs/a.txt", "docs/sub", "docs/sub/b.txt"]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn archive_create_that_fails_part_way_leaves_nothing_at_the_output() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let readable = dir.path().join("first");
+        let unreadable = dir.path().join("second");
+        let output = dir.path().join("archive.aerozip");
+        std::fs::write(&readable, b"first").unwrap();
+        std::fs::write(&unreadable, b"second").unwrap();
+        std::fs::set_permissions(&unreadable, std::fs::Permissions::from_mode(0o000)).unwrap();
+        if std::fs::read(&unreadable).is_ok() {
+            // Running with privileges that ignore file modes: nothing to show.
+            return;
+        }
+
+        let result = create_archive(
+            output.to_str().unwrap(),
+            &[
+                readable.to_str().unwrap().to_string(),
+                unreadable.to_str().unwrap().to_string(),
+            ],
+            "balanced",
+            "0",
+        );
+        std::fs::set_permissions(&unreadable, std::fs::Permissions::from_mode(0o600)).unwrap();
+        assert!(result.is_err());
+        let mut names: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect();
+        names.sort();
+        assert_eq!(names, ["first", "second"]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn archive_create_refuses_a_dangling_output_link_without_removing_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let output = dir.path().join("archive.aerozip");
+        let target = dir.path().join("absent");
+        let input = dir.path().join("payload");
+        std::fs::write(&input, b"payload").unwrap();
+        std::os::unix::fs::symlink(&target, &output).unwrap();
+
+        let error = create_archive(
+            output.to_str().unwrap(),
+            &[input.to_str().unwrap().to_string()],
+            "balanced",
+            "0",
+        )
+        .unwrap_err();
+        assert_eq!(archive_exit_code(&error), 9);
+        assert_eq!(std::fs::read_link(output).unwrap(), target);
+        assert!(!target.exists());
     }
 
     #[test]

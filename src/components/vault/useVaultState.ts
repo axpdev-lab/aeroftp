@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+import type { RepairResult } from './repairResultMessage';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
@@ -47,12 +48,35 @@ const ERROR_PATTERNS: [RegExp, string][] = [
     [/disk (full|space)|no space/i, 'vault.errors.diskFull'],
 ];
 
+// The pieces of ABSOLUTE_PATH_IN_MESSAGE. A path character is anything but a
+// separator, a line break or the punctuation that ends a path in the crate's
+// messages (`)`, a quote, `;`, `,`, and `: `).
+const PATH_CHAR = String.raw`(?!:\s)[^\\/\n)'";,]`;
+const PATH_EDGE_CHAR = String.raw`(?!:\s)[^\s\\/)'";,]`;
+const PATH_ROOT = String.raw`(?:[A-Za-z]:)?[\\/]{1,2}(?=${PATH_EDGE_CHAR})`;
+// A folder name may hold spaces but does not end with one, so ` /next/path`
+// starts a new path. The file name ends where the message text resumes.
+const PATH_FOLDER = String.raw`(?:${PATH_CHAR}*${PATH_EDGE_CHAR})?[\\/]`;
+const PATH_FILE_END = String.raw`\s+(?:is|was|are|has|have|had|does|did|can|cannot|could|not|already|must|will|would)\b|\s+(?:and|or)\s+${PATH_ROOT}|:\s|:$|\.(?:\s|$)`;
+const ABSOLUTE_PATH_IN_MESSAGE = new RegExp(
+    String.raw`(^|[\s('"=])${PATH_ROOT}(?:${PATH_FOLDER})*(?:(?!${PATH_FILE_END})${PATH_CHAR})*`,
+    'g',
+);
+
 export function mapVaultError(e: unknown, t: (key: string) => string): string {
     const raw = String(e);
-    for (const [pattern, key] of ERROR_PATTERNS) {
-        if (pattern.test(raw)) {
-            const mapped = t(key);
-            if (mapped && mapped !== key) return mapped;
+    // A filename or an OS error in the text can itself contain a generic cue
+    // like "corrupt" or "no such file". Keep the crate's specific reason and
+    // recovery instruction: writer refusals, and the vault/sidecar pair and
+    // strip recovery steps, which tell the user to preserve, reopen or keep
+    // retained files.
+    const actionable = /(?:is a symbolic link|vault is locked by another writer|damaged blocks: run repair|\b(?:preserve|retained|reopen)\b|recovery pending)/i.test(raw);
+    if (!actionable) {
+        for (const [pattern, key] of ERROR_PATTERNS) {
+            if (pattern.test(raw)) {
+                const mapped = t(key);
+                if (mapped && mapped !== key) return mapped;
+            }
         }
     }
     // Fallback: strip internal details (offsets, hex, stack traces) and redact
@@ -61,8 +85,23 @@ export function mapVaultError(e: unknown, t: (key: string) => string): string {
     const cleaned = raw
         .replace(/at offset \d+/gi, '')
         .replace(/0x[0-9a-f]+/gi, '')
+        // A whole absolute path, spaces included, where the crate's messages
+        // put one (start of text, after a space, a quote, a parenthesis or
+        // `=`): it runs to its last separator, then through the file name up
+        // to the message text that follows it.
+        .replace(ABSOLUTE_PATH_IN_MESSAGE, (_match, lead: string) => `${lead}<path>`)
         // Unix absolute paths and Windows drive paths -> redacted placeholder.
-        .replace(/(?:[A-Za-z]:)?[\\/][^\s'":]+(?:[\\/][^\s'":]+)+/g, '<path>')
+        .replace(/(?:[A-Za-z]:)?[\\/][^\s'":]+(?:[\\/][^\s'":]+)+/g, (path) => {
+            const closing = path.match(/[).,;]+$/)?.[0] ?? '';
+            return `<path>${closing}`;
+        })
+        // A path directly under a root (`/v.aerovault.aerolock`, `C:\v.aerovault`)
+        // has one segment; it starts the text or follows a space, a quote or a
+        // parenthesis, so `and/or` is left alone.
+        .replace(/(^|[\s('"])((?:[A-Za-z]:)?[\\/][^\s'":\\/]+)/g, (_match, lead: string, path: string) => {
+            const closing = path.match(/[).,;]+$/)?.[0] ?? '';
+            return `${lead}<path>${closing}`;
+        })
         .replace(/\s{2,}/g, ' ')
         .trim();
     return cleaned || raw;
@@ -443,12 +482,12 @@ export interface VaultState {
     showRepairDialog: boolean;
     setShowRepairDialog: (show: boolean) => void;
     scrubResult: any | null;  // from vault_v3_scrub
-    repairResult: any | null;
+    repairResult: RepairResult | null;
     repairDryRun: boolean;
     setRepairDryRun: (v: boolean) => void;
     isRepairing: boolean;
     setScrubResult: (r: any | null) => void;
-    setRepairResult: (r: any | null) => void;
+    setRepairResult: (r: RepairResult | null) => void;
     setIsRepairing: (v: boolean) => void;
 
     // Initial props passthrough (now backed by the staged-files list so the
@@ -591,7 +630,7 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
     const [showScrubDialog, setShowScrubDialog] = useState(false);
     const [showRepairDialog, setShowRepairDialog] = useState(false);
     const [scrubResult, setScrubResult] = useState<any | null>(null);
-    const [repairResult, setRepairResult] = useState<any | null>(null);
+    const [repairResult, setRepairResult] = useState<RepairResult | null>(null);
     const [repairDryRun, setRepairDryRun] = useState(true);
     const [isRepairing, setIsRepairing] = useState(false);
 
@@ -2025,8 +2064,8 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         setError(null);
         try {
             const res = isPlaintextZip
-                ? await invoke<any>('aerovz_repair', { vaultPath, dryRun: repairDryRun })
-                : await invoke<any>('vault_v3_repair', { vaultPath, password, dryRun: repairDryRun });
+                ? await invoke<RepairResult>('aerovz_repair', { vaultPath, dryRun: repairDryRun })
+                : await invoke<RepairResult>('vault_v3_repair', { vaultPath, password, dryRun: repairDryRun });
             setRepairResult(res);
             if (!repairDryRun) {
                 await refreshVaultEntries();

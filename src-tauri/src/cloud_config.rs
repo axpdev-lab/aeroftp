@@ -295,6 +295,7 @@ impl Default for CloudConfig {
                 "~*".to_string(),
                 ".aeroignore".to_string(),
                 ".aeroversions".to_string(),
+                crate::sync_exclude::VAULT_LOCK_EXCLUDE_PATTERN.to_string(),
             ],
             excluded_folders: Vec::new(),
             versioning_strategy: crate::sync_versioning::VersioningStrategy::default(),
