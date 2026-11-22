@@ -2515,8 +2515,9 @@ fn retag_own_profiles_if_pending(
 /// tag ([`profile_token_tag`]) theirs, now that its DEK is reachable. Only
 /// that column is written: the list, its bytes and so its revision stay as
 /// they are. Nothing to do when every row has one, or while the account is
-/// locked or waits for a security reset; until then the alignment of the
-/// other accounts waits for it ([`align_private_tokens_of`]).
+/// locked or waits for a security reset; until then the keys of the other
+/// accounts that lowercase a profile id wait for it, and nothing else does
+/// ([`align_private_tokens_of`]).
 fn fill_profile_token_tags(
     conn: &Connection,
     root_key: &[u8; 32],
@@ -5932,7 +5933,10 @@ fn realign_deferred_tokens(
 /// `None`: the pass could not run now (the list lock busy, profile tags
 /// pending, the account locked) and changed nothing, or a targeted pass
 /// copied keys the vault could not let go of (no file locks), which a later
-/// pass must still remove from the vault.
+/// pass must still remove from the vault, or aligned every key but one that
+/// waits for another account's token tags ([`fill_profile_token_tags`]).
+/// A full pass that leaves such a key aligns the rest and leaves the account
+/// unmarked for the pass that runs it.
 fn align_private_tokens_of(
     conn: &Connection,
     root_key: &[u8; 32],
@@ -6011,6 +6015,7 @@ fn align_private_tokens_of(
             .map_err(|e| format!("Read profile holders: {e}"))
         };
         let mut sole = Vec::new();
+        let mut waits = false;
         for id in profiles
             .iter()
             .filter_map(|p| value_str(p, &["id", "uid", "profileUid"]))
@@ -6032,8 +6037,13 @@ fn align_private_tokens_of(
                     shared_keys.push(key);
                     continue;
                 }
+                // Such a key waits alone, vault key and row as they are, and
+                // the account stays unmarked, so a later pass runs it once the
+                // tags are there: an account locked behind its passphrase
+                // keeps its tags unfilled, and holds up no other key.
                 if folds && token_tags_pending && token_key_present(&tx, uid, vault_keys, &key)? {
-                    return Ok(None);
+                    waits = true;
+                    continue;
                 }
                 if vault_keys.contains(&key) {
                     sole.push(key);
@@ -6095,10 +6105,10 @@ fn align_private_tokens_of(
         }
         tx.commit()
             .map_err(|e| format!("Commit private token alignment: {e}"))?;
-        Ok(Some(sole))
+        Ok(Some((sole, waits)))
     });
-    let moved = match outcome {
-        Ok(Some(moved)) => moved,
+    let (moved, waits) = match outcome {
+        Ok(Some(done)) => done,
         Ok(None) => return Ok(None),
         Err(e) if e == "USER_LOCKED" => return Ok(None),
         Err(e) => return Err(e),
@@ -6110,13 +6120,15 @@ fn align_private_tokens_of(
         }
     }
     // A pass that left them in the vault is not done: the next one that can
-    // exclude the profile writers removes them. A targeted pass marks nothing,
-    // so it reports itself incomplete, and its caller keeps the keys for
-    // that pass ([`realign_deferred_tokens`], [`defer_realign`]).
-    if !vault_lets_go && !moved.is_empty() && only.is_some() {
+    // exclude the profile writers removes them. Nor is one with a key that
+    // waits for token tags: the next pass runs it. A targeted pass marks
+    // nothing, so it reports itself incomplete, and its caller keeps the keys
+    // for that pass ([`realign_deferred_tokens`], [`defer_realign`]).
+    let incomplete = waits || (!vault_lets_go && !moved.is_empty());
+    if incomplete && only.is_some() {
         return Ok(None);
     }
-    if only.is_none() && (vault_lets_go || moved.is_empty()) {
+    if only.is_none() && !incomplete {
         mark_private_tokens_aligned(conn, user_id)?;
     }
     Ok(Some(moved.len()))
@@ -15422,6 +15434,224 @@ mod tests {
                 "{case}: the owner reads its own token"
             );
         }
+    }
+
+    /// The accounts of [`a_locked_account_holds_up_no_other_accounts_alignment`]
+    /// and [`a_key_that_waited_for_token_tags_aligns_once_they_are_filled`]:
+    /// the legacy owner; `Locked`, a passphrase account whose list an older
+    /// build wrote (no token tags) and which stays locked, holding `team` and
+    /// `ops` (Dropbox); and `Other`, holding `Team` and `Ops` (Dropbox, keys
+    /// that lowercase the id) and `w` (Jottacloud, a key that keeps it). The
+    /// vault holds a pre-partition save under `oauth_dropbox_team` and
+    /// `jottacloud_refresh_w`; `Other` holds an unstamped row of
+    /// `oauth_dropbox_ops`, and the vault none.
+    struct TokenTagWait {
+        store: CredentialStore,
+        conn: Connection,
+        root_key: [u8; 32],
+        locked: i64,
+        other: i64,
+    }
+
+    const TOKEN_TAG_WAIT_CHAIN: &str =
+        r#"{"refresh_token":"others-chain","username":"jotta-user"}"#;
+
+    fn token_tag_wait_fixture(pass: &str) -> TokenTagWait {
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password(pass).expect("bootstrap");
+        CredentialStore::unlock_with_master(pass, None).expect("unlock");
+        let store = CredentialStore::from_cache().expect("cached vault");
+        init_or_migrate_cli(&store).expect("init partitions");
+        let mut conn = open_or_init_cli().expect("partition DB");
+        let root_key = store.derive_user_partition_wrapping_key();
+        let profile = |id: &str, protocol: &str| {
+            json!({"id": id, "name": id, "protocol": protocol, "host": "", "port": 0,
+                   "username": format!("{id}@example.test")})
+        };
+        let locked = create_user(&mut conn, &root_key, "Locked", None, None, Some("pass"))
+            .unwrap()
+            .id;
+        unlock_user(&conn, &root_key, locked, Some("pass")).unwrap();
+        replace_server_profiles_for(
+            &mut conn,
+            &root_key,
+            locked,
+            &[profile("team", "dropbox"), profile("ops", "dropbox")],
+        )
+        .unwrap();
+        let other = create_user(&mut conn, &root_key, "Other", None, None, None)
+            .unwrap()
+            .id;
+        replace_server_profiles_for(
+            &mut conn,
+            &root_key,
+            other,
+            &[
+                profile("Team", "dropbox"),
+                profile("Ops", "dropbox"),
+                profile("w", "jottacloud"),
+            ],
+        )
+        .unwrap();
+        // The locked account's list as an older build wrote it, and the
+        // account locked: nothing can fill its tags.
+        conn.execute(
+            "UPDATE server_profiles SET token_uid = NULL WHERE user_id = ?1",
+            params![locked],
+        )
+        .unwrap();
+        clear_user_session();
+        fill_profile_token_tags(&conn, &root_key, locked).unwrap();
+        let pending: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM server_profiles
+                 WHERE user_id = ?1 AND token_uid IS NULL)",
+                params![locked],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(pending, "a locked account keeps its tags unfilled");
+        store.store("oauth_dropbox_team", "owners-token").unwrap();
+        store
+            .store("jottacloud_refresh_w", TOKEN_TAG_WAIT_CHAIN)
+            .unwrap();
+        set_user_credential_for(
+            &conn,
+            &root_key,
+            other,
+            "oauth_dropbox_ops",
+            "oauth",
+            "a-copy",
+        )
+        .unwrap();
+        TokenTagWait {
+            store,
+            conn,
+            root_key,
+            locked,
+            other,
+        }
+    }
+
+    impl TokenTagWait {
+        fn align(&self) {
+            let vault_keys = list_vault_keys(&self.store).unwrap();
+            align_private_tokens_inner(
+                &self.conn,
+                &self.root_key,
+                self.other,
+                &vault_keys,
+                &|| list_vault_keys(&self.store),
+                &|key: &str| get_optional_secret(&self.store, key),
+                &|key: &str| delete_optional_secret(&self.store, key),
+            )
+            .unwrap();
+        }
+
+        fn row(&self, key: &str) -> Option<String> {
+            get_user_credential_for(&self.conn, &self.root_key, self.other, key)
+                .unwrap()
+                .map(|value| value.to_string())
+        }
+
+        fn assert_waiting(&self, pass: &str) {
+            assert_eq!(
+                self.row("jottacloud_refresh_w").as_deref(),
+                Some(TOKEN_TAG_WAIT_CHAIN),
+                "{pass}: the key no other account can name moves into the partition"
+            );
+            assert!(
+                self.store.get("jottacloud_refresh_w").is_err(),
+                "{pass}: the vault let go of it"
+            );
+            assert_eq!(
+                self.row("oauth_dropbox_team"),
+                None,
+                "{pass}: nothing copied for the key that waits"
+            );
+            assert_eq!(
+                self.store.get("oauth_dropbox_team").ok().as_deref(),
+                Some("owners-token"),
+                "{pass}: the vault keeps the key that waits"
+            );
+            assert_eq!(
+                self.row("oauth_dropbox_ops").as_deref(),
+                Some("a-copy"),
+                "{pass}: the row that waits stays as it is"
+            );
+            assert!(
+                !private_tokens_aligned(&self.conn, self.other).unwrap(),
+                "{pass}: the account stays unmarked for the pass that runs it"
+            );
+        }
+    }
+
+    /// An account locked behind its passphrase, whose list has no token tags
+    /// yet, holds up no other account's alignment but the keys one of its
+    /// profiles may name (a key that lowercases the id, as a vault key or as
+    /// a row): the rest moves now, and a pass while it stays locked moves
+    /// nothing twice and drops nothing.
+    #[test]
+    fn a_locked_account_holds_up_no_other_accounts_alignment() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "user_partitions::tests::a_locked_account_holds_up_no_other_accounts_alignment",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _guard = test_lock();
+        let wait = token_tag_wait_fixture("locked-token-tag-wait-pass");
+        wait.align();
+        wait.assert_waiting("first pass");
+        wait.align();
+        wait.assert_waiting("a pass while the account stays locked");
+    }
+
+    /// Once the locked account is unlocked and its tags are filled, the next
+    /// pass runs the keys that waited by the same rule: a key another account
+    /// names is that account's (the vault keeps its token, the unstamped row
+    /// is dropped as a copy), and the account is marked aligned.
+    #[test]
+    fn a_key_that_waited_for_token_tags_aligns_once_they_are_filled() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "user_partitions::tests::a_key_that_waited_for_token_tags_aligns_once_they_are_filled",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _guard = test_lock();
+        let wait = token_tag_wait_fixture("filled-token-tag-wait-pass");
+        wait.align();
+        wait.assert_waiting("while the account is locked");
+        unlock_user(&wait.conn, &wait.root_key, wait.locked, Some("pass")).unwrap();
+        fill_profile_token_tags(&wait.conn, &wait.root_key, wait.locked).unwrap();
+        clear_user_session();
+        wait.align();
+        assert!(
+            private_tokens_aligned(&wait.conn, wait.other).unwrap(),
+            "the pass that ran the keys that waited marks the account"
+        );
+        assert_eq!(
+            wait.row("oauth_dropbox_team"),
+            None,
+            "the locked account names it"
+        );
+        assert_eq!(
+            wait.store.get("oauth_dropbox_team").ok().as_deref(),
+            Some("owners-token"),
+            "the vault keeps the token the locked account names"
+        );
+        assert_eq!(
+            wait.row("oauth_dropbox_ops"),
+            None,
+            "the unstamped row of a key the locked account names is dropped as a copy"
+        );
+        assert_eq!(
+            wait.row("jottacloud_refresh_w").as_deref(),
+            Some(TOKEN_TAG_WAIT_CHAIN),
+            "the key moved earlier stays"
+        );
     }
 
     /// A native Proton session belongs to one account. A copy of a session
