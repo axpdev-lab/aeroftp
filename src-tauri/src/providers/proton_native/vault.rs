@@ -437,13 +437,18 @@ pub fn holds_saved_session(
         Some(user) => crate::user_partitions::holds_credential(store, user, &key)
             .map_err(ProviderError::Other),
         None => {
+            let read = store.get(&key);
+            // The vault's answer replaced by a read that fails, so the arm
+            // below is the one the test runs.
             #[cfg(test)]
-            if test_seams::session_presence_read_fails() {
-                return Err(ProviderError::Other(
-                    "whether a session is saved could not be read (test)".into(),
-                ));
-            }
-            match store.get(&key) {
+            let read = if test_seams::session_presence_read_fails() {
+                Err(crate::credential_store::CredentialError::Encryption(
+                    "the vault could not be read (test)".into(),
+                ))
+            } else {
+                read
+            };
+            match read {
                 Ok(value) => Ok(!value.is_empty()),
                 Err(crate::credential_store::CredentialError::NotFound(_)) => Ok(false),
                 Err(error) => Err(ProviderError::Other(format!(
