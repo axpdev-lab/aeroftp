@@ -112,10 +112,11 @@ pub fn canonicalize_profile_option_key(key: &str) -> String {
 /// Nextcloud preset (`/remote.php/dav/files/<user>`) is the root: profiles
 /// saved while the Felicloud, TAB.DIGITAL (and briefly Murena) presets still
 /// carried a `basePath` kept it both in the host URL and in `initialPath`, and
-/// the provider joined them into a doubled URL. The GUI
-/// (`stripLegacyNextcloudWebdavRoot` in App.tsx), the CLI and MCP read a saved
-/// start folder through this, so such a profile works without a re-save.
-/// A subfolder below the root, or any other provider, is kept as written.
+/// the provider joined them into a doubled URL. The CLI and MCP read a saved
+/// start folder through [`strip_legacy_start_folder`], which applies this
+/// (the GUI through `stripLegacyStartFolder`), so such a profile works
+/// without a re-save. A subfolder below the root, or any other provider, is
+/// kept as written.
 pub fn strip_legacy_nextcloud_webdav_root(
     initial_path: &str,
     provider_id: &str,
@@ -138,6 +139,59 @@ pub fn strip_legacy_nextcloud_webdav_root(
         return "/".to_string();
     }
     initial_path.to_string()
+}
+
+/// Presets whose old `basePath` was the last path of their own server URL:
+/// Jianguoyun carried `/dav/` over `https://dav.jianguoyun.com/dav` until
+/// 2026-11-22. Held equal to `REPEATED_BASE_PATHS` in
+/// `src/utils/legacyStartFolder.ts`.
+const REPEATED_BASE_PATHS: &[(&str, &str)] = &[("jianguoyun", "/dav")];
+
+/// The path of a server URL, with or without a scheme, without trailing
+/// slashes, query or fragment.
+fn server_url_path(server: &str) -> &str {
+    let server = server.trim();
+    let without_scheme = server
+        .find("://")
+        .filter(|at| {
+            server[..*at]
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '.' | '-'))
+        })
+        .map_or(server, |at| &server[at + 3..]);
+    // A slash inside the query or fragment is not the start of the path.
+    let before_query = &without_scheme[..without_scheme
+        .find(['?', '#'])
+        .unwrap_or(without_scheme.len())];
+    before_query
+        .find('/')
+        .map_or("", |slash| before_query[slash..].trim_end_matches('/'))
+}
+
+/// The start folder a saved profile really opens, for profiles saved while
+/// their preset still repeated part of the server URL as a `basePath`: the
+/// provider joins the start folder onto the URL path, so such a profile
+/// opened one level too deep. Covers the old Jianguoyun `basePath` (only when
+/// the server URL already ends with it) and the hosted Nextcloud WebDAV root
+/// ([`strip_legacy_nextcloud_webdav_root`]). The GUI mirror is
+/// `stripLegacyStartFolder` in `src/utils/legacyStartFolder.ts`. Any other
+/// start folder is kept as written.
+pub fn strip_legacy_start_folder(
+    initial_path: &str,
+    provider_id: &str,
+    username: &str,
+    server: &str,
+) -> String {
+    let repeated = REPEATED_BASE_PATHS
+        .iter()
+        .find(|(id, _)| *id == provider_id)
+        .map(|(_, base)| *base);
+    if let Some(base) = repeated {
+        if initial_path.trim_end_matches('/') == base && server_url_path(server).ends_with(base) {
+            return "/".to_string();
+        }
+    }
+    strip_legacy_nextcloud_webdav_root(initial_path, provider_id, username)
 }
 
 /// Insert a single profile option into the `extra` map after normalizing the
@@ -882,6 +936,90 @@ mod tests {
             strip_legacy_nextcloud_webdav_root("/remote.php/dav/files/alice/", "murena", "alice"),
             "/"
         );
+    }
+
+    #[test]
+    fn the_old_jianguoyun_base_path_opens_the_root() {
+        let server = "https://dav.jianguoyun.com/dav";
+        for (initial, server) in [
+            ("/dav/", server),
+            ("/dav", "https://dav.jianguoyun.com/dav/"),
+            ("/dav/", "dav.jianguoyun.com/dav"),
+            ("/dav/", "HTTPS://dav.jianguoyun.com/dav?x=1"),
+        ] {
+            assert_eq!(
+                strip_legacy_start_folder(initial, "jianguoyun", "a@b.c", server),
+                "/",
+                "{initial} on {server}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_jianguoyun_folder_the_user_chose_is_kept() {
+        let server = "https://dav.jianguoyun.com/dav";
+        for (initial, provider, server) in [
+            ("/dav/projects", "jianguoyun", server),
+            ("/projects/", "jianguoyun", server),
+            // Without /dav in the server URL, /dav is a real folder below it.
+            ("/dav/", "jianguoyun", "https://dav.jianguoyun.com"),
+            ("/dav/", "jianguoyun", "https://dav.jianguoyun.com/webdav"),
+            // A /dav in the query or fragment is not the server path.
+            (
+                "/dav/",
+                "jianguoyun",
+                "https://dav.jianguoyun.com?next=/dav",
+            ),
+            ("/dav/", "jianguoyun", "https://dav.jianguoyun.com#/dav"),
+            // The old basePath belongs to its own preset only.
+            ("/dav/", "webdav", "https://dav.example.com/dav"),
+            ("/dav/", "infinicloud", "https://x.teracloud.jp/dav"),
+        ] {
+            assert_eq!(
+                strip_legacy_start_folder(initial, provider, "a@b.c", server),
+                initial,
+                "{provider} {initial} on {server}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_start_folder_strip_still_reads_a_nextcloud_root() {
+        assert_eq!(
+            strip_legacy_start_folder("/remote.php/dav/files/alice/", "murena", "alice", ""),
+            "/"
+        );
+        assert_eq!(
+            strip_legacy_start_folder("/remote.php/dav/files/alice/Docs/", "murena", "alice", ""),
+            "/remote.php/dav/files/alice/Docs/"
+        );
+    }
+
+    /// The GUI keeps the same table, so a profile opens the same folder in
+    /// the GUI, the CLI and MCP.
+    #[test]
+    fn the_repeated_base_paths_match_the_gui() {
+        let ts = include_str!("../../src/utils/legacyStartFolder.ts");
+        let start = ts
+            .find("REPEATED_BASE_PATHS: Readonly<Record<string, string>> = {")
+            .expect("table in legacyStartFolder.ts");
+        let body = &ts[start..start + ts[start..].find("};").unwrap()];
+        let gui: Vec<(String, String)> = body
+            .lines()
+            .skip(1)
+            .filter_map(|line| {
+                let (id, base) = line.trim().trim_end_matches(',').split_once(':')?;
+                Some((
+                    id.trim().to_string(),
+                    base.trim().trim_matches('\'').to_string(),
+                ))
+            })
+            .collect();
+        let rust: Vec<(String, String)> = REPEATED_BASE_PATHS
+            .iter()
+            .map(|(id, base)| (id.to_string(), base.to_string()))
+            .collect();
+        assert_eq!(gui, rust);
     }
 
     #[test]

@@ -603,15 +603,16 @@ fn resolve_profile_target(server_query: &str) -> Result<(String, Option<String>)
     Ok((id, profile_identity(matched)))
 }
 
-/// The start folder a saved profile opens: its `initialPath`, with the
-/// WebDAV root a legacy hosted-Nextcloud profile saved twice (host URL and
-/// start folder) read as the root, as the GUI and the CLI read it.
+/// The start folder a saved profile opens: its `initialPath`, with a start
+/// folder saved while its preset still repeated part of the host URL as
+/// basePath read as the root, as the GUI and the CLI read it.
 fn profile_initial_path(profile: &serde_json::Value) -> String {
     let field = |key: &str| profile.get(key).and_then(|v| v.as_str());
-    crate::profile_loader::strip_legacy_nextcloud_webdav_root(
+    crate::profile_loader::strip_legacy_start_folder(
         field("initialPath").unwrap_or("/"),
         field("providerId").unwrap_or(""),
         field("username").unwrap_or(""),
+        field("host").unwrap_or(""),
     )
 }
 
@@ -954,6 +955,18 @@ mod tests {
         let plain = serde_json::json!({ "providerId": "custom-webdav", "initialPath": "/remote.php/dav/files/alice/", "username": "alice" });
         assert_eq!(profile_initial_path(&plain), "/remote.php/dav/files/alice/");
         assert_eq!(profile_initial_path(&serde_json::json!({})), "/");
+        let jianguoyun = |initial: &str| {
+            serde_json::json!({
+                "providerId": "jianguoyun",
+                "host": "https://dav.jianguoyun.com/dav",
+                "initialPath": initial,
+            })
+        };
+        assert_eq!(profile_initial_path(&jianguoyun("/dav/")), "/");
+        assert_eq!(
+            profile_initial_path(&jianguoyun("/dav/projects")),
+            "/dav/projects"
+        );
     }
 
     #[test]

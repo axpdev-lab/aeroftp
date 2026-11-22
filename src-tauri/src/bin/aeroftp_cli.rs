@@ -84,7 +84,7 @@ use ftp_client_gui_lib::local_bridge::{
     bridge_kind_for_provider_id, probe_bridge_blocking, BridgeUiState,
 };
 use ftp_client_gui_lib::profile_loader::{
-    apply_profile_options, apply_s3_profile_defaults, strip_legacy_nextcloud_webdav_root,
+    apply_profile_options, apply_s3_profile_defaults, strip_legacy_start_folder,
     S3_ENDPOINT_SOURCE_META_KEY, S3_PATH_STYLE_SOURCE_META_KEY, S3_PROVIDER_ID_META_KEY,
     S3_REGION_SOURCE_META_KEY,
 };
@@ -19109,14 +19109,15 @@ fn compare_profiles(
 /// in the second.
 fn pwd_root(profile: &serde_json::Value) -> (String, String, Option<&'static str>) {
     let field = |key: &str| profile.get(key).and_then(|v| v.as_str()).unwrap_or("");
-    // A legacy hosted-Nextcloud profile that saved the WebDAV root as its
-    // start folder starts at the root, as the connection does.
-    let base = strip_legacy_nextcloud_webdav_root(
+    // A start folder saved while its preset still repeated part of the host
+    // URL as basePath starts at the root, as the connection does.
+    let base = strip_legacy_start_folder(
         Some(field("initialPath"))
             .filter(|s| !s.is_empty())
             .unwrap_or("/"),
         field("providerId"),
         field("username"),
+        field("host"),
     );
     let base = base.as_str();
     // The same resolver the transfer commands use, so this cannot drift from
@@ -19171,7 +19172,7 @@ mod pwd_root_tests {
     /// URL already carries. A subfolder below it is still the answer.
     #[test]
     fn a_legacy_hosted_nextcloud_start_folder_is_the_root() {
-        for id in ["felicloud", "murena"] {
+        for id in ["felicloud", "murena", "nextcloud"] {
             let legacy = json!({
                 "protocol": "webdav",
                 "providerId": id,
@@ -19184,6 +19185,7 @@ mod pwd_root_tests {
                 "protocol": "webdav",
                 "providerId": id,
                 "username": "alice",
+                "host": "https://cloud.example.test/remote.php/dav/files/alice/",
                 "initialPath": "/remote.php/dav/files/alice/Documents",
             });
             assert_eq!(
@@ -19192,6 +19194,30 @@ mod pwd_root_tests {
                 "{id}"
             );
         }
+    }
+
+    /// A Jianguoyun profile saved with the old `/dav/` basePath starts at the
+    /// root; a folder below it the user chose is kept.
+    #[test]
+    fn a_legacy_jianguoyun_start_folder_is_the_root() {
+        let profile = |initial: &str, host: &str| {
+            json!({
+                "protocol": "webdav",
+                "providerId": "jianguoyun",
+                "username": "a@b.c",
+                "host": host,
+                "initialPath": initial,
+            })
+        };
+        let rooted = "https://dav.jianguoyun.com/dav";
+        assert_eq!(pwd_root(&profile("/dav/", rooted)).0, "/");
+        assert_eq!(
+            pwd_root(&profile("/dav/projects", rooted)).0,
+            "/dav/projects"
+        );
+        // On an origin-only host /dav is a real folder below it, so it is kept.
+        let origin = "https://dav.jianguoyun.com";
+        assert_eq!(pwd_root(&profile("/dav/", origin)).0, "/dav/");
     }
 
     /// The root rule belongs to each connection: a Proton Drive base and an
@@ -31934,17 +31960,17 @@ fn profile_value_to_provider_config(
             return Err(code);
         }
     };
-    // Auto-strip the legacy Nextcloud-style WebDAV root when it was saved
-    // both as part of the host URL and again as initial_path. Mirrors the
-    // frontend `stripLegacyNextcloudWebdavRoot` helper so profiles that
-    // predate that fix still work from the CLI without needing a re-save.
-    let initial_path = strip_legacy_nextcloud_webdav_root(
+    // A start folder saved while its preset still repeated part of the host
+    // URL as basePath opens the root, as in the GUI (`stripLegacyStartFolder`),
+    // so profiles that predate the fix work without a re-save.
+    let initial_path = strip_legacy_start_folder(
         &initial_path,
         profile
             .get("providerId")
             .and_then(|v| v.as_str())
             .unwrap_or(""),
         &username,
+        &host,
     );
 
     // Load credentials from the scoped user's partition, falling back to the

@@ -112,7 +112,7 @@ function fixture(mode: Mode, options: {
     isMegaCmdQuotaProfile: () => false, setStorageQuota: display,
     scanInFlightRef: { current: false }, usedScanStatus: null, storageQuota: null,
     currentRemotePath: '/A', resolveUsernameTemplate: (path: string) => path,
-    stripLegacyNextcloudWebdavRoot: (path: string) => path, setUsedScanStatus: vi.fn(),
+    stripLegacyStartFolder: (path: string) => path, setUsedScanStatus: vi.fn(),
     notify, activityLog,
     t: (key: string) => key, formatBytes: String, shouldPersistUsedScan, usedScanRoot,
     usedScanBoundKey: () => null, listen: vi.fn(options.listen ?? (async () => vi.fn())),

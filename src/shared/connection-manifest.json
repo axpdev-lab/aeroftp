@@ -1034,8 +1034,7 @@
       "generic": false,
       "defaults": {
         "server": "https://dav.jianguoyun.com/dav",
-        "port": 443,
-        "basePath": "/dav/"
+        "port": 443
       },
       "firstRegion": null
     },

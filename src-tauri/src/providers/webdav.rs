@@ -8620,6 +8620,40 @@ mod tests {
         assert_eq!(provider.current_path, "/remote.php/dav/files/user/reports ");
     }
 
+    /// A legacy start folder read as the root on a server URL without the
+    /// WebDAV root still opens the user's root: the connect discovers it.
+    #[tokio::test]
+    async fn a_stripped_nextcloud_start_folder_opens_the_discovered_root() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let app = axum::Router::new().fallback(axum::routing::any(
+            |req: axum::extract::Request| async move {
+                if req.method().as_str() == "PROPFIND"
+                    && req.uri().path() == "/remote.php/dav/files/user/"
+                {
+                    axum::http::StatusCode::MULTI_STATUS
+                } else {
+                    axum::http::StatusCode::METHOD_NOT_ALLOWED
+                }
+            },
+        ));
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let start = crate::profile_loader::strip_legacy_start_folder(
+            "/remote.php/dav/files/user/",
+            "nextcloud",
+            "user",
+            &base,
+        );
+        assert_eq!(start, "/");
+        let mut config = test_config(&base);
+        config.initial_path = Some(start);
+        let mut provider = WebDavProvider::new(config).expect("provider");
+        let outcome = provider.connect().await;
+        server.abort();
+        outcome.expect("connect");
+        assert_eq!(provider.current_path, "/remote.php/dav/files/user/");
+    }
+
     /// A Nextcloud with `password.enforced` refusing a link share without a
     /// password, in German, and answering a second POST with one.
     async fn serve_share_refusal(
