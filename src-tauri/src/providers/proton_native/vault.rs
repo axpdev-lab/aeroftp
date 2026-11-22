@@ -1083,8 +1083,11 @@ fn takeover_session(
         .ok_or_else(takeover_changed)
 }
 
-/// Saves a new sign-in for `profile_id`, after ending on Proton the session
-/// it replaces (unless another saved profile still uses that one).
+/// Saves a new sign-in for `profile_id`, then ends on Proton the session it
+/// replaced (unless it is the same session, or another saved profile or
+/// account still uses it). The old session is read and its lease held before
+/// the save and ended only once the new one is saved: a save that fails
+/// leaves the profile with its old session, still live.
 pub async fn replace_session(
     owner: SessionOwner,
     profile_id: Option<&str>,
@@ -1095,14 +1098,21 @@ pub async fn replace_session(
     refuse_moved_away(&store, owner, profile_id)?;
     let previous_key = saved_key(&store, owner, profile_id)?;
     let _lease = lease_of_saved(owner, &previous_key).await?;
-    // Best effort: the user asked for the new sign-in, which a failed
-    // sign-out of the old session does not stop (the outcome is logged).
-    revoke_saved_session(owner, profile_id).await;
-    let _writes = session_writes();
-    if previous_key != owner.key(profile_id) {
-        remove_saved(&store, owner, &previous_key)?;
+    let replaced = read(&store, owner, &previous_key)?;
+    let own_key = owner.key(profile_id);
+    {
+        let _writes = session_writes();
+        store_over_deferred_revoke(owner, profile_id, session)?;
+        if previous_key != own_key {
+            remove_saved(&store, owner, &previous_key)?;
+        }
     }
-    store_over_deferred_revoke(owner, profile_id, session)
+    // Best effort: the user asked for the new sign-in, which a failed
+    // sign-out of the old session does not undo (the outcome is logged).
+    if let Some(replaced) = replaced.filter(|old| old.tokens.uid != session.tokens.uid) {
+        revoke_session(&store, owner, &own_key, replaced).await;
+    }
+    Ok(())
 }
 
 /// Saves `session` for `profile_id` of `owner` ([`store_session`]) over the
@@ -1525,8 +1535,9 @@ impl RevokeOutcome {
     }
 }
 
-/// Revokes on Proton the session saved for `profile_id`, before a profile
-/// delete (or a new sign-in) replaces the key. A session that another key on
+/// Revokes on Proton the session saved for `profile_id`, before a sign-out
+/// or a profile delete removes the key (a new sign-in revokes the session it
+/// replaced after its save, see [`replace_session`]). A session that another key on
 /// this device also holds is left alive: another profile of the account, or
 /// another account the session index says holds it or may hold it
 /// ([`kept_for_another_account`]). The outcome is logged and returned: a
@@ -1550,7 +1561,23 @@ pub async fn revoke_saved_session(owner: SessionOwner, profile_id: Option<&str>)
         Ok(None) => return RevokeOutcome::NothingSaved,
         Err(error) => return failed("it could not be read", &error),
     };
-    let shared = match another_profile_holds(&store, owner, &key, &session.tokens.uid) {
+    revoke_session(&store, owner, &key, session).await
+}
+
+/// Revokes on Proton `session`, read from the key `key` of `owner` (or saved
+/// there until a sign-in replaced it), unless a key other than `key` holds it
+/// or another account holds it or may: see [`revoke_saved_session`].
+async fn revoke_session(
+    store: &CredentialStore,
+    owner: SessionOwner,
+    key: &str,
+    session: ProtonSession,
+) -> RevokeOutcome {
+    let failed = |what: &str, error: &dyn std::fmt::Display| {
+        log::warn!("Proton: saved session not revoked, {what}: {error}");
+        RevokeOutcome::Failed(format!("{what}: {error}"))
+    };
+    let shared = match another_profile_holds(store, owner, key, &session.tokens.uid) {
         Ok(shared) => shared,
         Err(error) => return failed("its copies could not be read", &error),
     };
@@ -1558,7 +1585,7 @@ pub async fn revoke_saved_session(owner: SessionOwner, profile_id: Option<&str>)
         log::info!("Proton: session kept, another saved profile uses it");
         return RevokeOutcome::KeptShared;
     }
-    match kept_for_another_account(&store, owner, &session.tokens.uid) {
+    match kept_for_another_account(store, owner, &session.tokens.uid) {
         Ok(None) => {}
         Ok(Some(Kept::Confirmed(reason))) => {
             log::info!("Proton: session dropped here and kept on Proton, {reason}");

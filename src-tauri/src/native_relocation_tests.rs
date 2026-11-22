@@ -3529,3 +3529,71 @@ fn a_row_only_copy_of_the_legacy_owner_keeps_its_session() {
         "a session no other profile holds is ended"
     );
 }
+/// A new sign-in whose save fails keeps the session it was to replace, saved
+/// and still live on Proton: the old session is ended only once the new one
+/// is saved.
+#[test]
+fn a_sign_in_whose_save_fails_keeps_the_old_session_unrevoked() {
+    if !in_isolated_child("a_sign_in_whose_save_fails_keeps_the_old_session_unrevoked") {
+        return;
+    }
+    let accounts = Accounts::open();
+    let owner = accounts.owner();
+    accounts.seed("failed-sign-in", "failed-old-uid");
+    let revokes = vault::test_seams::revokes();
+    vault::test_seams::stop_next_deferred_save(vault::test_seams::DeferredSaveStop::BeforeSave);
+    let saved = block_on(vault::replace_session(
+        owner,
+        Some("failed-sign-in"),
+        &session("failed-new-uid", "n1"),
+    ));
+    assert!(saved.is_err(), "the save stopped: {saved:?}");
+    assert_eq!(
+        vault::test_seams::revokes(),
+        revokes,
+        "a sign-in that was not saved ends no session"
+    );
+    assert_eq!(
+        loaded(owner, "failed-sign-in").as_deref(),
+        Some("r1"),
+        "the profile keeps its old session"
+    );
+}
+
+/// A new sign-in saved over an old session no other key holds still ends
+/// that session on Proton, after the save; one that saves the same session
+/// again ends nothing.
+#[test]
+fn a_saved_sign_in_still_revokes_the_session_it_replaced() {
+    if !in_isolated_child("a_saved_sign_in_still_revokes_the_session_it_replaced") {
+        return;
+    }
+    let accounts = Accounts::open();
+    let owner = accounts.owner();
+    accounts.seed("replaced", "replaced-old-uid");
+    let revokes = vault::test_seams::revokes();
+    block_on(vault::replace_session(
+        owner,
+        Some("replaced"),
+        &session("replaced-new-uid", "n1"),
+    ))
+    .unwrap();
+    assert_eq!(
+        vault::test_seams::revokes(),
+        revokes + 1,
+        "the replaced session is ended"
+    );
+    assert_eq!(loaded(owner, "replaced").as_deref(), Some("n1"));
+    block_on(vault::replace_session(
+        owner,
+        Some("replaced"),
+        &session("replaced-new-uid", "n2"),
+    ))
+    .unwrap();
+    assert_eq!(
+        vault::test_seams::revokes(),
+        revokes + 1,
+        "a sign-in of the same session ends nothing"
+    );
+    assert_eq!(loaded(owner, "replaced").as_deref(), Some("n2"));
+}
