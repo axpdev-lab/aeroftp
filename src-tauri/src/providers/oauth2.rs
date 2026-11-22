@@ -1245,27 +1245,47 @@ impl OAuth2Manager {
         self.credential_user = user_id;
         self
     }
+    /// The account a new authorization is written for, read once: the bound
+    /// account, else the one active now (`Ok(None)`: no account exists). The
+    /// partition copy goes to the account the vault write was decided for,
+    /// so a switch between the two cannot part them.
+    fn token_write_user(&self) -> Result<Option<i64>, String> {
+        match self.credential_user {
+            Some(user) => Ok(Some(user)),
+            None => crate::user_partitions::active_user_id_for_write(),
+        }
+    }
+
     /// The user whose tokens, bound to a profile or not, must stay in their own
     /// partition: anyone but the legacy owner. In the shared vault they would
     /// be readable through the legacy owner's fallback, for example when an
-    /// imported profile keeps its id.
-    fn private_token_user(&self) -> Result<Option<i64>, ProviderError> {
-        crate::user_partitions::private_token_user(self.credential_user, "oauth")
+    /// imported profile keeps its id. `user` is [`Self::token_write_user`];
+    /// an account that could not be read is none, as before an account is
+    /// active, and its mirror then reports the failure.
+    fn private_token_user(
+        user: &Result<Option<i64>, String>,
+    ) -> Result<Option<i64>, ProviderError> {
+        let Ok(Some(user)) = user else {
+            return Ok(None);
+        };
+        crate::user_partitions::private_token_user(Some(*user), "oauth")
             .map_err(|e| ProviderError::Other(format!("Failed to resolve token owner: {}", e)))
     }
 
     fn mirror_tokens(
-        &self,
         store: &crate::credential_store::CredentialStore,
+        user: &Result<Option<i64>, String>,
         account: &str,
         json: &str,
     ) -> Result<(), ProviderError> {
-        let mirrored = if let Some(user) = self.credential_user {
-            crate::user_partitions::mirror_credential_for_user_typed(
-                store, user, account, "oauth", json,
-            )
-        } else {
-            crate::user_partitions::mirror_active_credential(store, account, "oauth", json)
+        #[cfg(test)]
+        tests::run_before_token_mirror();
+        let mirrored = match user {
+            Ok(Some(user)) => crate::user_partitions::mirror_credential_for_user_typed(
+                store, *user, account, "oauth", json,
+            ),
+            Ok(None) => Ok(()),
+            Err(e) => Err(e.clone()),
         };
         mirrored.map_err(|e| ProviderError::Other(format!("Failed to store tokens: {e}")))
     }
@@ -1275,8 +1295,8 @@ impl OAuth2Manager {
     /// whole or not at all, so tokens reported as not stored are never left
     /// in the vault for a reader of it ([`crate::user_partitions::store_vault_then_mirror`]).
     fn store_vault_tokens(
-        &self,
         store: &crate::credential_store::CredentialStore,
+        user: &Result<Option<i64>, String>,
         account: &str,
         profile_id: &str,
         json: &str,
@@ -1287,8 +1307,7 @@ impl OAuth2Manager {
                 .map_err(|e| ProviderError::Other(format!("Failed to store tokens: {}", e)));
         }
         crate::user_partitions::store_vault_then_mirror(store, account, json, || {
-            self.mirror_tokens(store, account, json)
-                .map_err(|e| e.to_string())
+            Self::mirror_tokens(store, user, account, json).map_err(|e| e.to_string())
         })
         .map_err(ProviderError::Other)
     }
@@ -1628,8 +1647,9 @@ impl OAuth2Manager {
         );
 
         let account = Self::token_account_key(provider, profile_id);
+        let user = self.token_write_user();
 
-        if let Some(user) = self.private_token_user()? {
+        if let Some(user) = Self::private_token_user(&user)? {
             if crate::credential_store::CredentialStore::from_cache().is_none() {
                 let _ = crate::credential_store::CredentialStore::init();
             }
@@ -1649,7 +1669,7 @@ impl OAuth2Manager {
 
         // Store in universal vault
         if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-            self.store_vault_tokens(&store, &account, profile_id, &json)?;
+            Self::store_vault_tokens(&store, &user, &account, profile_id, &json)?;
             info!("Tokens stored in credential vault for {:?}", provider);
             return Ok(());
         }
@@ -1657,7 +1677,7 @@ impl OAuth2Manager {
         // Vault not open: try auto-initializing vault first
         if crate::credential_store::CredentialStore::init().is_ok() {
             if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-                self.store_vault_tokens(&store, &account, profile_id, &json)?;
+                Self::store_vault_tokens(&store, &user, &account, profile_id, &json)?;
                 info!("Tokens stored in auto-initialized vault for {:?}", provider);
                 return Ok(());
             }
@@ -3555,6 +3575,72 @@ mod tests {
                 .load_tokens(OAuthProvider::Box, "shared-profile")
                 .expect("the second account is still signed in");
             assert_eq!(other.access_token, "second-token");
+        });
+    }
+
+    thread_local! {
+        static BEFORE_TOKEN_MIRROR: std::cell::RefCell<Option<Box<dyn FnOnce()>>> =
+            const { std::cell::RefCell::new(None) };
+    }
+
+    /// Runs `hook` once, on this thread, between the vault write of a new
+    /// authorization and its partition copy.
+    fn before_next_token_mirror(hook: impl FnOnce() + 'static) {
+        BEFORE_TOKEN_MIRROR.with(|slot| *slot.borrow_mut() = Some(Box::new(hook)));
+    }
+
+    pub(super) fn run_before_token_mirror() {
+        if let Some(hook) = BEFORE_TOKEN_MIRROR.with(|slot| slot.borrow_mut().take()) {
+            hook();
+        }
+    }
+
+    /// A new authorization of the legacy owner, the account active when it is
+    /// stored and none bound: a switch to another account between the vault
+    /// write and the partition copy leaves the copy with the account the
+    /// vault write was made for, and none in the account switched to.
+    #[test]
+    fn a_switch_between_the_vault_write_and_the_mirror_keeps_one_account() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::oauth2::tests::a_switch_between_the_vault_write_and_the_mirror_keeps_one_account",
+        ) {
+            return;
+        }
+        with_two_box_accounts(|store, first, second, _account| {
+            let account = OAuth2Manager::token_account_key(OAuthProvider::Box, "switched-profile");
+            let switch_conn = crate::user_partitions::open_or_init_cli().unwrap();
+            before_next_token_mirror(move || {
+                crate::user_partitions::set_active_user(&switch_conn, second)
+                    .expect("switch to the second account");
+            });
+            OAuth2Manager::new()
+                .store_tokens(
+                    OAuthProvider::Box,
+                    "switched-profile",
+                    &StoredTokens {
+                        access_token: "first-new-token".into(),
+                        refresh_token: None,
+                        expires_at: None,
+                        token_type: "Bearer".into(),
+                        scopes: vec![],
+                    },
+                )
+                .expect("the sign-in is stored");
+            assert!(
+                BEFORE_TOKEN_MIRROR.with(|slot| slot.borrow().is_none()),
+                "the switch ran"
+            );
+            assert_eq!(
+                partition_rows(second, &account),
+                0,
+                "the account switched to gets no copy"
+            );
+            assert_eq!(
+                partition_rows(first, &account),
+                1,
+                "the account the vault write was made for gets it"
+            );
+            assert!(store.get(&account).is_ok(), "the vault copy stays");
         });
     }
 
