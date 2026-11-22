@@ -3597,3 +3597,56 @@ fn a_saved_sign_in_still_revokes_the_session_it_replaced() {
     );
     assert_eq!(loaded(owner, "replaced").as_deref(), Some("n2"));
 }
+
+/// An import that restores its sessions after it stored its list, with a
+/// delete of one profile in between: that profile's session is not stored,
+/// the membership read under the profile list lock, and a profile still
+/// listed gets its session.
+#[test]
+fn an_import_stores_no_session_for_a_profile_deleted_since_its_list() {
+    if !in_isolated_child("an_import_stores_no_session_for_a_profile_deleted_since_its_list") {
+        return;
+    }
+    let accounts = Accounts::open();
+    let (owner, source) = (accounts.owner(), accounts.source.id);
+    accounts.add_profile(source, "import-kept");
+    accounts.add_profile(source, "import-deleted");
+    // The delete's list update, between the import's list store and its
+    // session restore.
+    let mut db = open_or_init_cli().unwrap();
+    let mut profiles = list_server_profiles_for(&db, &accounts.root_key, source).unwrap();
+    profiles.retain(|profile| profile["id"] != "import-deleted");
+    replace_server_profiles_for(&mut db, &accounts.root_key, source, &profiles).unwrap();
+    let listed = |id: &'static str| {
+        let accounts = &accounts;
+        move || {
+            let busy =
+                ProfileListLock::acquire_within(&cli_db_path().unwrap(), std::time::Duration::ZERO);
+            assert!(busy.is_err(), "the membership is read under the list lock");
+            Ok(accounts
+                .profile_ids(source)
+                .iter()
+                .any(|listed| listed == id))
+        }
+    };
+    let deleted = vault::import_listed_session_blocking(
+        owner,
+        "import-deleted",
+        &raw(&session("import-deleted-uid", "r1")),
+        listed("import-deleted"),
+    );
+    assert!(
+        matches!(deleted, Ok(None)),
+        "a deleted profile gets no session: {deleted:?}"
+    );
+    assert!(!has_row(&accounts.conn, source, &key("import-deleted")));
+    assert!(!accounts.in_vault("import-deleted"));
+    let kept = vault::import_listed_session_blocking(
+        owner,
+        "import-kept",
+        &raw(&session("import-kept-uid", "r1")),
+        listed("import-kept"),
+    );
+    assert!(matches!(kept, Ok(Some(true))), "{kept:?}");
+    assert_eq!(loaded(owner, "import-kept").as_deref(), Some("r1"));
+}

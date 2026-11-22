@@ -1306,6 +1306,35 @@ pub fn import_session_blocking(
     restore_blocking(owner, profile_id, raw, true)
 }
 
+/// [`import_session_blocking`] for an import that stored its profile list
+/// before it restores the sessions, without holding the profile list lock
+/// between the two (the CLI's rclone import). The session is stored only
+/// while `listed` says the profile is still in its account's list, read under
+/// [`crate::user_partitions::ProfileListLock`], which a profile delete takes
+/// for its list update: a delete that ran since the list was stored leaves
+/// no session behind. `Ok(None)` when the profile
+/// is no longer listed: nothing is written. The lock is taken before the
+/// session's key lock, as an import that holds it for its whole run does.
+pub fn import_listed_session_blocking(
+    owner: SessionOwner,
+    profile_id: &str,
+    raw: &str,
+    listed: impl FnOnce() -> Result<bool, String>,
+) -> Result<Option<bool>, ProviderError> {
+    let db = crate::user_partitions::cli_db_path().map_err(ProviderError::Other)?;
+    let lock = crate::user_partitions::ProfileListLock::acquire_for_path(&db)
+        .map_err(ProviderError::Other)?;
+    if !lock.is_exclusive() {
+        return Err(ProviderError::Other(
+            crate::user_partitions::NO_FILE_LOCKS.into(),
+        ));
+    }
+    if !listed().map_err(ProviderError::Other)? {
+        return Ok(None);
+    }
+    restore_blocking(owner, profile_id, raw, true).map(Some)
+}
+
 fn restore_blocking(
     owner: SessionOwner,
     profile_id: &str,

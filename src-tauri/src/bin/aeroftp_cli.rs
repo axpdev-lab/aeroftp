@@ -42950,11 +42950,26 @@ async fn apply_rclone_import_to_vault(
         let owner = vault::SessionOwner::for_user(Some(target.id));
         let (mut sign_in_warnings, mut shared_sessions) = (Vec::new(), Vec::new());
         for (profile_id, session_json) in proton_sessions {
-            match vault::import_session_blocking(owner, profile_id, session_json) {
-                Ok(true) => shared_sessions.push(profile_id.to_string()),
-                Ok(false) => {
+            // The list was stored above and its lock let go: a delete of the
+            // profile since then leaves no session behind.
+            let listed = || {
+                ftp_client_gui_lib::user_partitions::cli_list_server_profiles_for_user(
+                    &store, target.id,
+                )
+                .map(|profiles| {
+                    profiles
+                        .iter()
+                        .any(|p| p.get("id").and_then(|v| v.as_str()) == Some(profile_id))
+                })
+            };
+            match vault::import_listed_session_blocking(owner, profile_id, session_json, listed) {
+                Ok(Some(true)) => shared_sessions.push(profile_id.to_string()),
+                Ok(Some(false)) => {
                     sign_in_warnings.push(format!("'{profile_id}': {}", vault::IMPORT_WITHHELD))
                 }
+                Ok(None) => sign_in_warnings.push(format!(
+                    "'{profile_id}' was deleted during the import, so its Proton session was not stored"
+                )),
                 Err(e) => sign_in_warnings.push(format!(
                     "the Proton session of '{profile_id}' was not stored, so it signs in again: {e}"
                 )),
