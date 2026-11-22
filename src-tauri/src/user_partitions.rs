@@ -6928,10 +6928,22 @@ pub(crate) fn other_accounts_holding_session(
 ) -> Result<OtherAccounts, String> {
     init_or_migrate_cli(store)?;
     let conn = open_or_init_cli()?;
-    let key = session_index_key(&store.derive_user_partition_wrapping_key());
+    let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
+    other_accounts_holding_session_in(&conn, &root_key, user, uid)
+}
+
+/// [`other_accounts_holding_session`] on `conn`, with the root key.
+#[cfg(feature = "proton-native")]
+fn other_accounts_holding_session_in(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    user: Option<i64>,
+    uid: &str,
+) -> Result<OtherAccounts, String> {
+    let key = session_index_key(root_key);
     let (fingerprint, key_tag) = (session_fingerprint(&key, uid), session_index_key_tag(&key));
     let mut answer = OtherAccounts::HoldNone;
-    for (_, blob, nonce, entry, digest, tag) in other_accounts_session_rows(&conn, user)? {
+    for (_, blob, nonce, entry, digest, tag) in other_accounts_session_rows(conn, user)? {
         let describes_the_row = tag.as_deref() == Some(key_tag.as_str())
             && digest.as_deref() == Some(credential_blob_digest(&blob, &nonce).as_str());
         match entry {
@@ -9268,7 +9280,7 @@ pub fn set_user_admin(
 /// and nothing else, so without the passphrase no one (not even admin)
 /// can decrypt that user's encrypted blobs. The only recovery path is
 /// to wipe the target's DEK + server_profiles + user_settings +
-/// lockout state and issue a brand-new DEK wrapped by the new
+/// user_credentials + lockout state and issue a brand-new DEK wrapped by the new
 /// passphrase. The frontend MUST present this as a destructive
 /// operation with a triple confirmation, listing the byte count that
 /// will be lost. Returns USER_NOT_FOUND if the target does not exist
@@ -9325,6 +9337,15 @@ pub fn admin_reset_user_passphrase(
         params![target_user_id],
     )
     .map_err(|e| format!("Wipe target user_settings: {e}"))?;
+    // Its credential rows too: the new DEK cannot read them, and a row left
+    // would keep its session index entry and sign-in stamp (their triggers
+    // drop both with the row), so another account's sign-out of the same
+    // Proton session would count it as a copy still held and not revoke.
+    tx.execute(
+        "DELETE FROM user_credentials WHERE user_id = ?1",
+        params![target_user_id],
+    )
+    .map_err(|e| format!("Wipe target user_credentials: {e}"))?;
     tx.execute(
         "DELETE FROM global_state WHERE key = ?1",
         params![lockout_key(target_user_id)],
@@ -17480,6 +17501,55 @@ mod tests {
         assert!(
             !is_default(&conn, alice.id),
             "an admin reset left a protected default"
+        );
+    }
+
+    /// An admin reset drops the account's credential rows with its DEK: the
+    /// new DEK cannot read them, and a row kept would still count, by its
+    /// session index entry, as a copy of a Proton session another account
+    /// signs out of. An intact account holding the same session still counts.
+    #[cfg(feature = "proton-native")]
+    #[test]
+    fn an_admin_reset_leaves_no_session_copy_in_the_index() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let admin = get_active_user(&conn).unwrap().unwrap().id;
+        let alice = create_passphrase_less_user(&mut conn, &root, "alice", None, None)
+            .unwrap()
+            .id;
+        let bob = create_passphrase_less_user(&mut conn, &root, "bob", None, None)
+            .unwrap()
+            .id;
+        clear_user_session();
+        let session = json!({"uid": "shared-uid", "access_token": "a", "refresh_token": "r",
+                             "key_password": "k"})
+        .to_string();
+        let key = "proton_native_session_p";
+        let root_secret = user_crypto::secret_key_from_bytes(&root);
+        for user in [alice, bob] {
+            set_user_credential_for(&conn, &root, user, key, PROTON_SESSION_TYPE, &session)
+                .unwrap();
+            with_user_dek(&conn, &root_secret, user, |id, dek| {
+                index_session_row(&conn, &root, id, dek, key)
+            })
+            .unwrap();
+        }
+        assert_eq!(
+            other_accounts_holding_session_in(&conn, &root, Some(alice), "shared-uid").unwrap(),
+            OtherAccounts::HoldIt
+        );
+        set_active_user(&conn, admin).unwrap();
+        admin_reset_user_passphrase(&mut conn, &root, bob, None).unwrap();
+        assert_eq!(
+            other_accounts_holding_session_in(&conn, &root, Some(alice), "shared-uid").unwrap(),
+            OtherAccounts::HoldNone,
+            "the reset account's unreadable copy"
+        );
+        assert_eq!(
+            other_accounts_holding_session_in(&conn, &root, Some(bob), "shared-uid").unwrap(),
+            OtherAccounts::HoldIt,
+            "the intact account"
         );
     }
 
