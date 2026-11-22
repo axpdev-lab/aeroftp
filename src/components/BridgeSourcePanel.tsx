@@ -34,6 +34,7 @@ interface BridgeExportResult {
     exported: number;
     total: number;
     skipped: Array<{ name: string; reason: string }>;
+    warnings: Array<{ name: string; reason: string }>;
 }
 
 interface Props {
@@ -575,6 +576,20 @@ export const BridgeSourcePanel: React.FC<Props> = ({
                         {exportResult.skipped.map((s, i) => (
                             <div key={i} className="truncate" title={s.reason}>
                                 <span className="font-medium">{s.name}</span><span className="mx-1">-</span><span>{s.reason}</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+            {exportResult && exportResult.warnings.length > 0 && (
+                <div>
+                    <div className="text-xs font-medium text-amber-600 dark:text-amber-400 mb-1">
+                        {t('common.warning')} ({exportResult.warnings.length})
+                    </div>
+                    <div className="text-xs text-gray-400 dark:text-gray-500 space-y-0.5 max-h-[110px] overflow-y-auto">
+                        {exportResult.warnings.map((warning, i) => (
+                            <div key={i} className="break-words" title={warning.reason}>
+                                <span className="font-medium">{warning.name}</span><span className="mx-1">-</span><span>{warning.reason}</span>
                             </div>
                         ))}
                     </div>

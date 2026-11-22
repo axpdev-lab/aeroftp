@@ -16,6 +16,45 @@ pub const S3_ENDPOINT_SOURCE_META_KEY: &str = "_aeroftp_s3_endpoint_source";
 pub const S3_REGION_SOURCE_META_KEY: &str = "_aeroftp_s3_region_source";
 pub const S3_PATH_STYLE_SOURCE_META_KEY: &str = "_aeroftp_s3_path_style_source";
 
+/// Per-profile vault key for an imported AWS STS session token (AWS-11).
+/// Stored in the encrypted vault rather than `options.sessionToken` so the
+/// secret never crosses into the webview or plaintext profile metadata.
+pub fn aws_session_token_vault_key(profile_id: &str) -> String {
+    format!("aws_session_token_{profile_id}")
+}
+
+/// Populate `extra["session_token"]` for an S3 connection from the vault when
+/// neither the connect form nor a launch URL already provided one. Explicit
+/// session tokens always take precedence.
+pub fn inject_vault_s3_session_token<F>(
+    provider_type: ProviderType,
+    profile_id: Option<&str>,
+    extra: &mut HashMap<String, String>,
+    lookup: F,
+) where
+    F: FnOnce(&str) -> Option<String>,
+{
+    if provider_type != ProviderType::S3 {
+        return;
+    }
+    if extra
+        .get("session_token")
+        .is_some_and(|v| !v.trim().is_empty())
+    {
+        return;
+    }
+    let Some(id) = profile_id.map(str::trim).filter(|s| !s.is_empty()) else {
+        return;
+    };
+    let key = aws_session_token_vault_key(id);
+    if let Some(token) = lookup(&key)
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+    {
+        extra.insert("session_token".to_string(), token);
+    }
+}
+
 /// Normalize camelCase profile option keys from the GUI to snake_case keys
 /// expected by the provider factory.
 pub fn normalize_profile_option_key(key: &str) -> &str {

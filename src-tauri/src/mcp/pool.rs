@@ -770,7 +770,18 @@ async fn create_provider_from_vault_with_reader(
     // Provider options from the profile (bucket, region, endpoint, etc.): the
     // vault credential alone does not carry them, they live in
     // `profile.options`, with the per-protocol defaults applied on top.
-    let (extra, resolved_host) = profile_connection_extra(matched, provider_type, host);
+    let (mut extra, resolved_host) = profile_connection_extra(matched, provider_type, host);
+    crate::profile_loader::inject_vault_s3_session_token(
+        provider_type,
+        Some(profile_id),
+        &mut extra,
+        |key| {
+            crate::user_partitions::resolve_active_credential(&store, key)
+                .ok()
+                .flatten()
+                .map(|secret| secret.to_string())
+        },
+    );
 
     let config = ProviderConfig {
         name: profile_name.to_string(),

@@ -312,6 +312,12 @@ pub const OPTIONS_SECRET_KEYS: &[&str] = &[
     // The native Proton Drive session, injected into a copy of the options
     // only on the rclone export path (`inject_rclone_proton_export_options`).
     "proton_native_session",
+    // Bridge-imported secrets moved into the vault on save (`rclone_import`
+    // crypt password/salt and Filen CLI API key). Unified here so every
+    // export/redaction path strips the exact same canonical list (AWS-10).
+    "rcloneCryptPassword",
+    "rcloneCryptPassword2",
+    "filen_api_key",
 ];
 
 /// Remove options-borne secrets in place. No-op when `options` is absent or

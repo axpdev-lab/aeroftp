@@ -549,6 +549,42 @@ pub fn move_imported_filen_api_key(
     Ok(())
 }
 
+/// AWS-11: an imported AWS STS session token lives in the encrypted vault
+/// under `aws_session_token_<id>`, never in `options.sessionToken` which
+/// crosses into the webview and profile metadata. The token is removed from
+/// `options` unconditionally (even when the vault is locked or storage fails)
+/// and `hasStoredSessionToken` is set only after `store_secret` succeeds.
+pub fn move_imported_aws_session_token(
+    server: &mut Value,
+    mut store_secret: impl FnMut(&str, &str) -> Result<(), String>,
+) -> Result<(), String> {
+    let Some(token) = server
+        .get_mut("options")
+        .and_then(|o| o.as_object_mut())
+        .and_then(|o| o.remove("sessionToken"))
+    else {
+        return Ok(());
+    };
+    let token = zeroize::Zeroizing::new(token.as_str().map(str::trim).unwrap_or("").to_string());
+    let id = server
+        .get("id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    if token.is_empty() {
+        return Ok(());
+    }
+    if id.is_empty() {
+        return Err("the imported profile has no id to store it under".to_string());
+    }
+    store_secret(
+        &crate::profile_loader::aws_session_token_vault_key(&id),
+        &token,
+    )?;
+    server["hasStoredSessionToken"] = Value::Bool(true);
+    Ok(())
+}
+
 /// Turn the legacy import options into the binding used by Quick Connect and
 /// My Servers. Secrets leave the options before the preview crosses IPC.
 pub fn materialize_imported_crypt_overlay(
@@ -799,6 +835,26 @@ pub(crate) fn finish_bridge_import_with_policy(
             }
         }
     }
+    // AWS-11: move any imported S3 STS sessionToken out of `options` into the
+    // encrypted vault before `relaxed_before_reset` captures raw options and
+    // before the redacted preview crosses into the renderer.
+    for server in &mut servers {
+        let id = server
+            .get("id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let moved = move_imported_aws_session_token(server, |key, secret| match vault.as_mut() {
+            Some(write) => write(key, secret),
+            None => Err("the credential vault is locked".into()),
+        });
+        if let Err(e) = moved {
+            secret_failures.push((
+                id,
+                format!("its AWS session token was not stored: {e} (unlock the vault and import again, or add the token in the profile)"),
+            ));
+        }
+    }
 
     // Upgrade recovered secrets into the vault (server_<id> key, same as
     // the connect path and the legacy importers).
@@ -948,6 +1004,7 @@ pub(crate) fn finish_bridge_import_with_policy(
                 "hasStoredAeroCryptPassword": s.get("hasStoredAeroCryptPassword").cloned().unwrap_or(Value::Bool(false)),
                 "hasStoredAeroCryptSalt": s.get("hasStoredAeroCryptSalt").cloned().unwrap_or(Value::Bool(false)),
                 "hasStoredFilenApiKey": s.get("hasStoredFilenApiKey").cloned().unwrap_or(Value::Bool(false)),
+                "hasStoredSessionToken": s.get("hasStoredSessionToken").cloned().unwrap_or(Value::Bool(false)),
                 "hasStoredCredential": has_cred,
             });
             if let Some((raw_host, raw_options)) = relaxed_before_reset.get(&file_index) {
@@ -1358,6 +1415,45 @@ pub fn inject_rclone_filen_export_options(
         .and_then(|o| o.as_object_mut())
         .expect("options object");
     opts.insert("filen_api_key".into(), Value::String(api_key));
+}
+
+/// AWS-11: for an AWS or Kopia export with credentials enabled, pull an S3
+/// profile's vaulted `aws_session_token_<id>` and inject it into a transient
+/// copy of `options.sessionToken` so the exported credentials file carries
+/// `aws_session_token`. An inline `options.sessionToken` already present wins.
+pub fn inject_aws_session_token_export_option(
+    options: &mut Option<Value>,
+    store: &CredentialStore,
+    protocol: &str,
+    id: &str,
+) {
+    if protocol != "s3" || id.is_empty() {
+        return;
+    }
+    if options
+        .as_ref()
+        .and_then(|o| o.as_object())
+        .and_then(|o| o.get("sessionToken"))
+        .and_then(|v| v.as_str())
+        .is_some_and(|s| !s.trim().is_empty())
+    {
+        return;
+    }
+    let key = crate::profile_loader::aws_session_token_vault_key(id);
+    let token = crate::user_partitions::resolve_active_credential(store, &key)
+        .ok()
+        .flatten()
+        .map(|s| s.to_string())
+        .filter(|s| !s.trim().is_empty());
+    let Some(token) = token else {
+        return;
+    };
+    if !matches!(options, Some(Value::Object(_))) {
+        *options = Some(Value::Object(serde_json::Map::new()));
+    }
+    if let Some(opts) = options.as_mut().and_then(|o| o.as_object_mut()) {
+        opts.insert("sessionToken".into(), Value::String(token));
+    }
 }
 
 /// #128-D: for an rclone `onedrive` export, pull the per-profile Graph drive id
@@ -1888,7 +1984,20 @@ async fn export_bridge_profiles(
                     injected_entry = e;
                     &injected_entry
                 } else if include_credentials {
-                    injected_entry = without_private_export_options(entry);
+                    let mut e = without_private_export_options(entry);
+                    if (source == "aws" || source == "kopia") && store.is_some() {
+                        if let Some(st) = store {
+                            let mut opts = e.get("options").cloned();
+                            let before = opts.clone();
+                            inject_aws_session_token_export_option(&mut opts, st, &proto, &id);
+                            injected_secret |=
+                                options_gained_a_secret(before.as_ref(), opts.as_ref());
+                            if let Some(o) = opts {
+                                e["options"] = o;
+                            }
+                        }
+                    }
+                    injected_entry = e;
                     &injected_entry
                 } else {
                     // Review L10: a secret an older import left in `options`
@@ -1920,6 +2029,7 @@ async fn export_bridge_profiles(
                     "exported": 0,
                     "total": 0,
                     "skipped": skipped,
+                    "warnings": [],
                     "filePath": file_path,
                     "includesCredentials": false,
                 }));
@@ -1929,7 +2039,7 @@ async fn export_bridge_profiles(
             // above, and the exporter itself refusing a profile it cannot write
             // (an unaddressable Zoho region, a crypt name already taken). The
             // second used to be invisible here and counted as exported.
-            let (exported, refused) = $f(&typed, &passwords, path)
+            let (exported, refused, warnings) = $f(&typed, &passwords, path)
                 .map_err(|e| e.to_string())?
                 .into_export_parts();
             skipped.extend(
@@ -1937,10 +2047,15 @@ async fn export_bridge_profiles(
                     .into_iter()
                     .map(|(name, reason)| json!({ "name": name, "reason": reason })),
             );
+            let warnings: Vec<Value> = warnings
+                .into_iter()
+                .map(|(name, reason)| json!({ "name": name, "reason": reason }))
+                .collect();
             json!({
                 "exported": exported,
                 "total": total,
                 "skipped": skipped,
+                "warnings": warnings,
                 "filePath": file_path,
                 "includesCredentials": !passwords.is_empty() || injected_secret,
             })
@@ -2854,6 +2969,146 @@ mod tests {
             "{\"hello\":\"world\",\"not\":\"a bridge config\"}"
         )
         .is_empty());
+    }
+
+    #[tokio::test]
+    async fn aws_export_warning_reaches_the_gui_as_a_named_object() {
+        let dir = tempfile::tempdir().unwrap();
+        let output = dir.path().join("credentials.ini");
+        let original = b"[profile user]\nregion = us-east-1\n";
+        std::fs::write(dir.path().join("config"), original).unwrap();
+        let servers = json!([{
+            "id": "static", "name": "static", "host": "", "port": 443,
+            "username": "NEWKEY", "protocol": "s3", "providerId": "amazon-s3",
+            "options": {"region": "eu-west-1"}
+        }])
+        .to_string();
+
+        let result = export_bridge_profiles(
+            "aws",
+            &servers,
+            true,
+            &output.to_string_lossy(),
+            None,
+            |_| Some("newsecret".to_string()),
+        )
+        .await
+        .unwrap();
+        assert_eq!(result["exported"], 1);
+        assert_eq!(result["warnings"][0]["name"], "AWS config");
+        let reason = result["warnings"][0]["reason"].as_str().unwrap();
+        assert!(reason.contains("config.aeroftp"), "{result}");
+        assert!(reason.contains("Merge that file manually"), "{result}");
+        assert_eq!(std::fs::read(dir.path().join("config")).unwrap(), original);
+    }
+
+    #[tokio::test]
+    async fn aws_export_without_credentials_strips_every_options_secret_key() {
+        // Every key in OPTIONS_SECRET_KEYS must be stripped by options_without_secrets.
+        let mut all_secrets = serde_json::Map::new();
+        all_secrets.insert("region".into(), json!("eu-west-1"));
+        for key in crate::profile_export::OPTIONS_SECRET_KEYS {
+            all_secrets.insert((*key).to_string(), json!(format!("SECRET-{key}")));
+        }
+        let cleaned =
+            crate::rclone_import::options_without_secrets(Some(&Value::Object(all_secrets)))
+                .unwrap();
+        let cleaned_map = cleaned.as_object().unwrap();
+        assert_eq!(cleaned_map.get("region"), Some(&json!("eu-west-1")));
+        for key in crate::profile_export::OPTIONS_SECRET_KEYS {
+            assert!(
+                !cleaned_map.contains_key(*key),
+                "options_without_secrets kept secret key {key}"
+            );
+        }
+
+        // End-to-end GUI AWS export with include_credentials=false writes no sessionToken.
+        let dir = tempfile::tempdir().unwrap();
+        let output = dir.path().join("credentials.ini");
+        let servers = json!([{
+            "id": "sts", "name": "sts", "host": "", "port": 443,
+            "username": "ASIAEXAMPLE", "protocol": "s3", "providerId": "amazon-s3",
+            "options": {"region": "eu-west-1", "sessionToken": "SESSION-TOKEN-SECRET"}
+        }])
+        .to_string();
+
+        let result = export_bridge_profiles(
+            "aws",
+            &servers,
+            false,
+            &output.to_string_lossy(),
+            None,
+            |_| Some("newsecret".to_string()),
+        )
+        .await
+        .unwrap();
+        assert_eq!(result["exported"], 1);
+        assert_eq!(result["includesCredentials"], false);
+        let written = std::fs::read_to_string(&output).unwrap();
+        assert!(!written.contains("SESSION-TOKEN-SECRET"), "{written}");
+        assert!(!written.contains("newsecret"), "{written}");
+        let config = std::fs::read_to_string(dir.path().join("config")).unwrap();
+        assert!(config.contains("region = eu-west-1"), "{config}");
+    }
+
+    #[test]
+    fn aws_import_moves_session_token_to_vault_and_redacts_options() {
+        let dir = tempfile::tempdir().unwrap();
+        let cred = dir.path().join("credentials");
+        std::fs::write(
+            &cred,
+            "[sts]\naws_access_key_id = ASIAEXAMPLE\naws_secret_access_key = secret1\naws_session_token = STS-SECRET-TOKEN\n",
+        )
+        .unwrap();
+        let parsed =
+            crate::aws_credentials_import::import_aws_credentials_with_config(&cred, None).unwrap();
+        let id = parsed.servers[0].id.clone();
+        let value = serde_json::to_value(&parsed).unwrap();
+
+        let mut vault: HashMap<String, String> = HashMap::new();
+        let result = finish_bridge_import(
+            "aws",
+            &value,
+            Vec::new(),
+            Some(&mut |k: &str, v: &str| {
+                vault.insert(k.to_string(), v.to_string());
+                Ok(())
+            }),
+        )
+        .unwrap();
+
+        let committed = &result["servers"][0];
+        assert!(
+            committed.pointer("/options/sessionToken").is_none(),
+            "sessionToken leaked to webview options: {committed}"
+        );
+        assert_eq!(
+            vault
+                .get(&format!("aws_session_token_{id}"))
+                .map(String::as_str),
+            Some("STS-SECRET-TOKEN"),
+            "vault did not receive aws_session_token_<id>: {vault:?}"
+        );
+        assert_eq!(committed["hasStoredSessionToken"], true);
+
+        // Even when the vault is locked, sessionToken must never leak into webview options.
+        let locked = finish_bridge_import("aws", &value, Vec::new(), None).unwrap();
+        let locked_srv = &locked["servers"][0];
+        assert!(
+            locked_srv.pointer("/options/sessionToken").is_none(),
+            "sessionToken leaked when vault was locked: {locked_srv}"
+        );
+        assert_eq!(locked_srv["hasStoredSessionToken"], false);
+        assert!(
+            locked["warnings"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|w| w["reason"]
+                    .as_str()
+                    .is_some_and(|r| r.contains("AWS session token"))),
+            "expected vault-locked session token warning: {locked}"
+        );
     }
 
     /// The GUI export keys each password by profile id. By name, two profiles

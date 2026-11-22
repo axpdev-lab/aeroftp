@@ -2523,6 +2523,23 @@ impl ProviderConnectionParams {
                 }
             }
         }
+        // AWS-11: imported S3 session tokens live in the encrypted vault under
+        // `aws_session_token_<profile_id>` so they never cross into the webview.
+        // An explicit form token or launch-URL token already populated above wins.
+        crate::profile_loader::inject_vault_s3_session_token(
+            config.provider_type,
+            self.profile_id.as_deref(),
+            &mut config.extra,
+            |key| {
+                crate::credential_store::CredentialStore::from_cache()
+                    .and_then(|store| {
+                        crate::user_partitions::resolve_active_credential(&store, key)
+                            .ok()
+                            .flatten()
+                    })
+                    .map(|secret| secret.to_string())
+            },
+        );
         Ok(config)
     }
 }
@@ -24994,6 +25011,62 @@ mod tests {
         params.session_token = Some("   ".to_string());
         let config = params.to_provider_config().unwrap();
         assert!(!config.extra.contains_key("session_token"));
+    }
+
+    #[test]
+    fn s3_connect_reads_vault_session_token_by_profile_id() {
+        let _env = crate::test_env::lock();
+        let _partition = crate::user_partitions::test_lock();
+        let dir = tempfile::TempDir::new().unwrap();
+        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        let previous_passphrase = std::env::var_os("AEROFTP_USER_PASSPHRASE");
+        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        crate::credential_store::CredentialStore::clear_cache();
+        crate::credential_store::CredentialStore::bootstrap_master_password(
+            "synthetic test master",
+        )
+        .unwrap();
+        crate::credential_store::CredentialStore::unlock_with_master("synthetic test master", None)
+            .unwrap();
+        let store = crate::credential_store::CredentialStore::from_cache().unwrap();
+        crate::user_partitions::init_or_migrate_cli(&store).unwrap();
+        crate::user_partitions::store_active_credential_dual(
+            &store,
+            "aws_session_token_aws-sts-1",
+            "VAULT-STS-TOKEN-42",
+        )
+        .unwrap();
+
+        let mut params = s3_params(None);
+        params.profile_id = Some("aws-sts-1".to_string());
+        params.session_token = None;
+        let config = params.to_provider_config().unwrap();
+        let got_vault = config.extra.get("session_token").cloned();
+
+        // Explicit form token still wins over the vaulted token.
+        let mut explicit = s3_params(None);
+        explicit.profile_id = Some("aws-sts-1".to_string());
+        explicit.session_token = Some("EXPLICIT-TOKEN".to_string());
+        let got_explicit = explicit
+            .to_provider_config()
+            .unwrap()
+            .extra
+            .get("session_token")
+            .cloned();
+
+        crate::credential_store::CredentialStore::clear_cache();
+        match previous_xdg {
+            Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        match previous_passphrase {
+            Some(v) => std::env::set_var("AEROFTP_USER_PASSPHRASE", v),
+            None => std::env::remove_var("AEROFTP_USER_PASSPHRASE"),
+        }
+
+        assert_eq!(got_vault.as_deref(), Some("VAULT-STS-TOKEN-42"));
+        assert_eq!(got_explicit.as_deref(), Some("EXPLICIT-TOKEN"));
     }
 
     #[test]

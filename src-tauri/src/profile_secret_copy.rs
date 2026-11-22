@@ -31,6 +31,7 @@ pub fn read_vault_secret(
 pub fn is_shared_vault_key(key: &str) -> bool {
     [
         "filen_api_key_",
+        "aws_session_token_",
         "onedrive_drive_id_",
         "onedrive_drive_type_",
     ]

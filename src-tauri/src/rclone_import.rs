@@ -2768,21 +2768,10 @@ pub struct RcloneSkippedRemote {
     pub reason: String,
 }
 
-/// Option keys the importer fills with a revealed secret: the rclone-crypt
-/// password and salt (`map_crypt_remote`) and the Filen CLI API key
-/// (`map_remote`). The save paths move them into the vault; whatever prints an
-/// import (the CLI `import rclone --json` report) leaves them out, as the GUI
-/// preview does.
-pub const IMPORT_SECRET_OPTION_KEYS: &[&str] = &[
-    "rcloneCryptPassword",
-    "rcloneCryptPassword2",
-    "filen_api_key",
-    // The SFTP key passphrase a profile keeps in its options, which the
-    // rclone exporter writes as `key_file_pass` (review of #980).
-    "key_passphrase",
-    // The native Proton Drive session the export path injects.
-    PROTON_SESSION_OPTION,
-];
+/// Option keys carrying secrets in `ServerProfileExport.options`. Unified with
+/// [`crate::profile_export::OPTIONS_SECRET_KEYS`] so bridge imports, CLI
+/// redaction, and credential-free exports never drift apart (AWS-10).
+pub const IMPORT_SECRET_OPTION_KEYS: &[&str] = crate::profile_export::OPTIONS_SECRET_KEYS;
 
 /// `options` without the keys in [`IMPORT_SECRET_OPTION_KEYS`], for output.
 pub fn options_without_secrets(options: Option<&serde_json::Value>) -> Option<serde_json::Value> {

@@ -3000,6 +3000,8 @@ pub(crate) fn relocate_secret_kind(credential_key: &str) -> &'static str {
         "aerocrypt_overlay_config"
     } else if credential_key.starts_with("filen_api_key_") {
         "filen_api_key"
+    } else if credential_key.starts_with("aws_session_token_") {
+        "aws_session_token"
     } else if credential_key.starts_with("onedrive_drive_id_") {
         "onedrive_drive_id"
     } else if credential_key.starts_with("onedrive_drive_type_") {

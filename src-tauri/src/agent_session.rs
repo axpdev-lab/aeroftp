@@ -993,6 +993,17 @@ async fn connect_provider(profile: &ProfileSummary, no_scp_fallback: bool) -> Co
             extra.entry("container".to_string()).or_insert(bucket);
         }
     }
+    crate::profile_loader::inject_vault_s3_session_token(
+        provider_type,
+        Some(&profile.id),
+        &mut extra,
+        |key| {
+            crate::user_partitions::resolve_active_credential(&store, key)
+                .ok()
+                .flatten()
+                .map(|secret| secret.to_string())
+        },
+    );
 
     let config = ProviderConfig {
         name: profile.name.clone(),

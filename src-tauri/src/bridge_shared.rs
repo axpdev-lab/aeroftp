@@ -253,39 +253,111 @@ pub(crate) fn write_export(exported: usize, path: &Path, bytes: &[u8]) -> Result
     atomic_write_600(path, bytes)
 }
 
+#[cfg(unix)]
+fn fsync_parent_dir(file_path: &Path) {
+    let parent = file_path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    if let Ok(dir) = std::fs::File::open(parent) {
+        let _ = dir.sync_all();
+    }
+}
+
+#[cfg(not(unix))]
+fn fsync_parent_dir(_file_path: &Path) {}
+
+/// Stage an export payload in a `0600` O_EXCL temp file inside `parent` and
+/// flush it to disk before any destination path is touched. Setting the mode
+/// on the open file handle before rename avoids a post-rename `chmod(path)`
+/// that could follow a link swapped in after `persist`.
+pub(crate) fn stage_export_temp_600(
+    parent: &Path,
+    bytes: &[u8],
+) -> std::io::Result<tempfile::NamedTempFile> {
+    use std::io::Write;
+    let mut tmp = tempfile::Builder::new()
+        .prefix(".aeroftp-bridge-export-")
+        .tempfile_in(parent)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        tmp.as_file()
+            .set_permissions(std::fs::Permissions::from_mode(0o600))?;
+    }
+    tmp.write_all(bytes)?;
+    tmp.as_file().sync_all()?;
+    Ok(tmp)
+}
+
+/// Rename a pre-staged `0600` temp file into `path` and fsync the parent
+/// directory (Unix).
+pub(crate) fn persist_staged_temp(
+    tmp: tempfile::NamedTempFile,
+    path: &Path,
+) -> Result<(), tempfile::PersistError> {
+    tmp.persist(path)?;
+    fsync_parent_dir(path);
+    Ok(())
+}
+
+/// Rename a pre-staged `0600` temp file into `path` without replacing an
+/// existing entry, then fsync the parent directory (Unix).
+pub(crate) fn persist_staged_temp_noclobber(
+    tmp: tempfile::NamedTempFile,
+    path: &Path,
+) -> Result<(), tempfile::PersistError> {
+    tmp.persist_noclobber(path)?;
+    fsync_parent_dir(path);
+    Ok(())
+}
+
 /// Atomic write (temp + rename) with `0600` on unix. Mandatory for any
 /// exported file that carries a secret (restic env script, duplicacy
 /// preferences, kopia storage block, aws/mc/s3cmd native files).
 ///
-/// The secret goes through an O_EXCL tempfile that `tempfile` creates `0600`
-/// from the start, then renames into place. This closes two hazards the old
-/// predictable `<name>.aerotmp` + `std::fs::write` had: (1) the temp was
-/// created at the process umask (world/group-readable) and only chmod'd to
-/// `0600` *after* the plaintext credentials were already on disk, leaving a
-/// readable window on the secret; and (2) the predictable path let another
-/// local user pre-plant a symlink there and redirect the plaintext write.
+/// The secret goes through an O_EXCL tempfile whose mode is set to `0600` on
+/// the handle and `sync_all`'d before rename, then the parent directory is
+/// fsynced. This closes two hazards the old predictable `<name>.aerotmp` +
+/// `std::fs::write` had: (1) the temp was created at the process umask
+/// (world/group-readable) and only chmod'd to `0600` *after* the plaintext
+/// credentials were already on disk, leaving a readable window on the secret;
+/// and (2) the predictable path let another local user pre-plant a symlink
+/// there and redirect the plaintext write.
 /// Mirrors `keystore_export::atomic_write_synced`. CLAUDE-AV-B9-03
 pub(crate) fn atomic_write_600(path: &Path, bytes: &[u8]) -> Result<(), String> {
-    use std::io::Write;
+    atomic_write_600_with_post_persist(path, bytes, || {})
+}
+
+fn atomic_write_600_with_post_persist(
+    path: &Path,
+    bytes: &[u8],
+    after_persist: impl FnOnce(),
+) -> Result<(), String> {
     let parent = path
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
         .unwrap_or_else(|| Path::new("."));
-    let mut tmp = tempfile::Builder::new()
-        .prefix(".aeroftp-bridge-export-")
-        .tempfile_in(parent)
-        .map_err(|e| format!("write temp: {e}"))?;
-    tmp.write_all(bytes)
-        .map_err(|e| format!("write temp: {e}"))?;
-    // `persist` renames the 0600 temp onto the target; on failure the returned
-    // `PersistError` owns the tempfile, so dropping it here unlinks the temp.
-    tmp.persist(path)
-        .map_err(|e| format!("rename into place: {e}"))?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
-    }
+    let tmp = stage_export_temp_600(parent, bytes).map_err(|e| format!("write temp: {e}"))?;
+    // `persist` renames the synced 0600 temp onto the target; on failure the
+    // returned `PersistError` owns the tempfile, so dropping it unlinks it.
+    persist_staged_temp(tmp, path).map_err(|e| format!("rename into place: {e}"))?;
+    after_persist();
+    Ok(())
+}
+
+/// Atomic `0600` write that never replaces an existing destination. Used for
+/// generated side files where a probe-to-rename race must not overwrite another
+/// writer's file. `AlreadyExists` is returned unchanged so the caller can retry
+/// a different name.
+#[cfg(test)]
+pub(crate) fn atomic_write_600_noclobber(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let parent = path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let tmp = stage_export_temp_600(parent, bytes)?;
+    persist_staged_temp_noclobber(tmp, path).map_err(|e| e.error)?;
     Ok(())
 }
 
@@ -766,16 +838,23 @@ impl ExportEndpoint {
 }
 
 fn split_endpoint_url(raw: &str, s3_path_style: bool) -> Result<ExportEndpoint, String> {
-    let url = url::Url::parse(raw.trim()).map_err(|e| format!("endpoint {raw:?}: {e}"))?;
+    // The reason reaches the export report (CLI, GUI). An address can carry a
+    // user and a password (`https://key:secret@host`), so it is never quoted.
+    let url = url::Url::parse(raw.trim())
+        .map_err(|e| format!("its endpoint is not a valid URL ({e})"))?;
     let scheme = match url.scheme() {
         "https" => "https",
         "http" => "http",
-        other => return Err(format!("endpoint {raw:?}: unsupported scheme {other:?}")),
+        other => {
+            return Err(format!(
+                "its endpoint uses the unsupported scheme {other:?}"
+            ))
+        }
     };
     let host = url
         .host_str()
         .filter(|h| !h.is_empty())
-        .ok_or_else(|| format!("endpoint {raw:?}: no host"))?
+        .ok_or_else(|| "its endpoint has no host".to_string())?
         .to_string();
     // `Url::port` is already `None` for the scheme's default port.
     let port = url.port();
@@ -1155,6 +1234,7 @@ pub struct BridgeExportSkip {
 pub struct BridgeExportOutcome {
     pub exported: usize,
     pub skipped: Vec<BridgeExportSkip>,
+    pub warnings: Vec<BridgeExportSkip>,
 }
 
 impl BridgeExportOutcome {
@@ -1164,48 +1244,149 @@ impl BridgeExportOutcome {
             reason: reason.into(),
         });
     }
+
+    pub fn warn(&mut self, name: &str, reason: impl Into<String>) {
+        self.warnings.push(BridgeExportSkip {
+            name: name.to_string(),
+            reason: reason.into(),
+        });
+    }
 }
+
+/// `(written, skipped, warnings)`, each list as `(name, reason)` pairs.
+pub type ExportParts = (usize, Vec<(String, String)>, Vec<(String, String)>);
 
 /// The two surfaces (CLI `cmd_export_bridge`, GUI `export_bridge_config`)
 /// read every exporter's result through this, whichever shape it returns.
 pub trait ExportReport {
-    /// `(written, [(profile name, reason)])`.
-    fn into_export_parts(self) -> (usize, Vec<(String, String)>);
+    fn into_export_parts(self) -> ExportParts;
 }
 
 impl ExportReport for usize {
-    fn into_export_parts(self) -> (usize, Vec<(String, String)>) {
-        (self, Vec::new())
+    fn into_export_parts(self) -> ExportParts {
+        (self, Vec::new(), Vec::new())
     }
 }
 
 impl ExportReport for BridgeExportOutcome {
-    fn into_export_parts(self) -> (usize, Vec<(String, String)>) {
+    fn into_export_parts(self) -> ExportParts {
         let refused = self
             .skipped
             .into_iter()
             .map(|s| (s.name, s.reason))
             .collect();
-        (self.exported, refused)
+        let warnings = self
+            .warnings
+            .into_iter()
+            .map(|s| (s.name, s.reason))
+            .collect();
+        (self.exported, refused, warnings)
     }
 }
 
 impl ExportReport for crate::rclone_import::RcloneExportOutcome {
     /// Reports profiles, as every other exporter does: the remotes count
     /// (`exported`) also holds the aliases and crypt overlays they write.
-    fn into_export_parts(self) -> (usize, Vec<(String, String)>) {
+    fn into_export_parts(self) -> ExportParts {
         let refused = self
             .skipped
             .into_iter()
             .map(|s| (s.name, s.reason))
             .collect();
-        (self.profiles, refused)
+        (self.profiles, refused, Vec::new())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_endpoint_refusal_never_quotes_the_address() {
+        for raw in [
+            "https://AKIAEXAMPLE:TopSecret1@s3.lab.example.com:99999",
+            "ftp://AKIAEXAMPLE:TopSecret1@s3.lab.example.com",
+            "https://AKIAEXAMPLE:TopSecret1@[::1",
+        ] {
+            let reason = split_endpoint_url(raw, false)
+                .err()
+                .unwrap_or_else(|| panic!("{raw}"));
+            assert!(!reason.contains("TopSecret1"), "{reason}");
+            assert!(reason.starts_with("its endpoint "), "{reason}");
+        }
+    }
+
+    #[test]
+    fn atomic_write_noclobber_preserves_an_existing_destination() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.aeroftp");
+        std::fs::write(&path, b"another writer").unwrap();
+
+        let err = atomic_write_600_noclobber(&path, b"AeroFTP settings").unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::AlreadyExists);
+        assert_eq!(std::fs::read(&path).unwrap(), b"another writer");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn atomic_write_sets_0600_on_handle_before_persist_and_never_chmods_by_path() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let staged = stage_export_temp_600(dir.path(), b"staged secret").unwrap();
+        let staged_mode = staged.as_file().metadata().unwrap().permissions().mode() & 0o777;
+        assert_eq!(staged_mode, 0o600);
+        drop(staged);
+
+        // Swap the persisted destination for a symlink to a 0644 victim file
+        // immediately after persist: a post-rename chmod(path) would follow
+        // the symlink and alter the victim's permissions.
+        let victim = dir.path().join("victim");
+        std::fs::write(&victim, b"unrelated").unwrap();
+        std::fs::set_permissions(&victim, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+        let target = dir.path().join("credentials");
+        atomic_write_600_with_post_persist(&target, b"secret", || {
+            let mode = std::fs::metadata(&target).unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode, 0o600);
+            std::fs::remove_file(&target).unwrap();
+            std::os::unix::fs::symlink(&victim, &target).unwrap();
+        })
+        .unwrap();
+
+        let victim_mode = std::fs::metadata(&victim).unwrap().permissions().mode() & 0o777;
+        assert_eq!(
+            victim_mode, 0o644,
+            "post-rename chmod must not exist to follow a swapped symlink"
+        );
+
+        let noclobber_target = dir.path().join("side");
+        atomic_write_600_noclobber(&noclobber_target, b"side secret").unwrap();
+        let side_mode = std::fs::metadata(&noclobber_target)
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(side_mode, 0o600);
+    }
+
+    #[test]
+    fn export_report_preserves_operator_warnings() {
+        let mut outcome = BridgeExportOutcome {
+            exported: 1,
+            ..Default::default()
+        };
+        outcome.warn("AWS config", "merge config.aeroftp manually");
+        let (exported, skipped, warnings) = outcome.into_export_parts();
+        assert_eq!(exported, 1);
+        assert!(skipped.is_empty());
+        assert_eq!(
+            warnings,
+            vec![(
+                "AWS config".to_string(),
+                "merge config.aeroftp manually".to_string()
+            )]
+        );
+    }
 
     /// FileLu has an rclone backend, so "not exportable" would read as "rclone
     /// cannot reach this provider". It is refused because the vault lacks the

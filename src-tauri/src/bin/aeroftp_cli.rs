@@ -30542,6 +30542,13 @@ async fn create_and_connect_for_agent(
                 host = resolved_endpoint;
             }
         }
+        let active_uid = active_credential_user_id(&store);
+        ftp_client_gui_lib::profile_loader::inject_vault_s3_session_token(
+            provider_type,
+            Some(profile_id),
+            &mut extra,
+            |key| read_server_cred(&store, active_uid, key),
+        );
     }
 
     let config = ftp_client_gui_lib::providers::ProviderConfig {
@@ -32008,6 +32015,14 @@ fn profile_value_to_provider_config(
                 host = resolved_endpoint;
             }
         }
+        let profile_id = profile.get("id").and_then(|v| v.as_str());
+        let scoped_uid = scoped_credential_user_id(cli, store);
+        ftp_client_gui_lib::profile_loader::inject_vault_s3_session_token(
+            provider_type,
+            profile_id,
+            &mut extra,
+            |key| read_server_cred(store, scoped_uid, key),
+        );
     }
 
     if provider_type == ProviderType::Mega && !extra.contains_key("mega_mode") {
@@ -43382,6 +43397,11 @@ fn print_bridge_import(v: &serde_json::Value, json: bool, source_label: &str) ->
         .and_then(|s| s.as_array())
         .cloned()
         .unwrap_or_default();
+    let warnings = v
+        .get("warnings")
+        .and_then(|s| s.as_array())
+        .cloned()
+        .unwrap_or_default();
     let source_path = v
         .get("sourcePath")
         .and_then(|s| s.as_str())
@@ -43393,10 +43413,14 @@ fn print_bridge_import(v: &serde_json::Value, json: bool, source_label: &str) ->
         .unwrap_or(servers.len() as u64);
 
     if json {
-        // Redact credentials: never echo plaintext secrets to stdout.
+        // Redact credentials and options-borne secrets (such as AWS
+        // `sessionToken`): never echo plaintext secrets to stdout.
         let redacted_servers: Vec<serde_json::Value> = servers
             .iter()
             .map(|s| {
+                let redacted_options =
+                    ftp_client_gui_lib::rclone_import::options_without_secrets(s.get("options"))
+                        .unwrap_or(serde_json::Value::Null);
                 serde_json::json!({
                     "id": s.get("id").cloned().unwrap_or(serde_json::Value::Null),
                     "name": s.get("name").cloned().unwrap_or(serde_json::Value::Null),
@@ -43405,7 +43429,7 @@ fn print_bridge_import(v: &serde_json::Value, json: bool, source_label: &str) ->
                     "username": s.get("username").cloned().unwrap_or(serde_json::Value::Null),
                     "protocol": s.get("protocol").cloned().unwrap_or(serde_json::Value::Null),
                     "initialPath": s.get("initialPath").cloned().unwrap_or(serde_json::Value::Null),
-                    "options": s.get("options").cloned().unwrap_or(serde_json::Value::Null),
+                    "options": redacted_options,
                     "hasCredential": s
                         .get("credential")
                         .map(|c| !c.is_null())
@@ -43416,6 +43440,7 @@ fn print_bridge_import(v: &serde_json::Value, json: bool, source_label: &str) ->
         let envelope = serde_json::json!({
             "servers": redacted_servers,
             "skipped": skipped,
+            "warnings": warnings,
             "sourcePath": source_path,
             "totalRemotes": total_remotes,
         });
@@ -43453,6 +43478,16 @@ fn print_bridge_import(v: &serde_json::Value, json: bool, source_label: &str) ->
                     "  {} - {}://{}@{}:{}{}{}",
                     name, proto, user, host, port, cred, cleartext
                 );
+            }
+            println!();
+        }
+
+        if !warnings.is_empty() {
+            println!("Warnings ({}):", warnings.len());
+            for w in &warnings {
+                let name = w.get("name").and_then(|x| x.as_str()).unwrap_or("?");
+                let reason = w.get("reason").and_then(|x| x.as_str()).unwrap_or("?");
+                println!("  {} : {}", name, reason);
             }
             println!();
         }
@@ -44084,6 +44119,7 @@ async fn cmd_export_rclone(
                 outcome.exported,
                 &target_path,
                 &skipped,
+                &[],
             );
             0
         }
@@ -44177,7 +44213,14 @@ async fn cmd_export_winscp(
                 emit_empty_export(json, &skipped);
                 return 4;
             }
-            emit_export_success(json, "WinSCP.ini", outcome.exported, &target_path, &skipped);
+            emit_export_success(
+                json,
+                "WinSCP.ini",
+                outcome.exported,
+                &target_path,
+                &skipped,
+                &[],
+            );
             0
         }
         Err(e) => {
@@ -44270,6 +44313,7 @@ async fn cmd_export_filezilla(
                 count,
                 &target_path,
                 &collected.skipped,
+                &[],
             );
             0
         }
@@ -44355,8 +44399,23 @@ async fn cmd_export_bridge(
 
     let (ext, label) =
         ftp_client_gui_lib::bridge_shared::bridge_export_format(src).unwrap_or(("txt", src));
+    let mut created_private_aws_dir: Option<std::path::PathBuf> = None;
     let target_path = match output {
         Some(p) => std::path::PathBuf::from(p),
+        None if src == "aws" => {
+            // AWS-08: write AWS credentials + sibling config into a private
+            // 0700 directory instead of the shared `/tmp`.
+            match ftp_client_gui_lib::aws_credentials_import::default_aws_cli_export_path() {
+                Ok(p) => {
+                    created_private_aws_dir = p.parent().map(std::path::Path::to_path_buf);
+                    p
+                }
+                Err(e) => {
+                    print_error(format, &format!("export failed: {}", e), 4);
+                    return 4;
+                }
+            }
+        }
         None => std::env::temp_dir().join(format!("aeroftp-{}-export.{}", src, ext)),
     };
 
@@ -44364,29 +44423,40 @@ async fn cmd_export_bridge(
     // `export_<src>` (shared signature
     // `(&[<Src>ExportServer], &HashMap<String,String>, &Path) -> Result<R,String>`,
     // where `R` is a count or an outcome that also names what it refused).
-    use ftp_client_gui_lib::bridge_shared::ExportReport;
+    use ftp_client_gui_lib::bridge_shared::{ExportParts, ExportReport};
     macro_rules! run_export {
         ($ty:ident, $f:expr) => {{
             let exportable: Vec<$ty> = collected
                 .profiles
                 .iter()
-                .map(|p| $ty {
-                    id: p.id.clone(),
-                    name: p.name.clone(),
-                    host: p.host.clone(),
-                    port: p.port,
-                    username: p.username.clone(),
-                    protocol: Some(p.protocol.clone()),
-                    options: p.options.clone(),
-                    provider_id: p.provider_id.clone(),
-                    initial_path: p.initial_path.clone(),
+                .map(|p| {
+                    let mut opts = p.options.clone();
+                    if src == "aws" || src == "kopia" {
+                        ftp_client_gui_lib::bridge_commands::inject_aws_session_token_export_option(
+                            &mut opts,
+                            &store,
+                            &p.protocol,
+                            &p.id,
+                        );
+                    }
+                    $ty {
+                        id: p.id.clone(),
+                        name: p.name.clone(),
+                        host: p.host.clone(),
+                        port: p.port,
+                        username: p.username.clone(),
+                        protocol: Some(p.protocol.clone()),
+                        options: opts,
+                        provider_id: p.provider_id.clone(),
+                        initial_path: p.initial_path.clone(),
+                    }
                 })
                 .collect();
             $f(&exportable, &collected.passwords, &target_path).map(ExportReport::into_export_parts)
         }};
     }
 
-    let result: Result<(usize, Vec<(String, String)>), String> = match src {
+    let result: Result<ExportParts, String> = match src {
         "aws" => run_export!(AwsExportServer, export_aws_credentials),
         "ssh" => run_export!(SshExportServer, export_ssh_config),
         "mc" => run_export!(McExportServer, export_mc),
@@ -44403,20 +44473,26 @@ async fn cmd_export_bridge(
     };
 
     match result {
-        Ok((count, refused)) => {
+        Ok((count, refused, warnings)) => {
             // Two lists of refusals reach the operator as one: the profiles
             // the protocol filter dropped, and the ones the exporter itself
             // could not write or had no room for (single-repository formats).
             let mut skipped = collected.skipped.clone();
             skipped.extend(refused);
             if count == 0 {
+                if let Some(dir) = created_private_aws_dir.as_deref() {
+                    let _ = std::fs::remove_dir(dir);
+                }
                 emit_empty_export(json, &skipped);
                 return 4;
             }
-            emit_export_success(json, label, count, &target_path, &skipped);
+            emit_export_success(json, label, count, &target_path, &skipped, &warnings);
             0
         }
         Err(e) => {
+            if let Some(dir) = created_private_aws_dir.as_deref() {
+                let _ = std::fs::remove_dir(dir);
+            }
             print_error(format, &format!("export failed: {}", e), 4);
             4
         }
@@ -46762,32 +46838,63 @@ fn emit_empty_export(json: bool, skipped: &[(String, String)]) {
     }
 }
 
+fn format_export_success_json(
+    count: usize,
+    target_path: &std::path::Path,
+    skipped: &[(String, String)],
+    warnings: &[(String, String)],
+) -> serde_json::Value {
+    serde_json::json!({
+        "exported": count,
+        "path": target_path.display().to_string(),
+        "skipped": skipped,
+        "warnings": warnings,
+    })
+}
+
+fn format_export_success_text(
+    count: usize,
+    target_path: &std::path::Path,
+    skipped: &[(String, String)],
+    warnings: &[(String, String)],
+) -> String {
+    let mut out = format!("Exported {} profiles to {}\n", count, target_path.display());
+    if !skipped.is_empty() {
+        out.push('\n');
+        out.push_str(&format!("Skipped ({}):\n", skipped.len()));
+        for (n, r) in skipped {
+            out.push_str(&format!("  {} : {}\n", n, r));
+        }
+    }
+    if !warnings.is_empty() {
+        out.push('\n');
+        out.push_str(&format!("Warnings ({}):\n", warnings.len()));
+        for (n, r) in warnings {
+            out.push_str(&format!("  {} : {}\n", n, r));
+        }
+    }
+    out
+}
+
 fn emit_export_success(
     json: bool,
     label: &str,
     count: usize,
     target_path: &std::path::Path,
     skipped: &[(String, String)],
+    warnings: &[(String, String)],
 ) {
     let _ = label;
     if json {
         println!(
             "{}",
-            serde_json::json!({
-                "exported": count,
-                "path": target_path.display().to_string(),
-                "skipped": skipped,
-            })
+            format_export_success_json(count, target_path, skipped, warnings)
         );
     } else {
-        eprintln!("Exported {} profiles to {}", count, target_path.display());
-        if !skipped.is_empty() {
-            eprintln!();
-            eprintln!("Skipped ({}):", skipped.len());
-            for (n, r) in skipped {
-                eprintln!("  {} : {}", n, r);
-            }
-        }
+        eprint!(
+            "{}",
+            format_export_success_text(count, target_path, skipped, warnings)
+        );
     }
 }
 
@@ -110348,5 +110455,34 @@ mod get_slash_key_tests {
             assert!(!cli_get_target_has_file_name(name, true, Some(true)));
         }
         assert!(cli_get_target_has_file_name("normal.txt", false, None));
+    }
+
+    #[test]
+    fn cli_export_success_formats_warnings_in_json_and_text() {
+        let target = std::path::Path::new("/tmp/private/credentials");
+        let skipped = vec![("bad".to_string(), "double quote".to_string())];
+        let warnings = vec![
+            (
+                "AWS config".to_string(),
+                "existing /tmp/private/config was left unchanged; written to config.aeroftp"
+                    .to_string(),
+            ),
+            (
+                "AWS credentials".to_string(),
+                "existing /tmp/private/credentials was left unchanged; written to credentials.aeroftp"
+                    .to_string(),
+            ),
+        ];
+
+        let json_out = format_export_success_json(1, target, &skipped, &warnings);
+        assert_eq!(json_out["exported"], 1);
+        assert_eq!(json_out["warnings"].as_array().unwrap().len(), 2);
+        assert_eq!(json_out["warnings"][0][0], "AWS config");
+        assert_eq!(json_out["warnings"][1][0], "AWS credentials");
+
+        let text_out = format_export_success_text(1, target, &skipped, &warnings);
+        assert!(text_out.contains("Warnings (2):"), "{text_out}");
+        assert!(text_out.contains("AWS config :"), "{text_out}");
+        assert!(text_out.contains("AWS credentials :"), "{text_out}");
     }
 }
