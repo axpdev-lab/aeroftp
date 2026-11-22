@@ -2257,6 +2257,11 @@ fn apply_profile_decisions(
     let mut written: HashMap<String, Option<Zeroizing<String>>> = HashMap::new();
     // The rows of the keys the step wrote whole, as it left them.
     let mut written_row: HashMap<String, Option<Zeroizing<String>>> = HashMap::new();
+    // The keys whose write was declined because another writer changed them
+    // since (a refresh), with what the import had left there: a rollback
+    // puts them back only while they still hold it, so it never replaces the
+    // value the decline kept.
+    let mut declined: HashMap<String, Option<Zeroizing<String>>> = HashMap::new();
 
     let applied = (|| -> Result<(), String> {
         for (key, value) in &outcome.secret_ops {
@@ -2317,9 +2322,15 @@ fn apply_profile_decisions(
                     written.insert(key.clone(), value.map(|v| Zeroizing::new(v.to_string())));
                     written_row.insert(key.clone(), value.map(|v| Zeroizing::new(v.to_string())));
                 }
-                Ok(false) => tracing::info!(
-                    "Keystore import: {key} was rewritten during the import and kept"
-                ),
+                Ok(false) => {
+                    if let Some(expected) = expected {
+                        declined
+                            .insert(key.clone(), expected.map(|v| Zeroizing::new(v.to_string())));
+                    }
+                    tracing::info!(
+                        "Keystore import: {key} was rewritten during the import and kept"
+                    )
+                }
                 Err(e) => {
                     if e.vault_written {
                         written.insert(key.clone(), value.map(|v| Zeroizing::new(v.to_string())));
@@ -2357,7 +2368,7 @@ fn apply_profile_decisions(
     let secrets = touched
         .iter()
         .filter_map(|key| {
-            let landed = match written.get(key) {
+            let landed = match written.get(key).or_else(|| declined.get(key)) {
                 Some(value) => Some(value.clone()),
                 None => match in_vault_written(key) {
                     Some(value) => Some(Some(value.clone())),
@@ -6319,6 +6330,87 @@ mod tests {
             .profile_decisions_error
             .expect("the profile step did not fail");
         assert!(error.contains("refused (test)"), "{error}");
+    }
+
+    /// A decision write declined because a refresh rotated a private row of a
+    /// partition the import restored keeps the rotated token through a
+    /// rollback too: the list save fails after it, and the rollback puts the
+    /// row back only while it holds what the restore left there.
+    #[test]
+    fn a_rollback_keeps_a_private_row_its_decision_declined() {
+        let _guard = crate::user_partitions::test_lock();
+        crate::user_partitions::clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let cfg = dir.path().join("config");
+        let key = "oauth_dropbox_srv_drive";
+        let bob = bob_with_his_token(&store, &cfg, key);
+        let source_db = dir.path().join("copy.db");
+        rusqlite::Connection::open(cfg.join("user_partitions.db"))
+            .unwrap()
+            .execute("VACUUM INTO ?1", [source_db.to_str().unwrap()])
+            .unwrap();
+        let root = store.derive_user_partition_wrapping_key();
+        let mut conn = rusqlite::Connection::open(&source_db).unwrap();
+        let backup_list = [dropbox("srv_drive", "Drive B")];
+        crate::user_partitions::replace_server_profiles_for(&mut conn, &root, bob, &backup_list)
+            .unwrap();
+        crate::user_partitions::set_user_credential_for(
+            &conn,
+            &root,
+            bob,
+            key,
+            "oauth",
+            "bob-backup-token",
+        )
+        .unwrap();
+        drop(conn);
+        crate::user_partitions::clear_user_session();
+        let backup = full_backup(dir.path(), &source_db, &backup_list);
+        let hook_db = cfg.join("user_partitions.db");
+        let trigger_db = hook_db.clone();
+        before_profile_decisions(move |store| {
+            let conn = rusqlite::Connection::open(&hook_db).unwrap();
+            let root = Zeroizing::new(store.derive_user_partition_wrapping_key());
+            crate::user_partitions::set_user_credential_for(
+                &conn,
+                &root,
+                bob,
+                key,
+                "oauth",
+                "bob-rotated",
+            )
+            .unwrap();
+            conn.execute_batch(
+                "CREATE TRIGGER refuse_list BEFORE INSERT ON server_profiles
+                 BEGIN SELECT RAISE(ABORT, 'disk full'); END;",
+            )
+            .unwrap();
+        });
+
+        let result = import_deciding(
+            &store,
+            &cfg,
+            &backup,
+            ImportSections::default(),
+            &[decide(
+                "srv_drive",
+                keystore_profile_plan::ProfileDecision::Reject,
+            )],
+        );
+        rusqlite::Connection::open(&trigger_db)
+            .unwrap()
+            .execute_batch("DROP TRIGGER IF EXISTS refuse_list;")
+            .unwrap();
+        let error = result
+            .profile_decisions_error
+            .expect("the profile step did not fail");
+        assert!(error.contains("disk full"), "{error}");
+        assert_eq!(
+            row_in(&store, &cfg, bob, key).as_deref(),
+            Some("bob-rotated"),
+            "the token rotated after the restore is kept"
+        );
     }
 
     /// A private token's only row in a partition the import restored, rotated
