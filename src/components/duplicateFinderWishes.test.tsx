@@ -273,6 +273,90 @@ describe('Find Duplicates enhancements from Discussion #347', () => {
         Image.prototype.decode = origDecode;
       }
     });
+
+    it('rejects a null-size binary file above 25 MiB before Blob creation and accepts one at exactly 25 MiB', async () => {
+      const LIMIT = 25 * 1024 * 1024;
+      // 3 bytes encode to 4 base64 chars; repeat 'AAAA' to build exact-length valid base64 cheaply.
+      const base64ForBytes = (byteLen: number): string => {
+        const fullTriples = Math.floor(byteLen / 3);
+        const rem = byteLen % 3;
+        const tail = rem === 1 ? 'AA==' : rem === 2 ? 'AAA=' : '';
+        return 'AAAA'.repeat(fullTriples) + tail;
+      };
+      const exact25MiB = base64ForBytes(LIMIT);
+      const over25MiB = base64ForBytes(LIMIT + 1);
+
+      const origCreateObjectURL = URL.createObjectURL;
+      const origRevokeObjectURL = URL.revokeObjectURL;
+      const createObjectURLSpy = vi.fn(() => 'blob:mock-wav');
+      URL.createObjectURL = createObjectURLSpy;
+      URL.revokeObjectURL = vi.fn();
+
+      try {
+        invokeMock.mockImplementation(async (cmd: string, args?: { path?: string }) => {
+          if (cmd === 'read_local_file_base64') {
+            if (args?.path === '/audio/over.wav') return over25MiB;
+            if (args?.path === '/audio/exact.wav') return exact25MiB;
+          }
+          if (cmd === 'get_local_files') return [];
+          return null;
+        });
+
+        let previewApi!: ReturnType<typeof usePreview>;
+        const Harness: React.FC = () => {
+          previewApi = usePreview({
+            notify: { error: vi.fn(), info: vi.fn() },
+            toast: { removeToast: vi.fn() },
+            remoteTarget: {
+              snapshot: () => ({ serverId: null, accountId: null, overlayId: null }) as never,
+              changedSince: () => false,
+              changedMessage: () => 'changed',
+            },
+          });
+          return <div data-testid="preview-err">{previewApi.universalPreviewFile?.error ?? ''}</div>;
+        };
+
+        await act(async () => {
+          root.render(<Harness />);
+        });
+
+        // Above 25 MiB: must pass maxSizeMb: 25 and reject BEFORE Blob creation.
+        await act(async () => {
+          await previewApi.openUniversalPreview(
+            { name: 'over.wav', path: '/audio/over.wav', size: null, is_dir: false, modified: null },
+            false,
+            [],
+          );
+        });
+        expect(invokeMock).toHaveBeenCalledWith('read_local_file_base64', {
+          path: '/audio/over.wav',
+          maxSizeMb: 25,
+        });
+        expect(createObjectURLSpy).not.toHaveBeenCalled();
+        expect(previewApi.universalPreviewFile?.blobUrl).toBeUndefined();
+        expect(previewApi.universalPreviewFile?.error).toMatch(/File too large for preview/);
+
+        // Exactly 25 MiB: must succeed and report the exact 25 MiB size.
+        await act(async () => {
+          await previewApi.openUniversalPreview(
+            { name: 'exact.wav', path: '/audio/exact.wav', size: null, is_dir: false, modified: null },
+            false,
+            [],
+          );
+        });
+        expect(invokeMock).toHaveBeenCalledWith('read_local_file_base64', {
+          path: '/audio/exact.wav',
+          maxSizeMb: 25,
+        });
+        expect(createObjectURLSpy).toHaveBeenCalledTimes(1);
+        expect(previewApi.universalPreviewFile?.error).toBeUndefined();
+        expect(previewApi.universalPreviewFile?.blobUrl).toBe('blob:mock-wav');
+        expect(previewApi.universalPreviewFile?.size).toBe(LIMIT);
+      } finally {
+        URL.createObjectURL = origCreateObjectURL;
+        URL.revokeObjectURL = origRevokeObjectURL;
+      }
+    });
   });
 
   // Wish 3: Refresh without rescanning
