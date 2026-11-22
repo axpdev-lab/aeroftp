@@ -182,12 +182,12 @@ pub struct PlanInputs {
     /// the import wrote anything: what a failed step puts back in the vault
     /// when the receiver's writes leave it alone.
     pub local_vault: HashMap<String, Option<Zeroizing<String>>>,
-    /// The receiver's row of each key written through the vault (the row
-    /// that mirrors a vault value), as the import leaves it, read when the
-    /// plan was made: the restored partition's row when the import restores
-    /// one, this device's otherwise. `None` = no row; a key whose row could
-    /// not be read is not in the map. A decision replaces the row only while
-    /// it still holds this (or the vault section's value), so a token
+    /// The receiver's row of each key (the row that mirrors a vault value,
+    /// or a private token's only copy), as the import leaves it, read when
+    /// the plan was made: the restored partition's row when the import
+    /// restores one, this device's otherwise. `None` = no row; a key whose row
+    /// could not be read is not in the map. A decision replaces the row only
+    /// while it still holds this (or the vault section's value), so a token
     /// refreshed while the import runs is kept.
     pub receiver_rows: HashMap<String, Option<Zeroizing<String>>>,
     /// The receiver is this device's own account, by its identity: its
@@ -436,14 +436,10 @@ fn copy_of(
 /// signed in to after the backup lives in its row alone, which the restored
 /// partition does not have, so the key the backup does not carry would be
 /// lost with it. Every profile the final list keeps gets this device's value
-/// of such a key back, unless a write of the key is already planned.
-fn carry_local_private_tokens(
-    inputs: &PlanInputs,
-    profiles: &[Value],
-    local_by_id: &HashMap<&str, &Value>,
-    backup_by_id: &HashMap<&str, &Value>,
-    ops: &mut Vec<SecretOp>,
-) {
+/// of such a key back, unless a write of the key is already planned. The keys
+/// are those of the version kept: a profile whose provider changed keeps no
+/// token of the provider it left.
+fn carry_local_private_tokens(inputs: &PlanInputs, profiles: &[Value], ops: &mut Vec<SecretOp>) {
     if !(inputs.targets_restored_partition
         && inputs.keep_local_by_default
         && inputs.receiver_is_here
@@ -452,9 +448,8 @@ fn carry_local_private_tokens(
         return;
     }
     let mut planned: HashSet<String> = ops.iter().map(|(k, _)| k.clone()).collect();
-    for id in profiles.iter().filter_map(profile_id) {
-        let keys = keys_for(local_by_id.get(id).copied(), backup_by_id.get(id).copied());
-        for key in keys {
+    for profile in profiles {
+        for key in secret_keys(profile) {
             if crate::user_partitions::private_token_type(&key).is_none()
                 || inputs.backup_secrets.contains_key(&key)
                 || planned.contains(&key)
@@ -695,7 +690,7 @@ pub fn apply(
     // applies (`util::profile_name`), against the list the plan was read
     // from: the partition the write lands in may already be the backup's.
     let (profiles, _) = crate::util::profile_name::unique_profile_names(&inputs.local, &profiles);
-    carry_local_private_tokens(inputs, &profiles, &local_by_id, &backup_by_id, &mut ops);
+    carry_local_private_tokens(inputs, &profiles, &mut ops);
 
     Ok(PlanOutcome {
         profiles,
@@ -1052,6 +1047,50 @@ mod tests {
         let out = apply(&i, &[], &fp(&i), &mut || unreachable!()).unwrap();
         assert_eq!(ids(&out.profiles), vec!["srv_a", "srv_b", "srv_d", "srv_c"]);
         assert_eq!(out.profiles[1]["name"], "Beta");
+    }
+
+    /// "Skip existing" over a restored partition, a profile that moved from
+    /// Dropbox to SFTP, the change accepted: the carry of this device's
+    /// private tokens follows the version kept, so the Dropbox token the SFTP
+    /// profile no longer uses is not written into the restored partition.
+    /// Kept from this device instead, the Dropbox profile gets it back.
+    #[test]
+    fn a_carry_takes_only_the_keys_of_the_version_kept() {
+        let carried = |decision: ProfileDecision| {
+            let mut i = inputs(true);
+            i.local = vec![
+                json!({"id": "srv_box", "name": "Box", "protocol": "dropbox", "host": "", "port": 0}),
+            ];
+            i.backup = Some(vec![
+                json!({"id": "srv_box", "name": "Box", "protocol": "sftp", "host": "b.example", "port": 22}),
+            ]);
+            i.keep_local_by_default = true;
+            i.targets_restored_partition = true;
+            i.receiver_is_here = true;
+            i.receiver = Some(Receiver {
+                user_id: 2,
+                legacy_owner: false,
+                identity: [7; 16],
+            });
+            i.local_secrets = local_secrets(&[("oauth_dropbox_srv_box", "local-dropbox-token")]);
+            i.backup_secrets = secrets(&[("server_srv_box", "pw-sftp")]);
+            let decisions = [ProfileDecisionInput {
+                id: "srv_box".into(),
+                decision,
+                copy_name: None,
+            }];
+            let out = apply(&i, &decisions, &fp(&i), &mut || unreachable!()).unwrap();
+            op(&out.secret_ops, "oauth_dropbox_srv_box").map(|v| v.map(str::to_string))
+        };
+        assert_eq!(
+            carried(ProfileDecision::Accept),
+            None,
+            "the SFTP version kept gets no Dropbox token"
+        );
+        assert_eq!(
+            carried(ProfileDecision::Reject),
+            Some(Some("local-dropbox-token".to_string()))
+        );
     }
 
     #[test]
