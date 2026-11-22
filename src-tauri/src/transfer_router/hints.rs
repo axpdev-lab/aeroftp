@@ -117,6 +117,7 @@ fn webdav_variant(server_url: Option<&str>, preset_id: Option<&str>) -> Provider
                 | "tabdigital-webdav"
                 | "magentacloud"
                 | "magentacloud-webdav"
+                | "murena"
         ) {
             return ProviderHint::WebDavNextcloud;
         }
@@ -137,6 +138,7 @@ fn webdav_variant(server_url: Option<&str>, preset_id: Option<&str>) -> Provider
         if lower.contains("felicloud.com")
             || lower.contains("tab.digital")
             || lower.contains("magentacloud.de")
+            || url_host_is_murena(&lower)
         {
             return ProviderHint::WebDavNextcloud;
         }
@@ -147,6 +149,19 @@ fn webdav_variant(server_url: Option<&str>, preset_id: Option<&str>) -> Provider
     // 3. Vanilla: Apache mod_dav, lighttpd mod_webdav, nginx_dav,
     //    self-hosted WebDAV without a Nextcloud signature.
     ProviderHint::WebDavVanilla
+}
+
+/// Whether the host of `url` (already lowercase) is `murena.io` or one of its
+/// subdomains: a domain boundary, so `notmurena.io` or
+/// `murena.io.example.com` is not Murena.
+fn url_host_is_murena(url: &str) -> bool {
+    let rest = url.split_once("://").map_or(url, |(_, rest)| rest);
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
+    let host_port = authority
+        .rsplit_once('@')
+        .map_or(authority, |(_, host)| host);
+    let host = host_port.split(':').next().unwrap_or("");
+    host == "murena.io" || host.ends_with(".murena.io")
 }
 
 pub fn recommend(ctx: RouteContext) -> Decision {
@@ -404,6 +419,41 @@ mod tests {
             Some("nextcloud"),
         );
         assert_eq!(hint, ProviderHint::WebDavNextcloud);
+    }
+
+    #[test]
+    fn detect_webdav_murena_via_preset_id_and_host_boundary() {
+        for (url, preset) in [
+            ("https://murena.io", Some("murena")),
+            ("https://murena.io", None),
+            ("https://MURENA.IO:443/", None),
+        ] {
+            assert_eq!(
+                from_provider_type(ProviderType::WebDav, Some(url), preset),
+                ProviderHint::WebDavNextcloud,
+                "{url} {preset:?}"
+            );
+        }
+        // The preset alone routes the profile: no URL, or a URL the host rule
+        // does not know.
+        for url in [None, Some("https://files.example.test/")] {
+            assert_eq!(
+                from_provider_type(ProviderType::WebDav, url, Some("murena")),
+                ProviderHint::WebDavNextcloud,
+                "{url:?}"
+            );
+        }
+        for url in [
+            "https://notmurena.io",
+            "https://murena.io.example.com",
+            "https://example.com/murena.io",
+        ] {
+            assert_eq!(
+                from_provider_type(ProviderType::WebDav, Some(url), None),
+                ProviderHint::WebDavVanilla,
+                "{url}"
+            );
+        }
     }
 
     #[test]

@@ -43,6 +43,9 @@ export function NextcloudTrashManager({ generation, providerName, onClose, onRef
   const t = useTranslation();
   const modalDrag = useDraggableModal();
   const humanLog = useHumanizedLog();
+  // The preset's name (Murena Workspace, Felicloud, TAB.DIGITAL) in the title
+  // and in every Activity Log line; a plain Nextcloud says Nextcloud.
+  const label = providerName || 'Nextcloud';
   const [items, setItems] = useState<NextcloudTrashItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -87,15 +90,15 @@ export function NextcloudTrashManager({ generation, providerName, onClose, onRef
     const ids = getSelectedIds();
     if (ids.length === 0) return;
     const selectedCount = ids.length;
-    const logId = humanLog.logRaw('activity.trash_restore_start', 'INFO', { provider: 'Nextcloud', count: selectedCount });
+    const logId = humanLog.logRaw('activity.trash_restore_start', 'INFO', { provider: label, count: selectedCount });
     setActionLoading('restore');
     try {
       await invoke('webdav_restore_trash', { ids, generation });
-      humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_restore_success', { provider: 'Nextcloud', count: selectedCount }) });
+      humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_restore_success', { provider: label, count: selectedCount }) });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: t('activity.trash_restore_error', { provider: 'Nextcloud' }) });
+      humanLog.updateEntry(logId, { status: 'error', message: t('activity.trash_restore_error', { provider: label }) });
       setError(String(err));
     } finally {
       setActionLoading(null);
@@ -106,14 +109,14 @@ export function NextcloudTrashManager({ generation, providerName, onClose, onRef
     const ids = getSelectedIds();
     if (ids.length === 0) return;
     const selectedCount = ids.length;
-    const logId = humanLog.logRaw('activity.trash_delete_start', 'INFO', { provider: 'Nextcloud', count: selectedCount });
+    const logId = humanLog.logRaw('activity.trash_delete_start', 'INFO', { provider: label, count: selectedCount });
     setActionLoading('delete');
     try {
       await invoke('webdav_delete_trash', { ids, generation });
-      humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_delete_success', { provider: 'Nextcloud', count: selectedCount }) });
+      humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_delete_success', { provider: label, count: selectedCount }) });
       await loadTrash();
     } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: t('activity.trash_delete_error', { provider: 'Nextcloud' }) });
+      humanLog.updateEntry(logId, { status: 'error', message: t('activity.trash_delete_error', { provider: label }) });
       setError(String(err));
     } finally {
       setActionLoading(null);
@@ -130,15 +133,15 @@ export function NextcloudTrashManager({ generation, providerName, onClose, onRef
   const confirmEmptyTrash = async () => {
     setPendingEmptyConfirm(false);
     const totalCount = items.length;
-    const logId = humanLog.logRaw('activity.trash_empty_start', 'INFO', { provider: 'Nextcloud', count: totalCount });
+    const logId = humanLog.logRaw('activity.trash_empty_start', 'INFO', { provider: label, count: totalCount });
     setActionLoading('empty');
     try {
       await invoke('webdav_empty_trash', { generation });
-      humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_empty_success', { provider: 'Nextcloud' }) });
+      humanLog.updateEntry(logId, { status: 'success', message: t('activity.trash_empty_success', { provider: label }) });
       await loadTrash();
       onRefreshFiles?.();
     } catch (err) {
-      humanLog.updateEntry(logId, { status: 'error', message: t('activity.trash_empty_error', { provider: 'Nextcloud' }) });
+      humanLog.updateEntry(logId, { status: 'error', message: t('activity.trash_empty_error', { provider: label }) });
       setError(String(err));
     } finally {
       setActionLoading(null);
@@ -163,7 +166,6 @@ export function NextcloudTrashManager({ generation, providerName, onClose, onRef
     return () => window.removeEventListener('keydown', handleKey);
   }, [guarded.requestClose, pendingEmptyConfirm]);
 
-  const label = providerName || 'Nextcloud';
 
   // Normalized for the shared trash table (sorting, Type column,
   // Ctrl/Shift and rubber-band selection live there).

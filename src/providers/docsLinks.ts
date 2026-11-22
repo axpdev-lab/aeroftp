@@ -58,6 +58,7 @@ const PROVIDER_ID_TO_SLUG: Record<string, string> = {
     s3drive: 's3drive',
     jianguoyun: 'jianguoyun',
     felicloud: 'felicloud',
+    murena: 'murena',
     pixelunion: 'pixelunion',
     tabdigital: 'tabdigital',
     sourceforge: 'sourceforge',

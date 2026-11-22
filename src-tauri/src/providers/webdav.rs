@@ -972,6 +972,14 @@ fn body_cut_short(error: reqwest::Error, received: u64, announced: u64) -> Strin
     }
 }
 
+/// Hosted Nextcloud presets whose versions app is off: the versions
+/// collection answers 404 (cloud.felicloud.com and murena.io, measured on
+/// 2026-11-16), so their file menu must not offer versions. Their registry rows
+/// declare `versioning: false`, and `featureClaims.test.ts` holds the registry
+/// and this list equal. `felicloud-webdav` is the id a Felicloud profile saved
+/// on the generic WebDAV form is matched to.
+const VERSIONS_OFF_PRESETS: &[&str] = &["felicloud", "felicloud-webdav", "murena"];
+
 /// #958: the Filen Desktop bridge never answers `Depth: infinity`, so asking
 /// it cost every used-storage scan the whole header cap.
 /// Whether the account behind a WebDAV or S3 endpoint cannot be verified from
@@ -3696,17 +3704,20 @@ impl WebDavProvider {
 
     /// Whether this server keeps file versions AeroFTP can read: the
     /// Nextcloud versions DAV collection. ownCloud, also Nextcloud-class for
-    /// the file root, keeps versions under another path, so it is left out.
+    /// the file root, keeps versions under another path, so it is left out,
+    /// and so is a hosted preset whose versions app is off
+    /// ([`VERSIONS_OFF_PRESETS`]).
     fn supports_nextcloud_versions(&self) -> bool {
-        let owncloud = self
-            .config
-            .provider_id
-            .as_deref()
-            .map(str::trim)
-            .is_some_and(|id| {
-                id.eq_ignore_ascii_case("owncloud") || id.eq_ignore_ascii_case("owncloud-webdav")
-            });
-        self.is_nextcloud_for_dav() && !owncloud
+        let id = self.config.provider_id.as_deref().map(str::trim);
+        let owncloud = id.is_some_and(|id| {
+            id.eq_ignore_ascii_case("owncloud") || id.eq_ignore_ascii_case("owncloud-webdav")
+        });
+        let versions_off = id.is_some_and(|id| {
+            VERSIONS_OFF_PRESETS
+                .iter()
+                .any(|off| id.eq_ignore_ascii_case(off))
+        });
+        self.is_nextcloud_for_dav() && !owncloud && !versions_off
     }
 
     /// `oc:fileid` of `path` ([`Self::nextcloud_file_of`]). Versions are
@@ -12361,6 +12372,72 @@ exit 1
             p.nextcloud_base_url(),
             Some("https://cloud.example.com/owncloud".to_string())
         );
+    }
+
+    /// The Murena Workspace preset is Nextcloud on murena.io: its manifest
+    /// server, with the user name filled in, opens the share and trashbin
+    /// surfaces at the murena.io origin, as the twin Felicloud preset does.
+    #[test]
+    fn murena_preset_server_is_a_nextcloud_root_at_the_murena_origin() {
+        let preset = crate::connection_manifest::preset("murena").expect("murena preset");
+        let server = preset
+            .defaults
+            .get("server")
+            .and_then(|v| v.as_str())
+            .expect("preset server");
+        let mut extra = std::collections::HashMap::new();
+        extra.insert("provider_id".to_string(), "murena".to_string());
+        let config = crate::providers::ProviderConfig {
+            name: "murena".into(),
+            provider_type: crate::providers::ProviderType::WebDav,
+            host: server.into(),
+            port: Some(443),
+            username: Some("alice".into()),
+            password: None,
+            initial_path: None,
+            extra,
+        };
+        let p = WebDavProvider::new(WebDavConfig::from_provider_config(&config).unwrap())
+            .expect("provider");
+        assert_eq!(
+            p.config.url,
+            "https://murena.io/remote.php/dav/files/alice/"
+        );
+        assert!(p.is_nextcloud());
+        assert_eq!(
+            p.nextcloud_base_url(),
+            Some("https://murena.io".to_string())
+        );
+    }
+
+    /// Murena and Felicloud answer 404 on the versions collection, so the
+    /// gate the GUI file menu, the CLI and MCP read stays shut for them,
+    /// while the same file root under the `nextcloud` id still offers versions.
+    #[test]
+    fn a_preset_with_the_versions_app_off_offers_no_versions() {
+        let at = |url: &str, id: &str| {
+            let mut config = test_config(url);
+            config.provider_id = Some(id.into());
+            WebDavProvider::new(config).unwrap()
+        };
+        let murena = "https://murena.io/remote.php/dav/files/alice/";
+        let felicloud = "https://cloud.felicloud.com/remote.php/dav/files/alice/";
+        for (url, id) in [
+            (murena, "murena"),
+            (murena, " Murena "),
+            (felicloud, "felicloud"),
+            (felicloud, "felicloud-webdav"),
+        ] {
+            let p = at(url, id);
+            assert!(p.is_nextcloud_for_dav(), "{id}: a Nextcloud file root");
+            assert!(!p.supports_versions(), "{id}: versions");
+            assert!(!p.supports_version_delete(), "{id}: version delete");
+            assert!(!p.supports_version_restore(), "{id}: version restore");
+        }
+        let nextcloud = at(murena, "nextcloud");
+        assert!(nextcloud.supports_versions());
+        assert!(nextcloud.supports_version_delete());
+        assert!(nextcloud.supports_version_restore());
     }
 
     /// The guard must stay a guard: vanilla WebDAV is still not Nextcloud, so

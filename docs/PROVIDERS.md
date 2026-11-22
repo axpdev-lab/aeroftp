@@ -56,6 +56,7 @@ aeroftp.app / docs.aeroftp.app provider tables mirror this list.
 | Microsoft Azure Blob | US | 12-month trial | Blob* |
 | Microsoft OneDrive | US | 5 GB | OAuth |
 | MinIO | - | self-hosted | S3 |
+| Murena | EU | 1 GB (Nextcloud host) | WebDAV |
 | Neon Object Storage | US | 5 GB (per project) | S3 |
 | Nextcloud | - | self-hosted | WebDAV |
 | OpenDrive | US | 5 GB | API, WebDAV |
@@ -79,7 +80,7 @@ aeroftp.app / docs.aeroftp.app provider tables mirror this list.
 | Yandex Object Storage | RU | 1 GB (always-free, card req.) | S3* |
 | Zoho WorkDrive | IN | 5 GB | OAuth |
 
-<sub>61 providers, 75 connection methods. `*` marks a paid / credit-card-gated plan. HQ is the ISO 3166-1 alpha-2 of the company HQ (EU = pan-European). Free-tier sizes are approximate: verify with the provider.</sub>
+<sub>62 providers, 76 connection methods. `*` marks a paid / credit-card-gated plan. HQ is the ISO 3166-1 alpha-2 of the company HQ (EU = pan-European). Free-tier sizes are approximate: verify with the provider.</sub>
 
 <!-- END PROVIDERS-TABLE -->
 

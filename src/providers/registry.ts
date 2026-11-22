@@ -2055,6 +2055,46 @@ export const PROVIDERS: ProviderConfig[] = [
         signupUrl: 'https://felicloud.com/en/signup/',
     },
     {
+        id: 'murena',
+        name: 'Murena Workspace',
+        description: 'Murena Workspace (1 GB free, Nextcloud-based, EU)',
+        protocol: 'webdav',
+        category: 'webdav',
+        icon: 'Cloud',
+        color: '#F15A24',
+        stable: true,
+        fields: [
+            {
+                ...COMMON_FIELDS.username,
+                placeholder: 'username',
+                helpText: 'Your Murena user name, the part before @murena.io',
+            },
+            {
+                ...COMMON_FIELDS.password,
+                label: 'App password',
+                helpText: 'Murena Workspace → Settings → Security → Devices & sessions → Create new app password',
+            },
+        ],
+        endpoints: {
+            webdavPath: '/remote.php/dav/files/{username}/',
+            shareLink: '/ocs/v2.php/apps/files_sharing/api/v1/shares',
+        },
+        // Share links (OCS) and the trashbin are Nextcloud features the WebDAV
+        // backend drives, live-tested 2026-11-16.
+        features: {
+            shareLink: true,
+            sync: true,
+            // No versions: murena.io answers 404 on /remote.php/dav/versions/
+            // (the versions app is off, measured 2026-11-16), as Felicloud does;
+            // the WebDAV backend shuts its versions gate for this id.
+            versioning: false,
+            trash: true,
+        },
+        healthCheckUrl: 'https://murena.io',
+        helpUrl: 'https://doc.e.foundation/workspace/',
+        signupUrl: 'https://murena.io/signup',
+    },
+    {
         id: 'blomp',
         name: 'Blomp',
         description: 'Blomp (40 GB free, OpenStack Swift)',

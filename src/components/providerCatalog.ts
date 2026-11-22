@@ -328,6 +328,12 @@ export const PROVIDER_CATALOG: CatalogCompany[] = [
     { company: 'Felicloud', logoId: 'felicloud', countryCode: 'EU', freeStorageGb: 10,
       freeNote: 'Nextcloud host',
       protocols: [{ label: 'WebDAV', protocol: 'webdav', providerId: 'felicloud', category: 'webdav' }] },
+    // Plan card from murena.com/workspace (checked 2026-11-14): 1 GB free,
+    // servers in the EU (Finland). Ordering the free plan needs no card.
+    { company: 'Murena', logoId: 'murena', countryCode: 'EU', freeStorageGb: 1,
+      freeNote: 'Nextcloud host', healthCheckUrl: 'https://murena.io',
+      searchAliases: ['murena workspace', 'murena.io', 'e foundation', '/e/os', 'ecloud'],
+      protocols: [{ label: 'WebDAV', protocol: 'webdav', providerId: 'murena', category: 'webdav' }] },
     { company: 'Cloudinary', logoId: 'cloudinary', countryCode: 'US', freeStorageGb: null,
       freeNote: 'credit-based', healthCheckUrl: 'https://api.cloudinary.com',
       protocols: [{ label: 'API', protocol: 'cloudinary', providerId: 'cloudinary', category: 'media-services' }] },
@@ -479,6 +485,7 @@ export const PROVIDER_GRID: readonly ProviderGridTile[] = [
     // WebDAV
     { logoId: 'nextcloud', icon: 'nextcloud.png', docsPath: 'providers/nextcloud' },
     { logoId: 'felicloud', icon: 'felicloud.png', docsPath: 'providers/felicloud' },
+    { logoId: 'murena', icon: 'murena.png', docsPath: 'providers/murena' },
     { logoId: 'tabdigital', icon: 'tabdigital.png', docsPath: 'providers/tabdigital' },
     { logoId: 'cloudme', icon: 'cloudme.png', docsPath: 'providers/cloudme' },
     { logoId: 'puter', icon: 'puter.png', docsPath: 'providers/puter' },

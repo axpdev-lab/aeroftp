@@ -9,6 +9,7 @@
 import { ServerProfile, ProviderType, getE2EBits, getProtocolClass, getServerCryptOverlay, NATIVE_PROVIDER_PROTOCOLS } from '../types';
 import { getProviderById } from '../providers';
 import { s3ProviderForEndpoint } from '../providers/s3HostMap';
+import { isOcsBadgeProvider } from './serverBadgeSort';
 
 /** The fields the search reads. Saved profiles satisfy it, and so do the
  *  previews a bridge import builds from a third-party config, which carry
@@ -50,6 +51,9 @@ export function deriveProviderId(server: SearchableServer): string | undefined {
         // substring of the whole URL it claimed a Puter or LifetimeCloud drive
         // whose user name is `koofr` (`https://dav.puter.com/koofr`).
         if (davHost === 'koofr.net' || davHost.endsWith('.koofr.net')) return 'koofr-webdav';
+        // Murena Workspace is Nextcloud on murena.io: matched before the
+        // generic Nextcloud rule, on the same domain boundary.
+        if (davHost === 'murena.io' || davHost.endsWith('.murena.io')) return 'murena';
         if (host.includes('nextcloud') || host.includes('cloud.')) return 'nextcloud';
         if (host.includes('seafile')) return 'seafile';
         if (host.includes('jianguoyun')) return 'jianguoyun';
@@ -101,10 +105,7 @@ export function getServerSearchText(server: SearchableServer): string {
         searchTokens.push(`${e2eBits}-bit`, `${e2eBits} bit`, `e2e ${e2eBits}`, 'encryption');
     }
 
-    if (
-        providerId === 'felicloud' || providerId === 'felicloud-webdav'
-        || providerId === 'tabdigital' || providerId === 'tabdigital-webdav'
-    ) {
+    if (isOcsBadgeProvider(providerId)) {
         searchTokens.push('api ocs', 'ocs');
     }
 

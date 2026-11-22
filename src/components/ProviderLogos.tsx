@@ -463,6 +463,17 @@ export const FeliCloudLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     />
 );
 
+// Murena Workspace: official favicon (Nextcloud-based, EU)
+export const MurenaLogo: React.FC<LogoProps> = ({ size = 24 }) => (
+    <img
+        src="/icons/providers/murena.png"
+        alt="Murena"
+        width={size}
+        height={size}
+        style={{ objectFit: 'contain' }}
+    />
+);
+
 // TAB.DIGITAL: blue arrow + "tab" wordmark (Nextcloud-based, EU/Italy, 8 GB free)
 export const TabDigitalLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <img
@@ -695,6 +706,7 @@ export const PROVIDER_LOGOS: Record<string, React.FC<LogoProps>> = {
     'yandexdisk-webdav': YandexDiskLogo,
     'yandex-storage': YandexCloudLogo,
     'felicloud': FeliCloudLogo,
+    'murena': MurenaLogo,
     'tabdigital': TabDigitalLogo,
     'tab-digital': TabDigitalLogo,
     'blomp': BlompLogo,

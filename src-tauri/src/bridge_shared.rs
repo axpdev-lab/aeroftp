@@ -193,6 +193,31 @@ pub(crate) fn map_webdav_vendor(vendor: &str) -> &'static str {
     }
 }
 
+/// The Nextcloud-as-a-service preset a WebDAV host belongs to, on a domain
+/// boundary. rclone names them all `vendor = nextcloud`, so an import reads
+/// the preset back from the host: without it a Murena profile came back as
+/// `nextcloud` and its drive counted twice next to the original.
+pub(crate) fn nextcloud_preset_for_host(host: &str) -> Option<&'static str> {
+    let authority = endpoint_host(host.trim());
+    let host_port = authority
+        .rsplit_once('@')
+        .map_or(authority.as_str(), |(_, host)| host);
+    let host = host_port
+        .split(':')
+        .next()
+        .unwrap_or("")
+        .trim_end_matches('.')
+        .to_ascii_lowercase();
+    [
+        ("murena.io", "murena"),
+        ("felicloud.com", "felicloud"),
+        ("tab.digital", "tabdigital"),
+    ]
+    .into_iter()
+    .find(|(domain, _)| host == *domain || host.ends_with(&format!(".{domain}")))
+    .map(|(_, id)| id)
+}
+
 // ============ URL / host helpers ============
 
 /// Strip scheme and path from an endpoint, keeping `host[:port]`.

@@ -9,8 +9,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const tauri = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: tauri.invoke }));
 vi.mock('../i18n', () => ({ useTranslation: () => (key: string) => key }));
+const humanLog = vi.hoisted(() => ({ logRaw: vi.fn((..._args: unknown[]) => 'log-1'), updateEntry: vi.fn() }));
 vi.mock('../hooks/useHumanizedLog', () => ({
-    useHumanizedLog: () => ({ logRaw: () => 'log-1', updateEntry: () => undefined }),
+    useHumanizedLog: () => humanLog,
 }));
 
 import { AzureTrashManager } from './AzureTrashManager';
@@ -333,6 +334,43 @@ describe('the Nextcloud trash manager commands', () => {
         expect(calls.find(([cmd]) => cmd === 'webdav_delete_trash')?.[1]).toEqual({ ids: [ENTRY.id], generation: 9 });
         expect(calls.find(([cmd]) => cmd === 'webdav_empty_trash')?.[1]).toEqual({ generation: 9 });
         for (const [, args] of calls) expect(args).toMatchObject({ generation: 9 });
+        act(() => root.unmount());
+        host.remove();
+        vi.clearAllMocks();
+    });
+});
+
+// The Activity Log names the preset the trash belongs to, as the dialog title
+// does: a Murena trash is not logged as "Nextcloud".
+describe('the Nextcloud trash manager log', () => {
+    it('names the preset on restore, delete and empty', async () => {
+        // Only this test's log calls are read below.
+        vi.clearAllMocks();
+        const host = document.createElement('div');
+        document.body.appendChild(host);
+        const root = createRoot(host);
+        tauri.invoke.mockImplementation((cmd: string) => Promise.resolve(cmd.includes('list') ? [ENTRY] : undefined));
+        const flush = () => act(async () => { await Promise.resolve(); await Promise.resolve(); });
+        const button = (label: string) => [...document.querySelectorAll('button')].filter(b => b.textContent?.includes(label));
+        const click = (el: HTMLElement) => act(() => { el.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+        act(() => root.render(<NextcloudTrashManager generation={3} providerName="Murena Workspace" onClose={() => undefined} />));
+        await flush();
+        click(button('contextMenu.trashSelectAll')[0]);
+        click(button('contextMenu.restoreFromTrash')[0]);
+        await flush();
+        click(button('contextMenu.trashSelectAll')[0]);
+        click(button('contextMenu.permanentDelete')[0]);
+        await flush();
+        click(button('contextMenu.emptyTrash')[0]);
+        await flush();
+        click(button('contextMenu.emptyTrash')[1]);
+        await flush();
+        const started = humanLog.logRaw.mock.calls.map(([key, , params]) => [key, (params as { provider?: string })?.provider]);
+        expect(started).toEqual([
+            ['activity.trash_restore_start', 'Murena Workspace'],
+            ['activity.trash_delete_start', 'Murena Workspace'],
+            ['activity.trash_empty_start', 'Murena Workspace'],
+        ]);
         act(() => root.unmount());
         host.remove();
         vi.clearAllMocks();

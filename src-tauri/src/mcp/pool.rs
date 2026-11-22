@@ -603,6 +603,18 @@ fn resolve_profile_target(server_query: &str) -> Result<(String, Option<String>)
     Ok((id, profile_identity(matched)))
 }
 
+/// The start folder a saved profile opens: its `initialPath`, with the
+/// WebDAV root a legacy hosted-Nextcloud profile saved twice (host URL and
+/// start folder) read as the root, as the GUI and the CLI read it.
+fn profile_initial_path(profile: &serde_json::Value) -> String {
+    let field = |key: &str| profile.get(key).and_then(|v| v.as_str());
+    crate::profile_loader::strip_legacy_nextcloud_webdav_root(
+        field("initialPath").unwrap_or("/"),
+        field("providerId").unwrap_or(""),
+        field("username").unwrap_or(""),
+    )
+}
+
 /// Map a saved profile's protocol string to its provider type. Extracted from
 /// `create_provider_from_vault` so the mapping is testable: the resources
 /// surface announces capabilities per provider, and an arm missing here makes
@@ -688,10 +700,8 @@ async fn create_provider_from_vault_with_reader(
         .get("username")
         .and_then(|v| v.as_str())
         .unwrap_or("");
-    let initial_path = matched
-        .get("initialPath")
-        .and_then(|v| v.as_str())
-        .unwrap_or("/");
+    let initial_path = profile_initial_path(matched);
+    let initial_path = initial_path.as_str();
 
     // Load the credential blob. The GUI stores either a raw password string or a
     // JSON object with {username, password, access_token, ...}. The S3 bucket
@@ -918,6 +928,34 @@ mod tests {
 
     /// The CLI agent and MCP resolve like the desktop: an id first, then a
     /// name, so a profile named like another's id never stands for it.
+    /// A Felicloud or Murena profile saved with the old preset `basePath`
+    /// opens at the root through MCP, not at the WebDAV root a second time
+    /// below the one its host URL carries; any other start folder is kept.
+    #[test]
+    fn a_legacy_hosted_nextcloud_start_folder_opens_at_the_root() {
+        for id in ["felicloud", "murena"] {
+            let legacy = serde_json::json!({
+                "providerId": id,
+                "username": "alice",
+                "initialPath": "/remote.php/dav/files/alice/",
+            });
+            assert_eq!(profile_initial_path(&legacy), "/", "{id}");
+            let sub = serde_json::json!({
+                "providerId": id,
+                "username": "alice",
+                "initialPath": "/remote.php/dav/files/alice/Documents",
+            });
+            assert_eq!(
+                profile_initial_path(&sub),
+                "/remote.php/dav/files/alice/Documents",
+                "{id}"
+            );
+        }
+        let plain = serde_json::json!({ "providerId": "custom-webdav", "initialPath": "/remote.php/dav/files/alice/", "username": "alice" });
+        assert_eq!(profile_initial_path(&plain), "/remote.php/dav/files/alice/");
+        assert_eq!(profile_initial_path(&serde_json::json!({})), "/");
+    }
+
     #[test]
     fn find_unique_profile_takes_an_id_over_a_profile_named_like_it() {
         let profiles = vec![

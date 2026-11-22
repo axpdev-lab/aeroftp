@@ -86,6 +86,7 @@ const BACKEND_BY_ROW: Record<string, string> = {
     backblaze: 'b2.rs',
     nextcloud: 'webdav.rs',
     felicloud: 'webdav.rs',
+    murena: 'webdav.rs',
     tabdigital: 'webdav.rs',
 };
 
@@ -120,10 +121,30 @@ describe('feature claims follow the backend gate', () => {
     });
 
     // A Nextcloud with the versions app off answers 404 on /remote.php/dav/versions/:
-    // measured on Felicloud 2026-11-16, so neither its preset nor its row claims versions.
-    it('Felicloud claims no versions', () => {
-        expect(getAllProviders().find(p => p.id === 'felicloud')?.features?.versioning).toBe(false);
-        expect(dialogRows().find(row => row.logoId === 'felicloud')?.versioning).toBe(false);
+    // measured on Felicloud and Murena 2026-11-16, so neither preset nor row claims versions.
+    it.each(['felicloud', 'murena'])('%s claims no versions', (id) => {
+        expect(getAllProviders().find(p => p.id === id)?.features?.versioning).toBe(false);
+        expect(dialogRows().find(row => row.logoId === id)?.versioning).toBe(false);
+    });
+
+    // A declared `versioning: false` is kept only if the backend gate shuts for
+    // the id: on a Nextcloud file root the WebDAV gate opens unless the id is in
+    // VERSIONS_OFF_PRESETS, and the GUI file menu, the CLI and MCP read that gate.
+    it('every Nextcloud preset without versions is one the WebDAV gate shuts for', () => {
+        const webdav = sourceOf('webdav.rs') ?? '';
+        const list = /const VERSIONS_OFF_PRESETS: &\[&str\] = &\[([^\]]*)\];/.exec(webdav)?.[1];
+        expect(list, 'webdav.rs: VERSIONS_OFF_PRESETS').toBeDefined();
+        const shut = new Set([...(list ?? '').matchAll(/"([^"]+)"/g)].map(([, id]) => id));
+        const offPresets = getAllProviders()
+            .filter(p => p.protocol === 'webdav' && p.endpoints?.webdavPath?.includes('/remote.php/dav/files/'))
+            .filter(p => p.features?.versioning === false)
+            .map(p => p.id);
+        expect(offPresets.length).toBeGreaterThan(1);
+        for (const id of offPresets) expect(shut.has(id), `${id}: declares no versions, add it to VERSIONS_OFF_PRESETS`).toBe(true);
+        for (const id of shut) {
+            const preset = getAllProviders().find(p => p.id === id);
+            if (preset) expect(preset.features?.versioning, `${id}: shut in webdav.rs, declare versioning: false`).toBe(false);
+        }
     });
 
     it('a Help > Providers row lists versioning only on a backend whose gate opens', () => {

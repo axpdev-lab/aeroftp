@@ -108,6 +108,38 @@ pub fn canonicalize_profile_option_key(key: &str) -> String {
     }
 }
 
+/// A start folder that repeats the Nextcloud WebDAV root of a hosted
+/// Nextcloud preset (`/remote.php/dav/files/<user>`) is the root: profiles
+/// saved while the Felicloud, TAB.DIGITAL (and briefly Murena) presets still
+/// carried a `basePath` kept it both in the host URL and in `initialPath`, and
+/// the provider joined them into a doubled URL. The GUI
+/// (`stripLegacyNextcloudWebdavRoot` in App.tsx), the CLI and MCP read a saved
+/// start folder through this, so such a profile works without a re-save.
+/// A subfolder below the root, or any other provider, is kept as written.
+pub fn strip_legacy_nextcloud_webdav_root(
+    initial_path: &str,
+    provider_id: &str,
+    username: &str,
+) -> String {
+    let is_nextcloud_based = matches!(
+        provider_id,
+        "tabdigital"
+            | "tabdigital-webdav"
+            | "felicloud"
+            | "felicloud-webdav"
+            | "murena"
+            | "nextcloud"
+    );
+    // Blank is read trimmed; the path is compared with the username as stored.
+    if !is_nextcloud_based || username.trim().is_empty() {
+        return initial_path.to_string();
+    }
+    if initial_path.trim_end_matches('/') == format!("/remote.php/dav/files/{username}") {
+        return "/".to_string();
+    }
+    initial_path.to_string()
+}
+
 /// Insert a single profile option into the `extra` map after normalizing the
 /// key and serializing primitive JSON values to strings.
 pub fn insert_profile_option(
@@ -766,6 +798,91 @@ pub fn apply_s3_profile_defaults(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn strip_legacy_nextcloud_webdav_root_strips_exact_wk_path() {
+        assert_eq!(
+            strip_legacy_nextcloud_webdav_root(
+                "/remote.php/dav/files/aeroftpdev",
+                "tabdigital",
+                "aeroftpdev"
+            ),
+            "/"
+        );
+        assert_eq!(
+            strip_legacy_nextcloud_webdav_root(
+                "/remote.php/dav/files/aeroftpdev/",
+                "tabdigital-webdav",
+                "aeroftpdev"
+            ),
+            "/"
+        );
+        assert_eq!(
+            strip_legacy_nextcloud_webdav_root("/remote.php/dav/files/alice", "felicloud", "alice"),
+            "/"
+        );
+        assert_eq!(
+            strip_legacy_nextcloud_webdav_root("/remote.php/dav/files/alice/", "murena", "alice"),
+            "/"
+        );
+        assert_eq!(
+            strip_legacy_nextcloud_webdav_root("/remote.php/dav/files/alice", "nextcloud", "alice"),
+            "/"
+        );
+    }
+
+    #[test]
+    fn strip_legacy_nextcloud_webdav_root_keeps_subfolders() {
+        assert_eq!(
+            strip_legacy_nextcloud_webdav_root(
+                "/remote.php/dav/files/alice/Documents",
+                "tabdigital",
+                "alice"
+            ),
+            "/remote.php/dav/files/alice/Documents"
+        );
+    }
+
+    #[test]
+    fn strip_legacy_nextcloud_webdav_root_skips_other_providers() {
+        assert_eq!(
+            strip_legacy_nextcloud_webdav_root("/remote.php/dav/files/alice", "webdav", "alice"),
+            "/remote.php/dav/files/alice"
+        );
+    }
+
+    #[test]
+    fn strip_legacy_nextcloud_webdav_root_requires_username() {
+        assert_eq!(
+            strip_legacy_nextcloud_webdav_root("/remote.php/dav/files/alice", "tabdigital", ""),
+            "/remote.php/dav/files/alice"
+        );
+        assert_eq!(
+            strip_legacy_nextcloud_webdav_root("/remote.php/dav/files/alice", "murena", "   "),
+            "/remote.php/dav/files/alice"
+        );
+    }
+
+    #[test]
+    fn strip_legacy_nextcloud_webdav_root_compares_the_stored_username() {
+        // A padded username is not trimmed into another account's root.
+        assert_eq!(
+            strip_legacy_nextcloud_webdav_root("/remote.php/dav/files/alice/", "murena", " alice "),
+            "/remote.php/dav/files/alice/"
+        );
+        assert_eq!(
+            strip_legacy_nextcloud_webdav_root(
+                "/remote.php/dav/files/ alice /",
+                "murena",
+                " alice "
+            ),
+            "/"
+        );
+        assert_eq!(
+            strip_legacy_nextcloud_webdav_root("/remote.php/dav/files/alice/", "murena", "alice"),
+            "/"
+        );
+    }
 
     #[test]
     fn normalize_known_camel_case_keys() {

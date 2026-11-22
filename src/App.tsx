@@ -460,6 +460,7 @@ const stripLegacyNextcloudWebdavRoot = (
     pid === 'tabdigital-webdav' ||
     pid === 'felicloud' ||
     pid === 'felicloud-webdav' ||
+    pid === 'murena' ||
     pid === 'nextcloud';
   if (!isNextcloudBased) return initialPath;
   const u = (username || '').trim();
@@ -9178,6 +9179,8 @@ const App: React.FC = () => {
                   ? `Blomp ${effectiveParams.username}`
                   : effectiveParams.providerId === 'felicloud'
                     ? `Felicloud ${effectiveParams.username}`
+                    : effectiveParams.providerId === 'murena'
+                      ? `Murena ${effectiveParams.username}`
                     : effectiveParams.providerId === 'infinicloud'
                       ? `InfiniCLOUD ${effectiveParams.username}`
                       : protocol === 'immich'

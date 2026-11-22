@@ -2434,7 +2434,8 @@
             "discoverFastly": "Fastly Object Storage: S3-kompatibel lagring i 12 regioner (5 GB gratis, kort kreves)",
             "discoverNeon": "Neon Object Storage: S3-kompatibel lagring per prosjektgren (5 GB gratis per prosjekt)",
             "discoverPuter": "Puter-skylagring via WebDAV (25 MB gratis, ingen kort)",
-            "discoverLifetimeCloud": "LifetimeCloud-lagring via WebDAV (1 GB gratis, uten kort)"
+            "discoverLifetimeCloud": "LifetimeCloud-lagring via WebDAV (1 GB gratis, uten kort)",
+            "discoverMurena": "Murena Workspace (1 GB gratis, Nextcloud-basert, EU)"
         },
         "shortcuts": {
             "title": "Tastatursnarveier",

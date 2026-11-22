@@ -737,7 +737,13 @@ mod tests {
 
     #[test]
     fn a_profile_created_with_a_blank_user_name_on_a_template_preset_is_refused() {
-        for preset in ["cloudme", "lifetimecloud", "tabdigital", "felicloud"] {
+        for preset in [
+            "cloudme",
+            "lifetimecloud",
+            "tabdigital",
+            "felicloud",
+            "murena",
+        ] {
             let err = resolve_profile(
                 "webdav",
                 Some(preset),
@@ -749,6 +755,33 @@ mod tests {
             )
             .unwrap_err();
             assert_eq!(err, USERNAME_TEMPLATE_MISSING, "{preset}");
+        }
+    }
+
+    /// A hosted Nextcloud preset starts at the file root its server URL
+    /// already carries: Felicloud and Murena repeated that root as a
+    /// `basePath` until 2026-11-22, so a new profile started there twice.
+    #[test]
+    fn a_hosted_nextcloud_preset_starts_at_its_server_root() {
+        for (preset, root) in [
+            ("murena", "https://murena.io/remote.php/dav/files/alice/"),
+            (
+                "felicloud",
+                "https://cloud.felicloud.com/remote.php/dav/files/alice/",
+            ),
+        ] {
+            let profile = resolve_profile(
+                "webdav",
+                Some(preset),
+                None,
+                None,
+                Some("alice"),
+                None,
+                &serde_json::json!({}),
+            )
+            .unwrap();
+            assert_eq!(profile["host"], root, "{preset}");
+            assert_eq!(profile["initialPath"], "/", "{preset}");
         }
     }
 

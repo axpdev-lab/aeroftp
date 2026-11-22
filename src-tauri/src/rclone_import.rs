@@ -1302,6 +1302,14 @@ fn map_remote(
 
             // Parse URL to extract host and base path
             let (host, base_path, port) = parse_webdav_url(&url);
+            // A hosted Nextcloud preset exports as `vendor = nextcloud`: its
+            // host names the preset back.
+            let provider_id = match provider_id {
+                "nextcloud" => {
+                    crate::bridge_shared::nextcloud_preset_for_host(&host).unwrap_or(provider_id)
+                }
+                other => other,
+            };
 
             let mut options = serde_json::Map::new();
             if !base_path.is_empty() {
@@ -5222,8 +5230,8 @@ pub fn export_rclone(
             }
             "webdav" => {
                 body.push_str("type = webdav\n");
-                // Nextcloud-derived presets (TAB.DIGITAL, FeliCloud, generic
-                // Nextcloud) speak the same WebDAV dialect as upstream
+                // Nextcloud-derived presets (TAB.DIGITAL, FeliCloud, Murena,
+                // generic Nextcloud) speak the same WebDAV dialect as upstream
                 // Nextcloud. Mapping them to vendor=nextcloud lets rclone
                 // use the correct chunked-upload + checksum behaviour.
                 let vendor = match server.provider_id.as_deref() {
@@ -5232,7 +5240,8 @@ pub fn export_rclone(
                     | Some("tabdigital")
                     | Some("tabdigital-webdav")
                     | Some("felicloud")
-                    | Some("felicloud-webdav") => "nextcloud",
+                    | Some("felicloud-webdav")
+                    | Some("murena") => "nextcloud",
                     Some("owncloud") | Some("owncloud-webdav") => "owncloud",
                     _ => "other",
                 };
@@ -11075,6 +11084,133 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
             conf.contains("url = https://cloud.lab.example.test/remote.php/dav/files/alice/"),
             "must synthesise the DAV collection root:\n{conf}"
         );
+    }
+
+    #[test]
+    fn test_export_rclone_murena_preset_uses_the_nextcloud_vendor() {
+        // Murena Workspace is Nextcloud: the preset stores the collection URL
+        // with `{username}`, which the export fills in (the host carries the
+        // path, so it is written as stored, trailing slash included), under
+        // the vendor that gives rclone Nextcloud's chunked upload and
+        // checksums.
+        let servers = vec![RcloneExportServer {
+            id: "murena".to_string(),
+            name: "murena".to_string(),
+            host: "https://murena.io/remote.php/dav/files/{username}/".to_string(),
+            port: 443,
+            username: "alice".to_string(),
+            protocol: Some("webdav".to_string()),
+            options: None,
+            provider_id: Some("murena".to_string()),
+        }];
+        let mut passwords = HashMap::new();
+        passwords.insert("murena".to_string(), "app-password".to_string());
+
+        let tmp = std::env::temp_dir().join("aeroftp-test-export-webdav-murena.conf");
+        export_rclone(&servers, &passwords, &tmp).expect("should export");
+        let conf = std::fs::read_to_string(&tmp).expect("read conf");
+        std::fs::remove_file(&tmp).ok();
+
+        assert!(conf.contains("vendor = nextcloud"), "{conf}");
+        assert!(
+            conf.contains("url = https://murena.io/remote.php/dav/files/alice/\n"),
+            "{conf}"
+        );
+    }
+
+    /// A hosted Nextcloud preset survives export and import: rclone stores
+    /// `vendor = nextcloud`, and the host names the preset back, so the
+    /// reimported profile keys as the same drive as the original. A lookalike
+    /// host stays generic Nextcloud.
+    #[test]
+    fn a_hosted_nextcloud_preset_round_trips_through_rclone() {
+        use crate::storage_dedup::{dedup_key, ProfileView};
+        let cases = [
+            (
+                "murena",
+                "https://murena.io/remote.php/dav/files/{username}/",
+                Some("murena"),
+            ),
+            (
+                "murena",
+                "https://MURENA.IO:443/remote.php/dav/files/{username}/",
+                Some("murena"),
+            ),
+            (
+                "felicloud",
+                "https://cloud.felicloud.com/remote.php/dav/files/{username}/",
+                Some("felicloud"),
+            ),
+            (
+                "tabdigital",
+                "https://fie.nl.tab.digital/remote.php/dav/files/{username}/",
+                Some("tabdigital"),
+            ),
+            (
+                "nextcloud",
+                "https://murena.io.evil.example/remote.php/dav/files/{username}/",
+                None,
+            ),
+            (
+                "nextcloud",
+                "https://notmurena.io/remote.php/dav/files/{username}/",
+                None,
+            ),
+        ];
+        for (i, (id, host, expected)) in cases.into_iter().enumerate() {
+            let name = format!("nc{i}");
+            let servers = vec![RcloneExportServer {
+                id: name.clone(),
+                name: name.clone(),
+                host: host.to_string(),
+                port: 443,
+                username: "alice".to_string(),
+                protocol: Some("webdav".to_string()),
+                options: None,
+                provider_id: Some(id.to_string()),
+            }];
+            let mut passwords = HashMap::new();
+            passwords.insert(name.clone(), "app-password".to_string());
+            let path = std::env::temp_dir().join(format!(
+                "aeroftp-test-nc-round-trip-{}-{i}.conf",
+                std::process::id()
+            ));
+            export_rclone(&servers, &passwords, &path).expect("export");
+            let conf = std::fs::read_to_string(&path).expect("read conf");
+            assert!(conf.contains("vendor = nextcloud"), "{conf}");
+            let result = import_rclone(&path).expect("import");
+            std::fs::remove_file(&path).ok();
+            let back = result
+                .servers
+                .iter()
+                .find(|s| s.name == name)
+                .expect("imported");
+            assert_eq!(
+                back.provider_id.as_deref(),
+                Some(expected.unwrap_or("nextcloud")),
+                "{host}"
+            );
+            assert_eq!(back.username, "alice", "{host}");
+            if let Some(preset) = expected {
+                let key = |provider_id: &str, host: &str| {
+                    dedup_key(&ProfileView {
+                        id: "p",
+                        protocol: "webdav",
+                        provider_id: Some(provider_id),
+                        host,
+                        port: 443,
+                        username: "alice",
+                        used: None,
+                        total: None,
+                    })
+                };
+                assert_eq!(
+                    key(preset, host),
+                    key(preset, &back.host),
+                    "{host}: one drive"
+                );
+            }
+        }
     }
 
     #[test]

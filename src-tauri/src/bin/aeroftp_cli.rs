@@ -84,8 +84,9 @@ use ftp_client_gui_lib::local_bridge::{
     bridge_kind_for_provider_id, probe_bridge_blocking, BridgeUiState,
 };
 use ftp_client_gui_lib::profile_loader::{
-    apply_profile_options, apply_s3_profile_defaults, S3_ENDPOINT_SOURCE_META_KEY,
-    S3_PATH_STYLE_SOURCE_META_KEY, S3_PROVIDER_ID_META_KEY, S3_REGION_SOURCE_META_KEY,
+    apply_profile_options, apply_s3_profile_defaults, strip_legacy_nextcloud_webdav_root,
+    S3_ENDPOINT_SOURCE_META_KEY, S3_PATH_STYLE_SOURCE_META_KEY, S3_PROVIDER_ID_META_KEY,
+    S3_REGION_SOURCE_META_KEY,
 };
 use ftp_client_gui_lib::providers::{
     FileVersion, ProviderConfig, ProviderError, ProviderFactory, ProviderType, RemoteEntry,
@@ -17549,8 +17550,21 @@ fn e2e_bits(proto: &str) -> Option<u16> {
     }
 }
 
+/// The providers of the "API OCS" badge, the bare preset id and the `-webdav`
+/// variant: `OCS_BADGE_PROVIDER_IDS` in `src/utils/serverBadgeSort.ts`, which a
+/// test holds this list equal to.
+const OCS_BADGE_PROVIDER_IDS: &[&str] = &[
+    "felicloud",
+    "felicloud-webdav",
+    "tabdigital",
+    "tabdigital-webdav",
+    "murena",
+];
+
 /// Render the protocol class label exactly as the GUI table shows it for sort
-/// purposes (Type column). Matches `badgeSortLabel` in `MyServersTable.tsx`.
+/// purposes (Type column). Matches `badgeSortLabel` in
+/// `src/utils/serverBadgeSort.ts`: a crypt-overlay profile sorts under Crypt,
+/// as its card badge reads.
 fn badge_sort_label(profile: &serde_json::Value) -> String {
     let proto = profile
         .get("protocol")
@@ -17561,7 +17575,7 @@ fn badge_sort_label(profile: &serde_json::Value) -> String {
         .and_then(|v| v.as_str())
         .unwrap_or("");
     let class = profile_protocol_class(profile);
-    if provider_id == "felicloud" {
+    if class != "Crypt" && OCS_BADGE_PROVIDER_IDS.contains(&provider_id) {
         return "API OCS".to_string();
     }
     let class_part = match (class, e2e_bits(proto)) {
@@ -19093,12 +19107,18 @@ fn compare_profiles(
 /// root: Proton Drive in CLI mode starts in My Files while `/` lists the
 /// sections (Requested 79), so a relative path lands in the first and `ls /`
 /// in the second.
-fn pwd_root(profile: &serde_json::Value) -> (&str, String, Option<&'static str>) {
-    let base = profile
-        .get("initialPath")
-        .and_then(|v| v.as_str())
-        .filter(|s| !s.is_empty())
-        .unwrap_or("/");
+fn pwd_root(profile: &serde_json::Value) -> (String, String, Option<&'static str>) {
+    let field = |key: &str| profile.get(key).and_then(|v| v.as_str()).unwrap_or("");
+    // A legacy hosted-Nextcloud profile that saved the WebDAV root as its
+    // start folder starts at the root, as the connection does.
+    let base = strip_legacy_nextcloud_webdav_root(
+        Some(field("initialPath"))
+            .filter(|s| !s.is_empty())
+            .unwrap_or("/"),
+        field("providerId"),
+        field("username"),
+    );
+    let base = base.as_str();
     // The same resolver the transfer commands use, so this cannot drift from
     // what a real path would do: asked for the root, it returns the base.
     //
@@ -19112,7 +19132,7 @@ fn pwd_root(profile: &serde_json::Value) -> (&str, String, Option<&'static str>)
     // That of Proton Drive in CLI mode is My Files, known without connecting;
     // the base stays "/" so that `/` and the other sections stay reachable.
     let start_folder = (base == "/" && start != "/").then_some(start);
-    (base, root, start_folder)
+    (base.to_string(), root, start_folder)
 }
 
 #[cfg(test)]
@@ -19125,21 +19145,53 @@ mod pwd_root_tests {
         // The root stays the sections; relative paths start in My Files.
         assert_eq!(
             pwd_root(&json!({"protocol": "proton"})),
-            ("/", "/".to_string(), Some("/my-files"))
+            ("/".to_string(), "/".to_string(), Some("/my-files"))
         );
         assert_eq!(
             pwd_root(&json!({"protocol": "proton", "options": {"proton_mode": "native"}})),
-            ("/", String::new(), None)
+            ("/".to_string(), String::new(), None)
         );
         assert_eq!(
             pwd_root(&json!({"protocol": "sftp"})),
-            ("/", String::new(), None)
+            ("/".to_string(), String::new(), None)
         );
         // A saved folder is still the answer.
         assert_eq!(
             pwd_root(&json!({"protocol": "proton", "initialPath": "/my-files/docs"})),
-            ("/my-files/docs", "/my-files/docs".to_string(), None)
+            (
+                "/my-files/docs".to_string(),
+                "/my-files/docs".to_string(),
+                None
+            )
         );
+    }
+
+    /// A Felicloud (or Murena) profile saved with the old preset `basePath`
+    /// starts at the root: `pwd` reports `/`, not the WebDAV root the host
+    /// URL already carries. A subfolder below it is still the answer.
+    #[test]
+    fn a_legacy_hosted_nextcloud_start_folder_is_the_root() {
+        for id in ["felicloud", "murena"] {
+            let legacy = json!({
+                "protocol": "webdav",
+                "providerId": id,
+                "username": "alice",
+                "host": "https://cloud.example.test/remote.php/dav/files/alice/",
+                "initialPath": "/remote.php/dav/files/alice/",
+            });
+            assert_eq!(pwd_root(&legacy).0, "/", "{id}");
+            let sub = json!({
+                "protocol": "webdav",
+                "providerId": id,
+                "username": "alice",
+                "initialPath": "/remote.php/dav/files/alice/Documents",
+            });
+            assert_eq!(
+                pwd_root(&sub).0,
+                "/remote.php/dav/files/alice/Documents",
+                "{id}"
+            );
+        }
     }
 
     /// The root rule belongs to each connection: a Proton Drive base and an
@@ -33191,49 +33243,6 @@ fn resolve_served_backend_path(
     Ok(build_served_remote_path(base_path, &relative))
 }
 
-/// Resolve a user-supplied remote path relative to the profile's initial_path.
-///
-/// When a profile has `initial_path = /www.aeroftp.app`, the provider does `cd /www.aeroftp.app`
-/// after connecting. User paths should be relative to this base:
-///   - `/file.txt`  → `/www.aeroftp.app/file.txt`
-///   - `file.txt`   → `/www.aeroftp.app/file.txt`
-///   - `/sub/file`  → `/www.aeroftp.app/sub/file`
-///
-/// If the user path already starts with the initial_path, it is used as-is.
-/// If initial_path is `/` or empty, leading slashes are stripped to treat the
-/// path as relative to the current working directory.
-/// Mirror of the frontend `stripLegacyNextcloudWebdavRoot` helper from
-/// `aa5865ab`. Profiles saved before that fix kept the legacy WebDAV root
-/// (`/remote.php/dav/files/<user>`) embedded both in the host URL and in
-/// `initialPath`, which causes a doubled URL when the WebDAV provider joins
-/// them. The frontend strips this duplication on save; the CLI applies the
-/// same strip on load so legacy profiles work without a GUI re-save.
-fn strip_legacy_nextcloud_webdav_root(
-    initial_path: &str,
-    provider_id: &str,
-    username: &str,
-) -> String {
-    let pid = provider_id;
-    let is_nextcloud_based = pid == "tabdigital"
-        || pid == "tabdigital-webdav"
-        || pid == "felicloud"
-        || pid == "felicloud-webdav"
-        || pid == "nextcloud";
-    if !is_nextcloud_based {
-        return initial_path.to_string();
-    }
-    let user = username.trim();
-    if user.is_empty() {
-        return initial_path.to_string();
-    }
-    let trimmed = initial_path.trim_end_matches('/');
-    let wk_exact = format!("/remote.php/dav/files/{}", user);
-    if trimmed == wk_exact {
-        return "/".to_string();
-    }
-    initial_path.to_string()
-}
-
 /// Error returned by [`try_resolve_cli_remote_path`] when a user-supplied remote
 /// path must never be silently rewritten against the profile base.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -33255,6 +33264,18 @@ impl std::fmt::Display for RemotePathError {
     }
 }
 
+/// Resolve a user-supplied remote path relative to the profile's initial_path.
+///
+/// When a profile has `initial_path = /www.aeroftp.app`, the provider does `cd /www.aeroftp.app`
+/// after connecting. User paths should be relative to this base:
+///   - `/file.txt`  → `/www.aeroftp.app/file.txt`
+///   - `file.txt`   → `/www.aeroftp.app/file.txt`
+///   - `/sub/file`  → `/www.aeroftp.app/sub/file`
+///
+/// If the user path already starts with the initial_path, it is used as-is.
+/// If initial_path is `/` or empty, leading slashes are stripped to treat the
+/// path as relative to the current working directory.
+///
 /// Fallible core of CLI remote-path resolution.
 ///
 /// Rejects paths that must not be silently substituted (null bytes, `..`
@@ -92842,60 +92863,37 @@ mod tests {
         );
     }
 
+    /// The Type column sort reads the card badge: an OCS preset sorts under
+    /// "API OCS" unless a crypt overlay replaces its badge with Crypt, and the
+    /// OCS list is the GUI's, item for item.
     #[test]
-    fn strip_legacy_nextcloud_webdav_root_strips_exact_wk_path() {
-        assert_eq!(
-            strip_legacy_nextcloud_webdav_root(
-                "/remote.php/dav/files/aeroftpdev",
-                "tabdigital",
-                "aeroftpdev"
-            ),
-            "/"
-        );
-        assert_eq!(
-            strip_legacy_nextcloud_webdav_root(
-                "/remote.php/dav/files/aeroftpdev/",
-                "tabdigital-webdav",
-                "aeroftpdev"
-            ),
-            "/"
-        );
-        assert_eq!(
-            strip_legacy_nextcloud_webdav_root("/remote.php/dav/files/alice", "felicloud", "alice"),
-            "/"
-        );
-        assert_eq!(
-            strip_legacy_nextcloud_webdav_root("/remote.php/dav/files/alice", "nextcloud", "alice"),
-            "/"
-        );
-    }
+    fn badge_sort_label_follows_the_card_badge() {
+        for id in OCS_BADGE_PROVIDER_IDS {
+            let plain = serde_json::json!({ "protocol": "webdav", "providerId": id });
+            assert_eq!(badge_sort_label(&plain), "API OCS", "{id}");
+            for kind in ["aerocrypt", "rclone-crypt"] {
+                let bound = serde_json::json!({
+                    "protocol": "webdav",
+                    "providerId": id,
+                    "aeroCryptOverlay": { "enabled": true, "kind": kind }
+                });
+                assert_eq!(
+                    badge_sort_label(&bound),
+                    format!("Crypt {id}"),
+                    "{id} {kind}"
+                );
+            }
+        }
+        let nextcloud = serde_json::json!({ "protocol": "webdav", "providerId": "nextcloud" });
+        assert_eq!(badge_sort_label(&nextcloud), "WebDAV nextcloud");
 
-    #[test]
-    fn strip_legacy_nextcloud_webdav_root_keeps_subfolders() {
-        assert_eq!(
-            strip_legacy_nextcloud_webdav_root(
-                "/remote.php/dav/files/alice/Documents",
-                "tabdigital",
-                "alice"
-            ),
-            "/remote.php/dav/files/alice/Documents"
-        );
-    }
-
-    #[test]
-    fn strip_legacy_nextcloud_webdav_root_skips_other_providers() {
-        assert_eq!(
-            strip_legacy_nextcloud_webdav_root("/remote.php/dav/files/alice", "webdav", "alice"),
-            "/remote.php/dav/files/alice"
-        );
-    }
-
-    #[test]
-    fn strip_legacy_nextcloud_webdav_root_requires_username() {
-        assert_eq!(
-            strip_legacy_nextcloud_webdav_root("/remote.php/dav/files/alice", "tabdigital", ""),
-            "/remote.php/dav/files/alice"
-        );
+        let gui = include_str!("../../../src/utils/serverBadgeSort.ts");
+        let start = gui
+            .find("OCS_BADGE_PROVIDER_IDS: readonly string[] = [")
+            .expect("the GUI list");
+        let list = &gui[start..start + gui[start..].find("];").expect("end of the GUI list")];
+        let gui_ids: Vec<&str> = list.split('\'').skip(1).step_by(2).collect();
+        assert_eq!(gui_ids, OCS_BADGE_PROVIDER_IDS);
     }
 
     // ── Audit subcommand (M3) ──────────────────────────────────────

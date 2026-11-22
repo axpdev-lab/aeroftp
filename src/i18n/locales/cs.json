@@ -2434,7 +2434,8 @@
             "discoverFastly": "Fastly Object Storage: úložiště kompatibilní s S3 ve 12 regionech (5 GB zdarma, vyžaduje kartu)",
             "discoverNeon": "Neon Object Storage: úložiště kompatibilní se S3 pro každou větev projektu (5 GB zdarma pro projekt)",
             "discoverPuter": "Cloudové úložiště Puter přes WebDAV (25 MB zdarma, bez karty)",
-            "discoverLifetimeCloud": "Úložiště LifetimeCloud přes WebDAV (1 GB zdarma, bez karty)"
+            "discoverLifetimeCloud": "Úložiště LifetimeCloud přes WebDAV (1 GB zdarma, bez karty)",
+            "discoverMurena": "Murena Workspace (1 GB zdarma, založeno na Nextcloud, EU)"
         },
         "shortcuts": {
             "title": "Klávesové zkratky",

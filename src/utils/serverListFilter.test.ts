@@ -158,6 +158,28 @@ describe('deriveProviderId Neon and Puter host boundaries', () => {
     });
 });
 
+describe('deriveProviderId Murena host boundary', () => {
+    const dav = (host: string) => ({ name: 'm', host, username: 'alice', protocol: 'webdav' as const });
+
+    it('classifies murena.io and its subdomains as the Murena preset', () => {
+        expect(deriveProviderId(dav('https://murena.io'))).toBe('murena');
+        expect(deriveProviderId(dav('https://murena.io/remote.php/dav/files/alice/'))).toBe('murena');
+        expect(deriveProviderId(dav('MURENA.IO:443'))).toBe('murena');
+        expect(deriveProviderId(dav('https://eu.murena.io'))).toBe('murena');
+    });
+
+    it('rejects lookalikes', () => {
+        expect(deriveProviderId(dav('https://notmurena.io'))).toBeUndefined();
+        expect(deriveProviderId(dav('https://murena.io.example.com'))).toBeUndefined();
+        expect(deriveProviderId(dav('https://example.com/murena.io'))).toBeUndefined();
+    });
+
+    it('finds a Murena profile by the OCS API it shares with Felicloud', () => {
+        const text = getServerSearchText({ ...dav('https://murena.io'), providerId: 'murena' });
+        expect(text).toContain('api ocs');
+    });
+});
+
 describe('select all on a filtered checklist', () => {
     const all = ids(LAB);
 
@@ -242,12 +264,13 @@ describe('deriveProviderId preset host rules cannot shadow one another', () => {
     // Every rule keyword, as it could appear in a user name or a folder of the
     // URL path. A host-bound rule claims its host whatever the path says.
     const KEYWORDS = ['koofr', 'mail.ru', 'dav.puter.com', 'lifetimecloud.me', 'nextcloud', 'cloud.', 'seafile',
-        'jianguoyun', 'cloudme', 'drivehq', 'teracloud', 'filelu', 'felicloud', 'tab.digital'];
+        'jianguoyun', 'cloudme', 'drivehq', 'teracloud', 'filelu', 'felicloud', 'tab.digital', 'murena.io'];
     const HOST_RULES: Array<[string, string]> = [
         ['app.koofr.net', 'koofr-webdav'],
         ['webdav.cloud.mail.ru', 'mailru-cloud'],
         ['dav.puter.com', 'puter-webdav'],
         ['lifetimecloud.me', 'lifetimecloud'],
+        ['murena.io', 'murena'],
     ];
 
     it('claims each preset host whatever its path names', () => {

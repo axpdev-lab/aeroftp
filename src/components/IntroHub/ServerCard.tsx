@@ -3,6 +3,7 @@ import * as React from 'react';
 import { Edit2, Trash2, Copy, Loader2, Star, Heart, Clock, ShieldCheck, Lock, Check, X, ArrowUpRight, ArrowDownLeft, AlertTriangle, Users, RefreshCw, Wifi, Smartphone } from 'lucide-react';
 import { ServerProfile, ProviderType, getProtocolClass, isSshProtocol, getE2EBits, profileHasQuota, resolveEffectiveQuota, effectiveManualCap, getServerCryptOverlay } from '../../types';
 import { bucketEncryptionBadge } from '../../utils/bucketEncryptionBadge';
+import { isOcsBadgeProvider } from '../../utils/serverBadgeSort';
 import type { PeerDriveState } from '../../hooks/usePeerDriveStates';
 import { shortAfid } from '../../utils/aeroShare';
 import { ProtocolIcon } from '../ProtocolSelector';
@@ -268,14 +269,11 @@ export function ServerBadges({ server, cryptDetailed = false, peerState }: { ser
 
     // Recognise both the bare provider id and the `-webdav` suffix variant
     // emitted by MyServersPanel's host heuristic for legacy profiles.
-    // Both Felicloud and TAB.DIGITAL are Nextcloud-as-a-service providers
+    // Felicloud, TAB.DIGITAL and Murena are Nextcloud-as-a-service providers
     // and share the same API OCS protocol class, so they use the same
     // badge tint to avoid the colour difference reading as a protocol
     // difference. The brand colour lives on the provider logo, not here.
-    const pid = server.providerId || '';
-    const isFelicloud = pid === 'felicloud' || pid === 'felicloud-webdav';
-    const isTabdigital = pid === 'tabdigital' || pid === 'tabdigital-webdav';
-    const isOcsBranded = isFelicloud || isTabdigital;
+    const isOcsBranded = isOcsBadgeProvider(server.providerId);
     const ocsBadgeStyle = isOcsBranded
         ? { backgroundColor: '#0083ce22', color: '#0083ce' }
         : undefined;
