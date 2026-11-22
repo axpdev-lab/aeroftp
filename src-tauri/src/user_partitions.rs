@@ -292,6 +292,27 @@ fn ensure_users_is_default_column(conn: &Connection) -> Result<(), String> {
     Ok(())
 }
 
+/// Idempotent migration adding the `token_uid` column to an existing
+/// `server_profiles` table ([`profile_token_tag`]). Rows written before it
+/// hold none until their list is written again ([`retag_own_profiles_if_pending`]); a
+/// no-op on fresh installs, whose CREATE TABLE below carries the column.
+fn ensure_server_profiles_token_uid_column(conn: &Connection) -> Result<(), String> {
+    let mut stmt = match conn.prepare("PRAGMA table_info(server_profiles)") {
+        Ok(s) => s,
+        Err(_) => return Ok(()),
+    };
+    let columns = stmt
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(|e| format!("ensure_server_profiles_token_uid_column: {e}"))?
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(|e| format!("read column name: {e}"))?;
+    if !columns.is_empty() && !columns.iter().any(|name| name == "token_uid") {
+        conn.execute("ALTER TABLE server_profiles ADD COLUMN token_uid TEXT", [])
+            .map_err(|e| format!("ALTER TABLE server_profiles ADD token_uid: {e}"))?;
+    }
+    Ok(())
+}
+
 pub fn init_db_schema(conn: &Connection) -> Result<(), String> {
     // Idempotent schema migration: if a pre-v3 `users` table already exists
     // without the is_admin column, add it before CREATE TABLE IF NOT EXISTS
@@ -299,6 +320,7 @@ pub fn init_db_schema(conn: &Connection) -> Result<(), String> {
     // until CREATE TABLE runs, so the check just skips).
     ensure_users_is_admin_column(conn)?;
     ensure_users_is_default_column(conn)?;
+    ensure_server_profiles_token_uid_column(conn)?;
     conn.execute_batch(
         "PRAGMA journal_mode = WAL;
          PRAGMA synchronous = NORMAL;
@@ -342,11 +364,15 @@ pub fn init_db_schema(conn: &Connection) -> Result<(), String> {
              aead_alg        TEXT NOT NULL DEFAULT 'aes-256-gcm',
              created_at      INTEGER NOT NULL,
              updated_at      INTEGER NOT NULL,
+             token_uid       TEXT,
              UNIQUE(user_id, profile_uid)
          );
 
          CREATE INDEX IF NOT EXISTS idx_profiles_user
              ON server_profiles(user_id);
+
+         CREATE INDEX IF NOT EXISTS idx_profiles_token_uid
+             ON server_profiles(token_uid);
 
          CREATE INDEX IF NOT EXISTS idx_profiles_user_name
              ON server_profiles(user_id, name COLLATE NOCASE);
@@ -917,6 +943,16 @@ fn profile_uid_seed(profile: &Value, index: usize, seen: &mut HashSet<String>) -
     unreachable!("bounded by memory")
 }
 
+/// The tag of the OAuth token keys a profile id names: the id lowercased, as
+/// [`crate::providers::oauth2::oauth_token_key`] lowercases it, so two
+/// profile ids that differ only in case (`Team`, `team`) have one. The
+/// alignment reads from it which accounts' profiles name a token key
+/// ([`align_private_tokens_of`]), where the `profile_uid` tag tells only
+/// which hold the id as it is.
+fn profile_token_tag(root_key: &SecretKey, uid_seed: &str) -> Result<String, String> {
+    user_crypto::metadata_tag(root_key, b"profile-token-uid", &uid_seed.to_lowercase())
+}
+
 fn profile_dedup_key(
     root_key: &SecretKey,
     profile: &Value,
@@ -1308,16 +1344,26 @@ pub fn migrate_legacy_payloads(
     for (index, profile) in legacy_profiles.iter().enumerate() {
         let uid_seed = profile_uid_seed(profile, index, &mut seen_uids);
         let uid = user_crypto::metadata_tag(&root_secret, b"profile-uid", &uid_seed)?;
+        let token_uid = profile_token_tag(&root_secret, &uid_seed)?;
         let key = profile_dedup_key(&root_secret, profile, &uid_seed)?;
         let (encrypted_blob, nonce) = encrypt_value(&default_dek, profile)?;
         let inserted = tx
             .execute(
                 "INSERT OR IGNORE INTO server_profiles(
                  user_id, profile_uid, dedup_key, name, encrypted_blob, nonce,
-                 aead_alg, created_at, updated_at
+                 aead_alg, created_at, updated_at, token_uid
              )
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'aes-256-gcm', ?7, ?7)",
-                params![default_user_id, uid, key, uid, encrypted_blob, nonce, now],
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'aes-256-gcm', ?7, ?7, ?8)",
+                params![
+                    default_user_id,
+                    uid,
+                    key,
+                    uid,
+                    encrypted_blob,
+                    nonce,
+                    now,
+                    token_uid
+                ],
             )
             .map_err(|e| format!("Migrate legacy profile: {e}"))?;
         migrated_profiles += inserted;
@@ -2266,15 +2312,25 @@ fn insert_profile_rows(
     for (index, profile) in profiles.iter().enumerate() {
         let uid_seed = profile_uid_seed(profile, index, &mut seen_uids);
         let uid = user_crypto::metadata_tag(root_secret, b"profile-uid", &uid_seed)?;
+        let token_uid = profile_token_tag(root_secret, &uid_seed)?;
         let key = profile_dedup_key(root_secret, profile, &uid_seed)?;
         let (encrypted_blob, nonce) = encrypt_value(dek, profile)?;
         tx.execute(
             "INSERT INTO server_profiles(
                  user_id, profile_uid, dedup_key, name, encrypted_blob, nonce,
-                 aead_alg, created_at, updated_at
+                 aead_alg, created_at, updated_at, token_uid
              )
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'aes-256-gcm', ?7, ?7)",
-            params![user_id, uid, key, uid, encrypted_blob, nonce, now],
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'aes-256-gcm', ?7, ?7, ?8)",
+            params![
+                user_id,
+                uid,
+                key,
+                uid,
+                encrypted_blob,
+                nonce,
+                now,
+                token_uid
+            ],
         )
         .map_err(|e| format!("Insert profile: {e}"))?;
     }
@@ -2389,6 +2445,66 @@ fn retag_own_profiles_if_pending(
         tx.commit().map_err(|e| format!("Commit profile tags: {e}"))
     });
     match retagged {
+        Err(e) if e == "USER_LOCKED" || e == "SECURITY_RESET_PENDING" => Ok(()),
+        other => other,
+    }
+}
+
+/// Gives the rows of `user_id`'s list written before profiles had a token
+/// tag ([`profile_token_tag`]) theirs, now that its DEK is reachable. Only
+/// that column is written: the list, its bytes and so its revision stay as
+/// they are. Nothing to do when every row has one, or while the account is
+/// locked or waits for a security reset; until then the alignment of the
+/// other accounts waits for it ([`align_private_tokens_of`]).
+fn fill_profile_token_tags(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+) -> Result<(), String> {
+    let missing: bool = conn
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM server_profiles
+             WHERE user_id = ?1 AND token_uid IS NULL)",
+            params![user_id],
+            |row| row.get(0),
+        )
+        .map_err(|e| format!("Read profile token tags: {e}"))?;
+    if !missing {
+        return Ok(());
+    }
+    let root_secret = user_crypto::secret_key_from_bytes(root_key);
+    let filled = with_user_dek(conn, &root_secret, user_id, |uid, dek| {
+        let tx =
+            rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
+                .map_err(|e| format!("Start profile token tags: {e}"))?;
+        let rows: Vec<(i64, Vec<u8>, Vec<u8>)> = tx
+            .prepare(
+                "SELECT id, encrypted_blob, nonce FROM server_profiles
+                 WHERE user_id = ?1 ORDER BY id ASC",
+            )
+            .and_then(|mut statement| {
+                statement
+                    .query_map(params![uid], |row| {
+                        Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+                    })?
+                    .collect::<rusqlite::Result<Vec<_>>>()
+            })
+            .map_err(|e| format!("Read profile rows: {e}"))?;
+        // The seeds [`insert_profile_rows`] tagged the rows with, in its order.
+        let mut seen = HashSet::new();
+        for (index, (row_id, encrypted_blob, nonce)) in rows.iter().enumerate() {
+            let profile = decrypt_value(dek, nonce, encrypted_blob)?;
+            let seed = profile_uid_seed(&profile, index, &mut seen);
+            tx.execute(
+                "UPDATE server_profiles SET token_uid = ?1 WHERE id = ?2",
+                params![profile_token_tag(&root_secret, &seed)?, row_id],
+            )
+            .map_err(|e| format!("Write profile token tag: {e}"))?;
+        }
+        tx.commit()
+            .map_err(|e| format!("Commit profile token tags: {e}"))
+    });
+    match filled {
         Err(e) if e == "USER_LOCKED" || e == "SECURITY_RESET_PENDING" => Ok(()),
         other => other,
     }
@@ -5306,11 +5422,13 @@ fn copy_user_secrets_with_dek(
                 read_secret,
             )?;
         }
+        // An OAuth token's key as its runtime composes it, which may lowercase
+        // the id ([`crate::providers::oauth2::oauth_token_key`]).
         let suffix = format!("_{id}");
-        for key in vault_keys
-            .iter()
-            .filter(|k| k.starts_with("oauth_") && k.ends_with(&suffix) && taken(k))
-        {
+        let composed = private_token_keys_of_profile(id);
+        for key in vault_keys.iter().filter(|k| {
+            k.starts_with("oauth_") && (k.ends_with(&suffix) || composed.contains(k)) && taken(k)
+        }) {
             migrated += copy_one_credential(&tx, user_id, dek, key, "oauth", read_secret)?;
         }
     }
@@ -5390,6 +5508,37 @@ fn private_token_keys_of_profile(profile_id: &str) -> Vec<String> {
     );
     keys.retain(|key| private_token_type(key).is_some());
     keys
+}
+
+/// Whether `key`, a private token key of a profile, lowercases the profile id
+/// ([`crate::providers::oauth2::oauth_token_key_folds_case`]): two profile ids
+/// that differ only in case then name it both.
+fn token_key_folds_case(key: &str) -> bool {
+    OAUTH_TOKEN_SLUGS.iter().any(|slug| {
+        key.strip_prefix("oauth_")
+            .and_then(|rest| rest.strip_prefix(slug))
+            .is_some_and(|tail| tail.starts_with('_'))
+            && crate::providers::oauth2::oauth_token_key_folds_case(slug)
+    })
+}
+
+/// Whether the alignment of `user_id` has `key` to move or to drop: a vault
+/// key of that name, or a row of it (read without decrypting).
+fn token_key_present(
+    conn: &Connection,
+    user_id: i64,
+    vault_keys: &[String],
+    key: &str,
+) -> Result<bool, String> {
+    if vault_keys.iter().any(|vault_key| vault_key == key) {
+        return Ok(true);
+    }
+    conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM user_credentials WHERE user_id = ?1 AND credential_id = ?2)",
+        params![user_id, key],
+        |row| row.get(0),
+    )
+    .map_err(|e| format!("Read credential rows: {e}"))
 }
 
 /// MUV-6 for private tokens: the tokens an account other than the legacy owner
@@ -5706,36 +5855,66 @@ fn align_private_tokens_of(
             return Ok(None);
         }
         let profiles = read_profiles_with_dek(&tx, uid, dek)?;
+        // A list written before profiles had a token tag hides which token
+        // keys its account's profiles name: a token key that folds case may
+        // be one of its profiles' too.
+        let token_tags_pending: bool = tx
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM server_profiles
+                 WHERE user_id <> ?1 AND token_uid IS NULL)",
+                params![uid],
+                |row| row.get(0),
+            )
+            .map_err(|e| format!("Read profile token tags: {e}"))?;
+        let held_elsewhere_by = |column: &str, tag: &str| -> Result<bool, String> {
+            tx.query_row(
+                &format!(
+                    "SELECT EXISTS(SELECT 1 FROM server_profiles
+                     WHERE {column} = ?1 AND user_id <> ?2)"
+                ),
+                params![tag, uid],
+                |row| row.get(0),
+            )
+            .map_err(|e| format!("Read profile holders: {e}"))
+        };
         let mut sole = Vec::new();
         for id in profiles
             .iter()
             .filter_map(|p| value_str(p, &["id", "uid", "profileUid"]))
         {
             let tag = user_crypto::metadata_tag(&root_secret, b"profile-uid", id)?;
-            let shared: bool = tx
-                .query_row(
-                    "SELECT EXISTS(SELECT 1 FROM server_profiles
-                     WHERE profile_uid = ?1 AND user_id <> ?2)",
-                    params![tag, uid],
-                    |row| row.get(0),
-                )
-                .map_err(|e| format!("Read profile holders: {e}"))?;
+            let id_shared = held_elsewhere_by("profile_uid", &tag)?;
+            let key_shared = held_elsewhere_by("token_uid", &profile_token_tag(&root_secret, id)?)?;
             let keys = private_token_keys_of_profile(id)
                 .into_iter()
                 .filter(|key| only.is_none_or(|only| only.contains(key)));
-            if !shared {
-                sole.extend(keys.filter(|key| vault_keys.contains(key)));
-                continue;
-            }
-            // A profile id another account also holds: the vault key is the
-            // legacy owner's, and a row of this account is a copy of it, which
-            // an earlier migration made and a refresh may have rewritten since,
-            // unless its own sign-in stamped it. A native Proton session is
-            // the same session by its UID, whatever pair a refresh has rotated
-            // it to since. A copy outlives its vault key when the owner signed
-            // out first: an unstamped row of such a key is dropped all the
-            // same, but a Proton session, whose owner's sign-out ended it.
+            // A token key is another account's too when one of its profiles
+            // names it: the same id, or, for a key that lowercases the id
+            // ([`crate::providers::oauth2::oauth_token_key`]), an id that
+            // differs only in case (`team` of the legacy owner, `Team` here).
+            let mut shared_keys = Vec::new();
             for key in keys {
+                let folds = token_key_folds_case(&key);
+                if id_shared || (folds && key_shared) {
+                    shared_keys.push(key);
+                    continue;
+                }
+                if folds && token_tags_pending && token_key_present(&tx, uid, vault_keys, &key)? {
+                    return Ok(None);
+                }
+                if vault_keys.contains(&key) {
+                    sole.push(key);
+                }
+            }
+            // A token key another account's profile also names: the vault key
+            // is the legacy owner's, and a row of this account is a copy of it,
+            // which an earlier migration made and a refresh may have rewritten
+            // since, unless its own sign-in stamped it. A native Proton session
+            // is the same session by its UID, whatever pair a refresh has
+            // rotated it to since. A copy outlives its vault key when the owner
+            // signed out first: an unstamped row of such a key is dropped all
+            // the same, but a Proton session, whose owner's sign-out ended it.
+            for key in shared_keys {
                 let Some((row, digest)) = read_credential_and_digest_with_dek(&tx, uid, dek, &key)?
                 else {
                     continue;
@@ -6161,6 +6340,15 @@ pub fn migrate_credentials_eager_all(
     root_key: &[u8; 32],
 ) -> Result<usize, String> {
     let users = list_users(conn)?;
+    // The token tags the alignment reads ([`profile_token_tag`]), for every
+    // list this key opens, before any account is aligned.
+    for user in &users {
+        if !user.has_passphrase || session_user_id() == Some(user.id) {
+            if let Err(e) = fill_profile_token_tags(conn, root_key, user.id) {
+                tracing::warn!("Profile token tags of account {} not written: {e}", user.id);
+            }
+        }
+    }
     let mut pending = Vec::new();
     for user in &users {
         if credentials_settled(conn, user.id)? || waits_for_profile_tags(conn, user.id)? {
@@ -6207,6 +6395,9 @@ pub fn migrate_credentials_for_user(
     user_id: i64,
 ) -> Result<usize, String> {
     retag_own_profiles_if_pending(conn, root_key, user_id)?;
+    if let Err(e) = fill_profile_token_tags(conn, root_key, user_id) {
+        tracing::warn!("Profile token tags of account {user_id} not written: {e}");
+    }
     if credentials_settled(conn, user_id)? {
         return Ok(0);
     }
@@ -14587,6 +14778,142 @@ mod tests {
                 "the owner keeps its vault keys"
             );
             assert!(private_tokens_aligned(&conn, other).unwrap());
+        }
+    }
+
+    /// Two accounts whose profile ids differ only in case (`team` of the
+    /// legacy owner, `Team` of another account) name one OAuth token key,
+    /// `oauth_dropbox_team`, which the vault holds for the owner. However the
+    /// other account's row stands (none, a copy of the owner's token, or its
+    /// own sign-in), its alignment copies nothing into it and the vault keeps
+    /// the owner's token; then each account's connect read (the OAuth
+    /// runtime's load) gets its own token or none, never the other's. While
+    /// the owner's list has no token tags yet (a list written by an older
+    /// build), the alignment waits for them and changes nothing.
+    #[test]
+    fn accounts_whose_profile_ids_differ_in_case_never_read_each_others_token() {
+        use crate::providers::oauth2::{OAuth2Manager, OAuthProvider};
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "user_partitions::tests::accounts_whose_profile_ids_differ_in_case_never_read_each_others_token",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _guard = test_lock();
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("case-collision-pass").expect("bootstrap");
+        CredentialStore::unlock_with_master("case-collision-pass", None).expect("unlock");
+        let store = CredentialStore::from_cache().expect("cached vault");
+        init_or_migrate_cli(&store).expect("init partitions");
+        let mut conn = open_or_init_cli().expect("partition DB");
+        let root_key = store.derive_user_partition_wrapping_key();
+        let owner = active_user_id(&conn).unwrap().expect("legacy owner");
+        let other = create_user(&mut conn, &root_key, "Other", None, None, None)
+            .unwrap()
+            .id;
+        let profile = |id: &str| {
+            json!({"id": id, "name": id, "protocol": "dropbox", "host": "", "port": 0,
+                   "username": format!("{id}@example.test")})
+        };
+        replace_server_profiles_for(&mut conn, &root_key, owner, &[profile("team")]).unwrap();
+        replace_server_profiles_for(&mut conn, &root_key, other, &[profile("Team")]).unwrap();
+        let key = crate::providers::oauth2::oauth_token_key("dropbox", "Team");
+        assert_eq!(
+            key,
+            crate::providers::oauth2::oauth_token_key("dropbox", "team")
+        );
+        let record = |token: &str| {
+            json!({"access_token": token, "refresh_token": null, "expires_at": null,
+                   "token_type": "Bearer", "scopes": []})
+            .to_string()
+        };
+        let align = || {
+            let vault_keys = list_vault_keys(&store).unwrap();
+            align_private_tokens_inner(
+                &conn,
+                &root_key,
+                other,
+                &vault_keys,
+                &|| list_vault_keys(&store),
+                &|key: &str| get_optional_secret(&store, key),
+                &|key: &str| delete_optional_secret(&store, key),
+            )
+            .unwrap()
+        };
+        let load = |user: i64, id: &str| {
+            OAuth2Manager::new()
+                .with_credential_user(Some(user))
+                .load_tokens(OAuthProvider::Dropbox, id)
+                .map(|tokens| tokens.access_token.clone())
+                .ok()
+        };
+        let row = |user: i64| {
+            get_user_credential_for(&conn, &root_key, user, &key)
+                .unwrap()
+                .map(|value| value.to_string())
+        };
+        let owners = record("owners-token");
+        // The owner's sign-in from before tokens were kept to their account:
+        // the vault key alone.
+        store.store(&key, &owners).unwrap();
+
+        // The owner's list as an older build wrote it: no token tags.
+        conn.execute(
+            "UPDATE server_profiles SET token_uid = NULL WHERE user_id = ?1",
+            params![owner],
+        )
+        .unwrap();
+        align();
+        assert!(!private_tokens_aligned(&conn, other).unwrap(), "it waits");
+        assert_eq!(row(other), None, "nothing copied while it waits");
+        assert_eq!(store.get(&key).ok().as_deref(), Some(owners.as_str()));
+        fill_profile_token_tags(&conn, &root_key, owner).unwrap();
+
+        for case in ["no row", "a copy of the owner's token", "its own sign-in"] {
+            delete_user_credential_for(&conn, other, &key).unwrap();
+            conn.execute(
+                "DELETE FROM global_state WHERE key = ?1",
+                params![format!("{PRIVATE_TOKENS_ALIGNED_PREFIX}{other}")],
+            )
+            .unwrap();
+            let expected = match case {
+                "no row" => None,
+                "a copy of the owner's token" => {
+                    set_user_credential_for(&conn, &root_key, other, &key, "oauth", &owners)
+                        .unwrap();
+                    None
+                }
+                _ => {
+                    set_signed_in_credential_for(
+                        &conn,
+                        &root_key,
+                        other,
+                        &key,
+                        "oauth",
+                        &record("others-token"),
+                    )
+                    .unwrap();
+                    Some("others-token")
+                }
+            };
+            align();
+            assert!(private_tokens_aligned(&conn, other).unwrap(), "{case}");
+            assert_eq!(
+                store.get(&key).ok().as_deref(),
+                Some(owners.as_str()),
+                "{case}: the vault keeps the owner's token"
+            );
+            assert_eq!(
+                load(other, "Team").as_deref(),
+                expected,
+                "{case}: the other account reads its own token or none"
+            );
+            assert_eq!(
+                load(owner, "team").as_deref(),
+                Some("owners-token"),
+                "{case}: the owner reads its own token"
+            );
         }
     }
 
