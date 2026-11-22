@@ -44,9 +44,18 @@ fn new_remote_vault_staging(size: u64) -> Result<tempfile::TempDir, String> {
 /// Keep the downloaded vault and its write/recovery sidecars in a private
 /// staging directory. The caller hands it to the GUI only after downloading.
 fn remote_vault_staging_dir(root: &Path) -> Result<tempfile::TempDir, String> {
-    tempfile::Builder::new()
+    let mut builder = tempfile::Builder::new();
+    builder
         .prefix(REMOTE_VAULT_DIR_PREFIX)
-        .rand_bytes(REMOTE_VAULT_DIR_RANDOM_LEN)
+        .rand_bytes(REMOTE_VAULT_DIR_RANDOM_LEN);
+    // Owner-only from creation: the scratch root can be a shared folder
+    // (`<temp>/aeroftp-scratch`), and the vault's locks and journals live here.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        builder.permissions(std::fs::Permissions::from_mode(0o700));
+    }
+    builder
         .tempdir_in(root)
         .map_err(|e| format!("Create remote vault staging directory: {e}"))
 }
@@ -434,6 +443,21 @@ mod tests {
         let path = dir.join(STAGED_VAULT_FILENAME);
         std::fs::write(&path, b"vault").unwrap();
         assert!(validate_managed_temp_vault_path(&path, &managed_temp_vault_roots()).is_ok());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn remote_vault_session_directory_is_private_to_its_owner() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = tempfile::tempdir().unwrap();
+        std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o755)).unwrap();
+        let staging = remote_vault_staging_dir(root.path()).unwrap();
+        let mode = std::fs::metadata(staging.path())
+            .unwrap()
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o077, 0, "session directory mode {mode:o}");
+        assert_eq!(mode & 0o700, 0o700, "session directory mode {mode:o}");
     }
 
     #[tokio::test]
