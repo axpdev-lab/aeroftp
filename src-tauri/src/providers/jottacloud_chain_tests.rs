@@ -406,7 +406,8 @@ fn remove_both_copies(store: &CredentialStore, user: i64, account: &str) -> Resu
 /// The holder child. It begins a deletion of `account` for `owner`, then,
 /// by mode: `exit` at once; `wait` until its stdin closes; `serve` the
 /// commands `end-failed` (the delete failed) and `end-done` (both copies
-/// removed first, as `user`), one per line. In `unended` mode it deletes
+/// removed first, as `user`), one per line; `remove-exit` removes both
+/// copies and exits before it ends the deletion. In `unended` mode it deletes
 /// both copies through [`delete_refresh_chain`] with an end that cannot be
 /// recorded, and serves `note <profile>`: a connection of `user` for that
 /// profile reads its deletion counts. A deletion `exit` and `wait` began is
@@ -440,6 +441,8 @@ fn run_holder(role: &str) -> ! {
     std::io::stdout().flush().unwrap();
     match mode {
         "exit" => {}
+        // Both copies removed, then gone before the deletion is ended.
+        "remove-exit" => remove_both_copies(&store, user, account).unwrap(),
         "wait" => {
             let _ = std::io::stdin().lines().count();
         }
@@ -512,6 +515,28 @@ fn a_deletion_its_process_left_unfinished_settles() {
         if after_crash != "login-crashed" {
             failures.push(format!(
                 "a deletion its exited process left: the login wrote {after_crash:?}"
+            ));
+        }
+
+        // The process removed the saved chain, then exited before it ended
+        // the deletion: another process settles it and saves a new chain.
+        import_both_copies(
+            chains.first,
+            "jottacloud_refresh_removed",
+            &chains.chain("saved-before"),
+        );
+        let mut removed = holder(
+            "jottacloud_refresh_removed",
+            chains.owner,
+            chains.first,
+            "remove-exit",
+        );
+        assert!(removed.child.wait().unwrap().success());
+        let gone = chains.stored("jottacloud_refresh_removed");
+        let after_removal = chains.login("removed", "login-after-removal");
+        if !gone.is_empty() || after_removal != "login-after-removal" {
+            failures.push(format!(
+                "a deletion its process left after removing the chain: left {gone:?}, the login wrote {after_removal:?}"
             ));
         }
 
