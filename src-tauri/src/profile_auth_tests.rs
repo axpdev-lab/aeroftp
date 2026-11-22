@@ -2547,8 +2547,9 @@ fn github_readiness_reads_one_account_for_its_profile_and_credential() {
 }
 
 /// A sign-in of a private token whose profile two accounts hold, while a
-/// third one is active, is refused through `store_profile_credential` and
-/// writes nothing: neither holder's row and no vault key.
+/// third one is active or none is, is refused through
+/// `store_profile_credential` and writes nothing: neither holder's row and
+/// no vault key.
 #[test]
 fn a_sign_in_two_other_accounts_hold_is_refused_and_writes_nothing() {
     if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
@@ -2580,6 +2581,20 @@ fn a_sign_in_two_other_accounts_hold_is_refused_and_writes_nothing() {
     assert_eq!(row(second).as_deref(), Some("second-token"));
     assert_eq!(row(active), None);
     assert!(store.get(key).is_err(), "no vault key");
+
+    // With no active account the same sign-in is refused the same way.
+    conn.execute("DELETE FROM global_state WHERE key = 'active_user_id'", [])
+        .unwrap();
+    assert_eq!(users::active_user_id(&conn).unwrap(), None);
+    let refused =
+        users::store_profile_credential(&store, "owned", key, Some("oauth"), "x").unwrap_err();
+    assert!(refused.starts_with(users::ACCOUNT_CHANGED), "{refused}");
+    assert_eq!(row(first).as_deref(), Some("first-token"));
+    assert_eq!(row(second).as_deref(), Some("second-token"));
+    assert!(
+        store.get(key).is_err(),
+        "no vault key with no active account"
+    );
 }
 
 /// Undoing an import write puts a private row back as it was held: one the
