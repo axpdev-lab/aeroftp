@@ -4624,11 +4624,13 @@ mod tests {
 
     /// An import whose backup publishes no partition writes this device's
     /// live database, which the import may be the first open of since an
-    /// upgrade: the list write and the alignment after a restore bring its
-    /// schema to this build's first, as the staged copy's writers do. Red
-    /// with a bare open in `save_partition_list` or in
-    /// `realign_private_tokens_after_restore`: the list write names
-    /// `token_uid`, which a live file last written by an older build lacks.
+    /// upgrade: the list write brings its schema to this build's first, as
+    /// the staged copy's writers do. Red with a bare open in
+    /// `save_partition_list`: the list write names `token_uid`, which a live
+    /// file last written by an older build lacks. The alignment call after it
+    /// is a smoke check only: with no account active before the import it
+    /// touches `users` and `global_state` alone, and stays green on a bare
+    /// open.
     #[test]
     fn an_import_into_a_live_database_of_an_older_build_brings_its_schema_first() {
         let _guard = crate::user_partitions::test_lock();
@@ -4646,6 +4648,61 @@ mod tests {
         as_a_build_before_token_tags(&db);
         crate::user_partitions::realign_private_tokens_after_restore(&db, None)
             .expect("the alignment runs on the older live file");
+    }
+
+    /// R8-1: the sign-in row of an account other than the legacy owner can be
+    /// the import's first write into the live database when the backup
+    /// publishes no partition (`apply_profile_decisions` writes the secrets
+    /// before the list), so its own open brings the stamp table first. Red
+    /// with a bare open in `write_signed_in_row`: the stamp insert names
+    /// `private_token_sign_ins`, which a file of a build before sign-in
+    /// stamps lacks.
+    #[test]
+    fn a_signed_in_row_into_a_live_database_of_an_older_build_brings_its_schema_first() {
+        let _guard = crate::user_partitions::test_lock();
+        crate::user_partitions::clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let cfg = dir.path().join("config");
+        partition_with(&store, &cfg, &[]);
+        let db = cfg.join("user_partitions.db");
+        let root = store.derive_user_partition_wrapping_key();
+        let key = "jottacloud_refresh_srv_a";
+        assert!(
+            crate::user_partitions::private_token_type(key).is_some(),
+            "a private token key"
+        );
+        let receiver = {
+            let mut conn = rusqlite::Connection::open(&db).unwrap();
+            let second =
+                crate::user_partitions::create_user(&mut conn, &root, "Second", None, None, None)
+                    .unwrap();
+            crate::user_partitions::unlock_user(&conn, &root, second.id, None).unwrap();
+            // A file of a build before sign-in stamps.
+            conn.execute_batch(
+                "DROP TRIGGER IF EXISTS private_token_sign_in_leaves_with_its_row;
+                 DROP TABLE IF EXISTS private_token_sign_ins;",
+            )
+            .unwrap();
+            receiver_in(&conn).unwrap().expect("an active account")
+        };
+        assert!(!receiver.legacy_owner, "the token lives in its row alone");
+        assert_eq!(
+            write_signed_in_row(&store, Some(&db), Some(receiver), key, "refresh-value")
+                .map_err(|e| e.message),
+            Ok(true)
+        );
+        let stamps: i64 = rusqlite::Connection::open(&db)
+            .unwrap()
+            .query_row(
+                "SELECT COUNT(*) FROM private_token_sign_ins
+                 WHERE user_id = ?1 AND credential_id = ?2",
+                rusqlite::params![receiver.user_id, key],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(stamps, 1, "the sign-in carries its stamp");
+        crate::user_partitions::clear_user_session();
     }
 
     /// CodeRabbit on #1524: a restore takes no option that turns a security
