@@ -2336,6 +2336,9 @@ impl OAuth2Manager {
             crate::user_partitions::delete_user_credential_for(&conn, user, &account)
                 .map_err(|e| ProviderError::Other(format!("Failed to delete tokens: {}", e)))?;
             info!("Tokens deleted from user partition for {:?}", provider);
+            // And after it: a rotation a refresh kept while the delete ran
+            // ends with the sign-out too.
+            drop_pending_rotation(owner, &account, None);
             return Ok(());
         }
 
@@ -2366,6 +2369,8 @@ impl OAuth2Manager {
             LegacyTokenGuard::acquire_for_signout,
             unmirror,
         )?;
+        // After it too, as on the partition-only path above.
+        drop_pending_rotation(owner, &account, None);
         Ok(())
     }
 
@@ -4515,6 +4520,80 @@ mod tests {
                 Some(vault.as_str()),
                 "the next read writes nothing back to the vault"
             );
+        });
+    }
+
+    /// R8-2: a rotation a refresh keeps while a sign-out's delete is running
+    /// does not outlive the sign-out, at both sites. The test holds the
+    /// database's write lock, so each delete waits after the sign-out's first
+    /// drop; a rotation filed then must be gone once the sign-out returns.
+    /// Red while the drop runs only before the delete: the rotation filed
+    /// during the wait stays.
+    #[test]
+    fn a_rotation_kept_while_a_sign_out_deletes_does_not_outlive_it() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::oauth2::tests::a_rotation_kept_while_a_sign_out_deletes_does_not_outlive_it",
+        ) {
+            return;
+        }
+        with_two_box_accounts(|store, first, second, account| {
+            let root = Zeroizing::new(store.derive_user_partition_wrapping_key());
+            let rotation = serde_json::json!({
+                "access_token": "kept-access", "refresh_token": "kept-refresh",
+                "expires_at": null, "token_type": "Bearer", "scopes": [],
+                "owner_family": "v1:kept-rotation",
+            })
+            .to_string();
+            let race = |user: i64, source: &dyn Fn() -> PendingSource, read: &str| {
+                let kept = || PendingRotation {
+                    source: source(),
+                    read: Zeroizing::new(read.to_string()),
+                    record: Zeroizing::new(rotation.clone()),
+                };
+                file_pending_rotation(Some(user), account, kept(), "test");
+                let mut holder = crate::user_partitions::open_or_init_cli().unwrap();
+                let write_lock = holder
+                    .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+                    .unwrap();
+                std::thread::scope(|scope| {
+                    let signing_out = scope.spawn(|| {
+                        OAuth2Manager::new()
+                            .with_credential_user(Some(user))
+                            .delete_tokens(OAuthProvider::Box, "shared-profile")
+                    });
+                    let start = std::time::Instant::now();
+                    while pending_rotation_record(Some(user), account).is_some() {
+                        assert!(
+                            start.elapsed() < std::time::Duration::from_secs(3),
+                            "the sign-out drops the rotation it found"
+                        );
+                        std::thread::sleep(std::time::Duration::from_millis(5));
+                    }
+                    // The sign-out's delete now waits on this write lock.
+                    file_pending_rotation(Some(user), account, kept(), "test");
+                    drop(write_lock);
+                    signing_out.join().unwrap().expect("the sign-out");
+                });
+                assert_eq!(
+                    pending_rotation_record(Some(user), account),
+                    None,
+                    "account {user}: a rotation kept during the delete ends with the sign-out"
+                );
+            };
+
+            // The non-owner: its row is the only copy.
+            let row = stored_row(store, second, account).expect("the account's row");
+            race(second, &|| PendingSource::Partition(second), &row);
+
+            // The legacy owner: a partition copy, removed first under the lock.
+            let vault = store.get(account).expect("the owner's token");
+            let conn = crate::user_partitions::open_or_init_cli().unwrap();
+            crate::user_partitions::set_user_credential_for(
+                &conn, &root, first, account, "oauth", &vault,
+            )
+            .unwrap();
+            drop(conn);
+            race(first, &|| PendingSource::Vault, &vault);
         });
     }
 
