@@ -797,6 +797,13 @@ pub(crate) static DISCARD_REFUSED: std::sync::atomic::AtomicBool =
 #[allow(clippy::type_complexity)]
 pub(crate) static WHILE_SETTLING: Mutex<Option<Box<dyn FnOnce() + Send>>> = Mutex::new(None);
 
+/// Runs once in the next [`settle_ledger`], after its removals and right
+/// before the transaction that drops its records (test only): the other end
+/// of the span the list lock covers.
+#[cfg(test)]
+#[allow(clippy::type_complexity)]
+pub(crate) static BEFORE_SETTLE_COMMIT: Mutex<Option<Box<dyn FnOnce() + Send>>> = Mutex::new(None);
+
 /// The body of [`settle`].
 fn settle_ledger(store: &CredentialStore, id: &str) -> Result<(), String> {
     let conn = crate::user_partitions::open_or_init_cli()?;
@@ -886,6 +893,14 @@ fn settle_ledger(store: &CredentialStore, id: &str) -> Result<(), String> {
                 kept = true;
             }
         }
+    }
+    #[cfg(test)]
+    if let Some(hook) = BEFORE_SETTLE_COMMIT
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .take()
+    {
+        hook();
     }
     let tx = rusqlite::Transaction::new_unchecked(&conn, rusqlite::TransactionBehavior::Immediate)
         .map_err(|e| format!("Remove the import record: {e}"))?;

@@ -3889,7 +3889,10 @@ fn a_scan_never_confirmed_takes_back_the_oauth_app_it_filled() {
 /// A settle holds the profile list lock from its first read to its last
 /// write, the lock every list writer takes: a confirm that adopts an app, or
 /// lists a profile whose write the settle removes, cannot run between the
-/// settle's read and its removal.
+/// settle's read and its removal. R7-3: looked at both ends of that span,
+/// right after the lock is taken and after the removals, before the records
+/// go. Red when the lock covers the reads alone (released before the
+/// removals): the second look takes it.
 #[test]
 fn a_settle_holds_the_profile_list_lock_throughout() {
     if !in_isolated_child("a_settle_holds_the_profile_list_lock_throughout") {
@@ -3898,20 +3901,36 @@ fn a_settle_holds_the_profile_list_lock_throughout() {
     let _accounts = Accounts::open();
     let runtime = bridge_runtime();
     let imported = scan_ftp_remotes(&runtime, &["files"]).unwrap();
-    let seen = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let seen_in_hook = std::sync::Arc::clone(&seen);
-    *crate::bridge_import_scan::WHILE_SETTLING.lock().unwrap() = Some(Box::new(move || {
-        let db = cli_db_path().unwrap();
-        let writer = ProfileListLock::acquire_within(&db, std::time::Duration::ZERO);
-        *seen_in_hook.lock().unwrap() = Some(writer.err());
-    }));
+    type Seen = std::sync::Arc<std::sync::Mutex<Option<Option<String>>>>;
+    let look = |seen: &Seen| -> Box<dyn FnOnce() + Send> {
+        let seen = std::sync::Arc::clone(seen);
+        Box::new(move || {
+            let db = cli_db_path().unwrap();
+            let writer = ProfileListLock::acquire_within(&db, std::time::Duration::ZERO);
+            *seen.lock().unwrap() = Some(writer.err());
+        })
+    };
+    let (at_start, at_end): (Seen, Seen) = Default::default();
+    *crate::bridge_import_scan::WHILE_SETTLING.lock().unwrap() = Some(look(&at_start));
+    *crate::bridge_import_scan::BEFORE_SETTLE_COMMIT
+        .lock()
+        .unwrap() = Some(look(&at_end));
     let settled = settle_scan(&runtime, imported["scanId"].as_str());
     *crate::bridge_import_scan::WHILE_SETTLING.lock().unwrap() = None;
+    *crate::bridge_import_scan::BEFORE_SETTLE_COMMIT
+        .lock()
+        .unwrap() = None;
     settled.unwrap();
+    let busy = Some(Some(PROFILE_LIST_BUSY.to_string()));
     assert_eq!(
-        seen.lock().unwrap().take(),
-        Some(Some(PROFILE_LIST_BUSY.to_string())),
-        "a list writer cannot take the lock while the settle runs"
+        at_start.lock().unwrap().take(),
+        busy,
+        "a list writer cannot take the lock at the settle's first read"
+    );
+    assert_eq!(
+        at_end.lock().unwrap().take(),
+        busy,
+        "nor after its removals, before its records go"
     );
 }
 
