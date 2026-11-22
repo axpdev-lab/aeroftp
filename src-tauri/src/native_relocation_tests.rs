@@ -2249,6 +2249,47 @@ fn settle_scan(runtime: &tokio::runtime::Runtime, scan_id: Option<&str>) -> Resu
     ))
 }
 
+/// Where the filesystem has no file locks, a cleanup of abandoned scans that
+/// runs right after a new scan of this process wrote its header finds the
+/// scan live here and leaves its ledger: the scan is registered before its
+/// header is written.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_scan_whose_header_a_cleanup_reads_at_once_is_held() {
+    use std::sync::atomic::Ordering::SeqCst;
+    if !in_isolated_child("a_scan_whose_header_a_cleanup_reads_at_once_is_held") {
+        return;
+    }
+    let accounts = Accounts::open();
+    let runtime = bridge_runtime();
+    crate::bridge_import_scan::LOCKS_UNAVAILABLE.store(true, SeqCst);
+    *crate::bridge_import_scan::AFTER_SCAN_HEADER.lock().unwrap() = Some(Box::new(|| {
+        let store = crate::credential_store::CredentialStore::from_cache().expect("vault");
+        crate::bridge_import_scan::settle_abandoned(&store);
+    }));
+    let imported = scan_ftp_remotes(&runtime, &["files"]).unwrap();
+    assert!(
+        crate::bridge_import_scan::AFTER_SCAN_HEADER
+            .lock()
+            .unwrap()
+            .is_none(),
+        "the cleanup ran between the header and the secrets"
+    );
+    let scan_id = imported["scanId"].as_str().unwrap();
+    let header: Option<String> = accounts
+        .conn
+        .query_row(
+            "SELECT value FROM global_state WHERE key = ?1",
+            params![format!("bridge_import_scan_{scan_id}")],
+            |row| row.get(0),
+        )
+        .optional()
+        .unwrap();
+    assert!(header.is_some(), "the scan keeps its ledger");
+    let password = format!("server_{}", scanned_id(&imported, "files"));
+    assert_eq!(vault_value(&password).as_deref(), Some("ftp-secret"));
+}
+
 /// Where the data folder has no file locks, the lock file of a scan names
 /// its process, and a settle of abandoned scans in another process takes
 /// it for abandoned only once that process is proven gone: its pid free, or

@@ -246,6 +246,12 @@ fn mac(key: &[u8; 32], value: &str) -> String {
     hex::encode(mac.finalize().into_bytes())
 }
 
+/// Runs once in the next [`Scan::begin`], right after its header is written
+/// (test only): an abandoned-scan cleanup running meanwhile.
+#[cfg(test)]
+#[allow(clippy::type_complexity)]
+pub(crate) static AFTER_SCAN_HEADER: Mutex<Option<Box<dyn FnOnce() + Send>>> = Mutex::new(None);
+
 /// Refuses every record of a scan (test only), as a database that fails.
 #[cfg(test)]
 pub(crate) static RECORD_REFUSED: std::sync::atomic::AtomicBool =
@@ -261,6 +267,11 @@ impl Scan {
     ) -> Result<Self, String> {
         let id = uuid::Uuid::new_v4().to_string();
         let lock = hold(&id)?;
+        // Live before its header is: a cleanup that reads the header finds
+        // the scan held here, where no file lock can say so.
+        LIVE.lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .push((id.clone(), lock));
         let begun = crate::user_partitions::open_or_init_cli().and_then(|conn| {
             let header = serde_json::to_string(&Header { user })
                 .map_err(|e| format!("Encode the import record: {e}"))?;
@@ -273,19 +284,23 @@ impl Scan {
                 ],
             )
             .map_err(|e| format!("Write the import record: {e}"))?;
+            #[cfg(test)]
+            if let Some(hook) = AFTER_SCAN_HEADER
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .take()
+            {
+                hook();
+            }
             Ok(conn)
         });
         let conn = match begun {
             Ok(conn) => conn,
             Err(error) => {
-                drop(lock);
                 release(&id);
                 return Err(error);
             }
         };
-        LIVE.lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .push((id.clone(), lock));
         Ok(Self {
             id,
             profiles,
