@@ -3885,3 +3885,172 @@ fn a_scan_never_confirmed_takes_back_the_oauth_app_it_filled() {
         "the app of a profile the confirm saved stays"
     );
 }
+
+/// A settle holds the profile list lock from its first read to its last
+/// write, the lock every list writer takes: a confirm that adopts an app, or
+/// lists a profile whose write the settle removes, cannot run between the
+/// settle's read and its removal.
+#[test]
+fn a_settle_holds_the_profile_list_lock_throughout() {
+    if !in_isolated_child("a_settle_holds_the_profile_list_lock_throughout") {
+        return;
+    }
+    let _accounts = Accounts::open();
+    let runtime = bridge_runtime();
+    let imported = scan_ftp_remotes(&runtime, &["files"]).unwrap();
+    let seen = std::sync::Arc::new(std::sync::Mutex::new(None));
+    let seen_in_hook = std::sync::Arc::clone(&seen);
+    *crate::bridge_import_scan::WHILE_SETTLING.lock().unwrap() = Some(Box::new(move || {
+        let db = cli_db_path().unwrap();
+        let writer = ProfileListLock::acquire_within(&db, std::time::Duration::ZERO);
+        *seen_in_hook.lock().unwrap() = Some(writer.err());
+    }));
+    let settled = settle_scan(&runtime, imported["scanId"].as_str());
+    *crate::bridge_import_scan::WHILE_SETTLING.lock().unwrap() = None;
+    settled.unwrap();
+    assert_eq!(
+        seen.lock().unwrap().take(),
+        Some(Some(PROFILE_LIST_BUSY.to_string())),
+        "a list writer cannot take the lock while the settle runs"
+    );
+}
+
+/// Scan B's config carries the OAuth app scan A filled while A has not
+/// settled: B records its share, so A's settle leaves the app to B, and B
+/// decides, by its own profiles: none saved, the app goes; one saved, it
+/// stays. An app the user stored is no scan's: a scan whose config carries
+/// the same one records nothing, and its settle leaves it.
+#[test]
+fn an_oauth_app_an_open_scan_relies_on_outlives_the_settle_of_the_scan_that_filled_it() {
+    if !in_isolated_child(
+        "an_oauth_app_an_open_scan_relies_on_outlives_the_settle_of_the_scan_that_filled_it",
+    ) {
+        return;
+    }
+    let accounts = Accounts::open();
+    let runtime = bridge_runtime();
+    let conf = tempfile::NamedTempFile::new().unwrap();
+    let scan = |remote: &str| {
+        std::fs::write(
+            conf.path(),
+            format!(
+                concat!(
+                    "[{remote}]\ntype = dropbox\nclient_id = shared-id\nclient_secret = shared-secret\n",
+                    "token = {{\"access_token\":\"{remote}-access\",\"token_type\":\"bearer\",\"refresh_token\":\"{remote}-refresh\"}}\n",
+                ),
+                remote = remote,
+            ),
+        )
+        .unwrap();
+        runtime
+            .block_on(crate::bridge_commands::import_bridge_config(
+                "rclone".into(),
+                conf.path().to_string_lossy().into_owned(),
+                None,
+            ))
+            .unwrap()
+    };
+    let app = || {
+        (
+            vault_value("oauth_dropbox_client_id"),
+            vault_value("oauth_dropbox_client_secret"),
+        )
+    };
+    let filled = (
+        Some("shared-id".to_string()),
+        Some("shared-secret".to_string()),
+    );
+    let records_an_app = |imported: &Value| {
+        ledger_rows(imported["scanId"].as_str().unwrap())
+            .iter()
+            .any(|(_, value)| value.contains("oauth_dropbox_client"))
+    };
+    assert_eq!(app(), (None, None));
+
+    // B never confirmed.
+    let a = scan("a");
+    let b = scan("b");
+    assert!(
+        records_an_app(&b),
+        "B records its share of the app A filled"
+    );
+    settle_scan(&runtime, a["scanId"].as_str()).unwrap();
+    assert_eq!(app(), filled, "A's settle leaves the app B still relies on");
+    settle_scan(&runtime, b["scanId"].as_str()).unwrap();
+    assert_eq!(app(), (None, None), "B, never confirmed, takes it back");
+
+    // B confirmed after A's settle.
+    let a = scan("a");
+    let b = scan("b");
+    settle_scan(&runtime, a["scanId"].as_str()).unwrap();
+    accounts.add_profile(accounts.legacy, &scanned_id(&b, "b"));
+    settle_scan(&runtime, b["scanId"].as_str()).unwrap();
+    assert_eq!(
+        app(),
+        filled,
+        "the app of the profile B's confirm saved stays"
+    );
+
+    // The user's own app: no scan filled it.
+    let b = scan("b");
+    assert!(
+        !records_an_app(&b),
+        "a scan records no share of the user's app"
+    );
+    settle_scan(&runtime, b["scanId"].as_str()).unwrap();
+    assert_eq!(app(), filled, "the user's app stays");
+}
+
+/// A write another open scan records too, the same value under the same key,
+/// is left by this scan's settle only when the other scan stored for the same
+/// account: a row is the account's, and the other scan's settle removes only
+/// its own account's.
+#[test]
+fn a_write_another_open_scan_shares_is_left_only_for_the_same_account() {
+    if !in_isolated_child("a_write_another_open_scan_shares_is_left_only_for_the_same_account") {
+        return;
+    }
+    let accounts = Accounts::open();
+    let key = "server_shared-profile";
+    let begin = |user: i64| {
+        let scan = crate::bridge_import_scan::Scan::begin(
+            &accounts.store,
+            Some(user),
+            vec!["shared-profile".to_string()],
+        )
+        .unwrap();
+        scan.record(
+            key,
+            crate::bridge_import_scan::Kind::Secret,
+            "shared-secret",
+        )
+        .unwrap();
+        store_credential_dual_as(&accounts.store, Some(user), key, "shared-secret").unwrap();
+        scan
+    };
+    let settle = |scan: &crate::bridge_import_scan::Scan| {
+        crate::bridge_import_scan::settle(&accounts.store, scan.id()).unwrap();
+    };
+
+    let (a, b) = (begin(accounts.legacy), begin(accounts.legacy));
+    settle(&a);
+    assert!(
+        has_row(&accounts.conn, accounts.legacy, key),
+        "the same account's open scan still relies on it"
+    );
+    settle(&b);
+    assert!(
+        !has_row(&accounts.conn, accounts.legacy, key),
+        "the last scan takes it back"
+    );
+
+    let (a, b) = (begin(accounts.legacy), begin(accounts.source.id));
+    settle(&a);
+    assert!(
+        !has_row(&accounts.conn, accounts.legacy, key),
+        "another account's scan does not keep this account's row"
+    );
+    assert!(has_row(&accounts.conn, accounts.source.id, key));
+    settle(&b);
+    assert!(!has_row(&accounts.conn, accounts.source.id, key));
+}

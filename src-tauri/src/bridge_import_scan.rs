@@ -393,6 +393,40 @@ impl Scan {
         })
     }
 
+    /// Records that the scan relies on the slot `key` of an OAuth app, which
+    /// already holds the `value` its config carries, when another scan filled
+    /// it and has not settled: that scan's settle then leaves the slot to
+    /// this one ([`claimed_by_another_scan`]), which takes it back only when
+    /// none of `holders` is saved. A slot no scan records (the user's own
+    /// app) is no scan's to take back, and nothing is recorded. The caller
+    /// holds the list lock, as a settle does, so the scan that filled it
+    /// cannot settle between the look and the record.
+    pub(crate) fn share_app(
+        &self,
+        holders: &[String],
+        key: &str,
+        value: &str,
+    ) -> Result<(), String> {
+        let written = Written {
+            profile: holders.first().cloned().unwrap_or_default(),
+            key: key.to_string(),
+            kind: Kind::OauthApp,
+            mac: mac(&self.mac_key, value),
+            holders: holders.to_vec(),
+        };
+        let claimed = {
+            let ledger = self
+                .ledger
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            claimed_by_another_scan(&ledger.0, &self.id, None, &written)?
+        };
+        if claimed {
+            self.record_entry(written)?;
+        }
+        Ok(())
+    }
+
     /// Writes the ledger row of `written`.
     fn record_entry(&self, written: Written) -> Result<(), String> {
         let entry = serde_json::to_string(&written)
@@ -441,8 +475,14 @@ fn oauth_app_slots(profiles: &[serde_json::Value]) -> Vec<String> {
 /// any scan filled, which a settle would take back when the scan's own
 /// profiles are not saved, are no longer the scan's to remove once a profile
 /// of another scan's confirm, or of any save, uses the app. Called by every
-/// writer of a profile list ([`crate::user_partitions`]), inside its
-/// transaction, so a list saved and a settle cannot interleave.
+/// writer of a profile list that a scan's record can meet
+/// ([`crate::user_partitions`]), inside its transaction, under the list lock
+/// a settle holds too ([`settle_ledger`]), so a list saved and a settle
+/// cannot interleave. The one-time move of a pre-partition install's list
+/// ([`crate::user_partitions::migrate_legacy_payloads`]) does not call it: it
+/// runs when the database is opened, before a scan can write its header
+/// there ([`Scan::begin`] opens it through
+/// [`crate::user_partitions::open_or_init_cli`]), so no record exists yet.
 pub(crate) fn adopt_oauth_apps(
     tx: &Connection,
     profiles: &[serde_json::Value],
@@ -666,6 +706,67 @@ fn discard_proton_session(
     Ok(Discarded::Deferred)
 }
 
+/// Whether a scan other than `id` still records `written`, the same value
+/// under the same key, for the same owner: an OAuth app's slot is the
+/// machine's, whoever the scan stored for; any other write is the account's,
+/// `user` (the header of `id`). That scan has not settled, so it may still be
+/// confirmed and needs the value; its own settle takes it back when its
+/// profiles are not saved. Read under the list lock ([`settle_ledger`]).
+fn claimed_by_another_scan(
+    conn: &Connection,
+    id: &str,
+    user: Option<i64>,
+    written: &Written,
+) -> Result<bool, String> {
+    let own = entry_prefix(id);
+    let rows: Vec<(String, String)> = conn
+        .prepare("SELECT key, value FROM global_state WHERE substr(key, 1, length(?1)) = ?1")
+        .and_then(|mut statement| {
+            statement
+                .query_map(params![ENTRY_PREFIX], |row| Ok((row.get(0)?, row.get(1)?)))?
+                .collect::<rusqlite::Result<Vec<_>>>()
+        })
+        .map_err(|e| format!("Read the import records: {e}"))?;
+    for (entry, value) in rows {
+        if entry.starts_with(&own) {
+            continue;
+        }
+        let Ok(other) = serde_json::from_str::<Written>(&value) else {
+            continue;
+        };
+        if other.kind != written.kind || other.key != written.key || other.mac != written.mac {
+            continue;
+        }
+        if written.kind == Kind::OauthApp {
+            return Ok(true);
+        }
+        // The scan of this entry, by its header: its id is what follows the
+        // prefix, up to the entry's number.
+        let Some(scan) = entry
+            .strip_prefix(ENTRY_PREFIX)
+            .and_then(|rest| rest.rsplit_once('_'))
+            .map(|(scan, _)| scan)
+        else {
+            continue;
+        };
+        let header: Option<String> = conn
+            .query_row(
+                "SELECT value FROM global_state WHERE key = ?1",
+                params![format!("{LEDGER_PREFIX}{scan}")],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| format!("Read the import record: {e}"))?;
+        let same_owner = header
+            .and_then(|header| serde_json::from_str::<Header>(&header).ok())
+            .is_some_and(|header| header.user == user);
+        if same_owner {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 /// Settles the scan `id`: every write for a profile its account does not
 /// list goes, and the ledger with it. A write that could not be removed
 /// stays in the ledger for the next settle, and the error says so; one only
@@ -691,9 +792,30 @@ pub(crate) fn give_up(id: &str) {
 pub(crate) static DISCARD_REFUSED: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
+/// Runs once in the next [`settle_ledger`], right after it took the list
+/// lock and before its first read (test only).
+#[cfg(test)]
+#[allow(clippy::type_complexity)]
+pub(crate) static WHILE_SETTLING: Mutex<Option<Box<dyn FnOnce() + Send>>> = Mutex::new(None);
+
 /// The body of [`settle`].
 fn settle_ledger(store: &CredentialStore, id: &str) -> Result<(), String> {
     let conn = crate::user_partitions::open_or_init_cli()?;
+    // From the first read to the last write: a list saved meanwhile would
+    // adopt what this settle takes back ([`adopt_oauth_apps`]), or list a
+    // profile whose write it removes, and another scan's fill of an app
+    // records its share of it ([`Scan::share_app`]); both hold this lock. On a
+    // filesystem without file locks it excludes nobody, and the settle goes
+    // on as an ordinary save does.
+    let _lock = crate::user_partitions::ProfileListLock::acquire(&conn)?;
+    #[cfg(test)]
+    if let Some(hook) = WHILE_SETTLING
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .take()
+    {
+        hook();
+    }
     let header_key = format!("{LEDGER_PREFIX}{id}");
     let header: Option<String> = conn
         .query_row(
@@ -744,7 +866,9 @@ fn settle_ledger(store: &CredentialStore, id: &str) -> Result<(), String> {
     let mut kept = false;
     let mut errors = Vec::new();
     for (entry, written) in entries {
-        if written.kept_by(&listed) {
+        // Another scan that has not settled needs the same value: its settle
+        // decides, and this record goes.
+        if written.kept_by(&listed) || claimed_by_another_scan(&conn, id, header.user, &written)? {
             settled.push(entry);
             continue;
         }

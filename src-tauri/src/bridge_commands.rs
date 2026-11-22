@@ -402,8 +402,9 @@ fn store_rclone_provider_secrets(
                 cred_key,
                 secrets.oauth_client_id.as_deref(),
                 secrets.oauth_client_secret.as_deref(),
-                |key, value| match scan {
-                    Some(scan) => scan.record_app(&holders, key, value),
+                |key, value, fills| match scan {
+                    Some(scan) if fills => scan.record_app(&holders, key, value),
+                    Some(scan) => scan.share_app(&holders, key, value),
                     None => Ok(()),
                 },
             ) {

@@ -24239,19 +24239,21 @@ pub fn fill_oauth_app(
     client_id: Option<&str>,
     client_secret: Option<&str>,
 ) -> Result<bool, String> {
-    fill_oauth_app_recorded(store, provider, client_id, client_secret, |_, _| Ok(()))
+    fill_oauth_app_recorded(store, provider, client_id, client_secret, |_, _, _| Ok(()))
 }
 
 /// [`fill_oauth_app`] that hands `record` each slot it fills, by key and
 /// value, before it writes any: a bridge scan keeps them in its ledger
-/// ([`bridge_import_scan`]), so a scan never confirmed takes them back. A
-/// record refused writes nothing.
+/// ([`bridge_import_scan`]), so a scan never confirmed takes them back. It
+/// hands it too, with `fills` false, each slot that already holds the value
+/// the config carries: another scan may have filled it and not settled
+/// ([`bridge_import_scan::Scan::share_app`]). A record refused writes nothing.
 pub(crate) fn fill_oauth_app_recorded(
     store: &credential_store::CredentialStore,
     provider: &str,
     client_id: Option<&str>,
     client_secret: Option<&str>,
-    record: impl Fn(&str, &str) -> Result<(), String>,
+    record: impl Fn(&str, &str, bool) -> Result<(), String>,
 ) -> Result<bool, String> {
     let conn = user_partitions::open_or_init_cli()?;
     let _lock = user_partitions::ProfileListLock::acquire(&conn)?;
@@ -24266,15 +24268,29 @@ pub(crate) fn fill_oauth_app_recorded(
             stored_secret.as_deref(),
             client_id.filter(|id| !id.is_empty()),
         );
+    let (client_id_given, client_secret_given) = (client_id, client_secret);
     let [client_id, client_secret] = oauth_app_gaps(
         stored_id.as_deref(),
         stored_secret.as_deref(),
         client_id,
         client_secret,
     );
-    for (name, value) in [("client_id", client_id), ("client_secret", client_secret)] {
-        if let Some(value) = value {
-            record(&format!("oauth_{provider}_{name}"), value)?;
+    let [given_id, given_secret] =
+        [client_id_given, client_secret_given].map(|value| value.filter(|value| !value.is_empty()));
+    for (name, fills, given, stored) in [
+        ("client_id", client_id, given_id, stored_id.as_deref()),
+        (
+            "client_secret",
+            client_secret,
+            given_secret,
+            stored_secret.as_deref(),
+        ),
+    ] {
+        let key = format!("oauth_{provider}_{name}");
+        if let Some(value) = fills {
+            record(&key, value, true)?;
+        } else if let Some(value) = given.filter(|value| !other_app && Some(*value) == stored) {
+            record(&key, value, false)?;
         }
     }
     write_oauth_app(
