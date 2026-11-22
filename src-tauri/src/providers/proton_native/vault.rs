@@ -208,6 +208,18 @@ pub(crate) mod test_seams {
         }
     }
 
+    static REMOVE_REFUSED: AtomicBool = AtomicBool::new(false);
+
+    /// The next removal of a saved session, on any thread, is refused, as a
+    /// vault or an account store that fails does.
+    pub(crate) fn refuse_next_remove() {
+        REMOVE_REFUSED.store(true, Ordering::SeqCst);
+    }
+
+    pub(super) fn remove_refused() -> bool {
+        REMOVE_REFUSED.swap(false, Ordering::SeqCst)
+    }
+
     static MIRROR_REFUSED: AtomicBool = AtomicBool::new(false);
 
     /// The next save of a session's partition row is refused, as an account
@@ -495,6 +507,10 @@ fn remove_saved(
     owner: SessionOwner,
     key: &str,
 ) -> Result<(), ProviderError> {
+    #[cfg(test)]
+    if test_seams::remove_refused() {
+        return Err(ProviderError::Other("refused (test)".into()));
+    }
     if let Some(user) = private_account(owner)? {
         let conn = crate::user_partitions::open_or_init_cli().map_err(ProviderError::Other)?;
         return crate::user_partitions::delete_user_credential_for(&conn, user, key)
@@ -1087,7 +1103,9 @@ fn takeover_session(
 /// replaced (unless it is the same session, or another saved profile or
 /// account still uses it). The old session is read and its lease held before
 /// the save and ended only once the new one is saved: a save that fails
-/// leaves the profile with its old session, still live.
+/// leaves the profile with its old session, still live. Once the new one is
+/// saved the sign-in stands: an old session left saved under another key (the
+/// legacy unbound one) that cannot be removed stays live, and is logged.
 pub async fn replace_session(
     owner: SessionOwner,
     profile_id: Option<&str>,
@@ -1098,13 +1116,18 @@ pub async fn replace_session(
     refuse_moved_away(&store, owner, profile_id)?;
     let previous_key = saved_key(&store, owner, profile_id)?;
     let _lease = lease_of_saved(owner, &previous_key).await?;
-    let replaced = read(&store, owner, &previous_key)?;
+    let mut replaced = read(&store, owner, &previous_key)?;
     let own_key = owner.key(profile_id);
     {
         let _writes = session_writes();
         store_over_deferred_revoke(owner, profile_id, session)?;
         if previous_key != own_key {
-            remove_saved(&store, owner, &previous_key)?;
+            if let Err(error) = remove_saved(&store, owner, &previous_key) {
+                log::warn!(
+                    "Proton: the new sign-in is saved, but the session it replaces could not be removed and stays signed in: {error}"
+                );
+                replaced = None;
+            }
         }
     }
     // Best effort: the user asked for the new sign-in, which a failed

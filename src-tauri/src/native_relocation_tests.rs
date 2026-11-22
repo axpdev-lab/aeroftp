@@ -3559,6 +3559,50 @@ fn a_sign_in_whose_save_fails_keeps_the_old_session_unrevoked() {
     );
 }
 
+/// A sign-in of the legacy owner saved over the old global unbound session,
+/// whose removal from that key is refused afterwards: the sign-in stands and
+/// is reported as done, the account connects with the new session, and the
+/// old one, still saved under the global key, is not ended on Proton.
+#[test]
+fn a_sign_in_saved_before_a_failed_cleanup_is_reported_as_saved() {
+    if !in_isolated_child("a_sign_in_saved_before_a_failed_cleanup_is_reported_as_saved") {
+        return;
+    }
+    let accounts = Accounts::open();
+    let owner = accounts.owners_owner();
+    let unbound = vault::SessionOwner::for_user(None);
+    vault::store_session(unbound, None, &session("cleanup-old-uid", "u1")).unwrap();
+    let current = |owner| {
+        vault::load_session(owner, None)
+            .unwrap()
+            .map(|session| generation(&raw(&session)))
+    };
+    assert_eq!(current(owner).as_deref(), Some("u1"), "the global session");
+    let revokes = vault::test_seams::revokes();
+    vault::test_seams::refuse_next_remove();
+    let saved = block_on(vault::replace_session(
+        owner,
+        None,
+        &session("cleanup-new-uid", "n1"),
+    ));
+    assert!(saved.is_ok(), "the new sign-in is saved: {saved:?}");
+    assert_eq!(
+        current(owner).as_deref(),
+        Some("n1"),
+        "the account's session"
+    );
+    assert_eq!(
+        current(unbound).as_deref(),
+        Some("u1"),
+        "the old session stays under the global key"
+    );
+    assert_eq!(
+        vault::test_seams::revokes(),
+        revokes,
+        "a session still saved is not ended"
+    );
+}
+
 /// A new sign-in saved over an old session no other key holds still ends
 /// that session on Proton, after the save; one that saves the same session
 /// again ends nothing.
