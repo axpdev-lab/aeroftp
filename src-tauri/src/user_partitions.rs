@@ -5822,7 +5822,11 @@ thread_local! {
 }
 
 /// The row `key` of `user_id`, decrypted and checked ([`checked_row`]) on the
-/// bytes one read returned.
+/// bytes one read returned, against the alignment state of the same snapshot:
+/// one read transaction holds the row, the pending tags and the aligned
+/// marker, so an alignment that drops the row and marks the account after
+/// the read cannot vouch for the bytes it dropped. A caller already inside a
+/// transaction reads in that one.
 fn read_checked_row_with(
     conn: &Connection,
     root_key: &[u8; 32],
@@ -5830,16 +5834,30 @@ fn read_checked_row_with(
     key: &str,
     read_secret: &SecretReader<'_>,
 ) -> Result<CheckedRow, String> {
+    let snapshot = conn
+        .is_autocommit()
+        .then(|| {
+            rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Deferred)
+        })
+        .transpose()
+        .map_err(|e| format!("Begin credential read: {e}"))?;
     let row = get_user_credential_and_digest_for(conn, root_key, user_id, key)?;
     #[cfg(test)]
     run_dual_write_hook(&AFTER_ROW_READ);
-    if row.is_none() {
-        return Ok(CheckedRow::Absent);
+    let checked = if row.is_none() {
+        CheckedRow::Absent
+    } else {
+        match checked_row(conn, user_id, key, row, read_secret)? {
+            Some(value) => CheckedRow::Value(value),
+            None => CheckedRow::Withheld,
+        }
+    };
+    if let Some(snapshot) = snapshot {
+        snapshot
+            .commit()
+            .map_err(|e| format!("End credential read: {e}"))?;
     }
-    Ok(match checked_row(conn, user_id, key, row, read_secret)? {
-        Some(value) => CheckedRow::Value(value),
-        None => CheckedRow::Withheld,
-    })
+    Ok(checked)
 }
 
 /// [`read_checked_row_with`] for a reader outside this module, with the vault
@@ -12895,6 +12913,71 @@ mod tests {
             "the bytes read before the sign-in are not its own"
         );
         assert_eq!(reads().as_deref(), Some("n-new"), "the stamped row");
+    }
+
+    /// The row and the alignment state are read in one snapshot: an alignment
+    /// that drops the unstamped copy and marks the account after the reader
+    /// decrypted it does not vouch for those bytes, which stay withheld. The
+    /// account's own stamped sign-in, raced the same way, stays readable.
+    #[test]
+    fn an_alignment_after_the_row_read_does_not_vouch_for_its_bytes() {
+        let _guard = test_lock();
+        for stamped in [false, true] {
+            clear_user_session();
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("partitions.db");
+            let mut conn = open_or_init_path(path.clone()).expect("open");
+            let root = test_root();
+            migrate_legacy_payloads(&mut conn, Some("[]"), None, &root).expect("seed");
+            let owner = nonprofile_secret_owner(&conn).unwrap().unwrap();
+            let other = create_passphrase_less_user(&mut conn, &root, "Other", None, None)
+                .unwrap()
+                .id;
+            clear_user_session();
+            let key = "oauth_dropbox_p";
+            if stamped {
+                set_signed_in_credential_for(&conn, &root, other, key, "oauth", "own-sign-in")
+                    .unwrap();
+            } else {
+                set_user_credential_for(&conn, &root, other, key, "oauth", "owners-token").unwrap();
+            }
+            conn.execute(
+                "INSERT INTO global_state(key, value, updated_at) VALUES (?1, '1', 0)",
+                params![profile_tags_pending_key(owner)],
+            )
+            .unwrap();
+            let (_, read) = fake_vault(&[(key, "owners-token")]);
+            AFTER_ROW_READ.set(Some(Box::new(move || {
+                // Another process's alignment completes: tags rebuilt, the
+                // copy dropped, the account marked aligned.
+                let conn = Connection::open(&path).unwrap();
+                conn.execute(
+                    "DELETE FROM global_state WHERE key = ?1",
+                    params![profile_tags_pending_key(owner)],
+                )
+                .unwrap();
+                if !stamped {
+                    delete_user_credential_for(&conn, other, key).unwrap();
+                }
+                mark_private_tokens_aligned(&conn, other).unwrap();
+            })));
+            let raced = read_checked_row_with(&conn, &root, other, key, &read).unwrap();
+            if stamped {
+                assert!(
+                    matches!(&raced, CheckedRow::Value(value) if value.as_str() == "own-sign-in"),
+                    "the account's own sign-in"
+                );
+            } else {
+                assert!(
+                    matches!(raced, CheckedRow::Withheld),
+                    "the copy's bytes were vouched for by an alignment after the read"
+                );
+                assert!(matches!(
+                    read_checked_row_with(&conn, &root, other, key, &read).unwrap(),
+                    CheckedRow::Absent
+                ));
+            }
+        }
     }
 
     /// The alignment does not run while a profile writer holds the list lock,
