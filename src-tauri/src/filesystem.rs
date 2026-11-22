@@ -4040,8 +4040,8 @@ mod instant_offset_tests {
         let kept_str = kept.to_string_lossy().to_string();
         let deleted_str = deleted.to_string_lossy().to_string();
         let subdir_str = subdir.to_string_lossy().to_string();
-        let mut inputs = vec![kept_str.clone(), deleted_str.clone(), subdir_str.clone()];
-        let mut expected = vec![
+        let inputs = vec![kept_str.clone(), deleted_str.clone(), subdir_str.clone()];
+        let expected = vec![
             LocalPathCheckStatus::Present {
                 path: kept_str,
                 size: 11,
@@ -4050,17 +4050,20 @@ mod instant_offset_tests {
             LocalPathCheckStatus::Missing { path: subdir_str },
         ];
 
+        let result = check_local_paths_sync(inputs).expect("check");
+        assert_eq!(result, expected);
+
         #[cfg(unix)]
         {
             let link = dir.path().join("symlink.png");
             std::os::unix::fs::symlink(&kept, &link).expect("symlink");
             let link_str = link.to_string_lossy().to_string();
-            inputs.push(link_str.clone());
-            expected.push(LocalPathCheckStatus::Missing { path: link_str });
+            let link_result = check_local_paths_sync(vec![link_str.clone()]).expect("check");
+            assert_eq!(
+                link_result,
+                vec![LocalPathCheckStatus::Missing { path: link_str }]
+            );
         }
-
-        let result = check_local_paths_sync(inputs).expect("check");
-        assert_eq!(result, expected);
     }
 
     #[test]
