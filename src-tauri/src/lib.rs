@@ -24277,19 +24277,25 @@ pub(crate) fn fill_oauth_app_recorded(
     );
     let [given_id, given_secret] =
         [client_id_given, client_secret_given].map(|value| value.filter(|value| !value.is_empty()));
-    for (name, fills, given, stored) in [
-        ("client_id", client_id, given_id, stored_id.as_deref()),
-        (
-            "client_secret",
-            client_secret,
-            given_secret,
-            stored_secret.as_deref(),
-        ),
+    // An app is one unit: a config that names a slot of the stored app by
+    // its value relies on every slot the app holds, the ones whose value it
+    // does not carry included. A share of the id alone would let the scan
+    // that filled the secret take it back and leave an id with no secret.
+    let relies_on_app = !other_app
+        && [
+            (given_id, stored_id.as_deref()),
+            (given_secret, stored_secret.as_deref()),
+        ]
+        .iter()
+        .any(|(given, stored)| given.is_some() && given == stored);
+    for (name, fills, stored) in [
+        ("client_id", client_id, stored_id.as_deref()),
+        ("client_secret", client_secret, stored_secret.as_deref()),
     ] {
         let key = format!("oauth_{provider}_{name}");
         if let Some(value) = fills {
             record(&key, value, true)?;
-        } else if let Some(value) = given.filter(|value| !other_app && Some(*value) == stored) {
+        } else if let Some(value) = stored.filter(|_| relies_on_app) {
             record(&key, value, false)?;
         }
     }

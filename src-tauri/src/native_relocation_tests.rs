@@ -4020,6 +4020,74 @@ fn an_oauth_app_an_open_scan_relies_on_outlives_the_settle_of_the_scan_that_fill
     assert_eq!(app(), filled, "the user's app stays");
 }
 
+/// R7-5: scan B's config names the app scan A filled by its client id
+/// alone, with no secret or with another one: B relies on the whole app as
+/// stored, so A's settle leaves both its slots, and B's settle, with none of
+/// B's profiles saved, takes both back. Red while B records a share of the
+/// id alone: A's settle takes the secret back and leaves an id with no
+/// secret.
+#[test]
+fn an_app_an_open_scan_names_by_its_id_alone_outlives_the_settle_whole() {
+    if !in_isolated_child("an_app_an_open_scan_names_by_its_id_alone_outlives_the_settle_whole") {
+        return;
+    }
+    let _accounts = Accounts::open();
+    let runtime = bridge_runtime();
+    let conf = tempfile::NamedTempFile::new().unwrap();
+    let scan = |remote: &str, secret: Option<&str>| {
+        let secret = secret
+            .map(|secret| format!("client_secret = {secret}\n"))
+            .unwrap_or_default();
+        std::fs::write(
+            conf.path(),
+            format!(
+                concat!(
+                    "[{remote}]\ntype = dropbox\nclient_id = shared-id\n{secret}",
+                    "token = {{\"access_token\":\"{remote}-access\",\"token_type\":\"bearer\",\"refresh_token\":\"{remote}-refresh\"}}\n",
+                ),
+                remote = remote,
+                secret = secret,
+            ),
+        )
+        .unwrap();
+        runtime
+            .block_on(crate::bridge_commands::import_bridge_config(
+                "rclone".into(),
+                conf.path().to_string_lossy().into_owned(),
+                None,
+            ))
+            .unwrap()
+    };
+    let app = || {
+        (
+            vault_value("oauth_dropbox_client_id"),
+            vault_value("oauth_dropbox_client_secret"),
+        )
+    };
+    let filled = (
+        Some("shared-id".to_string()),
+        Some("shared-secret".to_string()),
+    );
+    assert_eq!(app(), (None, None));
+    for b_secret in [None, Some("another-secret")] {
+        let a = scan("a", Some("shared-secret"));
+        let b = scan("b", b_secret);
+        assert_eq!(app(), filled, "{b_secret:?}: A filled the app");
+        settle_scan(&runtime, a["scanId"].as_str()).unwrap();
+        assert_eq!(
+            app(),
+            filled,
+            "{b_secret:?}: A's settle leaves the whole app B relies on"
+        );
+        settle_scan(&runtime, b["scanId"].as_str()).unwrap();
+        assert_eq!(
+            app(),
+            (None, None),
+            "{b_secret:?}: B, never confirmed, takes all of it back"
+        );
+    }
+}
+
 /// A write another open scan records too, the same value under the same key,
 /// is left by this scan's settle only when the other scan stored for the same
 /// account: a row is the account's, and the other scan's settle removes only
