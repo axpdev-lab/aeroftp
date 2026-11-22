@@ -6216,8 +6216,9 @@ mod tests {
 
     /// A private token's only row in a partition the import restored, rotated
     /// by a refresh after the partition was published and before the profile
-    /// step: the decision writes over it only while it holds what the restore
-    /// left there, so the rotated token is kept.
+    /// step: the decision that keeps this device's version writes this
+    /// device's token over the row only while it holds what the restore left
+    /// there, so the rotated token is kept.
     #[test]
     fn a_decision_keeps_a_private_row_rotated_after_the_restore() {
         let _guard = crate::user_partitions::test_lock();
@@ -6271,7 +6272,7 @@ mod tests {
             ImportSections::default(),
             &[decide(
                 "srv_drive",
-                keystore_profile_plan::ProfileDecision::Accept,
+                keystore_profile_plan::ProfileDecision::Reject,
             )],
         );
         assert!(
