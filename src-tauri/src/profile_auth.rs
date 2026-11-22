@@ -664,7 +664,7 @@ async fn execute_at(
                 )
                 .await?;
                 scope.write(
-                    &format!("oauth_fourshared_{id}"),
+                    &crate::providers::oauth2::oauth_token_key("fourshared", id),
                     &format!("{token}:{secret}"),
                 )?;
             } else {
@@ -739,7 +739,7 @@ pub fn readiness(scope: &AuthScope<'_>, profile: &Value) -> Result<&'static str,
         }
     } else if kind == ProviderType::FourShared {
         scope
-            .read(&format!("oauth_fourshared_{id}"))?
+            .read(&crate::providers::oauth2::oauth_token_key("fourshared", id))?
             .is_some_and(|s| {
                 s.split_once(':')
                     .is_some_and(|(a, b)| !a.is_empty() && !b.is_empty())
@@ -912,7 +912,7 @@ async fn provider_at(
     }
     if kind == ProviderType::FourShared {
         let client = client_settings(scope, profile, &config);
-        let raw = match scope.read(&format!("oauth_fourshared_{id}"))? {
+        let raw = match scope.read(&crate::providers::oauth2::oauth_token_key("fourshared", id))? {
             Some(raw) => Some(raw),
             None => {
                 crate::bridge_commands::resolve_profile_oauth_token(scope.store, "fourshared", id)?

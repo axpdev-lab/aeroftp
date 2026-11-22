@@ -1239,19 +1239,35 @@ impl Clone for OAuth2Manager {
     }
 }
 
-/// The vault key of the OAuth token of `slug` for `profile_id`:
-/// `oauth_<slug>_<profile_id>`, or the legacy singleton `oauth_<slug>` for an
-/// empty `profile_id`, lowercased whole, as [`OAuth2Manager`] stores and
-/// loads it. Every other place that names a profile's OAuth token (the
-/// alignment, an export or an import, the readiness and auth-state reads)
-/// composes it here, so a profile id with capitals names one key everywhere.
+/// The slug of 4shared's OAuth1 token, whose runtime keeps the profile id of
+/// its key as it is (`provider_commands::store_fourshared_tokens`).
+const FOURSHARED_SLUG: &str = "fourshared";
+
+/// Whether the token key of `slug` lowercases its profile id: every
+/// [`OAuth2Manager`] provider does, 4shared does not. Two profile ids that
+/// differ only in case then name one key ([`oauth_token_key`]).
+pub fn oauth_token_key_folds_case(slug: &str) -> bool {
+    !slug.eq_ignore_ascii_case(FOURSHARED_SLUG)
+}
+
+/// The vault key of the OAuth token of `slug` for `profile_id`, as the
+/// runtime of the provider stores and loads it: `oauth_<slug>_<profile_id>`,
+/// or the legacy singleton `oauth_<slug>` for an empty `profile_id`, with
+/// the slug lowercased and the profile id lowercased too where the provider
+/// folds case ([`oauth_token_key_folds_case`]: every [`OAuth2Manager`]
+/// provider, not 4shared). Every place that names a profile's OAuth token
+/// (the runtimes, the alignment, an export or an import, the readiness and
+/// auth-state reads) composes it here, so one profile names one key
+/// everywhere.
 pub fn oauth_token_key(slug: &str, profile_id: &str) -> String {
+    let slug = slug.to_lowercase();
     if profile_id.is_empty() {
         format!("oauth_{slug}")
+    } else if oauth_token_key_folds_case(&slug) {
+        format!("oauth_{slug}_{}", profile_id.to_lowercase())
     } else {
         format!("oauth_{slug}_{profile_id}")
     }
-    .to_lowercase()
 }
 
 impl OAuth2Manager {

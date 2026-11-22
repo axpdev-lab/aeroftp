@@ -11443,19 +11443,14 @@ pub struct FourSharedAuthParams {
     pub connect_token: Option<String>,
 }
 
-/// Legacy app-global vault key for the 4shared OAuth1 token. Still read (and
-/// still written when no profile owns the flow) so an install authorised before
-/// the per-profile layout keeps connecting untouched.
-const FOURSHARED_TOKEN_KEY: &str = "oauth_fourshared";
-
 /// Vault key holding a given profile's 4shared token, or the legacy singleton
-/// when the caller has no profile in hand.
+/// `oauth_fourshared` (still read, and still written when no profile owns the
+/// flow, so an install authorised before the per-profile layout keeps
+/// connecting) when the caller has no profile in hand. Composed by
+/// [`crate::providers::oauth2::oauth_token_key`], the one rule every reader
+/// of the key follows.
 fn fourshared_token_key(profile_id: &str) -> String {
-    if profile_id.is_empty() {
-        FOURSHARED_TOKEN_KEY.to_string()
-    } else {
-        format!("{}_{}", FOURSHARED_TOKEN_KEY, profile_id)
-    }
+    crate::providers::oauth2::oauth_token_key("fourshared", profile_id)
 }
 
 /// Store 4shared tokens in credential vault (same pattern as OAuth2)
@@ -29430,6 +29425,78 @@ mod fourshared_attempt_key_tests {
         std::fs::create_dir(&partitions).unwrap();
         assert!(fourshared_adopt_tokens_inner("srv_attempt_b", "kept").is_err());
         std::fs::remove_dir(&partitions).unwrap();
+
+        CredentialStore::clear_cache();
+        match previous_xdg {
+            Some(value) => std::env::set_var("XDG_CONFIG_HOME", value),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        if let Some(value) = previous_passphrase {
+            std::env::set_var("AEROFTP_USER_PASSPHRASE", value);
+        }
+    }
+
+    /// A 4shared profile id with capitals names one token key for the sign-in
+    /// that writes it, the connect that reads it, the export that carries it
+    /// and the delete that removes it: 4shared keeps the id as it is
+    /// (`oauth_fourshared_Team`), and every one of them composes the key with
+    /// `oauth_token_key`.
+    #[test]
+    fn a_mixed_case_4shared_profiles_token_is_exported_and_deleted() {
+        let _env = crate::test_env::lock();
+        let _partition = crate::user_partitions::test_lock();
+        let dir = tempfile::TempDir::new().unwrap();
+        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        let previous_passphrase = std::env::var_os("AEROFTP_USER_PASSPHRASE");
+        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("fourshared-case-test").unwrap();
+        CredentialStore::unlock_with_master("fourshared-case-test", None).unwrap();
+        let store = CredentialStore::from_cache().unwrap();
+        crate::user_partitions::init_or_migrate_cli(&store).unwrap();
+        let user = crate::user_partitions::cli_get_active_user(&store)
+            .unwrap()
+            .map(|user| user.id);
+
+        store_fourshared_tokens("Team", "token-t", "secret-t").unwrap();
+        assert_eq!(
+            fourshared_token_key("Team"),
+            crate::providers::oauth2::oauth_token_key("fourshared", "Team")
+        );
+        assert_eq!(
+            store.get("oauth_fourshared_Team").unwrap(),
+            "token-t:secret-t"
+        );
+        assert_eq!(
+            load_fourshared_tokens("Team").unwrap(),
+            ("token-t".to_string(), "secret-t".to_string())
+        );
+        let server: crate::profile_export::ServerProfileExport =
+            serde_json::from_value(serde_json::json!({
+                "id": "Team", "name": "Team", "host": "", "port": 0,
+                "protocol": "fourshared"
+            }))
+            .unwrap();
+        let exported = crate::collect_provider_secrets_for_server(&store, &server).unwrap();
+        assert_eq!(exported.oauth.as_deref(), Some("token-t:secret-t"));
+
+        let purged = tauri::async_runtime::block_on(crate::purge_profile_secrets_for(
+            &store,
+            user,
+            "Team",
+            Some("fourshared"),
+        ))
+        .unwrap();
+        assert!(purged.failed.is_empty(), "{:?}", purged.failed);
+        assert!(purged
+            .removed
+            .contains(&"oauth_fourshared_Team".to_string()));
+        assert!(
+            store.get("oauth_fourshared_Team").is_err(),
+            "vault copy left"
+        );
+        assert!(load_fourshared_tokens("Team").is_err(), "row left");
 
         CredentialStore::clear_cache();
         match previous_xdg {
