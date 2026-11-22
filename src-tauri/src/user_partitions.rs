@@ -4999,6 +4999,9 @@ type SecretReader<'a> = dyn Fn(&str) -> Result<Option<Zeroizing<String>>, String
 /// Closure that removes one secret from the legacy vault; absent is not an error.
 type SecretDeleter<'a> = dyn Fn(&str) -> Result<(), String> + 'a;
 
+/// Closure that lists the legacy vault's keys now.
+type SecretLister<'a> = dyn Fn() -> Result<Vec<String>, String> + 'a;
+
 /// Marks an account whose private tokens left the vault ([`align_private_tokens_inner`]).
 const PRIVATE_TOKENS_ALIGNED_PREFIX: &str = "private_tokens_aligned_";
 
@@ -5148,6 +5151,13 @@ fn delete_optional_secret(store: &CredentialStore, account: &str) -> Result<(), 
 }
 
 /// Read one optional secret from the live store, mapping NotFound to None.
+/// The vault's keys as it lists them now.
+fn list_vault_keys(store: &CredentialStore) -> Result<Vec<String>, String> {
+    store
+        .list_accounts()
+        .map_err(|e| format!("List vault accounts: {e}"))
+}
+
 fn get_optional_secret(
     store: &CredentialStore,
     account: &str,
@@ -5384,6 +5394,7 @@ fn align_private_tokens_inner(
     root_key: &[u8; 32],
     user_id: i64,
     vault_keys: &[String],
+    list_secrets: &SecretLister<'_>,
     read_secret: &SecretReader<'_>,
     delete_secret: &SecretDeleter<'_>,
 ) -> Result<usize, String> {
@@ -5392,6 +5403,7 @@ fn align_private_tokens_inner(
         root_key,
         user_id,
         vault_keys,
+        list_secrets,
         read_secret,
         delete_secret,
     )?;
@@ -5420,15 +5432,6 @@ fn realign_marker_key(user_id: i64) -> String {
 /// The tags of the keys a targeted pass left to the next one, `None` when
 /// none waits.
 fn deferred_realign_tags(conn: &Connection, user_id: i64) -> Result<Option<Vec<String>>, String> {
-    deferred_realign_marker(conn, user_id).map(|marker| marker.map(|(tags, _)| tags))
-}
-
-/// [`deferred_realign_tags`] with the marker's stored value, which the pass
-/// that runs them clears only while it is still the one it read.
-fn deferred_realign_marker(
-    conn: &Connection,
-    user_id: i64,
-) -> Result<Option<(Vec<String>, String)>, String> {
     let value: Option<String> = conn
         .query_row(
             "SELECT value FROM global_state WHERE key = ?1",
@@ -5440,10 +5443,32 @@ fn deferred_realign_marker(
     value
         .map(|raw| {
             serde_json::from_str(&raw)
-                .map(|tags| (tags, raw))
                 .map_err(|e| format!("Read deferred private token alignment: {e}"))
         })
         .transpose()
+}
+
+/// Writes `tags` as the keys `user_id`'s next pass realigns, inside the
+/// caller's transaction; no tag left clears the marker.
+fn write_realign_tags(conn: &Connection, user_id: i64, tags: &[String]) -> Result<(), String> {
+    if tags.is_empty() {
+        conn.execute(
+            "DELETE FROM global_state WHERE key = ?1",
+            params![realign_marker_key(user_id)],
+        )
+        .map_err(|e| format!("Clear deferred private token alignment: {e}"))?;
+        return Ok(());
+    }
+    let value =
+        serde_json::to_string(tags).map_err(|e| format!("Defer private token alignment: {e}"))?;
+    conn.execute(
+        "INSERT INTO global_state(key, value, updated_at)
+         VALUES (?1, ?2, ?3)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+        params![realign_marker_key(user_id), value, now_ms()],
+    )
+    .map_err(|e| format!("Defer private token alignment: {e}"))?;
+    Ok(())
 }
 
 /// Leaves `keys` to the next pass of `user_id` ([`realign_deferred_tokens`]),
@@ -5469,15 +5494,7 @@ fn defer_realign(
     }
     tags.sort();
     tags.dedup();
-    let value =
-        serde_json::to_string(&tags).map_err(|e| format!("Defer private token alignment: {e}"))?;
-    tx.execute(
-        "INSERT INTO global_state(key, value, updated_at)
-         VALUES (?1, ?2, ?3)
-         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
-        params![realign_marker_key(user_id), value, now_ms()],
-    )
-    .map_err(|e| format!("Defer private token alignment: {e}"))?;
+    write_realign_tags(&tx, user_id, &tags)?;
     tx.commit()
         .map_err(|e| format!("Defer private token alignment: {e}"))
 }
@@ -5491,36 +5508,37 @@ thread_local! {
 }
 
 /// The targeted pass a restore could not run ([`defer_realign`]), run by the
-/// next ordinary pass of the account over the same keys alone: the marker
-/// goes once it ran, unless a restore deferred keys of its own since the
-/// pass read it, which the next pass then runs. A restore deferring the same
-/// keys again restored them before this pass took the list lock its own
-/// restore held, so this pass saw them. Its aligned marker stays as the
-/// restore left it, so the profiles the restore brought get no pass of their
-/// own.
+/// next ordinary pass of the account over the same keys alone: the tags of
+/// the keys it ran go once it ran, and every other tag stays, a restore's
+/// deferred since included, for the next pass, whose vault list holds its
+/// key. A tag whose key the vault no longer lists names nothing left to
+/// align, and goes too. A restore deferring the same keys again restored them
+/// before this pass took the list lock its own restore held, so this pass saw
+/// them. Its aligned marker stays as the restore left it, so the profiles the
+/// restore brought get no pass of their own.
 fn realign_deferred_tokens(
     conn: &Connection,
     root_key: &[u8; 32],
     user_id: i64,
     vault_keys: &[String],
+    list_secrets: &SecretLister<'_>,
     read_secret: &SecretReader<'_>,
     delete_secret: &SecretDeleter<'_>,
 ) -> Result<usize, String> {
-    let Some((tags, read)) = deferred_realign_marker(conn, user_id)? else {
+    let Some(tags) = deferred_realign_tags(conn, user_id)? else {
         return Ok(0);
     };
     let root_secret = user_crypto::secret_key_from_bytes(root_key);
-    let mut only = Vec::new();
+    let realign_tag = |key: &str| user_crypto::metadata_tag(&root_secret, b"realign-key", key);
+    let (mut only, mut covered) = (Vec::new(), Vec::new());
     for key in vault_keys
         .iter()
         .filter(|key| private_token_type(key).is_some())
     {
-        if tags.contains(&user_crypto::metadata_tag(
-            &root_secret,
-            b"realign-key",
-            key,
-        )?) {
+        let tag = realign_tag(key)?;
+        if tags.contains(&tag) {
             only.push(key.clone());
+            covered.push(tag);
         }
     }
     let aligned = if only.is_empty() {
@@ -5541,11 +5559,30 @@ fn realign_deferred_tokens(
     };
     #[cfg(test)]
     run_dual_write_hook(&BEFORE_REALIGN_CLEAR);
-    conn.execute(
-        "DELETE FROM global_state WHERE key = ?1 AND value = ?2",
-        params![realign_marker_key(user_id), read],
-    )
-    .map_err(|e| format!("Clear deferred private token alignment: {e}"))?;
+    // Read, subtracted and written in one transaction, as a deferral writes
+    // it: a tag deferred since this pass read the marker stays. The vault is
+    // listed inside it (the database, then the vault), so a key restored after
+    // that list defers its tag after this commit, and a tag kept for lack of
+    // a listed key cannot outlive its key.
+    let tx = rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
+        .map_err(|e| format!("Clear deferred private token alignment: {e}"))?;
+    let Some(current) = deferred_realign_tags(&tx, user_id)? else {
+        return Ok(aligned);
+    };
+    let mut listed = HashSet::new();
+    for key in list_secrets()?
+        .iter()
+        .filter(|key| private_token_type(key).is_some())
+    {
+        listed.insert(realign_tag(key)?);
+    }
+    let left: Vec<String> = current
+        .into_iter()
+        .filter(|tag| !covered.contains(tag) && listed.contains(tag))
+        .collect();
+    write_realign_tags(&tx, user_id, &left)?;
+    tx.commit()
+        .map_err(|e| format!("Clear deferred private token alignment: {e}"))?;
     Ok(aligned)
 }
 
@@ -5553,7 +5590,9 @@ fn realign_deferred_tokens(
 /// one pass of the same rule for an account already aligned, which neither
 /// reads nor sets its marker ([`realign_private_tokens_after_restore`]).
 /// `None`: the pass could not run now (the list lock busy, profile tags
-/// pending, the account locked) and changed nothing.
+/// pending, the account locked) and changed nothing, or a targeted pass
+/// copied keys the vault could not let go of (no file locks), which a later
+/// pass must still remove from the vault.
 fn align_private_tokens_of(
     conn: &Connection,
     root_key: &[u8; 32],
@@ -5701,7 +5740,12 @@ fn align_private_tokens_of(
         }
     }
     // A pass that left them in the vault is not done: the next one that can
-    // exclude the profile writers removes them.
+    // exclude the profile writers removes them. A targeted pass marks nothing,
+    // so it reports itself incomplete, and its caller keeps the keys for
+    // that pass ([`realign_deferred_tokens`], [`defer_realign`]).
+    if !vault_lets_go && !moved.is_empty() && only.is_some() {
+        return Ok(None);
+    }
     if only.is_none() && (vault_lets_go || moved.is_empty()) {
         mark_private_tokens_aligned(conn, user_id)?;
     }
@@ -6071,11 +6115,10 @@ pub fn migrate_credentials_eager_all(
     if pending.is_empty() {
         return Ok(0);
     }
-    let vault_keys = store
-        .list_accounts()
-        .map_err(|e| format!("List vault accounts: {e}"))?;
+    let vault_keys = list_vault_keys(store)?;
     let read_secret = |key: &str| get_optional_secret(store, key);
     let delete_secret = |key: &str| delete_optional_secret(store, key);
+    let list_secrets = || list_vault_keys(store);
     let mut total = 0usize;
     for user_id in pending {
         match migrate_user_credentials_inner(conn, root_key, user_id, &vault_keys, &read_secret) {
@@ -6089,6 +6132,7 @@ pub fn migrate_credentials_eager_all(
             root_key,
             user_id,
             &vault_keys,
+            &list_secrets,
             &read_secret,
             &delete_secret,
         );
@@ -6108,11 +6152,10 @@ pub fn migrate_credentials_for_user(
     if credentials_settled(conn, user_id)? {
         return Ok(0);
     }
-    let vault_keys = store
-        .list_accounts()
-        .map_err(|e| format!("List vault accounts: {e}"))?;
+    let vault_keys = list_vault_keys(store)?;
     let read_secret = |key: &str| get_optional_secret(store, key);
     let delete_secret = |key: &str| delete_optional_secret(store, key);
+    let list_secrets = || list_vault_keys(store);
     let migrated =
         migrate_user_credentials_inner(conn, root_key, user_id, &vault_keys, &read_secret)?;
     align_private_tokens_inner(
@@ -6120,6 +6163,7 @@ pub fn migrate_credentials_for_user(
         root_key,
         user_id,
         &vault_keys,
+        &list_secrets,
         &read_secret,
         &delete_secret,
     )?;
@@ -12483,12 +12527,29 @@ mod tests {
                 .map(|value| value.to_string())
         };
 
-        assert!(align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &refuse).is_err());
+        assert!(align_private_tokens_inner(
+            &conn,
+            &root,
+            other.id,
+            &keys,
+            &|| Ok(keys.clone()),
+            &read,
+            &refuse
+        )
+        .is_err());
         assert!(!private_tokens_aligned(&conn, other.id).unwrap());
         assert_eq!(row("oauth_dropbox_mine").as_deref(), Some("mine-token"));
 
-        let moved =
-            align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete).unwrap();
+        let moved = align_private_tokens_inner(
+            &conn,
+            &root,
+            other.id,
+            &keys,
+            &|| Ok(keys.clone()),
+            &read,
+            &delete,
+        )
+        .unwrap();
         let mut gone = deleted.borrow().clone();
         gone.sort();
         assert_eq!(
@@ -12527,11 +12588,29 @@ mod tests {
 
         deleted.borrow_mut().clear();
         assert_eq!(
-            align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete).unwrap(),
+            align_private_tokens_inner(
+                &conn,
+                &root,
+                other.id,
+                &keys,
+                &|| Ok(keys.clone()),
+                &read,
+                &delete
+            )
+            .unwrap(),
             0
         );
         assert_eq!(
-            align_private_tokens_inner(&conn, &root, owner, &keys, &read, &delete).unwrap(),
+            align_private_tokens_inner(
+                &conn,
+                &root,
+                owner,
+                &keys,
+                &|| Ok(keys.clone()),
+                &read,
+                &delete
+            )
+            .unwrap(),
             0
         );
         assert!(deleted.borrow().is_empty());
@@ -12581,7 +12660,16 @@ mod tests {
         migrate_user_credentials_inner(&conn, &root, other.id, &keys, &read).unwrap();
         assert_eq!(row("oauth_dropbox_profile-0"), None);
         assert_eq!(row("jottacloud_refresh_profile-0"), None);
-        align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete).unwrap();
+        align_private_tokens_inner(
+            &conn,
+            &root,
+            other.id,
+            &keys,
+            &|| Ok(keys.clone()),
+            &read,
+            &delete,
+        )
+        .unwrap();
         assert_eq!(row("oauth_dropbox_profile-0"), None);
         assert_eq!(row("jottacloud_refresh_profile-0"), None);
         assert_eq!(row("oauth_dropbox_mine").as_deref(), Some("mine-token"));
@@ -13008,7 +13096,16 @@ mod tests {
 
         let writer = ProfileListLock::acquire(&conn).unwrap();
         assert_eq!(
-            align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete).unwrap(),
+            align_private_tokens_inner(
+                &conn,
+                &root,
+                other.id,
+                &keys,
+                &|| Ok(keys.clone()),
+                &read,
+                &delete
+            )
+            .unwrap(),
             0
         );
         assert!(!private_tokens_aligned(&conn, other.id).unwrap());
@@ -13016,7 +13113,16 @@ mod tests {
         drop(writer);
 
         assert_eq!(
-            align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete).unwrap(),
+            align_private_tokens_inner(
+                &conn,
+                &root,
+                other.id,
+                &keys,
+                &|| Ok(keys.clone()),
+                &read,
+                &delete
+            )
+            .unwrap(),
             0
         );
         assert!(private_tokens_aligned(&conn, other.id).unwrap());
@@ -13094,7 +13200,9 @@ mod tests {
             )
             .unwrap();
 
-            // Another restore defers a key of its own while the pass runs.
+            // Another restore defers a key of its own while the pass runs; it
+            // wrote that key into the vault before.
+            store.store("oauth_dropbox_r", "backup-r").unwrap();
             let (later_db, later_root) = (db.clone(), root);
             BEFORE_REALIGN_CLEAR.with(|hook| {
                 *hook.borrow_mut() = Some(Box::new(move || {
@@ -13123,6 +13231,157 @@ mod tests {
             );
             assert_eq!(store.get("oauth_dropbox_q").unwrap(), "backup-q");
         }
+    }
+
+    /// A deferred pass clears only the tags of the keys it ran: a tag a
+    /// restore deferred for a key the pass's vault list did not hold yet stays
+    /// for the next pass, which moves that key, and a tag whose key the vault
+    /// no longer lists goes.
+    #[test]
+    fn a_deferred_pass_keeps_the_tags_it_did_not_run() {
+        let _guard = test_lock();
+        clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let mut conn = open_or_init_path(dir.path().join("partitions.db")).expect("open");
+        let root = test_root();
+        migrate_legacy_payloads(&mut conn, Some("[]"), None, &root).expect("seed");
+        let other = create_passphrase_less_user(&mut conn, &root, "Other", None, None)
+            .unwrap()
+            .id;
+        clear_user_session();
+        let profile = |id: &str| {
+            json!({"id": id, "name": id, "protocol": "dropbox", "host": "", "port": 0,
+                   "username": format!("{id}@example.test")})
+        };
+        replace_server_profiles_for(&mut conn, &root, other, &[profile("p"), profile("q")])
+            .unwrap();
+        mark_creds_migrated(&conn, other).unwrap();
+        mark_private_tokens_aligned(&conn, other).unwrap();
+        let (first, later, gone) = ("oauth_dropbox_p", "oauth_dropbox_q", "oauth_dropbox_gone");
+        defer_realign(
+            &conn,
+            &root,
+            other,
+            &[first, later, gone].map(str::to_string),
+        )
+        .unwrap();
+        let (all, read) = fake_vault(&[(first, "p-token"), (later, "q-token")]);
+        let deleted = RefCell::new(Vec::<String>::new());
+        let delete = |key: &str| {
+            deleted.borrow_mut().push(key.to_string());
+            Ok(())
+        };
+        let row = |key: &str| {
+            get_user_credential_for(&conn, &root, other, key)
+                .unwrap()
+                .map(|value| value.to_string())
+        };
+        let root_secret = user_crypto::secret_key_from_bytes(&root);
+        let tag = |key: &str| user_crypto::metadata_tag(&root_secret, b"realign-key", key).unwrap();
+
+        // The pass's list was taken before the later key was restored.
+        let listed = vec![first.to_string()];
+        align_private_tokens_inner(
+            &conn,
+            &root,
+            other,
+            &listed,
+            &|| Ok(all.clone()),
+            &read,
+            &delete,
+        )
+        .unwrap();
+        assert_eq!(row(first).as_deref(), Some("p-token"));
+        assert_eq!(row(later), None);
+        assert_eq!(*deleted.borrow(), [first.to_string()]);
+        assert_eq!(
+            deferred_realign_tags(&conn, other).unwrap(),
+            Some(vec![tag(later)]),
+            "only the tag the pass did not run stays"
+        );
+
+        align_private_tokens_inner(
+            &conn,
+            &root,
+            other,
+            &all,
+            &|| Ok(all.clone()),
+            &read,
+            &delete,
+        )
+        .unwrap();
+        assert_eq!(row(later).as_deref(), Some("q-token"));
+        assert!(deleted.borrow().contains(&later.to_string()));
+        assert_eq!(deferred_realign_tags(&conn, other).unwrap(), None);
+    }
+
+    /// On a filesystem without file locks a deferred pass copies the key but
+    /// the vault keeps it, so the pass is not done: its marker stays, and the
+    /// next pass that can exclude the profile writers removes the vault copy
+    /// and the marker, while the row stays.
+    #[test]
+    fn without_file_locks_a_deferred_pass_keeps_its_marker() {
+        let _guard = test_lock();
+        clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let mut conn = open_or_init_path(dir.path().join("partitions.db")).expect("open");
+        let root = test_root();
+        migrate_legacy_payloads(&mut conn, Some("[]"), None, &root).expect("seed");
+        let other = create_passphrase_less_user(&mut conn, &root, "Other", None, None)
+            .unwrap()
+            .id;
+        clear_user_session();
+        let profile = json!({"id": "p", "name": "p", "protocol": "dropbox", "host": "",
+                             "port": 0, "username": "p@example.test"});
+        replace_server_profiles_for(&mut conn, &root, other, &[profile]).unwrap();
+        mark_creds_migrated(&conn, other).unwrap();
+        mark_private_tokens_aligned(&conn, other).unwrap();
+        let key = "oauth_dropbox_p";
+        defer_realign(&conn, &root, other, &[key.to_string()]).unwrap();
+        let (keys, read) = fake_vault(&[(key, "mine-token")]);
+        let deleted = RefCell::new(Vec::<String>::new());
+        let delete = |key: &str| {
+            deleted.borrow_mut().push(key.to_string());
+            Ok(())
+        };
+        let row = || {
+            get_user_credential_for(&conn, &root, other, key)
+                .unwrap()
+                .map(|value| value.to_string())
+        };
+
+        NO_FILE_LOCKS_IN_TEST.set(true);
+        let first = align_private_tokens_inner(
+            &conn,
+            &root,
+            other,
+            &keys,
+            &|| Ok(keys.clone()),
+            &read,
+            &delete,
+        );
+        NO_FILE_LOCKS_IN_TEST.set(false);
+        first.unwrap();
+        assert_eq!(row().as_deref(), Some("mine-token"));
+        assert!(deleted.borrow().is_empty(), "the vault kept its key");
+        assert!(
+            deferred_realign_tags(&conn, other).unwrap().is_some(),
+            "the marker stays while the vault holds the copy"
+        );
+
+        align_private_tokens_inner(
+            &conn,
+            &root,
+            other,
+            &keys,
+            &|| Ok(keys.clone()),
+            &read,
+            &delete,
+        )
+        .unwrap();
+        assert_eq!(row().as_deref(), Some("mine-token"));
+        assert_eq!(*deleted.borrow(), [key.to_string()]);
+        assert!(deferred_realign_tags(&conn, other).unwrap().is_none());
     }
 
     /// An install migrated before the tokens were kept to their account: on a
@@ -13187,7 +13446,16 @@ mod tests {
                 .unwrap()
                 .map(|value| value.to_string())
         };
-        align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete).unwrap();
+        align_private_tokens_inner(
+            &conn,
+            &root,
+            other.id,
+            &keys,
+            &|| Ok(keys.clone()),
+            &read,
+            &delete,
+        )
+        .unwrap();
         assert_eq!(row("oauth_dropbox_profile-0"), None);
         assert_eq!(
             row("jottacloud_refresh_profile-0").as_deref(),
@@ -13254,7 +13522,16 @@ mod tests {
         };
 
         assert_eq!(
-            align_private_tokens_inner(&conn, &here, other.id, &keys, &read, &delete).unwrap(),
+            align_private_tokens_inner(
+                &conn,
+                &here,
+                other.id,
+                &keys,
+                &|| Ok(keys.clone()),
+                &read,
+                &delete
+            )
+            .unwrap(),
             0
         );
         assert!(!private_tokens_aligned(&conn, other.id).unwrap());
@@ -13264,7 +13541,16 @@ mod tests {
         retag_own_profiles_if_pending(&conn, &here, locked.id).unwrap();
         clear_user_session();
         assert!(has_eager_pending_users(&conn).unwrap());
-        align_private_tokens_inner(&conn, &here, other.id, &keys, &read, &delete).unwrap();
+        align_private_tokens_inner(
+            &conn,
+            &here,
+            other.id,
+            &keys,
+            &|| Ok(keys.clone()),
+            &read,
+            &delete,
+        )
+        .unwrap();
         assert!(private_tokens_aligned(&conn, other.id).unwrap());
         assert!(deleted.borrow().is_empty(), "{:?}", deleted.borrow());
         assert_eq!(
@@ -13514,7 +13800,16 @@ mod tests {
         let held: Vec<(&str, &str)> = rows.iter().map(|(k, _, v)| (*k, v.as_str())).collect();
         let (keys, read) = fake_vault(&held);
         let delete = |_: &str| Ok(());
-        align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete).unwrap();
+        align_private_tokens_inner(
+            &conn,
+            &root,
+            other.id,
+            &keys,
+            &|| Ok(keys.clone()),
+            &read,
+            &delete,
+        )
+        .unwrap();
         let row = |key: &str| {
             get_user_credential_for(&conn, &root, other.id, key)
                 .unwrap()
@@ -13578,14 +13873,32 @@ mod tests {
         set_signed_in_credential_for(&conn, &root, other.id, key, "oauth", "gho_other").unwrap();
         let (keys, read) = fake_vault(&[(key, "gho_owner")]);
         let delete = |_: &str| Ok(());
-        align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete).unwrap();
+        align_private_tokens_inner(
+            &conn,
+            &root,
+            other.id,
+            &keys,
+            &|| Ok(keys.clone()),
+            &read,
+            &delete,
+        )
+        .unwrap();
         assert_eq!(
             row_of(&conn, &root, other.id, key).as_deref(),
             Some("gho_other"),
             "the non-owner's own GitHub sign-in was dropped"
         );
         reset_alignment(&conn, other.id);
-        align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete).unwrap();
+        align_private_tokens_inner(
+            &conn,
+            &root,
+            other.id,
+            &keys,
+            &|| Ok(keys.clone()),
+            &read,
+            &delete,
+        )
+        .unwrap();
         assert_eq!(
             row_of(&conn, &root, other.id, key).as_deref(),
             Some("gho_other"),
@@ -13617,7 +13930,16 @@ mod tests {
             deleted.borrow_mut().push(key.to_string());
             Ok(())
         };
-        align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete).unwrap();
+        align_private_tokens_inner(
+            &conn,
+            &root,
+            other.id,
+            &keys,
+            &|| Ok(keys.clone()),
+            &read,
+            &delete,
+        )
+        .unwrap();
         assert_eq!(
             row_of(&conn, &root, other.id, oauth),
             None,
@@ -13629,7 +13951,16 @@ mod tests {
 
         set_signed_in_credential_for(&conn, &root, other.id, oauth, "oauth", &others).unwrap();
         reset_alignment(&conn, other.id);
-        align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete).unwrap();
+        align_private_tokens_inner(
+            &conn,
+            &root,
+            other.id,
+            &keys,
+            &|| Ok(keys.clone()),
+            &read,
+            &delete,
+        )
+        .unwrap();
         assert_eq!(row_of(&conn, &root, other.id, oauth), Some(others));
         assert_eq!(row_of(&conn, &root, owner, oauth), Some(owners));
         assert!(deleted.borrow().is_empty(), "{:?}", deleted.borrow());
@@ -13652,7 +13983,16 @@ mod tests {
         let signed_in_again = oauth_record("new-access", "new-refresh", "v1:owners-second");
         let (keys, read) = fake_vault(&[(key, signed_in_again.as_str())]);
         let delete = |_: &str| Ok(());
-        align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete).unwrap();
+        align_private_tokens_inner(
+            &conn,
+            &root,
+            other.id,
+            &keys,
+            &|| Ok(keys.clone()),
+            &read,
+            &delete,
+        )
+        .unwrap();
         assert_eq!(
             row_of(&conn, &root, other.id, key),
             None,
@@ -13662,7 +14002,16 @@ mod tests {
         let own = oauth_record("own-access", "own-refresh", "v1:own");
         set_signed_in_credential_for(&conn, &root, other.id, key, "oauth", &own).unwrap();
         reset_alignment(&conn, other.id);
-        align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete).unwrap();
+        align_private_tokens_inner(
+            &conn,
+            &root,
+            other.id,
+            &keys,
+            &|| Ok(keys.clone()),
+            &read,
+            &delete,
+        )
+        .unwrap();
         assert_eq!(row_of(&conn, &root, other.id, key), Some(own));
     }
 
@@ -13692,7 +14041,16 @@ mod tests {
         .unwrap();
         let (keys, read) = fake_vault(&[]);
         let delete = |_: &str| Ok(());
-        align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete).unwrap();
+        align_private_tokens_inner(
+            &conn,
+            &root,
+            other.id,
+            &keys,
+            &|| Ok(keys.clone()),
+            &read,
+            &delete,
+        )
+        .unwrap();
         assert_eq!(
             row_of(&conn, &root, other.id, oauth),
             None,
@@ -13707,7 +14065,16 @@ mod tests {
         let own = oauth_record("own-access", "own-refresh", "v1:own");
         set_signed_in_credential_for(&conn, &root, other.id, oauth, "oauth", &own).unwrap();
         reset_alignment(&conn, other.id);
-        align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete).unwrap();
+        align_private_tokens_inner(
+            &conn,
+            &root,
+            other.id,
+            &keys,
+            &|| Ok(keys.clone()),
+            &read,
+            &delete,
+        )
+        .unwrap();
         assert_eq!(row_of(&conn, &root, other.id, oauth), Some(own));
     }
 
@@ -13739,7 +14106,16 @@ mod tests {
         let owners = oauth_record("owners-access", "owners-refresh", "v1:owners");
         let (keys, read) = fake_vault(&[(oauth, owners.as_str()), (github, "gho_owner")]);
         let delete = |_: &str| Ok(());
-        align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete).unwrap();
+        align_private_tokens_inner(
+            &conn,
+            &root,
+            other.id,
+            &keys,
+            &|| Ok(keys.clone()),
+            &read,
+            &delete,
+        )
+        .unwrap();
         assert_eq!(
             row_of(&conn, &root, other.id, oauth),
             None,
@@ -13770,7 +14146,16 @@ mod tests {
         let delete = |_: &str| Ok(());
         for user in [owner, other.id, owner] {
             reset_alignment(&conn, user);
-            align_private_tokens_inner(&conn, &root, user, &keys, &read, &delete).unwrap();
+            align_private_tokens_inner(
+                &conn,
+                &root,
+                user,
+                &keys,
+                &|| Ok(keys.clone()),
+                &read,
+                &delete,
+            )
+            .unwrap();
         }
         assert_eq!(row_of(&conn, &root, owner, oauth), Some(owners));
         assert_eq!(
@@ -13809,7 +14194,16 @@ mod tests {
         let owners = oauth_record("owners-access", "owners-refresh", "v1:owners");
         let (keys, read) = fake_vault(&[(key, owners.as_str())]);
         let delete = |_: &str| Ok(());
-        align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete).unwrap();
+        align_private_tokens_inner(
+            &conn,
+            &root,
+            other.id,
+            &keys,
+            &|| Ok(keys.clone()),
+            &read,
+            &delete,
+        )
+        .unwrap();
         assert_eq!(
             row_of(&conn, &root, other.id, key),
             Some(record("refreshed")),
@@ -13885,7 +14279,15 @@ mod tests {
             Ok(())
         };
         NO_FILE_LOCKS_IN_TEST.set(true);
-        let aligned = align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete);
+        let aligned = align_private_tokens_inner(
+            &conn,
+            &root,
+            other.id,
+            &keys,
+            &|| Ok(keys.clone()),
+            &read,
+            &delete,
+        );
         NO_FILE_LOCKS_IN_TEST.set(false);
         aligned.unwrap();
         assert_eq!(
@@ -13898,7 +14300,16 @@ mod tests {
         assert!(deleted.borrow().is_empty());
         assert!(!private_tokens_aligned(&conn, other.id).unwrap());
 
-        align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete).unwrap();
+        align_private_tokens_inner(
+            &conn,
+            &root,
+            other.id,
+            &keys,
+            &|| Ok(keys.clone()),
+            &read,
+            &delete,
+        )
+        .unwrap();
         assert_eq!(
             get_user_credential_for(&conn, &root, other.id, "oauth_dropbox_p")
                 .unwrap()
@@ -13953,7 +14364,16 @@ mod tests {
             };
             if !shared {
                 let (keys, read) = fake_vault(&[(team.as_str(), "mine-token")]);
-                align_private_tokens_inner(&conn, &root, other, &keys, &read, &delete).unwrap();
+                align_private_tokens_inner(
+                    &conn,
+                    &root,
+                    other,
+                    &keys,
+                    &|| Ok(keys.clone()),
+                    &read,
+                    &delete,
+                )
+                .unwrap();
                 assert_eq!(row(&team).as_deref(), Some("mine-token"), "moved");
                 assert_eq!(
                     *deleted.borrow(),
@@ -13970,7 +14390,16 @@ mod tests {
                 (team.as_str(), "owners-token"),
                 (crew.as_str(), "owners-crew"),
             ]);
-            align_private_tokens_inner(&conn, &root, other, &keys, &read, &delete).unwrap();
+            align_private_tokens_inner(
+                &conn,
+                &root,
+                other,
+                &keys,
+                &|| Ok(keys.clone()),
+                &read,
+                &delete,
+            )
+            .unwrap();
             assert_eq!(row(&team), None, "the unstamped copy is dropped");
             assert_eq!(
                 read_credential_owner_aware_inner(&conn, &root, other, &crew, &read)
@@ -14039,7 +14468,16 @@ mod tests {
             deleted.borrow_mut().push(key.to_string());
             Ok(())
         };
-        align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete).unwrap();
+        align_private_tokens_inner(
+            &conn,
+            &root,
+            other.id,
+            &keys,
+            &|| Ok(keys.clone()),
+            &read,
+            &delete,
+        )
+        .unwrap();
         let mut gone = deleted.borrow().clone();
         gone.sort();
         let mut expected = vec![
