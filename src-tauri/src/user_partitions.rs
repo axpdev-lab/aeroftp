@@ -4000,7 +4000,9 @@ fn stamp_matches(
 
 /// Conditional refresh of an existing owned credential. Resolve the DEK before
 /// SQLite's write reservation, preserving the session -> SQLite lock order.
-/// A missing or replaced row is never recreated with a stale refresh result.
+/// A missing or replaced row is never recreated with a stale refresh result,
+/// and a row its readers withhold is not written over
+/// ([`replace_user_credential_where`]), checked against the open vault.
 pub(crate) fn replace_user_credential_if_unchanged(
     conn: &Connection,
     root_key: &[u8; 32],
@@ -4020,6 +4022,10 @@ pub(crate) fn replace_user_credential_if_unchanged(
         &|current| bool::from(current.as_bytes().ct_eq(update.0.as_bytes())),
         update.1,
         require_active_user,
+        &|key: &str| match CredentialStore::from_cache() {
+            Some(store) => get_optional_secret(&store, key),
+            None => Err("Read legacy secret: the vault is not open".to_string()),
+        },
     )
 }
 
@@ -4097,7 +4103,10 @@ pub(crate) fn swap_user_credential_if_one_of(
 /// [`replace_user_credential_if_unchanged`] for a row that must still hold a
 /// value `still_holds` accepts, not one exact value: the row is replaced by
 /// `replacement` only then, read and written in one IMMEDIATE transaction,
-/// and a missing row is never created.
+/// and a missing row is never created. The row is read as its readers read it
+/// ([`checked_row`], the vault through `read_secret`): a refresh that read it
+/// before a restore set the wait does not write over a row the readers
+/// withhold now, with its bytes unchanged.
 #[allow(clippy::too_many_arguments)]
 fn replace_user_credential_where(
     conn: &Connection,
@@ -4108,6 +4117,7 @@ fn replace_user_credential_where(
     still_holds: &dyn Fn(&str) -> bool,
     replacement: &str,
     require_active_user: bool,
+    read_secret: &SecretReader<'_>,
 ) -> Result<bool, String> {
     if credential_id.is_empty() || credential_type.is_empty() {
         return Err("CREDENTIAL_ID_AND_TYPE_REQUIRED".to_owned());
@@ -4120,7 +4130,8 @@ fn replace_user_credential_where(
         if require_active_user && active_user_id(&tx)? != Some(user_id) {
             return Err(ACCOUNT_CHANGED.to_owned());
         }
-        let current = read_credential_with_dek(&tx, user_id, dek, credential_id)?;
+        let read = read_credential_and_digest_with_dek(&tx, user_id, dek, credential_id)?;
+        let current = checked_row(&tx, user_id, credential_id, read, read_secret)?;
         if !current.as_ref().is_some_and(|secret| still_holds(secret)) {
             return Ok(false);
         }
@@ -4199,6 +4210,7 @@ pub(crate) fn refresh_user_credential(
         still_holds,
         replacement,
         false,
+        &|key: &str| get_optional_secret(store, key),
     )
 }
 
@@ -4209,11 +4221,13 @@ pub(crate) fn refresh_user_credential(
 /// IMMEDIATE transaction, or the vault's cross-process write lock, taken
 /// inside that transaction when the legacy owner reads the vault, so no row
 /// appears in between. `Ok(false)`: the copy changed since `expected` was
-/// read, and nothing is written. The legacy owner's other copy (the vault
-/// key after a row write, the row after a vault-only write) then follows on
-/// a best-effort basis, by its own compare-and-write on what it holds, while
-/// `same_chain` says it holds the chain `expected` held (the same chain in
-/// other bytes included); a copy that holds another chain is left as it is.
+/// read, or, for a refresh (`signed_in` false), its readers now withhold it
+/// ([`checked_row`]), and nothing is written. The legacy owner's other copy
+/// (the vault key after a row write, the row after a vault-only write) then
+/// follows on a best-effort basis, by its own compare-and-write on what it
+/// holds, while `same_chain` says it holds the chain `expected` held (the
+/// same chain in other bytes included); a copy that holds another chain is
+/// left as it is.
 /// A follow that fails is [`COPY_NOT_FOLLOWED`]: the copy read was written,
 /// the other was not.
 ///
@@ -4340,12 +4354,15 @@ pub(crate) fn replace_owner_aware_if_unchanged(
         let is_owner = nonprofile_secret_owner(&tx)? == Some(user_id);
         // A sign-in compares against the row as its reader saw it: a row the
         // readers withhold ([`checked_row`]) read as no row, so the sign-in
-        // that replaces it is not refused for bytes it was never shown.
+        // that replaces it is not refused for bytes it was never shown. A
+        // refresh never writes over such a row, checked here, in the write's
+        // own transaction: the row may have turned withheld since the
+        // refresh read it (a restore meanwhile set the wait), with its bytes
+        // unchanged.
         let read_secret = |key: &str| get_optional_secret(store, key);
         let current = match read_credential_and_digest_with_dek(&tx, user_id, dek, credential_id)? {
             Some((row, digest))
-                if signed_in
-                    && !is_owner
+                if !is_owner
                     && unverified_while_tags_pending(
                         &tx,
                         user_id,
@@ -4355,6 +4372,9 @@ pub(crate) fn replace_owner_aware_if_unchanged(
                         &read_secret,
                     )? =>
             {
+                if !signed_in {
+                    return Ok(false);
+                }
                 None
             }
             other => other.map(|(row, _)| row),
@@ -13250,6 +13270,124 @@ mod tests {
         store_active_credential_typed_dual(&store, "oauth_box_x", "oauth", "o-token").unwrap();
         assert_eq!(row(owner, "oauth_box_x").as_deref(), Some("o-token"));
         assert_eq!(row(other, "oauth_box_x"), None, "the account switched to");
+    }
+
+    /// An unstamped copy of the vault's value in an account other than the
+    /// legacy owner, readable until profile tags turn pending for a locked
+    /// account: the fixture of the refresh tests below. Returns the store,
+    /// the account and its partition root key.
+    fn a_row_withheld_at_write_time(
+        key: &str,
+        kind: &str,
+        value: &str,
+    ) -> (CredentialStore, i64, Zeroizing<[u8; 32]>) {
+        let store = isolated_cli_store();
+        let mut conn = open_or_init_cli().unwrap();
+        let root = Zeroizing::new(store.derive_user_partition_wrapping_key());
+        let other = create_passphrase_less_user(&mut conn, &root, "Other", None, None)
+            .unwrap()
+            .id;
+        let locked = create_user(&mut conn, &root, "Locked", None, None, Some("pass"))
+            .unwrap()
+            .id;
+        clear_user_session();
+        store.store(key, value).unwrap();
+        set_user_credential_for(&conn, &root, other, key, kind, value).unwrap();
+        assert!(
+            matches!(
+                read_checked_row(&conn, &store, &root, other, key).unwrap(),
+                CheckedRow::Value(_)
+            ),
+            "readable before the tags turn pending"
+        );
+        conn.execute(
+            "INSERT INTO global_state(key, value, updated_at) VALUES (?1, '1', 0)",
+            params![profile_tags_pending_key(locked)],
+        )
+        .unwrap();
+        assert!(
+            matches!(
+                read_checked_row(&conn, &store, &root, other, key).unwrap(),
+                CheckedRow::Withheld
+            ),
+            "withheld once they are"
+        );
+        (store, other, root)
+    }
+
+    /// A refresh compared with the bytes it read while the row was readable,
+    /// or with no row (a key it found empty, filled since), does not write
+    /// over the row once its readers withhold it: the withheld check runs in
+    /// the write's own transaction for a refresh too, and the row keeps its
+    /// bytes.
+    #[test]
+    fn a_refresh_does_not_write_over_a_row_withheld_since_its_read() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "user_partitions::tests::a_refresh_does_not_write_over_a_row_withheld_since_its_read",
+        ) {
+            return;
+        }
+        let _guard = test_lock();
+        let key = "jottacloud_refresh_w";
+        let owners = r#"{"refresh_token":"owners-chain","username":"jotta-user"}"#;
+        let (store, other, root) = a_row_withheld_at_write_time(key, "jottacloud_refresh", owners);
+        let refresh = |expected: Option<&str>| {
+            replace_owner_aware_if_unchanged(
+                &store,
+                Some(other),
+                key,
+                "jottacloud_refresh",
+                expected,
+                r#"{"refresh_token":"rotated","username":"jotta-user"}"#,
+                &|_, _| false,
+                None,
+                &[],
+                false,
+            )
+        };
+        let over_its_read = refresh(Some(owners));
+        let over_no_row = refresh(None);
+        let row = get_user_credential_for(&open_or_init_cli().unwrap(), &root, other, key)
+            .unwrap()
+            .map(|value| value.to_string());
+        assert_eq!(over_its_read, Ok(false), "a refresh over a withheld row");
+        assert_eq!(over_no_row, Ok(false), "a refresh that found no row");
+        assert_eq!(row.as_deref(), Some(owners), "the row keeps its bytes");
+    }
+
+    /// The same for a refresh written through [`replace_user_credential_where`]
+    /// (an OAuth refresh, a native Proton session's): compared with the
+    /// bytes read while the row was readable, it is not written once the
+    /// readers withhold the row.
+    #[test]
+    fn a_conditional_refresh_does_not_write_over_a_row_withheld_since_its_read() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "user_partitions::tests::a_conditional_refresh_does_not_write_over_a_row_withheld_since_its_read",
+        ) {
+            return;
+        }
+        let _guard = test_lock();
+        let key = "oauth_dropbox_w";
+        let (_store, other, root) = a_row_withheld_at_write_time(key, "oauth", "owners-token");
+        let conn = open_or_init_cli().unwrap();
+        let written = replace_user_credential_if_unchanged(
+            &conn,
+            &root,
+            other,
+            key,
+            "oauth",
+            ("owners-token", "refreshed-token"),
+            false,
+        );
+        let row = get_user_credential_for(&conn, &root, other, key)
+            .unwrap()
+            .map(|value| value.to_string());
+        assert_eq!(written, Ok(false), "a refresh over a withheld row");
+        assert_eq!(
+            row.as_deref(),
+            Some("owners-token"),
+            "the row keeps its bytes"
+        );
     }
 
     /// While profile tags are pending, an unstamped row of an account other
