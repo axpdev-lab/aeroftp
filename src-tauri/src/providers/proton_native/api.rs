@@ -729,6 +729,12 @@ impl ProtonApi {
                 RefreshLock::Held(lease) => Some(lease),
                 RefreshLock::TimedOut => None,
                 RefreshLock::Unavailable(error) => {
+                    // A pair another process saved since needs no lease to
+                    // adopt: nothing is sent, so nothing can race a rotation.
+                    if let Some(saved) = self.newer_saved_tokens(Some(store.as_ref()), &current) {
+                        *self.tokens.write().await = Some(saved);
+                        return Ok(Refreshed::Retry);
+                    }
                     log::warn!("Proton session refresh held off: {error}");
                     return Err(ProtonError::LocalIo(std::io::Error::other(format!(
                         "the Proton session refresh lease could not be taken: {error}"
@@ -1203,6 +1209,38 @@ mod tests {
         let kept = api.tokens().await.expect("the session is kept");
         assert_eq!(kept.access_token.expose_secret(), "access-1");
         assert_eq!(store.saved_access().as_deref(), Some("access-1"));
+    }
+
+    /// A lease whose storage fails still lets the request adopt a pair
+    /// another process saved for the same session: the replay succeeds and
+    /// nothing is sent to `/auth/v4/refresh`.
+    #[tokio::test]
+    async fn a_lease_storage_failure_still_adopts_a_newer_saved_pair() {
+        let refreshes = Arc::new(AtomicUsize::new(0));
+        let api = ProtonApi::with_base_url(
+            serve(users_app(Arc::clone(&refreshes), REFRESH_OK)).await,
+            "external-drive-aeroftp@1.2.3-alpha".into(),
+        )
+        .with_policy(FAST);
+        api.set_tokens(Some(tokens("access-1"))).await;
+        let store = Arc::new(MemoryStore::default());
+        store.save(&tokens("access-2"));
+        *store.lock_unavailable.lock().unwrap() = true;
+        api.set_session_store(Arc::clone(&store) as Arc<dyn SessionStore>);
+
+        let answer: Value = api
+            .get("/core/v4/users", &[])
+            .await
+            .expect("the saved pair is adopted and the replay succeeds");
+        assert_eq!(answer["Ok"], Value::Bool(true));
+        assert_eq!(
+            refreshes.load(Ordering::SeqCst),
+            0,
+            "no refresh is sent without the lease"
+        );
+        assert_eq!(store.locks.load(Ordering::SeqCst), 1);
+        let adopted = api.tokens().await.expect("tokens kept");
+        assert_eq!(adopted.access_token.expose_secret(), "access-2");
     }
 
     /// Another process refreshed the shared session: its saved tokens are
