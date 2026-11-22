@@ -4048,11 +4048,25 @@ fn stamp_matches(
     Ok(stamp.as_deref() == Some(digest))
 }
 
+/// A write that needs the vault's copy of a key found the vault closed: it
+/// was locked since the caller read what it is writing over. The caller
+/// reports it as it is, never as a change of the credential's owner.
+pub(crate) const VAULT_NOT_OPEN: &str = "VAULT_NOT_OPEN: the credential vault is not open";
+
+#[cfg(test)]
+thread_local! {
+    /// Runs once on this thread in the next [`replace_user_credential_where`],
+    /// inside its transaction, after the row is read and before it is checked:
+    /// the vault locked, or another writer, in between (test only).
+    pub(crate) static BEFORE_REFRESH_ROW_CHECK: RefCell<Option<Box<dyn FnOnce()>>> = const { RefCell::new(None) };
+}
+
 /// Conditional refresh of an existing owned credential. Resolve the DEK before
 /// SQLite's write reservation, preserving the session -> SQLite lock order.
 /// A missing or replaced row is never recreated with a stale refresh result,
 /// and a row its readers withhold is not written over
-/// ([`replace_user_credential_where`]), checked against the open vault.
+/// ([`replace_user_credential_where`]), checked against the open vault: a
+/// vault closed meanwhile is [`VAULT_NOT_OPEN`].
 pub(crate) fn replace_user_credential_if_unchanged(
     conn: &Connection,
     root_key: &[u8; 32],
@@ -4074,7 +4088,7 @@ pub(crate) fn replace_user_credential_if_unchanged(
         require_active_user,
         &|key: &str| match CredentialStore::from_cache() {
             Some(store) => get_optional_secret(&store, key),
-            None => Err("Read legacy secret: the vault is not open".to_string()),
+            None => Err(VAULT_NOT_OPEN.to_string()),
         },
     )
 }
@@ -4181,6 +4195,8 @@ fn replace_user_credential_where(
             return Err(ACCOUNT_CHANGED.to_owned());
         }
         let read = read_credential_and_digest_with_dek(&tx, user_id, dek, credential_id)?;
+        #[cfg(test)]
+        run_dual_write_hook(&BEFORE_REFRESH_ROW_CHECK);
         let current = checked_row(&tx, user_id, credential_id, read, read_secret)?;
         if !current.as_ref().is_some_and(|secret| still_holds(secret)) {
             return Ok(false);

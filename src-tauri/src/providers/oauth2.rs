@@ -659,6 +659,22 @@ fn token_owner_changed() -> ProviderError {
     ProviderError::TargetChanged
 }
 
+/// What a refresh reports when its write found the vault closed (locked
+/// since the refresh read the token): not a change of the token's owner.
+const REFRESH_VAULT_CLOSED: &str =
+    "Credential vault is not open; the refreshed authorization was not saved";
+
+/// A refused write of a refreshed record as the caller sees it: the vault
+/// closed meanwhile ([`crate::user_partitions::VAULT_NOT_OPEN`]) as itself,
+/// anything else as a token whose owner changed.
+fn refresh_write_refused(error: String) -> ProviderError {
+    if error == crate::user_partitions::VAULT_NOT_OPEN {
+        ProviderError::Other(REFRESH_VAULT_CLOSED.to_string())
+    } else {
+        token_owner_changed()
+    }
+}
+
 /// Own one legacy pathname before reading it. Failure restores without
 /// overwriting a newly created original. A conflicting recovery copy remains
 /// owner-only rather than deleting an authorization that was not migrated.
@@ -1841,8 +1857,10 @@ impl OAuth2Manager {
         );
         let unchanged = match &observed.source {
             TokenSource::Partition(user) => {
-                let store = crate::credential_store::CredentialStore::from_cache()
-                    .ok_or_else(token_owner_changed)?;
+                let store =
+                    crate::credential_store::CredentialStore::from_cache().ok_or_else(|| {
+                        refresh_write_refused(crate::user_partitions::VAULT_NOT_OPEN.to_owned())
+                    })?;
                 let conn = crate::user_partitions::open_or_init_cli()
                     .map_err(|_| token_owner_changed())?;
                 let key = Zeroizing::new(store.derive_user_partition_wrapping_key());
@@ -1855,14 +1873,14 @@ impl OAuth2Manager {
                     (&observed.raw, &json),
                     self.credential_user.is_none(),
                 )
-                .map_err(|_| token_owner_changed())?
+                .map_err(refresh_write_refused)?
             }
             TokenSource::Vault | TokenSource::Memory(..) => {
                 let update = || -> Result<bool, String> {
                     match &observed.source {
                         TokenSource::Vault => {
                             let store = crate::credential_store::CredentialStore::from_cache()
-                                .ok_or_else(|| "Authorization store closed".to_owned())?;
+                                .ok_or_else(|| crate::user_partitions::VAULT_NOT_OPEN.to_owned())?;
                             store
                                 .replace_secret_if_unchanged(account, &observed.raw, &json)
                                 .map_err(|_| "Authorization changed".to_owned())
@@ -1886,7 +1904,7 @@ impl OAuth2Manager {
                     }
                 };
                 if self.credential_user.is_some() {
-                    update().map_err(|_| token_owner_changed())?
+                    update().map_err(refresh_write_refused)?
                 } else {
                     let store = crate::credential_store::CredentialStore::from_cache();
                     crate::user_partitions::with_unchanged_active_credential_user(
@@ -1894,7 +1912,7 @@ impl OAuth2Manager {
                         observed.credential_owner,
                         update,
                     )
-                    .map_err(|_| token_owner_changed())?
+                    .map_err(refresh_write_refused)?
                 }
             }
             TokenSource::Unavailable => false,
@@ -3862,6 +3880,121 @@ mod tests {
                 .unwrap();
             assert_eq!(load().unwrap(), "second-new");
         });
+    }
+
+    /// The restore's wait over `second`'s rows: profile tags pending for
+    /// `first`, `second` not aligned. A row of `second` that is an unstamped
+    /// copy of the vault's value reads as withheld while it lasts.
+    fn set_restore_wait(conn: &rusqlite::Connection, first: i64, second: i64) {
+        conn.execute(
+            "INSERT OR REPLACE INTO global_state(key, value, updated_at)
+             VALUES ('profile_tags_pending_' || ?1, '1', 0)",
+            rusqlite::params![first],
+        )
+        .unwrap();
+        conn.execute(
+            "DELETE FROM global_state WHERE key = 'private_tokens_aligned_' || ?1",
+            rusqlite::params![second],
+        )
+        .unwrap();
+    }
+
+    /// Box tokens with `access` and `refresh`, never expiring.
+    fn box_tokens(access: &str, refresh: &str) -> StoredTokens {
+        StoredTokens {
+            access_token: access.into(),
+            refresh_token: Some(refresh.into()),
+            expires_at: None,
+            token_type: "Bearer".into(),
+            scopes: vec![],
+        }
+    }
+
+    /// A refresh whose write finds the vault closed, locked between the
+    /// refresh's read and the check its write makes in its own transaction,
+    /// reports the closed vault, never a token whose owner changed.
+    #[test]
+    fn a_vault_closed_during_a_refresh_write_is_reported_as_closed() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::oauth2::tests::a_vault_closed_during_a_refresh_write_is_reported_as_closed",
+        ) {
+            return;
+        }
+        with_two_box_accounts(|_store, first, second, account| {
+            let manager = OAuth2Manager::new().with_credential_user(Some(second));
+            let observed = manager
+                .load_token_record(OAuthProvider::Box, "shared-profile")
+                .expect("read the account's token");
+            assert!(
+                matches!(observed.source, TokenSource::Partition(user) if user == second),
+                "read from the account's row"
+            );
+            set_restore_wait(
+                &crate::user_partitions::open_or_init_cli().unwrap(),
+                first,
+                second,
+            );
+            crate::user_partitions::BEFORE_REFRESH_ROW_CHECK.set(Some(Box::new(
+                crate::credential_store::CredentialStore::clear_cache,
+            )));
+            let persisted = manager.persist_refreshed_record(
+                account,
+                &observed,
+                &box_tokens("new-access", "new-refresh"),
+            );
+            assert!(
+                matches!(&persisted, Err(ProviderError::Other(e)) if e == REFRESH_VAULT_CLOSED),
+                "{persisted:?}"
+            );
+        });
+    }
+
+    /// The same for a token the vault holds alone, the vault locked between
+    /// the refresh's read and its write: reported closed, not changed.
+    #[test]
+    fn a_vault_closed_before_a_vault_tokens_refresh_write_is_reported_as_closed() {
+        use crate::credential_store::CredentialStore;
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::oauth2::tests::a_vault_closed_before_a_vault_tokens_refresh_write_is_reported_as_closed",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = crate::user_partitions::test_lock();
+        let temporary = tempfile::TempDir::new().expect("temporary config");
+        std::env::set_var("XDG_CONFIG_HOME", temporary.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("vault-closed-refresh-pass").expect("bootstrap");
+        CredentialStore::unlock_with_master("vault-closed-refresh-pass", None).expect("unlock");
+        let store = CredentialStore::from_cache().expect("cached vault");
+        let account = OAuth2Manager::token_account_key(OAuthProvider::Box, "solo");
+        let record = serde_json::json!({
+            "access_token": "old-access", "refresh_token": "old-refresh",
+            "expires_at": null, "token_type": "Bearer", "scopes": [],
+            "owner_family": "v1:solo",
+        })
+        .to_string();
+        store.store(&account, &record).expect("the vault's token");
+        let manager = OAuth2Manager::new()
+            .with_credential_user(Some(crate::user_partitions::LEGACY_ONLY_ACCOUNT));
+        let observed = manager
+            .load_token_record(OAuthProvider::Box, "solo")
+            .expect("read the vault's token");
+        assert!(
+            matches!(observed.source, TokenSource::Vault),
+            "read from the vault"
+        );
+        CredentialStore::clear_cache();
+        let persisted = manager.persist_refreshed_record(
+            &account,
+            &observed,
+            &box_tokens("new-access", "new-refresh"),
+        );
+        assert!(
+            matches!(&persisted, Err(ProviderError::Other(e)) if e == REFRESH_VAULT_CLOSED),
+            "{persisted:?}"
+        );
     }
 
     /// A token miss with no legacy file and no claim answers "no stored
