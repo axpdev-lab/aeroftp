@@ -11237,6 +11237,9 @@ thread_local! {
     /// after its snapshot and before the removal: a credential writer
     /// committing meanwhile.
     static AFTER_REBUILD_SNAPSHOT: DualWriteHook = const { RefCell::new(None) };
+    /// Runs once on this thread in the next [`remove_partitions_db_for_rebuild`],
+    /// right before it takes the database's write lock.
+    static BEFORE_REBUILD_WRITE_LOCK: DualWriteHook = const { RefCell::new(None) };
 }
 
 /// Snapshot the partition database at `path` ([`snapshot_before_rebuild`])
@@ -11263,6 +11266,8 @@ fn remove_partitions_db_for_rebuild(path: &std::path::Path) -> Result<Option<Pat
     // holding the session while it waits on the database would wait out its
     // busy timeout, and its write would fail.
     let mut session = hold_session().unwrap_or(SessionHold(None));
+    #[cfg(test)]
+    run_dual_write_hook(&BEFORE_REBUILD_WRITE_LOCK);
     match guard.execute_batch("BEGIN IMMEDIATE") {
         Ok(()) => {}
         Err(rusqlite::Error::SqliteFailure(e, _))
@@ -13267,8 +13272,9 @@ mod tests {
     /// a passphrase account's credential writer takes them in: while the
     /// rebuild holds the write lock no other thread can take the session, so a
     /// writer that holds the session is never left waiting on the rebuild's
-    /// write lock until its busy timeout fails the write. The session is gone
-    /// after the rebuild.
+    /// write lock until its busy timeout fails the write. Right before the
+    /// rebuild takes the write lock, the session is already its own and the
+    /// write lock still free; the session is gone after the rebuild.
     #[test]
     fn a_rebuild_takes_the_session_before_its_write_lock() {
         let _guard = test_lock();
@@ -13282,6 +13288,19 @@ mod tests {
         unlock_user(&conn, &root, locked.id, Some("pass")).unwrap();
         assert_eq!(session_user_id(), Some(locked.id));
         drop(conn);
+        let before = std::rc::Rc::new(RefCell::new(None));
+        let (seen_before, lock_path) = (before.clone(), path.clone());
+        BEFORE_REBUILD_WRITE_LOCK.set(Some(Box::new(move || {
+            // Another thread finds the session taken, and another connection
+            // the write lock free: the session came first.
+            let session_free = std::thread::spawn(|| USER_SESSION.try_lock().is_ok())
+                .join()
+                .unwrap();
+            let other = Connection::open(&lock_path).unwrap();
+            other.busy_timeout(std::time::Duration::ZERO).unwrap();
+            let write_lock_free = other.execute_batch("BEGIN IMMEDIATE; ROLLBACK;").is_ok();
+            *seen_before.borrow_mut() = Some((session_free, write_lock_free));
+        })));
         let free = std::rc::Rc::new(RefCell::new(None));
         let seen = free.clone();
         AFTER_REBUILD_SNAPSHOT.set(Some(Box::new(move || {
@@ -13293,6 +13312,11 @@ mod tests {
             *seen.borrow_mut() = Some(taken);
         })));
         remove_partitions_db_for_rebuild(&path).unwrap().unwrap();
+        assert_eq!(
+            *before.borrow(),
+            Some((false, true)),
+            "(session free, write lock free) as the rebuild takes the write lock"
+        );
         assert_eq!(
             *free.borrow(),
             Some(false),
