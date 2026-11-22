@@ -48,6 +48,21 @@ const ERROR_PATTERNS: [RegExp, string][] = [
     [/disk (full|space)|no space/i, 'vault.errors.diskFull'],
 ];
 
+// The pieces of ABSOLUTE_PATH_IN_MESSAGE. A path character is anything but a
+// separator, a line break or the punctuation that ends a path in the crate's
+// messages (`)`, a quote, `;`, `,`, and `: `).
+const PATH_CHAR = String.raw`(?!:\s)[^\\/\n)'";,]`;
+const PATH_EDGE_CHAR = String.raw`(?!:\s)[^\s\\/)'";,]`;
+const PATH_ROOT = String.raw`(?:[A-Za-z]:)?[\\/]{1,2}(?=${PATH_EDGE_CHAR})`;
+// A folder name may hold spaces but does not end with one, so ` /next/path`
+// starts a new path. The file name ends where the message text resumes.
+const PATH_FOLDER = String.raw`(?:${PATH_CHAR}*${PATH_EDGE_CHAR})?[\\/]`;
+const PATH_FILE_END = String.raw`\s+(?:is|was|are|has|have|had|does|did|can|cannot|could|not|already|must|will|would)\b|\s+(?:and|or)\s+${PATH_ROOT}|:\s|:$|\.(?:\s|$)`;
+const ABSOLUTE_PATH_IN_MESSAGE = new RegExp(
+    String.raw`(^|[\s('"=])${PATH_ROOT}(?:${PATH_FOLDER})*(?:(?!${PATH_FILE_END})${PATH_CHAR})*`,
+    'g',
+);
+
 export function mapVaultError(e: unknown, t: (key: string) => string): string {
     const raw = String(e);
     // A filename or an OS error in the text can itself contain a generic cue
@@ -70,6 +85,11 @@ export function mapVaultError(e: unknown, t: (key: string) => string): string {
     const cleaned = raw
         .replace(/at offset \d+/gi, '')
         .replace(/0x[0-9a-f]+/gi, '')
+        // A whole absolute path, spaces included, where the crate's messages
+        // put one (start of text, after a space, a quote, a parenthesis or
+        // `=`): it runs to its last separator, then through the file name up
+        // to the message text that follows it.
+        .replace(ABSOLUTE_PATH_IN_MESSAGE, (_match, lead: string) => `${lead}<path>`)
         // Unix absolute paths and Windows drive paths -> redacted placeholder.
         .replace(/(?:[A-Za-z]:)?[\\/][^\s'":]+(?:[\\/][^\s'":]+)+/g, (path) => {
             const closing = path.match(/[).,;]+$/)?.[0] ?? '';

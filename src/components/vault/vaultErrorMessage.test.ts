@@ -31,6 +31,14 @@ describe('mapVaultError', () => {
         ['vault is locked by another writer (C:\\corrupt.aerovault.aerolock); retry when it has finished', 'vault is locked by another writer (<path>); retry when it has finished'],
         ['/corrupt.aerovault is a symbolic link; use the target path', '<path> is a symbolic link; use the target path'],
         ['vault is locked by another writer (/v.aerovault.aerolock); retry and/or wait', 'vault is locked by another writer (<path>); retry and/or wait'],
+        // Paths with spaces are redacted whole, not up to their first space.
+        ['/home/Alice Smith/corrupt.aerovault is a symbolic link; use the target path', '<path> is a symbolic link; use the target path'],
+        ['/home/Alice Smith/my vault.aerovault is a symbolic link: writing through it would replace the link', '<path> is a symbolic link: writing through it would replace the link'],
+        ['vault is locked by another writer (/home/Alice Smith/my vault.aerovault.aerolock); retry when it has finished', 'vault is locked by another writer (<path>); retry when it has finished'],
+        ['vault lock file /home/Alice Smith/v.aerovault.aerolock: is a symbolic link; remove it', 'vault lock file <path>: is a symbolic link; remove it'],
+        ['C:\\Users\\Alice Smith\\corrupt.aerovault is a symbolic link; use the target path', '<path> is a symbolic link; use the target path'],
+        ['journal retirement sync failed (No space left on device); relocated journal and rollback copies retained at /home/Alice Smith/state/j 1', 'journal retirement sync failed (No space left on device); relocated journal and rollback copies retained at <path>'],
+        ['Conflicting private pair journals at /home/Alice Smith/a and /home/Alice Smith/b. Preserve both for recovery', 'Conflicting private pair journals at <path> and <path>. Preserve both for recovery'],
         // Pair and strip recovery (aerovault 0.7.0): the path or the OS error
         // carries a generic cue, the instruction must survive it.
         ['AeroVault vault/sidecar publication is pending; preserve the vault and sidecar and recover the pair before opening or replacing it: /tmp/fixture/corrupt.aerovault', 'AeroVault vault/sidecar publication is pending; preserve the vault and sidecar and recover the pair before opening or replacing it: <path>'],
