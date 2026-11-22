@@ -10167,7 +10167,9 @@ pub fn mcp_list_server_profiles(
 /// Read and parse the legacy single-user `config_server_profiles` vault blob.
 /// The MUV-5 rollout fallback for [`mcp_list_active_server_profiles`]; removed
 /// with the rest of the legacy reads at MUV-6.
-fn read_legacy_server_profiles_blob(store: &CredentialStore) -> Result<Vec<Value>, String> {
+pub(crate) fn read_legacy_server_profiles_blob(
+    store: &CredentialStore,
+) -> Result<Vec<Value>, String> {
     let raw = store
         .get("config_server_profiles")
         .map_err(|e| format!("Failed to read profiles: {e}"))?;

@@ -2539,7 +2539,64 @@ fn github_readiness_reads_one_account_for_its_profile_and_credential() {
         "ghp_synthetic",
     )
     .unwrap();
+    // The other account holds a profile of the same id signed in another
+    // way, with no token: a lookup of its list would read no credential.
+    users::replace_server_profiles_for(
+        &mut conn,
+        &root,
+        other,
+        &[
+            json!({"id": "gh", "name": "gh", "protocol": "github", "host": "",
+                 "options": {"githubAuthMode": "authorize"}}),
+        ],
+    )
+    .unwrap();
+    assert_eq!(
+        saved_github_readiness(&store, "gh", None, Some(other)),
+        "no_credentials"
+    );
     assert_eq!(saved_github_readiness(&store, "gh", None, None), "valid");
+    AFTER_READINESS_ACCOUNT.set(Some(Box::new(move || {
+        users::set_active_user(&users::open_or_init_cli().unwrap(), other).unwrap();
+    })));
+    assert_eq!(saved_github_readiness(&store, "gh", None, None), "valid");
+}
+
+/// GitHub readiness with no active account reads the legacy list and the
+/// vault: an account activated between its lookup and the list is not asked
+/// for its profile, whose mode would pair with the vault's credentials.
+#[test]
+fn github_readiness_with_no_account_reads_the_legacy_list() {
+    if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+        "profile_auth::tests::github_readiness_with_no_account_reads_the_legacy_list",
+    ) {
+        return;
+    }
+    let _guard = users::test_lock();
+    let (store, _owner, others) = isolated_accounts(1);
+    let other = others[0];
+    let mut conn = users::open_or_init_cli().unwrap();
+    let root = zeroize::Zeroizing::new(store.derive_user_partition_wrapping_key());
+    users::replace_server_profiles_for(
+        &mut conn,
+        &root,
+        other,
+        &[
+            json!({"id": "gh", "name": "gh", "protocol": "github", "host": "",
+                 "options": {"githubAuthMode": "authorize"}}),
+        ],
+    )
+    .unwrap();
+    store
+        .store(
+            "config_server_profiles",
+            &json!([{"id": "gh", "name": "gh", "protocol": "github", "host": ""}]).to_string(),
+        )
+        .unwrap();
+    store.store("server_gh", "ghp_synthetic").unwrap();
+    conn.execute("DELETE FROM global_state WHERE key = 'active_user_id'", [])
+        .unwrap();
+    assert!(users::cli_get_active_user(&store).unwrap().is_none());
     AFTER_READINESS_ACCOUNT.set(Some(Box::new(move || {
         users::set_active_user(&users::open_or_init_cli().unwrap(), other).unwrap();
     })));

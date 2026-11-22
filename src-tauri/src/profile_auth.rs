@@ -343,20 +343,28 @@ pub fn saved_github_readiness(
 ) -> &'static str {
     // The account is read once, so the profile and the credentials it is
     // paired with are the same account's, whatever a switch does meanwhile.
-    let user_id = user_id.or_else(|| {
-        users::cli_get_active_user(store)
-            .ok()
-            .flatten()
-            .map(|user| user.id)
-    });
+    // A lookup that fails reads nothing: never the vault, which is the legacy
+    // stores' and not that account's.
+    let user_id = match user_id {
+        Some(user_id) => Some(user_id),
+        None => match users::cli_get_active_user(store) {
+            Ok(active) => active.map(|user| user.id),
+            Err(_) => return "no_credentials",
+        },
+    };
     #[cfg(test)]
     if let Some(hook) = AFTER_READINESS_ACCOUNT.take() {
         hook();
     }
     let found = if profile.is_none() {
-        users::mcp_list_server_profiles(store, user_id)
-            .ok()
-            .and_then(|profiles| profiles.into_iter().find(|p| field(p, "id") == id))
+        // No account: the legacy list, the one the vault-scoped read below
+        // pairs with, not the list of an account activated since.
+        match user_id {
+            Some(user_id) => users::mcp_list_server_profiles(store, Some(user_id)),
+            None => users::read_legacy_server_profiles_blob(store),
+        }
+        .ok()
+        .and_then(|profiles| profiles.into_iter().find(|p| field(p, "id") == id))
     } else {
         None
     };
