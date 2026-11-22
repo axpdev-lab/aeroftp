@@ -1239,6 +1239,11 @@ impl Clone for OAuth2Manager {
     }
 }
 
+/// The refusal of a token write whose account could not be resolved.
+fn token_owner_unresolved(error: String) -> ProviderError {
+    ProviderError::Other(format!("Failed to resolve token owner: {error}"))
+}
+
 /// The slug of 4shared's OAuth1 token, whose runtime keeps the profile id of
 /// its key as it is (`provider_commands::store_fourshared_tokens`).
 const FOURSHARED_SLUG: &str = "fourshared";
@@ -1290,33 +1295,29 @@ impl OAuth2Manager {
     /// The user whose tokens, bound to a profile or not, must stay in their own
     /// partition: anyone but the legacy owner. In the shared vault they would
     /// be readable through the legacy owner's fallback, for example when an
-    /// imported profile keeps its id. `user` is [`Self::token_write_user`];
-    /// an account that could not be read is none, as before an account is
-    /// active, and its mirror then reports the failure.
-    fn private_token_user(
-        user: &Result<Option<i64>, String>,
-    ) -> Result<Option<i64>, ProviderError> {
-        let Ok(Some(user)) = user else {
+    /// imported profile keeps its id. `user` is [`Self::token_write_user`],
+    /// already read: `None` only when no account exists.
+    fn private_token_user(user: Option<i64>) -> Result<Option<i64>, ProviderError> {
+        let Some(user) = user else {
             return Ok(None);
         };
-        crate::user_partitions::private_token_user(Some(*user), "oauth")
-            .map_err(|e| ProviderError::Other(format!("Failed to resolve token owner: {}", e)))
+        crate::user_partitions::private_token_user(Some(user), "oauth")
+            .map_err(token_owner_unresolved)
     }
 
     fn mirror_tokens(
         store: &crate::credential_store::CredentialStore,
-        user: &Result<Option<i64>, String>,
+        user: Option<i64>,
         account: &str,
         json: &str,
     ) -> Result<(), ProviderError> {
         #[cfg(test)]
         tests::run_before_token_mirror();
         let mirrored = match user {
-            Ok(Some(user)) => crate::user_partitions::mirror_credential_for_user_typed(
-                store, *user, account, "oauth", json,
+            Some(user) => crate::user_partitions::mirror_credential_for_user_typed(
+                store, user, account, "oauth", json,
             ),
-            Ok(None) => Ok(()),
-            Err(e) => Err(e.clone()),
+            None => Ok(()),
         };
         mirrored.map_err(|e| ProviderError::Other(format!("Failed to store tokens: {e}")))
     }
@@ -1327,7 +1328,7 @@ impl OAuth2Manager {
     /// in the vault for a reader of it ([`crate::user_partitions::store_vault_then_mirror`]).
     fn store_vault_tokens(
         store: &crate::credential_store::CredentialStore,
-        user: &Result<Option<i64>, String>,
+        user: Option<i64>,
         account: &str,
         profile_id: &str,
         json: &str,
@@ -1674,9 +1675,12 @@ impl OAuth2Manager {
         );
 
         let account = Self::token_account_key(provider, profile_id);
-        let user = self.token_write_user();
+        // An account that cannot be read refuses before any write: taken for
+        // none, the legacy singleton would be written in the shared vault,
+        // where the legacy owner reads it, for whichever account is active.
+        let user = self.token_write_user().map_err(token_owner_unresolved)?;
 
-        if let Some(user) = Self::private_token_user(&user)? {
+        if let Some(user) = Self::private_token_user(user)? {
             if crate::credential_store::CredentialStore::from_cache().is_none() {
                 let _ = crate::credential_store::CredentialStore::init();
             }
@@ -1696,7 +1700,7 @@ impl OAuth2Manager {
 
         // Store in universal vault
         if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-            Self::store_vault_tokens(&store, &user, &account, profile_id, &json)?;
+            Self::store_vault_tokens(&store, user, &account, profile_id, &json)?;
             info!("Tokens stored in credential vault for {:?}", provider);
             return Ok(());
         }
@@ -1704,7 +1708,7 @@ impl OAuth2Manager {
         // Vault not open: try auto-initializing vault first
         if crate::credential_store::CredentialStore::init().is_ok() {
             if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-                Self::store_vault_tokens(&store, &user, &account, profile_id, &json)?;
+                Self::store_vault_tokens(&store, user, &account, profile_id, &json)?;
                 info!("Tokens stored in auto-initialized vault for {:?}", provider);
                 return Ok(());
             }
@@ -3620,6 +3624,62 @@ mod tests {
         if let Some(hook) = BEFORE_TOKEN_MIRROR.with(|slot| slot.borrow_mut().take()) {
             hook();
         }
+    }
+
+    /// A new authorization whose account cannot be read is refused before
+    /// any write: taken for no account, the legacy singleton would be
+    /// written in the shared vault for whichever account is active, and the
+    /// legacy owner would read it as its own. Both accounts' tokens stay.
+    #[test]
+    fn a_sign_in_whose_account_cannot_be_read_writes_nothing() {
+        use std::sync::atomic::Ordering::SeqCst;
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::oauth2::tests::a_sign_in_whose_account_cannot_be_read_writes_nothing",
+        ) {
+            return;
+        }
+        with_two_box_accounts(|store, first, second, _account| {
+            let tokens = |token: &str| StoredTokens {
+                access_token: token.into(),
+                refresh_token: None,
+                expires_at: None,
+                token_type: "Bearer".into(),
+                scopes: vec![],
+            };
+            let singleton = OAuth2Manager::legacy_token_account_key(OAuthProvider::Box);
+            for (user, token) in [(first, "owners-singleton"), (second, "seconds-singleton")] {
+                OAuth2Manager::new()
+                    .with_credential_user(Some(user))
+                    .store_tokens(OAuthProvider::Box, "", &tokens(token))
+                    .expect("sign the account in");
+            }
+            let conn = crate::user_partitions::open_or_init_cli().unwrap();
+            crate::user_partitions::set_active_user(&conn, second).unwrap();
+            let vault_before = store.get(&singleton).expect("the owner's singleton");
+            let loaded = |user: i64| {
+                OAuth2Manager::new()
+                    .with_credential_user(Some(user))
+                    .load_tokens(OAuthProvider::Box, "")
+                    .map(|tokens| tokens.access_token.clone())
+                    .ok()
+            };
+            assert_eq!(loaded(second).as_deref(), Some("seconds-singleton"));
+
+            crate::user_partitions::ACCOUNT_LOOKUP_FAILS.store(true, SeqCst);
+            let stored = OAuth2Manager::new().store_tokens(OAuthProvider::Box, "", &tokens("new"));
+            crate::user_partitions::ACCOUNT_LOOKUP_FAILS.store(false, SeqCst);
+            assert!(
+                matches!(&stored, Err(ProviderError::Other(e)) if e.contains("Failed to resolve token owner")),
+                "{stored:?}"
+            );
+            assert_eq!(
+                store.get(&singleton).unwrap(),
+                vault_before,
+                "vault unchanged"
+            );
+            assert_eq!(loaded(first).as_deref(), Some("owners-singleton"));
+            assert_eq!(loaded(second).as_deref(), Some("seconds-singleton"));
+        });
     }
 
     /// A new authorization of the legacy owner, the account active when it is
