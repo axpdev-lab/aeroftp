@@ -3093,6 +3093,8 @@ fn a_save_stopped_before_its_row_keeps_the_vaults_new_session_at_the_unlock() {
         revokes + 1,
         "the purged session is ended"
     );
+    // The legacy owner's unlock locks the source, whose row `copies` reads.
+    accounts.unlock_source();
     let (vault_copy, row, _) = accounts.copies("partial");
     assert_eq!(
         (vault_copy.as_deref(), row.as_deref()),
