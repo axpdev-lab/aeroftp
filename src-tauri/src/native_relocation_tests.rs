@@ -3493,3 +3493,39 @@ fn a_session_the_revoke_cannot_read_is_kept() {
         "the session the revoke could not read stays"
     );
 }
+
+/// The legacy owner's sign-out sees a copy of the session a profile still
+/// reads from its row alone, once a cleanup removed its vault copy: the
+/// session is kept on Proton. With no such copy, the sign-out ends it.
+#[test]
+fn a_row_only_copy_of_the_legacy_owner_keeps_its_session() {
+    if !in_isolated_child("a_row_only_copy_of_the_legacy_owner_keeps_its_session") {
+        return;
+    }
+    let accounts = Accounts::open();
+    let owner = accounts.owners_owner();
+    vault::store_session(owner, Some("row-a"), &session("row-shared-uid", "r1")).unwrap();
+    vault::store_session(owner, Some("row-b"), &session("row-shared-uid", "r1")).unwrap();
+    accounts.store.delete(&key("row-b")).unwrap();
+    assert_eq!(
+        loaded(owner, "row-b").as_deref(),
+        Some("r1"),
+        "profile B still reads its row"
+    );
+    let revokes = vault::test_seams::revokes();
+    sign_out(owner, "row-a");
+    assert_eq!(
+        vault::test_seams::revokes(),
+        revokes,
+        "the session B still reads is not ended"
+    );
+    assert_eq!(loaded(owner, "row-b").as_deref(), Some("r1"));
+
+    vault::store_session(owner, Some("row-solo"), &session("row-solo-uid", "r1")).unwrap();
+    sign_out(owner, "row-solo");
+    assert_eq!(
+        vault::test_seams::revokes(),
+        revokes + 1,
+        "a session no other profile holds is ended"
+    );
+}

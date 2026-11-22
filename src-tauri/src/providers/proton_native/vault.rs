@@ -516,21 +516,64 @@ fn remove_saved(
 }
 
 /// Every session `owner` holds, by key: a private account's own rows, or the
-/// vault's keys. The copies of one session a sign-out, a restore or a refresh
-/// must see are among them, and never another account's.
+/// vault's keys and, for the legacy owner, its rows of them, which it reads
+/// first (see [`read`]): a row left behind by a cleanup that removed the vault
+/// copy still holds a session the profile connects with. The copies of one
+/// session a sign-out, a restore or a refresh must see are among them, and
+/// never another account's. A row that cannot be read is an error, never a
+/// missing copy.
 fn saved_sessions(
     store: &CredentialStore,
     owner: SessionOwner,
 ) -> Result<Vec<(String, ProtonSession)>, ProviderError> {
-    if let Some(user) = private_account(owner)? {
+    let rows_of = |user: i64| -> Result<Vec<(String, ProtonSession)>, ProviderError> {
         let rows = crate::user_partitions::user_credentials_of_type(store, user, PARTITION_TYPE)
             .map_err(ProviderError::Other)?;
-        return Ok(rows
+        Ok(rows
             .into_iter()
             .filter_map(|(key, raw)| parse(&raw).ok().map(|session| (key, session)))
-            .collect());
+            .collect())
+    };
+    if let Some(user) = private_account(owner)? {
+        return rows_of(user);
     }
-    vault_sessions(|| store.list_accounts(), |key| store.get(key))
+    let vault = vault_sessions(|| store.list_accounts(), |key| store.get(key))?;
+    let Some(user) = owner.user_id else {
+        return Ok(vault);
+    };
+    let rows_owner = if user == crate::user_partitions::LEGACY_ONLY_ACCOUNT {
+        crate::user_partitions::legacy_credential_owner_id().map_err(ProviderError::Other)?
+    } else {
+        Some(user)
+    };
+    let Some(rows_owner) = rows_owner else {
+        return Ok(vault);
+    };
+    Ok(merge_rows_and_vault(rows_of(rows_owner)?, vault))
+}
+
+/// The legacy owner's copies as [`read`] sees them: each key's row, with the
+/// vault's newer pair of the same session, and every vault value it does not
+/// match, which the profile reads once its row is gone (see [`remove_purged`]).
+fn merge_rows_and_vault(
+    rows: Vec<(String, ProtonSession)>,
+    vault: Vec<(String, ProtonSession)>,
+) -> Vec<(String, ProtonSession)> {
+    let mut vault: std::collections::BTreeMap<String, ProtonSession> = vault.into_iter().collect();
+    let mut sessions = Vec::with_capacity(rows.len() + vault.len());
+    for (key, mut session) in rows {
+        match vault.remove(&key) {
+            Some(saved) if saved.tokens.uid == session.tokens.uid => {
+                session.tokens = saved.tokens;
+            }
+            Some(saved) => sessions.push((key.clone(), saved)),
+            None => {}
+        }
+        sessions.push((key, session));
+    }
+    sessions.extend(vault);
+    sessions.sort_by(|(a, _), (b, _)| a.cmp(b));
+    sessions
 }
 
 /// The sessions among the vault's keys. A list or a read the vault refuses is
