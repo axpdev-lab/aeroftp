@@ -4061,12 +4061,27 @@ thread_local! {
     pub(crate) static BEFORE_REFRESH_ROW_CHECK: RefCell<Option<Box<dyn FnOnce()>>> = const { RefCell::new(None) };
 }
 
+/// What a conditional refresh of a row did ([`replace_user_credential_where`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RefreshOutcome {
+    /// The row held a value the refresh accepts, and now holds the replacement.
+    Written,
+    /// The row is gone or holds another value: another writer won, and the
+    /// refresh's result is stale.
+    Changed,
+    /// The row still holds a value the refresh accepts, but its readers
+    /// withhold it now ([`checked_row`]: a keystore restore set the wait since
+    /// the refresh read it). Nothing is written, and the result is not stale:
+    /// the caller keeps it for a write once the row is readable again.
+    Withheld,
+}
+
 /// Conditional refresh of an existing owned credential. Resolve the DEK before
 /// SQLite's write reservation, preserving the session -> SQLite lock order.
 /// A missing or replaced row is never recreated with a stale refresh result,
 /// and a row its readers withhold is not written over
 /// ([`replace_user_credential_where`]), checked against the open vault: a
-/// vault closed meanwhile is [`VAULT_NOT_OPEN`].
+/// vault closed meanwhile is [`VAULT_NOT_OPEN`]. Whether it was written.
 pub(crate) fn replace_user_credential_if_unchanged(
     conn: &Connection,
     root_key: &[u8; 32],
@@ -4076,6 +4091,29 @@ pub(crate) fn replace_user_credential_if_unchanged(
     update: (&str, &str),
     require_active_user: bool,
 ) -> Result<bool, String> {
+    replace_user_credential_if_unchanged_outcome(
+        conn,
+        root_key,
+        user_id,
+        credential_id,
+        credential_type,
+        update,
+        require_active_user,
+    )
+    .map(|outcome| outcome == RefreshOutcome::Written)
+}
+
+/// [`replace_user_credential_if_unchanged`], saying why nothing was written
+/// ([`RefreshOutcome`]): a refresh keeps a result whose row is withheld.
+pub(crate) fn replace_user_credential_if_unchanged_outcome(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+    credential_id: &str,
+    credential_type: &str,
+    update: (&str, &str),
+    require_active_user: bool,
+) -> Result<RefreshOutcome, String> {
     use subtle::ConstantTimeEq;
     replace_user_credential_where(
         conn,
@@ -4170,7 +4208,7 @@ pub(crate) fn swap_user_credential_if_one_of(
 /// and a missing row is never created. The row is read as its readers read it
 /// ([`checked_row`], the vault through `read_secret`): a refresh that read it
 /// before a restore set the wait does not write over a row the readers
-/// withhold now, with its bytes unchanged.
+/// withhold now, with its bytes unchanged ([`RefreshOutcome::Withheld`]).
 #[allow(clippy::too_many_arguments)]
 fn replace_user_credential_where(
     conn: &Connection,
@@ -4182,7 +4220,7 @@ fn replace_user_credential_where(
     replacement: &str,
     require_active_user: bool,
     read_secret: &SecretReader<'_>,
-) -> Result<bool, String> {
+) -> Result<RefreshOutcome, String> {
     if credential_id.is_empty() || credential_type.is_empty() {
         return Err("CREDENTIAL_ID_AND_TYPE_REQUIRED".to_owned());
     }
@@ -4197,9 +4235,17 @@ fn replace_user_credential_where(
         let read = read_credential_and_digest_with_dek(&tx, user_id, dek, credential_id)?;
         #[cfg(test)]
         run_dual_write_hook(&BEFORE_REFRESH_ROW_CHECK);
+        // Whether the row as stored still holds what the refresh accepts: one
+        // that does, which its readers withhold now, is withheld, not changed.
+        let read_held = read.as_ref().is_some_and(|(secret, _)| still_holds(secret));
         let current = checked_row(&tx, user_id, credential_id, read, read_secret)?;
         if !current.as_ref().is_some_and(|secret| still_holds(secret)) {
-            return Ok(false);
+            let withheld = current.is_none() && read_held;
+            return Ok(if withheld {
+                RefreshOutcome::Withheld
+            } else {
+                RefreshOutcome::Changed
+            });
         }
         set_refreshed_credential_with_dek(
             &tx,
@@ -4211,7 +4257,7 @@ fn replace_user_credential_where(
         )?;
         tx.commit()
             .map_err(|e| format!("Commit conditional credential refresh: {e}"))?;
-        Ok(true)
+        Ok(RefreshOutcome::Written)
     })
 }
 
@@ -4251,7 +4297,8 @@ pub(crate) fn delete_user_credential_where(
 /// value `still_holds` accepts ([`replace_user_credential_where`]); a missing
 /// row is never created, nor its account's key asked for. The migrations run
 /// first, as for [`store_credential_for_user`], so a copy their alignment
-/// drops is gone before the look.
+/// drops is gone before the look. A row that is gone is
+/// [`RefreshOutcome::Changed`].
 #[cfg(feature = "proton-native")]
 pub(crate) fn refresh_user_credential(
     store: &CredentialStore,
@@ -4260,11 +4307,11 @@ pub(crate) fn refresh_user_credential(
     credential_type: &str,
     still_holds: &dyn Fn(&str) -> bool,
     replacement: &str,
-) -> Result<bool, String> {
+) -> Result<RefreshOutcome, String> {
     init_or_migrate_cli(store)?;
     let conn = open_or_init_cli()?;
     if !partition_row_exists(&conn, user_id, credential_id)? {
-        return Ok(false);
+        return Ok(RefreshOutcome::Changed);
     }
     let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
     replace_user_credential_where(
@@ -13588,6 +13635,75 @@ mod tests {
             Some("owners-token"),
             "the row keeps its bytes"
         );
+    }
+
+    /// The two refresh writers over a partition row, the OAuth refresh's
+    /// ([`replace_user_credential_if_unchanged_outcome`]) and the native
+    /// Proton session's ([`refresh_user_credential`]), tell a row withheld
+    /// since their read from one that changed the same way: withheld, the
+    /// result is kept (OAuth files it, Proton keeps it in the live session and
+    /// logs it); changed, it is stale. Neither writes the withheld row.
+    #[cfg(feature = "proton-native")]
+    #[test]
+    fn both_refresh_writers_tell_a_withheld_row_from_a_changed_one() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "user_partitions::tests::both_refresh_writers_tell_a_withheld_row_from_a_changed_one",
+        ) {
+            return;
+        }
+        let _guard = test_lock();
+        let oauth_key = "oauth_dropbox_w";
+        let (store, other, root) = a_row_withheld_at_write_time(oauth_key, "oauth", "owners-token");
+        let proton_key = "proton_native_session_w";
+        let session = r#"{"uid":"owners-session","access_token":"before"}"#;
+        store.store(proton_key, session).unwrap();
+        let conn = open_or_init_cli().unwrap();
+        set_user_credential_for(
+            &conn,
+            &root,
+            other,
+            proton_key,
+            "proton_native_session",
+            session,
+        )
+        .unwrap();
+        let oauth = |read: &str| {
+            replace_user_credential_if_unchanged_outcome(
+                &conn,
+                &root,
+                other,
+                oauth_key,
+                "oauth",
+                (read, "refreshed-token"),
+                false,
+            )
+        };
+        let same_session =
+            |current: &str| proton_session_uid(current).as_deref() == Some("owners-session");
+        let proton = || {
+            refresh_user_credential(
+                &store,
+                other,
+                proton_key,
+                "proton_native_session",
+                &same_session,
+                r#"{"uid":"owners-session","access_token":"after"}"#,
+            )
+        };
+        assert_eq!(oauth("owners-token"), Ok(RefreshOutcome::Withheld), "OAuth");
+        assert_eq!(proton(), Ok(RefreshOutcome::Withheld), "Proton");
+        assert_eq!(
+            oauth("another-token"),
+            Ok(RefreshOutcome::Changed),
+            "OAuth over a row that holds another token"
+        );
+        let row = |key: &str| {
+            get_user_credential_for(&conn, &root, other, key)
+                .unwrap()
+                .map(|value| value.to_string())
+        };
+        assert_eq!(row(oauth_key).as_deref(), Some("owners-token"));
+        assert_eq!(row(proton_key).as_deref(), Some(session));
     }
 
     /// While profile tags are pending, an unstamped row of an account other

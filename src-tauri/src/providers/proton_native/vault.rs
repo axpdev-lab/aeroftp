@@ -1811,8 +1811,18 @@ impl SessionKeys for VaultKeys {
                 &raw,
             )
             .map_err(ProviderError::Other)?;
-            if written {
-                indexed(&self.store, user, key);
+            match written {
+                crate::user_partitions::RefreshOutcome::Written => indexed(&self.store, user, key),
+                // Withheld until the account's alignment (a keystore restore
+                // set the wait since this refresh read the row): not written
+                // over, and not lost either. The refreshed pair stays with
+                // this connection's session, and its next refresh, matched by
+                // the session's UID, writes it once the row is readable, as an
+                // OAuth refresh keeps its rotation pending for that write.
+                crate::user_partitions::RefreshOutcome::Withheld => log::warn!(
+                    "Proton: the saved session is withheld until the account's alignment; the refreshed session stays with this connection and is saved once the row is readable"
+                ),
+                crate::user_partitions::RefreshOutcome::Changed => {}
             }
             Ok(())
         };

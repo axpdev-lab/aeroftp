@@ -675,6 +675,76 @@ fn refresh_write_refused(error: String) -> ProviderError {
     }
 }
 
+/// Where the record a pending rotation replaces was read.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PendingSource {
+    /// The row of this account.
+    Partition(i64),
+    /// The vault key, read by the legacy owner or before any account.
+    Vault,
+}
+
+/// A refreshed record its refresh could not write, with the record it
+/// replaces as the refresh read it ([`PENDING_ROTATIONS`]).
+#[derive(Clone)]
+struct PendingRotation {
+    source: PendingSource,
+    read: Zeroizing<String>,
+    record: Zeroizing<String>,
+}
+
+/// Refreshed records not written, by `(credential owner, vault key)`. The
+/// provider issued them in exchange for the refresh token the record read
+/// holds, and a provider that retires a refresh token once it is used (Box,
+/// Microsoft) leaves the refreshed one the only live chain: a write refused
+/// for anything but a change of the record (its row withheld until the
+/// account's alignment, the vault locked meanwhile, the active account
+/// switched) keeps it here, zeroized on drop. Before the next exchange for
+/// that key and owner the kept record is written over what the refresh read
+/// and used ([`OAuth2Manager::settle_pending_rotation`]); while its row is
+/// still withheld there is no exchange at all; once the record changed it is
+/// dropped, as it is by a new sign-in or a sign-out of the key. Kept for this
+/// process, as Jottacloud keeps its pending rotations.
+static PENDING_ROTATIONS: std::sync::LazyLock<std::sync::Mutex<PendingRotations>> =
+    std::sync::LazyLock::new(Default::default);
+
+/// The rotation kept for each `(credential owner, vault key)`.
+type PendingRotations = HashMap<(Option<i64>, String), PendingRotation>;
+
+fn pending_rotations() -> std::sync::MutexGuard<'static, PendingRotations> {
+    PENDING_ROTATIONS
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// Keep `rotation` for `account` of `owner`, refused for `why`.
+fn file_pending_rotation(owner: Option<i64>, account: &str, rotation: PendingRotation, why: &str) {
+    log::warn!(
+        "OAuth: the refreshed authorization of {account} was not saved ({why}); it is kept for the write before the next refresh"
+    );
+    pending_rotations().insert((owner, account.to_owned()), rotation);
+}
+
+/// Drop the rotation kept for `account` of `owner`: any (`None`), or only
+/// while it is still `settled`, so one filed since stays.
+fn drop_pending_rotation(owner: Option<i64>, account: &str, settled: Option<&PendingRotation>) {
+    let mut pending = pending_rotations();
+    let key = (owner, account.to_owned());
+    if pending.get(&key).is_some_and(|kept| {
+        settled.is_none_or(|settled| kept.record.as_str() == settled.record.as_str())
+    }) {
+        pending.remove(&key);
+    }
+}
+
+/// The refreshed record kept for `account` of `owner` (test only).
+#[cfg(test)]
+fn pending_rotation_record(owner: Option<i64>, account: &str) -> Option<String> {
+    pending_rotations()
+        .get(&(owner, account.to_owned()))
+        .map(|kept| kept.record.to_string())
+}
+
 /// Own one legacy pathname before reading it. Failure restores without
 /// overwriting a newly created original. A conflicting recovery copy remains
 /// owner-only rather than deleting an authorization that was not migrated.
@@ -1589,6 +1659,9 @@ impl OAuth2Manager {
     ) -> Result<SecretString, ProviderError> {
         let _guard = self.refresh_guard.lock().await;
         let account = Self::token_account_key(config.provider, &config.profile_id);
+        // A rotation an earlier refresh could not write goes first: it holds
+        // the live refresh token, which the saved record no longer does.
+        crate::credential_store::off_async_worker(|| self.settle_pending_rotation(&account))?;
         let mut record = self.load_token_record(config.provider, &config.profile_id)?;
         self.verify_token_owner(&account, &record)?;
         let mut tokens = record.tokens.clone();
@@ -1601,6 +1674,8 @@ impl OAuth2Manager {
             // process is the refresh owner: fall through to
             // the re-load below and use whatever it persisted.
             let _lease = RefreshLease::acquire_checked(&slug).await?;
+            // One filed meanwhile by another manager of this process.
+            crate::credential_store::off_async_worker(|| self.settle_pending_rotation(&account))?;
             // Double-check: the lease winner (possibly the other process)
             // may have already rotated+persisted a fresh token.
             record = self.load_token_record(config.provider, &config.profile_id)?;
@@ -1711,6 +1786,8 @@ impl OAuth2Manager {
             )
             .map_err(|e| ProviderError::Other(format!("Failed to store tokens: {}", e)))?;
             info!("Tokens stored in user partition for {:?}", provider);
+            // A new authorization replaces the chain a refresh kept.
+            drop_pending_rotation(Some(user), &account, None);
             return Ok(());
         }
 
@@ -1718,6 +1795,7 @@ impl OAuth2Manager {
         if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
             Self::store_vault_tokens(&store, user, &account, profile_id, &json)?;
             info!("Tokens stored in credential vault for {:?}", provider);
+            drop_pending_rotation(user, &account, None);
             return Ok(());
         }
 
@@ -1726,6 +1804,7 @@ impl OAuth2Manager {
             if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
                 Self::store_vault_tokens(&store, user, &account, profile_id, &json)?;
                 info!("Tokens stored in auto-initialized vault for {:?}", provider);
+                drop_pending_rotation(user, &account, None);
                 return Ok(());
             }
         }
@@ -1737,6 +1816,7 @@ impl OAuth2Manager {
         }
 
         info!("Tokens stored in memory for {:?} (vault locked)", provider);
+        drop_pending_rotation(user, &account, None);
         Ok(())
     }
 
@@ -1823,6 +1903,91 @@ impl OAuth2Manager {
         Ok(())
     }
 
+    /// Settle the rotation a refresh of `account` could not write
+    /// ([`PENDING_ROTATIONS`]), before anything reads the token for an
+    /// exchange: written over the record the refresh read, while the record
+    /// is still that one, and then the token the next read returns; kept,
+    /// with no exchange, while the row is still withheld
+    /// (`ProviderError::TargetChanged`, as the refresh that filed it
+    /// reported); dropped once the record changed (a sign-in, a sign-out or
+    /// another refresh replaced it). A write that fails again keeps it and
+    /// fails the read, so no exchange spends the retired refresh token.
+    fn settle_pending_rotation(&self, account: &str) -> Result<(), ProviderError> {
+        use crate::user_partitions::RefreshOutcome;
+        let owner = crate::user_partitions::credential_owner_and_fallback(self.credential_user)
+            .map_err(|e| ProviderError::Other(format!("Failed to resolve token owner: {e}")))?
+            .0;
+        let Some(pending) = pending_rotations()
+            .get(&(owner, account.to_owned()))
+            .cloned()
+        else {
+            return Ok(());
+        };
+        let written = match pending.source {
+            PendingSource::Partition(user) => (|| {
+                let store = crate::credential_store::CredentialStore::from_cache()
+                    .ok_or_else(|| crate::user_partitions::VAULT_NOT_OPEN.to_owned())?;
+                crate::user_partitions::init_or_migrate_cli(&store)?;
+                let conn = crate::user_partitions::open_or_init_cli()?;
+                let key = Zeroizing::new(store.derive_user_partition_wrapping_key());
+                crate::user_partitions::replace_user_credential_if_unchanged_outcome(
+                    &conn,
+                    &key,
+                    user,
+                    account,
+                    "oauth",
+                    (&pending.read, &pending.record),
+                    self.credential_user.is_none(),
+                )
+            })(),
+            PendingSource::Vault => {
+                let update = || -> Result<RefreshOutcome, String> {
+                    let store = crate::credential_store::CredentialStore::from_cache()
+                        .ok_or_else(|| crate::user_partitions::VAULT_NOT_OPEN.to_owned())?;
+                    store
+                        .replace_secret_if_unchanged(account, &pending.read, &pending.record)
+                        .map(|written| {
+                            if written {
+                                RefreshOutcome::Written
+                            } else {
+                                RefreshOutcome::Changed
+                            }
+                        })
+                        .map_err(|e| format!("Conditional vault write: {e}"))
+                };
+                if self.credential_user.is_some() {
+                    update()
+                } else {
+                    let store = crate::credential_store::CredentialStore::from_cache();
+                    crate::user_partitions::with_unchanged_active_credential_user(
+                        store.as_ref(),
+                        owner,
+                        update,
+                    )
+                }
+            }
+        };
+        match written {
+            Ok(RefreshOutcome::Written) => {
+                info!("OAuth: the kept refreshed authorization of {account} is saved");
+                drop_pending_rotation(owner, account, Some(&pending));
+                Ok(())
+            }
+            Ok(RefreshOutcome::Changed) => {
+                info!("OAuth: the kept refreshed authorization of {account} is dropped, the saved one changed since");
+                drop_pending_rotation(owner, account, Some(&pending));
+                Ok(())
+            }
+            Ok(RefreshOutcome::Withheld) => {
+                log::warn!(
+                    "OAuth: the saved authorization of {account} is still withheld until the account's alignment; the refreshed one stays kept and no refresh is made"
+                );
+                Err(token_owner_changed())
+            }
+            Err(error) => Err(refresh_write_refused(error)),
+        }
+    }
+
     /// Save only to the exact source loaded before the network exchange.
     /// No mirror: the partition is authoritative, and mirroring a stale refresh
     /// could overwrite a fresh login made concurrently in the other store.
@@ -1832,48 +1997,85 @@ impl OAuth2Manager {
         observed: &TokenRecord,
         tokens: &StoredTokens,
     ) -> Result<(), ProviderError> {
-        let current_owner =
-            crate::user_partitions::credential_owner_and_fallback(self.credential_user)
-                .map_err(|_| token_owner_changed())?
-                .0;
-        if current_owner != observed.credential_owner {
-            return Err(token_owner_changed());
-        }
-        if let Some(user) = current_owner {
-            crate::user_partitions::ensure_credential_user_unlocked(user)
-                .map_err(|_| token_owner_changed())?;
-        }
         let replacement = TokenRecord {
             tokens: tokens.clone(),
             owner_family: Some(observed.family()?),
             client_id: observed.client_id.clone(),
             source: TokenSource::Unavailable,
-            credential_owner: current_owner,
+            credential_owner: observed.credential_owner,
             raw: Zeroizing::new(String::new()),
         };
         let json = Zeroizing::new(
             serde_json::to_string_pretty(&replacement)
                 .map_err(|_| ProviderError::Other("Failed to serialize tokens".into()))?,
         );
+        // The exchange is done: from here on, a write refused for anything
+        // but a changed record keeps the refreshed one for the account the
+        // refresh read it for ([`PENDING_ROTATIONS`]). A memory record is
+        // refused only once a sign-out cleared it.
+        let keep = |why: &str| {
+            let source = match &observed.source {
+                TokenSource::Partition(user) => PendingSource::Partition(*user),
+                TokenSource::Vault => PendingSource::Vault,
+                TokenSource::Memory(..) | TokenSource::Unavailable => return,
+            };
+            let rotation = PendingRotation {
+                source,
+                read: observed.raw.clone(),
+                record: json.clone(),
+            };
+            file_pending_rotation(observed.credential_owner, account, rotation, why);
+        };
+        let current_owner =
+            match crate::user_partitions::credential_owner_and_fallback(self.credential_user) {
+                Ok((owner, _)) => owner,
+                Err(_) => {
+                    keep("its account could not be read");
+                    return Err(token_owner_changed());
+                }
+            };
+        if current_owner != observed.credential_owner {
+            keep("another account is active now");
+            return Err(token_owner_changed());
+        }
+        if let Some(user) = current_owner {
+            if crate::user_partitions::ensure_credential_user_unlocked(user).is_err() {
+                keep("its account is locked now");
+                return Err(token_owner_changed());
+            }
+        }
         let unchanged = match &observed.source {
             TokenSource::Partition(user) => {
-                let store =
-                    crate::credential_store::CredentialStore::from_cache().ok_or_else(|| {
-                        refresh_write_refused(crate::user_partitions::VAULT_NOT_OPEN.to_owned())
-                    })?;
-                let conn = crate::user_partitions::open_or_init_cli()
-                    .map_err(|_| token_owner_changed())?;
-                let key = Zeroizing::new(store.derive_user_partition_wrapping_key());
-                crate::user_partitions::replace_user_credential_if_unchanged(
-                    &conn,
-                    &key,
-                    *user,
-                    account,
-                    "oauth",
-                    (&observed.raw, &json),
-                    self.credential_user.is_none(),
-                )
-                .map_err(refresh_write_refused)?
+                let written = (|| {
+                    let store = crate::credential_store::CredentialStore::from_cache()
+                        .ok_or_else(|| crate::user_partitions::VAULT_NOT_OPEN.to_owned())?;
+                    let conn = crate::user_partitions::open_or_init_cli()?;
+                    let key = Zeroizing::new(store.derive_user_partition_wrapping_key());
+                    crate::user_partitions::replace_user_credential_if_unchanged_outcome(
+                        &conn,
+                        &key,
+                        *user,
+                        account,
+                        "oauth",
+                        (&observed.raw, &json),
+                        self.credential_user.is_none(),
+                    )
+                })();
+                match written {
+                    Ok(crate::user_partitions::RefreshOutcome::Written) => true,
+                    Ok(crate::user_partitions::RefreshOutcome::Changed) => false,
+                    // The row's readers withhold it now (a keystore restore
+                    // set the wait since this refresh read it): not written
+                    // over, and not taken as changed either.
+                    Ok(crate::user_partitions::RefreshOutcome::Withheld) => {
+                        keep("its row is withheld until the account's alignment");
+                        return Err(token_owner_changed());
+                    }
+                    Err(error) => {
+                        keep("its row refused the write");
+                        return Err(refresh_write_refused(error));
+                    }
+                }
             }
             TokenSource::Vault | TokenSource::Memory(..) => {
                 let update = || -> Result<bool, String> {
@@ -1903,8 +2105,8 @@ impl OAuth2Manager {
                         _ => Ok(false),
                     }
                 };
-                if self.credential_user.is_some() {
-                    update().map_err(refresh_write_refused)?
+                let updated = if self.credential_user.is_some() {
+                    update()
                 } else {
                     let store = crate::credential_store::CredentialStore::from_cache();
                     crate::user_partitions::with_unchanged_active_credential_user(
@@ -1912,7 +2114,13 @@ impl OAuth2Manager {
                         observed.credential_owner,
                         update,
                     )
-                    .map_err(refresh_write_refused)?
+                };
+                match updated {
+                    Ok(updated) => updated,
+                    Err(error) => {
+                        keep("the vault refused the write");
+                        return Err(refresh_write_refused(error));
+                    }
                 }
             }
             TokenSource::Unavailable => false,
@@ -2124,6 +2332,8 @@ impl OAuth2Manager {
             crate::user_partitions::delete_user_credential_for(&conn, user, &account)
                 .map_err(|e| ProviderError::Other(format!("Failed to delete tokens: {}", e)))?;
             info!("Tokens deleted from user partition for {:?}", provider);
+            // A sign-out ends the chain a refresh kept, too.
+            drop_pending_rotation(owner, &account, None);
             return Ok(());
         }
 
@@ -2151,7 +2361,9 @@ impl OAuth2Manager {
             &json_path,
             LegacyTokenGuard::acquire_for_signout,
             unmirror,
-        )
+        )?;
+        drop_pending_rotation(owner, &account, None);
+        Ok(())
     }
 
     /// The part of [`Self::delete_tokens`] the legacy owner's copies share:
@@ -3910,6 +4122,301 @@ mod tests {
         }
     }
 
+    /// The restore's wait over: no profile tags pending for `first`, and
+    /// `second` aligned, so its rows read as stored.
+    fn end_restore_wait(conn: &rusqlite::Connection, first: i64, second: i64) {
+        conn.execute(
+            "DELETE FROM global_state WHERE key = 'profile_tags_pending_' || ?1",
+            rusqlite::params![first],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT OR REPLACE INTO global_state(key, value, updated_at)
+             VALUES ('private_tokens_aligned_' || ?1, '1', 0)",
+            rusqlite::params![second],
+        )
+        .unwrap();
+    }
+
+    /// The access token [`OAuth2Manager::get_valid_token`] gives for the Box
+    /// profile `profile_id`: no exchange is made for a token that has not
+    /// expired.
+    fn valid_token(manager: &OAuth2Manager, profile_id: &str) -> Result<String, ProviderError> {
+        let config = OAuthConfig::box_cloud("client", "secret").with_profile_id(profile_id);
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime")
+            .block_on(manager.get_valid_token(&config))
+            .map(|token| secrecy::ExposeSecret::expose_secret(&token).to_string())
+    }
+
+    /// `user`'s row of `account`, as stored.
+    fn stored_row(
+        store: &crate::credential_store::CredentialStore,
+        user: i64,
+        account: &str,
+    ) -> Option<String> {
+        let root = Zeroizing::new(store.derive_user_partition_wrapping_key());
+        crate::user_partitions::get_user_credential_for(
+            &crate::user_partitions::open_or_init_cli().unwrap(),
+            &root,
+            user,
+            account,
+        )
+        .unwrap()
+        .map(|value| value.to_string())
+    }
+
+    /// In [`with_two_box_accounts`]: `second`'s row made an unstamped copy of
+    /// the vault's token, read by a refresh while readable, then withheld by
+    /// a restore's wait, and the refresh's rotation (`new-access`,
+    /// `new-refresh`) refused over it, reported as a connection that changed.
+    /// The record the refresh read.
+    fn a_rotation_refused_over_a_withheld_row(
+        store: &crate::credential_store::CredentialStore,
+        first: i64,
+        second: i64,
+        account: &str,
+    ) -> String {
+        let conn = crate::user_partitions::open_or_init_cli().unwrap();
+        let root = Zeroizing::new(store.derive_user_partition_wrapping_key());
+        let owners = store.get(account).expect("the owner's token");
+        crate::user_partitions::set_user_credential_for(
+            &conn, &root, second, account, "oauth", &owners,
+        )
+        .unwrap();
+        let manager = OAuth2Manager::new().with_credential_user(Some(second));
+        let observed = manager
+            .load_token_record(OAuthProvider::Box, "shared-profile")
+            .expect("read while readable");
+        assert!(
+            matches!(observed.source, TokenSource::Partition(user) if user == second),
+            "read from the account's row"
+        );
+        set_restore_wait(&conn, first, second);
+        let persisted = manager.persist_refreshed_record(
+            account,
+            &observed,
+            &box_tokens("new-access", "new-refresh"),
+        );
+        assert!(
+            matches!(persisted, Err(ProviderError::TargetChanged)),
+            "{persisted:?}"
+        );
+        assert_eq!(
+            stored_row(store, second, account).as_deref(),
+            Some(owners.as_str()),
+            "the withheld row is not written"
+        );
+        owners
+    }
+
+    /// N2, the row still holds what the refresh read: a rotation refused over
+    /// a withheld row is kept, and once the row is readable again the next
+    /// read writes it and uses it, with no exchange of the refresh token the
+    /// provider already retired.
+    #[test]
+    fn a_rotation_refused_over_a_withheld_row_is_written_once_the_row_is_readable() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::oauth2::tests::a_rotation_refused_over_a_withheld_row_is_written_once_the_row_is_readable",
+        ) {
+            return;
+        }
+        with_two_box_accounts(|store, first, second, account| {
+            a_rotation_refused_over_a_withheld_row(store, first, second, account);
+            assert!(
+                pending_rotation_record(Some(second), account)
+                    .is_some_and(|record| record.contains("new-refresh")),
+                "the rotation is kept"
+            );
+            end_restore_wait(
+                &crate::user_partitions::open_or_init_cli().unwrap(),
+                first,
+                second,
+            );
+            let token = valid_token(
+                &OAuth2Manager::new().with_credential_user(Some(second)),
+                "shared-profile",
+            );
+            assert_eq!(
+                token.ok().as_deref(),
+                Some("new-access"),
+                "the kept rotation is the token used"
+            );
+            assert!(
+                stored_row(store, second, account).is_some_and(|row| row.contains("new-refresh")),
+                "and it is saved"
+            );
+            assert_eq!(pending_rotation_record(Some(second), account), None);
+        });
+    }
+
+    /// N2, the row is still withheld: the kept rotation stays, and the read
+    /// stops as the refresh did, with no exchange and the row unwritten.
+    #[test]
+    fn a_rotation_kept_over_a_still_withheld_row_makes_no_refresh() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::oauth2::tests::a_rotation_kept_over_a_still_withheld_row_makes_no_refresh",
+        ) {
+            return;
+        }
+        with_two_box_accounts(|store, first, second, account| {
+            let owners = a_rotation_refused_over_a_withheld_row(store, first, second, account);
+            let token = valid_token(
+                &OAuth2Manager::new().with_credential_user(Some(second)),
+                "shared-profile",
+            );
+            assert!(
+                matches!(token, Err(ProviderError::TargetChanged)),
+                "{token:?}"
+            );
+            assert!(
+                pending_rotation_record(Some(second), account)
+                    .is_some_and(|record| record.contains("new-refresh")),
+                "the rotation stays kept"
+            );
+            assert_eq!(
+                stored_row(store, second, account).as_deref(),
+                Some(owners.as_str())
+            );
+        });
+    }
+
+    /// N2, the row changed since (another writer replaced it): the kept
+    /// rotation is dropped, and the read returns what the row holds now.
+    #[test]
+    fn a_rotation_kept_over_a_row_changed_since_is_dropped() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::oauth2::tests::a_rotation_kept_over_a_row_changed_since_is_dropped",
+        ) {
+            return;
+        }
+        with_two_box_accounts(|store, first, second, account| {
+            a_rotation_refused_over_a_withheld_row(store, first, second, account);
+            let conn = crate::user_partitions::open_or_init_cli().unwrap();
+            let root = Zeroizing::new(store.derive_user_partition_wrapping_key());
+            let replaced = serde_json::json!({
+                "access_token": "other-access", "refresh_token": "other-refresh",
+                "expires_at": null, "token_type": "Bearer", "scopes": [],
+                "owner_family": "v1:other-writer",
+            })
+            .to_string();
+            crate::user_partitions::set_user_credential_for(
+                &conn, &root, second, account, "oauth", &replaced,
+            )
+            .unwrap();
+            end_restore_wait(&conn, first, second);
+            let token = valid_token(
+                &OAuth2Manager::new().with_credential_user(Some(second)),
+                "shared-profile",
+            );
+            assert_eq!(token.ok().as_deref(), Some("other-access"));
+            assert_eq!(
+                pending_rotation_record(Some(second), account),
+                None,
+                "the kept rotation is dropped"
+            );
+            assert_eq!(
+                stored_row(store, second, account).as_deref(),
+                Some(replaced.as_str())
+            );
+        });
+    }
+
+    /// N2, a sibling refusal: the account the refresh read for is no longer
+    /// the active one when its write comes (a switch during the exchange).
+    /// The rotation is kept for that account, not for the one active now,
+    /// and written once it is active again.
+    #[test]
+    fn a_rotation_refused_after_an_account_switch_is_written_on_the_return() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::oauth2::tests::a_rotation_refused_after_an_account_switch_is_written_on_the_return",
+        ) {
+            return;
+        }
+        with_two_box_accounts(|store, first, second, account| {
+            let conn = crate::user_partitions::open_or_init_cli().unwrap();
+            crate::user_partitions::set_active_user(&conn, second).unwrap();
+            let manager = OAuth2Manager::new();
+            let observed = manager
+                .load_token_record(OAuthProvider::Box, "shared-profile")
+                .expect("read for the active account");
+            assert!(
+                matches!(observed.source, TokenSource::Partition(user) if user == second),
+                "read from the active account's row"
+            );
+            crate::user_partitions::set_active_user(&conn, first).unwrap();
+            let persisted = manager.persist_refreshed_record(
+                account,
+                &observed,
+                &box_tokens("new-access", "new-refresh"),
+            );
+            assert!(
+                matches!(persisted, Err(ProviderError::TargetChanged)),
+                "{persisted:?}"
+            );
+            assert!(
+                pending_rotation_record(Some(second), account)
+                    .is_some_and(|record| record.contains("new-refresh")),
+                "kept for the account the refresh read for"
+            );
+            assert_eq!(pending_rotation_record(Some(first), account), None);
+            crate::user_partitions::set_active_user(&conn, second).unwrap();
+            let token = valid_token(&OAuth2Manager::new(), "shared-profile");
+            assert_eq!(token.ok().as_deref(), Some("new-access"));
+            assert!(
+                stored_row(store, second, account).is_some_and(|row| row.contains("new-refresh")),
+                "saved in that account's row"
+            );
+        });
+    }
+
+    /// N2, a new sign-in of the key drops the kept rotation, and so does a
+    /// sign-out: neither leaves a chain for the next read to write back.
+    #[test]
+    fn a_new_sign_in_or_a_sign_out_drops_a_kept_rotation() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::oauth2::tests::a_new_sign_in_or_a_sign_out_drops_a_kept_rotation",
+        ) {
+            return;
+        }
+        with_two_box_accounts(|store, first, second, account| {
+            let owners = a_rotation_refused_over_a_withheld_row(store, first, second, account);
+            let manager = OAuth2Manager::new().with_credential_user(Some(second));
+            manager
+                .store_tokens(
+                    OAuthProvider::Box,
+                    "shared-profile",
+                    &box_tokens("signed-in", "signed-in-refresh"),
+                )
+                .expect("a new sign-in");
+            assert_eq!(
+                pending_rotation_record(Some(second), account),
+                None,
+                "a new sign-in drops it"
+            );
+            file_pending_rotation(
+                Some(second),
+                account,
+                PendingRotation {
+                    source: PendingSource::Partition(second),
+                    read: Zeroizing::new(owners),
+                    record: Zeroizing::new("kept".into()),
+                },
+                "test",
+            );
+            manager
+                .delete_tokens(OAuthProvider::Box, "shared-profile")
+                .expect("a sign-out");
+            assert_eq!(
+                pending_rotation_record(Some(second), account),
+                None,
+                "a sign-out drops it"
+            );
+        });
+    }
+
     /// A refresh whose write finds the vault closed, locked between the
     /// refresh's read and the check its write makes in its own transaction,
     /// reports the closed vault, never a token whose owner changed.
@@ -3946,6 +4453,28 @@ mod tests {
                 matches!(&persisted, Err(ProviderError::Other(e)) if e == REFRESH_VAULT_CLOSED),
                 "{persisted:?}"
             );
+            // The rotation is kept, and written once the vault is open again.
+            assert!(
+                pending_rotation_record(Some(second), account)
+                    .is_some_and(|record| record.contains("new-refresh")),
+                "the rotation is kept"
+            );
+            crate::credential_store::CredentialStore::unlock_with_master(
+                "signout-two-users-pass",
+                None,
+            )
+            .expect("unlock again");
+            end_restore_wait(
+                &crate::user_partitions::open_or_init_cli().unwrap(),
+                first,
+                second,
+            );
+            let token = valid_token(
+                &OAuth2Manager::new().with_credential_user(Some(second)),
+                "shared-profile",
+            );
+            assert_eq!(token.ok().as_deref(), Some("new-access"));
+            assert_eq!(pending_rotation_record(Some(second), account), None);
         });
     }
 
@@ -3995,6 +4524,22 @@ mod tests {
             matches!(&persisted, Err(ProviderError::Other(e)) if e == REFRESH_VAULT_CLOSED),
             "{persisted:?}"
         );
+        // The rotation is kept, and written once the vault is open again.
+        assert!(
+            pending_rotation_record(None, &account)
+                .is_some_and(|record| record.contains("new-refresh")),
+            "the rotation is kept"
+        );
+        CredentialStore::unlock_with_master("vault-closed-refresh-pass", None).expect("unlock");
+        let token = valid_token(&manager, "solo");
+        let saved = CredentialStore::from_cache()
+            .expect("cached vault")
+            .get(&account)
+            .expect("the vault's token");
+        CredentialStore::clear_cache();
+        assert_eq!(token.ok().as_deref(), Some("new-access"));
+        assert!(saved.contains("new-refresh"), "the kept rotation is saved");
+        assert_eq!(pending_rotation_record(None, &account), None);
     }
 
     /// A token miss with no legacy file and no claim answers "no stored
