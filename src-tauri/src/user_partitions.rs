@@ -5450,6 +5450,30 @@ fn realign_marker_key(user_id: i64) -> String {
     format!("{PRIVATE_TOKENS_REALIGN_PREFIX}{user_id}")
 }
 
+/// Counts every deferral of `user_id`'s keys ([`defer_realign`]) and is never
+/// reset: a pass that finds it moved since it read the marker cannot tell a
+/// key deferred again, restored after the pass ran it, from the deferral it
+/// ran, so it keeps that key's tag for the next pass.
+fn realign_generation_key(user_id: i64) -> String {
+    format!("{PRIVATE_TOKENS_REALIGN_PREFIX}generation_{user_id}")
+}
+
+/// The deferrals of `user_id`'s keys so far ([`realign_generation_key`]).
+fn realign_generation(conn: &Connection, user_id: i64) -> Result<u64, String> {
+    let value: Option<String> = conn
+        .query_row(
+            "SELECT value FROM global_state WHERE key = ?1",
+            params![realign_generation_key(user_id)],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| format!("Read deferred private token alignment: {e}"))?;
+    value.map_or(Ok(0), |raw| {
+        raw.parse()
+            .map_err(|e| format!("Read deferred private token alignment: {e}"))
+    })
+}
+
 /// The tags of the keys a targeted pass left to the next one, `None` when
 /// none waits.
 fn deferred_realign_tags(conn: &Connection, user_id: i64) -> Result<Option<Vec<String>>, String> {
@@ -5516,6 +5540,13 @@ fn defer_realign(
     tags.sort();
     tags.dedup();
     write_realign_tags(&tx, user_id, &tags)?;
+    let generation = realign_generation(&tx, user_id)? + 1;
+    upsert_global_state(
+        &tx,
+        &realign_generation_key(user_id),
+        &generation.to_string(),
+        now_ms(),
+    )?;
     tx.commit()
         .map_err(|e| format!("Defer private token alignment: {e}"))
 }
@@ -5533,10 +5564,12 @@ thread_local! {
 /// the keys it ran go once it ran, and every other tag stays, a restore's
 /// deferred since included, for the next pass, whose vault list holds its
 /// key. A tag whose key the vault no longer lists names nothing left to
-/// align, and goes too. A restore deferring the same keys again restored them
-/// before this pass took the list lock its own restore held, so this pass saw
-/// them. Its aligned marker stays as the restore left it, so the profiles the
-/// restore brought get no pass of their own.
+/// align, and goes too. A restore that deferred any key since this pass read
+/// the marker ([`realign_generation_key`]) may have deferred one this pass
+/// ran again, restored after the pass let the list lock go: then the tags of
+/// the keys it ran stay too, and the next pass runs them again. Its aligned
+/// marker stays as the restore left it, so the profiles the restore brought
+/// get no pass of their own.
 fn realign_deferred_tokens(
     conn: &Connection,
     root_key: &[u8; 32],
@@ -5546,6 +5579,8 @@ fn realign_deferred_tokens(
     read_secret: &SecretReader<'_>,
     delete_secret: &SecretDeleter<'_>,
 ) -> Result<usize, String> {
+    // Before the marker: a deferral made after this read moves it.
+    let generation = realign_generation(conn, user_id)?;
     let Some(tags) = deferred_realign_tags(conn, user_id)? else {
         return Ok(0);
     };
@@ -5597,9 +5632,10 @@ fn realign_deferred_tokens(
     {
         listed.insert(realign_tag(key)?);
     }
+    let deferred_since = realign_generation(&tx, user_id)? != generation;
     let left: Vec<String> = current
         .into_iter()
-        .filter(|tag| !covered.contains(tag) && listed.contains(tag))
+        .filter(|tag| (deferred_since || !covered.contains(tag)) && listed.contains(tag))
         .collect();
     write_realign_tags(&tx, user_id, &left)?;
     tx.commit()
@@ -13381,6 +13417,74 @@ mod tests {
         assert_eq!(row(later).as_deref(), Some("q-token"));
         assert!(deleted.borrow().contains(&later.to_string()));
         assert_eq!(deferred_realign_tags(&conn, other).unwrap(), None);
+    }
+
+    /// A restore that defers a key again while a deferred pass runs, after
+    /// the pass ran that key and let the list lock go, keeps that key's tag:
+    /// the pass cannot tell the new deferral from the one it ran, so the tag
+    /// stays for the next pass, with the tag of the restore's other key.
+    #[test]
+    fn a_key_deferred_again_during_a_deferred_pass_keeps_its_tag() {
+        let _guard = test_lock();
+        clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("partitions.db");
+        let mut conn = open_or_init_path(path.clone()).expect("open");
+        let root = test_root();
+        migrate_legacy_payloads(&mut conn, Some("[]"), None, &root).expect("seed");
+        let other = create_passphrase_less_user(&mut conn, &root, "Other", None, None)
+            .unwrap()
+            .id;
+        clear_user_session();
+        let profile = |id: &str| {
+            json!({"id": id, "name": id, "protocol": "dropbox", "host": "", "port": 0,
+                   "username": format!("{id}@example.test")})
+        };
+        replace_server_profiles_for(&mut conn, &root, other, &[profile("p"), profile("q")])
+            .unwrap();
+        mark_creds_migrated(&conn, other).unwrap();
+        mark_private_tokens_aligned(&conn, other).unwrap();
+        let (again, new) = ("oauth_dropbox_p", "oauth_dropbox_q");
+        defer_realign(&conn, &root, other, &[again.to_string()]).unwrap();
+        let (all, read) = fake_vault(&[(again, "p-token"), (new, "q-token")]);
+        let delete = |_: &str| Ok(());
+        let root_secret = user_crypto::secret_key_from_bytes(&root);
+        let tag = |key: &str| user_crypto::metadata_tag(&root_secret, b"realign-key", key).unwrap();
+        // The restore puts both keys back in the vault and defers them, once
+        // the pass ran the first one.
+        BEFORE_REALIGN_CLEAR.with(|hook| {
+            *hook.borrow_mut() = Some(Box::new(move || {
+                let later = open_or_init_path(path).expect("second connection");
+                defer_realign(&later, &root, other, &[again, new].map(str::to_string))
+                    .expect("the later deferral");
+            }))
+        });
+
+        align_private_tokens_inner(
+            &conn,
+            &root,
+            other,
+            &[again.to_string()],
+            &|| Ok(all.clone()),
+            &read,
+            &delete,
+        )
+        .unwrap();
+        assert_eq!(
+            get_user_credential_for(&conn, &root, other, again)
+                .unwrap()
+                .as_deref()
+                .map(String::as_str),
+            Some("p-token"),
+            "the pass ran the first deferral"
+        );
+        let mut expected = vec![tag(again), tag(new)];
+        expected.sort();
+        assert_eq!(
+            deferred_realign_tags(&conn, other).unwrap(),
+            Some(expected),
+            "the key deferred again keeps its tag"
+        );
     }
 
     /// On a filesystem without file locks a deferred pass copies the key but
