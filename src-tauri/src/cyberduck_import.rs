@@ -52,8 +52,16 @@ pub struct CyberduckSkippedRemote {
 pub struct CyberduckImportResult {
     pub servers: Vec<ServerProfileExport>,
     pub skipped: Vec<CyberduckSkippedRemote>,
+    pub warnings: Vec<CyberduckImportWarning>,
     pub source_path: String,
     pub total_remotes: usize,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CyberduckImportWarning {
+    pub name: String,
+    pub reason: String,
 }
 
 /// A server profile to export as a `.duck` bookmark (metadata only).
@@ -320,15 +328,34 @@ fn bookmark_name(xml: &str) -> String {
         .unwrap_or_else(|| "Cyberduck bookmark".to_string())
 }
 
-/// Map one `.duck` body, pushing into `servers` or `skipped`.
+#[cfg(test)]
 fn ingest_duck(
     xml: &str,
     servers: &mut Vec<ServerProfileExport>,
     skipped: &mut Vec<CyberduckSkippedRemote>,
 ) {
+    ingest_duck_with_warnings(xml, servers, skipped, &mut Vec::new());
+}
+
+/// Map one `.duck` body, pushing into `servers`, `skipped` or `warnings`.
+fn ingest_duck_with_warnings(
+    xml: &str,
+    servers: &mut Vec<ServerProfileExport>,
+    skipped: &mut Vec<CyberduckSkippedRemote>,
+    warnings: &mut Vec<CyberduckImportWarning>,
+) {
     let name = bookmark_name(xml);
     match map_duck(xml) {
         DuckOutcome::Profile(m) => {
+            if matches!(m.protocol.as_str(), "ftp" | "ftps")
+                && crate::bridge_shared::plist_field(xml, "FTP Connect Mode")
+                    .is_some_and(|mode| mode.trim() == "active")
+            {
+                warnings.push(CyberduckImportWarning {
+                    name: name.clone(),
+                    reason: "Cyberduck requires active FTP for this bookmark; AeroFTP supports passive FTP only".to_string(),
+                });
+            }
             let id = format!(
                 "cyberduck-{}-{}",
                 name.to_lowercase().replace(' ', "-"),
@@ -412,6 +439,7 @@ pub fn default_cyberduck_config_path() -> Option<PathBuf> {
 pub fn import_cyberduck(path: &Path) -> Result<CyberduckImportResult, String> {
     let mut servers: Vec<ServerProfileExport> = Vec::new();
     let mut skipped: Vec<CyberduckSkippedRemote> = Vec::new();
+    let mut warnings: Vec<CyberduckImportWarning> = Vec::new();
     let mut total_remotes = 0usize;
 
     if path.is_dir() {
@@ -435,7 +463,7 @@ pub fn import_cyberduck(path: &Path) -> Result<CyberduckImportResult, String> {
             match std::fs::read_to_string(&p) {
                 Ok(xml) => {
                     total_remotes += 1;
-                    ingest_duck(&xml, &mut servers, &mut skipped);
+                    ingest_duck_with_warnings(&xml, &mut servers, &mut skipped, &mut warnings);
                 }
                 Err(e) => {
                     total_remotes += 1;
@@ -453,12 +481,13 @@ pub fn import_cyberduck(path: &Path) -> Result<CyberduckImportResult, String> {
     } else {
         let xml = std::fs::read_to_string(path).map_err(|e| format!("read .duck: {e}"))?;
         total_remotes = 1;
-        ingest_duck(&xml, &mut servers, &mut skipped);
+        ingest_duck_with_warnings(&xml, &mut servers, &mut skipped, &mut warnings);
     }
 
     Ok(CyberduckImportResult {
         servers,
         skipped,
+        warnings,
         source_path: path.display().to_string(),
         total_remotes,
     })
@@ -834,6 +863,23 @@ mod tests {
         let p = dir.join(name);
         std::fs::write(&p, body).unwrap();
         p
+    }
+
+    #[test]
+    fn ftp_connect_mode_active_is_warned_and_passive_is_unchanged() {
+        for (mode, expected_warnings) in [("active", 1), ("passive", 0)] {
+            let xml = format!(
+                r#"<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>Protocol</key><string>ftp</string><key>Nickname</key><string>FTP site</string><key>Hostname</key><string>ftp.example.com</string><key>Port</key><integer>21</integer><key>Username</key><string>user</string><key>FTP Connect Mode</key><string>{mode}</string></dict></plist>"#
+            );
+            let path = write_tmp(mode, &xml);
+            let result = import_cyberduck(&path).unwrap();
+            assert_eq!(result.servers.len(), 1, "{mode}");
+            assert!(result.skipped.is_empty(), "{mode}");
+            assert_eq!(result.warnings.len(), expected_warnings, "{mode}");
+            if mode == "active" {
+                assert!(result.warnings[0].reason.contains("active FTP"));
+            }
+        }
     }
 
     #[test]

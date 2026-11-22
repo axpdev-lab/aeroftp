@@ -298,8 +298,16 @@ pub struct DreamweaverSkippedRemote {
 pub struct DreamweaverImportResult {
     pub servers: Vec<ServerProfileExport>,
     pub skipped: Vec<DreamweaverSkippedRemote>,
+    pub warnings: Vec<DreamweaverImportWarning>,
     pub source_path: String,
     pub total_remotes: usize,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DreamweaverImportWarning {
+    pub name: String,
+    pub reason: String,
 }
 
 /// Maximum number of `<site>` blocks to parse (DoS guard on crafted files).
@@ -324,6 +332,7 @@ pub fn import_dreamweaver(path: &Path) -> Result<DreamweaverImportResult, String
     let total_remotes = sites.len().min(MAX_SITES);
     let mut servers = Vec::new();
     let mut skipped = Vec::new();
+    let mut warnings = Vec::new();
 
     for site in sites.into_iter().take(MAX_SITES) {
         // Real `.ste` has no `<site name>`: the site name lives URL-encoded
@@ -351,6 +360,22 @@ pub fn import_dreamweaver(path: &Path) -> Result<DreamweaverImportResult, String
 
         match map_remote_info(&ri) {
             MapOutcome::Mapped(m) => {
+                if matches!(m.protocol.as_str(), "ftp" | "ftps") {
+                    if ri_attr(&ri, &["usepasv", "usePasv"]).is_some_and(|value| {
+                        value.trim().eq_ignore_ascii_case("false") || value.trim() == "0"
+                    }) {
+                        warnings.push(DreamweaverImportWarning {
+                            name: name.clone(),
+                            reason: "Dreamweaver requires active FTP for this site; AeroFTP supports passive FTP only".to_string(),
+                        });
+                    }
+                    if ri_flag(&ri, &["usefirewall", "useFirewall"]) {
+                        warnings.push(DreamweaverImportWarning {
+                            name: name.clone(),
+                            reason: "Dreamweaver firewall/proxy settings are not imported; AeroFTP will connect directly".to_string(),
+                        });
+                    }
+                }
                 let id = format!(
                     "dw-{}-{}",
                     name.to_lowercase().replace(' ', "-"),
@@ -409,6 +434,7 @@ pub fn import_dreamweaver(path: &Path) -> Result<DreamweaverImportResult, String
     Ok(DreamweaverImportResult {
         servers,
         skipped,
+        warnings,
         source_path: path.display().to_string(),
         total_remotes,
     })
@@ -648,6 +674,24 @@ mod tests {
         ));
         std::fs::write(&p, body).unwrap();
         p
+    }
+
+    #[test]
+    fn active_ftp_and_firewall_settings_import_with_explicit_warnings() {
+        let xml = real_ste(Some("Demo@Pass2024")).replace(
+            "usefirewall=\"FALSE\" usepasv=\"TRUE\"",
+            "usefirewall=\"TRUE\" usepasv=\"FALSE\"",
+        );
+        let path = write_tmp(&xml);
+        let result = import_dreamweaver(&path).expect("parse active/firewall .ste");
+        std::fs::remove_file(&path).ok();
+
+        assert_eq!(result.servers.len(), 1);
+        assert!(result.skipped.is_empty());
+        assert_eq!(result.warnings.len(), 2);
+        assert!(result.warnings[0].reason.contains("active FTP"));
+        assert!(result.warnings[1].reason.contains("firewall/proxy"));
+        assert!(result.warnings[1].reason.contains("connect directly"));
     }
 
     #[test]

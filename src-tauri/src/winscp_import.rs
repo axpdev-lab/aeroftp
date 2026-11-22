@@ -432,8 +432,16 @@ pub fn default_winscp_config_path() -> Option<PathBuf> {
 pub struct WinScpImportResult {
     pub servers: Vec<ServerProfileExport>,
     pub skipped: Vec<WinScpSkippedSession>,
+    pub warnings: Vec<WinScpImportWarning>,
     pub source_path: String,
     pub total_sessions: usize,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WinScpImportWarning {
+    pub name: String,
+    pub reason: String,
 }
 
 /// A session that was skipped (unsupported protocol).
@@ -457,12 +465,57 @@ pub fn import_winscp(config_path: &Path) -> Result<WinScpImportResult, String> {
     let total_sessions = sessions.len();
     let mut servers = Vec::new();
     let mut skipped = Vec::new();
+    let mut warnings = Vec::new();
 
     for (name, fields) in &sessions {
         let fs_protocol_str = fields.get("FSProtocol").cloned().unwrap_or_default();
 
         match map_session(name, fields) {
             Some(mapped) => {
+                let proxy_method = fields
+                    .get("ProxyMethod")
+                    .and_then(|value| value.trim().parse::<u32>().ok())
+                    .unwrap_or(0);
+                if proxy_method != 0 {
+                    let kind = match proxy_method {
+                        1 => "SOCKS4",
+                        2 => "SOCKS5",
+                        3 => "HTTP",
+                        4 => "Telnet",
+                        5 => "local command",
+                        6 => "SSH TCP/IP",
+                        _ => "unknown",
+                    };
+                    warnings.push(WinScpImportWarning {
+                        name: name.clone(),
+                        reason: format!(
+                            "WinSCP uses {kind} proxy method {proxy_method} for this session; the proxy is not imported and AeroFTP will connect directly"
+                        ),
+                    });
+                }
+                let ftp_proxy_logon_type = fields
+                    .get("FtpProxyLogonType")
+                    .and_then(|value| value.trim().parse::<u32>().ok())
+                    .unwrap_or(0);
+                if matches!(mapped.protocol.as_str(), "ftp" | "ftps")
+                    && proxy_method == 0
+                    && ftp_proxy_logon_type != 0
+                {
+                    warnings.push(WinScpImportWarning {
+                        name: name.clone(),
+                        reason: format!(
+                            "WinSCP uses FTP proxy logon type {ftp_proxy_logon_type} for this session; the proxy is not imported and AeroFTP will connect directly"
+                        ),
+                    });
+                }
+                if matches!(mapped.protocol.as_str(), "ftp" | "ftps")
+                    && fields.get("FtpPasvMode").map(String::as_str) == Some("0")
+                {
+                    warnings.push(WinScpImportWarning {
+                        name: name.clone(),
+                        reason: "WinSCP requires active FTP for this session; AeroFTP supports passive FTP only".to_string(),
+                    });
+                }
                 let id = format!(
                     "winscp-{}-{}",
                     name.to_lowercase().replace(' ', "-"),
@@ -505,6 +558,7 @@ pub fn import_winscp(config_path: &Path) -> Result<WinScpImportResult, String> {
     Ok(WinScpImportResult {
         servers,
         skipped,
+        warnings,
         source_path: config_path.display().to_string(),
         total_sessions,
     })
@@ -1117,6 +1171,81 @@ FSProtocol=1
 
         let mapped = map_session("test", &fields).unwrap();
         assert_eq!(mapped.password.unwrap(), "mysecret");
+    }
+
+    #[test]
+    fn proxy_and_active_ftp_sessions_import_with_explicit_warnings() {
+        let mut ini = String::new();
+        for method in 0..=5 {
+            ini.push_str(&format!(
+                "[Sessions\\Proxy{method}]\nHostName=proxy{method}.example.com\nUserName=user\nFSProtocol=2\nProxyMethod={method}\n"
+            ));
+        }
+        ini.push_str(
+            "[Sessions\\ActiveFTP]\nHostName=ftp.example.com\nUserName=user\nFSProtocol=5\nFtpPasvMode=0\n[Sessions\\PassiveFTP]\nHostName=passive.example.com\nUserName=user\nFSProtocol=5\nFtpPasvMode=1\n",
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("WinSCP.ini");
+        std::fs::write(&path, ini).unwrap();
+
+        let result = import_winscp(&path).unwrap();
+        assert_eq!(result.servers.len(), 8);
+        assert!(result.skipped.is_empty());
+        assert_eq!(result.warnings.len(), 6);
+        for (method, kind) in [
+            (1, "SOCKS4"),
+            (2, "SOCKS5"),
+            (3, "HTTP"),
+            (4, "Telnet"),
+            (5, "local command"),
+        ] {
+            let warning = result
+                .warnings
+                .iter()
+                .find(|warning| warning.name == format!("Proxy{method}"))
+                .unwrap_or_else(|| panic!("missing proxy warning for method {method}"));
+            assert!(warning.reason.contains(kind), "{}", warning.reason);
+            assert!(warning.reason.contains("connect directly"));
+        }
+        let active = result
+            .warnings
+            .iter()
+            .find(|warning| warning.name == "ActiveFTP")
+            .expect("active FTP warning");
+        assert!(active.reason.contains("active FTP"));
+        assert!(!result
+            .warnings
+            .iter()
+            .any(|warning| { warning.name == "Proxy0" || warning.name == "PassiveFTP" }));
+    }
+
+    #[test]
+    fn ftp_proxy_logon_type_and_ssh_proxy_method_are_warned() {
+        let ini = concat!(
+            "[Sessions\\FtpProxy]\nHostName=ftp.example.com\nUserName=user\nFSProtocol=5\nProxyMethod=0\nFtpProxyLogonType=2\n",
+            "[Sessions\\SshProxy]\nHostName=ssh.example.com\nUserName=user\nFSProtocol=2\nProxyMethod=6\n",
+            "[Sessions\\GenericWins]\nHostName=ftp2.example.com\nUserName=user\nFSProtocol=5\nProxyMethod=3\nFtpProxyLogonType=2\n",
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("WinSCP.ini");
+        std::fs::write(&path, ini).unwrap();
+
+        let result = import_winscp(&path).unwrap();
+        assert_eq!(result.servers.len(), 3);
+        assert_eq!(result.warnings.len(), 3);
+        assert!(result.warnings.iter().any(|warning| {
+            warning.name == "FtpProxy" && warning.reason.contains("FTP proxy logon type 2")
+        }));
+        assert!(result.warnings.iter().any(|warning| {
+            warning.name == "SshProxy" && warning.reason.contains("SSH TCP/IP")
+        }));
+        let generic = result
+            .warnings
+            .iter()
+            .find(|warning| warning.name == "GenericWins")
+            .unwrap();
+        assert!(generic.reason.contains("HTTP"));
+        assert!(!generic.reason.contains("FTP proxy logon"));
     }
 
     /// Two profiles of one name (a list saved before names were unique) were

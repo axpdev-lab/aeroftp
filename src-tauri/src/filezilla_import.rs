@@ -49,6 +49,7 @@ fn parse_sitemanager_xml(content: &str) -> Vec<FileZillaServer> {
     let mut current_fields: HashMap<String, String> = HashMap::new();
     let mut current_name = String::new();
     let mut current_tag = String::new();
+    let mut current_parameter_name = String::new();
     let mut pass_encoding = String::new();
     let mut capped = false;
     // Text since the last tag. quick-xml hands it over in pieces: a character
@@ -102,11 +103,19 @@ fn parse_sitemanager_xml(content: &str) -> Vec<FileZillaServer> {
                         current_name.clear();
                         pass_encoding.clear();
                         current_tag.clear();
+                        current_parameter_name.clear();
                     }
                     _ if in_server => {
                         if tag == "Pass" {
                             pass_encoding = e
                                 .try_get_attribute("encoding")
+                                .ok()
+                                .flatten()
+                                .map(|a| a.value.to_string())
+                                .unwrap_or_default();
+                        } else if tag == "Parameter" {
+                            current_parameter_name = e
+                                .try_get_attribute("Name")
                                 .ok()
                                 .flatten()
                                 .map(|a| a.value.to_string())
@@ -178,6 +187,12 @@ fn parse_sitemanager_xml(content: &str) -> Vec<FileZillaServer> {
                 } else if in_server && tag == current_tag {
                     if current_tag == "Name" {
                         current_name = run.to_string();
+                    } else if current_tag == "Parameter" && !current_parameter_name.is_empty() {
+                        current_fields.insert(
+                            format!("_parameter_{current_parameter_name}"),
+                            run.to_string(),
+                        );
+                        current_parameter_name.clear();
                     } else {
                         current_fields.insert(current_tag.clone(), run.to_string());
                     }
@@ -206,6 +221,108 @@ fn note_folder_text(folder_stack: &mut [(String, usize)], run: &str) {
         if name.is_empty() && !run.is_empty() {
             *name = run.to_string();
         }
+    }
+}
+
+struct FileZillaGlobalSettings {
+    generic_type: u32,
+    ftp_type: u32,
+    use_pasv_mode: u32,
+}
+
+impl Default for FileZillaGlobalSettings {
+    fn default() -> Self {
+        Self {
+            generic_type: 0,
+            ftp_type: 0,
+            use_pasv_mode: 1,
+        }
+    }
+}
+
+fn filezilla_global_settings(sitemanager_path: &Path) -> Option<FileZillaGlobalSettings> {
+    use quick_xml::events::Event;
+
+    let path = sitemanager_path.with_file_name("filezilla.xml");
+    let Ok(metadata) = std::fs::metadata(&path) else {
+        return None;
+    };
+    if !metadata.is_file() || metadata.len() > MAX_FILE_SIZE {
+        return None;
+    }
+    let Ok(content) = std::fs::read_to_string(path) else {
+        return None;
+    };
+    let mut reader = quick_xml::Reader::from_str(&content);
+    let mut settings = FileZillaGlobalSettings::default();
+    let mut setting_name = None;
+    let mut setting_value = String::new();
+    let mut buf = Vec::new();
+    loop {
+        let Ok(event) = reader.read_event_into(&mut buf) else {
+            return None;
+        };
+        match event {
+            Event::Eof => break,
+            Event::Start(e) if e.name().as_ref() == "Setting" => {
+                setting_name = e
+                    .try_get_attribute("name")
+                    .ok()
+                    .flatten()
+                    .map(|a| a.value.into_owned());
+                setting_value.clear();
+            }
+            Event::Text(e) if setting_name.is_some() => {
+                setting_value.push_str(&e.xml_content(quick_xml::XmlVersion::Implicit1_0));
+            }
+            Event::CData(e) if setting_name.is_some() => {
+                setting_value.push_str(&e.xml_content(quick_xml::XmlVersion::Implicit1_0));
+            }
+            Event::GeneralRef(e) if setting_name.is_some() => {
+                match crate::providers::xml_text::xml_entity_to_str(&e) {
+                    Some(expansion) => setting_value.push_str(&expansion),
+                    None => {
+                        setting_value.push('&');
+                        setting_value.push_str(&e);
+                        setting_value.push(';');
+                    }
+                }
+            }
+            Event::End(e) if e.name().as_ref() == "Setting" => {
+                let value = setting_value.trim();
+                match setting_name.as_deref() {
+                    Some("Proxy type") => settings.generic_type = value.parse().unwrap_or(0),
+                    Some("FTP Proxy type") => settings.ftp_type = value.parse().unwrap_or(0),
+                    Some("Use Pasv mode") => settings.use_pasv_mode = value.parse().unwrap_or(1),
+                    _ => {}
+                }
+                setting_name = None;
+                setting_value.clear();
+            }
+            _ => {}
+        }
+        buf.clear();
+    }
+    Some(settings)
+}
+
+fn generic_proxy_kind(proxy_type: u32) -> String {
+    match proxy_type {
+        1 => "HTTP CONNECT".to_string(),
+        2 => "SOCKS5".to_string(),
+        3 => "SOCKS4".to_string(),
+        4 => "SSH".to_string(),
+        other => format!("type {other}"),
+    }
+}
+
+fn ftp_proxy_kind(proxy_type: u32) -> String {
+    match proxy_type {
+        1 => "USER@HOST".to_string(),
+        2 => "SITE".to_string(),
+        3 => "OPEN".to_string(),
+        4 => "custom".to_string(),
+        other => format!("type {other}"),
     }
 }
 
@@ -436,8 +553,16 @@ pub fn default_filezilla_config_path() -> Option<PathBuf> {
 pub struct FileZillaImportResult {
     pub servers: Vec<ServerProfileExport>,
     pub skipped: Vec<FileZillaSkippedServer>,
+    pub warnings: Vec<FileZillaImportWarning>,
     pub source_path: String,
     pub total_servers: usize,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileZillaImportWarning {
+    pub name: String,
+    pub reason: String,
 }
 
 /// A server that was skipped (unsupported protocol).
@@ -463,8 +588,13 @@ pub fn import_filezilla(config_path: &Path) -> Result<FileZillaImportResult, Str
 
     let fz_servers = parse_sitemanager_xml(&content);
     let total_servers = fz_servers.len();
+    let global_settings = filezilla_global_settings(config_path);
     let mut servers = Vec::new();
     let mut skipped = Vec::new();
+    let mut warnings = Vec::new();
+    let mut generic_proxy_sites = 0usize;
+    let mut ftp_proxy_sites = 0usize;
+    let mut default_mode_ftp_sites = 0usize;
 
     for fz_server in &fz_servers {
         let fz_protocol = fz_server
@@ -475,6 +605,47 @@ pub fn import_filezilla(config_path: &Path) -> Result<FileZillaImportResult, Str
 
         match map_server(fz_server) {
             Some(mapped) => {
+                let bypass_proxy =
+                    fz_server.fields.get("BypassProxy").map(String::as_str) == Some("1");
+                let uses_generic_proxy = !bypass_proxy
+                    && global_settings
+                        .as_ref()
+                        .is_some_and(|settings| settings.generic_type != 0);
+                if matches!(mapped.protocol.as_str(), "ftp" | "ftps") {
+                    let data_mode = match fz_server
+                        .fields
+                        .get("_parameter_data_mode_override")
+                        .map(String::as_str)
+                    {
+                        Some("active") => Some("active"),
+                        Some("passive") => Some("passive"),
+                        _ => match fz_server.fields.get("PasvMode").map(String::as_str) {
+                            Some("MODE_ACTIVE") => Some("active"),
+                            Some("MODE_PASSIVE") => Some("passive"),
+                            _ => None,
+                        },
+                    };
+                    if data_mode.is_none() {
+                        default_mode_ftp_sites += 1;
+                    }
+                    let global_active = global_settings
+                        .as_ref()
+                        .is_some_and(|settings| settings.use_pasv_mode == 0);
+                    if !uses_generic_proxy
+                        && (data_mode == Some("active") || (data_mode.is_none() && global_active))
+                    {
+                        warnings.push(FileZillaImportWarning {
+                            name: fz_server.name.clone(),
+                            reason: "FileZilla requires active FTP for this site; AeroFTP supports passive FTP only".to_string(),
+                        });
+                    }
+                }
+                if !bypass_proxy {
+                    generic_proxy_sites += 1;
+                    if matches!(mapped.protocol.as_str(), "ftp" | "ftps") {
+                        ftp_proxy_sites += 1;
+                    }
+                }
                 let id = format!(
                     "filezilla-{}-{}",
                     fz_server
@@ -519,9 +690,59 @@ pub fn import_filezilla(config_path: &Path) -> Result<FileZillaImportResult, Str
         }
     }
 
+    match global_settings {
+        Some(settings) => {
+            if settings.generic_type != 0 && generic_proxy_sites > 0 {
+                warnings.push(FileZillaImportWarning {
+                    name: "FileZilla global settings".to_string(),
+                    reason: format!(
+                        "FileZilla's global {} proxy is not imported; {} affected {} will connect directly through AeroFTP",
+                        generic_proxy_kind(settings.generic_type),
+                        generic_proxy_sites,
+                        if generic_proxy_sites == 1 { "site" } else { "sites" },
+                    ),
+                });
+            }
+            if settings.generic_type == 0 && settings.ftp_type != 0 && ftp_proxy_sites > 0 {
+                warnings.push(FileZillaImportWarning {
+                    name: "FileZilla global settings".to_string(),
+                    reason: format!(
+                        "FileZilla's global FTP {} proxy is not imported; {} affected {} will connect directly through AeroFTP",
+                        ftp_proxy_kind(settings.ftp_type),
+                        ftp_proxy_sites,
+                        if ftp_proxy_sites == 1 { "site" } else { "sites" },
+                    ),
+                });
+            }
+        }
+        None if generic_proxy_sites > 0 || default_mode_ftp_sites > 0 => {
+            let mut reasons = Vec::new();
+            if generic_proxy_sites > 0 {
+                reasons.push(format!(
+                    "FileZilla's global proxy settings were not included in this import; {} {} may use a proxy, but AeroFTP will connect directly",
+                    generic_proxy_sites,
+                    if generic_proxy_sites == 1 { "site" } else { "sites" },
+                ));
+            }
+            if default_mode_ftp_sites > 0 {
+                reasons.push(format!(
+                    "FileZilla's global transfer mode was not read for {} default-mode FTP {}; AeroFTP uses passive FTP",
+                    default_mode_ftp_sites,
+                    if default_mode_ftp_sites == 1 { "site" } else { "sites" },
+                ));
+            }
+            warnings.push(FileZillaImportWarning {
+                name: "FileZilla global settings".to_string(),
+                reason: reasons.join(" "),
+            });
+        }
+        None => {}
+    }
+
     Ok(FileZillaImportResult {
         servers,
         skipped,
+        warnings,
         source_path: config_path.display().to_string(),
         total_servers,
     })
@@ -979,6 +1200,240 @@ mod tests {
             decode_filezilla_password(pass, encoding).as_deref(),
             Some("p&ss")
         );
+    }
+
+    #[test]
+    fn filezilla_372_sites_import_with_active_mode_and_ssh_proxy_warnings() {
+        let dir = tempfile::tempdir().unwrap();
+        let sitemanager = dir.path().join("sitemanager.xml");
+        std::fs::write(
+            &sitemanager,
+            concat!(
+                r#"<?xml version="1.0"?><FileZilla3 version="3.72.1"><Servers>"#,
+                r#"<Server><Host>active.example.com</Host><Protocol>0</Protocol>"#,
+                r#"<Parameter Name="data_mode_override">active</Parameter>"#,
+                r#"<BypassProxy>1</BypassProxy><Name>Active through SSH</Name></Server>"#,
+                r#"<Server><Host>passive.example.com</Host><Protocol>0</Protocol>"#,
+                r#"<PasvMode>MODE_PASSIVE</PasvMode><BypassProxy>0</BypassProxy>"#,
+                r#"<Name>Passive through SSH</Name></Server>"#,
+                r#"</Servers></FileZilla3>"#,
+            ),
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join("filezilla.xml"),
+            concat!(
+                r#"<?xml version="1.0"?><FileZilla3 version="3.72.1"><Settings>"#,
+                r#"<Setting name="Proxy type">4</Setting>"#,
+                r#"<Setting name="Proxy host">bastion.example.com</Setting>"#,
+                r#"</Settings></FileZilla3>"#,
+            ),
+        )
+        .unwrap();
+
+        let result = import_filezilla(&sitemanager).unwrap();
+        assert_eq!(result.total_servers, 2);
+        assert_eq!(result.servers.len(), 2);
+        assert!(result.skipped.is_empty());
+        assert_eq!(result.warnings.len(), 2);
+        assert_eq!(result.warnings[0].name, "Active through SSH");
+        assert!(result.warnings[0].reason.contains("active FTP"));
+        assert_eq!(result.warnings[1].name, "FileZilla global settings");
+        assert!(result.warnings[1].reason.contains("SSH proxy"));
+        assert!(result.warnings[1].reason.contains("1 affected site"));
+    }
+
+    #[test]
+    fn every_filezilla_global_proxy_kind_is_named_in_one_file_level_warning() {
+        let cases = [
+            ("Proxy type", "2", "SOCKS5", 1),
+            ("Proxy type", "1", "HTTP CONNECT", 1),
+            ("Proxy type", "3", "SOCKS4", 1),
+            ("Proxy type", "4", "SSH", 1),
+            ("FTP Proxy type", "1", "USER@HOST", 0),
+            ("FTP Proxy type", "2", "SITE", 0),
+            ("FTP Proxy type", "3", "OPEN", 0),
+            ("FTP Proxy type", "4", "custom", 0),
+        ];
+        for (setting, value, kind, protocol) in cases {
+            let dir = tempfile::tempdir().unwrap();
+            let sitemanager = dir.path().join("sitemanager.xml");
+            std::fs::write(
+                &sitemanager,
+                format!(
+                    r#"<?xml version="1.0"?><FileZilla3><Servers><Server><Host>proxy.example.com</Host><Protocol>{protocol}</Protocol><Name>Proxy site</Name></Server></Servers></FileZilla3>"#
+                ),
+            )
+            .unwrap();
+            std::fs::write(
+                dir.path().join("filezilla.xml"),
+                format!(
+                    r#"<?xml version="1.0"?><FileZilla3><Settings><Setting name="{setting}">{value}</Setting></Settings></FileZilla3>"#
+                ),
+            )
+            .unwrap();
+
+            let result = import_filezilla(&sitemanager).unwrap();
+            assert_eq!(result.servers.len(), 1, "{setting}={value}");
+            assert_eq!(result.warnings.len(), 1, "{setting}={value}");
+            assert_eq!(result.warnings[0].name, "FileZilla global settings");
+            assert!(
+                result.warnings[0].reason.contains(kind),
+                "{setting}={value}: {}",
+                result.warnings[0].reason
+            );
+            assert!(result.warnings[0].reason.contains("1 affected site"));
+        }
+    }
+
+    #[test]
+    fn generic_proxy_takes_precedence_over_the_ftp_proxy_setting() {
+        let dir = tempfile::tempdir().unwrap();
+        let sitemanager = dir.path().join("sitemanager.xml");
+        std::fs::write(
+            &sitemanager,
+            r#"<?xml version="1.0"?><FileZilla3><Servers><Server><Host>ftp.example.com</Host><Protocol>0</Protocol><Name>FTP site</Name></Server></Servers></FileZilla3>"#,
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join("filezilla.xml"),
+            r#"<?xml version="1.0"?><FileZilla3><Settings><Setting name="Proxy type">1</Setting><Setting name="FTP Proxy type">4</Setting></Settings></FileZilla3>"#,
+        )
+        .unwrap();
+
+        let result = import_filezilla(&sitemanager).unwrap();
+        assert_eq!(result.warnings.len(), 1);
+        assert!(result.warnings[0].reason.contains("HTTP CONNECT"));
+        assert!(!result.warnings[0].reason.contains("custom"));
+    }
+
+    #[test]
+    fn malformed_global_settings_produce_proxy_and_transfer_mode_warnings() {
+        let dir = tempfile::tempdir().unwrap();
+        let sitemanager = dir.path().join("sitemanager.xml");
+        std::fs::write(
+            &sitemanager,
+            r#"<?xml version="1.0"?><FileZilla3><Servers><Server><Host>ftp.example.com</Host><Protocol>0</Protocol><Name>Default mode</Name></Server></Servers></FileZilla3>"#,
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join("filezilla.xml"),
+            r#"<?xml version="1.0"?><FileZilla3><Settings><Setting name="Proxy type""#,
+        )
+        .unwrap();
+
+        let result = import_filezilla(&sitemanager).unwrap();
+        assert_eq!(result.warnings.len(), 1);
+        assert!(result.warnings[0]
+            .reason
+            .contains("proxy settings were not included"));
+        assert!(result.warnings[0]
+            .reason
+            .contains("global transfer mode was not read"));
+    }
+
+    #[test]
+    fn plain_cdata_and_entity_proxy_values_parse_once_at_setting_end() {
+        for value in ["4", "<![CDATA[4]]>\n", "&#52;"] {
+            let dir = tempfile::tempdir().unwrap();
+            let sitemanager = dir.path().join("sitemanager.xml");
+            std::fs::write(
+                &sitemanager,
+                r#"<?xml version="1.0"?><FileZilla3><Servers><Server><Host>sftp.example.com</Host><Protocol>1</Protocol><Name>Proxy site</Name></Server></Servers></FileZilla3>"#,
+            )
+            .unwrap();
+            std::fs::write(
+                dir.path().join("filezilla.xml"),
+                format!(
+                    r#"<?xml version="1.0"?><FileZilla3><Settings><Setting name="Proxy type">{value}</Setting></Settings></FileZilla3>"#
+                ),
+            )
+            .unwrap();
+
+            let result = import_filezilla(&sitemanager).unwrap();
+            assert_eq!(result.warnings.len(), 1, "{value}");
+            assert!(result.warnings[0].reason.contains("SSH proxy"), "{value}");
+        }
+    }
+
+    #[test]
+    fn global_active_mode_warns_only_for_default_mode_sites() {
+        for (use_pasv, override_mode, expected_warnings) in
+            [("0", None, 1), ("1", None, 0), ("0", Some("passive"), 0)]
+        {
+            let dir = tempfile::tempdir().unwrap();
+            let sitemanager = dir.path().join("sitemanager.xml");
+            let parameter = override_mode
+                .map(|mode| format!(r#"<Parameter Name="data_mode_override">{mode}</Parameter>"#))
+                .unwrap_or_default();
+            std::fs::write(
+                &sitemanager,
+                format!(
+                    r#"<?xml version="1.0"?><FileZilla3><Servers><Server><Host>ftp.example.com</Host><Protocol>0</Protocol>{parameter}<Name>Transfer mode site</Name></Server></Servers></FileZilla3>"#
+                ),
+            )
+            .unwrap();
+            std::fs::write(
+                dir.path().join("filezilla.xml"),
+                format!(
+                    r#"<?xml version="1.0"?><FileZilla3><Settings><Setting name="Use Pasv mode">{use_pasv}</Setting></Settings></FileZilla3>"#
+                ),
+            )
+            .unwrap();
+
+            let result = import_filezilla(&sitemanager).unwrap();
+            assert_eq!(
+                result.warnings.len(),
+                expected_warnings,
+                "Use Pasv mode={use_pasv}, override={override_mode:?}"
+            );
+            if expected_warnings == 1 {
+                assert!(result.warnings[0].reason.contains("active FTP"));
+            }
+        }
+    }
+
+    #[test]
+    fn generic_proxy_forces_passive_instead_of_an_active_mode_warning() {
+        let dir = tempfile::tempdir().unwrap();
+        let sitemanager = dir.path().join("sitemanager.xml");
+        std::fs::write(
+            &sitemanager,
+            r#"<?xml version="1.0"?><FileZilla3><Servers><Server><Host>ftp.example.com</Host><Protocol>0</Protocol><Parameter Name="data_mode_override">active</Parameter><Name>Proxied active preference</Name></Server></Servers></FileZilla3>"#,
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join("filezilla.xml"),
+            r#"<?xml version="1.0"?><FileZilla3><Settings><Setting name="Proxy type">4</Setting><Setting name="Use Pasv mode">0</Setting></Settings></FileZilla3>"#,
+        )
+        .unwrap();
+
+        let result = import_filezilla(&sitemanager).unwrap();
+        assert_eq!(result.warnings.len(), 1);
+        assert!(result.warnings[0].reason.contains("SSH proxy"));
+        assert!(!result.warnings[0].reason.contains("active FTP"));
+    }
+
+    #[test]
+    fn standalone_sitemanager_warns_that_global_settings_are_unknown() {
+        let dir = tempfile::tempdir().unwrap();
+        let sitemanager = dir.path().join("sitemanager.xml");
+        std::fs::write(
+            &sitemanager,
+            concat!(
+                r#"<?xml version="1.0"?><FileZilla3><Servers><Server>"#,
+                r#"<Host>ftp.example.com</Host><Protocol>0</Protocol>"#,
+                r#"<PasvMode>MODE_PASSIVE</PasvMode><BypassProxy>0</BypassProxy>"#,
+                r#"<Name>Old PC export</Name></Server></Servers></FileZilla3>"#,
+            ),
+        )
+        .unwrap();
+
+        let result = import_filezilla(&sitemanager).unwrap();
+        assert_eq!(result.servers.len(), 1);
+        assert_eq!(result.warnings.len(), 1);
+        assert_eq!(result.warnings[0].name, "FileZilla global settings");
+        assert!(result.warnings[0].reason.contains("1 site may use a proxy"));
     }
 
     /// Two profiles of one name (a list saved before names were unique) were

@@ -43382,6 +43382,11 @@ fn print_bridge_import(v: &serde_json::Value, json: bool, source_label: &str) ->
         .and_then(|s| s.as_array())
         .cloned()
         .unwrap_or_default();
+    let warnings = v
+        .get("warnings")
+        .and_then(|s| s.as_array())
+        .cloned()
+        .unwrap_or_default();
     let source_path = v
         .get("sourcePath")
         .and_then(|s| s.as_str())
@@ -43416,6 +43421,7 @@ fn print_bridge_import(v: &serde_json::Value, json: bool, source_label: &str) ->
         let envelope = serde_json::json!({
             "servers": redacted_servers,
             "skipped": skipped,
+            "warnings": warnings,
             "sourcePath": source_path,
             "totalRemotes": total_remotes,
         });
@@ -43464,6 +43470,19 @@ fn print_bridge_import(v: &serde_json::Value, json: bool, source_label: &str) ->
                 let kind = s.get("kind").and_then(|x| x.as_str()).unwrap_or("?");
                 let reason = s.get("reason").and_then(|x| x.as_str()).unwrap_or("?");
                 println!("  {} - {} ({})", name, kind, reason);
+            }
+            println!();
+        }
+
+        if !warnings.is_empty() {
+            println!("Warnings ({}):", warnings.len());
+            for warning in &warnings {
+                let name = warning.get("name").and_then(|x| x.as_str()).unwrap_or("?");
+                let reason = warning
+                    .get("reason")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("?");
+                println!("  {} - {}", name, reason);
             }
             println!();
         }
@@ -46876,6 +46895,7 @@ async fn cmd_import_winscp(path: Option<String>, json: bool) -> i32 {
                         "hasCredential": s.credential.is_some(),
                     })).collect::<Vec<_>>(),
                     "skipped": serde_json::to_value(&result.skipped).unwrap_or_default(),
+                    "warnings": serde_json::to_value(&result.warnings).unwrap_or_default(),
                     "sourcePath": result.source_path,
                     "totalSessions": result.total_sessions,
                 });
@@ -46917,6 +46937,14 @@ async fn cmd_import_winscp(path: Option<String>, json: bool) -> i32 {
                     println!("Skipped ({}):", result.skipped.len());
                     for s in &result.skipped {
                         println!("  {} - FSProtocol {} ({})", s.name, s.fs_protocol, s.reason);
+                    }
+                    println!();
+                }
+
+                if !result.warnings.is_empty() {
+                    println!("Warnings ({}):", result.warnings.len());
+                    for warning in &result.warnings {
+                        println!("  {} - {}", warning.name, warning.reason);
                     }
                     println!();
                 }
@@ -46990,6 +47018,7 @@ async fn cmd_import_filezilla(path: Option<String>, json: bool) -> i32 {
                         "hasCredential": s.credential.is_some(),
                     })).collect::<Vec<_>>(),
                     "skipped": serde_json::to_value(&result.skipped).unwrap_or_default(),
+                    "warnings": serde_json::to_value(&result.warnings).unwrap_or_default(),
                     "sourcePath": result.source_path,
                     "totalServers": result.total_servers,
                 });
@@ -47031,6 +47060,14 @@ async fn cmd_import_filezilla(path: Option<String>, json: bool) -> i32 {
                     println!("Skipped ({}):", result.skipped.len());
                     for s in &result.skipped {
                         println!("  {} - Protocol {} ({})", s.name, s.protocol, s.reason);
+                    }
+                    println!();
+                }
+
+                if !result.warnings.is_empty() {
+                    println!("Warnings ({}):", result.warnings.len());
+                    for warning in &result.warnings {
+                        println!("  {} - {}", warning.name, warning.reason);
                     }
                     println!();
                 }

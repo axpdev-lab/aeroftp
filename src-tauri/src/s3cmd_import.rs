@@ -5,8 +5,9 @@
 //!
 //! s3cmd is mono-config: a single INI file with one `[default]` section. The
 //! relevant keys are `access_key`, `secret_key`, `host_base`, `host_bucket`,
-//! `bucket_location` (region), and `use_https`. The S3 secret lives plain in
-//! the file, so it is bridged and re-encrypted into our AES-256-GCM vault.
+//! `bucket_location` (region), and `use_https`. A configured `proxy_host` is
+//! reported as an unimported direct-connection warning. The S3 secret lives
+//! plain in the file, so it is bridged and re-encrypted into our AES-256-GCM vault.
 //!
 //! Secret policy (APPENDIX-BRIDGE section 1):
 //!
@@ -213,8 +214,16 @@ pub struct S3cmdSkippedRemote {
 pub struct S3cmdImportResult {
     pub servers: Vec<ServerProfileExport>,
     pub skipped: Vec<S3cmdSkippedRemote>,
+    pub warnings: Vec<S3cmdImportWarning>,
     pub source_path: String,
     pub total_remotes: usize,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct S3cmdImportWarning {
+    pub name: String,
+    pub reason: String,
 }
 
 /// Import the single s3cmd profile from a `~/.s3cfg` file.
@@ -238,6 +247,7 @@ pub fn import_s3cmd(path: &Path) -> Result<S3cmdImportResult, String> {
 
     let mut servers = Vec::new();
     let mut skipped = Vec::new();
+    let mut warnings = Vec::new();
 
     let total_remotes = if section.is_some() { 1 } else { 0 };
 
@@ -245,6 +255,15 @@ pub fn import_s3cmd(path: &Path) -> Result<S3cmdImportResult, String> {
         let name = s3cmd_profile_name(&section);
         match map_s3cmd(&section) {
             Some(mapped) => {
+                if section
+                    .get("proxy_host")
+                    .is_some_and(|value| !value.trim().is_empty())
+                {
+                    warnings.push(S3cmdImportWarning {
+                        name: name.clone(),
+                        reason: "s3cmd proxy_host is configured; the proxy is not imported and AeroFTP will connect directly".to_string(),
+                    });
+                }
                 let id = format!(
                     "s3cmd-{}-{}",
                     name.to_lowercase().replace(' ', "-"),
@@ -282,6 +301,7 @@ pub fn import_s3cmd(path: &Path) -> Result<S3cmdImportResult, String> {
     Ok(S3cmdImportResult {
         servers,
         skipped,
+        warnings,
         source_path: path.display().to_string(),
         total_remotes,
     })
@@ -492,6 +512,24 @@ bucket_location = us-east-1
             Some("eu-west-1")
         );
         assert_eq!(obj.get("useHttps").and_then(|v| v.as_bool()), Some(false));
+    }
+
+    #[test]
+    fn configured_proxy_imports_with_a_direct_connection_warning() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("s3cfg");
+        std::fs::write(
+            &path,
+            "[default]\naccess_key = AKIAIOSFODNN7EXAMPLE\nsecret_key = secret\nhost_base = s3.amazonaws.com\nproxy_host = proxy.example.com\nproxy_port = 3128\n",
+        )
+        .unwrap();
+
+        let result = import_s3cmd(&path).unwrap();
+        assert_eq!(result.servers.len(), 1);
+        assert!(result.skipped.is_empty());
+        assert_eq!(result.warnings.len(), 1);
+        assert!(result.warnings[0].reason.contains("proxy_host"));
+        assert!(result.warnings[0].reason.contains("connect directly"));
     }
 
     #[test]

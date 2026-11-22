@@ -3001,9 +3001,9 @@ fn import_parsed_sections(
     source: ImportSourceKind,
     url_passwords: &HashMap<String, String>,
 ) -> Result<MappedSectionsOutcome, String> {
-    let (id_prefix, log_prefix) = match source {
-        ImportSourceKind::RcloneFile => ("rclone", "[rclone import]"),
-        ImportSourceKind::Template => ("tpl", "[template import]"),
+    let (id_prefix, log_prefix, source_name) = match source {
+        ImportSourceKind::RcloneFile => ("rclone", "[rclone import]", "rclone"),
+        ImportSourceKind::Template => ("tpl", "[template import]", "configuration template"),
     };
     expand_rclone_key_files(&mut sections, config_dir)?;
     check_rclone_expansion(&sections, source)?;
@@ -3115,6 +3115,21 @@ fn import_parsed_sections(
 
         match mapped {
             Ok((mapped, base_name)) => {
+                if matches!(mapped.protocol.as_str(), "ftp" | "ftps" | "sftp") {
+                    for (key, kind) in [("socks_proxy", "SOCKS5"), ("http_proxy", "HTTP CONNECT")] {
+                        if app_section
+                            .get(key)
+                            .is_some_and(|value| !value.trim().is_empty())
+                        {
+                            warnings.push(RcloneImportWarning {
+                                name: name.clone(),
+                                reason: format!(
+                                    "{source_name} uses a {kind} proxy (`{key}`) for this remote; the proxy is not imported and AeroFTP will connect directly"
+                                ),
+                            });
+                        }
+                    }
+                }
                 if let Some(reason) = &mapped.credential_warning {
                     let clean_reason = reason.clone();
                     tracing::warn!("{} block '{}': {}", log_prefix, name, clean_reason);
@@ -6840,6 +6855,36 @@ region = eu-west-1
             map_remote("ok", &s3_path_at, None, ImportSourceKind::Template).is_ok(),
             "@ in URL path after host must still be accepted"
         );
+    }
+
+    #[test]
+    fn ftp_and_sftp_proxy_options_are_warned_without_copying_secrets() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("rclone.conf");
+        std::fs::write(
+            &path,
+            concat!(
+                "[ftp-proxy]\ntype = ftp\nhost = ftp.example.com\nuser = user\nsocks_proxy = proxy-user:proxy-secret@localhost:9005\n",
+                "[sftp-proxy]\ntype = sftp\nhost = sftp.example.com\nuser = user\nhttp_proxy = http://proxy-user:proxy-secret@proxy.example.com:8080\n",
+                "[direct]\ntype = sftp\nhost = direct.example.com\nuser = user\n",
+            ),
+        )
+        .unwrap();
+
+        let result = import_rclone(&path).unwrap();
+        assert_eq!(result.servers.len(), 3);
+        assert_eq!(result.warnings.len(), 2);
+        assert!(result.warnings.iter().any(|warning| {
+            warning.name == "ftp-proxy"
+                && warning.reason.contains("SOCKS5")
+                && warning.reason.contains("rclone uses")
+        }));
+        assert!(result.warnings.iter().any(|warning| {
+            warning.name == "sftp-proxy" && warning.reason.contains("HTTP CONNECT")
+        }));
+        let serialized = serde_json::to_string(&result.warnings).unwrap();
+        assert!(!serialized.contains("proxy-secret"));
+        assert!(!serialized.contains("proxy-user"));
     }
 
     #[test]
@@ -14801,6 +14846,7 @@ type = sftp
 host = sftp.example.test
 user = alice
 pass = PlainTextNotObscured
+socks_proxy = localhost:9005
 [bad-crypt]
 type = crypt
 remote = missing-rclone-target:/vault
@@ -14843,6 +14889,11 @@ password = PlainCryptNotObscured
                 w.reason
             );
         }
+        assert!(res.warnings.iter().any(|w| {
+            w.name == "rclone-prod"
+                && w.reason
+                    .contains("configuration template uses a SOCKS5 proxy")
+        }));
         for i in &res.parse_issues {
             assert!(
                 !i.message.to_lowercase().contains("rclone"),
