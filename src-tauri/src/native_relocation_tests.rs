@@ -3600,7 +3600,9 @@ fn a_saved_sign_in_still_revokes_the_session_it_replaced() {
 /// An import that restores its sessions after it stored its list, with a
 /// delete of one profile in between: that profile's session is not stored,
 /// the membership read under the profile list lock, and a profile still
-/// listed gets its session.
+/// listed gets its session. The membership is read as the CLI import reads
+/// it, through `cli_list_server_profiles_for_user`, which takes no lock the
+/// import's list lock would hold off, so the import completes under it.
 #[test]
 fn an_import_stores_no_session_for_a_profile_deleted_since_its_list() {
     if !in_isolated_child("an_import_stores_no_session_for_a_profile_deleted_since_its_list") {
@@ -3622,10 +3624,11 @@ fn an_import_stores_no_session_for_a_profile_deleted_since_its_list() {
             let busy =
                 ProfileListLock::acquire_within(&cli_db_path().unwrap(), std::time::Duration::ZERO);
             assert!(busy.is_err(), "the membership is read under the list lock");
-            Ok(accounts
-                .profile_ids(source)
-                .iter()
-                .any(|listed| listed == id))
+            cli_list_server_profiles_for_user(&accounts.store, source).map(|profiles| {
+                profiles
+                    .iter()
+                    .any(|profile| profile.get("id").and_then(|v| v.as_str()) == Some(id))
+            })
         }
     };
     let deleted = vault::import_listed_session_blocking(
