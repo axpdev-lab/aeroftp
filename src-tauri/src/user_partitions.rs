@@ -231,6 +231,24 @@ pub fn init_empty_db(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// Whether `error` is SQLite refusing to add a column that is already there:
+/// another connection (the GUI and the CLI opening the database at once)
+/// added it between this one's check and its `ALTER TABLE`.
+fn is_duplicate_column(error: &rusqlite::Error) -> bool {
+    matches!(
+        error,
+        rusqlite::Error::SqliteFailure(_, Some(message))
+            if message.starts_with("duplicate column name")
+    )
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Runs once on this thread in the next column migration, between its
+    /// check and its `ALTER TABLE`: another connection adding the column.
+    static BEFORE_COLUMN_ADD: DualWriteHook = const { RefCell::new(None) };
+}
+
 fn ensure_users_is_admin_column(conn: &Connection) -> Result<(), String> {
     let mut stmt = match conn.prepare("PRAGMA table_info(users)") {
         Ok(s) => s,
@@ -254,11 +272,18 @@ fn ensure_users_is_admin_column(conn: &Connection) -> Result<(), String> {
         }
     }
     if table_exists && !has_is_admin {
-        conn.execute(
+        #[cfg(test)]
+        run_dual_write_hook(&BEFORE_COLUMN_ADD);
+        match conn.execute(
             "ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0",
             [],
-        )
-        .map_err(|e| format!("ALTER TABLE users ADD is_admin: {e}"))?;
+        ) {
+            Ok(_) => {}
+            // Added since the check by the connection that won, which seeds
+            // the first admin.
+            Err(e) if is_duplicate_column(&e) => return Ok(()),
+            Err(e) => return Err(format!("ALTER TABLE users ADD is_admin: {e}")),
+        }
         conn.execute(
             "UPDATE users SET is_admin = 1
              WHERE id = (SELECT id FROM users ORDER BY id ASC LIMIT 1)",
@@ -299,11 +324,17 @@ fn ensure_users_is_default_column(conn: &Connection) -> Result<(), String> {
         }
     }
     if table_exists && !has_is_default {
-        conn.execute(
+        #[cfg(test)]
+        run_dual_write_hook(&BEFORE_COLUMN_ADD);
+        match conn.execute(
             "ALTER TABLE users ADD COLUMN is_default INTEGER NOT NULL DEFAULT 0",
             [],
-        )
-        .map_err(|e| format!("ALTER TABLE users ADD is_default: {e}"))?;
+        ) {
+            // Or added by another connection since the check above.
+            Ok(_) => {}
+            Err(e) if is_duplicate_column(&e) => {}
+            Err(e) => return Err(format!("ALTER TABLE users ADD is_default: {e}")),
+        }
     }
     Ok(())
 }
@@ -323,8 +354,14 @@ fn ensure_server_profiles_token_uid_column(conn: &Connection) -> Result<(), Stri
         .collect::<rusqlite::Result<Vec<_>>>()
         .map_err(|e| format!("read column name: {e}"))?;
     if !columns.is_empty() && !columns.iter().any(|name| name == "token_uid") {
-        conn.execute("ALTER TABLE server_profiles ADD COLUMN token_uid TEXT", [])
-            .map_err(|e| format!("ALTER TABLE server_profiles ADD token_uid: {e}"))?;
+        #[cfg(test)]
+        run_dual_write_hook(&BEFORE_COLUMN_ADD);
+        match conn.execute("ALTER TABLE server_profiles ADD COLUMN token_uid TEXT", []) {
+            // Or added by another connection since the check above.
+            Ok(_) => {}
+            Err(e) if is_duplicate_column(&e) => {}
+            Err(e) => return Err(format!("ALTER TABLE server_profiles ADD token_uid: {e}")),
+        }
     }
     Ok(())
 }
@@ -1523,11 +1560,18 @@ fn upgrade_v2_to_v3(conn: &mut Connection) -> Result<(), String> {
         .transaction()
         .map_err(|e| format!("Start v2->v3 upgrade: {e}"))?;
     if !has_is_admin {
-        tx.execute(
+        #[cfg(test)]
+        run_dual_write_hook(&BEFORE_COLUMN_ADD);
+        match tx.execute(
             "ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0",
             [],
-        )
-        .map_err(|e| format!("ALTER TABLE users ADD is_admin: {e}"))?;
+        ) {
+            // Or added by another connection since the check above; the seed
+            // below runs either way.
+            Ok(_) => {}
+            Err(e) if is_duplicate_column(&e) => {}
+            Err(e) => return Err(format!("ALTER TABLE users ADD is_admin: {e}")),
+        }
     }
     tx.execute(
         "UPDATE users SET is_admin = 1
@@ -13140,6 +13184,83 @@ mod tests {
             .map(String::as_str),
             Some("old")
         );
+    }
+
+    /// A column another connection added between a migration's check and its
+    /// `ALTER TABLE` (the GUI and the CLI opening the database at once) is
+    /// taken as added, for each column migration, where the duplicate column
+    /// failed the open; the first admin the winner seeded stays the only one.
+    #[test]
+    fn a_column_another_connection_added_since_the_check_is_taken_as_added() {
+        let _guard = test_lock();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("older.db");
+        let conn = Connection::open(&path).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE users (id INTEGER PRIMARY KEY);
+             INSERT INTO users(id) VALUES (1), (2);
+             CREATE TABLE server_profiles (id INTEGER PRIMARY KEY, user_id INTEGER);",
+        )
+        .unwrap();
+        let racing = |path: &std::path::Path, ddl: &'static str| {
+            let path = path.to_path_buf();
+            BEFORE_COLUMN_ADD.set(Some(Box::new(move || {
+                Connection::open(&path).unwrap().execute_batch(ddl).unwrap();
+            })));
+        };
+
+        racing(
+            &path,
+            "ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0;
+             UPDATE users SET is_admin = 1 WHERE id = 1;",
+        );
+        let admin = ensure_users_is_admin_column(&conn);
+        racing(
+            &path,
+            "ALTER TABLE users ADD COLUMN is_default INTEGER NOT NULL DEFAULT 0;",
+        );
+        let default = ensure_users_is_default_column(&conn);
+        racing(
+            &path,
+            "ALTER TABLE server_profiles ADD COLUMN token_uid TEXT;",
+        );
+        let token_uid = ensure_server_profiles_token_uid_column(&conn);
+
+        assert_eq!(admin, Ok(()), "is_admin");
+        assert_eq!(default, Ok(()), "is_default");
+        assert_eq!(token_uid, Ok(()), "token_uid");
+        let admins: i64 = conn
+            .query_row("SELECT COUNT(*) FROM users WHERE is_admin = 1", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(admins, 1, "one first admin");
+
+        // The v2 -> v3 upgrade checks for the column before its transaction.
+        let path = dir.path().join("v2.db");
+        let mut conn = Connection::open(&path).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE users (id INTEGER PRIMARY KEY);
+             INSERT INTO users(id) VALUES (1), (2);
+             CREATE TABLE global_state (
+                 key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER NOT NULL
+             );",
+        )
+        .unwrap();
+        racing(
+            &path,
+            "ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0;",
+        );
+        assert_eq!(upgrade_v2_to_v3(&mut conn), Ok(()), "v2 -> v3");
+        assert_eq!(current_schema_version(&conn).unwrap().as_deref(), Some("3"));
+        let admins: Vec<i64> = conn
+            .prepare("SELECT id FROM users WHERE is_admin = 1")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap();
+        assert_eq!(admins, [1], "the upgrade seeds the first admin");
     }
 
     /// A rebuild takes the session before the database's write lock, the order
