@@ -6423,21 +6423,49 @@ pub fn resolve_credential_for_user(
     read_credential_for_user(&conn, store, user_id, credential_id)
 }
 
-/// The secret `credential_id` for a connection that began with no account
-/// ([`LEGACY_ONLY_ACCOUNT`]), read as the legacy owner's, the account whose
-/// list that connection reads ([`captured_list_owner`]): its row first, and the
-/// vault only where no other account holds a row of that key. Every account's
-/// save writes the vault ([`store_vault_then_mirror`]) and leaves its own row,
-/// so with another account's row there the vault copy may be that account's.
-/// With no account yet the vault is the only copy.
+/// Which copies of `credential_id` a connection that began with no account
+/// ([`LEGACY_ONLY_ACCOUNT`]) reads and writes, by the key's type, the one
+/// rule its reader ([`read_legacy_only_credential`]) and its mirror
+/// ([`mirror_credential_for_user_typed`]) follow.
+enum LegacyOnlyCopies {
+    /// No account yet: the vault is the only copy.
+    VaultAlone,
+    /// A private token ([`private_token_type`]): it reaches the vault from
+    /// the legacy owner alone ([`private_token_user`]), so the vault key is
+    /// the owner's own copy, the one read; the owner's row follows a write.
+    /// A Jottacloud rotation written there has the row follow it, and a row
+    /// that did not follow is the stale one.
+    VaultThenOwnersRow(i64),
+    /// Any other key, which every account's save writes to the vault
+    /// ([`store_vault_then_mirror`]): the legacy owner's row first, and the
+    /// vault only where no other account holds a row of that key.
+    OwnersRow(i64),
+}
+
+fn legacy_only_copies(credential_id: &str) -> Result<LegacyOnlyCopies, String> {
+    let owner = captured_list_owner(LEGACY_ONLY_ACCOUNT)?;
+    Ok(if owner == LEGACY_ONLY_ACCOUNT {
+        LegacyOnlyCopies::VaultAlone
+    } else if private_token_type(credential_id).is_some() {
+        LegacyOnlyCopies::VaultThenOwnersRow(owner)
+    } else {
+        LegacyOnlyCopies::OwnersRow(owner)
+    })
+}
+
+/// The secret `credential_id` for a connection that began with no account,
+/// read as the legacy owner's, the account whose list that connection reads
+/// ([`captured_list_owner`]), from the copy [`legacy_only_copies`] names.
 fn read_legacy_only_credential(
     store: &CredentialStore,
     credential_id: &str,
 ) -> Result<Option<Zeroizing<String>>, String> {
-    let owner = captured_list_owner(LEGACY_ONLY_ACCOUNT)?;
-    if owner == LEGACY_ONLY_ACCOUNT {
-        return get_optional_secret(store, credential_id);
-    }
+    let owner = match legacy_only_copies(credential_id)? {
+        LegacyOnlyCopies::VaultAlone | LegacyOnlyCopies::VaultThenOwnersRow(_) => {
+            return get_optional_secret(store, credential_id)
+        }
+        LegacyOnlyCopies::OwnersRow(owner) => owner,
+    };
     init_or_migrate_cli(store)?;
     let conn = open_or_init_cli()?;
     let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
@@ -12751,6 +12779,15 @@ mod tests {
             )
             .unwrap();
 
+            // Another restore defers a key of its own while the pass runs.
+            let (later_db, later_root) = (db.clone(), root);
+            BEFORE_REALIGN_CLEAR.with(|hook| {
+                *hook.borrow_mut() = Some(Box::new(move || {
+                    let later = open_or_init_path(later_db).expect("second connection");
+                    defer_realign(&later, &later_root, other, &["oauth_dropbox_r".to_string()])
+                        .expect("the later deferral");
+                }))
+            });
             migrate_credentials_eager_all(&conn, &store, &root).unwrap();
             assert_eq!(
                 row("oauth_dropbox_p").as_deref(),
