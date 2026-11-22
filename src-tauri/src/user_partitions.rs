@@ -5383,6 +5383,15 @@ fn realign_marker_key(user_id: i64) -> String {
 /// The tags of the keys a targeted pass left to the next one, `None` when
 /// none waits.
 fn deferred_realign_tags(conn: &Connection, user_id: i64) -> Result<Option<Vec<String>>, String> {
+    deferred_realign_marker(conn, user_id).map(|marker| marker.map(|(tags, _)| tags))
+}
+
+/// [`deferred_realign_tags`] with the marker's stored value, which the pass
+/// that runs them clears only while it is still the one it read.
+fn deferred_realign_marker(
+    conn: &Connection,
+    user_id: i64,
+) -> Result<Option<(Vec<String>, String)>, String> {
     let value: Option<String> = conn
         .query_row(
             "SELECT value FROM global_state WHERE key = ?1",
@@ -5394,6 +5403,7 @@ fn deferred_realign_tags(conn: &Connection, user_id: i64) -> Result<Option<Vec<S
     value
         .map(|raw| {
             serde_json::from_str(&raw)
+                .map(|tags| (tags, raw))
                 .map_err(|e| format!("Read deferred private token alignment: {e}"))
         })
         .transpose()
@@ -5408,7 +5418,11 @@ fn defer_realign(
     keys: &[String],
 ) -> Result<(), String> {
     let root_secret = user_crypto::secret_key_from_bytes(root_key);
-    let mut tags = deferred_realign_tags(conn, user_id)?.unwrap_or_default();
+    // Read and written in one transaction: two restores deferring at once
+    // both keep their keys.
+    let tx = rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
+        .map_err(|e| format!("Defer private token alignment: {e}"))?;
+    let mut tags = deferred_realign_tags(&tx, user_id)?.unwrap_or_default();
     for key in keys {
         tags.push(user_crypto::metadata_tag(
             &root_secret,
@@ -5420,20 +5434,33 @@ fn defer_realign(
     tags.dedup();
     let value =
         serde_json::to_string(&tags).map_err(|e| format!("Defer private token alignment: {e}"))?;
-    conn.execute(
+    tx.execute(
         "INSERT INTO global_state(key, value, updated_at)
          VALUES (?1, ?2, ?3)
          ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
         params![realign_marker_key(user_id), value, now_ms()],
     )
     .map_err(|e| format!("Defer private token alignment: {e}"))?;
-    Ok(())
+    tx.commit()
+        .map_err(|e| format!("Defer private token alignment: {e}"))
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Runs once on this thread in the next [`realign_deferred_tokens`],
+    /// after its pass and before it clears the marker: a restore deferring
+    /// keys meanwhile.
+    static BEFORE_REALIGN_CLEAR: DualWriteHook = const { RefCell::new(None) };
 }
 
 /// The targeted pass a restore could not run ([`defer_realign`]), run by the
 /// next ordinary pass of the account over the same keys alone: the marker
-/// goes once it ran. Its aligned marker stays as the restore left it, so the
-/// profiles the restore brought get no pass of their own.
+/// goes once it ran, unless a restore deferred keys of its own since the
+/// pass read it, which the next pass then runs. A restore deferring the same
+/// keys again restored them before this pass took the list lock its own
+/// restore held, so this pass saw them. Its aligned marker stays as the
+/// restore left it, so the profiles the restore brought get no pass of their
+/// own.
 fn realign_deferred_tokens(
     conn: &Connection,
     root_key: &[u8; 32],
@@ -5442,7 +5469,7 @@ fn realign_deferred_tokens(
     read_secret: &SecretReader<'_>,
     delete_secret: &SecretDeleter<'_>,
 ) -> Result<usize, String> {
-    let Some(tags) = deferred_realign_tags(conn, user_id)? else {
+    let Some((tags, read)) = deferred_realign_marker(conn, user_id)? else {
         return Ok(0);
     };
     let root_secret = user_crypto::secret_key_from_bytes(root_key);
@@ -5475,9 +5502,11 @@ fn realign_deferred_tokens(
     let Some(aligned) = aligned else {
         return Ok(0);
     };
+    #[cfg(test)]
+    run_dual_write_hook(&BEFORE_REALIGN_CLEAR);
     conn.execute(
-        "DELETE FROM global_state WHERE key = ?1",
-        params![realign_marker_key(user_id)],
+        "DELETE FROM global_state WHERE key = ?1 AND value = ?2",
+        params![realign_marker_key(user_id), read],
     )
     .map_err(|e| format!("Clear deferred private token alignment: {e}"))?;
     Ok(aligned)
@@ -12805,6 +12834,11 @@ mod tests {
                 "tags pending: {blocked_by_tags}"
             );
             assert!(store.get("oauth_dropbox_p").is_err(), "the vault let go");
+            assert!(
+                deferred_realign_tags(&conn, other).unwrap().is_some(),
+                "the later deferral waits for the next pass"
+            );
+            migrate_credentials_for_user(&conn, &store, &root, other).unwrap();
             assert!(deferred_realign_tags(&conn, other).unwrap().is_none());
             assert_eq!(
                 row("oauth_dropbox_q"),
@@ -13086,6 +13120,34 @@ mod tests {
         assert_eq!(
             owner_aware(owner, "oauth_dropbox_p").as_deref(),
             Some("owners-p")
+        );
+        // The owner signs out while the tags still wait: its vault key is
+        // gone, and the copy it leaves in the other account still reads as
+        // absent; the row the account's own sign-in stamped reads as before.
+        let (_, signed_out) = fake_vault(&[("oauth_dropbox_q", "owners-q")]);
+        for user_key in ["oauth_dropbox_p", "oauth_dropbox_q"] {
+            let read = |key: &str| {
+                read_credential_owner_aware_inner(&conn, &here, other.id, key, &signed_out)
+                    .unwrap()
+                    .map(|value| value.to_string())
+            };
+            let expected = (user_key == "oauth_dropbox_q").then(|| "own-q".to_string());
+            assert_eq!(
+                read(user_key),
+                expected,
+                "{user_key} after the owner's sign-out"
+            );
+        }
+        assert_eq!(
+            read_credential_with_fallback_inner(
+                &conn,
+                &here,
+                other.id,
+                "oauth_dropbox_p",
+                &signed_out
+            )
+            .unwrap(),
+            None
         );
 
         mark_private_tokens_aligned(&conn, other.id).unwrap();
