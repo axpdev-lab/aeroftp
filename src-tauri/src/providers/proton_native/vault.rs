@@ -1105,7 +1105,9 @@ fn takeover_session(
 /// the save and ended only once the new one is saved: a save that fails
 /// leaves the profile with its old session, still live. Once the new one is
 /// saved the sign-in stands: an old session left saved under another key (the
-/// legacy unbound one) that cannot be removed stays live, and is logged.
+/// legacy unbound one) that cannot be removed stays live for now, is logged,
+/// and is left to the account's next unlock, which ends it on Proton and
+/// removes it ([`crate::user_partitions::defer_replaced_unbound_proton_revoke`]).
 pub async fn replace_session(
     owner: SessionOwner,
     profile_id: Option<&str>,
@@ -1124,9 +1126,14 @@ pub async fn replace_session(
         if previous_key != own_key {
             if let Err(error) = remove_saved(&store, owner, &previous_key) {
                 log::warn!(
-                    "Proton: the new sign-in is saved, but the session it replaces could not be removed and stays signed in: {error}"
+                    "Proton: the new sign-in is saved, but the session it replaces could not be removed and stays signed in until the account's next unlock: {error}"
                 );
-                replaced = None;
+                let left = replaced.take();
+                if let (Some(user), Some(left)) = (owner.user_id, left) {
+                    if left.tokens.uid != session.tokens.uid {
+                        queue_replaced_unbound_revoke(&store, user, &left.tokens.uid);
+                    }
+                }
             }
         }
     }
@@ -1136,6 +1143,19 @@ pub async fn replace_session(
         revoke_session(&store, owner, &own_key, replaced).await;
     }
     Ok(())
+}
+
+/// Leaves the global unbound session `uid` a sign-in of `user` replaced and
+/// could not remove to the account's next unlock, logged when even that
+/// cannot be recorded.
+fn queue_replaced_unbound_revoke(store: &CredentialStore, user: i64, uid: &str) {
+    if let Err(error) =
+        crate::user_partitions::defer_replaced_unbound_proton_revoke(store, user, uid)
+    {
+        log::warn!(
+            "Proton: the replaced session could not be left to the next unlock either, and stays signed in: {error}"
+        );
+    }
 }
 
 /// Saves `session` for `profile_id` of `owner` ([`store_session`]) over the
@@ -1462,6 +1482,49 @@ pub fn end_purged_session_blocking(
             }
             let _writes = session_writes();
             remove_purged(&store, owner, &key, &saved.tokens.uid)?;
+            Ok(true)
+        })
+    })
+    .join()
+    .map_err(|_| ProviderError::Other("Proton session cleanup stopped unexpectedly".into()))?
+}
+
+/// [`end_purged_session_blocking`] for the legacy owner's global unbound
+/// session a sign-in replaced and could not remove ([`replace_session`]):
+/// under the key locks of the unbound sign-in and the session's lease, the
+/// session saved under the global key now is ended on Proton and removed
+/// only when `left_by_the_sign_in`, given its UID, says it is the one the
+/// sign-in left. Whether one was ended; a sign-out on Proton that failed is
+/// an error, the key kept for the next unlock.
+pub fn end_replaced_unbound_session_blocking(
+    owner: SessionOwner,
+    left_by_the_sign_in: impl FnOnce(&str) -> Result<bool, String> + Send + 'static,
+) -> Result<bool, ProviderError> {
+    std::thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|error| ProviderError::Other(format!("Proton session runtime: {error}")))?;
+        runtime.block_on(async {
+            let store = open_store()?;
+            let _keys = lock_keys(mutation_keys(owner, None)?).await?;
+            let key = UNBOUND_SESSION_KEY;
+            let _lease = lease_of_saved(owner, key).await?;
+            let Some(saved) = read(&store, owner, key)? else {
+                return Ok(false);
+            };
+            let uid = saved.tokens.uid.clone();
+            if !left_by_the_sign_in(&uid).map_err(ProviderError::Other)? {
+                return Ok(false);
+            }
+            let outcome = revoke_session(&store, owner, key, saved).await;
+            if let Some(why) = outcome.may_still_be_live() {
+                return Err(ProviderError::Other(format!(
+                    "the replaced Proton session was not ended on Proton, so it stays for the next unlock: {why}"
+                )));
+            }
+            let _writes = session_writes();
+            remove_purged(&store, owner, key, &uid)?;
             Ok(true)
         })
     })

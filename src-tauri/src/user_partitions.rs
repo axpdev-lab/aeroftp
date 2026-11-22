@@ -7440,6 +7440,10 @@ fn deferred_revoke_key(user_id: i64, profile_id: &str) -> String {
 /// nonce of its own, so a mark that replaces another of the same profile is
 /// never the same value: what removes or rewrites a mark does it only while
 /// the mark is still the one it read (empty on a mark written before).
+/// `unbound` marks the legacy owner's global unbound session a sign-in
+/// replaced and could not remove ([`defer_replaced_unbound_proton_revoke`]):
+/// its `profile_id` is empty and it names the global unbound key, not a
+/// profile's.
 #[cfg(feature = "proton-native")]
 #[derive(Serialize, Deserialize)]
 struct DeferredRevoke {
@@ -7447,6 +7451,8 @@ struct DeferredRevoke {
     fingerprint: Option<String>,
     #[serde(default)]
     nonce: String,
+    #[serde(default)]
+    unbound: bool,
 }
 
 /// The fingerprint of the session the row `credential_id` of `user_id` holds
@@ -7546,6 +7552,34 @@ pub fn defer_proton_revoke(
             profile_id: profile_id.to_string(),
             fingerprint,
             nonce: uuid::Uuid::new_v4().simple().to_string(),
+            unbound: false,
+        },
+    )
+}
+
+/// Leaves to `user_id`'s next unlock the global unbound session `uid` that
+/// a sign-in of the legacy owner replaced, saved its own session, and then
+/// could not remove ([`crate::providers::proton_native::vault::replace_session`]):
+/// still saved under the global key and live on Proton, it is marked as a
+/// purge marks a session ([`DeferredRevoke`], `unbound`), so the unlock ends
+/// it on Proton and removes it ([`end_deferred_proton_sessions`]), while the
+/// key still holds that session. A session saved there since is kept.
+#[cfg(feature = "proton-native")]
+pub(crate) fn defer_replaced_unbound_proton_revoke(
+    store: &CredentialStore,
+    user_id: i64,
+    uid: &str,
+) -> Result<(), String> {
+    let conn = open_or_init_cli()?;
+    let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
+    write_deferred_revoke(
+        &conn,
+        user_id,
+        &DeferredRevoke {
+            profile_id: String::new(),
+            fingerprint: Some(session_fingerprint(&session_index_key(&root_key), uid)),
+            nonce: uuid::Uuid::new_v4().simple().to_string(),
+            unbound: true,
         },
     )
 }
@@ -7789,8 +7823,27 @@ fn end_deferred_proton_session(
     {
         hook();
     }
-    let credential_id = vault::session_key(Some(&deferred.profile_id));
     let mut value = value.to_string();
+    if deferred.unbound {
+        // The global unbound session a sign-in replaced: ended while the key
+        // still holds it and its mark is still there, and the account's
+        // profiles are not asked, since no profile names it.
+        let root_key = Zeroizing::new(*root_key);
+        let Some(purged) = deferred.fingerprint else {
+            return Ok(Some(value));
+        };
+        vault::end_replaced_unbound_session_blocking(
+            vault::SessionOwner::for_user(Some(user_id)),
+            move |uid| {
+                let conn = open_or_init_cli()?;
+                Ok(read_deferred_revoke(&conn, user_id, "")?.is_some()
+                    && session_fingerprint(&session_index_key(&root_key), uid) == purged)
+            },
+        )
+        .map_err(|error| error.to_string())?;
+        return Ok(Some(value));
+    }
+    let credential_id = vault::session_key(Some(&deferred.profile_id));
     if deferred.fingerprint.is_none() {
         deferred.fingerprint = saved_session_fingerprint(conn, root_key, user_id, &credential_id)?;
         // Onto the mark only while it is the one read: a sign-in, an import

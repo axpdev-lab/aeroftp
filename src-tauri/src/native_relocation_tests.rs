@@ -3562,7 +3562,7 @@ fn a_sign_in_whose_save_fails_keeps_the_old_session_unrevoked() {
 /// A sign-in of the legacy owner saved over the old global unbound session,
 /// whose removal from that key is refused afterwards: the sign-in stands and
 /// is reported as done, the account connects with the new session, and the
-/// old one, still saved under the global key, is not ended on Proton.
+/// old one, still saved under the global key, is not ended on Proton now.
 #[test]
 fn a_sign_in_saved_before_a_failed_cleanup_is_reported_as_saved() {
     if !in_isolated_child("a_sign_in_saved_before_a_failed_cleanup_is_reported_as_saved") {
@@ -3601,6 +3601,57 @@ fn a_sign_in_saved_before_a_failed_cleanup_is_reported_as_saved() {
         revokes,
         "a session still saved is not ended"
     );
+}
+
+/// The same failed cleanup leaves the old session to the legacy owner's
+/// next unlock rather than live on Proton for good: it is queued for the
+/// deferred revoke, and the unlock ends it on Proton and removes it from the
+/// global key, while the new sign-in stays the account's session.
+#[test]
+fn a_session_a_failed_cleanup_left_is_ended_at_the_next_unlock() {
+    if !in_isolated_child("a_session_a_failed_cleanup_left_is_ended_at_the_next_unlock") {
+        return;
+    }
+    let accounts = Accounts::open();
+    let owner = accounts.owners_owner();
+    let unbound = vault::SessionOwner::for_user(None);
+    vault::store_session(unbound, None, &session("left-old-uid", "u1")).unwrap();
+    let current = |owner| {
+        vault::load_session(owner, None)
+            .unwrap()
+            .map(|session| generation(&raw(&session)))
+    };
+    vault::test_seams::refuse_next_remove();
+    block_on(vault::replace_session(
+        owner,
+        None,
+        &session("left-new-uid", "n1"),
+    ))
+    .expect("the new sign-in is saved");
+    assert_eq!(
+        current(unbound).as_deref(),
+        Some("u1"),
+        "the old session is left"
+    );
+    assert_eq!(
+        deferred_revokes(&accounts.conn),
+        1,
+        "the old session is queued for its revoke"
+    );
+    let revokes = vault::test_seams::revokes();
+    unlock_user_transient(&accounts.conn, &accounts.root_key, accounts.legacy, None).unwrap();
+    assert_eq!(
+        vault::test_seams::revokes(),
+        revokes + 1,
+        "the unlock ends the old session on Proton"
+    );
+    assert_eq!(current(unbound), None, "and removes it from the global key");
+    assert_eq!(
+        current(owner).as_deref(),
+        Some("n1"),
+        "the new sign-in stays"
+    );
+    assert_eq!(deferred_revokes(&accounts.conn), 0);
 }
 
 /// A new sign-in saved over an old session no other key holds still ends
