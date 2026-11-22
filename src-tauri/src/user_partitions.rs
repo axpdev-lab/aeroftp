@@ -700,11 +700,22 @@ fn current_schema_version(conn: &Connection) -> Result<Option<String>, String> {
     .map_err(|e| format!("Read schema version: {e}"))
 }
 
+/// The first schema version the move of the legacy payloads set: a database
+/// at `"1"` or with no version predates the user partitions
+/// ([`apply_pending_upgrades`]).
+const LEGACY_MOVE_SCHEMA_VERSION: u32 = 2;
+
 /// Whether the database `conn` has been through the move of the legacy
 /// payloads ([`migrate_legacy_payloads`]), which sets the schema version in
-/// the transaction that inserts the list and never runs again after.
+/// the transaction that inserts the list and never runs again after. Any
+/// version from the one that introduced the move says so, not only this
+/// build's: a database the upgrades have not brought to this build yet was
+/// moved, and so was one a newer build stamped before a downgrade. No
+/// version, an older one, or one that is not a number has not been moved.
 pub(crate) fn legacy_payloads_moved(conn: &Connection) -> Result<bool, String> {
-    Ok(current_schema_version(conn)?.as_deref() == Some(SCHEMA_VERSION))
+    Ok(current_schema_version(conn)?
+        .and_then(|version| version.trim().parse::<u32>().ok())
+        .is_some_and(|version| version >= LEGACY_MOVE_SCHEMA_VERSION))
 }
 
 pub(crate) fn active_user_id(conn: &Connection) -> Result<Option<i64>, String> {
@@ -15997,6 +16008,51 @@ mod tests {
             left,
             vec!["bridge_import_entry_scan-a_0000000001".to_string()],
             "the moved Dropbox profile adopts its app; the Box record stays"
+        );
+    }
+
+    /// R7-2: a database the move of the legacy list ran on counts as moved at
+    /// any schema version from the move's on: one the upgrades have not
+    /// brought to this build's yet, or one a newer build stamped before a
+    /// downgrade. No version, one before the move, or one that is not a
+    /// number does not. Red while the move is read from an exact match with
+    /// this build's version: a bridge settle there
+    /// ([`crate::bridge_import_scan`]) settles nothing for as long as the
+    /// version differs, and a never-confirmed scan's secrets stay.
+    #[test]
+    fn a_database_the_move_ran_on_counts_as_moved_at_any_later_schema_version() {
+        let _guard = test_lock();
+        let conn = migrated_conn(0);
+        assert!(
+            legacy_payloads_moved(&conn).unwrap(),
+            "this build's version"
+        );
+        let stamp = |version: &str| {
+            conn.execute(
+                "INSERT OR REPLACE INTO global_state(key, value, updated_at) VALUES (?1, ?2, 0)",
+                params![SCHEMA_VERSION_KEY, version],
+            )
+            .unwrap();
+        };
+        for version in ["2", "3", "4", "999"] {
+            stamp(version);
+            assert!(legacy_payloads_moved(&conn).unwrap(), "version {version}");
+        }
+        for version in ["1", "0", "", "v5", "-5"] {
+            stamp(version);
+            assert!(
+                !legacy_payloads_moved(&conn).unwrap(),
+                "version {version:?}: not moved"
+            );
+        }
+        conn.execute(
+            "DELETE FROM global_state WHERE key = ?1",
+            params![SCHEMA_VERSION_KEY],
+        )
+        .unwrap();
+        assert!(
+            !legacy_payloads_moved(&conn).unwrap(),
+            "no version: the move has not run"
         );
     }
 
