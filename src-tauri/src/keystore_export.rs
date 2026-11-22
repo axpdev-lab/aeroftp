@@ -4499,6 +4499,129 @@ mod tests {
         assert_eq!(my_servers(&same_machine, &restored_cfg), expected);
     }
 
+    /// R7-4: the names are put right in a copy brought to this build's
+    /// schema by their own open, not only by the re-key's before them: called
+    /// alone on a database of a build before token tags, with two profiles of
+    /// one name, the put-right renames the second. Red with a bare open in
+    /// `put_right_profile_names_in_db`: the rename writes the list, naming
+    /// `token_uid`, which the file lacks. The restore test above stays green
+    /// on that revert, because the re-key's open adds the column first.
+    #[test]
+    fn putting_names_right_alone_brings_an_older_builds_schema_first() {
+        let _guard = crate::user_partitions::test_lock();
+        crate::user_partitions::clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let cfg = dir.path().join("config");
+        std::fs::create_dir_all(&cfg).unwrap();
+        let root = store.derive_user_partition_wrapping_key();
+        let db = cfg.join("user_partitions.db");
+        {
+            let mut conn = rusqlite::Connection::open(&db).unwrap();
+            crate::user_partitions::migrate_legacy_payloads(&mut conn, None, None, &root).unwrap();
+            let user = crate::user_partitions::active_user_id(&conn)
+                .unwrap()
+                .unwrap();
+            crate::user_partitions::store_profiles_as_an_older_build(
+                &conn,
+                &root,
+                user,
+                &[profile("srv_a", "Lab"), profile("srv_b", "lab")],
+            );
+        }
+        as_a_build_before_token_tags(&db);
+        assert_eq!(
+            crate::user_partitions::put_right_profile_names_in_db(&store, &db),
+            Ok((1, 0)),
+            "one profile renamed, no passphrase account left"
+        );
+        assert_eq!(
+            my_servers(&store, &cfg),
+            vec![profile("srv_a", "Lab"), profile("srv_b", "lab (1)")]
+        );
+    }
+
+    /// R7-4: the same for the reset of a relaxed security option, called
+    /// alone on a database of a build before token tags: the profile comes
+    /// back in its safe state, and nothing is quarantined. Red with a bare
+    /// open in `reset_profile_relaxations_in_db`.
+    #[test]
+    fn resetting_relaxations_alone_brings_an_older_builds_schema_first() {
+        let _guard = crate::user_partitions::test_lock();
+        crate::user_partitions::clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let cfg = dir.path().join("config");
+        partition_with(&store, &cfg, &[relaxed("srv_a", "Lab")]);
+        let db = cfg.join("user_partitions.db");
+        as_a_build_before_token_tags(&db);
+        let report = crate::user_partitions::reset_profile_relaxations_in_db(&store, &db, None)
+            .expect("the reset runs on the older copy");
+        assert!(report.quarantine_path.is_none(), "nothing quarantined");
+        assert!(db.is_file(), "the copy is not quarantined");
+        assert_eq!(my_servers(&store, &cfg), vec![safe_copy("srv_a", "Lab")]);
+    }
+
+    /// R7-4: the same for the completion of the active passphrase account's
+    /// pending reset, called alone on a database of a build before token
+    /// tags while this process holds the account's session: the relaxed
+    /// profile is made safe and the marker cleared. Red with a bare open in
+    /// `finish_active_profile_reset_in_db`: the safe list is written naming
+    /// `token_uid`, which the file lacks.
+    #[test]
+    fn finishing_the_active_reset_alone_brings_an_older_builds_schema_first() {
+        let _guard = crate::user_partitions::test_lock();
+        crate::user_partitions::clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let cfg = dir.path().join("config");
+        partition_with(&store, &cfg, &[]);
+        let db = cfg.join("user_partitions.db");
+        let root = store.derive_user_partition_wrapping_key();
+        let mut conn = rusqlite::Connection::open(&db).unwrap();
+        let active = crate::user_partitions::create_user(
+            &mut conn,
+            &root,
+            "Protected",
+            None,
+            None,
+            Some("passphrase"),
+        )
+        .unwrap();
+        crate::user_partitions::unlock_user(&conn, &root, active.id, Some("passphrase")).unwrap();
+        crate::user_partitions::replace_active_server_profiles(
+            &mut conn,
+            &root,
+            &[relaxed("srv_a", "Lab")],
+        )
+        .unwrap();
+        let pending_key = format!("security_reset_pending_{}", active.id);
+        conn.execute(
+            "INSERT INTO global_state(key, value, updated_at) VALUES (?1, '1', 0)",
+            [&pending_key],
+        )
+        .unwrap();
+        drop(conn);
+        as_a_build_before_token_tags(&db);
+        let reset = crate::user_partitions::finish_active_profile_reset_in_db(&store, &db)
+            .expect("the completion runs on the older copy")
+            .expect("the verified session completes the reset");
+        assert_eq!(
+            reset.iter().map(|r| r.name.as_str()).collect::<Vec<_>>(),
+            ["Lab"]
+        );
+        let pending: usize = rusqlite::Connection::open(&db)
+            .unwrap()
+            .query_row(
+                "SELECT COUNT(*) FROM global_state WHERE key = ?1",
+                [&pending_key],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(pending, 0, "the marker is cleared");
+        crate::user_partitions::clear_user_session();
+    }
+
     /// CodeRabbit on #1524: a restore takes no option that turns a security
     /// check off from the backup. `relaxed` carries one; the restored copy has
     /// it in its safe state, wherever the list lands, and the result names it.
