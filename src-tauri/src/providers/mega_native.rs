@@ -6,6 +6,7 @@
 
 use crate::providers::HttpResultExt;
 use async_trait::async_trait;
+use base64::Engine as _;
 use secrecy::ExposeSecret;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -261,6 +262,64 @@ impl MegaNode {
 
 // ─── API Client ───────────────────────────────────────────────────────────
 
+#[derive(Clone)]
+struct MegaHashcashChallenge {
+    easiness: u8,
+    token: String,
+}
+
+fn parse_hashcash_challenge(header: &str) -> Option<MegaHashcashChallenge> {
+    let mut parts = header.trim().split(':');
+    let version = parts.next()?;
+    let easiness = parts.next()?.parse::<u8>().ok()?;
+    let _timestamp = parts.next()?;
+    let token = parts.next()?;
+    if version != "1" || token.len() != 64 || parts.next().is_some() {
+        return None;
+    }
+    Some(MegaHashcashChallenge {
+        easiness,
+        token: token.to_string(),
+    })
+}
+
+fn solve_hashcash(challenge: &MegaHashcashChallenge) -> Result<String, String> {
+    use sha2::{Digest, Sha256};
+
+    let token = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(&challenge.token)
+        .map_err(|err| format!("invalid Hashcash token: {err}"))?;
+    if token.len() != 48 {
+        return Err("invalid Hashcash token length".to_string());
+    }
+    let mut message = Vec::with_capacity(4 + 262_144 * 48);
+    message.extend_from_slice(&[0; 4]);
+    for _ in 0..262_144 {
+        message.extend_from_slice(&token);
+    }
+    let threshold =
+        ((((challenge.easiness & 63) as u32) << 1) + 1) << ((challenge.easiness >> 6) * 7 + 3);
+    let started = std::time::Instant::now();
+    for nonce in 0..=u32::MAX {
+        if nonce % 64 == 0 && started.elapsed() >= Duration::from_secs(300) {
+            return Err("MEGA Hashcash challenge timed out".to_string());
+        }
+        message[..4].copy_from_slice(&nonce.to_be_bytes());
+        let digest = Sha256::digest(&message);
+        if u32::from_be_bytes(digest[..4].try_into().unwrap()) <= threshold {
+            return Ok(base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(nonce.to_be_bytes()));
+        }
+    }
+    Err("MEGA Hashcash challenge exhausted the nonce space".to_string())
+}
+
+async fn solve_hashcash_async(challenge: MegaHashcashChallenge) -> Result<String, ProviderError> {
+    tokio::task::spawn_blocking(move || solve_hashcash(&challenge))
+        .await
+        .map_err(|err| ProviderError::NetworkError(format!("MEGA Hashcash task failed: {err}")))?
+        .map_err(ProviderError::NetworkError)
+}
+
 struct MegaApiClient {
     client: reqwest::Client,
     next_request_id: AtomicU64,
@@ -338,13 +397,45 @@ impl MegaApiClient {
             self.session_id.is_some()
         );
 
-        let response = self
+        let payload = vec![command];
+        let mut response = self
             .client
-            .post(url)
-            .json(&vec![command])
+            .post(url.clone())
+            .json(&payload)
             .send()
             .await
             .map_err(map_reqwest_error)?;
+
+        if response.status().as_u16() == 402 {
+            let challenge = response
+                .headers()
+                .get("X-Hashcash")
+                .and_then(|value| value.to_str().ok())
+                .and_then(parse_hashcash_challenge);
+            if let Some(challenge) = challenge {
+                let easiness = challenge.easiness;
+                tracing::debug!(
+                    "[MEGA Native] Hashcash challenge received: easiness={}",
+                    easiness
+                );
+                let started = std::time::Instant::now();
+                let answer = solve_hashcash_async(challenge.clone()).await?;
+                tracing::debug!(
+                    "[MEGA Native] Hashcash challenge solved: easiness={}, elapsed_ms={}",
+                    easiness,
+                    started.elapsed().as_millis()
+                );
+                drop(response);
+                response = self
+                    .client
+                    .post(url)
+                    .header("X-Hashcash", format!("1:{}:{answer}", challenge.token))
+                    .json(&payload)
+                    .send()
+                    .await
+                    .map_err(map_reqwest_error)?;
+            }
+        }
 
         if !response.status().is_success() {
             let status = response.status();
@@ -2778,6 +2869,102 @@ mod tests {
     fn mega_error_code_mapping_keeps_auth_specific_errors() {
         let err = map_mega_error_code(-14);
         assert!(matches!(err, ProviderError::AuthenticationFailed(_)));
+    }
+
+    #[test]
+    fn hashcash_solution_matches_the_recorded_mega_sdk_vector() {
+        let challenge = super::parse_hashcash_challenge(concat!(
+            "1:192:1731410499:",
+            "wFqIT_wY3tYKcrm5zqwaUoWym3ZCz32cCsrJOgYBgihtpaWUhGyWJ--EY-zfwI-i"
+        ))
+        .unwrap();
+        assert_eq!(challenge.easiness, 192);
+        assert_eq!(super::solve_hashcash(&challenge).unwrap(), "AAABJw");
+        assert!(super::parse_hashcash_challenge("2:192:1731410499:invalid").is_none());
+    }
+
+    #[tokio::test]
+    async fn command_solves_a_mega_hashcash_challenge_and_retries_the_same_command() {
+        use axum::{
+            extract::State,
+            http::{HeaderMap, StatusCode},
+            response::IntoResponse,
+        };
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+
+        const TOKEN: &str = "wFqIT_wY3tYKcrm5zqwaUoWym3ZCz32cCsrJOgYBgihtpaWUhGyWJ--EY-zfwI-i";
+        let challenge = format!("1:192:1731410499:{TOKEN}");
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let proof_headers = Arc::new(std::sync::Mutex::new(Vec::new()));
+        type TestState = (Arc<AtomicUsize>, Arc<std::sync::Mutex<Vec<String>>>, String);
+        let app = axum::Router::new()
+            .fallback(axum::routing::post(
+                |State((attempts, proof_headers, challenge)): State<TestState>,
+                 headers: HeaderMap,
+                 axum::Json(body): axum::Json<serde_json::Value>| async move {
+                    assert_eq!(body, json!([{ "a": "us" }]));
+                    if attempts.fetch_add(1, Ordering::SeqCst) == 0 {
+                        return (
+                            StatusCode::PAYMENT_REQUIRED,
+                            [("x-hashcash", challenge)],
+                            "challenge",
+                        )
+                            .into_response();
+                    }
+                    proof_headers.lock().unwrap().push(
+                        headers
+                            .get("x-hashcash")
+                            .and_then(|v| v.to_str().ok())
+                            .unwrap_or_default()
+                            .to_string(),
+                    );
+                    axum::Json(json!([{ "ok": 1 }])).into_response()
+                },
+            ))
+            .with_state((attempts.clone(), proof_headers.clone(), challenge));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await });
+
+        let mut client = super::MegaApiClient::new(None);
+        client.base_url_override = Some(format!("http://{addr}/cs"));
+        let response: SampleResponse = client.command(json!({ "a": "us" })).await.unwrap();
+        server.abort();
+
+        assert_eq!(response.ok, 1);
+        assert_eq!(attempts.load(Ordering::SeqCst), 2);
+        assert_eq!(
+            proof_headers.lock().unwrap().as_slice(),
+            [format!("1:{TOKEN}:AAABJw")]
+        );
+    }
+
+    #[tokio::test]
+    async fn command_402_without_hashcash_keeps_the_existing_session_error() {
+        let app = axum::Router::new().fallback(axum::routing::post(|| async {
+            (axum::http::StatusCode::PAYMENT_REQUIRED, "payment required")
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await });
+        let mut client = super::MegaApiClient::new(None);
+        client.base_url_override = Some(format!("http://{addr}/cs"));
+
+        let err = client
+            .command::<serde_json::Value>(json!({ "a": "us" }))
+            .await
+            .unwrap_err();
+        server.abort();
+        match err {
+            ProviderError::AuthenticationFailed(message) => {
+                assert!(message.contains("payment required"));
+                assert!(message.contains("session expired or invalid"));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
     }
 
     #[tokio::test]
