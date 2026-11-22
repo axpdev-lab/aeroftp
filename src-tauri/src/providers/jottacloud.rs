@@ -1156,7 +1156,7 @@ impl JottacloudProvider {
                         // rotation stays pending; a sign-in writes its own
                         // chain over the row (`replace_owner_aware_if_unchanged`).
                         jotta_log(&format!(
-                            "Refresh token not written to {}: the key's row is withheld until the alignment",
+                            "Refresh token not written to {}: the key's row is withheld until the alignment; the rotation stays pending",
                             account
                         ));
                         continue;
@@ -1225,6 +1225,14 @@ impl JottacloudProvider {
                     ) {
                         Ok(false) => {
                             match Self::stored_chain_now(store, self.credential_user, account) {
+                                // Withheld since the read above (a restore
+                                // meanwhile set the wait): nothing replaced it,
+                                // and the refresh does not write over it, as
+                                // the check before the write. Left unwritten,
+                                // so the rotation stays pending.
+                                Some((_, _, true)) if !self.login_chain => {
+                                    break Err("the key's row is withheld until the alignment; the rotation stays pending".to_string());
+                                }
                                 // Still the chain read above, in other bytes.
                                 Some((token, again, _)) if token == now => {
                                     if rereads == 3 {
@@ -5476,8 +5484,30 @@ mod tests {
     /// every conditional write to it (test only): `(key, user)`, until cleared.
     pub(super) static REWRITE_EACH_ATTEMPT: std::sync::Mutex<Option<String>> =
         std::sync::Mutex::new(None);
+    /// What a keystore restore leaves before every conditional write to a
+    /// key (test only): `(key, locked, bound)`, until cleared. The profile
+    /// tags of `locked` turn pending and the alignment marker of `bound`
+    /// (not the account active after the import) is reset, as
+    /// `realign_private_tokens_after_restore` resets it: a row the refresh
+    /// read as readable is withheld when it is written.
+    pub(super) static RESTORED_BEFORE_ATTEMPT: std::sync::Mutex<Option<(String, i64, i64)>> =
+        std::sync::Mutex::new(None);
 
     pub(super) fn before_each_attempt(account: &str) {
+        let restored = RESTORED_BEFORE_ATTEMPT.lock().unwrap().clone();
+        if let Some((_, locked, bound)) = restored.filter(|(key, _, _)| key == account) {
+            let conn = crate::user_partitions::open_or_init_cli().unwrap();
+            conn.execute(
+                "INSERT OR REPLACE INTO global_state(key, value, updated_at) VALUES (?1, '1', 0)",
+                rusqlite::params![format!("profile_tags_pending_{locked}")],
+            )
+            .unwrap();
+            conn.execute(
+                "DELETE FROM global_state WHERE key = ?1",
+                rusqlite::params![format!("private_tokens_aligned_{bound}")],
+            )
+            .unwrap();
+        }
         if REWRITE_EACH_ATTEMPT.lock().unwrap().as_deref() != Some(account) {
             return;
         }
@@ -6451,6 +6481,160 @@ mod tests {
         assert_eq!(persisted, "login-chain");
         assert!(pending, "written, nothing kept pending");
         assert_eq!(vault, "owners-chain", "the owner's vault copy stays");
+    }
+
+    /// A refresh whose key turns withheld between its read and its write (a
+    /// keystore restore meanwhile: profile tags pending for a locked
+    /// account, the bound account's alignment to run again) does not write
+    /// the key, and does not take it as replaced by a chain
+    /// written since: the rotation stays pending, as for a key withheld when
+    /// the refresh reads it.
+    #[test]
+    fn a_refresh_whose_key_turns_withheld_keeps_its_rotation_pending() {
+        use crate::credential_store::CredentialStore;
+        use crate::user_partitions as partitions;
+        use std::sync::{Arc, Mutex};
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::jottacloud::tests::a_refresh_whose_key_turns_withheld_keeps_its_rotation_pending",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = partitions::test_lock();
+        let temporary = tempfile::TempDir::new().expect("temporary config");
+        std::env::set_var("XDG_CONFIG_HOME", temporary.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("jotta-turns-withheld-pass").expect("bootstrap");
+        CredentialStore::unlock_with_master("jotta-turns-withheld-pass", None).expect("unlock");
+        let store = CredentialStore::from_cache().expect("cached vault");
+        partitions::init_or_migrate_cli(&store).expect("init partitions");
+        let mut conn = partitions::open_or_init_cli().expect("partition DB");
+        let root = store.derive_user_partition_wrapping_key();
+        let other = partitions::create_passphrase_less_user(&mut conn, &root, "Other", None, None)
+            .expect("other")
+            .id;
+        let locked = partitions::create_user(&mut conn, &root, "Locked", None, None, Some("pass"))
+            .expect("locked")
+            .id;
+        partitions::clear_user_session();
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .unwrap();
+        let calls = Arc::new(Mutex::new(0usize));
+        let (endpoint, server) = runtime.block_on(async {
+            let calls = calls.clone();
+            let app = axum::Router::new().route(
+                "/token",
+                axum::routing::post(move |_body: String| {
+                    let calls = calls.clone();
+                    async move {
+                        let call = {
+                            let mut calls = calls.lock().unwrap();
+                            *calls += 1;
+                            *calls
+                        };
+                        axum::Json(serde_json::json!({
+                            "access_token": format!("access-{call}"),
+                            "refresh_token": format!("rotated-{call}"),
+                            "expires_in": 3600,
+                        }))
+                    }
+                }),
+            );
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let endpoint = format!("http://{}/token", listener.local_addr().unwrap());
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            (endpoint, server)
+        });
+        let key = "jottacloud_refresh_w";
+        let owners = serde_json::json!({
+            "refresh_token": "owners-chain", "token_endpoint": endpoint, "username": "jotta-user",
+        })
+        .to_string();
+        store.store(key, &owners).expect("the owner's chain");
+        partitions::set_user_credential_for(
+            &conn,
+            &root,
+            other,
+            key,
+            "jottacloud_refresh",
+            &owners,
+        )
+        .expect("the copy");
+        partitions::set_active_user(&conn, other).expect("switch");
+        let row = || {
+            partitions::get_user_credential_for(
+                &partitions::open_or_init_cli().unwrap(),
+                &root,
+                other,
+                key,
+            )
+            .unwrap()
+            .map(|value| value.to_string())
+        };
+        let pending = || {
+            PENDING_ROTATIONS
+                .lock()
+                .unwrap()
+                .iter()
+                .find(|((_, account), _)| account == key)
+                .map(|(_, json)| stored_refresh_token(Some(json.as_str())))
+        };
+        let mut provider = JottacloudProvider::new(JottacloudConfig {
+            login_token: SecretString::from(String::new()),
+            device: "Jotta".into(),
+            mountpoint: "Archive".into(),
+            initial_path: None,
+        })
+        .with_profile_id("w");
+        provider.set_credential_user(Some(other));
+        assert!(runtime
+            .block_on(provider.try_connect_with_refresh())
+            .unwrap());
+        let connected = row();
+        let connected_pending = pending();
+
+        *RESTORED_BEFORE_ATTEMPT.lock().unwrap() = Some((key.to_string(), locked, other));
+        provider.token_expiry = Instant::now();
+        runtime
+            .block_on(provider.refresh_if_needed())
+            .expect("refresh");
+        *RESTORED_BEFORE_ATTEMPT.lock().unwrap() = None;
+        let refreshed = row();
+        let kept = pending();
+        let withheld = matches!(
+            partitions::read_checked_row(
+                &partitions::open_or_init_cli().unwrap(),
+                &store,
+                &root,
+                other,
+                key,
+            )
+            .expect("read"),
+            partitions::CheckedRow::Withheld
+        );
+        drop(provider);
+        server.abort();
+        CredentialStore::clear_cache();
+        assert_eq!(
+            stored_refresh_token(connected.as_deref()),
+            "rotated-1",
+            "the connection wrote its rotation while the row was readable"
+        );
+        assert_eq!(
+            connected_pending, None,
+            "nothing pending after the connection"
+        );
+        assert!(withheld, "the row is withheld after the refresh");
+        assert_eq!(refreshed, connected, "the withheld row is not written");
+        assert_eq!(
+            kept.as_deref(),
+            Some("rotated-2"),
+            "the rotation stays pending, not taken as replaced"
+        );
     }
 
     /// A chain imported while a rotation is pending wins: the next connection
