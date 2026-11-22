@@ -8805,24 +8805,81 @@ mod tests {
     /// `resolve_active_credential` reads the partition one first. A file that
     /// mirrors a key must therefore also unmirror it wherever it deletes it,
     /// or every later read finds the dead value again (three Jotta exports
-    /// in a row carried a refused chain this way). Pinned on the callers of
-    /// `mirror_active_credential`, which is the property; MEGA and 4shared
-    /// store and delete raw and are outside it.
+    /// in a row carried a refused chain this way). Pinned on every production
+    /// caller of an entry point that writes or follows a partition copy (a
+    /// mirror, or the conditional replace a chain rotation uses), found by
+    /// reading the whole source tree, so a renamed entry point or a new caller
+    /// cannot pass unseen. The import writers (`store_*_dual_as`) are outside
+    /// it: what they store is taken back through the scan ledger or the
+    /// profile purge, not by the file that imports. MEGA and 4shared store and
+    /// delete raw and are outside it too.
     #[test]
     fn every_file_that_mirrors_a_credential_also_unmirrors_it() {
-        let files: [(&str, &str); 2] = [
-            ("jottacloud.rs", include_str!("jottacloud.rs")),
-            ("oauth2.rs", include_str!("oauth2.rs")),
+        const ENTRY_POINTS: [&str; 3] = [
+            "mirror_active_credential(",
+            "mirror_credential_for_user_typed(",
+            "replace_owner_aware_if_unchanged(",
         ];
-        for (name, src) in files {
-            let mirrors = src.matches("mirror_active_credential(").count()
-                - src.matches("unmirror_active_credential(").count();
-            assert!(mirrors > 0, "{name}: expected at least one mirror call");
+        // A partition copy goes through an unmirror, or through the
+        // conditional delete a refused chain uses.
+        const UNMIRRORS: [&str; 2] = ["unmirror_", "delete_user_credential_where("];
+        // The partition module defines the entry points and unmirrors itself.
+        const CALLERS: [&str; 4] = [
+            "providers/jottacloud.rs",
+            "providers/oauth2.rs",
+            "providers/proton_native/vault.rs",
+            "user_partitions.rs",
+        ];
+        fn sources(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+            for entry in std::fs::read_dir(dir).expect("read the source tree") {
+                let path = entry.expect("read a source entry").path();
+                if path.is_dir() {
+                    sources(&path, out);
+                } else if path.extension().is_some_and(|ext| ext == "rs") {
+                    out.push(path);
+                }
+            }
+        }
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut files = Vec::new();
+        sources(&root, &mut files);
+        let mut callers = Vec::new();
+        for path in files {
+            let name = path
+                .strip_prefix(&root)
+                .expect("a file under src")
+                .to_string_lossy()
+                .replace('\\', "/");
+            if name.ends_with("_tests.rs") || name.ends_with("/tests.rs") {
+                continue;
+            }
+            let src = std::fs::read_to_string(&path).expect("read a source file");
+            // Production code only: the unit tests sit in a trailing module.
+            let production = src
+                .find("#[cfg(test)]\nmod tests")
+                .map_or(src.as_str(), |start| &src[..start]);
+            let mirrors: usize = ENTRY_POINTS
+                .iter()
+                .map(|entry| {
+                    production.matches(entry).count()
+                        - production.matches(&format!("un{entry}")).count()
+                        - production.matches(&format!("fn {entry}")).count()
+                })
+                .sum();
+            if mirrors == 0 {
+                continue;
+            }
             assert!(
-                src.contains("unmirror_active_credential("),
+                UNMIRRORS.iter().any(|marker| production.contains(marker)),
                 "{name} mirrors a credential and never unmirrors it: a raw delete leaves the partition copy alive"
             );
+            callers.push(name);
         }
+        callers.sort();
+        assert_eq!(
+            callers, CALLERS,
+            "the production files that mirror a credential changed: check that each new one unmirrors, then list it"
+        );
     }
 
     /// #397 / tracker #701 item 9: a trashed folder is purged with the
