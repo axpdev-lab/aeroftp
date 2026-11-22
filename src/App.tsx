@@ -20685,10 +20685,10 @@ const App: React.FC = () => {
             confirmBeforeDelete={confirmBeforeDelete}
             // Opens the row's thumbnail full size in the app's own viewer, which
             // is also the way into AeroImage and the <> editor (#347).
-            onPreviewFile={(filePath) => {
+            onPreviewFile={(filePath, fileSize) => {
               const name = localPathBasename(filePath) || filePath;
               openUniversalPreview(
-                { name, path: filePath, size: null, is_dir: false, modified: null },
+                { name, path: filePath, size: fileSize ?? null, is_dir: false, modified: null },
                 false,
                 [],
               );

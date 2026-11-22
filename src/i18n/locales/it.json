@@ -4904,7 +4904,13 @@
             "modeNonIdentical": "Non identica",
             "groupsCount": "Gruppi: {count}",
             "duplicateFilesCount": "File duplicati: {count}",
-            "copiesCount": "{count} copie"
+            "copiesCount": "{count} copie",
+            "refreshTooltip": "Controlla se i duplicati rilevati esistono ancora e rimuovi i file mancanti senza ripetere la scansione",
+            "refreshRemoved": "{count} file mancanti rimossi dall'elenco",
+            "refreshUpToDate": "Tutti i file esistono ancora",
+            "refreshChanged": "{count} file modificati rimossi dall'elenco",
+            "refreshUnverified": "{count} non verificabili",
+            "refreshFailed": "Aggiornamento non riuscito: {error}"
         },
         "diskUsage": {
             "title": "Uso Disco",

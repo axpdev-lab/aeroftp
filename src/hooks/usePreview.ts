@@ -28,6 +28,23 @@ import { isTargetChangedRefusal } from '../utils/targetChanged';
 
 /** Max file size (in bytes) for base64 media preview: 25 MB */
 const MAX_PREVIEW_SIZE_BYTES = 25 * 1024 * 1024;
+const MAX_PREVIEW_SIZE_MB = MAX_PREVIEW_SIZE_BYTES / (1024 * 1024);
+
+/** Exact decoded byte length of a standard base64 string without allocating. */
+function base64DecodedByteLength(b64: string): number {
+  const clean = b64.replace(/\s+/g, '');
+  if (clean.length === 0) return 0;
+  const padding = clean.endsWith('==') ? 2 : clean.endsWith('=') ? 1 : 0;
+  return Math.max(0, Math.floor((clean.length * 3) / 4) - padding);
+}
+
+/** Reject binary preview payloads exceeding the 25 MiB cap before Blob creation. */
+function assertBinaryPreviewWithinLimit(byteLength: number): void {
+  if (byteLength > MAX_PREVIEW_SIZE_BYTES) {
+    const sizeMB = (byteLength / (1024 * 1024)).toFixed(1);
+    throw new Error(`File too large for preview (${sizeMB} MB). Maximum is ${MAX_PREVIEW_SIZE_MB} MB.`);
+  }
+}
 
 /**
  * Sanitize SVG content before it is rendered (as an <img>/blob data URL).
@@ -277,27 +294,40 @@ export const usePreview = ({ notify, toast, remoteTarget }: UsePreviewProps) => 
 
     let blobUrl: string | undefined;
     let content: string | undefined;
+    let resolvedSize = baseFile.size;
+    const sizeMissing = file.size === null || file.size === undefined;
 
     if (!isRemote) {
       if (category === 'text' || category === 'markdown' || category === 'code') {
         content = await invoke<string>('read_local_file', { path: filePath });
+        if (sizeMissing) resolvedSize = new TextEncoder().encode(content).byteLength;
       } else if (category === 'audio' || category === 'video') {
-        const base64 = await invoke<string>('read_local_file_base64', { path: filePath });
+        const base64 = await invoke<string>('read_local_file_base64', { path: filePath, maxSizeMb: MAX_PREVIEW_SIZE_MB });
+        const decodedLength = base64DecodedByteLength(base64);
+        assertBinaryPreviewWithinLimit(decodedLength);
         const mimeType = mimeMap[ext] || (category === 'audio' ? 'audio/mpeg' : 'video/mp4');
         const byteArray = base64ToArrayBuffer(base64);
+        assertBinaryPreviewWithinLimit(byteArray.byteLength);
+        if (sizeMissing) resolvedSize = byteArray.byteLength;
         const blob = new Blob([byteArray], { type: mimeType });
         blobUrl = URL.createObjectURL(blob);
       } else {
-        const base64 = await invoke<string>('read_local_file_base64', { path: filePath });
+        const base64 = await invoke<string>('read_local_file_base64', { path: filePath, maxSizeMb: MAX_PREVIEW_SIZE_MB });
+        const decodedLength = base64DecodedByteLength(base64);
+        assertBinaryPreviewWithinLimit(decodedLength);
         const mimeType = mimeMap[ext] || 'application/octet-stream';
         // H27: Sanitize SVG content before creating blob
         if (ext === 'svg') {
           const rawSvg = atob(base64);
+          assertBinaryPreviewWithinLimit(rawSvg.length);
+          if (sizeMissing) resolvedSize = rawSvg.length;
           const cleanSvg = sanitizeSvg(rawSvg);
           const blob = new Blob([cleanSvg], { type: mimeType });
           blobUrl = URL.createObjectURL(blob);
         } else {
           const byteArray = base64ToArrayBuffer(base64);
+          assertBinaryPreviewWithinLimit(byteArray.byteLength);
+          if (sizeMissing) resolvedSize = byteArray.byteLength;
           const blob = new Blob([byteArray], { type: mimeType });
           blobUrl = URL.createObjectURL(blob);
         }
@@ -305,23 +335,29 @@ export const usePreview = ({ notify, toast, remoteTarget }: UsePreviewProps) => 
     } else {
       if (category === 'text' || category === 'markdown' || category === 'code') {
         content = await invoke<string>('preview_remote_file', { path: filePath });
+        if (sizeMissing) resolvedSize = new TextEncoder().encode(content).byteLength;
       } else if (category === 'image') {
         // #128 item B: pass the UI's preview cap so the backend uses the same
         // 25 MB limit (it previously hard-capped at 10 MB, rejecting full-res
         // photos the UI had already accepted).
-        const base64 = await invoke<string>('ftp_read_file_base64', { path: filePath, maxSizeMb: MAX_PREVIEW_SIZE_BYTES / (1024 * 1024) });
+        const base64 = await invoke<string>('ftp_read_file_base64', { path: filePath, maxSizeMb: MAX_PREVIEW_SIZE_MB });
+        const decodedLength = base64DecodedByteLength(base64);
+        assertBinaryPreviewWithinLimit(decodedLength);
         // H27: Sanitize SVG content from remote sources
         if (ext === 'svg') {
           const rawSvg = atob(base64);
+          assertBinaryPreviewWithinLimit(rawSvg.length);
+          if (sizeMissing) resolvedSize = rawSvg.length;
           const cleanSvg = sanitizeSvg(rawSvg);
           blobUrl = `data:${mimeMap[ext] || 'image/svg+xml'};base64,${btoa(cleanSvg)}`;
         } else {
+          if (sizeMissing) resolvedSize = decodedLength;
           blobUrl = `data:${mimeMap[ext] || 'image/png'};base64,${base64}`;
         }
       }
     }
 
-    return { ...baseFile, mimeType: mimeMap[ext], content, blobUrl, loading: false };
+    return { ...baseFile, size: resolvedSize, mimeType: mimeMap[ext], content, blobUrl, loading: false };
   }, []);
 
   /** The cached (read and decoded) picture, reading it when it is not there. */

@@ -4455,7 +4455,13 @@
             "modeNonIdentical": "Neidentické",
             "groupsCount": "Skupiny: {count}",
             "duplicateFilesCount": "Duplicitní soubory: {count}",
-            "copiesCount": "{count} ks"
+            "copiesCount": "{count} ks",
+            "refreshTooltip": "Zkontrolovat, zda zjištěné duplikáty stále existují, a odstranit chybějící soubory bez nového skenování",
+            "refreshRemoved": "{count} chybějících souborů vyřazeno ze seznamu",
+            "refreshUpToDate": "Všechny soubory stále existují",
+            "refreshChanged": "{count} změněných souborů odebráno ze seznamu",
+            "refreshUnverified": "{count} se nepodařilo zkontrolovat",
+            "refreshFailed": "Obnovení selhalo: {error}"
         },
         "diskUsage": {
             "title": "Využití disku",
