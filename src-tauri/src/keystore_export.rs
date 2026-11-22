@@ -909,7 +909,9 @@ fn rekey_imported_user_partitions(
     transport: Option<&UserPartitionTransport>,
     password: &str,
 ) -> Result<crate::user_partitions::TransportRekeyReport, String> {
-    let conn = rusqlite::Connection::open(db_path)
+    // Brought to this build's schema first: the re-key and the retag below
+    // write it, and a backup of an older build has no `token_uid` column.
+    let conn = crate::user_partitions::open_restored_db(db_path)
         .map_err(|e| format!("open restored user_partitions.db: {e}"))?;
     let (salt, kdf_params, wrapped) = match transport {
         Some(t) => {
@@ -4362,6 +4364,139 @@ mod tests {
         let expected = vec![profile("srv_a", "Lab"), profile("srv_b", "lab (1)")];
         assert_eq!(my_servers(&same_machine, &restored_cfg), expected);
         assert_eq!(blob_of(&same_machine), expected);
+    }
+
+    /// The schema of a build before profiles had a token tag, which every
+    /// released build's backup carries: no `server_profiles.token_uid`.
+    fn as_a_build_before_token_tags(db: &Path) {
+        rusqlite::Connection::open(db)
+            .unwrap()
+            .execute_batch(
+                "DROP INDEX idx_profiles_token_uid;
+                 ALTER TABLE server_profiles DROP COLUMN token_uid;",
+            )
+            .unwrap();
+    }
+
+    /// A Full backup of another machine made by a build before profiles had a
+    /// token tag: the restore re-keys its account and writes its list again
+    /// with this machine's tags, into a staged copy brought to this build's
+    /// schema first. Without that step the list write failed on the missing
+    /// column and the partition was not restored.
+    #[test]
+    fn a_restore_from_another_machine_of_an_older_build_retags_its_list() {
+        let _guard = crate::user_partitions::test_lock();
+        crate::user_partitions::clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let source_path = dir.path().join("source-vault.db");
+        crate::credential_store::CredentialStore::write_test_vault(&source_path, &[0x29; 32]);
+        let source =
+            crate::credential_store::CredentialStore::from_verified_key(&source_path, &[0x29; 32]);
+        let source_cfg = dir.path().join("source");
+        let list = vec![profile("srv_a", "Lab")];
+        partition_with(&source, &source_cfg, &list);
+        let source_db = source_cfg.join("user_partitions.db");
+        as_a_build_before_token_tags(&source_db);
+        let mut payload = ExportPayload {
+            user_partition_transport: build_user_partition_transport(
+                &source,
+                &source_cfg,
+                PASSWORD_736,
+            ),
+            ..ExportPayload::default()
+        };
+        assert!(payload.user_partition_transport.is_some(), "the sidecar");
+        payload.sqlite_dumps.insert(
+            "user_partitions.db".to_string(),
+            snapshot_sqlite_db(&source_db).unwrap().unwrap(),
+        );
+        let backup = dir.path().join("older.aeroftp-keystore");
+        seal_backup(&backup, PASSWORD_736, &payload);
+
+        let store = throwaway_store(dir.path(), "vault.db");
+        let cfg = dir.path().join("config");
+        std::fs::create_dir_all(&cfg).unwrap();
+        let result = import_keystore_with_store(
+            &store,
+            PASSWORD_736,
+            &backup,
+            "overwrite",
+            ImportSections::default(),
+            Some(&cfg),
+            None,
+            None,
+        )
+        .unwrap();
+
+        assert!(
+            result.sqlite_dbs_failed.is_empty(),
+            "{:?}",
+            result.sqlite_dbs_failed
+        );
+        assert_eq!(result.security_reset_failed, 0);
+        assert_eq!(result.user_partitions_rekeyed, 1, "the account is re-keyed");
+        assert_eq!(my_servers(&store, &cfg), list);
+        let untagged: i64 = rusqlite::Connection::open(cfg.join("user_partitions.db"))
+            .unwrap()
+            .query_row(
+                "SELECT COUNT(*) FROM server_profiles WHERE token_uid IS NULL",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(untagged, 0, "the list is tagged with this machine's key");
+    }
+
+    /// The same backup made on this machine, with two profiles of one name:
+    /// the retag is not needed, and the names are put right in the staged
+    /// copy brought to this build's schema. Without that step the rename
+    /// failed on the missing column, into a log line, and the names stayed.
+    #[test]
+    fn a_restore_of_an_older_build_puts_its_names_right() {
+        let _guard = crate::user_partitions::test_lock();
+        crate::user_partitions::clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let cfg = dir.path().join("config");
+        std::fs::create_dir_all(&cfg).unwrap();
+        let old = vec![profile("srv_a", "Lab"), profile("srv_b", "lab")];
+        let root = store.derive_user_partition_wrapping_key();
+        let db = cfg.join("user_partitions.db");
+        {
+            let mut conn = rusqlite::Connection::open(&db).unwrap();
+            crate::user_partitions::migrate_legacy_payloads(&mut conn, None, None, &root).unwrap();
+            let user = crate::user_partitions::active_user_id(&conn)
+                .unwrap()
+                .unwrap();
+            crate::user_partitions::store_profiles_as_an_older_build(&conn, &root, user, &old);
+        }
+        as_a_build_before_token_tags(&db);
+        let mut payload = ExportPayload::default();
+        payload.sqlite_dumps.insert(
+            "user_partitions.db".to_string(),
+            snapshot_sqlite_db(&db).unwrap().unwrap(),
+        );
+        let backup = dir.path().join("older.aeroftp-keystore");
+        seal_backup(&backup, PASSWORD_736, &payload);
+
+        let restored_cfg = dir.path().join("restored");
+        let same_machine = throwaway_store(dir.path(), "same-vault.db");
+        let result = import_keystore_with_store(
+            &same_machine,
+            PASSWORD_736,
+            &backup,
+            "overwrite",
+            ImportSections::default(),
+            Some(&restored_cfg),
+            None,
+            None,
+        )
+        .unwrap();
+
+        assert!(result.sqlite_dbs_failed.is_empty());
+        assert_eq!(result.user_partitions_rekeyed, 0, "this machine's own key");
+        let expected = vec![profile("srv_a", "Lab"), profile("srv_b", "lab (1)")];
+        assert_eq!(my_servers(&same_machine, &restored_cfg), expected);
     }
 
     /// CodeRabbit on #1524: a restore takes no option that turns a security

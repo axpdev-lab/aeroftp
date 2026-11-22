@@ -196,6 +196,22 @@ fn open_or_init_path(path: PathBuf) -> Result<Connection, String> {
     Ok(conn)
 }
 
+/// Opens a partition database a keystore restore wrote whole (its staged
+/// copy, or the preview's copy of the backup's) for a writer, its schema
+/// first brought to this build's ([`init_db_schema`]) as
+/// [`open_or_init_path`] brings the live database's. A backup made by an
+/// older build lacks what this build's writers name (the
+/// `server_profiles.token_uid` column, the sign-in stamp table), and the
+/// first write of a profile list would fail on it. The schema step adds
+/// columns, tables, indexes and triggers only, and seeds the first admin
+/// where it adds that column, as the live database's first open would; the
+/// columns stay in the file, so every later open of it finds them.
+pub(crate) fn open_restored_db(db_path: &std::path::Path) -> Result<Connection, String> {
+    let conn = Connection::open(db_path).map_err(|e| format!("Open user partitions DB: {e}"))?;
+    init_db_schema(&conn)?;
+    Ok(conn)
+}
+
 pub fn open_or_init(app: &AppHandle) -> Result<Connection, String> {
     open_or_init_path(db_path(app)?)
 }
@@ -2533,8 +2549,7 @@ pub fn put_right_profile_names_in_db(
     if !db_path.is_file() {
         return Ok((0, 0));
     }
-    let mut conn =
-        Connection::open(db_path).map_err(|e| format!("Open user partitions DB: {e}"))?;
+    let mut conn = open_restored_db(db_path)?;
     let mut root_key = store.derive_user_partition_wrapping_key();
     let result = put_right_profile_names(&mut conn, &root_key);
     root_key.zeroize();
@@ -2737,8 +2752,7 @@ pub fn reset_profile_relaxations_in_db(
     if !db_path.is_file() {
         return Ok(ProfileResetReport::default());
     }
-    let mut conn =
-        Connection::open(db_path).map_err(|e| format!("Open user partitions DB: {e}"))?;
+    let mut conn = open_restored_db(db_path)?;
     let mut root_key = store.derive_user_partition_wrapping_key();
     let mut result = reset_profile_relaxations(&mut conn, &root_key, except_user);
     root_key.zeroize();
@@ -3928,19 +3942,10 @@ pub(crate) fn set_signed_in_credential_for(
 /// Forgets every sign-in stamp of the partition database at `db_path`: a
 /// restored database carries its rows, never the sign-ins behind them.
 pub fn forget_sign_in_stamps_in_db(db_path: &std::path::Path) -> Result<(), String> {
-    let conn = Connection::open(db_path).map_err(|e| format!("Open user partitions DB: {e}"))?;
-    let has_stamps: bool = conn
-        .query_row(
-            "SELECT EXISTS(SELECT 1 FROM sqlite_master
-             WHERE type = 'table' AND name = 'private_token_sign_ins')",
-            [],
-            |row| row.get(0),
-        )
-        .map_err(|e| format!("Read sign-in stamps: {e}"))?;
-    if has_stamps {
-        conn.execute("DELETE FROM private_token_sign_ins", [])
-            .map_err(|e| format!("Forget sign-in stamps: {e}"))?;
-    }
+    // The schema step gives a backup of a build before the stamps their table.
+    open_restored_db(db_path)?
+        .execute("DELETE FROM private_token_sign_ins", [])
+        .map_err(|e| format!("Forget sign-in stamps: {e}"))?;
     Ok(())
 }
 
@@ -9228,7 +9233,7 @@ pub(crate) fn finish_active_profile_reset_in_db(
     store: &CredentialStore,
     db_path: &std::path::Path,
 ) -> Result<Option<Vec<crate::profile_security::ProfileReset>>, String> {
-    let conn = Connection::open(db_path).map_err(|e| format!("Open staged partition: {e}"))?;
+    let conn = open_restored_db(db_path)?;
     let Some(user_id) = active_user_id(&conn)? else {
         return Ok(None);
     };
