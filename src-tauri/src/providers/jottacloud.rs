@@ -1124,7 +1124,8 @@ impl JottacloudProvider {
                     .filter_map(|key| generations.get(key).map(|g| (key, *g)))
                     .collect();
                 // What the key holds now, read as `load_refresh_chain` reads it.
-                let Some((now, raw)) = Self::stored_chain_now(store, self.credential_user, account)
+                let Some((now, raw, withheld)) =
+                    Self::stored_chain_now(store, self.credential_user, account)
                 else {
                     // Nothing to compare with: not written, as a load hands
                     // out nothing while the read is refused.
@@ -1148,7 +1149,19 @@ impl JottacloudProvider {
                         ));
                         continue;
                     };
-                    let replaced = baseline.as_str() != now && now != new_token;
+                    if withheld && !self.login_chain {
+                        // A row its reader withholds is not a chain written
+                        // since: nothing was replaced, and a refresh, which
+                        // began on another copy, does not write over it. The
+                        // rotation stays pending; a sign-in writes its own
+                        // chain over the row (`replace_owner_aware_if_unchanged`).
+                        jotta_log(&format!(
+                            "Refresh token not written to {}: the key's row is withheld until the alignment",
+                            account
+                        ));
+                        continue;
+                    }
+                    let replaced = !withheld && baseline.as_str() != now && now != new_token;
                     if replaced {
                         // Written from outside since (an import, a restore):
                         // that chain wins, and is not written over. What
@@ -1213,7 +1226,7 @@ impl JottacloudProvider {
                         Ok(false) => {
                             match Self::stored_chain_now(store, self.credential_user, account) {
                                 // Still the chain read above, in other bytes.
-                                Some((token, again)) if token == now => {
+                                Some((token, again, _)) if token == now => {
                                     if rereads == 3 {
                                         // Rewritten at every attempt: not a
                                         // replacement, so the rotation is
@@ -1330,34 +1343,35 @@ impl JottacloudProvider {
         user: Option<i64>,
         account: &str,
     ) -> Option<String> {
-        Self::stored_chain_now(store, user, account).map(|(token, _)| token)
+        Self::stored_chain_now(store, user, account).map(|(token, _, _)| token)
     }
 
     /// [`Self::stored_token_now`] with the stored copy as read (`None`: no
-    /// copy), for a write that must find it unchanged.
+    /// copy), for a write that must find it unchanged, and whether a row is
+    /// there that its reader withholds (it reads as no copy: an earlier
+    /// migration's copy of another account's chain, until the alignment).
     fn stored_chain_now(
         store: &crate::credential_store::CredentialStore,
         user: Option<i64>,
         account: &str,
-    ) -> Option<(String, Option<zeroize::Zeroizing<String>>)> {
+    ) -> Option<(String, Option<zeroize::Zeroizing<String>>, bool)> {
+        use crate::user_partitions::CheckedRow;
         crate::credential_store::expect_off_worker("stored_chain_now");
         #[cfg(test)]
         if tests::READ_REFUSED.load(std::sync::atomic::Ordering::SeqCst) {
             return None;
         }
-        match user {
-            Some(user) => crate::user_partitions::resolve_credential_for_user_owner_aware(
-                store, user, account,
-            ),
-            None => crate::user_partitions::resolve_active_credential_owner_aware(store, account),
-        }
-        .ok()
-        .map(|json| {
-            (
-                stored_refresh_token(json.as_deref().map(|j| j.as_str())),
-                json,
-            )
-        })
+        let (json, withheld) =
+            match crate::user_partitions::resolve_owner_aware_checked(store, user, account).ok()? {
+                CheckedRow::Value(json) => (Some(json), false),
+                CheckedRow::Absent => (None, false),
+                CheckedRow::Withheld => (None, true),
+            };
+        Some((
+            stored_refresh_token(json.as_deref().map(|j| j.as_str())),
+            json,
+            withheld,
+        ))
     }
 
     /// Read one refresh chain: the active user's partition, falling back to the
@@ -6351,6 +6365,92 @@ mod tests {
         CredentialStore::clear_cache();
         assert_eq!(persisted, "login-chain");
         assert!(pending, "written, nothing kept pending");
+    }
+
+    /// A sign-in over a row its reader withholds (an unstamped copy of the
+    /// vault's chain on an account not aligned yet, while profile tags are
+    /// pending) writes its own chain there, stamped: the compare-and-swap
+    /// compares with the row as the sign-in read it, which was no row.
+    #[test]
+    fn a_login_over_a_withheld_row_stores_its_chain() {
+        use crate::credential_store::CredentialStore;
+        use crate::user_partitions as partitions;
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::jottacloud::tests::a_login_over_a_withheld_row_stores_its_chain",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = partitions::test_lock();
+        let temporary = tempfile::TempDir::new().expect("temporary config");
+        std::env::set_var("XDG_CONFIG_HOME", temporary.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("jotta-withheld-pass").expect("bootstrap");
+        CredentialStore::unlock_with_master("jotta-withheld-pass", None).expect("unlock");
+        let store = CredentialStore::from_cache().expect("cached vault");
+        partitions::init_or_migrate_cli(&store).expect("init partitions");
+        let mut conn = partitions::open_or_init_cli().expect("partition DB");
+        let root = store.derive_user_partition_wrapping_key();
+        let other = partitions::create_passphrase_less_user(&mut conn, &root, "Other", None, None)
+            .expect("other")
+            .id;
+        let locked = partitions::create_user(&mut conn, &root, "Locked", None, None, Some("pass"))
+            .expect("locked")
+            .id;
+        partitions::clear_user_session();
+        let key = "jottacloud_refresh_w";
+        let owners = serde_json::json!({
+            "refresh_token": "owners-chain", "token_endpoint": "http://127.0.0.1:9/token",
+            "username": "jotta-user",
+        })
+        .to_string();
+        store.store(key, &owners).expect("the owner's chain");
+        partitions::set_user_credential_for(
+            &conn,
+            &root,
+            other,
+            key,
+            "jottacloud_refresh",
+            &owners,
+        )
+        .expect("the copy");
+        // The locked account's tags wait for its unlock.
+        conn.execute(
+            "INSERT INTO global_state(key, value, updated_at) VALUES (?1, '1', 0)",
+            rusqlite::params![format!("profile_tags_pending_{locked}")],
+        )
+        .expect("pending tags");
+        partitions::set_active_user(&conn, other).expect("switch");
+        let withheld =
+            partitions::resolve_credential_for_user_owner_aware(&store, other, key).expect("read");
+
+        let mut login = JottacloudProvider::new(JottacloudConfig {
+            login_token: SecretString::from(String::new()),
+            device: "Jotta".into(),
+            mountpoint: "Archive".into(),
+            initial_path: None,
+        })
+        .with_profile_id("w");
+        login.bind_credential_owner().expect("bind");
+        login.begin_login_chain().expect("begin the login");
+        login.refresh_token = SecretString::from("login-chain".to_string());
+        login.token_endpoint = "http://127.0.0.1:9/token".into();
+        login.username = "jotta-user".into();
+        login.persist_refresh_token();
+        let row = partitions::resolve_credential_for_user_owner_aware(&store, other, key)
+            .expect("read the sign-in");
+        let persisted = stored_refresh_token(row.as_deref().map(|r| r.as_str()));
+        let pending = PENDING_ROTATIONS.lock().unwrap().is_empty();
+        let vault = stored_refresh_token(store.get(key).ok().as_deref());
+        CredentialStore::clear_cache();
+        assert!(
+            withheld.is_none(),
+            "the copy is withheld before the sign-in"
+        );
+        assert_eq!(persisted, "login-chain");
+        assert!(pending, "written, nothing kept pending");
+        assert_eq!(vault, "owners-chain", "the owner's vault copy stays");
     }
 
     /// A chain imported while a rotation is pending wins: the next connection

@@ -4183,8 +4183,29 @@ pub(crate) fn replace_owner_aware_if_unchanged(
             return Err(ACCOUNT_CHANGED.to_owned());
         }
         unmoved_in(&tx)?;
-        let current = read_credential_with_dek(&tx, user_id, dek, credential_id)?;
-        let reads_vault = current.is_none() && nonprofile_secret_owner(&tx)? == Some(user_id);
+        let is_owner = nonprofile_secret_owner(&tx)? == Some(user_id);
+        // A sign-in compares against the row as its reader saw it: a row the
+        // readers withhold ([`checked_row`]) read as no row, so the sign-in
+        // that replaces it is not refused for bytes it was never shown.
+        let read_secret = |key: &str| get_optional_secret(store, key);
+        let current = match read_credential_and_digest_with_dek(&tx, user_id, dek, credential_id)? {
+            Some((row, digest))
+                if signed_in
+                    && !is_owner
+                    && unverified_while_tags_pending(
+                        &tx,
+                        user_id,
+                        credential_id,
+                        &row,
+                        &digest,
+                        &read_secret,
+                    )? =>
+            {
+                None
+            }
+            other => other.map(|(row, _)| row),
+        };
+        let reads_vault = current.is_none() && is_owner;
         if reads_vault {
             let written = vault()?;
             tx.commit()
@@ -4221,7 +4242,7 @@ pub(crate) fn replace_owner_aware_if_unchanged(
                 replacement,
             )?;
         }
-        let owner = nonprofile_secret_owner(&tx)? == Some(user_id);
+        let owner = is_owner;
         tx.commit()
             .map_err(|e| format!("Commit conditional credential write: {e}"))?;
         // The legacy owner's vault copy, read by a vault-only reader
@@ -6559,6 +6580,42 @@ pub fn resolve_credential_for_user_owner_aware(
     init_or_migrate_cli(store)?;
     let conn = open_or_init_cli()?;
     read_credential_for_user_owner_aware(&conn, store, user_id, credential_id)
+}
+
+/// What [`resolve_credential_for_user_owner_aware`] (`user`, or
+/// [`resolve_active_credential_owner_aware`] for `None`) reads, telling a
+/// withheld row ([`CheckedRow::Withheld`], which those read as nothing) from
+/// no row: a writer that finds the key empty must know whether a row is
+/// there all the same.
+pub(crate) fn resolve_owner_aware_checked(
+    store: &CredentialStore,
+    user: Option<i64>,
+    credential_id: &str,
+) -> Result<CheckedRow, String> {
+    let checked = |value: Option<Zeroizing<String>>| match value {
+        Some(value) => CheckedRow::Value(value),
+        None => CheckedRow::Absent,
+    };
+    if user == Some(LEGACY_ONLY_ACCOUNT) {
+        return read_legacy_only_credential(store, credential_id).map(checked);
+    }
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    let user_id = match user {
+        Some(user_id) => user_id,
+        None => match active_user_id(&conn)? {
+            Some(user_id) => user_id,
+            None => return get_optional_secret(store, credential_id).map(checked),
+        },
+    };
+    let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
+    let read_secret = |key: &str| get_optional_secret(store, key);
+    if nonprofile_secret_owner(&conn)? == Some(user_id) {
+        read_credential_with_fallback_inner(&conn, &root_key, user_id, credential_id, &read_secret)
+            .map(checked)
+    } else {
+        read_checked_row_with(&conn, &root_key, user_id, credential_id, &read_secret)
+    }
 }
 
 /// Owners of a profile-bound credential, including a profile whose first
