@@ -13466,11 +13466,39 @@ mod tests {
         (store, other, root)
     }
 
-    /// A refresh compared with the bytes it read while the row was readable,
-    /// or with no row (a key it found empty, filled since), does not write
-    /// over the row once its readers withhold it: the withheld check runs in
-    /// the write's own transaction for a refresh too, and the row keeps its
-    /// bytes.
+    /// A Jottacloud refresh over `key` of `other`, compared with `expected`
+    /// ([`replace_owner_aware_if_unchanged`], `signed_in` false), and the row
+    /// as stored afterwards.
+    fn jotta_refresh_over(
+        store: &CredentialStore,
+        other: i64,
+        root: &[u8; 32],
+        key: &str,
+        expected: Option<&str>,
+    ) -> (Result<bool, String>, Option<String>) {
+        let refreshed = replace_owner_aware_if_unchanged(
+            store,
+            Some(other),
+            key,
+            "jottacloud_refresh",
+            expected,
+            r#"{"refresh_token":"rotated","username":"jotta-user"}"#,
+            &|_, _| false,
+            None,
+            &[],
+            false,
+        );
+        let row = get_user_credential_for(&open_or_init_cli().unwrap(), root, other, key)
+            .unwrap()
+            .map(|value| value.to_string());
+        (refreshed, row)
+    }
+
+    /// A refresh compared with the bytes it read while the row was readable
+    /// does not write over the row once its readers withhold it: the withheld
+    /// check runs in the write's own transaction for a refresh too, and the
+    /// row keeps its bytes. Red when the check is a sign-in's only again
+    /// (`signed_in &&` back in its guard): the row is compared raw and written.
     #[test]
     fn a_refresh_does_not_write_over_a_row_withheld_since_its_read() {
         if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
@@ -13482,26 +13510,31 @@ mod tests {
         let key = "jottacloud_refresh_w";
         let owners = r#"{"refresh_token":"owners-chain","username":"jotta-user"}"#;
         let (store, other, root) = a_row_withheld_at_write_time(key, "jottacloud_refresh", owners);
-        let refresh = |expected: Option<&str>| {
-            replace_owner_aware_if_unchanged(
-                &store,
-                Some(other),
-                key,
-                "jottacloud_refresh",
-                expected,
-                r#"{"refresh_token":"rotated","username":"jotta-user"}"#,
-                &|_, _| false,
-                None,
-                &[],
-                false,
-            )
-        };
-        let over_its_read = refresh(Some(owners));
-        let over_no_row = refresh(None);
-        let row = get_user_credential_for(&open_or_init_cli().unwrap(), &root, other, key)
-            .unwrap()
-            .map(|value| value.to_string());
+        let (over_its_read, row) = jotta_refresh_over(&store, other, &root, key, Some(owners));
         assert_eq!(over_its_read, Ok(false), "a refresh over a withheld row");
+        assert_eq!(row.as_deref(), Some(owners), "the row keeps its bytes");
+    }
+
+    /// A refresh that found no row (`expected` `None`: a key it read empty,
+    /// filled since) does not fill a row its readers withhold: the withheld
+    /// check refuses a refresh outright, and does not read the row as absent
+    /// the way a sign-in's does. Before the check ran for a refresh, the raw
+    /// row already refused this write (`Some` against `None`), so what this
+    /// pins is the refusal itself: red when the check reads a refresh's row as
+    /// absent too (its `return Ok(false)` gone), which matches `None` and
+    /// writes the rotation over the withheld row.
+    #[test]
+    fn a_refresh_that_found_no_row_does_not_fill_a_withheld_row() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "user_partitions::tests::a_refresh_that_found_no_row_does_not_fill_a_withheld_row",
+        ) {
+            return;
+        }
+        let _guard = test_lock();
+        let key = "jottacloud_refresh_w";
+        let owners = r#"{"refresh_token":"owners-chain","username":"jotta-user"}"#;
+        let (store, other, root) = a_row_withheld_at_write_time(key, "jottacloud_refresh", owners);
+        let (over_no_row, row) = jotta_refresh_over(&store, other, &root, key, None);
         assert_eq!(over_no_row, Ok(false), "a refresh that found no row");
         assert_eq!(row.as_deref(), Some(owners), "the row keeps its bytes");
     }
