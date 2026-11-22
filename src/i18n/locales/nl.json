@@ -4955,7 +4955,8 @@
             "relocateAlreadyPresent": "\"{name}\" is al opgeslagen in {user}",
             "relocateError": "Kan de server niet overdragen: {error}",
             "relocateWrongPassword": "Onjuist wachtwoord voor {user}.",
-            "relocateSecretsNotCopied": "\"{name}\" is bij {user} aangekomen, maar het opgeslagen wachtwoord of token niet, dus er wordt daar opnieuw naar gevraagd."
+            "relocateSecretsNotCopied": "\"{name}\" is bij {user} aangekomen, maar het opgeslagen wachtwoord of token niet, dus er wordt daar opnieuw naar gevraagd.",
+            "relocateMovedCleanupFailed": "\"{name}\" is verplaatst naar {user}, maar de Proton Drive-sessie kon niet van dit account worden verwijderd."
         },
         "cyberTools": {
             "title": "Beveiligingstools",

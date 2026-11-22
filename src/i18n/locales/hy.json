@@ -4948,7 +4948,8 @@
             "relocateAlreadyPresent": "«{name}»-ն արդեն պահված է {user}-ում",
             "relocateError": "Չհաջողվեց փոխանցել սերվերը՝ {error}",
             "relocateWrongPassword": "Սխալ գաղտնաբառ {user}-ի համար։",
-            "relocateSecretsNotCopied": "«{name}»-ը հասավ {user}-ին, բայց պահված գաղտնաբառը կամ թոկենը չհասավ, ուստի այնտեղ դրանք նորից կպահանջվեն։"
+            "relocateSecretsNotCopied": "«{name}»-ը հասավ {user}-ին, բայց պահված գաղտնաբառը կամ թոկենը չհասավ, ուստի այնտեղ դրանք նորից կպահանջվեն։",
+            "relocateMovedCleanupFailed": "\"{name}\"-ը տեղափոխվեց {user}-ի մոտ, բայց դրա Proton Drive սեսիան չհաջողվեց հեռացնել այս հաշվից։"
         },
         "cyberTools": {
             "title": "Անվտանգության գործիքներ",

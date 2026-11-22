@@ -4955,7 +4955,8 @@
             "relocateAlreadyPresent": "„{name}“ jau išsaugota paskyroje {user}",
             "relocateError": "Nepavyko perkelti serverio: {error}",
             "relocateWrongPassword": "Neteisingas {user} slaptažodis.",
-            "relocateSecretsNotCopied": "„{name}“ pasiekė {user}, bet jo išsaugotas slaptažodis ar prieigos raktas nepasiekė, todėl ten jų bus paprašyta dar kartą."
+            "relocateSecretsNotCopied": "„{name}“ pasiekė {user}, bet jo išsaugotas slaptažodis ar prieigos raktas nepasiekė, todėl ten jų bus paprašyta dar kartą.",
+            "relocateMovedCleanupFailed": "\"{name}\" perkeltas naudotojui {user}, bet jo Proton Drive seanso nepavyko pašalinti iš šios paskyros."
         },
         "cyberTools": {
             "title": "Saugumo įrankiai",

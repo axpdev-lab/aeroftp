@@ -4955,7 +4955,8 @@
             "relocateAlreadyPresent": "«{name}» вже збережено в {user}",
             "relocateError": "Не вдалося перенести сервер: {error}",
             "relocateWrongPassword": "Неправильний пароль для {user}.",
-            "relocateSecretsNotCopied": "«{name}» потрапив до {user}, але збережені пароль або токен не потрапили, тому там їх буде запитано знову."
+            "relocateSecretsNotCopied": "«{name}» потрапив до {user}, але збережені пароль або токен не потрапили, тому там їх буде запитано знову.",
+            "relocateMovedCleanupFailed": "\"{name}\" переміщено до користувача {user}, але його сеанс Proton Drive не вдалося видалити з цього облікового запису."
         },
         "cyberTools": {
             "title": "Інструменти безпеки",

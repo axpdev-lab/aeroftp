@@ -4955,7 +4955,8 @@
             "relocateAlreadyPresent": "“{name}” jau ir saglabāts kontā {user}",
             "relocateError": "Neizdevās pārsūtīt serveri: {error}",
             "relocateWrongPassword": "Nepareiza {user} parole.",
-            "relocateSecretsNotCopied": "“{name}” sasniedza {user}, taču tā saglabātā parole vai atslēga nesasniedza, tāpēc tur tās tiks pieprasītas vēlreiz."
+            "relocateSecretsNotCopied": "“{name}” sasniedza {user}, taču tā saglabātā parole vai atslēga nesasniedza, tāpēc tur tās tiks pieprasītas vēlreiz.",
+            "relocateMovedCleanupFailed": "\"{name}\" tika pārvietots lietotājam {user}, bet tā Proton Drive sesiju neizdevās noņemt no šī konta."
         },
         "cyberTools": {
             "title": "Drošības rīki",

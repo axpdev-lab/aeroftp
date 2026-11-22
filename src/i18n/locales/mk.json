@@ -4955,7 +4955,8 @@
             "relocateAlreadyPresent": "„{name}“ е веќе зачуван во {user}",
             "relocateError": "Серверот не може да се пренесе: {error}",
             "relocateWrongPassword": "Погрешна лозинка за {user}.",
-            "relocateSecretsNotCopied": "„{name}“ стигна до {user}, но зачуваната лозинка или токен не стигнаа, па ќе ги побара повторно таму."
+            "relocateSecretsNotCopied": "„{name}“ стигна до {user}, но зачуваната лозинка или токен не стигнаа, па ќе ги побара повторно таму.",
+            "relocateMovedCleanupFailed": "\"{name}\" е преместен кај {user}, но неговата сесија на Proton Drive не можеше да се отстрани од оваа сметка."
         },
         "cyberTools": {
             "title": "Безбедносни алатки",

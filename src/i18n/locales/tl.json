@@ -4955,7 +4955,8 @@
             "relocateAlreadyPresent": "Naka-save na ang \"{name}\" sa {user}",
             "relocateError": "Hindi mailipat ang server: {error}",
             "relocateWrongPassword": "Maling password para sa {user}.",
-            "relocateSecretsNotCopied": "Nakarating ang \"{name}\" sa {user}, pero hindi nakarating ang naka-save na password o token, kaya hihingin ang mga ito muli roon."
+            "relocateSecretsNotCopied": "Nakarating ang \"{name}\" sa {user}, pero hindi nakarating ang naka-save na password o token, kaya hihingin ang mga ito muli roon.",
+            "relocateMovedCleanupFailed": "Inilipat ang \"{name}\" kay {user}, ngunit hindi naalis ang Proton Drive session nito sa account na ito."
         },
         "cyberTools": {
             "title": "Security Tools",

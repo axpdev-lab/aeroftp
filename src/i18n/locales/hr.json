@@ -4955,7 +4955,8 @@
             "relocateAlreadyPresent": "„{name}“ je već spremljen u {user}",
             "relocateError": "Poslužitelj nije moguće prenijeti: {error}",
             "relocateWrongPassword": "Pogrešna lozinka za {user}.",
-            "relocateSecretsNotCopied": "„{name}“ je stigao do {user}, ali spremljena lozinka ili token nisu, pa će ih ondje ponovno zatražiti."
+            "relocateSecretsNotCopied": "„{name}“ je stigao do {user}, ali spremljena lozinka ili token nisu, pa će ih ondje ponovno zatražiti.",
+            "relocateMovedCleanupFailed": "\"{name}\" je premješten korisniku {user}, ali se njegova Proton Drive sesija nije mogla ukloniti s ovog računa."
         },
         "cyberTools": {
             "title": "Sigurnosni alati",

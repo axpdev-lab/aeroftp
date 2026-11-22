@@ -4955,7 +4955,8 @@
             "relocateAlreadyPresent": "„{name}“ ist bereits in {user} gespeichert",
             "relocateError": "Server konnte nicht übertragen werden: {error}",
             "relocateWrongPassword": "Falsches Passwort für {user}.",
-            "relocateSecretsNotCopied": "„{name}“ ist bei {user} angekommen, das gespeicherte Passwort oder Token jedoch nicht, daher wird dort erneut danach gefragt."
+            "relocateSecretsNotCopied": "„{name}“ ist bei {user} angekommen, das gespeicherte Passwort oder Token jedoch nicht, daher wird dort erneut danach gefragt.",
+            "relocateMovedCleanupFailed": "\"{name}\" wurde zu {user} verschoben, aber die zugehörige Proton Drive-Sitzung konnte nicht aus diesem Konto entfernt werden."
         },
         "cyberTools": {
             "title": "Sicherheitstools",

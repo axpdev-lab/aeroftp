@@ -4955,7 +4955,8 @@
             "relocateAlreadyPresent": "»{name}« je že shranjen v {user}",
             "relocateError": "Strežnika ni bilo mogoče prenesti: {error}",
             "relocateWrongPassword": "Napačno geslo za {user}.",
-            "relocateSecretsNotCopied": "»{name}« je prispel v {user}, vendar shranjeno geslo ali žeton nista, zato bo tam znova zahteval vnos."
+            "relocateSecretsNotCopied": "»{name}« je prispel v {user}, vendar shranjeno geslo ali žeton nista, zato bo tam znova zahteval vnos.",
+            "relocateMovedCleanupFailed": "\"{name}\" je bil premaknjen k uporabniku {user}, vendar seje Proton Drive ni bilo mogoče odstraniti iz tega računa."
         },
         "cyberTools": {
             "title": "Varnostna orodja",

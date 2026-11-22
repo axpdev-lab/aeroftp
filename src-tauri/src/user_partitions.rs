@@ -2788,6 +2788,18 @@ pub fn update_active_server_profiles(
     update_server_profiles_for(conn, root_key, user_id, apply)
 }
 
+/// The prefix of a relocation error that came after its Move committed: the
+/// profile is saved in the target and gone from the source, and only a
+/// cleanup of the source (its Proton session) failed. A caller reports the
+/// Move as done, with the error as a warning ([`relocation_committed`]).
+pub const RELOCATION_COMMITTED: &str = "RELOCATION_COMMITTED";
+
+/// Whether `error`, a relocation's, came after its Move committed
+/// ([`RELOCATION_COMMITTED`]).
+pub fn relocation_committed(error: &str) -> bool {
+    error.starts_with(RELOCATION_COMMITTED)
+}
+
 /// Outcome of a cross-user profile relocation (N4). Production GUI/CLI callers
 /// receive it after the shared profile/credential operation has completed.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -3002,7 +3014,7 @@ fn relocate_server_profile_and_credentials(
         held.discard()
             .map_err(|error| {
                 format!(
-                    "RELOCATION_COMMITTED: profile {} is saved in target user {}; removal of the source's Proton session failed: {error}",
+                    "{RELOCATION_COMMITTED}: profile {} is saved in target user {}; removal of the source's Proton session failed: {error}",
                     relocation.new_profile_id, target_user_id,
                 )
             })?;
@@ -3014,7 +3026,7 @@ fn relocate_server_profile_and_credentials(
     {
         delete_optional_secret(store, &source_key).map_err(|error| {
             format!(
-                "RELOCATION_COMMITTED: profile {} is saved in target user {}; removal of the source's Proton session from the vault failed: {error}",
+                "{RELOCATION_COMMITTED}: profile {} is saved in target user {}; removal of the source's Proton session from the vault failed: {error}",
                 relocation.new_profile_id, target_user_id,
             )
         })?;

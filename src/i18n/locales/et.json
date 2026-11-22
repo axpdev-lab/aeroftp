@@ -4955,7 +4955,8 @@
             "relocateAlreadyPresent": "„{name}“ on juba salvestatud kontole {user}",
             "relocateError": "Serverit ei õnnestunud üle kanda: {error}",
             "relocateWrongPassword": "Vale parool kontole {user}.",
-            "relocateSecretsNotCopied": "„{name}“ jõudis kontole {user}, aga salvestatud parool või token mitte, seega küsib see neid seal uuesti."
+            "relocateSecretsNotCopied": "„{name}“ jõudis kontole {user}, aga salvestatud parool või token mitte, seega küsib see neid seal uuesti.",
+            "relocateMovedCleanupFailed": "\"{name}\" teisaldati kasutajale {user}, kuid selle Proton Drive'i seanssi ei õnnestunud sellest kontost eemaldada."
         },
         "cyberTools": {
             "title": "Turvalisuse tööriistad",

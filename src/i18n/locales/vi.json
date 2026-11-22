@@ -4955,7 +4955,8 @@
             "relocateAlreadyPresent": "\"{name}\" đã được lưu trong {user}",
             "relocateError": "Không thể chuyển máy chủ: {error}",
             "relocateWrongPassword": "Sai mật khẩu cho {user}.",
-            "relocateSecretsNotCopied": "\"{name}\" đã sang tới {user}, nhưng mật khẩu hoặc token đã lưu thì không, nên sẽ yêu cầu nhập lại ở đó."
+            "relocateSecretsNotCopied": "\"{name}\" đã sang tới {user}, nhưng mật khẩu hoặc token đã lưu thì không, nên sẽ yêu cầu nhập lại ở đó.",
+            "relocateMovedCleanupFailed": "Đã chuyển \"{name}\" sang {user}, nhưng không thể xóa phiên Proton Drive của nó khỏi tài khoản này."
         },
         "cyberTools": {
             "title": "Công cụ bảo mật",

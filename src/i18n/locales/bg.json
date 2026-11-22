@@ -4955,7 +4955,8 @@
             "relocateAlreadyPresent": "„{name}“ вече е запазен в {user}",
             "relocateError": "Сървърът не може да бъде прехвърлен: {error}",
             "relocateWrongPassword": "Грешна парола за {user}.",
-            "relocateSecretsNotCopied": "„{name}“ стигна до {user}, но запазената му парола или токен не бяха прехвърлени, затова ще ги поиска отново там."
+            "relocateSecretsNotCopied": "„{name}“ стигна до {user}, но запазената му парола или токен не бяха прехвърлени, затова ще ги поиска отново там.",
+            "relocateMovedCleanupFailed": "\"{name}\" е преместен към {user}, но сесията му в Proton Drive не можа да бъде премахната от този акаунт."
         },
         "cyberTools": {
             "title": "Инструменти за сигурност",

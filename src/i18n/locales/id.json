@@ -4955,7 +4955,8 @@
             "relocateAlreadyPresent": "\"{name}\" sudah tersimpan di {user}",
             "relocateError": "Server tidak dapat ditransfer: {error}",
             "relocateWrongPassword": "Kata sandi salah untuk {user}.",
-            "relocateSecretsNotCopied": "\"{name}\" sudah sampai ke {user}, tetapi kata sandi atau token yang tersimpan tidak ikut sampai, sehingga akan diminta lagi di sana."
+            "relocateSecretsNotCopied": "\"{name}\" sudah sampai ke {user}, tetapi kata sandi atau token yang tersimpan tidak ikut sampai, sehingga akan diminta lagi di sana.",
+            "relocateMovedCleanupFailed": "\"{name}\" dipindahkan ke {user}, tetapi sesi Proton Drive-nya tidak dapat dihapus dari akun ini."
         },
         "cyberTools": {
             "title": "Alat Keamanan",

@@ -4955,7 +4955,8 @@
             "relocateAlreadyPresent": "A(z) „{name}” már mentve van itt: {user}",
             "relocateError": "A kiszolgálót nem sikerült átvinni: {error}",
             "relocateWrongPassword": "Helytelen jelszó a következőhöz: {user}.",
-            "relocateSecretsNotCopied": "A(z) „{name}” megérkezett ide: {user}, de a mentett jelszava vagy tokenje nem, ezért ott újra kérni fogja őket."
+            "relocateSecretsNotCopied": "A(z) „{name}” megérkezett ide: {user}, de a mentett jelszava vagy tokenje nem, ezért ott újra kérni fogja őket.",
+            "relocateMovedCleanupFailed": "A(z) \"{name}\" átkerült {user} fiókjához, de a Proton Drive-munkamenetét nem sikerült eltávolítani erről a fiókról."
         },
         "cyberTools": {
             "title": "Biztonsági eszközök",

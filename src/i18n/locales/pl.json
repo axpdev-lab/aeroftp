@@ -4955,7 +4955,8 @@
             "relocateAlreadyPresent": "„{name}” jest już zapisane w {user}",
             "relocateError": "Nie udało się przenieść serwera: {error}",
             "relocateWrongPassword": "Nieprawidłowe hasło do {user}.",
-            "relocateSecretsNotCopied": "„{name}” dotarł do {user}, ale zapisane hasło lub token nie dotarły, więc poprosi o nie tam ponownie."
+            "relocateSecretsNotCopied": "„{name}” dotarł do {user}, ale zapisane hasło lub token nie dotarły, więc poprosi o nie tam ponownie.",
+            "relocateMovedCleanupFailed": "Przeniesiono \"{name}\" do użytkownika {user}, ale nie udało się usunąć jego sesji Proton Drive z tego konta."
         },
         "cyberTools": {
             "title": "Narzędzia bezpieczeństwa",

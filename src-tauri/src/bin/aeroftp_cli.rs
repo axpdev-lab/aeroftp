@@ -28226,6 +28226,37 @@ fn cmd_profile_duplicate(
     0
 }
 
+/// A relocation's result as the relocate command reports it: an error that
+/// came after the Move committed ([`user_partitions::relocation_committed`]:
+/// the profile is saved in the target and gone from the source, a cleanup of
+/// the source failed) is that Move, done, with the error as its warning.
+fn committed_relocation(
+    result: Result<user_partitions::ProfileRelocation, String>,
+    source_id: &str,
+    new_id: &str,
+    name: &str,
+    target_user_id: i64,
+) -> Result<(user_partitions::ProfileRelocation, Option<String>), String> {
+    match result {
+        Ok(relocation) => Ok((relocation, None)),
+        Err(e) if user_partitions::relocation_committed(&e) => Ok((
+            user_partitions::ProfileRelocation {
+                source_profile_id: source_id.to_string(),
+                new_profile_id: new_id.to_string(),
+                profile_name: name.to_string(),
+                target_user_id,
+                moved: true,
+                already_present: false,
+                inserted: true,
+                protocol: String::new(),
+                secrets_not_copied: Vec::new(),
+            },
+            Some(e),
+        )),
+        Err(e) => Err(e),
+    }
+}
+
 /// Shared implementation of `profile-copy-user` and `profile-move-user` (N4,
 /// #270). Resolves the source profile in the active account, the target user
 /// by name, prompts for the target passphrase when the account is protected,
@@ -28402,8 +28433,14 @@ fn cmd_profile_relocate_user(
         target_passphrase.as_deref(),
         remove_from_source,
     );
-    let relocation = match relocation {
-        Ok(r) => r,
+    let (relocation, committed_warning) = match committed_relocation(
+        relocation,
+        &source_id,
+        &new_id,
+        &source_name,
+        target_user.id,
+    ) {
+        Ok(outcome) => outcome,
         Err(e) => {
             if let Some(p) = target_passphrase.as_mut() {
                 p.zeroize();
@@ -28413,6 +28450,9 @@ fn cmd_profile_relocate_user(
             return code;
         }
     };
+    if let Some(warning) = &committed_warning {
+        eprintln!("Warning: {warning}");
+    }
 
     if let Some(p) = target_passphrase.as_mut() {
         p.zeroize();
@@ -84378,6 +84418,28 @@ mod isolated_cli;
 
 #[cfg(test)]
 mod tests {
+    /// A relocation whose discard of the source's Proton session failed after
+    /// the Move committed ends as that Move, with the error as a warning; any
+    /// other error stays an error.
+    #[test]
+    fn a_discard_error_after_the_move_committed_ends_as_moved() {
+        let discard = "RELOCATION_COMMITTED: profile srv_new is saved in target user 2; removal of the source's Proton session failed: refused";
+        let (relocation, warning) =
+            super::committed_relocation(Err(discard.to_string()), "srv_old", "srv_new", "Drive", 2)
+                .expect("a committed Move");
+        assert!(relocation.moved && relocation.inserted);
+        assert_eq!(relocation.source_profile_id, "srv_old");
+        assert_eq!(relocation.new_profile_id, "srv_new");
+        assert_eq!(relocation.target_user_id, 2);
+        assert_eq!(warning.as_deref(), Some(discard));
+        assert_eq!(
+            super::committed_relocation(Err("TARGET_LOCKED".to_string()), "a", "b", "c", 2)
+                .err()
+                .as_deref(),
+            Some("TARGET_LOCKED")
+        );
+    }
+
     #[test]
     fn probe_contract_cli_requires_typed_absence() {
         assert!(super::is_not_found_error(&super::ProviderError::NotFound(

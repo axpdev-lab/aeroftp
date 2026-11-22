@@ -4955,7 +4955,8 @@
             "relocateAlreadyPresent": "„{name}“ je už uloženo v {user}",
             "relocateError": "Server se nepodařilo přenést: {error}",
             "relocateWrongPassword": "Nesprávné heslo pro {user}.",
-            "relocateSecretsNotCopied": "„{name}“ se do {user} dostalo, ale jeho uložené heslo nebo token ne, proto o ně tam znovu požádá."
+            "relocateSecretsNotCopied": "„{name}“ se do {user} dostalo, ale jeho uložené heslo nebo token ne, proto o ně tam znovu požádá.",
+            "relocateMovedCleanupFailed": "Server \"{name}\" byl přesunut k uživateli {user}, ale jeho relaci Proton Drive se nepodařilo z tohoto účtu odebrat."
         },
         "cyberTools": {
             "title": "Bezpečnostní nástroje",

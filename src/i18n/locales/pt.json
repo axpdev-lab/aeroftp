@@ -4955,7 +4955,8 @@
             "relocateAlreadyPresent": "«{name}» já está salvo em {user}",
             "relocateError": "Não foi possível transferir o servidor: {error}",
             "relocateWrongPassword": "Senha incorreta para {user}.",
-            "relocateSecretsNotCopied": "«{name}» chegou a {user}, mas a palavra-passe ou o token guardados não, pelo que voltará a pedi-los lá."
+            "relocateSecretsNotCopied": "«{name}» chegou a {user}, mas a palavra-passe ou o token guardados não, pelo que voltará a pedi-los lá.",
+            "relocateMovedCleanupFailed": "\"{name}\" foi movido para {user}, mas não foi possível remover a sua sessão do Proton Drive desta conta."
         },
         "cyberTools": {
             "title": "Ferramentas de segurança",
