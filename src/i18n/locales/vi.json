@@ -4455,7 +4455,13 @@
             "modeNonIdentical": "Không giống hệt",
             "groupsCount": "{count} nhóm",
             "duplicateFilesCount": "{count} tệp trùng lặp",
-            "copiesCount": "{count} bản sao"
+            "copiesCount": "{count} bản sao",
+            "refreshTooltip": "Kiểm tra xem các tệp trùng lặp đã phát hiện có còn tồn tại không và loại bỏ các tệp bị thiếu mà không cần quét lại",
+            "refreshRemoved": "Đã loại bỏ {count} tệp bị thiếu khỏi danh sách",
+            "refreshUpToDate": "Tất cả tệp vẫn tồn tại",
+            "refreshChanged": "Đã loại {count} tệp đã thay đổi khỏi danh sách",
+            "refreshUnverified": "Không thể kiểm tra {count} mục",
+            "refreshFailed": "Làm mới thất bại: {error}"
         },
         "diskUsage": {
             "title": "Sử dụng đĩa",

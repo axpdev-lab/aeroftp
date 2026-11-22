@@ -277,14 +277,18 @@ export const usePreview = ({ notify, toast, remoteTarget }: UsePreviewProps) => 
 
     let blobUrl: string | undefined;
     let content: string | undefined;
+    let resolvedSize = baseFile.size;
+    const sizeMissing = file.size === null || file.size === undefined;
 
     if (!isRemote) {
       if (category === 'text' || category === 'markdown' || category === 'code') {
         content = await invoke<string>('read_local_file', { path: filePath });
+        if (sizeMissing) resolvedSize = new TextEncoder().encode(content).byteLength;
       } else if (category === 'audio' || category === 'video') {
         const base64 = await invoke<string>('read_local_file_base64', { path: filePath });
         const mimeType = mimeMap[ext] || (category === 'audio' ? 'audio/mpeg' : 'video/mp4');
         const byteArray = base64ToArrayBuffer(base64);
+        if (sizeMissing) resolvedSize = byteArray.byteLength;
         const blob = new Blob([byteArray], { type: mimeType });
         blobUrl = URL.createObjectURL(blob);
       } else {
@@ -293,11 +297,13 @@ export const usePreview = ({ notify, toast, remoteTarget }: UsePreviewProps) => 
         // H27: Sanitize SVG content before creating blob
         if (ext === 'svg') {
           const rawSvg = atob(base64);
+          if (sizeMissing) resolvedSize = rawSvg.length;
           const cleanSvg = sanitizeSvg(rawSvg);
           const blob = new Blob([cleanSvg], { type: mimeType });
           blobUrl = URL.createObjectURL(blob);
         } else {
           const byteArray = base64ToArrayBuffer(base64);
+          if (sizeMissing) resolvedSize = byteArray.byteLength;
           const blob = new Blob([byteArray], { type: mimeType });
           blobUrl = URL.createObjectURL(blob);
         }
@@ -305,6 +311,7 @@ export const usePreview = ({ notify, toast, remoteTarget }: UsePreviewProps) => 
     } else {
       if (category === 'text' || category === 'markdown' || category === 'code') {
         content = await invoke<string>('preview_remote_file', { path: filePath });
+        if (sizeMissing) resolvedSize = new TextEncoder().encode(content).byteLength;
       } else if (category === 'image') {
         // #128 item B: pass the UI's preview cap so the backend uses the same
         // 25 MB limit (it previously hard-capped at 10 MB, rejecting full-res
@@ -313,15 +320,20 @@ export const usePreview = ({ notify, toast, remoteTarget }: UsePreviewProps) => 
         // H27: Sanitize SVG content from remote sources
         if (ext === 'svg') {
           const rawSvg = atob(base64);
+          if (sizeMissing) resolvedSize = rawSvg.length;
           const cleanSvg = sanitizeSvg(rawSvg);
           blobUrl = `data:${mimeMap[ext] || 'image/svg+xml'};base64,${btoa(cleanSvg)}`;
         } else {
+          if (sizeMissing) {
+            const trimmed = base64.replace(/=+$/, '');
+            resolvedSize = Math.floor((trimmed.length * 3) / 4);
+          }
           blobUrl = `data:${mimeMap[ext] || 'image/png'};base64,${base64}`;
         }
       }
     }
 
-    return { ...baseFile, mimeType: mimeMap[ext], content, blobUrl, loading: false };
+    return { ...baseFile, size: resolvedSize, mimeType: mimeMap[ext], content, blobUrl, loading: false };
   }, []);
 
   /** The cached (read and decoded) picture, reading it when it is not there. */

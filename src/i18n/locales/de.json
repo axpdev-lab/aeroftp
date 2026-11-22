@@ -4455,7 +4455,13 @@
             "modeNonIdentical": "Nicht identisch",
             "groupsCount": "Gruppen: {count}",
             "duplicateFilesCount": "Doppelte Dateien: {count}",
-            "copiesCount": "{count} Kopien"
+            "copiesCount": "{count} Kopien",
+            "refreshTooltip": "Prüfen, ob erkannte Duplikate noch existieren, und fehlende Dateien ohne erneuten Scan entfernen",
+            "refreshRemoved": "{count} fehlende Dateien aus der Liste entfernt",
+            "refreshUpToDate": "Alle Dateien existieren noch",
+            "refreshChanged": "{count} geänderte Dateien aus der Liste entfernt",
+            "refreshUnverified": "{count} konnten nicht geprüft werden",
+            "refreshFailed": "Aktualisierung fehlgeschlagen: {error}"
         },
         "diskUsage": {
             "title": "Speicherplatznutzung",

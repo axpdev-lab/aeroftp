@@ -4455,7 +4455,13 @@
             "modeNonIdentical": "Não idêntico",
             "groupsCount": "Grupos: {count}",
             "duplicateFilesCount": "Arquivos duplicados: {count}",
-            "copiesCount": "{count} cópias"
+            "copiesCount": "{count} cópias",
+            "refreshTooltip": "Verificar se os duplicados detectados ainda existem e remover os arquivos ausentes sem verificar novamente",
+            "refreshRemoved": "{count} arquivos ausentes removidos da lista",
+            "refreshUpToDate": "Todos os arquivos ainda existem",
+            "refreshChanged": "{count} arquivos alterados removidos da lista",
+            "refreshUnverified": "{count} não puderam ser verificados",
+            "refreshFailed": "Falha ao atualizar: {error}"
         },
         "diskUsage": {
             "title": "Uso de Disco",
