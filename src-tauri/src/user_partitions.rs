@@ -5577,13 +5577,15 @@ fn align_private_tokens_of(
                 else {
                     continue;
                 };
-                let copy = match read_secret(&key)? {
-                    Some(vault) => row_may_be_a_copy(&tx, uid, &key, &row, &digest, Some(&vault))?,
-                    None => {
-                        !is_proton_session_key(&key) && !stamp_matches(&tx, uid, &key, &digest)?
-                    }
-                };
-                if copy {
+                let vault = read_secret(&key)?;
+                if row_may_be_a_copy(
+                    &tx,
+                    uid,
+                    &key,
+                    &row,
+                    &digest,
+                    vault.as_deref().map(|v| v.as_str()),
+                )? {
                     delete_user_credential_for(&tx, uid, &key)?;
                 }
             }
@@ -5648,7 +5650,10 @@ fn align_private_tokens_of(
 /// refresh has rotated it to since; any other row is a copy unless its own
 /// sign-in stamped it ([`stamp_matches`], against `digest`, the digest of
 /// the ciphertext `row` was decrypted from) or it signs in to another
-/// Jottacloud user ([`another_jottacloud_user`]). No vault value, no copy.
+/// Jottacloud user ([`another_jottacloud_user`]). With no vault value the
+/// owner signed out first, and a copy outlives its key: any unstamped row is
+/// a copy all the same, but a Proton session, whose owner's sign-out ended
+/// it.
 fn row_may_be_a_copy(
     conn: &Connection,
     user_id: i64,
@@ -5658,7 +5663,7 @@ fn row_may_be_a_copy(
     vault: Option<&str>,
 ) -> Result<bool, String> {
     let Some(vault) = vault else {
-        return Ok(false);
+        return Ok(!is_proton_session_key(key) && !stamp_matches(conn, user_id, key, digest)?);
     };
     if is_proton_session_key(key) {
         return Ok(proton_session_uid(row)
@@ -6292,13 +6297,18 @@ pub(crate) fn mirror_credential_for_user_typed(
     credential_type: &str,
     secret: &str,
 ) -> Result<(), String> {
-    // A connection that began with no account writes as the legacy owner,
-    // whose row its readers prefer to the vault ([`read_legacy_only_credential`]).
-    let user_id = captured_list_owner(user_id)?;
-    if user_id == LEGACY_ONLY_ACCOUNT {
-        // No account yet: the vault entry is the only copy.
-        return Ok(());
-    }
+    // A connection that began with no account writes as the legacy owner:
+    // its row follows the vault copy just written ([`legacy_only_copies`]).
+    let user_id = if user_id == LEGACY_ONLY_ACCOUNT {
+        match legacy_only_copies(credential_id)? {
+            LegacyOnlyCopies::VaultAlone => return Ok(()),
+            LegacyOnlyCopies::VaultThenOwnersRow(owner) | LegacyOnlyCopies::OwnersRow(owner) => {
+                owner
+            }
+        }
+    } else {
+        user_id
+    };
     let conn = open_or_init_cli()?;
     mirror_into_partition(
         &conn,
