@@ -3461,3 +3461,35 @@ fn a_refused_session_save_keeps_a_session_saved_while_it_began() {
     );
     assert_eq!(accounts.copies("raced").0.as_deref(), Some("b1"));
 }
+
+
+/// A strict sign-out with no account whose read of the session fails after
+/// the session's lease was taken keeps the session, where the read used to
+/// say there was none and the session went without its revoke.
+#[test]
+fn a_session_the_revoke_cannot_read_is_kept() {
+    if !in_isolated_child("a_session_the_revoke_cannot_read_is_kept") {
+        return;
+    }
+    let accounts = Accounts::open();
+    let owner = vault::SessionOwner::for_user(None);
+    vault::store_session(
+        owner,
+        Some("unreadable-revoke"),
+        &session("unreadable-revoke-uid", "r1"),
+    )
+    .unwrap();
+    let revokes = vault::test_seams::revokes();
+    // The two reads of the lease pass, the revoke's own read fails.
+    vault::test_seams::fail_vault_read_after(2);
+    let outcome = block_on(vault::end_session_reporting(owner, "unreadable-revoke"));
+    assert!(
+        matches!(outcome, Ok(vault::RevokeOutcome::Failed(_))),
+        "the session may still be live: {outcome:?}"
+    );
+    assert_eq!(vault::test_seams::revokes(), revokes);
+    assert!(
+        accounts.in_vault("unreadable-revoke"),
+        "the session the revoke could not read stays"
+    );
+}

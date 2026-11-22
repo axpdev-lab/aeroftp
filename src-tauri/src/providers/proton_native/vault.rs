@@ -271,6 +271,22 @@ pub(crate) mod test_seams {
         SESSION_PRESENCE_READ_FAILS.with(std::cell::Cell::get)
     }
 
+    static VAULT_READS_BEFORE_FAILURE: AtomicUsize = AtomicUsize::new(0);
+
+    /// After `reads` more reads of a saved session's vault value, on any
+    /// thread, the next one fails as a vault that cannot be read does, once.
+    pub(crate) fn fail_vault_read_after(reads: usize) {
+        VAULT_READS_BEFORE_FAILURE.store(reads + 1, Ordering::SeqCst);
+    }
+
+    pub(super) fn vault_read_fails() -> bool {
+        VAULT_READS_BEFORE_FAILURE
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |left| {
+                left.checked_sub(1)
+            })
+            .is_ok_and(|left| left == 1)
+    }
+
     static NO_FILE_LOCKS: AtomicBool = AtomicBool::new(false);
 
     /// Plays a filesystem without file locks for every session key lock, on
@@ -588,7 +604,7 @@ fn read(
         Some(user) => {
             crate::user_partitions::resolve_credential_for_user_owner_aware(store, user, key)
         }
-        None => Ok(store.get(key).ok().map(Zeroizing::new)),
+        None => vault_value(store, key).map_err(|error| error.to_string()),
     };
     match result {
         Ok(Some(json)) => {
@@ -598,8 +614,18 @@ fn read(
             // authoritative. The UID match confines this to the session the
             // caller's own partition already holds. A private account's
             // session is its row alone: the vault key is the legacy owner's.
-            let shares_the_vault = private_account(owner)?.is_none();
-            if let Some(raw) = shares_the_vault.then(|| store.get(key).ok()).flatten() {
+            // Without an account the value read above is the vault's.
+            let shares_the_vault = owner.user_id.is_some() && private_account(owner)?.is_none();
+            let vault_copy = if shares_the_vault {
+                vault_value(store, key).map_err(|error| {
+                    ProviderError::Other(format!(
+                        "the saved Proton session could not be read: {error}"
+                    ))
+                })?
+            } else {
+                None
+            };
+            if let Some(raw) = vault_copy {
                 if let Ok(saved) = parse(&raw) {
                     if saved.tokens.uid == session.tokens.uid {
                         session.tokens = saved.tokens;
@@ -612,6 +638,31 @@ fn read(
         Err(error) => Err(ProviderError::Other(format!(
             "the saved Proton session could not be read: {error}"
         ))),
+    }
+}
+
+/// The vault's value of `key`, `None` when it has none. A read the vault
+/// refuses is an error, never a missing session: a sign-out or a purge that
+/// read it as none would remove a session it never ended on Proton.
+fn vault_value(
+    store: &CredentialStore,
+    key: &str,
+) -> Result<Option<Zeroizing<String>>, CredentialError> {
+    let read = store.get(key);
+    // The vault's answer replaced by a read that fails, so the arm below is
+    // the one the test runs.
+    #[cfg(test)]
+    let read = if test_seams::vault_read_fails() {
+        Err(CredentialError::Encryption(
+            "the vault could not be read (test)".into(),
+        ))
+    } else {
+        read
+    };
+    match read {
+        Ok(value) => Ok(Some(Zeroizing::new(value))),
+        Err(CredentialError::NotFound(_)) => Ok(None),
+        Err(error) => Err(error),
     }
 }
 
