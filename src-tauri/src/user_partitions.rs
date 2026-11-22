@@ -10823,12 +10823,8 @@ pub async fn user_partitions_health(app: AppHandle) -> Result<PartitionHealth, S
 fn snapshot_before_rebuild(path: &std::path::Path) -> Result<PathBuf, String> {
     let stamp = chrono::Utc::now().format("%Y%m%dT%H%M%SZ");
     let backup = path.with_file_name(format!("{DB_FILENAME}.pre-rebuild-{stamp}.bak"));
-    let vacuumed = Connection::open(path).and_then(|conn| {
-        // Best effort: a reader holding the log keeps it, and VACUUM INTO
-        // reads through it all the same.
-        let _ = conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(()));
-        conn.execute("VACUUM INTO ?1", params![backup.to_string_lossy()])
-    });
+    let vacuumed = Connection::open(path)
+        .and_then(|conn| conn.execute("VACUUM INTO ?1", params![backup.to_string_lossy()]));
     if let Err(vacuum) = vacuumed {
         let _ = std::fs::remove_file(&backup);
         std::fs::copy(path, &backup).map_err(|e| {
@@ -10851,6 +10847,65 @@ fn snapshot_before_rebuild(path: &std::path::Path) -> Result<PathBuf, String> {
     Ok(backup)
 }
 
+/// A rebuild refused because a credential writer holds the partition database.
+const REBUILD_WHILE_WRITTEN: &str =
+    "The account database is being written right now, so it was not rebuilt; try again";
+
+#[cfg(test)]
+thread_local! {
+    /// Runs once on this thread in the next [`remove_partitions_db_for_rebuild`],
+    /// after its snapshot and before the removal: a credential writer
+    /// committing meanwhile.
+    static AFTER_REBUILD_SNAPSHOT: DualWriteHook = const { RefCell::new(None) };
+}
+
+/// Snapshot the partition database at `path` ([`snapshot_before_rebuild`])
+/// and remove it with its SQLite sidecars, for a rebuild; the backup, `None`
+/// for no database. A credential writer that takes no [`ProfileListLock`] (a
+/// token refresh, [`replace_user_credential_where`]) is held off from before
+/// the snapshot to the removal by a write transaction of this function's own,
+/// so the backup holds every commit the removed database had; a database a
+/// writer holds now is not rebuilt ([`REBUILD_WHILE_WRITTEN`]). One SQLite
+/// cannot read (a damaged one) has no writer to hold off and is copied as it
+/// is. Windows removes no file a connection holds open: there the transaction
+/// ends just before the removal.
+fn remove_partitions_db_for_rebuild(path: &std::path::Path) -> Result<Option<PathBuf>, String> {
+    if !path.is_file() {
+        return Ok(None);
+    }
+    let guard =
+        Connection::open(path).map_err(|e| format!("Open user_partitions.db for rebuild: {e}"))?;
+    // Best effort, before the guard: a reader holding the log keeps it, and
+    // VACUUM INTO reads through it all the same.
+    let _ = guard.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(()));
+    match guard.execute_batch("BEGIN IMMEDIATE") {
+        Ok(()) => {}
+        Err(rusqlite::Error::SqliteFailure(e, _))
+            if matches!(
+                e.code,
+                rusqlite::ErrorCode::DatabaseBusy | rusqlite::ErrorCode::DatabaseLocked
+            ) =>
+        {
+            return Err(REBUILD_WHILE_WRITTEN.to_string());
+        }
+        Err(_) => {}
+    }
+    let backup = snapshot_before_rebuild(path)?;
+    #[cfg(test)]
+    run_dual_write_hook(&AFTER_REBUILD_SNAPSHOT);
+    // Drop any unlocked session, then remove the DB and its SQLite sidecars.
+    clear_user_session();
+    #[cfg(windows)]
+    drop(guard);
+    std::fs::remove_file(path)
+        .map_err(|e| format!("Remove user_partitions.db for rebuild: {e}"))?;
+    let _ = std::fs::remove_file(path.with_extension("db-wal"));
+    let _ = std::fs::remove_file(path.with_extension("db-shm"));
+    #[cfg(not(windows))]
+    drop(guard);
+    Ok(Some(backup))
+}
+
 /// Rebuild the active partition from this device's legacy credential vault.
 /// Snapshots and removes the current (possibly machine-bound, unreadable)
 /// `user_partitions.db`, then re-runs the legacy migration so a fresh default
@@ -10865,17 +10920,8 @@ pub async fn user_partitions_repair_rebuild(
     let mut report = PartitionRebuildReport::default();
     let lock = ProfileListLock::acquire_for_path(&path)?;
 
-    if path.is_file() {
-        let backup = snapshot_before_rebuild(&path)?;
+    if let Some(backup) = remove_partitions_db_for_rebuild(&path)? {
         report.backup_path = Some(backup.to_string_lossy().into_owned());
-        // Drop any unlocked session, then remove the DB and its SQLite
-        // sidecars. Connections are short-lived per command, so no open handle
-        // blocks the removal (cross-platform safe).
-        clear_user_session();
-        std::fs::remove_file(&path)
-            .map_err(|e| format!("Remove user_partitions.db for rebuild: {e}"))?;
-        let _ = std::fs::remove_file(path.with_extension("db-wal"));
-        let _ = std::fs::remove_file(path.with_extension("db-shm"));
     }
 
     // Rebuild from the legacy credential vault under the local root_key.
@@ -12654,6 +12700,57 @@ mod tests {
             "the backup lost a committed write"
         );
         drop(reader);
+    }
+
+    /// A rebuild holds off a credential writer that takes no list lock from
+    /// before its snapshot to the removal: a commit tried after the snapshot
+    /// fails busy, so the backup misses no commit of the removed database.
+    #[test]
+    fn a_credential_commit_after_the_rebuild_snapshot_is_held_off() {
+        let _guard = test_lock();
+        clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(DB_FILENAME);
+        let mut conn = open_or_init_path(path.clone()).expect("open");
+        let root = test_root();
+        migrate_legacy_payloads(&mut conn, Some("[]"), None, &root).expect("seed");
+        let owner = nonprofile_secret_owner(&conn).unwrap().unwrap();
+        clear_user_session();
+        set_user_credential_for(&conn, &root, owner, "oauth_box_p", "oauth", "old").unwrap();
+        drop(conn);
+        let attempt = std::rc::Rc::new(RefCell::new(None));
+        let (hook_path, seen) = (path.clone(), attempt.clone());
+        AFTER_REBUILD_SNAPSHOT.set(Some(Box::new(move || {
+            let writer = Connection::open(&hook_path).unwrap();
+            writer.busy_timeout(std::time::Duration::ZERO).unwrap();
+            *seen.borrow_mut() = Some(set_user_credential_for(
+                &writer,
+                &test_root(),
+                owner,
+                "oauth_box_p",
+                "oauth",
+                "new",
+            ));
+        })));
+        let backup = remove_partitions_db_for_rebuild(&path).unwrap().unwrap();
+        assert!(!path.exists(), "the database is removed");
+        let attempt = attempt.borrow_mut().take().expect("the hook ran");
+        assert!(attempt.is_err(), "a commit after the snapshot: {attempt:?}");
+        let alone = tempfile::tempdir().unwrap();
+        let copy = alone.path().join("copy.db");
+        std::fs::copy(&backup, &copy).unwrap();
+        assert_eq!(
+            get_user_credential_for(
+                &Connection::open(&copy).unwrap(),
+                &root,
+                owner,
+                "oauth_box_p"
+            )
+            .unwrap()
+            .as_deref()
+            .map(String::as_str),
+            Some("old")
+        );
     }
 
     /// A connection that began with no account reads the legacy blob while no
