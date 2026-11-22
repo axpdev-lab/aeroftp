@@ -2327,13 +2327,15 @@ impl OAuth2Manager {
         // A non-owner's tokens live only in its partition: the global key,
         // memory cache and plaintext files belong to the legacy owner.
         if let (Some(user), false) = (owner, legacy_owner) {
+            // A sign-out ends the chain a refresh kept, before any step that
+            // can fail: a delete refused below must not leave it for the next
+            // read to write back over the row the user asked to remove.
+            drop_pending_rotation(owner, &account, None);
             let conn = crate::user_partitions::open_or_init_cli()
                 .map_err(|e| ProviderError::Other(format!("Failed to delete tokens: {}", e)))?;
             crate::user_partitions::delete_user_credential_for(&conn, user, &account)
                 .map_err(|e| ProviderError::Other(format!("Failed to delete tokens: {}", e)))?;
             info!("Tokens deleted from user partition for {:?}", provider);
-            // A sign-out ends the chain a refresh kept, too.
-            drop_pending_rotation(owner, &account, None);
             return Ok(());
         }
 
@@ -2353,6 +2355,8 @@ impl OAuth2Manager {
                 .map_err(|e| ProviderError::Other(format!("Failed to delete tokens: {e}")))
         };
 
+        // As above: dropped before the fallible cleanup, not after it.
+        drop_pending_rotation(owner, &account, None);
         let json_path =
             Self::token_dir()?.join(format!("oauth2_{:?}.json", provider).to_lowercase());
         Self::delete_shared_tokens(
@@ -2362,7 +2366,6 @@ impl OAuth2Manager {
             LegacyTokenGuard::acquire_for_signout,
             unmirror,
         )?;
-        drop_pending_rotation(owner, &account, None);
         Ok(())
     }
 
@@ -4413,6 +4416,104 @@ mod tests {
                 pending_rotation_record(Some(second), account),
                 None,
                 "a sign-out drops it"
+            );
+        });
+    }
+
+    /// R7-6 (a): a sign-out whose delete fails still drops the kept rotation,
+    /// at both sites: the account's own row (a non-owner) and the legacy
+    /// owner's cleanup, whose first fallible step is the partition copy. The
+    /// next read then writes nothing over what the user asked to remove. Red
+    /// while the drop runs after the fallible step: the failed sign-out
+    /// leaves the rotation, and the next read writes it back.
+    #[test]
+    fn a_sign_out_whose_delete_fails_leaves_no_kept_rotation() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::oauth2::tests::a_sign_out_whose_delete_fails_leaves_no_kept_rotation",
+        ) {
+            return;
+        }
+        with_two_box_accounts(|store, first, second, account| {
+            let conn = crate::user_partitions::open_or_init_cli().unwrap();
+            let root = Zeroizing::new(store.derive_user_partition_wrapping_key());
+            let rotation = serde_json::json!({
+                "access_token": "kept-access", "refresh_token": "kept-refresh",
+                "expires_at": null, "token_type": "Bearer", "scopes": [],
+                "owner_family": "v1:kept-rotation",
+            })
+            .to_string();
+            let refuse_deletes = |on: bool| {
+                conn.execute_batch(if on {
+                    "CREATE TRIGGER refuse_credential_delete BEFORE DELETE ON user_credentials
+                     BEGIN SELECT RAISE(ABORT, 'delete refused for the test'); END;"
+                } else {
+                    "DROP TRIGGER refuse_credential_delete;"
+                })
+                .unwrap();
+            };
+
+            // The non-owner: its row is the only copy.
+            let row = stored_row(store, second, account).expect("the account's row");
+            file_pending_rotation(
+                Some(second),
+                account,
+                PendingRotation {
+                    source: PendingSource::Partition(second),
+                    read: Zeroizing::new(row.clone()),
+                    record: Zeroizing::new(rotation.clone()),
+                },
+                "test",
+            );
+            refuse_deletes(true);
+            let manager = OAuth2Manager::new().with_credential_user(Some(second));
+            assert!(manager
+                .delete_tokens(OAuthProvider::Box, "shared-profile")
+                .is_err());
+            refuse_deletes(false);
+            assert_eq!(
+                pending_rotation_record(Some(second), account),
+                None,
+                "a failed sign-out drops the kept rotation"
+            );
+            let _ = valid_token(&manager, "shared-profile");
+            assert_eq!(
+                stored_row(store, second, account).as_deref(),
+                Some(row.as_str()),
+                "the next read writes nothing back"
+            );
+
+            // The legacy owner: a partition copy to remove first.
+            let vault = store.get(account).expect("the owner's token");
+            crate::user_partitions::set_user_credential_for(
+                &conn, &root, first, account, "oauth", &vault,
+            )
+            .unwrap();
+            file_pending_rotation(
+                Some(first),
+                account,
+                PendingRotation {
+                    source: PendingSource::Vault,
+                    read: Zeroizing::new(vault.clone()),
+                    record: Zeroizing::new(rotation.clone()),
+                },
+                "test",
+            );
+            refuse_deletes(true);
+            let manager = OAuth2Manager::new().with_credential_user(Some(first));
+            assert!(manager
+                .delete_tokens(OAuthProvider::Box, "shared-profile")
+                .is_err());
+            refuse_deletes(false);
+            assert_eq!(
+                pending_rotation_record(Some(first), account),
+                None,
+                "a failed sign-out of the legacy owner drops it too"
+            );
+            let _ = valid_token(&manager, "shared-profile");
+            assert_eq!(
+                store.get(account).ok().as_deref(),
+                Some(vault.as_str()),
+                "the next read writes nothing back to the vault"
             );
         });
     }
