@@ -273,7 +273,8 @@ fn map_storage(kind: &str, config: &serde_json::Value) -> Mapped {
             return Mapped::Skipped("local filesystem, not a server".to_string());
         }
         other => {
-            return Mapped::Skipped(format!("unsupported kopia storage type: {other}"));
+            let safe_kind = crate::bridge_shared::sanitize_warning_name(other, "unknown");
+            return Mapped::Skipped(format!("unsupported kopia storage type: {safe_kind}"));
         }
     };
 
@@ -327,14 +328,15 @@ pub fn import_kopia(path: &Path) -> Result<KopiaImportResult, String> {
         serde_json::from_str(&raw).map_err(|e| format!("parse kopia json: {e}"))?;
 
     let kind = kc.storage.kind.to_lowercase();
+    let safe_kind = crate::bridge_shared::sanitize_warning_name(&kc.storage.kind, "unknown");
     let mut servers = Vec::new();
     let mut skipped = Vec::new();
 
     match map_storage(&kind, &kc.storage.config) {
         Mapped::Server(s) => servers.push(*s),
         Mapped::Skipped(reason) => skipped.push(KopiaSkippedRemote {
-            name: format!("Kopia ({})", kc.storage.kind),
-            kind: kc.storage.kind.clone(),
+            name: format!("Kopia ({safe_kind})"),
+            kind: safe_kind,
             reason,
         }),
     }
@@ -655,6 +657,21 @@ mod tests {
         assert_eq!(r.skipped.len(), 1);
         assert_eq!(r.skipped[0].kind, "gcs");
         assert_eq!(r.skipped[0].reason, "OAuth/SAS backend not bridgeable");
+    }
+
+    #[test]
+    fn credential_bearing_storage_type_is_sanitized_in_skip_report() {
+        let result =
+            import_str(r#"{ "storage": { "type": "ftp://alice:pw@host?token=x", "config": {} } }"#);
+
+        assert!(result.servers.is_empty());
+        assert_eq!(result.skipped.len(), 1);
+        assert_eq!(result.skipped[0].name, "Kopia (host)");
+        assert_eq!(result.skipped[0].kind, "host");
+        let serialized = serde_json::to_string(&result.skipped).unwrap();
+        for secret in ["alice", "pw", "token=x"] {
+            assert!(!serialized.contains(secret), "{serialized}");
+        }
     }
 
     #[test]

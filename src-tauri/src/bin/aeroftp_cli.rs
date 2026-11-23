@@ -44232,7 +44232,10 @@ async fn cmd_export_filezilla(
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
-    use ftp_client_gui_lib::filezilla_import::{export_filezilla, FileZillaExportServer};
+    use ftp_client_gui_lib::{
+        bridge_shared::ExportReport,
+        filezilla_import::{export_filezilla, FileZillaExportServer},
+    };
 
     let store = match open_vault(cli) {
         Ok(s) => s,
@@ -44250,12 +44253,11 @@ async fn cmd_export_filezilla(
     };
     let selectors = parse_profile_selectors(profiles);
 
-    // FileZilla supports FTP/FTPS/SFTP and Storj (s3). For consistency
-    // with the GUI we restrict to the protocol set commonly tested.
-    let supported = ["ftp", "ftps", "sftp"];
+    // Keep the CLI protocol filter consistent with FileZilla and the GUI.
+    let supported = ["ftp", "ftps", "sftp", "s3"];
     let oauth: [&str; 0] = [];
 
-    let collected = match collect_export_scaffold(
+    let mut collected = match collect_export_scaffold(
         &store,
         &servers_json,
         selectors.as_deref(),
@@ -44295,21 +44297,24 @@ async fn cmd_export_filezilla(
     };
 
     match export_filezilla(&exportable, &collected.passwords, &target_path) {
-        // Nothing written, as for the other formats: the file at the
-        // destination is left as it was.
-        Ok(0) => {
-            emit_empty_export(json, &collected.skipped);
-            4
-        }
-        Ok(count) => {
-            emit_export_success(
-                json,
-                "FileZilla sitemanager.xml",
-                count,
-                &target_path,
-                &collected.skipped,
-            );
-            0
+        Ok(outcome) => {
+            let (count, refused) = outcome.into_export_parts();
+            collected.skipped.extend(refused);
+            // Nothing written, as for the other formats: the file at the
+            // destination is left as it was.
+            if count == 0 {
+                emit_empty_export(json, &collected.skipped);
+                4
+            } else {
+                emit_export_success(
+                    json,
+                    "FileZilla sitemanager.xml",
+                    count,
+                    &target_path,
+                    &collected.skipped,
+                );
+                0
+            }
         }
         Err(e) => {
             print_error(format, &format!("export failed: {}", e), 4);

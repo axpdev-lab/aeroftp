@@ -708,10 +708,15 @@ fn map_server_with_context(
                     safe_name,
                     fz_protocol
                 );
-                return Err(format!(
-                    "unsupported Protocol={}",
-                    server.fields.get("Protocol").unwrap_or(&String::new())
-                ));
+                let safe_protocol = crate::bridge_shared::sanitize_warning_name(
+                    server
+                        .fields
+                        .get("Protocol")
+                        .map(String::as_str)
+                        .unwrap_or(""),
+                    "unknown",
+                );
+                return Err(format!("unsupported Protocol={safe_protocol}"));
             }
         }
     };
@@ -1470,7 +1475,7 @@ pub fn import_filezilla(config_path: &Path) -> Result<FileZillaImportResult, Str
                         &fz_server.name,
                         "FileZilla site",
                     ),
-                    protocol: fz_protocol,
+                    protocol: crate::bridge_shared::sanitize_warning_name(&fz_protocol, "unknown"),
                     reason,
                 });
             }
@@ -1590,7 +1595,7 @@ pub fn export_filezilla(
     servers: &[FileZillaExportServer],
     passwords: &HashMap<String, String>,
     output_path: &Path,
-) -> Result<usize, String> {
+) -> Result<crate::bridge_shared::BridgeExportOutcome, String> {
     let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
     // Export with version 3.72.1 and the platform matching `WcharUnit::native()`
     // (`FileZilla_3.72.1_src/src/commonui/xml_file.cpp:177-185`) so Protocol=6
@@ -1607,7 +1612,7 @@ pub fn export_filezilla(
         "<FileZilla3 version=\"3.72.1\" platform=\"{platform}\">\n"
     ));
     xml.push_str("  <Servers>\n");
-    let mut exported = 0;
+    let mut outcome = crate::bridge_shared::BridgeExportOutcome::default();
     // FileZilla addresses a site by its name (`--site 0/<name>`): two of one
     // name leave the second unreachable that way.
     let mut names = crate::bridge_shared::ExportEntryNames::exact(servers.iter().map(|s| &s.name));
@@ -1632,7 +1637,13 @@ pub fn export_filezilla(
             },
             // FileZilla's S3 is 7; 6 is INSECURE_FTP.
             "s3" => 7,
-            _ => continue,
+            _ => {
+                outcome.skip(
+                    &crate::bridge_shared::sanitize_warning_name(&server.name, "FileZilla site"),
+                    "unsupported protocol for FileZilla export",
+                );
+                continue;
+            }
         };
 
         // When an S3 profile sets an explicit `options.endpoint` override,
@@ -1655,22 +1666,37 @@ pub fn export_filezilla(
                 None,
             ) {
                 Ok(Some(ep)) => {
-                    // FileZilla Pro S3 (`Protocol=7`) encodes only `<Host>`, `<Port>`,
-                    // and `<RemoteDir>` (bucket + key prefix); it cannot represent an
-                    // S3 endpoint base path such as `/gateway`. Skip the profile so it
-                    // is not silently exported as a root endpoint.
-                    if !ep.path.is_empty() {
+                    // Protocol=7 stores only host and port. Both a non-HTTPS scheme
+                    // and an endpoint base path would be lost on reimport.
+                    let safe_name =
+                        crate::bridge_shared::sanitize_warning_name(&server.name, "FileZilla site");
+                    if ep.scheme != "https" {
+                        outcome.skip(
+                            &safe_name,
+                            "FileZilla Protocol=7 cannot preserve a non-HTTPS S3 endpoint",
+                        );
                         continue;
                     }
-                    let port = ep.port.map(u32::from).unwrap_or(if ep.scheme == "http" {
-                        80
-                    } else {
-                        443
-                    });
-                    (ep.host, port)
+                    if !ep.path.is_empty() {
+                        outcome.skip(
+                            &safe_name,
+                            "FileZilla Protocol=7 cannot preserve an S3 endpoint base path",
+                        );
+                        continue;
+                    }
+                    (ep.host, ep.port.map(u32::from).unwrap_or(443))
                 }
                 Ok(None) => (server.host.clone(), server.port),
-                Err(_) => continue,
+                Err(_) => {
+                    outcome.skip(
+                        &crate::bridge_shared::sanitize_warning_name(
+                            &server.name,
+                            "FileZilla site",
+                        ),
+                        "S3 endpoint is not valid for FileZilla export",
+                    );
+                    continue;
+                }
             }
         } else {
             (server.host.clone(), server.port)
@@ -1746,16 +1772,16 @@ pub fn export_filezilla(
             sanitize(&names.claim(&server.name))
         ));
         xml.push_str("    </Server>\n");
-        exported += 1;
+        outcome.exported += 1;
     }
 
     xml.push_str("  </Servers>\n");
     xml.push_str("</FileZilla3>\n");
 
-    crate::bridge_shared::write_export(exported, output_path, xml.as_bytes())
+    crate::bridge_shared::write_export(outcome.exported, output_path, xml.as_bytes())
         .map_err(|e| format!("Write FileZilla config: {}", e))?;
 
-    Ok(exported)
+    Ok(outcome)
 }
 
 // uuid_v4 now lives in `crate::bridge_shared` (Refactor 6).
@@ -2084,7 +2110,10 @@ mod tests {
             initial_path: None,
         }];
         let passwords = HashMap::from([(servers[0].name.clone(), "p&ss".to_string())]);
-        assert_eq!(export_filezilla(&servers, &passwords, &path), Ok(1));
+        assert_eq!(
+            export_filezilla(&servers, &passwords, &path).map(|outcome| outcome.exported),
+            Ok(1)
+        );
         let written = std::fs::read_to_string(&path).expect("read export");
         let imported = parse_sitemanager_xml(&written);
         assert_eq!(imported.len(), 1);
@@ -2440,7 +2469,10 @@ mod tests {
                 initial_path: None,
             },
         ];
-        assert_eq!(export_filezilla(&servers, &HashMap::new(), &out), Ok(2));
+        assert_eq!(
+            export_filezilla(&servers, &HashMap::new(), &out).map(|outcome| outcome.exported),
+            Ok(2)
+        );
         let written = parse_sitemanager_xml(&std::fs::read_to_string(&out).unwrap());
         let protocol_of = |name: &str| {
             written
@@ -2741,7 +2773,8 @@ mod tests {
             initial_path: s3.initial_path.clone(),
         };
         assert_eq!(
-            export_filezilla(&[export_row], &HashMap::new(), &exported_path),
+            export_filezilla(&[export_row], &HashMap::new(), &exported_path)
+                .map(|outcome| outcome.exported),
             Ok(1)
         );
         let roundtripped = import_filezilla(&exported_path).unwrap();
@@ -2847,7 +2880,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("sitemanager.xml");
         assert_eq!(
-            export_filezilla(&rows, &HashMap::new(), &path),
+            export_filezilla(&rows, &HashMap::new(), &path).map(|outcome| outcome.exported),
             Ok(rows.len())
         );
 
@@ -2941,7 +2974,8 @@ mod tests {
             },
         ];
         assert_eq!(
-            export_filezilla(&export_rows, &HashMap::new(), &exported_path),
+            export_filezilla(&export_rows, &HashMap::new(), &exported_path)
+                .map(|outcome| outcome.exported),
             Ok(2)
         );
         let imported = import_filezilla(&exported_path).unwrap();
@@ -3006,7 +3040,8 @@ mod tests {
             },
         ];
         assert_eq!(
-            export_filezilla(&export_rows, &HashMap::new(), &exported_path),
+            export_filezilla(&export_rows, &HashMap::new(), &exported_path)
+                .map(|outcome| outcome.exported),
             Ok(3)
         );
         let raw_xml = std::fs::read_to_string(&exported_path).unwrap();
@@ -3257,7 +3292,10 @@ mod tests {
             options: None,
             initial_path: Some("/\u{1F600}\u{1F600}/1 a".to_string()),
         };
-        assert_eq!(export_filezilla(&[row], &HashMap::new(), &exp_path), Ok(1));
+        assert_eq!(
+            export_filezilla(&[row], &HashMap::new(), &exp_path).map(|outcome| outcome.exported),
+            Ok(1)
+        );
         let exp_xml = std::fs::read_to_string(&exp_path).unwrap();
         let expected_platform = if cfg!(windows) {
             r#"platform="windows""#
@@ -3378,7 +3416,10 @@ mod tests {
             },
         ];
         let out = dir.path().join("sitemanager.xml");
-        assert_eq!(export_filezilla(&rows, &HashMap::new(), &out), Ok(2));
+        assert_eq!(
+            export_filezilla(&rows, &HashMap::new(), &out).map(|outcome| outcome.exported),
+            Ok(2)
+        );
 
         let imported = import_filezilla(&out).unwrap();
         let unix = imported
@@ -3488,7 +3529,12 @@ mod tests {
         );
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("sitemanager.xml");
-        assert_eq!(export_filezilla(&servers, &passwords, &path).unwrap(), 2);
+        assert_eq!(
+            export_filezilla(&servers, &passwords, &path)
+                .unwrap()
+                .exported,
+            2
+        );
         let back = import_filezilla(&path).unwrap();
         assert_eq!(
             crate::bridge_shared::names_hosts_secrets(&back.servers),
@@ -3497,6 +3543,26 @@ mod tests {
                 ("Lab-2", "b.example.com", "secret-b"),
             ])
         );
+    }
+
+    #[test]
+    fn credential_bearing_protocol_is_sanitized_in_skip_report() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sitemanager.xml");
+        std::fs::write(
+            &path,
+            r#"<?xml version="1.0" encoding="UTF-8"?><FileZilla3><Servers><Server><Host>ftp://alice:pa/ss@host</Host><Port>21</Port><Protocol>ftp://alice:pw@host?token=x</Protocol><User>u</User><Name>ProtocolSkip</Name></Server></Servers></FileZilla3>"#,
+        )
+        .unwrap();
+
+        let result = import_filezilla(&path).unwrap();
+        assert!(result.servers.is_empty());
+        assert_eq!(result.skipped.len(), 1);
+        assert_eq!(result.skipped[0].protocol, "host");
+        let serialized = serde_json::to_string(&result.skipped).unwrap();
+        for secret in ["alice", "pw", "token=x", "pa/ss"] {
+            assert!(!serialized.contains(secret), "{serialized}");
+        }
     }
 
     #[test]
@@ -3637,8 +3703,9 @@ mod tests {
                 })),
             },
         ];
-        let count = export_filezilla(&servers, &HashMap::new(), &path).unwrap();
-        assert_eq!(count, 2);
+        let outcome = export_filezilla(&servers, &HashMap::new(), &path).unwrap();
+        assert_eq!(outcome.exported, 2);
+        assert!(outcome.skipped.is_empty());
         let back = import_filezilla(&path).unwrap();
         let overridden = back
             .servers
@@ -3700,7 +3767,9 @@ mod tests {
             options: srv.options.clone(),
         };
         assert_eq!(
-            export_filezilla(&[export_item], &HashMap::new(), &out).unwrap(),
+            export_filezilla(&[export_item], &HashMap::new(), &out)
+                .unwrap()
+                .exported,
             1
         );
         let roundtrip = import_filezilla(&out).unwrap();
@@ -3899,10 +3968,23 @@ mod tests {
     }
 
     #[test]
-    fn export_filezilla_skips_path_based_s3_endpoint_and_keeps_root_https_override() {
+    fn export_filezilla_reports_unrepresentable_s3_endpoints_and_keeps_root_https() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("sitemanager.xml");
         let servers = vec![
+            FileZillaExportServer {
+                id: "s3-http-endpoint".into(),
+                name: "HttpS3".into(),
+                host: "stale-http.example.test".into(),
+                port: 443,
+                username: "AKIAHTTP".into(),
+                protocol: Some("s3".into()),
+                initial_path: Some("/archive".into()),
+                options: Some(serde_json::json!({
+                    "bucket": "media",
+                    "endpoint": "http://127.0.0.1:9000"
+                })),
+            },
             FileZillaExportServer {
                 id: "s3-path-endpoint".into(),
                 name: "GatewayS3".into(),
@@ -3930,12 +4012,24 @@ mod tests {
                 })),
             },
         ];
-        let count = export_filezilla(&servers, &HashMap::new(), &path).unwrap();
-        assert_eq!(
-            count, 1,
-            "path-based S3 endpoint must not be exported as a root endpoint"
-        );
+        let outcome = export_filezilla(&servers, &HashMap::new(), &path).unwrap();
+        assert_eq!(outcome.exported, 1);
+        assert_eq!(outcome.skipped.len(), 2);
+        let http_skip = outcome
+            .skipped
+            .iter()
+            .find(|skip| skip.name == "HttpS3")
+            .unwrap();
+        assert!(http_skip.reason.contains("non-HTTPS"));
+        let path_skip = outcome
+            .skipped
+            .iter()
+            .find(|skip| skip.name == "GatewayS3")
+            .unwrap();
+        assert!(path_skip.reason.contains("base path"));
+
         let xml = std::fs::read_to_string(&path).unwrap();
+        assert!(!xml.contains("HttpS3"), "{xml}");
         assert!(!xml.contains("GatewayS3"), "{xml}");
         assert!(xml.contains("RootHttpsS3"), "{xml}");
 
@@ -3945,10 +4039,10 @@ mod tests {
         assert_eq!(back.servers[0].host, "objects.example.test");
         assert_eq!(back.servers[0].port, 9443);
 
-        // When only a path-based S3 profile is passed, export counts 0 and writes no file.
         let solo_path = dir.path().join("solo.xml");
-        let solo_count = export_filezilla(&servers[..1], &HashMap::new(), &solo_path).unwrap();
-        assert_eq!(solo_count, 0);
+        let solo = export_filezilla(&servers[1..2], &HashMap::new(), &solo_path).unwrap();
+        assert_eq!(solo.exported, 0);
+        assert_eq!(solo.skipped.len(), 1);
         assert!(!solo_path.exists());
     }
 }

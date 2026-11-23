@@ -2021,15 +2021,23 @@ fn map_remote(
 
         // Unsupported backend types: skip gracefully
         _ => Err(match source {
-            ImportSourceKind::RcloneFile => format!("unsupported rclone type: {}", rclone_type),
-            ImportSourceKind::Template => {
-                format!("unsupported template backend type: {}", rclone_type)
-            }
+            ImportSourceKind::RcloneFile => format!(
+                "unsupported rclone type: {}",
+                crate::bridge_shared::sanitize_warning_name(&rclone_type, "unknown")
+            ),
+            ImportSourceKind::Template => format!(
+                "unsupported template backend type: {}",
+                crate::bridge_shared::sanitize_warning_name(&rclone_type, "unknown")
+            ),
         }),
     };
     let mut mapped = mapped?;
     if !mapped.host.is_empty() {
-        mapped.host = if mapped.protocol == "swift" {
+        let host_only_ipv6 = matches!(mapped.protocol.as_str(), "ftp" | "ftps" | "sftp")
+            && mapped.host.parse::<std::net::Ipv6Addr>().is_ok();
+        mapped.host = if host_only_ipv6 {
+            Some(mapped.host.clone())
+        } else if mapped.protocol == "swift" {
             crate::bridge_shared::endpoint_without_secrets(&mapped.host)
         } else {
             crate::bridge_shared::try_endpoint_host(&mapped.host)
@@ -2148,7 +2156,9 @@ fn resolve_alias_target(
         };
         let inner = alias.get("remote").map(|r| r.trim()).unwrap_or("");
         if inner.is_empty() {
-            return Err(format!("the alias '{}' points at no remote", name.trim()));
+            let safe_name =
+                crate::bridge_shared::sanitize_warning_name(name.trim(), "rclone remote");
+            return Err(format!("the alias '{safe_name}' points at no remote"));
         }
         let sub = sub.trim_end().trim_start_matches('/');
         target = if sub.is_empty() {
@@ -3022,6 +3032,12 @@ struct MappedSectionsOutcome {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct SubstitutionOverflow;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum GoconfigExpansionError {
+    Intrinsic,
+    Budget,
+}
+
 /// Memoized `(section_name, key) -> flag outcome` table shared across dotted
 /// ancestor chains so resolving N distinct descendants visits each section at
 /// most once per transport key (`O(N)` instead of `O(N^2)`).
@@ -3128,6 +3144,7 @@ fn expand_goconfig_substitutions_cached<'a>(
         &mut lookups,
         default_memo,
     )
+    .map_err(|_| SubstitutionOverflow)
 }
 
 fn expand_goconfig_value<'a>(
@@ -3138,16 +3155,16 @@ fn expand_goconfig_value<'a>(
     recursion: usize,
     lookups: &mut usize,
     default_memo: &mut GoconfigDefaultMemo,
-) -> Result<std::borrow::Cow<'a, str>, SubstitutionOverflow> {
+) -> Result<std::borrow::Cow<'a, str>, GoconfigExpansionError> {
     use std::borrow::Cow;
     if recursion > GOCONFIG_MAX_DEFAULT_RECURSION {
-        return Err(SubstitutionOverflow);
+        return Err(GoconfigExpansionError::Budget);
     }
     // Enforce `GOCONFIG_MAX_EXPANDED_BYTES` on borrowed literals before
     // cloning anything when no `%(name)s` reference is present.
     if goconfig_first_reference(raw).is_none() {
         if raw.len() > GOCONFIG_MAX_EXPANDED_BYTES {
-            return Err(SubstitutionOverflow);
+            return Err(GoconfigExpansionError::Intrinsic);
         }
         return Ok(Cow::Borrowed(raw));
     }
@@ -3155,13 +3172,13 @@ fn expand_goconfig_value<'a>(
     for _ in 0..GOCONFIG_DEPTH_VALUES {
         let Some(reference) = goconfig_first_reference(&value).map(str::to_string) else {
             if value.len() > GOCONFIG_MAX_EXPANDED_BYTES {
-                return Err(SubstitutionOverflow);
+                return Err(GoconfigExpansionError::Intrinsic);
             }
             return Ok(value);
         };
         *lookups += 1;
         if *lookups > GOCONFIG_MAX_LOOKUPS {
-            return Err(SubstitutionOverflow);
+            return Err(GoconfigExpansionError::Budget);
         }
         // Match goconfig's exact key case (`conf.go:196-221`, verified live
         // against rclone v1.75.2): `[DEFAULT]` `JUMP` does not shadow `jump`.
@@ -3172,7 +3189,7 @@ fn expand_goconfig_value<'a>(
             match default_section.and_then(|d| d.get(name).map(|v| (d, v))) {
                 Some((default, default_raw)) => {
                     if default_memo.rejected.contains(name) {
-                        return Err(SubstitutionOverflow);
+                        return Err(GoconfigExpansionError::Intrinsic);
                     }
                     default_memo.values_expanded += 1;
                     let expanded = expand_goconfig_value(
@@ -3184,7 +3201,7 @@ fn expand_goconfig_value<'a>(
                         lookups,
                         default_memo,
                     );
-                    if expanded.is_err() {
+                    if matches!(&expanded, Err(GoconfigExpansionError::Intrinsic)) {
                         default_memo.rejected.insert(name.to_string());
                     }
                     expanded?
@@ -3194,7 +3211,7 @@ fn expand_goconfig_value<'a>(
                     if borrowed.len() > GOCONFIG_MAX_EXPANDED_BYTES
                         && goconfig_first_reference(borrowed).is_none()
                     {
-                        return Err(SubstitutionOverflow);
+                        return Err(GoconfigExpansionError::Intrinsic);
                     }
                     Cow::Borrowed(borrowed)
                 }
@@ -3205,23 +3222,23 @@ fn expand_goconfig_value<'a>(
         let occurrences = value.matches(&reference).count();
         let removed = occurrences
             .checked_mul(reference.len())
-            .ok_or(SubstitutionOverflow)?;
+            .ok_or(GoconfigExpansionError::Intrinsic)?;
         let added = occurrences
             .checked_mul(replacement.len())
-            .ok_or(SubstitutionOverflow)?;
+            .ok_or(GoconfigExpansionError::Intrinsic)?;
         let projected_len = value
             .len()
             .checked_sub(removed)
             .and_then(|base| base.checked_add(added))
-            .ok_or(SubstitutionOverflow)?;
+            .ok_or(GoconfigExpansionError::Intrinsic)?;
         if projected_len > GOCONFIG_MAX_EXPANDED_BYTES {
-            return Err(SubstitutionOverflow);
+            return Err(GoconfigExpansionError::Intrinsic);
         }
         value = Cow::Owned(value.replace(&reference, &replacement));
     }
     match goconfig_first_reference(&value) {
-        Some(_) => Err(SubstitutionOverflow),
-        None if value.len() > GOCONFIG_MAX_EXPANDED_BYTES => Err(SubstitutionOverflow),
+        Some(_) => Err(GoconfigExpansionError::Intrinsic),
+        None if value.len() > GOCONFIG_MAX_EXPANDED_BYTES => Err(GoconfigExpansionError::Intrinsic),
         None => Ok(value),
     }
 }
@@ -3475,7 +3492,7 @@ fn import_parsed_sections(
                     if transport.substitution_overflow {
                         skipped.push(RcloneSkippedRemote {
                             name: report_name,
-                            rclone_type: rclone_type.to_string(),
+                            rclone_type: crate::bridge_shared::sanitize_warning_name(rclone_type, "unknown"),
                             reason: format!(
                                 "{source_name} transport option (`socks_proxy`, `http_proxy`, or `ssh`) exceeded substitution expansion limits; skipped so AeroFTP does not import it as a direct connection"
                             ),
@@ -3491,7 +3508,7 @@ fn import_parsed_sections(
                     if include_ssh && transport.has_external_ssh {
                         skipped.push(RcloneSkippedRemote {
                             name: report_name,
-                            rclone_type: rclone_type.to_string(),
+                            rclone_type: crate::bridge_shared::sanitize_warning_name(rclone_type, "unknown"),
                             reason: format!(
                                 "{source_name} uses an external ssh command (`ssh`) that can target a different host or login than the profile fields; skipped so AeroFTP does not connect to the wrong server. Create the direct SFTP profile manually if needed"
                             ),
@@ -3614,7 +3631,10 @@ fn import_parsed_sections(
                 };
                 skipped.push(RcloneSkippedRemote {
                     name: report_name,
-                    rclone_type: rclone_type.to_string(),
+                    rclone_type: crate::bridge_shared::sanitize_warning_name(
+                        rclone_type,
+                        "unknown",
+                    ),
                     reason,
                 });
             }
@@ -7534,6 +7554,40 @@ http_proxy =
     }
 
     #[test]
+    fn credential_bearing_backend_type_is_sanitized_in_skip_report() {
+        let result = import_text(
+            "[odd]\ntype = ftp://alice:pw@host?token=x\n",
+            "credential-bearing-backend-type",
+        );
+
+        assert!(result.servers.is_empty());
+        assert_eq!(result.skipped.len(), 1);
+        assert_eq!(result.skipped[0].rclone_type, "host");
+        assert!(result.skipped[0].reason.contains("host"));
+        let serialized = serde_json::to_string(&result.skipped).unwrap();
+        for secret in ["alice", "pw", "token=x"] {
+            assert!(!serialized.contains(secret), "{serialized}");
+        }
+    }
+
+    #[test]
+    fn nested_alias_error_sanitizes_connection_string_name() {
+        let secret = "ALIAS_CONNECTION_STRING_SECRET";
+        let name = format!("store,secret_access_key={secret}");
+        let sections = HashMap::from([(
+            name.clone(),
+            RcloneRemote::from([
+                ("type".to_string(), "alias".to_string()),
+                ("remote".to_string(), String::new()),
+            ]),
+        )]);
+
+        let error = resolve_alias_target(&format!("{name}:"), &sections).unwrap_err();
+        assert!(error.contains("rclone remote"));
+        assert!(!error.contains(secret), "{error}");
+    }
+
+    #[test]
     fn connection_string_names_are_redacted_in_file_and_template_reports() {
         let secret = "CONNECTION_STRING_SENTINEL";
         let name = format!("store,secret_access_key={secret}:bucket");
@@ -8090,6 +8144,62 @@ http_proxy =
 
         assert_eq!(memo.defaults.values_expanded, 1);
         assert_eq!(hops, names.len() * 3);
+    }
+
+    #[test]
+    fn depth_limited_default_expansion_does_not_poison_later_shallow_remote() {
+        let mut config = String::from("[DEFAULT]\n");
+        for index in 0..GOCONFIG_MAX_DEFAULT_RECURSION {
+            config.push_str(&format!("v{index} = %(v{})s\n", index + 1));
+        }
+        config.push_str(&format!(
+            "v{} = 127.0.0.1:1080\n\n",
+            GOCONFIG_MAX_DEFAULT_RECURSION
+        ));
+        config.push_str(
+            "[a-deep]\ntype = sftp\nhost = deep.example.test\nuser = alice\nsocks_proxy = %(v0)s\n\n\
+             [z-shallow]\ntype = sftp\nhost = shallow.example.test\nuser = alice\nsocks_proxy = %(v32)s\n",
+        );
+
+        let result = import_text(&config, "depth-dependent-default-rejections");
+        assert!(result
+            .skipped
+            .iter()
+            .any(|skip| skip.name == "a-deep"
+                && skip.reason.contains("substitution expansion limits")));
+        assert!(result
+            .servers
+            .iter()
+            .any(|server| server.name == "z-shallow"));
+        assert!(result
+            .warnings
+            .iter()
+            .any(|warning| warning.name == "z-shallow" && warning.reason.contains("SOCKS5")));
+    }
+
+    #[test]
+    fn host_only_ipv6_literals_survive_ftp_and_sftp_import() {
+        let result = import_text(
+            "[loopback-sftp]\ntype = sftp\nhost = ::1\nport = 2222\nuser = alice\n\n\
+             [documentation-ftp]\ntype = ftp\nhost = 2001:db8::abcd\nport = 2121\nuser = alice\n\n\
+             [bracketed-sftp]\ntype = sftp\nhost = [::1]\nport = 2223\nuser = alice\n",
+            "host-only-ipv6",
+        );
+
+        assert_eq!(result.servers.len(), 3, "{:?}", result.skipped);
+        for (name, host, port) in [
+            ("loopback-sftp", "::1", 2222),
+            ("documentation-ftp", "2001:db8::abcd", 2121),
+            ("bracketed-sftp", "[::1]", 2223),
+        ] {
+            let server = result
+                .servers
+                .iter()
+                .find(|server| server.name == name)
+                .unwrap();
+            assert_eq!(server.host, host);
+            assert_eq!(server.port, port);
+        }
     }
 
     #[test]

@@ -645,11 +645,13 @@ pub fn import_winscp(config_path: &Path) -> Result<WinScpImportResult, String> {
                         reason: "WinSCP requires active FTP for this session; AeroFTP supports passive FTP only".to_string(),
                     });
                 }
-                // Extract display name: last segment after '/' (folder hierarchy)
-                let display_name = crate::bridge_shared::sanitize_warning_name(
-                    name.rsplit('/').next().unwrap_or(name),
-                    "WinSCP session",
-                );
+                // Sanitize the complete decoded name before extracting the folder leaf.
+                let safe_name = crate::bridge_shared::sanitize_warning_name(name, "WinSCP session");
+                let display_name = safe_name
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or(&safe_name)
+                    .to_string();
                 let id = format!(
                     "winscp-{}-{}",
                     display_name.to_lowercase().replace(' ', "-"),
@@ -1804,6 +1806,39 @@ FSProtocol=1
             "{}",
             s3_socks[0]
         );
+    }
+
+    #[test]
+    fn session_name_is_sanitized_before_folder_leaf_extraction() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("WinSCP.ini");
+        std::fs::write(
+            &path,
+            concat!(
+                "[Sessions\\ftp%3A%2F%2Falice%3Apw%40host%3Ftoken%3Dprefix%2Fwscptokensentinel]\nHostName=host\nUserName=u\nFSProtocol=5\n",
+                "[Sessions\\Work/Prod]\nHostName=prod.example.test\nUserName=u\nFSProtocol=5\n",
+            ),
+        )
+        .unwrap();
+
+        let result = import_winscp(&path).unwrap();
+        assert_eq!(result.servers.len(), 2);
+        let sanitized = result
+            .servers
+            .iter()
+            .find(|server| server.host == "host")
+            .unwrap();
+        assert_eq!(sanitized.name, "host");
+        assert!(!sanitized.id.contains("wscptokensentinel"));
+        assert!(!sanitized.name.contains("wscptokensentinel"));
+        let serialized = serde_json::to_string(&result.servers).unwrap();
+        for secret in ["alice", "pw", "prefix", "wscptokensentinel"] {
+            assert!(!serialized.contains(secret), "{serialized}");
+        }
+        assert!(result
+            .servers
+            .iter()
+            .any(|server| server.host == "prod.example.test" && server.name == "Prod"));
     }
 
     #[test]

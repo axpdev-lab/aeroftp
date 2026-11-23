@@ -302,6 +302,7 @@ fn legacy_putty_key_name(name: &str) -> Option<String> {
 /// is `#[cfg]`-gated to avoid a dead-code warning on a non-Windows build.
 #[cfg(any(test, target_os = "windows"))]
 fn map_putty_session(name: &str, kv: &HashMap<String, String>) -> Option<ServerProfileExport> {
+    let safe_name = crate::bridge_shared::sanitize_warning_name(name, "PuTTY session");
     let proto_raw = kv.get("Protocol").map(|s| s.as_str()).unwrap_or("ssh");
     let protocol = map_putty_protocol(proto_raw)?;
 
@@ -336,10 +337,10 @@ fn map_putty_session(name: &str, kv: &HashMap<String, String>) -> Option<ServerP
     Some(ServerProfileExport {
         id: format!(
             "putty-{}-{}",
-            name.to_lowercase().replace(' ', "-"),
+            safe_name.to_lowercase().replace(' ', "-"),
             &crate::bridge_shared::uuid_v4()[..8]
         ),
-        name: name.to_string(),
+        name: safe_name,
         host,
         port,
         username,
@@ -401,6 +402,30 @@ pub struct PuttyImportResult {
 pub struct PuttyImportWarning {
     pub name: String,
     pub reason: String,
+}
+
+#[cfg(any(test, target_os = "windows"))]
+fn putty_skip(name: &str, reason: impl Into<String>) -> PuttySkippedRemote {
+    PuttySkippedRemote {
+        name: crate::bridge_shared::sanitize_warning_name(name, "PuTTY session"),
+        kind: "session".to_string(),
+        reason: reason.into(),
+    }
+}
+
+#[cfg(any(test, target_os = "windows"))]
+fn putty_map_skip_reason(kv: &HashMap<String, String>) -> String {
+    if kv
+        .get("HostName")
+        .map(|host| host.trim().is_empty())
+        .unwrap_or(true)
+    {
+        "session has no HostName".to_string()
+    } else {
+        let protocol = kv.get("Protocol").map(String::as_str).unwrap_or("ssh");
+        let safe_protocol = crate::bridge_shared::sanitize_warning_name(protocol, "unknown");
+        format!("unsupported PuTTY protocol: {safe_protocol}")
+    }
 }
 
 #[cfg(any(test, target_os = "windows"))]
@@ -558,22 +583,17 @@ pub fn import_putty(_path: &Path) -> Result<PuttyImportResult, String> {
             let decoded = match decode_putty_name(&sub_name, &SystemAnsiCodePage) {
                 Ok(name) => name,
                 Err(e) => {
-                    skipped.push(PuttySkippedRemote {
-                        name: sub_name,
-                        kind: "session".to_string(),
-                        reason: format!("session name unreadable: {}", e),
-                    });
+                    skipped.push(putty_skip(
+                        &sub_name,
+                        format!("session name unreadable: {}", e),
+                    ));
                     continue;
                 }
             };
             let sub = match sessions.open_subkey_with_flags(&sub_name, KEY_READ) {
                 Ok(s) => s,
                 Err(e) => {
-                    skipped.push(PuttySkippedRemote {
-                        name: decoded,
-                        kind: "session".to_string(),
-                        reason: format!("registry read failed: {}", e),
-                    });
+                    skipped.push(putty_skip(&decoded, format!("registry read failed: {}", e)));
                     continue;
                 }
             };
@@ -591,25 +611,7 @@ pub fn import_putty(_path: &Path) -> Result<PuttyImportResult, String> {
                     servers.push(profile);
                 }
                 None => {
-                    let proto = kv
-                        .get("Protocol")
-                        .map(|s| s.as_str())
-                        .unwrap_or("ssh")
-                        .to_string();
-                    let reason = if kv
-                        .get("HostName")
-                        .map(|h| h.trim().is_empty())
-                        .unwrap_or(true)
-                    {
-                        "session has no HostName".to_string()
-                    } else {
-                        format!("unsupported PuTTY protocol: {}", proto)
-                    };
-                    skipped.push(PuttySkippedRemote {
-                        name: decoded,
-                        kind: "session".to_string(),
-                        reason,
-                    });
+                    skipped.push(putty_skip(&decoded, putty_map_skip_reason(&kv)));
                 }
             }
         }
@@ -1237,6 +1239,32 @@ mod tests {
         assert!(p.options.is_none());
         assert!(p.credential.is_none());
         assert_eq!(p.has_stored_credential, Some(false));
+    }
+
+    #[test]
+    fn credential_bearing_session_names_are_sanitized_in_profiles_and_skips() {
+        let name = "ssh://alice:pw@host?token=x";
+        let mut kv = HashMap::from([
+            ("HostName".to_string(), "ssh.example.test".to_string()),
+            ("Protocol".to_string(), "ssh".to_string()),
+        ]);
+        let profile = map_putty_session(name, &kv).unwrap();
+        assert_eq!(profile.name, "host");
+        assert!(profile.id.starts_with("putty-host-"));
+        let profile_json = serde_json::to_string(&profile).unwrap();
+        for secret in ["alice", "pw", "token=x"] {
+            assert!(!profile_json.contains(secret), "{profile_json}");
+        }
+
+        kv.insert("Protocol".to_string(), name.to_string());
+        assert!(map_putty_session(name, &kv).is_none());
+        let skipped = putty_skip(name, putty_map_skip_reason(&kv));
+        assert_eq!(skipped.name, "host");
+        assert!(skipped.reason.contains("host"));
+        let skip_json = serde_json::to_string(&skipped).unwrap();
+        for secret in ["alice", "pw", "token=x"] {
+            assert!(!skip_json.contains(secret), "{skip_json}");
+        }
     }
 
     /// Secret-policy / protocol-filter test: a telnet session is skipped

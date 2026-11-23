@@ -177,7 +177,7 @@ fn map_duck(xml: &str) -> DuckOutcome {
             Some(host) => host,
             None => {
                 return DuckOutcome::Skip {
-                    kind: protocol_raw,
+                    kind: crate::bridge_shared::sanitize_warning_name(&protocol_raw, "unknown"),
                     reason: "invalid or ambiguous Hostname".into(),
                 }
             }
@@ -352,7 +352,11 @@ fn bookmark_name(xml: &str) -> String {
                 .filter(|s| !s.is_empty())
                 .map(|host| crate::bridge_shared::safe_host_label(&host, "Cyberduck bookmark"))
         })
-        .or_else(|| crate::bridge_shared::plist_field(xml, "Protocol"))
+        .or_else(|| {
+            crate::bridge_shared::plist_field(xml, "Protocol").map(|protocol| {
+                crate::bridge_shared::sanitize_warning_name(&protocol, "Cyberduck bookmark")
+            })
+        })
         .unwrap_or_else(|| "Cyberduck bookmark".to_string())
 }
 
@@ -909,6 +913,39 @@ mod tests {
             if mode == "active" {
                 assert!(result.warnings[0].reason.contains("active FTP"));
             }
+        }
+    }
+
+    #[test]
+    fn invalid_host_skip_sanitizes_credential_bearing_protocol() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>Protocol</key><string>ftp://alice:pw@host?token=x</string><key>Hostname</key><string>ftp://alice:pa/ss@host</string></dict></plist>"#;
+        let mut servers = Vec::new();
+        let mut skipped = Vec::new();
+        ingest_duck(xml, &mut servers, &mut skipped);
+
+        assert!(servers.is_empty());
+        assert_eq!(skipped.len(), 1);
+        assert_eq!(skipped[0].kind, "host");
+        let serialized = serde_json::to_string(&skipped).unwrap();
+        for secret in ["alice", "pw", "token=x", "pa/ss"] {
+            assert!(!serialized.contains(secret), "{serialized}");
+        }
+    }
+
+    #[test]
+    fn protocol_fallback_skip_name_is_sanitized() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>Protocol</key><string>ftp://alice:pw@host?token=x</string></dict></plist>"#;
+        let mut servers = Vec::new();
+        let mut skipped = Vec::new();
+        ingest_duck(xml, &mut servers, &mut skipped);
+
+        assert!(servers.is_empty());
+        assert_eq!(skipped.len(), 1);
+        assert_eq!(skipped[0].name, "host");
+        assert_eq!(skipped[0].kind, "host");
+        let serialized = serde_json::to_string(&skipped).unwrap();
+        for secret in ["alice", "pw", "token=x"] {
+            assert!(!serialized.contains(secret), "{serialized}");
         }
     }
 

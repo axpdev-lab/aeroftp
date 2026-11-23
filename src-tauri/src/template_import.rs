@@ -342,6 +342,7 @@ fn find_existing_by_trimmed_name<'a>(
 
 struct PlannedBlock {
     row: TemplatePreviewRow,
+    source_block_name: String,
     security: Option<ImportedSecurity>,
     prepared_server: ServerProfileExport,
     existing_target_digest: Option<String>,
@@ -373,6 +374,7 @@ fn build_plan(
     let mut out = Vec::with_capacity(eval.servers.len());
     for (file_index, raw_server) in eval.servers.iter().enumerate() {
         let mut server = raw_server.clone();
+        let source_block_name = server.name.clone();
         let trimmed_name = server.name.trim().to_string();
         let start_line = eval
             .block_start_lines
@@ -566,6 +568,7 @@ fn build_plan(
         };
         out.push(PlannedBlock {
             row,
+            source_block_name,
             security,
             prepared_server: server,
             existing_target_digest,
@@ -577,7 +580,7 @@ fn build_plan(
     let mut inherited_needed_bases: HashSet<&str> = HashSet::new();
     for entry in &out {
         if entry.row.action != TemplatePlannedAction::Skip {
-            if let Some(ancestors) = eval.crypt_secret_ancestors.get(&entry.row.block_name) {
+            if let Some(ancestors) = eval.crypt_secret_ancestors.get(&entry.source_block_name) {
                 for ancestor in ancestors {
                     inherited_needed_bases.insert(ancestor.as_str());
                 }
@@ -589,8 +592,8 @@ fn build_plan(
             if entry.row.action == TemplatePlannedAction::Skip
                 && !entry.duplicate_in_template
                 && entry.row.has_secret_input
-                && (inherited_needed_bases.contains(entry.row.block_name.as_str())
-                    || inherited_needed_bases.contains(entry.row.block_name.trim()))
+                && (inherited_needed_bases.contains(entry.source_block_name.as_str())
+                    || inherited_needed_bases.contains(entry.source_block_name.trim()))
             {
                 entry.row.secret_choice_inherited = true;
             }
@@ -3157,6 +3160,47 @@ override.no_check_certificate = true
                 .and_then(Value::as_bool),
             Some(false)
         );
+    }
+
+    #[test]
+    fn inherited_secret_lookup_uses_raw_block_name_when_display_is_sanitized() {
+        let crypt_pw = crate::rclone_import::obscure_password("vault-pass").unwrap();
+        let input = TemplateInput::Text {
+            content: format!(
+                "[base]\ntype = sftp\nhost = nas.example.test\nuser = alice\npass = PlainSecret!\n\n\
+                 [vault?token=x]\ntype = crypt\nremote = base:enc\npassword = {crypt_pw}\n"
+            ),
+        };
+        let current = vec![serde_json::json!({
+            "id": "srv_base",
+            "name": "base",
+            "protocol": "sftp",
+            "host": "nas.example.test",
+            "port": 22,
+            "username": "alice"
+        })];
+
+        let preview = preview_template_with_current(
+            &input,
+            &TemplatePreviewOptions {
+                existing: ExistingProfileMode::Skip,
+                ..Default::default()
+            },
+            &current,
+        )
+        .unwrap();
+        let base = preview
+            .rows
+            .iter()
+            .find(|row| row.block_name == "base")
+            .unwrap();
+        assert_eq!(base.action, TemplatePlannedAction::Skip);
+        assert!(base.has_secret_input);
+        assert!(base.needs_secret_form_choice);
+        assert!(base.secret_choice_inherited);
+        assert!(!serde_json::to_string(&preview)
+            .unwrap()
+            .contains("vault?token=x"));
     }
 
     #[test]
