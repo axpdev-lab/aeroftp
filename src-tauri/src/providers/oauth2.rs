@@ -2370,14 +2370,13 @@ impl OAuth2Manager {
             crate::user_partitions::delete_user_credential_for(&conn, user, &account)
                 .map_err(|e| ProviderError::Other(format!("Failed to delete tokens: {}", e)))?;
             info!("Tokens deleted from user partition for {:?}", provider);
-            match held.as_deref() {
-                Some(read) => drop_pending_rotation_for_record(owner, &account, read),
-                // Nothing was read to delete: there is no record a kept
-                // rotation's `read` can be compared with, and a successor
-                // filed meanwhile is another chain's. It stays; one whose
-                // record is gone settles to Changed on the next exchange.
-                None => {}
+            if let Some(read) = held.as_deref() {
+                drop_pending_rotation_for_record(owner, &account, read);
             }
+            // Nothing was read to delete: there is no record a kept
+            // rotation's `read` can be compared with, and a successor
+            // filed meanwhile is another chain's. It stays; one whose
+            // record is gone settles to Changed on the next exchange.
             return Ok(());
         }
 
@@ -2415,13 +2414,12 @@ impl OAuth2Manager {
             LegacyTokenGuard::acquire_for_signout,
             unmirror,
         )?;
-        match held.as_deref() {
-            Some(read) => drop_pending_rotation_for_record(owner, &account, read),
-            // As above: with no record read there is nothing to compare a
-            // kept rotation's `read` with, so none is this sign-out's to
-            // drop; a stale one settles to Changed on the next exchange.
-            None => {}
+        if let Some(read) = held.as_deref() {
+            drop_pending_rotation_for_record(owner, &account, read);
         }
+        // As above: with no record read there is nothing to compare a
+        // kept rotation's `read` with, so none is this sign-out's to
+        // drop; a stale one settles to Changed on the next exchange.
         Ok(())
     }
 
@@ -4470,8 +4468,40 @@ mod tests {
                 .expect("a sign-out");
             assert_eq!(
                 pending_rotation_record(Some(second), account),
+                Some("kept".into()),
+                "a sign-out drops only the rotation filed for the record it read"
+            );
+            manager
+                .store_tokens(
+                    OAuthProvider::Box,
+                    "shared-profile",
+                    &box_tokens("signed-in", "signed-in-refresh"),
+                )
+                .expect("signed in again");
+            let stored = crate::user_partitions::resolve_credential_for_user(
+                store,
+                second,
+                &OAuth2Manager::token_account_key(OAuthProvider::Box, "shared-profile"),
+            )
+            .expect("read")
+            .expect("the signed-in record");
+            file_pending_rotation(
+                Some(second),
+                account,
+                PendingRotation {
+                    source: PendingSource::Partition(second),
+                    read: stored,
+                    record: Zeroizing::new("matches".into()),
+                },
+                "test",
+            );
+            manager
+                .delete_tokens(OAuthProvider::Box, "shared-profile")
+                .expect("a sign-out of the record just read");
+            assert_eq!(
+                pending_rotation_record(Some(second), account),
                 None,
-                "a sign-out drops it"
+                "a sign-out drops the rotation filed for the record it removed"
             );
         });
     }
