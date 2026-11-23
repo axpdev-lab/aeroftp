@@ -2372,14 +2372,21 @@ fn apply_profile_decisions(
             // since (a refresh) is this device's latest, and stays. A private
             // token's only row, in a partition the import restored, is
             // replaced only while it holds what the restore left there.
+            // A key the vault section did not write still has the value read
+            // at the start of this step: the forward write compares against
+            // it, so a row the compare refuses puts that value back before
+            // this step returns. None here deletes the vault with no way back.
             let restored_row = (partition_restored
                 && private_row_of(db.as_deref(), inputs.receiver, key).is_some())
             .then(|| inputs.receiver_rows.get(key))
             .flatten();
+            let step_vault = vault_baseline(key);
             let expected = match (vault_value, restored_row) {
                 (Some(v), _) => Some(Some(v.as_str())),
                 (None, Some(row)) => Some(row.as_ref().map(|v| v.as_str())),
-                (None, None) => None,
+                (None, None) => step_vault
+                    .as_ref()
+                    .map(|prior| prior.as_ref().map(|token| token.as_str())),
             };
             let accepted = row_accepts(key, None);
             let accepted: Option<Vec<Option<&str>>> = accepted.as_ref().map(|rows| {
@@ -6953,6 +6960,140 @@ mod tests {
             .profile_decisions_error
             .expect("the profile step did not fail");
         assert!(error.contains("refused (test)"), "{error}");
+    }
+
+    /// CodeRabbit 4661192936 through the real import: a refresh that rotated
+    /// the row after the plan is kept by the rollback, and the vault's
+    /// pre-import value is restored from its own baseline either way. Red if
+    /// the rollback couples the row's put-back to the vault's.
+    #[test]
+    fn a_rollback_through_the_import_restores_each_slot_from_its_baseline() {
+        let _guard = crate::user_partitions::test_lock();
+        crate::user_partitions::clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let cfg = dir.path().join("config");
+        let key = "oauth_dropbox_srv_drive";
+        partition_with(&store, &cfg, &[dropbox("srv_drive", "Drive")]);
+        store.store(key, "vault-token").unwrap();
+        set_partition_secret(&store, &cfg, key, "row-token");
+        let db = cfg.join("user_partitions.db");
+        let owner = active_receiver(&db).unwrap();
+        assert!(owner.legacy_owner);
+        let mut payload = ExportPayload::default();
+        payload.vault_entries.insert(
+            "config_server_profiles".to_string(),
+            serde_json::to_string(&[dropbox("srv_photos", "Photos")]).unwrap(),
+        );
+        let backup = dir.path().join("vault.aeroftp-keystore");
+        seal_backup(&backup, PASSWORD_736, &payload);
+        let decisions = [decide(
+            "srv_drive",
+            keystore_profile_plan::ProfileDecision::Accept,
+        )];
+        fn refuse_list(db: &Path) {
+            rusqlite::Connection::open(db)
+                .unwrap()
+                .execute_batch(
+                    "CREATE TRIGGER refuse_list BEFORE INSERT ON server_profiles
+                     BEGIN SELECT RAISE(ABORT, 'disk full'); END;",
+                )
+                .unwrap();
+        }
+        fn drop_refuse_list(db: &Path) {
+            rusqlite::Connection::open(db)
+                .unwrap()
+                .execute_batch("DROP TRIGGER IF EXISTS refuse_list;")
+                .unwrap();
+        }
+
+        // The refresh landed after the plan: the row is rotated before the
+        // decision write, and the refused list save rolls the step back.
+        let hook_cfg = cfg.clone();
+        let hook_db = db.clone();
+        before_profile_decisions(move |store| {
+            set_partition_secret(store, &hook_cfg, key, "row-rotated");
+            refuse_list(&hook_db);
+        });
+        let rotated = import_deciding(&store, &cfg, &backup, VAULT_ONLY, &decisions);
+        drop_refuse_list(&db);
+        let error = rotated
+            .profile_decisions_error
+            .expect("the profile step did not fail");
+        assert!(error.contains("disk full"), "{error}");
+        assert_eq!(store.get(key).unwrap(), "vault-token");
+        assert_eq!(
+            row_in(&store, &cfg, owner.user_id, key).as_deref(),
+            Some("row-rotated"),
+            "the token rotated after the plan is kept"
+        );
+
+        // The same refused list save without the refresh puts both slots
+        // back to their pre-import values.
+        set_partition_secret(&store, &cfg, key, "row-token");
+        let hook_db = db.clone();
+        before_profile_decisions(move |_| refuse_list(&hook_db));
+        let plain = import_deciding(&store, &cfg, &backup, VAULT_ONLY, &decisions);
+        drop_refuse_list(&db);
+        let error = plain
+            .profile_decisions_error
+            .expect("the profile step did not fail");
+        assert!(error.contains("disk full"), "{error}");
+        assert_eq!(store.get(key).unwrap(), "vault-token");
+        assert_eq!(
+            row_in(&store, &cfg, owner.user_id, key).as_deref(),
+            Some("row-token")
+        );
+    }
+
+    /// A refused row puts the vault back before the step returns, so a list
+    /// save that then succeeds does not leave the vault deleted.
+    #[test]
+    fn a_declined_row_on_a_saved_list_puts_the_vault_back() {
+        let _guard = crate::user_partitions::test_lock();
+        crate::user_partitions::clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let cfg = dir.path().join("config");
+        let key = "oauth_dropbox_srv_drive";
+        partition_with(&store, &cfg, &[dropbox("srv_drive", "Drive")]);
+        store.store(key, "vault-token").unwrap();
+        set_partition_secret(&store, &cfg, key, "row-token");
+        let db = cfg.join("user_partitions.db");
+        let owner = active_receiver(&db).unwrap();
+        assert!(owner.legacy_owner);
+        let mut payload = ExportPayload::default();
+        payload.vault_entries.insert(
+            "config_server_profiles".to_string(),
+            serde_json::to_string(&[dropbox("srv_photos", "Photos")]).unwrap(),
+        );
+        let backup = dir.path().join("vault.aeroftp-keystore");
+        seal_backup(&backup, PASSWORD_736, &payload);
+        let hook_cfg = cfg.clone();
+        before_profile_decisions(move |store| {
+            set_partition_secret(store, &hook_cfg, key, "row-rotated");
+        });
+
+        let saved = import_deciding(
+            &store,
+            &cfg,
+            &backup,
+            VAULT_ONLY,
+            &[decide(
+                "srv_drive",
+                keystore_profile_plan::ProfileDecision::Accept,
+            )],
+        );
+        assert!(
+            saved.profile_decisions_error.is_none(),
+            "{:?}",
+            saved.profile_decisions_error
+        );
+        assert_eq!(store.get(key).unwrap(), "vault-token");
+        assert_eq!(
+            row_in(&store, &cfg, owner.user_id, key).as_deref(),
+            Some("row-rotated")
+        );
     }
 
     /// A decision write declined because a refresh rotated a private row of a
