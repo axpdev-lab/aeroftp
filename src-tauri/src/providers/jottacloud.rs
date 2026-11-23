@@ -5692,20 +5692,61 @@ mod tests {
             .enable_all()
             .build()
             .unwrap();
-        let (endpoint, server) = runtime.block_on(async {
-            let app = axum::Router::new().route(
-                "/token",
-                axum::routing::post(|| async move {
-                    (
-                        axum::http::StatusCode::SERVICE_UNAVAILABLE,
-                        axum::Json(serde_json::json!({"error": "temporarily_unavailable"})),
-                    )
-                }),
-            );
+        let (endpoint, server, refreshes, logins) = runtime.block_on(async {
+            use std::sync::atomic::{AtomicUsize, Ordering};
+            use std::sync::Arc;
+            let refreshes = Arc::new(AtomicUsize::new(0));
+            let logins = Arc::new(AtomicUsize::new(0));
+            let refresh_count = refreshes.clone();
+            let login_count = logins.clone();
+            let app = axum::Router::new()
+                .route(
+                    "/token",
+                    axum::routing::post(move || {
+                        let refresh_count = refresh_count.clone();
+                        async move {
+                            let call = refresh_count.fetch_add(1, Ordering::SeqCst);
+                            if call == 0 {
+                                (
+                                    axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                                    axum::Json(
+                                        serde_json::json!({"error": "temporarily_unavailable"}),
+                                    ),
+                                )
+                            } else {
+                                (
+                                    axum::http::StatusCode::OK,
+                                    axum::Json(serde_json::json!({
+                                        "access_token": "access",
+                                        "refresh_token": "transient-rotated",
+                                        "expires_in": 3600,
+                                    })),
+                                )
+                            }
+                        }
+                    }),
+                )
+                .route(
+                    "/login",
+                    axum::routing::post(move || {
+                        let login_count = login_count.clone();
+                        async move {
+                            login_count.fetch_add(1, Ordering::SeqCst);
+                            (
+                                axum::http::StatusCode::OK,
+                                axum::Json(serde_json::json!({
+                                    "access_token": "access",
+                                    "refresh_token": "login-rotated",
+                                    "expires_in": 3600,
+                                })),
+                            )
+                        }
+                    }),
+                );
             let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
             let endpoint = format!("http://{}/token", listener.local_addr().unwrap());
             let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-            (endpoint, server)
+            (endpoint, server, refreshes, logins)
         });
         let chain = serde_json::json!({
             "refresh_token": "transient-chain",
@@ -5718,21 +5759,36 @@ mod tests {
         partitions::store_credential_for_user(&store, first, &key, "jottacloud_refresh", &chain)
             .expect("store the partition copy");
 
+        // A non-empty login token whose well-known URL cannot be served:
+        // reaching the password grant fails the connection instead of
+        // passing silently.
+        let login_token = base64::engine::general_purpose::STANDARD.encode(
+            serde_json::json!({
+                "username": "jotta-user",
+                "auth_token": "login-secret",
+                "wellKnownLink": "https://127.0.0.1:9/well-known",
+            })
+            .to_string(),
+        );
         let mut provider = JottacloudProvider::new(JottacloudConfig {
-            login_token: SecretString::from(String::new()),
+            login_token: SecretString::from(login_token),
             device: "Jotta".into(),
             mountpoint: "Archive".into(),
             initial_path: None,
         })
         .with_profile_id("transient");
         provider.set_credential_user(Some(first));
-        assert!(
-            runtime
-                .block_on(provider.try_connect_with_refresh())
-                .is_err(),
-            "a 503 is a connection error, not a dead chain"
-        );
 
+        // The connect decision `connect` makes at its refresh step: a
+        // transient failure propagates and the login token is not spent.
+        let first_try =
+            refresh_or_login_token(runtime.block_on(provider.try_connect_with_refresh()));
+        assert!(
+            matches!(first_try, Err(ProviderError::ConnectionFailed(_))),
+            "a 503 is a connection error, not a dead chain: {first_try:?}"
+        );
+        assert_eq!(refreshes.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert_eq!(logins.load(std::sync::atomic::Ordering::SeqCst), 0);
         let mut wrong = Vec::new();
         if store.get(&key).is_err() {
             wrong.push("the vault copy was removed".to_string());
@@ -5742,6 +5798,20 @@ mod tests {
         if row.is_none() {
             wrong.push("the partition row was removed".to_string());
         }
+
+        let second_try =
+            refresh_or_login_token(runtime.block_on(provider.try_connect_with_refresh()));
+        assert!(
+            matches!(second_try, Ok(true)),
+            "the retry refreshes the kept chain: {second_try:?}"
+        );
+        assert_eq!(refreshes.load(std::sync::atomic::Ordering::SeqCst), 2);
+        assert_eq!(
+            logins.load(std::sync::atomic::Ordering::SeqCst),
+            0,
+            "the single-use login token was spent on a transient failure"
+        );
+
         server.abort();
         drop(runtime);
         CredentialStore::clear_cache();
