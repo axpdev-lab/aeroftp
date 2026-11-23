@@ -357,7 +357,7 @@ fn ingest_duck_with_warnings(
                     .is_some_and(|mode| mode.trim() == "active")
             {
                 warnings.push(CyberduckImportWarning {
-                    name: name.clone(),
+                    name: crate::bridge_shared::sanitize_warning_name(&name, "Cyberduck bookmark"),
                     reason: "Cyberduck requires active FTP for this bookmark; AeroFTP supports passive FTP only".to_string(),
                 });
             }
@@ -923,6 +923,22 @@ mod tests {
             assert!(
                 !amb_json.contains(secret),
                 "{secret} leaked into warning: {amb_json}"
+            );
+        }
+
+        // URL-shaped Nickname with credentials and query token is also redacted in warnings.
+        let nick_xml = format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>Protocol</key><string>ftp</string><key>Nickname</key><string>ftp://{user}:{pw}@ftp.example.com?token={tok}</string><key>Hostname</key><string>ftp.example.com</string><key>Port</key><integer>21</integer><key>Username</key><string>user</string><key>FTP Connect Mode</key><string>active</string></dict></plist>"#
+        );
+        let nick_path = write_tmp("named-url-secret.duck", &nick_xml);
+        let nick_result = import_cyberduck(&nick_path).unwrap();
+        assert_eq!(nick_result.warnings.len(), 1);
+        assert_eq!(nick_result.warnings[0].name, "ftp.example.com");
+        let nick_json = serde_json::to_string(&nick_result.warnings).unwrap();
+        for secret in [user, pw, tok] {
+            assert!(
+                !nick_json.contains(secret),
+                "{secret} leaked from Nickname into warning: {nick_json}"
             );
         }
     }

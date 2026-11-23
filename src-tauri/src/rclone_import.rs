@@ -3375,16 +3375,18 @@ fn import_parsed_sections(
                     // `backend/ftp/ftp.go:465-480` and `backend/sftp/sftp.go`:
                     // when both `socks_proxy` and `http_proxy` are non-empty,
                     // rclone dials SOCKS5 only and does not fall back to HTTP CONNECT.
+                    let warn_name =
+                        crate::bridge_shared::sanitize_warning_name(name, "rclone remote");
                     if transport.has_socks_proxy {
                         warnings.push(RcloneImportWarning {
-                            name: name.clone(),
+                            name: warn_name,
                             reason: format!(
                                 "{source_name} uses a SOCKS5 proxy (`socks_proxy`) for this remote; the proxy is not imported and AeroFTP will connect directly"
                             ),
                         });
                     } else if transport.has_http_proxy {
                         warnings.push(RcloneImportWarning {
-                            name: name.clone(),
+                            name: warn_name,
                             reason: format!(
                                 "{source_name} uses an HTTP CONNECT proxy (`http_proxy`) for this remote; the proxy is not imported and AeroFTP will connect directly"
                             ),
@@ -3393,9 +3395,11 @@ fn import_parsed_sections(
                 }
                 if let Some(reason) = &mapped.credential_warning {
                     let clean_reason = reason.clone();
-                    tracing::warn!("{} block '{}': {}", log_prefix, name, clean_reason);
+                    let warn_name =
+                        crate::bridge_shared::sanitize_warning_name(name, "rclone remote");
+                    tracing::warn!("{} block '{}': {}", log_prefix, warn_name, clean_reason);
                     warnings.push(RcloneImportWarning {
-                        name: name.clone(),
+                        name: warn_name,
                         reason: clean_reason,
                     });
                 }
@@ -7554,6 +7558,27 @@ http_proxy =
             .warnings
             .iter()
             .any(|w| w.name == "repeat-small" && w.reason.contains("SOCKS5")));
+
+        // URL-shaped section name with credentials is redacted in rclone warnings.
+        let user = "rcuser";
+        let pw = "rcTopSecretPw";
+        let tok = "rcSecretTok";
+        let url_sec = format!("sftp://{user}:{pw}@sftp.example.com?token={tok}");
+        let cred_path = dir.path().join("rclone-cred.conf");
+        std::fs::write(
+            &cred_path,
+            format!(
+                "[{url_sec}]\ntype = sftp\nhost = sftp.example.com\nuser = u\nsocks_proxy = 127.0.0.1:1080\n"
+            ),
+        )
+        .unwrap();
+        let cred_res = import_rclone(&cred_path).unwrap();
+        assert_eq!(cred_res.warnings.len(), 1);
+        assert_eq!(cred_res.warnings[0].name, "sftp.example.com");
+        let cred_json = serde_json::to_string(&cred_res.warnings).unwrap();
+        for secret in [user, pw, tok] {
+            assert!(!cred_json.contains(secret), "{secret} leaked: {cred_json}");
+        }
     }
 
     #[test]

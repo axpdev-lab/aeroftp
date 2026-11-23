@@ -556,9 +556,10 @@ pub fn import_winscp(config_path: &Path) -> Result<WinScpImportResult, String> {
                 } else {
                     None
                 };
+                let warn_name = crate::bridge_shared::sanitize_warning_name(name, "WinSCP session");
                 if let Some(kind) = generic_proxy_kind {
                     warnings.push(WinScpImportWarning {
-                        name: name.clone(),
+                        name: warn_name.clone(),
                         reason: format!(
                             "WinSCP uses {kind} proxy method {proxy_method} for this session; the proxy is not imported and AeroFTP will connect directly"
                         ),
@@ -574,7 +575,7 @@ pub fn import_winscp(config_path: &Path) -> Result<WinScpImportResult, String> {
                 // FTP proxy logon setting.
                 if is_ftp && ftp_proxy_logon_type != 0 {
                     warnings.push(WinScpImportWarning {
-                        name: name.clone(),
+                        name: warn_name.clone(),
                         reason: format!(
                             "WinSCP uses FTP proxy logon type {ftp_proxy_logon_type} for this session; the proxy is not imported and AeroFTP will connect directly"
                         ),
@@ -589,7 +590,7 @@ pub fn import_winscp(config_path: &Path) -> Result<WinScpImportResult, String> {
                     == Some(true)
                 {
                     warnings.push(WinScpImportWarning {
-                        name: name.clone(),
+                        name: warn_name.clone(),
                         reason: "WinSCP reaches this session through an SSH tunnel (Tunnel=1); the tunnel is not imported and AeroFTP will connect directly".to_string(),
                     });
                 }
@@ -600,7 +601,7 @@ pub fn import_winscp(config_path: &Path) -> Result<WinScpImportResult, String> {
                         == Some(false)
                 {
                     warnings.push(WinScpImportWarning {
-                        name: name.clone(),
+                        name: warn_name,
                         reason: "WinSCP requires active FTP for this session; AeroFTP supports passive FTP only".to_string(),
                     });
                 }
@@ -1792,5 +1793,23 @@ FSProtocol=1
         assert_eq!(active_off.len(), 1);
         assert!(active_off[0].contains("active FTP"));
         assert!(warn_for("PassiveOn").is_empty());
+
+        // URL-shaped session name (after WinSCP percent-decoding) is redacted in warnings.
+        let user = "wscpuser";
+        let pw = "wscpTopSecretPw";
+        let tok = "wscpSecretTok";
+        let encoded = format!("ftp%3A%2F%2F{user}%3A{pw}%40ftp.example.com%3Ftoken%3D{tok}");
+        let cred_ini = format!(
+            "[Sessions\\{encoded}]\nHostName=ftp.example.com\nUserName=u\nFSProtocol=5\nFtpPasvMode=0\n"
+        );
+        let cred_path = dir.path().join("WinSCP-cred.ini");
+        std::fs::write(&cred_path, cred_ini).unwrap();
+        let cred_res = import_winscp(&cred_path).unwrap();
+        assert_eq!(cred_res.warnings.len(), 1);
+        assert_eq!(cred_res.warnings[0].name, "ftp.example.com");
+        let cred_json = serde_json::to_string(&cred_res.warnings).unwrap();
+        for secret in [user, pw, tok] {
+            assert!(!cred_json.contains(secret), "{secret} leaked: {cred_json}");
+        }
     }
 }

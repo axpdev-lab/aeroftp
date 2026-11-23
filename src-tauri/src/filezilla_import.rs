@@ -1275,15 +1275,17 @@ pub fn import_filezilla(config_path: &Path) -> Result<FileZillaImportResult, Str
 
         match map_server_with_context(fz_server, legacy_aeroftp_s3, parsed.root_wchar_unit) {
             Some(mapped) => {
+                let warn_name =
+                    crate::bridge_shared::sanitize_warning_name(&fz_server.name, "FileZilla site");
                 if let Some(reason) = mapped.remote_dir_warning {
                     warnings.push(FileZillaImportWarning {
-                        name: fz_server.name.clone(),
+                        name: warn_name.clone(),
                         reason,
                     });
                 }
                 if legacy_aeroftp_s3 {
                     warnings.push(FileZillaImportWarning {
-                        name: fz_server.name.clone(),
+                        name: warn_name.clone(),
                         reason: "Recovered as S3 from an older AeroFTP FileZilla export that wrote S3 as Protocol=6 without exporting the S3 bucket; set the bucket name before connecting (RemoteDir was kept as the start path)".to_string(),
                     });
                 }
@@ -1322,7 +1324,7 @@ pub fn import_filezilla(config_path: &Path) -> Result<FileZillaImportResult, Str
                         && (data_mode == Some("active") || (data_mode.is_none() && global_active))
                     {
                         warnings.push(FileZillaImportWarning {
-                            name: fz_server.name.clone(),
+                            name: warn_name,
                             reason: "FileZilla requires active FTP for this site; AeroFTP supports passive FTP only".to_string(),
                         });
                     }
@@ -2982,6 +2984,26 @@ mod tests {
             assert!(
                 !legacy_json.contains(secret),
                 "{secret} leaked: {legacy_json}"
+            );
+        }
+
+        // Explicit URL-shaped <Name> with credentials is also redacted in warnings.
+        let named_path = dir.path().join("named.xml");
+        std::fs::write(
+            &named_path,
+            format!(
+                r#"<?xml version="1.0"?><FileZilla3 version="3.72.1" platform="*nix"><Servers><Server><Host>ftp.example.com</Host><Port>21</Port><Protocol>0</Protocol><Type>0</Type><Name>ftp://{user}:{pw}@ftp.example.com?token={tok}</Name><Parameter Name="data_mode_override">active</Parameter></Server></Servers></FileZilla3>"#
+            ),
+        )
+        .unwrap();
+        let named = import_filezilla(&named_path).unwrap();
+        assert_eq!(named.warnings.len(), 1);
+        assert_eq!(named.warnings[0].name, "ftp.example.com");
+        let named_json = serde_json::to_string(&named.warnings).unwrap();
+        for secret in [user, pw, tok] {
+            assert!(
+                !named_json.contains(secret),
+                "{secret} leaked: {named_json}"
             );
         }
     }

@@ -258,6 +258,56 @@ pub(crate) fn safe_host_label(raw: &str, fallback: &str) -> String {
         .unwrap_or_else(|| fallback.to_string())
 }
 
+fn token_may_carry_url_secrets(tok: &str) -> bool {
+    if tok.contains("://") {
+        return true;
+    }
+    if let Some((before_at, _)) = tok.rsplit_once('@') {
+        if before_at.contains(':') {
+            return true;
+        }
+    }
+    if let Some((_, query)) = tok.split_once('?') {
+        if query.contains('=') || query.contains("://") {
+            return true;
+        }
+    }
+    false
+}
+
+/// Sanitize a site/session/remote name before placing it in a serialized
+/// `*ImportWarning`. Ordinary human names (e.g. `"Production"`, `"My NAS"`,
+/// `"s3cmd s3.example.com:9000"`) are preserved unchanged, while URL-shaped or
+/// credential/query-bearing names (including percent-decoded names and
+/// embedded URL tokens) have userinfo, query parameters, and fragments
+/// stripped via [`safe_host_label`].
+pub(crate) fn sanitize_warning_name(raw: &str, fallback: &str) -> String {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return fallback.to_string();
+    }
+    if !trimmed.contains(char::is_whitespace) {
+        if token_may_carry_url_secrets(trimmed) || trimmed.contains('?') || trimmed.contains('#') {
+            return safe_host_label(trimmed, fallback);
+        }
+        return trimmed.to_string();
+    }
+    if !trimmed.split_whitespace().any(token_may_carry_url_secrets) {
+        return trimmed.to_string();
+    }
+    trimmed
+        .split_whitespace()
+        .map(|tok| {
+            if token_may_carry_url_secrets(tok) {
+                safe_host_label(tok, fallback)
+            } else {
+                tok.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 /// `host[:port]` of an endpoint, without scheme, userinfo, path, query or
 /// fragment; `None` as for [`split_endpoint`].
 pub(crate) fn try_endpoint_host(endpoint: &str) -> Option<String> {
@@ -1981,5 +2031,20 @@ mod tests {
         assert_eq!(safe_host_label(query_scheme, "unnamed"), "s3.example.test");
         let amb = format!("https://{user}:{pw_slash}@s3.example.com");
         assert_eq!(safe_host_label(&amb, "unnamed"), "unnamed");
+
+        // sanitize_warning_name keeps ordinary names intact and strips URL secrets.
+        assert_eq!(sanitize_warning_name("Production", "site"), "Production");
+        assert_eq!(
+            sanitize_warning_name("Ops (alice@corp.example)", "site"),
+            "Ops (alice@corp.example)"
+        );
+        let url_name = format!("ftp://{user}:{pw_plain}@ftp.example.com?token={tok}");
+        assert_eq!(sanitize_warning_name(&url_name, "site"), "ftp.example.com");
+        let embedded = format!("Prod https://{user}:{pw_plain}@s3.example.com?t={tok}");
+        assert_eq!(
+            sanitize_warning_name(&embedded, "site"),
+            "Prod s3.example.com"
+        );
+        assert_eq!(sanitize_warning_name(&amb, "site"), "site");
     }
 }

@@ -360,21 +360,28 @@ pub fn import_dreamweaver(path: &Path) -> Result<DreamweaverImportResult, String
 
         match map_remote_info(&ri) {
             MapOutcome::Mapped(m) => {
-                if matches!(m.protocol.as_str(), "ftp" | "ftps") {
-                    if ri_attr(&ri, &["usepasv", "usePasv"]).is_some_and(|value| {
+                let warn_name =
+                    crate::bridge_shared::sanitize_warning_name(&name, "Dreamweaver site");
+                if matches!(m.protocol.as_str(), "ftp" | "ftps")
+                    && ri_attr(&ri, &["usepasv", "usePasv"]).is_some_and(|value| {
                         value.trim().eq_ignore_ascii_case("false") || value.trim() == "0"
-                    }) {
-                        warnings.push(DreamweaverImportWarning {
-                            name: name.clone(),
-                            reason: "Dreamweaver requires active FTP for this site; AeroFTP supports passive FTP only".to_string(),
-                        });
-                    }
-                    if ri_flag(&ri, &["usefirewall", "useFirewall"]) {
-                        warnings.push(DreamweaverImportWarning {
-                            name: name.clone(),
-                            reason: "Dreamweaver firewall/proxy settings are not imported; AeroFTP will connect directly".to_string(),
-                        });
-                    }
+                    })
+                {
+                    warnings.push(DreamweaverImportWarning {
+                        name: warn_name.clone(),
+                        reason: "Dreamweaver requires active FTP for this site; AeroFTP supports passive FTP only".to_string(),
+                    });
+                }
+                // Adobe Dreamweaver exposes "Use Proxy" / `usefirewall="TRUE"` in
+                // Server More Options for both FTP/FTPS and SFTP (`accesstype="ftp"`
+                // with `useSFTP="TRUE"`).
+                if matches!(m.protocol.as_str(), "ftp" | "ftps" | "sftp")
+                    && ri_flag(&ri, &["usefirewall", "useFirewall"])
+                {
+                    warnings.push(DreamweaverImportWarning {
+                        name: warn_name,
+                        reason: "Dreamweaver firewall/proxy settings are not imported; AeroFTP will connect directly".to_string(),
+                    });
                 }
                 let id = format!(
                     "dw-{}-{}",
@@ -692,6 +699,49 @@ mod tests {
         assert!(result.warnings[0].reason.contains("active FTP"));
         assert!(result.warnings[1].reason.contains("firewall/proxy"));
         assert!(result.warnings[1].reason.contains("connect directly"));
+    }
+
+    #[test]
+    fn url_encoded_sitename_credentials_redacted_in_warnings_and_sftp_firewall_warns() {
+        let user = "dwuser";
+        let pw = "dwTopSecretPw";
+        let tok = "dwSecretTok";
+        let encoded_url =
+            format!("ftp%3A%2F%2F{user}%3A{pw}%40ftp.demo.example.com%3Ftoken%3D{tok}");
+        let xml = real_ste(Some("Demo@Pass2024"))
+            .replace("%5BA%5D%20demo.example.com", &encoded_url)
+            .replace(
+                "usefirewall=\"FALSE\" usepasv=\"TRUE\"",
+                "usefirewall=\"TRUE\" usepasv=\"FALSE\"",
+            );
+        let path = write_tmp(&xml);
+        let result = import_dreamweaver(&path).expect("parse encoded-url .ste");
+        std::fs::remove_file(&path).ok();
+
+        assert_eq!(result.warnings.len(), 2);
+        assert_eq!(result.warnings[0].name, "ftp.demo.example.com");
+        assert_eq!(result.warnings[1].name, "ftp.demo.example.com");
+        let serialized = serde_json::to_string(&result.warnings).unwrap();
+        for secret in [user, pw, tok] {
+            assert!(
+                !serialized.contains(secret),
+                "{secret} leaked into Dreamweaver warning: {serialized}"
+            );
+        }
+
+        // SFTP (`accesstype="ftp" useSFTP="TRUE"`) with `usefirewall="TRUE"` warns on firewall
+        // without emitting a false active-FTP warning.
+        let sftp_xml = real_ste(Some("Demo@Pass2024")).replace(
+            "usefirewall=\"FALSE\" usepasv=\"TRUE\" useSFTP=\"FALSE\"",
+            "usefirewall=\"TRUE\" usepasv=\"FALSE\" useSFTP=\"TRUE\"",
+        );
+        let sftp_path = write_tmp(&sftp_xml);
+        let sftp_res = import_dreamweaver(&sftp_path).expect("parse sftp firewall .ste");
+        std::fs::remove_file(&sftp_path).ok();
+        assert_eq!(sftp_res.servers[0].protocol.as_deref(), Some("sftp"));
+        assert_eq!(sftp_res.warnings.len(), 1);
+        assert!(sftp_res.warnings[0].reason.contains("firewall/proxy"));
+        assert_eq!(sftp_res.warnings[0].name, "[A] demo.example.com");
     }
 
     #[test]

@@ -456,7 +456,7 @@ fn putty_proxy_warning(name: &str, kv: &HashMap<String, String>) -> Option<Putty
         None => legacy_proxy()?,
     };
     Some(PuttyImportWarning {
-        name: name.to_string(),
+        name: crate::bridge_shared::sanitize_warning_name(name, "PuTTY session"),
         reason: format!(
             "PuTTY uses {kind} proxy ({key}={proxy_type}) for this session; the proxy is not imported and AeroFTP will connect directly"
         ),
@@ -1208,6 +1208,20 @@ mod tests {
         let warning = putty_proxy_warning("Modern wins", &kv).expect("modern warning");
         assert!(warning.reason.contains("SOCKS5"));
         assert!(!warning.reason.contains("HTTP"));
+
+        let user = "puttyuser";
+        let pw = "puttyTopSecretPw";
+        let tok = "puttySecretTok";
+        let url_session = format!("ssh://{user}:{pw}@ssh.example.com?token={tok}");
+        let redacted = putty_proxy_warning(&url_session, &kv).expect("redacted warning");
+        assert_eq!(redacted.name, "ssh.example.com");
+        let serialized = serde_json::to_string(&redacted).unwrap();
+        for secret in [user, pw, tok] {
+            assert!(
+                !serialized.contains(secret),
+                "{secret} leaked: {serialized}"
+            );
+        }
     }
 
     #[test]

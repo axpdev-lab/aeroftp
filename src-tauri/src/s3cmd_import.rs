@@ -266,7 +266,7 @@ pub fn import_s3cmd(path: &Path) -> Result<S3cmdImportResult, String> {
                     .is_some_and(|value| !value.trim().is_empty())
                 {
                     warnings.push(S3cmdImportWarning {
-                        name: name.clone(),
+                        name: crate::bridge_shared::sanitize_warning_name(&name, "s3cmd default"),
                         reason: "s3cmd proxy_host is configured; the proxy is not imported and AeroFTP will connect directly".to_string(),
                     });
                 }
