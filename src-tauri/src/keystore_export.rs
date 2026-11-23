@@ -2381,7 +2381,7 @@ fn apply_profile_decisions(
                 (None, Some(row)) => Some(row.as_ref().map(|v| v.as_str())),
                 (None, None) => None,
             };
-            let accepted = expected.and_then(|_| row_accepts(key, None));
+            let accepted = row_accepts(key, None);
             let accepted: Option<Vec<Option<&str>>> = accepted.as_ref().map(|rows| {
                 rows.iter()
                     .map(|row| row.as_ref().map(|v| v.as_str()))
@@ -7108,6 +7108,67 @@ mod tests {
             Some("bob-rotated"),
             "the token rotated after the restore is kept"
         );
+    }
+
+    /// A VaultOnly import whose backup removes the profile deletes the row
+    /// only while it still holds what the plan read: a refresh that rotated
+    /// the row after the plan is this device's latest and stays.
+    #[test]
+    fn a_vaultonly_removal_keeps_a_row_rotated_after_the_plan() {
+        for rotate in [true, false] {
+            let _guard = crate::user_partitions::test_lock();
+            crate::user_partitions::clear_user_session();
+            let dir = tempfile::tempdir().unwrap();
+            let store = throwaway_store(dir.path(), "vault.db");
+            let cfg = dir.path().join("config");
+            let key = "oauth_dropbox_srv_drive";
+            let bob = bob_with_his_token(&store, &cfg, key);
+            let mut payload = ExportPayload::default();
+            payload.vault_entries.insert(
+                "config_server_profiles".to_string(),
+                serde_json::to_string(&Vec::<serde_json::Value>::new()).unwrap(),
+            );
+            let backup = dir.path().join("vaultonly.aeroftp-keystore");
+            seal_backup(&backup, PASSWORD_736, &payload);
+            if rotate {
+                let hook_db = cfg.join("user_partitions.db");
+                before_profile_decisions(move |store| {
+                    let conn = rusqlite::Connection::open(&hook_db).unwrap();
+                    let root = Zeroizing::new(store.derive_user_partition_wrapping_key());
+                    crate::user_partitions::set_user_credential_for(
+                        &conn,
+                        &root,
+                        bob,
+                        key,
+                        "oauth",
+                        "bob-rotated",
+                    )
+                    .unwrap();
+                });
+            }
+
+            let result = import_deciding(
+                &store,
+                &cfg,
+                &backup,
+                VAULT_ONLY,
+                &[decide(
+                    "srv_drive",
+                    keystore_profile_plan::ProfileDecision::Accept,
+                )],
+            );
+            assert!(
+                result.sqlite_dbs_failed.is_empty(),
+                "{rotate}: {:?}",
+                result.sqlite_dbs_failed
+            );
+            assert_eq!(
+                row_in(&store, &cfg, bob, key).as_deref(),
+                if rotate { Some("bob-rotated") } else { None },
+                "rotate={rotate}: the row keeps a refresh written after the plan \
+                 and loses the value the plan read"
+            );
+        }
     }
 
     /// The profile step writes to the account its plan was made for. When the
