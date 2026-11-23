@@ -6280,6 +6280,43 @@ fn token_tags_pending_elsewhere(conn: &Connection, user_id: i64) -> Result<bool,
     .map_err(|e| format!("Read profile token tags: {e}"))
 }
 
+/// Whether a writer holds the [`ProfileListLock`] of `conn`'s database right
+/// now, asked without waiting: a restore or import keeps it for the whole
+/// write, during which the rows it lands may still be copies the alignment
+/// has not reached. An in-memory database, a missing lock file or a
+/// filesystem without file locks answers false.
+fn profile_list_lock_busy(conn: &Connection) -> bool {
+    let Some(path) = conn.path() else {
+        return false;
+    };
+    if path.is_empty() {
+        return false;
+    }
+    let db_path = std::path::Path::new(path);
+    let parent = db_path
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."));
+    let resolved = std::fs::canonicalize(db_path).or_else(|_| {
+        std::fs::canonicalize(parent).map(|dir| dir.join(db_path.file_name().unwrap_or_default()))
+    });
+    let Ok(resolved) = resolved else {
+        return false;
+    };
+    let Ok(file) = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(resolved.with_extension("write-lock"))
+    else {
+        return false;
+    };
+    #[cfg(test)]
+    if NO_FILE_LOCKS_IN_TEST.get() {
+        return false;
+    }
+    matches!(file.try_lock(), Err(std::fs::TryLockError::WouldBlock))
+}
+
 /// Whether the private-token row `key` of `user_id`, read as `row`, must read
 /// as absent: the account is not the legacy owner and not yet aligned, and
 /// the alignment waits for profile tags ([`waits_for_profile_tags`], or, for
@@ -6289,7 +6326,10 @@ fn token_tags_pending_elsewhere(conn: &Connection, user_id: i64) -> Result<bool,
 /// migration made of the legacy owner's token would otherwise sign this
 /// account in to the owner's cloud until an unrelated account is unlocked.
 /// A row the account's own sign-in stamped stays readable, and so does every
-/// row of an aligned account.
+/// row of an aligned account. The same holds while a writer keeps the
+/// profile list lock: a restore lands rows before its realignment runs, with
+/// the tags already current, so an unaligned non-owner row is just as
+/// unverified then.
 fn unverified_while_tags_pending(
     conn: &Connection,
     user_id: i64,
@@ -6298,13 +6338,18 @@ fn unverified_while_tags_pending(
     digest: &str,
     read_secret: &SecretReader<'_>,
 ) -> Result<bool, String> {
+    if private_token_type(key).is_none() || private_tokens_aligned(conn, user_id)? {
+        return Ok(false);
+    }
     // A key that folds case is ambiguous while another account's token tags
     // are pending even without a restore's wait: `Team` here and `team`
     // there are one vault key, and nothing yet says which profile's token
     // the vault holds.
     let waits = waits_for_profile_tags(conn, user_id)?
-        || (token_key_folds_case(key) && token_tags_pending_elsewhere(conn, user_id)?);
-    if private_token_type(key).is_none() || !waits || private_tokens_aligned(conn, user_id)? {
+        || (token_key_folds_case(key) && token_tags_pending_elsewhere(conn, user_id)?)
+        || (nonprofile_secret_owner_unpersisted(conn)? != Some(user_id)
+            && profile_list_lock_busy(conn));
+    if !waits {
         return Ok(false);
     }
     let vault = read_secret(key)?;
@@ -14023,6 +14068,57 @@ mod tests {
                 ));
             }
         }
+    }
+
+    /// With the tags already current, a writer holding the profile list lock
+    /// (a restore landing rows before its realignment) leaves an unaligned
+    /// non-owner row just as unverified: the unstamped copy reads as absent,
+    /// the account's own stamped sign-in stays readable.
+    #[test]
+    fn a_busy_profile_list_lock_withholds_an_unaligned_unstamped_row() {
+        let _guard = test_lock();
+        clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("partitions.db");
+        let mut conn = open_or_init_path(path.clone()).expect("open");
+        let root = test_root();
+        migrate_legacy_payloads(&mut conn, Some("[]"), None, &root).expect("seed");
+        let other = create_passphrase_less_user(&mut conn, &root, "Other", None, None)
+            .unwrap()
+            .id;
+        clear_user_session();
+        let copy = "oauth_dropbox_p";
+        let own = "oauth_dropbox_q";
+        set_user_credential_for(&conn, &root, other, copy, "oauth", "owners-token").unwrap();
+        set_signed_in_credential_for(&conn, &root, other, own, "oauth", "own-sign-in").unwrap();
+        assert!(!private_tokens_aligned(&conn, other).unwrap());
+        let (_, read) = fake_vault(&[(copy, "owners-token"), (own, "own-sign-in")]);
+        let reads = |key: &str| {
+            read_credential_owner_aware_inner(&conn, &root, other, key, &read)
+                .unwrap()
+                .map(|value| value.to_string())
+        };
+        assert_eq!(reads(copy).as_deref(), Some("owners-token"));
+        assert_eq!(reads(own).as_deref(), Some("own-sign-in"));
+
+        let writer = ProfileListLock::acquire(&conn).unwrap();
+        assert!(writer.is_some());
+        assert_eq!(
+            reads(copy),
+            None,
+            "an unstamped copy while a writer holds the lock"
+        );
+        assert_eq!(
+            reads(own).as_deref(),
+            Some("own-sign-in"),
+            "the stamped sign-in stays readable"
+        );
+        drop(writer);
+        assert_eq!(
+            reads(copy).as_deref(),
+            Some("owners-token"),
+            "readable again once the lock is free"
+        );
     }
 
     /// The alignment does not run while a profile writer holds the list lock,
