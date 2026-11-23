@@ -2189,6 +2189,12 @@ impl OAuth2Manager {
 
             // Lazy migration: per-profile key missing, legacy hit ➜ rebind + remove.
             if !profile_id.is_empty() {
+                // A rotation kept pending under the singleton is settled
+                // first: the move below carries what the settle writes,
+                // not the stale record the rotation replaced.
+                crate::credential_store::off_async_worker(|| {
+                    self.settle_pending_rotation(&legacy)
+                })?;
                 if let Ok(json) = store.get(&legacy) {
                     Self::decode_record(&json, TokenSource::Unavailable, credential_user)?;
                     let moved = store
@@ -2208,7 +2214,9 @@ impl OAuth2Manager {
         }
 
         // Fallback: try in-memory cache (mirror of the vault layout above,
-        // its lazy migration included).
+        // its lazy migration included). The singleton's pending rotation is
+        // settled first here too, so the adoption moves the live chain.
+        crate::credential_store::off_async_worker(|| self.settle_pending_rotation(&legacy))?;
         if let Ok(mut cache) = MEMORY_TOKEN_CACHE.lock() {
             if let Some(map) = cache.as_mut() {
                 let adopted =
@@ -2227,6 +2235,8 @@ impl OAuth2Manager {
             }
         }
 
+        // And before the plaintext singleton is claimed for the vault.
+        crate::credential_store::off_async_worker(|| self.settle_pending_rotation(&legacy))?;
         let legacy_path =
             Self::token_dir()?.join(format!("oauth2_{:?}.json", provider).to_lowercase());
         with_stored_legacy_token_claim(&MEMORY_TOKEN_CACHE, &legacy_path, |cache, claimed| {
@@ -2358,8 +2368,9 @@ impl OAuth2Manager {
                 .map_err(|e| ProviderError::Other(format!("Failed to delete tokens: {e}")))
         };
 
-        // As above: dropped before the fallible cleanup, not after it.
-        drop_pending_rotation(owner, &account, None);
+        // The pending rotation is dropped only once the cleanup can proceed:
+        // a sign-out refused below leaves every copy in place, and the
+        // rotation filed for it is still the live chain.
         let json_path =
             Self::token_dir()?.join(format!("oauth2_{:?}.json", provider).to_lowercase());
         Self::delete_shared_tokens(
