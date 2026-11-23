@@ -224,13 +224,25 @@ fn map_remote_info(ri: &str) -> MapOutcome {
     if host.trim().is_empty() {
         return MapOutcome::Skipped(access, "missing host".to_string());
     }
-    let Some(host) = crate::bridge_shared::try_endpoint_host(&host) else {
+    let parsed_host = (|| {
+        if protocol == "webdav" {
+            let clean = crate::bridge_shared::endpoint_without_secrets(&host)?;
+            let parts = crate::bridge_shared::split_endpoint(&clean)?;
+            let (_, inline_port) = crate::bridge_shared::split_host_port(parts.host_port)?;
+            Some((clean, inline_port))
+        } else {
+            let clean = crate::bridge_shared::try_hostname_field(&host)?;
+            crate::bridge_shared::split_host_port(&clean)
+        }
+    })();
+    let Some((host, inline_port)) = parsed_host else {
         return MapOutcome::Skipped(access, "invalid or ambiguous host".to_string());
     };
 
     let port = ri_attr(ri, &["port"])
         .and_then(|p| p.trim().parse::<u32>().ok())
         .filter(|p| *p > 0)
+        .or_else(|| inline_port.map(u32::from))
         .unwrap_or(default_port);
 
     let username = ri_attr(ri, &["user", "login"]).unwrap_or_default();
@@ -954,6 +966,37 @@ mod tests {
         assert!(!xml.contains('Ã'), "no mojibake in {xml}");
         assert_eq!(back.servers[0].name, name);
         assert_eq!(back.servers[0].initial_path.as_deref(), Some(root));
+    }
+
+    #[test]
+    fn webdav_export_import_preserves_base_url_port_and_separate_remote_root() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("WebDav.ste");
+        let servers = vec![DreamweaverExportServer {
+            id: "dw-webdav".to_string(),
+            name: "WebDAV".to_string(),
+            host: "https://dav.example.test:8443/dav/alice".to_string(),
+            port: 8443,
+            username: "alice".to_string(),
+            protocol: Some("webdav".to_string()),
+            options: None,
+            provider_id: Some("custom-webdav".to_string()),
+            initial_path: Some("/distinct-root".to_string()),
+        }];
+
+        let outcome = export_dreamweaver(&servers, &HashMap::new(), &path).unwrap();
+        assert_eq!(outcome.exported, 1);
+        let back = import_dreamweaver(&path).unwrap();
+        assert_eq!(back.servers.len(), 1);
+        assert_eq!(
+            back.servers[0].host,
+            "https://dav.example.test:8443/dav/alice"
+        );
+        assert_eq!(back.servers[0].port, 8443);
+        assert_eq!(
+            back.servers[0].initial_path.as_deref(),
+            Some("/distinct-root")
+        );
     }
 
     #[test]

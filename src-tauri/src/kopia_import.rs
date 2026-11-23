@@ -154,6 +154,7 @@ enum Mapped {
 
 /// Map a parsed Kopia config into either a profile or a skip reason.
 fn map_storage(kind: &str, config: &serde_json::Value) -> Mapped {
+    let mut s3_port = None;
     let g = |k: &str| {
         config
             .get(k)
@@ -187,32 +188,40 @@ fn map_storage(kind: &str, config: &serde_json::Value) -> Mapped {
                     }
                 }
             };
-            // AWS stays implicit: an explicit endpoint switches the S3
-            // connection to path-style, which AWS refuses for newer buckets.
+            if let Some((_, port)) = crate::bridge_shared::split_host_port(&ep_host) {
+                s3_port = port.map(u32::from);
+            }
             let ep_lower = ep_trimmed.to_ascii_lowercase();
-            let endpoint_url =
-                if ep_host.is_empty() || map_s3_provider_from_endpoint(&ep_host) == "amazon-s3" {
-                    None
-                } else if ep_lower.starts_with("http://") || ep_lower.starts_with("https://") {
-                    endpoint_url_without_secrets(ep_trimmed).map(|u| {
-                        let normalized = if let Some((scheme, rest)) = u.split_once("://") {
-                            format!("{}://{}", scheme.to_ascii_lowercase(), rest)
-                        } else {
-                            u
-                        };
-                        normalized.trim_end_matches('/').to_string()
-                    })
-                } else {
-                    let no_tls = config
-                        .get("doNotUseTLS")
-                        .and_then(|v| v.as_bool())
-                        .unwrap_or(false);
-                    Some(format!(
-                        "{}://{}",
-                        if no_tls { "http" } else { "https" },
-                        ep_host
-                    ))
-                };
+            let aws = map_s3_provider_from_endpoint(&ep_host) == "amazon-s3";
+            let no_tls = config
+                .get("doNotUseTLS")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let https =
+                ep_lower.starts_with("https://") || (!ep_lower.starts_with("http://") && !no_tls);
+            let default_aws_transport = aws
+                && https
+                && s3_port.unwrap_or(443) == 443
+                && crate::bridge_shared::split_endpoint(ep_trimmed)
+                    .is_some_and(|parts| parts.path.is_empty());
+            let endpoint_url = if ep_host.is_empty() || default_aws_transport {
+                None
+            } else if ep_lower.starts_with("http://") || ep_lower.starts_with("https://") {
+                endpoint_url_without_secrets(ep_trimmed).map(|u| {
+                    let normalized = if let Some((scheme, rest)) = u.split_once("://") {
+                        format!("{}://{}", scheme.to_ascii_lowercase(), rest)
+                    } else {
+                        u
+                    };
+                    normalized.trim_end_matches('/').to_string()
+                })
+            } else {
+                Some(format!(
+                    "{}://{}",
+                    if no_tls { "http" } else { "https" },
+                    ep_host
+                ))
+            };
             (
                 "s3",
                 Some(map_s3_provider_from_endpoint(&ep).to_string()),
@@ -225,6 +234,7 @@ fn map_storage(kind: &str, config: &serde_json::Value) -> Mapped {
                     ("prefix", g("prefix")),
                     ("region", g("region")),
                     ("sessionToken", g("sessionToken")),
+                    ("pathStyle", aws.then(|| "false".to_string())),
                     ("endpoint", endpoint_url),
                 ]),
             )
@@ -300,6 +310,7 @@ fn map_storage(kind: &str, config: &serde_json::Value) -> Mapped {
             .and_then(|v| v.as_u64())
             .and_then(|p| u32::try_from(p).ok())
             .filter(|p| protocol == "sftp" && *p > 0)
+            .or(s3_port)
             .unwrap_or_else(|| default_port_for(protocol)),
         username,
         protocol: Some(protocol.to_string()),
@@ -592,6 +603,56 @@ mod tests {
         assert_eq!(o.get("region").unwrap(), "us-east-1");
         assert_eq!(o.get("sessionToken").unwrap(), "tok123");
         assert_eq!(o.get("repo_kind").unwrap(), "kopia");
+    }
+
+    #[test]
+    fn aws_explicit_transport_is_preserved_and_default_stays_implicit() {
+        let effective = |endpoint: &str| {
+            let result = import_str(
+                &serde_json::json!({
+                    "storage": {"type": "s3", "config": {
+                        "endpoint": endpoint,
+                        "bucket": "photos",
+                        "accessKeyID": "DEMOKEY",
+                        "secretAccessKey": "demosecret"
+                    }}
+                })
+                .to_string(),
+            );
+            assert_eq!(result.servers.len(), 1);
+            let server = &result.servers[0];
+            let mut extra = HashMap::new();
+            crate::profile_loader::apply_profile_options(
+                &mut extra,
+                &serde_json::json!({"options": server.options}),
+            );
+            let config = crate::providers::types::S3Config::from_provider_config(
+                &crate::providers::types::ProviderConfig {
+                    name: server.name.clone(),
+                    provider_type: crate::providers::types::ProviderType::S3,
+                    host: server.host.clone(),
+                    port: u16::try_from(server.port).ok(),
+                    username: Some(server.username.clone()),
+                    password: None,
+                    initial_path: None,
+                    extra,
+                },
+            )
+            .unwrap();
+            (server.port, config)
+        };
+
+        let (port, custom) = effective("http://s3.amazonaws.com:8080");
+        assert_eq!(port, 8080);
+        assert_eq!(
+            custom.endpoint.as_deref(),
+            Some("http://s3.amazonaws.com:8080")
+        );
+        assert!(!custom.path_style);
+
+        let (_, default) = effective("https://s3.amazonaws.com");
+        assert_eq!(default.endpoint, None);
+        assert!(!default.path_style);
     }
 
     #[test]

@@ -731,7 +731,7 @@ fn map_server_with_context(
         || raw_host.contains('#')
         || raw_host.contains('/')
     {
-        let clean = crate::bridge_shared::try_endpoint_host(raw_host)
+        let clean = crate::bridge_shared::try_hostname_field(raw_host)
             .ok_or_else(|| "invalid or credential-bearing Host".to_string())?;
         let (h, p) = split_clean_host_and_port(&clean);
         (h.to_string(), p)
@@ -1646,17 +1646,7 @@ pub fn export_filezilla(
             }
         };
 
-        // When an S3 profile sets an explicit `options.endpoint` override,
-        // export its effective endpoint host and port instead of stale
-        // `server.host` / `server.port` fields.
-        let (export_host, export_port) = if protocol == "s3"
-            && server
-                .options
-                .as_ref()
-                .and_then(|o| o.get("endpoint"))
-                .and_then(|v| v.as_str())
-                .is_some_and(|s| !s.trim().is_empty())
-        {
+        let (export_host, export_port) = if protocol == "s3" {
             match crate::bridge_shared::resolve_export_endpoint(
                 "s3",
                 &server.host,
@@ -1665,28 +1655,41 @@ pub fn export_filezilla(
                 server.options.as_ref(),
                 None,
             ) {
-                Ok(Some(ep)) => {
-                    // Protocol=7 stores only host and port. Both a non-HTTPS scheme
-                    // and an endpoint base path would be lost on reimport.
+                Ok(endpoint) => {
                     let safe_name =
                         crate::bridge_shared::sanitize_warning_name(&server.name, "FileZilla site");
-                    if ep.scheme != "https" {
+                    let (host, port, scheme, path) = match endpoint {
+                        Some(ep) => (
+                            ep.host,
+                            ep.port.map(u32::from).unwrap_or(443),
+                            ep.scheme,
+                            ep.path,
+                        ),
+                        None => (server.host.clone(), server.port, "https", String::new()),
+                    };
+                    if scheme != "https" {
                         outcome.skip(
                             &safe_name,
                             "FileZilla Protocol=7 cannot preserve a non-HTTPS S3 endpoint",
                         );
                         continue;
                     }
-                    if !ep.path.is_empty() {
+                    if !path.is_empty() {
                         outcome.skip(
                             &safe_name,
                             "FileZilla Protocol=7 cannot preserve an S3 endpoint base path",
                         );
                         continue;
                     }
-                    (ep.host, ep.port.map(u32::from).unwrap_or(443))
+                    if crate::bridge_shared::map_s3_provider_from_endpoint(&host) != "amazon-s3" {
+                        outcome.skip(
+                            &safe_name,
+                            "FileZilla Protocol=7 needs a provider definition for a custom S3 endpoint; export only root AWS endpoints",
+                        );
+                        continue;
+                    }
+                    (host, port)
                 }
-                Ok(None) => (server.host.clone(), server.port),
                 Err(_) => {
                     outcome.skip(
                         &crate::bridge_shared::sanitize_warning_name(
@@ -1701,6 +1704,19 @@ pub fn export_filezilla(
         } else {
             (server.host.clone(), server.port)
         };
+
+        if protocol != "s3"
+            && server
+                .initial_path
+                .as_deref()
+                .is_some_and(|path| path.starts_with(r"\\"))
+        {
+            outcome.skip(
+                &crate::bridge_shared::sanitize_warning_name(&server.name, "FileZilla site"),
+                "FileZilla cannot preserve a UNC initial path without making it drive-relative",
+            );
+            continue;
+        }
 
         // Sanitize values for XML
         let sanitize = |s: &str| -> String {
@@ -2860,8 +2876,12 @@ mod tests {
             FileZillaExportServer {
                 id: name.to_string(),
                 name: name.to_string(),
-                host: "files.example.com".to_string(),
-                port: 0,
+                host: if protocol == "s3" {
+                    "s3.amazonaws.com".to_string()
+                } else {
+                    "files.example.com".to_string()
+                },
+                port: if protocol == "s3" { 443 } else { 0 },
                 username: "u".to_string(),
                 protocol: Some(protocol.to_string()),
                 options,
@@ -3687,7 +3707,7 @@ mod tests {
                 initial_path: Some("/archive".into()),
                 options: Some(serde_json::json!({
                     "bucket": "media",
-                    "endpoint": "https://objects.example.test:9000"
+                    "endpoint": "https://s3.eu-west-1.amazonaws.com:9000"
                 })),
             },
             FileZillaExportServer {
@@ -3712,7 +3732,7 @@ mod tests {
             .iter()
             .find(|s| s.name == "OverrideS3")
             .unwrap();
-        assert_eq!(overridden.host, "objects.example.test");
+        assert_eq!(overridden.host, "s3.eu-west-1.amazonaws.com");
         assert_eq!(overridden.port, 9000);
         let plain = back.servers.iter().find(|s| s.name == "PlainS3").unwrap();
         assert_eq!(plain.host, "s3.amazonaws.com");
@@ -3968,6 +3988,40 @@ mod tests {
     }
 
     #[test]
+    fn export_reports_unc_instead_of_making_it_drive_relative() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sitemanager.xml");
+        let server = |id: &str, name: &str, initial_path: &str| FileZillaExportServer {
+            id: id.to_string(),
+            name: name.to_string(),
+            host: "files.example.test".to_string(),
+            port: 22,
+            username: "alice".to_string(),
+            protocol: Some("sftp".to_string()),
+            options: None,
+            initial_path: Some(initial_path.to_string()),
+        };
+        let servers = vec![
+            server("unc", "UncShare", r"\\files\share\drop"),
+            server("single", "SingleBackslash", r"\files\share\drop"),
+        ];
+
+        let outcome = export_filezilla(&servers, &HashMap::new(), &path).unwrap();
+        assert_eq!(outcome.exported, 1);
+        assert_eq!(outcome.skipped.len(), 1);
+        assert_eq!(outcome.skipped[0].name, "UncShare");
+        assert!(outcome.skipped[0].reason.contains("UNC"));
+        let xml = std::fs::read_to_string(&path).unwrap();
+        assert!(!xml.contains("UncShare"), "{xml}");
+        assert!(xml.contains("SingleBackslash"), "{xml}");
+        let back = import_filezilla(&path).unwrap();
+        assert_eq!(
+            back.servers[0].initial_path.as_deref(),
+            Some(r"\files\share\drop")
+        );
+    }
+
+    #[test]
     fn export_filezilla_reports_unrepresentable_s3_endpoints_and_keeps_root_https() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("sitemanager.xml");
@@ -3999,6 +4053,29 @@ mod tests {
                 })),
             },
             FileZillaExportServer {
+                id: "s3-custom-https-endpoint".into(),
+                name: "CustomHttpsS3".into(),
+                host: "stale-custom.example.test".into(),
+                port: 443,
+                username: "AKIACUSTOM".into(),
+                protocol: Some("s3".into()),
+                initial_path: Some("/archive".into()),
+                options: Some(serde_json::json!({
+                    "bucket": "media",
+                    "endpoint": "https://objects.example.test:9443"
+                })),
+            },
+            FileZillaExportServer {
+                id: "s3-implicit-custom-endpoint".into(),
+                name: "ImplicitCustomS3".into(),
+                host: "objects.example.test:9000".into(),
+                port: 9000,
+                username: "AKIAIMPLICIT".into(),
+                protocol: Some("s3".into()),
+                initial_path: Some("/archive".into()),
+                options: Some(serde_json::json!({"bucket": "media"})),
+            },
+            FileZillaExportServer {
                 id: "s3-root-endpoint".into(),
                 name: "RootHttpsS3".into(),
                 host: "stale2.example.test".into(),
@@ -4008,13 +4085,13 @@ mod tests {
                 initial_path: Some("/archive".into()),
                 options: Some(serde_json::json!({
                     "bucket": "media",
-                    "endpoint": "https://objects.example.test:9443"
+                    "endpoint": "https://s3.amazonaws.com:9443"
                 })),
             },
         ];
         let outcome = export_filezilla(&servers, &HashMap::new(), &path).unwrap();
         assert_eq!(outcome.exported, 1);
-        assert_eq!(outcome.skipped.len(), 2);
+        assert_eq!(outcome.skipped.len(), 4);
         let http_skip = outcome
             .skipped
             .iter()
@@ -4027,16 +4104,29 @@ mod tests {
             .find(|skip| skip.name == "GatewayS3")
             .unwrap();
         assert!(path_skip.reason.contains("base path"));
+        let custom_skip = outcome
+            .skipped
+            .iter()
+            .find(|skip| skip.name == "CustomHttpsS3")
+            .unwrap();
+        assert!(custom_skip.reason.contains("provider definition"));
+        let implicit_skip = outcome
+            .skipped
+            .iter()
+            .find(|skip| skip.name == "ImplicitCustomS3")
+            .unwrap();
+        assert!(implicit_skip.reason.contains("non-HTTPS"));
 
         let xml = std::fs::read_to_string(&path).unwrap();
-        assert!(!xml.contains("HttpS3"), "{xml}");
-        assert!(!xml.contains("GatewayS3"), "{xml}");
+        for name in ["HttpS3", "GatewayS3", "CustomHttpsS3", "ImplicitCustomS3"] {
+            assert!(!xml.contains(name), "{name}: {xml}");
+        }
         assert!(xml.contains("RootHttpsS3"), "{xml}");
 
         let back = import_filezilla(&path).unwrap();
         assert_eq!(back.servers.len(), 1);
         assert_eq!(back.servers[0].name, "RootHttpsS3");
-        assert_eq!(back.servers[0].host, "objects.example.test");
+        assert_eq!(back.servers[0].host, "s3.amazonaws.com");
         assert_eq!(back.servers[0].port, 9443);
 
         let solo_path = dir.path().join("solo.xml");

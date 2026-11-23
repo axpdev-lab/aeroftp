@@ -68,12 +68,9 @@ struct MappedProfile {
 /// 443). `None` when the URL is not a `host[:port]` endpoint.
 fn host_port_from_url(url: &str) -> Option<(String, u32)> {
     let host = crate::bridge_shared::try_endpoint_host(url)?;
-    if let Some((h, p)) = host.rsplit_once(':') {
-        // Only treat the trailing token as a port when it is numeric;
-        // otherwise it is part of the host (defensive, mc always emits a URL).
-        if let Ok(port) = p.parse::<u32>() {
-            return Some((h.to_string(), port));
-        }
+    let (host, inline_port) = crate::bridge_shared::split_host_port(&host)?;
+    if let Some(port) = inline_port {
+        return Some((host, u32::from(port)));
     }
     let scheme = url.split_once("://").map(|(s, _)| s).unwrap_or("");
     let port = match scheme.to_lowercase().as_str() {

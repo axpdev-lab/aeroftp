@@ -394,7 +394,10 @@ fn build_plan(
 
         server.name = crate::bridge_shared::sanitize_warning_name(&server.name, "rclone remote");
         let trimmed_name = server.name.trim().to_string();
-        let matched = find_existing_by_trimmed_name(current, &trimmed_name);
+        let matched = find_existing_by_trimmed_name(current, &trimmed_name).filter(|_| {
+            existing_mode != ExistingProfileMode::Overwrite
+                || source_block_name.trim() == trimmed_name
+        });
         let existing_target_digest = matched.map(existing_target_digest_projection);
         let existing_match_id = matched
             .and_then(|p| p.get("id").and_then(Value::as_str))
@@ -3160,6 +3163,41 @@ override.no_check_certificate = true
                 .and_then(Value::as_bool),
             Some(false)
         );
+    }
+
+    #[test]
+    fn overwrite_does_not_match_a_profile_through_a_sanitized_collision() {
+        let input = TemplateInput::Text {
+            content: "[vault?token=x]\ntype = sftp\nhost = one.example.test\nuser = alice\n\n\
+                      [vault?token=y]\ntype = sftp\nhost = two.example.test\nuser = alice\n"
+                .to_string(),
+        };
+        let current = vec![serde_json::json!({
+            "id": "srv_vault",
+            "name": "vault",
+            "protocol": "sftp",
+            "host": "saved.example.test",
+            "port": 22,
+            "username": "saved-user",
+            "hasStoredCredential": true
+        })];
+
+        let preview = preview_template_with_current(
+            &input,
+            &TemplatePreviewOptions {
+                existing: ExistingProfileMode::Overwrite,
+                ..Default::default()
+            },
+            &current,
+        )
+        .unwrap();
+        assert_eq!(preview.rows.len(), 2);
+        for row in &preview.rows {
+            assert_ne!(row.action, TemplatePlannedAction::Replace);
+            assert_eq!(row.existing_match_id, None);
+        }
+        assert_ne!(preview.rows[0].target_name, preview.rows[1].target_name);
+        assert!(preview.rows.iter().all(|row| row.target_name != "vault"));
     }
 
     #[test]

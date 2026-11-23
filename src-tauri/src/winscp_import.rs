@@ -254,7 +254,15 @@ struct MappedProfile {
 /// Protocol determination: `FSProtocol` + `Ftps` fields combined.
 fn map_session(name: &str, fields: &WinScpSession) -> Option<MappedProfile> {
     let raw_host = fields.get("HostName").filter(|h| !h.is_empty())?;
-    let host = crate::bridge_shared::try_endpoint_host(raw_host)?;
+    let bare_account = raw_host.rsplit_once('@').filter(|(account, _)| {
+        !raw_host.contains("://")
+            && !account.contains(':')
+            && !account.is_empty()
+            && !raw_host.contains(['/', '?', '#'])
+    });
+    let host_field = bare_account.map_or(raw_host.as_str(), |(_, host)| host);
+    let clean_host = crate::bridge_shared::try_hostname_field(host_field)?;
+    let (host, inline_port) = crate::bridge_shared::split_host_port(&clean_host)?;
     let fs_protocol: u32 = fields
         .get("FSProtocol")
         .and_then(|v| v.parse().ok())
@@ -264,7 +272,9 @@ fn map_session(name: &str, fields: &WinScpSession) -> Option<MappedProfile> {
         .get("PortNumber")
         .and_then(|v| v.parse().ok())
         .unwrap_or(0); // 0 means "use default"
-    let username = fields.get("UserName").cloned().unwrap_or_default();
+    let username = bare_account
+        .map(|(account, _)| account.to_string())
+        .unwrap_or_else(|| fields.get("UserName").cloned().unwrap_or_default());
 
     // Decode password
     let password = if let Some(plain) = fields.get("PasswordPlain") {
@@ -275,7 +285,11 @@ fn map_session(name: &str, fields: &WinScpSession) -> Option<MappedProfile> {
         }
     } else if let Some(hex) = fields.get("Password") {
         if !hex.is_empty() {
-            let key = format!("{}{}", username, raw_host);
+            let key = if bare_account.is_some() {
+                format!("{username}{host_field}")
+            } else {
+                format!("{username}{raw_host}")
+            };
             match decode_winscp_password(hex, &key) {
                 Ok(pw) if !pw.is_empty() => Some(pw),
                 Ok(_) => None,
@@ -328,7 +342,11 @@ fn map_session(name: &str, fields: &WinScpSession) -> Option<MappedProfile> {
         }
     };
 
-    let actual_port = if port == 0 { default_port } else { port };
+    let actual_port = if port == 0 {
+        inline_port.map(u32::from).unwrap_or(default_port)
+    } else {
+        port
+    };
 
     // Build protocol-specific options
     let mut options = serde_json::Map::new();
@@ -491,7 +509,7 @@ fn parse_winscp_proxy_method(raw: &str) -> u32 {
 }
 
 /// Whether `host` resolves to the local loopback interface (`localhost`,
-/// `*.localhost`, `127.0.0.0/8`, or `::1`). When `Tunnel=1` is set in WinSCP,
+/// `*.localhost`, `127.0.0.0/8`, `::1`, or an IPv4-mapped form). When `Tunnel=1` is set in WinSCP,
 /// loopback addresses are relative to the bastion host rather than the local
 /// machine, so importing them as a direct profile would target the wrong host.
 fn is_loopback_target(host: &str) -> bool {
@@ -504,8 +522,12 @@ fn is_loopback_target(host: &str) -> bool {
     if lower == "localhost" || lower.ends_with(".localhost") {
         return true;
     }
-    bare.parse::<std::net::IpAddr>()
-        .is_ok_and(|ip| ip.is_loopback())
+    bare.parse::<std::net::IpAddr>().is_ok_and(|ip| match ip {
+        std::net::IpAddr::V4(v4) => v4.is_loopback(),
+        std::net::IpAddr::V6(v6) => v6
+            .to_ipv4_mapped()
+            .map_or_else(|| v6.is_loopback(), |v4| v4.is_loopback()),
+    })
 }
 
 /// Maximum number of sessions to parse (defense against DoS with crafted files).
@@ -1806,6 +1828,74 @@ FSProtocol=1
             "{}",
             s3_socks[0]
         );
+    }
+
+    #[test]
+    fn bare_ipv6_uses_its_separate_port() {
+        let fields = HashMap::from([
+            ("HostName".to_string(), "2001:db8::abcd".to_string()),
+            ("PortNumber".to_string(), "2222".to_string()),
+            ("UserName".to_string(), "alice".to_string()),
+            ("FSProtocol".to_string(), "2".to_string()),
+        ]);
+        let mapped = map_session("IPv6", &fields).unwrap();
+        assert_eq!(mapped.host, "[2001:db8::abcd]");
+        assert_eq!(mapped.port, 2222);
+
+        let bracketed = HashMap::from([
+            ("HostName".to_string(), "[2001:db8::abcd]".to_string()),
+            ("PortNumber".to_string(), "2223".to_string()),
+            ("FSProtocol".to_string(), "2".to_string()),
+        ]);
+        let mapped = map_session("Bracketed", &bracketed).unwrap();
+        assert_eq!(mapped.host, "[2001:db8::abcd]");
+        assert_eq!(mapped.port, 2223);
+    }
+
+    #[test]
+    fn bare_user_host_overrides_account_and_keys_password_decoding() {
+        let plain = HashMap::from([
+            ("HostName".to_string(), "alice@nas.example.test".to_string()),
+            ("UserName".to_string(), "bob".to_string()),
+            ("PasswordPlain".to_string(), "plain-secret".to_string()),
+            ("FSProtocol".to_string(), "2".to_string()),
+        ]);
+        let mapped = map_session("Plain", &plain).unwrap();
+        assert_eq!(mapped.host, "nas.example.test");
+        assert_eq!(mapped.username, "alice");
+        assert_eq!(mapped.password.as_deref(), Some("plain-secret"));
+
+        let encoded_password = obfuscate_winscp_password("encoded-secret", "alicenas.example.test");
+        let encoded = HashMap::from([
+            ("HostName".to_string(), "alice@nas.example.test".to_string()),
+            ("UserName".to_string(), "bob".to_string()),
+            ("Password".to_string(), encoded_password),
+            ("FSProtocol".to_string(), "2".to_string()),
+        ]);
+        let mapped = map_session("Encoded", &encoded).unwrap();
+        assert_eq!(mapped.username, "alice");
+        assert_eq!(mapped.password.as_deref(), Some("encoded-secret"));
+    }
+
+    #[test]
+    fn ipv4_mapped_loopback_is_skipped_only_with_a_tunnel() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("WinSCP.ini");
+        std::fs::write(
+            &path,
+            concat!(
+                "[Sessions\\TunMapped]\nHostName=[::ffff:127.0.0.1]\nUserName=u\nFSProtocol=2\nTunnel=on\n",
+                "[Sessions\\DirectMapped]\nHostName=[::ffff:127.0.0.1]\nUserName=u\nFSProtocol=2\nTunnel=off\n",
+            ),
+        )
+        .unwrap();
+
+        let result = import_winscp(&path).unwrap();
+        assert_eq!(result.servers.len(), 1);
+        assert_eq!(result.servers[0].name, "DirectMapped");
+        assert_eq!(result.skipped.len(), 1);
+        assert_eq!(result.skipped[0].name, "TunMapped");
+        assert!(result.skipped[0].reason.contains("loopback"));
     }
 
     #[test]

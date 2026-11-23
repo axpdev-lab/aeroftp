@@ -232,6 +232,72 @@ fn has_non_empty_hostname(host_port: &str) -> bool {
     true
 }
 
+pub(crate) fn is_ipv6_host_literal(raw: &str) -> bool {
+    let trimmed = raw.trim();
+    let inner = trimmed
+        .strip_prefix('[')
+        .and_then(|value| value.strip_suffix(']'))
+        .unwrap_or(trimmed);
+    let (address, scope) = inner
+        .split_once('%')
+        .map_or((inner, None), |(address, scope)| (address, Some(scope)));
+    !address.is_empty()
+        && scope.is_none_or(|scope| !scope.is_empty())
+        && address.parse::<std::net::Ipv6Addr>().is_ok()
+}
+
+pub(crate) fn split_host_port(raw: &str) -> Option<(String, Option<u16>)> {
+    let trimmed = raw.trim();
+    if is_ipv6_host_literal(trimmed) {
+        let host = if trimmed.starts_with('[') {
+            trimmed.to_string()
+        } else {
+            format!("[{trimmed}]")
+        };
+        return Some((host, None));
+    }
+    if let Some(after_open) = trimmed.strip_prefix('[') {
+        let (inside, after_close) = after_open.split_once(']')?;
+        if !is_ipv6_host_literal(inside) {
+            return None;
+        }
+        if after_close.is_empty() {
+            return Some((format!("[{inside}]"), None));
+        }
+        let port = after_close.strip_prefix(':')?;
+        return is_valid_tcp_port(port).then(|| (format!("[{inside}]"), port.parse::<u16>().ok()));
+    }
+    if trimmed.is_empty() || trimmed.starts_with(':') {
+        return None;
+    }
+    if let Some((host, port)) = trimmed.rsplit_once(':') {
+        if host.is_empty() || !is_valid_tcp_port(port) {
+            return None;
+        }
+        return Some((host.to_string(), port.parse::<u16>().ok()));
+    }
+    Some((raw.to_string(), None))
+}
+
+pub(crate) fn try_hostname_field(raw: &str) -> Option<String> {
+    if is_ipv6_host_literal(raw) {
+        return split_host_port(raw).map(|(host, _)| host);
+    }
+    let parts = split_endpoint(raw)?;
+    let after_scheme = raw
+        .trim()
+        .split_once("://")
+        .map_or(raw.trim(), |(_, rest)| rest);
+    let authority = after_scheme
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or(after_scheme);
+    if parts.path.contains('@') && !authority.contains('@') {
+        return None;
+    }
+    Some(parts.host_port.to_string())
+}
+
 /// Split an endpoint into scheme, `host[:port]` and path, without userinfo,
 /// query or fragment.
 ///
@@ -293,20 +359,22 @@ pub(crate) fn split_endpoint(endpoint: &str) -> Option<EndpointParts<'_>> {
 /// has no explicit name. Strips scheme, userinfo, path, query, and fragment,
 /// returning `fallback` if the host is empty or ambiguous.
 pub(crate) fn safe_host_label(raw: &str, fallback: &str) -> String {
-    try_endpoint_host(raw)
+    try_hostname_field(raw)
         .filter(|h| !h.is_empty())
         .unwrap_or_else(|| fallback.to_string())
 }
 
 fn token_may_carry_connection_string_secrets(tok: &str) -> bool {
-    let Some((_, parameters)) = tok.split_once(',') else {
-        return false;
-    };
-    parameters.split(',').any(|parameter| {
-        parameter
-            .split_once('=')
-            .is_some_and(|(key, _)| !key.trim().is_empty())
-    })
+    tok.split_once(',')
+        .map(|(_, parameters)| (',', parameters))
+        .or_else(|| tok.split_once(';').map(|(_, parameters)| (';', parameters)))
+        .is_some_and(|(delimiter, parameters)| {
+            parameters.split(delimiter).any(|parameter| {
+                parameter
+                    .split_once('=')
+                    .is_some_and(|(key, _)| !key.trim().is_empty())
+            })
+        })
 }
 
 fn token_may_carry_url_secrets(tok: &str) -> bool {
@@ -2041,6 +2109,45 @@ mod tests {
         assert_eq!(endpoint_host("s3.example.com#section"), "s3.example.com");
         assert_eq!(endpoint_host("[::1]:9000/path"), "[::1]:9000");
         assert_eq!(endpoint_host("s3.amazonaws.com"), "s3.amazonaws.com");
+    }
+
+    #[test]
+    fn hostname_fields_reject_password_fragments_and_normalize_ipv6() {
+        let malformed = "https://alice:1234/part@objects.example.test";
+        assert_eq!(try_hostname_field(malformed), None);
+        assert_eq!(safe_host_label(malformed, "unnamed"), "unnamed");
+        assert_eq!(
+            endpoint_without_secrets("https://objects.example.test:9000/team@east").as_deref(),
+            Some("https://objects.example.test:9000/team@east")
+        );
+        assert_eq!(
+            split_host_port("2001:db8::abcd"),
+            Some(("[2001:db8::abcd]".to_string(), None))
+        );
+        assert_eq!(
+            split_host_port("[fe80::1%eth0]"),
+            Some(("[fe80::1%eth0]".to_string(), None))
+        );
+        assert_eq!(
+            split_host_port("nas.example.test:2222"),
+            Some(("nas.example.test".to_string(), Some(2222)))
+        );
+    }
+
+    #[test]
+    fn semicolon_connection_strings_are_redacted_before_display() {
+        let secret = "SYNTHETIC_AZURE_ACCOUNT_KEY";
+        let name = format!(
+            "DefaultEndpointsProtocol=https;AccountName=lab;AccountKey={secret};EndpointSuffix=core.windows.net"
+        );
+        assert_eq!(
+            sanitize_warning_name(&name, "Cyberduck bookmark"),
+            "Cyberduck bookmark"
+        );
+        assert_eq!(
+            sanitize_warning_name("Team; East", "fallback"),
+            "Team; East"
+        );
     }
 
     #[test]

@@ -2033,10 +2033,18 @@ fn map_remote(
     };
     let mut mapped = mapped?;
     if !mapped.host.is_empty() {
-        let host_only_ipv6 = matches!(mapped.protocol.as_str(), "ftp" | "ftps" | "sftp")
-            && mapped.host.parse::<std::net::Ipv6Addr>().is_ok();
-        mapped.host = if host_only_ipv6 {
-            Some(mapped.host.clone())
+        let host_only = matches!(mapped.protocol.as_str(), "ftp" | "ftps" | "sftp");
+        mapped.host = if host_only {
+            let cleaned = crate::bridge_shared::try_hostname_field(&mapped.host)
+                .ok_or_else(|| format!("{rclone_type} host is not a valid endpoint"))?;
+            let (host, inline_port) = crate::bridge_shared::split_host_port(&cleaned)
+                .ok_or_else(|| format!("{rclone_type} host is not a valid endpoint"))?;
+            if remote.get("port").is_none() {
+                if let Some(port) = inline_port {
+                    mapped.port = u32::from(port);
+                }
+            }
+            Some(host)
         } else if mapped.protocol == "swift" {
             crate::bridge_shared::endpoint_without_secrets(&mapped.host)
         } else {
@@ -3160,6 +3168,9 @@ fn expand_goconfig_value<'a>(
     if recursion > GOCONFIG_MAX_DEFAULT_RECURSION {
         return Err(GoconfigExpansionError::Budget);
     }
+    if raw.len() > GOCONFIG_MAX_EXPANDED_BYTES {
+        return Err(GoconfigExpansionError::Intrinsic);
+    }
     // Enforce `GOCONFIG_MAX_EXPANDED_BYTES` on borrowed literals before
     // cloning anything when no `%(name)s` reference is present.
     if goconfig_first_reference(raw).is_none() {
@@ -3695,11 +3706,13 @@ fn split_goconfig_assignment(line: &str) -> Option<(String, String)> {
 /// Parse `rclone.conf` using `Unknwon/goconfig` `read.go` grammar for transport
 /// and substitution resolution: leading assignments before the first `[section]`
 /// header populate `[DEFAULT]`, both `=` and `:` delimiters are accepted, quoted
-/// keys (`"ssh"` / `` `ssh` ``) are unquoted, and exact key case is preserved.
+/// keys (`"ssh"` / `` `ssh` ``) are unquoted, exact key case is preserved, and
+/// `-` assignments become `#N` with numbering reset at each section header.
 fn parse_rclone_goconfig_raw_sections(content: &str) -> HashMap<String, RcloneRemote> {
     let mut sections: HashMap<String, RcloneRemote> = HashMap::new();
     let mut current_section = "DEFAULT".to_string();
     let mut section_count = 0usize;
+    let mut auto_key_count = 1usize;
 
     for (idx, raw_line) in content.lines().enumerate() {
         let stripped = if idx == 0 {
@@ -3724,12 +3737,20 @@ fn parse_rclone_goconfig_raw_sections(content: &str) -> HashMap<String, RcloneRe
                 sections.insert(name.to_string(), HashMap::new());
             }
             current_section = name.to_string();
+            auto_key_count = 1;
             continue;
         }
         if line.starts_with('[') {
             continue;
         }
         if let Some((key, value)) = split_goconfig_assignment(line) {
+            let key = if key == "-" {
+                let numbered = format!("#{auto_key_count}");
+                auto_key_count += 1;
+                numbered
+            } else {
+                key
+            };
             sections
                 .entry(current_section.clone())
                 .or_default()
@@ -3763,12 +3784,17 @@ pub fn import_rclone(config_path: &Path) -> Result<RcloneImportResult, String> {
     if parsed_ini.capped {
         log::warn!("rclone import: stopped at the {MAX_REMOTES}-remote cap");
     }
-    let sections: HashMap<String, RcloneRemote> = parsed_ini
+    let mut sections: HashMap<String, RcloneRemote> = parsed_ini
         .sections
         .into_iter()
         .map(|section| (section.name, section.data))
         .collect();
     let raw_sections = parse_rclone_goconfig_raw_sections(&content);
+    for (name, data) in &mut sections {
+        if let Some(effective_type) = raw_sections.get(name).and_then(|raw| raw.get("type")) {
+            data.insert("type".to_string(), effective_type.clone());
+        }
+    }
     let aeroftp_export = aeroftp_export_header(&content);
     let outcome = import_parsed_sections(
         sections,
@@ -8147,6 +8173,87 @@ http_proxy =
     }
 
     #[test]
+    fn shrinking_default_reference_is_rejected_before_repeated_large_copies() {
+        let long_reference = format!("%({})s", "x".repeat(GOCONFIG_MAX_EXPANDED_BYTES + 100));
+        let mut sections = HashMap::new();
+        sections.insert(
+            "DEFAULT".to_string(),
+            RcloneRemote::from([("shared".to_string(), long_reference)]),
+        );
+        let names: Vec<String> = (0..64).map(|index| format!("remote-{index}")).collect();
+        for name in &names {
+            sections.insert(
+                name.clone(),
+                RcloneRemote::from([
+                    ("type".to_string(), "sftp".to_string()),
+                    ("host".to_string(), "files.example.test".to_string()),
+                    ("socks_proxy".to_string(), "%(shared)s".to_string()),
+                ]),
+            );
+        }
+
+        let mut memo = RcloneTransportMemo::default();
+        let mut hops = 0usize;
+        for name in &names {
+            let transport = resolve_rclone_transport_cached(
+                &mut memo,
+                &sections,
+                &sections[name],
+                name,
+                ImportSourceKind::RcloneFile,
+                true,
+                &mut hops,
+            );
+            assert!(transport.substitution_overflow, "{name}");
+        }
+        assert_eq!(memo.defaults.values_expanded, 1);
+        assert_eq!(hops, names.len() * 3);
+    }
+
+    #[test]
+    fn numbered_goconfig_keys_resolve_external_ssh_and_reset_per_section() {
+        let parsed = parse_rclone_goconfig_raw_sections("[a]\n- = one\n[b]\n- = two\n");
+        assert_eq!(parsed["a"].get("#1").map(String::as_str), Some("one"));
+        assert_eq!(parsed["b"].get("#1").map(String::as_str), Some("two"));
+        assert!(!parsed["a"].contains_key("#2"));
+        assert!(!parsed["b"].contains_key("#2"));
+
+        let result = import_text(
+            "[numbered]\ntype = sftp\nhost = old.example.test\nuser = alice\n- = ssh files.example.test\nssh = %(#1)s\n\n\
+             [missing]\ntype = sftp\nhost = direct.example.test\nuser = alice\nssh = %(#2)s\n",
+            "numbered-goconfig-keys",
+        );
+        let numbered = result
+            .skipped
+            .iter()
+            .find(|skip| skip.name == "numbered")
+            .unwrap();
+        assert!(numbered.reason.contains("`ssh`"));
+        assert!(!numbered.reason.contains("files.example.test"));
+        assert!(result.servers.iter().any(|server| server.name == "missing"));
+    }
+
+    #[test]
+    fn effective_goconfig_backend_controls_external_ssh_checks() {
+        let result = import_text(
+            "[conflict]\ntype = sftp\nTYPE = ftp\nhost = old.example.test\nuser = alice\nssh = ssh files.example.test\n\n\
+             [ordinary-ftp]\ntype = ftp\nhost = ftp.example.test\nuser = alice\n",
+            "effective-backend-type",
+        );
+        let conflict = result
+            .skipped
+            .iter()
+            .find(|skip| skip.name == "conflict")
+            .unwrap();
+        assert!(conflict.reason.contains("`ssh`"));
+        assert!(!conflict.reason.contains("files.example.test"));
+        assert!(result
+            .servers
+            .iter()
+            .any(|server| server.name == "ordinary-ftp"));
+    }
+
+    #[test]
     fn depth_limited_default_expansion_does_not_poison_later_shallow_remote() {
         let mut config = String::from("[DEFAULT]\n");
         for index in 0..GOCONFIG_MAX_DEFAULT_RECURSION {
@@ -8188,8 +8295,8 @@ http_proxy =
 
         assert_eq!(result.servers.len(), 3, "{:?}", result.skipped);
         for (name, host, port) in [
-            ("loopback-sftp", "::1", 2222),
-            ("documentation-ftp", "2001:db8::abcd", 2121),
+            ("loopback-sftp", "[::1]", 2222),
+            ("documentation-ftp", "[2001:db8::abcd]", 2121),
             ("bracketed-sftp", "[::1]", 2223),
         ] {
             let server = result

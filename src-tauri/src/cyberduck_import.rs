@@ -167,29 +167,32 @@ fn map_duck(xml: &str) -> DuckOutcome {
     };
 
     let raw_hostname = field("Hostname").unwrap_or_default();
-    let hostname = if raw_hostname.contains("://")
+    let cleaned_hostname = if raw_hostname.contains("://")
         || raw_hostname.contains('@')
         || raw_hostname.contains('?')
         || raw_hostname.contains('#')
         || raw_hostname.contains('/')
     {
-        match crate::bridge_shared::try_endpoint_host(&raw_hostname) {
-            Some(host) => host,
-            None => {
-                return DuckOutcome::Skip {
-                    kind: crate::bridge_shared::sanitize_warning_name(&protocol_raw, "unknown"),
-                    reason: "invalid or ambiguous Hostname".into(),
-                }
-            }
-        }
+        crate::bridge_shared::try_hostname_field(&raw_hostname)
     } else {
-        raw_hostname
+        Some(raw_hostname)
+    };
+    let Some((hostname, inline_port)) = cleaned_hostname
+        .as_deref()
+        .and_then(crate::bridge_shared::split_host_port)
+    else {
+        return DuckOutcome::Skip {
+            kind: crate::bridge_shared::sanitize_warning_name(&protocol_raw, "unknown"),
+            reason: "invalid or ambiguous Hostname".into(),
+        };
     };
     let username = field("Username").unwrap_or_default();
     let region = field("Region");
     let path = field("Path").filter(|s| !s.is_empty());
-    // A number, read without the spaces at its ends, as the protocol is.
-    let port_field = field("Port").and_then(|p| p.trim().parse::<u32>().ok());
+    // A separate Port wins; an inline port is next, then the protocol default.
+    let port_field = field("Port")
+        .and_then(|p| p.trim().parse::<u32>().ok())
+        .or_else(|| inline_port.map(u32::from));
 
     match protocol_raw.as_str() {
         "sftp" => DuckOutcome::Profile(MappedProfile {
@@ -914,6 +917,43 @@ mod tests {
                 assert!(result.warnings[0].reason.contains("active FTP"));
             }
         }
+    }
+
+    #[test]
+    fn sftp_inline_port_is_used_unless_a_separate_port_wins() {
+        let inline = r#"<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>Protocol</key><string>sftp</string><key>Hostname</key><string>sftp://nas.example.test:2222</string></dict></plist>"#;
+        let DuckOutcome::Profile(mapped) = map_duck(inline) else {
+            panic!("inline SFTP port must import");
+        };
+        assert_eq!(mapped.host, "nas.example.test");
+        assert_eq!(mapped.port, 2222);
+
+        let separate = r#"<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>Protocol</key><string>sftp</string><key>Hostname</key><string>sftp://nas.example.test:2222</string><key>Port</key><integer>22</integer></dict></plist>"#;
+        let DuckOutcome::Profile(mapped) = map_duck(separate) else {
+            panic!("separate SFTP port must import");
+        };
+        assert_eq!(mapped.port, 22);
+    }
+
+    #[test]
+    fn azure_connection_string_nickname_is_redacted_in_profile_and_warning() {
+        let secret = "SYNTHETIC_AZURE_ACCOUNT_KEY";
+        let nickname = format!("DefaultEndpointsProtocol=https;AccountName=lab;AccountKey={secret};EndpointSuffix=core.windows.net");
+        let xml = format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>Protocol</key><string>ftp</string><key>Nickname</key><string>{nickname}</string><key>Hostname</key><string>ftp.example.test</string><key>FTP Connect Mode</key><string>active</string></dict></plist>"#
+        );
+        let mut servers = Vec::new();
+        let mut skipped = Vec::new();
+        let mut warnings = Vec::new();
+        ingest_duck_with_warnings(&xml, &mut servers, &mut skipped, &mut warnings);
+
+        assert_eq!(servers.len(), 1);
+        assert_eq!(servers[0].name, "Cyberduck bookmark");
+        assert_eq!(warnings.len(), 1);
+        assert_eq!(warnings[0].name, "Cyberduck bookmark");
+        let serialized = serde_json::to_string(&(&servers, &skipped, &warnings)).unwrap();
+        assert!(!serialized.contains(secret), "{serialized}");
+        assert!(!serialized.contains("AccountKey"), "{serialized}");
     }
 
     #[test]

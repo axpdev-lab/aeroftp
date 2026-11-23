@@ -117,9 +117,13 @@ fn map_s3cmd(section: &HashMap<String, String>) -> Result<MappedProfile, &'stati
     options.insert("useHttps".into(), serde_json::Value::Bool(use_https));
     // `use_https` is the scheme, and `host` + `port` alone lose it (a
     // cleartext endpoint on 8080 would come back as HTTPS).
-    // AWS stays implicit: an explicit endpoint switches the S3 connection to
-    // path-style, which AWS refuses for newer buckets.
+    // Ordinary AWS stays implicit; a custom transport keeps virtual-host addressing.
     let aws = provider_id == "amazon-s3";
+    if aws {
+        options
+            .entry("pathStyle")
+            .or_insert(serde_json::Value::Bool(false));
+    }
     let default_aws_transport = aws && use_https && port == 443;
     if !host.is_empty() && !default_aws_transport {
         let scheme = if use_https { "https" } else { "http" };
@@ -502,6 +506,52 @@ secret_key = orphan-secret
 host_base = s3.amazonaws.com
 bucket_location = us-east-1
 "#;
+
+    #[test]
+    fn aws_custom_transport_keeps_bucket_addressing_mode() {
+        let effective = |host_bucket: Option<&str>| {
+            let section = HashMap::from([
+                ("host_base".to_string(), "s3.amazonaws.com:8080".to_string()),
+                ("use_https".to_string(), "False".to_string()),
+                ("access_key".to_string(), "DEMOKEY".to_string()),
+                ("secret_key".to_string(), "demosecret".to_string()),
+                (
+                    "host_bucket".to_string(),
+                    host_bucket.unwrap_or("").to_string(),
+                ),
+            ]);
+            let mapped = map_s3cmd(&section).unwrap();
+            let mut extra = HashMap::new();
+            crate::profile_loader::apply_profile_options(
+                &mut extra,
+                &serde_json::json!({"options": mapped.options}),
+            );
+            extra.insert("bucket".to_string(), "photos".to_string());
+            crate::providers::types::S3Config::from_provider_config(
+                &crate::providers::types::ProviderConfig {
+                    name: "s3cmd".to_string(),
+                    provider_type: crate::providers::types::ProviderType::S3,
+                    host: mapped.host,
+                    port: u16::try_from(mapped.port).ok(),
+                    username: Some(mapped.username),
+                    password: None,
+                    initial_path: None,
+                    extra,
+                },
+            )
+            .unwrap()
+        };
+
+        let virtual_host = effective(None);
+        assert_eq!(
+            virtual_host.endpoint.as_deref(),
+            Some("http://s3.amazonaws.com:8080")
+        );
+        assert!(!virtual_host.path_style);
+
+        let path_style = effective(Some("s3.amazonaws.com"));
+        assert!(path_style.path_style);
+    }
 
     #[test]
     fn test_parse_s3cmd_custom_endpoint() {
