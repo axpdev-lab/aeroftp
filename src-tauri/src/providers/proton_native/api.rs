@@ -862,10 +862,11 @@ impl ProtonApi {
 
     /// The saved tokens when they belong to the same session, differ from
     /// `current`, and are not a pair this connection already rotated past:
-    /// another process refreshed them. A stored pair whose refresh token
-    /// this connection spent is older than the pair in memory, whatever its
-    /// access token says (a withheld write leaves exactly that pair in the
-    /// row while the rotated one stays here).
+    /// another process refreshed them — including the rotation after this
+    /// connection's own, whose refresh token it never sent. A stored pair
+    /// whose refresh token this connection spent is older than the pair in
+    /// memory, whatever its access token says (a withheld write leaves
+    /// exactly that pair in the row while the rotated one stays here).
     fn newer_saved_tokens(
         &self,
         store: Option<&dyn SessionStore>,
@@ -878,15 +879,6 @@ impl ProtonApi {
             .spent_refresh_tokens
             .lock()
             .unwrap_or_else(|e| e.into_inner());
-        if !spent.is_empty() {
-            let same_refresh = match (&saved.refresh_token, &current.refresh_token) {
-                (Some(saved_refresh), Some(current_refresh)) => {
-                    saved_refresh.expose_secret() == current_refresh.expose_secret()
-                }
-                _ => false,
-            };
-            return (same_session && same_refresh && newer).then_some(saved);
-        }
         let saved_was_sent = saved.refresh_token.as_ref().is_some_and(|token| {
             spent
                 .iter()
@@ -1379,16 +1371,16 @@ mod tests {
             Some("refresh-2")
         );
 
-        // A pair older than the one this connection rotated to, whose
-        // refresh token it never sent, is not "newer" either: the refresh
-        // runs again instead of adopting it.
-        store.save(&pair("access-0", "refresh-0"));
+        // A pair carrying a refresh token this connection already spent is
+        // older than the pair in memory whatever its access token says: it
+        // is not adopted, and the refresh runs again instead.
+        store.save(&pair("access-0", "rt-1"));
         let outcome = api.refresh_if_possible("access-2").await;
         assert!(matches!(outcome, Ok(Refreshed::Retry)), "{outcome:?}");
         assert_eq!(
             refreshes.load(Ordering::SeqCst),
             3,
-            "refresh-0 was not adopted"
+            "the spent pair was not adopted"
         );
         let kept = api.tokens().await.expect("tokens kept");
         assert_eq!(kept.access_token.expose_secret(), "access-2");
@@ -1397,6 +1389,60 @@ mod tests {
                 .as_ref()
                 .map(|token| token.expose_secret()),
             Some("refresh-2")
+        );
+    }
+
+    /// CodeRabbit r4668241635 / r4668519026: after this connection rotated
+    /// (R1 spent, R2 in memory), a saved pair carrying a refresh token it
+    /// never sent is the next rotation of another connection, not a stale
+    /// row: it is adopted and R2 is not sent again.
+    #[tokio::test]
+    async fn a_saved_rotation_after_this_connections_refresh_is_adopted() {
+        let refreshes = Arc::new(AtomicUsize::new(0));
+        let api = ProtonApi::with_base_url(
+            serve(users_app(Arc::clone(&refreshes), REFRESH_OK)).await,
+            "external-drive-aeroftp@1.2.3-alpha".into(),
+        )
+        .with_policy(FAST);
+        api.set_tokens(Some(pair("access-1", "rt-1"))).await;
+        let store = Arc::new(MemoryStore::default());
+        store.save(&pair("access-1", "rt-1"));
+        api.set_session_store(Arc::clone(&store) as Arc<dyn SessionStore>);
+
+        // This connection spends rt-1 and keeps the R2 pair in memory.
+        let _: Value = api.get("/core/v4/users", &[]).await.expect("replayed");
+        assert_eq!(refreshes.load(Ordering::SeqCst), 1);
+        let current = api.tokens().await.expect("tokens kept");
+        assert_eq!(
+            current.refresh_token.as_ref().map(|t| t.expose_secret()),
+            Some("refresh-2")
+        );
+
+        // Another connection rotated the same session further and saved R3:
+        // same uid, a refresh this connection never sent, another access.
+        store.save(&pair("access-3", "rt-3"));
+        let outcome = api.refresh_if_possible("access-2").await;
+        assert!(matches!(outcome, Ok(Refreshed::Retry)), "{outcome:?}");
+        assert_eq!(
+            refreshes.load(Ordering::SeqCst),
+            1,
+            "the in-memory pair was not resent"
+        );
+        let adopted = api.tokens().await.expect("tokens kept");
+        assert_eq!(adopted.access_token.expose_secret(), "access-3");
+        assert_eq!(
+            adopted.refresh_token.as_ref().map(|t| t.expose_secret()),
+            Some("rt-3")
+        );
+
+        // Control: the row still holding R1, whose refresh this connection
+        // spent, is older than the pair in memory and is not adopted.
+        store.save(&pair("access-1", "rt-1"));
+        let current = api.tokens().await.expect("tokens kept");
+        let dyn_store: &dyn SessionStore = store.as_ref();
+        assert!(
+            api.newer_saved_tokens(Some(dyn_store), &current).is_none(),
+            "the spent pair is not newer"
         );
     }
 
