@@ -3568,9 +3568,6 @@ fn split_goconfig_assignment(line: &str) -> Option<(String, String)> {
         let key = &after_open[..close_rel];
         let after_close = &after_open[close_rel + 3..];
         let rel = after_close.find(['=', ':'])?;
-        if !after_close[..rel].trim().is_empty() {
-            return None;
-        }
         (key, 3 + close_rel + 3 + rel)
     } else if matches!(bytes[0], b'"' | b'`') {
         let quote = bytes[0];
@@ -3578,9 +3575,6 @@ fn split_goconfig_assignment(line: &str) -> Option<(String, String)> {
         let key = &trimmed[1..close];
         let rest = &trimmed[close + 1..];
         let rel = rest.find(['=', ':'])?;
-        if !rest[..rel].trim().is_empty() {
-            return None;
-        }
         (key, close + 1 + rel)
     } else {
         let delim = trimmed.find(['=', ':'])?;
@@ -8050,6 +8044,56 @@ ssh = \"\"\"\"\"\"
             .iter()
             .any(|s| s.name == "parent.backtick-clear"));
         assert!(res.servers.iter().any(|s| s.name == "parent.triple-clear"));
+    }
+
+    #[test]
+    fn goconfig_quoted_key_with_trailing_tokens_before_separator_skips_external_ssh_and_imports_empty(
+    ) {
+        assert_eq!(
+            split_goconfig_assignment(r#""ssh" note = ssh files.example.test"#),
+            Some(("ssh".into(), "ssh files.example.test".into()))
+        );
+        assert_eq!(
+            split_goconfig_assignment(r#""""ssh""" note = ssh files.example.test"#),
+            Some(("ssh".into(), "ssh files.example.test".into()))
+        );
+        assert_eq!(
+            split_goconfig_assignment("`ssh` note : ssh files.example.test"),
+            Some(("ssh".into(), "ssh files.example.test".into()))
+        );
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("rclone.conf");
+        std::fs::write(
+            &path,
+            "\
+[ext-quoted]
+type = sftp
+host = direct.example.test
+user = alice
+\"ssh\" note = ssh files.example.test
+
+[ext-triple]
+type = sftp
+host = direct2.example.test
+user = alice
+\"\"\"ssh\"\"\" note = ssh files.example.test
+
+[empty-quoted]
+type = sftp
+host = ok.example.test
+user = alice
+\"ssh\" note =
+",
+        )
+        .unwrap();
+        let res = import_rclone(&path).unwrap();
+        assert!(res.skipped.iter().any(|s| s.name == "ext-quoted"));
+        assert!(!res.servers.iter().any(|s| s.name == "ext-quoted"));
+        assert!(res.skipped.iter().any(|s| s.name == "ext-triple"));
+        assert!(!res.servers.iter().any(|s| s.name == "ext-triple"));
+        assert!(res.servers.iter().any(|s| s.name == "empty-quoted"));
+        assert!(!res.skipped.iter().any(|s| s.name == "empty-quoted"));
     }
 
     #[test]
