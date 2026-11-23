@@ -304,7 +304,16 @@ fn stored_token_state(json: &str) -> &'static str {
     // Jottacloud's `jottacloud_refresh` is a different shape (raw refresh
     // token JSON, no expires_at). Presence == valid until the next request
     // proves otherwise.
-    "valid"
+    if serde_json::from_str::<serde_json::Value>(json).is_ok() {
+        return "valid";
+    }
+    // A non-JSON blob under an `oauth_*` key is a 4shared `token:secret`
+    // pair: valid only when both halves are present, as the provider's own
+    // parse requires before it connects.
+    match json.split_once(':') {
+        Some((token, secret)) if !token.is_empty() && !secret.is_empty() => "valid",
+        _ => "expired",
+    }
 }
 
 /// Derive readiness from a legacy vault-key snapshot. Callers with an
@@ -672,5 +681,19 @@ mod tests {
             Some("zohoworkdrive"),
             "rclone's zoho backend must be offered for WorkDrive profiles"
         );
+    }
+
+    /// A 4shared `token:secret` pair is valid only when both halves are
+    /// present, as the provider's own parse requires: an incomplete pair is
+    /// not reported as a working sign-in.
+    #[test]
+    fn a_fourshared_pair_is_valid_only_with_both_halves() {
+        assert_eq!(stored_token_state("token-t:secret-t"), "valid");
+        assert_eq!(stored_token_state("token-t:"), "expired");
+        assert_eq!(stored_token_state(":secret-t"), "expired");
+        assert_eq!(stored_token_state("token-t"), "expired");
+        assert_eq!(stored_token_state(""), "expired");
+        // A Jottacloud chain is JSON and stays valid by its presence.
+        assert_eq!(stored_token_state(r#"{"refresh_token":"r"}"#), "valid");
     }
 }

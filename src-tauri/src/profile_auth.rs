@@ -914,9 +914,12 @@ async fn provider_at(
         let client = client_settings(scope, profile, &config);
         let raw = match scope.read(&crate::providers::oauth2::oauth_token_key("fourshared", id))? {
             Some(raw) => Some(raw),
-            None => {
-                crate::bridge_commands::resolve_profile_oauth_token(scope.store, "fourshared", id)?
-            }
+            None => crate::bridge_commands::resolve_profile_oauth_token_for(
+                scope.store,
+                "fourshared",
+                id,
+                scope.user_id,
+            )?,
         }
         .ok_or("4shared authorization missing; use profile-auth configure, begin and finish")?;
         let (token, secret) = raw
