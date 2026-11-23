@@ -368,6 +368,21 @@ describe('saved profile write rejection in production handlers', () => {
         expect(f.context.deleteProfileVaultSecrets).toHaveBeenCalledWith('old', 'ftp', 7);
     });
 
+    it.each(['handleDuplicate', 'confirmDelete'] as const)('IntroHub %s refuses the secret cleanup while the owner is unknown', async name => {
+        // ownerUnknown with no userId: the active-account fallback could hit
+        // another account, so deleteProfileVaultSecrets must not run at all.
+        const f = fixture(name === 'handleDuplicate' ? 'write' : 'none');
+        f.context.readSavedServerProfilesForWrite = async () => ({
+            profiles: f.servers, userId: undefined, activeUserId: 3,
+            ownerUnknown: true, revision: 'r3',
+        });
+        const fn = await execute(hub, [name], f.context);
+        if (name === 'handleDuplicate') await fn[name](f.servers[0]);
+        else await fn[name]();
+        await new Promise(resolve => setTimeout(resolve, 0));
+        expect(f.context.deleteProfileVaultSecrets, name).not.toHaveBeenCalled();
+    });
+
     it('closes the primary editor after a successful persisted save', async () => {
         const f = fixture('none');
         const fn = await execute(connection, ['saveToServers', 'handleConnectAndSave'], f.context);
