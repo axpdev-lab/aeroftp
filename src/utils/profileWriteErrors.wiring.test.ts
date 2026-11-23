@@ -446,6 +446,20 @@ describe('saved profile write rejection in production handlers', () => {
         expect(f.events.some(e => e.detail?.type === 'error')).toBe(true);
     });
 
+    it('IntroHub copies and cleans the duplicate secrets on the account the list was read under', async () => {
+        // A legacy-store read can carry the active account without a userId:
+        // the copy must bind to it, and a failed save must purge the copy on
+        // that same account, not on whichever account became active after.
+        const f = fixture('write');
+        f.context.readSavedServerProfilesForWrite = async () => ({
+            profiles: f.servers, activeUserId: 7, revision: 'legacy-store:[]',
+        });
+        const fn = await execute(hub, ['handleDuplicate'], f.context);
+        await fn.handleDuplicate(f.servers[0]);
+        expect(f.context.copyProfileVaultSecrets).toHaveBeenCalledWith('old', expect.stringMatching(/^srv_/), 'ftp', 7);
+        expect(f.context.deleteProfileVaultSecrets).toHaveBeenCalledWith(expect.stringMatching(/^srv_/), 'ftp', 7);
+    });
+
     it('IntroHub stores no duplicate when its secrets cannot be copied, and shows why', async () => {
         const f = fixture('none');
         f.context.copyProfileVaultSecrets = vi.fn(async () => { throw 'The server secret could not be written to the copy, so the copy was not created: disk full'; });

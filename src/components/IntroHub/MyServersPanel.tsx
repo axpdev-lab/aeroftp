@@ -1419,7 +1419,15 @@ export function MyServersPanel({
                 hasStoredAeroCryptPassword: false,
                 hasStoredAeroCryptSalt: false,
             };
-            const copiedSecrets = await copyProfileVaultSecrets(source.id, newId, source.protocol, profilesUserId);
+            // The copy must land in the account the list was read under, not
+            // whichever account is active when the copy runs. With the owner
+            // unknown there is no account to bind it to, so the copy is
+            // refused like the purge of an unsaved copy below.
+            const copyAccount = profilesUserId ?? activeUserId;
+            if (ownerUnknown && copyAccount === undefined) {
+                throw new Error('account-unknown');
+            }
+            const copiedSecrets = await copyProfileVaultSecrets(source.id, newId, source.protocol, copyAccount);
             dup.hasStoredCredential = copiedSecrets.server;
             dup.hasStoredFilenApiKey = copiedSecrets.filen_api_key;
             dup.hasStoredAeroCryptPassword = copiedSecrets.aerocrypt_overlay_pw;

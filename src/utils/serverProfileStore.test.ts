@@ -408,8 +408,24 @@ describe('a list read from the legacy store', () => {
             return undefined;
         });
         const read = await readSavedServerProfilesForWrite();
-        expect(read.userId).toBeUndefined();
+        expect(read.userId).toBe(7);
         expect(read.activeUserId).toBe(7);
+        mockInvoke.mockReset();
+    });
+
+    it('refuses the read with ACCOUNT_CHANGED when the active account switches during the legacy load', async () => {
+        const legacy = [sampleProfile({ name: 'from the legacy store' })];
+        let statusCalls = 0;
+        mockInvoke.mockImplementation(async (command: string) => {
+            if (command === 'user_partitions_load_active_server_profiles_scoped') throw new Error('STORE_NOT_READY');
+            if (command === 'get_credential') return JSON.stringify(legacy);
+            if (command === 'user_partitions_unlock_status') {
+                statusCalls += 1;
+                return { isUnlocked: true, activeUserId: statusCalls === 1 ? 7 : 9 };
+            }
+            return undefined;
+        });
+        await expect(readSavedServerProfilesForWrite()).rejects.toThrow('ACCOUNT_CHANGED');
         mockInvoke.mockReset();
     });
 
