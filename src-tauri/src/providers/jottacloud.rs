@@ -6026,7 +6026,7 @@ mod tests {
             chain["note"] = "repaired".into();
             chain.to_string()
         };
-        let _ = runtime.block_on(async move {
+        runtime.block_on(async move {
             let mut provider = JottacloudProvider::new(JottacloudConfig {
                 login_token: SecretString::from(String::new()),
                 device: "Jotta".into(),
