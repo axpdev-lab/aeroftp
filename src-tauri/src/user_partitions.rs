@@ -11578,6 +11578,44 @@ fn remove_partitions_db_for_rebuild(path: &std::path::Path) -> Result<Option<Pat
     // Drop any unlocked session, then remove the DB and its SQLite sidecars.
     session.clear();
     #[cfg(windows)]
+    {
+        // Windows removes no file a connection holds open, so the guard ends
+        // before the removal and a writer that takes no ProfileListLock could
+        // commit in the gap, its write lost with the file and absent from the
+        // snapshot. `PRAGMA data_version` moves on every commit another
+        // connection lands: read inside the guard's write transaction, then
+        // again under a fresh BEGIN IMMEDIATE, it proves whether the gap held
+        // one. A changed version, or a lock still held, refuses the rebuild;
+        // a database SQLite cannot lock at all is the damaged one this
+        // rebuild exists for, and goes on as before.
+        let before: i64 = guard
+            .query_row("PRAGMA data_version", [], |row| row.get(0))
+            .unwrap_or(0);
+        drop(guard);
+        let verify = Connection::open(path)
+            .map_err(|e| format!("Reopen user_partitions.db for rebuild: {e}"))?;
+        match verify.execute_batch("BEGIN IMMEDIATE") {
+            Ok(()) => {
+                let after: i64 = verify
+                    .query_row("PRAGMA data_version", [], |row| row.get(0))
+                    .unwrap_or(-1);
+                drop(verify);
+                if after != before {
+                    return Err(REBUILD_WHILE_WRITTEN.to_string());
+                }
+            }
+            Err(rusqlite::Error::SqliteFailure(e, _))
+                if matches!(
+                    e.code,
+                    rusqlite::ErrorCode::DatabaseBusy | rusqlite::ErrorCode::DatabaseLocked
+                ) =>
+            {
+                return Err(REBUILD_WHILE_WRITTEN.to_string());
+            }
+            Err(_) => drop(verify),
+        }
+    }
+    #[cfg(not(windows))]
     drop(guard);
     let removed = std::fs::remove_file(path)
         .map_err(|e| format!("Remove user_partitions.db for rebuild: {e}"));
