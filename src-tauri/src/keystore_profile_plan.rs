@@ -1114,6 +1114,56 @@ mod tests {
         );
     }
 
+    /// CodeRabbit 4661188761: a backup profile accepted over this device's
+    /// own, same id and same provider but another account, is not this
+    /// device's version: the carry must not hand it this device's private
+    /// token, which would sign the kept profile in to the previous account.
+    /// Rejecting the replacement keeps this device's profile and its token.
+    /// An accepted backup-only addition carries nothing either.
+    #[test]
+    fn an_accepted_replacement_of_the_same_id_carries_no_local_token() {
+        let dropbox = |id: &str, user: &str| json!({"id": id, "name": "Box", "protocol": "dropbox", "host": "", "port": 0, "username": user});
+        let carried = |decision: ProfileDecision, added_decision: ProfileDecision| {
+            let mut i = inputs(true);
+            i.local = vec![dropbox("srv_box", "alice")];
+            i.backup = Some(vec![dropbox("srv_box", "bob"), dropbox("srv_new", "carol")]);
+            i.keep_local_by_default = true;
+            i.targets_restored_partition = true;
+            i.receiver_is_here = true;
+            i.receiver = Some(Receiver {
+                user_id: 2,
+                legacy_owner: false,
+                identity: [7; 16],
+            });
+            i.local_secrets = local_secrets(&[("oauth_dropbox_srv_box", "alice-token")]);
+            i.backup_secrets = secrets(&[]);
+            let decisions = [
+                ProfileDecisionInput {
+                    id: "srv_box".into(),
+                    decision,
+                    copy_name: None,
+                },
+                ProfileDecisionInput {
+                    id: "srv_new".into(),
+                    decision: added_decision,
+                    copy_name: None,
+                },
+            ];
+            let out = apply(&i, &decisions, &fp(&i), &mut || unreachable!()).unwrap();
+            op(&out.secret_ops, "oauth_dropbox_srv_box").map(|v| v.map(str::to_string))
+        };
+        assert_eq!(
+            carried(ProfileDecision::Accept, ProfileDecision::Accept),
+            None,
+            "the accepted backup profile gets no local Dropbox token"
+        );
+        assert_eq!(
+            carried(ProfileDecision::Reject, ProfileDecision::Reject),
+            Some(Some("alice-token".to_string())),
+            "the kept local profile keeps its token"
+        );
+    }
+
     #[test]
     fn nothing_to_plan_when_the_import_leaves_the_list_alone() {
         let mut i = inputs(true);

@@ -6789,6 +6789,99 @@ mod tests {
         );
     }
 
+    /// CodeRabbit 4661192936: a rollback restores each slot from its own
+    /// baseline. A vault compare-and-swap refused because another writer
+    /// moved the value keeps that value, and the row is still put back
+    /// from its own baseline. Red if the rollback arm is coupled to the
+    /// forward write's paired decline.
+    #[test]
+    fn a_rollback_refused_on_the_vault_still_restores_the_row() {
+        let _guard = crate::user_partitions::test_lock();
+        crate::user_partitions::clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let cfg = dir.path().join("config");
+        let key = "oauth_dropbox_srv_drive";
+        partition_with(&store, &cfg, &[dropbox("srv_drive", "Drive")]);
+        store.store(key, "other-writer").unwrap();
+        set_partition_secret(&store, &cfg, key, "landed-row");
+        let db = cfg.join("user_partitions.db");
+        let owner = active_receiver(&db).unwrap();
+        assert!(owner.legacy_owner);
+
+        let landed_row = [Some("landed-row")];
+        let out = write_profile_secret_slots_if(
+            &store,
+            Some(&db),
+            Some(owner),
+            key,
+            Some(Some("landed-vault")),
+            Some(landed_row.as_slice()),
+            Some("pre-vault"),
+            Some("pre-row"),
+            true,
+        )
+        .unwrap();
+        assert_eq!(out, (false, true));
+        assert_eq!(store.get(key).unwrap(), "other-writer");
+        assert_eq!(
+            row_in(&store, &cfg, owner.user_id, key).as_deref(),
+            Some("pre-row"),
+            "the row is restored from its own baseline"
+        );
+    }
+
+    /// CodeRabbit 4661192936: a rollback restores each slot from its own
+    /// baseline. A row compare-and-swap refused because the row was
+    /// rewritten keeps that value, and the vault stays at the baseline the
+    /// rollback just wrote; it is not swapped back to what the import
+    /// left. Red if the rollback arm is coupled to the forward write's
+    /// vault put-back.
+    #[test]
+    fn a_rollback_refused_on_the_row_keeps_the_vault_baseline() {
+        let _guard = crate::user_partitions::test_lock();
+        crate::user_partitions::clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let cfg = dir.path().join("config");
+        let key = "oauth_dropbox_srv_drive";
+        partition_with(&store, &cfg, &[dropbox("srv_drive", "Drive")]);
+        store.store(key, "landed-vault").unwrap();
+        set_partition_secret(&store, &cfg, key, "landed-row");
+        let db = cfg.join("user_partitions.db");
+        let owner = active_receiver(&db).unwrap();
+        assert!(owner.legacy_owner);
+        let hook_cfg = cfg.clone();
+        before_row_write(key, move |store| {
+            set_partition_secret(store, &hook_cfg, key, "row-other");
+        });
+
+        let landed_row = [Some("landed-row")];
+        let out = write_profile_secret_slots_if(
+            &store,
+            Some(&db),
+            Some(owner),
+            key,
+            Some(Some("landed-vault")),
+            Some(landed_row.as_slice()),
+            Some("pre-vault"),
+            Some("pre-row"),
+            true,
+        )
+        .unwrap();
+        assert_eq!(out, (true, false));
+        assert_eq!(
+            store.get(key).unwrap(),
+            "pre-vault",
+            "the vault keeps the baseline the rollback wrote"
+        );
+        assert_eq!(
+            row_in(&store, &cfg, owner.user_id, key).as_deref(),
+            Some("row-other"),
+            "the rewritten row keeps its value"
+        );
+    }
+
     /// A vault value the profile step cannot read at its start stops the step
     /// before it writes anything: the legacy owner's vault held V and its row
     /// R, and an accepted removal would delete both, then a failed list save
