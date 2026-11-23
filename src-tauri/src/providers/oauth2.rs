@@ -737,6 +737,22 @@ fn drop_pending_rotation(owner: Option<i64>, account: &str, settled: Option<&Pen
     }
 }
 
+/// Drop the rotation kept for `account` of `owner` only while it was filed
+/// for `read`, the record a sign-out just removed: a successor filed for a
+/// credential stored after the removal is another chain's and stays. A kept
+/// rotation whose `read` matches nothing deleted settles to `Changed` on the
+/// next exchange, so keeping one is never a resurrection.
+fn drop_pending_rotation_for_record(owner: Option<i64>, account: &str, read: &str) {
+    let mut pending = pending_rotations();
+    let key = (owner, account.to_owned());
+    if pending
+        .get(&key)
+        .is_some_and(|kept| kept.read.as_str() == read)
+    {
+        pending.remove(&key);
+    }
+}
+
 /// The refreshed record kept for `account` of `owner` (test only).
 #[cfg(test)]
 fn pending_rotation_record(owner: Option<i64>, account: &str) -> Option<String> {
@@ -2337,18 +2353,27 @@ impl OAuth2Manager {
         // A non-owner's tokens live only in its partition: the global key,
         // memory cache and plaintext files belong to the legacy owner.
         if let (Some(user), false) = (owner, legacy_owner) {
-            // A sign-out ends the chain a refresh kept, before any step that
-            // can fail: a delete refused below must not leave it for the next
-            // read to write back over the row the user asked to remove.
-            drop_pending_rotation(owner, &account, None);
             let conn = crate::user_partitions::open_or_init_cli()
                 .map_err(|e| ProviderError::Other(format!("Failed to delete tokens: {}", e)))?;
+            // The record the sign-out removes, read before it goes: the kept
+            // rotation is dropped only while it was filed for THIS chain, so
+            // a successor filed for a credential stored after the delete is
+            // another chain's and stays. A delete refused below keeps every
+            // copy AND the pending rotation, still the live chain.
+            let held = crate::credential_store::CredentialStore::from_cache()
+                .and_then(|store| {
+                    crate::user_partitions::resolve_credential_for_user(&store, user, &account)
+                        .ok()
+                        .flatten()
+                })
+                .map(|value| value.to_string());
             crate::user_partitions::delete_user_credential_for(&conn, user, &account)
                 .map_err(|e| ProviderError::Other(format!("Failed to delete tokens: {}", e)))?;
             info!("Tokens deleted from user partition for {:?}", provider);
-            // And after it: a rotation a refresh kept while the delete ran
-            // ends with the sign-out too.
-            drop_pending_rotation(owner, &account, None);
+            match held.as_deref() {
+                Some(read) => drop_pending_rotation_for_record(owner, &account, read),
+                None => drop_pending_rotation(owner, &account, None),
+            }
             return Ok(());
         }
 
@@ -2370,9 +2395,15 @@ impl OAuth2Manager {
 
         // The pending rotation is dropped only once the cleanup can proceed:
         // a sign-out refused below leaves every copy in place, and the
-        // rotation filed for it is still the live chain.
+        // rotation filed for it is still the live chain. And only while it
+        // was filed for the record this sign-out removes: a successor filed
+        // for a credential stored after the vault deletion is another
+        // chain's and stays.
         let json_path =
             Self::token_dir()?.join(format!("oauth2_{:?}.json", provider).to_lowercase());
+        let held = crate::credential_store::CredentialStore::from_cache()
+            .and_then(|store| store.get_secret(&account).ok())
+            .map(|value| value.to_string());
         Self::delete_shared_tokens(
             provider,
             &account,
@@ -2380,8 +2411,10 @@ impl OAuth2Manager {
             LegacyTokenGuard::acquire_for_signout,
             unmirror,
         )?;
-        // After it too, as on the partition-only path above.
-        drop_pending_rotation(owner, &account, None);
+        match held.as_deref() {
+            Some(read) => drop_pending_rotation_for_record(owner, &account, read),
+            None => drop_pending_rotation(owner, &account, None),
+        }
         Ok(())
     }
 
@@ -4436,16 +4469,17 @@ mod tests {
         });
     }
 
-    /// R7-6 (a): a sign-out whose delete fails still drops the kept rotation,
-    /// at both sites: the account's own row (a non-owner) and the legacy
-    /// owner's cleanup, whose first fallible step is the partition copy. The
-    /// next read then writes nothing over what the user asked to remove. Red
-    /// while the drop runs after the fallible step: the failed sign-out
-    /// leaves the rotation, and the next read writes it back.
+    /// R7-6 (a), as round 9 restated it: a sign-out whose delete fails keeps
+    /// every copy AND the kept rotation, still the live chain of the
+    /// credential that remains; the next read settles it back over the row.
+    /// A sign-out that succeeds drops the rotation only while it was filed
+    /// for the record removed, at both sites: the account's own row (a
+    /// non-owner) and the legacy owner's cleanup, whose first fallible step
+    /// is the partition copy.
     #[test]
-    fn a_sign_out_whose_delete_fails_leaves_no_kept_rotation() {
+    fn a_sign_out_whose_delete_fails_keeps_the_live_rotation() {
         if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
-            "providers::oauth2::tests::a_sign_out_whose_delete_fails_leaves_no_kept_rotation",
+            "providers::oauth2::tests::a_sign_out_whose_delete_fails_keeps_the_live_rotation",
         ) {
             return;
         }
@@ -4486,19 +4520,52 @@ mod tests {
                 .delete_tokens(OAuthProvider::Box, "shared-profile")
                 .is_err());
             refuse_deletes(false);
+            assert!(
+                pending_rotation_record(Some(second), account).is_some(),
+                "a failed sign-out keeps the live rotation"
+            );
+            // The next read settles it over the row that stayed: the live
+            // chain, not the consumed predecessor.
+            let _ = valid_token(&manager, "shared-profile");
+            assert!(
+                stored_row(store, second, account).is_some_and(|row| row.contains("kept-refresh")),
+                "the kept rotation is written back"
+            );
+            assert_eq!(pending_rotation_record(Some(second), account), None);
+
+            // A sign-out that goes through drops the rotation of the record
+            // it removed.
+            file_pending_rotation(
+                Some(second),
+                account,
+                PendingRotation {
+                    source: PendingSource::Partition(second),
+                    read: Zeroizing::new(
+                        stored_row(store, second, account).expect("the row after the settle"),
+                    ),
+                    record: Zeroizing::new(rotation.clone()),
+                },
+                "test",
+            );
+            OAuth2Manager::new()
+                .with_credential_user(Some(second))
+                .delete_tokens(OAuthProvider::Box, "shared-profile")
+                .expect("the sign-out");
             assert_eq!(
                 pending_rotation_record(Some(second), account),
                 None,
-                "a failed sign-out drops the kept rotation"
-            );
-            let _ = valid_token(&manager, "shared-profile");
-            assert_eq!(
-                stored_row(store, second, account).as_deref(),
-                Some(row.as_str()),
-                "the next read writes nothing back"
+                "a successful sign-out drops the rotation of the record it removed"
             );
 
             // The legacy owner: a partition copy to remove first.
+            OAuth2Manager::new()
+                .with_credential_user(Some(first))
+                .store_tokens(
+                    OAuthProvider::Box,
+                    "shared-profile",
+                    &box_tokens("owner-token", "owner-refresh"),
+                )
+                .expect("sign the owner back in");
             let vault = store.get(account).expect("the owner's token");
             crate::user_partitions::set_user_credential_for(
                 &conn, &root, first, account, "oauth", &vault,
@@ -4520,16 +4587,80 @@ mod tests {
                 .delete_tokens(OAuthProvider::Box, "shared-profile")
                 .is_err());
             refuse_deletes(false);
+            assert!(
+                pending_rotation_record(Some(first), account).is_some(),
+                "a failed sign-out of the legacy owner keeps it too"
+            );
+            let _ = valid_token(&manager, "shared-profile");
+            assert!(
+                store
+                    .get(account)
+                    .is_ok_and(|value| value.contains("kept-refresh")),
+                "the kept rotation is written back to the vault"
+            );
+            assert_eq!(pending_rotation_record(Some(first), account), None);
+
+            // A sign-out that goes through drops the rotation of the vault
+            // record it removed.
+            file_pending_rotation(
+                Some(first),
+                account,
+                PendingRotation {
+                    source: PendingSource::Vault,
+                    read: Zeroizing::new(store.get(account).expect("the vault token")),
+                    record: Zeroizing::new(rotation.clone()),
+                },
+                "test",
+            );
+            OAuth2Manager::new()
+                .with_credential_user(Some(first))
+                .delete_tokens(OAuthProvider::Box, "shared-profile")
+                .expect("the sign-out");
             assert_eq!(
                 pending_rotation_record(Some(first), account),
                 None,
-                "a failed sign-out of the legacy owner drops it too"
+                "the successful sign-out drops it"
             );
-            let _ = valid_token(&manager, "shared-profile");
-            assert_eq!(
-                store.get(account).ok().as_deref(),
-                Some(vault.as_str()),
-                "the next read writes nothing back to the vault"
+        });
+    }
+
+    /// A rotation filed for a credential stored AFTER the sign-out's delete
+    /// is another chain's: the sign-out that removed the old record must not
+    /// drop it. Red while the final drop takes any pending entry.
+    #[test]
+    fn a_sign_out_keeps_a_rotation_filed_for_a_later_credential() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::oauth2::tests::a_sign_out_keeps_a_rotation_filed_for_a_later_credential",
+        ) {
+            return;
+        }
+        with_two_box_accounts(|_store, first, _second, account| {
+            let rotation = serde_json::json!({
+                "access_token": "later-access", "refresh_token": "later-refresh",
+                "expires_at": null, "token_type": "Bearer", "scopes": [],
+                "owner_family": "v1:later-credential",
+            })
+            .to_string();
+            // The pending was filed for a record that is NOT the one the
+            // vault holds: a credential stored after the deletion began.
+            file_pending_rotation(
+                Some(first),
+                account,
+                PendingRotation {
+                    source: PendingSource::Vault,
+                    read: Zeroizing::new("the-later-credential".to_string()),
+                    record: Zeroizing::new(rotation.clone()),
+                },
+                "test",
+            );
+            OAuth2Manager::new()
+                .with_credential_user(Some(first))
+                .delete_tokens(OAuthProvider::Box, "shared-profile")
+                .expect("the sign-out");
+            assert!(
+                pending_rotation_record(Some(first), account)
+                    .is_some_and(|record| record.contains("later-refresh")),
+                "the successor of another chain stays"
             );
         });
     }
