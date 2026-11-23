@@ -2191,7 +2191,9 @@ mod tests {
         // lands in the legacy vault, never in a partition.
         let scope =
             crate::profile_auth::AuthScope::for_captured(&store, partitions::LEGACY_ONLY_ACCOUNT);
-        assert_eq!(scope.user_id, None);
+        // The reserved id is retained for the resolvers that understand it;
+        // the partition writers filter it back to the vault path.
+        assert_eq!(scope.user_id, Some(partitions::LEGACY_ONLY_ACCOUNT));
         crate::crypt_overlay_provider::persist_public_overlay_config_for_unlock(
             Some(&scope),
             "shared-profile",

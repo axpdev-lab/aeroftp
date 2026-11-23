@@ -2615,7 +2615,12 @@ pub(crate) fn persist_public_overlay_config_for_unlock(
     })?;
     let config_key = format!("aerocrypt_overlay_config_{id}");
     let salt_key = format!("aerocrypt_overlay_salt_{id}");
-    if let Some(user_id) = scope.user_id {
+    // The legacy-only capture has no partition: its metadata stays in the
+    // vault, as it did when its scope carried `user_id: None`.
+    if let Some(user_id) = scope
+        .user_id
+        .filter(|id| *id != crate::user_partitions::LEGACY_ONLY_ACCOUNT)
+    {
         use crate::user_partitions as users;
         users::init_or_migrate_cli(scope.store)?;
         let conn = users::open_or_init_cli()?;

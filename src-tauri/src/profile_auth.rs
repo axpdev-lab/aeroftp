@@ -20,14 +20,17 @@ pub struct AuthScope<'a> {
 impl<'a> AuthScope<'a> {
     /// The scope of the reads a connection makes for the account it captured
     /// (`OpenedCloudProvider::reads_account`). A legacy-only capture
-    /// (`LEGACY_ONLY_ACCOUNT`) is the explicit legacy scope, `None`: the
-    /// shared vault, never a partition user that does not exist (V1). The
-    /// reserved id itself stays for the profile-list and binding reads, which
-    /// understand it.
+    /// (`LEGACY_ONLY_ACCOUNT`) keeps the reserved id: resolvers that
+    /// understand it ([`users::resolve_credential_for_user`],
+    /// [`users::resolve_credential_for_user_owner_aware`],
+    /// [`crate::bridge_commands::resolve_profile_oauth_token_for`]) read the
+    /// legacy owner's copies for it, where `None` would mean the active
+    /// account. The partition writers below filter it back to the vault
+    /// path, which is where a legacy-only connection's writes belong.
     pub(crate) fn for_captured(store: &'a CredentialStore, account: i64) -> Self {
         Self {
             store,
-            user_id: (account != users::LEGACY_ONLY_ACCOUNT).then_some(account),
+            user_id: Some(account),
         }
     }
 }
@@ -47,7 +50,9 @@ impl AuthScope<'_> {
         profile_id: &str,
         key: &str,
     ) -> Result<Option<String>, String> {
-        let Some(user_id) = self.user_id else {
+        // The legacy-only capture has no partition of its own: its
+        // profile-bound reads are the legacy reads.
+        let Some(user_id) = self.user_id.filter(|id| *id != users::LEGACY_ONLY_ACCOUNT) else {
             return self.read(key);
         };
         users::init_or_migrate_cli(self.store)?;
@@ -76,16 +81,20 @@ impl AuthScope<'_> {
     }
     fn write(&self, key: &str, value: &str) -> Result<(), String> {
         match self.user_id {
-            Some(id) => users::store_signed_in_credential_for_user_typed_dual(
-                self.store, id, key, "oauth", value,
-            ),
-            None => self.store.store(key, value).map_err(|e| e.to_string()),
+            Some(id) if id != users::LEGACY_ONLY_ACCOUNT => {
+                users::store_signed_in_credential_for_user_typed_dual(
+                    self.store, id, key, "oauth", value,
+                )
+            }
+            _ => self.store.store(key, value).map_err(|e| e.to_string()),
         }
     }
     fn delete(&self, key: &str) -> Result<(), String> {
         match self.user_id {
-            Some(id) => users::delete_credential_for_user_dual(self.store, id, key),
-            None => self.store.delete(key).map_err(|e| e.to_string()),
+            Some(id) if id != users::LEGACY_ONLY_ACCOUNT => {
+                users::delete_credential_for_user_dual(self.store, id, key)
+            }
+            _ => self.store.delete(key).map_err(|e| e.to_string()),
         }
     }
     fn config(&self, id: &str) -> Result<Value, String> {
@@ -302,7 +311,7 @@ fn materialize_github_metadata(
         }
         true
     };
-    if let Some(user) = scope.user_id {
+    if let Some(user) = scope.user_id.filter(|id| *id != users::LEGACY_ONLY_ACCOUNT) {
         users::cli_update_server_profiles_for_user(scope.store, user, apply)?;
     } else {
         // Read and written under the lock of the list it stands in for.
