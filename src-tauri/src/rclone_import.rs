@@ -7665,8 +7665,11 @@ http_proxy =
         assert_eq!(dav_res.servers.len(), 1);
         assert_eq!(dav_res.servers[0].host, "dav.example.test");
         assert_eq!(
-            dav_res.servers[0].initial_path.as_deref(),
-            Some("/users/alice@example.test/files")
+            dav_res.servers[0]
+                .options
+                .as_ref()
+                .and_then(|o| o.get("basePath")),
+            Some(&serde_json::json!("/users/alice@example.test/files"))
         );
 
         // #12 & #13: implicit leading [DEFAULT], colon delimiter, quoted keys, and empty ssh=.
