@@ -2294,10 +2294,13 @@ impl OAuth2Manager {
                 }
                 // With no journal left (the settle already wrote the
                 // successor to the singleton's row and dropped it), that
-                // row still holds the live chain while the vault keeps the
-                // spent predecessor: the row, not the vault, is what
-                // migrates. The vault fallback below stays for an absent
-                // row.
+                // row still holds the live chain while the vault may keep
+                // the spent predecessor: the row, not the vault, is what
+                // migrates. Once the row is adopted and dropped, the vault
+                // is read back: a value that is not the adopted chain is
+                // the spent predecessor and leaves conditionally, while a
+                // value equal to the chain is the live copy and stays.
+                // The vault fallback below stays for an absent row.
                 if !had_pending {
                     if let Some(user) = credential_user {
                         let conn = crate::user_partitions::open_or_init_cli().map_err(|_| {
@@ -2352,6 +2355,11 @@ impl OAuth2Manager {
                                 &legacy,
                                 &|current| current == chain.as_str(),
                             );
+                            if let Ok(vault) = store.get(&legacy) {
+                                if vault != *chain {
+                                    let _ = store.delete_secret_if_unchanged(&legacy, &vault);
+                                }
+                            }
                             return Self::decode_record(
                                 &chain,
                                 TokenSource::Partition(user),
@@ -3642,11 +3650,22 @@ mod tests {
                 "the row's chain moved to the empty profile's row"
             );
             assert_eq!(stored_row(store, first, &legacy), None);
-            assert_eq!(
-                store.get(&legacy).ok().as_deref(),
-                Some(predecessor.as_str()),
-                "the vault's spent predecessor was not moved"
+            assert!(
+                store.get(&legacy).is_err(),
+                "the vault's spent predecessor left once the row was adopted"
             );
+
+            // Greptile r4673055500: a second empty profile of the same
+            // account finds neither the row nor the predecessor in the
+            // vault, so it cannot adopt `r-access`.
+            let second_account = OAuth2Manager::token_account_key(OAuthProvider::Box, "q");
+            if let Ok(got) = OAuth2Manager::new().load_token_record(OAuthProvider::Box, "q") {
+                assert_ne!(
+                    got.tokens.access_token, "r-access",
+                    "the second empty profile adopted the spent predecessor"
+                );
+            }
+            assert_eq!(stored_row(store, first, &second_account), None);
         });
     }
 
