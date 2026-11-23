@@ -3003,6 +3003,12 @@ struct SubstitutionOverflow;
 /// most once per transport key (`O(N)` instead of `O(N^2)`).
 type RcloneFlagMemo = HashMap<(String, &'static str), Result<Option<bool>, SubstitutionOverflow>>;
 
+#[derive(Default)]
+struct GoconfigDefaultMemo {
+    rejected: HashSet<String>,
+    values_expanded: usize,
+}
+
 /// Resolved transport flags for one rclone section.
 #[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
 struct EffectiveRcloneTransport {
@@ -3066,6 +3072,20 @@ fn expand_goconfig_substitutions<'a>(
     default_section: Option<&'a RcloneRemote>,
     raw: &'a str,
 ) -> Result<std::borrow::Cow<'a, str>, SubstitutionOverflow> {
+    expand_goconfig_substitutions_cached(
+        owning_section,
+        default_section,
+        raw,
+        &mut GoconfigDefaultMemo::default(),
+    )
+}
+
+fn expand_goconfig_substitutions_cached<'a>(
+    owning_section: &'a RcloneRemote,
+    default_section: Option<&'a RcloneRemote>,
+    raw: &'a str,
+    default_memo: &mut GoconfigDefaultMemo,
+) -> Result<std::borrow::Cow<'a, str>, SubstitutionOverflow> {
     let owning_is_default = default_section.is_some_and(|d| std::ptr::eq(d, owning_section));
     let mut lookups = 0usize;
     expand_goconfig_value(
@@ -3075,6 +3095,7 @@ fn expand_goconfig_substitutions<'a>(
         raw,
         0,
         &mut lookups,
+        default_memo,
     )
 }
 
@@ -3085,6 +3106,7 @@ fn expand_goconfig_value<'a>(
     raw: &'a str,
     recursion: usize,
     lookups: &mut usize,
+    default_memo: &mut GoconfigDefaultMemo,
 ) -> Result<std::borrow::Cow<'a, str>, SubstitutionOverflow> {
     use std::borrow::Cow;
     if recursion > GOCONFIG_MAX_DEFAULT_RECURSION {
@@ -3117,14 +3139,25 @@ fn expand_goconfig_value<'a>(
             .trim_end_matches([')', 's']);
         let replacement: Cow<'a, str> =
             match default_section.and_then(|d| d.get(name).map(|v| (d, v))) {
-                Some((default, default_raw)) => expand_goconfig_value(
-                    default,
-                    true,
-                    default_section,
-                    default_raw,
-                    recursion + 1,
-                    lookups,
-                )?,
+                Some((default, default_raw)) => {
+                    if default_memo.rejected.contains(name) {
+                        return Err(SubstitutionOverflow);
+                    }
+                    default_memo.values_expanded += 1;
+                    let expanded = expand_goconfig_value(
+                        default,
+                        true,
+                        default_section,
+                        default_raw,
+                        recursion + 1,
+                        lookups,
+                        default_memo,
+                    );
+                    if expanded.is_err() {
+                        default_memo.rejected.insert(name.to_string());
+                    }
+                    expanded?
+                }
                 None if !owning_is_default => {
                     let borrowed = owning_section.get(name).map(String::as_str).unwrap_or("");
                     if borrowed.len() > GOCONFIG_MAX_EXPANDED_BYTES
@@ -3171,6 +3204,7 @@ fn expand_goconfig_value<'a>(
 /// first, then owning section), and memoizes every visited `(section, key)`.
 fn effective_rclone_section_flag_memo(
     memo: &mut RcloneFlagMemo,
+    default_memo: &mut GoconfigDefaultMemo,
     sections: &HashMap<String, RcloneRemote>,
     section_name: &str,
     key: &'static str,
@@ -3194,8 +3228,9 @@ fn effective_rclone_section_flag_memo(
             break res;
         };
         if let Some(value) = section.get(key) {
-            let res = expand_goconfig_substitutions(section, default_section, value)
-                .map(|expanded| Some(!expanded.trim().is_empty()));
+            let res =
+                expand_goconfig_substitutions_cached(section, default_section, value, default_memo)
+                    .map(|expanded| Some(!expanded.trim().is_empty()));
             memo.insert((current.to_string(), key), res);
             break res;
         }
@@ -3219,6 +3254,7 @@ fn effective_rclone_section_flag_memo(
 /// `base_name`.
 fn resolve_rclone_transport_cached(
     memo: &mut RcloneFlagMemo,
+    default_memo: &mut GoconfigDefaultMemo,
     sections: &HashMap<String, RcloneRemote>,
     app_section: &RcloneRemote,
     base_name: &str,
@@ -3230,7 +3266,14 @@ fn resolve_rclone_transport_cached(
     let mut is_active = |key: &'static str, hops: &mut usize| -> bool {
         match source {
             ImportSourceKind::RcloneFile => {
-                match effective_rclone_section_flag_memo(memo, sections, base_name, key, hops) {
+                match effective_rclone_section_flag_memo(
+                    memo,
+                    default_memo,
+                    sections,
+                    base_name,
+                    key,
+                    hops,
+                ) {
                     Ok(val) => val.unwrap_or(false),
                     Err(SubstitutionOverflow) => {
                         overflow = true;
@@ -3276,6 +3319,7 @@ fn import_parsed_sections(
     let mut skipped = Vec::new();
     let mut warnings = Vec::new();
     let mut transport_cache: RcloneFlagMemo = HashMap::new();
+    let mut goconfig_default_memo = GoconfigDefaultMemo::default();
     let mut _transport_hops = 0usize;
     let mut provider_secrets: HashMap<String, crate::profile_export::ProviderSecrets> =
         HashMap::new();
@@ -3384,6 +3428,7 @@ fn import_parsed_sections(
                     let include_ssh = mapped.protocol == "sftp";
                     let transport = resolve_rclone_transport_cached(
                         &mut transport_cache,
+                        &mut goconfig_default_memo,
                         raw_sections.unwrap_or(&sections),
                         app_section,
                         &base_name,
@@ -7812,11 +7857,13 @@ http_proxy =
         sections.insert(cleared_name.clone(), cleared);
 
         let mut cache: RcloneFlagMemo = HashMap::new();
+        let mut default_memo = GoconfigDefaultMemo::default();
         let mut hops = 0usize;
         let deep_sec = &sections[&deep_base];
         for _ in 0..200 {
             let t = resolve_rclone_transport_cached(
                 &mut cache,
+                &mut default_memo,
                 &sections,
                 deep_sec,
                 &deep_base,
@@ -7838,6 +7885,7 @@ http_proxy =
         let cleared_sec = &sections[&cleared_name];
         let cleared_t = resolve_rclone_transport_cached(
             &mut cache,
+            &mut default_memo,
             &sections,
             cleared_sec,
             &cleared_name,
@@ -7872,6 +7920,7 @@ http_proxy =
         }
 
         let mut memo: RcloneFlagMemo = HashMap::new();
+        let mut default_memo = GoconfigDefaultMemo::default();
         let mut hops = 0usize;
         // Walk all 51 distinct descendants from deepest up to root: each
         // (section, key) must be visited at most once (51 * 3 = 153 hops,
@@ -7879,6 +7928,7 @@ http_proxy =
         for name in names.iter().rev() {
             let t = resolve_rclone_transport_cached(
                 &mut memo,
+                &mut default_memo,
                 &sections,
                 &sections[name],
                 name,
@@ -7917,6 +7967,49 @@ http_proxy =
             expand_goconfig_substitutions(&owning, None, &huge),
             Err(SubstitutionOverflow)
         );
+    }
+
+    #[test]
+    fn shared_oversized_default_value_is_expanded_once_across_many_remotes() {
+        let mut sections = HashMap::new();
+        sections.insert(
+            "DEFAULT".to_string(),
+            RcloneRemote::from([(
+                "shared".to_string(),
+                "x".repeat(GOCONFIG_MAX_EXPANDED_BYTES + 1),
+            )]),
+        );
+        let names: Vec<String> = (0..64).map(|i| format!("remote-{i}")).collect();
+        for name in &names {
+            sections.insert(
+                name.clone(),
+                RcloneRemote::from([
+                    ("type".to_string(), "sftp".to_string()),
+                    ("host".to_string(), "files.example.test".to_string()),
+                    ("ssh".to_string(), "%(shared)s".to_string()),
+                ]),
+            );
+        }
+
+        let mut memo = RcloneFlagMemo::new();
+        let mut default_memo = GoconfigDefaultMemo::default();
+        let mut hops = 0usize;
+        for name in &names {
+            let transport = resolve_rclone_transport_cached(
+                &mut memo,
+                &mut default_memo,
+                &sections,
+                &sections[name],
+                name,
+                ImportSourceKind::RcloneFile,
+                true,
+                &mut hops,
+            );
+            assert!(transport.substitution_overflow, "{name}");
+        }
+
+        assert_eq!(default_memo.values_expanded, 1);
+        assert_eq!(hops, names.len() * 3);
     }
 
     #[test]
