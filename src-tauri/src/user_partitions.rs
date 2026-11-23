@@ -11564,6 +11564,14 @@ thread_local! {
     static BEFORE_REBUILD_WRITE_LOCK: DualWriteHook = const { RefCell::new(None) };
 }
 
+#[cfg(all(test, windows))]
+thread_local! {
+    /// Runs once on this thread in the next [`remove_partitions_db_for_rebuild`],
+    /// on the damaged-database path between its last lock check and the
+    /// `remove_file`: a credential writer committing in that gap.
+    static BEFORE_DAMAGED_REMOVE: DualWriteHook = const { RefCell::new(None) };
+}
+
 /// Empty the partition database in place, inside the write transaction
 /// [`remove_partitions_db_for_rebuild`] already holds: every table, view,
 /// trigger and index is dropped and the transaction is committed, so the
@@ -11678,6 +11686,35 @@ fn remove_partitions_db_for_rebuild(path: &std::path::Path) -> Result<Option<Pat
                     return Err(REBUILD_WHILE_WRITTEN.to_string());
                 }
                 Err(_) => drop(verify),
+            }
+            // A commit could still land between that check and the removal:
+            // the hook lets a test write one there, and a fresh BEGIN
+            // IMMEDIATE proves the version once more before the file goes.
+            // The gap after this second drop stays: Windows removes no file
+            // a connection holds open.
+            #[cfg(test)]
+            run_dual_write_hook(&BEFORE_DAMAGED_REMOVE);
+            let recheck = Connection::open(path)
+                .map_err(|e| format!("Reopen user_partitions.db for rebuild: {e}"))?;
+            match recheck.execute_batch("BEGIN IMMEDIATE") {
+                Ok(()) => {
+                    let after: i64 = recheck
+                        .query_row("PRAGMA data_version", [], |row| row.get(0))
+                        .unwrap_or(-1);
+                    drop(recheck);
+                    if after != before {
+                        return Err(REBUILD_WHILE_WRITTEN.to_string());
+                    }
+                }
+                Err(rusqlite::Error::SqliteFailure(e, _))
+                    if matches!(
+                        e.code,
+                        rusqlite::ErrorCode::DatabaseBusy | rusqlite::ErrorCode::DatabaseLocked
+                    ) =>
+                {
+                    return Err(REBUILD_WHILE_WRITTEN.to_string());
+                }
+                Err(_) => drop(recheck),
             }
         }
         #[cfg(not(windows))]
@@ -13750,6 +13787,37 @@ mod tests {
             "the session is the rebuild's while it holds the write lock"
         );
         assert_eq!(session_user_id(), None, "the rebuild dropped the session");
+    }
+
+    /// CodeRabbit 4657339482: on the damaged-database path a writer landing
+    /// a commit between the last lock check and the `remove_file` is caught
+    /// by the second `data_version` read: the rebuild refuses and the file
+    /// stays. Windows only: the healthy path empties in place and has no
+    /// removal gap.
+    #[cfg(windows)]
+    #[test]
+    fn a_commit_in_the_damaged_removal_gap_keeps_the_file() {
+        let _guard = test_lock();
+        clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(DB_FILENAME);
+        std::fs::write(&path, b"not a sqlite database").unwrap();
+        let writer_path = path.clone();
+        BEFORE_DAMAGED_REMOVE.set(Some(Box::new(move || {
+            // The second writer of the gap: it replaces the damaged file
+            // with a database of its own and commits to it.
+            let _ = std::fs::remove_file(&writer_path);
+            let conn = Connection::open(&writer_path).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE raced (id INTEGER PRIMARY KEY);
+                 INSERT INTO raced(id) VALUES (1);",
+            )
+            .unwrap();
+        })));
+        let refused = remove_partitions_db_for_rebuild(&path);
+        let error = refused.expect_err("a commit in the gap was not seen");
+        assert!(error.contains("being written"), "{error}");
+        assert!(path.exists(), "the file a writer touched stays");
     }
 
     /// A connection that began with no account reads the legacy blob while no
