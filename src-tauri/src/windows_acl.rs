@@ -88,7 +88,7 @@ pub fn restrict_to_owner_checked(path: &Path) -> std::io::Result<()> {
     let is_dir = path.is_dir();
     match win::apply_owner_only_dacl(path, is_dir) {
         Ok(()) => {
-            if win::can_still_access(path, is_dir) {
+            if win::verify_checked_access(path, is_dir) {
                 return Ok(());
             }
             let _ = win::set_inherited_dacl(path);
@@ -450,6 +450,26 @@ mod win {
             Err(e) => e.raw_os_error() != Some(ERROR_ACCESS_DENIED.0 as i32),
         }
     }
+
+    /// Strict verification for [`super::restrict_to_owner_checked`]: opens the
+    /// object for metadata/ACL rights (`READ_CONTROL | FILE_READ_ATTRIBUTES |
+    /// WRITE_DAC`) so it does not conflict with a live `FILE_SHARE_DELETE`-only
+    /// staging handle, and treats ANY probe failure (never accepting a sharing
+    /// violation as proof of access) as verification failure.
+    pub(super) fn verify_checked_access(path: &Path, is_dir: bool) -> bool {
+        if is_dir {
+            return std::fs::read_dir(path).is_ok();
+        }
+        use std::os::windows::fs::OpenOptionsExt;
+        // READ_CONTROL (0x0002_0000) | WRITE_DAC (0x0004_0000) | FILE_READ_ATTRIBUTES (0x0080)
+        const METADATA_ACL_ACCESS: u32 = 0x0006_0080;
+        const SHARE_ALL: u32 = 0x0000_0007;
+        std::fs::OpenOptions::new()
+            .access_mode(METADATA_ACL_ACCESS)
+            .share_mode(SHARE_ALL)
+            .open(path)
+            .is_ok()
+    }
 }
 
 /// Check if a filename is reserved on Windows (CON, PRN, AUX, NUL, COM1-9, LPT1-9).
@@ -565,6 +585,31 @@ mod tests {
     fn repair_is_a_no_op_on_a_missing_path() {
         let dir = scratch("missing");
         assert_eq!(repair_access_if_locked(&dir.join("nope")), Ok(false));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn restrict_to_owner_checked_verifies_live_staging_handle_and_rejects_missing_path() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let dir = scratch("checked");
+        let file = dir.join("staged.tmp");
+        const FILE_SHARE_DELETE: u32 = 0x0000_0004;
+        let _live_handle = std::fs::OpenOptions::new()
+            .create_new(true)
+            .read(true)
+            .write(true)
+            .share_mode(FILE_SHARE_DELETE)
+            .open(&file)
+            .expect("create staged handle with FILE_SHARE_DELETE");
+
+        restrict_to_owner_checked(&file)
+            .expect("checked owner-only ACL must verify cleanly against live staging handle");
+        assert!(
+            restrict_to_owner_checked(&dir.join("missing.tmp")).is_err(),
+            "checked ACL must fail closed on missing/inaccessible path"
+        );
+        drop(_live_handle);
+        let _ = std::fs::remove_file(&file);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

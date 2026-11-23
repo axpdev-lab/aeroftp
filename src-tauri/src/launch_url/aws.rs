@@ -606,6 +606,13 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn read_sections_ignores_fifo_without_blocking() {
+        const CHILD_ENV: &str = "AEROFTP_TEST_LAUNCH_URL_AWS_FIFO_PATH";
+        if let Ok(fifo_path) = std::env::var(CHILD_ENV) {
+            let sections = read_sections(std::path::Path::new(&fifo_path));
+            assert!(sections.is_empty());
+            return;
+        }
+
         let dir = tempfile::tempdir().unwrap();
         let fifo = dir.path().join("credentials");
         let status = std::process::Command::new("mkfifo")
@@ -614,30 +621,30 @@ mod tests {
             .expect("mkfifo available");
         assert!(status.success());
 
-        let fifo_run = fifo.clone();
-        let (tx, rx) = std::sync::mpsc::channel();
-        let worker = std::thread::spawn(move || {
-            let _ = tx.send(read_sections(&fifo_run));
-        });
-        let sections = match rx.recv_timeout(std::time::Duration::from_secs(5)) {
-            Ok(s) => s,
-            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                // O_NONBLOCK ensures write-side open returns ENXIO instead of
-                // blocking if the worker already exited or closed its handle.
-                use std::os::unix::fs::OpenOptionsExt;
-                let _ = std::fs::OpenOptions::new()
-                    .write(true)
-                    .custom_flags(libc::O_NONBLOCK)
-                    .open(&fifo);
-                let _ = worker.join();
-                panic!("launch_url::aws::read_sections hung on FIFO");
+        // Run the FIFO read in a killable child process so a regression to
+        // blocking `open(2)` is terminated and reaped at the deadline instead
+        // of hanging the test runner.
+        let exe = std::env::current_exe().expect("test binary path");
+        let mut child = std::process::Command::new(exe)
+            .arg("--exact")
+            .arg("launch_url::aws::tests::read_sections_ignores_fifo_without_blocking")
+            .arg("--nocapture")
+            .env(CHILD_ENV, &fifo)
+            .spawn()
+            .expect("spawn fifo child");
+
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let exit = loop {
+            if let Some(status) = child.try_wait().expect("poll child") {
+                break status;
             }
-            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-                let _ = worker.join();
-                panic!("launch_url::aws::read_sections worker exited unexpectedly");
+            if std::time::Instant::now() >= deadline {
+                let _ = child.kill();
+                let _ = child.wait();
+                panic!("launch_url::aws::read_sections hung on FIFO past 5s deadline");
             }
+            std::thread::sleep(std::time::Duration::from_millis(20));
         };
-        worker.join().unwrap();
-        assert!(sections.is_empty());
+        assert!(exit.success(), "fifo child failed with status {exit:?}");
     }
 }

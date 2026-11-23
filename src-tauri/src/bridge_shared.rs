@@ -287,10 +287,11 @@ fn stage_export_temp_600_with_acl(
     #[cfg(windows)]
     let mut tmp = {
         use std::os::windows::fs::OpenOptionsExt;
-        // Create the temp file with exclusive sharing (`share_mode(0)`) so no
-        // other local account can open a read handle between creation and
-        // `restrict_acl`, which applies the owner-only DACL before secret bytes
-        // are written.
+        // Allow only `FILE_SHARE_DELETE` (0x4): blocks all concurrent read and
+        // write opens from other local accounts between creation and
+        // `restrict_acl`, while still permitting `NamedTempFile::persist`
+        // (`MoveFileExW`) to rename the file while the handle is live.
+        const FILE_SHARE_DELETE: u32 = 0x0000_0004;
         tempfile::Builder::new()
             .prefix(".aeroftp-bridge-export-")
             .make_in(parent, |path| {
@@ -298,7 +299,7 @@ fn stage_export_temp_600_with_acl(
                     .create_new(true)
                     .read(true)
                     .write(true)
-                    .share_mode(0)
+                    .share_mode(FILE_SHARE_DELETE)
                     .open(path)
             })?
     };

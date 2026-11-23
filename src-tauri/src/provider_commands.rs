@@ -25090,6 +25090,13 @@ mod tests {
             "VAULT-STS-TOKEN-42",
         )
         .unwrap();
+        crate::user_partitions::store_credential_for_user_dual(
+            &store,
+            first_user.id,
+            "aerocrypt_overlay_pw_aws-sts-1",
+            "ALICE-OVERLAY-PW",
+        )
+        .unwrap();
 
         let mut params = s3_params(None);
         params.profile_id = Some("aws-sts-1".to_string());
@@ -25166,6 +25173,13 @@ mod tests {
                 .unwrap();
         crate::user_partitions::set_active_user(&conn, second_user.id).unwrap();
         drop(conn);
+        crate::user_partitions::store_credential_for_user_dual(
+            &store,
+            second_user.id,
+            "aerocrypt_overlay_pw_aws-sts-1",
+            "BOB-OVERLAY-PW",
+        )
+        .unwrap();
 
         let mut second_params = s3_params(None);
         second_params.profile_id = Some("aws-sts-1".to_string());
@@ -25332,6 +25346,11 @@ mod tests {
             collected_for_a_after_switch.aws_session_token.as_deref(),
             Some("VAULT-STS-TOKEN-42"),
             "captured user A export collection must still read user A's token after switch to user B"
+        );
+        assert_eq!(
+            collected_for_a_after_switch.aerocrypt_overlay_pw.as_deref(),
+            Some("ALICE-OVERLAY-PW"),
+            "captured user A export collection must read user A's overlay secret, never user B's"
         );
         assert_eq!(
             got_after_overwrite_connect, None,

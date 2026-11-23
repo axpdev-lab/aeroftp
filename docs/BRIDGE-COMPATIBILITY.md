@@ -166,8 +166,11 @@ way: an importer reads whatever connection types it recognizes in the file.)
   between revalidation and restoration or removal and rollback itself can fail,
   so check the reported rollback status before using the pair or retrying the
   export), and replaces an existing `config` or `credentials` file only when
-  its typed line-2 marker carries a matching SHA-256 digest bound to the exact
-  requested credentials filename. If either destination is a user file, a
+  its typed line-2 marker carries both a filename-derived binding ID for the
+  target credentials entry and a matching SHA-256 digest of the file body.
+  Older AeroFTP exports carrying the previous unbound credentials marker are
+  preserved as non-matching files, so re-exporting writes a new inactive side
+  pair instead of replacing them. If either destination is a user file, a
   file `aws configure` edited, a pre-marker legacy AeroFTP export, another
   credentials pair's `config`, a symlink, or a directory, both active targets
   stay untouched, the complete pair goes to the first absent or AeroFTP-owned

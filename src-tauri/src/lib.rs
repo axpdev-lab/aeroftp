@@ -25106,12 +25106,21 @@ pub(crate) fn collect_provider_secrets_for_server_for_user(
     let mut out = profile_export::ProviderSecrets::default();
     let protocol = server.protocol.as_deref().unwrap_or("").to_lowercase();
 
-    // MUV-4: read the per-profile token from the active user's partition (vault
+    let resolve_user_cred = |key: &str| match user_id {
+        Some(uid) => user_partitions::resolve_credential_for_user(store, uid, key),
+        None => user_partitions::resolve_active_credential(store, key),
+    };
+    let resolve_user_owner_aware = |key: &str| match user_id {
+        Some(uid) => user_partitions::resolve_credential_for_user_owner_aware(store, uid, key),
+        None => user_partitions::resolve_active_credential_owner_aware(store, key),
+    };
+
+    // MUV-4: read the per-profile token from the captured user's partition (vault
     // fallback inside resolve), then the legacy singleton key from the vault.
     if let Some(slug) = oauth_vault_slug_for_protocol(&protocol) {
         let per_profile = format!("oauth_{}_{}", slug, server.id);
         let read = |key: &str| {
-            user_partitions::resolve_active_credential_owner_aware(store, key)
+            resolve_user_owner_aware(key)
                 .map_err(|e| format!("{}: cannot read its OAuth token: {e}", server.name))
         };
         if let Some(value) = read(&per_profile)? {
@@ -25130,7 +25139,7 @@ pub(crate) fn collect_provider_secrets_for_server_for_user(
     if protocol == "jottacloud" {
         let per_profile = format!("jottacloud_refresh_{}", server.id);
         let read = |key: &str| {
-            user_partitions::resolve_active_credential_owner_aware(store, key)
+            resolve_user_owner_aware(key)
                 .map(|value| value.map(|value| value.to_string()))
                 .map_err(|e| format!("{}: cannot read its Jottacloud token: {e}", server.name))
         };
@@ -25175,42 +25184,31 @@ pub(crate) fn collect_provider_secrets_for_server_for_user(
     // and interop rclone-crypt share these generic vault keys) so an exported
     // Crypt profile reconnects on import without re-entering the overlay password.
     // Protocol-agnostic: the overlay can sit on any provider-API backend.
-    if let Ok(Some(pw)) = user_partitions::resolve_active_credential(
-        store,
-        &format!("aerocrypt_overlay_pw_{}", server.id),
-    ) {
+    if let Ok(Some(pw)) = resolve_user_cred(&format!("aerocrypt_overlay_pw_{}", server.id)) {
         out.aerocrypt_overlay_pw = Some(pw.to_string());
     }
-    if let Ok(Some(salt)) = user_partitions::resolve_active_credential(
-        store,
-        &format!("aerocrypt_overlay_salt_{}", server.id),
-    ) {
+    if let Ok(Some(salt)) = resolve_user_cred(&format!("aerocrypt_overlay_salt_{}", server.id)) {
         out.aerocrypt_overlay_salt = Some(salt.to_string());
     }
     // AeroCrypt keyfile PATH (not the keyfile contents). Lets a same-device
     // re-import find the keyfile without re-picking it; on another device the
     // path may be stale and the UI must re-point.
-    if let Ok(Some(kf_path)) = user_partitions::resolve_active_credential(
-        store,
-        &format!("aerocrypt_overlay_keyfile_path_{}", server.id),
-    ) {
+    if let Ok(Some(kf_path)) =
+        resolve_user_cred(&format!("aerocrypt_overlay_keyfile_path_{}", server.id))
+    {
         out.aerocrypt_overlay_keyfile_path = Some(kf_path.to_string());
     }
-    if let Ok(Some(config)) = user_partitions::resolve_active_credential(
-        store,
-        &format!("aerocrypt_overlay_config_{}", server.id),
-    ) {
+    if let Ok(Some(config)) = resolve_user_cred(&format!("aerocrypt_overlay_config_{}", server.id))
+    {
         out.aerocrypt_overlay_config = Some(config.to_string());
     }
 
     // Issue #215 Caveat A: bundle the per-protocol credential snapshots so a
     // multi-protocol account keeps each mode's saved credentials on import. The
-    // `server_` prefix routes this through the active user's partition exactly
+    // `server_` prefix routes this through the captured user's partition exactly
     // like the per-profile password (modeCredentialStore already stripped the
     // single-use TOTP/STS codes at write time).
-    if let Ok(Some(modes)) =
-        user_partitions::resolve_active_credential(store, &format!("server_modes_{}", server.id))
-    {
+    if let Ok(Some(modes)) = resolve_user_cred(&format!("server_modes_{}", server.id)) {
         out.mode_credentials = Some(modes.to_string());
     }
 
@@ -25218,9 +25216,7 @@ pub(crate) fn collect_provider_secrets_for_server_for_user(
     // It is a long-lived secret kept only in the vault (never on the saved
     // profile's `options`), so without this the `.aeroftp` export dropped it and a
     // re-imported Filen profile fell back to password + TOTP.
-    if let Ok(Some(api_key)) =
-        user_partitions::resolve_active_credential(store, &format!("filen_api_key_{}", server.id))
-    {
+    if let Ok(Some(api_key)) = resolve_user_cred(&format!("filen_api_key_{}", server.id)) {
         out.filen_api_key = Some(api_key.to_string());
     }
 
@@ -25239,31 +25235,22 @@ pub(crate) fn collect_provider_secrets_for_server_for_user(
     // OneDrive drive id/type captured at connect (`onedrive_drive_id_<id>` /
     // `onedrive_drive_type_<id>`). Vault-only like the Filen key, so the export
     // dropped them; carried so a re-import is a complete snapshot.
-    if let Ok(Some(v)) = user_partitions::resolve_active_credential(
-        store,
-        &format!("onedrive_drive_id_{}", server.id),
-    ) {
+    if let Ok(Some(v)) = resolve_user_cred(&format!("onedrive_drive_id_{}", server.id)) {
         out.onedrive_drive_id = Some(v.to_string());
     }
-    if let Ok(Some(v)) = user_partitions::resolve_active_credential(
-        store,
-        &format!("onedrive_drive_type_{}", server.id),
-    ) {
+    if let Ok(Some(v)) = resolve_user_cred(&format!("onedrive_drive_type_{}", server.id)) {
         out.onedrive_drive_type = Some(v.to_string());
     }
 
     // The native Proton Drive session (`proton_native_session_<id>`), written
     // at sign-in and at every refresh. Vault-only like the Filen key; it
     // travels like every other per-profile secret (owner decision 2026-10-17).
-    if let Ok(Some(v)) = user_partitions::resolve_active_credential(
-        store,
-        &format!("proton_native_session_{}", server.id),
-    ) {
+    if let Ok(Some(v)) = resolve_user_cred(&format!("proton_native_session_{}", server.id)) {
         out.proton_native_session = Some(v.to_string());
     }
 
     let read_auth = |prefix: &str| {
-        user_partitions::resolve_active_credential(store, &format!("{prefix}_{}", server.id))
+        resolve_user_cred(&format!("{prefix}_{}", server.id))
             .ok()
             .flatten()
             .map(|value| value.to_string())
@@ -25528,6 +25515,20 @@ fn prepare_import(
 
     let mut servers = servers.to_vec();
     let mut provider_secrets = provider_secrets.clone();
+    // Normalize legacy `.aeroftp` backups that stored an AWS STS token inline
+    // in `options.sessionToken`: strip it from `options` unconditionally so it
+    // never reaches the renderer or profile store, and lift non-empty tokens
+    // into `provider_secrets.aws_session_token` after ID planning/remapping.
+    let mut legacy_session_tokens: Vec<(usize, String)> = Vec::new();
+    for (idx, server) in servers.iter_mut().enumerate() {
+        if let Some(opts) = server.options.as_mut().and_then(|v| v.as_object_mut()) {
+            if let Some(raw) = opts.remove("sessionToken") {
+                if let Some(tok) = raw.as_str().map(str::trim).filter(|s| !s.is_empty()) {
+                    legacy_session_tokens.push((idx, tok.to_string()));
+                }
+            }
+        }
+    }
     let candidates: Vec<ImportCandidate<'_>> = servers
         .iter()
         .map(|s| ImportCandidate {
@@ -25631,6 +25632,13 @@ fn prepare_import(
                     provider_secrets.insert(planned.id.clone(), secrets);
                 }
             }
+        }
+    }
+    for (idx, tok) in legacy_session_tokens {
+        let final_id = &servers[idx].id;
+        let entry = provider_secrets.entry(final_id.clone()).or_default();
+        if entry.aws_session_token.is_none() {
+            entry.aws_session_token = Some(tok);
         }
     }
     PreparedImport {
@@ -26404,6 +26412,12 @@ pub(crate) fn redact_imported_server(
     s: &profile_export::ServerProfileExport,
     restored: &RestoredImportSecrets,
 ) -> serde_json::Value {
+    // Defense in depth: strip any legacy inline `options.sessionToken` even if
+    // a caller invokes `redact_imported_server` outside `prepare_import`.
+    let mut sanitized_options = s.options.clone();
+    if let Some(opts) = sanitized_options.as_mut().and_then(|v| v.as_object_mut()) {
+        opts.remove("sessionToken");
+    }
     serde_json::json!({
         "id": s.id,
         "name": s.name,
@@ -26415,7 +26429,7 @@ pub(crate) fn redact_imported_server(
         "localInitialPath": s.local_initial_path,
         "color": s.color,
         "lastConnected": s.last_connected,
-        "options": s.options,
+        "options": sanitized_options,
         "providerId": s.provider_id,
         // Top-level ServerProfile fields that live OUTSIDE `options` and
         // so must be re-emitted explicitly or the import drops them:
@@ -27391,6 +27405,53 @@ mod per_profile_vault_keys_tests {
                 .all(|w| w.key != "aws_session_token_srv_sts_backup"),
             "credential-less backup must not delete existing aws_session_token"
         );
+    }
+
+    #[test]
+    fn legacy_options_session_token_is_normalized_into_vault_and_stripped_from_redacted_response() {
+        let legacy_server = crate::profile_export::ServerProfileExport {
+            id: "srv_legacy_sts".to_string(),
+            name: "Legacy STS".to_string(),
+            host: String::new(),
+            port: 443,
+            username: "ASIALEGACY".to_string(),
+            protocol: Some("s3".to_string()),
+            credential: Some("legacy-secret".to_string()),
+            options: Some(serde_json::json!({
+                "region": "eu-west-1",
+                "sessionToken": "LEGACY-INLINE-TOKEN-55"
+            })),
+            ..Default::default()
+        };
+        let prepared = super::prepare_import(
+            std::slice::from_ref(&legacy_server),
+            &std::collections::HashMap::new(),
+            crate::profile_import_plan::ExistingProfileMode::Overwrite,
+            &crate::profile_security::RelaxationPolicy::ResetAll,
+            &[],
+        );
+        let stored = prepared.stored();
+        let writes = super::import_secret_writes(&stored, &prepared.provider_secrets);
+        let tok_write = writes
+            .iter()
+            .find(|w| w.key == "aws_session_token_srv_legacy_sts")
+            .expect("legacy options.sessionToken must normalize into a vaulted token write");
+        assert!(
+            !tok_write.delete,
+            "must store token, never schedule deletion"
+        );
+        assert_eq!(tok_write.kind, Some("aws_session_token"));
+        assert_eq!(tok_write.value.as_str(), "LEGACY-INLINE-TOKEN-55");
+
+        let restored = super::restored_import_secrets(&stored, &prepared.provider_secrets);
+        let redacted = super::redact_imported_server(&stored[0], &restored);
+        assert_eq!(redacted["hasStoredSessionToken"], true);
+        assert!(
+            !redacted.to_string().contains("LEGACY-INLINE-TOKEN-55"),
+            "redacted IPC server leaked legacy sessionToken: {redacted}"
+        );
+        assert!(redacted["options"].get("sessionToken").is_none());
+        assert_eq!(redacted["options"]["region"], "eu-west-1");
     }
 
     #[test]

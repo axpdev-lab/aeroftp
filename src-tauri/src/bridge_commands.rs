@@ -828,19 +828,25 @@ pub(crate) fn finish_bridge_import_with_policy_and_cap(
     policy: &crate::profile_security::RelaxationPolicy,
     max_vault_writes: usize,
 ) -> Result<Value, String> {
-    let mut servers = value
+    // Carry each server's original file index through prepass filtering so
+    // omitting a capped rclone-crypt profile never shifts indices seen by
+    // `policy.kept_keys` or `ImportedSecurity`.
+    let mut indexed_servers: Vec<(usize, Value)> = value
         .get("servers")
         .and_then(|s| s.as_array())
         .cloned()
-        .unwrap_or_default();
+        .unwrap_or_default()
+        .into_iter()
+        .enumerate()
+        .collect();
 
     let mut vault_write_attempts = 0usize;
     let mut cap_hit = false;
     let mut cred_errors: Vec<String> = Vec::new();
     let mut skipped_crypt: Vec<Value> = Vec::new();
     if source == "rclone" {
-        let mut kept_servers = Vec::with_capacity(servers.len());
-        for mut server in servers {
+        let mut kept_servers = Vec::with_capacity(indexed_servers.len());
+        for (orig_idx, mut server) in indexed_servers {
             let crypt_enabled = server
                 .pointer("/options/rcloneCryptEnabled")
                 .and_then(Value::as_bool)
@@ -889,10 +895,10 @@ pub(crate) fn finish_bridge_import_with_policy_and_cap(
                 }
                 None => Err("Unlock the credential vault before importing Crypt profiles".into()),
             })?;
-            kept_servers.push(server);
+            kept_servers.push((orig_idx, server));
         }
-        servers = kept_servers;
-        for server in &mut servers {
+        indexed_servers = kept_servers;
+        for (_, server) in &mut indexed_servers {
             let id = server
                 .get("id")
                 .and_then(|v| v.as_str())
@@ -935,7 +941,7 @@ pub(crate) fn finish_bridge_import_with_policy_and_cap(
 
     match vault.as_mut() {
         Some(write) => {
-            for server in &mut servers {
+            for (_, server) in &mut indexed_servers {
                 let token = take_imported_aws_session_token(server);
                 let id = server
                     .get("id")
@@ -1017,7 +1023,7 @@ pub(crate) fn finish_bridge_import_with_policy_and_cap(
         }
         None => {
             let mut missing_cred_count = 0usize;
-            for server in &mut servers {
+            for (_, server) in &mut indexed_servers {
                 let token = take_imported_aws_session_token(server);
                 let id = server
                     .get("id")
@@ -1066,7 +1072,8 @@ pub(crate) fn finish_bridge_import_with_policy_and_cap(
     // profile so ticking an option in the review restores only what was asked.
     let mut security: Vec<crate::profile_import_plan::ImportedSecurity> = Vec::new();
     let mut relaxed_before_reset: HashMap<usize, (Value, Value)> = HashMap::new();
-    for (file_index, server) in servers.iter_mut().enumerate() {
+    for (file_index, server) in &mut indexed_servers {
+        let file_index = *file_index;
         let relaxations = crate::profile_security::security_relaxations(server);
         if relaxations.is_empty() {
             continue;
@@ -1094,9 +1101,8 @@ pub(crate) fn finish_bridge_import_with_policy_and_cap(
     }
 
     // Redact credentials before crossing back to the renderer.
-    let redacted: Vec<Value> = servers
+    let redacted: Vec<Value> = indexed_servers
         .iter()
-        .enumerate()
         .map(|(file_index, s)| {
             let id = s.get("id").and_then(|v| v.as_str()).unwrap_or("");
             let has_cred = !unsaved_credentials.contains(id)
@@ -1120,7 +1126,7 @@ pub(crate) fn finish_bridge_import_with_policy_and_cap(
                 "hasStoredSessionToken": s.get("hasStoredSessionToken").cloned().unwrap_or(Value::Bool(false)),
                 "hasStoredCredential": has_cred,
             });
-            if let Some((raw_host, raw_options)) = relaxed_before_reset.get(&file_index) {
+            if let Some((raw_host, raw_options)) = relaxed_before_reset.get(file_index) {
                 item["relaxedHost"] = raw_host.clone();
                 item["relaxedOptions"] = raw_options.clone();
             }
@@ -1128,9 +1134,9 @@ pub(crate) fn finish_bridge_import_with_policy_and_cap(
         })
         .collect();
 
-    let names: HashMap<&str, &str> = servers
+    let names: HashMap<&str, &str> = indexed_servers
         .iter()
-        .filter_map(|s| {
+        .filter_map(|(_, s)| {
             Some((
                 s.get("id").and_then(|v| v.as_str())?,
                 s.get("name").and_then(|v| v.as_str())?,
@@ -1144,8 +1150,13 @@ pub(crate) fn finish_bridge_import_with_policy_and_cap(
             json!({ "name": name, "reason": reason })
         })
         .collect();
-    let mut resp =
-        bridge_import_response(value, redacted, servers.len(), secret_warnings, security);
+    let mut resp = bridge_import_response(
+        value,
+        redacted,
+        indexed_servers.len(),
+        secret_warnings,
+        security,
+    );
     if !skipped_crypt.is_empty() {
         if let Some(arr) = resp.get_mut("skipped").and_then(Value::as_array_mut) {
             arr.extend(skipped_crypt);
@@ -4091,6 +4102,82 @@ mod tests {
                 && v == "SENTINEL-SEC-TOKEN-77"),
             "expected vaulted aws_security_token under owner key, got: {stored:?}"
         );
+    }
+
+    /// CR-CLI C2 #15: omitting a capped Crypt profile at index 0 must preserve
+    /// the original file index (1) for the subsequent profile so a `Keep`
+    /// policy granting `verifyCert` on index 0 is never inherited by index 1.
+    #[test]
+    fn capped_crypt_profile_omission_preserves_original_file_index_for_security_policy() {
+        let parsed = json!({
+            "servers": [
+                {
+                    "id": "crypt-0",
+                    "name": "Crypt 0",
+                    "host": "s3.lab.example.com",
+                    "port": 443,
+                    "username": "AK0",
+                    "protocol": "s3",
+                    "options": {
+                        "rcloneCryptEnabled": true,
+                        "rcloneCryptPassword": "pw0",
+                        "rcloneCryptPassword2": "salt0",
+                        "verifyCert": false
+                    }
+                },
+                {
+                    "id": "s3-1",
+                    "name": "Plain S3",
+                    "host": "s3.other.example.com",
+                    "port": 443,
+                    "username": "AK1",
+                    "protocol": "s3",
+                    "options": {
+                        "verifyCert": false
+                    }
+                }
+            ],
+            "skipped": [],
+            "warnings": [],
+            "totalRemotes": 2
+        });
+
+        let mut writes: Vec<String> = Vec::new();
+        let mut write = |k: &str, _v: &str| -> Result<(), String> {
+            writes.push(k.to_string());
+            Ok(())
+        };
+        let policy = crate::profile_security::RelaxationPolicy::Keep(vec![
+            crate::profile_security::KeptRelaxation {
+                file_index: 0,
+                key: "verifyCert".to_string(),
+            },
+        ]);
+
+        let out = finish_bridge_import_with_policy_and_cap(
+            "rclone",
+            &parsed,
+            Vec::new(),
+            Some(&mut write),
+            &policy,
+            1,
+        )
+        .unwrap();
+
+        let servers = out["servers"].as_array().unwrap();
+        assert_eq!(servers.len(), 1);
+        assert_eq!(servers[0]["id"], "s3-1");
+        assert_ne!(
+            servers[0]["options"]["verifyCert"],
+            Value::Bool(false),
+            "profile at original index 1 must NOT inherit index 0's verifyCert=false consent: {}",
+            servers[0]
+        );
+        let security = out["security"].as_array().unwrap();
+        assert_eq!(security.len(), 1);
+        assert_eq!(security[0]["fileIndex"], 1);
+        assert!(security[0]["kept"].as_array().unwrap().is_empty());
+        assert_eq!(security[0]["reset"].as_array().unwrap().len(), 1);
     }
 
     #[tokio::test]
