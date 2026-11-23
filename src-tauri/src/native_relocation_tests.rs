@@ -61,6 +61,59 @@ fn loaded(owner: vault::SessionOwner, id: &str) -> Option<String> {
 /// and partition DB are isolated from the owner's credentials and from
 /// parallel lib tests, as the auth fixture does.
 fn in_isolated_child(name: &str) -> bool {
+    in_isolated_child_within(name, std::time::Duration::from_secs(600))
+}
+
+/// What one child pipe yielded: the tail kept for the panic message, and
+/// whether the two libtest markers passed through it. The suite's own
+/// output can be larger than the tail, so the markers are tracked while
+/// reading, not recovered from it afterwards.
+struct ChildPipe {
+    tail: String,
+    running: bool,
+    passed: bool,
+}
+
+/// Drain one child pipe to EOF, keeping its last 64 KiB and flagging the
+/// libtest markers wherever they appear: a child that fills the pipe past
+/// its buffer cannot deadlock on a parent that reads only at the exit.
+fn drain_child_pipe<R: std::io::Read + Send + 'static>(
+    mut pipe: R,
+) -> std::thread::JoinHandle<ChildPipe> {
+    std::thread::spawn(move || {
+        const TAIL: usize = 64 * 1024;
+        const SCAN: usize = 256;
+        let mut tail: Vec<u8> = Vec::new();
+        let mut scan: Vec<u8> = Vec::new();
+        let (mut running, mut passed) = (false, false);
+        let mut buf = [0u8; 16 * 1024];
+        loop {
+            match pipe.read(&mut buf) {
+                Ok(0) | Err(_) => break,
+                Ok(n) => {
+                    tail.extend_from_slice(&buf[..n]);
+                    if tail.len() > TAIL {
+                        tail.drain(..tail.len() - TAIL);
+                    }
+                    scan.extend_from_slice(&buf[..n]);
+                    let text = String::from_utf8_lossy(&scan);
+                    running |= text.contains("running 1 test");
+                    passed |= text.contains(" 1 passed");
+                    if scan.len() > SCAN {
+                        scan.drain(..scan.len() - SCAN);
+                    }
+                }
+            }
+        }
+        ChildPipe {
+            tail: String::from_utf8_lossy(&tail).into_owned(),
+            running,
+            passed,
+        }
+    })
+}
+
+fn in_isolated_child_within(name: &str, timeout: std::time::Duration) -> bool {
     if std::env::var(MODE).as_deref() == Ok("suite") {
         return true;
     }
@@ -100,8 +153,11 @@ fn in_isolated_child(name: &str) -> bool {
         .stderr(std::process::Stdio::piped())
         .spawn()
         .unwrap();
+    let stdout_reader = drain_child_pipe(process.stdout.take().unwrap());
+    let stderr_reader = drain_child_pipe(process.stderr.take().unwrap());
     // A hung fixture must not hang the suite: bound the wait, then kill.
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(600);
+    let deadline = std::time::Instant::now() + timeout;
+    let mut timed_out = false;
     loop {
         match process.try_wait().unwrap() {
             Some(_) => break,
@@ -109,22 +165,39 @@ fn in_isolated_child(name: &str) -> bool {
                 std::thread::sleep(std::time::Duration::from_millis(50));
             }
             None => {
+                timed_out = true;
                 let _ = process.kill();
                 let _ = process.wait();
-                panic!("the isolated test {test} did not finish in 600 s");
+                break;
             }
         }
     }
-    let output = process.wait_with_output().unwrap();
+    let stdout = stdout_reader.join().unwrap_or(ChildPipe {
+        tail: String::new(),
+        running: false,
+        passed: false,
+    });
+    let stderr = stderr_reader.join().unwrap_or(ChildPipe {
+        tail: String::new(),
+        running: false,
+        passed: false,
+    });
+    if timed_out {
+        panic!(
+            "the isolated test {test} did not finish in {} s\nstdout tail:\n{}\nstderr tail:\n{}",
+            timeout.as_secs(),
+            stdout.tail,
+            stderr.tail
+        );
+    }
+    let status = process.wait().unwrap();
     // A name that selects no test exits with success too: only the test
     // that ran and passed counts.
-    let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        output.status.success()
-            && stdout.contains("running 1 test")
-            && stdout.contains(" 1 passed"),
-        "{stdout}\n{}",
-        String::from_utf8_lossy(&output.stderr)
+        status.success() && stdout.running && stdout.passed,
+        "{}\n{}",
+        stdout.tail,
+        stderr.tail
     );
     false
 }
@@ -135,6 +208,39 @@ fn in_isolated_child(name: &str) -> bool {
 #[should_panic(expected = "running 0 tests")]
 fn a_child_that_runs_no_test_fails_the_parent() {
     in_isolated_child("no_such_test");
+}
+
+/// A child that hangs is killed at the deadline and its captured output is
+/// in the panic: a stuck fixture cannot hold the suite.
+#[test]
+#[should_panic(expected = "hung-child-marker")]
+fn a_hung_child_is_killed_and_its_output_is_in_the_panic() {
+    if std::env::var(MODE).as_deref() == Ok("suite") {
+        println!("hung-child-marker");
+        loop {
+            std::thread::sleep(std::time::Duration::from_secs(60));
+        }
+    }
+    in_isolated_child_within(
+        "a_hung_child_is_killed_and_its_output_is_in_the_panic",
+        std::time::Duration::from_secs(1),
+    );
+}
+
+/// A child that fills both pipes past their buffers still finishes: the
+/// parent drains them while it runs instead of waiting for the exit.
+#[test]
+fn a_child_that_fills_both_pipes_still_passes() {
+    if std::env::var(MODE).as_deref() == Ok("suite") {
+        let filler = "x".repeat(1024 * 1024);
+        print!("{filler}");
+        eprint!("{filler}");
+        return;
+    }
+    assert!(!in_isolated_child_within(
+        "a_child_that_fills_both_pipes_still_passes",
+        std::time::Duration::from_secs(600),
+    ));
 }
 
 /// The legacy owner, a source account unlocked in this process and a target
