@@ -453,6 +453,38 @@ pub struct WinScpSkippedSession {
     pub reason: String,
 }
 
+/// Decode a WinSCP INI boolean (`winscp/winscp`
+/// `source/core/HierarchicalStorage.cpp:174, 1441-1479`): `BoolMapping` maps
+/// case-insensitive `"on"`/`"off"` before falling back to integer parsing
+/// (`!= 0` is `true`, `0` is `false`).
+fn parse_winscp_bool(raw: &str) -> Option<bool> {
+    let trimmed = raw.trim();
+    if trimmed.eq_ignore_ascii_case("on") {
+        return Some(true);
+    }
+    if trimmed.eq_ignore_ascii_case("off") {
+        return Some(false);
+    }
+    trimmed.parse::<i64>().ok().map(|v| v != 0)
+}
+
+/// Decode a WinSCP `ProxyMethod` INI value (`winscp/winscp`
+/// `source/core/SessionData.cpp:24-25, 849` and
+/// `HierarchicalStorage.cpp:1455-1479`): accepts case-insensitive enum names
+/// (`None;SOCKS4;SOCKS5;HTTP;Telnet;Cmd` -> `0..=5`) as well as numeric values.
+fn parse_winscp_proxy_method(raw: &str) -> u32 {
+    let trimmed = raw.trim();
+    match trimmed.to_ascii_lowercase().as_str() {
+        "none" => 0,
+        "socks4" => 1,
+        "socks5" => 2,
+        "http" => 3,
+        "telnet" => 4,
+        "cmd" => 5,
+        _ => trimmed.parse::<u32>().unwrap_or(0),
+    }
+}
+
 /// Maximum number of sessions to parse (defense against DoS with crafted files).
 const MAX_SESSIONS: usize = 10_000;
 
@@ -479,7 +511,7 @@ pub fn import_winscp(config_path: &Path) -> Result<WinScpImportResult, String> {
                 let is_neon = matches!(mapped.protocol.as_str(), "webdav" | "s3");
                 let proxy_method = fields
                     .get("ProxyMethod")
-                    .and_then(|value| value.trim().parse::<u32>().ok())
+                    .map(|value| parse_winscp_proxy_method(value))
                     .unwrap_or(0);
                 let has_proxy_host = fields
                     .get("ProxyHost")
@@ -553,8 +585,8 @@ pub fn import_winscp(config_path: &Path) -> Result<WinScpImportResult, String> {
                 // every protocol. Omit `TunnelHostName` and tunnel credentials.
                 if fields
                     .get("Tunnel")
-                    .and_then(|value| value.trim().parse::<i64>().ok())
-                    == Some(1)
+                    .and_then(|value| parse_winscp_bool(value))
+                    == Some(true)
                 {
                     warnings.push(WinScpImportWarning {
                         name: name.clone(),
@@ -562,7 +594,10 @@ pub fn import_winscp(config_path: &Path) -> Result<WinScpImportResult, String> {
                     });
                 }
                 if matches!(mapped.protocol.as_str(), "ftp" | "ftps")
-                    && fields.get("FtpPasvMode").map(String::as_str) == Some("0")
+                    && fields
+                        .get("FtpPasvMode")
+                        .and_then(|value| parse_winscp_bool(value))
+                        == Some(false)
                 {
                     warnings.push(WinScpImportWarning {
                         name: name.clone(),
@@ -1716,5 +1751,46 @@ FSProtocol=1
             "{}",
             s3_socks[0]
         );
+    }
+
+    #[test]
+    fn named_winscp_booleans_and_proxy_methods_match_numeric_values() {
+        let ini = concat!(
+            "[Sessions\\NamedSocks5]\nHostName=sftp1.example.com\nUserName=u\nFSProtocol=2\nProxyMethod=SOCKS5\n",
+            "[Sessions\\NumericSocks5]\nHostName=sftp2.example.com\nUserName=u\nFSProtocol=2\nProxyMethod=2\n",
+            "[Sessions\\NamedNone]\nHostName=sftp3.example.com\nUserName=u\nFSProtocol=2\nProxyMethod=None\n",
+            "[Sessions\\TunnelOn]\nHostName=sftp4.example.com\nUserName=u\nFSProtocol=2\nTunnel=on\n",
+            "[Sessions\\TunnelOff]\nHostName=sftp5.example.com\nUserName=u\nFSProtocol=2\nTunnel=off\n",
+            "[Sessions\\ActiveOff]\nHostName=ftp1.example.com\nUserName=u\nFSProtocol=5\nFtpPasvMode=off\n",
+            "[Sessions\\PassiveOn]\nHostName=ftp2.example.com\nUserName=u\nFSProtocol=5\nFtpPasvMode=on\n",
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("WinSCP.ini");
+        std::fs::write(&path, ini).unwrap();
+
+        let result = import_winscp(&path).unwrap();
+        assert_eq!(result.servers.len(), 7);
+        let warn_for = |name: &str| {
+            result
+                .warnings
+                .iter()
+                .filter(|w| w.name == name)
+                .map(|w| w.reason.as_str())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(warn_for("NamedSocks5"), warn_for("NumericSocks5"));
+        assert_eq!(warn_for("NamedSocks5").len(), 1);
+        assert!(warn_for("NamedSocks5")[0].contains("SOCKS5 proxy method 2"));
+        assert!(warn_for("NamedNone").is_empty());
+
+        let tunnel_on = warn_for("TunnelOn");
+        assert_eq!(tunnel_on.len(), 1);
+        assert!(tunnel_on[0].contains("SSH tunnel"));
+        assert!(warn_for("TunnelOff").is_empty());
+
+        let active_off = warn_for("ActiveOff");
+        assert_eq!(active_off.len(), 1);
+        assert!(active_off[0].contains("active FTP"));
+        assert!(warn_for("PassiveOn").is_empty());
     }
 }

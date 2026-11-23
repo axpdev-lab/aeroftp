@@ -329,6 +329,9 @@ pub(crate) struct IniSectionWithSpan {
     pub name: String,
     pub start_line: usize,
     pub data: RcloneRemote,
+    /// Original-case keys for case-sensitive `goconfig` substitution lookup
+    /// (`Unknwon/goconfig` `conf.go:196-221`, verified live against rclone v1.75.2).
+    pub raw_data: RcloneRemote,
 }
 
 /// Result of span- and line-aware INI parsing.
@@ -401,6 +404,7 @@ pub(crate) fn parse_ini_sections_with_spans(content: &str) -> IniSpanParseResult
                     name,
                     start_line: line_num,
                     data: HashMap::new(),
+                    raw_data: HashMap::new(),
                 });
                 current_section = Some(new_idx);
             }
@@ -423,7 +427,8 @@ pub(crate) fn parse_ini_sections_with_spans(content: &str) -> IniSpanParseResult
 
         // Key = value
         if let Some((raw_key, raw_value)) = line.split_once('=') {
-            let key = raw_key.trim().to_lowercase();
+            let trimmed_key = raw_key.trim();
+            let key = trimmed_key.to_lowercase();
             let value = raw_value.trim().to_string();
             if let Some(sec_idx) = current_section {
                 if key.is_empty() {
@@ -431,6 +436,9 @@ pub(crate) fn parse_ini_sections_with_spans(content: &str) -> IniSpanParseResult
                         format!("Missing key name before '=' on line {}.", line_num)
                     });
                 }
+                sections[sec_idx]
+                    .raw_data
+                    .insert(trimmed_key.to_string(), value.clone());
                 sections[sec_idx].data.insert(key, value);
             } else {
                 issues.push(line_num, None, || {
@@ -3018,18 +3026,24 @@ const GOCONFIG_MAX_EXPANDED_BYTES: usize = 4096;
 
 /// The leftmost match of goconfig's `varPattern`, `%\(([^\)]+)\)s`
 /// (`conf.go:46`): the name runs to the first `)`, which must be followed by `s`.
+///
+/// Runs in strict O(n) time: if no `)` remains anywhere in the input, returns
+/// `None` immediately; if a `)` is empty (`%()`) or not followed by `s`, every
+/// earlier `%(` before that `)` hits the same non-matching `)`, so the scan
+/// advances directly past `close`.
 fn goconfig_first_reference(value: &str) -> Option<&str> {
     let mut from = 0;
     while let Some(offset) = value[from..].find("%(") {
         let start = from + offset;
         let name_start = start + 2;
-        if let Some(close) = value[name_start..].find(')') {
-            let close = name_start + close;
-            if close > name_start && value[close + 1..].starts_with('s') {
-                return Some(&value[start..close + 2]);
-            }
+        let Some(close_rel) = value[name_start..].find(')') else {
+            return None;
+        };
+        let close = name_start + close_rel;
+        if close > name_start && value[close + 1..].starts_with('s') {
+            return Some(&value[start..close + 2]);
         }
-        from = start + 1;
+        from = close + 1;
     }
     None
 }
@@ -3089,12 +3103,12 @@ fn expand_goconfig_value(
         if *lookups > GOCONFIG_MAX_LOOKUPS {
             return Err(SubstitutionOverflow);
         }
-        // Keys are stored lowercased by the INI reader.
+        // Match goconfig's exact key case (`conf.go:196-221`, verified live
+        // against rclone v1.75.2): `[DEFAULT]` `JUMP` does not shadow `jump`.
         let name = reference
             .trim_start_matches(['%', '('])
-            .trim_end_matches([')', 's'])
-            .to_lowercase();
-        let replacement = match default_section.and_then(|d| d.get(&name).map(|v| (d, v))) {
+            .trim_end_matches([')', 's']);
+        let replacement = match default_section.and_then(|d| d.get(name).map(|v| (d, v))) {
             Some((default, default_raw)) => expand_goconfig_value(
                 default,
                 true,
@@ -3103,13 +3117,27 @@ fn expand_goconfig_value(
                 recursion + 1,
                 lookups,
             )?,
-            None if !owning_is_default => owning_section.get(&name).cloned().unwrap_or_default(),
+            None if !owning_is_default => owning_section.get(name).cloned().unwrap_or_default(),
             None => String::new(),
         };
-        value = value.replace(&reference, &replacement);
-        if value.len() > GOCONFIG_MAX_EXPANDED_BYTES {
+        // Enforce `GOCONFIG_MAX_EXPANDED_BYTES` before allocating the replaced
+        // string so repeated references pointing at a long value cannot OOM.
+        let occurrences = value.matches(&reference).count();
+        let removed = occurrences
+            .checked_mul(reference.len())
+            .ok_or(SubstitutionOverflow)?;
+        let added = occurrences
+            .checked_mul(replacement.len())
+            .ok_or(SubstitutionOverflow)?;
+        let projected_len = value
+            .len()
+            .checked_sub(removed)
+            .and_then(|base| base.checked_add(added))
+            .ok_or(SubstitutionOverflow)?;
+        if projected_len > GOCONFIG_MAX_EXPANDED_BYTES {
             return Err(SubstitutionOverflow);
         }
+        value = value.replace(&reference, &replacement);
     }
     match goconfig_first_reference(&value) {
         Some(_) => Err(SubstitutionOverflow),
@@ -3187,6 +3215,7 @@ fn resolve_rclone_transport_cached(
 
 fn import_parsed_sections(
     mut sections: HashMap<String, RcloneRemote>,
+    raw_sections: Option<&HashMap<String, RcloneRemote>>,
     ordered_names: Option<&[String]>,
     aeroftp_export: Option<AeroftpExport>,
     config_dir: Option<&Path>,
@@ -3312,7 +3341,7 @@ fn import_parsed_sections(
                 if matches!(mapped.protocol.as_str(), "ftp" | "ftps" | "sftp") {
                     let transport = resolve_rclone_transport_cached(
                         &mut transport_cache,
-                        &sections,
+                        raw_sections.unwrap_or(&sections),
                         app_section,
                         &base_name,
                         source,
@@ -3479,10 +3508,20 @@ pub fn import_rclone(config_path: &Path) -> Result<RcloneImportResult, String> {
         String::from_utf8(bytes).map_err(|e| format!("Read rclone.conf: {}", e))?
     };
 
-    let sections = parse_rclone_conf(&content);
+    let parsed_ini = parse_ini_sections_with_spans(&content);
+    if parsed_ini.capped {
+        log::warn!("rclone import: stopped at the {MAX_REMOTES}-remote cap");
+    }
+    let mut sections: HashMap<String, RcloneRemote> = HashMap::new();
+    let mut raw_sections: HashMap<String, RcloneRemote> = HashMap::new();
+    for section in parsed_ini.sections {
+        raw_sections.insert(section.name.clone(), section.raw_data);
+        sections.insert(section.name, section.data);
+    }
     let aeroftp_export = aeroftp_export_header(&content);
     let outcome = import_parsed_sections(
         sections,
+        Some(&raw_sections),
         None,
         aeroftp_export,
         rclone_config_dir(config_path).as_deref(),
@@ -3748,6 +3787,7 @@ pub(crate) fn evaluate_template_text(
     let aeroftp_export = aeroftp_export_header(trimmed_bom);
     let outcome = import_parsed_sections(
         sections,
+        None,
         Some(&ordered_names),
         aeroftp_export,
         base_dir,
@@ -7435,6 +7475,86 @@ http_proxy =
             "{}",
             cycle.reason
         );
+    }
+
+    #[test]
+    fn goconfig_case_preserving_keys_linear_scan_and_prealloc_bound() {
+        // #14: O(n) scan on long unmatched `%(` sequences and valid ref after malformed ones.
+        let long_unmatched = "%(".repeat(50_000);
+        let start = std::time::Instant::now();
+        assert_eq!(goconfig_first_reference(&long_unmatched), None);
+        assert!(
+            start.elapsed() < std::time::Duration::from_secs(1),
+            "linear scan should finish well under 1s"
+        );
+        assert_eq!(
+            goconfig_first_reference("%(bad)x%()s%(good)s"),
+            Some("%(good)s")
+        );
+        assert_eq!(
+            goconfig_first_reference("%(a%(b)x%(good)s"),
+            Some("%(good)s")
+        );
+
+        // #19 & #20: case-preserving substitution keys and pre-alloc byte limit on repeated refs.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("rclone.conf");
+        let repeated_refs = "%(chunk)s".repeat(120);
+        let chunk_val = "a".repeat(64);
+        std::fs::write(
+            &path,
+            format!(
+                "[DEFAULT]\nJUMP =\n\n\
+                 [case-diff]\ntype = sftp\nhost = old.example.test\nuser = u\n\
+                 jump = ssh -J bastion.example.test alice@files.example.test\nssh = %(jump)s\n\n\
+                 [case-same]\ntype = sftp\nhost = direct.example.test\nuser = u\n\
+                 JUMP = ssh -J bastion.example.test alice@files.example.test\nssh = %(JUMP)s\n\n\
+                 [repeat-overflow]\ntype = sftp\nhost = ov.example.test\nuser = u\n\
+                 chunk = {chunk_val}\nsocks_proxy = {repeated_refs}\n\n\
+                 [repeat-small]\ntype = sftp\nhost = sm.example.test\nuser = u\n\
+                 p = 127.0.0.1:9005\nsocks_proxy = %(p)s\n"
+            ),
+        )
+        .unwrap();
+
+        let result = import_rclone(&path).unwrap();
+        // [DEFAULT] JUMP= must NOT shadow lowercase `jump` in [case-diff].
+        assert!(
+            result
+                .skipped
+                .iter()
+                .any(|s| s.name == "case-diff" && s.reason.contains("`ssh`")),
+            "expected case-diff skip: {:?}",
+            result
+                .skipped
+                .iter()
+                .map(|s| (&s.name, &s.reason))
+                .collect::<Vec<_>>()
+        );
+        assert!(!result.servers.iter().any(|s| s.name == "case-diff"));
+
+        // Same-case [DEFAULT] JUMP= DOES shadow [case-same] JUMP -> imports direct.
+        assert!(result.servers.iter().any(|s| s.name == "case-same"));
+        assert!(!result.skipped.iter().any(|s| s.name == "case-same"));
+
+        // Repeated references exceeding 4 KiB skip cleanly without leaking chunk.
+        assert!(
+            result.skipped.iter().any(|s| s.name == "repeat-overflow"
+                && s.reason.contains("substitution expansion limits")),
+            "{:?}",
+            result
+                .skipped
+                .iter()
+                .map(|s| (&s.name, &s.reason))
+                .collect::<Vec<_>>()
+        );
+
+        // Small expansion still succeeds and emits its SOCKS5 warning.
+        assert!(result.servers.iter().any(|s| s.name == "repeat-small"));
+        assert!(result
+            .warnings
+            .iter()
+            .any(|w| w.name == "repeat-small" && w.reason.contains("SOCKS5")));
     }
 
     #[test]
