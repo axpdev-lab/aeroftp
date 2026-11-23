@@ -2212,7 +2212,9 @@ fn private_tokens_keep_to_their_account(store: &CredentialStore, legacy_id: i64,
         )
     };
     for key in ["jottacloud_refresh_copy-target", "jottacloud_refresh"] {
-        store.store(key, "owners-chain").unwrap();
+        store
+            .store(key, r#"{"refresh_token":"owners-chain"}"#)
+            .unwrap();
         assert_eq!(
             state(legacy_id, "copy-target", "jottacloud"),
             "valid",
@@ -2223,7 +2225,13 @@ fn private_tokens_keep_to_their_account(store: &CredentialStore, legacy_id: i64,
             "no_credentials",
             "{key}"
         );
-        users::store_credential_for_user_dual(store, private_id, key, "others-chain").unwrap();
+        users::store_credential_for_user_dual(
+            store,
+            private_id,
+            key,
+            r#"{"refresh_token":"others-chain"}"#,
+        )
+        .unwrap();
         assert_eq!(
             state(private_id, "copy-target", "jottacloud"),
             "valid",
