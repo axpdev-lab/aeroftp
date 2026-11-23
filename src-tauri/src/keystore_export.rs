@@ -2280,9 +2280,20 @@ fn apply_profile_decisions(
     // restore may have left another one active (a partition that was not
     // published keeps this device's).
     let active = match db.as_deref() {
-        Some(db) => rusqlite::Connection::open(db)
+        Some(db) => match rusqlite::Connection::open(db)
             .map_err(|e| format!("open {}: {e}", db.display()))
-            .and_then(|conn| receiver_in(&conn))?,
+            .and_then(|conn| {
+                #[cfg(test)]
+                if tests::receiver_lookup_fails() {
+                    return Err("receiver lookup refused (test)".to_string());
+                }
+                receiver_in(&conn)
+            }) {
+            Ok(active) => active,
+            // The vault section already committed the backup's values: a
+            // receiver lookup that fails puts them back like a refused step.
+            Err(e) => return Err(with_vault_compensation(e)),
+        },
         None => None,
     };
     if active != inputs.receiver {
@@ -3641,6 +3652,23 @@ mod tests {
             return Err(std::io::Error::other("refused (test)").into());
         }
         store.get(key)
+    }
+
+    thread_local! {
+        /// The next receiver lookup of the profile step fails, once, as a
+        /// partition database that cannot be read does.
+        static FAIL_RECEIVER_LOOKUP: std::cell::Cell<bool> =
+            const { std::cell::Cell::new(false) };
+    }
+
+    fn fail_receiver_lookup() {
+        FAIL_RECEIVER_LOOKUP.with(|slot| slot.set(true));
+    }
+
+    /// Whether the profile step's next receiver lookup is refused, consumed
+    /// once armed by [`fail_receiver_lookup`].
+    pub(super) fn receiver_lookup_fails() -> bool {
+        FAIL_RECEIVER_LOOKUP.with(|slot| slot.replace(false))
     }
 
     pub(super) fn run_before_profile_decisions(store: &crate::credential_store::CredentialStore) {
@@ -6960,6 +6988,79 @@ mod tests {
             .profile_decisions_error
             .expect("the profile step did not fail");
         assert!(error.contains("refused (test)"), "{error}");
+    }
+
+    /// The receiver lookup failing after the vault section committed puts the
+    /// backup's values back like a refused step: the surviving profile reads
+    /// its pre-import credential again, and a vault entry another writer
+    /// moved after the commit keeps the writer's value.
+    #[test]
+    fn a_failed_receiver_lookup_puts_the_vault_section_back() {
+        let _guard = crate::user_partitions::test_lock();
+        crate::user_partitions::clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let cfg = dir.path().join("config");
+        let drive_key = "oauth_dropbox_srv_drive";
+        let photos_key = "oauth_dropbox_srv_photos";
+        partition_with(
+            &store,
+            &cfg,
+            &[
+                dropbox("srv_drive", "Drive"),
+                dropbox("srv_photos", "Photos"),
+            ],
+        );
+        store.store(drive_key, "local-token").unwrap();
+        store.store(photos_key, "local-photos").unwrap();
+        let mut payload = ExportPayload::default();
+        payload.vault_entries.insert(
+            "config_server_profiles".to_string(),
+            serde_json::to_string(&[
+                dropbox("srv_drive", "Drive B"),
+                dropbox("srv_photos", "Photos B"),
+            ])
+            .unwrap(),
+        );
+        payload
+            .vault_entries
+            .insert(drive_key.to_string(), "backup-token".to_string());
+        payload
+            .vault_entries
+            .insert(photos_key.to_string(), "backup-photos".to_string());
+        let backup = dir.path().join("vault.aeroftp-keystore");
+        seal_backup(&backup, PASSWORD_736, &payload);
+        before_profile_decisions(move |store| {
+            fail_receiver_lookup();
+            // Another writer moves one of the committed values before the
+            // lookup runs: the put-back must leave it alone.
+            store.store(photos_key, "other-writer").unwrap();
+        });
+
+        let result = import_deciding(
+            &store,
+            &cfg,
+            &backup,
+            VAULT_ONLY,
+            &[
+                decide("srv_drive", keystore_profile_plan::ProfileDecision::Reject),
+                decide("srv_photos", keystore_profile_plan::ProfileDecision::Reject),
+            ],
+        );
+        let error = result
+            .profile_decisions_error
+            .expect("the profile step did not fail");
+        assert!(error.contains("receiver lookup refused (test)"), "{error}");
+        assert_eq!(
+            store.get(drive_key).unwrap(),
+            "local-token",
+            "the untouched committed value goes back to the pre-import one"
+        );
+        assert_eq!(
+            store.get(photos_key).unwrap(),
+            "other-writer",
+            "a value another writer moved after the commit is not rewritten"
+        );
     }
 
     /// CodeRabbit 4661192936 through the real import: a refresh that rotated
