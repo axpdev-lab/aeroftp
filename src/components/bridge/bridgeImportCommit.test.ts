@@ -483,7 +483,7 @@ describe('createScanSettler', () => {
         const marked = body.indexOf('if (!scans.markCommitted()) return;');
         expect(marked).toBeGreaterThan(body.indexOf('commitImportedServers('));
         expect(marked).toBeLessThan(body.indexOf('setCommitted(true);'));
-        expect(body.indexOf('setCommitted(true);')).toBeLessThan(body.indexOf('await scans.release();'));
+        expect(body.indexOf('await scans.release();')).toBeLessThan(body.indexOf('setCommitted(true);'));
         expect(panelSource).toMatch(/onClick=\{confirmImport\}\s*disabled=\{loading \|\| committed \|\| selectedIds\.size === 0\}/);
         expect(panelSource).toMatch(/if \(!committed\) setSelectedIds\(next\);/);
         expect(panelSource.match(/toggle\(s\.id, setSelectedIds\)|onChange=\{setSelectedIds\}/g)).toBeNull();
