@@ -3421,7 +3421,7 @@ pub fn import_rclone(config_path: &Path) -> Result<RcloneImportResult, String> {
         use std::io::Read;
         let cap = crate::bridge_shared::MAX_IMPORT_FILE_BYTES;
         let mut bytes = Vec::new();
-        std::fs::File::open(config_path)
+        crate::bridge_shared::open_regular_file(config_path)
             .and_then(|f| f.take(cap + 1).read_to_end(&mut bytes))
             .map_err(|e| format!("Read rclone.conf: {}", e))?;
         if bytes.len() as u64 > cap {

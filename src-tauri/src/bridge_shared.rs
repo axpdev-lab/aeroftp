@@ -305,6 +305,66 @@ pub fn ensure_import_file_size_ok(path: &Path) -> Result<(), String> {
     }
 }
 
+/// Open `path` for reading only if it is a regular file, without blocking on a
+/// FIFO. A FIFO blocks `open(2)` until a writer appears, before any check on
+/// the opened handle could refuse it; `O_NONBLOCK` makes the open return at
+/// once and does not change reads from a regular file.
+pub(crate) fn open_regular_file(path: &Path) -> std::io::Result<std::fs::File> {
+    let mut options = std::fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NONBLOCK);
+    }
+    let file = options.open(path)?;
+    if !file.metadata()?.is_file() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "not a regular file",
+        ));
+    }
+    Ok(file)
+}
+
+/// Read at most `max_bytes` UTF-8 bytes from `reader`, refusing oversized input
+/// without reading past `max_bytes + 1` bytes.
+pub(crate) fn read_bounded_utf8<R: std::io::Read>(
+    reader: R,
+    max_bytes: u64,
+) -> Result<String, String> {
+    use std::io::Read;
+
+    let mut bytes = Vec::new();
+    reader
+        .take(max_bytes.saturating_add(1))
+        .read_to_end(&mut bytes)
+        .map_err(|e| format!("read: {e}"))?;
+    if bytes.len() as u64 > max_bytes {
+        return Err(format!(
+            "File too large (max {} MB)",
+            max_bytes.div_ceil(1024 * 1024)
+        ));
+    }
+    String::from_utf8(bytes).map_err(|e| format!("invalid UTF-8: {e}"))
+}
+
+/// Read a regular UTF-8 import file through one handle, enforcing `max_bytes`
+/// during the read: a check on the path before the read (the callers'
+/// `ensure_import_file_size_ok`) cannot see a file that grows or is swapped
+/// afterwards.
+pub(crate) fn read_bounded_utf8_file(path: &Path, max_bytes: u64) -> Result<String, String> {
+    let file = open_regular_file(path).map_err(|e| format!("open: {e}"))?;
+    let metadata = file.metadata().map_err(|e| format!("metadata: {e}"))?;
+    if metadata.len() > max_bytes {
+        return Err(format!(
+            "File too large (max {} MB)",
+            max_bytes.div_ceil(1024 * 1024)
+        ));
+    }
+    read_bounded_utf8(file, max_bytes)
+}
+
 // ============ INI parser (aws, s3cmd, ...) ============
 
 /// Maximum number of sections an imported INI may yield.
@@ -1304,6 +1364,52 @@ mod tests {
         let big = dir.path().join("big.conf");
         std::fs::write(&big, vec![b'x'; (MAX_IMPORT_FILE_BYTES + 1) as usize]).unwrap();
         assert!(ensure_import_file_size_ok(&big).is_err());
+    }
+
+    /// Every importer that reads its own file reads it through the bounded,
+    /// non-blocking reader: a FIFO is refused at once instead of blocking the
+    /// import in `open(2)` (or, with a writer, being read past the cap).
+    #[cfg(unix)]
+    #[test]
+    fn importers_refuse_a_fifo_without_blocking() {
+        let dir = tempfile::tempdir().unwrap();
+        type Import = fn(&Path) -> bool;
+        let importers: [(&str, Import); 5] = [
+            ("s3cmd", |p| crate::s3cmd_import::import_s3cmd(p).is_err()),
+            ("mc", |p| crate::mc_import::import_mc(p).is_err()),
+            ("winscp", |p| {
+                crate::winscp_import::import_winscp(p).is_err()
+            }),
+            ("rclone", |p| {
+                crate::rclone_import::import_rclone(p).is_err()
+            }),
+            ("filezilla", |p| {
+                crate::filezilla_import::import_filezilla(p).is_err()
+            }),
+        ];
+        for (name, import) in importers {
+            let fifo = dir.path().join(format!("{name}.fifo"));
+            assert!(std::process::Command::new("mkfifo")
+                .arg(&fifo)
+                .status()
+                .unwrap()
+                .success());
+            let (done, finished) = std::sync::mpsc::channel();
+            let probe = fifo.clone();
+            std::thread::spawn(move || {
+                let _ = done.send(import(&probe));
+            });
+            let outcome = finished.recv_timeout(std::time::Duration::from_secs(5));
+            if outcome.is_err() {
+                // Release the reader still blocked in open(2) so the thread ends.
+                use std::os::unix::fs::OpenOptionsExt;
+                let _ = std::fs::OpenOptions::new()
+                    .write(true)
+                    .custom_flags(libc::O_NONBLOCK)
+                    .open(&fifo);
+            }
+            assert_eq!(outcome, Ok(true), "{name}: a FIFO import must fail at once");
+        }
     }
 
     #[test]

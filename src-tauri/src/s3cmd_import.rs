@@ -228,7 +228,11 @@ pub struct S3cmdImportWarning {
 
 /// Import the single s3cmd profile from a `~/.s3cfg` file.
 pub fn import_s3cmd(path: &Path) -> Result<S3cmdImportResult, String> {
-    let content = std::fs::read_to_string(path).map_err(|e| format!("read s3cmd config: {e}"))?;
+    let content = crate::bridge_shared::read_bounded_utf8_file(
+        path,
+        crate::bridge_shared::MAX_IMPORT_FILE_BYTES,
+    )
+    .map_err(|e| format!("read s3cmd config: {e}"))?;
 
     let sections = crate::bridge_shared::parse_ini_sections(&content);
 

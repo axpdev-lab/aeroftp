@@ -234,7 +234,11 @@ pub struct McImportResult {
 
 /// Import every bridgeable alias from an `mc` `config.json`.
 pub fn import_mc(path: &Path) -> Result<McImportResult, String> {
-    let content = std::fs::read_to_string(path).map_err(|e| format!("read mc config: {}", e))?;
+    let content = crate::bridge_shared::read_bounded_utf8_file(
+        path,
+        crate::bridge_shared::MAX_IMPORT_FILE_BYTES,
+    )
+    .map_err(|e| format!("read mc config: {}", e))?;
     let config: McConfig =
         serde_json::from_str(&content).map_err(|e| format!("parse mc config json: {}", e))?;
 

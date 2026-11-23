@@ -458,8 +458,11 @@ const MAX_SESSIONS: usize = 10_000;
 
 /// Import all supported sessions from a WinSCP.ini or exported sessions file.
 pub fn import_winscp(config_path: &Path) -> Result<WinScpImportResult, String> {
-    let content =
-        std::fs::read_to_string(config_path).map_err(|e| format!("Read WinSCP config: {}", e))?;
+    let content = crate::bridge_shared::read_bounded_utf8_file(
+        config_path,
+        crate::bridge_shared::MAX_IMPORT_FILE_BYTES,
+    )
+    .map_err(|e| format!("Read WinSCP config: {}", e))?;
 
     let sessions = parse_winscp_ini(&content);
     let total_sessions = sessions.len();

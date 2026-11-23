@@ -294,42 +294,10 @@ fn parse_sitemanager_xml_checked(content: &str) -> SiteManagerParse {
     }
 }
 
-/// Read at most `max_bytes` UTF-8 bytes from `reader`, refusing oversized input
-/// without reading past `max_bytes + 1` bytes.
-fn read_bounded_utf8<R: std::io::Read>(reader: R, max_bytes: u64) -> Result<String, String> {
-    use std::io::Read;
-
-    let mut bytes = Vec::new();
-    reader
-        .take(max_bytes.saturating_add(1))
-        .read_to_end(&mut bytes)
-        .map_err(|e| format!("read: {e}"))?;
-    if bytes.len() as u64 > max_bytes {
-        return Err(format!(
-            "File too large (max {} MB)",
-            max_bytes.div_ceil(1024 * 1024)
-        ));
-    }
-    String::from_utf8(bytes).map_err(|e| format!("invalid UTF-8: {e}"))
-}
-
-/// Read a regular UTF-8 file from a single opened handle, enforcing `max_bytes`
-/// during the read so a file growing or swapped after a metadata check cannot
-/// consume unbounded memory.
-fn read_bounded_utf8_file(path: &Path, max_bytes: u64) -> Result<String, String> {
-    let file = std::fs::File::open(path).map_err(|e| format!("open: {e}"))?;
-    let metadata = file.metadata().map_err(|e| format!("metadata: {e}"))?;
-    if !metadata.is_file() {
-        return Err("not a regular file".to_string());
-    }
-    if metadata.len() > max_bytes {
-        return Err(format!(
-            "File too large (max {} MB)",
-            max_bytes.div_ceil(1024 * 1024)
-        ));
-    }
-    read_bounded_utf8(file, max_bytes)
-}
+// The bounded, non-blocking reader is shared with the other importers.
+#[cfg(test)]
+use crate::bridge_shared::read_bounded_utf8;
+use crate::bridge_shared::read_bounded_utf8_file;
 
 /// Text found directly inside a `<Folder>`, outside its servers, is the
 /// folder's name. FileZilla writes it after the folder's children; the first
@@ -2280,6 +2248,64 @@ mod tests {
         assert!(read_bounded_utf8(std::io::Cursor::new(valid_empty.as_bytes()), exact_len).is_ok());
         assert!(
             read_bounded_utf8(std::io::Cursor::new(valid_empty.as_bytes()), exact_len - 1).is_err()
+        );
+    }
+
+    /// A FIFO blocks `open(2)` until a writer appears: the sidecar used to be
+    /// type-checked before it was opened, and must still be refused at once.
+    #[cfg(unix)]
+    #[test]
+    fn a_fifo_sidecar_or_site_file_is_refused_without_blocking() {
+        let dir = tempfile::tempdir().unwrap();
+        let sitemanager = dir.path().join("sitemanager.xml");
+        std::fs::write(
+            &sitemanager,
+            r#"<?xml version="1.0"?><FileZilla3><Servers/></FileZilla3>"#,
+        )
+        .unwrap();
+        let sidecar = dir.path().join("filezilla.xml");
+        let fifo_site = dir.path().join("fifo-sitemanager.xml");
+        for fifo in [&sidecar, &fifo_site] {
+            assert!(std::process::Command::new("mkfifo")
+                .arg(fifo)
+                .status()
+                .unwrap()
+                .success());
+        }
+
+        let returns_promptly = |fifo: &std::path::Path, run: Box<dyn FnOnce() + Send>| {
+            let (done, finished) = std::sync::mpsc::channel();
+            std::thread::spawn(move || {
+                run();
+                let _ = done.send(());
+            });
+            let outcome = finished.recv_timeout(std::time::Duration::from_secs(5));
+            if outcome.is_err() {
+                // Release the reader still blocked in open(2) so the thread ends.
+                use std::os::unix::fs::OpenOptionsExt;
+                let _ = std::fs::OpenOptions::new()
+                    .write(true)
+                    .custom_flags(libc::O_NONBLOCK)
+                    .open(fifo);
+            }
+            outcome.is_ok()
+        };
+
+        let probe = sitemanager.clone();
+        assert!(
+            returns_promptly(
+                &sidecar,
+                Box::new(move || assert!(filezilla_global_settings(&probe).is_none()))
+            ),
+            "a FIFO filezilla.xml blocked the import"
+        );
+        let site = fifo_site.clone();
+        assert!(
+            returns_promptly(
+                &fifo_site,
+                Box::new(move || assert!(import_filezilla(&site).is_err()))
+            ),
+            "a FIFO sitemanager.xml blocked the import"
         );
     }
 
