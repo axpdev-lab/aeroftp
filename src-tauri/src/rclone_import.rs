@@ -3007,68 +3007,114 @@ struct EffectiveRcloneTransport {
     substitution_overflow: bool,
 }
 
-/// Expand goconfig `%(var)s` substitutions in `raw` using `[DEFAULT]` first and
-/// `owning_section` second (`Unknwon/goconfig` `conf.go:207-210`, verified live
-/// against rclone v1.75.2), replacing undefined variables with `""`.
-/// Returns `Err(SubstitutionOverflow)` on byte-length or recursion-depth overflow
-/// instead of returning a truncated prefix.
+/// `Unknwon/goconfig` `_DEPTH_VALUES`: rounds of `%(name)s` substitution in one
+/// `GetValue` (`conf.go:31`).
+const GOCONFIG_DEPTH_VALUES: usize = 200;
+/// Bounds goconfig itself lacks: it recurses through `[DEFAULT]` without limit
+/// (a `[DEFAULT]` cycle overflows its stack) and grows a value without limit.
+const GOCONFIG_MAX_DEFAULT_RECURSION: usize = 32;
+const GOCONFIG_MAX_LOOKUPS: usize = 10_000;
+const GOCONFIG_MAX_EXPANDED_BYTES: usize = 4096;
+
+/// The leftmost match of goconfig's `varPattern`, `%\(([^\)]+)\)s`
+/// (`conf.go:46`): the name runs to the first `)`, which must be followed by `s`.
+fn goconfig_first_reference(value: &str) -> Option<&str> {
+    let mut from = 0;
+    while let Some(offset) = value[from..].find("%(") {
+        let start = from + offset;
+        let name_start = start + 2;
+        if let Some(close) = value[name_start..].find(')') {
+            let close = name_start + close;
+            if close > name_start && value[close + 1..].starts_with('s') {
+                return Some(&value[start..close + 2]);
+            }
+        }
+        from = start + 1;
+    }
+    None
+}
+
+/// Expand goconfig `%(name)s` references in `raw`, the value of a key found in
+/// `owning_section`, as `Unknwon/goconfig` `ConfigFile.GetValue` does
+/// (`conf.go:196-221`; rclone's config file is a goconfig file):
+/// - each round takes the leftmost reference and replaces every occurrence of
+///   that exact text, for up to `_DEPTH_VALUES` rounds;
+/// - the name looked up is the reference with the cutset `%(` trimmed from the
+///   left and the cutset `)s` from the right (`strings.TrimLeft`/`TrimRight`),
+///   so `%(jumps)s` looks up `jump`;
+/// - the name is first a full `GetValue("DEFAULT", name)`, which expands inside
+///   `[DEFAULT]` only; when `[DEFAULT]` lacks it and the owning section is not
+///   `[DEFAULT]`, the owning section's raw value is used (and expanded by the
+///   next rounds); otherwise the reference becomes `""`.
+///
+/// A reference still present after the last round (a cycle), a `[DEFAULT]`
+/// recursion or lookup count past its bound, and a value past
+/// `GOCONFIG_MAX_EXPANDED_BYTES` are `SubstitutionOverflow`: goconfig would
+/// hand rclone literal `%(..)s` text or crash, and the caller skips the remote
+/// rather than import it as a direct connection.
 fn expand_goconfig_substitutions(
     owning_section: &RcloneRemote,
     default_section: Option<&RcloneRemote>,
     raw: &str,
 ) -> Result<String, SubstitutionOverflow> {
-    const MAX_DEPTH: usize = 32;
-    const MAX_EXPANDED_BYTES: usize = 4096;
+    let owning_is_default = default_section.is_some_and(|d| std::ptr::eq(d, owning_section));
+    let mut lookups = 0usize;
+    expand_goconfig_value(
+        owning_section,
+        owning_is_default,
+        default_section,
+        raw,
+        0,
+        &mut lookups,
+    )
+}
 
-    if !raw.contains("%(") {
-        return Ok(raw.to_string());
+fn expand_goconfig_value(
+    owning_section: &RcloneRemote,
+    owning_is_default: bool,
+    default_section: Option<&RcloneRemote>,
+    raw: &str,
+    recursion: usize,
+    lookups: &mut usize,
+) -> Result<String, SubstitutionOverflow> {
+    if recursion > GOCONFIG_MAX_DEFAULT_RECURSION {
+        return Err(SubstitutionOverflow);
     }
-
-    let mut current = raw.to_string();
-    for _ in 0..MAX_DEPTH {
-        let mut next = String::with_capacity(current.len().min(MAX_EXPANDED_BYTES));
-        let mut rest = current.as_str();
-        let mut replaced_any = false;
-
-        while let Some(start) = rest.find("%(") {
-            if next.len().saturating_add(start) > MAX_EXPANDED_BYTES {
-                return Err(SubstitutionOverflow);
-            }
-            next.push_str(&rest[..start]);
-            let after_open = &rest[start + 2..];
-            if let Some(end) = after_open.find(")s") {
-                let var_name = after_open[..end].trim();
-                let var_key = var_name.to_lowercase();
-                // goconfig checks `[DEFAULT]` before the owning section.
-                let replacement = default_section
-                    .and_then(|d| d.get(&var_key))
-                    .or_else(|| owning_section.get(&var_key))
-                    .map(String::as_str)
-                    .unwrap_or("");
-                if next.len().saturating_add(replacement.len()) > MAX_EXPANDED_BYTES {
-                    return Err(SubstitutionOverflow);
-                }
-                next.push_str(replacement);
-                replaced_any = true;
-                rest = &after_open[end + 2..];
-            } else {
-                if next.len().saturating_add(2) > MAX_EXPANDED_BYTES {
-                    return Err(SubstitutionOverflow);
-                }
-                next.push_str("%(");
-                rest = after_open;
-            }
-        }
-        if next.len().saturating_add(rest.len()) > MAX_EXPANDED_BYTES {
+    let mut value = raw.to_string();
+    for _ in 0..GOCONFIG_DEPTH_VALUES {
+        let Some(reference) = goconfig_first_reference(&value).map(str::to_string) else {
+            return Ok(value);
+        };
+        *lookups += 1;
+        if *lookups > GOCONFIG_MAX_LOOKUPS {
             return Err(SubstitutionOverflow);
         }
-        next.push_str(rest);
-        current = next;
-        if !replaced_any || !current.contains("%(") {
-            return Ok(current);
+        // Keys are stored lowercased by the INI reader.
+        let name = reference
+            .trim_start_matches(['%', '('])
+            .trim_end_matches([')', 's'])
+            .to_lowercase();
+        let replacement = match default_section.and_then(|d| d.get(&name).map(|v| (d, v))) {
+            Some((default, default_raw)) => expand_goconfig_value(
+                default,
+                true,
+                default_section,
+                default_raw,
+                recursion + 1,
+                lookups,
+            )?,
+            None if !owning_is_default => owning_section.get(&name).cloned().unwrap_or_default(),
+            None => String::new(),
+        };
+        value = value.replace(&reference, &replacement);
+        if value.len() > GOCONFIG_MAX_EXPANDED_BYTES {
+            return Err(SubstitutionOverflow);
         }
     }
-    Err(SubstitutionOverflow)
+    match goconfig_first_reference(&value) {
+        Some(_) => Err(SubstitutionOverflow),
+        None => Ok(value),
+    }
 }
 
 /// Resolve a key from `section_name` using rclone's goconfig dotted-parent
@@ -7349,6 +7395,46 @@ http_proxy =
             assert!(!skip.reason.contains("secret-jump-host"));
             assert!(!skip.reason.contains("target.invalid"));
         }
+    }
+
+    #[test]
+    fn goconfig_reference_names_and_default_scope_match_rclone() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("rclone.conf");
+        std::fs::write(
+            &path,
+            concat!(
+                // Expanded inside [DEFAULT] only: `%(h)s` is "" there even though
+                // the remote below defines `h`.
+                "[DEFAULT]\nvia_default = %(h)s\nloop_a = %(loop_b)s\nloop_b = %(loop_a)s\n\n",
+                // `strings.TrimRight(name, ")s")` trims a cutset: `%(jumps)s` reads `jump`.
+                "[cutset-ssh]\ntype = sftp\nhost = old.example.test\nuser = u\n",
+                "jump = ssh -J bastion.example.test alice@files.example.test\nssh = %(jumps)s\n\n",
+                "[default-scope]\ntype = sftp\nhost = d.example.test\nuser = u\n",
+                "h = 127.0.0.1:1080\nsocks_proxy = %(via_default)s\n\n",
+                "[default-cycle]\ntype = sftp\nhost = c.example.test\nuser = u\nsocks_proxy = %(loop_a)s\n",
+            ),
+        )
+        .unwrap();
+
+        let result = import_rclone(&path).unwrap();
+        let skip = |name: &str| result.skipped.iter().find(|s| s.name == name);
+        let cutset = skip("cutset-ssh").expect("rclone runs the `jump` command for `%(jumps)s`");
+        assert!(cutset.reason.contains("`ssh`"), "{}", cutset.reason);
+        assert!(!cutset.reason.contains("bastion"));
+
+        assert!(result.servers.iter().any(|s| s.name == "default-scope"));
+        assert!(
+            !result.warnings.iter().any(|w| w.name == "default-scope"),
+            "rclone resolves `via_default` to \"\" and connects directly"
+        );
+
+        let cycle = skip("default-cycle").expect("a [DEFAULT] cycle must not be imported");
+        assert!(
+            cycle.reason.contains("substitution expansion limits"),
+            "{}",
+            cycle.reason
+        );
     }
 
     #[test]
