@@ -1359,11 +1359,17 @@ pub fn resolve_oauth_client_config(store: &CredentialStore, slug: &str) -> (Stri
 ///
 /// `Err` when the profile's token cannot be read: the caller skips the
 /// profile rather than export it with another profile's token.
+///
+/// `user` is the account the exported list belongs to, captured before the
+/// export ran: the token is read for that account whichever is active by
+/// the time the profile is reached, like every other secret of the step.
+/// `None` resolves the active account, for a vault with no accounts.
 pub fn inject_rclone_oauth_export_options(
     options: &mut Option<Value>,
     store: &CredentialStore,
     protocol: &str,
     id: &str,
+    user: Option<i64>,
 ) -> Result<(), String> {
     let slug = match crate::oauth_vault_slug_for_protocol(protocol) {
         Some(s) => s,
@@ -1375,7 +1381,7 @@ pub fn inject_rclone_oauth_export_options(
         None => return Ok(()),
     };
 
-    let token = resolve_profile_oauth_token(store, slug, id)?;
+    let token = resolve_profile_oauth_token_for(store, slug, id, user)?;
 
     let client_id = store
         .get(&format!("oauth_{}_client_id", cred_key))
@@ -1909,12 +1915,19 @@ pub async fn export_bridge_config(
     file_path: String,
 ) -> Result<Value, String> {
     let store = CredentialStore::from_cache();
+    // The account the export reads for every profile, captured once: an
+    // account switch while it runs cannot move a later profile's token to
+    // the account that became active.
+    let user = crate::user_partitions::active_user_for_save()
+        .ok()
+        .flatten();
     export_bridge_profiles(
         &source,
         &servers_json,
         include_credentials,
         &file_path,
         store.as_ref(),
+        user,
         |id| store.as_ref().and_then(|st| vault_export_password(st, id)),
     )
     .await
@@ -1949,6 +1962,7 @@ async fn export_bridge_profiles(
     include_credentials: bool,
     file_path: &str,
     store: Option<&CredentialStore>,
+    user: Option<i64>,
     secret_for: impl Fn(&str) -> Option<String> + Send + Sync,
 ) -> Result<Value, String> {
     known(source)?;
@@ -2046,9 +2060,9 @@ async fn export_bridge_profiles(
                             .to_string();
                         let mut opts = e.get("options").cloned();
                         let before = opts.clone();
-                        if let Err(reason) =
-                            inject_rclone_oauth_export_options(&mut opts, st, &proto, &id)
-                        {
+                        if let Err(reason) = inject_rclone_oauth_export_options(
+                            &mut opts, st, &proto, &id, user,
+                        ) {
                             skipped.push(json!({ "name": name, "reason": reason }));
                             continue;
                         }
@@ -3085,6 +3099,7 @@ mod tests {
                 true,
                 &path.to_string_lossy(),
                 None,
+                None,
                 secret_for,
             )
             .await
@@ -3130,6 +3145,7 @@ mod tests {
                 false,
                 &path.to_string_lossy(),
                 None,
+                None,
                 |_| None,
             )
             .await
@@ -3173,6 +3189,7 @@ mod tests {
                 &servers,
                 false,
                 &path.to_string_lossy(),
+                None,
                 None,
                 |_| None,
             )
@@ -3296,6 +3313,7 @@ mod tests {
                 &servers,
                 include_credentials,
                 &path.to_string_lossy(),
+                None,
                 None,
                 |_| None,
             )

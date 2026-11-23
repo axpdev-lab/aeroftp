@@ -44230,6 +44230,11 @@ async fn cmd_export_rclone(
         return 4;
     }
 
+    // The account the export reads for every profile, captured once, like
+    // the GUI bridge export does.
+    let export_user = ftp_client_gui_lib::user_partitions::active_user_for_save()
+        .ok()
+        .flatten();
     let mut exportable: Vec<RcloneExportServer> = Vec::with_capacity(collected.profiles.len());
     let mut unreadable: Vec<(String, String)> = Vec::new();
     for p in &collected.profiles {
@@ -44244,6 +44249,7 @@ async fn cmd_export_rclone(
             &store,
             &p.protocol,
             &p.id,
+            export_user,
         ) {
             unreadable.push((p.name.clone(), reason));
             continue;

@@ -2373,12 +2373,58 @@ fn an_unreadable_profile_token_never_falls_back_to_the_singleton() {
             store,
             "googledrive",
             "mine",
+            scope.user_id,
         );
         assert!(injected.is_err());
         assert!(!options
             .unwrap_or_default()
             .to_string()
             .contains("other-google"));
+    });
+}
+
+/// CodeRabbit 4661188765: the rclone export resolves the OAuth token for the
+/// account the exported list belongs to, captured before the export ran.
+/// With that account holding no token and another account active with one
+/// for the same profile id, the export must not pick the active account's.
+#[test]
+fn the_rclone_export_reads_the_token_of_the_captured_account() {
+    with_unreadable_profile_vault(|store| {
+        let captured = users::cli_create_user(store, "Export captured", None, None, None).unwrap();
+        let active = users::cli_create_user(store, "Export active", None, None, None).unwrap();
+        users::cli_set_active_user(store, active.id).unwrap();
+        users::store_credential_for_user_dual(
+            store,
+            active.id,
+            "oauth_google_mine",
+            "active-google-token",
+        )
+        .unwrap();
+        // Sanity: the unscoped read is the active account's token, the bug
+        // this pins against.
+        assert_eq!(
+            crate::bridge_commands::resolve_profile_oauth_token(store, "google", "mine")
+                .unwrap()
+                .as_deref(),
+            Some("active-google-token")
+        );
+        // The captured account has no token for the profile: nothing is
+        // injected, and above all not the active account's.
+        let mut options = None;
+        let injected = crate::bridge_commands::inject_rclone_oauth_export_options(
+            &mut options,
+            store,
+            "googledrive",
+            "mine",
+            Some(captured.id),
+        );
+        assert!(
+            !options
+                .unwrap_or_default()
+                .to_string()
+                .contains("active-google-token"),
+            "the active account's token was exported for another account's profile: {injected:?}"
+        );
     });
 }
 
