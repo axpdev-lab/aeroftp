@@ -34,49 +34,67 @@ pub fn resolve_vault_s3_session_token_owner_aware(
     store: &crate::credential_store::CredentialStore,
     user_id: Option<i64>,
     key: &str,
-) -> Option<String> {
+) -> Result<Option<String>, String> {
     let resolved = match user_id {
         Some(uid) => {
             crate::user_partitions::resolve_credential_for_user_owner_aware(store, uid, key)
         }
         None => crate::user_partitions::resolve_active_credential_owner_aware(store, key),
-    };
-    resolved
-        .ok()
-        .flatten()
+    }?;
+    Ok(resolved
         .map(|secret| secret.to_string())
-        .filter(|s| !s.trim().is_empty())
+        .filter(|s| !s.trim().is_empty()))
 }
 
 /// Populate `extra["session_token"]` for an S3 connection from the vault when
 /// neither the connect form nor a launch URL already provided one. Explicit
 /// session tokens always take precedence.
+///
+/// Fails closed with `Err` if reading the vault fails, or if
+/// `requires_stored_token` is `true` (an STS profile marked
+/// `hasStoredSessionToken: true`) and no usable token is present in the vault.
 pub fn inject_vault_s3_session_token<F>(
     provider_type: ProviderType,
     profile_id: Option<&str>,
+    requires_stored_token: bool,
     extra: &mut HashMap<String, String>,
     lookup: F,
-) where
-    F: FnOnce(&str) -> Option<String>,
+) -> Result<(), String>
+where
+    F: FnOnce(&str) -> Result<Option<String>, String>,
 {
     if provider_type != ProviderType::S3 {
-        return;
+        return Ok(());
     }
     if extra
         .get("session_token")
         .is_some_and(|v| !v.trim().is_empty())
     {
-        return;
+        return Ok(());
     }
     let Some(id) = profile_id.map(str::trim).filter(|s| !s.is_empty()) else {
-        return;
+        if requires_stored_token {
+            return Err(
+                "This S3 profile requires a saved AWS session token, but has no profile id to look it up"
+                    .to_string(),
+            );
+        }
+        return Ok(());
     };
     let key = aws_session_token_vault_key(id);
-    if let Some(token) = lookup(&key)
+    match lookup(&key)?
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
     {
-        extra.insert("session_token".to_string(), token);
+        Some(token) => {
+            extra.insert("session_token".to_string(), token);
+            Ok(())
+        }
+        None if requires_stored_token => Err(
+            "The saved AWS session token for this profile is missing from the vault; re-import or update the profile credentials"
+                .to_string(),
+        ),
+        None => Ok(()),
     }
 }
 
@@ -1921,5 +1939,71 @@ mod provider_id_reach_tests {
         insert_profile_option(&mut extra, "bucket", &json!("ok"));
         assert!(!extra.contains_key("profile_id"));
         assert_eq!(extra.get("bucket").map(String::as_str), Some("ok"));
+    }
+
+    #[test]
+    fn inject_vault_s3_session_token_fails_closed_on_read_error_or_missing_required_token() {
+        use crate::profile_loader::inject_vault_s3_session_token;
+        use crate::providers::ProviderType;
+
+        // Vault read error is always propagated, never swallowed.
+        let mut extra = HashMap::new();
+        let err = inject_vault_s3_session_token(
+            ProviderType::S3,
+            Some("srv_sts"),
+            false,
+            &mut extra,
+            |_| Err("keystore decryption failed".to_string()),
+        )
+        .unwrap_err();
+        assert!(err.contains("keystore decryption failed"), "{err}");
+        assert!(!extra.contains_key("session_token"));
+
+        // Required stored token missing fails closed.
+        let mut extra = HashMap::new();
+        let err = inject_vault_s3_session_token(
+            ProviderType::S3,
+            Some("srv_sts"),
+            true,
+            &mut extra,
+            |_| Ok(None),
+        )
+        .unwrap_err();
+        assert!(err.contains("missing from the vault"), "{err}");
+
+        // Long-lived profile (requires_stored_token = false) with no token succeeds.
+        let mut extra = HashMap::new();
+        inject_vault_s3_session_token(
+            ProviderType::S3,
+            Some("srv_static"),
+            false,
+            &mut extra,
+            |_| Ok(None),
+        )
+        .unwrap();
+        assert!(!extra.contains_key("session_token"));
+
+        // Present vaulted token is injected under `session_token`.
+        let mut extra = HashMap::new();
+        inject_vault_s3_session_token(ProviderType::S3, Some("srv_sts"), true, &mut extra, |key| {
+            assert_eq!(key, "aws_session_token_srv_sts");
+            Ok(Some("TOK-FROM-VAULT".to_string()))
+        })
+        .unwrap();
+        assert_eq!(
+            extra.get("session_token").map(String::as_str),
+            Some("TOK-FROM-VAULT")
+        );
+
+        // Explicit session_token wins without consulting the vault.
+        let mut extra = HashMap::from([("session_token".to_string(), "TOK-EXPLICIT".to_string())]);
+        inject_vault_s3_session_token(ProviderType::S3, Some("srv_sts"), true, &mut extra, |_| {
+            Err("should not be called".to_string())
+        })
+        .unwrap();
+        assert_eq!(
+            extra.get("session_token").map(String::as_str),
+            Some("TOK-EXPLICIT")
+        );
     }
 }

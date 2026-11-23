@@ -30543,16 +30543,21 @@ async fn create_and_connect_for_agent(
             }
         }
         let active_uid = active_credential_user_id(&store);
+        let requires_stored_session_token = matched
+            .get("hasStoredSessionToken")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
         ftp_client_gui_lib::profile_loader::inject_vault_s3_session_token(
             provider_type,
             Some(profile_id),
+            requires_stored_session_token,
             &mut extra,
             |key| {
                 ftp_client_gui_lib::profile_loader::resolve_vault_s3_session_token_owner_aware(
                     &store, active_uid, key,
                 )
             },
-        );
+        )?;
     }
 
     let config = ftp_client_gui_lib::providers::ProviderConfig {
@@ -32021,16 +32026,24 @@ fn profile_value_to_provider_config(
         }
         let profile_id = profile.get("id").and_then(|v| v.as_str());
         let scoped_uid = scoped_credential_user_id(cli, store);
-        ftp_client_gui_lib::profile_loader::inject_vault_s3_session_token(
+        let requires_stored_session_token = profile
+            .get("hasStoredSessionToken")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        if let Err(e) = ftp_client_gui_lib::profile_loader::inject_vault_s3_session_token(
             provider_type,
             profile_id,
+            requires_stored_session_token,
             &mut extra,
             |key| {
                 ftp_client_gui_lib::profile_loader::resolve_vault_s3_session_token_owner_aware(
                     store, scoped_uid, key,
                 )
             },
-        );
+        ) {
+            print_error(format, &e, 6);
+            return Err(6);
+        }
     }
 
     if provider_type == ProviderType::Mega && !extra.contains_key("mega_mode") {
@@ -43394,7 +43407,7 @@ async fn cmd_import_template(
 /// `sourcePath`, `totalRemotes`. This reproduces the exact output of
 /// `cmd_import_rclone`: credentials are NEVER printed; every server reports
 /// `hasCredential` (bool) instead of the secret, both in text and JSON.
-fn print_bridge_import(v: &serde_json::Value, json: bool, source_label: &str) -> i32 {
+fn format_bridge_import_json(v: &serde_json::Value) -> serde_json::Value {
     let servers = v
         .get("servers")
         .and_then(|s| s.as_array())
@@ -43420,43 +43433,71 @@ fn print_bridge_import(v: &serde_json::Value, json: bool, source_label: &str) ->
         .and_then(|s| s.as_u64())
         .unwrap_or(servers.len() as u64);
 
-    if json {
-        // Redact credentials and options-borne secrets (such as AWS
-        // `sessionToken`): never echo plaintext secrets to stdout.
-        let redacted_servers: Vec<serde_json::Value> = servers
-            .iter()
-            .map(|s| {
-                let redacted_options =
-                    ftp_client_gui_lib::rclone_import::options_without_secrets(s.get("options"))
-                        .unwrap_or(serde_json::Value::Null);
-                serde_json::json!({
-                    "id": s.get("id").cloned().unwrap_or(serde_json::Value::Null),
-                    "name": s.get("name").cloned().unwrap_or(serde_json::Value::Null),
-                    "host": s.get("host").cloned().unwrap_or(serde_json::Value::Null),
-                    "port": s.get("port").cloned().unwrap_or(serde_json::Value::Null),
-                    "username": s.get("username").cloned().unwrap_or(serde_json::Value::Null),
-                    "protocol": s.get("protocol").cloned().unwrap_or(serde_json::Value::Null),
-                    "initialPath": s.get("initialPath").cloned().unwrap_or(serde_json::Value::Null),
-                    "options": redacted_options,
-                    "hasCredential": s
-                        .get("credential")
-                        .map(|c| !c.is_null())
-                        .unwrap_or(false),
-                })
+    // Redact credentials and options-borne secrets (such as AWS
+    // `sessionToken`): never echo plaintext secrets to stdout.
+    let redacted_servers: Vec<serde_json::Value> = servers
+        .iter()
+        .map(|s| {
+            let redacted_options =
+                ftp_client_gui_lib::rclone_import::options_without_secrets(s.get("options"))
+                    .unwrap_or(serde_json::Value::Null);
+            serde_json::json!({
+                "id": s.get("id").cloned().unwrap_or(serde_json::Value::Null),
+                "name": s.get("name").cloned().unwrap_or(serde_json::Value::Null),
+                "host": s.get("host").cloned().unwrap_or(serde_json::Value::Null),
+                "port": s.get("port").cloned().unwrap_or(serde_json::Value::Null),
+                "username": s.get("username").cloned().unwrap_or(serde_json::Value::Null),
+                "protocol": s.get("protocol").cloned().unwrap_or(serde_json::Value::Null),
+                "initialPath": s.get("initialPath").cloned().unwrap_or(serde_json::Value::Null),
+                "options": redacted_options,
+                "hasCredential": s
+                    .get("credential")
+                    .map(|c| !c.is_null())
+                    .unwrap_or(false),
             })
-            .collect();
-        let envelope = serde_json::json!({
-            "servers": redacted_servers,
-            "skipped": skipped,
-            "warnings": warnings,
-            "sourcePath": source_path,
-            "totalRemotes": total_remotes,
-        });
+        })
+        .collect();
+    serde_json::json!({
+        "servers": redacted_servers,
+        "skipped": skipped,
+        "warnings": warnings,
+        "sourcePath": source_path,
+        "totalRemotes": total_remotes,
+    })
+}
+
+fn print_bridge_import(v: &serde_json::Value, json: bool, source_label: &str) -> i32 {
+    if json {
+        let envelope = format_bridge_import_json(v);
         println!(
             "{}",
             serde_json::to_string_pretty(&envelope).unwrap_or_default()
         );
     } else {
+        let servers = v
+            .get("servers")
+            .and_then(|s| s.as_array())
+            .cloned()
+            .unwrap_or_default();
+        let skipped = v
+            .get("skipped")
+            .and_then(|s| s.as_array())
+            .cloned()
+            .unwrap_or_default();
+        let warnings = v
+            .get("warnings")
+            .and_then(|s| s.as_array())
+            .cloned()
+            .unwrap_or_default();
+        let source_path = v
+            .get("sourcePath")
+            .and_then(|s| s.as_str())
+            .unwrap_or("")
+            .to_string();
+        let total_remotes = v
+            .get("totalRemotes")
+            .and_then(|s| s.as_u64())
+            .unwrap_or(servers.len() as u64);
         println!("Scanned {} remotes from {}", total_remotes, source_path);
         println!();
 
@@ -43662,6 +43703,7 @@ struct ProfileExportScaffold {
     provider_id: Option<String>,
     initial_path: Option<String>,
     overlay: Option<serde_json::Value>,
+    has_stored_session_token: bool,
     secret: String,
 }
 
@@ -43861,6 +43903,11 @@ fn collect_export_scaffold_with(
             .and_then(|v| v.as_str())
             .map(str::to_string);
 
+        let has_stored_session_token = filled
+            .get("hasStoredSessionToken")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
         // By id, the key the secret was read under: by name, two profiles of
         // one name both went out with the second one's secret.
         if !secret.is_empty() {
@@ -43877,6 +43924,7 @@ fn collect_export_scaffold_with(
             provider_id,
             initial_path,
             overlay,
+            has_stored_session_token,
             secret,
         });
     }
@@ -44433,36 +44481,43 @@ async fn cmd_export_bridge(
     // where `R` is a count or an outcome that also names what it refused).
     use ftp_client_gui_lib::bridge_shared::{ExportParts, ExportReport};
     let scoped_uid = scoped_credential_user_id(cli, &store);
+    let mut unreadable: Vec<(String, String)> = Vec::new();
     macro_rules! run_export {
         ($ty:ident, $f:expr) => {{
-            let exportable: Vec<$ty> = collected
-                .profiles
-                .iter()
-                .map(|p| {
-                    let mut opts = p.options.clone();
-                    if src == "aws" || src == "kopia" {
-                        ftp_client_gui_lib::bridge_commands::inject_aws_session_token_export_option_for_user(
-                            &mut opts,
-                            &store,
-                            scoped_uid,
-                            &p.protocol,
-                            &p.id,
-                        );
+            let mut exportable: Vec<$ty> = Vec::with_capacity(collected.profiles.len());
+            for p in &collected.profiles {
+                let mut opts = p.options.clone();
+                if src == "aws" || src == "kopia" {
+                    if let Err(reason) = ftp_client_gui_lib::bridge_commands::inject_aws_session_token_export_option_for_user(
+                        &mut opts,
+                        &store,
+                        scoped_uid,
+                        &p.protocol,
+                        &p.id,
+                        p.has_stored_session_token,
+                    ) {
+                        unreadable.push((p.name.clone(), reason));
+                        continue;
                     }
-                    $ty {
-                        id: p.id.clone(),
-                        name: p.name.clone(),
-                        host: p.host.clone(),
-                        port: p.port,
-                        username: p.username.clone(),
-                        protocol: Some(p.protocol.clone()),
-                        options: opts,
-                        provider_id: p.provider_id.clone(),
-                        initial_path: p.initial_path.clone(),
-                    }
-                })
-                .collect();
-            $f(&exportable, &collected.passwords, &target_path).map(ExportReport::into_export_parts)
+                }
+                exportable.push($ty {
+                    id: p.id.clone(),
+                    name: p.name.clone(),
+                    host: p.host.clone(),
+                    port: p.port,
+                    username: p.username.clone(),
+                    protocol: Some(p.protocol.clone()),
+                    options: opts,
+                    provider_id: p.provider_id.clone(),
+                    initial_path: p.initial_path.clone(),
+                });
+            }
+            if exportable.is_empty() {
+                Ok((0, Vec::new(), Vec::new(), None))
+            } else {
+                $f(&exportable, &collected.passwords, &target_path)
+                    .map(ExportReport::into_export_parts)
+            }
         }};
     }
 
@@ -44483,11 +44538,12 @@ async fn cmd_export_bridge(
     };
 
     match result {
-        Ok((count, refused, warnings)) => {
+        Ok((count, refused, warnings, written_path)) => {
             // Two lists of refusals reach the operator as one: the profiles
             // the protocol filter dropped, and the ones the exporter itself
             // could not write or had no room for (single-repository formats).
             let mut skipped = collected.skipped.clone();
+            skipped.extend(unreadable);
             skipped.extend(refused);
             if count == 0 {
                 if let Some(dir) = created_private_aws_dir.as_deref() {
@@ -44496,7 +44552,9 @@ async fn cmd_export_bridge(
                 emit_empty_export(json, &skipped);
                 return 4;
             }
-            emit_export_success(json, label, count, &target_path, &skipped, &warnings);
+            let reported_path =
+                resolved_export_reported_path(&target_path, written_path.as_deref());
+            emit_export_success(json, label, count, reported_path, &skipped, &warnings);
             0
         }
         Err(e) => {
@@ -46884,6 +46942,13 @@ fn format_export_success_text(
         }
     }
     out
+}
+
+fn resolved_export_reported_path<'a>(
+    target_path: &'a std::path::Path,
+    written_path: Option<&'a std::path::Path>,
+) -> &'a std::path::Path {
+    written_path.unwrap_or(target_path)
 }
 
 fn emit_export_success(
@@ -110494,5 +110559,85 @@ mod get_slash_key_tests {
         assert!(text_out.contains("Warnings (2):"), "{text_out}");
         assert!(text_out.contains("AWS config :"), "{text_out}");
         assert!(text_out.contains("AWS credentials :"), "{text_out}");
+    }
+
+    #[test]
+    fn cli_bridge_import_json_redacts_session_token_and_keeps_region() {
+        let raw = serde_json::json!({
+            "servers": [{
+                "id": "aws-sts-1",
+                "name": "sts-demo",
+                "host": "",
+                "port": 443,
+                "username": "ASIATEST",
+                "protocol": "s3",
+                "initialPath": null,
+                "credential": "SUPER_SECRET_KEY",
+                "options": {
+                    "sessionToken": "TOKEN_SENTINEL",
+                    "region": "us-east-1"
+                }
+            }],
+            "skipped": [],
+            "warnings": [],
+            "sourcePath": "/tmp/credentials",
+            "totalRemotes": 1
+        });
+        let out = format_bridge_import_json(&raw);
+        let serialized = out.to_string();
+        assert!(
+            !serialized.contains("TOKEN_SENTINEL"),
+            "CLI import JSON must never leak sessionToken: {serialized}"
+        );
+        assert!(
+            !serialized.contains("SUPER_SECRET_KEY"),
+            "CLI import JSON must never leak credential: {serialized}"
+        );
+        assert_eq!(out["servers"][0]["options"]["region"], "us-east-1");
+        assert!(out["servers"][0]["options"].get("sessionToken").is_none());
+        assert_eq!(out["servers"][0]["hasCredential"], true);
+    }
+
+    #[test]
+    fn cli_aws_export_reports_side_file_path_when_user_credentials_preserved() {
+        use ftp_client_gui_lib::aws_credentials_import::{export_aws_credentials, AwsExportServer};
+        use ftp_client_gui_lib::bridge_shared::ExportReport;
+
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("credentials");
+        let cfg = dir.path().join("config");
+        std::fs::write(
+            &target,
+            "[user]\naws_access_key_id = AKIAUSER\naws_secret_access_key = usersecret\n",
+        )
+        .unwrap();
+        std::fs::write(&cfg, "[profile user]\nregion = eu-west-1\n").unwrap();
+
+        let servers = vec![AwsExportServer {
+            id: "srv-1".to_string(),
+            name: "prod".to_string(),
+            host: "s3.lab.example.com".to_string(),
+            port: 443,
+            username: "AKIAPROD".to_string(),
+            protocol: Some("s3".to_string()),
+            options: Some(serde_json::json!({ "region": "us-east-1" })),
+            provider_id: Some("custom-s3".to_string()),
+            initial_path: None,
+        }];
+        let passwords =
+            std::collections::HashMap::from([("srv-1".to_string(), "prod-secret".to_string())]);
+        let (count, skipped, warnings, written_path) =
+            export_aws_credentials(&servers, &passwords, &target)
+                .unwrap()
+                .into_export_parts();
+        let reported = resolved_export_reported_path(&target, written_path.as_deref());
+        let json_out = format_export_success_json(count, reported, &skipped, &warnings);
+
+        let expected_side = dir.path().join("credentials.aeroftp");
+        assert_eq!(
+            json_out["path"].as_str(),
+            Some(expected_side.to_string_lossy().as_ref()),
+            "CLI export JSON must report the actual credentials.aeroftp side path: {json_out}"
+        );
     }
 }

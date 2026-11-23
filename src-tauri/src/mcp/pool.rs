@@ -775,14 +775,19 @@ async fn create_provider_from_vault_with_reader(
     // vault credential alone does not carry them, they live in
     // `profile.options`, with the per-protocol defaults applied on top.
     let (mut extra, resolved_host) = profile_connection_extra(matched, provider_type, host);
+    let requires_stored_session_token = matched
+        .get("hasStoredSessionToken")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     crate::profile_loader::inject_vault_s3_session_token(
         provider_type,
         Some(profile_id),
+        requires_stored_session_token,
         &mut extra,
         |key| {
             crate::profile_loader::resolve_vault_s3_session_token_owner_aware(&store, user_id, key)
         },
-    );
+    )?;
 
     let config = ProviderConfig {
         name: profile_name.to_string(),

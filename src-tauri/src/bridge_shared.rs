@@ -285,6 +285,10 @@ pub(crate) fn stage_export_temp_600(
         tmp.as_file()
             .set_permissions(std::fs::Permissions::from_mode(0o600))?;
     }
+    // On Windows, `tempfile` inherits the parent directory's DACL; restrict
+    // access to the current user (+ SYSTEM/Administrators) before writing any
+    // secret bytes so a shared destination directory never exposes them.
+    crate::windows_acl::restrict_to_owner(tmp.path());
     tmp.write_all(bytes)?;
     tmp.as_file().sync_all()?;
     Ok(tmp)
@@ -1235,6 +1239,10 @@ pub struct BridgeExportOutcome {
     pub exported: usize,
     pub skipped: Vec<BridgeExportSkip>,
     pub warnings: Vec<BridgeExportSkip>,
+    /// Actual primary file path written when it differs from the requested
+    /// target (for example, `credentials.aeroftp` when an existing user
+    /// `credentials` file was preserved).
+    pub written_path: Option<std::path::PathBuf>,
 }
 
 impl BridgeExportOutcome {
@@ -1253,8 +1261,15 @@ impl BridgeExportOutcome {
     }
 }
 
-/// `(written, skipped, warnings)`, each list as `(name, reason)` pairs.
-pub type ExportParts = (usize, Vec<(String, String)>, Vec<(String, String)>);
+/// `(written, skipped, warnings, written_path)`, where `skipped` and
+/// `warnings` are `(name, reason)` pairs and `written_path` is `Some` when
+/// the exporter wrote to a path other than the requested target.
+pub type ExportParts = (
+    usize,
+    Vec<(String, String)>,
+    Vec<(String, String)>,
+    Option<std::path::PathBuf>,
+);
 
 /// The two surfaces (CLI `cmd_export_bridge`, GUI `export_bridge_config`)
 /// read every exporter's result through this, whichever shape it returns.
@@ -1264,7 +1279,7 @@ pub trait ExportReport {
 
 impl ExportReport for usize {
     fn into_export_parts(self) -> ExportParts {
-        (self, Vec::new(), Vec::new())
+        (self, Vec::new(), Vec::new(), None)
     }
 }
 
@@ -1280,7 +1295,7 @@ impl ExportReport for BridgeExportOutcome {
             .into_iter()
             .map(|s| (s.name, s.reason))
             .collect();
-        (self.exported, refused, warnings)
+        (self.exported, refused, warnings, self.written_path)
     }
 }
 
@@ -1293,7 +1308,7 @@ impl ExportReport for crate::rclone_import::RcloneExportOutcome {
             .into_iter()
             .map(|s| (s.name, s.reason))
             .collect();
-        (self.profiles, refused, Vec::new())
+        (self.profiles, refused, Vec::new(), None)
     }
 }
 
@@ -1373,10 +1388,11 @@ mod tests {
     fn export_report_preserves_operator_warnings() {
         let mut outcome = BridgeExportOutcome {
             exported: 1,
+            written_path: Some(std::path::PathBuf::from("/tmp/credentials.aeroftp")),
             ..Default::default()
         };
         outcome.warn("AWS config", "merge config.aeroftp manually");
-        let (exported, skipped, warnings) = outcome.into_export_parts();
+        let (exported, skipped, warnings, written_path) = outcome.into_export_parts();
         assert_eq!(exported, 1);
         assert!(skipped.is_empty());
         assert_eq!(
@@ -1385,6 +1401,10 @@ mod tests {
                 "AWS config".to_string(),
                 "merge config.aeroftp manually".to_string()
             )]
+        );
+        assert_eq!(
+            written_path,
+            Some(std::path::PathBuf::from("/tmp/credentials.aeroftp"))
         );
     }
 

@@ -22,6 +22,8 @@ export interface ImportedServer {
     hasStoredAeroCryptSalt?: boolean;
     /** The Filen CLI API key the backend moved into the vault (#230). */
     hasStoredFilenApiKey?: boolean;
+    /** The AWS STS session token the backend moved into the vault. */
+    hasStoredSessionToken?: boolean;
     /** The pre-reset host and options when `import_bridge_config` reset a relaxing option. */
     relaxedHost?: string;
     relaxedOptions?: Record<string, unknown>;
@@ -61,6 +63,7 @@ export const importedServerProfile = (
         hasStoredAeroCryptPassword: s.hasStoredAeroCryptPassword,
         hasStoredAeroCryptSalt: s.hasStoredAeroCryptSalt,
         hasStoredFilenApiKey: s.hasStoredFilenApiKey,
+        hasStoredSessionToken: s.hasStoredSessionToken,
     };
 };
 

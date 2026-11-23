@@ -260,6 +260,25 @@ describe('an imported Filen API key (#230)', () => {
     });
 });
 
+describe('an imported AWS STS session token', () => {
+    it.each([true, false])('forwards hasStoredSessionToken (%s) without persisting a plaintext token', (stored) => {
+        const imported: ImportedServer = {
+            id: 'aws-sts-1',
+            name: 'sts',
+            host: '',
+            port: 443,
+            username: 'ASIATEST',
+            protocol: 's3',
+            options: { region: 'us-east-1' },
+            hasStoredCredential: true,
+            hasStoredSessionToken: stored,
+        };
+        const saved = importedServerProfile(imported);
+        expect(saved.hasStoredSessionToken).toBe(stored);
+        expect(saved.options).not.toHaveProperty('sessionToken');
+    });
+});
+
 describe('importedServerProfile security relaxations on bridge imports', () => {
     const winscpWebdavResetByBackend: ImportedServer = {
         id: 'winscp-webdav-1',

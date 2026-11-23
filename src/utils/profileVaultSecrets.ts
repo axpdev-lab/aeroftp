@@ -18,6 +18,7 @@ export const PROFILE_VAULT_SECRET_PREFIXES = [
   'aerocrypt_overlay_keyfile_path',
   'aerocrypt_overlay_config',
   'filen_api_key',
+  'aws_session_token',
   'onedrive_drive_id',
   'onedrive_drive_type',
   // OAuth token key is `oauth_<slug>_<id>`; the backend derives the slug.

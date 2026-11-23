@@ -549,6 +549,15 @@ pub fn move_imported_filen_api_key(
     Ok(())
 }
 
+fn take_imported_aws_session_token(server: &mut Value) -> Option<zeroize::Zeroizing<String>> {
+    let token = server
+        .get_mut("options")
+        .and_then(|o| o.as_object_mut())
+        .and_then(|o| o.remove("sessionToken"))?;
+    let token = zeroize::Zeroizing::new(token.as_str().map(str::trim).unwrap_or("").to_string());
+    (!token.is_empty()).then_some(token)
+}
+
 /// AWS-11: an imported AWS STS session token lives in the encrypted vault
 /// under `aws_session_token_<id>`, never in `options.sessionToken` which
 /// crosses into the webview and profile metadata. The token is removed from
@@ -558,22 +567,14 @@ pub fn move_imported_aws_session_token(
     server: &mut Value,
     mut store_secret: impl FnMut(&str, &str) -> Result<(), String>,
 ) -> Result<(), String> {
-    let Some(token) = server
-        .get_mut("options")
-        .and_then(|o| o.as_object_mut())
-        .and_then(|o| o.remove("sessionToken"))
-    else {
+    let Some(token) = take_imported_aws_session_token(server) else {
         return Ok(());
     };
-    let token = zeroize::Zeroizing::new(token.as_str().map(str::trim).unwrap_or("").to_string());
     let id = server
         .get("id")
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string();
-    if token.is_empty() {
-        return Ok(());
-    }
     if id.is_empty() {
         return Err("the imported profile has no id to store it under".to_string());
     }
@@ -795,12 +796,37 @@ pub(crate) fn finish_bridge_import(
     )
 }
 
+/// Hard cap on the number of vault writes one import may trigger: each
+/// `store_active_credential_dual` is a read-modify-rewrite of the whole vault,
+/// so an import of N credentials costs O(N^2) bytes written. Shared across
+/// passwords and per-profile tokens (`aws_session_token_<id>`) so an STS
+/// import cannot bypass the budget.
+const MAX_IMPORTED_CREDENTIALS: usize = 10_000;
+
 pub(crate) fn finish_bridge_import_with_policy(
+    source: &str,
+    value: &Value,
+    secret_failures: Vec<(String, String)>,
+    vault: Option<VaultWrite<'_>>,
+    policy: &crate::profile_security::RelaxationPolicy,
+) -> Result<Value, String> {
+    finish_bridge_import_with_policy_and_cap(
+        source,
+        value,
+        secret_failures,
+        vault,
+        policy,
+        MAX_IMPORTED_CREDENTIALS,
+    )
+}
+
+pub(crate) fn finish_bridge_import_with_policy_and_cap(
     source: &str,
     value: &Value,
     mut secret_failures: Vec<(String, String)>,
     mut vault: Option<VaultWrite<'_>>,
     policy: &crate::profile_security::RelaxationPolicy,
+    max_vault_writes: usize,
 ) -> Result<Value, String> {
     let mut servers = value
         .get("servers")
@@ -808,10 +834,14 @@ pub(crate) fn finish_bridge_import_with_policy(
         .cloned()
         .unwrap_or_default();
 
+    let mut vault_write_attempts = 0usize;
     if source == "rclone" {
         for server in &mut servers {
             materialize_imported_crypt_overlay(server, |key, secret| match vault.as_mut() {
-                Some(write) => write(key, secret),
+                Some(write) => {
+                    vault_write_attempts += 1;
+                    write(key, secret)
+                }
                 None => Err("Unlock the credential vault before importing Crypt profiles".into()),
             })?;
         }
@@ -822,7 +852,10 @@ pub(crate) fn finish_bridge_import_with_policy(
                 .unwrap_or("")
                 .to_string();
             let moved = move_imported_filen_api_key(server, |key, secret| match vault.as_mut() {
-                Some(write) => write(key, secret),
+                Some(write) => {
+                    vault_write_attempts += 1;
+                    write(key, secret)
+                }
                 None => Err("the credential vault is locked".into()),
             });
             // The error names the vault failure, never the key, which is
@@ -835,107 +868,133 @@ pub(crate) fn finish_bridge_import_with_policy(
             }
         }
     }
-    // AWS-11: move any imported S3 STS sessionToken out of `options` into the
-    // encrypted vault before `relaxed_before_reset` captures raw options and
-    // before the redacted preview crosses into the renderer.
-    for server in &mut servers {
-        let id = server
-            .get("id")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
-        let moved = move_imported_aws_session_token(server, |key, secret| match vault.as_mut() {
-            Some(write) => write(key, secret),
-            None => Err("the credential vault is locked".into()),
-        });
-        if let Err(e) = moved {
-            secret_failures.push((
-                id,
-                format!("its AWS session token was not stored: {e} (unlock the vault and import again, or add the token in the profile)"),
-            ));
-        }
-    }
 
-    // Upgrade recovered secrets into the vault (server_<id> key, same as
-    // the connect path and the legacy importers).
-    //
-    // Hard cap on the number of vault writes one import may trigger: each
-    // `store_active_credential_dual` is a read-modify-rewrite of the whole
-    // vault, so an import of N credentials costs O(N^2) bytes written. The
-    // per-format parsers cap themselves too; this is the backstop that holds
-    // for every source, including ones added later.
-    const MAX_IMPORTED_CREDENTIALS: usize = 10_000;
-
+    // Upgrade recovered secrets (server_<id> passwords and AWS-11 STS
+    // aws_session_token_<id> tokens) into the vault under ONE shared write
+    // budget. Every `options.sessionToken` is stripped unconditionally before
+    // `relaxed_before_reset` captures raw options and before the redacted
+    // preview crosses into the renderer.
     let mut cred_errors: Vec<String> = Vec::new();
     let mut unsaved_credentials: std::collections::HashSet<String> =
         std::collections::HashSet::new();
-    let mut stored = 0usize;
-    let mut stored_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut cap_hit = false;
+
     match vault.as_mut() {
         Some(write) => {
-            for s in &servers {
-                if stored >= MAX_IMPORTED_CREDENTIALS {
-                    cred_errors.push(format!(
-                        "stopped after {MAX_IMPORTED_CREDENTIALS} credentials (import too large)"
+            for server in &mut servers {
+                let token = take_imported_aws_session_token(server);
+                let id = server
+                    .get("id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let cred = server
+                    .get("credential")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+
+                let has_cred = !id.is_empty() && !cred.is_empty();
+                if token.is_some() && id.is_empty() {
+                    secret_failures.push((
+                        id.clone(),
+                        "its AWS session token was not stored: the imported profile has no id to store it under (unlock the vault and import again, or add the token in the profile)".to_string(),
                     ));
-                    // What the cap left out has no secret stored either.
-                    for rest in &servers {
-                        let id = rest.get("id").and_then(|v| v.as_str()).unwrap_or("");
-                        let has = rest
-                            .get("credential")
-                            .and_then(|v| v.as_str())
-                            .is_some_and(|c| !c.is_empty());
-                        if has && !id.is_empty() && !stored_ids.contains(id) {
-                            unsaved_credentials.insert(id.to_string());
-                            secret_failures.push((
-                                id.to_string(),
-                                "its password was not stored: the import is too large".to_string(),
-                            ));
+                }
+                let has_token = token.is_some() && !id.is_empty();
+                let needed = usize::from(has_token) + usize::from(has_cred);
+                if needed == 0 {
+                    continue;
+                }
+
+                // Enforce the unified write cap atomically per profile so an
+                // STS profile never stores only half of its credential pair.
+                if cap_hit || vault_write_attempts + needed > max_vault_writes {
+                    if !cap_hit {
+                        cap_hit = true;
+                        cred_errors.push(format!(
+                            "stopped after {max_vault_writes} credentials (import too large)"
+                        ));
+                    }
+                    if has_token {
+                        secret_failures.push((
+                            id.clone(),
+                            "its AWS session token was not stored: the import is too large"
+                                .to_string(),
+                        ));
+                    }
+                    if has_cred {
+                        unsaved_credentials.insert(id.clone());
+                        secret_failures.push((
+                            id,
+                            "its password was not stored: the import is too large".to_string(),
+                        ));
+                    }
+                    continue;
+                }
+
+                if let Some(tok) = token {
+                    if !id.is_empty() {
+                        vault_write_attempts += 1;
+                        let key = crate::profile_loader::aws_session_token_vault_key(&id);
+                        match write(&key, &tok) {
+                            Ok(()) => {
+                                server["hasStoredSessionToken"] = Value::Bool(true);
+                            }
+                            Err(e) => {
+                                secret_failures.push((
+                                    id.clone(),
+                                    format!("its AWS session token was not stored: {e} (unlock the vault and import again, or add the token in the profile)"),
+                                ));
+                            }
                         }
                     }
-                    break;
                 }
-                let id = s.get("id").and_then(|v| v.as_str()).unwrap_or("");
-                let cred = s.get("credential").and_then(|v| v.as_str()).unwrap_or("");
-                if !id.is_empty() && !cred.is_empty() {
-                    stored += 1;
-                    stored_ids.insert(id.to_string());
+                if has_cred {
+                    vault_write_attempts += 1;
                     // MUV-3: dual-write into vault + active user's partition.
-                    if let Err(e) = write(&format!("server_{}", id), cred) {
+                    if let Err(e) = write(&format!("server_{id}"), &cred) {
                         cred_errors.push(format!("{id}: {e}"));
-                        unsaved_credentials.insert(id.to_string());
-                        secret_failures
-                            .push((id.to_string(), format!("its password was not stored: {e}")));
+                        unsaved_credentials.insert(id.clone());
+                        secret_failures.push((id, format!("its password was not stored: {e}")));
                     }
                 }
             }
         }
         None => {
-            let n = servers
-                .iter()
-                .filter(|s| {
-                    s.get("credential")
-                        .and_then(|v| v.as_str())
-                        .map(|c| !c.is_empty())
-                        .unwrap_or(false)
-                })
-                .count();
-            if n > 0 {
-                cred_errors.push(format!("Vault not ready, {n} credentials not stored"));
-            }
-            for s in &servers {
-                let id = s.get("id").and_then(|v| v.as_str()).unwrap_or("");
-                let has = s
+            let mut missing_cred_count = 0usize;
+            for server in &mut servers {
+                let token = take_imported_aws_session_token(server);
+                let id = server
+                    .get("id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                if token.is_some() {
+                    secret_failures.push((
+                        id.clone(),
+                        "its AWS session token was not stored: the credential vault is locked (unlock the vault and import again, or add the token in the profile)".to_string(),
+                    ));
+                }
+                let has = server
                     .get("credential")
                     .and_then(|v| v.as_str())
                     .is_some_and(|c| !c.is_empty());
-                if has && !id.is_empty() {
-                    unsaved_credentials.insert(id.to_string());
-                    secret_failures.push((
-                        id.to_string(),
-                        "the vault is locked, so its password was not stored".to_string(),
-                    ));
+                if has {
+                    missing_cred_count += 1;
+                    if !id.is_empty() {
+                        unsaved_credentials.insert(id.clone());
+                        secret_failures.push((
+                            id,
+                            "the vault is locked, so its password was not stored".to_string(),
+                        ));
+                    }
                 }
+            }
+            if missing_cred_count > 0 {
+                cred_errors.push(format!(
+                    "Vault not ready, {missing_cred_count} credentials not stored"
+                ));
             }
         }
     }
@@ -1421,14 +1480,23 @@ pub fn inject_rclone_filen_export_options(
 /// profile's vaulted `aws_session_token_<id>` and inject it into a transient
 /// copy of `options.sessionToken` so the exported credentials file carries
 /// `aws_session_token`. An inline `options.sessionToken` already present wins.
-/// Uses owner-aware lookup for the active user.
+/// Uses owner-aware lookup for the active user and fails closed if reading the
+/// vault fails or if `requires_stored_token` is `true` and no token is stored.
 pub fn inject_aws_session_token_export_option(
     options: &mut Option<Value>,
     store: &CredentialStore,
     protocol: &str,
     id: &str,
-) {
-    inject_aws_session_token_export_option_for_user(options, store, None, protocol, id);
+    requires_stored_token: bool,
+) -> Result<(), String> {
+    inject_aws_session_token_export_option_for_user(
+        options,
+        store,
+        None,
+        protocol,
+        id,
+        requires_stored_token,
+    )
 }
 
 /// Owner-aware variant of [`inject_aws_session_token_export_option`] scoped to
@@ -1439,9 +1507,10 @@ pub fn inject_aws_session_token_export_option_for_user(
     user_id: Option<i64>,
     protocol: &str,
     id: &str,
-) {
-    if protocol != "s3" || id.is_empty() {
-        return;
+    requires_stored_token: bool,
+) -> Result<(), String> {
+    if protocol != "s3" {
+        return Ok(());
     }
     if options
         .as_ref()
@@ -1450,13 +1519,30 @@ pub fn inject_aws_session_token_export_option_for_user(
         .and_then(|v| v.as_str())
         .is_some_and(|s| !s.trim().is_empty())
     {
-        return;
+        return Ok(());
+    }
+    if id.is_empty() {
+        return if requires_stored_token {
+            Err(
+                "its saved AWS session token cannot be read because the profile has no id"
+                    .to_string(),
+            )
+        } else {
+            Ok(())
+        };
     }
     let key = crate::profile_loader::aws_session_token_vault_key(id);
-    let Some(token) =
-        crate::profile_loader::resolve_vault_s3_session_token_owner_aware(store, user_id, &key)
-    else {
-        return;
+    let token =
+        crate::profile_loader::resolve_vault_s3_session_token_owner_aware(store, user_id, &key)?;
+    let Some(token) = token else {
+        return if requires_stored_token {
+            Err(
+                "its saved AWS session token is missing from the vault; re-import or update the profile before exporting"
+                    .to_string(),
+            )
+        } else {
+            Ok(())
+        };
     };
     if !matches!(options, Some(Value::Object(_))) {
         *options = Some(Value::Object(serde_json::Map::new()));
@@ -1464,6 +1550,7 @@ pub fn inject_aws_session_token_export_option_for_user(
     if let Some(opts) = options.as_mut().and_then(|o| o.as_object_mut()) {
         opts.insert("sessionToken".into(), Value::String(token));
     }
+    Ok(())
 }
 
 /// #128-D: for an rclone `onedrive` export, pull the per-profile Graph drive id
@@ -1995,16 +2082,41 @@ async fn export_bridge_profiles(
                     &injected_entry
                 } else if include_credentials {
                     let mut e = without_private_export_options(entry);
-                    if (source == "aws" || source == "kopia") && store.is_some() {
+                    if source == "aws" || source == "kopia" {
+                        let requires_stored_token = e
+                            .get("hasStoredSessionToken")
+                            .and_then(|v| v.as_bool())
+                            .unwrap_or(false);
+                        let mut opts = e.get("options").cloned();
+                        let before = opts.clone();
+                        let has_inline_token = opts
+                            .as_ref()
+                            .and_then(|o| o.as_object())
+                            .and_then(|o| o.get("sessionToken"))
+                            .and_then(|v| v.as_str())
+                            .is_some_and(|s| !s.trim().is_empty());
                         if let Some(st) = store {
-                            let mut opts = e.get("options").cloned();
-                            let before = opts.clone();
-                            inject_aws_session_token_export_option(&mut opts, st, &proto, &id);
+                            if let Err(reason) = inject_aws_session_token_export_option(
+                                &mut opts,
+                                st,
+                                &proto,
+                                &id,
+                                requires_stored_token,
+                            ) {
+                                skipped.push(json!({ "name": name, "reason": reason }));
+                                continue;
+                            }
                             injected_secret |=
                                 options_gained_a_secret(before.as_ref(), opts.as_ref());
                             if let Some(o) = opts {
                                 e["options"] = o;
                             }
+                        } else if proto == "s3" && requires_stored_token && !has_inline_token {
+                            skipped.push(json!({
+                                "name": name,
+                                "reason": "the credential vault is locked, so its saved AWS session token cannot be read"
+                            }));
+                            continue;
                         }
                     }
                     injected_entry = e;
@@ -2049,9 +2161,13 @@ async fn export_bridge_profiles(
             // above, and the exporter itself refusing a profile it cannot write
             // (an unaddressable Zoho region, a crypt name already taken). The
             // second used to be invisible here and counted as exported.
-            let (exported, refused, warnings) = $f(&typed, &passwords, path)
+            let (exported, refused, warnings, written_path) = $f(&typed, &passwords, path)
                 .map_err(|e| e.to_string())?
                 .into_export_parts();
+            let reported_path = written_path
+                .as_ref()
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|| file_path.to_string());
             skipped.extend(
                 refused
                     .into_iter()
@@ -2066,7 +2182,7 @@ async fn export_bridge_profiles(
                 "total": total,
                 "skipped": skipped,
                 "warnings": warnings,
-                "filePath": file_path,
+                "filePath": reported_path,
                 "includesCredentials": !passwords.is_empty() || injected_secret,
             })
         }};
@@ -3566,6 +3682,187 @@ mod tests {
                 "reset": [],
                 "kept": [{ "key": "webdavScheme", "value": "http" }],
             }])
+        );
+    }
+
+    #[test]
+    fn finish_bridge_import_enforces_shared_vault_write_cap_across_sts_tokens_and_passwords() {
+        let parsed = json!({
+            "servers": [
+                {
+                    "id": "sts-1",
+                    "name": "First STS",
+                    "host": "",
+                    "port": 443,
+                    "username": "ASIA1",
+                    "protocol": "s3",
+                    "credential": "secret-1",
+                    "options": { "region": "us-east-1", "sessionToken": "TOK-1" }
+                },
+                {
+                    "id": "sts-2",
+                    "name": "Second STS",
+                    "host": "",
+                    "port": 443,
+                    "username": "ASIA2",
+                    "protocol": "s3",
+                    "credential": "secret-2",
+                    "options": { "region": "us-east-1", "sessionToken": "TOK-2" }
+                },
+                {
+                    "id": "static-3",
+                    "name": "Third Static",
+                    "host": "",
+                    "port": 443,
+                    "username": "AKIA3",
+                    "protocol": "s3",
+                    "credential": "secret-3",
+                    "options": { "region": "us-east-1" }
+                }
+            ],
+            "skipped": [],
+            "warnings": [],
+            "sourcePath": "/tmp/credentials",
+            "totalRemotes": 3
+        });
+
+        // Cap of 3 writes: First STS takes 2 (token + password); Second STS
+        // needs 2 (would be 4 > 3), so neither half is written and Third Static
+        // stays unstored after the cap triggers. Every sessionToken is still
+        // stripped from the redacted response.
+        let mut writes: Vec<(String, String)> = Vec::new();
+        let mut write = |k: &str, v: &str| -> Result<(), String> {
+            writes.push((k.to_string(), v.to_string()));
+            Ok(())
+        };
+        let out = finish_bridge_import_with_policy_and_cap(
+            "aws",
+            &parsed,
+            Vec::new(),
+            Some(&mut write),
+            &crate::profile_security::RelaxationPolicy::ResetAll,
+            3,
+        )
+        .unwrap();
+
+        assert_eq!(
+            writes,
+            vec![
+                ("aws_session_token_sts-1".to_string(), "TOK-1".to_string()),
+                ("server_sts-1".to_string(), "secret-1".to_string()),
+            ],
+            "cap must prevent writing either half of an over-budget STS pair"
+        );
+        let servers = out["servers"].as_array().unwrap();
+        assert_eq!(servers[0]["hasStoredSessionToken"], true);
+        assert_eq!(servers[0]["hasStoredCredential"], true);
+        assert_eq!(servers[1]["hasStoredSessionToken"], false);
+        assert_eq!(servers[1]["hasStoredCredential"], false);
+        assert_eq!(servers[2]["hasStoredCredential"], false);
+        for s in servers {
+            assert!(
+                s["options"].get("sessionToken").is_none(),
+                "sessionToken must always be stripped from options even past the write cap: {s}"
+            );
+        }
+        let serialized = out.to_string();
+        assert!(!serialized.contains("TOK-1"));
+        assert!(!serialized.contains("TOK-2"));
+        let warnings = out["warnings"].as_array().unwrap();
+        assert!(
+            warnings.iter().any(|w| w["name"] == "Second STS"
+                && w["reason"]
+                    .as_str()
+                    .unwrap_or("")
+                    .contains("import is too large")),
+            "over-cap STS profile must emit import-too-large warnings: {warnings:?}"
+        );
+
+        // Failed vault writes also consume budget so a failing vault cannot
+        // trigger unbounded retries past the cap.
+        let mut attempts = 0usize;
+        let mut fail_write = |_: &str, _: &str| -> Result<(), String> {
+            attempts += 1;
+            Err("disk full".to_string())
+        };
+        let failed = finish_bridge_import_with_policy_and_cap(
+            "aws",
+            &parsed,
+            Vec::new(),
+            Some(&mut fail_write),
+            &crate::profile_security::RelaxationPolicy::ResetAll,
+            2,
+        )
+        .unwrap();
+        assert_eq!(
+            attempts, 2,
+            "failed write attempts must count against the cap"
+        );
+        assert_eq!(failed["servers"][0]["hasStoredSessionToken"], false);
+        assert_eq!(failed["servers"][0]["hasStoredCredential"], false);
+    }
+
+    #[tokio::test]
+    async fn export_bridge_profiles_reports_written_side_path_and_skips_sts_when_vault_locked() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("credentials.ini");
+        std::fs::write(
+            &target,
+            "[existing]\naws_access_key_id = AKIAUSER\naws_secret_access_key = usersecret\n",
+        )
+        .unwrap();
+
+        let servers = json!([
+            {
+                "id": "srv-static",
+                "name": "Static S3",
+                "host": "s3.lab.example.com",
+                "port": 443,
+                "username": "AKIASTATIC",
+                "protocol": "s3",
+                "options": { "region": "us-east-1" }
+            },
+            {
+                "id": "srv-sts",
+                "name": "Temp STS",
+                "host": "s3.lab.example.com",
+                "port": 443,
+                "username": "ASIASTS",
+                "protocol": "s3",
+                "hasStoredSessionToken": true,
+                "options": { "region": "us-east-1" }
+            }
+        ]);
+
+        // Vault is None (locked): Temp STS must be skipped instead of exported
+        // without its session token, and Static S3 writes to the protected
+        // `credentials.ini.aeroftp` side file which must be reported in `filePath`.
+        let out = export_bridge_profiles(
+            "aws",
+            &servers.to_string(),
+            true,
+            &target.to_string_lossy(),
+            None,
+            |id| (id == "srv-static").then(|| "static-secret".to_string()),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(out["exported"], 1);
+        let expected_side = dir.path().join("credentials.ini.aeroftp");
+        assert_eq!(
+            out["filePath"].as_str(),
+            Some(expected_side.to_string_lossy().as_ref()),
+            "GUI export must report the actual written side file path: {out}"
+        );
+        let skipped = out["skipped"].as_array().unwrap();
+        assert!(
+            skipped.iter().any(|s| s["name"] == "Temp STS"
+                && s["reason"]
+                    .as_str()
+                    .unwrap_or("")
+                    .contains("vault is locked")),
+            "STS profile without readable vault token must be skipped: {skipped:?}"
         );
     }
 }

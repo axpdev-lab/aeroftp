@@ -510,9 +510,10 @@ pub fn new_profile_id() -> String {
 
 /// The secret-presence flags of a profile. On an overwrite a secret the file
 /// does not carry stays in the vault, so its flag stays set too.
-const STORED_SECRET_FLAGS: [&str; 6] = [
+const STORED_SECRET_FLAGS: [&str; 7] = [
     "hasStoredCredential",
     "hasStoredFilenApiKey",
+    "hasStoredSessionToken",
     "hasStoredAeroCryptPassword",
     "hasStoredAeroCryptSalt",
     "hasStoredAeroCryptKeyfilePath",

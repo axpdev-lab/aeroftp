@@ -152,17 +152,24 @@ way: an importer reads whatever connection types it recognizes in the file.)
   AWS CLI would sign in as another identity; unapplied settings (`ca_bundle`,
   FIPS, dual-stack, accelerate) also emit a warning. Imported STS session
   tokens are moved into the encrypted vault under owner-aware per-user storage
-  and redacted from profile options. `credential_cache` is an AWS CLI cache
-  choice for assume-role, not a static credential. Export serializes concurrent
-  writes to the same destination pair, stages both `0600` temp files before
-  touching either target, plans both outputs together, persists `config` before
-  `credentials` (rolling back active `config` if `credentials` persistence
-  fails), and replaces an existing `config` or `credentials` file only when its
-  typed line-2 marker carries a matching SHA-256 digest of the exported body.
-  If either destination is a user file, a file `aws configure` edited, a
-  pre-marker legacy AeroFTP export, a symlink, or a directory, both active
-  targets stay untouched and the complete pair goes to the first absent or
-  AeroFTP-owned `.aeroftp` side files at write time with manual-merge warnings.
+  and redacted from profile options, sharing the import vault-write cap with
+  passwords; connecting or exporting a profile marked with a stored session
+  token fails closed if its token cannot be read. `credential_cache` is an AWS
+  CLI cache choice for assume-role, not a static credential. Export serializes
+  concurrent writes to the same destination directory using a private lock
+  under AeroFTP's own data root, stages both `0600` (owner-ACL on Windows) temp
+  files before touching either target, plans both outputs together, preserves
+  path-prefixed S3 endpoints, persists `config` before `credentials` (rolling
+  back active or side-file `config` writes while preserving any
+  post-publication external edit if `credentials` persistence fails or races),
+  and replaces an existing `config` or `credentials` file only when its typed
+  line-2 marker carries a matching SHA-256 digest (bound to the paired
+  credentials filename for `config`). If either destination is a user file, a
+  file `aws configure` edited, a pre-marker legacy AeroFTP export, another
+  credentials pair's `config`, a symlink, or a directory, both active targets
+  stay untouched, the complete pair goes to the first absent or AeroFTP-owned
+  `.aeroftp` side files at write time with manual-merge warnings, and the
+  export reports the actual written credentials path.
   A profile name with a space, tab or `'` is written as `[profile "name"]`; one
   with `"` or `\` is skipped when a config section is needed. When
   `aeroftp-cli export aws` runs without `--output`, it writes into a private

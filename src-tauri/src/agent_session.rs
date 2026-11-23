@@ -34,6 +34,10 @@ pub struct ProfileSummary {
     pub username: String,
     pub port: Option<u16>,
     pub initial_path: String,
+    /// True when the saved S3 profile recorded a vaulted AWS STS session token
+    /// (`hasStoredSessionToken: true`); connect fails closed if it cannot be
+    /// loaded from the vault.
+    pub has_stored_session_token: bool,
     /// Provider-specific options pulled from `profile.options` and
     /// flattened into the `ProviderConfig.extra` shape (snake_case
     /// string keys/values). S3 (`bucket`, `region`, `endpoint`),
@@ -151,6 +155,10 @@ fn profile_summary_from(matched: &Value) -> ProfileSummary {
             .and_then(|v| v.as_str())
             .unwrap_or("/")
             .to_string(),
+        has_stored_session_token: matched
+            .get("hasStoredSessionToken")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false),
         extras: {
             let mut extras = flatten_options(matched.get("options"));
             let protocol = matched
@@ -998,14 +1006,17 @@ async fn connect_provider(profile: &ProfileSummary, no_scp_fallback: bool) -> Co
             extra.entry("container".to_string()).or_insert(bucket);
         }
     }
-    crate::profile_loader::inject_vault_s3_session_token(
+    if let Err(e) = crate::profile_loader::inject_vault_s3_session_token(
         provider_type,
         Some(&profile.id),
+        profile.has_stored_session_token,
         &mut extra,
         |key| {
             crate::profile_loader::resolve_vault_s3_session_token_owner_aware(&store, user_id, key)
         },
-    );
+    ) {
+        return ConnectOutcome::Err(e);
+    }
 
     let config = ProviderConfig {
         name: profile.name.clone(),
@@ -1690,6 +1701,7 @@ mod tests {
             username: String::new(),
             port: None,
             initial_path: "/".to_string(),
+            has_stored_session_token: false,
             extras: HashMap::from([("profile_id".to_string(), "srv_attacker".to_string())]),
         };
         let extra = extras_for_connect(&profile, false);
@@ -1709,6 +1721,7 @@ mod tests {
             username: "root".to_string(),
             port: None,
             initial_path: "/".to_string(),
+            has_stored_session_token: false,
             extras: HashMap::from([("allow_scp_fallback".to_string(), "true".to_string())]),
         };
         assert_eq!(

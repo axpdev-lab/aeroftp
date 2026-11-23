@@ -474,8 +474,7 @@ pub fn export_kopia(
     let body = serde_json::to_vec_pretty(&doc).map_err(|e| e.to_string())?;
     let mut outcome = crate::bridge_shared::BridgeExportOutcome {
         exported: 1,
-        skipped: Vec::new(),
-        warnings: Vec::new(),
+        ..Default::default()
     };
     crate::bridge_shared::write_export(outcome.exported, out, &body)?;
     for extra in &servers[1..] {

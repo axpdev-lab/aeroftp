@@ -1963,6 +1963,11 @@ pub struct ProviderConnectionParams {
     /// `ProviderConfig.extra["base_path"]`.
     #[serde(default, alias = "basePath")]
     pub base_path: Option<String>,
+    /// True when the saved S3 profile recorded a vaulted AWS STS session token
+    /// (`hasStoredSessionToken: true`); connect fails closed if it cannot be
+    /// loaded from the vault.
+    #[serde(default, alias = "hasStoredSessionToken")]
+    pub has_stored_session_token: Option<bool>,
 }
 
 /// The host the backend uses for a cloud API whatever the tab's server field
@@ -2527,19 +2532,56 @@ impl ProviderConnectionParams {
         // `aws_session_token_<profile_id>` so they never cross into the webview.
         // Owner-aware lookup ensures another user with the same profile id never
         // receives the legacy owner's shared-vault token. An explicit form token
-        // or launch-URL token already populated above wins.
+        // or launch-URL token already populated above wins. Fail closed if the
+        // vault read fails or a profile marked `hasStoredSessionToken` lacks its
+        // token in the vault.
+        let explicit_requires_token = self.has_stored_session_token.unwrap_or(false);
         crate::profile_loader::inject_vault_s3_session_token(
             config.provider_type,
             self.profile_id.as_deref(),
+            explicit_requires_token,
             &mut config.extra,
             |key| {
-                crate::credential_store::CredentialStore::from_cache().and_then(|store| {
-                    crate::profile_loader::resolve_vault_s3_session_token_owner_aware(
-                        &store, None, key,
-                    )
-                })
+                let Some(store) = crate::credential_store::CredentialStore::from_cache() else {
+                    return if explicit_requires_token {
+                        Err(
+                            "The credential vault is locked, so this S3 profile's saved AWS session token cannot be read"
+                                .to_string(),
+                        )
+                    } else {
+                        Ok(None)
+                    };
+                };
+                match crate::profile_loader::resolve_vault_s3_session_token_owner_aware(
+                    &store, None, key,
+                )? {
+                    Some(token) => Ok(Some(token)),
+                    None => {
+                        let stored_flag = self.has_stored_session_token.is_none()
+                            && self.profile_id.as_deref().is_some_and(|pid| {
+                                crate::user_partitions::mcp_list_active_server_profiles(&store)
+                                    .map(|profiles| {
+                                        profiles.iter().any(|p| {
+                                            p.get("id").and_then(|v| v.as_str()) == Some(pid)
+                                                && p.get("hasStoredSessionToken")
+                                                    .and_then(|v| v.as_bool())
+                                                    == Some(true)
+                                        })
+                                    })
+                                    .unwrap_or(false)
+                            });
+                        if stored_flag {
+                            Err(
+                                "The saved AWS session token for this profile is missing from the vault; re-import or update the profile credentials"
+                                    .to_string(),
+                            )
+                        } else {
+                            Ok(None)
+                        }
+                    }
+                }
             },
-        );
+        )?;
         Ok(config)
     }
 }
@@ -19908,6 +19950,7 @@ mod tests {
             connect_token: None,
             opendrive_default_privacy: None,
             base_path: None,
+            has_stored_session_token: None,
         }
     }
 
@@ -25065,6 +25108,27 @@ mod tests {
             .get("session_token")
             .cloned();
 
+        // Finding #11: duplicating an imported STS profile through the real
+        // vault + partition copy helper copies `aws_session_token_<id>` onto
+        // the new profile id so the duplicate connects with the token too.
+        let copied = crate::copy_profile_secrets_for(
+            &store,
+            Some(first_user.id),
+            "aws-sts-1",
+            "aws-sts-copy",
+            Some("s3"),
+        )
+        .unwrap();
+        let mut copy_params = s3_params(None);
+        copy_params.profile_id = Some("aws-sts-copy".to_string());
+        copy_params.has_stored_session_token = Some(true);
+        let got_copy_connect = copy_params
+            .to_provider_config()
+            .unwrap()
+            .extra
+            .get("session_token")
+            .cloned();
+
         // Class A (findings 12, 13, 14): create user B without a token on the
         // shared profile id `aws-sts-1`. Switching active user to B must NEVER
         // leak user A's shared-vault token on connect or export, while an
@@ -25080,12 +25144,20 @@ mod tests {
         let mut second_params = s3_params(None);
         second_params.profile_id = Some("aws-sts-1".to_string());
         second_params.session_token = None;
+        second_params.has_stored_session_token = Some(false);
         let got_second_connect = second_params
             .to_provider_config()
             .unwrap()
             .extra
             .get("session_token")
             .cloned();
+
+        // Finding #12: an STS profile whose stored token cannot be found for
+        // the active user fails closed instead of connecting without a token.
+        let mut missing_required_params = s3_params(None);
+        missing_required_params.profile_id = Some("aws-sts-1".to_string());
+        missing_required_params.has_stored_session_token = Some(true);
+        let missing_required_err = missing_required_params.to_provider_config().unwrap_err();
 
         let mut export_opts_b: Option<serde_json::Value> = None;
         crate::bridge_commands::inject_aws_session_token_export_option_for_user(
@@ -25094,7 +25166,20 @@ mod tests {
             Some(second_user.id),
             "s3",
             "aws-sts-1",
-        );
+            false,
+        )
+        .unwrap();
+        let mut export_opts_b_req: Option<serde_json::Value> = None;
+        let export_b_req_err =
+            crate::bridge_commands::inject_aws_session_token_export_option_for_user(
+                &mut export_opts_b_req,
+                &store,
+                Some(second_user.id),
+                "s3",
+                "aws-sts-1",
+                true,
+            )
+            .unwrap_err();
         let mut export_opts_a: Option<serde_json::Value> = None;
         crate::bridge_commands::inject_aws_session_token_export_option_for_user(
             &mut export_opts_a,
@@ -25102,9 +25187,18 @@ mod tests {
             Some(first_user.id),
             "s3",
             "aws-sts-1",
-        );
+            true,
+        )
+        .unwrap();
 
         crate::credential_store::CredentialStore::clear_cache();
+
+        // Locked vault with `has_stored_session_token: Some(true)` also fails closed.
+        let mut locked_required_params = s3_params(None);
+        locked_required_params.profile_id = Some("aws-sts-1".to_string());
+        locked_required_params.has_stored_session_token = Some(true);
+        let locked_required_err = locked_required_params.to_provider_config().unwrap_err();
+
         match previous_xdg {
             Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
             None => std::env::remove_var("XDG_CONFIG_HOME"),
@@ -25116,13 +25210,31 @@ mod tests {
 
         assert_eq!(got_vault.as_deref(), Some("VAULT-STS-TOKEN-42"));
         assert_eq!(got_explicit.as_deref(), Some("EXPLICIT-TOKEN"));
+        assert_eq!(copied.get("aws_session_token"), Some(&true));
+        assert_eq!(
+            got_copy_connect.as_deref(),
+            Some("VAULT-STS-TOKEN-42"),
+            "duplicated STS profile must carry aws_session_token under its new profile id"
+        );
         assert_eq!(
             got_second_connect, None,
             "user B without a token must never inherit user A's shared-vault token on connect"
         );
         assert!(
+            missing_required_err.contains("missing from the vault"),
+            "STS profile missing its stored token must fail closed: {missing_required_err}"
+        );
+        assert!(
+            locked_required_err.contains("vault is locked"),
+            "STS profile with locked vault must fail closed: {locked_required_err}"
+        );
+        assert!(
             export_opts_b.is_none(),
             "user B without a token must never inherit user A's shared-vault token on export"
+        );
+        assert!(
+            export_b_req_err.contains("missing from the vault"),
+            "exporting an STS profile whose stored token is missing must fail closed: {export_b_req_err}"
         );
         assert_eq!(
             export_opts_a
