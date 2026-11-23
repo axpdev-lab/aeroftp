@@ -6821,7 +6821,7 @@ mod tests {
             Some("pre-row"),
             true,
         )
-        .unwrap();
+        .unwrap_or_else(|e| panic!("write_profile_secret_slots_if: {}", e.message));
         assert_eq!(out, (false, true));
         assert_eq!(store.get(key).unwrap(), "other-writer");
         assert_eq!(
@@ -6868,7 +6868,7 @@ mod tests {
             Some("pre-row"),
             true,
         )
-        .unwrap();
+        .unwrap_or_else(|e| panic!("write_profile_secret_slots_if: {}", e.message));
         assert_eq!(out, (true, false));
         assert_eq!(
             store.get(key).unwrap(),
