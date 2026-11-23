@@ -1497,7 +1497,14 @@ fn write_profile_secret_slots_if(
     if tests::secret_write_fails(key, tests::WriteStage::BeforeVault) {
         return Err(SecretWriteError::before_vault("refused (test)".to_string()));
     }
+    // An empty accepted set marks a row the plan holds no value for: the
+    // rollback leaves it alone where `None` or an absent `None` entry would
+    // write the baseline into a row that was never there.
+    let skip_row = matches!(expected_row, Some(rows) if rows.is_empty());
     if let Some((db, receiver)) = private_row_of(db, receiver, key) {
+        if skip_row {
+            return Ok((true, true));
+        }
         let conn = crate::user_partitions::open_restored_db(&db)
             .map_err(|e| SecretWriteError::before_vault(format!("open {}: {e}", db.display())))?;
         let kind = crate::user_partitions::private_token_type(key).unwrap_or("oauth");
@@ -1575,6 +1582,9 @@ fn write_profile_secret_slots_if(
     let (Some(db), Some(receiver)) = (db, receiver) else {
         return Ok((vault_done, true));
     };
+    if skip_row {
+        return Ok((vault_done, true));
+    }
     #[cfg(test)]
     if tests::secret_write_fails(key, tests::WriteStage::AfterVault) {
         return Err(SecretWriteError::after_vault("refused (test)".to_string()));
@@ -2530,7 +2540,17 @@ fn apply_profile_decisions(
             // The row: as the step left it, else as the plan read it. Its
             // baseline does not depend on the vault's `landed`: a key the
             // vault section never wrote can still have had its row restored.
-            let row_landed = row_accepts(key, written_row.get(key).cloned());
+            // A step that never wrote the row puts nothing back into one the
+            // plan holds no value for: an empty accepted set tells the write
+            // to leave the row alone, where `None` would insert the baseline
+            // over an absent row.
+            let row_landed = if !written_row.contains_key(key)
+                && !matches!(inputs.receiver_rows.get(key), Some(Some(_)))
+            {
+                Some(Vec::new())
+            } else {
+                row_accepts(key, written_row.get(key).cloned())
+            };
             Some((
                 key.clone(),
                 before_of(key),
@@ -7487,6 +7507,111 @@ mod tests {
             row_in(&store, &cfg, owner.user_id, key).as_deref(),
             Some("row-rotated")
         );
+    }
+
+    /// A rollback puts nothing into a row the plan read as absent: the
+    /// step's row write declined on a value another writer stored, that row
+    /// is gone by the time the list save fails, and the vault compare keeps
+    /// the writer's value. Red while the snapshot's accepted rows carry the
+    /// absent marker: the rollback inserts the baseline row.
+    #[test]
+    fn a_rollback_does_not_insert_a_row_the_plan_read_absent() {
+        let _guard = crate::user_partitions::test_lock();
+        crate::user_partitions::clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let cfg = dir.path().join("config");
+        let key = "oauth_dropbox_srv_drive";
+        let other_key = "oauth_dropbox_srv_extra";
+        partition_with(
+            &store,
+            &cfg,
+            &[dropbox("srv_drive", "Drive"), dropbox("srv_extra", "Extra")],
+        );
+        store.store(key, "vault-token").unwrap();
+        store.store(other_key, "extra-token").unwrap();
+        let db = cfg.join("user_partitions.db");
+        let owner = active_receiver(&db).unwrap();
+        assert!(owner.legacy_owner);
+        let mut payload = ExportPayload::default();
+        payload.vault_entries.insert(
+            "config_server_profiles".to_string(),
+            serde_json::to_string(&[dropbox("srv_photos", "Photos")]).unwrap(),
+        );
+        payload
+            .vault_entries
+            .insert(other_key.to_string(), "extra-backup".to_string());
+        let backup = dir.path().join("vault.aeroftp-keystore");
+        seal_backup(&backup, PASSWORD_736, &payload);
+        fn refuse_list(db: &Path) {
+            rusqlite::Connection::open(db)
+                .unwrap()
+                .execute_batch(
+                    "CREATE TRIGGER refuse_list BEFORE INSERT ON server_profiles
+                     BEGIN SELECT RAISE(ABORT, 'disk full'); END;",
+                )
+                .unwrap();
+        }
+        fn drop_refuse_list(db: &Path) {
+            rusqlite::Connection::open(db)
+                .unwrap()
+                .execute_batch("DROP TRIGGER IF EXISTS refuse_list;")
+                .unwrap();
+        }
+        let decisions = [
+            decide("srv_drive", keystore_profile_plan::ProfileDecision::Accept),
+            decide("srv_extra", keystore_profile_plan::ProfileDecision::Accept),
+        ];
+
+        for vault_writer in [true, false] {
+            crate::user_partitions::clear_user_session();
+            store.store(key, "vault-token").unwrap();
+            drop_refuse_list(&db);
+            // The writer's row makes the step's row compare decline; the
+            // second profile's row write then removes it again and, in the
+            // first pass, moves the vault value too.
+            let hook_cfg = cfg.clone();
+            let hook_db = db.clone();
+            let row_key = key.to_string();
+            before_profile_decisions(move |store| {
+                set_partition_secret(store, &hook_cfg, &row_key, "row-rotated");
+                refuse_list(&hook_db);
+            });
+            let clear_db = db.clone();
+            let clear_key = key.to_string();
+            let vault_key = key.to_string();
+            let owner_id = owner.user_id;
+            before_row_write(other_key, move |store| {
+                let conn = rusqlite::Connection::open(&clear_db).unwrap();
+                crate::user_partitions::delete_user_credential_for(&conn, owner_id, &clear_key)
+                    .unwrap();
+                drop(conn);
+                if vault_writer {
+                    store.store(&vault_key, "other-writer").unwrap();
+                }
+            });
+
+            let result = import_deciding(&store, &cfg, &backup, VAULT_ONLY, &decisions);
+            drop_refuse_list(&db);
+            let error = result
+                .profile_decisions_error
+                .expect("the profile step did not fail");
+            assert!(error.contains("disk full"), "{error}");
+            assert_eq!(
+                row_in(&store, &cfg, owner.user_id, key),
+                None,
+                "vault_writer={vault_writer}: the absent row stays absent"
+            );
+            assert_eq!(
+                store.get(key).unwrap(),
+                if vault_writer {
+                    "other-writer"
+                } else {
+                    "vault-token"
+                },
+                "vault_writer={vault_writer}: the vault keeps its value"
+            );
+        }
     }
 
     /// A decision write declined because a refresh rotated a private row of a
