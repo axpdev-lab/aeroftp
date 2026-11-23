@@ -49,7 +49,7 @@ struct SiteManagerParse {
     complete: bool,
     /// Parsing stopped at [`MAX_SERVERS`].
     capped: bool,
-    /// Root matched AeroFTP v4.1.0..v4.2.7's own exporter signature
+    /// Root matched AeroFTP v3.7.3..v4.2.7's own exporter signature
     /// (`version="3.67.1"` and `platform="*"`, which real FileZilla never writes).
     legacy_aeroftp_export: bool,
 }
@@ -132,10 +132,25 @@ fn parse_sitemanager_xml_checked(content: &str) -> SiteManagerParse {
                             .map(|a| a.value.into_owned());
                         // Real FileZilla writes platform "windows", "mac", or "*nix"
                         // (`src/commonui/xml_file.cpp:177-185`). Only AeroFTP
-                        // v4.1.0..v4.2.7 wrote `version="3.67.1"` with `platform="*"`.
+                        // v3.7.3..v4.2.7 wrote `version="3.67.1"` with `platform="*"`.
                         if version.as_deref() == Some("3.67.1") && platform.as_deref() == Some("*")
                         {
                             legacy_aeroftp_export = true;
+                        }
+                    }
+                    // A site-specific bookmark is not part of the site. FileZilla 3.72.1
+                    // `site_manager::Save` (`src/commonui/site_manager.cpp:71-89`) writes
+                    // each `<Bookmark>` (its own `<Name>`, `<LocalDir>`, `<RemoteDir>`, ...)
+                    // inside `<Server>` after the site's fields, and `ReadServerElement`
+                    // (`site_manager.cpp:228-267`) reads the site from direct children of
+                    // `<Server>` only. Skip the subtree so a bookmark's `<Name>` and
+                    // `<RemoteDir>` do not replace the site's.
+                    "Bookmark" if in_server => {
+                        current_tag.clear();
+                        let mut bookmark = Vec::new();
+                        if reader.read_to_end_into(e.name(), &mut bookmark).is_err() {
+                            malformed = true;
+                            break;
                         }
                     }
                     "Folder" if !in_server => {
@@ -201,8 +216,8 @@ fn parse_sitemanager_xml_checked(content: &str) -> SiteManagerParse {
                 }
             }
             Event::End(e) => {
-                let run = std::mem::take(&mut text);
-                let run = run.trim();
+                let raw_run = std::mem::take(&mut text);
+                let run = raw_run.trim();
                 let tag = e.name().as_ref().to_string();
                 if !in_server && tag == "FileZilla3" {
                     root_closed = true;
@@ -241,6 +256,12 @@ fn parse_sitemanager_xml_checked(content: &str) -> SiteManagerParse {
                 } else if in_server && tag == current_tag {
                     if current_tag == "Name" {
                         current_name = run.to_string();
+                    } else if current_tag == "RemoteDir" {
+                        // FileZilla 3.72.1 `site_manager::ReadBookmarkElement`
+                        // (`src/commonui/site_manager.cpp:202`) reads `<RemoteDir>`
+                        // with `GetTextElement` (untrimmed): a `GetSafePath` segment
+                        // ending in a space must keep that trailing space.
+                        current_fields.insert(current_tag.clone(), raw_run);
                     } else if current_tag == "Parameter" && !current_parameter_name.is_empty() {
                         current_fields.insert(
                             format!("_parameter_{current_parameter_name}"),
@@ -529,7 +550,7 @@ struct MappedProfile {
 }
 
 /// Whether a server entry in a FileZilla XML document is an S3 profile written
-/// by AeroFTP v4.1.0..v4.2.7 (which emitted `Protocol=6` under
+/// by AeroFTP v3.7.3..v4.2.7 (which emitted `Protocol=6` under
 /// `<FileZilla3 version="3.67.1" platform="*">` without any native FileZilla
 /// site fields such as `Type`, `PasvMode`, `EncodingType`, `BypassProxy`, or
 /// `Parameter`). Real FileZilla never writes `platform="*"`.
@@ -702,110 +723,346 @@ fn map_server_with_context(
     })
 }
 
-/// Encode a POSIX path into FileZilla's `CServerPath::GetSafePath()` format
-/// (`FileZilla_3.72.1_src/src/commonui/site_manager.cpp:63-65, 202` and
-/// `src/engine/serverpath.cpp:290-446`): `"1 0"` for `/` or
-/// `"1 0 <len> <segment>..."` (ServerType::UNIX = 1, prefix_len = 0).
-/// Because FileZilla's `DoSetSafePath` rejects zero-length segments, an empty
-/// segment produced by `//` or a trailing `/` is folded as a trailing `/` onto
-/// the preceding segment so exact S3 prefixes like `/reports//2026` round-trip.
-fn format_filezilla_remote_dir(path: &str) -> String {
-    let without_root = path.strip_prefix('/').unwrap_or(path);
-    if without_root.is_empty() {
-        return "1 0".to_string();
-    }
-    let mut segments: Vec<String> = Vec::new();
-    for raw in without_root.split('/') {
-        if raw.is_empty() {
-            if let Some(prev) = segments.last_mut() {
-                prev.push('/');
-            }
-        } else {
-            segments.push(raw.to_string());
-        }
-    }
-    if segments.is_empty() {
-        return "1 0".to_string();
-    }
-    let mut out = String::from("1 0");
-    for seg in &segments {
-        out.push(' ');
-        out.push_str(&seg.chars().count().to_string());
-        out.push(' ');
-        out.push_str(seg);
-    }
-    out
+/// What one FileZilla `CServerPath::GetSafePath()` length counts: one `wchar_t`,
+/// a UTF-16 code unit in the Windows build and a Unicode scalar value in the
+/// macOS and Linux builds. The two differ only for a character outside the
+/// Basic Multilingual Plane (an emoji, a CJK Extension B ideograph).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum WcharUnit {
+    Scalar,
+    Utf16,
 }
 
-/// Parse FileZilla's encoded remote directory format (`CServerPath::GetSafePath`,
-/// `src/engine/serverpath.cpp:290-446`): `"1 0"` (root) or
-/// `"1 0 <len> <segment> <len> <segment>..."`, or a plain path (for legacy
-/// AeroFTP exports). Never pre-allocates the declared segment length before
-/// verifying it fits in the remaining input.
+impl WcharUnit {
+    /// The unit FileZilla on this machine's OS reads an exported file with.
+    fn native() -> Self {
+        if cfg!(windows) {
+            WcharUnit::Utf16
+        } else {
+            WcharUnit::Scalar
+        }
+    }
+
+    fn width(self, c: char) -> usize {
+        match self {
+            WcharUnit::Scalar => 1,
+            WcharUnit::Utf16 => c.len_utf16(),
+        }
+    }
+
+    fn len(self, s: &str) -> usize {
+        s.chars().map(|c| self.width(c)).sum()
+    }
+}
+
+/// FileZilla 3.72.1 `ServerType` values with a path shape of their own
+/// (`FileZilla_3.72.1_src/src/include/server.h:65-79`, wire values offset by +1).
+const FZ_SERVER_TYPE_UNIX: u32 = 1;
+const FZ_SERVER_TYPE_DOS: u32 = 3;
+const FZ_SERVER_TYPE_DOS_VIRTUAL: u32 = 8;
+const FZ_SERVER_TYPE_DOS_FWD_SLASHES: u32 = 10;
+const FZ_SERVER_TYPE_MAX: u32 = 11;
+
+/// The `CServerTypeTraits` row `CServerPath::GetPath()` renders a path with
+/// (`FileZilla_3.72.1_src/src/engine/serverpath.cpp:19-30`, `traits[SERVERTYPE_MAX]`).
+struct FileZillaPathTraits {
+    separators: &'static str,
+    has_root: bool,
+    left_enclosure: Option<char>,
+    right_enclosure: Option<char>,
+    /// `prefixmode == 1`: the prefix is written after the segments (MVS).
+    prefix_is_suffix: bool,
+    separator_escape: Option<char>,
+    separator_after_prefix: bool,
+}
+
+fn filezilla_path_traits(server_type: u32) -> Option<FileZillaPathTraits> {
+    const fn row(
+        separators: &'static str,
+        has_root: bool,
+        left_enclosure: Option<char>,
+        right_enclosure: Option<char>,
+        prefix_is_suffix: bool,
+        separator_escape: Option<char>,
+        separator_after_prefix: bool,
+    ) -> FileZillaPathTraits {
+        FileZillaPathTraits {
+            separators,
+            has_root,
+            left_enclosure,
+            right_enclosure,
+            prefix_is_suffix,
+            separator_escape,
+            separator_after_prefix,
+        }
+    }
+    Some(match server_type {
+        // DEFAULT, UNIX, VXWORKS, ZVM
+        0 | 1 | 5 | 6 => row("/", true, None, None, false, None, false),
+        2 => row(".", false, Some('['), Some(']'), false, Some('^'), false), // VMS
+        3 => row("\\/", false, None, None, false, None, false),              // DOS
+        4 => row(".", false, Some('\''), Some('\''), true, None, false),     // MVS
+        7 => row(".", false, None, None, false, None, false),                // HPNONSTOP
+        8 => row("\\", true, None, None, false, None, false),                // DOS_VIRTUAL
+        9 => row("/", true, None, None, false, None, true),                  // CYGWIN
+        10 => row("/\\", false, None, None, false, None, false),             // DOS_FWD_SLASHES
+        _ => return None,
+    })
+}
+
+/// `CServerPath::GetPath()`: the path FileZilla sends to the server for a
+/// decoded type, prefix and segment list.
+fn render_filezilla_server_path(
+    server_type: u32,
+    prefix: Option<&str>,
+    segments: &[String],
+) -> Option<String> {
+    let traits = filezilla_path_traits(server_type)?;
+    let separator = traits.separators.chars().next()?;
+    let mut path = String::new();
+    if !traits.prefix_is_suffix {
+        if let Some(prefix) = prefix {
+            path.push_str(prefix);
+        }
+    }
+    if let Some(left) = traits.left_enclosure {
+        path.push(left);
+    }
+    if segments.is_empty()
+        && (!traits.has_root || prefix.is_none() || traits.separator_after_prefix)
+    {
+        path.push(separator);
+    }
+    for (index, segment) in segments.iter().enumerate() {
+        if index > 0 || (traits.has_root && (prefix.is_none() || traits.separator_after_prefix)) {
+            path.push(separator);
+        }
+        match traits.separator_escape {
+            Some(escape) => {
+                for c in segment.chars() {
+                    if traits.separators.contains(c) {
+                        path.push(escape);
+                        path.push(separator);
+                    } else {
+                        path.push(c);
+                    }
+                }
+            }
+            None => path.push_str(segment),
+        }
+    }
+    if traits.prefix_is_suffix {
+        if let Some(prefix) = prefix {
+            path.push_str(prefix);
+        }
+    }
+    if let Some(right) = traits.right_enclosure {
+        path.push(right);
+    }
+    // FileZilla: "C:" is the current directory on drive C, "C:\" its root.
+    if matches!(
+        server_type,
+        FZ_SERVER_TYPE_DOS | FZ_SERVER_TYPE_DOS_FWD_SLASHES
+    ) && segments.len() == 1
+    {
+        path.push(separator);
+    }
+    Some(path)
+}
+
+/// `CServerPath::DoSetSafePath()` (`src/engine/serverpath.cpp`):
+/// `<type> <prefix_len>[ <prefix>][ <len> <segment>]...`, every length counted
+/// in `unit`. Stricter than FileZilla in one way: each prefix and segment must
+/// end on a space or at the end of the input, which is what tells a Windows
+/// (UTF-16) count from a macOS / Linux (scalar) count apart. Nothing is
+/// reserved from a declared length; a segment holds only characters present.
+fn decode_filezilla_safe_path(encoded: &str, unit: WcharUnit) -> Option<String> {
+    let chars: Vec<char> = encoded.chars().collect();
+    let number = |pos: &mut usize, limit: u32| -> Option<u32> {
+        let start = *pos;
+        let mut value: u32 = 0;
+        while let Some(digit) = chars.get(*pos).and_then(|c| c.to_digit(10)) {
+            value = value * 10 + digit;
+            if value > limit {
+                return None;
+            }
+            *pos += 1;
+        }
+        (*pos > start).then_some(value)
+    };
+    let take = |pos: &mut usize, len: usize| -> Option<String> {
+        let mut out = String::new();
+        let mut counted = 0usize;
+        while counted < len {
+            let c = *chars.get(*pos)?;
+            counted += unit.width(c);
+            out.push(c);
+            *pos += 1;
+        }
+        (counted == len).then_some(out)
+    };
+    // After a prefix or a segment: a space, or the end of the input.
+    let separator = |pos: &mut usize| -> Option<bool> {
+        match chars.get(*pos) {
+            None => Some(false),
+            Some(' ') => {
+                *pos += 1;
+                Some(true)
+            }
+            Some(_) => None,
+        }
+    };
+
+    let mut pos = 0usize;
+    let server_type = number(&mut pos, FZ_SERVER_TYPE_MAX - 1)?;
+    if chars.get(pos) != Some(&' ') {
+        return None;
+    }
+    pos += 1;
+    let prefix_len = number(&mut pos, 32767)? as usize;
+    let mut prefix = None;
+    let mut segments = Vec::new();
+    let mut more = separator(&mut pos)?;
+    if !more && prefix_len != 0 {
+        return None;
+    }
+    if more && prefix_len != 0 {
+        prefix = Some(take(&mut pos, prefix_len)?);
+        more = separator(&mut pos)?;
+    }
+    while more && pos < chars.len() {
+        let segment_len = number(&mut pos, 32767)? as usize;
+        if segment_len == 0 || chars.get(pos) != Some(&' ') {
+            return None;
+        }
+        pos += 1;
+        segments.push(take(&mut pos, segment_len)?);
+        more = separator(&mut pos)?;
+    }
+    render_filezilla_server_path(server_type, prefix.as_deref(), &segments)
+}
+
+/// `<RemoteDir>` as AeroFTP's start path. FileZilla 3.72.1 writes
+/// `CServerPath::GetSafePath()` (`site_manager.cpp:63-65, 202`) and reads the
+/// element untrimmed; older AeroFTP exports wrote a plain path, which stays as
+/// written. A Windows FileZilla counts a character outside the BMP as two, a
+/// macOS or Linux one as one: the scalar reading is tried first, then the
+/// UTF-16 one, and a reading is kept only if every length lands on a separator.
+/// The untrimmed input is tried first so a segment ending in a space survives;
+/// a trimmed retry still accepts pretty-printed XML with surrounding padding.
 fn parse_filezilla_remote_dir(encoded: &str) -> String {
     let trimmed = encoded.trim();
     if trimmed.is_empty() {
         return String::new();
     }
-    if trimmed == "1 0" {
-        return "/".to_string();
-    }
-    if let Some(rest) = trimmed.strip_prefix("1 0 ") {
-        let mut chars = rest.chars().peekable();
-        let mut segments: Vec<String> = Vec::new();
-        let mut parsed_ok = true;
+    [WcharUnit::Scalar, WcharUnit::Utf16]
+        .into_iter()
+        .find_map(|unit| decode_filezilla_safe_path(encoded, unit))
+        .or_else(|| {
+            (trimmed != encoded).then(|| {
+                [WcharUnit::Scalar, WcharUnit::Utf16]
+                    .into_iter()
+                    .find_map(|unit| decode_filezilla_safe_path(trimmed, unit))
+            })?
+        })
+        .unwrap_or_else(|| trimmed.to_string())
+}
 
-        while chars.peek().is_some() {
-            while matches!(chars.peek(), Some(' ')) {
-                chars.next();
+/// `CServerPath::GetSafePath()` with no prefix: `<type> 0[ <len> <segment>]...`.
+fn encode_filezilla_safe_path<S: AsRef<str>>(
+    server_type: u32,
+    segments: &[S],
+    unit: WcharUnit,
+) -> String {
+    let mut out = format!("{server_type} 0");
+    for segment in segments {
+        let segment = segment.as_ref();
+        out.push(' ');
+        out.push_str(&unit.len(segment).to_string());
+        out.push(' ');
+        out.push_str(segment);
+    }
+    out
+}
+
+/// A non-S3 start path as FileZilla would store it had the user typed it in
+/// the Site Manager: the server type `CServerPath::SetPath` detects for a
+/// DEFAULT-type site (`X:\` or `X:/` is DOS, a leading `\` is DOS_VIRTUAL, a
+/// leading `/` is UNIX) and the segments its `Segmentize` keeps (no empty
+/// segment, `.` dropped, `..` removes the previous one). `None` when FileZilla
+/// cannot hold the path as a default remote directory: a relative path, or a
+/// VMS, MVS or VxWorks form, which this encoder does not model.
+fn format_filezilla_remote_dir(path: &str) -> Option<String> {
+    let bytes = path.as_bytes();
+    let (server_type, separators): (u32, &[char]) = if bytes.len() >= 3
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[1] == b':'
+        && (bytes[2] == b'\\' || bytes[2] == b'/')
+    {
+        (FZ_SERVER_TYPE_DOS, &['\\', '/'])
+    } else if (path.contains(":[") && path.ends_with(']'))
+        || path.starts_with(':')
+        || path.starts_with('\u{DC}')
+    {
+        return None;
+    } else if path.starts_with('\\') {
+        (FZ_SERVER_TYPE_DOS_VIRTUAL, &['\\'])
+    } else if path.starts_with('/') {
+        (FZ_SERVER_TYPE_UNIX, &['/'])
+    } else {
+        return None;
+    };
+    let mut segments: Vec<&str> = Vec::new();
+    for segment in path.split(separators) {
+        match segment {
+            "" | "." => {}
+            ".." => {
+                segments.pop();
             }
-            if chars.peek().is_none() {
-                break;
-            }
-            let mut len_str = String::new();
-            while let Some(&ch) = chars.peek() {
-                if ch.is_ascii_digit() {
-                    len_str.push(ch);
-                    chars.next();
-                } else {
-                    break;
-                }
-            }
-            let Ok(seg_len) = len_str.parse::<usize>() else {
-                parsed_ok = false;
-                break;
-            };
-            if seg_len == 0 || seg_len > rest.len() {
-                parsed_ok = false;
-                break;
-            }
-            if chars.next() != Some(' ') {
-                parsed_ok = false;
-                break;
-            }
-            let mut segment = String::new();
-            for _ in 0..seg_len {
-                match chars.next() {
-                    Some(ch) => segment.push(ch),
-                    None => {
-                        parsed_ok = false;
-                        break;
-                    }
-                }
-            }
-            if !parsed_ok {
-                break;
-            }
-            if !segment.is_empty() {
-                segments.push(segment);
+            segment => segments.push(segment),
+        }
+    }
+    Some(encode_filezilla_safe_path(
+        server_type,
+        &segments,
+        WcharUnit::native(),
+    ))
+}
+
+/// An S3 bucket and key prefix as the `<RemoteDir>` FileZilla Pro reads:
+/// `/bucket/prefix...` (ServerType UNIX), the first segment being the bucket.
+/// FileZilla stores no empty segment (`DoSetSafePath` rejects a zero length),
+/// so each empty segment of the prefix travels as a `/` at the start of the
+/// next segment, or at the end of the last one when the prefix ends with it.
+/// The bucket segment is never changed, and `parse_filezilla_remote_dir`
+/// joins the segments back into the same prefix.
+fn format_filezilla_s3_remote_dir(bucket: &str, prefix: &str) -> String {
+    let key_prefix = prefix.strip_prefix('/').unwrap_or(prefix);
+    let mut segments = vec![bucket.to_string()];
+    if !key_prefix.is_empty() {
+        let mut pending = String::new();
+        let mut any_segment = false;
+        for token in key_prefix.split('/') {
+            if token.is_empty() {
+                pending.push('/');
+            } else {
+                segments.push(format!("{pending}{token}"));
+                pending.clear();
+                any_segment = true;
             }
         }
-
-        if parsed_ok && !segments.is_empty() {
-            return format!("/{}", segments.join("/"));
+        if !pending.is_empty() {
+            if any_segment {
+                if let Some(last) = segments.last_mut() {
+                    last.push_str(&pending);
+                }
+            } else {
+                // A prefix made of slashes only.
+                segments.push(key_prefix.to_string());
+            }
         }
     }
-    trimmed.to_string()
+    encode_filezilla_safe_path(FZ_SERVER_TYPE_UNIX, &segments, WcharUnit::native())
 }
 
 // ============ Default config path detection ============
@@ -1182,44 +1439,38 @@ pub fn export_filezilla(
             xml.push_str("      <Logontype>0</Logontype>\n"); // Anonymous
         }
 
-        // Remote directory: encode in FileZilla's `CServerPath::GetSafePath()`
-        // format for all protocols (`site_manager.cpp:63-65, 202`), because
-        // FileZilla loads `<RemoteDir>` only through `SetSafePath`. For S3,
-        // prepend `/<bucket>` while preserving exact prefix separators (such
-        // as `/reports//2026`).
+        // Remote directory, in FileZilla's `CServerPath::GetSafePath()` format:
+        // FileZilla loads `<RemoteDir>` only through `SetSafePath`. An S3 site
+        // keeps `/<bucket>` as its first segment. An S3 profile without a
+        // bucket writes none: its start path is a prefix inside a bucket the
+        // profile does not name, and written alone FileZilla would open the
+        // prefix's first segment as the bucket. That site starts at the bucket
+        // list instead.
         let exported_remote_dir: Option<String> = if protocol == "s3" {
-            let bucket = server
+            server
                 .options
                 .as_ref()
                 .and_then(|o| o.get("bucket"))
                 .and_then(|v| v.as_str())
                 .map(str::trim)
-                .filter(|b| !b.is_empty());
-            match (bucket, server.initial_path.as_deref()) {
-                (Some(b), Some(p)) if !p.is_empty() => {
-                    let suffix = p.strip_prefix('/').unwrap_or(p);
-                    if suffix.is_empty() {
-                        Some(format!("/{b}"))
-                    } else {
-                        Some(format!("/{b}/{suffix}"))
-                    }
-                }
-                (Some(b), _) => Some(format!("/{b}")),
-                (None, Some(p)) if !p.is_empty() => Some(p.to_string()),
-                _ => None,
-            }
+                .filter(|b| !b.is_empty())
+                .map(|bucket| {
+                    format_filezilla_s3_remote_dir(
+                        bucket,
+                        server.initial_path.as_deref().unwrap_or(""),
+                    )
+                })
         } else {
             server
                 .initial_path
-                .as_ref()
+                .as_deref()
                 .filter(|p| !p.is_empty())
-                .cloned()
+                .and_then(format_filezilla_remote_dir)
         };
-        if let Some(ref path) = exported_remote_dir {
-            let safe_path = format_filezilla_remote_dir(path);
+        if let Some(ref safe_path) = exported_remote_dir {
             xml.push_str(&format!(
                 "      <RemoteDir>{}</RemoteDir>\n",
-                sanitize(&safe_path)
+                sanitize(safe_path)
             ));
         }
 
@@ -2195,6 +2446,150 @@ mod tests {
     }
 
     #[test]
+    fn remote_dir_decoder_reads_every_server_type_and_windows_wchar_lengths() {
+        // Windows FileZilla counts wchar_t in UTF-16 units: U+1F4C1 is two.
+        assert_eq!(
+            parse_filezilla_remote_dir("1 0 6 \u{1F4C1}docs 3 www"),
+            "/\u{1F4C1}docs/www"
+        );
+        // macOS and Linux FileZilla count Unicode scalar values.
+        assert_eq!(
+            parse_filezilla_remote_dir("1 0 5 \u{1F4C1}docs 3 www"),
+            "/\u{1F4C1}docs/www"
+        );
+        // `CServerPath::GetPath()` for the other server types.
+        assert_eq!(parse_filezilla_remote_dir("3 0 2 C: 4 data"), "C:\\data");
+        assert_eq!(parse_filezilla_remote_dir("3 0 2 C:"), "C:\\");
+        assert_eq!(parse_filezilla_remote_dir("10 0 2 D: 3 www"), "D:/www");
+        assert_eq!(parse_filezilla_remote_dir("8 0 4 data"), "\\data");
+        assert_eq!(parse_filezilla_remote_dir("9 0 3 var 3 www"), "/var/www");
+        assert_eq!(
+            parse_filezilla_remote_dir("2 9 DISK$USR: 4 DIR1 4 DIR2"),
+            "DISK$USR:[DIR1.DIR2]"
+        );
+        // A length that does not end on a separator is not a GetSafePath string.
+        assert_eq!(parse_filezilla_remote_dir("1 0 2 abc"), "1 0 2 abc");
+        // A segment ending in a space must decode untrimmed (FileZilla `site_manager.cpp:202`).
+        assert_eq!(parse_filezilla_remote_dir("1 0 4 foo "), "/foo ");
+        // Older AeroFTP exports wrote plain paths.
+        assert_eq!(parse_filezilla_remote_dir("/var/www"), "/var/www");
+    }
+
+    #[test]
+    fn remote_dir_trailing_space_segment_survives_xml_import() {
+        let dir = tempfile::tempdir().unwrap();
+        let sitemanager = dir.path().join("sitemanager.xml");
+        std::fs::write(
+            &sitemanager,
+            concat!(
+                r#"<?xml version="1.0"?><FileZilla3 version="3.72.1" platform="*nix"><Servers><Server>"#,
+                r#"<Host>ftp.example.com</Host><Port>21</Port><Protocol>0</Protocol><Type>0</Type>"#,
+                r#"<User>u</User><Logontype>0</Logontype><Name>TrailingSpace</Name>"#,
+                r#"<RemoteDir>1 0 4 foo </RemoteDir>"#,
+                r#"</Server></Servers></FileZilla3>"#,
+            ),
+        )
+        .unwrap();
+
+        let imported = import_filezilla(&sitemanager).unwrap();
+        assert_eq!(imported.servers.len(), 1);
+        assert_eq!(imported.servers[0].initial_path.as_deref(), Some("/foo "));
+    }
+
+    #[test]
+    fn export_remote_dir_matches_filezilla_segmentation_and_keeps_the_s3_bucket_segment() {
+        let row = |name: &str, protocol: &str, options: Option<serde_json::Value>, path: &str| {
+            FileZillaExportServer {
+                id: name.to_string(),
+                name: name.to_string(),
+                host: "files.example.com".to_string(),
+                port: 0,
+                username: "u".to_string(),
+                protocol: Some(protocol.to_string()),
+                options,
+                initial_path: Some(path.to_string()),
+            }
+        };
+        let media = || Some(serde_json::json!({ "bucket": "media" }));
+        let rows = [
+            row("TrailingSlash", "ftp", None, "/var/www/"),
+            row("Relative", "sftp", None, "public_html"),
+            row("Windows", "ftp", None, "C:\\inetpub\\wwwroot"),
+            row("SlashPrefix", "s3", media(), "//2026"),
+            row("TrailingPrefix", "s3", media(), "/reports//2026/"),
+            row("NoBucket", "s3", None, "/media/2026"),
+        ];
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sitemanager.xml");
+        assert_eq!(
+            export_filezilla(&rows, &HashMap::new(), &path),
+            Ok(rows.len())
+        );
+
+        let raw = parse_sitemanager_xml(&std::fs::read_to_string(&path).unwrap());
+        let raw_dir = |name: &str| {
+            raw.iter()
+                .find(|s| s.name == name)
+                .and_then(|s| s.fields.get("RemoteDir").cloned())
+        };
+        // FileZilla's own `Segmentize` keeps no empty segment for FTP/SFTP.
+        assert_eq!(raw_dir("TrailingSlash").as_deref(), Some("1 0 3 var 3 www"));
+        // FileZilla cannot hold a relative default remote directory.
+        assert_eq!(raw_dir("Relative"), None);
+        assert_eq!(
+            raw_dir("Windows").as_deref(),
+            Some("3 0 2 C: 7 inetpub 7 wwwroot")
+        );
+        // The bucket segment is never altered.
+        assert_eq!(
+            raw_dir("SlashPrefix").as_deref(),
+            Some("1 0 5 media 5 /2026")
+        );
+        assert_eq!(
+            raw_dir("TrailingPrefix").as_deref(),
+            Some("1 0 5 media 7 reports 6 /2026/")
+        );
+        // No bucket: no prefix written as if its first segment were one.
+        assert_eq!(raw_dir("NoBucket"), None);
+
+        let back = import_filezilla(&path).unwrap();
+        let by_name = |name: &str| back.servers.iter().find(|s| s.name == name).unwrap();
+        assert_eq!(
+            by_name("TrailingSlash").initial_path.as_deref(),
+            Some("/var/www")
+        );
+        assert_eq!(
+            by_name("Windows").initial_path.as_deref(),
+            Some("C:\\inetpub\\wwwroot")
+        );
+        for (name, prefix) in [
+            ("SlashPrefix", "//2026"),
+            ("TrailingPrefix", "/reports//2026/"),
+        ] {
+            let s3 = by_name(name);
+            assert_eq!(
+                s3.options.as_ref().and_then(|o| o.get("bucket")),
+                Some(&serde_json::json!("media")),
+                "{name}"
+            );
+            assert_eq!(s3.initial_path.as_deref(), Some(prefix), "{name}");
+        }
+    }
+
+    #[test]
+    fn export_counts_segment_lengths_in_the_local_filezilla_wchar_unit() {
+        let expected = if cfg!(windows) {
+            "1 0 6 \u{1F4C1}docs"
+        } else {
+            "1 0 5 \u{1F4C1}docs"
+        };
+        assert_eq!(
+            format_filezilla_remote_dir("/\u{1F4C1}docs").as_deref(),
+            Some(expected)
+        );
+    }
+
+    #[test]
     fn s3_prefix_with_empty_segments_round_trips_verbatim() {
         let dir = tempfile::tempdir().unwrap();
         let exported_path = dir.path().join("s3-empty-seg.xml");
@@ -2314,6 +2709,36 @@ mod tests {
             Some(&serde_json::json!("media"))
         );
         assert_eq!(by_name("S3").initial_path.as_deref(), Some("/2026/photos"));
+    }
+
+    #[test]
+    fn site_bookmarks_do_not_replace_the_site_name_or_start_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let sitemanager = dir.path().join("sitemanager.xml");
+        // The shape `CSiteManager::Save` writes: the site's own fields, then
+        // each site-specific bookmark inside the same `<Server>`.
+        std::fs::write(
+            &sitemanager,
+            concat!(
+                r#"<?xml version="1.0"?><FileZilla3 version="3.72.1" platform="*nix"><Servers><Server>"#,
+                r#"<Host>ftp.example.com</Host><Port>21</Port><Protocol>0</Protocol><Type>0</Type>"#,
+                r#"<User>u</User><Logontype>0</Logontype><Name>Production</Name><Comments />"#,
+                r#"<LocalDir /><RemoteDir>1 0 3 var 3 www</RemoteDir>"#,
+                r#"<SyncBrowsing>0</SyncBrowsing><DirectoryComparison>0</DirectoryComparison>"#,
+                r#"<Bookmark><Name>Logs</Name><LocalDir /><RemoteDir>1 0 3 var 3 log</RemoteDir>"#,
+                r#"<SyncBrowsing>0</SyncBrowsing><DirectoryComparison>0</DirectoryComparison></Bookmark>"#,
+                r#"</Server></Servers></FileZilla3>"#,
+            ),
+        )
+        .unwrap();
+
+        let imported = import_filezilla(&sitemanager).unwrap();
+        assert_eq!(imported.servers.len(), 1);
+        assert_eq!(imported.servers[0].name, "Production");
+        assert_eq!(
+            imported.servers[0].initial_path.as_deref(),
+            Some("/var/www")
+        );
     }
 
     /// Two profiles of one name (a list saved before names were unique) were
