@@ -12383,6 +12383,10 @@ fn credential_free_profile_copies(profiles: &[Value]) -> Vec<Value> {
                         object.insert(alias.to_string(), Value::String(fresh_id.clone()));
                     }
                 }
+                // A migrated FTP profile can still carry its password in the
+                // open at the top level: the copy's fresh id finds no vault
+                // key of the source, so the plaintext would reach the JSON.
+                object.remove("password");
             }
             copied
         })
@@ -22109,5 +22113,31 @@ mod tests {
             "id": "srv_bare", "options": {"rcloneCryptPassword": "crypt-one"}
         })]);
         assert!(bare[0].get("options").is_none());
+    }
+
+    /// A migrated FTP profile can still carry `password` in the open at the
+    /// top level: the credential-free copy drops it and the option-borne
+    /// one, and keeps the non-secret fields (#347).
+    #[test]
+    fn a_credential_free_copy_strips_the_top_level_password() {
+        let profiles = vec![json!({
+            "id": "srv_source",
+            "name": "Legacy FTP",
+            "protocol": "ftp",
+            "host": "ftp.example.test",
+            "port": 21,
+            "username": "user",
+            "password": "inline-secret",
+            "options": {"password": "opt-secret", "timeout": 30}
+        })];
+        let copied = credential_free_profile_copies(&profiles);
+        let copy = &copied[0];
+        assert!(!copy.as_object().unwrap().contains_key("password"));
+        let options = copy["options"].as_object().unwrap();
+        assert!(!options.contains_key("password"));
+        assert_eq!(options["timeout"], 30);
+        assert_eq!(copy["host"], "ftp.example.test");
+        assert_eq!(copy["username"], "user");
+        assert_eq!(profiles[0]["password"], "inline-secret");
     }
 }
