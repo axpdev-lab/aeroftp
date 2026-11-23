@@ -439,7 +439,12 @@ fn copy_of(
 /// of such a key back, unless a write of the key is already planned. The keys
 /// are those of the version kept: a profile whose provider changed keeps no
 /// token of the provider it left.
-fn carry_local_private_tokens(inputs: &PlanInputs, profiles: &[Value], ops: &mut Vec<SecretOp>) {
+fn carry_local_private_tokens(
+    inputs: &PlanInputs,
+    profiles: &[Value],
+    local_ids: &HashSet<String>,
+    ops: &mut Vec<SecretOp>,
+) {
     if !(inputs.targets_restored_partition
         && inputs.keep_local_by_default
         && inputs.receiver_is_here
@@ -449,6 +454,12 @@ fn carry_local_private_tokens(inputs: &PlanInputs, profiles: &[Value], ops: &mut
     }
     let mut planned: HashSet<String> = ops.iter().map(|(k, _)| k.clone()).collect();
     for profile in profiles {
+        // Only a profile this device's version was kept for: a backup-accepted
+        // profile that shares the id must not pick up this device's private
+        // token, which is not the version the user chose.
+        if !profile_id(profile).is_some_and(|id| local_ids.contains(id)) {
+            continue;
+        }
         for key in secret_keys(profile) {
             if crate::user_partitions::private_token_type(&key).is_none()
                 || inputs.backup_secrets.contains_key(&key)
@@ -614,62 +625,72 @@ pub fn apply(
     let backup_by_id = index_by_id(backup);
 
     let mut ops = Vec::new();
+    // The ids whose kept version is this device's: only those may carry its
+    // private tokens back into the restored partition.
+    let mut local_ids = HashSet::new();
     // Resolve each id to the profiles it contributes, in place.
-    let mut resolve = |id: &str, ops: &mut Vec<SecretOp>| -> Vec<Value> {
-        let local = local_by_id.get(id).copied();
-        let bak = backup_by_id.get(id).copied();
-        let keys = keys_for(local, bak);
-        let Some(change) = change_by_id.get(id) else {
-            // Unchanged, or local-only under a merge: this machine's copy.
-            return local.or(bak).cloned().into_iter().collect();
-        };
-        let input = chosen.get(id);
-        let decision = input.map_or(change.default_decision, |d| d.decision);
-        match (change.kind, decision) {
-            (ProfileChangeKind::Added, ProfileDecision::Accept) => {
-                take_backup(inputs, &keys, ops);
-                bak.cloned().into_iter().collect()
-            }
-            (ProfileChangeKind::Added, _) => {
-                restore_local(inputs, &keys, ops);
-                Vec::new()
-            }
-            (ProfileChangeKind::Removed, ProfileDecision::Accept) => {
-                // Removing a profile in the GUI purges its secrets; an
-                // accepted removal must not leave them behind (CWE-459).
-                for k in &keys {
-                    ops.push((k.clone(), None));
+    let mut resolve =
+        |id: &str, ops: &mut Vec<SecretOp>, local_ids: &mut HashSet<String>| -> Vec<Value> {
+            let local = local_by_id.get(id).copied();
+            let bak = backup_by_id.get(id).copied();
+            let keys = keys_for(local, bak);
+            let Some(change) = change_by_id.get(id) else {
+                // Unchanged, or local-only under a merge: this machine's copy.
+                if local.is_some() {
+                    local_ids.insert(id.to_string());
                 }
-                Vec::new()
+                return local.or(bak).cloned().into_iter().collect();
+            };
+            let input = chosen.get(id);
+            let decision = input.map_or(change.default_decision, |d| d.decision);
+            match (change.kind, decision) {
+                (ProfileChangeKind::Added, ProfileDecision::Accept) => {
+                    take_backup(inputs, &keys, ops);
+                    bak.cloned().into_iter().collect()
+                }
+                (ProfileChangeKind::Added, _) => {
+                    restore_local(inputs, &keys, ops);
+                    Vec::new()
+                }
+                (ProfileChangeKind::Removed, ProfileDecision::Accept) => {
+                    // Removing a profile in the GUI purges its secrets; an
+                    // accepted removal must not leave them behind (CWE-459).
+                    for k in &keys {
+                        ops.push((k.clone(), None));
+                    }
+                    Vec::new()
+                }
+                (ProfileChangeKind::Removed, _) => {
+                    restore_local(inputs, &keys, ops);
+                    local_ids.insert(id.to_string());
+                    local.cloned().into_iter().collect()
+                }
+                (ProfileChangeKind::Changed, ProfileDecision::Accept) => {
+                    take_backup(inputs, &keys, ops);
+                    bak.cloned().into_iter().collect()
+                }
+                (ProfileChangeKind::Changed, ProfileDecision::Reject) => {
+                    restore_local(inputs, &keys, ops);
+                    local_ids.insert(id.to_string());
+                    local.cloned().into_iter().collect()
+                }
+                (ProfileChangeKind::Changed, ProfileDecision::Both) => {
+                    restore_local(inputs, &keys, ops);
+                    let (Some(l), Some(b)) = (local, bak) else {
+                        return Vec::new();
+                    };
+                    local_ids.insert(id.to_string());
+                    let name = input
+                        .and_then(|d| d.copy_name.clone())
+                        .filter(|n| !n.trim().is_empty())
+                        .unwrap_or_else(|| {
+                            format!("{} (imported)", string_field(b, "name").unwrap_or_default())
+                        });
+                    let copy = copy_of(inputs, b, &new_id(), name, ops);
+                    vec![l.clone(), copy]
+                }
             }
-            (ProfileChangeKind::Removed, _) => {
-                restore_local(inputs, &keys, ops);
-                local.cloned().into_iter().collect()
-            }
-            (ProfileChangeKind::Changed, ProfileDecision::Accept) => {
-                take_backup(inputs, &keys, ops);
-                bak.cloned().into_iter().collect()
-            }
-            (ProfileChangeKind::Changed, ProfileDecision::Reject) => {
-                restore_local(inputs, &keys, ops);
-                local.cloned().into_iter().collect()
-            }
-            (ProfileChangeKind::Changed, ProfileDecision::Both) => {
-                restore_local(inputs, &keys, ops);
-                let (Some(l), Some(b)) = (local, bak) else {
-                    return Vec::new();
-                };
-                let name = input
-                    .and_then(|d| d.copy_name.clone())
-                    .filter(|n| !n.trim().is_empty())
-                    .unwrap_or_else(|| {
-                        format!("{} (imported)", string_field(b, "name").unwrap_or_default())
-                    });
-                let copy = copy_of(inputs, b, &new_id(), name, ops);
-                vec![l.clone(), copy]
-            }
-        }
-    };
+        };
 
     let mut profiles = Vec::new();
     let mut placed = HashSet::new();
@@ -681,7 +702,7 @@ pub fn apply(
     for p in first.iter().chain(second) {
         let Some(id) = profile_id(p) else { continue };
         if placed.insert(id.to_string()) {
-            profiles.extend(resolve(id, &mut ops));
+            profiles.extend(resolve(id, &mut ops, &mut local_ids));
         }
     }
     // A profile the backup adds, renames or copies onto a name this
@@ -690,7 +711,7 @@ pub fn apply(
     // applies (`util::profile_name`), against the list the plan was read
     // from: the partition the write lands in may already be the backup's.
     let (profiles, _) = crate::util::profile_name::unique_profile_names(&inputs.local, &profiles);
-    carry_local_private_tokens(inputs, &profiles, &mut ops);
+    carry_local_private_tokens(inputs, &profiles, &local_ids, &mut ops);
 
     Ok(PlanOutcome {
         profiles,

@@ -1471,7 +1471,9 @@ fn write_profile_secret_if(
         expected_row,
         value,
         value,
+        false,
     )
+    .map(|(vault, row)| vault && row)
 }
 
 /// [`write_profile_secret_if`] with a value of its own for each slot: the
@@ -1489,7 +1491,8 @@ fn write_profile_secret_slots_if(
     expected_row: ExpectedRow<'_>,
     vault_value: Option<&str>,
     value: Option<&str>,
-) -> Result<bool, SecretWriteError> {
+    independent_slots: bool,
+) -> Result<(bool, bool), SecretWriteError> {
     #[cfg(test)]
     if tests::secret_write_fails(key, tests::WriteStage::BeforeVault) {
         return Err(SecretWriteError::before_vault("refused (test)".to_string()));
@@ -1509,8 +1512,19 @@ fn write_profile_secret_slots_if(
                 expected,
                 value,
             ),
-            None => match value {
-                Some(v) => crate::user_partitions::set_user_credential_for(
+            None => match (expected_row, value) {
+                // No vault baseline, but the plan read the row's accepted
+                // values: the row moves only while it still holds one.
+                (Some(rows), _) => crate::user_partitions::swap_user_credential_if_one_of(
+                    &conn,
+                    &root_key,
+                    receiver.user_id,
+                    key,
+                    kind,
+                    rows,
+                    value,
+                ),
+                (None, Some(v)) => crate::user_partitions::set_user_credential_for(
                     &conn,
                     &root_key,
                     receiver.user_id,
@@ -1519,7 +1533,7 @@ fn write_profile_secret_slots_if(
                     v,
                 )
                 .map(|()| true),
-                None => {
+                (None, None) => {
                     crate::user_partitions::delete_user_credential_for(&conn, receiver.user_id, key)
                         .map(|()| true)
                 }
@@ -1527,19 +1541,27 @@ fn write_profile_secret_slots_if(
         };
         root_key.zeroize();
         // No vault copy to fall back on: a locked account is reported.
-        return written.map_err(|e| {
+        return written.map(|written| (true, written)).map_err(|e| {
             SecretWriteError::before_vault(format!("partition row not written: {e}"))
         });
     }
     let vault_refused =
         |e: crate::credential_store::CredentialError| SecretWriteError::before_vault(e.to_string());
+    let mut vault_done = true;
     match expected {
         Some(expected) => {
             if !store
                 .swap_secret_if(key, expected, vault_value)
                 .map_err(vault_refused)?
             {
-                return Ok(false);
+                // A forward write declines whole: vault and row stay paired.
+                // A rollback restores each slot from its own baseline, so a
+                // vault value another writer changed is kept while the row
+                // is still put back.
+                if !independent_slots {
+                    return Ok((false, true));
+                }
+                vault_done = false;
             }
         }
         None => match vault_value {
@@ -1551,7 +1573,7 @@ fn write_profile_secret_slots_if(
         },
     }
     let (Some(db), Some(receiver)) = (db, receiver) else {
-        return Ok(true);
+        return Ok((vault_done, true));
     };
     #[cfg(test)]
     if tests::secret_write_fails(key, tests::WriteStage::AfterVault) {
@@ -1588,19 +1610,24 @@ fn write_profile_secret_slots_if(
     };
     root_key.zeroize();
     match written {
-        Ok(true) => Ok(true),
+        Ok(true) => Ok((vault_done, true)),
         // Rewritten since the import left it (a token refreshed meanwhile):
-        // the row keeps its value, and the vault the value it held, so the
-        // two do not part.
+        // the row keeps its value, and a forward write puts the vault back
+        // to the value it held, so the two do not part. A rollback restores
+        // each slot from its own baseline and never reverses the vault's:
+        // the row check decides the row's outcome only.
         Ok(false) => {
-            if let Some(expected) = expected {
-                store.swap_secret_if(key, vault_value, expected).map_err(|e| {
-                    SecretWriteError::after_vault(format!(
-                        "partition row rewritten since the import, and the vault copy could not be put back: {e}"
-                    ))
-                })?;
+            if !independent_slots {
+                if let Some(expected) = expected {
+                    store.swap_secret_if(key, vault_value, expected).map_err(|e| {
+                        SecretWriteError::after_vault(format!(
+                            "partition row rewritten since the import, and the vault copy could not be put back: {e}"
+                        ))
+                    })?;
+                }
+                return Ok((false, false));
             }
-            Ok(false)
+            Ok((vault_done, false))
         }
         // A locked passphrase account cannot take the row; removing the old
         // one lets the app fall back to the vault value just stored.
@@ -1609,7 +1636,7 @@ fn write_profile_secret_slots_if(
                 "Import: partition row {key} not writable (account locked); removed so the vault copy applies"
             );
             crate::user_partitions::delete_user_credential_for(&conn, receiver.user_id, key)
-                .map(|()| true)
+                .map(|()| (vault_done, true))
                 .map_err(SecretWriteError::after_vault)
         }
         // Any other failure is reported, so the caller puts back what it
@@ -1898,7 +1925,15 @@ fn profile_plan_inputs(
             // the receiver's: it has the vault's when it reads the vault,
             // nothing otherwise.
             let local_value = if private && receiver != here {
-                Ok(reads_vault_tokens(receiver)
+                // The vault's copy is this device's account's: it is the
+                // receiver's only when the receiver is that same account
+                // (the identity tells it apart, an equal id does not) or
+                // when a side has no account at all.
+                let attributable = match (receiver, here) {
+                    (Some(r), Some(h)) => r.identity == h.identity,
+                    _ => true,
+                };
+                Ok((attributable && reads_vault_tokens(receiver))
                     .then(|| local_vault.get(&key).cloned().flatten())
                     .flatten())
             } else {
@@ -2125,9 +2160,17 @@ fn restore_profile_step(
             row_landed.as_deref(),
             vault_value,
             value,
+            true,
         ) {
-            Ok(true) => {}
-            Ok(false) => kept.push(key.clone()),
+            Ok((true, true)) => {}
+            Ok((vault_done, row_done)) => {
+                if !vault_done {
+                    kept.push(format!("{key} (vault)"));
+                }
+                if !row_done {
+                    kept.push(format!("{key} (row)"));
+                }
+            }
             Err(e) => failures.push(format!("{key}: {}", e.message)),
         }
     }
@@ -2210,12 +2253,28 @@ fn apply_profile_decisions(
             )
         });
     }
-    let outcome = keystore_profile_plan::apply(
+    // The vault section already committed the backup's values of the plan's
+    // keys: any exit from here puts them back like a failed step does.
+    let with_vault_compensation = |error: String| {
+        let failures = put_back_vault_section(store, vault_written, vault_before);
+        if failures.is_empty() {
+            error
+        } else {
+            format!(
+                "{error}; the vault section's values of {} could not be put back",
+                failures.join(", ")
+            )
+        }
+    };
+    let outcome = match keystore_profile_plan::apply(
         inputs,
         choices.decisions,
         choices.fingerprint,
         &mut new_profile_id,
-    )?;
+    ) {
+        Ok(outcome) => outcome,
+        Err(e) => return Err(with_vault_compensation(e)),
+    };
     let db = partition_db(config_dir);
     // Written for the account the plan was made for, or not at all: the
     // restore may have left another one active (a partition that was not
@@ -2227,7 +2286,9 @@ fn apply_profile_decisions(
         None => None,
     };
     if active != inputs.receiver {
-        return Err(crate::user_partitions::ACCOUNT_CHANGED.to_string());
+        return Err(with_vault_compensation(
+            crate::user_partitions::ACCOUNT_CHANGED.to_string(),
+        ));
     }
     // Where the import itself wrote what the receiver reads: every row of a
     // partition it restored, or a vault entry the receiver reads.
@@ -2262,7 +2323,12 @@ fn apply_profile_decisions(
             Err(crate::credential_store::CredentialError::NotFound(_)) => {
                 vault_at_start.insert(key.clone(), None)
             }
-            Err(e) => return Err(unread(key, e)),
+            Err(e) => {
+                // The vault section already wrote the backup's values: a
+                // step that cannot start puts them back like a failed one,
+                // so this device keeps its own list's credentials.
+                return Err(with_vault_compensation(unread(key, e)));
+            }
         };
     }
     let vault_baseline = |key: &str| {
@@ -2411,11 +2477,10 @@ fn apply_profile_decisions(
                     None => return None,
                 },
             };
-            // The row: as the step left it, else as the plan read it.
-            let row_landed = landed
-                .is_some()
-                .then(|| row_accepts(key, written_row.get(key).cloned()))
-                .flatten();
+            // The row: as the step left it, else as the plan read it. Its
+            // baseline does not depend on the vault's `landed`: a key the
+            // vault section never wrote can still have had its row restored.
+            let row_landed = row_accepts(key, written_row.get(key).cloned());
             Some((
                 key.clone(),
                 before_of(key),
@@ -2845,7 +2910,8 @@ fn import_keystore_with_store(
         Some((inputs, _)) => staged
             .iter()
             .filter(|(account, _)| {
-                inputs.local_secrets.contains_key(account)
+                account.as_str() == "config_server_profiles"
+                    || inputs.local_secrets.contains_key(account)
                     || inputs.local_vault.contains_key(account)
             })
             .map(|(account, value)| (account.clone(), Zeroizing::new(value.clone())))
