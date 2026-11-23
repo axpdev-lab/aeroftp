@@ -874,14 +874,25 @@ impl ProtonApi {
         let saved = store?.load()?;
         let same_session = saved.uid == current.uid;
         let newer = saved.access_token.expose_secret() != current.access_token.expose_secret();
-        let spent = saved.refresh_token.as_ref().is_some_and(|token| {
-            self.spent_refresh_tokens
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
+        let spent = self
+            .spent_refresh_tokens
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if !spent.is_empty() {
+            let same_refresh = match (&saved.refresh_token, &current.refresh_token) {
+                (Some(saved_refresh), Some(current_refresh)) => {
+                    saved_refresh.expose_secret() == current_refresh.expose_secret()
+                }
+                _ => false,
+            };
+            return (same_session && same_refresh && newer).then_some(saved);
+        }
+        let saved_was_sent = saved.refresh_token.as_ref().is_some_and(|token| {
+            spent
                 .iter()
                 .any(|spent| spent.expose_secret() == token.expose_secret())
         });
-        (same_session && newer && !spent).then_some(saved)
+        (same_session && newer && !saved_was_sent).then_some(saved)
     }
 }
 
@@ -1358,6 +1369,26 @@ mod tests {
             refreshes.load(Ordering::SeqCst),
             2,
             "the stale pair was not adopted"
+        );
+        let kept = api.tokens().await.expect("tokens kept");
+        assert_eq!(kept.access_token.expose_secret(), "access-2");
+        assert_eq!(
+            kept.refresh_token
+                .as_ref()
+                .map(|token| token.expose_secret()),
+            Some("refresh-2")
+        );
+
+        // A pair older than the one this connection rotated to, whose
+        // refresh token it never sent, is not "newer" either: the refresh
+        // runs again instead of adopting it.
+        store.save(&pair("access-0", "refresh-0"));
+        let outcome = api.refresh_if_possible("access-2").await;
+        assert!(matches!(outcome, Ok(Refreshed::Retry)), "{outcome:?}");
+        assert_eq!(
+            refreshes.load(Ordering::SeqCst),
+            3,
+            "refresh-0 was not adopted"
         );
         let kept = api.tokens().await.expect("tokens kept");
         assert_eq!(kept.access_token.expose_secret(), "access-2");
