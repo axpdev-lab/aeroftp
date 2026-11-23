@@ -731,7 +731,8 @@ fn map_server_with_context(
         let (h, p) = split_clean_host_and_port(&clean);
         (h.to_string(), p)
     } else {
-        (raw_host.to_string(), None)
+        let (h, p) = split_clean_host_and_port(raw_host);
+        (h.to_string(), p)
     };
 
     let actual_port = if port == 0 {
@@ -793,7 +794,8 @@ fn map_server_with_context(
         if let Some(clean_host) = crate::bridge_shared::try_endpoint_host(&host) {
             let aws =
                 crate::bridge_shared::map_s3_provider_from_endpoint(&clean_host) == "amazon-s3";
-            if !aws {
+            let default_aws_transport = aws && actual_port == 443;
+            if !default_aws_transport {
                 let has_explicit_port = if let Some((_, rest)) = clean_host.split_once(']') {
                     rest.starts_with(':')
                 } else {
@@ -3700,6 +3702,189 @@ mod tests {
             roundtrip.servers[0].initial_path.as_deref(),
             Some("/\u{00E9}t\u{00E9}//2026/")
         );
+    }
+
+    #[test]
+    fn native_s3_import_preserves_non_default_port_for_aws_and_keeps_443_implicit() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<FileZilla3 version="3.72.1" platform="*nix">
+  <Servers>
+    <Server>
+      <Host>s3.amazonaws.com</Host>
+      <Port>9443</Port>
+      <Protocol>7</Protocol>
+      <User>AKIACUSTOMPORT</User>
+      <Pass encoding="base64">c2VjcmV0</Pass>
+      <Logontype>1</Logontype>
+      <RemoteDir>1 0 6 photos</RemoteDir>
+      <Name>AWS Custom Port</Name>
+    </Server>
+    <Server>
+      <Host>s3.amazonaws.com</Host>
+      <Port>443</Port>
+      <Protocol>7</Protocol>
+      <User>AKIADEFAULTPORT</User>
+      <Pass encoding="base64">c2VjcmV0</Pass>
+      <Logontype>1</Logontype>
+      <RemoteDir>1 0 6 photos</RemoteDir>
+      <Name>AWS Default Port</Name>
+    </Server>
+  </Servers>
+</FileZilla3>"#;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sitemanager.xml");
+        std::fs::write(&path, xml).unwrap();
+        let res = import_filezilla(&path).unwrap();
+        assert_eq!(res.servers.len(), 2);
+
+        let custom = res
+            .servers
+            .iter()
+            .find(|s| s.name == "AWS Custom Port")
+            .unwrap();
+        assert_eq!(custom.host, "s3.amazonaws.com");
+        assert_eq!(custom.port, 9443);
+        let custom_ep = custom
+            .options
+            .as_ref()
+            .and_then(|o| o.get("endpoint"))
+            .and_then(|v| v.as_str());
+        assert_eq!(custom_ep, Some("https://s3.amazonaws.com:9443"));
+        let mut custom_extra = HashMap::new();
+        custom_extra.insert("bucket".to_string(), "photos".to_string());
+        custom_extra.insert("endpoint".to_string(), custom_ep.unwrap().to_string());
+        let custom_cfg = crate::providers::types::S3Config::from_provider_config(
+            &crate::providers::types::ProviderConfig {
+                name: custom.name.clone(),
+                provider_type: crate::providers::types::ProviderType::S3,
+                host: custom.host.clone(),
+                port: Some(custom.port as u16),
+                username: Some(custom.username.clone()),
+                password: custom.credential.clone(),
+                initial_path: None,
+                extra: custom_extra,
+            },
+        )
+        .expect("custom AWS port builds S3Config");
+        assert_eq!(
+            custom_cfg.endpoint.as_deref(),
+            Some("https://s3.amazonaws.com:9443")
+        );
+
+        let default_aws = res
+            .servers
+            .iter()
+            .find(|s| s.name == "AWS Default Port")
+            .unwrap();
+        assert_eq!(default_aws.host, "s3.amazonaws.com");
+        assert_eq!(default_aws.port, 443);
+        assert_eq!(
+            default_aws
+                .options
+                .as_ref()
+                .and_then(|o| o.get("endpoint")),
+            None,
+            "default AWS port 443 must stay implicit"
+        );
+        let mut default_extra = HashMap::new();
+        default_extra.insert("bucket".to_string(), "photos".to_string());
+        let default_cfg = crate::providers::types::S3Config::from_provider_config(
+            &crate::providers::types::ProviderConfig {
+                name: default_aws.name.clone(),
+                provider_type: crate::providers::types::ProviderType::S3,
+                host: default_aws.host.clone(),
+                port: Some(default_aws.port as u16),
+                username: Some(default_aws.username.clone()),
+                password: default_aws.credential.clone(),
+                initial_path: None,
+                extra: default_extra,
+            },
+        )
+        .expect("default AWS port builds S3Config");
+        assert_eq!(default_cfg.endpoint, None);
+    }
+
+    #[test]
+    fn native_s3_bare_host_with_inline_port_prefers_nonzero_port_field_and_keeps_inline_when_zero()
+    {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<FileZilla3 version="3.72.1" platform="*nix">
+  <Servers>
+    <Server>
+      <Host>objects.example.test:9000</Host>
+      <Port>9443</Port>
+      <Protocol>7</Protocol>
+      <User>AKIABAREOVERRIDE</User>
+      <Pass encoding="base64">c2VjcmV0</Pass>
+      <Logontype>1</Logontype>
+      <RemoteDir>1 0 6 photos</RemoteDir>
+      <Name>Bare Inline Port Override</Name>
+    </Server>
+    <Server>
+      <Host>objects.example.test:9000</Host>
+      <Port>0</Port>
+      <Protocol>7</Protocol>
+      <User>AKIABAREZERO</User>
+      <Pass encoding="base64">c2VjcmV0</Pass>
+      <Logontype>1</Logontype>
+      <RemoteDir>1 0 6 photos</RemoteDir>
+      <Name>Bare Inline Port Fallback</Name>
+    </Server>
+  </Servers>
+</FileZilla3>"#;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sitemanager.xml");
+        std::fs::write(&path, xml).unwrap();
+        let res = import_filezilla(&path).unwrap();
+        assert_eq!(res.servers.len(), 2);
+
+        let overridden = res
+            .servers
+            .iter()
+            .find(|s| s.name == "Bare Inline Port Override")
+            .unwrap();
+        assert_eq!(overridden.host, "objects.example.test");
+        assert_eq!(overridden.port, 9443);
+        let overridden_ep = overridden
+            .options
+            .as_ref()
+            .and_then(|o| o.get("endpoint"))
+            .and_then(|v| v.as_str());
+        assert_eq!(overridden_ep, Some("https://objects.example.test:9443"));
+        let mut overridden_extra = HashMap::new();
+        overridden_extra.insert("bucket".to_string(), "photos".to_string());
+        overridden_extra.insert("endpoint".to_string(), overridden_ep.unwrap().to_string());
+        let overridden_cfg = crate::providers::types::S3Config::from_provider_config(
+            &crate::providers::types::ProviderConfig {
+                name: overridden.name.clone(),
+                provider_type: crate::providers::types::ProviderType::S3,
+                host: overridden.host.clone(),
+                port: Some(overridden.port as u16),
+                username: Some(overridden.username.clone()),
+                password: overridden.credential.clone(),
+                initial_path: None,
+                extra: overridden_extra,
+            },
+        )
+        .expect("overridden port builds S3Config");
+        assert_eq!(
+            overridden_cfg.endpoint.as_deref(),
+            Some("https://objects.example.test:9443")
+        );
+
+        let fallback = res
+            .servers
+            .iter()
+            .find(|s| s.name == "Bare Inline Port Fallback")
+            .unwrap();
+        assert_eq!(fallback.host, "objects.example.test");
+        assert_eq!(fallback.port, 9000);
+        let fallback_ep = fallback
+            .options
+            .as_ref()
+            .and_then(|o| o.get("endpoint"))
+            .and_then(|v| v.as_str());
+        assert_eq!(fallback_ep, Some("https://objects.example.test:9000"));
     }
 }
 
