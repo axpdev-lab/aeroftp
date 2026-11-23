@@ -2372,7 +2372,11 @@ impl OAuth2Manager {
             info!("Tokens deleted from user partition for {:?}", provider);
             match held.as_deref() {
                 Some(read) => drop_pending_rotation_for_record(owner, &account, read),
-                None => drop_pending_rotation(owner, &account, None),
+                // Nothing was read to delete: there is no record a kept
+                // rotation's `read` can be compared with, and a successor
+                // filed meanwhile is another chain's. It stays; one whose
+                // record is gone settles to Changed on the next exchange.
+                None => {}
             }
             return Ok(());
         }
@@ -2413,7 +2417,10 @@ impl OAuth2Manager {
         )?;
         match held.as_deref() {
             Some(read) => drop_pending_rotation_for_record(owner, &account, read),
-            None => drop_pending_rotation(owner, &account, None),
+            // As above: with no record read there is nothing to compare a
+            // kept rotation's `read` with, so none is this sign-out's to
+            // drop; a stale one settles to Changed on the next exchange.
+            None => {}
         }
         Ok(())
     }
@@ -4667,10 +4674,9 @@ mod tests {
 
     /// R8-2: a rotation a refresh keeps while a sign-out's delete is running
     /// does not outlive the sign-out, at both sites. The test holds the
-    /// database's write lock, so each delete waits after the sign-out's first
-    /// drop; a rotation filed then must be gone once the sign-out returns.
-    /// Red while the drop runs only before the delete: the rotation filed
-    /// during the wait stays.
+    /// database's write lock, so each delete waits; a rotation filed for the
+    /// record the sign-out read, while it waits, is dropped once the delete
+    /// goes through, because its `read` is the removed record's.
     #[test]
     fn a_rotation_kept_while_a_sign_out_deletes_does_not_outlive_it() {
         if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
@@ -4703,15 +4709,9 @@ mod tests {
                             .with_credential_user(Some(user))
                             .delete_tokens(OAuthProvider::Box, "shared-profile")
                     });
-                    let start = std::time::Instant::now();
-                    while pending_rotation_record(Some(user), account).is_some() {
-                        assert!(
-                            start.elapsed() < std::time::Duration::from_secs(3),
-                            "the sign-out drops the rotation it found"
-                        );
-                        std::thread::sleep(std::time::Duration::from_millis(5));
-                    }
-                    // The sign-out's delete now waits on this write lock.
+                    // The sign-out's delete waits on this write lock: the
+                    // rotation filed for the record it read lands meanwhile.
+                    std::thread::sleep(std::time::Duration::from_millis(100));
                     file_pending_rotation(Some(user), account, kept(), "test");
                     drop(write_lock);
                     signing_out.join().unwrap().expect("the sign-out");
