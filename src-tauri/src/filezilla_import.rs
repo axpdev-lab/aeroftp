@@ -68,6 +68,7 @@ fn parse_sitemanager_xml_checked(content: &str) -> SiteManagerParse {
     // onto them when the folder closes, innermost folder first.
     let mut folder_stack: Vec<(String, usize)> = Vec::new();
     let mut xml_depth: usize = 0;
+    let mut saw_root = false;
     let mut in_root_filezilla3 = false;
     let mut in_servers = false;
     let mut in_server = false;
@@ -127,6 +128,15 @@ fn parse_sitemanager_xml_checked(content: &str) -> SiteManagerParse {
                 }
                 let tag = e.name().as_ref().to_string();
                 let elem_depth = xml_depth;
+                if elem_depth == 0 {
+                    if saw_root {
+                        // A second top-level root is malformed XML and must not
+                        // overwrite the first root's platform or legacy metadata.
+                        malformed = true;
+                        break;
+                    }
+                    saw_root = true;
+                }
                 xml_depth += 1;
                 match tag.as_str() {
                     // Require `<FileZilla3>` at document root (depth 0) so a
@@ -217,8 +227,15 @@ fn parse_sitemanager_xml_checked(content: &str) -> SiteManagerParse {
             // Self-closing element, e.g. <Name/>: an empty value.
             Event::Empty(e) => {
                 let run = std::mem::take(&mut text);
-                if xml_depth == 0 && e.name().as_ref() == "FileZilla3" {
-                    root_closed = true;
+                if xml_depth == 0 {
+                    if saw_root {
+                        malformed = true;
+                        break;
+                    }
+                    saw_root = true;
+                    if e.name().as_ref() == "FileZilla3" {
+                        root_closed = true;
+                    }
                 }
                 if !in_server {
                     if in_servers {
@@ -382,6 +399,7 @@ fn filezilla_global_settings_with_limit(
     let mut reader = quick_xml::Reader::from_str(&content);
     let mut settings = FileZillaGlobalSettings::default();
     let mut depth: usize = 0;
+    let mut saw_root = false;
     let mut in_root = false;
     let mut in_settings = false;
     let mut saw_completed_settings = false;
@@ -403,8 +421,14 @@ fn filezilla_global_settings_with_limit(
             }
             Event::Start(e) => {
                 let name = e.name();
-                if depth == 0 && name.as_ref() == "FileZilla3" {
-                    in_root = true;
+                if depth == 0 {
+                    if saw_root {
+                        return None;
+                    }
+                    saw_root = true;
+                    if name.as_ref() == "FileZilla3" {
+                        in_root = true;
+                    }
                 } else if in_root && depth == 1 && name.as_ref() == "Settings" {
                     in_settings = true;
                 } else if in_settings && depth == 2 && name.as_ref() == "Setting" {
@@ -419,6 +443,12 @@ fn filezilla_global_settings_with_limit(
             }
             Event::Empty(e) => {
                 let name = e.name();
+                if depth == 0 {
+                    if saw_root {
+                        return None;
+                    }
+                    saw_root = true;
+                }
                 if in_root && depth == 1 && name.as_ref() == "Settings" {
                     saw_completed_settings = true;
                 } else if in_settings && depth == 2 && name.as_ref() == "Setting" {
@@ -1038,14 +1068,10 @@ fn parse_filezilla_remote_dir_for_platform(
         return ParsedRemoteDir::Empty;
     }
     if let Some(unit) = root_wchar_unit {
+        // When the root `platform` attribute declares the source OS, decode
+        // strictly with that OS's `wchar_t` unit rather than guessing another
+        // unit on failure.
         if let Some(path) = decode_safe_path_with_unit(encoded, trimmed, unit) {
-            return ParsedRemoteDir::SafePath(path);
-        }
-        let other = match unit {
-            WcharUnit::Scalar => WcharUnit::Utf16,
-            WcharUnit::Utf16 => WcharUnit::Scalar,
-        };
-        if let Some(path) = decode_safe_path_with_unit(encoded, trimmed, other) {
             return ParsedRemoteDir::SafePath(path);
         }
     } else {
@@ -1109,6 +1135,10 @@ fn format_filezilla_remote_dir(path: &str) -> Option<String> {
         && (bytes[2] == b'\\' || bytes[2] == b'/')
     {
         (FZ_SERVER_TYPE_DOS, &['\\', '/'])
+    } else if path.starts_with('/') {
+        // Check absolute Unix paths before VMS `:[...]` so a Unix directory
+        // such as `/data/snapshot:[2026]` is exported instead of dropped.
+        (FZ_SERVER_TYPE_UNIX, &['/'])
     } else if (path.contains(":[") && path.ends_with(']'))
         || path.starts_with(':')
         || path.starts_with('\u{DC}')
@@ -1116,8 +1146,6 @@ fn format_filezilla_remote_dir(path: &str) -> Option<String> {
         return None;
     } else if path.starts_with('\\') {
         (FZ_SERVER_TYPE_DOS_VIRTUAL, &['\\'])
-    } else if path.starts_with('/') {
-        (FZ_SERVER_TYPE_UNIX, &['/'])
     } else {
         return None;
     };
@@ -3199,6 +3227,135 @@ mod tests {
             Some("https://objects.example.test:9000")
         );
         assert!(s3_cfg.path_style);
+    }
+
+    #[test]
+    fn unix_path_with_colon_bracket_round_trips_while_vms_stays_omitted() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("filezilla.xml"),
+            r#"<?xml version="1.0"?><FileZilla3><Settings/></FileZilla3>"#,
+        )
+        .unwrap();
+        let rows = [
+            FileZillaExportServer {
+                id: "u1".to_string(),
+                name: "UnixBracket".to_string(),
+                host: "sftp.example.com".to_string(),
+                port: 22,
+                username: "u".to_string(),
+                protocol: Some("sftp".to_string()),
+                options: None,
+                initial_path: Some("/data/snapshot:[2026]".to_string()),
+            },
+            FileZillaExportServer {
+                id: "v1".to_string(),
+                name: "VmsPath".to_string(),
+                host: "ftp.example.com".to_string(),
+                port: 21,
+                username: "u".to_string(),
+                protocol: Some("ftp".to_string()),
+                options: None,
+                initial_path: Some("DISK$USR:[DIR1.DIR2]".to_string()),
+            },
+        ];
+        let out = dir.path().join("sitemanager.xml");
+        assert_eq!(export_filezilla(&rows, &HashMap::new(), &out), Ok(2));
+
+        let imported = import_filezilla(&out).unwrap();
+        let unix = imported
+            .servers
+            .iter()
+            .find(|s| s.name == "UnixBracket")
+            .unwrap();
+        assert_eq!(unix.initial_path.as_deref(), Some("/data/snapshot:[2026]"));
+        let vms = imported
+            .servers
+            .iter()
+            .find(|s| s.name == "VmsPath")
+            .unwrap();
+        assert_eq!(vms.initial_path, None);
+    }
+
+    #[test]
+    fn second_top_level_root_and_wrong_platform_length_are_rejected() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("filezilla.xml"),
+            r#"<?xml version="1.0"?><FileZilla3><Settings/></FileZilla3>"#,
+        )
+        .unwrap();
+
+        // #06: A second top-level `<FileZilla3>` with `*nix` platform must not
+        // reinterpret a site already read from the first `windows` root.
+        let ambiguous = "1 0 4 \u{1F600}\u{1F600} 3 1 a";
+        let two_roots = dir.path().join("two-roots.xml");
+        std::fs::write(
+            &two_roots,
+            format!(
+                r#"<?xml version="1.0"?><FileZilla3 version="3.72.1" platform="windows"><Servers><Server><Host>sftp.example.com</Host><Protocol>1</Protocol><Name>WinFirst</Name><RemoteDir>{ambiguous}</RemoteDir></Server></Servers></FileZilla3><FileZilla3 version="3.72.1" platform="*nix"><Servers><Server><Host>other.example.com</Host><Protocol>1</Protocol><Name>Second</Name></Server></Servers></FileZilla3>"#
+            ),
+        )
+        .unwrap();
+        let res = import_filezilla(&two_roots).unwrap();
+        assert_eq!(res.servers.len(), 1);
+        assert_eq!(res.servers[0].name, "WinFirst");
+        assert_eq!(
+            res.servers[0].initial_path.as_deref(),
+            Some("/\u{1F600}\u{1F600}/1 a")
+        );
+        assert!(res
+            .warnings
+            .iter()
+            .any(|w| w.reason.contains("ends before its closing tag")));
+
+        // #06 sidecar: a second top-level root in filezilla.xml is rejected.
+        let sidecar_dir = dir.path().join("two-root-sidecar");
+        std::fs::create_dir_all(&sidecar_dir).unwrap();
+        let sm = sidecar_dir.join("sitemanager.xml");
+        std::fs::write(
+            &sm,
+            r#"<?xml version="1.0"?><FileZilla3><Servers/></FileZilla3>"#,
+        )
+        .unwrap();
+        std::fs::write(
+            sidecar_dir.join("filezilla.xml"),
+            r#"<?xml version="1.0"?><FileZilla3><Settings/></FileZilla3><FileZilla3><Settings><Setting name="Proxy type">4</Setting></Settings></FileZilla3>"#,
+        )
+        .unwrap();
+        assert!(filezilla_global_settings(&sm).is_none());
+
+        // #11: On `platform="windows"`, scalar length 5 for `😀docs` (UTF-16 length 6)
+        // must warn as malformed rather than retrying scalar; length 6 succeeds.
+        let win_strict = dir.path().join("win-strict.xml");
+        std::fs::write(
+            &win_strict,
+            concat!(
+                r#"<?xml version="1.0"?><FileZilla3 version="3.72.1" platform="windows"><Servers>"#,
+                "<Server><Host>sftp.example.com</Host><Protocol>1</Protocol><Name>BadCount</Name><RemoteDir>1 0 5 \u{1F600}docs</RemoteDir></Server>",
+                "<Server><Host>sftp.example.com</Host><Protocol>1</Protocol><Name>GoodCount</Name><RemoteDir>1 0 6 \u{1F600}docs</RemoteDir></Server>",
+                r#"</Servers></FileZilla3>"#,
+            ),
+        )
+        .unwrap();
+        let strict = import_filezilla(&win_strict).unwrap();
+        let bad = strict
+            .servers
+            .iter()
+            .find(|s| s.name == "BadCount")
+            .unwrap();
+        assert_eq!(bad.initial_path, None);
+        assert!(strict
+            .warnings
+            .iter()
+            .any(|w| w.name == "BadCount" && w.reason.contains("GetSafePath")));
+        let good = strict
+            .servers
+            .iter()
+            .find(|s| s.name == "GoodCount")
+            .unwrap();
+        assert_eq!(good.initial_path.as_deref(), Some("/\u{1F600}docs"));
+        assert!(!strict.warnings.iter().any(|w| w.name == "GoodCount"));
     }
 
     /// Two profiles of one name (a list saved before names were unique) were
