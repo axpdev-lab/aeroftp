@@ -62,16 +62,17 @@ struct MappedProfile {
     initial_path: Option<String>,
 }
 
-/// Resolve an `mc` alias `url` to `host`, `port`. `endpoint_host` strips the
-/// scheme and path and keeps an explicit `:port`; when no explicit port is
-/// present the scheme decides (`https` -> 443, `http` -> 80, default 443).
-fn host_port_from_url(url: &str) -> (String, u32) {
-    let host = crate::bridge_shared::endpoint_host(url);
+/// Resolve an `mc` alias `url` to `host`, `port`. `try_endpoint_host` strips the
+/// scheme, userinfo and path and keeps an explicit `:port`; when no explicit
+/// port is present the scheme decides (`https` -> 443, `http` -> 80, default
+/// 443). `None` when the URL is not a `host[:port]` endpoint.
+fn host_port_from_url(url: &str) -> Option<(String, u32)> {
+    let host = crate::bridge_shared::try_endpoint_host(url)?;
     if let Some((h, p)) = host.rsplit_once(':') {
         // Only treat the trailing token as a port when it is numeric;
         // otherwise it is part of the host (defensive, mc always emits a URL).
         if let Ok(port) = p.parse::<u32>() {
-            return (h.to_string(), port);
+            return Some((h.to_string(), port));
         }
     }
     let scheme = url.split_once("://").map(|(s, _)| s).unwrap_or("");
@@ -80,7 +81,7 @@ fn host_port_from_url(url: &str) -> (String, u32) {
         "https" => 443,
         _ => 443,
     };
-    (host, port)
+    Some((host, port))
 }
 
 /// Decide whether an alias is bridgeable, and how. Returns `Err(reason)` for a
@@ -102,7 +103,9 @@ fn map_alias(alias: &McAlias) -> Result<MappedProfile, String> {
         return Err("GCS without HMAC".to_string());
     }
 
-    let (host, port) = host_port_from_url(&alias.url);
+    let (host, port) = host_port_from_url(&alias.url).ok_or_else(|| {
+        "url is not a host[:port] endpoint (an '@' follows its host part)".to_string()
+    })?;
 
     let mut options = serde_json::Map::new();
     if !alias.api.trim().is_empty() {
@@ -134,16 +137,19 @@ fn map_alias(alias: &McAlias) -> Result<MappedProfile, String> {
         }
     }
     // The alias URL is the endpoint, scheme included: `host` + `port` alone
-    // lose it (`http://nas:8080` would come back as HTTPS).
+    // lose it (`http://nas:8080` would come back as HTTPS). Userinfo, query
+    // and fragment are not kept.
     // AWS stays implicit: an explicit endpoint switches the S3 connection to
     // path-style, which AWS refuses for newer buckets.
     let url = alias.url.trim().trim_end_matches('/');
     let aws = crate::bridge_shared::map_s3_provider_from_endpoint(url) == "amazon-s3";
     if !aws && (url.starts_with("http://") || url.starts_with("https://")) {
-        options.insert(
-            "endpoint".to_string(),
-            serde_json::Value::String(url.to_string()),
-        );
+        if let Some(endpoint) = crate::bridge_shared::endpoint_url_without_secrets(url) {
+            options.insert(
+                "endpoint".to_string(),
+                serde_json::Value::String(endpoint.trim_end_matches('/').to_string()),
+            );
+        }
     }
     let initial_path = None;
 
@@ -480,6 +486,55 @@ mod tests {
         assert_eq!(skipped.name, "noauth");
         assert_eq!(skipped.kind, "s3");
         assert_eq!(skipped.reason, "no accessKey");
+    }
+
+    #[test]
+    fn alias_url_userinfo_and_query_never_reach_the_profile() {
+        let user = "alice";
+        let pw_plain = "pwSecret";
+        let pw_slash = "pa/ssSecret";
+        let tok = "tokSecret";
+        let lab_url =
+            format!("https://{user}:{pw_plain}@minio.example.com:9000/?X-Amz-Security-Token={tok}");
+        let amb_url = format!("https://{user}:{pw_slash}@minio.example.com");
+        let body = serde_json::json!({
+            "version": "10",
+            "aliases": {
+                "lab": {
+                    "url": lab_url,
+                    "accessKey": "DEMOLABKEY",
+                    "secretKey": "labsecret",
+                    "api": "S3v4",
+                    "path": "auto"
+                },
+                "ambiguous": {
+                    "url": amb_url,
+                    "accessKey": "DEMOAMBKEY",
+                    "secretKey": "ambsecret",
+                    "api": "S3v4",
+                    "path": "auto"
+                }
+            }
+        })
+        .to_string();
+        let p = write_tmp("userinfo", &body);
+        let result = import_mc(&p).expect("import should succeed");
+        std::fs::remove_file(&p).ok();
+
+        let lab = result.servers.iter().find(|s| s.name == "lab").unwrap();
+        assert_eq!(lab.host, "minio.example.com");
+        assert_eq!(
+            lab.options.as_ref().and_then(|o| o.get("endpoint")),
+            Some(&serde_json::json!("https://minio.example.com:9000"))
+        );
+        assert!(result.skipped.iter().any(|s| s.name == "ambiguous"));
+        let serialized = serde_json::to_string(&(&result.servers, &result.skipped)).unwrap();
+        for secret in [user, pw_plain, "pa/ss", "ssSecret", tok] {
+            assert!(
+                !serialized.contains(secret),
+                "{secret} leaked: {serialized}"
+            );
+        }
     }
 
     #[test]

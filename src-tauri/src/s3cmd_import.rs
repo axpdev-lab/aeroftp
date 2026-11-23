@@ -65,12 +65,13 @@ fn split_host_port(host_base: &str) -> (String, Option<u32>) {
 
 /// Map the single s3cmd `[default]` section to a profile.
 ///
-/// Returns `None` (with a caller-side skip reason) only when `access_key`
-/// is empty: without it the profile cannot authenticate to S3.
-fn map_s3cmd(section: &HashMap<String, String>) -> Option<MappedProfile> {
+/// Returns the skip reason when `access_key` is empty (without it the profile
+/// cannot authenticate to S3) or when `host_base` is not a `host[:port]`
+/// endpoint (see `bridge_shared::split_endpoint`).
+fn map_s3cmd(section: &HashMap<String, String>) -> Result<MappedProfile, &'static str> {
     let get = |k: &str| section.get(k).map(|s| s.trim()).filter(|s| !s.is_empty());
 
-    let access_key = get("access_key")?.to_string();
+    let access_key = get("access_key").ok_or("no access_key")?.to_string();
 
     let host_base_raw = get("host_base").unwrap_or("").to_string();
     let provider_id =
@@ -79,7 +80,8 @@ fn map_s3cmd(section: &HashMap<String, String>) -> Option<MappedProfile> {
     // host_base may carry an explicit `host:port`. An empty host_base means
     // the user relies on the AWS default endpoint: keep host empty and let
     // the amazon-s3 provider resolve it from the region.
-    let host_base_endpoint = crate::bridge_shared::endpoint_host(&host_base_raw);
+    let host_base_endpoint = crate::bridge_shared::try_endpoint_host(&host_base_raw)
+        .ok_or("host_base is not a host[:port] endpoint (an '@' follows its host part)")?;
     let (host, explicit_port) = if host_base_endpoint.is_empty() {
         (String::new(), None)
     } else {
@@ -124,7 +126,7 @@ fn map_s3cmd(section: &HashMap<String, String>) -> Option<MappedProfile> {
         options.insert("endpoint".into(), serde_json::Value::String(endpoint));
     }
 
-    Some(MappedProfile {
+    Ok(MappedProfile {
         protocol: "s3".to_string(),
         provider_id: Some(provider_id),
         host,
@@ -147,7 +149,7 @@ fn s3cmd_profile_name(section: &HashMap<String, String>) -> String {
         .get("host_base")
         .map(|s| s.trim())
         .filter(|s| !s.is_empty())
-        .map(crate::bridge_shared::endpoint_host);
+        .and_then(crate::bridge_shared::try_endpoint_host);
     match host_base {
         Some(h) if !h.is_empty() => format!("s3cmd {h}"),
         _ => "s3cmd default".to_string(),
@@ -258,7 +260,7 @@ pub fn import_s3cmd(path: &Path) -> Result<S3cmdImportResult, String> {
     if let Some(section) = section {
         let name = s3cmd_profile_name(&section);
         match map_s3cmd(&section) {
-            Some(mapped) => {
+            Ok(mapped) => {
                 if section
                     .get("proxy_host")
                     .is_some_and(|value| !value.trim().is_empty())
@@ -292,11 +294,11 @@ pub fn import_s3cmd(path: &Path) -> Result<S3cmdImportResult, String> {
                     ..Default::default()
                 });
             }
-            None => {
+            Err(reason) => {
                 skipped.push(S3cmdSkippedRemote {
                     name,
                     kind: "s3".to_string(),
-                    reason: "no access_key".to_string(),
+                    reason: reason.to_string(),
                 });
             }
         }
@@ -559,6 +561,34 @@ bucket_location = us-east-1
         assert!(!serialized.contains(user));
         assert!(!serialized.contains(secret));
         assert!(!serialized.contains(token));
+    }
+
+    #[test]
+    fn host_base_with_an_unencoded_separator_in_its_password_is_skipped_without_leaking_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("s3cfg");
+        let user = "alice";
+        let pw = "pa/ssSecret";
+        std::fs::write(
+            &path,
+            format!(
+                "[default]\naccess_key = DEMOACCESSKEY123456\nsecret_key = demosecret\nhost_base = https://{user}:{pw}@s3.example.com\nproxy_host = proxy.example.com\n"
+            ),
+        )
+        .unwrap();
+
+        let result = import_s3cmd(&path).unwrap();
+        assert!(result.servers.is_empty());
+        assert_eq!(result.skipped.len(), 1);
+        assert!(result.skipped[0].reason.contains("host_base"));
+        let serialized =
+            serde_json::to_string(&(&result.servers, &result.skipped, &result.warnings)).unwrap();
+        for secret in [user, "pa/ss", "ssSecret"] {
+            assert!(
+                !serialized.contains(secret),
+                "{secret} leaked: {serialized}"
+            );
+        }
     }
 
     #[test]

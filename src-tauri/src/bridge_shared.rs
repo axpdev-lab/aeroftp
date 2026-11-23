@@ -195,16 +195,64 @@ pub(crate) fn map_webdav_vendor(vendor: &str) -> &'static str {
 
 // ============ URL / host helpers ============
 
-/// Strip scheme, userinfo, path, query, and fragment from an endpoint, keeping `host[:port]`.
-pub(crate) fn endpoint_host(endpoint: &str) -> String {
+/// The parts of an endpoint an importer may keep: scheme, `host[:port]` and
+/// path. Userinfo, query and fragment are dropped.
+pub(crate) struct EndpointParts<'a> {
+    pub scheme: Option<&'a str>,
+    pub host_port: &'a str,
+    pub path: &'a str,
+}
+
+/// Split an endpoint into scheme, `host[:port]` and path, without userinfo,
+/// query or fragment. `None` when an `@` follows the end of the authority:
+/// there, userinfo holding an unencoded `/`, `?` or `#` cannot be told apart
+/// from a path, and either reading can put part of a secret in the host.
+pub(crate) fn split_endpoint(endpoint: &str) -> Option<EndpointParts<'_>> {
     let trimmed = endpoint.trim();
-    let after_scheme = trimmed.split_once("://").map(|(_, r)| r).unwrap_or(trimmed);
-    let authority = after_scheme.split(['/', '?', '#']).next().unwrap_or("");
+    let (scheme, after_scheme) = match trimmed.split_once("://") {
+        Some((scheme, rest)) => (Some(scheme), rest),
+        None => (None, trimmed),
+    };
+    let authority_end = after_scheme
+        .find(['/', '?', '#'])
+        .unwrap_or(after_scheme.len());
+    let (authority, rest) = after_scheme.split_at(authority_end);
+    if rest.contains('@') {
+        return None;
+    }
     let host_port = authority
         .rsplit_once('@')
         .map(|(_, h)| h)
-        .unwrap_or(authority);
-    host_port.trim().to_string()
+        .unwrap_or(authority)
+        .trim();
+    let path = &rest[..rest.find(['?', '#']).unwrap_or(rest.len())];
+    Some(EndpointParts {
+        scheme,
+        host_port,
+        path,
+    })
+}
+
+/// `host[:port]` of an endpoint, without scheme, userinfo, path, query or
+/// fragment; `None` as for [`split_endpoint`].
+pub(crate) fn try_endpoint_host(endpoint: &str) -> Option<String> {
+    split_endpoint(endpoint).map(|parts| parts.host_port.to_string())
+}
+
+/// Strip scheme, userinfo, path, query, and fragment from an endpoint, keeping
+/// `host[:port]`. Returns an empty string when [`try_endpoint_host`] refuses
+/// an ambiguous `@` after the authority.
+pub(crate) fn endpoint_host(endpoint: &str) -> String {
+    try_endpoint_host(endpoint).unwrap_or_default()
+}
+
+/// An endpoint URL as a profile may store it: `scheme://host[:port]/path`,
+/// without userinfo, query or fragment. `None` without a scheme, or as for
+/// [`split_endpoint`].
+pub(crate) fn endpoint_url_without_secrets(endpoint: &str) -> Option<String> {
+    let parts = split_endpoint(endpoint)?;
+    let scheme = parts.scheme?;
+    Some(format!("{scheme}://{}{}", parts.host_port, parts.path))
 }
 
 /// Default TCP port for a protocol token.
@@ -1859,5 +1907,34 @@ mod tests {
         assert_eq!(endpoint_host("s3.example.com#section"), "s3.example.com");
         assert_eq!(endpoint_host("[::1]:9000/path"), "[::1]:9000");
         assert_eq!(endpoint_host("s3.amazonaws.com"), "s3.amazonaws.com");
+    }
+
+    #[test]
+    fn an_at_sign_after_the_host_part_is_refused_instead_of_guessed() {
+        let user = "alice";
+        let pw_slash = "pa/ssSecret";
+        let pw_query = "pa?ssSecret";
+        let pw_hash = "pa#ssSecret";
+        let pw_plain = "pwSecret";
+        let tok = "tok";
+        for endpoint in [
+            format!("https://{user}:{pw_slash}@s3.example.com"),
+            format!("https://{user}:{pw_query}@s3.example.com"),
+            format!("https://{user}:{pw_hash}@s3.example.com"),
+            format!("{user}:12/34@s3.example.com:9000"),
+            format!("https://{user}:{pw_plain}@s3.example.com/path@x"),
+        ] {
+            assert_eq!(try_endpoint_host(&endpoint), None, "{endpoint}");
+            assert_eq!(endpoint_host(&endpoint), "", "{endpoint}");
+            assert_eq!(endpoint_url_without_secrets(&endpoint), None, "{endpoint}");
+        }
+        let with_secrets = format!(
+            "https://{user}:{pw_plain}@minio.example.com:9000/s3?X-Amz-Security-Token={tok}#f"
+        );
+        assert_eq!(
+            endpoint_url_without_secrets(&with_secrets).as_deref(),
+            Some("https://minio.example.com:9000/s3")
+        );
+        assert_eq!(endpoint_url_without_secrets("minio.example.com"), None);
     }
 }
