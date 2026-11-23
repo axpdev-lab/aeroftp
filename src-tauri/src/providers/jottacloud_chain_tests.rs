@@ -2835,6 +2835,97 @@ fn a_singletons_kept_successor_moves_on_with_its_profile() {
     assert!(failures.is_empty(), "{failures:#?}");
 }
 
+/// The singleton still holding the token the kept rotation consumed is the
+/// same continuation `hand_out` accepts: the profile's exchange moves the
+/// singleton on to the rotated chain, whether `PENDING_CONSUMED` holds the
+/// predecessor as a string or in the array. A singleton holding a chain
+/// that is neither the base nor a consumed predecessor is not written.
+#[test]
+fn a_singletons_consumed_predecessor_moves_on_with_its_profile() {
+    if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+        "providers::jottacloud::chain_tests::a_singletons_consumed_predecessor_moves_on_with_its_profile",
+    ) {
+        return;
+    }
+    let chains = Chains::new();
+    let singleton = "jottacloud_refresh";
+    for (case, profile, held) in [
+        ("array", "keptarr", "singleton-B"),
+        ("string", "keptstr", "singleton-B"),
+        ("independent", "keptind", "singleton-independent"),
+    ] {
+        let key = format!("jottacloud_refresh_{profile}");
+        import_both_copies(chains.first, singleton, &chains.chain(held));
+        PENDING_ROTATIONS.lock().unwrap().clear();
+        let noted = chains.noted(profile).expect("count");
+        let source = partitions::chain_deletions(&chains.store, chains.owner, singleton)
+            .unwrap()
+            .generation;
+        // Chain C the profile holds: pending on its own key and on the
+        // singleton's, filed on base A, with B (the singleton's token) among
+        // the consumed predecessors.
+        let pending_c = |base: &str, generation: u64, from: Option<u64>| {
+            let mut filed: serde_json::Value =
+                serde_json::from_str(&chains.chain("chain-C")).unwrap();
+            filed[PENDING_BASE] = base.into();
+            filed[PENDING_CONSUMED] = match case {
+                "array" => serde_json::json!(["singleton-B"]),
+                "string" => "singleton-B".into(),
+                _ => serde_json::json!(["singleton-B"]),
+            };
+            filed[PENDING_GEN] = generation.into();
+            if let Some(from) = from {
+                filed[PENDING_SOURCE] = singleton.into();
+                filed[PENDING_SOURCE_GEN] = from.into();
+            }
+            zeroize::Zeroizing::new(filed.to_string())
+        };
+        {
+            let mut pending = PENDING_ROTATIONS.lock().unwrap();
+            pending.insert(
+                (chains.owner, key.clone()),
+                pending_c("", noted, Some(source)),
+            );
+            pending.insert(
+                (chains.owner, singleton.to_string()),
+                pending_c("base-A", source, None),
+            );
+        }
+        let from = chains.submissions();
+        let mut connection = chains.bound(profile);
+        let connected = chains
+            .runtime()
+            .block_on(connection.try_connect_with_refresh());
+        let rotated = connection.refresh_token.expose_secret().to_string();
+        drop(connection);
+        let mut failures = Vec::new();
+        if !matches!(connected, Ok(true)) || chains.submitted_since(from) != ["chain-C"] {
+            failures.push(format!(
+                "{case}: the kept rotation is exchanged: {connected:?}, sent {:?}",
+                chains.submitted_since(from)
+            ));
+        }
+        if chains.stored(&key) != rotated {
+            failures.push(format!(
+                "{case}: the profile key holds {} (expected {rotated})",
+                chains.stored(&key)
+            ));
+        }
+        let expected_singleton = if case == "independent" {
+            held.to_string()
+        } else {
+            rotated.clone()
+        };
+        if chains.stored(singleton) != expected_singleton {
+            failures.push(format!(
+                "{case}: the singleton holds {} (expected {expected_singleton})",
+                chains.stored(singleton)
+            ));
+        }
+        assert!(failures.is_empty(), "{failures:#?}");
+    }
+}
+
 /// A chain imported into a profile's key right after that key's own load
 /// found nothing (test only): `(profile, key, the chain)`, taken once.
 pub(super) static IMPORTED_AFTER_MISS: Mutex<Option<(String, String, String)>> = Mutex::new(None);

@@ -2053,9 +2053,20 @@ impl JottacloudProvider {
                                     serde_json::from_str::<serde_json::Value>(json).ok()
                                 })
                                 .is_some_and(|filed| {
-                                    filed["refresh_token"].as_str() == Some(rt.as_str())
-                                        && source_now.is_some()
-                                        && filed[PENDING_BASE].as_str() == source_now.as_deref()
+                                    let Some(now) = source_now.as_deref() else {
+                                        return false;
+                                    };
+                                    if filed["refresh_token"].as_str() != Some(rt.as_str()) {
+                                        return false;
+                                    }
+                                    // The singleton still holding the token
+                                    // the rotation consumed is the same
+                                    // continuation `hand_out` accepts: its
+                                    // chain was spent, not written outside.
+                                    filed[PENDING_BASE].as_str() == Some(now)
+                                        || consumed_tokens_of(&filed)
+                                            .iter()
+                                            .any(|token| token.as_str() == now)
                                 })
                         });
                         let holds = source_now.as_deref() == Some(rt.as_str()) || kept_there;
