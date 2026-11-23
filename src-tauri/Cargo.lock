@@ -5878,18 +5878,18 @@ checksum = "112b39cec0b298b6c1999fee3e31427f74f676e4cb9879ed1a121b43661a4154"
 
 [[package]]
 name = "lzma-rust2"
-version = "0.22.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7277c9742229dc25243236d578b6471a798c554512c6f6a04365ec2e87c2a3bb"
-dependencies = [
- "sha2 0.11.0",
-]
-
-[[package]]
-name = "lzma-rust2"
 version = "0.23.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f1c46f3fcd2e888afdb01a07efc071cb21300e07c68d32c3e8b01b5c8cb1fcaa"
+
+[[package]]
+name = "lzma-rust2"
+version = "0.25.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ef1d73c59a56771343712b22ea5615092c612c16ba291c0979e3105dfeec4890"
+dependencies = [
+ "sha2 0.11.0",
+]
 
 [[package]]
 name = "lzma-sys"
@@ -12276,9 +12276,9 @@ checksum = "82205ffd44a9697e34fc145491aa47310f9871540bb7909eaa9365e0a9a46607"
 
 [[package]]
 name = "typed-path"
-version = "0.12.3"
+version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8e28f89b80c87b8fb0cf04ab448d5dd0dd0ade2f8891bae878de66a75a28600e"
+checksum = "9ce898823d8cd0f028662d2f349694b1af0a5cc9be83f1d213a00d3147445e1e"
 
 [[package]]
 name = "typeid"
@@ -14140,9 +14140,9 @@ dependencies = [
 
 [[package]]
 name = "zip"
-version = "9.0.5"
+version = "9.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e04976da629d3b04204ba8105b396a193af8ad2583b2c79bfb3ab8af580a11e"
+checksum = "a9534624d547e3f516ecde0ed9a70d37788f01d340efcfdd03bf3ea8e163c1d0"
 dependencies = [
  "aes 0.9.3",
  "bzip2",
@@ -14153,12 +14153,14 @@ dependencies = [
  "getrandom 0.4.3",
  "hmac 0.13.0",
  "indexmap 2.14.2",
- "lzma-rust2 0.22.0",
+ "libc",
+ "lzma-rust2 0.25.0",
  "memchr",
  "nix 0.31.3",
  "pbkdf2 0.13.0",
  "sha1 0.11.0",
- "typed-path 0.12.3",
+ "typed-path 0.13.0",
+ "windows-sys 0.61.2",
  "zeroize",
  "zopfli",
  "zstd",
