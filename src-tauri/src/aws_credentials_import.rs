@@ -5513,7 +5513,7 @@ region = eu-west-1
         );
     }
 
-    /// C1 write-time collision (PR #1613 round 3, r4670293574): with an old
+    /// C1 write-time collision: with an old
     /// asymmetric pair (`credentials.aeroftp` + `config.aeroftp.1`) present, the
     /// pair selector picks slot 2 and `config.aeroftp.2` is published; an
     /// external writer then claims `credentials.aeroftp.2`. The credentials

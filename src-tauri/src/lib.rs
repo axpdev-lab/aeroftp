@@ -35519,8 +35519,8 @@ mod legacy_ftp_switch_during_batch_tests {
 }
 
 #[cfg(test)]
-mod nas2346_round3_tests {
-    //! PR #1613 round 3 (NAS 2346), items A1/A2 and B2.
+mod sts_import_rollback_tests {
+    //! Secondary-account STS tokens through the import commit: rollback and persistence.
     //!
     //! A1/A2: a forced failure AFTER a secondary account's
     //! `aws_session_token_<id>` write (or delete) must run the import rollback:
@@ -35595,10 +35595,15 @@ mod nas2346_round3_tests {
         std::env::set_var("XDG_CONFIG_HOME", dir.path());
         std::env::remove_var("AEROFTP_USER_PASSPHRASE");
         credential_store::CredentialStore::clear_cache();
-        credential_store::CredentialStore::bootstrap_master_password("synthetic nas2346 master")
-            .unwrap();
-        credential_store::CredentialStore::unlock_with_master("synthetic nas2346 master", None)
-            .unwrap();
+        credential_store::CredentialStore::bootstrap_master_password(
+            "synthetic sts rollback master",
+        )
+        .unwrap();
+        credential_store::CredentialStore::unlock_with_master(
+            "synthetic sts rollback master",
+            None,
+        )
+        .unwrap();
         let store = credential_store::CredentialStore::from_cache().unwrap();
         user_partitions::init_or_migrate_cli(&store).unwrap();
         let mut conn = user_partitions::open_or_init_cli().unwrap();
@@ -35638,7 +35643,7 @@ mod nas2346_round3_tests {
     #[test]
     fn forced_failure_rolls_back_secondary_sts_write_and_delete_leaving_shared_vault() {
         if !in_isolated_child(
-            "nas2346_round3_tests::forced_failure_rolls_back_secondary_sts_write_and_delete_leaving_shared_vault",
+            "sts_import_rollback_tests::forced_failure_rolls_back_secondary_sts_write_and_delete_leaving_shared_vault",
         ) {
             return;
         }
@@ -35755,7 +35760,7 @@ mod nas2346_round3_tests {
     #[test]
     fn committed_overwrite_import_persists_session_token_flag_and_token_together() {
         if !in_isolated_child(
-            "nas2346_round3_tests::committed_overwrite_import_persists_session_token_flag_and_token_together",
+            "sts_import_rollback_tests::committed_overwrite_import_persists_session_token_flag_and_token_together",
         ) {
             return;
         }
@@ -35765,7 +35770,7 @@ mod nas2346_round3_tests {
         let previous_passphrase = std::env::var_os("AEROFTP_USER_PASSPHRASE");
         let (dir, store, user, _second) = two_account_vault();
 
-        let pass = "synthetic nas2346 e2e passphrase";
+        let pass = "synthetic sts e2e passphrase";
         let server =
             |id: &str, credential: Option<&str>| crate::profile_export::ServerProfileExport {
                 id: id.to_string(),
