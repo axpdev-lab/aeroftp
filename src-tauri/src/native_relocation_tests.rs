@@ -3653,6 +3653,56 @@ fn a_row_only_copy_of_the_legacy_owner_keeps_its_session() {
         "a session no other profile holds is ended"
     );
 }
+
+/// CodeRabbit 4661192952: a refresh of the legacy owner's session reaches a
+/// copy that lives in its row alone. The row takes the rotated pair, the
+/// absent vault key is not recreated, the vault and row copies take it too,
+/// and another account's different session is untouched.
+#[test]
+fn a_refresh_reaches_a_row_only_copy_of_the_legacy_owner() {
+    if !in_isolated_child("a_refresh_reaches_a_row_only_copy_of_the_legacy_owner") {
+        return;
+    }
+    let accounts = Accounts::open();
+    let owners_owner = accounts.owners_owner();
+    for id in ["refresh-a", "refresh-b", "refresh-c"] {
+        vault::store_session(owners_owner, Some(id), &session("refresh-shared-uid", "r1")).unwrap();
+    }
+    accounts.store.delete(&key("refresh-b")).unwrap();
+    accounts.seed("refresh-other", "refresh-other-uid");
+    assert_eq!(
+        accounts.copies("refresh-b"),
+        (None, Some("r1".to_string()), None),
+        "profile B reads its row alone"
+    );
+
+    vault::VaultSession::new(
+        owners_owner,
+        Some("refresh-a"),
+        &session("refresh-shared-uid", "r1"),
+    )
+    .save(&session("refresh-shared-uid", "r2").tokens);
+
+    let (vault_a, row_a, _) = accounts.copies("refresh-a");
+    assert_eq!(vault_a.as_deref(), Some("r2"), "A's vault key");
+    assert_eq!(row_a.as_deref(), Some("r2"), "A's row");
+    let (vault_b, row_b, _) = accounts.copies("refresh-b");
+    assert_eq!(
+        row_b.as_deref(),
+        Some("r2"),
+        "the row-only copy takes the refreshed pair"
+    );
+    assert_eq!(vault_b, None, "the absent vault key stays absent");
+    assert!(!accounts.in_vault("refresh-b"));
+    let (vault_c, row_c, _) = accounts.copies("refresh-c");
+    assert_eq!(vault_c.as_deref(), Some("r2"), "C's vault key");
+    assert_eq!(row_c.as_deref(), Some("r2"), "C's row");
+    assert_eq!(
+        loaded(accounts.owner(), "refresh-other").as_deref(),
+        Some("r1"),
+        "another account's different session is untouched"
+    );
+}
 /// A new sign-in whose save fails keeps the session it was to replace, saved
 /// and still live on Proton: the old session is ended only once the new one
 /// is saved.
