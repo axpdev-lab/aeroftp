@@ -1041,6 +1041,13 @@ pub(super) enum AfterStoredRead {
         key: String,
         token_endpoint: String,
     },
+    /// Rewrite `key`'s stored chain once, keeping its refresh token and
+    /// endpoint and giving it `username`: a repair of the sign-in fields
+    /// under an unchanged token.
+    RepairUsernameOnce {
+        key: String,
+        username: String,
+    },
 }
 
 pub(super) static AFTER_STORED_READ: Mutex<Option<(Option<i64>, String, AfterStoredRead)>> =
@@ -1076,6 +1083,22 @@ pub(super) fn after_stored_read(owner: Option<i64>, account: &str) {
                 return;
             };
             chain["token_endpoint"] = endpoint.into();
+            let _ = store.store(&repaired, &chain.to_string());
+        }
+        AfterStoredRead::RepairUsernameOnce {
+            key: repaired,
+            username,
+        } => {
+            let (repaired, username) = (repaired.clone(), username.clone());
+            *hook = None;
+            drop(hook);
+            let Some(json) = store.get(&repaired).ok() else {
+                return;
+            };
+            let Ok(mut chain) = serde_json::from_str::<serde_json::Value>(&json) else {
+                return;
+            };
+            chain["username"] = username.into();
             let _ = store.store(&repaired, &chain.to_string());
         }
         AfterStoredRead::RefileEveryTime(n) => {
@@ -2941,6 +2964,73 @@ fn a_repaired_endpoint_under_the_same_token_is_a_change() {
         AfterStoredRead::RepairEndpointOnce {
             key: key.clone(),
             token_endpoint: chains.endpoint.clone(),
+        },
+    ));
+    let from = chains.submissions();
+    let mut connection = chains.bound(profile);
+    let connected = chains
+        .runtime()
+        .block_on(connection.try_connect_with_refresh());
+    *AFTER_STORED_READ.lock().unwrap() = None;
+    let mut failures = Vec::new();
+    let sent = chains.submitted_since(from);
+    if !matches!(connected, Ok(true)) || sent != ["repair-token".to_string()] {
+        failures.push(format!(
+            "{connected:?}, sent {sent:?}, expected the repaired chain's [\"repair-token\"]"
+        ));
+    }
+    // The successor of the repaired chain is the profile's own key's, and
+    // the singleton still holds the chain that was never exchanged.
+    let stored = chains.stored(&key);
+    if stored.is_empty() || stored == "repair-token" {
+        failures.push(format!(
+            "the profile's key holds {stored:?}: the repaired chain was not exchanged"
+        ));
+    }
+    if stored_refresh_token(chains.store.get(singleton).ok().as_deref()) != "singleton-repair" {
+        failures.push("the singleton's chain was exchanged or rewritten".to_string());
+    }
+    drop(connection);
+    PENDING_ROTATIONS.lock().unwrap().clear();
+    assert!(failures.is_empty(), "{failures:#?}");
+}
+
+/// The same fallback, but what changes in the profile's own key meanwhile
+/// is a repair of its username under an unchanged refresh token and
+/// endpoint: the sign-in key is the token, the endpoint and the username
+/// together, so the selection is tried again and the repaired chain is the
+/// one exchanged, not the singleton's. Red while the comparison leaves the
+/// username out.
+#[test]
+fn a_repaired_username_under_the_same_token_is_a_change() {
+    if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+        "providers::jottacloud::chain_tests::a_repaired_username_under_the_same_token_is_a_change",
+    ) {
+        return;
+    }
+    let chains = Chains::new();
+    let singleton = "jottacloud_refresh";
+    let profile = "fallbackuserrepair";
+    let key = format!("jottacloud_refresh_{profile}");
+    // The profile's own chain cannot be used (no username) but is there:
+    // its token is the one a repair keeps.
+    let own = serde_json::json!({
+        "refresh_token": "repair-token", "token_endpoint": chains.endpoint.clone(),
+        "username": "",
+    });
+    chains.store.store(&key, &own.to_string()).unwrap();
+    chains
+        .store
+        .store(singleton, &chains.chain("singleton-repair"))
+        .unwrap();
+    // Right after the singleton's chain is read, the profile's own key is
+    // repaired: same refresh token and endpoint, a real username.
+    *AFTER_STORED_READ.lock().unwrap() = Some((
+        chains.owner,
+        singleton.to_string(),
+        AfterStoredRead::RepairUsernameOnce {
+            key: key.clone(),
+            username: "jotta-user".to_string(),
         },
     ));
     let from = chains.submissions();

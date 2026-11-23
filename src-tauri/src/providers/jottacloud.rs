@@ -342,10 +342,11 @@ fn chain_signin_key(json: Option<&str>) -> String {
     };
     let rt = v["refresh_token"].as_str().unwrap_or_default();
     let te = v["token_endpoint"].as_str().unwrap_or_default();
-    if rt.is_empty() && te.is_empty() {
+    let un = v["username"].as_str().unwrap_or_default();
+    if rt.is_empty() && te.is_empty() && un.is_empty() {
         String::new()
     } else {
-        format!("{rt}\u{1f}{te}")
+        format!("{rt}\u{1f}{te}\u{1f}{un}")
     }
 }
 
