@@ -52,6 +52,9 @@ struct SiteManagerParse {
     /// Root matched AeroFTP v3.7.3..v4.2.7's own exporter signature
     /// (`version="3.67.1"` and `platform="*"`, which real FileZilla never writes).
     legacy_aeroftp_export: bool,
+    /// `wchar_t` length unit implied by the root `<FileZilla3 platform="...">`
+    /// attribute (`"windows"` -> UTF-16, `"mac"` / `"*nix"` -> scalar, unknown -> `None`).
+    root_wchar_unit: Option<WcharUnit>,
 }
 
 fn parse_sitemanager_xml_checked(content: &str) -> SiteManagerParse {
@@ -64,7 +67,11 @@ fn parse_sitemanager_xml_checked(content: &str) -> SiteManagerParse {
     // not known yet when the servers inside it are pushed: the path is stamped
     // onto them when the folder closes, innermost folder first.
     let mut folder_stack: Vec<(String, usize)> = Vec::new();
+    let mut xml_depth: usize = 0;
+    let mut in_root_filezilla3 = false;
+    let mut in_servers = false;
     let mut in_server = false;
+    let mut server_depth: usize = 0;
     let mut current_fields: HashMap<String, String> = HashMap::new();
     let mut current_name = String::new();
     let mut current_tag = String::new();
@@ -74,6 +81,7 @@ fn parse_sitemanager_xml_checked(content: &str) -> SiteManagerParse {
     let mut malformed = false;
     let mut root_closed = false;
     let mut legacy_aeroftp_export = false;
+    let mut root_wchar_unit: Option<WcharUnit> = None;
     // Text since the last tag. quick-xml hands it over in pieces: a character
     // or entity reference is its own `GeneralRef` event between two `Text`
     // fragments, and a CDATA section is a `CData` event. The pieces are joined
@@ -114,12 +122,18 @@ fn parse_sitemanager_xml_checked(content: &str) -> SiteManagerParse {
             }
             Event::Start(e) => {
                 let run = std::mem::take(&mut text);
-                if !in_server {
+                if in_servers && !in_server {
                     note_folder_text(&mut folder_stack, run.trim());
                 }
                 let tag = e.name().as_ref().to_string();
+                let elem_depth = xml_depth;
+                xml_depth += 1;
                 match tag.as_str() {
-                    "FileZilla3" if !in_server => {
+                    // Require `<FileZilla3>` at document root (depth 0) so a
+                    // nested `<FileZilla3>` inside another XML format cannot
+                    // trigger legacy recovery or mark the parse complete.
+                    "FileZilla3" if elem_depth == 0 => {
+                        in_root_filezilla3 = true;
                         let version = e
                             .try_get_attribute("version")
                             .ok()
@@ -130,6 +144,11 @@ fn parse_sitemanager_xml_checked(content: &str) -> SiteManagerParse {
                             .ok()
                             .flatten()
                             .map(|a| a.value.into_owned());
+                        root_wchar_unit = match platform.as_deref() {
+                            Some("windows") => Some(WcharUnit::Utf16),
+                            Some("mac") | Some("*nix") => Some(WcharUnit::Scalar),
+                            _ => None,
+                        };
                         // Real FileZilla writes platform "windows", "mac", or "*nix"
                         // (`src/commonui/xml_file.cpp:177-185`). Only AeroFTP
                         // v3.7.3..v4.2.7 wrote `version="3.67.1"` with `platform="*"`.
@@ -138,6 +157,9 @@ fn parse_sitemanager_xml_checked(content: &str) -> SiteManagerParse {
                             legacy_aeroftp_export = true;
                         }
                     }
+                    "Servers" if in_root_filezilla3 && elem_depth == 1 => {
+                        in_servers = true;
+                    }
                     // A site-specific bookmark is not part of the site. FileZilla 3.72.1
                     // `site_manager::Save` (`src/commonui/site_manager.cpp:71-89`) writes
                     // each `<Bookmark>` (its own `<Name>`, `<LocalDir>`, `<RemoteDir>`, ...)
@@ -145,30 +167,33 @@ fn parse_sitemanager_xml_checked(content: &str) -> SiteManagerParse {
                     // (`site_manager.cpp:228-267`) reads the site from direct children of
                     // `<Server>` only. Skip the subtree so a bookmark's `<Name>` and
                     // `<RemoteDir>` do not replace the site's.
-                    "Bookmark" if in_server => {
+                    "Bookmark" if in_server && elem_depth == server_depth + 1 => {
                         current_tag.clear();
                         let mut bookmark = Vec::new();
                         if reader.read_to_end_into(e.name(), &mut bookmark).is_err() {
                             malformed = true;
                             break;
                         }
+                        // `read_to_end_into` consumed the matching `</Bookmark>`.
+                        xml_depth = elem_depth;
                     }
-                    "Folder" if !in_server => {
+                    "Folder" if in_servers && !in_server => {
                         folder_stack.push((String::new(), servers.len()));
                     }
-                    "Server" if !in_server => {
+                    "Server" if in_servers && !in_server => {
                         if servers.len() >= MAX_SERVERS {
                             capped = true;
                             break;
                         }
                         in_server = true;
+                        server_depth = elem_depth;
                         current_fields.clear();
                         current_name.clear();
                         pass_encoding.clear();
                         current_tag.clear();
                         current_parameter_name.clear();
                     }
-                    _ if in_server => {
+                    _ if in_server && elem_depth == server_depth + 1 => {
                         if tag == "Pass" {
                             pass_encoding = e
                                 .try_get_attribute("encoding")
@@ -192,11 +217,16 @@ fn parse_sitemanager_xml_checked(content: &str) -> SiteManagerParse {
             // Self-closing element, e.g. <Name/>: an empty value.
             Event::Empty(e) => {
                 let run = std::mem::take(&mut text);
-                if !in_server && e.name().as_ref() == "FileZilla3" {
+                if xml_depth == 0 && e.name().as_ref() == "FileZilla3" {
                     root_closed = true;
                 }
                 if !in_server {
-                    note_folder_text(&mut folder_stack, run.trim());
+                    if in_servers {
+                        note_folder_text(&mut folder_stack, run.trim());
+                    }
+                    continue;
+                }
+                if xml_depth != server_depth + 1 {
                     continue;
                 }
                 let tag = e.name().as_ref().to_string();
@@ -219,10 +249,18 @@ fn parse_sitemanager_xml_checked(content: &str) -> SiteManagerParse {
                 let raw_run = std::mem::take(&mut text);
                 let run = raw_run.trim();
                 let tag = e.name().as_ref().to_string();
-                if !in_server && tag == "FileZilla3" {
-                    root_closed = true;
+                if xml_depth == 0 {
+                    malformed = true;
+                    break;
                 }
-                if in_server && tag == "Server" {
+                xml_depth -= 1;
+                if in_root_filezilla3 && xml_depth == 0 && tag == "FileZilla3" {
+                    in_root_filezilla3 = false;
+                    in_servers = false;
+                    root_closed = true;
+                } else if in_servers && xml_depth == 1 && tag == "Servers" {
+                    in_servers = false;
+                } else if in_server && xml_depth == server_depth && tag == "Server" {
                     let display_name = if current_name.is_empty() {
                         current_fields
                             .get("Host")
@@ -237,7 +275,7 @@ fn parse_sitemanager_xml_checked(content: &str) -> SiteManagerParse {
                     });
                     in_server = false;
                     current_tag.clear();
-                } else if !in_server && tag == "Folder" {
+                } else if in_servers && !in_server && tag == "Folder" {
                     note_folder_text(&mut folder_stack, run);
                     // The name is known only now: stamp it on every server this
                     // folder contains. Inner folders closed first, so prepending
@@ -253,7 +291,7 @@ fn parse_sitemanager_xml_checked(content: &str) -> SiteManagerParse {
                             }
                         }
                     }
-                } else if in_server && tag == current_tag {
+                } else if in_server && xml_depth == server_depth + 1 && tag == current_tag {
                     if current_tag == "Name" {
                         current_name = run.to_string();
                     } else if current_tag == "RemoteDir" {
@@ -291,6 +329,7 @@ fn parse_sitemanager_xml_checked(content: &str) -> SiteManagerParse {
         complete: !malformed && (root_closed || capped),
         capped,
         legacy_aeroftp_export,
+        root_wchar_unit,
     }
 }
 
@@ -515,6 +554,7 @@ struct MappedProfile {
     password: Option<String>,
     options: Option<serde_json::Value>,
     initial_path: Option<String>,
+    remote_dir_warning: Option<String>,
 }
 
 /// Whether a server entry in a FileZilla XML document is an S3 profile written
@@ -548,12 +588,13 @@ fn is_legacy_aeroftp_s3_server(legacy_aeroftp_export: bool, server: &FileZillaSe
 /// Map a FileZilla server entry to an AeroFTP profile.
 #[cfg(test)]
 fn map_server(server: &FileZillaServer) -> Option<MappedProfile> {
-    map_server_with_context(server, false)
+    map_server_with_context(server, false, None)
 }
 
 fn map_server_with_context(
     server: &FileZillaServer,
     legacy_aeroftp_s3: bool,
+    root_wchar_unit: Option<WcharUnit>,
 ) -> Option<MappedProfile> {
     let host = server.fields.get("Host").filter(|h| !h.is_empty())?;
     let fz_protocol: u32 = server
@@ -579,12 +620,11 @@ fn map_server_with_context(
         .get("Pass")
         .and_then(|p| decode_filezilla_password(p, encoding));
 
-    let remote_dir = server
+    let parsed_remote_dir = server
         .fields
         .get("RemoteDir")
-        .filter(|d| !d.is_empty())
-        .map(|d| parse_filezilla_remote_dir(d))
-        .filter(|d| !d.is_empty());
+        .map(|d| parse_filezilla_remote_dir_for_platform(d, root_wchar_unit))
+        .unwrap_or(ParsedRemoteDir::Empty);
 
     // FileZilla 3.72 `ServerProtocol` (`src/include/server.h:11-24`, values
     // never change): 0 = FTP (explicit TLS if available), 1 = SFTP, 2 = HTTP,
@@ -615,7 +655,26 @@ fn map_server_with_context(
 
     // Build protocol-specific options
     let mut options = serde_json::Map::new();
-    let mut initial_path = remote_dir;
+    let mut remote_dir_warning: Option<String> = None;
+    let mut initial_path: Option<String> = match &parsed_remote_dir {
+        ParsedRemoteDir::Empty => None,
+        ParsedRemoteDir::SafePath(p) | ParsedRemoteDir::PlainPath(p) if !p.is_empty() => {
+            Some(p.clone())
+        }
+        ParsedRemoteDir::SafePath(_) | ParsedRemoteDir::PlainPath(_) => None,
+        ParsedRemoteDir::MalformedSafePath => {
+            remote_dir_warning = Some(
+                "FileZilla RemoteDir could not be decoded as a valid GetSafePath and was omitted; set the initial directory (and S3 bucket if applicable) before connecting".to_string(),
+            );
+            None
+        }
+        ParsedRemoteDir::AmbiguousSafePath => {
+            remote_dir_warning = Some(
+                "FileZilla RemoteDir length encoding is ambiguous without a known source platform (Windows UTF-16 vs macOS/Linux scalar lengths decode to different paths) and was omitted; set the initial directory before connecting".to_string(),
+            );
+            None
+        }
+    };
 
     // Implicit vs explicit, under `tlsMode`: the key the GUI stores and the
     // connection reads (an `ftpsMode` was read by nothing, so an explicit site
@@ -640,13 +699,13 @@ fn map_server_with_context(
         );
     } else if protocol == "s3" && !legacy_aeroftp_s3 {
         // FileZilla Pro S3 stores `/bucket` or `/bucket/prefix/...` in
-        // `<RemoteDir>`. AeroFTP's `S3Config::from_provider_config` reads the
-        // bucket from `options.bucket` and starts inside `initial_path`.
-        // Split the bucket off once so empty interior segments (e.g.
-        // `/reports//2026`) survive verbatim. Older AeroFTP v4.1.0..v4.2.7
-        // exports (`legacy_aeroftp_s3`) wrote only `initial_path` without the
-        // bucket, so we must not infer a bucket from their prefix.
-        if let Some(ref decoded) = initial_path {
+        // `<RemoteDir>` as a `CServerPath::GetSafePath()`. Infer the bucket
+        // only from a successfully decoded safe path (never from a failed or
+        // ambiguous decode or a plain legacy path). Older AeroFTP
+        // v3.7.3..v4.2.7 exports (`legacy_aeroftp_s3`) wrote only
+        // `initial_path` without the bucket, so we must not infer a bucket
+        // from their prefix either.
+        if let ParsedRemoteDir::SafePath(ref decoded) = parsed_remote_dir {
             let trimmed_root = decoded.strip_prefix('/').unwrap_or(decoded.as_str());
             if !trimmed_root.is_empty() {
                 match trimmed_root.split_once('/') {
@@ -688,6 +747,7 @@ fn map_server_with_context(
         password,
         options: options_val,
         initial_path,
+        remote_dir_warning,
     })
 }
 
@@ -910,30 +970,88 @@ fn decode_filezilla_safe_path(encoded: &str, unit: WcharUnit) -> Option<String> 
     render_filezilla_server_path(server_type, prefix.as_deref(), &segments)
 }
 
-/// `<RemoteDir>` as AeroFTP's start path. FileZilla 3.72.1 writes
-/// `CServerPath::GetSafePath()` (`site_manager.cpp:63-65, 202`) and reads the
-/// element untrimmed; older AeroFTP exports wrote a plain path, which stays as
-/// written. A Windows FileZilla counts a character outside the BMP as two, a
-/// macOS or Linux one as one: the scalar reading is tried first, then the
-/// UTF-16 one, and a reading is kept only if every length lands on a separator.
-/// The untrimmed input is tried first so a segment ending in a space survives;
-/// a trimmed retry still accepts pretty-printed XML with surrounding padding.
-fn parse_filezilla_remote_dir(encoded: &str) -> String {
+/// Result of parsing a `<RemoteDir>` element.
+#[derive(Debug, PartialEq, Eq)]
+enum ParsedRemoteDir {
+    Empty,
+    SafePath(String),
+    PlainPath(String),
+    MalformedSafePath,
+    AmbiguousSafePath,
+}
+
+/// Whether `s` begins with FileZilla's `<type> <prefix_len>` safe-path header
+/// (two space-separated decimal integers), so a truncated or corrupt safe path
+/// like `1 0 5 med` is distinguished from a plain legacy path like `/var/www`.
+fn looks_like_filezilla_safe_path(s: &str) -> bool {
+    let mut parts = s.split(' ');
+    let Some(first) = parts.next() else {
+        return false;
+    };
+    let Some(second) = parts.next() else {
+        return false;
+    };
+    !first.is_empty()
+        && first.bytes().all(|b| b.is_ascii_digit())
+        && !second.is_empty()
+        && second.bytes().all(|b| b.is_ascii_digit())
+}
+
+fn decode_safe_path_with_unit(encoded: &str, trimmed: &str, unit: WcharUnit) -> Option<String> {
+    decode_filezilla_safe_path(encoded, unit)
+        .or_else(|| (trimmed != encoded).then(|| decode_filezilla_safe_path(trimmed, unit))?)
+}
+
+/// Decode `<RemoteDir>` using the document root's `platform` attribute when
+/// known (`"windows"` -> UTF-16, `"mac"`/`"*nix"` -> scalar). When the source
+/// platform is unknown and both units decode to different paths, report
+/// [`ParsedRemoteDir::AmbiguousSafePath`] instead of silently picking one.
+fn parse_filezilla_remote_dir_for_platform(
+    encoded: &str,
+    root_wchar_unit: Option<WcharUnit>,
+) -> ParsedRemoteDir {
     let trimmed = encoded.trim();
     if trimmed.is_empty() {
-        return String::new();
+        return ParsedRemoteDir::Empty;
     }
-    [WcharUnit::Scalar, WcharUnit::Utf16]
-        .into_iter()
-        .find_map(|unit| decode_filezilla_safe_path(encoded, unit))
-        .or_else(|| {
-            (trimmed != encoded).then(|| {
-                [WcharUnit::Scalar, WcharUnit::Utf16]
-                    .into_iter()
-                    .find_map(|unit| decode_filezilla_safe_path(trimmed, unit))
-            })?
-        })
-        .unwrap_or_else(|| trimmed.to_string())
+    if let Some(unit) = root_wchar_unit {
+        if let Some(path) = decode_safe_path_with_unit(encoded, trimmed, unit) {
+            return ParsedRemoteDir::SafePath(path);
+        }
+        let other = match unit {
+            WcharUnit::Scalar => WcharUnit::Utf16,
+            WcharUnit::Utf16 => WcharUnit::Scalar,
+        };
+        if let Some(path) = decode_safe_path_with_unit(encoded, trimmed, other) {
+            return ParsedRemoteDir::SafePath(path);
+        }
+    } else {
+        let scalar = decode_safe_path_with_unit(encoded, trimmed, WcharUnit::Scalar);
+        let utf16 = decode_safe_path_with_unit(encoded, trimmed, WcharUnit::Utf16);
+        match (scalar, utf16) {
+            (Some(a), Some(b)) if a == b => return ParsedRemoteDir::SafePath(a),
+            (Some(_), Some(_)) => return ParsedRemoteDir::AmbiguousSafePath,
+            (Some(path), None) | (None, Some(path)) => return ParsedRemoteDir::SafePath(path),
+            (None, None) => {}
+        }
+    }
+    if looks_like_filezilla_safe_path(trimmed) {
+        ParsedRemoteDir::MalformedSafePath
+    } else {
+        ParsedRemoteDir::PlainPath(trimmed.to_string())
+    }
+}
+
+/// `<RemoteDir>` as AeroFTP's start path (test helper without platform context).
+#[cfg(test)]
+fn parse_filezilla_remote_dir(encoded: &str) -> String {
+    match parse_filezilla_remote_dir_for_platform(encoded, None) {
+        ParsedRemoteDir::Empty => String::new(),
+        ParsedRemoteDir::SafePath(p) | ParsedRemoteDir::PlainPath(p) => p,
+        ParsedRemoteDir::MalformedSafePath | ParsedRemoteDir::AmbiguousSafePath => {
+            encoded.trim().to_string()
+        }
+    }
 }
 
 /// `CServerPath::GetSafePath()` with no prefix: `<type> 0[ <len> <segment>]...`.
@@ -1132,8 +1250,14 @@ pub fn import_filezilla(config_path: &Path) -> Result<FileZillaImportResult, Str
         let legacy_aeroftp_s3 =
             is_legacy_aeroftp_s3_server(parsed.legacy_aeroftp_export, fz_server);
 
-        match map_server_with_context(fz_server, legacy_aeroftp_s3) {
+        match map_server_with_context(fz_server, legacy_aeroftp_s3, parsed.root_wchar_unit) {
             Some(mapped) => {
+                if let Some(reason) = mapped.remote_dir_warning {
+                    warnings.push(FileZillaImportWarning {
+                        name: fz_server.name.clone(),
+                        reason,
+                    });
+                }
                 if legacy_aeroftp_s3 {
                     warnings.push(FileZillaImportWarning {
                         name: fz_server.name.clone(),
@@ -1345,9 +1469,20 @@ pub fn export_filezilla(
     output_path: &Path,
 ) -> Result<usize, String> {
     let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
-    // Export with version 3.72.1 so Protocol=6 (plain FTP) and Protocol=7 (S3)
-    // stay unambiguous from older AeroFTP v4.1.0..v4.2.7 `3.67.1` exports.
-    xml.push_str("<FileZilla3 version=\"3.72.1\" platform=\"*\">\n");
+    // Export with version 3.72.1 and the platform matching `WcharUnit::native()`
+    // (`FileZilla_3.72.1_src/src/commonui/xml_file.cpp:177-185`) so Protocol=6
+    // (plain FTP), Protocol=7 (S3), and non-BMP `RemoteDir` lengths stay
+    // unambiguous from older AeroFTP v3.7.3..v4.2.7 `3.67.1` exports.
+    let platform = if cfg!(windows) {
+        "windows"
+    } else if cfg!(target_os = "macos") {
+        "mac"
+    } else {
+        "*nix"
+    };
+    xml.push_str(&format!(
+        "<FileZilla3 version=\"3.72.1\" platform=\"{platform}\">\n"
+    ));
     xml.push_str("  <Servers>\n");
     let mut exported = 0;
     // FileZilla addresses a site by its name (`--site 0/<name>`): two of one
@@ -2826,6 +2961,199 @@ mod tests {
                 "{secret} leaked: {legacy_json}"
             );
         }
+    }
+
+    #[test]
+    fn wrapped_filezilla3_document_is_not_accepted_as_root() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("filezilla.xml"),
+            r#"<?xml version="1.0"?><FileZilla3><Settings/></FileZilla3>"#,
+        )
+        .unwrap();
+
+        // A `<FileZilla3>` nested inside `<Other>` must not trigger legacy S3
+        // recovery or import any sites.
+        let wrapped = dir.path().join("wrapped.xml");
+        std::fs::write(
+            &wrapped,
+            r#"<?xml version="1.0"?><Other><FileZilla3 version="3.67.1" platform="*"><Servers><Server><Host>s3.example.com</Host><Port>443</Port><Protocol>6</Protocol><User>DEMO</User><Name>Wrapped</Name></Server></Servers></FileZilla3></Other>"#,
+        )
+        .unwrap();
+        let res = import_filezilla(&wrapped).unwrap();
+        assert!(
+            res.servers.is_empty(),
+            "wrapped document must import 0 sites"
+        );
+        assert!(
+            res.warnings
+                .iter()
+                .any(|w| w.reason.contains("ended before its closing tag")),
+            "wrapped document must not be marked complete: {:?}",
+            res.warnings.iter().map(|w| &w.reason).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn source_platform_disambiguates_wchar_remote_dir_and_unknown_warns() {
+        // `1 0 4 😀😀 3 1 a`:
+        // - Windows UTF-16: "😀😀" has length 4, next segment length 3 is "1 a" -> `/😀😀/1 a`
+        // - *nix/mac scalar: "😀😀 3" has length 4, next segment length 1 is "a" -> `/😀😀 3/a`
+        let ambiguous_safe_path = "1 0 4 \u{1F600}\u{1F600} 3 1 a";
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("filezilla.xml"),
+            r#"<?xml version="1.0"?><FileZilla3><Settings/></FileZilla3>"#,
+        )
+        .unwrap();
+
+        let win_path = dir.path().join("win.xml");
+        std::fs::write(
+            &win_path,
+            format!(
+                r#"<?xml version="1.0"?><FileZilla3 version="3.72.1" platform="windows"><Servers><Server><Host>sftp.example.com</Host><Protocol>1</Protocol><Name>Win</Name><RemoteDir>{ambiguous_safe_path}</RemoteDir></Server></Servers></FileZilla3>"#
+            ),
+        )
+        .unwrap();
+        let win = import_filezilla(&win_path).unwrap();
+        assert_eq!(
+            win.servers[0].initial_path.as_deref(),
+            Some("/\u{1F600}\u{1F600}/1 a")
+        );
+        assert!(win.warnings.is_empty());
+
+        let nix_path = dir.path().join("nix.xml");
+        std::fs::write(
+            &nix_path,
+            format!(
+                r#"<?xml version="1.0"?><FileZilla3 version="3.72.1" platform="*nix"><Servers><Server><Host>sftp.example.com</Host><Protocol>1</Protocol><Name>Nix</Name><RemoteDir>{ambiguous_safe_path}</RemoteDir></Server></Servers></FileZilla3>"#
+            ),
+        )
+        .unwrap();
+        let nix = import_filezilla(&nix_path).unwrap();
+        assert_eq!(
+            nix.servers[0].initial_path.as_deref(),
+            Some("/\u{1F600}\u{1F600} 3/a")
+        );
+        assert!(nix.warnings.is_empty());
+
+        let unk_path = dir.path().join("unk.xml");
+        std::fs::write(
+            &unk_path,
+            format!(
+                r#"<?xml version="1.0"?><FileZilla3 version="3.72.1"><Servers><Server><Host>sftp.example.com</Host><Protocol>1</Protocol><Name>Unk</Name><RemoteDir>{ambiguous_safe_path}</RemoteDir></Server></Servers></FileZilla3>"#
+            ),
+        )
+        .unwrap();
+        let unk = import_filezilla(&unk_path).unwrap();
+        assert_eq!(unk.servers[0].initial_path, None);
+        assert_eq!(unk.warnings.len(), 1);
+        assert!(
+            unk.warnings[0].reason.contains("ambiguous"),
+            "{}",
+            unk.warnings[0].reason
+        );
+
+        // Export writes a platform matching WcharUnit::native().
+        let exp_path = dir.path().join("exported.xml");
+        let row = FileZillaExportServer {
+            id: "e1".to_string(),
+            name: "E1".to_string(),
+            host: "sftp.example.com".to_string(),
+            port: 22,
+            username: "u".to_string(),
+            protocol: Some("sftp".to_string()),
+            options: None,
+            initial_path: Some("/\u{1F600}\u{1F600}/1 a".to_string()),
+        };
+        assert_eq!(export_filezilla(&[row], &HashMap::new(), &exp_path), Ok(1));
+        let exp_xml = std::fs::read_to_string(&exp_path).unwrap();
+        let expected_platform = if cfg!(windows) {
+            r#"platform="windows""#
+        } else if cfg!(target_os = "macos") {
+            r#"platform="mac""#
+        } else {
+            r#"platform="*nix""#
+        };
+        assert!(exp_xml.contains(expected_platform), "{exp_xml}");
+    }
+
+    #[test]
+    fn native_s3_protocol_7_rejects_malformed_safe_path_and_connects_custom_endpoint_port() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("filezilla.xml"),
+            r#"<?xml version="1.0"?><FileZilla3><Settings/></FileZilla3>"#,
+        )
+        .unwrap();
+        let sitemanager = dir.path().join("sitemanager.xml");
+        std::fs::write(
+            &sitemanager,
+            concat!(
+                r#"<?xml version="1.0"?><FileZilla3 version="3.72.1" platform="*nix"><Servers>"#,
+                r#"<Server><Host>s3.amazonaws.com</Host><Port>443</Port><Protocol>7</Protocol><User>DEMO1</User><Name>BadSafePath</Name><RemoteDir>1 0 5 med</RemoteDir></Server>"#,
+                r#"<Server><Host>objects.example.test</Host><Port>9000</Port><Protocol>7</Protocol><User>DEMO2</User><Name>CustomS3</Name><RemoteDir>1 0 5 media</RemoteDir></Server>"#,
+                r#"</Servers></FileZilla3>"#,
+            ),
+        )
+        .unwrap();
+
+        let res = import_filezilla(&sitemanager).unwrap();
+        assert_eq!(res.servers.len(), 2);
+
+        let bad = res
+            .servers
+            .iter()
+            .find(|s| s.name == "BadSafePath")
+            .unwrap();
+        assert!(
+            bad.options.as_ref().and_then(|o| o.get("bucket")).is_none(),
+            "malformed safe path must never become options.bucket: {:?}",
+            bad.options
+        );
+        assert_eq!(bad.initial_path, None);
+        assert!(
+            res.warnings
+                .iter()
+                .any(|w| w.name == "BadSafePath" && w.reason.contains("GetSafePath")),
+            "{:?}",
+            res.warnings
+                .iter()
+                .map(|w| (&w.name, &w.reason))
+                .collect::<Vec<_>>()
+        );
+
+        let custom = res.servers.iter().find(|s| s.name == "CustomS3").unwrap();
+        assert_eq!(
+            custom.options.as_ref().and_then(|o| o.get("bucket")),
+            Some(&serde_json::json!("media"))
+        );
+        let mut extra = HashMap::new();
+        if let Some(obj) = custom.options.as_ref().and_then(|v| v.as_object()) {
+            for (k, v) in obj {
+                if let Some(sv) = v.as_str() {
+                    extra.insert(k.clone(), sv.to_string());
+                }
+            }
+        }
+        let provider_cfg = crate::providers::types::ProviderConfig {
+            name: custom.name.clone(),
+            provider_type: crate::providers::types::ProviderType::S3,
+            host: custom.host.clone(),
+            port: Some(custom.port as u16),
+            username: Some(custom.username.clone()),
+            password: custom.credential.clone(),
+            initial_path: custom.initial_path.clone(),
+            extra,
+        };
+        let s3_cfg = crate::providers::types::S3Config::from_provider_config(&provider_cfg)
+            .expect("custom S3 Protocol 7 must build valid S3Config");
+        assert_eq!(s3_cfg.bucket, "media");
+        assert_eq!(
+            s3_cfg.endpoint.as_deref(),
+            Some("https://objects.example.test:9000")
+        );
+        assert!(s3_cfg.path_style);
     }
 
     /// Two profiles of one name (a list saved before names were unique) were
