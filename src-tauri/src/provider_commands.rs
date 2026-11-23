@@ -29668,6 +29668,14 @@ mod fourshared_attempt_key_tests {
     /// onto an existing profile moves its token there.
     #[test]
     fn a_4shared_connect_reads_the_token_of_its_own_sign_in() {
+        // The vault's folder ignores XDG_CONFIG_HOME on Windows: only a child
+        // process with its own data root keeps this vault apart from the
+        // vault another test bootstrapped.
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "provider_commands::fourshared_attempt_key_tests::a_4shared_connect_reads_the_token_of_its_own_sign_in",
+        ) {
+            return;
+        }
         let _env = crate::test_env::lock();
         let _partition = crate::user_partitions::test_lock();
         let dir = tempfile::TempDir::new().unwrap();
