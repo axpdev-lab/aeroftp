@@ -422,10 +422,11 @@ fn putty_proxy_warning(name: &str, kv: &HashMap<String, String>) -> Option<Putty
         };
         Some(("ProxyType", legacy, kind))
     };
-    // PuTTY `settings.c:863-878` reads `ProxyMethod` with default `-1`
-    // (`0xFFFFFFFF` as a Windows REG_DWORD) and falls back to legacy
-    // `ProxyType`/`ProxySOCKSVersion` whenever `ProxyMethod` is absent or
-    // not a recognized `PROXY_*` enum value (`0..=8`).
+    // PuTTY 0.85 `settings.c:863-878` (`conf-enums.h:84-102`, `conf_data.c:33-42`)
+    // reads `ProxyMethod` with default `-1` (`0xFFFFFFFF` as a Windows REG_DWORD)
+    // and falls back to legacy `ProxyType` (`0..=4`) + `ProxySOCKSVersion`
+    // (`== 4` for SOCKS4, otherwise SOCKS5) whenever `ProxyMethod` is absent or
+    // not in `conf_enum_proxy_type` (`0..=8`).
     let modern = number("ProxyMethod");
     let (key, proxy_type, kind) = match modern {
         Some(0) => return None,

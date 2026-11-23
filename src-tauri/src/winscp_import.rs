@@ -476,24 +476,43 @@ pub fn import_winscp(config_path: &Path) -> Result<WinScpImportResult, String> {
         match map_session(name, fields) {
             Some(mapped) => {
                 let is_ftp = matches!(mapped.protocol.as_str(), "ftp" | "ftps");
+                let is_neon = matches!(mapped.protocol.as_str(), "webdav" | "s3");
                 let proxy_method = fields
                     .get("ProxyMethod")
                     .and_then(|value| value.trim().parse::<u32>().ok())
                     .unwrap_or(0);
-                // WinSCP `TFTPFileSystem::GetOptionVal(OPTION_PROXYTYPE)`
-                // (`winscp/winscp` `source/core/FtpFileSystem.cpp:2777-2802`)
-                // activates only SOCKS4 (1), SOCKS5 (2), and HTTP (3) for FTP;
-                // Telnet (4), local command (5), and SSH TCP/IP (6) map to
-                // PROXYTYPE_NOPROXY on FTP sessions.
-                let effective_generic_proxy = if is_ftp {
-                    matches!(proxy_method, 1..=3)
-                } else {
-                    proxy_method != 0
-                };
-                if effective_generic_proxy {
+                let has_proxy_host = fields
+                    .get("ProxyHost")
+                    .is_some_and(|value| !value.trim().is_empty());
+                // Effective generic proxy by WinSCP backend:
+                // - FTP (`source/core/FtpFileSystem.cpp:2777-2802`): only SOCKS4 (1),
+                //   SOCKS5 (2), and HTTP (3); Telnet (4), local command (5), and
+                //   SSH TCP/IP (6) map to PROXYTYPE_NOPROXY.
+                // - WebDAV/S3 (`source/core/WebDAVFileSystem.cpp:287-293`,
+                //   `S3FileSystem.cpp:648-655`, `NeonIntf.cpp:95-108`): SOCKS4 (1) and
+                //   SOCKS5 (2) configure `ne_session_socks_proxy`; any other non-zero
+                //   method configures an HTTP proxy (`ne_session_proxy`) only when
+                //   `ProxyHost` is non-empty.
+                // - SFTP/SCP: any non-zero `ProxyMethod` is forwarded to PuTTY.
+                let generic_proxy_kind = if is_ftp {
+                    match proxy_method {
+                        1 => Some("SOCKS4"),
+                        2 => Some("SOCKS5"),
+                        3 => Some("HTTP"),
+                        _ => None,
+                    }
+                } else if is_neon {
+                    match proxy_method {
+                        0 => None,
+                        1 => Some("SOCKS4"),
+                        2 => Some("SOCKS5"),
+                        _ if has_proxy_host => Some("HTTP"),
+                        _ => None,
+                    }
+                } else if proxy_method != 0 {
                     // WinSCP `TProxyMethod` (`winscp/winscp` `source/core/SessionData.h:19`):
                     // pmNone, pmSocks4, pmSocks5, pmHTTP, pmTelnet, pmCmd, pmSshTcpIp.
-                    let kind = match proxy_method {
+                    Some(match proxy_method {
                         1 => "SOCKS4",
                         2 => "SOCKS5",
                         3 => "HTTP",
@@ -501,7 +520,11 @@ pub fn import_winscp(config_path: &Path) -> Result<WinScpImportResult, String> {
                         5 => "local command",
                         6 => "SSH TCP/IP",
                         _ => "unknown",
-                    };
+                    })
+                } else {
+                    None
+                };
+                if let Some(kind) = generic_proxy_kind {
                     warnings.push(WinScpImportWarning {
                         name: name.clone(),
                         reason: format!(
@@ -1652,6 +1675,46 @@ FSProtocol=1
         assert_eq!(
             back.servers[0].initial_path.as_deref(),
             Some("/archive/[2026]")
+        );
+    }
+
+    #[test]
+    fn webdav_and_s3_proxy_warnings_follow_winscp_neon_rules() {
+        let ini = concat!(
+            "[Sessions\\DavTelnetWithHost]\nHostName=dav.example.com\nUserName=u\nFSProtocol=6\nFtps=1\nProxyMethod=4\nProxyHost=proxy.corp\n",
+            "[Sessions\\DavTelnetNoHost]\nHostName=dav2.example.com\nUserName=u\nFSProtocol=6\nFtps=1\nProxyMethod=4\n",
+            "[Sessions\\S3HttpNoHost]\nHostName=s3.example.com\nUserName=u\nFSProtocol=7\nProxyMethod=3\nProxyHost=\n",
+            "[Sessions\\S3Socks5]\nHostName=s3b.example.com\nUserName=u\nFSProtocol=7\nProxyMethod=2\n",
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("WinSCP.ini");
+        std::fs::write(&path, ini).unwrap();
+
+        let result = import_winscp(&path).unwrap();
+        assert_eq!(result.servers.len(), 4);
+        let warn_for = |name: &str| {
+            result
+                .warnings
+                .iter()
+                .filter(|w| w.name == name)
+                .map(|w| w.reason.as_str())
+                .collect::<Vec<_>>()
+        };
+        let dav_host = warn_for("DavTelnetWithHost");
+        assert_eq!(dav_host.len(), 1);
+        assert!(
+            dav_host[0].contains("HTTP proxy method 4"),
+            "{}",
+            dav_host[0]
+        );
+        assert!(warn_for("DavTelnetNoHost").is_empty());
+        assert!(warn_for("S3HttpNoHost").is_empty());
+        let s3_socks = warn_for("S3Socks5");
+        assert_eq!(s3_socks.len(), 1);
+        assert!(
+            s3_socks[0].contains("SOCKS5 proxy method 2"),
+            "{}",
+            s3_socks[0]
         );
     }
 }
