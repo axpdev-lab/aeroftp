@@ -2461,6 +2461,56 @@ fn the_rclone_export_reads_the_token_of_the_captured_account() {
     });
 }
 
+/// CodeRabbit 4661188765, the 4shared half: `provider_at` resolves the
+/// profile's OAuth token for the captured account, not the active one. The
+/// captured account holds no `oauth_fourshared_mine`; the active account
+/// does. The connect must fail as missing authorization and never see the
+/// active account's `token:secret`.
+#[test]
+fn a_fourshared_connect_reads_the_token_of_the_captured_account() {
+    with_unreadable_profile_vault(|store| {
+        let captured =
+            users::cli_create_user(store, "Fourshared captured", None, None, None).unwrap();
+        let active = users::cli_create_user(store, "Fourshared active", None, None, None).unwrap();
+        users::cli_set_active_user(store, active.id).unwrap();
+        users::store_credential_for_user_dual(
+            store,
+            active.id,
+            "oauth_fourshared_mine",
+            "active-token:active-secret",
+        )
+        .unwrap();
+        let scope = AuthScope {
+            store,
+            user_id: Some(captured.id),
+        };
+        let four = json!({"id":"mine","name":"synthetic","protocol":"fourshared","host":""});
+        let opened = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(provider_at(&scope, &four, &AuthEndpoints::default()));
+        let error = match opened {
+            Ok(_) => panic!("connected with the active account's token"),
+            Err(error) => error,
+        };
+        assert!(
+            error.contains("authorization missing"),
+            "unexpected refusal: {error}"
+        );
+        assert!(
+            !error.contains("active-token"),
+            "the active account's token reached the error: {error}"
+        );
+        assert_eq!(
+            users::resolve_credential_for_user(store, active.id, "oauth_fourshared_mine")
+                .unwrap()
+                .map(|value| value.to_string())
+                .as_deref(),
+            Some("active-token:active-secret"),
+            "the active account's row changed"
+        );
+    });
+}
+
 /// The `.aeroftp` export of an OAuth profile whose own token cannot be read
 /// fails instead of bundling the legacy singleton (CodeRabbit, #1574).
 #[test]
