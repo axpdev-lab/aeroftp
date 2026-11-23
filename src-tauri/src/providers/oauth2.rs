@@ -2207,10 +2207,70 @@ impl OAuth2Manager {
             if !profile_id.is_empty() {
                 // A rotation kept pending under the singleton is settled
                 // first: the move below carries what the settle writes,
-                // not the stale record the rotation replaced.
+                // not the stale record the rotation replaced. A successor
+                // the settle wrote to the singleton's partition row is the
+                // live chain: an empty profile adopts it from the row, and
+                // the vault copy of the spent predecessor is not moved.
+                let partition_successor = {
+                    let pending = pending_rotations();
+                    pending.get(&(credential_user, legacy.clone())).and_then(
+                        |pending| match pending.source {
+                            PendingSource::Partition(user) => {
+                                Some((user, pending.read.clone(), pending.record.clone()))
+                            }
+                            PendingSource::Vault => None,
+                        },
+                    )
+                };
                 crate::credential_store::off_async_worker(|| {
                     self.settle_pending_rotation(&legacy)
                 })?;
+                if let Some((user, predecessor, successor)) = partition_successor {
+                    let conn = crate::user_partitions::open_or_init_cli()
+                        .map_err(|_| ProviderError::Other("Failed to open token owner".into()))?;
+                    let root = Zeroizing::new(store.derive_user_partition_wrapping_key());
+                    let row = crate::user_partitions::read_checked_row(
+                        &conn, &store, &root, user, &legacy,
+                    )
+                    .map_err(|e| ProviderError::Other(format!("Failed to read user tokens: {e}")))?
+                    .value();
+                    if row.as_deref().map(|v| v.as_str()) == Some(successor.as_str()) {
+                        let profile_row = crate::user_partitions::read_checked_row(
+                            &conn, &store, &root, user, &account,
+                        )
+                        .map_err(|e| {
+                            ProviderError::Other(format!("Failed to read user tokens: {e}"))
+                        })?
+                        .value();
+                        if profile_row.is_none() {
+                            crate::user_partitions::set_user_credential_for(
+                                &conn,
+                                &root,
+                                user,
+                                &account,
+                                "oauth",
+                                successor.as_str(),
+                            )
+                            .map_err(|e| {
+                                ProviderError::Other(format!("Failed to adopt tokens: {e}"))
+                            })?;
+                            let _ = crate::user_partitions::delete_user_credential_where(
+                                &store,
+                                user,
+                                &legacy,
+                                &|current| current == successor.as_str(),
+                            );
+                            if store.get(&legacy).ok().as_deref() == Some(predecessor.as_str()) {
+                                let _ = store.delete(&legacy);
+                            }
+                            return Self::decode_record(
+                                &successor,
+                                TokenSource::Partition(user),
+                                credential_user,
+                            );
+                        }
+                    }
+                }
                 if let Ok(json) = store.get(&legacy) {
                     Self::decode_record(&json, TokenSource::Unavailable, credential_user)?;
                     let moved = store
@@ -3259,6 +3319,116 @@ mod tests {
             adopt_memory_record(cache.as_mut().unwrap(), &legacy, &legacy, false, |_| Ok(()))
                 .unwrap();
         assert_eq!(in_place.as_deref().map(String::as_str), Some("corrupt"));
+    }
+
+    /// A refresh of the legacy singleton whose write was refused kept its
+    /// successor pending over the singleton's partition row. A profile read
+    /// that finds the singleton adopts that successor, not the stale vault
+    /// copy of the predecessor the refresh spent; a successor kept over the
+    /// vault is delivered by the existing move instead.
+    #[test]
+    fn a_partition_singleton_successor_is_what_an_empty_profile_adopts() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::oauth2::tests::a_partition_singleton_successor_is_what_an_empty_profile_adopts",
+        ) {
+            return;
+        }
+        partition_successor_adoption(true);
+    }
+
+    /// The same adoption with the pending rotation kept over the vault: the
+    /// existing move delivers the successor to the profile key.
+    #[test]
+    fn a_vault_singleton_successor_moves_to_the_empty_profile() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::oauth2::tests::a_vault_singleton_successor_moves_to_the_empty_profile",
+        ) {
+            return;
+        }
+        partition_successor_adoption(false);
+    }
+
+    fn partition_successor_adoption(partition_source: bool) {
+        with_two_box_accounts(|store, first, _second, _shared| {
+            let legacy = OAuth2Manager::legacy_token_account_key(OAuthProvider::Box);
+            let account = OAuth2Manager::token_account_key(OAuthProvider::Box, "p");
+            let record = |access: &str, refresh: &str| {
+                serde_json::json!({
+                    "access_token": access, "refresh_token": refresh,
+                    "expires_at": null, "token_type": "Bearer", "scopes": [],
+                    "owner_family": "v1:singleton-owner",
+                })
+                .to_string()
+            };
+            let predecessor = record("r-access", "r-refresh");
+            let successor = record("s-access", "s-refresh");
+            let conn = crate::user_partitions::open_or_init_cli().unwrap();
+            let root = Zeroizing::new(store.derive_user_partition_wrapping_key());
+            crate::user_partitions::set_user_credential_for(
+                &conn,
+                &root,
+                first,
+                &legacy,
+                "oauth",
+                &predecessor,
+            )
+            .unwrap();
+            store.store(&legacy, &predecessor).unwrap();
+            let source = if partition_source {
+                PendingSource::Partition(first)
+            } else {
+                PendingSource::Vault
+            };
+            file_pending_rotation(
+                Some(first),
+                &legacy,
+                PendingRotation {
+                    source,
+                    read: Zeroizing::new(predecessor.clone()),
+                    record: Zeroizing::new(successor.clone()),
+                },
+                "test",
+            );
+
+            let got = OAuth2Manager::new()
+                .load_token_record(OAuthProvider::Box, "p")
+                .expect("the singleton's successor is read");
+            assert_eq!(
+                got.tokens.access_token, "s-access",
+                "partition_source={partition_source}"
+            );
+            if partition_source {
+                assert_eq!(
+                    stored_row(store, first, &account).as_deref(),
+                    Some(successor.as_str()),
+                    "the successor moved to the empty profile's row"
+                );
+                assert_eq!(
+                    stored_row(store, first, &legacy),
+                    None,
+                    "the singleton row is gone"
+                );
+                assert_ne!(
+                    store.get(&legacy).ok().as_deref(),
+                    Some(predecessor.as_str()),
+                    "the spent predecessor left the vault"
+                );
+                assert!(
+                    !store
+                        .get(&account)
+                        .map(|value| value.contains(predecessor.as_str()))
+                        .unwrap_or(false),
+                    "the profile's vault key never held the predecessor"
+                );
+            } else {
+                assert_eq!(
+                    store.get(&account).ok().as_deref(),
+                    Some(successor.as_str()),
+                    "the vault successor moved to the profile key"
+                );
+            }
+            assert_eq!(pending_rotation_record(Some(first), &legacy), None);
+        });
     }
 
     /// CodeRabbit on #1561: a singleton refresh that overlaps a profile read
