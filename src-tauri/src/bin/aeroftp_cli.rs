@@ -44187,7 +44187,7 @@ async fn cmd_export_rclone(
             return 5;
         }
     };
-    let servers_json = match read_vault_profiles(cli, &store) {
+    let (servers_json, export_user) = match read_vault_profiles(cli, &store) {
         Ok(v) => v,
         Err(e) => {
             print_error(format, &format!("read profiles: {}", e), 4);
@@ -44230,11 +44230,10 @@ async fn cmd_export_rclone(
         return 4;
     }
 
-    // The account the export reads for every profile, captured once, like
-    // the GUI bridge export does.
-    let export_user = ftp_client_gui_lib::user_partitions::active_user_for_save()
-        .ok()
-        .flatten();
+    // The account every lookup reads for, captured with the profile list
+    // itself: `--user` scopes it, and an account switch or a failed active
+    // lookup cannot rebind a later profile's token to another account or
+    // drop the scope to an unscoped vault read.
     let mut exportable: Vec<RcloneExportServer> = Vec::with_capacity(collected.profiles.len());
     let mut unreadable: Vec<(String, String)> = Vec::new();
     for p in &collected.profiles {
@@ -44369,7 +44368,7 @@ async fn cmd_export_winscp(
             return 5;
         }
     };
-    let servers_json = match read_vault_profiles(cli, &store) {
+    let (servers_json, _export_user) = match read_vault_profiles(cli, &store) {
         Ok(v) => v,
         Err(e) => {
             print_error(format, &format!("read profiles: {}", e), 4);
@@ -44462,7 +44461,7 @@ async fn cmd_export_filezilla(
             return 5;
         }
     };
-    let servers_json = match read_vault_profiles(cli, &store) {
+    let (servers_json, _export_user) = match read_vault_profiles(cli, &store) {
         Ok(v) => v,
         Err(e) => {
             print_error(format, &format!("read profiles: {}", e), 4);
@@ -44584,7 +44583,7 @@ async fn cmd_export_bridge(
             return 5;
         }
     };
-    let servers_json = match read_vault_profiles(cli, &store) {
+    let (servers_json, _export_user) = match read_vault_profiles(cli, &store) {
         Ok(v) => v,
         Err(e) => {
             print_error(format, &format!("read profiles: {}", e), 4);
@@ -47064,12 +47063,18 @@ fn _scaffold_secret_is_used(p: &ProfileExportScaffold) -> &str {
 /// (same source as `aeroftp-cli profiles list`). The vault MUST already be
 /// unlocked. Falls back to the legacy `config_server_profiles` blob on
 /// partition unavailability so downgrades are not bricked.
+/// The profile list and the account it was read under, resolved once by
+/// [`profile_target`]: `--user` picks the account by name, else the
+/// persistent active one the command pinned. Export lookups bind to that
+/// account, never to whichever is active again later or to an unscoped
+/// vault read when the active account cannot be captured.
 fn read_vault_profiles(
     cli: &Cli,
     store: &ftp_client_gui_lib::credential_store::CredentialStore,
-) -> Result<serde_json::Value, String> {
-    let profiles = load_active_user_profiles(cli, store)?;
-    Ok(serde_json::Value::Array(profiles))
+) -> Result<(serde_json::Value, Option<i64>), String> {
+    let target = profile_target(cli, store)?;
+    let profiles = load_profiles_of(cli, store, &target)?;
+    Ok((serde_json::Value::Array(profiles), Some(target.id)))
 }
 
 async fn cmd_import_winscp(path: Option<String>, json: bool) -> i32 {
