@@ -281,7 +281,7 @@ fn partition_token_state(
     for key in keys {
         match crate::user_partitions::resolve_credential_for_user_owner_aware(store, user_id, &key)
         {
-            Ok(Some(json)) => return stored_token_state(&json),
+            Ok(Some(json)) => return stored_token_state(&key, &json),
             Ok(None) => {}
             Err(_) => return "unknown",
         }
@@ -291,7 +291,7 @@ fn partition_token_state(
 
 /// The state a stored token gives: an OAuth record by its expiry, a
 /// Jottacloud chain (no `expires_at`) by its presence.
-fn stored_token_state(json: &str) -> &'static str {
+fn stored_token_state(key: &str, json: &str) -> &'static str {
     if let Ok(tokens) = serde_json::from_str::<StoredTokens>(json) {
         if tokens.is_expired() {
             if tokens.refresh_token.is_some() {
@@ -301,10 +301,11 @@ fn stored_token_state(json: &str) -> &'static str {
         }
         return "valid";
     }
-    // Jottacloud's `jottacloud_refresh` is a different shape (raw refresh
-    // token JSON, no expires_at). Presence == valid until the next request
-    // proves otherwise.
-    if serde_json::from_str::<serde_json::Value>(json).is_ok() {
+    // A 4shared credential is the non-JSON `token:secret` pair below: any
+    // JSON, `{}` and `null` included, is not one. The JSON branch stays for
+    // Jottacloud's chain.
+    let fourshared = key.contains("fourshared");
+    if !fourshared && serde_json::from_str::<serde_json::Value>(json).is_ok() {
         return "valid";
     }
     // A non-JSON blob under an `oauth_*` key is a 4shared `token:secret`
@@ -359,7 +360,7 @@ pub fn derive_profile_auth_state(
             return "no_credentials";
         };
         match store.get(&key) {
-            Ok(json) => stored_token_state(&json),
+            Ok(json) => stored_token_state(&key, &json),
             Err(_) => "unknown",
         }
     } else if has_server {
@@ -688,12 +689,29 @@ mod tests {
     /// not reported as a working sign-in.
     #[test]
     fn a_fourshared_pair_is_valid_only_with_both_halves() {
-        assert_eq!(stored_token_state("token-t:secret-t"), "valid");
-        assert_eq!(stored_token_state("token-t:"), "expired");
-        assert_eq!(stored_token_state(":secret-t"), "expired");
-        assert_eq!(stored_token_state("token-t"), "expired");
-        assert_eq!(stored_token_state(""), "expired");
+        assert_eq!(
+            stored_token_state("oauth_fourshared_p", "token-t:secret-t"),
+            "valid"
+        );
+        assert_eq!(
+            stored_token_state("oauth_fourshared_p", "token-t:"),
+            "expired"
+        );
+        assert_eq!(
+            stored_token_state("oauth_fourshared_p", ":secret-t"),
+            "expired"
+        );
+        assert_eq!(
+            stored_token_state("oauth_fourshared_p", "token-t"),
+            "expired"
+        );
+        assert_eq!(stored_token_state("oauth_fourshared_p", ""), "expired");
+        assert_eq!(stored_token_state("oauth_fourshared_p", "{}"), "expired");
+        assert_eq!(stored_token_state("oauth_fourshared_p", "null"), "expired");
         // A Jottacloud chain is JSON and stays valid by its presence.
-        assert_eq!(stored_token_state(r#"{"refresh_token":"r"}"#), "valid");
+        assert_eq!(
+            stored_token_state("jottacloud_refresh_p", r#"{"refresh_token":"r"}"#),
+            "valid"
+        );
     }
 }
