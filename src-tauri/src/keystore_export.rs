@@ -1622,32 +1622,59 @@ fn write_profile_secret_slots_if(
 }
 
 /// [`write_profile_secret_if`] of `value` as a sign-in of the receiver's own
-/// ([`crate::user_partitions::set_signed_in_credential_for`]), into its row
-/// alone: a private token of an account other than the legacy owner. Any
-/// other key is written as [`write_profile_secret_if`] writes it.
+/// ([`crate::user_partitions::set_signed_in_credential_if`]), into its row
+/// alone: a private token of an account other than the legacy owner. Under
+/// the same condition as any other write of the step: only while the row
+/// holds `expected`, so a refresh committed since the import read it is kept
+/// (`Ok(false)`, the declined path). Any other key is written as
+/// [`write_profile_secret_if`] writes it.
+#[allow(clippy::too_many_arguments)]
 fn write_signed_in_row(
     store: &crate::credential_store::CredentialStore,
     db: Option<&Path>,
     receiver: Option<Receiver>,
     key: &str,
+    expected: Expected<'_>,
+    expected_row: ExpectedRow<'_>,
     value: &str,
 ) -> Result<bool, SecretWriteError> {
     let Some((db, receiver)) = private_row_of(db, receiver, key) else {
-        return write_profile_secret_if(store, db, receiver, key, None, None, Some(value));
+        return write_profile_secret_if(
+            store,
+            db,
+            receiver,
+            key,
+            expected,
+            expected_row,
+            Some(value),
+        );
     };
+    #[cfg(test)]
+    tests::run_before_row_write(store, key);
     let conn = crate::user_partitions::open_restored_db(&db)
         .map_err(|e| SecretWriteError::before_vault(format!("open {}: {e}", db.display())))?;
     let kind = crate::user_partitions::private_token_type(key).unwrap_or("oauth");
     let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
-    crate::user_partitions::set_signed_in_credential_for(
-        &conn,
-        &root_key,
-        receiver.user_id,
-        key,
-        kind,
-        value,
-    )
-    .map(|()| true)
+    match expected {
+        Some(expected) => crate::user_partitions::set_signed_in_credential_if(
+            &conn,
+            &root_key,
+            receiver.user_id,
+            key,
+            kind,
+            expected,
+            value,
+        ),
+        None => crate::user_partitions::set_signed_in_credential_for(
+            &conn,
+            &root_key,
+            receiver.user_id,
+            key,
+            kind,
+            value,
+        )
+        .map(|()| true),
+    }
     .map_err(|e| SecretWriteError::before_vault(format!("partition row not written: {e}")))
 }
 
@@ -2306,9 +2333,15 @@ fn apply_profile_decisions(
             // section's value, which the rollback then puts back as for a key
             // this step never wrote.
             let landed = match (signed_in, value) {
-                (true, Some(value)) => {
-                    write_signed_in_row(store, db.as_deref(), inputs.receiver, key, value)
-                }
+                (true, Some(value)) => write_signed_in_row(
+                    store,
+                    db.as_deref(),
+                    inputs.receiver,
+                    key,
+                    expected,
+                    accepted.as_deref(),
+                    value,
+                ),
                 _ => write_profile_secret_if(
                     store,
                     db.as_deref(),
@@ -4688,8 +4721,16 @@ mod tests {
         };
         assert!(!receiver.legacy_owner, "the token lives in its row alone");
         assert_eq!(
-            write_signed_in_row(&store, Some(&db), Some(receiver), key, "refresh-value")
-                .map_err(|e| e.message),
+            write_signed_in_row(
+                &store,
+                Some(&db),
+                Some(receiver),
+                key,
+                None,
+                None,
+                "refresh-value"
+            )
+            .map_err(|e| e.message),
             Ok(true)
         );
         let stamps: i64 = rusqlite::Connection::open(&db)
@@ -5767,6 +5808,82 @@ mod tests {
                 assert_eq!(row, None, "the backup's account got this device's token");
             }
         }
+    }
+
+    /// Greptile on #1575: carrying this device's own sign-in back into the
+    /// row a restore wrote is conditional like every other write of the step.
+    /// A refresh that rotates the restored row before the write is kept, and
+    /// the carried sign-in is declined. Red while the signed-in write is
+    /// unconditional: the refreshed token is replaced by the pre-import one.
+    #[test]
+    fn carrying_a_sign_in_back_keeps_a_row_refreshed_since_the_restore() {
+        let _guard = crate::user_partitions::test_lock();
+        crate::user_partitions::clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let cfg = dir.path().join("config");
+        let key = "oauth_dropbox_srv_drive";
+        let db = cfg.join("user_partitions.db");
+        let root = Zeroizing::new(store.derive_user_partition_wrapping_key());
+        let list = [dropbox("srv_drive", "Drive")];
+        // The backup holds Bob's row as "bob-token".
+        let bob = bob_with_his_token(&store, &cfg, key);
+        let backup = full_backup(dir.path(), &db, &list);
+        crate::user_partitions::clear_user_session();
+        // Bob signs in after the backup was made.
+        let conn = rusqlite::Connection::open(&db).unwrap();
+        crate::user_partitions::set_signed_in_credential_for(
+            &conn,
+            &root,
+            bob,
+            key,
+            "oauth",
+            "bob-signed-in",
+        )
+        .unwrap();
+        drop(conn);
+        // A refresh rotates the restored row right before the import's write.
+        let refreshed = std::rc::Rc::new(std::cell::Cell::new(false));
+        let seen = std::rc::Rc::clone(&refreshed);
+        let live = db.clone();
+        before_row_write(key, move |store| {
+            let conn = rusqlite::Connection::open(&live).unwrap();
+            let root = Zeroizing::new(store.derive_user_partition_wrapping_key());
+            seen.set(
+                crate::user_partitions::replace_user_credential_if_unchanged(
+                    &conn,
+                    &root,
+                    bob,
+                    key,
+                    "oauth",
+                    ("bob-token", "bob-refreshed"),
+                    false,
+                )
+                .unwrap(),
+            );
+        });
+
+        let result = import_keystore_with_store(
+            &store,
+            PASSWORD_736,
+            &backup,
+            "skip_existing",
+            ImportSections::default(),
+            Some(&cfg),
+            None,
+            None,
+        )
+        .unwrap();
+        assert!(
+            refreshed.get(),
+            "the refresh ran on the restored row before the write"
+        );
+        assert_eq!(result.profile_decisions_error, None);
+        assert_eq!(
+            row_in(&store, &cfg, bob, key).as_deref(),
+            Some("bob-refreshed"),
+            "the refresh is kept"
+        );
     }
 
     /// "Keep both" copies a backup row under the new id only when it is the

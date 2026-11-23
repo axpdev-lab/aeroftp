@@ -4010,6 +4010,57 @@ pub(crate) fn set_signed_in_credential_for(
     })
 }
 
+/// [`set_signed_in_credential_for`] only while the row holds `expected`
+/// (`None`: no row). Read, comparison and write share one IMMEDIATE
+/// transaction, as in [`swap_user_credential_if`], so a value another writer
+/// stored since (a refresh of the token) is never replaced. Whether it was
+/// written.
+pub(crate) fn set_signed_in_credential_if(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+    credential_id: &str,
+    credential_type: &str,
+    expected: Option<&str>,
+    secret: &str,
+) -> Result<bool, String> {
+    if credential_id.is_empty() {
+        return Err("CREDENTIAL_ID_REQUIRED".to_string());
+    }
+    if credential_type.is_empty() {
+        return Err("CREDENTIAL_TYPE_REQUIRED".to_string());
+    }
+    let root_secret = user_crypto::secret_key_from_bytes(root_key);
+    with_user_dek(conn, &root_secret, user_id, |user_id, dek| {
+        let tx =
+            rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
+                .map_err(|e| format!("Begin conditional signed-in credential write: {e}"))?;
+        let current = read_credential_with_dek(&tx, user_id, dek, credential_id)?;
+        let holds = match (current.as_ref().map(|v| v.as_str()), expected) {
+            (None, None) => true,
+            (Some(current), Some(expected)) => {
+                use subtle::ConstantTimeEq;
+                bool::from(current.as_bytes().ct_eq(expected.as_bytes()))
+            }
+            _ => false,
+        };
+        if !holds {
+            return Ok(false);
+        }
+        set_signed_in_credential_with_dek(
+            &tx,
+            user_id,
+            dek,
+            credential_id,
+            credential_type,
+            secret,
+        )?;
+        tx.commit()
+            .map_err(|e| format!("Commit conditional signed-in credential write: {e}"))?;
+        Ok(true)
+    })
+}
+
 /// Forgets every sign-in stamp of the partition database at `db_path`: a
 /// restored database carries its rows, never the sign-ins behind them.
 pub fn forget_sign_in_stamps_in_db(db_path: &std::path::Path) -> Result<(), String> {
