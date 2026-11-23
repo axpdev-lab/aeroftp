@@ -1718,7 +1718,7 @@ fn revoke_error_detail(error: &ProtonError) -> String {
 /// Revokes on Proton `session`, read from the key `key` of `owner` (or saved
 /// there until a sign-in replaced it), unless a key other than `key` holds it
 /// or another account holds it or may: see [`revoke_saved_session`].
-async fn revoke_session(
+pub(crate) async fn revoke_session(
     store: &CredentialStore,
     owner: SessionOwner,
     key: &str,
@@ -2161,39 +2161,53 @@ impl SessionStore for VaultSession {
     }
 }
 
+/// Test log capture shared by the vault tests and the isolated native
+/// relocation child: every warn the revoke path emits lands in
+/// `LOG_CAPTURE`, cleared per test.
+#[cfg(test)]
+pub(crate) static LOG_CAPTURE: Mutex<String> = Mutex::new(String::new());
+
+#[cfg(test)]
+use std::sync::Mutex;
+
+#[cfg(test)]
+struct CaptureLog;
+
+#[cfg(test)]
+impl log::Log for CaptureLog {
+    fn enabled(&self, _: &log::Metadata) -> bool {
+        true
+    }
+    fn log(&self, record: &log::Record) {
+        if let Ok(mut buffer) = LOG_CAPTURE.lock() {
+            use std::fmt::Write;
+            let _ = writeln!(buffer, "{}", record.args());
+        }
+    }
+    fn flush(&self) {}
+}
+
+/// The process logger installs once: every warn the revoke path emits
+/// lands in `LOG_CAPTURE`, cleared for this test.
+#[cfg(test)]
+pub(crate) fn install_log_capture() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        let _ = log::set_logger(&CaptureLog);
+        log::set_max_level(log::LevelFilter::Trace);
+    });
+    LOG_CAPTURE.lock().unwrap().clear();
+}
+
+#[cfg(test)]
+pub(crate) fn captured_log() -> String {
+    LOG_CAPTURE.lock().unwrap().clone()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use secrecy::{ExposeSecret, SecretString};
-    use std::sync::Mutex;
-
-    static LOG_CAPTURE: Mutex<String> = Mutex::new(String::new());
-
-    struct CaptureLog;
-
-    impl log::Log for CaptureLog {
-        fn enabled(&self, _: &log::Metadata) -> bool {
-            true
-        }
-        fn log(&self, record: &log::Record) {
-            if let Ok(mut buffer) = LOG_CAPTURE.lock() {
-                use std::fmt::Write;
-                let _ = writeln!(buffer, "{}", record.args());
-            }
-        }
-        fn flush(&self) {}
-    }
-
-    /// The process logger installs once: every warn the revoke path emits
-    /// lands in `LOG_CAPTURE`, cleared for this test.
-    fn install_log_capture() {
-        static ONCE: std::sync::Once = std::sync::Once::new();
-        ONCE.call_once(|| {
-            let _ = log::set_logger(&CaptureLog);
-            log::set_max_level(log::LevelFilter::Trace);
-        });
-        LOG_CAPTURE.lock().unwrap().clear();
-    }
 
     /// The diagnostic of a failed revoke keeps Proton's HTTP status and
     /// code only: a secret in the provider's `Error` text reaches neither
@@ -2209,98 +2223,6 @@ mod tests {
         assert_eq!(detail, "HTTP 503, Proton code 7000");
         assert!(!detail.contains("s3cr3t-token-value"));
         assert_ne!(detail, error.to_string());
-    }
-
-    /// The whole [`revoke_session`] path against a local Proton double: the
-    /// sign-out is really sent, Proton answers an API error whose `Error`
-    /// text carries a secret, and the outcome a caller logs or returns keeps
-    /// the HTTP status and Proton's code only. Red if the raw provider
-    /// error is reported again.
-    #[test]
-    fn a_failed_revoke_session_reports_status_and_code_without_the_provider_message() {
-        let _env = crate::test_env::lock();
-        let _partition = crate::user_partitions::test_lock();
-        let temporary = tempfile::tempdir().expect("temporary config");
-        std::env::set_var("XDG_CONFIG_HOME", temporary.path());
-        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
-        CredentialStore::clear_cache();
-        CredentialStore::bootstrap_master_password("proton-revoke-pass").expect("bootstrap");
-        CredentialStore::unlock_with_master("proton-revoke-pass", None).expect("unlock");
-        let store = CredentialStore::from_cache().expect("cached vault");
-        crate::user_partitions::init_or_migrate_cli(&store).expect("init partitions");
-        let _ = crate::user_partitions::open_or_init_cli().expect("partition DB");
-
-        let runtime = tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(2)
-            .enable_all()
-            .build()
-            .unwrap();
-        let (endpoint, server) = runtime.block_on(async {
-            let app = axum::Router::new().route(
-                "/auth/v4",
-                axum::routing::delete(|| async move {
-                    (
-                        axum::http::StatusCode::BAD_REQUEST,
-                        axum::Json(serde_json::json!({
-                            "Code": 1001,
-                            "Error": "upstream refused s3cr3t-token-value",
-                        })),
-                    )
-                }),
-            );
-            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-            let endpoint = format!("http://{}", listener.local_addr().unwrap());
-            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-            (endpoint, server)
-        });
-        test_seams::set_revoke_api_base(Some(endpoint));
-        install_log_capture();
-        store_session(
-            SessionOwner::for_user(None),
-            Some("revokeapi"),
-            &session("revoke-api-uid"),
-        )
-        .expect("the saved session the purge left");
-        let outcome = runtime.block_on(revoke_session(
-            &store,
-            SessionOwner::for_user(None),
-            "proton_native_session_revokeapi",
-            session("revoke-api-uid"),
-        ));
-        // The deferred cleanup a purge runs reaches the same double through
-        // `end_purged_session_blocking`, so its error carries the same
-        // redaction, not a locally formatted copy of the outcome.
-        let deferred =
-            end_purged_session_blocking(SessionOwner::for_user(None), "revokeapi", |_| Ok(true))
-                .expect_err("the deferred sign-out fails on the same double");
-        test_seams::set_revoke_api_base(None);
-        server.abort();
-        drop(runtime);
-        CredentialStore::clear_cache();
-
-        let RevokeOutcome::Failed(detail) = outcome else {
-            panic!("the refused sign-out is a failure, got {outcome:?}");
-        };
-        assert!(
-            detail.contains("HTTP 400") && detail.contains("1001"),
-            "the outcome keeps status and code: {detail}"
-        );
-        assert!(
-            !detail.contains("s3cr3t-token-value"),
-            "the provider's message reached the outcome: {detail}"
-        );
-        let text = LOG_CAPTURE.lock().unwrap().clone();
-        assert!(!text.contains("s3cr3t-token-value"), "{text}");
-        assert!(text.contains("HTTP 400") && text.contains("1001"), "{text}");
-        let deferred = deferred.to_string();
-        assert!(
-            deferred.contains("HTTP 400") && deferred.contains("1001"),
-            "the deferred error keeps status and code: {deferred}"
-        );
-        assert!(
-            !deferred.contains("s3cr3t-token-value"),
-            "the provider's message reached the deferred error: {deferred}"
-        );
     }
 
     fn session(uid: &str) -> ProtonSession {

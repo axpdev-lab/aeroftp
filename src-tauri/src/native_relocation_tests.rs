@@ -4377,3 +4377,96 @@ fn a_settle_waits_for_the_move_of_the_legacy_list() {
     );
     assert_eq!(vault_value(&password), None);
 }
+
+/// The whole [`vault::revoke_session`] path against a local Proton double,
+/// kept inside the isolated child: `XDG_CONFIG_HOME` alone does not confine
+/// the native directory on Windows and macOS, so the store this test opens
+/// must not be able to reach the real one. Proton answers an API error
+/// whose `Error` text carries a secret, and the outcome a caller logs or
+/// returns keeps the HTTP status and Proton's code only. Red if the raw
+/// provider error is reported again.
+#[test]
+fn a_failed_revoke_session_reports_status_and_code_without_the_provider_message() {
+    if !in_isolated_child(
+        "a_failed_revoke_session_reports_status_and_code_without_the_provider_message",
+    ) {
+        return;
+    }
+    CredentialStore::init().unwrap();
+    let store = CredentialStore::from_cache().unwrap();
+
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
+        .enable_all()
+        .build()
+        .unwrap();
+    let (endpoint, server) = runtime.block_on(async {
+        let app = axum::Router::new().route(
+            "/auth/v4",
+            axum::routing::delete(|| async move {
+                (
+                    axum::http::StatusCode::BAD_REQUEST,
+                    axum::Json(json!({
+                        "Code": 1001,
+                        "Error": "upstream refused s3cr3t-token-value",
+                    })),
+                )
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        (endpoint, server)
+    });
+    vault::test_seams::set_revoke_api_base(Some(endpoint));
+    vault::install_log_capture();
+    let saved = session("revoke-api-uid", "revoke");
+    vault::store_session(
+        vault::SessionOwner::for_user(None),
+        Some("revokeapi"),
+        &saved,
+    )
+    .expect("the saved session the purge left");
+    let outcome = runtime.block_on(vault::revoke_session(
+        &store,
+        vault::SessionOwner::for_user(None),
+        "proton_native_session_revokeapi",
+        session("revoke-api-uid", "revoke"),
+    ));
+    // The deferred cleanup a purge runs reaches the same double through
+    // `end_purged_session_blocking`, so its error carries the same
+    // redaction, not a locally formatted copy of the outcome.
+    let deferred = vault::end_purged_session_blocking(
+        vault::SessionOwner::for_user(None),
+        "revokeapi",
+        |_| Ok(true),
+    )
+    .expect_err("the deferred sign-out fails on the same double");
+    vault::test_seams::set_revoke_api_base(None);
+    server.abort();
+    drop(runtime);
+
+    let vault::RevokeOutcome::Failed(detail) = outcome else {
+        panic!("the refused sign-out is a failure, got {outcome:?}");
+    };
+    assert!(
+        detail.contains("HTTP 400") && detail.contains("1001"),
+        "the outcome keeps status and code: {detail}"
+    );
+    assert!(
+        !detail.contains("s3cr3t-token-value"),
+        "the provider's message reached the outcome: {detail}"
+    );
+    let text = vault::captured_log();
+    assert!(!text.contains("s3cr3t-token-value"), "{text}");
+    assert!(text.contains("HTTP 400") && text.contains("1001"), "{text}");
+    let deferred = deferred.to_string();
+    assert!(
+        deferred.contains("HTTP 400") && deferred.contains("1001"),
+        "the deferred error keeps status and code: {deferred}"
+    );
+    assert!(
+        !deferred.contains("s3cr3t-token-value"),
+        "the provider's message reached the deferred error: {deferred}"
+    );
+}
