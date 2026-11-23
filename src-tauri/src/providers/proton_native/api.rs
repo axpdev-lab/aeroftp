@@ -862,7 +862,7 @@ impl ProtonApi {
 
     /// The saved tokens when they belong to the same session, differ from
     /// `current`, and are not a pair this connection already rotated past:
-    /// another process refreshed them — including the rotation after this
+    /// another process refreshed them, including the rotation after this
     /// connection's own, whose refresh token it never sent. A stored pair
     /// whose refresh token this connection spent is older than the pair in
     /// memory, whatever its access token says (a withheld write leaves

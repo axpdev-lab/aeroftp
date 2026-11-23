@@ -11756,8 +11756,8 @@ fn empty_partition_database(conn: &Connection) -> Result<(), String> {
 /// could fall into the gap of, on Windows included, where a file a
 /// connection holds open cannot be removed at all. A database whose
 /// `BEGIN IMMEDIATE` fails for a reason other than a held lock cannot be
-/// emptied in place, and removing its file would leave exactly that gap —
-/// a commit or a replacement landing between the check and the removal —
+/// emptied in place, and removing its file would leave exactly that gap:
+/// a commit or a replacement landing between the check and the removal;
 /// so the rebuild refuses it too ([`REBUILD_WHILE_WRITTEN`]).
 fn remove_partitions_db_for_rebuild(path: &std::path::Path) -> Result<Option<PathBuf>, String> {
     if !path.is_file() {
@@ -11796,7 +11796,7 @@ fn remove_partitions_db_for_rebuild(path: &std::path::Path) -> Result<Option<Pat
         empty_partition_database(&guard)?;
     } else {
         // `BEGIN IMMEDIATE` failed for a reason other than a held lock, so
-        // the file cannot be emptied in place — and removing it would open
+        // the file cannot be emptied in place, and removing it would open
         // the gap a commit or a replacement could land in, on any platform.
         // `PRAGMA data_version` cannot close that gap: it is per connection,
         // so two reads prove nothing about the file. Refuse the rebuild.
@@ -13956,8 +13956,8 @@ mod tests {
 
     /// CodeRabbit 4657339482: on the damaged-database path a writer landing
     /// a commit between the failed `BEGIN IMMEDIATE` and the removal could
-    /// not be told apart from the damaged file itself — `PRAGMA
-    /// data_version` is per connection, so it proves nothing — so the
+    /// not be told apart from the damaged file itself (`PRAGMA
+    /// data_version` is per connection, so it proves nothing), so the
     /// rebuild refuses instead of removing: the file a writer replaced
     /// stays, commits and all.
     #[test]

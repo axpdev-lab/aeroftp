@@ -2240,7 +2240,7 @@ impl OAuth2Manager {
                         // The adoption is written only while the profile's
                         // row is still absent, checked and written in one
                         // transaction: a sign-in that stored it in between
-                        // wins, and its record — not the successor — is the
+                        // wins, and its record, not the successor, is the
                         // chain this load returns.
                         let written = crate::user_partitions::swap_user_credential_if(
                             &conn,
@@ -2292,8 +2292,8 @@ impl OAuth2Manager {
                         );
                     }
                 }
-                // With no journal left — the settle already wrote the
-                // successor to the singleton's row and dropped it — that
+                // With no journal left (the settle already wrote the
+                // successor to the singleton's row and dropped it), that
                 // row still holds the live chain while the vault keeps the
                 // spent predecessor: the row, not the vault, is what
                 // migrates. The vault fallback below stays for an absent
@@ -3521,7 +3521,7 @@ mod tests {
     }
 
     /// CodeRabbit r4668519015 / r4668533082: a sign-in that stores the
-    /// profile's row between the empty read and the adoption's write wins —
+    /// profile's row between the empty read and the adoption's write wins,
     /// the destination write is checked and made in one transaction, so the
     /// loader returns the winner's record, not the kept successor.
     #[test]
@@ -3600,7 +3600,7 @@ mod tests {
 
     /// CodeRabbit r4668533082: with the journal already settled and gone,
     /// the singleton's partition row still holds the live chain while the
-    /// vault keeps the spent predecessor — the row, not the vault, is what
+    /// vault keeps the spent predecessor; the row, not the vault, is what
     /// an empty profile adopts.
     #[test]
     fn a_settled_singleton_row_is_what_an_empty_profile_adopts_without_the_journal() {

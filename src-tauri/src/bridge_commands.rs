@@ -3602,7 +3602,7 @@ mod tests {
 
     /// CodeRabbit r4668518983: an rclone export captured under account A
     /// reads A's OAuth token and A's OneDrive drive selectors even while
-    /// account B is the active one — the selectors can no longer be paired
+    /// account B is the active one, the selectors can no longer be paired
     /// with another account's token.
     #[test]
     fn rclone_onedrive_selectors_follow_the_captured_account() {

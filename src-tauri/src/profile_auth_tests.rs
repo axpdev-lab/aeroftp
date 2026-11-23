@@ -2513,7 +2513,7 @@ fn a_fourshared_connect_reads_the_token_of_the_captured_account() {
 
 /// CodeRabbit r4668519001: a connection captured while no account existed
 /// keeps `LEGACY_ONLY_ACCOUNT` in its scope, so the 4shared fallback reads
-/// the legacy owner's copies — never the token of whichever account is
+/// the legacy owner's copies, never the token of whichever account is
 /// active now and holds a token under the same profile id.
 #[test]
 fn a_legacy_only_fourshared_connect_never_reads_the_active_accounts_token() {
