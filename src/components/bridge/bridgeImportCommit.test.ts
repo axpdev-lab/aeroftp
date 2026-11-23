@@ -448,6 +448,31 @@ describe('createScanSettler', () => {
         expect(scans.isCommitted()).toBe(false);
     });
 
+    // A confirm of scan-1 still running when scan-2 lands: the commit belongs
+    // to scan-1, so scan-2's preview must stay confirmable, not marked.
+    it('marks committed only the scan its confirm ran for', async () => {
+        const settle = vi.fn().mockResolvedValue(undefined);
+        const scans = createScanSettler(settle);
+        await scans.track('scan-1');
+        let finish!: () => void;
+        const gate = new Promise<void>(resolve => { finish = resolve; });
+        const confirming = scans.confirming(() => gate.then(() => 'stored'));
+        // The newer scan's track waits for the confirm in flight before it
+        // settles the scan it replaces.
+        const second = scans.latest(scans.begin(), async () => ({ scanId: 'scan-2' }));
+        await new Promise(resolve => setTimeout(resolve, 0));
+        finish();
+        await expect(confirming).resolves.toBe('stored');
+        await expect(second).resolves.toEqual({ scanId: 'scan-2' });
+        expect(settle).toHaveBeenCalledWith('scan-1');
+        expect(scans.markCommitted()).toBe(false);
+        expect(scans.isCommitted()).toBe(false);
+        // The confirm of the scan now held marks it.
+        await scans.confirming(async () => 'stored-2');
+        expect(scans.markCommitted()).toBe(true);
+        expect(scans.isCommitted()).toBe(true);
+    });
+
     // Confirm only A: the settle takes back B's secrets. A second confirm of
     // that preview, B ticked before the close timer fires, must not save B.
     it('is the confirm the panel runs: once a preview is confirmed it cannot be confirmed again', () => {
@@ -455,7 +480,10 @@ describe('createScanSettler', () => {
         const guard = body.indexOf('scans.isCommitted()) return;');
         expect(guard).toBeGreaterThan(0);
         expect(guard).toBeLessThan(body.indexOf('commitImportedServers('));
-        expect(body).toMatch(/if \(outcome\.error\) \{ setError\(outcome\.error\); return; \}\s*scans\.markCommitted\(\);\s*setCommitted\(true\);\s*await scans\.release\(\);/);
+        const marked = body.indexOf('if (!scans.markCommitted()) return;');
+        expect(marked).toBeGreaterThan(body.indexOf('commitImportedServers('));
+        expect(marked).toBeLessThan(body.indexOf('setCommitted(true);'));
+        expect(body.indexOf('setCommitted(true);')).toBeLessThan(body.indexOf('await scans.release();'));
         expect(panelSource).toMatch(/onClick=\{confirmImport\}\s*disabled=\{loading \|\| committed \|\| selectedIds\.size === 0\}/);
         expect(panelSource).toMatch(/if \(!committed\) setSelectedIds\(next\);/);
         expect(panelSource.match(/toggle\(s\.id, setSelectedIds\)|onChange=\{setSelectedIds\}/g)).toBeNull();

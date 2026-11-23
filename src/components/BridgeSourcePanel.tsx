@@ -287,7 +287,10 @@ export const BridgeSourcePanel: React.FC<Props> = ({
                 () => commitImportedServers(selected, existingServerKeys, onImport, result.importedUserId),
             );
             if (outcome.error) { setError(outcome.error); return; }
-            scans.markCommitted();
+            // A newer scan that landed during the save owns the preview now:
+            // this commit is not its, so nothing is marked, released or
+            // announced for it.
+            if (!scans.markCommitted()) return;
             setCommitted(true);
             await scans.release();
             const parts: string[] = [];

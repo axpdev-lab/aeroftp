@@ -242,6 +242,10 @@ export function createScanSettler(settle: (scanId: string | null) => Promise<unk
     let confirm: Promise<unknown> | null = null;
     let generation = 0;
     let committed = false;
+    // The scan the running (or last finished) confirm belongs to: a newer
+    // preview that lands meanwhile is not the confirmed one, so
+    // `markCommitted` must not close it.
+    let confirmedScan: string | null | undefined;
     const run = async (scanId: string | null) => {
         try {
             await settle(scanId);
@@ -264,18 +268,28 @@ export function createScanSettler(settle: (scanId: string | null) => Promise<unk
         const previous = current;
         current = scanId ?? null;
         committed = false;
-        if (previous && previous !== current) await run(previous);
+        if (previous && previous !== current) {
+            // A confirm of the replaced scan still saving is waited for
+            // first, like in `release`: settling early would take back the
+            // secrets of the profiles it is writing.
+            await confirm?.catch(() => undefined);
+            await run(previous);
+        }
         if (closed) await release();
     };
     return {
         /** Runs the confirm of the scan held; a settle meanwhile waits for it. */
         async confirming<T>(work: () => Promise<T>): Promise<T> {
+            const held = current;
             const running = work();
             confirm = running;
             try {
                 return await running;
             } finally {
-                if (confirm === running) confirm = null;
+                if (confirm === running) {
+                    confirm = null;
+                    confirmedScan = held;
+                }
             }
         },
         track,
@@ -309,10 +323,16 @@ export function createScanSettler(settle: (scanId: string | null) => Promise<unk
         /**
          * The preview held was confirmed: its scan is settled next, which takes
          * back what it wrote for the profiles left out, so the preview can be
-         * confirmed no more. A failed confirm does not call this.
+         * confirmed no more. A failed confirm does not call this. Returns
+         * false when a newer scan replaced the confirmed one meanwhile: that
+         * preview is not committed and stays confirmable.
          */
-        markCommitted() {
+        markCommitted(): boolean {
+            if (confirmedScan !== undefined && current !== confirmedScan) {
+                return false;
+            }
             committed = true;
+            return true;
         },
         /** Whether the preview held was confirmed (a new scan clears it). */
         isCommitted(): boolean {
