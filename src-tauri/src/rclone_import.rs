@@ -7579,6 +7579,21 @@ http_proxy =
         for secret in [user, pw, tok] {
             assert!(!cred_json.contains(secret), "{secret} leaked: {cred_json}");
         }
+
+        // RFC 3986 `@` in WebDAV path segments survives intact.
+        let dav_path = dir.path().join("rclone-dav-at.conf");
+        std::fs::write(
+            &dav_path,
+            "[dav-at]\ntype = webdav\nurl = https://dav.example.test/users/alice@example.test/files\nuser = alice\n",
+        )
+        .unwrap();
+        let dav_res = import_rclone(&dav_path).unwrap();
+        assert_eq!(dav_res.servers.len(), 1);
+        assert_eq!(dav_res.servers[0].host, "dav.example.test");
+        assert_eq!(
+            dav_res.servers[0].initial_path.as_deref(),
+            Some("/users/alice@example.test/files")
+        );
     }
 
     #[test]

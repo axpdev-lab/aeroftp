@@ -141,8 +141,12 @@ fn map_alias(alias: &McAlias) -> Result<MappedProfile, String> {
     // AWS stays implicit: an explicit endpoint switches the S3 connection to
     // path-style, which AWS refuses for newer buckets.
     let url = alias.url.trim().trim_end_matches('/');
-    let aws = provider_id == "amazon-s3";
-    if !aws && (url.starts_with("http://") || url.starts_with("https://")) {
+    let url_lower = url.to_ascii_lowercase();
+    let default_aws_transport =
+        provider_id == "amazon-s3" && url_lower.starts_with("https://") && port == 443;
+    if !default_aws_transport
+        && (url_lower.starts_with("http://") || url_lower.starts_with("https://"))
+    {
         if let Some(endpoint) = crate::bridge_shared::endpoint_url_without_secrets(url) {
             options.insert(
                 "endpoint".to_string(),
@@ -590,6 +594,82 @@ mod tests {
 
         assert!(result.skipped.iter().any(|s| s.name == "emptyhost"));
         assert!(!result.servers.iter().any(|s| s.name == "emptyhost"));
+
+        // Non-default AWS transport (http + port 8080) preserves endpoint without userinfo;
+        // port-only endpoint `https://:9000` is skipped; bracketed IPv6 + port succeeds.
+        let aws_http_url = format!("http://{user}:{pw}@s3.amazonaws.com:8080");
+        let transport_body = serde_json::json!({
+            "version": "10",
+            "aliases": {
+                "aws_http": {
+                    "url": aws_http_url,
+                    "accessKey": "DEMOAWSHTTP",
+                    "secretKey": "awssecret",
+                    "api": "S3v4",
+                    "path": "auto"
+                },
+                "port_only": {
+                    "url": "https://:9000",
+                    "accessKey": "DEMOPORTONLY",
+                    "secretKey": "portsecret",
+                    "api": "S3v4",
+                    "path": "auto"
+                },
+                "ipv6_lab": {
+                    "url": "https://[::1]:9000",
+                    "accessKey": "DEMOIPV6",
+                    "secretKey": "v6secret",
+                    "api": "S3v4",
+                    "path": "auto"
+                }
+            }
+        })
+        .to_string();
+        let tp = write_tmp("aws-transport", &transport_body);
+        let tres = import_mc(&tp).expect("import should succeed");
+        std::fs::remove_file(&tp).ok();
+
+        let aws_http = tres.servers.iter().find(|s| s.name == "aws_http").unwrap();
+        assert_eq!(aws_http.host, "s3.amazonaws.com");
+        assert_eq!(aws_http.port, 8080);
+        assert_eq!(
+            aws_http.options.as_ref().and_then(|o| o.get("endpoint")),
+            Some(&serde_json::json!("http://s3.amazonaws.com:8080"))
+        );
+        let mut extra = HashMap::new();
+        extra.insert("bucket".to_string(), "demo".to_string());
+        if let Some(ep) = aws_http
+            .options
+            .as_ref()
+            .and_then(|o| o.get("endpoint"))
+            .and_then(|v| v.as_str())
+        {
+            extra.insert("endpoint".to_string(), ep.to_string());
+        }
+        let s3_cfg = crate::providers::types::S3Config::from_provider_config(
+            &crate::providers::types::ProviderConfig {
+                name: aws_http.name.clone(),
+                provider_type: crate::providers::types::ProviderType::S3,
+                host: aws_http.host.clone(),
+                port: Some(aws_http.port as u16),
+                username: Some(aws_http.username.clone()),
+                password: aws_http.credential.clone(),
+                initial_path: None,
+                extra,
+            },
+        )
+        .expect("aws_http builds S3Config");
+        assert_eq!(
+            s3_cfg.endpoint.as_deref(),
+            Some("http://s3.amazonaws.com:8080")
+        );
+
+        assert!(tres.skipped.iter().any(|s| s.name == "port_only"));
+        assert!(!tres.servers.iter().any(|s| s.name == "port_only"));
+
+        let ipv6 = tres.servers.iter().find(|s| s.name == "ipv6_lab").unwrap();
+        assert_eq!(ipv6.host, "[::1]");
+        assert_eq!(ipv6.port, 9000);
     }
 
     #[test]

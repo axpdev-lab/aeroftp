@@ -203,15 +203,42 @@ pub(crate) struct EndpointParts<'a> {
     pub path: &'a str,
 }
 
+fn has_non_empty_hostname(host_port: &str) -> bool {
+    if host_port.is_empty() {
+        return false;
+    }
+    if let Some(after_open) = host_port.strip_prefix('[') {
+        let Some((inside, after_close)) = after_open.split_once(']') else {
+            return false;
+        };
+        if inside.trim().is_empty() {
+            return false;
+        }
+        return after_close.is_empty()
+            || after_close
+                .strip_prefix(':')
+                .is_some_and(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()));
+    }
+    if host_port.starts_with(':') {
+        return false;
+    }
+    if let Some((host, _)) = host_port.rsplit_once(':') {
+        return !host.trim().is_empty();
+    }
+    true
+}
+
 /// Split an endpoint into scheme, `host[:port]` and path, without userinfo,
 /// query or fragment.
 ///
 /// Recognizes `scheme://` only at the start of the input (RFC 3986 scheme
 /// characters before any `/`, `?`, `#`, or `@`) so a `://` inside a query
-/// parameter is never misread as the host. Returns `None` when the resulting
-/// `host[:port]` is empty (e.g. `https:///bucket`) or when an `@` follows the
-/// end of the authority (userinfo holding an unencoded `/`, `?`, or `#` cannot
-/// be told apart from a path, and either reading can leak a secret as host).
+/// parameter is never misread as the host. Returns `None` when the extracted
+/// hostname is empty (e.g. `https:///bucket`, `https://:9000`) or when an `@`
+/// after the authority is ambiguous with userinfo containing an unencoded `/`,
+/// `?`, or `#`. A plain host without `:` or `@` in its authority still permits
+/// RFC 3986 `@` inside path segments (e.g.
+/// `https://dav.example.test/users/alice@example.test/files`).
 pub(crate) fn split_endpoint(endpoint: &str) -> Option<EndpointParts<'_>> {
     let trimmed = endpoint.trim();
     let (scheme, after_scheme) = match trimmed.split_once("://") {
@@ -230,7 +257,13 @@ pub(crate) fn split_endpoint(endpoint: &str) -> Option<EndpointParts<'_>> {
         .find(['/', '?', '#'])
         .unwrap_or(after_scheme.len());
     let (authority, rest) = after_scheme.split_at(authority_end);
-    if rest.contains('@') {
+    let (path, tail) = match rest.find(['?', '#']) {
+        Some(idx) => rest.split_at(idx),
+        None => (rest, ""),
+    };
+    if tail.contains('@')
+        || (path.contains('@') && (authority.contains('@') || authority.contains(':')))
+    {
         return None;
     }
     let host_port = authority
@@ -238,10 +271,9 @@ pub(crate) fn split_endpoint(endpoint: &str) -> Option<EndpointParts<'_>> {
         .map(|(_, h)| h)
         .unwrap_or(authority)
         .trim();
-    if host_port.is_empty() {
+    if !has_non_empty_hostname(host_port) {
         return None;
     }
-    let path = &rest[..rest.find(['?', '#']).unwrap_or(rest.len())];
     Some(EndpointParts {
         scheme,
         host_port,
@@ -2012,8 +2044,17 @@ mod tests {
         );
         assert_eq!(endpoint_url_without_secrets("minio.example.com"), None);
 
-        // Empty authority in explicit endpoints must be rejected.
-        for empty_auth in ["https:///bucket", "http://", "/bucket", "?k=v", ""] {
+        // Empty authority and port-only endpoints must be rejected.
+        for empty_auth in [
+            "https:///bucket",
+            "https://:9000",
+            ":9000",
+            "[]:9000",
+            "http://",
+            "/bucket",
+            "?k=v",
+            "",
+        ] {
             assert_eq!(try_endpoint_host(empty_auth), None, "{empty_auth}");
             assert_eq!(
                 endpoint_url_without_secrets(empty_auth),
@@ -2021,6 +2062,21 @@ mod tests {
                 "{empty_auth}"
             );
         }
+
+        // RFC 3986 permits `@` in a path segment when the authority is a plain host.
+        let path_at = "https://dav.example.test/users/alice@example.test/files";
+        assert_eq!(
+            try_endpoint_host(path_at).as_deref(),
+            Some("dav.example.test")
+        );
+        assert_eq!(
+            endpoint_url_without_secrets(path_at).as_deref(),
+            Some(path_at)
+        );
+        assert_eq!(
+            try_endpoint_host("https://[::1]:9000/s3").as_deref(),
+            Some("[::1]:9000")
+        );
 
         // A `://` inside a query parameter must not be treated as the scheme separator.
         let query_scheme = "s3.example.test?token=https://SECRET_TOK";

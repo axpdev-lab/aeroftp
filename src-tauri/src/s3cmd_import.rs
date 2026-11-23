@@ -114,8 +114,9 @@ fn map_s3cmd(section: &HashMap<String, String>) -> Result<MappedProfile, &'stati
     // cleartext endpoint on 8080 would come back as HTTPS).
     // AWS stays implicit: an explicit endpoint switches the S3 connection to
     // path-style, which AWS refuses for newer buckets.
-    let aws = crate::bridge_shared::map_s3_provider_from_endpoint(&host) == "amazon-s3";
-    if !host.is_empty() && !aws {
+    let aws = provider_id == "amazon-s3";
+    let default_aws_transport = aws && use_https && port == 443;
+    if !host.is_empty() && !default_aws_transport {
         let scheme = if use_https { "https" } else { "http" };
         let default_port = if use_https { 443 } else { 80 };
         let endpoint = if port == default_port {
@@ -676,6 +677,28 @@ bucket_location = us-east-1
                 .and_then(|o| o.get("endpoint")),
             Some(&serde_json::json!("https://objects.example.test:9000"))
         );
+
+        // Port-only endpoint `https://:9000` is skipped; bracketed IPv6 + port succeeds.
+        let port_only_path = dir.path().join("port-only.s3cfg");
+        std::fs::write(
+            &port_only_path,
+            "[default]\naccess_key = DEMOKEY\nsecret_key = demosecret\nhost_base = https://:9000\n",
+        )
+        .unwrap();
+        let port_only = import_s3cmd(&port_only_path).unwrap();
+        assert!(port_only.servers.is_empty());
+        assert_eq!(port_only.skipped.len(), 1);
+
+        let ipv6_path = dir.path().join("ipv6.s3cfg");
+        std::fs::write(
+            &ipv6_path,
+            "[default]\naccess_key = DEMOKEY\nsecret_key = demosecret\nhost_base = https://[::1]:9000\n",
+        )
+        .unwrap();
+        let ipv6 = import_s3cmd(&ipv6_path).unwrap();
+        assert_eq!(ipv6.servers.len(), 1);
+        assert_eq!(ipv6.servers[0].host, "[::1]");
+        assert_eq!(ipv6.servers[0].port, 9000);
     }
 
     #[test]
