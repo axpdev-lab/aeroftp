@@ -470,6 +470,7 @@ pub(crate) fn parse_ini_sections_with_spans(content: &str) -> IniSpanParseResult
 }
 
 /// Parse rclone.conf INI format into named sections.
+#[cfg(test)]
 fn parse_rclone_conf(content: &str) -> HashMap<String, RcloneRemote> {
     let parsed = parse_ini_sections_with_spans(content);
     if parsed.capped {
@@ -3036,9 +3037,7 @@ fn goconfig_first_reference(value: &str) -> Option<&str> {
     while let Some(offset) = value[from..].find("%(") {
         let start = from + offset;
         let name_start = start + 2;
-        let Some(close_rel) = value[name_start..].find(')') else {
-            return None;
-        };
+        let close_rel = value[name_start..].find(')')?;
         let close = name_start + close_rel;
         if close > name_start && value[close + 1..].starts_with('s') {
             return Some(&value[start..close + 2]);

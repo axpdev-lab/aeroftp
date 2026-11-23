@@ -698,6 +698,29 @@ fn map_server_with_context(
             serde_json::Value::String("none".to_string()),
         );
     } else if protocol == "s3" && !legacy_aeroftp_s3 {
+        // FileZilla Pro S3 connects over HTTPS. For non-AWS custom endpoints
+        // (such as `objects.example.test:9000`), set an explicit `https://`
+        // `options.endpoint` so `S3Config::from_provider_config` does not
+        // mis-infer `http://` on ports like 9000. AWS stays implicit so virtual-
+        // hosted bucket addressing is preserved.
+        if let Some(clean_host) = crate::bridge_shared::try_endpoint_host(host) {
+            let aws =
+                crate::bridge_shared::map_s3_provider_from_endpoint(&clean_host) == "amazon-s3";
+            if !aws {
+                let has_explicit_port = if let Some((_, rest)) = clean_host.split_once(']') {
+                    rest.starts_with(':')
+                } else {
+                    clean_host.contains(':')
+                };
+                let endpoint = if actual_port == 443 || has_explicit_port {
+                    format!("https://{clean_host}")
+                } else {
+                    format!("https://{clean_host}:{actual_port}")
+                };
+                options.insert("endpoint".to_string(), serde_json::Value::String(endpoint));
+            }
+        }
+
         // FileZilla Pro S3 stores `/bucket` or `/bucket/prefix/...` in
         // `<RemoteDir>` as a `CServerPath::GetSafePath()`. Infer the bucket
         // only from a successfully decoded safe path (never from a failed or
@@ -2988,7 +3011,7 @@ mod tests {
         assert!(
             res.warnings
                 .iter()
-                .any(|w| w.reason.contains("ended before its closing tag")),
+                .any(|w| w.reason.contains("ends before its closing tag")),
             "wrapped document must not be marked complete: {:?}",
             res.warnings.iter().map(|w| &w.reason).collect::<Vec<_>>()
         );

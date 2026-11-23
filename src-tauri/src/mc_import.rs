@@ -582,7 +582,7 @@ mod tests {
             .is_none());
 
         let custom = result.servers.iter().find(|s| s.name == "custom").unwrap();
-        assert_eq!(custom.provider_id.as_deref(), Some("custom-s3"));
+        assert_eq!(custom.provider_id.as_deref(), Some("minio"));
         assert_eq!(
             custom.options.as_ref().and_then(|o| o.get("endpoint")),
             Some(&serde_json::json!("https://minio.example.com:9000"))
