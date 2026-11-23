@@ -318,12 +318,17 @@ fn map_duck(xml: &str) -> DuckOutcome {
     }
 }
 
-/// Derive a human-readable bookmark name: `Nickname` if present, else the
-/// hostname, else the protocol.
+/// Derive a human-readable bookmark name: `Nickname` if present, else a
+/// sanitized host label (never raw URL userinfo or query tokens), else the
+/// protocol.
 fn bookmark_name(xml: &str) -> String {
     crate::bridge_shared::plist_field(xml, "Nickname")
         .filter(|s| !s.is_empty())
-        .or_else(|| crate::bridge_shared::plist_field(xml, "Hostname").filter(|s| !s.is_empty()))
+        .or_else(|| {
+            crate::bridge_shared::plist_field(xml, "Hostname")
+                .filter(|s| !s.is_empty())
+                .map(|host| crate::bridge_shared::safe_host_label(&host, "Cyberduck bookmark"))
+        })
         .or_else(|| crate::bridge_shared::plist_field(xml, "Protocol"))
         .unwrap_or_else(|| "Cyberduck bookmark".to_string())
 }
@@ -879,6 +884,46 @@ mod tests {
             if mode == "active" {
                 assert!(result.warnings[0].reason.contains("active FTP"));
             }
+        }
+    }
+
+    #[test]
+    fn unnamed_active_ftp_bookmark_warning_strips_url_credentials_from_hostname() {
+        let user = "duckuser";
+        let pw = "duckTopSecretPw";
+        let tok = "duckTokSecret";
+        let xml = format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>Protocol</key><string>ftp</string><key>Hostname</key><string>ftp://{user}:{pw}@ftp.example.com?token={tok}</string><key>Port</key><integer>21</integer><key>Username</key><string>user</string><key>FTP Connect Mode</key><string>active</string></dict></plist>"#
+        );
+        let path = write_tmp("unnamed-secret.duck", &xml);
+        let result = import_cyberduck(&path).unwrap();
+        assert_eq!(result.servers.len(), 1);
+        assert_eq!(result.warnings.len(), 1);
+        assert_eq!(result.warnings[0].name, "ftp.example.com");
+        assert!(result.warnings[0].reason.contains("active FTP"));
+        let serialized = serde_json::to_string(&result.warnings).unwrap();
+        for secret in [user, pw, tok] {
+            assert!(
+                !serialized.contains(secret),
+                "{secret} leaked into warning: {serialized}"
+            );
+        }
+
+        // Ambiguous Hostname falls back to generic bookmark label without leaking credentials.
+        let amb_pw = "pa/ssSecret";
+        let amb_xml = format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>Protocol</key><string>ftp</string><key>Hostname</key><string>ftp://{user}:{amb_pw}@ftp.example.com</string><key>Port</key><integer>21</integer><key>Username</key><string>user</string><key>FTP Connect Mode</key><string>active</string></dict></plist>"#
+        );
+        let amb_path = write_tmp("unnamed-amb.duck", &amb_xml);
+        let amb_result = import_cyberduck(&amb_path).unwrap();
+        assert_eq!(amb_result.warnings.len(), 1);
+        assert_eq!(amb_result.warnings[0].name, "Cyberduck bookmark");
+        let amb_json = serde_json::to_string(&amb_result.warnings).unwrap();
+        for secret in [user, "pa/ss", "ssSecret"] {
+            assert!(
+                !amb_json.contains(secret),
+                "{secret} leaked into warning: {amb_json}"
+            );
         }
     }
 

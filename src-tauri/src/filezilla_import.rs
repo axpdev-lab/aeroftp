@@ -226,7 +226,7 @@ fn parse_sitemanager_xml_checked(content: &str) -> SiteManagerParse {
                     let display_name = if current_name.is_empty() {
                         current_fields
                             .get("Host")
-                            .cloned()
+                            .map(|h| crate::bridge_shared::safe_host_label(h, "unnamed"))
                             .unwrap_or_else(|| "unnamed".to_string())
                     } else {
                         current_name.clone()
@@ -2765,6 +2765,67 @@ mod tests {
             imported.servers[0].initial_path.as_deref(),
             Some("/var/www")
         );
+    }
+
+    #[test]
+    fn unnamed_site_warnings_never_leak_host_userinfo_or_query_tokens() {
+        let dir = tempfile::tempdir().unwrap();
+        let user = "fzuser";
+        let pw = "fzTopSecretPw";
+        let tok = "fzSecretTok";
+
+        // Active FTP site without <Name> and with userinfo + query in <Host>.
+        let active_path = dir.path().join("active.xml");
+        std::fs::write(
+            &active_path,
+            format!(
+                r#"<?xml version="1.0"?><FileZilla3 version="3.72.1" platform="*nix"><Servers><Server><Host>ftp://{user}:{pw}@ftp.example.com?token={tok}</Host><Port>21</Port><Protocol>0</Protocol><Type>0</Type><Parameter Name="data_mode_override">active</Parameter></Server></Servers></FileZilla3>"#
+            ),
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join("filezilla.xml"),
+            r#"<?xml version="1.0"?><FileZilla3><Settings/></FileZilla3>"#,
+        )
+        .unwrap();
+        let active = import_filezilla(&active_path).unwrap();
+        assert_eq!(active.warnings.len(), 1);
+        assert_eq!(active.warnings[0].name, "ftp.example.com");
+        let active_json = serde_json::to_string(&active.warnings).unwrap();
+        for secret in [user, pw, tok] {
+            assert!(
+                !active_json.contains(secret),
+                "{secret} leaked: {active_json}"
+            );
+        }
+
+        // Legacy AeroFTP Protocol=6 S3 site without <Name> and with ambiguous userinfo in <Host>.
+        let legacy_dir = dir.path().join("legacy");
+        std::fs::create_dir_all(&legacy_dir).unwrap();
+        let legacy_path = legacy_dir.join("sitemanager.xml");
+        let amb_pw = "pa/ssSecret";
+        std::fs::write(
+            &legacy_path,
+            format!(
+                r#"<?xml version="1.0"?><FileZilla3 version="3.67.1" platform="*"><Servers><Server><Host>https://{user}:{amb_pw}@s3.example.com</Host><Port>443</Port><Protocol>6</Protocol><User>DEMOKEY</User><RemoteDir>/archive</RemoteDir></Server></Servers></FileZilla3>"#
+            ),
+        )
+        .unwrap();
+        std::fs::write(
+            legacy_dir.join("filezilla.xml"),
+            r#"<?xml version="1.0"?><FileZilla3><Settings/></FileZilla3>"#,
+        )
+        .unwrap();
+        let legacy = import_filezilla(&legacy_path).unwrap();
+        assert_eq!(legacy.warnings.len(), 1);
+        assert_eq!(legacy.warnings[0].name, "unnamed");
+        let legacy_json = serde_json::to_string(&legacy.warnings).unwrap();
+        for secret in [user, "pa/ss", "ssSecret"] {
+            assert!(
+                !legacy_json.contains(secret),
+                "{secret} leaked: {legacy_json}"
+            );
+        }
     }
 
     /// Two profiles of one name (a list saved before names were unique) were
