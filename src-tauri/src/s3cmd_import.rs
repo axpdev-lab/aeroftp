@@ -699,6 +699,24 @@ bucket_location = us-east-1
         assert_eq!(ipv6.servers.len(), 1);
         assert_eq!(ipv6.servers[0].host, "[::1]");
         assert_eq!(ipv6.servers[0].port, 9000);
+
+        for bad_ep in [
+            "https://objects.example.test:70000",
+            "https://objects.example.test:0",
+            "https://objects.example.test:abc",
+        ] {
+            let bp = dir.path().join("badport.s3cfg");
+            std::fs::write(
+                &bp,
+                format!(
+                    "[default]\naccess_key = DEMOKEY\nsecret_key = demosecret\nhost_base = {bad_ep}\n"
+                ),
+            )
+            .unwrap();
+            let bres = import_s3cmd(&bp).unwrap();
+            assert!(bres.servers.is_empty(), "{bad_ep} must be skipped");
+            assert_eq!(bres.skipped.len(), 1, "{bad_ep}");
+        }
     }
 
     #[test]

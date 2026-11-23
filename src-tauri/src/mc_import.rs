@@ -670,6 +670,32 @@ mod tests {
         let ipv6 = tres.servers.iter().find(|s| s.name == "ipv6_lab").unwrap();
         assert_eq!(ipv6.host, "[::1]");
         assert_eq!(ipv6.port, 9000);
+
+        // Invalid TCP ports (70000, 0, non-numeric) are skipped.
+        for bad_url in [
+            "https://objects.example.test:70000",
+            "https://objects.example.test:0",
+            "https://objects.example.test:abc",
+        ] {
+            let bad_body = serde_json::json!({
+                "version": "10",
+                "aliases": {
+                    "badport": {
+                        "url": bad_url,
+                        "accessKey": "DEMOBADPORT",
+                        "secretKey": "badsecret",
+                        "api": "S3v4",
+                        "path": "auto"
+                    }
+                }
+            })
+            .to_string();
+            let bp = write_tmp("badport", &bad_body);
+            let bres = import_mc(&bp).unwrap();
+            std::fs::remove_file(&bp).ok();
+            assert!(bres.servers.is_empty(), "{bad_url} must be skipped");
+            assert_eq!(bres.skipped.len(), 1, "{bad_url}");
+        }
     }
 
     #[test]

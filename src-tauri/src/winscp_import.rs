@@ -485,6 +485,24 @@ fn parse_winscp_proxy_method(raw: &str) -> u32 {
     }
 }
 
+/// Whether `host` resolves to the local loopback interface (`localhost`,
+/// `*.localhost`, `127.0.0.0/8`, or `::1`). When `Tunnel=1` is set in WinSCP,
+/// loopback addresses are relative to the bastion host rather than the local
+/// machine, so importing them as a direct profile would target the wrong host.
+fn is_loopback_target(host: &str) -> bool {
+    let trimmed = host.trim();
+    let bare = trimmed
+        .strip_prefix('[')
+        .and_then(|s| s.strip_suffix(']'))
+        .unwrap_or(trimmed);
+    let lower = bare.trim_end_matches('.').to_ascii_lowercase();
+    if lower == "localhost" || lower.ends_with(".localhost") {
+        return true;
+    }
+    bare.parse::<std::net::IpAddr>()
+        .is_ok_and(|ip| ip.is_loopback())
+}
+
 /// Maximum number of sessions to parse (defense against DoS with crafted files).
 const MAX_SESSIONS: usize = 10_000;
 
@@ -507,6 +525,19 @@ pub fn import_winscp(config_path: &Path) -> Result<WinScpImportResult, String> {
 
         match map_session(name, fields) {
             Some(mapped) => {
+                let warn_name = crate::bridge_shared::sanitize_warning_name(name, "WinSCP session");
+                let has_tunnel = fields
+                    .get("Tunnel")
+                    .and_then(|value| parse_winscp_bool(value))
+                    == Some(true);
+                if has_tunnel && is_loopback_target(&mapped.host) {
+                    skipped.push(WinScpSkippedSession {
+                        name: warn_name,
+                        fs_protocol: fs_protocol_str,
+                        reason: "WinSCP reaches this loopback host through an SSH tunnel (Tunnel=1), so importing it directly would target the local machine instead of the bastion; configure a reachable destination manually".to_string(),
+                    });
+                    continue;
+                }
                 let is_ftp = matches!(mapped.protocol.as_str(), "ftp" | "ftps");
                 let is_neon = matches!(mapped.protocol.as_str(), "webdav" | "s3");
                 let proxy_method = fields
@@ -560,7 +591,6 @@ pub fn import_winscp(config_path: &Path) -> Result<WinScpImportResult, String> {
                 } else {
                     None
                 };
-                let warn_name = crate::bridge_shared::sanitize_warning_name(name, "WinSCP session");
                 if let Some(kind) = generic_proxy_kind {
                     warnings.push(WinScpImportWarning {
                         name: warn_name.clone(),
@@ -588,11 +618,7 @@ pub fn import_winscp(config_path: &Path) -> Result<WinScpImportResult, String> {
                 // Connection > Tunnel: WinSCP opens an SSH connection to
                 // `TunnelHostName` and reaches `HostName` through it, for
                 // every protocol. Omit `TunnelHostName` and tunnel credentials.
-                if fields
-                    .get("Tunnel")
-                    .and_then(|value| parse_winscp_bool(value))
-                    == Some(true)
-                {
+                if has_tunnel {
                     warnings.push(WinScpImportWarning {
                         name: warn_name.clone(),
                         reason: "WinSCP reaches this session through an SSH tunnel (Tunnel=1); the tunnel is not imported and AeroFTP will connect directly".to_string(),
@@ -1824,6 +1850,32 @@ FSProtocol=1
         let cred_json = serde_json::to_string(&cred_res.warnings).unwrap();
         for secret in [user, pw, tok] {
             assert!(!cred_json.contains(secret), "{secret} leaked: {cred_json}");
+        }
+
+        // Tunneled loopback targets (127.0.0.1 / localhost / [::1]) are skipped
+        // so AeroFTP never points at the user's local machine; Tunnel=0 keeps them.
+        let loop_ini = concat!(
+            "[Sessions\\TunLoopV4]\nHostName=127.0.0.1\nUserName=u\nFSProtocol=2\nTunnel=1\nTunnelHostName=bastion.secret.invalid\n",
+            "[Sessions\\TunLoopHost]\nHostName=localhost\nUserName=u\nFSProtocol=2\nTunnel=on\n",
+            "[Sessions\\TunLoopV6]\nHostName=[::1]\nUserName=u\nFSProtocol=2\nTunnel=1\n",
+            "[Sessions\\DirectLoop]\nHostName=127.0.0.1\nUserName=u\nFSProtocol=2\nTunnel=0\n",
+        );
+        let loop_path = dir.path().join("WinSCP-loop.ini");
+        std::fs::write(&loop_path, loop_ini).unwrap();
+        let loop_res = import_winscp(&loop_path).unwrap();
+        let imported_names: Vec<&str> = loop_res.servers.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(imported_names, vec!["DirectLoop"]);
+        assert_eq!(loop_res.skipped.len(), 3);
+        let skip_json = serde_json::to_string(&loop_res.skipped).unwrap();
+        assert!(!skip_json.contains("bastion.secret.invalid"));
+        for name in ["TunLoopV4", "TunLoopHost", "TunLoopV6"] {
+            assert!(
+                loop_res
+                    .skipped
+                    .iter()
+                    .any(|s| s.name == name && s.reason.contains("loopback")),
+                "expected loopback skip for {name}"
+            );
         }
     }
 }

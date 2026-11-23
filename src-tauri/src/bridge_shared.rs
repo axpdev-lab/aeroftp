@@ -203,6 +203,12 @@ pub(crate) struct EndpointParts<'a> {
     pub path: &'a str,
 }
 
+fn is_valid_tcp_port(port: &str) -> bool {
+    !port.is_empty()
+        && port.bytes().all(|b| b.is_ascii_digit())
+        && port.parse::<u16>().is_ok_and(|p| p > 0)
+}
+
 fn has_non_empty_hostname(host_port: &str) -> bool {
     if host_port.is_empty() {
         return false;
@@ -215,15 +221,13 @@ fn has_non_empty_hostname(host_port: &str) -> bool {
             return false;
         }
         return after_close.is_empty()
-            || after_close
-                .strip_prefix(':')
-                .is_some_and(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()));
+            || after_close.strip_prefix(':').is_some_and(is_valid_tcp_port);
     }
     if host_port.starts_with(':') {
         return false;
     }
-    if let Some((host, _)) = host_port.rsplit_once(':') {
-        return !host.trim().is_empty();
+    if let Some((host, port)) = host_port.rsplit_once(':') {
+        return !host.trim().is_empty() && is_valid_tcp_port(port);
     }
     true
 }
@@ -308,11 +312,13 @@ fn token_may_carry_url_secrets(tok: &str) -> bool {
 }
 
 /// Sanitize a site/session/remote name before placing it in a serialized
-/// `*ImportWarning`. Ordinary human names (e.g. `"Production"`, `"My NAS"`,
-/// `"s3cmd s3.example.com:9000"`) are preserved unchanged, while URL-shaped or
-/// credential/query-bearing names (including percent-decoded names and
-/// embedded URL tokens) have userinfo, query parameters, and fragments
-/// stripped via [`safe_host_label`].
+/// `*ImportWarning` or skip entry. Ordinary human names (e.g. `"Production"`,
+/// `"My NAS"`, `"Ops (alice@corp.example)"`, `"s3cmd s3.example.com:9000"`)
+/// are preserved unchanged. Single-token URL/credential/query names strip
+/// userinfo and query parameters via [`safe_host_label`]; any name containing
+/// whitespace together with URL/credential markers (such as a percent-decoded
+/// password containing a space) is replaced as a whole with `fallback` so no
+/// trailing password fragment can survive.
 pub(crate) fn sanitize_warning_name(raw: &str, fallback: &str) -> String {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
@@ -324,20 +330,12 @@ pub(crate) fn sanitize_warning_name(raw: &str, fallback: &str) -> String {
         }
         return trimmed.to_string();
     }
-    if !trimmed.split_whitespace().any(token_may_carry_url_secrets) {
-        return trimmed.to_string();
+    if token_may_carry_url_secrets(trimmed)
+        || trimmed.split_whitespace().any(token_may_carry_url_secrets)
+    {
+        return fallback.to_string();
     }
-    trimmed
-        .split_whitespace()
-        .map(|tok| {
-            if token_may_carry_url_secrets(tok) {
-                safe_host_label(tok, fallback)
-            } else {
-                tok.to_string()
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
+    trimmed.to_string()
 }
 
 /// `host[:port]` of an endpoint, without scheme, userinfo, path, query or
@@ -2044,12 +2042,17 @@ mod tests {
         );
         assert_eq!(endpoint_url_without_secrets("minio.example.com"), None);
 
-        // Empty authority and port-only endpoints must be rejected.
+        // Empty authority, port-only, and invalid-port endpoints must be rejected.
         for empty_auth in [
             "https:///bucket",
             "https://:9000",
             ":9000",
             "[]:9000",
+            "https://objects.example.test:70000",
+            "https://objects.example.test:0",
+            "https://objects.example.test:abc",
+            "https://[::1]:70000",
+            "https://[::1]:0",
             "http://",
             "/bucket",
             "?k=v",
@@ -2089,18 +2092,19 @@ mod tests {
         assert_eq!(safe_host_label(&amb, "unnamed"), "unnamed");
 
         // sanitize_warning_name keeps ordinary names intact and strips URL secrets.
-        assert_eq!(sanitize_warning_name("Production", "site"), "Production");
+        assert_eq!(sanitize_warning_name("My NAS", "site"), "My NAS");
         assert_eq!(
             sanitize_warning_name("Ops (alice@corp.example)", "site"),
             "Ops (alice@corp.example)"
         );
         let url_name = format!("ftp://{user}:{pw_plain}@ftp.example.com?token={tok}");
         assert_eq!(sanitize_warning_name(&url_name, "site"), "ftp.example.com");
+        let space_pw = format!("ftp://{user}:my {pw_plain}@ftp.example.com");
+        assert_eq!(sanitize_warning_name(&space_pw, "site"), "site");
+        let bare_space_pw = format!("{user}:my {pw_plain}@ftp.example.com");
+        assert_eq!(sanitize_warning_name(&bare_space_pw, "site"), "site");
         let embedded = format!("Prod https://{user}:{pw_plain}@s3.example.com?t={tok}");
-        assert_eq!(
-            sanitize_warning_name(&embedded, "site"),
-            "Prod s3.example.com"
-        );
+        assert_eq!(sanitize_warning_name(&embedded, "site"), "site");
         assert_eq!(sanitize_warning_name(&amb, "site"), "site");
     }
 }
