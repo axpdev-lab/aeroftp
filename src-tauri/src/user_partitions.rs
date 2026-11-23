@@ -11534,16 +11534,49 @@ thread_local! {
     static BEFORE_REBUILD_WRITE_LOCK: DualWriteHook = const { RefCell::new(None) };
 }
 
+/// Empty the partition database in place, inside the write transaction
+/// [`remove_partitions_db_for_rebuild`] already holds: every table, view,
+/// trigger and index is dropped and the transaction is committed, so the
+/// file a later open finds holds no schema, what a missing file would, with
+/// no window in which a commit could land in a file that is then removed.
+/// Foreign keys are off on this connection, so the drop order is free.
+fn empty_partition_database(conn: &Connection) -> Result<(), String> {
+    let objects = {
+        let mut stmt = conn
+            .prepare("SELECT type, name FROM sqlite_master WHERE name NOT LIKE 'sqlite_%'")
+            .map_err(|e| format!("List partition schema objects: {e}"))?;
+        let listed = stmt
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .map_err(|e| format!("List partition schema objects: {e}"))?
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(|e| format!("List partition schema objects: {e}"))?;
+        listed
+    };
+    for (kind, name) in objects {
+        conn.execute_batch(&format!(
+            "DROP {kind} IF EXISTS \"{}\"",
+            name.replace('"', "\"\"")
+        ))
+        .map_err(|e| format!("Empty partition database ({kind} {name}): {e}"))?;
+    }
+    conn.execute_batch("COMMIT")
+        .map_err(|e| format!("Empty partition database: {e}"))
+}
+
 /// Snapshot the partition database at `path` ([`snapshot_before_rebuild`])
-/// and remove it with its SQLite sidecars, for a rebuild; the backup, `None`
-/// for no database. A credential writer that takes no [`ProfileListLock`] (a
-/// token refresh, [`replace_user_credential_where`]) is held off from before
-/// the snapshot to the removal by a write transaction of this function's own,
-/// so the backup holds every commit the removed database had; a database a
-/// writer holds now is not rebuilt ([`REBUILD_WHILE_WRITTEN`]). One SQLite
-/// cannot read (a damaged one) has no writer to hold off and is copied as it
-/// is. Windows removes no file a connection holds open: there the transaction
-/// ends just before the removal.
+/// and empty it for a rebuild; the backup, `None` for no database. A
+/// credential writer that takes no [`ProfileListLock`] (a token refresh,
+/// [`replace_user_credential_where`]) is held off from before the snapshot
+/// to the emptying by a write transaction of this function's own, so the
+/// backup holds every commit the emptied database had; a database a writer
+/// holds now is not rebuilt ([`REBUILD_WHILE_WRITTEN`]). The file is emptied
+/// where it stands, inside that transaction: there is no removal a commit
+/// could fall into the gap of, on Windows included, where a file a
+/// connection holds open cannot be removed at all. One SQLite cannot lock
+/// at all (a damaged one) has no writer to hold off and is removed as
+/// before.
 fn remove_partitions_db_for_rebuild(path: &std::path::Path) -> Result<Option<PathBuf>, String> {
     if !path.is_file() {
         return Ok(None);
@@ -11560,8 +11593,8 @@ fn remove_partitions_db_for_rebuild(path: &std::path::Path) -> Result<Option<Pat
     let mut session = hold_session().unwrap_or(SessionHold(None));
     #[cfg(test)]
     run_dual_write_hook(&BEFORE_REBUILD_WRITE_LOCK);
-    match guard.execute_batch("BEGIN IMMEDIATE") {
-        Ok(()) => {}
+    let write_locked = match guard.execute_batch("BEGIN IMMEDIATE") {
+        Ok(()) => true,
         Err(rusqlite::Error::SqliteFailure(e, _))
             if matches!(
                 e.code,
@@ -11570,68 +11603,70 @@ fn remove_partitions_db_for_rebuild(path: &std::path::Path) -> Result<Option<Pat
         {
             return Err(REBUILD_WHILE_WRITTEN.to_string());
         }
-        Err(_) => {}
-    }
+        Err(_) => false,
+    };
     let backup = snapshot_before_rebuild(path)?;
     #[cfg(test)]
     run_dual_write_hook(&AFTER_REBUILD_SNAPSHOT);
-    // Drop any unlocked session, then remove the DB and its SQLite sidecars.
+    // Drop any unlocked session before the database is emptied or removed.
     session.clear();
-    #[cfg(windows)]
-    {
-        // Windows removes no file a connection holds open, so the guard ends
-        // before the removal and a writer that takes no ProfileListLock could
-        // commit in the gap, its write lost with the file and absent from the
-        // snapshot. `PRAGMA data_version` moves on every commit another
-        // connection lands: read inside the guard's write transaction, then
-        // again under a fresh BEGIN IMMEDIATE, it proves whether the gap held
-        // one. A changed version, or a lock still held, refuses the rebuild;
-        // a database SQLite cannot lock at all is the damaged one this
-        // rebuild exists for, and goes on as before.
-        let before: i64 = guard
-            .query_row("PRAGMA data_version", [], |row| row.get(0))
-            .unwrap_or(0);
-        drop(guard);
-        let verify = Connection::open(path)
-            .map_err(|e| format!("Reopen user_partitions.db for rebuild: {e}"))?;
-        match verify.execute_batch("BEGIN IMMEDIATE") {
-            Ok(()) => {
-                let after: i64 = verify
-                    .query_row("PRAGMA data_version", [], |row| row.get(0))
-                    .unwrap_or(-1);
-                drop(verify);
-                if after != before {
+    if write_locked {
+        empty_partition_database(&guard)?;
+    } else {
+        // A database SQLite cannot lock at all is the damaged one this
+        // rebuild exists for, and goes on as before: removed with its
+        // SQLite sidecars. Windows removes no file a connection holds open,
+        // so there the guard ends before the removal; `PRAGMA data_version`
+        // moves on every commit another connection lands, read inside the
+        // guard's write transaction attempt and again under a fresh BEGIN
+        // IMMEDIATE, it proves whether the gap held one. A changed version,
+        // or a lock still held, refuses the rebuild.
+        #[cfg(windows)]
+        {
+            let before: i64 = guard
+                .query_row("PRAGMA data_version", [], |row| row.get(0))
+                .unwrap_or(0);
+            drop(guard);
+            let verify = Connection::open(path)
+                .map_err(|e| format!("Reopen user_partitions.db for rebuild: {e}"))?;
+            match verify.execute_batch("BEGIN IMMEDIATE") {
+                Ok(()) => {
+                    let after: i64 = verify
+                        .query_row("PRAGMA data_version", [], |row| row.get(0))
+                        .unwrap_or(-1);
+                    drop(verify);
+                    if after != before {
+                        return Err(REBUILD_WHILE_WRITTEN.to_string());
+                    }
+                }
+                Err(rusqlite::Error::SqliteFailure(e, _))
+                    if matches!(
+                        e.code,
+                        rusqlite::ErrorCode::DatabaseBusy | rusqlite::ErrorCode::DatabaseLocked
+                    ) =>
+                {
                     return Err(REBUILD_WHILE_WRITTEN.to_string());
                 }
+                Err(_) => drop(verify),
             }
-            Err(rusqlite::Error::SqliteFailure(e, _))
-                if matches!(
-                    e.code,
-                    rusqlite::ErrorCode::DatabaseBusy | rusqlite::ErrorCode::DatabaseLocked
-                ) =>
-            {
-                return Err(REBUILD_WHILE_WRITTEN.to_string());
-            }
-            Err(_) => drop(verify),
         }
+        #[cfg(not(windows))]
+        drop(guard);
+        let removed = std::fs::remove_file(path)
+            .map_err(|e| format!("Remove user_partitions.db for rebuild: {e}"));
+        if removed.is_ok() {
+            let _ = std::fs::remove_file(path.with_extension("db-wal"));
+            let _ = std::fs::remove_file(path.with_extension("db-shm"));
+        }
+        removed?;
     }
-    #[cfg(not(windows))]
-    drop(guard);
-    let removed = std::fs::remove_file(path)
-        .map_err(|e| format!("Remove user_partitions.db for rebuild: {e}"));
-    if removed.is_ok() {
-        let _ = std::fs::remove_file(path.with_extension("db-wal"));
-        let _ = std::fs::remove_file(path.with_extension("db-shm"));
-    }
-    #[cfg(not(windows))]
-    drop(guard);
     drop(session);
     invalidate_session_consumers();
-    removed.map(|()| Some(backup))
+    Ok(Some(backup))
 }
 
 /// Rebuild the active partition from this device's legacy credential vault.
-/// Snapshots and removes the current (possibly machine-bound, unreadable)
+/// Snapshots and empties the current (possibly machine-bound, unreadable)
 /// `user_partitions.db`, then re-runs the legacy migration so a fresh default
 /// partition is created under THIS machine's local root_key. This is the
 /// manual local-reset the owner ran by hand during the F-012 incident,
@@ -13525,7 +13560,15 @@ mod tests {
             ));
         })));
         let backup = remove_partitions_db_for_rebuild(&path).unwrap().unwrap();
-        assert!(!path.exists(), "the database is removed");
+        let emptied = Connection::open(&path).unwrap();
+        let objects: i64 = emptied
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE name NOT LIKE 'sqlite_%'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(objects, 0, "the database is emptied, not removed");
         let attempt = attempt.borrow_mut().take().expect("the hook ran");
         assert!(attempt.is_err(), "a commit after the snapshot: {attempt:?}");
         let alone = tempfile::tempdir().unwrap();
