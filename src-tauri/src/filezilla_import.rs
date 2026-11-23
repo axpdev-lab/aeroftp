@@ -1653,6 +1653,13 @@ pub fn export_filezilla(
                 None,
             ) {
                 Ok(Some(ep)) => {
+                    // FileZilla Pro S3 (`Protocol=7`) encodes only `<Host>`, `<Port>`,
+                    // and `<RemoteDir>` (bucket + key prefix); it cannot represent an
+                    // S3 endpoint base path such as `/gateway`. Skip the profile so it
+                    // is not silently exported as a root endpoint.
+                    if !ep.path.is_empty() {
+                        continue;
+                    }
                     let port = ep.port.map(u32::from).unwrap_or(if ep.scheme == "http" {
                         80
                     } else {
@@ -3779,10 +3786,7 @@ mod tests {
         assert_eq!(default_aws.host, "s3.amazonaws.com");
         assert_eq!(default_aws.port, 443);
         assert_eq!(
-            default_aws
-                .options
-                .as_ref()
-                .and_then(|o| o.get("endpoint")),
+            default_aws.options.as_ref().and_then(|o| o.get("endpoint")),
             None,
             "default AWS port 443 must stay implicit"
         );
@@ -3885,6 +3889,60 @@ mod tests {
             .and_then(|o| o.get("endpoint"))
             .and_then(|v| v.as_str());
         assert_eq!(fallback_ep, Some("https://objects.example.test:9000"));
+    }
+
+    #[test]
+    fn export_filezilla_skips_path_based_s3_endpoint_and_keeps_root_https_override() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sitemanager.xml");
+        let servers = vec![
+            FileZillaExportServer {
+                id: "s3-path-endpoint".into(),
+                name: "GatewayS3".into(),
+                host: "stale.example.test".into(),
+                port: 443,
+                username: "AKIAGATEWAY".into(),
+                protocol: Some("s3".into()),
+                initial_path: Some("/archive".into()),
+                options: Some(serde_json::json!({
+                    "bucket": "media",
+                    "endpoint": "https://objects.example.test:9443/gateway"
+                })),
+            },
+            FileZillaExportServer {
+                id: "s3-root-endpoint".into(),
+                name: "RootHttpsS3".into(),
+                host: "stale2.example.test".into(),
+                port: 443,
+                username: "AKIAROOT".into(),
+                protocol: Some("s3".into()),
+                initial_path: Some("/archive".into()),
+                options: Some(serde_json::json!({
+                    "bucket": "media",
+                    "endpoint": "https://objects.example.test:9443"
+                })),
+            },
+        ];
+        let count = export_filezilla(&servers, &HashMap::new(), &path).unwrap();
+        assert_eq!(
+            count, 1,
+            "path-based S3 endpoint must not be exported as a root endpoint"
+        );
+        let xml = std::fs::read_to_string(&path).unwrap();
+        assert!(!xml.contains("GatewayS3"), "{xml}");
+        assert!(xml.contains("RootHttpsS3"), "{xml}");
+
+        let back = import_filezilla(&path).unwrap();
+        assert_eq!(back.servers.len(), 1);
+        assert_eq!(back.servers[0].name, "RootHttpsS3");
+        assert_eq!(back.servers[0].host, "objects.example.test");
+        assert_eq!(back.servers[0].port, 9443);
+
+        // When only a path-based S3 profile is passed, export counts 0 and writes no file.
+        let solo_path = dir.path().join("solo.xml");
+        let solo_count = export_filezilla(&servers[..1], &HashMap::new(), &solo_path).unwrap();
+        assert_eq!(solo_count, 0);
+        assert!(!solo_path.exists());
     }
 }
 
