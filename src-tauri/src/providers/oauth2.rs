@@ -3896,6 +3896,94 @@ mod tests {
         );
     }
 
+    /// CodeRabbit 4661192950: a sign-out refused on ENOLCK removes nothing,
+    /// so the pending rotation it would have dropped stays filed. The next
+    /// settle writes the kept record over the one the refresh read, and a
+    /// later sign-out goes through and drops nothing left.
+    #[cfg(unix)]
+    #[test]
+    fn a_pending_rotation_survives_a_signout_refused_on_enolck() {
+        use crate::credential_store::CredentialStore;
+        use crate::user_partitions as partitions;
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::oauth2::tests::a_pending_rotation_survives_a_signout_refused_on_enolck",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = partitions::test_lock();
+        let temporary = tempfile::TempDir::new().expect("temporary config");
+        std::env::set_var("XDG_CONFIG_HOME", temporary.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("enolck-pending-pass").expect("bootstrap");
+        CredentialStore::unlock_with_master("enolck-pending-pass", None).expect("unlock");
+        let store = CredentialStore::from_cache().expect("cached vault");
+        partitions::init_or_migrate_cli(&store).expect("init partitions");
+        let owner = partitions::cli_get_active_user(&store)
+            .expect("active user")
+            .expect("an account")
+            .id;
+        let manager = OAuth2Manager::new();
+        let account = OAuth2Manager::token_account_key(OAuthProvider::Box, "enolck-pending");
+        let record = |refresh: &str| {
+            serde_json::json!({
+                "access_token": format!("access-{refresh}"),
+                "refresh_token": refresh,
+                "expires_at": null, "token_type": "Bearer", "scopes": [],
+                "owner_family": "v1:enolck-pending",
+            })
+            .to_string()
+        };
+        let read = record("r-refresh");
+        let successor = record("s-refresh");
+        store.store(&account, &read).expect("the vault's token");
+        file_pending_rotation(
+            Some(owner),
+            &account,
+            PendingRotation {
+                source: PendingSource::Vault,
+                read: Zeroizing::new(read.clone()),
+                record: Zeroizing::new(successor.clone()),
+            },
+            "test",
+        );
+
+        force_signout_enolck_for_test(true);
+        let refused = manager.delete_tokens(OAuthProvider::Box, "enolck-pending");
+        force_signout_enolck_for_test(false);
+        assert!(
+            matches!(&refused, Err(ProviderError::Other(message)) if message.contains("nothing was signed out")),
+            "{refused:?}"
+        );
+        assert_eq!(
+            pending_rotation_record(Some(owner), &account).as_deref(),
+            Some(successor.as_str()),
+            "the pending rotation stays filed"
+        );
+        assert_eq!(
+            store.get(&account).unwrap(),
+            read,
+            "the record the refresh read stays"
+        );
+
+        // The reconnect `get_valid_token` runs settles the pending record
+        // itself, then the read returns it.
+        let loaded = valid_token(&manager, "enolck-pending")
+            .expect("the reconnect settles the pending record");
+        assert_eq!(loaded, "access-s-refresh");
+        assert_eq!(pending_rotation_record(Some(owner), &account), None);
+
+        manager
+            .delete_tokens(OAuthProvider::Box, "enolck-pending")
+            .expect("the sign-out goes through");
+        assert_eq!(pending_rotation_record(Some(owner), &account), None);
+        assert!(
+            store.get(&account).is_err(),
+            "the vault no longer holds the key"
+        );
+    }
+
     /// The partition copy goes first, under the lock, and a failure to remove
     /// it (here a refused SQLite delete) fails the sign-out before the vault,
     /// the memory cache or the legacy files are touched.
