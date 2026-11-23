@@ -5922,14 +5922,14 @@ mod tests {
             let conn = rusqlite::Connection::open(&live).unwrap();
             let root = Zeroizing::new(store.derive_user_partition_wrapping_key());
             seen.set(
-                crate::user_partitions::replace_user_credential_if_unchanged(
+                crate::user_partitions::swap_user_credential_if(
                     &conn,
                     &root,
                     bob,
                     key,
                     "oauth",
-                    ("bob-token", "bob-refreshed"),
-                    false,
+                    Some("bob-token"),
+                    Some("bob-refreshed"),
                 )
                 .unwrap(),
             );
