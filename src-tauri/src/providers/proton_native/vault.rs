@@ -34,6 +34,7 @@ use std::time::Duration;
 use zeroize::Zeroizing;
 
 use super::api::{ProtonApi, RefreshLock, SessionStore};
+use super::error::ProtonError;
 use super::session::{ProtonSession, SessionTokens, StoredSession};
 use crate::credential_store::{CredentialError, CredentialStore};
 use crate::providers::oauth2::RefreshLease;
@@ -1679,6 +1680,17 @@ pub async fn revoke_saved_session(owner: SessionOwner, profile_id: Option<&str>)
     revoke_session(&store, owner, &key, session).await
 }
 
+/// The diagnostic of a failed revoke that may reach logs and the error a
+/// deferred cleanup returns. Proton's own `Error` text can carry provider
+/// detail that must not travel with it: for an API answer it is the HTTP
+/// status and Proton's code, nothing else.
+fn revoke_error_detail(error: &ProtonError) -> String {
+    match error {
+        ProtonError::Api { status, code, .. } => format!("HTTP {status}, Proton code {code}"),
+        _ => error.to_string(),
+    }
+}
+
 /// Revokes on Proton `session`, read from the key `key` of `owner` (or saved
 /// there until a sign-in replaced it), unless a key other than `key` holds it
 /// or another account holds it or may: see [`revoke_saved_session`].
@@ -1725,7 +1737,10 @@ async fn revoke_session(
             log::info!("Proton: session revoked with its profile");
             RevokeOutcome::Revoked
         }
-        Ok(Err(error)) => failed("the sign-out on Proton failed", &error),
+        Ok(Err(error)) => failed(
+            "the sign-out on Proton failed",
+            &revoke_error_detail(&error),
+        ),
         Err(_) => failed("the sign-out on Proton", &"timed out"),
     }
 }
@@ -2121,6 +2136,22 @@ impl SessionStore for VaultSession {
 mod tests {
     use super::*;
     use secrecy::{ExposeSecret, SecretString};
+
+    /// The diagnostic of a failed revoke keeps Proton's HTTP status and
+    /// code only: a secret in the provider's `Error` text reaches neither
+    /// the log nor the error a deferred cleanup returns.
+    #[test]
+    fn a_failed_revoke_reports_status_and_code_without_the_provider_message() {
+        let error = ProtonError::Api {
+            status: 503,
+            code: 7_000,
+            message: "upstream said s3cr3t-token-value".to_string(),
+        };
+        let detail = revoke_error_detail(&error);
+        assert_eq!(detail, "HTTP 503, Proton code 7000");
+        assert!(!detail.contains("s3cr3t-token-value"));
+        assert_ne!(detail, error.to_string());
+    }
 
     fn session(uid: &str) -> ProtonSession {
         ProtonSession {
