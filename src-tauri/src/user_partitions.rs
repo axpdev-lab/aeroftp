@@ -11564,14 +11564,6 @@ thread_local! {
     static BEFORE_REBUILD_WRITE_LOCK: DualWriteHook = const { RefCell::new(None) };
 }
 
-#[cfg(all(test, windows))]
-thread_local! {
-    /// Runs once on this thread in the next [`remove_partitions_db_for_rebuild`],
-    /// on the damaged-database path between its last lock check and the
-    /// `remove_file`: a credential writer committing in that gap.
-    static BEFORE_DAMAGED_REMOVE: DualWriteHook = const { RefCell::new(None) };
-}
-
 /// Empty the partition database in place, inside the write transaction
 /// [`remove_partitions_db_for_rebuild`] already holds: every table, view,
 /// trigger and index is dropped and the transaction is committed, so the
@@ -11612,9 +11604,11 @@ fn empty_partition_database(conn: &Connection) -> Result<(), String> {
 /// holds now is not rebuilt ([`REBUILD_WHILE_WRITTEN`]). The file is emptied
 /// where it stands, inside that transaction: there is no removal a commit
 /// could fall into the gap of, on Windows included, where a file a
-/// connection holds open cannot be removed at all. One SQLite cannot lock
-/// at all (a damaged one) has no writer to hold off and is removed as
-/// before.
+/// connection holds open cannot be removed at all. A database whose
+/// `BEGIN IMMEDIATE` fails for a reason other than a held lock cannot be
+/// emptied in place, and removing its file would leave exactly that gap —
+/// a commit or a replacement landing between the check and the removal —
+/// so the rebuild refuses it too ([`REBUILD_WHILE_WRITTEN`]).
 fn remove_partitions_db_for_rebuild(path: &std::path::Path) -> Result<Option<PathBuf>, String> {
     if !path.is_file() {
         return Ok(None);
@@ -11651,81 +11645,12 @@ fn remove_partitions_db_for_rebuild(path: &std::path::Path) -> Result<Option<Pat
     if write_locked {
         empty_partition_database(&guard)?;
     } else {
-        // A database SQLite cannot lock at all is the damaged one this
-        // rebuild exists for, and goes on as before: removed with its
-        // SQLite sidecars. Windows removes no file a connection holds open,
-        // so there the guard ends before the removal; `PRAGMA data_version`
-        // moves on every commit another connection lands, read inside the
-        // guard's write transaction attempt and again under a fresh BEGIN
-        // IMMEDIATE, it proves whether the gap held one. A changed version,
-        // or a lock still held, refuses the rebuild.
-        #[cfg(windows)]
-        {
-            let before: i64 = guard
-                .query_row("PRAGMA data_version", [], |row| row.get(0))
-                .unwrap_or(0);
-            drop(guard);
-            let verify = Connection::open(path)
-                .map_err(|e| format!("Reopen user_partitions.db for rebuild: {e}"))?;
-            match verify.execute_batch("BEGIN IMMEDIATE") {
-                Ok(()) => {
-                    let after: i64 = verify
-                        .query_row("PRAGMA data_version", [], |row| row.get(0))
-                        .unwrap_or(-1);
-                    drop(verify);
-                    if after != before {
-                        return Err(REBUILD_WHILE_WRITTEN.to_string());
-                    }
-                }
-                Err(rusqlite::Error::SqliteFailure(e, _))
-                    if matches!(
-                        e.code,
-                        rusqlite::ErrorCode::DatabaseBusy | rusqlite::ErrorCode::DatabaseLocked
-                    ) =>
-                {
-                    return Err(REBUILD_WHILE_WRITTEN.to_string());
-                }
-                Err(_) => drop(verify),
-            }
-            // A commit could still land between that check and the removal:
-            // the hook lets a test write one there, and a fresh BEGIN
-            // IMMEDIATE proves the version once more before the file goes.
-            // The gap after this second drop stays: Windows removes no file
-            // a connection holds open.
-            #[cfg(test)]
-            run_dual_write_hook(&BEFORE_DAMAGED_REMOVE);
-            let recheck = Connection::open(path)
-                .map_err(|e| format!("Reopen user_partitions.db for rebuild: {e}"))?;
-            match recheck.execute_batch("BEGIN IMMEDIATE") {
-                Ok(()) => {
-                    let after: i64 = recheck
-                        .query_row("PRAGMA data_version", [], |row| row.get(0))
-                        .unwrap_or(-1);
-                    drop(recheck);
-                    if after != before {
-                        return Err(REBUILD_WHILE_WRITTEN.to_string());
-                    }
-                }
-                Err(rusqlite::Error::SqliteFailure(e, _))
-                    if matches!(
-                        e.code,
-                        rusqlite::ErrorCode::DatabaseBusy | rusqlite::ErrorCode::DatabaseLocked
-                    ) =>
-                {
-                    return Err(REBUILD_WHILE_WRITTEN.to_string());
-                }
-                Err(_) => drop(recheck),
-            }
-        }
-        #[cfg(not(windows))]
-        drop(guard);
-        let removed = std::fs::remove_file(path)
-            .map_err(|e| format!("Remove user_partitions.db for rebuild: {e}"));
-        if removed.is_ok() {
-            let _ = std::fs::remove_file(path.with_extension("db-wal"));
-            let _ = std::fs::remove_file(path.with_extension("db-shm"));
-        }
-        removed?;
+        // `BEGIN IMMEDIATE` failed for a reason other than a held lock, so
+        // the file cannot be emptied in place — and removing it would open
+        // the gap a commit or a replacement could land in, on any platform.
+        // `PRAGMA data_version` cannot close that gap: it is per connection,
+        // so two reads prove nothing about the file. Refuse the rebuild.
+        return Err(REBUILD_WHILE_WRITTEN.to_string());
     }
     drop(session);
     invalidate_session_consumers();
@@ -13790,11 +13715,11 @@ mod tests {
     }
 
     /// CodeRabbit 4657339482: on the damaged-database path a writer landing
-    /// a commit between the last lock check and the `remove_file` is caught
-    /// by the second `data_version` read: the rebuild refuses and the file
-    /// stays. Windows only: the healthy path empties in place and has no
-    /// removal gap.
-    #[cfg(windows)]
+    /// a commit between the failed `BEGIN IMMEDIATE` and the removal could
+    /// not be told apart from the damaged file itself — `PRAGMA
+    /// data_version` is per connection, so it proves nothing — so the
+    /// rebuild refuses instead of removing: the file a writer replaced
+    /// stays, commits and all.
     #[test]
     fn a_commit_in_the_damaged_removal_gap_keeps_the_file() {
         let _guard = test_lock();
@@ -13803,21 +13728,31 @@ mod tests {
         let path = dir.path().join(DB_FILENAME);
         std::fs::write(&path, b"not a sqlite database").unwrap();
         let writer_path = path.clone();
-        BEFORE_DAMAGED_REMOVE.set(Some(Box::new(move || {
-            // The second writer of the gap: it replaces the damaged file
-            // with a database of its own and commits to it.
-            let _ = std::fs::remove_file(&writer_path);
-            let conn = Connection::open(&writer_path).unwrap();
+        AFTER_REBUILD_SNAPSHOT.set(Some(Box::new(move || {
+            // A writer in the gap the removal would have opened: it
+            // replaces the damaged file with a database of its own and
+            // commits to it. The rebuild's guard still holds the file
+            // open, so the image is written over it, not renamed in.
+            let image = writer_path.with_extension("raced-image.db");
+            let conn = Connection::open(&image).unwrap();
             conn.execute_batch(
                 "CREATE TABLE raced (id INTEGER PRIMARY KEY);
                  INSERT INTO raced(id) VALUES (1);",
             )
             .unwrap();
+            drop(conn);
+            std::fs::copy(&image, &writer_path).unwrap();
+            let _ = std::fs::remove_file(&image);
         })));
         let refused = remove_partitions_db_for_rebuild(&path);
         let error = refused.expect_err("a commit in the gap was not seen");
         assert!(error.contains("being written"), "{error}");
         assert!(path.exists(), "the file a writer touched stays");
+        let raced: i64 = Connection::open(&path)
+            .unwrap()
+            .query_row("SELECT id FROM raced", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(raced, 1, "the writer's commit is still there");
     }
 
     /// A connection that began with no account reads the legacy blob while no
