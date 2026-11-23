@@ -1034,6 +1034,13 @@ fn a_deletion_elsewhere_right_before_the_write_stops_it() {
 pub(super) enum AfterStoredRead {
     DeleteOnce,
     RefileEveryTime(u32),
+    /// Rewrite `key`'s stored chain once, keeping its refresh token and
+    /// username and giving it `token_endpoint`: a repair of the sign-in
+    /// fields under an unchanged token.
+    RepairEndpointOnce {
+        key: String,
+        token_endpoint: String,
+    },
 }
 
 pub(super) static AFTER_STORED_READ: Mutex<Option<(Option<i64>, String, AfterStoredRead)>> =
@@ -1054,6 +1061,22 @@ pub(super) fn after_stored_read(owner: Option<i64>, account: &str) {
             *hook = None;
             drop(hook);
             delete_elsewhere(&store, o, &key);
+        }
+        AfterStoredRead::RepairEndpointOnce {
+            key: repaired,
+            token_endpoint,
+        } => {
+            let (repaired, endpoint) = (repaired.clone(), token_endpoint.clone());
+            *hook = None;
+            drop(hook);
+            let Some(json) = store.get(&repaired).ok() else {
+                return;
+            };
+            let Ok(mut chain) = serde_json::from_str::<serde_json::Value>(&json) else {
+                return;
+            };
+            chain["token_endpoint"] = endpoint.into();
+            let _ = store.store(&repaired, &chain.to_string());
         }
         AfterStoredRead::RefileEveryTime(n) => {
             *n += 1;
@@ -1493,6 +1516,246 @@ fn a_copy_that_did_not_follow_keeps_the_rotation_for_its_reader() {
         PENDING_ROTATIONS.lock().unwrap().clear();
     }
     assert!(failures.is_empty(), "{failures:#?}");
+}
+
+/// A partial follow leaves the primary on the rotated token and the
+/// follower on the one Jotta consumed, and the pending rotation names the
+/// follower's token as its base. A next rotation whose deletion counts
+/// cannot be read writes nothing and must keep that base: what this
+/// connection knows is the primary's newer token, and a base taken from it
+/// would make the follower drop the rotation as stale once reads recover.
+/// Both directions, and both copies hand out the newest chain after.
+#[test]
+fn a_lagging_base_survives_a_rotation_with_unreadable_counts() {
+    use std::sync::atomic::Ordering::SeqCst;
+    if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+        "providers::jottacloud::chain_tests::a_lagging_base_survives_a_rotation_with_unreadable_counts",
+    ) {
+        return;
+    }
+    let chains = Chains::new();
+    assert_eq!(
+        chains.owner, None,
+        "the first account owns the shared vault"
+    );
+    let _ = chains.store.delete("jottacloud_refresh");
+    let mut failures = Vec::new();
+    for (case, user, other) in [
+        (
+            "the row after a vault write",
+            partitions::LEGACY_ONLY_ACCOUNT,
+            chains.first,
+        ),
+        (
+            "the vault after a row write",
+            chains.first,
+            partitions::LEGACY_ONLY_ACCOUNT,
+        ),
+    ] {
+        let profile = if user == chains.first {
+            "lagbasevault"
+        } else {
+            "lagbaserow"
+        };
+        let key = format!("jottacloud_refresh_{profile}");
+        let written = |key: &str| {
+            if user == chains.first {
+                chains.stored(key)
+            } else {
+                stored_refresh_token(chains.store.get(key).ok().as_deref())
+            }
+        };
+        let follower = |key: &str| {
+            if user == chains.first {
+                stored_refresh_token(chains.store.get(key).ok().as_deref())
+            } else {
+                chains.stored(key)
+            }
+        };
+        // Both copies: the owner's row and the shared vault key.
+        let both = chains.chain(&format!("both-{profile}"));
+        chains.store.store(&key, &both).unwrap();
+        partitions::store_imported_credential_for_user(
+            &chains.store,
+            chains.first,
+            &key,
+            Some("jottacloud_refresh"),
+            &both,
+        )
+        .unwrap();
+        let mut connection = chains.bound(profile);
+        connection.set_credential_user(Some(user));
+        assert!(chains
+            .runtime()
+            .block_on(connection.try_connect_with_refresh())
+            .unwrap());
+        let first = connection.refresh_token.expose_secret().to_string();
+
+        // The first rotation's other copy does not follow: the primary
+        // holds the new chain, the follower the consumed one, and the
+        // pending rotation names the follower's token as its base.
+        partitions::FOLLOW_REFUSED.store(true, SeqCst);
+        connection.token_expiry = Instant::now();
+        chains
+            .runtime()
+            .block_on(connection.refresh_if_needed())
+            .expect("refresh");
+        partitions::FOLLOW_REFUSED.store(false, SeqCst);
+        let second = connection.refresh_token.expose_secret().to_string();
+        if written(&key) != second || follower(&key) != first {
+            failures.push(format!(
+                "{case}: after the partial follow: {} / {}, expected {second} / {first}",
+                written(&key),
+                follower(&key)
+            ));
+        }
+        let base = chains
+            .pending(&key)
+            .and_then(|json| serde_json::from_str::<serde_json::Value>(&json).ok())
+            .and_then(|filed| filed[PENDING_BASE].as_str().map(str::to_string));
+        if base.as_deref() != Some(first.as_str()) {
+            failures.push(format!(
+                "{case}: the pending base is {base:?}, expected the follower's {first}"
+            ));
+        }
+
+        // The next rotation lands while the deletion counts cannot be
+        // read: nothing is written, and the pending rotation keeps the
+        // follower's base, not the primary's newer token.
+        partitions::CHAIN_DELETIONS_REFUSED.store(true, SeqCst);
+        connection.token_expiry = Instant::now();
+        chains
+            .runtime()
+            .block_on(connection.refresh_if_needed())
+            .expect("refresh");
+        partitions::CHAIN_DELETIONS_REFUSED.store(false, SeqCst);
+        let third = connection.refresh_token.expose_secret().to_string();
+        let kept = chains
+            .pending(&key)
+            .map(|json| serde_json::from_str::<serde_json::Value>(&json).unwrap());
+        let kept_token = kept
+            .as_ref()
+            .and_then(|filed| filed["refresh_token"].as_str().map(str::to_string));
+        let kept_base = kept
+            .as_ref()
+            .and_then(|filed| filed[PENDING_BASE].as_str().map(str::to_string));
+        if kept_token.as_deref() != Some(third.as_str())
+            || kept_base.as_deref() != Some(first.as_str())
+        {
+            failures.push(format!(
+                "{case}: with unreadable counts the pending is {kept_token:?} on base {kept_base:?}, expected {third} on {first}"
+            ));
+        }
+        if written(&key) != second || follower(&key) != first {
+            failures.push(format!(
+                "{case}: the unreadable counts wrote anyway: {} / {}",
+                written(&key),
+                follower(&key)
+            ));
+        }
+
+        // Reads recover: each copy's reader gets the newest chain, the one
+        // on the follower through its base and the one on the primary
+        // through the consumed predecessor it still holds.
+        for (reader, reader_user) in [("written copy", user), ("copy left behind", other)] {
+            let loaded =
+                JottacloudProvider::load_refresh_chain(Some(reader_user), Some(chains.owner), &key)
+                    .chain()
+                    .map(|((rt, _, _), _)| rt);
+            if loaded.as_deref() != Some(third.as_str()) {
+                failures.push(format!(
+                    "{case}: the reader of the {reader} loads {loaded:?}, expected {third}"
+                ));
+            }
+        }
+        drop(connection);
+        PENDING_ROTATIONS.lock().unwrap().clear();
+    }
+    assert!(failures.is_empty(), "{failures:#?}");
+}
+
+/// The persisted-refresh log line is the actual logging path: a stored
+/// chain whose `token_endpoint` carries userinfo or a query parameter with
+/// a secret is reported through `endpoint_for_log`, so neither reaches the
+/// log. Red if the call site logs the raw endpoint again.
+#[test]
+fn the_persisted_refresh_log_line_redacts_the_stored_endpoint() {
+    if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+        "providers::jottacloud::chain_tests::the_persisted_refresh_log_line_redacts_the_stored_endpoint",
+    ) {
+        return;
+    }
+    struct CaptureWriter(Arc<Mutex<Vec<u8>>>);
+    impl std::io::Write for CaptureWriter {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let chains = Chains::new();
+    assert_eq!(
+        chains.owner, None,
+        "the first account owns the shared vault"
+    );
+    let _ = chains.store.delete("jottacloud_refresh");
+    let profile = "logendpoint";
+    let key = format!("jottacloud_refresh_{profile}");
+    // The fixture's own endpoint stays reachable, behind userinfo and a
+    // query parameter that must never be logged.
+    let endpoint = format!(
+        "http://loguser:logpass@{}?api_key=LOGSECRET",
+        chains.endpoint.trim_start_matches("http://")
+    );
+    let chain = serde_json::json!({
+        "refresh_token": "logchain-token",
+        "token_endpoint": endpoint,
+        "username": "jotta-user",
+    })
+    .to_string();
+    chains.store.store(&key, &chain).unwrap();
+    partitions::store_imported_credential_for_user(
+        &chains.store,
+        chains.first,
+        &key,
+        Some("jottacloud_refresh"),
+        &chain,
+    )
+    .unwrap();
+
+    let captured = Arc::new(Mutex::new(Vec::new()));
+    let sink = captured.clone();
+    let subscriber = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::TRACE)
+        .with_ansi(false)
+        .with_writer(move || CaptureWriter(sink.clone()))
+        .finish();
+    let mut connection = chains.bound(profile);
+    connection.set_credential_user(Some(chains.first));
+    tracing::subscriber::with_default(subscriber, || {
+        // The exchange's own outcome does not matter: the log line this
+        // pins is written before the request is sent.
+        let _ = chains
+            .runtime()
+            .block_on(connection.try_connect_with_refresh());
+    });
+    let logged = String::from_utf8(captured.lock().unwrap().clone()).unwrap();
+    assert!(
+        logged.contains("Found persisted refresh token"),
+        "the connect did not log its persisted refresh attempt: {logged:?}"
+    );
+    assert!(
+        logged.contains("127.0.0.1"),
+        "the logged endpoint is not the sanitized one: {logged:?}"
+    );
+    for secret in ["loguser", "logpass", "api_key", "LOGSECRET"] {
+        assert!(
+            !logged.contains(secret),
+            "the log leaked {secret}: {logged:?}"
+        );
+    }
 }
 
 /// The legacy owner's other copy, rewritten with the same chain in other
@@ -2618,6 +2881,72 @@ fn a_chain_imported_during_the_singleton_fallback_is_not_written_over() {
         }
         PENDING_ROTATIONS.lock().unwrap().clear();
     }
+    assert!(failures.is_empty(), "{failures:#?}");
+}
+
+/// The same fallback, but what changes in the profile's own key meanwhile
+/// is a repair of its token endpoint under an unchanged refresh token: the
+/// sign-in key is the token and the endpoint together, so the selection is
+/// tried again and the repaired chain is the one exchanged, not the
+/// singleton's. Red while the comparison is the token alone.
+#[test]
+fn a_repaired_endpoint_under_the_same_token_is_a_change() {
+    if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+        "providers::jottacloud::chain_tests::a_repaired_endpoint_under_the_same_token_is_a_change",
+    ) {
+        return;
+    }
+    let chains = Chains::new();
+    let singleton = "jottacloud_refresh";
+    let profile = "fallbackrepair";
+    let key = format!("jottacloud_refresh_{profile}");
+    // The profile's own chain cannot be used (no endpoint) but is there:
+    // its token is the one a repair keeps.
+    let own = serde_json::json!({
+        "refresh_token": "repair-token", "token_endpoint": "",
+        "username": "jotta-user",
+    });
+    chains.store.store(&key, &own.to_string()).unwrap();
+    chains
+        .store
+        .store(singleton, &chains.chain("singleton-repair"))
+        .unwrap();
+    // Right after the singleton's chain is read, the profile's own key is
+    // repaired: same refresh token, a real endpoint.
+    *AFTER_STORED_READ.lock().unwrap() = Some((
+        chains.owner,
+        singleton.to_string(),
+        AfterStoredRead::RepairEndpointOnce {
+            key: key.clone(),
+            token_endpoint: chains.endpoint.clone(),
+        },
+    ));
+    let from = chains.submissions();
+    let mut connection = chains.bound(profile);
+    let connected = chains
+        .runtime()
+        .block_on(connection.try_connect_with_refresh());
+    *AFTER_STORED_READ.lock().unwrap() = None;
+    let mut failures = Vec::new();
+    let sent = chains.submitted_since(from);
+    if !matches!(connected, Ok(true)) || sent != ["repair-token".to_string()] {
+        failures.push(format!(
+            "{connected:?}, sent {sent:?}, expected the repaired chain's [\"repair-token\"]"
+        ));
+    }
+    // The successor of the repaired chain is the profile's own key's, and
+    // the singleton still holds the chain that was never exchanged.
+    let stored = chains.stored(&key);
+    if stored.is_empty() || stored == "repair-token" {
+        failures.push(format!(
+            "the profile's key holds {stored:?}: the repaired chain was not exchanged"
+        ));
+    }
+    if stored_refresh_token(chains.store.get(singleton).ok().as_deref()) != "singleton-repair" {
+        failures.push("the singleton's chain was exchanged or rewritten".to_string());
+    }
+    drop(connection);
+    PENDING_ROTATIONS.lock().unwrap().clear();
     assert!(failures.is_empty(), "{failures:#?}");
 }
 

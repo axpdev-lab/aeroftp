@@ -5807,6 +5807,263 @@ mod tests {
         );
     }
 
+    use crate::credential_store::CredentialStore;
+    use std::sync::{Arc, Mutex};
+
+    /// Fixture shared by the refused-exchange tests below: a vault open in
+    /// master mode, a partition, and a token endpoint that records every
+    /// exchange's body and answers `invalid_grant`. With `gate`, the answer
+    /// waits for the returned sender, and every request reports itself on
+    /// the returned receiver first, so the test can write while the
+    /// exchange is in flight.
+    struct RefusedEndpoint {
+        endpoint: String,
+        server: tokio::task::JoinHandle<()>,
+        sent: Arc<Mutex<Vec<String>>>,
+        runtime: tokio::runtime::Runtime,
+        store: CredentialStore,
+        _temporary: tempfile::TempDir,
+        _partition: crate::user_partitions::TestLock,
+        _env: std::sync::MutexGuard<'static, ()>,
+    }
+
+    impl RefusedEndpoint {
+        fn new(
+            gate: bool,
+        ) -> (
+            Self,
+            Option<tokio::sync::oneshot::Sender<()>>,
+            tokio::sync::mpsc::Receiver<()>,
+        ) {
+            let env = crate::test_env::lock();
+            let partition = crate::user_partitions::test_lock();
+            let temporary = tempfile::TempDir::new().expect("temporary config");
+            std::env::set_var("XDG_CONFIG_HOME", temporary.path());
+            std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+            CredentialStore::clear_cache();
+            CredentialStore::bootstrap_master_password("jotta-refused-pass").expect("bootstrap");
+            CredentialStore::unlock_with_master("jotta-refused-pass", None).expect("unlock");
+            let store = CredentialStore::from_cache().expect("cached vault");
+            crate::user_partitions::init_or_migrate_cli(&store).expect("init partitions");
+            let _ = crate::user_partitions::open_or_init_cli().expect("partition DB");
+            let runtime = tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(2)
+                .enable_all()
+                .build()
+                .unwrap();
+            let sent = Arc::new(Mutex::new(Vec::<String>::new()));
+            let (release_tx, release_rx) = tokio::sync::oneshot::channel::<()>();
+            let release_rx = Arc::new(Mutex::new(gate.then_some(release_rx)));
+            let (arrived_tx, arrived_rx) = tokio::sync::mpsc::channel::<()>(8);
+            let (endpoint, server) = runtime.block_on(async {
+                let sent = sent.clone();
+                let app = axum::Router::new().route(
+                    "/token",
+                    axum::routing::post(move |body: String| {
+                        let sent = sent.clone();
+                        let arrived_tx = arrived_tx.clone();
+                        let release_rx = release_rx.clone();
+                        async move {
+                            sent.lock().unwrap().push(body);
+                            let _ = arrived_tx.send(()).await;
+                            let gate = release_rx.lock().unwrap().take();
+                            if let Some(rx) = gate {
+                                let _ = rx.await;
+                            }
+                            (
+                                axum::http::StatusCode::BAD_REQUEST,
+                                axum::Json(serde_json::json!({"error": "invalid_grant"})),
+                            )
+                        }
+                    }),
+                );
+                let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+                let endpoint = format!("http://{}/token", listener.local_addr().unwrap());
+                let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+                (endpoint, server)
+            });
+            (
+                Self {
+                    endpoint,
+                    server,
+                    sent,
+                    runtime,
+                    store,
+                    _temporary: temporary,
+                    _partition: partition,
+                    _env: env,
+                },
+                gate.then_some(release_tx),
+                arrived_rx,
+            )
+        }
+
+        fn chain(&self, token: &str) -> String {
+            serde_json::json!({
+                "refresh_token": token, "token_endpoint": self.endpoint,
+                "username": "jotta-user",
+            })
+            .to_string()
+        }
+
+        /// The refresh token the vault holds under `key` (empty for none).
+        fn stored(&self, key: &str) -> String {
+            stored_refresh_token(self.store.get(key).ok().as_deref())
+        }
+
+        fn pending(&self, key: &str) -> bool {
+            PENDING_ROTATIONS
+                .lock()
+                .unwrap()
+                .contains_key(&(None, key.to_string()))
+        }
+
+        /// A legacy-scope provider of `profile`: what a reader of the shared
+        /// vault binds, whose refused chain is cleaned from the vault copy.
+        fn provider(&self, profile: &str) -> JottacloudProvider {
+            let mut provider = JottacloudProvider::new(JottacloudConfig {
+                login_token: SecretString::from(String::new()),
+                device: "Jotta".into(),
+                mountpoint: "Archive".into(),
+                initial_path: None,
+            })
+            .with_profile_id(profile);
+            provider.set_credential_user(Some(crate::user_partitions::LEGACY_ONLY_ACCOUNT));
+            provider
+        }
+
+        fn finish(&self) {
+            self.server.abort();
+        }
+    }
+
+    /// Jotta refuses the token a pending rotation's exchange submitted while
+    /// the key still stores the chain that rotation continues: the pending
+    /// entry goes, and the stored predecessor stays. Red while the cleanup
+    /// compares copies with the stored token instead of the sent one: it
+    /// would delete the stored chain as if it were the refused one.
+    #[test]
+    fn a_refused_rotation_leaves_the_stored_chain_it_was_not_sent_from() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::jottacloud::tests::a_refused_rotation_leaves_the_stored_chain_it_was_not_sent_from",
+        ) {
+            return;
+        }
+        let (endpoint, _release, _arrived) = RefusedEndpoint::new(false);
+        let key = "jottacloud_refresh_refusedkept".to_string();
+        // The stored chain A continues into the pending rotation's B: the
+        // exchange submits B, Jotta refuses it.
+        endpoint
+            .store
+            .store(&key, &endpoint.chain("stored-a"))
+            .unwrap();
+        let mut filed: serde_json::Value = serde_json::from_str(&endpoint.chain("sent-b")).unwrap();
+        filed[PENDING_BASE] = "stored-a".into();
+        filed[PENDING_GEN] = 0.into();
+        PENDING_ROTATIONS.lock().unwrap().insert(
+            (None, key.clone()),
+            zeroize::Zeroizing::new(filed.to_string()),
+        );
+        let mut provider = endpoint.provider("refusedkept");
+        let _ = endpoint
+            .runtime
+            .block_on(provider.try_connect_with_refresh());
+
+        let mut failures = Vec::new();
+        let sent = endpoint.sent.lock().unwrap().clone();
+        if !sent
+            .iter()
+            .any(|body| body.contains("refresh_token=sent-b"))
+        {
+            failures.push(format!("the pending chain was not exchanged: {sent:?}"));
+        }
+        if endpoint.stored(&key) != "stored-a" {
+            failures.push(format!(
+                "the stored predecessor is gone: {:?}",
+                endpoint.stored(&key)
+            ));
+        }
+        if endpoint.pending(&key) {
+            failures.push("the refused rotation is still pending".to_string());
+        }
+        endpoint.finish();
+        PENDING_ROTATIONS.lock().unwrap().clear();
+        CredentialStore::clear_cache();
+        assert!(failures.is_empty(), "{failures:#?}");
+    }
+
+    /// The same refusal, but the key is rewritten while the exchange is in
+    /// flight: a repair of the stored chain's endpoint under its unchanged
+    /// token lands before the `invalid_grant` answer. That copy holds the
+    /// stored token, not the sent one, so it is not the refused chain and
+    /// stays. Red while the cleanup compares with the stored token: it
+    /// would delete the repair as if it were the refused chain.
+    #[test]
+    fn a_chain_saved_before_the_refusal_is_not_the_refused_one() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::jottacloud::tests::a_chain_saved_before_the_refusal_is_not_the_refused_one",
+        ) {
+            return;
+        }
+        let (endpoint, release, mut arrived) = RefusedEndpoint::new(true);
+        let key = "jottacloud_refresh_savedmid".to_string();
+        endpoint
+            .store
+            .store(&key, &endpoint.chain("stored-a"))
+            .unwrap();
+        let mut filed: serde_json::Value = serde_json::from_str(&endpoint.chain("sent-b")).unwrap();
+        filed[PENDING_BASE] = "stored-a".into();
+        filed[PENDING_GEN] = 0.into();
+        PENDING_ROTATIONS.lock().unwrap().insert(
+            (None, key.clone()),
+            zeroize::Zeroizing::new(filed.to_string()),
+        );
+        let runtime = &endpoint.runtime;
+        let key_in_flight = key.clone();
+        let chain_a_repaired = {
+            let mut chain: serde_json::Value =
+                serde_json::from_str(&endpoint.chain("stored-a")).unwrap();
+            chain["note"] = "repaired".into();
+            chain.to_string()
+        };
+        let _ = runtime.block_on(async move {
+            let mut provider = JottacloudProvider::new(JottacloudConfig {
+                login_token: SecretString::from(String::new()),
+                device: "Jotta".into(),
+                mountpoint: "Archive".into(),
+                initial_path: None,
+            })
+            .with_profile_id("savedmid");
+            provider.set_credential_user(Some(crate::user_partitions::LEGACY_ONLY_ACCOUNT));
+            let connect = tokio::spawn(async move { provider.try_connect_with_refresh().await });
+            // The exchange is in flight: the repair lands, then the refusal.
+            // A connect that never reaches the endpoint fails the asserts
+            // below, not this wait.
+            let _ = tokio::time::timeout(std::time::Duration::from_secs(10), arrived.recv()).await;
+            CredentialStore::from_cache()
+                .unwrap()
+                .store(&key_in_flight, &chain_a_repaired)
+                .unwrap();
+            let _ = release.unwrap().send(());
+            let _ = tokio::time::timeout(std::time::Duration::from_secs(20), connect).await;
+        });
+
+        let mut failures = Vec::new();
+        if endpoint.stored(&key) != "stored-a" {
+            failures.push(format!(
+                "the chain saved before the refusal is gone: {:?}",
+                endpoint.stored(&key)
+            ));
+        }
+        if endpoint.pending(&key) {
+            failures.push("the refused rotation is still pending".to_string());
+        }
+        endpoint.finish();
+        PENDING_ROTATIONS.lock().unwrap().clear();
+        CredentialStore::clear_cache();
+        assert!(failures.is_empty(), "{failures:#?}");
+    }
+
     /// A pending rotation's JSON as a connection that began with no deletion
     /// of its key files it ([`PENDING_GEN`]; test only).
     pub(super) fn stamped(json: &str) -> String {
