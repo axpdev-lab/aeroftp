@@ -162,23 +162,46 @@ fn map_storage(kind: &str, config: &serde_json::Value) -> Mapped {
     };
 
     use crate::bridge_shared::{
-        default_port_for, endpoint_host, json_map, map_s3_provider_from_endpoint, uuid_v4,
+        default_port_for, endpoint_url_without_secrets, json_map, map_s3_provider_from_endpoint,
+        try_endpoint_host, uuid_v4,
     };
 
     let (protocol, provider_id, host, username, credential, key_ref, mut opts) = match kind {
         "s3" => {
             let ep = g("endpoint").unwrap_or_default();
-            // Kopia's endpoint is `host[:port]` and its scheme is the
-            // `doNotUseTLS` flag; carry both as the profile's endpoint URL,
-            // or a cleartext endpoint would come back as HTTPS.
-            let ep_host = endpoint_host(&ep);
+            let ep_trimmed = ep.trim();
+            // Kopia's endpoint is `host[:port]` (or a URL) and its scheme is
+            // the `doNotUseTLS` flag; carry both as the profile's endpoint URL,
+            // or a cleartext endpoint would come back as HTTPS. If an explicit
+            // endpoint is refused as invalid or ambiguous, skip instead of
+            // silently dropping it to an empty host.
+            let ep_host = if ep_trimmed.is_empty() {
+                String::new()
+            } else {
+                match try_endpoint_host(ep_trimmed) {
+                    Some(h) if !h.is_empty() => h,
+                    _ => {
+                        return Mapped::Skipped(
+                            "Kopia S3 endpoint is invalid or ambiguous".to_string(),
+                        );
+                    }
+                }
+            };
             // AWS stays implicit: an explicit endpoint switches the S3
             // connection to path-style, which AWS refuses for newer buckets.
+            let ep_lower = ep_trimmed.to_ascii_lowercase();
             let endpoint_url =
                 if ep_host.is_empty() || map_s3_provider_from_endpoint(&ep_host) == "amazon-s3" {
                     None
-                } else if ep.starts_with("http://") || ep.starts_with("https://") {
-                    Some(ep.trim_end_matches('/').to_string())
+                } else if ep_lower.starts_with("http://") || ep_lower.starts_with("https://") {
+                    endpoint_url_without_secrets(ep_trimmed).map(|u| {
+                        let normalized = if let Some((scheme, rest)) = u.split_once("://") {
+                            format!("{}://{}", scheme.to_ascii_lowercase(), rest)
+                        } else {
+                            u
+                        };
+                        normalized.trim_end_matches('/').to_string()
+                    })
                 } else {
                     let no_tls = config
                         .get("doNotUseTLS")
@@ -826,5 +849,76 @@ mod tests {
         let back = import_kopia(&path).unwrap();
         assert_eq!(back.servers[0].username, "AKA");
         assert_eq!(back.servers[0].credential.as_deref(), Some("secret-a"));
+    }
+
+    #[test]
+    fn s3_endpoint_with_port_and_at_in_path_preserves_target_and_refused_endpoint_skips() {
+        let dir = tempfile::tempdir().unwrap();
+
+        let valid_path = dir.path().join("valid.config");
+        let valid_cfg = serde_json::json!({
+            "storage": {
+                "type": "s3",
+                "config": {
+                    "bucket": "backups",
+                    "endpoint": "https://objects.example.test:9000/team@east",
+                    "accessKeyID": "AKIAATPATH",
+                    "secretAccessKey": "secret-at-path"
+                }
+            }
+        });
+        std::fs::write(&valid_path, serde_json::to_string(&valid_cfg).unwrap()).unwrap();
+        let res = import_kopia(&valid_path).expect("import valid endpoint with @ in path");
+        assert_eq!(res.servers.len(), 1);
+        assert!(res.skipped.is_empty());
+        let srv = &res.servers[0];
+        assert_eq!(srv.host, "objects.example.test:9000");
+        let saved_ep = srv
+            .options
+            .as_ref()
+            .and_then(|o| o.get("endpoint"))
+            .and_then(|v| v.as_str())
+            .expect("endpoint option present");
+        assert_eq!(saved_ep, "https://objects.example.test:9000/team@east");
+        let mut extra = HashMap::new();
+        extra.insert("bucket".to_string(), "backups".to_string());
+        extra.insert("endpoint".to_string(), saved_ep.to_string());
+        let s3_cfg = crate::providers::types::S3Config::from_provider_config(
+            &crate::providers::types::ProviderConfig {
+                name: srv.name.clone(),
+                provider_type: crate::providers::types::ProviderType::S3,
+                host: srv.host.clone(),
+                port: Some(srv.port as u16),
+                username: Some(srv.username.clone()),
+                password: srv.credential.clone(),
+                initial_path: None,
+                extra,
+            },
+        )
+        .expect("S3Config builds for endpoint with @ in path");
+        assert_eq!(
+            s3_cfg.endpoint.as_deref(),
+            Some("https://objects.example.test:9000/team@east")
+        );
+
+        let refused_path = dir.path().join("refused.config");
+        let refused_cfg = serde_json::json!({
+            "storage": {
+                "type": "s3",
+                "config": {
+                    "bucket": "backups",
+                    "endpoint": "https://alice:pa/ss@objects.example.test:9000",
+                    "accessKeyID": "AKIAREFUSED",
+                    "secretAccessKey": "secret-refused"
+                }
+            }
+        });
+        std::fs::write(&refused_path, serde_json::to_string(&refused_cfg).unwrap()).unwrap();
+        let refused_res = import_kopia(&refused_path).expect("refused endpoint returns skipped");
+        assert!(
+            refused_res.servers.is_empty(),
+            "refused explicit endpoint must not be imported with empty host"
+        );
+        assert_eq!(refused_res.skipped.len(), 1);
     }
 }

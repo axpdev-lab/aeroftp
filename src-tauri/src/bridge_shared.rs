@@ -240,9 +240,10 @@ fn has_non_empty_hostname(host_port: &str) -> bool {
 /// parameter is never misread as the host. Returns `None` when the extracted
 /// hostname is empty (e.g. `https:///bucket`, `https://:9000`) or when an `@`
 /// after the authority is ambiguous with userinfo containing an unencoded `/`,
-/// `?`, or `#`. A plain host without `:` or `@` in its authority still permits
-/// RFC 3986 `@` inside path segments (e.g.
-/// `https://dav.example.test/users/alice@example.test/files`).
+/// `?`, or `#`. A valid `host[:port]` authority without `@` (when a scheme is
+/// present, or a bare host without `:`) still permits RFC 3986 `@` inside path
+/// segments (e.g. `https://dav.example.test/users/alice@example.test/files`,
+/// `https://objects.example.test:9000/team@east`).
 pub(crate) fn split_endpoint(endpoint: &str) -> Option<EndpointParts<'_>> {
     let trimmed = endpoint.trim();
     let (scheme, after_scheme) = match trimmed.split_once("://") {
@@ -266,7 +267,10 @@ pub(crate) fn split_endpoint(endpoint: &str) -> Option<EndpointParts<'_>> {
         None => (rest, ""),
     };
     if tail.contains('@')
-        || (path.contains('@') && (authority.contains('@') || authority.contains(':')))
+        || (path.contains('@')
+            && (authority.contains('@')
+                || (authority.contains(':')
+                    && (scheme.is_none() || !has_non_empty_hostname(authority)))))
     {
         return None;
     }
@@ -2066,7 +2070,8 @@ mod tests {
             );
         }
 
-        // RFC 3986 permits `@` in a path segment when the authority is a plain host.
+        // RFC 3986 permits `@` in a path segment when the authority is a valid
+        // host or host:port without userinfo.
         let path_at = "https://dav.example.test/users/alice@example.test/files";
         assert_eq!(
             try_endpoint_host(path_at).as_deref(),
@@ -2075,6 +2080,24 @@ mod tests {
         assert_eq!(
             endpoint_url_without_secrets(path_at).as_deref(),
             Some(path_at)
+        );
+        let path_at_with_port = "https://objects.example.test:9000/team@east";
+        assert_eq!(
+            try_endpoint_host(path_at_with_port).as_deref(),
+            Some("objects.example.test:9000")
+        );
+        assert_eq!(
+            endpoint_url_without_secrets(path_at_with_port).as_deref(),
+            Some(path_at_with_port)
+        );
+        let ipv6_path_at = "https://[::1]:9000/team@east";
+        assert_eq!(
+            try_endpoint_host(ipv6_path_at).as_deref(),
+            Some("[::1]:9000")
+        );
+        assert_eq!(
+            endpoint_url_without_secrets(ipv6_path_at).as_deref(),
+            Some(ipv6_path_at)
         );
         assert_eq!(
             try_endpoint_host("https://[::1]:9000/s3").as_deref(),
