@@ -74,19 +74,19 @@ fn map_s3cmd(section: &HashMap<String, String>) -> Result<MappedProfile, &'stati
     let access_key = get("access_key").ok_or("no access_key")?.to_string();
 
     let host_base_raw = get("host_base").unwrap_or("").to_string();
-    let provider_id =
-        crate::bridge_shared::map_s3_provider_from_endpoint(&host_base_raw).to_string();
 
-    // host_base may carry an explicit `host:port`. An empty host_base means
-    // the user relies on the AWS default endpoint: keep host empty and let
-    // the amazon-s3 provider resolve it from the region.
-    let host_base_endpoint = crate::bridge_shared::try_endpoint_host(&host_base_raw)
-        .ok_or("host_base is not a host[:port] endpoint (an '@' follows its host part)")?;
-    let (host, explicit_port) = if host_base_endpoint.is_empty() {
+    // host_base may carry an explicit `host:port`. Only an omitted or blank
+    // host_base means the AWS default endpoint; any explicit non-empty
+    // host_base without a valid host (such as `https:///bucket` or ambiguous
+    // userinfo) is skipped rather than silently redirected to AWS.
+    let (host, explicit_port) = if host_base_raw.is_empty() {
         (String::new(), None)
     } else {
+        let host_base_endpoint = crate::bridge_shared::try_endpoint_host(&host_base_raw)
+            .ok_or("host_base is not a valid host[:port] endpoint")?;
         split_host_port(&host_base_endpoint)
     };
+    let provider_id = crate::bridge_shared::map_s3_provider_from_endpoint(&host).to_string();
 
     let use_https = parse_use_https(get("use_https"));
     // Explicit `:port` in host_base wins; otherwise derive from use_https.
@@ -589,6 +589,93 @@ bucket_location = us-east-1
                 "{secret} leaked: {serialized}"
             );
         }
+    }
+
+    #[test]
+    fn empty_authority_skipped_while_query_scheme_and_aws_userinfo_classify_parsed_host() {
+        let dir = tempfile::tempdir().unwrap();
+
+        // Explicit endpoint with empty authority must be skipped, not defaulted to AWS.
+        let bad_path = dir.path().join("bad.s3cfg");
+        std::fs::write(
+            &bad_path,
+            "[default]\naccess_key = DEMOKEY\nsecret_key = demosecret\nhost_base = https:///bucket\n",
+        )
+        .unwrap();
+        let bad = import_s3cmd(&bad_path).unwrap();
+        assert!(bad.servers.is_empty());
+        assert_eq!(bad.skipped.len(), 1);
+        assert!(bad.skipped[0].reason.contains("host_base"));
+
+        // Omitted host_base still uses the AWS default.
+        let blank_path = dir.path().join("blank.s3cfg");
+        std::fs::write(
+            &blank_path,
+            "[default]\naccess_key = DEMOKEY\nsecret_key = demosecret\n",
+        )
+        .unwrap();
+        let blank = import_s3cmd(&blank_path).unwrap();
+        assert_eq!(blank.servers.len(), 1);
+        assert_eq!(blank.servers[0].provider_id.as_deref(), Some("amazon-s3"));
+        assert!(blank.servers[0].host.is_empty());
+
+        // Query value containing `://` must not become the host or warning label.
+        let tok = "QUERYSECRETTOK";
+        let query_path = dir.path().join("query.s3cfg");
+        std::fs::write(
+            &query_path,
+            format!(
+                "[default]\naccess_key = DEMOKEY\nsecret_key = demosecret\nhost_base = s3.example.test?token=https://{tok}\nproxy_host = proxy.corp\n"
+            ),
+        )
+        .unwrap();
+        let query = import_s3cmd(&query_path).unwrap();
+        assert_eq!(query.servers.len(), 1);
+        assert_eq!(query.servers[0].host, "s3.example.test");
+        assert_eq!(query.warnings.len(), 1);
+        assert_eq!(query.warnings[0].name, "s3cmd s3.example.test");
+        let serialized = serde_json::to_string(&(&query.servers, &query.warnings)).unwrap();
+        assert!(!serialized.contains(tok), "token leaked: {serialized}");
+
+        // AWS host with userinfo classifies as amazon-s3 (no options.endpoint);
+        // custom host with explicit port stays custom-s3 with options.endpoint.
+        let user = "alice";
+        let pw = "pwSecret";
+        let aws_path = dir.path().join("aws.s3cfg");
+        std::fs::write(
+            &aws_path,
+            format!(
+                "[default]\naccess_key = DEMOKEY\nsecret_key = demosecret\nhost_base = https://{user}:{pw}@s3.amazonaws.com\n"
+            ),
+        )
+        .unwrap();
+        let aws = import_s3cmd(&aws_path).unwrap();
+        assert_eq!(aws.servers.len(), 1);
+        assert_eq!(aws.servers[0].provider_id.as_deref(), Some("amazon-s3"));
+        assert_eq!(aws.servers[0].host, "s3.amazonaws.com");
+        assert!(aws.servers[0]
+            .options
+            .as_ref()
+            .and_then(|o| o.get("endpoint"))
+            .is_none());
+
+        let custom_path = dir.path().join("custom.s3cfg");
+        std::fs::write(
+            &custom_path,
+            "[default]\naccess_key = DEMOKEY\nsecret_key = demosecret\nhost_base = objects.example.test:9000\n",
+        )
+        .unwrap();
+        let custom = import_s3cmd(&custom_path).unwrap();
+        assert_eq!(custom.servers.len(), 1);
+        assert_eq!(custom.servers[0].provider_id.as_deref(), Some("custom-s3"));
+        assert_eq!(custom.servers[0].port, 9000);
+        assert_eq!(
+            custom.servers[0]
+                .options
+                .as_ref()
+                .and_then(|o| o.get("endpoint")),
+            Some(&serde_json::json!("https://objects.example.test:9000"))
+        );
     }
 
     #[test]

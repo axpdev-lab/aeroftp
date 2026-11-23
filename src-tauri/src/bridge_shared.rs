@@ -204,14 +204,27 @@ pub(crate) struct EndpointParts<'a> {
 }
 
 /// Split an endpoint into scheme, `host[:port]` and path, without userinfo,
-/// query or fragment. `None` when an `@` follows the end of the authority:
-/// there, userinfo holding an unencoded `/`, `?` or `#` cannot be told apart
-/// from a path, and either reading can put part of a secret in the host.
+/// query or fragment.
+///
+/// Recognizes `scheme://` only at the start of the input (RFC 3986 scheme
+/// characters before any `/`, `?`, `#`, or `@`) so a `://` inside a query
+/// parameter is never misread as the host. Returns `None` when the resulting
+/// `host[:port]` is empty (e.g. `https:///bucket`) or when an `@` follows the
+/// end of the authority (userinfo holding an unencoded `/`, `?`, or `#` cannot
+/// be told apart from a path, and either reading can leak a secret as host).
 pub(crate) fn split_endpoint(endpoint: &str) -> Option<EndpointParts<'_>> {
     let trimmed = endpoint.trim();
     let (scheme, after_scheme) = match trimmed.split_once("://") {
-        Some((scheme, rest)) => (Some(scheme), rest),
-        None => (None, trimmed),
+        Some((candidate, rest))
+            if !candidate.is_empty()
+                && candidate.as_bytes()[0].is_ascii_alphabetic()
+                && candidate
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'+' | b'-' | b'.')) =>
+        {
+            (Some(candidate), rest)
+        }
+        _ => (None, trimmed),
     };
     let authority_end = after_scheme
         .find(['/', '?', '#'])
@@ -225,12 +238,24 @@ pub(crate) fn split_endpoint(endpoint: &str) -> Option<EndpointParts<'_>> {
         .map(|(_, h)| h)
         .unwrap_or(authority)
         .trim();
+    if host_port.is_empty() {
+        return None;
+    }
     let path = &rest[..rest.find(['?', '#']).unwrap_or(rest.len())];
     Some(EndpointParts {
         scheme,
         host_port,
         path,
     })
+}
+
+/// Safe display label derived from a host/URL field when a profile or bookmark
+/// has no explicit name. Strips scheme, userinfo, path, query, and fragment,
+/// returning `fallback` if the host is empty or ambiguous.
+pub(crate) fn safe_host_label(raw: &str, fallback: &str) -> String {
+    try_endpoint_host(raw)
+        .filter(|h| !h.is_empty())
+        .unwrap_or_else(|| fallback.to_string())
 }
 
 /// `host[:port]` of an endpoint, without scheme, userinfo, path, query or
@@ -1936,5 +1961,25 @@ mod tests {
             Some("https://minio.example.com:9000/s3")
         );
         assert_eq!(endpoint_url_without_secrets("minio.example.com"), None);
+
+        // Empty authority in explicit endpoints must be rejected.
+        for empty_auth in ["https:///bucket", "http://", "/bucket", "?k=v", ""] {
+            assert_eq!(try_endpoint_host(empty_auth), None, "{empty_auth}");
+            assert_eq!(
+                endpoint_url_without_secrets(empty_auth),
+                None,
+                "{empty_auth}"
+            );
+        }
+
+        // A `://` inside a query parameter must not be treated as the scheme separator.
+        let query_scheme = "s3.example.test?token=https://SECRET_TOK";
+        assert_eq!(
+            try_endpoint_host(query_scheme).as_deref(),
+            Some("s3.example.test")
+        );
+        assert_eq!(safe_host_label(query_scheme, "unnamed"), "s3.example.test");
+        let amb = format!("https://{user}:{pw_slash}@s3.example.com");
+        assert_eq!(safe_host_label(&amb, "unnamed"), "unnamed");
     }
 }

@@ -93,7 +93,10 @@ fn map_alias(alias: &McAlias) -> Result<MappedProfile, String> {
         return Err("no accessKey".to_string());
     }
 
-    let provider_id = crate::bridge_shared::map_s3_provider_from_endpoint(&alias.url).to_string();
+    let (host, port) = host_port_from_url(&alias.url)
+        .ok_or_else(|| "url is not a valid host[:port] endpoint".to_string())?;
+
+    let provider_id = crate::bridge_shared::map_s3_provider_from_endpoint(&host).to_string();
     if provider_id == "google-cloud-storage"
         && (alias.access_key.trim().is_empty() || alias.secret_key.trim().is_empty())
     {
@@ -102,10 +105,6 @@ fn map_alias(alias: &McAlias) -> Result<MappedProfile, String> {
         // shared table's domain boundary, so a lookalike is not GCS.
         return Err("GCS without HMAC".to_string());
     }
-
-    let (host, port) = host_port_from_url(&alias.url).ok_or_else(|| {
-        "url is not a host[:port] endpoint (an '@' follows its host part)".to_string()
-    })?;
 
     let mut options = serde_json::Map::new();
     if !alias.api.trim().is_empty() {
@@ -142,7 +141,7 @@ fn map_alias(alias: &McAlias) -> Result<MappedProfile, String> {
     // AWS stays implicit: an explicit endpoint switches the S3 connection to
     // path-style, which AWS refuses for newer buckets.
     let url = alias.url.trim().trim_end_matches('/');
-    let aws = crate::bridge_shared::map_s3_provider_from_endpoint(url) == "amazon-s3";
+    let aws = provider_id == "amazon-s3";
     if !aws && (url.starts_with("http://") || url.starts_with("https://")) {
         if let Some(endpoint) = crate::bridge_shared::endpoint_url_without_secrets(url) {
             options.insert(
@@ -535,6 +534,62 @@ mod tests {
                 "{secret} leaked: {serialized}"
             );
         }
+    }
+
+    #[test]
+    fn credentialed_aws_alias_stays_implicit_and_empty_authority_is_skipped() {
+        let user = "alice";
+        let pw = "pwSecret";
+        let aws_url = format!("https://{user}:{pw}@s3.amazonaws.com");
+        let body = serde_json::json!({
+            "version": "10",
+            "aliases": {
+                "aws": {
+                    "url": aws_url,
+                    "accessKey": "DEMOAWSKEY",
+                    "secretKey": "awssecret",
+                    "api": "S3v4",
+                    "path": "auto"
+                },
+                "custom": {
+                    "url": "https://minio.example.com:9000",
+                    "accessKey": "DEMOCUSTKEY",
+                    "secretKey": "custsecret",
+                    "api": "S3v4",
+                    "path": "auto"
+                },
+                "emptyhost": {
+                    "url": "https:///bucket",
+                    "accessKey": "DEMOEMPTYKEY",
+                    "secretKey": "emptysecret",
+                    "api": "S3v4",
+                    "path": "auto"
+                }
+            }
+        })
+        .to_string();
+        let p = write_tmp("aws-classify", &body);
+        let result = import_mc(&p).expect("import should succeed");
+        std::fs::remove_file(&p).ok();
+
+        let aws = result.servers.iter().find(|s| s.name == "aws").unwrap();
+        assert_eq!(aws.provider_id.as_deref(), Some("amazon-s3"));
+        assert_eq!(aws.host, "s3.amazonaws.com");
+        assert!(aws
+            .options
+            .as_ref()
+            .and_then(|o| o.get("endpoint"))
+            .is_none());
+
+        let custom = result.servers.iter().find(|s| s.name == "custom").unwrap();
+        assert_eq!(custom.provider_id.as_deref(), Some("custom-s3"));
+        assert_eq!(
+            custom.options.as_ref().and_then(|o| o.get("endpoint")),
+            Some(&serde_json::json!("https://minio.example.com:9000"))
+        );
+
+        assert!(result.skipped.iter().any(|s| s.name == "emptyhost"));
+        assert!(!result.servers.iter().any(|s| s.name == "emptyhost"));
     }
 
     #[test]
