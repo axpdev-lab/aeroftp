@@ -148,9 +148,14 @@ fn map_alias(alias: &McAlias) -> Result<MappedProfile, String> {
         && (url_lower.starts_with("http://") || url_lower.starts_with("https://"))
     {
         if let Some(endpoint) = crate::bridge_shared::endpoint_url_without_secrets(url) {
+            let normalized = if let Some((scheme, rest)) = endpoint.split_once("://") {
+                format!("{}://{}", scheme.to_ascii_lowercase(), rest)
+            } else {
+                endpoint
+            };
             options.insert(
                 "endpoint".to_string(),
-                serde_json::Value::String(endpoint.trim_end_matches('/').to_string()),
+                serde_json::Value::String(normalized.trim_end_matches('/').to_string()),
             );
         }
     }
@@ -876,6 +881,75 @@ mod tests {
             assert!(
                 aliases[alias]["url"].as_str().unwrap().contains(host),
                 "{doc}"
+            );
+        }
+    }
+
+    #[test]
+    fn uppercase_scheme_endpoint_is_normalized_to_lowercase_for_s3_config() {
+        let body = serde_json::json!({
+            "version": "10",
+            "aliases": {
+                "upper_https": {
+                    "url": "HTTPS://objects.example.test:9443",
+                    "accessKey": "AKIAUPPERHTTPS",
+                    "secretKey": "secret-https",
+                    "api": "S3v4",
+                    "path": "auto"
+                },
+                "mixed_http": {
+                    "url": "HtTp://objects.example.test:9000/prefix/",
+                    "accessKey": "AKIAMIXEDHTTP",
+                    "secretKey": "secret-http",
+                    "api": "S3v4",
+                    "path": "auto"
+                }
+            }
+        })
+        .to_string();
+        let path = write_tmp("uppercase-scheme", &body);
+        let res = import_mc(&path).expect("import should succeed");
+        std::fs::remove_file(&path).ok();
+
+        for (name, expected_endpoint) in [
+            ("upper_https", "https://objects.example.test:9443"),
+            ("mixed_http", "http://objects.example.test:9000/prefix"),
+        ] {
+            let srv = res
+                .servers
+                .iter()
+                .find(|s| s.name == name)
+                .unwrap_or_else(|| panic!("missing imported alias {name}"));
+            let saved_endpoint = srv
+                .options
+                .as_ref()
+                .and_then(|o| o.get("endpoint"))
+                .and_then(|v| v.as_str())
+                .expect("endpoint option present");
+            assert_eq!(
+                saved_endpoint, expected_endpoint,
+                "{name} saved endpoint must have lowercase scheme"
+            );
+            let mut extra = HashMap::new();
+            extra.insert("bucket".to_string(), "demo".to_string());
+            extra.insert("endpoint".to_string(), saved_endpoint.to_string());
+            let s3_cfg = crate::providers::types::S3Config::from_provider_config(
+                &crate::providers::types::ProviderConfig {
+                    name: srv.name.clone(),
+                    provider_type: crate::providers::types::ProviderType::S3,
+                    host: srv.host.clone(),
+                    port: Some(srv.port as u16),
+                    username: Some(srv.username.clone()),
+                    password: srv.credential.clone(),
+                    initial_path: None,
+                    extra,
+                },
+            )
+            .unwrap_or_else(|e| panic!("{name} failed S3Config: {e}"));
+            assert_eq!(
+                s3_cfg.endpoint.as_deref(),
+                Some(expected_endpoint),
+                "{name} effective S3Config endpoint must not double-prefix scheme"
             );
         }
     }
