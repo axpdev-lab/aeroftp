@@ -182,6 +182,12 @@ pub struct PlanInputs {
     /// the import wrote anything: what a failed step puts back in the vault
     /// when the receiver's writes leave it alone.
     pub local_vault: HashMap<String, Option<Zeroizing<String>>>,
+    /// Private token keys whose local vault value belongs to a different
+    /// account identity than the receiver, which "Skip existing" leaves in
+    /// the vault: once the backup's partition is published its owner has no
+    /// row for them and would read that foreign token as its own, so the
+    /// import deletes each while it still holds the value read here.
+    pub vault_foreign_private: Vec<(String, Zeroizing<String>)>,
     /// The receiver's row of each key (the row that mirrors a vault value,
     /// or a private token's only copy), as the import leaves it, read when
     /// the plan was made: the restored partition's row when the import
@@ -776,6 +782,7 @@ mod tests {
             receiver: None,
             targets_restored_partition: false,
             local_vault: HashMap::new(),
+            vault_foreign_private: Vec::new(),
             receiver_rows: HashMap::new(),
             receiver_is_here: false,
             local_signed_in: HashSet::new(),

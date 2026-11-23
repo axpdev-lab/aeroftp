@@ -1893,6 +1893,7 @@ fn profile_plan_inputs(
     let mut receiver_rows = HashMap::new();
     let receiver_is_here = receiver.is_some() && receiver == here;
     let mut local_signed_in = HashSet::new();
+    let mut vault_foreign_private = Vec::new();
     // The partition the receiver's rows are in once the import has run.
     let rows_conn = if restores_partition {
         backup_conn.as_ref()
@@ -1933,6 +1934,15 @@ fn profile_plan_inputs(
                     (Some(r), Some(h)) => r.identity == h.identity,
                     _ => true,
                 };
+                // "Skip existing" leaves this device's vault entry in place
+                // even though the plan gives the receiver nothing: once the
+                // backup's partition is published its owner has no row and
+                // would read that foreign token as its own.
+                if !attributable && merge_strategy == "skip_existing" {
+                    if let Some(Some(value)) = local_vault.get(&key) {
+                        vault_foreign_private.push((key.clone(), value.clone()));
+                    }
+                }
                 Ok((attributable && reads_vault_tokens(receiver))
                     .then(|| local_vault.get(&key).cloned().flatten())
                     .flatten())
@@ -2029,6 +2039,7 @@ fn profile_plan_inputs(
         receiver,
         targets_restored_partition: restores_partition,
         local_vault,
+        vault_foreign_private,
         receiver_rows,
         receiver_is_here,
         local_signed_in,
@@ -3111,6 +3122,25 @@ fn import_keystore_with_store(
             );
             sqlite_dbs_failed.extend(payload.sqlite_dumps.keys().filter(wanted).cloned());
             sqlite_dbs_failed.sort();
+        }
+    }
+
+    // A private token the vault kept under "Skip existing" can belong to an
+    // account the published partition replaced: its owner has no row for it
+    // and would read that foreign value as its own. Where the receiver reads
+    // the vault for private tokens, the entry goes, but only while it still
+    // holds the value the plan read; one another writer moved stays.
+    if partition_in_restore {
+        if let Some((inputs, _)) = &profile_plan {
+            if reads_vault_tokens(inputs.receiver) {
+                for (key, expected) in &inputs.vault_foreign_private {
+                    if let Err(e) = store.delete_secret_if_unchanged(key, expected) {
+                        tracing::warn!(
+                            "Keystore import: foreign vault token {key} not removed: {e}"
+                        );
+                    }
+                }
+            }
         }
     }
 
@@ -5915,6 +5945,177 @@ mod tests {
                 assert_eq!(row, None, "the backup's account got this device's token");
             }
         }
+    }
+
+    /// "Skip existing" leaves this device's vault token in place even when it
+    /// belongs to another account than the restored receiver: once the
+    /// backup's partition is published its owner has no row and would read
+    /// that foreign token as its own, so the import deletes the vault entry
+    /// while it still holds the value the plan read.
+    #[test]
+    fn a_kept_vault_token_of_another_identity_is_removed_after_the_publish() {
+        let _guard = crate::user_partitions::test_lock();
+        crate::user_partitions::clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let cfg = dir.path().join("config");
+        let key = "oauth_dropbox_srv_drive";
+        let list = [dropbox("srv_drive", "Drive")];
+        partition_with(&store, &cfg, &list);
+        store.store(key, "local-token").unwrap();
+        // The backup's partition belongs to another account identity.
+        let source_cfg = dir.path().join("source");
+        partition_with(&store, &source_cfg, &list);
+        let source_db = source_cfg.join("user_partitions.db");
+        let mut payload = ExportPayload::default();
+        payload.vault_entries.insert(
+            "config_server_profiles".to_string(),
+            serde_json::to_string(&list).unwrap(),
+        );
+        payload
+            .vault_entries
+            .insert(key.to_string(), "backup-token".to_string());
+        payload.sqlite_dumps.insert(
+            "user_partitions.db".to_string(),
+            snapshot_sqlite_db(&source_db).unwrap().unwrap(),
+        );
+        let backup = dir.path().join("foreign.aeroftp-keystore");
+        seal_backup(&backup, PASSWORD_736, &payload);
+
+        let result = import_keystore_with_store(
+            &store,
+            PASSWORD_736,
+            &backup,
+            "skip_existing",
+            ImportSections::default(),
+            Some(&cfg),
+            None,
+            None,
+        )
+        .unwrap();
+        assert!(
+            result.sqlite_dbs_failed.is_empty(),
+            "{:?}",
+            result.sqlite_dbs_failed
+        );
+        assert!(
+            matches!(
+                store.get(key),
+                Err(crate::credential_store::CredentialError::NotFound(_))
+            ),
+            "the foreign token must not stay readable by the restored owner"
+        );
+    }
+
+    /// The same restore for the same owner keeps the token: the backup's
+    /// partition is this device's own, so the vault value the plan read is
+    /// the receiver's and "Skip existing" leaves it.
+    #[test]
+    fn a_kept_vault_token_of_the_same_identity_stays() {
+        let _guard = crate::user_partitions::test_lock();
+        crate::user_partitions::clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let cfg = dir.path().join("config");
+        let key = "oauth_dropbox_srv_drive";
+        let list = [dropbox("srv_drive", "Drive")];
+        partition_with(&store, &cfg, &list);
+        store.store(key, "local-token").unwrap();
+        let db = cfg.join("user_partitions.db");
+        let mut payload = ExportPayload::default();
+        payload.vault_entries.insert(
+            "config_server_profiles".to_string(),
+            serde_json::to_string(&list).unwrap(),
+        );
+        payload
+            .vault_entries
+            .insert(key.to_string(), "backup-token".to_string());
+        payload.sqlite_dumps.insert(
+            "user_partitions.db".to_string(),
+            snapshot_sqlite_db(&db).unwrap().unwrap(),
+        );
+        let backup = dir.path().join("same.aeroftp-keystore");
+        seal_backup(&backup, PASSWORD_736, &payload);
+
+        import_keystore_with_store(
+            &store,
+            PASSWORD_736,
+            &backup,
+            "skip_existing",
+            ImportSections::default(),
+            Some(&cfg),
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(store.get(key).unwrap(), "local-token");
+    }
+
+    /// A partition that fails to publish leaves this device's own in place,
+    /// so the vault token the plan read is still its owner's: nothing is
+    /// deleted.
+    #[test]
+    fn a_failed_partition_publish_keeps_the_vault_token() {
+        let _guard = crate::user_partitions::test_lock();
+        crate::user_partitions::clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let cfg = dir.path().join("config");
+        let key = "oauth_dropbox_srv_drive";
+        let list = [dropbox("srv_drive", "Drive")];
+        partition_with(&store, &cfg, &list);
+        store.store(key, "local-token").unwrap();
+        let source_cfg = dir.path().join("source");
+        // A relaxed option makes the publish's security reset write, which
+        // the triggers below refuse: the plan still reads the partition.
+        let mut imported = dropbox("srv_drive", "Drive");
+        imported["options"] = serde_json::json!({"trustUnknownHosts": true});
+        partition_with(&store, &source_cfg, &[imported.clone()]);
+        let source_db = source_cfg.join("user_partitions.db");
+        let conn = rusqlite::Connection::open(&source_db).unwrap();
+        conn.execute_batch(
+            "CREATE TRIGGER fail_reset BEFORE INSERT ON server_profiles BEGIN SELECT RAISE(FAIL, 'forced reset failure'); END;
+             CREATE TRIGGER fail_marker BEFORE INSERT ON global_state BEGIN SELECT RAISE(FAIL, 'forced SQL marker failure'); END;",
+        )
+        .unwrap();
+        drop(conn);
+        let mut payload = ExportPayload::default();
+        payload.vault_entries.insert(
+            "config_server_profiles".to_string(),
+            serde_json::to_string(&vec![imported]).unwrap(),
+        );
+        payload
+            .vault_entries
+            .insert(key.to_string(), "backup-token".to_string());
+        payload.sqlite_dumps.insert(
+            "user_partitions.db".to_string(),
+            snapshot_sqlite_db(&source_db).unwrap().unwrap(),
+        );
+        let backup = dir.path().join("broken.aeroftp-keystore");
+        seal_backup(&backup, PASSWORD_736, &payload);
+
+        let result = import_keystore_with_store(
+            &store,
+            PASSWORD_736,
+            &backup,
+            "skip_existing",
+            ImportSections::default(),
+            Some(&cfg),
+            None,
+            None,
+        )
+        .unwrap();
+        assert!(
+            result
+                .sqlite_dbs_failed
+                .contains(&"user_partitions.db".to_string()),
+            "restored={} failed={:?} unreadable={} decisions_err={:?}",
+            result.sqlite_dbs_restored,
+            result.sqlite_dbs_failed,
+            result.user_partitions_unreadable,
+            result.profile_decisions_error
+        );
+        assert_eq!(store.get(key).unwrap(), "local-token");
     }
 
     /// Greptile on #1575: carrying this device's own sign-in back into the
