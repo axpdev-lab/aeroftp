@@ -65,6 +65,7 @@ function fixture() {
 describe('BridgeSourcePanel confirmImport', () => {
     it('blocks a second confirm of a preview already confirmed', async () => {
         const { context, onImport } = fixture();
+        context.selectedIds = new Set(['srv_a']);
         const scans = context.scans as ReturnType<typeof createScanSettler>;
         await scans.track('scan-1');
         const { confirmImport } = await panel(context);
@@ -72,11 +73,17 @@ describe('BridgeSourcePanel confirmImport', () => {
         await confirmImport();
         expect(onImport).toHaveBeenCalledTimes(1);
         expect(scans.isCommitted()).toBe(true);
+        const passed = onImport.mock.calls[0][0] as ServerProfile[];
+        expect(passed.map(s => s.id)).toEqual(['srv_a']);
 
-        // Before the 2.5 s close timer fires, a second confirm must not
-        // import again: the first settle already took back the secrets of
-        // the profiles left out.
-        await confirmImport();
+        // Before the 2.5 s close timer fires, a confirm of another
+        // selection must not import again: the first settle already took
+        // back the secrets of the profiles left out.
+        const { confirmImport: confirmOther } = await panel({
+            ...context,
+            selectedIds: new Set(['srv_b']),
+        });
+        await confirmOther();
         expect(onImport).toHaveBeenCalledTimes(1);
     });
 
