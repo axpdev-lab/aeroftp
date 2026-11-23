@@ -742,9 +742,12 @@ impl MegaApiClient {
                 mega_code
             );
             if let Some(code) = mega_code {
-                return Err(map_mega_error_code(code));
+                // Of the auth-mapped codes, only API_ESID (-15) is a session
+                // verdict. Other non-2xx failures keep the legacy NetworkError.
+                if !matches!(code, -13 | -14 | -22 | -26) {
+                    return Err(map_mega_error_code(code));
+                }
             }
-            // Keep the legacy kind and recoverability for non-MEGA HTTP errors.
             return Err(ProviderError::NetworkError(format!(
                 "MEGA API returned HTTP {status}"
             )));
@@ -858,15 +861,15 @@ fn map_mega_error_code(code: i64) -> ProviderError {
         -14 => ProviderError::AuthenticationFailed("MEGA account not confirmed".to_string()),
         -15 => ProviderError::AuthenticationFailed("MEGA session ID invalid".to_string()),
         -16 => ProviderError::ServerError("MEGA over quota".to_string()),
-        // MEGA two-factor authentication error codes:
+        // MEGA authentication-related error codes:
         //   -26 EMFAREQUIRED: account has 2FA enabled and the request was
         //                       missing the `mfa` field
         //   -27 EMASTERONLY : operation needs master account access
         //   -28 EBUSINESSPASTDUE
         //   -29 EPAYWALL
-        //   -22 ENOTOKEN    : the supplied 2FA token was not accepted
-        // The user-facing message must be specific so the UI can prompt
-        // the user to enter or re-enter their TOTP.
+        //   -22 EAPPKEY     : invalid or missing application key
+        // The legacy shared mapping is unchanged here; the user-facing 2FA
+        // messages remain specific so the UI can prompt for a fresh TOTP.
         -22 => ProviderError::AuthenticationFailed(
             "Wrong or already-used 2FA code. Generate a fresh code from your authenticator app.".to_string(),
         ),
@@ -3918,6 +3921,50 @@ mod tests {
                 assert_eq!(store.get(&key).unwrap(), serialized);
 
                 use crate::providers::StorageProvider;
+                for code in ["-13", "-14"] {
+                    let commands = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+                    let received = commands.clone();
+                    let app = axum::Router::new().fallback(axum::routing::post(
+                        move |axum::Json(body): axum::Json<serde_json::Value>| {
+                            let received = received.clone();
+                            async move {
+                                let command = body[0]["a"].as_str().unwrap().to_string();
+                                received.lock().unwrap().push(command.clone());
+                                let response = if command == "ug" { code } else { "-15" };
+                                (axum::http::StatusCode::INTERNAL_SERVER_ERROR, response)
+                            }
+                        },
+                    ));
+                    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+                    let addr = listener.local_addr().unwrap();
+                    let server = tokio::spawn(async move { axum::serve(listener, app).await });
+                    let mut provider = super::MegaNativeProvider::new(super::MegaConfig {
+                        email: format!("non402-{code}@example.invalid"),
+                        password: secrecy::SecretString::new("synthetic-password".into()),
+                        two_factor_code: None,
+                        totp_secret: None,
+                        save_session: true,
+                        logout_on_disconnect: None,
+                        connection_mode: crate::providers::types::MegaConnectionMode::Native,
+                    });
+                    provider.api_client.base_url_override = Some(format!("http://{addr}/cs"));
+                    let key = provider.session_vault_key();
+                    store.store(&key, &serialized).unwrap();
+
+                    let err = provider.connect().await.unwrap_err();
+                    server.abort();
+                    assert!(
+                        matches!(err, ProviderError::NetworkError(_)),
+                        "{code}: {err:?}"
+                    );
+                    assert_eq!(store.get(&key).unwrap(), serialized, "{code}");
+                    assert_eq!(
+                        commands.lock().unwrap().as_slice(),
+                        &["ug".to_string()],
+                        "{code}"
+                    );
+                }
+
                 use std::sync::atomic::{AtomicUsize, Ordering};
                 let requests = std::sync::Arc::new(AtomicUsize::new(0));
                 let received = requests.clone();
@@ -3953,6 +4000,50 @@ mod tests {
                     Err(crate::credential_store::CredentialError::NotFound(_))
                 ));
                 assert_eq!(requests.load(Ordering::SeqCst), 1);
+
+                let commands = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+                let received = commands.clone();
+                let fresh_login = axum::Router::new().fallback(axum::routing::post(
+                    move |axum::Json(body): axum::Json<serde_json::Value>| {
+                        let received = received.clone();
+                        async move {
+                            let command = body[0]["a"].as_str().unwrap().to_string();
+                            received.lock().unwrap().push(command.clone());
+                            if command == "ug" {
+                                (axum::http::StatusCode::PAYMENT_REQUIRED, "-15")
+                            } else {
+                                (axum::http::StatusCode::INTERNAL_SERVER_ERROR, "-15")
+                            }
+                        }
+                    },
+                ));
+                let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+                let addr = listener.local_addr().unwrap();
+                let fresh_login_server =
+                    tokio::spawn(async move { axum::serve(listener, fresh_login).await });
+                let mut provider = super::MegaNativeProvider::new(super::MegaConfig {
+                    email: "fresh-login@example.invalid".into(),
+                    password: secrecy::SecretString::new("synthetic-password".into()),
+                    two_factor_code: None,
+                    totp_secret: None,
+                    save_session: true,
+                    logout_on_disconnect: None,
+                    connection_mode: crate::providers::types::MegaConnectionMode::Native,
+                });
+                provider.api_client.base_url_override = Some(format!("http://{addr}/cs"));
+                let fresh_login_key = provider.session_vault_key();
+                store.store(&fresh_login_key, &serialized).unwrap();
+                let err = provider.connect().await.unwrap_err();
+                fresh_login_server.abort();
+                assert!(matches!(err, ProviderError::AuthenticationFailed(_)));
+                assert!(matches!(
+                    store.get(&fresh_login_key),
+                    Err(crate::credential_store::CredentialError::NotFound(_))
+                ));
+                assert_eq!(
+                    commands.lock().unwrap().as_slice(),
+                    &["ug".to_string(), "us0".to_string()]
+                );
             });
         CredentialStore::clear_cache();
     }
