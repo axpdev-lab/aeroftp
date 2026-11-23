@@ -1834,19 +1834,54 @@ impl SessionKeys for VaultKeys {
                     Vec::new()
                 });
         }
-        self.store
+        let mut keys: Vec<String> = self
+            .store
             .list_accounts()
             .unwrap_or_default()
             .into_iter()
             .filter(|account| is_session_key(account))
-            .collect()
+            .collect();
+        // The legacy owner's rows are copies too: one whose vault entry the
+        // alignment removed still takes the refreshed pair, as
+        // [`saved_sessions`] unions them.
+        if let Some(user) = self.owner.user_id {
+            let rows_owner = if user == crate::user_partitions::LEGACY_ONLY_ACCOUNT {
+                crate::user_partitions::legacy_credential_owner_id()
+                    .ok()
+                    .flatten()
+            } else {
+                Some(user)
+            };
+            if let Some(rows_owner) = rows_owner {
+                if let Ok(conn) = crate::user_partitions::open_or_init_cli() {
+                    if let Ok(ids) = crate::user_partitions::user_credential_ids_of_type(
+                        &conn,
+                        rows_owner,
+                        PARTITION_TYPE,
+                    ) {
+                        let extra: Vec<String> = ids
+                            .into_iter()
+                            .filter(|id| is_session_key(id) && !keys.contains(id))
+                            .collect();
+                        keys.extend(extra);
+                    }
+                }
+            }
+        }
+        keys
     }
 
     fn read(&self, key: &str) -> Option<ProtonSession> {
         if key == self.own_key || self.private.is_some() {
             read(&self.store, self.owner, key).ok().flatten()
         } else {
-            self.store.get(key).ok().and_then(|raw| parse(&raw).ok())
+            // A copy whose vault entry is gone still lives in the legacy
+            // owner's row: read it there, as `saved_sessions` merges them.
+            self.store
+                .get(key)
+                .ok()
+                .and_then(|raw| parse(&raw).ok())
+                .or_else(|| read(&self.store, self.owner, key).ok().flatten())
         }
     }
 

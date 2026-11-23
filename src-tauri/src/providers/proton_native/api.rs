@@ -751,6 +751,15 @@ impl ProtonApi {
             log::warn!("Proton session refresh impossible: no refresh token");
             return Ok(Refreshed::Ended);
         };
+        // A new sign-in saved another session under this vault key: it
+        // replaced this one, whose refresh the POST would only be refused.
+        if store
+            .as_deref()
+            .and_then(|store| store.load())
+            .is_some_and(|saved| saved.uid != current.uid)
+        {
+            return Ok(Refreshed::Replaced);
+        }
 
         let response = self
             .http
