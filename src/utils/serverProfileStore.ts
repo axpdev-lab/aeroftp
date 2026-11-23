@@ -5,6 +5,7 @@ import type { ServerProfile } from '../types';
 import { secureGet, secureStore } from './secureStorage';
 import {
     accountChangeGeneration,
+    getUnlockStatus,
     loadActiveServerProfiles,
     loadActiveServerProfilesScoped,
     saveActiveServerProfiles,
@@ -130,6 +131,13 @@ export const loadSavedServerProfilesStrict = async (): Promise<ServerProfile[]> 
 export interface SavedProfilesRead {
     profiles: ServerProfile[];
     userId?: number;
+    /**
+     * The account active when the list was read, also set for a legacy-store
+     * read whose `userId` is absent: a profile the list loses has its secrets
+     * purged for THIS account, never for whichever account is active when the
+     * purge runs.
+     */
+    activeUserId?: number;
     revision?: string;
 }
 
@@ -157,7 +165,18 @@ export const readSavedServerProfilesForWrite = async (): Promise<SavedProfilesRe
     } catch (error) {
         if (!canUseLegacyProfileFallback(error)) throw error;
         const legacy = await loadLegacySavedServerProfiles();
-        if (legacy.length > 0) return { profiles: legacy, revision: LEGACY_STORE_REVISION + JSON.stringify(legacy) };
+        if (legacy.length > 0) {
+            // The legacy store has no account, but the account active now is
+            // the one whose partition rows and vault keys a removed profile's
+            // secrets live under: capture it, so a purge after a switch does
+            // not resolve the NEW active account instead.
+            const status = await getUnlockStatus().catch(() => null);
+            return {
+                profiles: legacy,
+                activeUserId: status?.activeUserId ?? undefined,
+                revision: LEGACY_STORE_REVISION + JSON.stringify(legacy),
+            };
+        }
         throw error;
     }
 };

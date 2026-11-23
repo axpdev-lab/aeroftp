@@ -398,6 +398,20 @@ describe('a list read from the legacy store', () => {
         expect(mockInvoke).toHaveBeenCalledTimes(1);
         mockInvoke.mockReset();
     });
+
+    it('captures the account active at read time for the purge of a lost profile', async () => {
+        const legacy = [sampleProfile({ name: 'from the legacy store' })];
+        mockInvoke.mockImplementation(async (command: string) => {
+            if (command === 'user_partitions_load_active_server_profiles_scoped') throw new Error('STORE_NOT_READY');
+            if (command === 'get_credential') return JSON.stringify(legacy);
+            if (command === 'user_partitions_unlock_status') return { isUnlocked: true, activeUserId: 7 };
+            return undefined;
+        });
+        const read = await readSavedServerProfilesForWrite();
+        expect(read.userId).toBeUndefined();
+        expect(read.activeUserId).toBe(7);
+        mockInvoke.mockReset();
+    });
 });
 
 describe('a retry after another writer saved', () => {

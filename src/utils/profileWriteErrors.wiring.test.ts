@@ -354,6 +354,20 @@ describe('saved profile write rejection in production handlers', () => {
         expect(copied.context.deleteProfileVaultSecrets).toHaveBeenCalledWith(expect.stringMatching(/^srv_/), 'ftp', 7);
     });
 
+    it('IntroHub purges for the account active at read time when the list came from the legacy store', async () => {
+        // A legacy-store read has no userId: the purge must still name the
+        // account that was active when the list was read, not whichever
+        // account is active when the purge runs after a switch.
+        const f = fixture('none');
+        f.context.readSavedServerProfilesForWrite = async () => ({
+            profiles: f.servers, activeUserId: 7, revision: 'legacy-store:[]',
+        });
+        const fn = await execute(hub, ['confirmDelete'], f.context);
+        await fn.confirmDelete();
+        await vi.waitFor(() => expect(f.context.deleteProfileVaultSecrets).toHaveBeenCalledOnce());
+        expect(f.context.deleteProfileVaultSecrets).toHaveBeenCalledWith('old', 'ftp', 7);
+    });
+
     it('closes the primary editor after a successful persisted save', async () => {
         const f = fixture('none');
         const fn = await execute(connection, ['saveToServers', 'handleConnectAndSave'], f.context);
