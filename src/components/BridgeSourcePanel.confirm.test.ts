@@ -96,4 +96,30 @@ describe('BridgeSourcePanel confirmImport', () => {
         expect(onImport).toHaveBeenCalledTimes(1);
         expect(scans.isCommitted()).toBe(true);
     });
+
+    it('announces nothing when a newer scan lands during the release', async () => {
+        const { context, onImport } = fixture();
+        let releaseSettle!: () => void;
+        const held = new Promise<void>(resolve => { releaseSettle = resolve; });
+        const settle = vi.fn(() => held);
+        const scans = createScanSettler(settle);
+        context.scans = scans;
+        await scans.track('scan-1');
+        const { confirmImport } = await panel(context);
+
+        const pending = confirmImport();
+        // The commit is done and the scan's settle is in flight when the
+        // next preview lands: it owns the panel now, so the confirmed
+        // commit announces and closes nothing for the scan it replaced.
+        await vi.waitFor(() => expect(settle).toHaveBeenCalledWith('scan-1'));
+        await scans.track('scan-2');
+        releaseSettle();
+        await pending;
+
+        expect(onImport).toHaveBeenCalledTimes(1);
+        expect(context.setCommitted).not.toHaveBeenCalled();
+        expect(context.setSuccess).not.toHaveBeenCalled();
+        expect((context.closeTimerRef as { current: unknown }).current).toBeNull();
+        expect(scans.isCommitted()).toBe(false);
+    });
 });

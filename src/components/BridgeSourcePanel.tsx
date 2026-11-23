@@ -291,8 +291,9 @@ export const BridgeSourcePanel: React.FC<Props> = ({
             // this commit is not its, so nothing is marked, released or
             // announced for it.
             if (!scans.markCommitted()) return;
-            setCommitted(true);
             await scans.release();
+            if (!scans.isCommitted()) return;
+            setCommitted(true);
             const parts: string[] = [];
             if (outcome.added > 0) parts.push(t('settings.importSuccess').replace('{count}', String(outcome.added)));
             if (outcome.updated > 0) parts.push(t('settings.serversUpdated').replace('{count}', String(outcome.updated)));
