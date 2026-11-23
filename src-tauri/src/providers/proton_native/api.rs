@@ -739,6 +739,7 @@ impl ProtonApi {
                     // A saved session of another UID replaced this one,
                     // as the leased path reports it, not an IO failure.
                     if store.load().is_some_and(|saved| saved.uid != current.uid) {
+                        *self.tokens.write().await = None;
                         return Ok(Refreshed::Replaced);
                     }
                     if let Some(saved) = self.newer_saved_tokens(Some(store.as_ref()), &current) {
@@ -768,6 +769,7 @@ impl ProtonApi {
             .and_then(|store| store.load())
             .is_some_and(|saved| saved.uid != current.uid)
         {
+            *self.tokens.write().await = None;
             return Ok(Refreshed::Replaced);
         }
 
@@ -1413,7 +1415,11 @@ mod tests {
 
         let error = api.get::<Value>("/core/v4/users", &[]).await.unwrap_err();
         assert!(matches!(error, ProtonError::SessionReplaced), "{error:?}");
-        assert_eq!(refreshes.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            refreshes.load(Ordering::SeqCst),
+            0,
+            "another session is Replaced before any refresh is sent"
+        );
         assert!(
             api.tokens().await.is_none(),
             "another session's tokens were adopted"
