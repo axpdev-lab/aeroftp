@@ -2165,6 +2165,35 @@ impl SessionStore for VaultSession {
 mod tests {
     use super::*;
     use secrecy::{ExposeSecret, SecretString};
+    use std::sync::Mutex;
+
+    static LOG_CAPTURE: Mutex<String> = Mutex::new(String::new());
+
+    struct CaptureLog;
+
+    impl log::Log for CaptureLog {
+        fn enabled(&self, _: &log::Metadata) -> bool {
+            true
+        }
+        fn log(&self, record: &log::Record) {
+            if let Ok(mut buffer) = LOG_CAPTURE.lock() {
+                use std::fmt::Write;
+                let _ = writeln!(buffer, "{}", record.args());
+            }
+        }
+        fn flush(&self) {}
+    }
+
+    /// The process logger installs once: every warn the revoke path emits
+    /// lands in `LOG_CAPTURE`, cleared for this test.
+    fn install_log_capture() {
+        static ONCE: std::sync::Once = std::sync::Once::new();
+        ONCE.call_once(|| {
+            let _ = log::set_logger(&CaptureLog);
+            log::set_max_level(log::LevelFilter::Trace);
+        });
+        LOG_CAPTURE.lock().unwrap().clear();
+    }
 
     /// The diagnostic of a failed revoke keeps Proton's HTTP status and
     /// code only: a secret in the provider's `Error` text reaches neither
@@ -2225,12 +2254,25 @@ mod tests {
             (endpoint, server)
         });
         test_seams::set_revoke_api_base(Some(endpoint));
+        install_log_capture();
+        store_session(
+            SessionOwner::for_user(None),
+            Some("revokeapi"),
+            &session("revoke-api-uid"),
+        )
+        .expect("the saved session the purge left");
         let outcome = runtime.block_on(revoke_session(
             &store,
             SessionOwner::for_user(None),
             "proton_native_session_revokeapi",
             session("revoke-api-uid"),
         ));
+        // The deferred cleanup a purge runs reaches the same double through
+        // `end_purged_session_blocking`, so its error carries the same
+        // redaction, not a locally formatted copy of the outcome.
+        let deferred =
+            end_purged_session_blocking(SessionOwner::for_user(None), "revokeapi", |_| Ok(true))
+                .expect_err("the deferred sign-out fails on the same double");
         test_seams::set_revoke_api_base(None);
         server.abort();
         drop(runtime);
@@ -2246,6 +2288,18 @@ mod tests {
         assert!(
             !detail.contains("s3cr3t-token-value"),
             "the provider's message reached the outcome: {detail}"
+        );
+        let text = LOG_CAPTURE.lock().unwrap().clone();
+        assert!(!text.contains("s3cr3t-token-value"), "{text}");
+        assert!(text.contains("HTTP 400") && text.contains("1001"), "{text}");
+        let deferred = deferred.to_string();
+        assert!(
+            deferred.contains("HTTP 400") && deferred.contains("1001"),
+            "the deferred error keeps status and code: {deferred}"
+        );
+        assert!(
+            !deferred.contains("s3cr3t-token-value"),
+            "the provider's message reached the deferred error: {deferred}"
         );
     }
 
