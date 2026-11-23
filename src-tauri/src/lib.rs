@@ -24850,6 +24850,78 @@ mod copy_profile_secrets_for_tests {
         );
     }
 
+    /// Without the native provider build the shared-import restore applies
+    /// the same ownership rule: a carried Proton session another account may
+    /// hold is withheld and the profile is reported, not restored; a session
+    /// nobody holds is restored.
+    #[cfg(not(feature = "proton-native"))]
+    #[test]
+    fn an_import_without_the_native_build_withholds_a_held_session() {
+        let env = Accounts::new();
+        let held = r#"{"uid":"held-uid","access_token":"a","refresh_token":"r"}"#;
+        let free = r#"{"uid":"free-uid","access_token":"a","refresh_token":"r"}"#;
+        user_partitions::store_credential_for_user(
+            &env.store,
+            env.owner,
+            "proton_native_session_held",
+            "proton_native_session",
+            held,
+        )
+        .unwrap();
+        let server = |id: &str| profile_export::ServerProfileExport {
+            id: id.into(),
+            name: id.into(),
+            protocol: Some("proton".into()),
+            ..Default::default()
+        };
+        let secrets = std::collections::HashMap::from([
+            (
+                "held-copy".to_string(),
+                profile_export::ProviderSecrets {
+                    proton_native_session: Some(held.to_string()),
+                    ..Default::default()
+                },
+            ),
+            (
+                "free-copy".to_string(),
+                profile_export::ProviderSecrets {
+                    proton_native_session: Some(free.to_string()),
+                    ..Default::default()
+                },
+            ),
+        ]);
+        let shared = restore_shared_import_secrets(
+            &env.store,
+            env.other,
+            &[server("held-copy"), server("free-copy")],
+            &secrets,
+            &std::collections::HashMap::new(),
+        );
+        assert!(shared.failed.contains("held-copy"));
+        assert!(!shared.restored_sessions.contains("held-copy"));
+        assert!(shared.restored_sessions.contains("free-copy"));
+        assert!(
+            user_partitions::resolve_credential_for_user(
+                &env.store,
+                env.other,
+                "proton_native_session_held-copy"
+            )
+            .unwrap()
+            .is_none(),
+            "the held session is not written for the importing account"
+        );
+        assert!(
+            user_partitions::resolve_credential_for_user(
+                &env.store,
+                env.other,
+                "proton_native_session_free-copy"
+            )
+            .unwrap()
+            .is_some(),
+            "a session nobody holds is restored"
+        );
+    }
+
     #[test]
     fn a_duplicate_made_by_a_second_account_keeps_its_filen_and_onedrive_keys() {
         let env = Accounts::new();
@@ -26693,14 +26765,24 @@ pub(crate) fn restore_shared_import_secrets(
             )
             .map_err(|error| error.to_string());
             #[cfg(not(feature = "proton-native"))]
-            let result = user_partitions::store_credential_for_user_typed_dual(
-                store,
-                user,
-                &format!("proton_native_session_{profile_id}"),
-                "proton_native_session",
-                v,
-            )
-            .map(|()| true);
+            let result = (|| -> Result<bool, String> {
+                // The same rule the native path applies: a session another
+                // account on this device may hold is not restored, or a
+                // sign-out here would revoke it there.
+                let uid = user_partitions::proton_session_uid(v)
+                    .ok_or_else(|| "the carried session names no account".to_string())?;
+                if user_partitions::another_account_may_hold_session(store, Some(user), &uid)? {
+                    return Ok(false);
+                }
+                user_partitions::store_credential_for_user_typed_dual(
+                    store,
+                    user,
+                    &format!("proton_native_session_{profile_id}"),
+                    "proton_native_session",
+                    v,
+                )
+                .map(|()| true)
+            })();
             match result {
                 Ok(true) => {
                     shared.restored_sessions.insert(profile_id.clone());

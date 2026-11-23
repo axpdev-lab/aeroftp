@@ -7281,8 +7281,9 @@ pub(crate) fn profile_credential_owner_ids(
 /// Whether an account other than `user` may hold the native Proton session
 /// `uid`: one of its rows holds that session, or it has a saved session this
 /// process cannot read (an account locked by its passphrase), which may be
-/// that one. A row that holds no session is no copy.
-#[cfg(feature = "proton-native")]
+/// that one. A row that holds no session is no copy. Available without the
+/// `proton-native` feature too: the shared-import restore withholds a
+/// carried session on the same rule.
 pub(crate) fn another_account_may_hold_session(
     store: &CredentialStore,
     user: Option<i64>,
@@ -7491,7 +7492,6 @@ type SessionIndexRow = (
 /// `column`: the three shapes [`is_proton_session_key`] accepts (`_` taken
 /// literally, a non-empty tail), so no other secret's ciphertext is loaded.
 /// [`is_proton_session_key`] stays the authority over what is read.
-#[cfg(feature = "proton-native")]
 fn proton_session_key_sql(column: &str) -> String {
     format!(
         "({column} = '{PROTON_UNBOUND_SESSION}' \
@@ -9012,7 +9012,7 @@ fn is_proton_session_key(key: &str) -> bool {
 
 /// The Proton session UID a saved session names, for telling copies of one
 /// session apart without a provider build.
-fn proton_session_uid(raw: &str) -> Option<String> {
+pub(crate) fn proton_session_uid(raw: &str) -> Option<String> {
     serde_json::from_str::<Value>(raw)
         .ok()?
         .get("uid")?
