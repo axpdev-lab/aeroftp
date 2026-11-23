@@ -9253,7 +9253,7 @@ pub fn cross_user_dedup_matches(
     // EF-19(a): an empty S3 access key hashes to a constant dedup_key, so two
     // unrelated keyless S3 accounts would cross-warn. Ambiguous surface → no
     // warning (conservative: this guards the soft warning only; storage
-    // aggregation semantics are unchanged — see storage_dedup::dedup_key).
+    // aggregation semantics are unchanged, see storage_dedup::dedup_key).
     // Cross-ref: storage_dedup::dedup_key is aggregation-only, never identity.
     let protocol = value_str(profile, &["protocol"]).unwrap_or("ftp");
     let username = value_str(profile, &["username", "user", "email", "account"]).unwrap_or("");
@@ -10410,7 +10410,7 @@ pub fn cli_lock_session() {
 ///
 /// Returns `Err("USER_LOCKED")` if the active user has a passphrase and the
 /// session has not been unlocked yet. Returns `Err("NO_ACTIVE_USER")` if no
-/// user exists (uncommon — migration always creates `default`).
+/// user exists (uncommon, migration always creates `default`).
 pub fn cli_list_active_server_profiles(store: &CredentialStore) -> Result<Vec<Value>, String> {
     init_or_migrate_cli(store)?;
     let conn = open_or_init_cli()?;
@@ -10895,7 +10895,7 @@ pub fn cli_find_user_by_name(store: &CredentialStore, name: &str) -> Result<User
 // `cli_*` server-profile bridges: open the partition db, derive the root wrapping key, and (for
 // private material) run the facade call inside `with_partition_dek` so the per-user DEK is threaded
 // and zeroized. Public material (the AeroFTP-ID, contacts, drive namespaces+roles) needs no DEK. These
-// stay opaque-bytes in/out — the peer-l0 crypto lives in `crate::peer`, the CLI handler orchestrates.
+// stay opaque-bytes in/out; the peer-l0 crypto lives in `crate::peer`, the CLI handler orchestrates.
 
 /// Store (or replace) the active user's P2P identity. Refuses to clobber an existing identity unless
 /// `force` (re-keying is the explicit WI-4e path). `secret_bytes`/`public_id` are produced by
@@ -12091,8 +12091,32 @@ fn credential_free_profile_copies(profiles: &[Value]) -> Vec<Value> {
         .iter()
         .map(|profile| {
             let mut copied = profile.clone();
+            let mut options = copied.get("options").cloned();
+            crate::profile_export::strip_options_borne_secrets(&mut options);
+            // The option-borne secrets an import report strips too: the
+            // rclone-crypt passwords, an API key, a key passphrase and the
+            // injected Proton session (`rclone_import::options_without_secrets`).
+            if let Some(map) = options.as_mut().and_then(|value| value.as_object_mut()) {
+                for key in crate::rclone_import::IMPORT_SECRET_OPTION_KEYS {
+                    map.remove(*key);
+                }
+            }
+            if options
+                .as_ref()
+                .is_some_and(|value| value.as_object().is_some_and(|map| map.is_empty()))
+            {
+                options = None;
+            }
             let fresh_id = format!("srv_{}", uuid::Uuid::new_v4());
             if let Some(object) = copied.as_object_mut() {
+                match options {
+                    Some(value) => {
+                        object.insert("options".to_string(), value);
+                    }
+                    None => {
+                        object.remove("options");
+                    }
+                }
                 object.insert("id".to_string(), Value::String(fresh_id.clone()));
                 for alias in ["uid", "profileUid"] {
                     if object.contains_key(alias) {
@@ -12108,15 +12132,15 @@ fn credential_free_profile_copies(profiles: &[Value]) -> Vec<Value> {
 /// Duplicate an existing user (GUI mirror of the CLI `users -i` Copy verb,
 /// Ehud #347). Creates a brand-new, password-free, non-admin user that copies
 /// the source's display avatar and all of its server profiles, but NO passwords
-/// or credentials — those live in the source user's keyring and stay with it.
+/// or credentials: those live in the source user's keyring and stay with it.
 /// The new user gets fresh crypto material (its own DEK).
 ///
 /// `source_user_id` is the user to copy; `new_name` is an optional explicit
-/// name (must be free) — when omitted it is auto-derived as `"<source> (copy)"`
+/// name (must be free); when omitted it is auto-derived as `"<source> (copy)"`
 /// (then `(copy 2)`, …), identical to the CLI. Admin-gated exactly like
 /// [`user_partitions_add_user`]. Returns `USER_LOCKED` when the source is
 /// password-protected and not the currently-unlocked user (its servers cannot
-/// be read) — the caller should ask the user to switch to it first.
+/// be read); the caller should ask the user to switch to it first.
 #[tauri::command]
 pub async fn user_partitions_copy_user(
     app: AppHandle,
@@ -12158,7 +12182,7 @@ pub async fn user_partitions_copy_user(
     let store = CredentialStore::from_cache().ok_or_else(|| "STORE_NOT_READY".to_string())?;
     let mut root_key = store.derive_user_partition_wrapping_key();
 
-    // Read the source's servers first (no passwords copied — keyring creds stay
+    // Read the source's servers first (no passwords copied, keyring creds stay
     // with the original). A locked, password-protected source cannot be read
     // and surfaces USER_LOCKED, telling the caller to switch to it first.
     let profiles = match list_server_profiles_for(&conn, &root_key, source_user_id) {
@@ -21593,5 +21617,41 @@ mod tests {
         assert_eq!(copied[1]["host"], "two.example.test");
         assert_eq!(original[0]["id"], "srv_source");
         assert_eq!(original[1]["id"], "srv_other");
+    }
+
+    /// A credential-free copy carries no option-borne secret either: the
+    /// rclone-crypt passwords, an API key, a key passphrase and the injected
+    /// Proton session go with the copy's fresh id (#347).
+    #[test]
+    fn a_credential_free_copy_strips_option_borne_secrets() {
+        let profiles = vec![json!({
+            "id": "srv_source", "name": "Drive", "protocol": "s3",
+            "options": {
+                "rcloneCryptPassword": "crypt-one",
+                "rcloneCryptPassword2": "crypt-two",
+                "filen_api_key": "api-key",
+                "key_passphrase": "key-pass",
+                "proton_native_session": "session-blob",
+                "region": "eu-west-1"
+            }
+        })];
+        let copied = credential_free_profile_copies(&profiles);
+        assert_ne!(copied[0]["id"], "srv_source");
+        let options = copied[0]["options"].as_object().unwrap();
+        for secret in [
+            "rcloneCryptPassword",
+            "rcloneCryptPassword2",
+            "filen_api_key",
+            "key_passphrase",
+            "proton_native_session",
+        ] {
+            assert!(!options.contains_key(secret), "{secret} survived the copy");
+        }
+        assert_eq!(options["region"], "eu-west-1");
+        // A copy whose options held secrets only keeps no options object.
+        let bare = credential_free_profile_copies(&[json!({
+            "id": "srv_bare", "options": {"rcloneCryptPassword": "crypt-one"}
+        })]);
+        assert!(bare[0].get("options").is_none());
     }
 }

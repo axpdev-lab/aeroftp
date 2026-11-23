@@ -65,14 +65,35 @@ it('reports a Move whose source cleanup failed after the commit as moved, with a
 it('keeps any other relocation error in the dialog', async () => {
     relocateServerProfile.mockRejectedValue('TARGET_LOCKED');
     const onDone = vi.fn();
+    const onClose = vi.fn();
     const profile = { id: 'srv_old', name: 'Drive', host: '', port: 0, username: '' } as ServerProfile;
     await act(async () => {
-        root.render(<ProfileRelocateDialog mode="move" profile={profile} onClose={() => undefined} onDone={onDone} />);
+        root.render(<ProfileRelocateDialog mode="move" profile={profile} onClose={onClose} onDone={onDone} />);
     });
     const submit = [...host.querySelectorAll('button')].find(
         b => b.textContent?.trim() === 'savedServers.relocateSubmitMove',
     )!;
     await act(async () => { submit.click(); });
     expect(onDone).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
     expect(host.textContent).toContain('savedServers.relocateError');
+    expect((submit as HTMLButtonElement).disabled).toBe(false);
+});
+
+it('does not treat RELOCATION_COMMITTED inside another error as a committed move', async () => {
+    relocateServerProfile.mockRejectedValue('PROFILE_NOT_FOUND: RELOCATION_COMMITTED-backup');
+    const onDone = vi.fn();
+    const onClose = vi.fn();
+    const profile = { id: 'srv_old', name: 'Drive', host: '', port: 0, username: '' } as ServerProfile;
+    await act(async () => {
+        root.render(<ProfileRelocateDialog mode="move" profile={profile} onClose={onClose} onDone={onDone} />);
+    });
+    const submit = [...host.querySelectorAll('button')].find(
+        b => b.textContent?.trim() === 'savedServers.relocateSubmitMove',
+    )!;
+    await act(async () => { submit.click(); });
+    expect(onDone).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(host.textContent).toContain('savedServers.relocateError');
+    expect((submit as HTMLButtonElement).disabled).toBe(false);
 });

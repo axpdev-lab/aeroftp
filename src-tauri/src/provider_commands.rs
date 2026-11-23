@@ -29497,6 +29497,27 @@ mod fourshared_attempt_key_tests {
         let exported = crate::collect_provider_secrets_for_server(&store, &server).unwrap();
         assert_eq!(exported.oauth.as_deref(), Some("token-t:secret-t"));
 
+        // What the purge must leave: no copy the account can read, in the
+        // partition row or the vault fallback.
+        let conn = crate::user_partitions::open_or_init_cli().unwrap();
+        let root_key = store.derive_user_partition_wrapping_key();
+        let row = |user: Option<i64>| {
+            user.and_then(|user| {
+                crate::user_partitions::read_credential_with_fallback(
+                    &conn,
+                    &store,
+                    &root_key,
+                    user,
+                    "oauth_fourshared_Team",
+                )
+                .unwrap()
+            })
+        };
+        assert!(
+            row(user).is_some(),
+            "the token is readable before the purge"
+        );
+
         let purged = tauri::async_runtime::block_on(crate::purge_profile_secrets_for(
             &store,
             user,
@@ -29512,6 +29533,7 @@ mod fourshared_attempt_key_tests {
             store.get("oauth_fourshared_Team").is_err(),
             "vault copy left"
         );
+        assert!(row(user).is_none(), "partition row left");
         assert!(load_fourshared_tokens("Team").is_err(), "row left");
 
         CredentialStore::clear_cache();

@@ -1322,7 +1322,7 @@ impl JottacloudProvider {
             if write_missing(&store) {
                 jotta_log(&format!(
                     "Refresh token persisted to vault ({} key(s))",
-                    writable.len()
+                    outcome.written.len()
                 ));
                 return outcome;
             }
@@ -2104,7 +2104,10 @@ impl JottacloudProvider {
                 self.login_chain = false;
 
                 self.persist_refresh_token();
-                jotta_log("Reconnected using persisted refresh token; rotated token saved");
+                // The save runs off the async worker and can still be
+                // refused (a deleted chain, a pending rotation): claim the
+                // exchange, not the write.
+                jotta_log("Reconnected using persisted refresh token; rotated token save queued");
                 return Ok(true);
             }
             break;

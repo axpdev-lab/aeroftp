@@ -157,7 +157,7 @@ export const ProfileRelocateDialog: React.FC<ProfileRelocateDialogProps> = ({
             const raw = String(err);
             // The Move committed: the profile is saved in the target and gone
             // from this account; only removing its Proton session here failed.
-            if (raw.includes('RELOCATION_COMMITTED')) {
+            if (raw.startsWith('RELOCATION_COMMITTED')) {
                 toastEvent(
                     'warning',
                     t('savedServers.moveToUser'),

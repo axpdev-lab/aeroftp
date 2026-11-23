@@ -84,7 +84,7 @@ fn in_isolated_child(name: &str) -> bool {
         .split_once("::")
         .map_or(module_path!(), |(_, module)| module);
     let test = format!("{module}::{name}");
-    let output = std::process::Command::new(child)
+    let mut process = std::process::Command::new(child)
         .args(["--exact", &test, "--nocapture", "--test-threads=1"])
         .env(MODE, "suite")
         .env("PATH", empty_path)
@@ -96,8 +96,26 @@ fn in_isolated_child(name: &str) -> bool {
             "DBUS_SESSION_BUS_ADDRESS",
             "unix:path=/nonexistent-native-relocation",
         )
-        .output()
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
         .unwrap();
+    // A hung fixture must not hang the suite: bound the wait, then kill.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(600);
+    loop {
+        match process.try_wait().unwrap() {
+            Some(_) => break,
+            None if std::time::Instant::now() < deadline => {
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            None => {
+                let _ = process.kill();
+                let _ = process.wait();
+                panic!("the isolated test {test} did not finish in 600 s");
+            }
+        }
+    }
+    let output = process.wait_with_output().unwrap();
     // A name that selects no test exits with success too: only the test
     // that ran and passed counts.
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -953,41 +971,36 @@ fn the_session_index_keeps_no_session_uid() {
     let accounts = Accounts::open();
     let uid = "index-plain-uid";
     accounts.seed("indexed", uid);
-    let entries: Vec<Vec<String>> = accounts
+    let entries: Vec<(String, String)> = accounts
         .conn
-        .prepare("SELECT * FROM proton_session_index")
+        .prepare("SELECT credential_id, fingerprint FROM proton_session_index")
         .and_then(|mut statement| {
-            let columns = statement.column_count();
             statement
                 .query_map([], |row| {
-                    (0..columns)
-                        .map(|column| {
-                            row.get::<_, rusqlite::types::Value>(column)
-                                .map(|value| format!("{value:?}"))
-                        })
-                        .collect::<rusqlite::Result<Vec<String>>>()
+                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
                 })?
                 .collect::<rusqlite::Result<Vec<_>>>()
         })
-        .unwrap_or_default();
+        .unwrap();
     assert_eq!(
         entries.len(),
         1,
         "the saved session is indexed: {entries:?}"
     );
-    let unkeyed = hex::encode(Sha256::digest(uid.as_bytes()));
-    for value in entries.iter().flatten() {
-        assert!(!value.contains(uid), "the UID is in the index: {entries:?}");
-        assert!(
-            !value.contains(&unkeyed),
-            "an unkeyed hash of the UID is in the index: {entries:?}"
-        );
-    }
-    assert!(
-        entries[0]
-            .iter()
-            .any(|value| value.contains(&key("indexed"))),
+    let (credential_id, fingerprint) = &entries[0];
+    assert_eq!(
+        credential_id,
+        &key("indexed"),
         "the entry names its row: {entries:?}"
+    );
+    let unkeyed = hex::encode(Sha256::digest(uid.as_bytes()));
+    assert!(
+        !fingerprint.contains(uid),
+        "the UID is in the index: {entries:?}"
+    );
+    assert!(
+        !fingerprint.contains(&unkeyed),
+        "an unkeyed hash of the UID is in the index: {entries:?}"
     );
 }
 
@@ -1644,8 +1657,9 @@ fn a_move_the_lease_holds_off_changes_nothing() {
 
 /// A lease storage that fails (its directory is a regular file) is no
 /// contention: a change of the session stops at once with that cause, never
-/// after the whole wait as a refresh that "did not let go", and a refresh
-/// goes ahead without the lease at once instead of spinning for the wait.
+/// after the whole wait as a refresh that "did not let go", and a refresh is
+/// held off at once with that cause instead of spinning for the wait or
+/// being sent without its lease.
 #[test]
 fn a_lease_storage_that_fails_stops_a_change_at_once() {
     if !in_isolated_child("a_lease_storage_that_fails_stops_a_change_at_once") {
@@ -3877,7 +3891,13 @@ fn a_scan_never_confirmed_takes_back_the_oauth_app_it_filled() {
         (Some("second-id".into()), Some("second-secret".into())),
         "another app's config is not held off"
     );
-    accounts.add_profile(accounts.legacy, &scanned_id(&imported, "box"));
+    // The confirm saves the scanned profile the way the window does: a
+    // Dropbox profile, not the Proton shape `add_profile` writes.
+    let mut db = open_or_init_cli().unwrap();
+    let mut profiles = list_server_profiles_for(&db, &accounts.root_key, accounts.legacy).unwrap();
+    profiles.push(json!({"id": scanned_id(&imported, "box"), "name": "box",
+        "protocol": "dropbox", "host": "", "port": 0}));
+    replace_server_profiles_for(&mut db, &accounts.root_key, accounts.legacy, &profiles).unwrap();
     settle_scan(&runtime, imported["scanId"].as_str()).unwrap();
     assert_eq!(
         app(),
