@@ -767,9 +767,28 @@ fn import_aws_credentials_with_config_limits(
             }
         }
 
+        let (host, port, provider_id) = match endpoint_url.as_deref() {
+            Some(ep) => {
+                let host_port = crate::bridge_shared::endpoint_host(ep);
+                let port = match host_port.rsplit_once(':') {
+                    Some((_, p)) => p
+                        .parse::<u32>()
+                        .unwrap_or_else(|_| crate::bridge_shared::default_port_for("s3")),
+                    None => crate::bridge_shared::default_port_for("s3"),
+                };
+                let pid = crate::bridge_shared::map_s3_provider_from_endpoint(ep);
+                (host_port, port, pid.to_string())
+            }
+            None => (
+                String::new(),
+                crate::bridge_shared::default_port_for("s3"),
+                "amazon-s3".to_string(),
+            ),
+        };
+
         // Enforce per-field and aggregate materialized output bounds (including
-        // the generated profile ID) before cloning inherited `[DEFAULT]` fields
-        // into each `ServerProfileExport`.
+        // the generated profile ID, derived host, and provider ID) before
+        // cloning inherited `[DEFAULT]` fields into each `ServerProfileExport`.
         let region_opt = kv.get("region");
         let generated_id_len = "aws-".len() + name.len() + 1 + 8;
         let field_lens = [
@@ -792,32 +811,15 @@ fn import_aws_credentials_with_config_limits(
             .iter()
             .copied()
             .sum::<usize>()
-            .saturating_add(generated_id_len);
+            .saturating_add(generated_id_len)
+            .saturating_add(host.len())
+            .saturating_add(provider_id.len());
         materialized_bytes = materialized_bytes.saturating_add(profile_bytes);
         if materialized_bytes > max_materialized_bytes {
             return Err(format!(
                 "AWS import expands beyond maximum allowed output size ({max_materialized_bytes} bytes)"
             ));
         }
-
-        let (host, port, provider_id) = match endpoint_url.as_deref() {
-            Some(ep) => {
-                let host_port = crate::bridge_shared::endpoint_host(ep);
-                let port = match host_port.rsplit_once(':') {
-                    Some((_, p)) => p
-                        .parse::<u32>()
-                        .unwrap_or_else(|_| crate::bridge_shared::default_port_for("s3")),
-                    None => crate::bridge_shared::default_port_for("s3"),
-                };
-                let pid = crate::bridge_shared::map_s3_provider_from_endpoint(ep);
-                (host_port, port, pid.to_string())
-            }
-            None => (
-                String::new(),
-                crate::bridge_shared::default_port_for("s3"),
-                "amazon-s3".to_string(),
-            ),
-        };
 
         // `endpoint_url` is a validated URL without userinfo or query string.
         // AWS itself stays implicit: an explicit endpoint switches the S3
@@ -829,16 +831,14 @@ fn import_aws_credentials_with_config_limits(
             ("sessionToken", cred_set.session_token.map(str::to_string)),
             ("endpoint", endpoint),
         ]);
-        // The `s3` sub-section's `addressing_style`.
-        match kv
-            .nested_get("s3", "addressing_style")
-            .map(|s| s.trim().to_ascii_lowercase())
-            .as_deref()
-        {
-            Some("path") => {
+        // The `s3` sub-section's `addressing_style`: compare the borrowed
+        // trimmed slice with `eq_ignore_ascii_case` so a large inherited
+        // `[DEFAULT]` value never allocates a lowercase copy per profile.
+        match kv.nested_get("s3", "addressing_style").map(str::trim) {
+            Some(style) if style.eq_ignore_ascii_case("path") => {
                 options.insert("pathStyle".into(), serde_json::Value::Bool(true));
             }
-            Some("virtual") => {
+            Some(style) if style.eq_ignore_ascii_case("virtual") => {
                 options.insert("pathStyle".into(), serde_json::Value::Bool(false));
             }
             _ => {}
@@ -1003,6 +1003,7 @@ enum AwsProtectedWriteMode {
     Replace,
     Absent,
     Side,
+    SideAt(usize),
     ReplaceSide(usize),
 }
 
@@ -1116,6 +1117,55 @@ fn paths_collide(candidate: &Path, avoid: Option<&Path>) -> bool {
 }
 
 const AWS_MAX_SIDE_SLOTS: usize = 10_000;
+
+/// Select side-file slots for `config` and `credentials` TOGETHER as one
+/// matched pair:
+/// - Pass 1: reuse the first index where BOTH `config` and `credentials` side
+///   files are owned by this pair's markers.
+/// - Pass 2: otherwise allocate the first index where BOTH side files are
+///   absent, leaving any older partial/asymmetric pair untouched.
+fn aws_side_pair_modes_with_limit(
+    config_path: &Path,
+    cred_path: &Path,
+    config_marker: &str,
+    cred_marker: &str,
+    max_slots: usize,
+) -> Result<(AwsProtectedWriteMode, AwsProtectedWriteMode), String> {
+    let mut first_both_absent: Option<usize> = None;
+    for index in 0..max_slots {
+        let cfg_cand = aws_side_path(config_path, index);
+        let cred_cand = aws_side_path(cred_path, index);
+        if paths_collide(&cfg_cand, Some(cred_path))
+            || paths_collide(&cred_cand, Some(config_path))
+            || paths_collide(&cfg_cand, Some(&cred_cand))
+        {
+            continue;
+        }
+        let cfg_meta = std::fs::symlink_metadata(&cfg_cand);
+        let cred_meta = std::fs::symlink_metadata(&cred_cand);
+        let cfg_owned = cfg_meta.is_ok() && aws_file_is_aeroftp_owned(&cfg_cand, config_marker);
+        let cred_owned = cred_meta.is_ok() && aws_file_is_aeroftp_owned(&cred_cand, cred_marker);
+        if cfg_owned && cred_owned {
+            return Ok((
+                AwsProtectedWriteMode::ReplaceSide(index),
+                AwsProtectedWriteMode::ReplaceSide(index),
+            ));
+        }
+        if first_both_absent.is_none()
+            && matches!(cfg_meta, Err(ref e) if e.kind() == std::io::ErrorKind::NotFound)
+            && matches!(cred_meta, Err(ref e) if e.kind() == std::io::ErrorKind::NotFound)
+        {
+            first_both_absent = Some(index);
+        }
+    }
+    if let Some(index) = first_both_absent {
+        return Ok((
+            AwsProtectedWriteMode::SideAt(index),
+            AwsProtectedWriteMode::SideAt(index),
+        ));
+    }
+    Err("no free or reusable matched .aeroftp side-file pair".to_string())
+}
 
 fn aws_side_output_path_with_limit(
     target_path: &Path,
@@ -1361,6 +1411,42 @@ fn write_aws_protected_staged_with(
                     action: ActualWriteAction::Replaced { previous_bytes },
                 });
             }
+            AwsProtectedWriteMode::SideAt(index) => {
+                let candidate = aws_side_path(target_path, index);
+                if paths_collide(&candidate, avoid) {
+                    mode = AwsProtectedWriteMode::Side;
+                    continue;
+                }
+                match persist_noclobber(tmp, &candidate) {
+                    Ok(()) => {
+                        return Ok(ProtectedWriteOutcome {
+                            path: candidate,
+                            protected: true,
+                            existing_was_legacy,
+                            paired_inactive: false,
+                            action: ActualWriteAction::CreatedNew,
+                        });
+                    }
+                    Err(err) if err.error.kind() == std::io::ErrorKind::AlreadyExists => {
+                        tmp = err.file;
+                        retries += 1;
+                        if retries >= MAX_RETRIES {
+                            return Err(format!(
+                                "write {label} side file {}: exhausted retry budget",
+                                candidate.display()
+                            ));
+                        }
+                        mode = AwsProtectedWriteMode::Side;
+                    }
+                    Err(err) => {
+                        return Err(format!(
+                            "write {label} side file {}: {}",
+                            candidate.display(),
+                            err.error
+                        ));
+                    }
+                }
+            }
             AwsProtectedWriteMode::Side => {
                 // Side-file contract: always select the first absent or owned
                 // side-file slot from index 0 at write time within `max_side_slots`.
@@ -1416,6 +1502,13 @@ fn write_aws_protected_staged_with(
                 }
                 Err(err) if err.error.kind() == std::io::ErrorKind::AlreadyExists => {
                     tmp = err.file;
+                    retries += 1;
+                    if retries >= MAX_RETRIES {
+                        return Err(format!(
+                            "write {label} {}: exhausted retry budget",
+                            target_path.display()
+                        ));
+                    }
                     (_, mode) = aws_protected_output_path_with_limit(
                         target_path,
                         avoid,
@@ -1574,37 +1667,28 @@ fn persist_aws_export_pair_with_hooks(
 
     let config_needs_side = matches!(
         raw_config_mode,
-        AwsProtectedWriteMode::Side | AwsProtectedWriteMode::ReplaceSide(_)
+        AwsProtectedWriteMode::Side
+            | AwsProtectedWriteMode::SideAt(_)
+            | AwsProtectedWriteMode::ReplaceSide(_)
     );
     let cred_needs_side = matches!(
         raw_cred_mode,
-        AwsProtectedWriteMode::Side | AwsProtectedWriteMode::ReplaceSide(_)
+        AwsProtectedWriteMode::Side
+            | AwsProtectedWriteMode::SideAt(_)
+            | AwsProtectedWriteMode::ReplaceSide(_)
     );
     let force_inactive_pair = config_needs_side || cred_needs_side;
 
-    let config_mode = if force_inactive_pair && !config_needs_side {
-        aws_side_output_path_with_limit(
+    let (config_mode, mut cred_mode) = if force_inactive_pair {
+        aws_side_pair_modes_with_limit(
             config_path,
-            Some(cred_path),
-            &config_marker,
-            0,
-            max_side_slots,
-        )?
-        .1
-    } else {
-        raw_config_mode
-    };
-    let mut cred_mode = if force_inactive_pair && !cred_needs_side {
-        aws_side_output_path_with_limit(
             cred_path,
-            Some(config_path),
+            &config_marker,
             &cred_marker,
-            0,
             max_side_slots,
         )?
-        .1
     } else {
-        raw_cred_mode
+        (raw_config_mode, raw_cred_mode)
     };
 
     // Persist config first (holds no secrets), then credentials.
@@ -1631,7 +1715,9 @@ fn persist_aws_export_pair_with_hooks(
     if config_written.protected
         && !matches!(
             cred_mode,
-            AwsProtectedWriteMode::Side | AwsProtectedWriteMode::ReplaceSide(_)
+            AwsProtectedWriteMode::Side
+                | AwsProtectedWriteMode::SideAt(_)
+                | AwsProtectedWriteMode::ReplaceSide(_)
         )
     {
         cred_mode = match aws_side_output_path_with_limit(
@@ -2402,7 +2488,7 @@ region = eu-west-1
             "credentials must stay inactive when config needed a side file"
         );
         assert!(
-            std::fs::read_to_string(dir.path().join("credentials.aeroftp"))
+            std::fs::read_to_string(dir.path().join("credentials.aeroftp.1"))
                 .unwrap()
                 .contains("[static]\naws_access_key_id = NEWKEY\n")
         );
@@ -2413,7 +2499,7 @@ region = eu-west-1
             .reason
             .contains("Merge that file manually"));
         assert_eq!(outcome.warnings[1].name, "AWS credentials");
-        assert!(outcome.warnings[1].reason.contains("credentials.aeroftp"));
+        assert!(outcome.warnings[1].reason.contains("credentials.aeroftp.1"));
     }
 
     fn test_config_marker() -> String {
@@ -2749,7 +2835,7 @@ region = eu-west-1
         )
         .unwrap();
         let config_side = dir.path().join("config.aeroftp.1");
-        let cred_side = dir.path().join("config.aeroftp.aeroftp");
+        let cred_side = dir.path().join("config.aeroftp.aeroftp.1");
         for _ in 0..2 {
             export_static_to(&out).unwrap();
             assert_eq!(
@@ -4288,12 +4374,13 @@ region = eu-west-1
             saved_active_cfg,
             "prior direct export's config must never be clobbered"
         );
-        assert!(std::fs::read_to_string(dir.path().join("config.aeroftp"))
+        assert!(std::fs::read_to_string(dir.path().join("config.aeroftp.1"))
             .unwrap()
             .contains("region = eu-west-1"));
 
-        // Re-exporting B to `credentials` reuses its own `credentials.aeroftp.1`
-        // slot idempotently while still preserving `credentials.aeroftp`.
+        // Re-exporting B to `credentials` reuses its own matched slot 1
+        // (`config.aeroftp.1` + `credentials.aeroftp.1`) idempotently while
+        // still preserving `credentials.aeroftp`.
         let out_b2 =
             export_aws_credentials(&[make_server("beta", "ap-south-1")], &pw_b, &active_cred)
                 .unwrap();
@@ -4305,7 +4392,7 @@ region = eu-west-1
             std::fs::read_to_string(&direct_side).unwrap(),
             saved_direct_cred
         );
-        assert!(std::fs::read_to_string(dir.path().join("config.aeroftp"))
+        assert!(std::fs::read_to_string(dir.path().join("config.aeroftp.1"))
             .unwrap()
             .contains("region = ap-south-1"));
     }
@@ -5258,5 +5345,206 @@ region = eu-west-1
                 "distinct spelling on a case-sensitive directory must keep a distinct marker"
             );
         }
+    }
+
+    // ---- PR #1613 Round 2 (NAS 2303) regression tests ----
+
+    /// C1: side files are selected and reused as ONE matched pair. If slot 0 is
+    /// occupied on one side during export 1 and later freed before export 2,
+    /// export 2 reuses BOTH files of export 1's pair (slot 1) instead of
+    /// splitting config and credentials across slots; and a legacy asymmetric
+    /// pair (`config.aeroftp` + `credentials.aeroftp.1`) is left untouched while
+    /// a fresh matched pair is allocated at slot 2.
+    #[test]
+    fn export_side_pair_stays_matched_when_lower_slot_freed_on_one_side_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let cred = dir.path().join("credentials");
+        let cfg = dir.path().join("config");
+        std::fs::write(&cfg, b"[profile user]\nregion = us-east-1\n").unwrap();
+        // Occupy `credentials.aeroftp` (slot 0) with an unrelated user file.
+        let user_slot0 = dir.path().join("credentials.aeroftp");
+        std::fs::write(&user_slot0, b"unrelated user file\n").unwrap();
+
+        let make_server = |region: &str| AwsExportServer {
+            id: "s1".to_string(),
+            name: "lab".to_string(),
+            host: "s3.lab.example.com".to_string(),
+            port: 443,
+            username: "AKLAB".to_string(),
+            protocol: Some("s3".to_string()),
+            options: Some(serde_json::json!({ "region": region })),
+            provider_id: Some("custom-s3".to_string()),
+            initial_path: None,
+        };
+        let pw = HashMap::from([("s1".to_string(), "sec1".to_string())]);
+
+        let out1 = export_aws_credentials(&[make_server("eu-west-1")], &pw, &cred).unwrap();
+        assert_eq!(
+            out1.written_path.as_deref(),
+            Some(dir.path().join("credentials.aeroftp.1").as_path())
+        );
+        assert!(dir.path().join("config.aeroftp.1").exists());
+        assert!(!dir.path().join("config.aeroftp").exists());
+
+        // User frees slot 0 on credentials only.
+        std::fs::remove_file(&user_slot0).unwrap();
+
+        // Export 2 MUST reuse BOTH slot-1 files as one matched pair rather than
+        // writing a split pair across slot 0 and slot 1.
+        let out2 = export_aws_credentials(&[make_server("ap-south-1")], &pw, &cred).unwrap();
+        assert_eq!(
+            out2.written_path.as_deref(),
+            Some(dir.path().join("credentials.aeroftp.1").as_path())
+        );
+        assert!(!dir.path().join("credentials.aeroftp").exists());
+        assert!(!dir.path().join("config.aeroftp").exists());
+        assert!(std::fs::read_to_string(dir.path().join("config.aeroftp.1"))
+            .unwrap()
+            .contains("region = ap-south-1"));
+
+        // Case B: a pre-existing asymmetric pair (`config.aeroftp` +
+        // `credentials.aeroftp.1`) is preserved untouched and export allocates a
+        // brand-new matched pair at slot 2 (`config.aeroftp.2` + `credentials.aeroftp.2`).
+        let dir_b = tempfile::tempdir().unwrap();
+        let cred_b = dir_b.path().join("credentials");
+        let cfg_b = dir_b.path().join("config");
+        std::fs::write(&cfg_b, b"[profile user]\nregion = us-east-1\n").unwrap();
+        let old_cfg0 = aws_marked_file_bytes(
+            &aws_config_marker_for(&cred_b),
+            "\n[profile old]\nregion = us-west-1\n",
+        );
+        let old_cred1 = aws_marked_file_bytes(
+            &aws_credentials_marker_for(&cred_b),
+            "\n[old]\naws_access_key_id = AKOLD\naws_secret_access_key = oldsec\n",
+        );
+        std::fs::write(dir_b.path().join("config.aeroftp"), &old_cfg0).unwrap();
+        std::fs::write(dir_b.path().join("credentials.aeroftp.1"), &old_cred1).unwrap();
+
+        let out_b = export_aws_credentials(&[make_server("eu-central-1")], &pw, &cred_b).unwrap();
+        assert_eq!(
+            out_b.written_path.as_deref(),
+            Some(dir_b.path().join("credentials.aeroftp.2").as_path())
+        );
+        assert_eq!(
+            std::fs::read(dir_b.path().join("config.aeroftp")).unwrap(),
+            old_cfg0,
+            "legacy asymmetric config.aeroftp must not be clobbered"
+        );
+        assert_eq!(
+            std::fs::read(dir_b.path().join("credentials.aeroftp.1")).unwrap(),
+            old_cred1,
+            "legacy asymmetric credentials.aeroftp.1 must not be clobbered"
+        );
+        assert!(
+            std::fs::read_to_string(dir_b.path().join("config.aeroftp.2"))
+                .unwrap()
+                .contains("region = eu-central-1")
+        );
+    }
+
+    /// C2: repeated `AlreadyExists` collisions on the `Absent` target path are
+    /// charged to `retries` / `MAX_RETRIES` so the write loop terminates cleanly.
+    #[test]
+    fn absent_target_repeated_already_exists_exhausts_retry_budget() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("config");
+        let tmp = crate::bridge_shared::stage_export_temp_600(dir.path(), b"cfg").unwrap();
+        let err = write_aws_protected_staged_with(
+            &target,
+            None,
+            &test_config_marker(),
+            "AWS config",
+            tmp,
+            AwsProtectedWriteMode::Absent,
+            false,
+            AWS_MAX_SIDE_SLOTS,
+            |_, _| unreachable!("replace must not run"),
+            |t, _| {
+                Err(tempfile::PersistError {
+                    error: std::io::Error::new(
+                        std::io::ErrorKind::AlreadyExists,
+                        "simulated transient entry",
+                    ),
+                    file: t,
+                })
+            },
+        )
+        .err()
+        .expect("repeated AlreadyExists on Absent target must exhaust retry budget");
+        assert!(err.contains("exhausted retry budget"), "{err}");
+    }
+
+    /// E1: `s3.addressing_style` matches `PATH` and `virtual` case-insensitively
+    /// on the borrowed trimmed slice, and handles a large inherited `[DEFAULT]`
+    /// invalid value across many profiles without per-profile lowercase copies.
+    #[test]
+    fn s3_addressing_style_matches_case_insensitively_without_allocating_for_large_default() {
+        let big_invalid = "X".repeat(256 * 1024);
+        let mut cred = String::from(
+            "[upper_path]\naws_access_key_id = AK1\naws_secret_access_key = sec1\n\n\
+             [lower_virtual]\naws_access_key_id = AK2\naws_secret_access_key = sec2\n",
+        );
+        for i in 0..50 {
+            cred.push_str(&format!(
+                "[p{i}]\naws_access_key_id = AKP{i}\naws_secret_access_key = secp{i}\n"
+            ));
+        }
+        let cfg = format!(
+            "[DEFAULT]\ns3 =\n  addressing_style = {big_invalid}\n\n\
+             [profile upper_path]\ns3 =\n  addressing_style =  PATH \n\n\
+             [profile lower_virtual]\ns3 =\n  addressing_style = virtual\n"
+        );
+        let res = import_pair(&cred, Some(&cfg)).unwrap();
+        assert_eq!(res.servers.len(), 52);
+        let up = res.servers.iter().find(|s| s.name == "upper_path").unwrap();
+        assert_eq!(
+            up.options.as_ref().unwrap()["pathStyle"],
+            serde_json::json!(true)
+        );
+        let lv = res
+            .servers
+            .iter()
+            .find(|s| s.name == "lower_virtual")
+            .unwrap();
+        assert_eq!(
+            lv.options.as_ref().unwrap()["pathStyle"],
+            serde_json::json!(false)
+        );
+        let p0 = res.servers.iter().find(|s| s.name == "p0").unwrap();
+        assert!(p0
+            .options
+            .as_ref()
+            .and_then(|o| o.get("pathStyle"))
+            .is_none());
+    }
+
+    /// E2: `max_materialized_bytes` charges the derived `host` (and `provider_id`)
+    /// retained on each `ServerProfileExport`, not only the raw `endpoint_url`.
+    #[test]
+    fn output_budget_charges_derived_host_and_provider_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let cred = dir.path().join("credentials");
+        let cfg = dir.path().join("config");
+        let long_host = format!("{}.example.com", "a".repeat(200));
+        let ep = format!("https://{long_host}:9000");
+        std::fs::write(
+            &cred,
+            "[lab]\naws_access_key_id = AK1\naws_secret_access_key = sec1\n",
+        )
+        .unwrap();
+        std::fs::write(&cfg, format!("[profile lab]\nendpoint_url = {ep}\n")).unwrap();
+
+        // Without charging derived `host` (~217 bytes) + `provider_id` (~9 bytes),
+        // raw fields + generated ID total ~255 bytes; charging derived `host`
+        // pushes total to ~480 bytes and exceeds a 350-byte budget.
+        let err = import_aws_credentials_with_config_limits(
+            &cred,
+            Some(&cfg),
+            crate::bridge_shared::MAX_IMPORT_FILE_BYTES,
+            350,
+        )
+        .err()
+        .expect("derived host must be charged to max_materialized_bytes");
+        assert!(err.contains("maximum allowed output size"), "{err}");
     }
 }

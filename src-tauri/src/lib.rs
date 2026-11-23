@@ -25224,12 +25224,33 @@ pub(crate) fn collect_provider_secrets_for_server_for_user(
     // via owner-aware lookup scoped to `user_id` when captured so credential-enabled
     // `.aeroftp` backups restore working STS profiles into an empty vault without
     // leaking another user's token or mixing credentials across an account switch.
+    // Fail closed if the profile is marked `hasStoredSessionToken: true` and
+    // neither a vault token nor an explicit inline token is available.
     if let Some(session_token) = profile_loader::resolve_vault_s3_session_token_owner_aware(
         store,
         user_id,
         &profile_loader::aws_session_token_vault_key(&server.id),
     )? {
         out.aws_session_token = Some(session_token);
+    } else if server.has_stored_session_token == Some(true) {
+        let has_explicit = server
+            .options
+            .as_ref()
+            .and_then(|v| v.as_object())
+            .is_some_and(|opts| {
+                ["sessionToken", "session_token"].iter().any(|k| {
+                    opts.get(*k)
+                        .and_then(|v| v.as_str())
+                        .map(str::trim)
+                        .is_some_and(|s| !s.is_empty())
+                })
+            });
+        if !has_explicit {
+            return Err(format!(
+                "{}: its saved AWS session token is missing from the vault",
+                server.name
+            ));
+        }
     }
 
     // OneDrive drive id/type captured at connect (`onedrive_drive_id_<id>` /
@@ -25504,6 +25525,26 @@ impl PreparedImport {
 /// connection, is refused and reported: the stored secrets were saved for the old
 /// one, so keeping them could send a password to the new one. Such a profile
 /// keeps its configuration and its secrets.
+/// Remove BOTH supported S3 inline session-token option spellings
+/// (`sessionToken` and `session_token`) from `options` and return the selected
+/// non-empty value. Precedence when both are present: camelCase `sessionToken`
+/// wins over snake_case `session_token` (falling back to `session_token` if
+/// `sessionToken` is empty or whitespace).
+fn extract_and_strip_inline_s3_session_token(
+    options: &mut Option<serde_json::Value>,
+) -> Option<String> {
+    let opts = options.as_mut().and_then(|v| v.as_object_mut())?;
+    let camel = opts
+        .remove("sessionToken")
+        .and_then(|v| v.as_str().map(|s| s.trim().to_string()))
+        .filter(|s| !s.is_empty());
+    let snake = opts
+        .remove("session_token")
+        .and_then(|v| v.as_str().map(|s| s.trim().to_string()))
+        .filter(|s| !s.is_empty());
+    camel.or(snake)
+}
+
 fn prepare_import(
     servers: &[profile_export::ServerProfileExport],
     provider_secrets: &std::collections::HashMap<String, profile_export::ProviderSecrets>,
@@ -25516,17 +25557,15 @@ fn prepare_import(
     let mut servers = servers.to_vec();
     let mut provider_secrets = provider_secrets.clone();
     // Normalize legacy `.aeroftp` backups that stored an AWS STS token inline
-    // in `options.sessionToken`: strip it from `options` unconditionally so it
-    // never reaches the renderer or profile store, and lift non-empty tokens
-    // into `provider_secrets.aws_session_token` after ID planning/remapping.
-    let mut legacy_session_tokens: Vec<(usize, String)> = Vec::new();
+    // in `options.sessionToken` or `options.session_token`: strip both keys
+    // unconditionally so neither reaches the renderer or profile store, and
+    // lift non-empty tokens ONLY for planned non-skipped entries after ID
+    // remapping.
+    let mut legacy_session_tokens: std::collections::HashMap<usize, String> =
+        std::collections::HashMap::new();
     for (idx, server) in servers.iter_mut().enumerate() {
-        if let Some(opts) = server.options.as_mut().and_then(|v| v.as_object_mut()) {
-            if let Some(raw) = opts.remove("sessionToken") {
-                if let Some(tok) = raw.as_str().map(str::trim).filter(|s| !s.is_empty()) {
-                    legacy_session_tokens.push((idx, tok.to_string()));
-                }
-            }
+        if let Some(tok) = extract_and_strip_inline_s3_session_token(&mut server.options) {
+            legacy_session_tokens.insert(idx, tok);
         }
     }
     let candidates: Vec<ImportCandidate<'_>> = servers
@@ -25634,11 +25673,12 @@ fn prepare_import(
             }
         }
     }
-    for (idx, tok) in legacy_session_tokens {
-        let final_id = &servers[idx].id;
-        let entry = provider_secrets.entry(final_id.clone()).or_default();
-        if entry.aws_session_token.is_none() {
-            entry.aws_session_token = Some(tok);
+    for planned in plan.iter().filter(|p| p.outcome != ImportOutcome::Skipped) {
+        if let Some(tok) = legacy_session_tokens.remove(&planned.index) {
+            let entry = provider_secrets.entry(planned.id.clone()).or_default();
+            if entry.aws_session_token.is_none() {
+                entry.aws_session_token = Some(tok);
+            }
         }
     }
     PreparedImport {
@@ -26412,12 +26452,11 @@ pub(crate) fn redact_imported_server(
     s: &profile_export::ServerProfileExport,
     restored: &RestoredImportSecrets,
 ) -> serde_json::Value {
-    // Defense in depth: strip any legacy inline `options.sessionToken` even if
-    // a caller invokes `redact_imported_server` outside `prepare_import`.
+    // Defense in depth: strip any legacy inline `options.sessionToken` or
+    // `options.session_token` even if a caller invokes `redact_imported_server`
+    // outside `prepare_import`.
     let mut sanitized_options = s.options.clone();
-    if let Some(opts) = sanitized_options.as_mut().and_then(|v| v.as_object_mut()) {
-        opts.remove("sessionToken");
-    }
+    let _ = extract_and_strip_inline_s3_session_token(&mut sanitized_options);
     serde_json::json!({
         "id": s.id,
         "name": s.name,
@@ -27452,6 +27491,201 @@ mod per_profile_vault_keys_tests {
         );
         assert!(redacted["options"].get("sessionToken").is_none());
         assert_eq!(redacted["options"]["region"], "eu-west-1");
+    }
+
+    /// B1, B2, B3 (NAS 2303):
+    /// - B1: skipped duplicate row's inline token must never attach to retained profile;
+    ///   Duplicate mode gives the second row its own id and its own token.
+    /// - B2: full overwrite path clears `hasStoredSessionToken` when a credential-enabled
+    ///   S3 backup deletes the token, and preserves `hasStoredSessionToken: true` when
+    ///   a credential-free backup omits credentials.
+    /// - B3: both `sessionToken` and `session_token` are extracted and stripped;
+    ///   `sessionToken` wins over `session_token` when both are non-empty.
+    #[test]
+    fn native_backup_token_normalization_duplicate_isolation_and_overwrite_flag_clear() {
+        // B3: snake_case alone, camelCase alone, and both together.
+        let snake_srv = crate::profile_export::ServerProfileExport {
+            id: "srv_snake".to_string(),
+            name: "Snake".to_string(),
+            protocol: Some("s3".to_string()),
+            credential: Some("sec".to_string()),
+            options: Some(serde_json::json!({
+                "region": "us-east-1",
+                "session_token": "SNAKE-TOK-1"
+            })),
+            ..Default::default()
+        };
+        let both_srv = crate::profile_export::ServerProfileExport {
+            id: "srv_both".to_string(),
+            name: "Both".to_string(),
+            protocol: Some("s3".to_string()),
+            credential: Some("sec".to_string()),
+            options: Some(serde_json::json!({
+                "region": "us-east-1",
+                "sessionToken": "CAMEL-WINS",
+                "session_token": "SNAKE-LOSES"
+            })),
+            ..Default::default()
+        };
+        let prep_b3 = super::prepare_import(
+            &[snake_srv.clone(), both_srv.clone()],
+            &std::collections::HashMap::new(),
+            crate::profile_import_plan::ExistingProfileMode::Overwrite,
+            &crate::profile_security::RelaxationPolicy::ResetAll,
+            &[],
+        );
+        assert_eq!(
+            prep_b3
+                .provider_secrets
+                .get("srv_snake")
+                .and_then(|s| s.aws_session_token.as_deref()),
+            Some("SNAKE-TOK-1")
+        );
+        assert_eq!(
+            prep_b3
+                .provider_secrets
+                .get("srv_both")
+                .and_then(|s| s.aws_session_token.as_deref()),
+            Some("CAMEL-WINS")
+        );
+        let restored_b3 =
+            super::restored_import_secrets(&prep_b3.stored(), &prep_b3.provider_secrets);
+        for s in &prep_b3.stored() {
+            let red = super::redact_imported_server(s, &restored_b3);
+            let txt = red.to_string();
+            assert!(
+                !txt.contains("SNAKE-TOK-1")
+                    && !txt.contains("CAMEL-WINS")
+                    && !txt.contains("SNAKE-LOSES"),
+                "{txt}"
+            );
+            assert!(red["options"].get("sessionToken").is_none());
+            assert!(red["options"].get("session_token").is_none());
+        }
+        // Direct redact_imported_server call also strips snake_case defensively.
+        let direct_red = super::redact_imported_server(
+            &snake_srv,
+            &super::restored_import_secrets(&[], &std::collections::HashMap::new()),
+        );
+        assert!(direct_red["options"].get("session_token").is_none());
+
+        // B1: repeated ID in Overwrite mode -> second row is skipped, its inline token
+        // MUST NOT attach to the retained first row's ID.
+        let first_no_tok = crate::profile_export::ServerProfileExport {
+            id: "dup_id".to_string(),
+            name: "First".to_string(),
+            port: 443,
+            protocol: Some("s3".to_string()),
+            credential: Some("first-sec".to_string()),
+            options: Some(serde_json::json!({ "region": "eu-west-1" })),
+            ..Default::default()
+        };
+        let second_with_tok = crate::profile_export::ServerProfileExport {
+            id: "dup_id".to_string(),
+            name: "Second".to_string(),
+            protocol: Some("s3".to_string()),
+            credential: Some("second-sec".to_string()),
+            options: Some(serde_json::json!({
+                "region": "eu-west-1",
+                "sessionToken": "SKIPPED-DUP-TOKEN"
+            })),
+            ..Default::default()
+        };
+        let prep_skip = super::prepare_import(
+            &[first_no_tok.clone(), second_with_tok.clone()],
+            &std::collections::HashMap::new(),
+            crate::profile_import_plan::ExistingProfileMode::Overwrite,
+            &crate::profile_security::RelaxationPolicy::ResetAll,
+            &[],
+        );
+        assert!(
+            prep_skip
+                .provider_secrets
+                .get("dup_id")
+                .and_then(|s| s.aws_session_token.as_ref())
+                .is_none(),
+            "skipped duplicate's inline token must never attach to retained profile id"
+        );
+        // Duplicate mode: second row gets its own new id and receives its own token.
+        let prep_dup = super::prepare_import(
+            &[first_no_tok.clone(), second_with_tok],
+            &std::collections::HashMap::new(),
+            crate::profile_import_plan::ExistingProfileMode::Duplicate,
+            &crate::profile_security::RelaxationPolicy::ResetAll,
+            &[],
+        );
+        assert_eq!(prep_dup.plan.len(), 2);
+        let second_id = &prep_dup.plan[1].id;
+        assert_ne!(second_id, "dup_id");
+        assert!(prep_dup
+            .provider_secrets
+            .get("dup_id")
+            .and_then(|s| s.aws_session_token.as_ref())
+            .is_none());
+        assert_eq!(
+            prep_dup
+                .provider_secrets
+                .get(second_id)
+                .and_then(|s| s.aws_session_token.as_deref()),
+            Some("SKIPPED-DUP-TOKEN")
+        );
+
+        // B2: full overwrite path clears `hasStoredSessionToken` when credential-enabled
+        // overwrite deletes the token, and keeps `true` when credential-free.
+        let existing_sts = serde_json::json!({
+            "id": "dup_id",
+            "name": "First",
+            "host": "",
+            "port": 443,
+            "username": "",
+            "protocol": "s3",
+            "options": { "region": "eu-west-1" },
+            "hasStoredCredential": true,
+            "hasStoredSessionToken": true
+        });
+        let prep_ow = super::prepare_import(
+            std::slice::from_ref(&first_no_tok),
+            &std::collections::HashMap::new(),
+            crate::profile_import_plan::ExistingProfileMode::Overwrite,
+            &crate::profile_security::RelaxationPolicy::ResetAll,
+            std::slice::from_ref(&existing_sts),
+        );
+        let stored_ow = prep_ow.stored();
+        let writes_ow = super::import_secret_writes(&stored_ow, &prep_ow.provider_secrets);
+        assert!(writes_ow
+            .iter()
+            .any(|w| w.key == "aws_session_token_dup_id" && w.delete));
+        let restored_ow = super::restored_import_secrets(&stored_ow, &prep_ow.provider_secrets);
+        let redacted_ow = super::redact_imported_server(&stored_ow[0], &restored_ow);
+        let merged_ow = crate::profile_import_plan::overwrite_profile(&existing_sts, &redacted_ow);
+        assert_eq!(
+            merged_ow["hasStoredSessionToken"], false,
+            "credential-enabled S3 overwrite without token must clear hasStoredSessionToken"
+        );
+
+        let credless = crate::profile_export::ServerProfileExport {
+            credential: None,
+            ..first_no_tok
+        };
+        let prep_cl = super::prepare_import(
+            std::slice::from_ref(&credless),
+            &std::collections::HashMap::new(),
+            crate::profile_import_plan::ExistingProfileMode::Overwrite,
+            &crate::profile_security::RelaxationPolicy::ResetAll,
+            std::slice::from_ref(&existing_sts),
+        );
+        let stored_cl = prep_cl.stored();
+        let writes_cl = super::import_secret_writes(&stored_cl, &prep_cl.provider_secrets);
+        assert!(writes_cl
+            .iter()
+            .all(|w| w.key != "aws_session_token_dup_id"));
+        let restored_cl = super::restored_import_secrets(&stored_cl, &prep_cl.provider_secrets);
+        let redacted_cl = super::redact_imported_server(&stored_cl[0], &restored_cl);
+        let merged_cl = crate::profile_import_plan::overwrite_profile(&existing_sts, &redacted_cl);
+        assert_eq!(
+            merged_cl["hasStoredSessionToken"], true,
+            "credential-free overwrite must preserve existing hasStoredSessionToken: true"
+        );
     }
 
     #[test]

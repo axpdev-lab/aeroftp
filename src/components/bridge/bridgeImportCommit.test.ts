@@ -298,6 +298,35 @@ describe('BridgeSourcePanel export auto-close guard', () => {
     });
 });
 
+describe('BridgeSourcePanel filtered security-review alignment (D1)', () => {
+    it('keeps certificate-review entry visible and committable when row 0 is omitted', async () => {
+        const { matchBridgeSecurityEntries, resolveBridgeRowFileIndex } = await import(
+            '../BridgeSourcePanel'
+        );
+        // Row 0 (capped Crypt) was omitted by the backend, so the remaining
+        // profile arrives at filtered position 0 with original `fileIndex: 1`.
+        const filteredServers = [
+            { id: 's3-row-1', fileIndex: 1 },
+        ];
+        const securityEntries = [
+            {
+                fileIndex: 1,
+                name: 'Plain S3',
+                reset: [{ key: 'verifyCert', label: 'TLS verification disabled', value: 'false' }],
+                kept: [],
+            },
+        ];
+        const selected = new Set(['s3-row-1']);
+
+        const visible = matchBridgeSecurityEntries(filteredServers, securityEntries, selected);
+        expect(visible).toHaveLength(1);
+        expect(visible[0].fileIndex).toBe(1);
+        expect(resolveBridgeRowFileIndex(filteredServers[0], 0)).toBe(1);
+        // Backwards compatibility when `fileIndex` is omitted falls back to row position.
+        expect(resolveBridgeRowFileIndex({}, 2)).toBe(2);
+    });
+});
+
 describe('importedServerProfile security relaxations on bridge imports', () => {
     const winscpWebdavResetByBackend: ImportedServer = {
         id: 'winscp-webdav-1',

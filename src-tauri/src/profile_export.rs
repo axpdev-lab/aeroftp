@@ -209,6 +209,8 @@ pub struct ServerProfileExport {
     pub credential: Option<String>,
     pub has_stored_credential: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub has_stored_session_token: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub public_url_base: Option<String>,
     /// User-chosen custom icon (base64 data URL). Top-level `ServerProfile`
     /// field (NOT inside `options`), so it needs an explicit slot here or the
@@ -517,6 +519,7 @@ mod tests {
             provider_id: None,
             credential: None,
             has_stored_credential: None,
+            has_stored_session_token: None,
             public_url_base: None,
             custom_icon_url: None,
             favicon_url: None,

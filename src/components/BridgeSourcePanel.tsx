@@ -37,6 +37,21 @@ interface BridgeExportResult {
     warnings: Array<{ name: string; reason: string }>;
 }
 
+export const matchBridgeSecurityEntries = (
+    servers: ReadonlyArray<{ id: string; fileIndex?: number }>,
+    entries: ReadonlyArray<ImportedSecurity>,
+    selectedIds: ReadonlySet<string>,
+): ImportedSecurity[] =>
+    entries.filter(entry => {
+        const server = servers.find((s, idx) => (s.fileIndex ?? idx) === entry.fileIndex);
+        return server ? selectedIds.has(server.id) : false;
+    });
+
+export const resolveBridgeRowFileIndex = (
+    server: { fileIndex?: number },
+    position: number,
+): number => server.fileIndex ?? position;
+
 export const shouldAutoCloseBridgeExport = (
     r: Pick<BridgeExportResult, 'skipped' | 'warnings'>,
 ): boolean => r.skipped.length === 0 && (r.warnings?.length ?? 0) === 0;
@@ -152,10 +167,7 @@ export const BridgeSourcePanel: React.FC<Props> = ({
         });
     }, [result]);
     const selectedSecurityEntries = useMemo(
-        () => allSecurityEntries.filter(entry => {
-            const server = result?.servers[entry.fileIndex];
-            return server ? selectedIds.has(server.id) : false;
-        }),
+        () => matchBridgeSecurityEntries(result?.servers ?? [], allSecurityEntries, selectedIds),
         [allSecurityEntries, result, selectedIds],
     );
     const exportFilter = useServerChecklistFilter(servers);
@@ -241,7 +253,7 @@ export const BridgeSourcePanel: React.FC<Props> = ({
     const confirmImport = async () => {
         if (!result) return;
         const selected: ServerProfile[] = result.servers
-            .map((s, fileIndex) => ({ s, fileIndex }))
+            .map((s, idx) => ({ s, fileIndex: resolveBridgeRowFileIndex(s, idx) }))
             .filter(({ s }) => selectedIds.has(s.id))
             .map(({ s, fileIndex }) => {
                 const entry = allSecurityEntries.find(e => e.fileIndex === fileIndex);

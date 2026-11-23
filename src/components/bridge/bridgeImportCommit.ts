@@ -8,6 +8,7 @@ import { readSavedServerProfilesForWrite, storeSavedServerProfiles } from '../..
 /** A profile as `import_bridge_config` returns it, credentials redacted. */
 export interface ImportedServer {
     id: string;
+    fileIndex?: number;
     name: string;
     host: string;
     port: number;

@@ -4540,23 +4540,34 @@ pub fn store_imported_credential_for_user(
     set_user_credential_for(&conn, &root_key, user_id, credential_id, &kind, secret)
 }
 
-/// Remove an imported credential from both the user's partition and the vault.
-/// Both deletes must succeed or the import commit stops before writing profiles.
+/// Remove an imported credential from `user_id`'s partition, and also from the
+/// shared vault unless it is a private token type owned only by a secondary
+/// account (so a secondary account never deletes the legacy owner's shared
+/// fallback). Both deletes must succeed or the import commit stops before
+/// writing profiles.
 pub fn delete_imported_credential_for_user(
     store: &CredentialStore,
     user_id: i64,
     credential_id: &str,
 ) -> Result<(), String> {
-    let before_vault = get_optional_secret(store, credential_id)?;
+    let private_only =
+        private_token_user(Some(user_id), relocate_secret_kind(credential_id))?.is_some();
+    let before_vault = if private_only {
+        None
+    } else {
+        get_optional_secret(store, credential_id)?
+    };
     let mut conn = open_or_init_cli()?;
     let _session = hold_user_session(&conn, user_id);
     let tx = conn
         .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
         .map_err(|e| format!("Start credential delete: {e}"))?;
     delete_user_credential_for(&tx, user_id, credential_id)?;
-    store
-        .delete(credential_id)
-        .map_err(|e| format!("Delete credential from vault: {e}"))?;
+    if !private_only {
+        store
+            .delete(credential_id)
+            .map_err(|e| format!("Delete credential from vault: {e}"))?;
+    }
     if let Err(e) = tx.commit() {
         let cause = format!("Commit credential delete: {e}");
         if let Some(prev) = before_vault {
@@ -4650,8 +4661,14 @@ pub fn restore_credential_op_for_user(
     let tx = conn
         .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
         .map_err(|e| format!("Start credential restore: {e}"))?;
+    let effective_kind = credential_type.unwrap_or_else(|| relocate_secret_kind(credential_id));
+    let private_only = private_token_user(Some(user_id), effective_kind)?.is_some();
     let partition = get_user_credential_for(&tx, &root_key, user_id, credential_id)?;
-    let vault = get_optional_secret(store, credential_id)?;
+    let vault = if private_only {
+        None
+    } else {
+        get_optional_secret(store, credential_id)?
+    };
     let write_op = if written_delete {
         SecretWrite::delete(credential_id.to_string(), None)
     } else {
@@ -4677,11 +4694,15 @@ pub fn restore_credential_op_for_user(
         }
         RollbackAction::Delete => delete_user_credential_for(&tx, user_id, credential_id)?,
     }
-    let vault_action = rollback_action_for_write(
-        vault.as_ref().map(|v| v.as_str()),
-        &write_op,
-        before.vault.as_ref().map(|v| v.as_str()),
-    );
+    let vault_action = if private_only {
+        RollbackAction::Leave
+    } else {
+        rollback_action_for_write(
+            vault.as_ref().map(|v| v.as_str()),
+            &write_op,
+            before.vault.as_ref().map(|v| v.as_str()),
+        )
+    };
     let vault_changed = vault_action != RollbackAction::Leave;
     match vault_action {
         RollbackAction::Leave => {}
@@ -4871,9 +4892,9 @@ pub fn unmirror_active_credential(credential_id: &str) {
     }
 }
 
-/// Token types that belong to one user only: OAuth tokens and Jottacloud
-/// refresh chains.
-const PRIVATE_TOKEN_TYPES: [&str; 2] = ["oauth", "jottacloud_refresh"];
+/// Token types that belong to one user only: OAuth tokens, Jottacloud
+/// refresh chains, and AWS STS session tokens.
+const PRIVATE_TOKEN_TYPES: [&str; 3] = ["oauth", "jottacloud_refresh", "aws_session_token"];
 
 /// The user whose tokens of `credential_type` must stay in its own partition:
 /// anyone but the legacy owner. Written to the shared vault, a token would be

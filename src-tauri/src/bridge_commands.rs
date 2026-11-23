@@ -711,6 +711,41 @@ fn without_private_export_options(entry: &Value) -> Value {
     entry
 }
 
+/// Write one bridge-import secret scoped to `user_id` when captured. AWS STS
+/// session tokens (`aws_session_token_*`) use the explicitly typed private-token
+/// writer so a secondary account with an empty partition gets its own partition
+/// row without ever touching the legacy owner's shared vault fallback.
+pub(crate) fn store_bridge_import_secret_for_user(
+    store: &CredentialStore,
+    user_id: Option<i64>,
+    key: &str,
+    secret: &str,
+) -> Result<(), String> {
+    if key.starts_with("aws_session_token_") {
+        return match user_id {
+            Some(uid) => crate::user_partitions::store_credential_for_user_typed_dual(
+                store,
+                uid,
+                key,
+                "aws_session_token",
+                secret,
+            ),
+            None => crate::user_partitions::store_active_credential_typed_dual(
+                store,
+                key,
+                "aws_session_token",
+                secret,
+            ),
+        };
+    }
+    match user_id {
+        Some(uid) => {
+            crate::user_partitions::store_credential_for_user_dual(store, uid, key, secret)
+        }
+        None => crate::user_partitions::store_active_credential_dual(store, key, secret),
+    }
+}
+
 /// Import profiles from a third-party config file. Validates the path
 /// (traversal reject + canonicalize + regular-file + 10 MB cap),
 /// upgrades any recovered secret into the AES-256-GCM vault and returns
@@ -752,10 +787,15 @@ pub async fn import_bridge_config(
         dispatch_import(&source, &canonical)?
     };
     let store = CredentialStore::from_cache();
+    let captured_user = store.as_ref().and_then(|s| {
+        crate::user_partitions::cli_get_active_user(s)
+            .ok()
+            .flatten()
+            .map(|u| u.id)
+    });
     let mut write = |key: &str, secret: &str| -> Result<(), String> {
         let store = store.as_ref().ok_or("the credential vault is locked")?;
-        crate::user_partitions::store_active_credential_dual(store, key, secret)
-            .map_err(|e| e.to_string())
+        store_bridge_import_secret_for_user(store, captured_user, key, secret)
     };
     let vault: Option<VaultWrite<'_>> = if store.is_some() {
         Some(&mut write)
@@ -1111,6 +1151,7 @@ pub(crate) fn finish_bridge_import_with_policy_and_cap(
                     .unwrap_or(false);
             let mut item = json!({
                 "id": s.get("id").cloned().unwrap_or(Value::Null),
+                "fileIndex": *file_index,
                 "name": s.get("name").cloned().unwrap_or(Value::Null),
                 "host": s.get("host").cloned().unwrap_or(Value::Null),
                 "port": s.get("port").cloned().unwrap_or(Value::Null),
@@ -4167,6 +4208,7 @@ mod tests {
         let servers = out["servers"].as_array().unwrap();
         assert_eq!(servers.len(), 1);
         assert_eq!(servers[0]["id"], "s3-1");
+        assert_eq!(servers[0]["fileIndex"], 1);
         assert_ne!(
             servers[0]["options"]["verifyCert"],
             Value::Bool(false),

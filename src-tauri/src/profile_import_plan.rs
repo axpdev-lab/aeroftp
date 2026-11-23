@@ -736,7 +736,22 @@ pub fn overwrite_profile(
             options.extend(kept);
             target.insert("options".to_string(), serde_json::Value::Object(options));
         }
+        // When a credential-enabled S3 overwrite replaces credentials without a
+        // session token, `import_secret_writes` deletes `aws_session_token_<id>`,
+        // so `hasStoredSessionToken` must be cleared to `false` rather than
+        // OR-merged with the previous `true`. A credential-free overwrite
+        // (`hasStoredCredential != true`) leaves the stored token and flag intact.
+        let cleared_session_token = source.get("hasStoredCredential").and_then(|v| v.as_bool())
+            == Some(true)
+            && source
+                .get("hasStoredSessionToken")
+                .and_then(|v| v.as_bool())
+                == Some(false);
         for flag in STORED_SECRET_FLAGS {
+            if flag == "hasStoredSessionToken" && cleared_session_token {
+                target.insert(flag.to_string(), serde_json::Value::Bool(false));
+                continue;
+            }
             let set = |p: &serde_json::Value| p.get(flag).and_then(|v| v.as_bool()) == Some(true);
             if set(existing) || set(imported) {
                 target.insert(flag.to_string(), serde_json::Value::Bool(true));

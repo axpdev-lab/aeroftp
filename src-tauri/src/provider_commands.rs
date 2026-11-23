@@ -1994,8 +1994,18 @@ fn fixed_api_host(provider_type: ProviderType) -> Option<&'static str> {
 }
 
 impl ProviderConnectionParams {
-    /// Convert to provider configuration
+    /// Convert to provider configuration using the active user's partition.
     pub fn to_provider_config(&self) -> Result<ProviderConfig, String> {
+        self.to_provider_config_for_user(None)
+    }
+
+    /// Convert to provider configuration scoped to `user_id` when captured
+    /// before connect/discovery so an intervening account switch can never
+    /// inject another user's vaulted AWS STS session token.
+    pub fn to_provider_config_for_user(
+        &self,
+        user_id: Option<i64>,
+    ) -> Result<ProviderConfig, String> {
         let provider_type = match self.protocol.to_lowercase().as_str() {
             "ftp" => ProviderType::Ftp,
             "ftps" => ProviderType::Ftps,
@@ -2536,6 +2546,7 @@ impl ProviderConnectionParams {
         // vault read fails or a profile marked `hasStoredSessionToken` lacks its
         // token in the vault.
         let explicit_requires_token = self.has_stored_session_token.unwrap_or(false);
+        let fail_closed_when_locked = self.has_stored_session_token != Some(false);
         crate::profile_loader::inject_vault_s3_session_token(
             config.provider_type,
             self.profile_id.as_deref(),
@@ -2543,7 +2554,7 @@ impl ProviderConnectionParams {
             &mut config.extra,
             |key| {
                 let Some(store) = crate::credential_store::CredentialStore::from_cache() else {
-                    return if explicit_requires_token {
+                    return if fail_closed_when_locked {
                         Err(
                             "The credential vault is locked, so this S3 profile's saved AWS session token cannot be read"
                                 .to_string(),
@@ -2553,13 +2564,25 @@ impl ProviderConnectionParams {
                     };
                 };
                 match crate::profile_loader::resolve_vault_s3_session_token_owner_aware(
-                    &store, None, key,
+                    &store, user_id, key,
                 )? {
                     Some(token) => Ok(Some(token)),
                     None => {
                         let stored_flag = self.has_stored_session_token.is_none()
                             && self.profile_id.as_deref().is_some_and(|pid| {
-                                crate::user_partitions::mcp_list_active_server_profiles(&store)
+                                let profiles = match user_id {
+                                    Some(uid) => {
+                                        crate::user_partitions::cli_list_server_profiles_for_user(
+                                            &store, uid,
+                                        )
+                                    }
+                                    None => {
+                                        crate::user_partitions::mcp_list_active_server_profiles(
+                                            &store,
+                                        )
+                                    }
+                                };
+                                profiles
                                     .map(|profiles| {
                                         profiles.iter().any(|p| {
                                             p.get("id").and_then(|v| v.as_str()) == Some(pid)
@@ -2637,8 +2660,11 @@ pub async fn provider_discover_targets(
     // Provider configuration validates the same credential/endpoint contract
     // as a real connection. The placeholder is never sent as a data-plane
     // target: each discovery method uses its account/service-root endpoint.
+    let owner =
+        crate::credential_store::off_async_worker(crate::sync_owner::GuiOwnerContext::capture)?;
     params.bucket = Some(discovery_bucket_placeholder(&protocol));
-    let config = params.to_provider_config()?;
+    let config = params.to_provider_config_for_user(owner.user())?;
+    owner.validate()?;
     // The provider clients carry transfer-scale read timeouts (1800s for S3 and
     // kDrive, 120s for B2) and nothing here can be cancelled, so an endpoint
     // that accepts the connection and stalls froze the Quick Connect button for
@@ -2825,7 +2851,8 @@ where
     let connect_token = params.connect_token.clone();
     let registration = ConnectRegistration::new(cancel_registry, connect_token.as_deref());
 
-    let mut config = params.to_provider_config()?;
+    let mut config = params.to_provider_config_for_user(owner.user())?;
+    owner.validate()?;
     // The preparation reads the config's extras, never its secret: it gets a
     // copy with the password zeroized (A3-05).
     let mut prepare_config = config.clone();
@@ -25311,13 +25338,132 @@ mod tests {
         )
         .unwrap();
 
+        // A2: secondary account restoring an STS token via `store_imported_credential_for_user`
+        // stores ONLY in its own partition and NEVER overwrites user A's shared legacy fallback.
+        crate::user_partitions::store_imported_credential_for_user(
+            &store,
+            second_user.id,
+            "aws_session_token_aws-sts-1",
+            Some("aws_session_token"),
+            "BOB-OWN-STS-TOKEN",
+        )
+        .unwrap();
+        let vault_after_bob_restore = store.get("aws_session_token_aws-sts-1").unwrap();
+
+        // A4: captured owner (first_user) connects while active user is second_user ->
+        // must read first_user's token, NEVER second_user's token.
+        let mut captured_a_params = s3_params(None);
+        captured_a_params.profile_id = Some("aws-sts-1".to_string());
+        captured_a_params.has_stored_session_token = Some(true);
+        let got_captured_a_connect = captured_a_params
+            .to_provider_config_for_user(Some(first_user.id))
+            .unwrap()
+            .extra
+            .get("session_token")
+            .cloned();
+        let got_captured_b_connect = captured_a_params
+            .to_provider_config_for_user(Some(second_user.id))
+            .unwrap()
+            .extra
+            .get("session_token")
+            .cloned();
+
+        // A1: secondary account deleting its own `aws_session_token_aws-sts-1` clears
+        // second_user's partition row while leaving first_user's shared fallback intact.
+        crate::user_partitions::delete_imported_credential_for_user(
+            &store,
+            second_user.id,
+            "aws_session_token_aws-sts-1",
+        )
+        .unwrap();
+        let vault_after_bob_delete = store.get("aws_session_token_aws-sts-1").unwrap();
+        let bob_after_delete = crate::profile_loader::resolve_vault_s3_session_token_owner_aware(
+            &store,
+            Some(second_user.id),
+            "aws_session_token_aws-sts-1",
+        )
+        .unwrap();
+        let alice_after_bob_delete = captured_a_params
+            .to_provider_config_for_user(Some(first_user.id))
+            .unwrap()
+            .extra
+            .get("session_token")
+            .cloned();
+
+        // A3: third secondary account with an empty partition imports an STS token via
+        // `store_bridge_import_secret_for_user` -> lands in its own partition and resolves,
+        // without touching the shared legacy vault fallback.
+        let mut conn = crate::user_partitions::open_or_init_cli().unwrap();
+        let third_user =
+            crate::user_partitions::create_user(&mut conn, &root_key, "Third", None, None, None)
+                .unwrap();
+        drop(conn);
+        crate::bridge_commands::store_bridge_import_secret_for_user(
+            &store,
+            Some(third_user.id),
+            "aws_session_token_aws-sts-1",
+            "CAROL-IMPORTED-TOKEN",
+        )
+        .unwrap();
+        let carol_resolved = crate::profile_loader::resolve_vault_s3_session_token_owner_aware(
+            &store,
+            Some(third_user.id),
+            "aws_session_token_aws-sts-1",
+        )
+        .unwrap();
+        let vault_after_carol_import = store.get("aws_session_token_aws-sts-1").unwrap();
+
+        // A6: credential-enabled native export fails closed when a profile marked
+        // `hasStoredSessionToken: true` lacks its token in the vault, while a static
+        // profile with no token and an STS profile with a readable token both succeed.
+        let sts_missing_export = crate::profile_export::ServerProfileExport {
+            id: "aws-sts-1".to_string(),
+            name: "Bob Missing STS".to_string(),
+            protocol: Some("s3".to_string()),
+            has_stored_session_token: Some(true),
+            ..Default::default()
+        };
+        let export_missing_sts_err = crate::collect_provider_secrets_for_server_for_user(
+            &store,
+            Some(second_user.id),
+            &sts_missing_export,
+        )
+        .err()
+        .expect("missing required STS token must fail credential-enabled export");
+        let static_no_tok_export = crate::profile_export::ServerProfileExport {
+            id: "aws-static-none".to_string(),
+            name: "Static S3".to_string(),
+            protocol: Some("s3".to_string()),
+            ..Default::default()
+        };
+        assert!(crate::collect_provider_secrets_for_server_for_user(
+            &store,
+            Some(second_user.id),
+            &static_no_tok_export,
+        )
+        .is_ok());
+
         crate::credential_store::CredentialStore::clear_cache();
 
-        // Locked vault with `has_stored_session_token: Some(true)` also fails closed.
+        // Locked vault with `has_stored_session_token: Some(true)` AND omitted (`None`)
+        // both fail closed with the same local vault error; `Some(false)` succeeds.
         let mut locked_required_params = s3_params(None);
         locked_required_params.profile_id = Some("aws-sts-1".to_string());
         locked_required_params.has_stored_session_token = Some(true);
         let locked_required_err = locked_required_params.to_provider_config().unwrap_err();
+        let mut locked_omitted_params = s3_params(None);
+        locked_omitted_params.profile_id = Some("aws-sts-1".to_string());
+        locked_omitted_params.has_stored_session_token = None;
+        let locked_omitted_err = locked_omitted_params.to_provider_config().unwrap_err();
+        let mut locked_non_sts_params = s3_params(None);
+        locked_non_sts_params.profile_id = Some("aws-sts-1".to_string());
+        locked_non_sts_params.has_stored_session_token = Some(false);
+        let locked_non_sts_tok = locked_non_sts_params
+            .to_provider_config()
+            .unwrap()
+            .extra
+            .get("session_token")
+            .cloned();
 
         match previous_xdg {
             Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
@@ -25368,6 +25514,26 @@ mod tests {
             locked_required_err.contains("vault is locked"),
             "STS profile with locked vault must fail closed: {locked_required_err}"
         );
+        assert_eq!(
+            locked_omitted_err, locked_required_err,
+            "omitted has_stored_session_token must fail closed with the same locked-vault error"
+        );
+        assert_eq!(locked_non_sts_tok, None);
+        assert_eq!(vault_after_bob_restore, "VAULT-STS-TOKEN-42");
+        assert_eq!(
+            got_captured_a_connect.as_deref(),
+            Some("VAULT-STS-TOKEN-42")
+        );
+        assert_eq!(got_captured_b_connect.as_deref(), Some("BOB-OWN-STS-TOKEN"));
+        assert_eq!(vault_after_bob_delete, "VAULT-STS-TOKEN-42");
+        assert_eq!(bob_after_delete, None);
+        assert_eq!(
+            alice_after_bob_delete.as_deref(),
+            Some("VAULT-STS-TOKEN-42")
+        );
+        assert_eq!(carol_resolved.as_deref(), Some("CAROL-IMPORTED-TOKEN"));
+        assert_eq!(vault_after_carol_import, "VAULT-STS-TOKEN-42");
+        assert!(export_missing_sts_err.contains("missing from the vault"));
         assert!(
             export_opts_b.is_none(),
             "user B without a token must never inherit user A's shared-vault token on export"
