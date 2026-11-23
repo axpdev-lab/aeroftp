@@ -329,9 +329,6 @@ pub(crate) struct IniSectionWithSpan {
     pub name: String,
     pub start_line: usize,
     pub data: RcloneRemote,
-    /// Original-case keys for case-sensitive `goconfig` substitution lookup
-    /// (`Unknwon/goconfig` `conf.go:196-221`, verified live against rclone v1.75.2).
-    pub raw_data: RcloneRemote,
 }
 
 /// Result of span- and line-aware INI parsing.
@@ -404,7 +401,6 @@ pub(crate) fn parse_ini_sections_with_spans(content: &str) -> IniSpanParseResult
                     name,
                     start_line: line_num,
                     data: HashMap::new(),
-                    raw_data: HashMap::new(),
                 });
                 current_section = Some(new_idx);
             }
@@ -427,8 +423,7 @@ pub(crate) fn parse_ini_sections_with_spans(content: &str) -> IniSpanParseResult
 
         // Key = value
         if let Some((raw_key, raw_value)) = line.split_once('=') {
-            let trimmed_key = raw_key.trim();
-            let key = trimmed_key.to_lowercase();
+            let key = raw_key.trim().to_lowercase();
             let value = raw_value.trim().to_string();
             if let Some(sec_idx) = current_section {
                 if key.is_empty() {
@@ -436,9 +431,6 @@ pub(crate) fn parse_ini_sections_with_spans(content: &str) -> IniSpanParseResult
                         format!("Missing key name before '=' on line {}.", line_num)
                     });
                 }
-                sections[sec_idx]
-                    .raw_data
-                    .insert(trimmed_key.to_string(), value.clone());
                 sections[sec_idx].data.insert(key, value);
             } else {
                 issues.push(line_num, None, || {
@@ -3492,6 +3484,88 @@ fn import_parsed_sections(
     })
 }
 
+/// Split one `Unknwon/goconfig` (`read.go`) key/value assignment on its first
+/// unquoted `=` or `:`, stripping matching outer `"` or `` ` `` quotes from the
+/// key while preserving exact key case and value text.
+fn split_goconfig_assignment(line: &str) -> Option<(String, String)> {
+    let trimmed = line.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let bytes = trimmed.as_bytes();
+    let delim = if matches!(bytes[0], b'"' | b'`') {
+        let quote = bytes[0];
+        let close = trimmed[1..].find(char::from(quote))? + 1;
+        let rest = &trimmed[close + 1..];
+        let rel = rest.find(['=', ':'])?;
+        close + 1 + rel
+    } else {
+        trimmed.find(['=', ':'])?
+    };
+    let raw_key = trimmed[..delim].trim();
+    let key = if raw_key.len() >= 2
+        && ((raw_key.starts_with('"') && raw_key.ends_with('"'))
+            || (raw_key.starts_with('`') && raw_key.ends_with('`')))
+    {
+        &raw_key[1..raw_key.len() - 1]
+    } else {
+        raw_key
+    };
+    if key.is_empty() {
+        return None;
+    }
+    let value = trimmed[delim + 1..].trim().to_string();
+    Some((key.to_string(), value))
+}
+
+/// Parse `rclone.conf` using `Unknwon/goconfig` `read.go` grammar for transport
+/// and substitution resolution: leading assignments before the first `[section]`
+/// header populate `[DEFAULT]`, both `=` and `:` delimiters are accepted, quoted
+/// keys (`"ssh"` / `` `ssh` ``) are unquoted, and exact key case is preserved.
+fn parse_rclone_goconfig_raw_sections(content: &str) -> HashMap<String, RcloneRemote> {
+    let mut sections: HashMap<String, RcloneRemote> = HashMap::new();
+    let mut current_section = "DEFAULT".to_string();
+    let mut section_count = 0usize;
+
+    for (idx, raw_line) in content.lines().enumerate() {
+        let stripped = if idx == 0 {
+            raw_line.strip_prefix('\u{FEFF}').unwrap_or(raw_line)
+        } else {
+            raw_line
+        };
+        let line = stripped.trim();
+        if line.is_empty() || line.starts_with('#') || line.starts_with(';') {
+            continue;
+        }
+        if let Some(inner) = line.strip_prefix('[').and_then(|s| s.strip_suffix(']')) {
+            let name = inner.trim();
+            if name.is_empty() {
+                continue;
+            }
+            if !sections.contains_key(name) {
+                if section_count >= MAX_REMOTES {
+                    break;
+                }
+                section_count += 1;
+                sections.insert(name.to_string(), HashMap::new());
+            }
+            current_section = name.to_string();
+            continue;
+        }
+        if line.starts_with('[') {
+            continue;
+        }
+        if let Some((key, value)) = split_goconfig_assignment(line) {
+            sections
+                .entry(current_section.clone())
+                .or_default()
+                .insert(key, value);
+        }
+    }
+
+    sections
+}
+
 pub fn import_rclone(config_path: &Path) -> Result<RcloneImportResult, String> {
     // Read through the cap, not after a size check: a file that grows between
     // the caller's metadata check and this read cannot get past it.
@@ -3515,12 +3589,12 @@ pub fn import_rclone(config_path: &Path) -> Result<RcloneImportResult, String> {
     if parsed_ini.capped {
         log::warn!("rclone import: stopped at the {MAX_REMOTES}-remote cap");
     }
-    let mut sections: HashMap<String, RcloneRemote> = HashMap::new();
-    let mut raw_sections: HashMap<String, RcloneRemote> = HashMap::new();
-    for section in parsed_ini.sections {
-        raw_sections.insert(section.name.clone(), section.raw_data);
-        sections.insert(section.name, section.data);
-    }
+    let sections: HashMap<String, RcloneRemote> = parsed_ini
+        .sections
+        .into_iter()
+        .map(|section| (section.name, section.data))
+        .collect();
+    let raw_sections = parse_rclone_goconfig_raw_sections(&content);
     let aeroftp_export = aeroftp_export_header(&content);
     let outcome = import_parsed_sections(
         sections,
@@ -7594,6 +7668,42 @@ http_proxy =
             dav_res.servers[0].initial_path.as_deref(),
             Some("/users/alice@example.test/files")
         );
+
+        // #12 & #13: implicit leading [DEFAULT], colon delimiter, quoted keys, and empty ssh=.
+        let goconfig_path = dir.path().join("rclone-goconfig-grammar.conf");
+        std::fs::write(
+            &goconfig_path,
+            concat!(
+                "jump = ssh alice@files.example.test\n\n",
+                "[implicit-default]\ntype = sftp\nhost = old.example.test\nuser = u\nssh = %(jump)s\n\n",
+                "[colon-ssh]\ntype = sftp\nhost = old.example.test\nuser = u\nssh: ssh alice@files.example.test\n\n",
+                "[quoted-ssh]\ntype = sftp\nhost = old.example.test\nuser = u\n\"ssh\" = ssh alice@files.example.test\n\n",
+                "[backtick-ssh]\ntype = sftp\nhost = old.example.test\nuser = u\n`ssh`: ssh alice@files.example.test\n\n",
+                "[direct-empty]\ntype = sftp\nhost = ok.example.test\nuser = u\nssh =\n",
+            ),
+        )
+        .unwrap();
+        let gc = import_rclone(&goconfig_path).unwrap();
+        // Leading assignment must not create an importable `DEFAULT` profile.
+        let imported_names: Vec<&str> = gc.servers.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(imported_names, vec!["direct-empty"]);
+        for expected_skip in [
+            "implicit-default",
+            "colon-ssh",
+            "quoted-ssh",
+            "backtick-ssh",
+        ] {
+            assert!(
+                gc.skipped
+                    .iter()
+                    .any(|s| s.name == expected_skip && s.reason.contains("`ssh`")),
+                "expected external ssh skip for {expected_skip}: {:?}",
+                gc.skipped
+                    .iter()
+                    .map(|s| (&s.name, &s.reason))
+                    .collect::<Vec<_>>()
+            );
+        }
     }
 
     #[test]

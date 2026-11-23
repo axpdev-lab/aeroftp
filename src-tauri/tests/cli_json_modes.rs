@@ -218,6 +218,49 @@ fn import_warning_reports_keep_stdout_for_data() {
             .unwrap_or_else(|err| panic!("{source}: invalid JSON {err}: {}", describe(&json)));
         assert_eq!(report["warnings"].as_array().unwrap().len(), 1, "{source}");
     }
+
+    // Verify WinSCP SSH tunnel warning survives CLI dispatch in both text and JSON
+    // modes without leaking TunnelHostName or TunnelUserName.
+    let winscp_tunnel = dir.join("WinSCP-tunnel.ini");
+    std::fs::write(
+        &winscp_tunnel,
+        "[Sessions\\Tunneled]\nHostName=internal.example.invalid\nUserName=app\nFSProtocol=2\nTunnel=1\nTunnelHostName=bastion.secret.invalid\nTunnelUserName=tunneladmin\n",
+    )
+    .unwrap();
+    let tunnel_path = winscp_tunnel.to_str().unwrap();
+
+    let text = cli(dir, &["import", "winscp", tunnel_path]);
+    assert!(text.status.success(), "winscp tunnel: {}", describe(&text));
+    let text_stdout = String::from_utf8_lossy(&text.stdout);
+    let text_stderr = String::from_utf8_lossy(&text.stderr);
+    assert!(!text_stdout.contains("Warnings ("), "{text_stdout}");
+    assert!(text_stderr.contains("Warnings (1)"), "{text_stderr}");
+    assert!(text_stderr.contains("SSH tunnel"), "{text_stderr}");
+    for secret in ["bastion.secret.invalid", "tunneladmin"] {
+        assert!(!text_stdout.contains(secret), "{secret} leaked on stdout");
+        assert!(!text_stderr.contains(secret), "{secret} leaked on stderr");
+    }
+
+    let json = cli(dir, &["import", "winscp", tunnel_path, "--json"]);
+    assert!(
+        json.status.success(),
+        "winscp tunnel json: {}",
+        describe(&json)
+    );
+    let json_stderr = String::from_utf8_lossy(&json.stderr);
+    assert!(!json_stderr.contains("Warnings ("), "{json_stderr}");
+    let report: serde_json::Value = serde_json::from_slice(&json.stdout)
+        .unwrap_or_else(|err| panic!("winscp tunnel invalid JSON {err}: {}", describe(&json)));
+    let warnings = report["warnings"].as_array().unwrap();
+    assert_eq!(warnings.len(), 1);
+    assert!(warnings[0]["reason"]
+        .as_str()
+        .unwrap_or("")
+        .contains("SSH tunnel"));
+    let json_text = String::from_utf8_lossy(&json.stdout);
+    for secret in ["bastion.secret.invalid", "tunneladmin"] {
+        assert!(!json_text.contains(secret), "{secret} leaked in JSON");
+    }
 }
 
 #[test]

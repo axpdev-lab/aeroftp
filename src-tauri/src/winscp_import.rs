@@ -513,9 +513,13 @@ pub fn import_winscp(config_path: &Path) -> Result<WinScpImportResult, String> {
                     .get("ProxyMethod")
                     .map(|value| parse_winscp_proxy_method(value))
                     .unwrap_or(0);
-                let has_proxy_host = fields
-                    .get("ProxyHost")
-                    .is_some_and(|value| !value.trim().is_empty());
+                // WinSCP defaults `ProxyHost` to `"proxy"`
+                // (`winscp/winscp` `source/core/SessionData.cpp:352, 850`);
+                // only an explicit empty `ProxyHost=` leaves it empty.
+                let has_proxy_host = match fields.get("ProxyHost") {
+                    Some(value) => !value.trim().is_empty(),
+                    None => true,
+                };
                 // Effective generic proxy by WinSCP backend:
                 // - FTP (`source/core/FtpFileSystem.cpp:2777-2802`): only SOCKS4 (1),
                 //   SOCKS5 (2), and HTTP (3); Telnet (4), local command (5), and
@@ -1718,8 +1722,10 @@ FSProtocol=1
     fn webdav_and_s3_proxy_warnings_follow_winscp_neon_rules() {
         let ini = concat!(
             "[Sessions\\DavTelnetWithHost]\nHostName=dav.example.com\nUserName=u\nFSProtocol=6\nFtps=1\nProxyMethod=4\nProxyHost=proxy.corp\n",
-            "[Sessions\\DavTelnetNoHost]\nHostName=dav2.example.com\nUserName=u\nFSProtocol=6\nFtps=1\nProxyMethod=4\n",
-            "[Sessions\\S3HttpNoHost]\nHostName=s3.example.com\nUserName=u\nFSProtocol=7\nProxyMethod=3\nProxyHost=\n",
+            "[Sessions\\DavTelnetOmittedHost]\nHostName=dav2.example.com\nUserName=u\nFSProtocol=6\nFtps=1\nProxyMethod=4\n",
+            "[Sessions\\DavTelnetEmptyHost]\nHostName=dav3.example.com\nUserName=u\nFSProtocol=6\nFtps=1\nProxyMethod=4\nProxyHost=\n",
+            "[Sessions\\S3HttpOmittedHost]\nHostName=s3a.example.com\nUserName=u\nFSProtocol=7\nProxyMethod=HTTP\n",
+            "[Sessions\\S3HttpEmptyHost]\nHostName=s3.example.com\nUserName=u\nFSProtocol=7\nProxyMethod=HTTP\nProxyHost=\n",
             "[Sessions\\S3Socks5]\nHostName=s3b.example.com\nUserName=u\nFSProtocol=7\nProxyMethod=2\n",
         );
         let dir = tempfile::tempdir().unwrap();
@@ -1727,7 +1733,7 @@ FSProtocol=1
         std::fs::write(&path, ini).unwrap();
 
         let result = import_winscp(&path).unwrap();
-        assert_eq!(result.servers.len(), 4);
+        assert_eq!(result.servers.len(), 6);
         let warn_for = |name: &str| {
             result
                 .warnings
@@ -1743,8 +1749,16 @@ FSProtocol=1
             "{}",
             dav_host[0]
         );
-        assert!(warn_for("DavTelnetNoHost").is_empty());
-        assert!(warn_for("S3HttpNoHost").is_empty());
+        // Omitted `ProxyHost` retains WinSCP's default `"proxy"`, so neon configures HTTP proxy.
+        let dav_omitted = warn_for("DavTelnetOmittedHost");
+        assert_eq!(dav_omitted.len(), 1);
+        assert!(dav_omitted[0].contains("HTTP proxy method 4"));
+        let s3_omitted = warn_for("S3HttpOmittedHost");
+        assert_eq!(s3_omitted.len(), 1);
+        assert!(s3_omitted[0].contains("HTTP proxy method 3"));
+        // Explicit `ProxyHost=` leaves ProxyHost empty, so neon configures no proxy.
+        assert!(warn_for("DavTelnetEmptyHost").is_empty());
+        assert!(warn_for("S3HttpEmptyHost").is_empty());
         let s3_socks = warn_for("S3Socks5");
         assert_eq!(s3_socks.len(), 1);
         assert!(
