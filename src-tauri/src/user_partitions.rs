@@ -6280,12 +6280,42 @@ fn token_tags_pending_elsewhere(conn: &Connection, user_id: i64) -> Result<bool,
     .map_err(|e| format!("Read profile token tags: {e}"))
 }
 
+thread_local! {
+    /// This thread holds the profile-list lock and has not written the
+    /// restore yet. The plan read must see the rows a preview sees.
+    /// Off again before the partition is replaced: later reads on this
+    /// thread still withhold unstamped copies until realign.
+    static LIST_LOCK_HELD_BEFORE_RESTORE: std::cell::Cell<bool> =
+        const { std::cell::Cell::new(false) };
+}
+
+/// Marks this thread's profile-list lock as held for a plan read that runs
+/// before the restore writes ([`profile_list_lock_busy`] then answers
+/// false): the import takes the lock and only then recomputes the plan the
+/// preview fingerprinted, and the rows must read the same. The guard's
+/// drop ends the mark before the partition is replaced.
+pub(crate) struct PlanReadsBeforeRestore(());
+
+impl Drop for PlanReadsBeforeRestore {
+    fn drop(&mut self) {
+        LIST_LOCK_HELD_BEFORE_RESTORE.with(|held| held.set(false));
+    }
+}
+
+pub(crate) fn plan_reads_before_restore() -> PlanReadsBeforeRestore {
+    LIST_LOCK_HELD_BEFORE_RESTORE.with(|held| held.set(true));
+    PlanReadsBeforeRestore(())
+}
+
 /// Whether a writer holds the [`ProfileListLock`] of `conn`'s database right
 /// now, asked without waiting: a restore or import keeps it for the whole
 /// write, during which the rows it lands may still be copies the alignment
 /// has not reached. An in-memory database, a missing lock file or a
 /// filesystem without file locks answers false.
 fn profile_list_lock_busy(conn: &Connection) -> bool {
+    if LIST_LOCK_HELD_BEFORE_RESTORE.with(|held| held.get()) {
+        return false;
+    }
     let Some(path) = conn.path() else {
         return false;
     };
@@ -6347,8 +6377,8 @@ fn unverified_while_tags_pending(
     // the vault holds.
     let waits = waits_for_profile_tags(conn, user_id)?
         || (token_key_folds_case(key) && token_tags_pending_elsewhere(conn, user_id)?)
-        || (nonprofile_secret_owner_unpersisted(conn)? != Some(user_id)
-            && profile_list_lock_busy(conn));
+        || (profile_list_lock_busy(conn)
+            && nonprofile_secret_owner_unpersisted(conn)? != Some(user_id));
     if !waits {
         return Ok(false);
     }
@@ -14996,9 +15026,19 @@ mod tests {
             let kind = private_token_type(key).unwrap();
             set_user_credential_for(&conn, &root, other.id, key, kind, row).unwrap();
         }
-        // The account's own sign-in, stamped as its sign-in writer stamps it.
+        // The account's own sign-ins, stamped as its sign-in writer stamps
+        // them: only the stamp proves a shared row is this account's own.
         set_signed_in_credential_for(&conn, &root, other.id, rows[1].0, "oauth", &rows[1].1)
             .unwrap();
+        set_signed_in_credential_for(
+            &conn,
+            &root,
+            other.id,
+            rows[4].0,
+            "jottacloud_refresh",
+            &rows[4].1,
+        )
+        .unwrap();
         let held: Vec<(&str, &str)> = rows.iter().map(|(k, _, v)| (*k, v.as_str())).collect();
         let (keys, read) = fake_vault(&held);
         let delete = |_: &str, _: Option<&str>| Ok(true);

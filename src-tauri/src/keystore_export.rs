@@ -2699,56 +2699,62 @@ fn import_keystore_with_store(
     // and refuse decisions that do not match this plan while nothing has
     // changed yet.
     let default_fingerprint;
-    let profile_plan = match profile_decisions {
-        Some(choices) => {
-            let inputs = profile_plan_inputs(
-                store,
-                &payload,
-                password,
-                merge_strategy,
-                sections,
-                config_dir,
-            )?;
-            keystore_profile_plan::validate(&inputs, choices.decisions, choices.fingerprint)
-                .map_err(KeystoreExportError::StaleProfileDecisions)?;
-            Some((inputs, choices))
-        }
-        // Review B1: "Skip existing" without a review promises a union, but a
-        // restored partition replaces the list whole, and the union made in
-        // the vault blob below never reached it. Apply the plan with its
-        // defaults (added: accept; changed and only here: keep this device's
-        // version), exactly what the dialog starts from. A partition that
-        // cannot be read here (another machine's keys, a locked account)
-        // would replace this device's partition with one that opens nothing
-        // here, and the plan could not be written into it either: under
-        // "Skip existing" that partition is left out of the restore, see
-        // `profile_partition_skipped` below, and the plan merges the
-        // backup's vault list into the partition this device has.
-        None if merge_strategy == "skip_existing"
-            && config_dir.is_some()
-            && sections.sqlite_dbs
-            && payload.sqlite_dumps.contains_key("user_partitions.db") =>
-        {
-            let inputs = profile_plan_inputs(
-                store,
-                &payload,
-                password,
-                merge_strategy,
-                sections,
-                config_dir,
-            )?;
-            if inputs.replaces_list {
-                default_fingerprint = keystore_profile_plan::preview(&inputs).fingerprint;
-                let choices = ProfileChoices {
-                    decisions: &[],
-                    fingerprint: &default_fingerprint,
-                };
+    // The plan is read again under the profile-list lock this import
+    // already holds: without the mark the lock reads as busy and unstamped
+    // rows of other accounts vanish between the preview and this read.
+    let profile_plan = {
+        let _plan_reads = crate::user_partitions::plan_reads_before_restore();
+        match profile_decisions {
+            Some(choices) => {
+                let inputs = profile_plan_inputs(
+                    store,
+                    &payload,
+                    password,
+                    merge_strategy,
+                    sections,
+                    config_dir,
+                )?;
+                keystore_profile_plan::validate(&inputs, choices.decisions, choices.fingerprint)
+                    .map_err(KeystoreExportError::StaleProfileDecisions)?;
                 Some((inputs, choices))
-            } else {
-                None
             }
+            // Review B1: "Skip existing" without a review promises a union, but a
+            // restored partition replaces the list whole, and the union made in
+            // the vault blob below never reached it. Apply the plan with its
+            // defaults (added: accept; changed and only here: keep this device's
+            // version), exactly what the dialog starts from. A partition that
+            // cannot be read here (another machine's keys, a locked account)
+            // would replace this device's partition with one that opens nothing
+            // here, and the plan could not be written into it either: under
+            // "Skip existing" that partition is left out of the restore, see
+            // `profile_partition_skipped` below, and the plan merges the
+            // backup's vault list into the partition this device has.
+            None if merge_strategy == "skip_existing"
+                && config_dir.is_some()
+                && sections.sqlite_dbs
+                && payload.sqlite_dumps.contains_key("user_partitions.db") =>
+            {
+                let inputs = profile_plan_inputs(
+                    store,
+                    &payload,
+                    password,
+                    merge_strategy,
+                    sections,
+                    config_dir,
+                )?;
+                if inputs.replaces_list {
+                    default_fingerprint = keystore_profile_plan::preview(&inputs).fingerprint;
+                    let choices = ProfileChoices {
+                        decisions: &[],
+                        fingerprint: &default_fingerprint,
+                    };
+                    Some((inputs, choices))
+                } else {
+                    None
+                }
+            }
+            None => None,
         }
-        None => None,
     };
     if let Some((inputs, _)) = &profile_plan {
         security_reset.extend(inputs.security_reset.iter().cloned());
