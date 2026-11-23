@@ -2009,12 +2009,15 @@ fn a_purge_names_the_keys_it_could_not_remove() {
     partitions::store_active_credential_dual(&chains.store, key, &chains.chain("purged-chain"))
         .unwrap();
     let purge = || {
+        let expected = partitions::cli_get_active_user(&chains.store)
+            .unwrap()
+            .map(|user| user.id);
         let purged = chains
             .runtime()
             .block_on(crate::purge_profile_secrets(
                 "purged".into(),
                 Some("jottacloud".into()),
-                None,
+                expected,
             ))
             .expect("purge");
         serde_json::to_value(purged).unwrap()

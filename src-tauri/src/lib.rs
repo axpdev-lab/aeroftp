@@ -24527,7 +24527,17 @@ fn purge_account(
                 ))
             }
         }
-        None => Ok(user_partitions::cli_get_active_user(store)?.map(|user| user.id)),
+        None => {
+            let users = user_partitions::cli_list_users(store)?;
+            if users.is_empty() {
+                Ok(None)
+            } else {
+                Err(
+                    "The profile list named no account, and an account exists now; no secret was removed"
+                        .to_string(),
+                )
+            }
+        }
     }
 }
 
@@ -25047,6 +25057,20 @@ mod copy_profile_secrets_for_tests {
             (0, 1),
             "the purge went to the active account instead of the one the profile left"
         );
+    }
+
+    /// The profile list named no account when it was read, but one exists
+    /// by the purge: nothing is removed, not the legacy vault either.
+    #[test]
+    fn a_purge_with_no_account_at_the_read_refuses_once_one_exists() {
+        let env = Accounts::new();
+        let key = "server_srv_late";
+        env.store.store(key, "password").unwrap();
+        let refused =
+            tauri::async_runtime::block_on(purge_profile_secrets("srv_late".into(), None, None));
+        let error = refused.expect_err("a purge with accounts present went on");
+        assert!(error.contains("no account"), "unexpected refusal: {error}");
+        assert!(env.store.get(key).is_ok(), "the secret was purged anyway");
     }
 
     /// The rows of `user` under `key`, counted without decrypting.

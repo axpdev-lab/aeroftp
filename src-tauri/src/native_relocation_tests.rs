@@ -1112,6 +1112,11 @@ fn the_session_index_keeps_no_session_uid() {
 
 /// The purge of profile `id` of the active account, as the window runs it.
 fn purge(id: &str, protocol: &str) -> Result<crate::PurgedProfileSecrets, String> {
+    // These purges name the account that was active when the profile left
+    // its list, the explicit form `purge_profile_secrets` asks for once
+    // accounts exist.
+    let store = CredentialStore::from_cache().unwrap();
+    let expected = crate::user_partitions::cli_get_active_user(&store)?.map(|user| user.id);
     tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -1119,7 +1124,7 @@ fn purge(id: &str, protocol: &str) -> Result<crate::PurgedProfileSecrets, String
         .block_on(crate::purge_profile_secrets(
             id.into(),
             Some(protocol.into()),
-            None,
+            expected,
         ))
 }
 
