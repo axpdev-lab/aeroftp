@@ -1404,7 +1404,7 @@ export function MyServersPanel({
     const handleDuplicate = useCallback(async (server: ServerProfile) => {
         try {
             const accountBefore = accountChangeGeneration();
-            const { profiles: currentServers, userId: profilesUserId, activeUserId, revision: profilesRevision } = await readSavedServerProfilesForWrite();
+            const { profiles: currentServers, userId: profilesUserId, activeUserId, ownerUnknown, revision: profilesRevision } = await readSavedServerProfilesForWrite();
             // From the list just read: the card clicked may be the previous account's.
             const source = currentServers.find(s => s.id === server.id);
             if (!source) return;
@@ -1434,11 +1434,17 @@ export function MyServersPanel({
             } catch (err) {
                 // The copy was not listed, so its secrets have no profile: they are
                 // removed from the account they were copied in, even after a switch.
-                await deleteProfileVaultSecrets(newId, source.protocol, profilesUserId ?? activeUserId)
-                    .then(({ failed }) => {
+                // With the owner unknown the active-account fallback could hit
+                // another account, so the cleanup is refused instead.
+                const cleanup = ownerUnknown && profilesUserId === undefined
+                    ? Promise.resolve({ failed: ['account-unknown'] as string[] }).then(({ failed }) => {
                         if (failed.length > 0) logger.warn('Secrets of the unsaved copy could not be removed', failed);
                     })
-                    .catch(e => logger.warn('Secrets of the unsaved copy could not be removed', e));
+                    : deleteProfileVaultSecrets(newId, source.protocol, profilesUserId ?? activeUserId)
+                        .then(({ failed }) => {
+                            if (failed.length > 0) logger.warn('Secrets of the unsaved copy could not be removed', failed);
+                        });
+                await cleanup.catch(e => logger.warn('Secrets of the unsaved copy could not be removed', e));
                 throw err;
             }
             // A switch meanwhile brings its own re-read: this list is the previous account's.
@@ -1553,7 +1559,7 @@ export function MyServersPanel({
     const confirmDelete = useCallback(async () => {
         try {
             if (!deleteTarget) return;
-            const { profiles: currentServers, userId: profilesUserId, activeUserId, revision: profilesRevision } = await readSavedServerProfilesForWrite();
+            const { profiles: currentServers, userId: profilesUserId, activeUserId, ownerUnknown, revision: profilesRevision } = await readSavedServerProfilesForWrite();
             const updated = currentServers.filter(s => s.id !== deleteTarget.id);
             setServers(await storeSavedServerProfiles(updated, false, profilesUserId, profilesRevision));
             // The profile is gone either way; secrets the purge could not
@@ -1568,7 +1574,13 @@ export function MyServersPanel({
                     },
                 }));
             };
-            deleteProfileVaultSecrets(deleteTarget.id, deleteTarget.protocol, profilesUserId ?? activeUserId)
+            // With the owner unknown the active-account fallback could purge
+            // another account's secrets, so the purge is refused and the
+            // residue is reported like any other purge failure.
+            const purge = ownerUnknown && profilesUserId === undefined
+                ? Promise.reject(new Error('account-unknown'))
+                : deleteProfileVaultSecrets(deleteTarget.id, deleteTarget.protocol, profilesUserId ?? activeUserId);
+            purge
                 .then(({ failed, protonSessionEndsAtUnlockOf: account }) => {
                     if (failed.length > 0) secretsLeft(failed);
                     if (!account) return;

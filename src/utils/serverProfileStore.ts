@@ -6,6 +6,7 @@ import { secureGet, secureStore } from './secureStorage';
 import {
     accountChangeGeneration,
     getUnlockStatus,
+    listUsers,
     loadActiveServerProfiles,
     loadActiveServerProfilesScoped,
     saveActiveServerProfiles,
@@ -138,6 +139,14 @@ export interface SavedProfilesRead {
      * purge runs.
      */
     activeUserId?: number;
+    /**
+     * True when the account owning a legacy-store read could not be
+     * established (the unlock status call failed while accounts exist, or
+     * the account list itself failed). A caller must not purge secrets with
+     * the active-account fallback: it would resolve whichever account is
+     * active when the purge runs, not the one the list was read under.
+     */
+    ownerUnknown?: boolean;
     revision?: string;
 }
 
@@ -171,9 +180,19 @@ export const readSavedServerProfilesForWrite = async (): Promise<SavedProfilesRe
             // secrets live under: capture it, so a purge after a switch does
             // not resolve the NEW active account instead.
             const status = await getUnlockStatus().catch(() => null);
+            // The status call failed: the active-account fallback is safe
+            // only when no accounts exist at all (the purge then resolves
+            // no account and reads the vault). With accounts present, or
+            // when even the list cannot be read, the owner stays unknown.
+            let ownerUnknown = false;
+            if (status === null) {
+                const accounts = await listUsers().catch(() => null);
+                ownerUnknown = accounts === null || accounts.length > 0;
+            }
             return {
                 profiles: legacy,
                 activeUserId: status?.activeUserId ?? undefined,
+                ownerUnknown,
                 revision: LEGACY_STORE_REVISION + JSON.stringify(legacy),
             };
         }

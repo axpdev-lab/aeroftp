@@ -412,6 +412,36 @@ describe('a list read from the legacy store', () => {
         expect(read.activeUserId).toBe(7);
         mockInvoke.mockReset();
     });
+
+    it('marks the owner unknown when the unlock status fails and accounts exist', async () => {
+        const legacy = [sampleProfile({ name: 'from the legacy store' })];
+        mockInvoke.mockImplementation(async (command: string) => {
+            if (command === 'user_partitions_load_active_server_profiles_scoped') throw new Error('STORE_NOT_READY');
+            if (command === 'get_credential') return JSON.stringify(legacy);
+            if (command === 'user_partitions_unlock_status') throw new Error('vault locked');
+            if (command === 'user_partitions_list_users') return [{ id: 3, name: 'a' }];
+            return undefined;
+        });
+        const read = await readSavedServerProfilesForWrite();
+        expect(read.profiles).toEqual(legacy);
+        expect(read.activeUserId).toBeUndefined();
+        expect(read.ownerUnknown).toBe(true);
+        mockInvoke.mockReset();
+    });
+
+    it('keeps the owner known-absent when the unlock status fails on a vault-only install', async () => {
+        const legacy = [sampleProfile({ name: 'from the legacy store' })];
+        mockInvoke.mockImplementation(async (command: string) => {
+            if (command === 'user_partitions_load_active_server_profiles_scoped') throw new Error('STORE_NOT_READY');
+            if (command === 'get_credential') return JSON.stringify(legacy);
+            if (command === 'user_partitions_unlock_status') throw new Error('vault locked');
+            if (command === 'user_partitions_list_users') return [];
+            return undefined;
+        });
+        const read = await readSavedServerProfilesForWrite();
+        expect(read.ownerUnknown).toBe(false);
+        mockInvoke.mockReset();
+    });
 });
 
 describe('a retry after another writer saved', () => {
