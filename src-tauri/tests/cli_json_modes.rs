@@ -192,12 +192,19 @@ fn import_warning_reports_keep_stdout_for_data() {
         "[proxied]\ntype = sftp\nhost = sftp.example.invalid\nuser = user\nsocks_proxy = localhost:9005\n",
     )
     .unwrap();
+    let s3cfg = dir.join(".s3cfg");
+    std::fs::write(
+        &s3cfg,
+        "[default]\naccess_key = DEMOKEY\nsecret_key = DEMOSECRET\nhost_base = s3.example.invalid\nhost_bucket = %(bucket)s.s3.example.invalid\nproxy_host = proxy.example.invalid\n",
+    )
+    .unwrap();
 
     for (source, path) in [
         ("filezilla", &sitemanager),
         ("winscp", &winscp),
         ("cyberduck", &cyberduck),
         ("rclone", &rclone),
+        ("s3cmd", &s3cfg),
     ] {
         let path = path.to_str().unwrap();
         let text = cli(dir, &["import", source, path]);
@@ -217,7 +224,57 @@ fn import_warning_reports_keep_stdout_for_data() {
         let report: serde_json::Value = serde_json::from_slice(&json.stdout)
             .unwrap_or_else(|err| panic!("{source}: invalid JSON {err}: {}", describe(&json)));
         assert_eq!(report["warnings"].as_array().unwrap().len(), 1, "{source}");
+        if source == "s3cmd" {
+            assert_eq!(
+                report
+                    .get("skipped")
+                    .and_then(|v| v.as_array())
+                    .map_or(0, Vec::len),
+                0,
+                "s3cmd warning case must have zero skipped entries"
+            );
+        }
     }
+
+    // Verify invalid rclone FTP password warning never echoes the plaintext
+    // password value in CLI text or JSON modes (#20).
+    let rclone_bad_pass = dir.join("bad-pass-rclone.conf");
+    let plain_pass_marker = "PlainRclonePassMarker!99";
+    std::fs::write(
+        &rclone_bad_pass,
+        format!(
+            "[badpass]\ntype = ftp\nhost = ftp.example.invalid\nuser = alice\npass = {plain_pass_marker}\n"
+        ),
+    )
+    .unwrap();
+    let bad_pass_path = rclone_bad_pass.to_str().unwrap();
+    let text_bad = cli(dir, &["import", "rclone", bad_pass_path]);
+    assert!(
+        text_bad.status.success(),
+        "rclone bad pass: {}",
+        describe(&text_bad)
+    );
+    let text_bad_out = String::from_utf8_lossy(&text_bad.stdout);
+    let text_bad_err = String::from_utf8_lossy(&text_bad.stderr);
+    assert!(!text_bad_out.contains("Warnings ("), "{text_bad_out}");
+    assert!(text_bad_err.contains("Warnings (1)"), "{text_bad_err}");
+    assert!(!text_bad_out.contains(plain_pass_marker));
+    assert!(!text_bad_err.contains(plain_pass_marker));
+
+    let json_bad = cli(dir, &["import", "rclone", bad_pass_path, "--json"]);
+    assert!(
+        json_bad.status.success(),
+        "rclone bad pass json: {}",
+        describe(&json_bad)
+    );
+    let json_bad_out = String::from_utf8_lossy(&json_bad.stdout);
+    let json_bad_err = String::from_utf8_lossy(&json_bad.stderr);
+    assert!(!json_bad_err.contains("Warnings ("), "{json_bad_err}");
+    assert!(!json_bad_out.contains(plain_pass_marker));
+    assert!(!json_bad_err.contains(plain_pass_marker));
+    let bad_report: serde_json::Value = serde_json::from_slice(&json_bad.stdout)
+        .unwrap_or_else(|err| panic!("rclone bad pass JSON {err}: {}", describe(&json_bad)));
+    assert_eq!(bad_report["warnings"].as_array().unwrap().len(), 1);
 
     // Verify WinSCP SSH tunnel warning survives CLI dispatch in both text and JSON
     // modes without leaking TunnelHostName or TunnelUserName.

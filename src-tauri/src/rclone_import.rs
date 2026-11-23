@@ -2998,8 +2998,12 @@ struct MappedSectionsOutcome {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct SubstitutionOverflow;
 
-/// Resolved transport flags for one rclone section (cached per `base_name` so
-/// aliases over a deeply nested dotted base do not repeat parent walks).
+/// Memoized `(section_name, key) -> flag outcome` table shared across dotted
+/// ancestor chains so resolving N distinct descendants visits each section at
+/// most once per transport key (`O(N)` instead of `O(N^2)`).
+type RcloneFlagMemo = HashMap<(String, &'static str), Result<Option<bool>, SubstitutionOverflow>>;
+
+/// Resolved transport flags for one rclone section.
 #[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
 struct EffectiveRcloneTransport {
     has_socks_proxy: bool,
@@ -3057,11 +3061,11 @@ fn goconfig_first_reference(value: &str) -> Option<&str> {
 /// `GOCONFIG_MAX_EXPANDED_BYTES` are `SubstitutionOverflow`: goconfig would
 /// hand rclone literal `%(..)s` text or crash, and the caller skips the remote
 /// rather than import it as a direct connection.
-fn expand_goconfig_substitutions(
-    owning_section: &RcloneRemote,
-    default_section: Option<&RcloneRemote>,
-    raw: &str,
-) -> Result<String, SubstitutionOverflow> {
+fn expand_goconfig_substitutions<'a>(
+    owning_section: &'a RcloneRemote,
+    default_section: Option<&'a RcloneRemote>,
+    raw: &'a str,
+) -> Result<std::borrow::Cow<'a, str>, SubstitutionOverflow> {
     let owning_is_default = default_section.is_some_and(|d| std::ptr::eq(d, owning_section));
     let mut lookups = 0usize;
     expand_goconfig_value(
@@ -3074,20 +3078,32 @@ fn expand_goconfig_substitutions(
     )
 }
 
-fn expand_goconfig_value(
-    owning_section: &RcloneRemote,
+fn expand_goconfig_value<'a>(
+    owning_section: &'a RcloneRemote,
     owning_is_default: bool,
-    default_section: Option<&RcloneRemote>,
-    raw: &str,
+    default_section: Option<&'a RcloneRemote>,
+    raw: &'a str,
     recursion: usize,
     lookups: &mut usize,
-) -> Result<String, SubstitutionOverflow> {
+) -> Result<std::borrow::Cow<'a, str>, SubstitutionOverflow> {
+    use std::borrow::Cow;
     if recursion > GOCONFIG_MAX_DEFAULT_RECURSION {
         return Err(SubstitutionOverflow);
     }
-    let mut value = raw.to_string();
+    // Enforce `GOCONFIG_MAX_EXPANDED_BYTES` on borrowed literals before
+    // cloning anything when no `%(name)s` reference is present.
+    if goconfig_first_reference(raw).is_none() {
+        if raw.len() > GOCONFIG_MAX_EXPANDED_BYTES {
+            return Err(SubstitutionOverflow);
+        }
+        return Ok(Cow::Borrowed(raw));
+    }
+    let mut value: Cow<'a, str> = Cow::Borrowed(raw);
     for _ in 0..GOCONFIG_DEPTH_VALUES {
         let Some(reference) = goconfig_first_reference(&value).map(str::to_string) else {
+            if value.len() > GOCONFIG_MAX_EXPANDED_BYTES {
+                return Err(SubstitutionOverflow);
+            }
             return Ok(value);
         };
         *lookups += 1;
@@ -3099,18 +3115,27 @@ fn expand_goconfig_value(
         let name = reference
             .trim_start_matches(['%', '('])
             .trim_end_matches([')', 's']);
-        let replacement = match default_section.and_then(|d| d.get(name).map(|v| (d, v))) {
-            Some((default, default_raw)) => expand_goconfig_value(
-                default,
-                true,
-                default_section,
-                default_raw,
-                recursion + 1,
-                lookups,
-            )?,
-            None if !owning_is_default => owning_section.get(name).cloned().unwrap_or_default(),
-            None => String::new(),
-        };
+        let replacement: Cow<'a, str> =
+            match default_section.and_then(|d| d.get(name).map(|v| (d, v))) {
+                Some((default, default_raw)) => expand_goconfig_value(
+                    default,
+                    true,
+                    default_section,
+                    default_raw,
+                    recursion + 1,
+                    lookups,
+                )?,
+                None if !owning_is_default => {
+                    let borrowed = owning_section.get(name).map(String::as_str).unwrap_or("");
+                    if borrowed.len() > GOCONFIG_MAX_EXPANDED_BYTES
+                        && goconfig_first_reference(borrowed).is_none()
+                    {
+                        return Err(SubstitutionOverflow);
+                    }
+                    Cow::Borrowed(borrowed)
+                }
+                None => Cow::Borrowed(""),
+            };
         // Enforce `GOCONFIG_MAX_EXPANDED_BYTES` before allocating the replaced
         // string so repeated references pointing at a long value cannot OOM.
         let occurrences = value.matches(&reference).count();
@@ -3128,61 +3153,85 @@ fn expand_goconfig_value(
         if projected_len > GOCONFIG_MAX_EXPANDED_BYTES {
             return Err(SubstitutionOverflow);
         }
-        value = value.replace(&reference, &replacement);
+        value = Cow::Owned(value.replace(&reference, &replacement));
     }
     match goconfig_first_reference(&value) {
         Some(_) => Err(SubstitutionOverflow),
+        None if value.len() > GOCONFIG_MAX_EXPANDED_BYTES => Err(SubstitutionOverflow),
         None => Ok(value),
     }
 }
 
-/// Resolve a key from `section_name` using rclone's goconfig dotted-parent
-/// lookup (`[a.b.c]` -> `[a.b]` -> `[a]`). Stops at the first section that
-/// explicitly defines `key` (including an empty override such as
-/// `socks_proxy =`) or when the immediate dotted parent section is absent,
-/// and resolves `%(var)s` substitutions (`[DEFAULT]` first, then owning section).
-fn effective_rclone_section_value(
+/// Resolve whether `key` is non-empty for `section_name` using rclone's
+/// goconfig dotted-parent lookup (`[a.b.c]` -> `[a.b]` -> `[a]`, and
+/// `[.team]` -> `[DEFAULT]` when stripping the trailing suffix yields `""`).
+/// Stops at the first section that explicitly defines `key` (including an empty
+/// override such as `socks_proxy =`) or when the immediate non-empty dotted
+/// parent section is absent, expands `%(var)s` substitutions (`[DEFAULT]`
+/// first, then owning section), and memoizes every visited `(section, key)`.
+fn effective_rclone_section_flag_memo(
+    memo: &mut RcloneFlagMemo,
     sections: &HashMap<String, RcloneRemote>,
     section_name: &str,
-    key: &str,
+    key: &'static str,
     section_hops: &mut usize,
-) -> Result<Option<String>, SubstitutionOverflow> {
+) -> Result<Option<bool>, SubstitutionOverflow> {
     let default_section = sections.get("DEFAULT");
-    let mut current = section_name;
-    loop {
+    let mut trail: Vec<&str> = Vec::new();
+    let mut current = if section_name.is_empty() {
+        "DEFAULT"
+    } else {
+        section_name
+    };
+    let outcome = loop {
+        if let Some(&cached) = memo.get(&(current.to_string(), key)) {
+            break cached;
+        }
         *section_hops += 1;
         let Some(section) = sections.get(current) else {
-            return Ok(None);
+            let res = Ok(None);
+            memo.insert((current.to_string(), key), res);
+            break res;
         };
         if let Some(value) = section.get(key) {
-            return expand_goconfig_substitutions(section, default_section, value).map(Some);
+            let res = expand_goconfig_substitutions(section, default_section, value)
+                .map(|expanded| Some(!expanded.trim().is_empty()));
+            memo.insert((current.to_string(), key), res);
+            break res;
         }
+        trail.push(current);
         let Some((parent, _)) = current.rsplit_once('.') else {
-            return Ok(None);
+            break Ok(None);
         };
-        current = parent;
+        // Match goconfig (`conf.go:179-185`): stripping `.suffix` from a
+        // leading-dot section like `[.team]` leaves `""`, which aliases
+        // `[DEFAULT]`. Non-empty missing parents still stop lookup above.
+        current = if parent.is_empty() { "DEFAULT" } else { parent };
+    };
+    for ancestor in trail {
+        memo.insert((ancestor.to_string(), key), outcome);
     }
+    outcome
 }
 
-/// Resolve and cache the three transport-warning flags (`socks_proxy`,
-/// `http_proxy`, `ssh`) for `base_name`.
+/// Resolve and memoize the transport-warning flags (`socks_proxy`,
+/// `http_proxy`, and `ssh` only when `include_ssh` is true for SFTP) for
+/// `base_name`.
 fn resolve_rclone_transport_cached(
-    cache: &mut HashMap<String, EffectiveRcloneTransport>,
+    memo: &mut RcloneFlagMemo,
     sections: &HashMap<String, RcloneRemote>,
     app_section: &RcloneRemote,
     base_name: &str,
     source: ImportSourceKind,
+    include_ssh: bool,
     section_hops: &mut usize,
 ) -> EffectiveRcloneTransport {
-    if let Some(&cached) = cache.get(base_name) {
-        return cached;
-    }
     let mut overflow = false;
-    let mut is_active = |key: &str, hops: &mut usize| -> bool {
+    let mut is_active = |key: &'static str, hops: &mut usize| -> bool {
         match source {
             ImportSourceKind::RcloneFile => {
-                match effective_rclone_section_value(sections, base_name, key, hops) {
-                    Ok(val) => val.is_some_and(|value| !value.trim().is_empty()),
+                match effective_rclone_section_flag_memo(memo, sections, base_name, key, hops) {
+                    Ok(val) => val.unwrap_or(false),
                     Err(SubstitutionOverflow) => {
                         overflow = true;
                         false
@@ -3194,14 +3243,16 @@ fn resolve_rclone_transport_cached(
                 .is_some_and(|value| !value.trim().is_empty()),
         }
     };
-    let resolved = EffectiveRcloneTransport {
+    EffectiveRcloneTransport {
         has_socks_proxy: is_active("socks_proxy", section_hops),
         has_http_proxy: is_active("http_proxy", section_hops),
-        has_external_ssh: is_active("ssh", section_hops),
+        has_external_ssh: if include_ssh {
+            is_active("ssh", section_hops)
+        } else {
+            false
+        },
         substitution_overflow: overflow,
-    };
-    cache.insert(base_name.to_string(), resolved);
-    resolved
+    }
 }
 
 fn import_parsed_sections(
@@ -3224,7 +3275,7 @@ fn import_parsed_sections(
     let mut servers = Vec::new();
     let mut skipped = Vec::new();
     let mut warnings = Vec::new();
-    let mut transport_cache: HashMap<String, EffectiveRcloneTransport> = HashMap::new();
+    let mut transport_cache: RcloneFlagMemo = HashMap::new();
     let mut _transport_hops = 0usize;
     let mut provider_secrets: HashMap<String, crate::profile_export::ProviderSecrets> =
         HashMap::new();
@@ -3330,17 +3381,27 @@ fn import_parsed_sections(
         match mapped {
             Ok((mapped, base_name)) => {
                 if matches!(mapped.protocol.as_str(), "ftp" | "ftps" | "sftp") {
+                    let include_ssh = mapped.protocol == "sftp";
                     let transport = resolve_rclone_transport_cached(
                         &mut transport_cache,
                         raw_sections.unwrap_or(&sections),
                         app_section,
                         &base_name,
                         source,
+                        include_ssh,
                         &mut _transport_hops,
                     );
+                    let report_name = match source {
+                        ImportSourceKind::RcloneFile => {
+                            crate::bridge_shared::sanitize_warning_name(name, "rclone remote")
+                        }
+                        // Template mode resolves `block_start_lines` by raw
+                        // section name first, then sanitizes `name` on output.
+                        ImportSourceKind::Template => name.clone(),
+                    };
                     if transport.substitution_overflow {
                         skipped.push(RcloneSkippedRemote {
-                            name: name.clone(),
+                            name: report_name,
                             rclone_type: rclone_type.to_string(),
                             reason: format!(
                                 "{source_name} transport option (`socks_proxy`, `http_proxy`, or `ssh`) exceeded substitution expansion limits; skipped so AeroFTP does not import it as a direct connection"
@@ -3354,9 +3415,9 @@ fn import_parsed_sections(
                     // server or jump host) and bypasses its internal proxy dialer.
                     // Skip with a reason rather than saving a profile that could
                     // connect to the wrong host. Never echo or run the command.
-                    if mapped.protocol == "sftp" && transport.has_external_ssh {
+                    if include_ssh && transport.has_external_ssh {
                         skipped.push(RcloneSkippedRemote {
-                            name: name.clone(),
+                            name: report_name,
                             rclone_type: rclone_type.to_string(),
                             reason: format!(
                                 "{source_name} uses an external ssh command (`ssh`) that can target a different host or login than the profile fields; skipped so AeroFTP does not connect to the wrong server. Create the direct SFTP profile manually if needed"
@@ -3367,18 +3428,16 @@ fn import_parsed_sections(
                     // `backend/ftp/ftp.go:465-480` and `backend/sftp/sftp.go`:
                     // when both `socks_proxy` and `http_proxy` are non-empty,
                     // rclone dials SOCKS5 only and does not fall back to HTTP CONNECT.
-                    let warn_name =
-                        crate::bridge_shared::sanitize_warning_name(name, "rclone remote");
                     if transport.has_socks_proxy {
                         warnings.push(RcloneImportWarning {
-                            name: warn_name,
+                            name: report_name,
                             reason: format!(
                                 "{source_name} uses a SOCKS5 proxy (`socks_proxy`) for this remote; the proxy is not imported and AeroFTP will connect directly"
                             ),
                         });
                     } else if transport.has_http_proxy {
                         warnings.push(RcloneImportWarning {
-                            name: warn_name,
+                            name: report_name,
                             reason: format!(
                                 "{source_name} uses an HTTP CONNECT proxy (`http_proxy`) for this remote; the proxy is not imported and AeroFTP will connect directly"
                             ),
@@ -3387,11 +3446,15 @@ fn import_parsed_sections(
                 }
                 if let Some(reason) = &mapped.credential_warning {
                     let clean_reason = reason.clone();
-                    let warn_name =
+                    let safe_log_name =
                         crate::bridge_shared::sanitize_warning_name(name, "rclone remote");
-                    tracing::warn!("{} block '{}': {}", log_prefix, warn_name, clean_reason);
+                    tracing::warn!("{} block '{}': {}", log_prefix, safe_log_name, clean_reason);
+                    let report_name = match source {
+                        ImportSourceKind::RcloneFile => safe_log_name,
+                        ImportSourceKind::Template => name.clone(),
+                    };
                     warnings.push(RcloneImportWarning {
-                        name: warn_name,
+                        name: report_name,
                         reason: clean_reason,
                     });
                 }
@@ -3466,8 +3529,14 @@ fn import_parsed_sections(
                 });
             }
             Err(reason) => {
+                let report_name = match source {
+                    ImportSourceKind::RcloneFile => {
+                        crate::bridge_shared::sanitize_warning_name(name, "rclone remote")
+                    }
+                    ImportSourceKind::Template => name.clone(),
+                };
                 skipped.push(RcloneSkippedRemote {
-                    name: name.clone(),
+                    name: report_name,
                     rclone_type: rclone_type.to_string(),
                     reason,
                 });
@@ -3485,37 +3554,51 @@ fn import_parsed_sections(
 }
 
 /// Split one `Unknwon/goconfig` (`read.go`) key/value assignment on its first
-/// unquoted `=` or `:`, stripping matching outer `"` or `` ` `` quotes from the
-/// key while preserving exact key case and value text.
+/// unquoted `=` or `:`, unquoting keys wrapped in `"""..."""`, `"..."`, or
+/// `` `...` `` and values wrapped in `"""..."""` or `` `...` `` (matching live
+/// `rclone v1.75.2 config dump`) while preserving exact key case.
 fn split_goconfig_assignment(line: &str) -> Option<(String, String)> {
     let trimmed = line.trim();
     if trimmed.is_empty() {
         return None;
     }
     let bytes = trimmed.as_bytes();
-    let delim = if matches!(bytes[0], b'"' | b'`') {
+    let (key, delim) = if let Some(after_open) = trimmed.strip_prefix("\"\"\"") {
+        let close_rel = after_open.find("\"\"\"")?;
+        let key = &after_open[..close_rel];
+        let after_close = &after_open[close_rel + 3..];
+        let rel = after_close.find(['=', ':'])?;
+        if !after_close[..rel].trim().is_empty() {
+            return None;
+        }
+        (key, 3 + close_rel + 3 + rel)
+    } else if matches!(bytes[0], b'"' | b'`') {
         let quote = bytes[0];
         let close = trimmed[1..].find(char::from(quote))? + 1;
+        let key = &trimmed[1..close];
         let rest = &trimmed[close + 1..];
         let rel = rest.find(['=', ':'])?;
-        close + 1 + rel
+        if !rest[..rel].trim().is_empty() {
+            return None;
+        }
+        (key, close + 1 + rel)
     } else {
-        trimmed.find(['=', ':'])?
-    };
-    let raw_key = trimmed[..delim].trim();
-    let key = if raw_key.len() >= 2
-        && ((raw_key.starts_with('"') && raw_key.ends_with('"'))
-            || (raw_key.starts_with('`') && raw_key.ends_with('`')))
-    {
-        &raw_key[1..raw_key.len() - 1]
-    } else {
-        raw_key
+        let delim = trimmed.find(['=', ':'])?;
+        (trimmed[..delim].trim(), delim)
     };
     if key.is_empty() {
         return None;
     }
-    let value = trimmed[delim + 1..].trim().to_string();
-    Some((key.to_string(), value))
+    let raw_val = trimmed[delim + 1..].trim();
+    let value =
+        if raw_val.len() >= 6 && raw_val.starts_with("\"\"\"") && raw_val.ends_with("\"\"\"") {
+            &raw_val[3..raw_val.len() - 3]
+        } else if raw_val.len() >= 2 && raw_val.starts_with('`') && raw_val.ends_with('`') {
+            &raw_val[1..raw_val.len() - 1]
+        } else {
+            raw_val
+        };
+    Some((key.to_string(), value.to_string()))
 }
 
 /// Parse `rclone.conf` using `Unknwon/goconfig` `read.go` grammar for transport
@@ -3877,7 +3960,7 @@ pub(crate) fn evaluate_template_text(
         .into_iter()
         .map(|s| TemplateSkippedBlock {
             start_line: block_start_lines.get(&s.name).copied().unwrap_or(1),
-            name: s.name,
+            name: crate::bridge_shared::sanitize_warning_name(&s.name, "rclone remote"),
             backend_type: s.rclone_type,
             reason: s.reason,
         })
@@ -3888,7 +3971,7 @@ pub(crate) fn evaluate_template_text(
         .into_iter()
         .map(|w| TemplateBlockWarning {
             start_line: block_start_lines.get(&w.name).copied().unwrap_or(1),
-            name: w.name,
+            name: crate::bridge_shared::sanitize_warning_name(&w.name, "rclone remote"),
             reason: w.reason,
         })
         .collect();
@@ -7734,7 +7817,7 @@ http_proxy =
         let cleared_name = format!("{deep_base}.cleared");
         sections.insert(cleared_name.clone(), cleared);
 
-        let mut cache = HashMap::new();
+        let mut cache: RcloneFlagMemo = HashMap::new();
         let mut hops = 0usize;
         let deep_sec = &sections[&deep_base];
         for _ in 0..200 {
@@ -7744,6 +7827,7 @@ http_proxy =
                 deep_sec,
                 &deep_base,
                 ImportSourceKind::RcloneFile,
+                true,
                 &mut hops,
             );
             assert!(t.has_socks_proxy);
@@ -7764,11 +7848,263 @@ http_proxy =
             cleared_sec,
             &cleared_name,
             ImportSourceKind::RcloneFile,
+            true,
             &mut hops,
         );
         assert!(
             !cleared_t.has_socks_proxy,
             "explicit empty child override must stay cleared"
+        );
+    }
+
+    #[test]
+    fn dotted_descendants_memoize_ancestors_in_linear_hops() {
+        let mut sections: HashMap<String, RcloneRemote> = HashMap::new();
+        let mut root = RcloneRemote::new();
+        root.insert("type".into(), "sftp".into());
+        root.insert("host".into(), "base.example.com".into());
+        root.insert("socks_proxy".into(), "localhost:9005".into());
+        sections.insert("chain".into(), root);
+
+        let mut names = vec!["chain".to_string()];
+        let mut cur = "chain".to_string();
+        for level in 1..=50 {
+            cur.push_str(&format!(".d{level}"));
+            let mut sec = RcloneRemote::new();
+            sec.insert("type".into(), "sftp".into());
+            sec.insert("host".into(), format!("h{level}.example.com"));
+            sections.insert(cur.clone(), sec);
+            names.push(cur.clone());
+        }
+
+        let mut memo: RcloneFlagMemo = HashMap::new();
+        let mut hops = 0usize;
+        // Walk all 51 distinct descendants from deepest up to root: each
+        // (section, key) must be visited at most once (51 * 3 = 153 hops,
+        // rather than quadratic 51*52/2*3 = 3978).
+        for name in names.iter().rev() {
+            let t = resolve_rclone_transport_cached(
+                &mut memo,
+                &sections,
+                &sections[name],
+                name,
+                ImportSourceKind::RcloneFile,
+                true,
+                &mut hops,
+            );
+            assert!(t.has_socks_proxy);
+            assert!(!t.has_http_proxy);
+            assert!(!t.has_external_ssh);
+        }
+        assert_eq!(
+            hops,
+            names.len() * 3,
+            "expected strictly linear ancestor memoization, got {hops} hops"
+        );
+    }
+
+    #[test]
+    fn goconfig_oversized_literal_rejects_before_cloning() {
+        let huge = "a".repeat(GOCONFIG_MAX_EXPANDED_BYTES + 1024);
+        let mut default_sec = RcloneRemote::new();
+        default_sec.insert("huge".into(), huge.clone());
+        let mut owning = RcloneRemote::new();
+        owning.insert("local_huge".into(), huge.clone());
+
+        assert_eq!(
+            expand_goconfig_substitutions(&owning, Some(&default_sec), "%(huge)s"),
+            Err(SubstitutionOverflow)
+        );
+        assert_eq!(
+            expand_goconfig_substitutions(&owning, None, "%(local_huge)s"),
+            Err(SubstitutionOverflow)
+        );
+        assert_eq!(
+            expand_goconfig_substitutions(&owning, None, &huge),
+            Err(SubstitutionOverflow)
+        );
+    }
+
+    #[test]
+    fn leading_dot_section_inherits_default_while_missing_parent_stops() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("rclone.conf");
+        std::fs::write(
+            &path,
+            "\
+[DEFAULT]
+ssh = ssh jump.example.test
+
+[.team]
+type = sftp
+host = team.example.test
+user = alice
+
+[.team.cleared]
+type = sftp
+host = cleared.example.test
+user = alice
+ssh =
+
+[base]
+type = sftp
+host = base.example.test
+user = alice
+ssh = ssh base-jump.example.test
+
+[base.orphan.leaf]
+type = sftp
+host = leaf.example.test
+user = alice
+",
+        )
+        .unwrap();
+        let res = import_rclone(&path).unwrap();
+        let imported: Vec<&str> = res.servers.iter().map(|s| s.name.as_str()).collect();
+        let skipped: Vec<&str> = res.skipped.iter().map(|s| s.name.as_str()).collect();
+        assert!(skipped.contains(&".team"), "skipped: {skipped:?}");
+        assert!(
+            imported.contains(&".team.cleared"),
+            "imported: {imported:?}"
+        );
+        assert!(
+            imported.contains(&"base.orphan.leaf"),
+            "missing intermediate parent must stop lookup: {imported:?}"
+        );
+    }
+
+    #[test]
+    fn ftp_remote_ignores_unused_cyclic_ssh_while_sftp_skips() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("rclone.conf");
+        std::fs::write(
+            &path,
+            "\
+[ftp-with-cyclic-ssh]
+type = ftp
+host = ftp.example.test
+user = alice
+ssh = %(ssh)s
+
+[sftp-with-cyclic-ssh]
+type = sftp
+host = sftp.example.test
+user = alice
+ssh = %(ssh)s
+",
+        )
+        .unwrap();
+        let res = import_rclone(&path).unwrap();
+        assert!(res.servers.iter().any(|s| s.name == "ftp-with-cyclic-ssh"));
+        assert!(res.skipped.iter().any(|s| s.name == "sftp-with-cyclic-ssh"));
+    }
+
+    #[test]
+    fn goconfig_triple_quoted_keys_and_backtick_or_triple_quoted_values() {
+        assert_eq!(
+            split_goconfig_assignment(r#""""ssh""" = ssh alice@files.example.test"#),
+            Some(("ssh".into(), "ssh alice@files.example.test".into()))
+        );
+        assert_eq!(
+            split_goconfig_assignment("ssh = ``"),
+            Some(("ssh".into(), String::new()))
+        );
+        assert_eq!(
+            split_goconfig_assignment(r#"ssh = """""""#),
+            Some(("ssh".into(), String::new()))
+        );
+        assert_eq!(
+            split_goconfig_assignment(r#"ssh = """ssh alice@files.example.test""""#),
+            Some(("ssh".into(), "ssh alice@files.example.test".into()))
+        );
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("rclone.conf");
+        std::fs::write(
+            &path,
+            "\
+[parent]
+type = sftp
+host = parent.example.test
+user = alice
+\"\"\"ssh\"\"\" = ssh jump.example.test
+
+[parent.backtick-clear]
+type = sftp
+host = bt.example.test
+user = alice
+ssh = ``
+
+[parent.triple-clear]
+type = sftp
+host = tq.example.test
+user = alice
+ssh = \"\"\"\"\"\"
+",
+        )
+        .unwrap();
+        let res = import_rclone(&path).unwrap();
+        assert!(res.skipped.iter().any(|s| s.name == "parent"));
+        assert!(res
+            .servers
+            .iter()
+            .any(|s| s.name == "parent.backtick-clear"));
+        assert!(res.servers.iter().any(|s| s.name == "parent.triple-clear"));
+    }
+
+    #[test]
+    fn rclone_skipped_entries_sanitize_url_shaped_section_names() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("rclone.conf");
+        let ssh_secret = "RcloneSkipSshSecret11";
+        let ovf_secret = "RcloneSkipOvfSecret22";
+        let ssh_sec = format!("sftp://alice:{ssh_secret}@files.example.test");
+        let ovf_sec = format!("sftp://bob:{ovf_secret}@files.example.test");
+        std::fs::write(
+            &path,
+            format!(
+                "\
+[{ssh_sec}]
+type = sftp
+host = files.example.test
+user = alice
+ssh = ssh jump.example.test
+
+[{ovf_sec}]
+type = sftp
+host = files.example.test
+user = bob
+socks_proxy = %(socks_proxy)s
+"
+            ),
+        )
+        .unwrap();
+        let res = import_rclone(&path).unwrap();
+        assert_eq!(res.skipped.len(), 2);
+        let serialized = serde_json::to_string(&(&res.skipped, &res.warnings)).unwrap();
+        for secret in [ssh_secret, ovf_secret] {
+            assert!(
+                !serialized.contains(secret),
+                "secret {secret} leaked in rclone skipped report: {serialized}"
+            );
+        }
+
+        // Template mode must preserve the real start_line while sanitizing
+        // TemplateSkippedBlock.name as well.
+        let tpl_secret = "TplSkipSecret33";
+        let tpl_sec = format!("sftp://carol:{tpl_secret}@files.example.test");
+        let tpl = format!(
+            "\n\n[{tpl_sec}]\ntype = sftp\nhost = files.example.test\nuser = carol\nssh = ssh jump.example.test\n"
+        );
+        let tpl_out =
+            evaluate_template_text(&tpl, None, "test.tpl", &TemplateSecretPolicy::default())
+                .unwrap();
+        assert_eq!(tpl_out.skipped.len(), 1);
+        assert_eq!(tpl_out.skipped[0].start_line, 3);
+        let tpl_json = serde_json::to_string(&(&tpl_out.skipped, &tpl_out.warnings)).unwrap();
+        assert!(
+            !tpl_json.contains(tpl_secret),
+            "template skipped report leaked secret: {tpl_json}"
         );
     }
 
