@@ -2406,9 +2406,30 @@ fn apply_profile_decisions(
             let expected = match (vault_value, restored_row) {
                 (Some(v), _) => Some(Some(v.as_str())),
                 (None, Some(row)) => Some(row.as_ref().map(|v| v.as_str())),
-                (None, None) => step_vault
-                    .as_ref()
-                    .map(|prior| prior.as_ref().map(|token| token.as_str())),
+                (None, None) => {
+                    // A "Skip existing" foreign private token is guarded by
+                    // the post-publish sweep against the value the plan
+                    // read: an operation that removes it must decline
+                    // against that same value, not what the step found in
+                    // the vault, or it would delete a newer writer's value
+                    // the sweep just kept. A write of the backup's token
+                    // still compares against the vault as it is.
+                    let planned = if value.is_none() {
+                        inputs
+                            .vault_foreign_private
+                            .iter()
+                            .find(|(k, _)| k == key)
+                            .map(|(_, v)| v.as_str())
+                    } else {
+                        None
+                    };
+                    match planned {
+                        Some(planned) => Some(Some(planned)),
+                        None => step_vault
+                            .as_ref()
+                            .map(|prior| prior.as_ref().map(|token| token.as_str())),
+                    }
+                }
             };
             let accepted = row_accepts(key, None);
             let accepted: Option<Vec<Option<&str>>> = accepted.as_ref().map(|rows| {
@@ -3130,6 +3151,8 @@ fn import_keystore_with_store(
     // and would read that foreign value as its own. Where the receiver reads
     // the vault for private tokens, the entry goes, but only while it still
     // holds the value the plan read; one another writer moved stays.
+    #[cfg(test)]
+    tests::run_before_foreign_token_sweep(store);
     if partition_in_restore {
         if let Some((inputs, _)) = &profile_plan {
             if reads_vault_tokens(inputs.receiver) {
@@ -3603,6 +3626,11 @@ mod tests {
         /// that stores while the import runs.
         static BEFORE_PROFILE_DECISIONS: std::cell::RefCell<Option<StoreHook>> =
             std::cell::RefCell::new(None);
+        /// Runs once, right before the post-publish sweep of foreign vault
+        /// tokens: a writer that stores between the plan's read and the
+        /// sweep.
+        static BEFORE_FOREIGN_TOKEN_SWEEP: std::cell::RefCell<Option<StoreHook>> =
+            std::cell::RefCell::new(None);
     }
 
     /// A writer run against the store at a point of the import.
@@ -3707,10 +3735,22 @@ mod tests {
         }
     }
 
+    pub(super) fn run_before_foreign_token_sweep(store: &crate::credential_store::CredentialStore) {
+        if let Some(hook) = BEFORE_FOREIGN_TOKEN_SWEEP.with(|hook| hook.borrow_mut().take()) {
+            hook(store);
+        }
+    }
+
     fn before_profile_decisions(
         hook: impl FnOnce(&crate::credential_store::CredentialStore) + 'static,
     ) {
         BEFORE_PROFILE_DECISIONS.with(|slot| *slot.borrow_mut() = Some(Box::new(hook)));
+    }
+
+    fn before_foreign_token_sweep(
+        hook: impl FnOnce(&crate::credential_store::CredentialStore) + 'static,
+    ) {
+        BEFORE_FOREIGN_TOKEN_SWEEP.with(|slot| *slot.borrow_mut() = Some(Box::new(hook)));
     }
 
     thread_local! {
@@ -5951,7 +5991,9 @@ mod tests {
     /// belongs to another account than the restored receiver: once the
     /// backup's partition is published its owner has no row and would read
     /// that foreign token as its own, so the import deletes the vault entry
-    /// while it still holds the value the plan read.
+    /// while it still holds the value the plan read. The backup carries no
+    /// token for the key, so the profile is unchanged and the plan emits no
+    /// operation: only the post-publish sweep can remove it.
     #[test]
     fn a_kept_vault_token_of_another_identity_is_removed_after_the_publish() {
         let _guard = crate::user_partitions::test_lock();
@@ -5972,9 +6014,6 @@ mod tests {
             "config_server_profiles".to_string(),
             serde_json::to_string(&list).unwrap(),
         );
-        payload
-            .vault_entries
-            .insert(key.to_string(), "backup-token".to_string());
         payload.sqlite_dumps.insert(
             "user_partitions.db".to_string(),
             snapshot_sqlite_db(&source_db).unwrap().unwrap(),
@@ -6005,6 +6044,58 @@ mod tests {
             ),
             "the foreign token must not stay readable by the restored owner"
         );
+    }
+
+    /// The backup carries its own token, so the profile is changed and
+    /// "Skip existing" rejects it: the plan emits an operation that removes
+    /// the key. A writer that stores `other-writer` after the plan read but
+    /// before the sweep must survive both the sweep and that Reject, which
+    /// declines against the value the plan read, not the one the step
+    /// found.
+    #[test]
+    fn a_reject_of_a_changed_profile_keeps_a_token_rewritten_after_the_plan() {
+        let _guard = crate::user_partitions::test_lock();
+        crate::user_partitions::clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let cfg = dir.path().join("config");
+        let key = "oauth_dropbox_srv_drive";
+        let list = [dropbox("srv_drive", "Drive")];
+        partition_with(&store, &cfg, &list);
+        store.store(key, "local-token").unwrap();
+        let source_cfg = dir.path().join("source");
+        partition_with(&store, &source_cfg, &list);
+        let source_db = source_cfg.join("user_partitions.db");
+        let mut payload = ExportPayload::default();
+        payload.vault_entries.insert(
+            "config_server_profiles".to_string(),
+            serde_json::to_string(&list).unwrap(),
+        );
+        payload
+            .vault_entries
+            .insert(key.to_string(), "backup-token".to_string());
+        payload.sqlite_dumps.insert(
+            "user_partitions.db".to_string(),
+            snapshot_sqlite_db(&source_db).unwrap().unwrap(),
+        );
+        let backup = dir.path().join("changed.aeroftp-keystore");
+        seal_backup(&backup, PASSWORD_736, &payload);
+        before_foreign_token_sweep(move |store| {
+            store.store(key, "other-writer").unwrap();
+        });
+
+        import_keystore_with_store(
+            &store,
+            PASSWORD_736,
+            &backup,
+            "skip_existing",
+            ImportSections::default(),
+            Some(&cfg),
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(store.get(key).unwrap(), "other-writer");
     }
 
     /// The same restore for the same owner keeps the token: the backup's
