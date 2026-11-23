@@ -159,13 +159,32 @@ fn map_duck(xml: &str) -> DuckOutcome {
     let field = |k: &str| crate::bridge_shared::plist_field(xml, k);
 
     // The protocol is a name from a fixed set, so it is read without the
-    // spaces at its ends; every other field is read as written (`plist_field`).
+    // spaces at its ends. Other fields keep their source spelling; a URL-shaped
+    // Hostname is reduced to its safe authority below.
     let protocol_raw = match field("Protocol").map(|p| p.trim().to_lowercase()) {
         Some(p) if !p.is_empty() => p,
         _ => return DuckOutcome::NotABookmark,
     };
 
-    let hostname = field("Hostname").unwrap_or_default();
+    let raw_hostname = field("Hostname").unwrap_or_default();
+    let hostname = if raw_hostname.contains("://")
+        || raw_hostname.contains('@')
+        || raw_hostname.contains('?')
+        || raw_hostname.contains('#')
+        || raw_hostname.contains('/')
+    {
+        match crate::bridge_shared::try_endpoint_host(&raw_hostname) {
+            Some(host) => host,
+            None => {
+                return DuckOutcome::Skip {
+                    kind: protocol_raw,
+                    reason: "invalid or ambiguous Hostname".into(),
+                }
+            }
+        }
+    } else {
+        raw_hostname
+    };
     let username = field("Username").unwrap_or_default();
     let region = field("Region");
     let path = field("Path").filter(|s| !s.is_empty());
@@ -311,10 +330,13 @@ fn map_duck(xml: &str) -> DuckOutcome {
             reason: "OAuth: provider-issued token, manual re-auth".into(),
         },
 
-        other => DuckOutcome::Skip {
-            kind: other.to_string(),
-            reason: format!("unsupported Cyberduck protocol: {other}"),
-        },
+        other => {
+            let kind = crate::bridge_shared::sanitize_warning_name(other, "unknown");
+            DuckOutcome::Skip {
+                reason: format!("unsupported Cyberduck protocol: {kind}"),
+                kind,
+            }
+        }
     }
 }
 
@@ -324,6 +346,7 @@ fn map_duck(xml: &str) -> DuckOutcome {
 fn bookmark_name(xml: &str) -> String {
     crate::bridge_shared::plist_field(xml, "Nickname")
         .filter(|s| !s.is_empty())
+        .map(|name| crate::bridge_shared::sanitize_warning_name(&name, "Cyberduck bookmark"))
         .or_else(|| {
             crate::bridge_shared::plist_field(xml, "Hostname")
                 .filter(|s| !s.is_empty())
@@ -473,10 +496,12 @@ pub fn import_cyberduck(path: &Path) -> Result<CyberduckImportResult, String> {
                 Err(e) => {
                     total_remotes += 1;
                     skipped.push(CyberduckSkippedRemote {
-                        name: p
-                            .file_name()
-                            .map(|s| s.to_string_lossy().into_owned())
-                            .unwrap_or_else(|| p.display().to_string()),
+                        name: crate::bridge_shared::sanitize_warning_name(
+                            &p.file_name()
+                                .map(|s| s.to_string_lossy().into_owned())
+                                .unwrap_or_else(|| p.display().to_string()),
+                            "Cyberduck bookmark",
+                        ),
                         kind: "unreadable".into(),
                         reason: format!("read .duck: {e}"),
                     });
@@ -901,7 +926,10 @@ mod tests {
         assert_eq!(result.warnings.len(), 1);
         assert_eq!(result.warnings[0].name, "ftp.example.com");
         assert!(result.warnings[0].reason.contains("active FTP"));
-        let serialized = serde_json::to_string(&result.warnings).unwrap();
+        assert_eq!(result.servers[0].name, "ftp.example.com");
+        assert_eq!(result.servers[0].host, "ftp.example.com");
+        let serialized =
+            serde_json::to_string(&(&result.servers, &result.skipped, &result.warnings)).unwrap();
         for secret in [user, pw, tok] {
             assert!(
                 !serialized.contains(secret),
@@ -909,16 +937,18 @@ mod tests {
             );
         }
 
-        // Ambiguous Hostname falls back to generic bookmark label without leaking credentials.
+        // Ambiguous Hostname is skipped with a generic bookmark label.
         let amb_pw = "pa/ssSecret";
         let amb_xml = format!(
             r#"<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>Protocol</key><string>ftp</string><key>Hostname</key><string>ftp://{user}:{amb_pw}@ftp.example.com</string><key>Port</key><integer>21</integer><key>Username</key><string>user</string><key>FTP Connect Mode</key><string>active</string></dict></plist>"#
         );
         let amb_path = write_tmp("unnamed-amb.duck", &amb_xml);
         let amb_result = import_cyberduck(&amb_path).unwrap();
-        assert_eq!(amb_result.warnings.len(), 1);
-        assert_eq!(amb_result.warnings[0].name, "Cyberduck bookmark");
-        let amb_json = serde_json::to_string(&amb_result.warnings).unwrap();
+        assert!(amb_result.servers.is_empty());
+        assert!(amb_result.warnings.is_empty());
+        assert_eq!(amb_result.skipped.len(), 1);
+        assert_eq!(amb_result.skipped[0].name, "Cyberduck bookmark");
+        let amb_json = serde_json::to_string(&amb_result.skipped).unwrap();
         for secret in [user, "pa/ss", "ssSecret"] {
             assert!(
                 !amb_json.contains(secret),
@@ -934,7 +964,13 @@ mod tests {
         let nick_result = import_cyberduck(&nick_path).unwrap();
         assert_eq!(nick_result.warnings.len(), 1);
         assert_eq!(nick_result.warnings[0].name, "ftp.example.com");
-        let nick_json = serde_json::to_string(&nick_result.warnings).unwrap();
+        assert_eq!(nick_result.servers[0].name, "ftp.example.com");
+        let nick_json = serde_json::to_string(&(
+            &nick_result.servers,
+            &nick_result.skipped,
+            &nick_result.warnings,
+        ))
+        .unwrap();
         for secret in [user, pw, tok] {
             assert!(
                 !nick_json.contains(secret),

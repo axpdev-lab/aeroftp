@@ -298,6 +298,17 @@ pub(crate) fn safe_host_label(raw: &str, fallback: &str) -> String {
         .unwrap_or_else(|| fallback.to_string())
 }
 
+fn token_may_carry_connection_string_secrets(tok: &str) -> bool {
+    let Some((_, parameters)) = tok.split_once(',') else {
+        return false;
+    };
+    parameters.split(',').any(|parameter| {
+        parameter
+            .split_once('=')
+            .is_some_and(|(key, _)| !key.trim().is_empty())
+    })
+}
+
 fn token_may_carry_url_secrets(tok: &str) -> bool {
     if tok.contains("://") {
         return true;
@@ -316,27 +327,31 @@ fn token_may_carry_url_secrets(tok: &str) -> bool {
 }
 
 /// Sanitize a site/session/remote name before placing it in a serialized
-/// `*ImportWarning` or skip entry. Ordinary human names (e.g. `"Production"`,
-/// `"My NAS"`, `"Ops (alice@corp.example)"`, `"s3cmd s3.example.com:9000"`)
-/// are preserved unchanged. Single-token URL/credential/query names strip
-/// userinfo and query parameters via [`safe_host_label`]; any name containing
-/// whitespace together with URL/credential markers (such as a percent-decoded
-/// password containing a space) is replaced as a whole with `fallback` so no
-/// trailing password fragment can survive.
+/// profile, `*ImportWarning` or skip entry. Ordinary human names (e.g.
+/// `"Production"`, `"My NAS"`, `"Ops (alice@corp.example)"`,
+/// `"s3cmd s3.example.com:9000"`) are preserved unchanged. Single-token
+/// URL/credential/query names strip userinfo and query parameters via
+/// [`safe_host_label`]. Connection-string labels and names containing
+/// whitespace together with secret markers are replaced as a whole with
+/// `fallback`, so no parameter value or trailing password fragment survives.
 pub(crate) fn sanitize_warning_name(raw: &str, fallback: &str) -> String {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
         return fallback.to_string();
     }
+    let may_carry_secrets = |token: &str| {
+        token_may_carry_url_secrets(token) || token_may_carry_connection_string_secrets(token)
+    };
     if !trimmed.contains(char::is_whitespace) {
+        if token_may_carry_connection_string_secrets(trimmed) {
+            return fallback.to_string();
+        }
         if token_may_carry_url_secrets(trimmed) || trimmed.contains('?') || trimmed.contains('#') {
             return safe_host_label(trimmed, fallback);
         }
         return trimmed.to_string();
     }
-    if token_may_carry_url_secrets(trimmed)
-        || trimmed.split_whitespace().any(token_may_carry_url_secrets)
-    {
+    if may_carry_secrets(trimmed) || trimmed.split_whitespace().any(may_carry_secrets) {
         return fallback.to_string();
     }
     trimmed.to_string()
@@ -353,6 +368,16 @@ pub(crate) fn try_endpoint_host(endpoint: &str) -> Option<String> {
 /// an ambiguous `@` after the authority.
 pub(crate) fn endpoint_host(endpoint: &str) -> String {
     try_endpoint_host(endpoint).unwrap_or_default()
+}
+
+/// An endpoint as a profile may store it, with its optional scheme and path
+/// but without userinfo, query or fragment. `None` as for [`split_endpoint`].
+pub(crate) fn endpoint_without_secrets(endpoint: &str) -> Option<String> {
+    let parts = split_endpoint(endpoint)?;
+    Some(match parts.scheme {
+        Some(scheme) => format!("{scheme}://{}{}", parts.host_port, parts.path),
+        None => format!("{}{}", parts.host_port, parts.path),
+    })
 }
 
 /// An endpoint URL as a profile may store it: `scheme://host[:port]/path`,
@@ -2129,5 +2154,20 @@ mod tests {
         let embedded = format!("Prod https://{user}:{pw_plain}@s3.example.com?t={tok}");
         assert_eq!(sanitize_warning_name(&embedded, "site"), "site");
         assert_eq!(sanitize_warning_name(&amb, "site"), "site");
+        assert_eq!(
+            sanitize_warning_name(
+                "store,secret_access_key=CONNECTION_STRING_SECRET:bucket",
+                "rclone remote"
+            ),
+            "rclone remote"
+        );
+        assert_eq!(
+            sanitize_warning_name("Team store,region=eu-west-1", "site"),
+            "site"
+        );
+        assert_eq!(
+            endpoint_without_secrets("objects.example.test/base?token=SECRET#fragment").as_deref(),
+            Some("objects.example.test/base")
+        );
     }
 }

@@ -1433,8 +1433,7 @@ pub fn import_filezilla(config_path: &Path) -> Result<FileZillaImportResult, Str
                 }
                 let id = format!(
                     "filezilla-{}-{}",
-                    fz_server
-                        .name
+                    crate::bridge_shared::sanitize_warning_name(&fz_server.name, "FileZilla site",)
                         .to_lowercase()
                         .replace(' ', "-")
                         .chars()
@@ -1445,7 +1444,10 @@ pub fn import_filezilla(config_path: &Path) -> Result<FileZillaImportResult, Str
 
                 servers.push(ServerProfileExport {
                     id,
-                    name: fz_server.name.clone(),
+                    name: crate::bridge_shared::sanitize_warning_name(
+                        &fz_server.name,
+                        "FileZilla site",
+                    ),
                     host: mapped.host,
                     port: mapped.port,
                     username: mapped.username,
@@ -3088,7 +3090,10 @@ mod tests {
         let active = import_filezilla(&active_path).unwrap();
         assert_eq!(active.warnings.len(), 1);
         assert_eq!(active.warnings[0].name, "ftp.example.com");
-        let active_json = serde_json::to_string(&active.warnings).unwrap();
+        assert_eq!(active.servers[0].name, "ftp.example.com");
+        assert_eq!(active.servers[0].host, "ftp.example.com");
+        let active_json =
+            serde_json::to_string(&(&active.servers, &active.skipped, &active.warnings)).unwrap();
         for secret in [user, pw, tok] {
             assert!(
                 !active_json.contains(secret),
@@ -3138,7 +3143,9 @@ mod tests {
         let named = import_filezilla(&named_path).unwrap();
         assert_eq!(named.warnings.len(), 1);
         assert_eq!(named.warnings[0].name, "ftp.example.com");
-        let named_json = serde_json::to_string(&named.warnings).unwrap();
+        assert_eq!(named.servers[0].name, "ftp.example.com");
+        let named_json =
+            serde_json::to_string(&(&named.servers, &named.skipped, &named.warnings)).unwrap();
         for secret in [user, pw, tok] {
             assert!(
                 !named_json.contains(secret),

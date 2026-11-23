@@ -253,7 +253,8 @@ struct MappedProfile {
 ///
 /// Protocol determination: `FSProtocol` + `Ftps` fields combined.
 fn map_session(name: &str, fields: &WinScpSession) -> Option<MappedProfile> {
-    let host = fields.get("HostName").filter(|h| !h.is_empty())?;
+    let raw_host = fields.get("HostName").filter(|h| !h.is_empty())?;
+    let host = crate::bridge_shared::try_endpoint_host(raw_host)?;
     let fs_protocol: u32 = fields
         .get("FSProtocol")
         .and_then(|v| v.parse().ok())
@@ -274,12 +275,16 @@ fn map_session(name: &str, fields: &WinScpSession) -> Option<MappedProfile> {
         }
     } else if let Some(hex) = fields.get("Password") {
         if !hex.is_empty() {
-            let key = format!("{}{}", username, host);
+            let key = format!("{}{}", username, raw_host);
             match decode_winscp_password(hex, &key) {
                 Ok(pw) if !pw.is_empty() => Some(pw),
                 Ok(_) => None,
                 Err(e) => {
-                    log::warn!("WinSCP password decode failed for '{}': {}", name, e);
+                    log::warn!(
+                        "WinSCP password decode failed for '{}': {}",
+                        crate::bridge_shared::sanitize_warning_name(name, "WinSCP session"),
+                        e
+                    );
                     None
                 }
             }
@@ -315,7 +320,7 @@ fn map_session(name: &str, fields: &WinScpSession) -> Option<MappedProfile> {
         _ => {
             log::info!(
                 "WinSCP session '{}': unsupported FSProtocol={} Ftps={}",
-                name,
+                crate::bridge_shared::sanitize_warning_name(name, "WinSCP session"),
                 fs_protocol,
                 ftps
             );
@@ -522,6 +527,11 @@ pub fn import_winscp(config_path: &Path) -> Result<WinScpImportResult, String> {
 
     for (name, fields) in &sessions {
         let fs_protocol_str = fields.get("FSProtocol").cloned().unwrap_or_default();
+        let safe_fs_protocol = if fs_protocol_str.bytes().all(|b| b.is_ascii_digit()) {
+            fs_protocol_str
+        } else {
+            "unknown".to_string()
+        };
 
         match map_session(name, fields) {
             Some(mapped) => {
@@ -533,7 +543,7 @@ pub fn import_winscp(config_path: &Path) -> Result<WinScpImportResult, String> {
                 if has_tunnel && is_loopback_target(&mapped.host) {
                     skipped.push(WinScpSkippedSession {
                         name: warn_name,
-                        fs_protocol: fs_protocol_str,
+                        fs_protocol: safe_fs_protocol,
                         reason: "WinSCP reaches this loopback host through an SSH tunnel (Tunnel=1), so importing it directly would target the local machine instead of the bastion; configure a reachable destination manually".to_string(),
                     });
                     continue;
@@ -635,14 +645,16 @@ pub fn import_winscp(config_path: &Path) -> Result<WinScpImportResult, String> {
                         reason: "WinSCP requires active FTP for this session; AeroFTP supports passive FTP only".to_string(),
                     });
                 }
+                // Extract display name: last segment after '/' (folder hierarchy)
+                let display_name = crate::bridge_shared::sanitize_warning_name(
+                    name.rsplit('/').next().unwrap_or(name),
+                    "WinSCP session",
+                );
                 let id = format!(
                     "winscp-{}-{}",
-                    name.to_lowercase().replace(' ', "-"),
+                    display_name.to_lowercase().replace(' ', "-"),
                     &crate::bridge_shared::uuid_v4()[..8]
                 );
-
-                // Extract display name: last segment after '/' (folder hierarchy)
-                let display_name = name.rsplit('/').next().unwrap_or(name).to_string();
 
                 servers.push(ServerProfileExport {
                     id,
@@ -664,10 +676,10 @@ pub fn import_winscp(config_path: &Path) -> Result<WinScpImportResult, String> {
                 });
             }
             None => {
-                let reason = format!("unsupported FSProtocol={}", fs_protocol_str);
+                let reason = format!("unsupported FSProtocol={safe_fs_protocol}");
                 skipped.push(WinScpSkippedSession {
-                    name: name.clone(),
-                    fs_protocol: fs_protocol_str,
+                    name: crate::bridge_shared::sanitize_warning_name(name, "WinSCP session"),
+                    fs_protocol: safe_fs_protocol,
                     reason,
                 });
             }
@@ -1840,16 +1852,52 @@ FSProtocol=1
         let tok = "wscpSecretTok";
         let encoded = format!("ftp%3A%2F%2F{user}%3A{pw}%40ftp.example.com%3Ftoken%3D{tok}");
         let cred_ini = format!(
-            "[Sessions\\{encoded}]\nHostName=ftp.example.com\nUserName=u\nFSProtocol=5\nFtpPasvMode=0\n"
+            "[Sessions\\{encoded}]\nHostName=ftp://{user}:{pw}@ftp.example.com?token={tok}\nUserName=u\nFSProtocol=5\nFtpPasvMode=0\n"
         );
         let cred_path = dir.path().join("WinSCP-cred.ini");
         std::fs::write(&cred_path, cred_ini).unwrap();
         let cred_res = import_winscp(&cred_path).unwrap();
         assert_eq!(cred_res.warnings.len(), 1);
         assert_eq!(cred_res.warnings[0].name, "ftp.example.com");
-        let cred_json = serde_json::to_string(&cred_res.warnings).unwrap();
+        assert_eq!(cred_res.servers[0].name, "ftp.example.com");
+        assert_eq!(cred_res.servers[0].host, "ftp.example.com");
+        let cred_json =
+            serde_json::to_string(&(&cred_res.servers, &cred_res.skipped, &cred_res.warnings))
+                .unwrap();
         for secret in [user, pw, tok] {
             assert!(!cred_json.contains(secret), "{secret} leaked: {cred_json}");
+        }
+
+        let skip_path = dir.path().join("WinSCP-cred-skip.ini");
+        std::fs::write(
+            &skip_path,
+            format!("[Sessions\\{encoded}]\nHostName=ftp.example.com\nFSProtocol=99\n"),
+        )
+        .unwrap();
+        let skip_res = import_winscp(&skip_path).unwrap();
+        assert_eq!(skip_res.skipped[0].name, "ftp.example.com");
+        assert_eq!(skip_res.skipped[0].fs_protocol, "99");
+        let skip_json = serde_json::to_string(&skip_res.skipped).unwrap();
+        for secret in [user, pw, tok] {
+            assert!(!skip_json.contains(secret), "{secret} leaked: {skip_json}");
+        }
+
+        let invalid_protocol_path = dir.path().join("WinSCP-invalid-protocol.ini");
+        std::fs::write(
+            &invalid_protocol_path,
+            format!(
+                "[Sessions\\Tunnel]\nHostName=127.0.0.1\nFSProtocol=ftp://{user}:{pw}@ftp.example.com?token={tok}\nTunnel=1\n"
+            ),
+        )
+        .unwrap();
+        let invalid_protocol = import_winscp(&invalid_protocol_path).unwrap();
+        assert_eq!(invalid_protocol.skipped[0].fs_protocol, "unknown");
+        let invalid_json = serde_json::to_string(&invalid_protocol.skipped).unwrap();
+        for secret in [user, pw, tok] {
+            assert!(
+                !invalid_json.contains(secret),
+                "{secret} leaked: {invalid_json}"
+            );
         }
 
         // Tunneled loopback targets (127.0.0.1 / localhost / [::1]) are skipped

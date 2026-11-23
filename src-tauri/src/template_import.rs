@@ -390,6 +390,8 @@ fn build_plan(
         let secret_form = secret_meta.and_then(|m| m.chosen_form);
         let needs_secret_form_choice = has_secret_input && secret_form.is_none();
 
+        server.name = crate::bridge_shared::sanitize_warning_name(&server.name, "rclone remote");
+        let trimmed_name = server.name.trim().to_string();
         let matched = find_existing_by_trimmed_name(current, &trimmed_name);
         let existing_target_digest = matched.map(existing_target_digest_projection);
         let existing_match_id = matched

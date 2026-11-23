@@ -266,16 +266,17 @@ pub fn import_mc(path: &Path) -> Result<McImportResult, String> {
 
     for name in names {
         let alias = &config.aliases[name];
+        let report_name = crate::bridge_shared::sanitize_warning_name(name, "mc alias");
         match map_alias(alias) {
             Ok(mapped) => {
                 let id = format!(
                     "mc-{}-{}",
-                    name.to_lowercase().replace(' ', "-"),
+                    report_name.to_lowercase().replace(' ', "-"),
                     &crate::bridge_shared::uuid_v4()[..8]
                 );
                 servers.push(ServerProfileExport {
                     id,
-                    name: name.clone(),
+                    name: report_name,
                     host: mapped.host,
                     port: mapped.port,
                     username: mapped.username,
@@ -294,7 +295,7 @@ pub fn import_mc(path: &Path) -> Result<McImportResult, String> {
             }
             Err(reason) => {
                 skipped.push(McSkippedRemote {
-                    name: name.clone(),
+                    name: report_name,
                     kind: "s3".to_string(),
                     reason,
                 });
@@ -538,6 +539,41 @@ mod tests {
         assert!(result.skipped.iter().any(|s| s.name == "ambiguous"));
         let serialized = serde_json::to_string(&(&result.servers, &result.skipped)).unwrap();
         for secret in [user, pw_plain, "pa/ss", "ssSecret", tok] {
+            assert!(
+                !serialized.contains(secret),
+                "{secret} leaked: {serialized}"
+            );
+        }
+    }
+
+    #[test]
+    fn credential_shaped_alias_names_never_reach_profiles_or_skips() {
+        let user = "mcNameUser";
+        let pw = "mcNamePassword";
+        let tok = "mcNameToken";
+        let imported_name = format!("https://{user}:{pw}@imported.example.test?token={tok}");
+        let skipped_name = format!("https://{user}:{pw}@skipped.example.test?token={tok}");
+        let body = format!(
+            r#"{{"version":"10","aliases":{{"{imported_name}":{{"url":"https://objects.example.test:9000?token={tok}","accessKey":"DEMOKEY","secretKey":"demosecret","api":"S3v4","path":"auto"}},"{skipped_name}":{{"url":"https://objects.example.test","accessKey":"","secretKey":"","api":"S3v4","path":"auto"}}}}}}"#
+        );
+        let path = write_tmp("credential-names", &body);
+        let result = import_mc(&path).expect("import should succeed");
+        std::fs::remove_file(&path).ok();
+
+        assert_eq!(result.servers.len(), 1);
+        assert_eq!(result.servers[0].name, "imported.example.test");
+        assert_eq!(result.servers[0].host, "objects.example.test");
+        assert_eq!(
+            result.servers[0]
+                .options
+                .as_ref()
+                .and_then(|options| options.get("endpoint")),
+            Some(&serde_json::json!("https://objects.example.test:9000"))
+        );
+        assert_eq!(result.skipped.len(), 1);
+        assert_eq!(result.skipped[0].name, "skipped.example.test");
+        let serialized = serde_json::to_string(&(&result.servers, &result.skipped)).unwrap();
+        for secret in [user, pw, tok] {
             assert!(
                 !serialized.contains(secret),
                 "{secret} leaked: {serialized}"

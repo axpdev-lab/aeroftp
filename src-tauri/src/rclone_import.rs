@@ -308,9 +308,10 @@ impl ParseIssueSink {
 /// The block name as a diagnostic quotes it: whole when short, otherwise its
 /// first [`MAX_ISSUE_BLOCK_NAME_CHARS`] characters followed by `...`.
 fn issue_block_name(name: &str) -> String {
+    let name = crate::bridge_shared::sanitize_warning_name(name, "rclone remote");
     match name.char_indices().nth(MAX_ISSUE_BLOCK_NAME_CHARS) {
         Some((cut, _)) => format!("{}...", &name[..cut]),
-        None => name.to_string(),
+        None => name,
     }
 }
 
@@ -992,6 +993,7 @@ fn map_remote(
         .get("type")
         .ok_or_else(|| "missing type field".to_string())?
         .to_lowercase();
+    let account_name = crate::bridge_shared::sanitize_warning_name(name, "rclone remote");
 
     // An rclone `IsPassword` field. A value that does not reveal, or reveals
     // to nothing, is left out, and why goes to the import report through
@@ -1355,7 +1357,7 @@ fn map_remote(
             provider_id: Some("googledrive".to_string()),
             host: "www.googleapis.com".to_string(),
             port: 443,
-            username: name.to_string(), // rclone doesn't store email for drive
+            username: account_name.clone(), // rclone doesn't store email for drive
             password: None,
             options: None,
             // rclone writes `root_folder_id =` blank for the account root (the
@@ -1378,7 +1380,7 @@ fn map_remote(
             provider_id: Some("googlephotos".to_string()),
             host: "photoslibrary.googleapis.com".to_string(),
             port: 443,
-            username: name.to_string(),
+            username: account_name.clone(),
             password: None,
             options: None,
             initial_path: None,
@@ -1394,7 +1396,7 @@ fn map_remote(
             provider_id: Some("dropbox".to_string()),
             host: "api.dropboxapi.com".to_string(),
             port: 443,
-            username: name.to_string(),
+            username: account_name.clone(),
             password: None,
             options: None,
             initial_path: None,
@@ -1424,7 +1426,7 @@ fn map_remote(
             provider_id: Some("onedrive".to_string()),
             host: "graph.microsoft.com".to_string(),
             port: 443,
-            username: name.to_string(),
+            username: account_name.clone(),
             password: None,
             // The drive the remote is bound to, which the export writes from
             // the same keys: without them the profile exported again gave
@@ -1533,7 +1535,7 @@ fn map_remote(
             provider_id: Some("box".to_string()),
             host: "api.box.com".to_string(),
             port: 443,
-            username: name.to_string(),
+            username: account_name.clone(),
             password: None,
             options: None,
             initial_path: None,
@@ -1564,7 +1566,7 @@ fn map_remote(
                 provider_id: Some("pcloud".to_string()),
                 host: hostname.to_string(),
                 port: 443,
-                username: name.to_string(),
+                username: account_name.clone(),
                 password: None,
                 options: Some(serde_json::Value::Object(options)),
                 initial_path: None,
@@ -1684,7 +1686,7 @@ fn map_remote(
             provider_id: Some("yandex-disk".to_string()),
             host: "webdav.yandex.ru".to_string(),
             port: 443,
-            username: name.to_string(),
+            username: account_name.clone(),
             password: None,
             options: None,
             initial_path: None,
@@ -1714,7 +1716,7 @@ fn map_remote(
                 provider_id: Some("zoho-workdrive".to_string()),
                 host: "workdrive.zoho.com".to_string(),
                 port: 443,
-                username: name.to_string(),
+                username: account_name.clone(),
                 password: None,
                 options: Some(serde_json::Value::Object(options)),
                 // rclone's root_folder_id is a workspace/privatespace id, not
@@ -1754,7 +1756,7 @@ fn map_remote(
             provider_id: Some("jottacloud".to_string()),
             host: "jottacloud.com".to_string(),
             port: 443,
-            username: get_str("user").unwrap_or(name).to_string(),
+            username: get_str("user").unwrap_or(account_name.as_str()).to_string(),
             password: None,
             options: None,
             initial_path: None,
@@ -1987,7 +1989,9 @@ fn map_remote(
                 provider_id: None,
                 host: "drive.proton.me".to_string(),
                 port: 443,
-                username: get_str("username").unwrap_or(name).to_string(),
+                username: get_str("username")
+                    .unwrap_or(account_name.as_str())
+                    .to_string(),
                 password: None,
                 options: Some(serde_json::json!({ "proton_mode": mode })),
                 initial_path: None,
@@ -2024,6 +2028,26 @@ fn map_remote(
         }),
     };
     let mut mapped = mapped?;
+    if !mapped.host.is_empty() {
+        mapped.host = if mapped.protocol == "swift" {
+            crate::bridge_shared::endpoint_without_secrets(&mapped.host)
+        } else {
+            crate::bridge_shared::try_endpoint_host(&mapped.host)
+        }
+        .ok_or_else(|| format!("{rclone_type} host is not a valid endpoint"))?;
+    }
+    if let Some(serde_json::Value::String(endpoint)) = mapped
+        .options
+        .as_mut()
+        .and_then(|options| options.get_mut("endpoint"))
+    {
+        *endpoint = crate::bridge_shared::endpoint_without_secrets(endpoint)
+            .ok_or_else(|| format!("{rclone_type} endpoint is not valid"))?;
+    }
+    if mapped.protocol == "imagekit" {
+        mapped.username = crate::bridge_shared::endpoint_without_secrets(&mapped.username)
+            .ok_or_else(|| "imagekit endpoint is not valid".to_string())?;
+    }
     // The way back of the export's certificate switch: the FTP backend's own
     // `no_check_certificate`, the `override.` form the export writes for the
     // backends without one, and the bare key older AeroFTP files carry. Without
@@ -3009,6 +3033,12 @@ struct GoconfigDefaultMemo {
     values_expanded: usize,
 }
 
+#[derive(Default)]
+struct RcloneTransportMemo {
+    flags: RcloneFlagMemo,
+    defaults: GoconfigDefaultMemo,
+}
+
 /// Resolved transport flags for one rclone section.
 #[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
 struct EffectiveRcloneTransport {
@@ -3067,6 +3097,7 @@ fn goconfig_first_reference(value: &str) -> Option<&str> {
 /// `GOCONFIG_MAX_EXPANDED_BYTES` are `SubstitutionOverflow`: goconfig would
 /// hand rclone literal `%(..)s` text or crash, and the caller skips the remote
 /// rather than import it as a direct connection.
+#[cfg(test)]
 fn expand_goconfig_substitutions<'a>(
     owning_section: &'a RcloneRemote,
     default_section: Option<&'a RcloneRemote>,
@@ -3253,8 +3284,7 @@ fn effective_rclone_section_flag_memo(
 /// `http_proxy`, and `ssh` only when `include_ssh` is true for SFTP) for
 /// `base_name`.
 fn resolve_rclone_transport_cached(
-    memo: &mut RcloneFlagMemo,
-    default_memo: &mut GoconfigDefaultMemo,
+    memo: &mut RcloneTransportMemo,
     sections: &HashMap<String, RcloneRemote>,
     app_section: &RcloneRemote,
     base_name: &str,
@@ -3267,8 +3297,8 @@ fn resolve_rclone_transport_cached(
         match source {
             ImportSourceKind::RcloneFile => {
                 match effective_rclone_section_flag_memo(
-                    memo,
-                    default_memo,
+                    &mut memo.flags,
+                    &mut memo.defaults,
                     sections,
                     base_name,
                     key,
@@ -3318,8 +3348,7 @@ fn import_parsed_sections(
     let mut servers = Vec::new();
     let mut skipped = Vec::new();
     let mut warnings = Vec::new();
-    let mut transport_cache: RcloneFlagMemo = HashMap::new();
-    let mut goconfig_default_memo = GoconfigDefaultMemo::default();
+    let mut transport_cache = RcloneTransportMemo::default();
     let mut _transport_hops = 0usize;
     let mut provider_secrets: HashMap<String, crate::profile_export::ProviderSecrets> =
         HashMap::new();
@@ -3428,7 +3457,6 @@ fn import_parsed_sections(
                     let include_ssh = mapped.protocol == "sftp";
                     let transport = resolve_rclone_transport_cached(
                         &mut transport_cache,
-                        &mut goconfig_default_memo,
                         raw_sections.unwrap_or(&sections),
                         app_section,
                         &base_name,
@@ -3503,10 +3531,11 @@ fn import_parsed_sections(
                         reason: clean_reason,
                     });
                 }
+                let safe_name = crate::bridge_shared::sanitize_warning_name(name, "rclone remote");
                 let id = format!(
                     "{}-{}-{}",
                     id_prefix,
-                    name.to_lowercase().replace(' ', "-"),
+                    safe_name.to_lowercase().replace(' ', "-"),
                     &crate::bridge_shared::uuid_v4()[..8]
                 );
 
@@ -3554,7 +3583,10 @@ fn import_parsed_sections(
 
                 servers.push(ServerProfileExport {
                     id,
-                    name: name.clone(),
+                    name: match source {
+                        ImportSourceKind::RcloneFile => safe_name,
+                        ImportSourceKind::Template => name.clone(),
+                    },
                     host: mapped.host,
                     port: mapped.port,
                     username: mapped.username,
@@ -7502,6 +7534,58 @@ http_proxy =
     }
 
     #[test]
+    fn connection_string_names_are_redacted_in_file_and_template_reports() {
+        let secret = "CONNECTION_STRING_SENTINEL";
+        let name = format!("store,secret_access_key={secret}:bucket");
+        let config = format!(
+            "\n# source offset\n[{name}]\ntype = sftp\nhost = files.example.test\nuser = alice\nssh = ssh files.example.test\n"
+        );
+        let imported = import_text(&config, "connection-string-name");
+        assert_eq!(imported.skipped.len(), 1);
+        assert_eq!(imported.skipped[0].name, "rclone remote");
+
+        let evaluated = evaluate_template_text(
+            &config,
+            None,
+            "test-paste",
+            &TemplateSecretPolicy::default(),
+        )
+        .unwrap();
+        assert_eq!(evaluated.skipped.len(), 1);
+        assert_eq!(evaluated.skipped[0].name, "rclone remote");
+        assert_eq!(evaluated.skipped[0].start_line, 3);
+        let serialized = serde_json::to_string(&(
+            &imported.skipped,
+            &imported.warnings,
+            &evaluated.skipped,
+            &evaluated.warnings,
+        ))
+        .unwrap();
+        assert!(!serialized.contains(secret), "{serialized}");
+
+        let profile_secret = "TEMPLATE_PROFILE_NAME_SENTINEL";
+        let profile_name =
+            format!("sftp://alice:{profile_secret}@sftp.example.test?token={profile_secret}");
+        let profile_config = format!(
+            "\n# source offset\n[{profile_name}]\ntype = sftp\nhost = sftp.example.test\nuser = alice\nsocks_proxy = localhost:9005\n"
+        );
+        let preview = crate::template_import::preview_template_with_current(
+            &crate::template_import::TemplateInput::Text {
+                content: profile_config,
+            },
+            &crate::template_import::TemplatePreviewOptions::default(),
+            &[],
+        )
+        .unwrap();
+        assert_eq!(preview.rows.len(), 1);
+        assert_eq!(preview.rows[0].block_name, "sftp.example.test");
+        assert_eq!(preview.rows[0].target_name, "sftp.example.test");
+        assert_eq!(preview.rows[0].start_line, 3);
+        let preview_json = serde_json::to_string(&preview).unwrap();
+        assert!(!preview_json.contains(profile_secret), "{preview_json}");
+    }
+
+    #[test]
     fn rclone_proxy_precedence_reports_socks5_only_when_both_proxies_are_set() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("rclone.conf");
@@ -7771,7 +7855,10 @@ http_proxy =
         let cred_res = import_rclone(&cred_path).unwrap();
         assert_eq!(cred_res.warnings.len(), 1);
         assert_eq!(cred_res.warnings[0].name, "sftp.example.com");
-        let cred_json = serde_json::to_string(&cred_res.warnings).unwrap();
+        assert_eq!(cred_res.servers[0].name, "sftp.example.com");
+        let cred_json =
+            serde_json::to_string(&(&cred_res.servers, &cred_res.skipped, &cred_res.warnings))
+                .unwrap();
         for secret in [user, pw, tok] {
             assert!(!cred_json.contains(secret), "{secret} leaked: {cred_json}");
         }
@@ -7856,14 +7943,12 @@ http_proxy =
         let cleared_name = format!("{deep_base}.cleared");
         sections.insert(cleared_name.clone(), cleared);
 
-        let mut cache: RcloneFlagMemo = HashMap::new();
-        let mut default_memo = GoconfigDefaultMemo::default();
+        let mut cache = RcloneTransportMemo::default();
         let mut hops = 0usize;
         let deep_sec = &sections[&deep_base];
         for _ in 0..200 {
             let t = resolve_rclone_transport_cached(
                 &mut cache,
-                &mut default_memo,
                 &sections,
                 deep_sec,
                 &deep_base,
@@ -7885,7 +7970,6 @@ http_proxy =
         let cleared_sec = &sections[&cleared_name];
         let cleared_t = resolve_rclone_transport_cached(
             &mut cache,
-            &mut default_memo,
             &sections,
             cleared_sec,
             &cleared_name,
@@ -7919,8 +8003,7 @@ http_proxy =
             names.push(cur.clone());
         }
 
-        let mut memo: RcloneFlagMemo = HashMap::new();
-        let mut default_memo = GoconfigDefaultMemo::default();
+        let mut memo = RcloneTransportMemo::default();
         let mut hops = 0usize;
         // Walk all 51 distinct descendants from deepest up to root: each
         // (section, key) must be visited at most once (51 * 3 = 153 hops,
@@ -7928,7 +8011,6 @@ http_proxy =
         for name in names.iter().rev() {
             let t = resolve_rclone_transport_cached(
                 &mut memo,
-                &mut default_memo,
                 &sections,
                 &sections[name],
                 name,
@@ -7991,13 +8073,11 @@ http_proxy =
             );
         }
 
-        let mut memo = RcloneFlagMemo::new();
-        let mut default_memo = GoconfigDefaultMemo::default();
+        let mut memo = RcloneTransportMemo::default();
         let mut hops = 0usize;
         for name in &names {
             let transport = resolve_rclone_transport_cached(
                 &mut memo,
-                &mut default_memo,
                 &sections,
                 &sections[name],
                 name,
@@ -8008,7 +8088,7 @@ http_proxy =
             assert!(transport.substitution_overflow, "{name}");
         }
 
-        assert_eq!(default_memo.values_expanded, 1);
+        assert_eq!(memo.defaults.values_expanded, 1);
         assert_eq!(hops, names.len() * 3);
     }
 
@@ -16451,6 +16531,47 @@ password = PlainCryptNotObscured
             "filen api_key must still require secret form selection"
         );
         assert!(filen_out.secret_blocks["fil"].looks_obscured);
+    }
+
+    #[test]
+    fn url_query_and_fragment_secrets_never_reach_saved_profiles() {
+        let secret = "RCLONE_QUERY_SENTINEL";
+        let config = format!(
+            "[s3-query]\ntype = s3\nprovider = Other\nendpoint = https://objects.example.test:9000/base?token={secret}#fragment\naccess_key_id = DEMOKEY\nsecret_access_key = demosecret\n\n\
+             [swift-query]\ntype = swift\nauth = https://swift.example.test/v3?token={secret}#fragment\nuser = alice\nkey = demosecret\n\n\
+             [pcloud-query]\ntype = pcloud\nhostname = https://api.pcloud.com?token={secret}#fragment\n\n\
+             [koofr-query]\ntype = koofr\nendpoint = https://app.koofr.net?token={secret}#fragment\nuser = alice\n\n\
+             [imagekit-query]\ntype = imagekit\nendpoint = https://ik.imagekit.io/demo?token={secret}#fragment\nprivate_key = demosecret\n\n\
+             [ftp-query]\ntype = ftp\nhost = ftp.example.test?token={secret}#fragment\nuser = alice\n"
+        );
+        let result = import_text(&config, "query-secret-endpoints");
+        assert_eq!(result.servers.len(), 6, "{:?}", result.skipped);
+        let server = |name: &str| {
+            result
+                .servers
+                .iter()
+                .find(|server| server.name == name)
+                .unwrap()
+        };
+        assert_eq!(server("s3-query").host, "objects.example.test:9000");
+        assert_eq!(
+            server("s3-query")
+                .options
+                .as_ref()
+                .and_then(|options| options.get("endpoint")),
+            Some(&serde_json::json!("https://objects.example.test:9000/base"))
+        );
+        assert_eq!(server("swift-query").host, "https://swift.example.test/v3");
+        assert_eq!(server("pcloud-query").host, "api.pcloud.com");
+        assert_eq!(server("koofr-query").host, "app.koofr.net");
+        assert_eq!(
+            server("imagekit-query").username,
+            "https://ik.imagekit.io/demo"
+        );
+        assert_eq!(server("ftp-query").host, "ftp.example.test");
+        let serialized =
+            serde_json::to_string(&(&result.servers, &result.skipped, &result.warnings)).unwrap();
+        assert!(!serialized.contains(secret), "{serialized}");
     }
 
     #[test]

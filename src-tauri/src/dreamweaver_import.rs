@@ -224,6 +224,9 @@ fn map_remote_info(ri: &str) -> MapOutcome {
     if host.trim().is_empty() {
         return MapOutcome::Skipped(access, "missing host".to_string());
     }
+    let Some(host) = crate::bridge_shared::try_endpoint_host(&host) else {
+        return MapOutcome::Skipped(access, "invalid or ambiguous host".to_string());
+    };
 
     let port = ri_attr(ri, &["port"])
         .and_then(|p| p.trim().parse::<u32>().ok())
@@ -252,8 +255,7 @@ fn map_remote_info(ri: &str) -> MapOutcome {
         .filter(|d| !d.is_empty() && d != "/");
 
     let public_url_base = ri_attr(ri, &["webUrl", "URLPrefix", "httpaddress"])
-        .map(|u| pct_decode(u.trim()))
-        .filter(|u| !u.is_empty());
+        .and_then(|u| crate::bridge_shared::endpoint_url_without_secrets(&pct_decode(u.trim())));
 
     MapOutcome::Mapped(MappedProfile {
         protocol: protocol.to_string(),
@@ -346,6 +348,7 @@ pub fn import_dreamweaver(path: &Path) -> Result<DreamweaverImportResult, String
             .or_else(|| xml_attr(&site, "name"))
             .or_else(|| xml_attr(&site, "siteName"))
             .filter(|n| !n.trim().is_empty())
+            .map(|n| crate::bridge_shared::sanitize_warning_name(&n, "Dreamweaver site"))
             .unwrap_or_else(|| "Dreamweaver site".to_string());
 
         let Some(ri) = first_tag(&site, "remoteinfo").or_else(|| first_tag(&site, "remoteInfo"))
@@ -408,8 +411,11 @@ pub fn import_dreamweaver(path: &Path) -> Result<DreamweaverImportResult, String
                                 .as_deref()
                                 .and_then(|ai| ri_attr(ai, &["urlprefix", "urlPrefix"]))
                         })
-                        .map(|u| pct_decode(u.trim()))
-                        .filter(|u| !u.is_empty())
+                        .and_then(|u| {
+                            crate::bridge_shared::endpoint_url_without_secrets(&pct_decode(
+                                u.trim(),
+                            ))
+                        })
                 });
 
                 let has_cred = m.password.is_some();
@@ -433,7 +439,11 @@ pub fn import_dreamweaver(path: &Path) -> Result<DreamweaverImportResult, String
                 });
             }
             MapOutcome::Skipped(kind, reason) => {
-                skipped.push(DreamweaverSkippedRemote { name, kind, reason });
+                skipped.push(DreamweaverSkippedRemote {
+                    name,
+                    kind: crate::bridge_shared::sanitize_warning_name(&kind, "unknown"),
+                    reason,
+                });
             }
         }
     }
@@ -721,11 +731,44 @@ mod tests {
         assert_eq!(result.warnings.len(), 2);
         assert_eq!(result.warnings[0].name, "ftp.demo.example.com");
         assert_eq!(result.warnings[1].name, "ftp.demo.example.com");
-        let serialized = serde_json::to_string(&result.warnings).unwrap();
+        assert_eq!(result.servers[0].name, "ftp.demo.example.com");
+        let serialized =
+            serde_json::to_string(&(&result.servers, &result.skipped, &result.warnings)).unwrap();
         for secret in [user, pw, tok] {
             assert!(
                 !serialized.contains(secret),
                 "{secret} leaked into Dreamweaver warning: {serialized}"
+            );
+        }
+
+        let host_url = format!("ftp://{user}:{pw}@ftp.demo.example.com?token={tok}");
+        let public_url = format!("https://{user}:{pw}@www.demo.example.com/?token={tok}");
+        let no_login_xml = real_ste(None)
+            .replace("%5BA%5D%20demo.example.com", &encoded_url)
+            .replace(
+                "host=\"ftp.demo.example.com\"",
+                &format!("host=\"{host_url}\""),
+            )
+            .replace("https://www.demo.example.com/", &public_url);
+        let no_login_path = write_tmp(&no_login_xml);
+        let no_login = import_dreamweaver(&no_login_path).expect("parse .ste without pw");
+        std::fs::remove_file(&no_login_path).ok();
+        assert_eq!(no_login.skipped.len(), 1);
+        assert_eq!(no_login.skipped[0].reason, "ste exported without login");
+        assert_eq!(no_login.skipped[0].name, "ftp.demo.example.com");
+        assert_eq!(no_login.servers[0].name, "ftp.demo.example.com");
+        assert_eq!(no_login.servers[0].host, "ftp.demo.example.com");
+        assert_eq!(
+            no_login.servers[0].public_url_base.as_deref(),
+            Some("https://www.demo.example.com/")
+        );
+        let no_login_json =
+            serde_json::to_string(&(&no_login.servers, &no_login.skipped, &no_login.warnings))
+                .unwrap();
+        for secret in [user, pw, tok] {
+            assert!(
+                !no_login_json.contains(secret),
+                "{secret} leaked without pw: {no_login_json}"
             );
         }
 

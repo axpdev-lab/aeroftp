@@ -93,7 +93,12 @@ fn map_s3cmd(section: &HashMap<String, String>) -> Result<MappedProfile, &'stati
     let port = explicit_port.unwrap_or(if use_https { 443 } else { 80 });
 
     let region = get("bucket_location").map(|s| s.to_string());
-    let host_bucket = get("host_bucket").map(|s| s.to_string());
+    let host_bucket = get("host_bucket")
+        .map(|value| {
+            crate::bridge_shared::try_endpoint_host(value)
+                .ok_or("host_bucket is not a valid host template")
+        })
+        .transpose()?;
 
     let mut options = serde_json::Map::new();
     if let Some(r) = region {
@@ -259,7 +264,10 @@ pub fn import_s3cmd(path: &Path) -> Result<S3cmdImportResult, String> {
     let total_remotes = if section.is_some() { 1 } else { 0 };
 
     if let Some(section) = section {
-        let name = s3cmd_profile_name(&section);
+        let name = crate::bridge_shared::sanitize_warning_name(
+            &s3cmd_profile_name(&section),
+            "s3cmd default",
+        );
         match map_s3cmd(&section) {
             Ok(mapped) => {
                 if section
@@ -549,7 +557,7 @@ bucket_location = us-east-1
         std::fs::write(
             &path,
             format!(
-                "[default]\naccess_key = DEMOACCESSKEY123456\nsecret_key = demosecret\nhost_base = https://{user}:{secret}@s3.example.com:9000?token={token}#frag\nproxy_host = proxy.example.com\n"
+                "[default]\naccess_key = DEMOACCESSKEY123456\nsecret_key = demosecret\nhost_base = https://{user}:{secret}@s3.example.com:9000?token={token}#frag\nhost_bucket = https://{user}:{secret}@%(bucket)s.s3.example.com?token={token}#frag\nproxy_host = proxy.example.com\n"
             ),
         )
         .unwrap();
@@ -558,7 +566,17 @@ bucket_location = us-east-1
         assert_eq!(result.servers.len(), 1);
         assert_eq!(result.warnings.len(), 1);
         assert_eq!(result.warnings[0].name, "s3cmd s3.example.com:9000");
-        let serialized = serde_json::to_string(&result.warnings).unwrap();
+        assert_eq!(result.servers[0].name, "s3cmd s3.example.com:9000");
+        assert_eq!(result.servers[0].host, "s3.example.com");
+        assert_eq!(
+            result.servers[0]
+                .options
+                .as_ref()
+                .and_then(|options| options.get("hostBucket")),
+            Some(&serde_json::json!("%(bucket)s.s3.example.com"))
+        );
+        let serialized =
+            serde_json::to_string(&(&result.servers, &result.skipped, &result.warnings)).unwrap();
         assert!(!serialized.contains(user));
         assert!(!serialized.contains(secret));
         assert!(!serialized.contains(token));
