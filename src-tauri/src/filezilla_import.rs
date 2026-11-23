@@ -618,15 +618,45 @@ fn is_legacy_aeroftp_s3_server(legacy_aeroftp_export: bool, server: &FileZillaSe
 /// Map a FileZilla server entry to an AeroFTP profile.
 #[cfg(test)]
 fn map_server(server: &FileZillaServer) -> Option<MappedProfile> {
-    map_server_with_context(server, false, None)
+    map_server_with_context(server, false, None).ok()
+}
+
+fn split_clean_host_and_port(clean: &str) -> (&str, Option<u32>) {
+    if let Some(after_open) = clean.strip_prefix('[') {
+        if let Some((inside, after_close)) = after_open.split_once(']') {
+            let bracketed = &clean[..inside.len() + 2];
+            let port = after_close
+                .strip_prefix(':')
+                .and_then(|p| p.parse::<u16>().ok())
+                .filter(|p| *p > 0)
+                .map(u32::from);
+            return (bracketed, port);
+        }
+        return (clean, None);
+    }
+    if let Some((h, p)) = clean.rsplit_once(':') {
+        if !h.is_empty() && !h.contains(':') {
+            if let Ok(port_u16) = p.parse::<u16>() {
+                if port_u16 > 0 {
+                    return (h, Some(u32::from(port_u16)));
+                }
+            }
+        }
+    }
+    (clean, None)
 }
 
 fn map_server_with_context(
     server: &FileZillaServer,
     legacy_aeroftp_s3: bool,
     root_wchar_unit: Option<WcharUnit>,
-) -> Option<MappedProfile> {
-    let host = server.fields.get("Host").filter(|h| !h.is_empty())?;
+) -> Result<MappedProfile, String> {
+    let raw_host = server
+        .fields
+        .get("Host")
+        .map(|h| h.trim())
+        .filter(|h| !h.is_empty())
+        .ok_or_else(|| "missing Host".to_string())?;
     let fz_protocol: u32 = server
         .fields
         .get("Protocol")
@@ -671,17 +701,44 @@ fn map_server_with_context(
             6 => ("ftp", 21),   // plain FTP only
             7 => ("s3", 443),
             _ => {
+                let safe_name =
+                    crate::bridge_shared::sanitize_warning_name(&server.name, "FileZilla site");
                 log::info!(
                     "FileZilla server '{}': unsupported Protocol={}",
-                    server.name,
+                    safe_name,
                     fz_protocol
                 );
-                return None;
+                return Err(format!(
+                    "unsupported Protocol={}",
+                    server.fields.get("Protocol").unwrap_or(&String::new())
+                ));
             }
         }
     };
 
-    let actual_port = if port == 0 { default_port } else { port };
+    // Never store raw URL credentials, query strings, or fragments in
+    // `MappedProfile.host`: extract the safe host/port when `<Host>` is
+    // URL-shaped or contains `@`, `?`, `#`, or `/`, and skip the site if the
+    // value is ambiguous or has no valid host.
+    let (host, inline_port) = if raw_host.contains("://")
+        || raw_host.contains('@')
+        || raw_host.contains('?')
+        || raw_host.contains('#')
+        || raw_host.contains('/')
+    {
+        let clean = crate::bridge_shared::try_endpoint_host(raw_host)
+            .ok_or_else(|| "invalid or credential-bearing Host".to_string())?;
+        let (h, p) = split_clean_host_and_port(&clean);
+        (h.to_string(), p)
+    } else {
+        (raw_host.to_string(), None)
+    };
+
+    let actual_port = if port == 0 {
+        inline_port.unwrap_or(default_port)
+    } else {
+        port
+    };
 
     // Build protocol-specific options
     let mut options = serde_json::Map::new();
@@ -733,7 +790,7 @@ fn map_server_with_context(
         // `options.endpoint` so `S3Config::from_provider_config` does not
         // mis-infer `http://` on ports like 9000. AWS stays implicit so virtual-
         // hosted bucket addressing is preserved.
-        if let Some(clean_host) = crate::bridge_shared::try_endpoint_host(host) {
+        if let Some(clean_host) = crate::bridge_shared::try_endpoint_host(&host) {
             let aws =
                 crate::bridge_shared::map_s3_provider_from_endpoint(&clean_host) == "amazon-s3";
             if !aws {
@@ -784,6 +841,14 @@ fn map_server_with_context(
                 }
             }
         }
+        // `S3Config::from_provider_config` requires a non-empty `bucket`
+        // before connecting, so warn when a native Protocol 7 S3 site carried
+        // no decodable default RemoteDir bucket.
+        if !options.contains_key("bucket") && remote_dir_warning.is_none() {
+            remote_dir_warning = Some(
+                "FileZilla S3 site has no default RemoteDir bucket; set the S3 bucket name before connecting".to_string(),
+            );
+        }
     }
 
     let options_val = if options.is_empty() {
@@ -792,9 +857,9 @@ fn map_server_with_context(
         Some(serde_json::Value::Object(options))
     };
 
-    Some(MappedProfile {
+    Ok(MappedProfile {
         protocol: protocol.to_string(),
-        host: host.clone(),
+        host,
         port: actual_port,
         username,
         password,
@@ -1153,9 +1218,10 @@ fn format_filezilla_remote_dir(path: &str) -> Option<String> {
     for segment in path.split(separators) {
         match segment {
             "" | "." => {}
-            ".." => {
-                segments.pop();
-            }
+            // Never collapse `..` locally: if the preceding component is a
+            // server-side symlink or junction, popping it would export a
+            // different directory than the saved path.
+            ".." => return None,
             segment => segments.push(segment),
         }
     }
@@ -1302,7 +1368,7 @@ pub fn import_filezilla(config_path: &Path) -> Result<FileZillaImportResult, Str
             is_legacy_aeroftp_s3_server(parsed.legacy_aeroftp_export, fz_server);
 
         match map_server_with_context(fz_server, legacy_aeroftp_s3, parsed.root_wchar_unit) {
-            Some(mapped) => {
+            Ok(mapped) => {
                 let warn_name =
                     crate::bridge_shared::sanitize_warning_name(&fz_server.name, "FileZilla site");
                 if let Some(reason) = mapped.remote_dir_warning {
@@ -1394,14 +1460,14 @@ pub fn import_filezilla(config_path: &Path) -> Result<FileZillaImportResult, Str
                     ..Default::default()
                 });
             }
-            None => {
+            Err(reason) => {
                 skipped.push(FileZillaSkippedServer {
-                    name: fz_server.name.clone(),
-                    protocol: fz_protocol,
-                    reason: format!(
-                        "unsupported Protocol={}",
-                        fz_server.fields.get("Protocol").unwrap_or(&String::new())
+                    name: crate::bridge_shared::sanitize_warning_name(
+                        &fz_server.name,
+                        "FileZilla site",
                     ),
+                    protocol: fz_protocol,
+                    reason,
                 });
             }
         }
@@ -1565,6 +1631,40 @@ pub fn export_filezilla(
             _ => continue,
         };
 
+        // When an S3 profile sets an explicit `options.endpoint` override,
+        // export its effective endpoint host and port instead of stale
+        // `server.host` / `server.port` fields.
+        let (export_host, export_port) = if protocol == "s3"
+            && server
+                .options
+                .as_ref()
+                .and_then(|o| o.get("endpoint"))
+                .and_then(|v| v.as_str())
+                .is_some_and(|s| !s.trim().is_empty())
+        {
+            match crate::bridge_shared::resolve_export_endpoint(
+                "s3",
+                &server.host,
+                server.port,
+                &server.username,
+                server.options.as_ref(),
+                None,
+            ) {
+                Ok(Some(ep)) => {
+                    let port = ep.port.map(u32::from).unwrap_or(if ep.scheme == "http" {
+                        80
+                    } else {
+                        443
+                    });
+                    (ep.host, port)
+                }
+                Ok(None) => (server.host.clone(), server.port),
+                Err(_) => continue,
+            }
+        } else {
+            (server.host.clone(), server.port)
+        };
+
         // Sanitize values for XML
         let sanitize = |s: &str| -> String {
             s.replace('&', "&amp;")
@@ -1575,8 +1675,8 @@ pub fn export_filezilla(
         };
 
         xml.push_str("    <Server>\n");
-        xml.push_str(&format!("      <Host>{}</Host>\n", sanitize(&server.host)));
-        xml.push_str(&format!("      <Port>{}</Port>\n", server.port));
+        xml.push_str(&format!("      <Host>{}</Host>\n", sanitize(&export_host)));
+        xml.push_str(&format!("      <Port>{}</Port>\n", export_port));
         xml.push_str(&format!("      <Protocol>{}</Protocol>\n", fz_protocol));
         xml.push_str(&format!(
             "      <User>{}</User>\n",
@@ -3005,9 +3105,11 @@ mod tests {
         )
         .unwrap();
         let legacy = import_filezilla(&legacy_path).unwrap();
-        assert_eq!(legacy.warnings.len(), 1);
-        assert_eq!(legacy.warnings[0].name, "unnamed");
-        let legacy_json = serde_json::to_string(&legacy.warnings).unwrap();
+        assert!(legacy.servers.is_empty());
+        assert_eq!(legacy.skipped.len(), 1);
+        assert_eq!(legacy.skipped[0].name, "unnamed");
+        let legacy_json =
+            serde_json::to_string(&(&legacy.servers, &legacy.skipped, &legacy.warnings)).unwrap();
         for secret in [user, "pa/ss", "ssSecret"] {
             assert!(
                 !legacy_json.contains(secret),
@@ -3378,6 +3480,225 @@ mod tests {
                 ("Lab", "a.example.com", "secret-a"),
                 ("Lab-2", "b.example.com", "secret-b"),
             ])
+        );
+    }
+
+    #[test]
+    fn url_shaped_hosts_are_sanitized_without_leaking_secrets() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sitemanager.xml");
+        let s3_secret = "FzS3HostSecret99";
+        let query_token = "FzQueryToken88";
+        let bad_secret = "FzAmbiguousSecret77";
+        let s3_url = format!(
+            "https://{}:{}@objects.example.test:9000/bucket?token={}",
+            "access", s3_secret, query_token
+        );
+        let bad_url = format!("https://user:{}/slash@objects.example.test", bad_secret);
+        let xml = format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<FileZilla3 version="3.72.1" platform="*">
+  <Servers>
+    <Server>
+      <Host>{s3_url}</Host>
+      <Port>0</Port>
+      <Protocol>7</Protocol>
+      <User>DEMOKEY</User>
+      <Name>CredS3</Name>
+      <RemoteDir>1 0 5 media</RemoteDir>
+    </Server>
+    <Server>
+      <Host>{bad_url}</Host>
+      <Port>443</Port>
+      <Protocol>7</Protocol>
+      <User>DEMOKEY2</User>
+      <Name>{bad_url}</Name>
+    </Server>
+  </Servers>
+</FileZilla3>"#
+        );
+        std::fs::write(&path, xml).unwrap();
+        let res = import_filezilla(&path).unwrap();
+        assert_eq!(res.servers.len(), 1);
+        assert_eq!(res.servers[0].host, "objects.example.test");
+        assert_eq!(res.servers[0].port, 9000);
+        assert_eq!(
+            res.servers[0]
+                .options
+                .as_ref()
+                .and_then(|o| o.get("endpoint"))
+                .and_then(|v| v.as_str()),
+            Some("https://objects.example.test:9000")
+        );
+        assert_eq!(res.skipped.len(), 1);
+        assert_eq!(res.skipped[0].name, "FileZilla site");
+        assert!(res.skipped[0].reason.contains("Host"));
+        let serialized =
+            serde_json::to_string(&(&res.servers, &res.skipped, &res.warnings)).unwrap();
+        for secret in [s3_secret, query_token, bad_secret] {
+            assert!(
+                !serialized.contains(secret),
+                "secret {secret} leaked in serialized import result: {serialized}"
+            );
+        }
+    }
+
+    #[test]
+    fn native_s3_protocol_7_without_remote_dir_warns_missing_bucket() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sitemanager.xml");
+        std::fs::write(
+            &path,
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<FileZilla3 version="3.72.1" platform="*">
+  <Servers>
+    <Server>
+      <Host>s3.amazonaws.com</Host>
+      <Port>443</Port>
+      <Protocol>7</Protocol>
+      <User>DEMO1</User>
+      <Name>NoBucketS3</Name>
+    </Server>
+    <Server>
+      <Host>s3.amazonaws.com</Host>
+      <Port>443</Port>
+      <Protocol>7</Protocol>
+      <User>DEMO2</User>
+      <Name>WithBucketS3</Name>
+      <RemoteDir>1 0 6 photos</RemoteDir>
+    </Server>
+  </Servers>
+</FileZilla3>"#,
+        )
+        .unwrap();
+        let res = import_filezilla(&path).unwrap();
+        assert_eq!(res.servers.len(), 2);
+        assert!(res
+            .warnings
+            .iter()
+            .any(|w| { w.name == "NoBucketS3" && w.reason.contains("bucket") }));
+        assert!(!res.warnings.iter().any(|w| w.name == "WithBucketS3"));
+    }
+
+    #[test]
+    fn export_omits_remote_dir_with_parent_dotdot_segments() {
+        assert_eq!(format_filezilla_remote_dir("/srv/link/../incoming"), None);
+        assert_eq!(format_filezilla_remote_dir(r"C:\work\..\data"), None);
+        assert_eq!(
+            format_filezilla_remote_dir("/srv/incoming"),
+            Some("1 0 3 srv 8 incoming".to_string())
+        );
+    }
+
+    #[test]
+    fn export_filezilla_uses_s3_endpoint_override_host_and_port() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sitemanager.xml");
+        let servers = vec![
+            FileZillaExportServer {
+                id: "s3-override".into(),
+                name: "OverrideS3".into(),
+                host: "stale.example.test".into(),
+                port: 443,
+                username: "DEMOKEY".into(),
+                protocol: Some("s3".into()),
+                initial_path: Some("/archive".into()),
+                options: Some(serde_json::json!({
+                    "bucket": "media",
+                    "endpoint": "https://objects.example.test:9000"
+                })),
+            },
+            FileZillaExportServer {
+                id: "s3-plain".into(),
+                name: "PlainS3".into(),
+                host: "s3.amazonaws.com".into(),
+                port: 443,
+                username: "DEMOKEY2".into(),
+                protocol: Some("s3".into()),
+                initial_path: None,
+                options: Some(serde_json::json!({
+                    "bucket": "photos"
+                })),
+            },
+        ];
+        let count = export_filezilla(&servers, &HashMap::new(), &path).unwrap();
+        assert_eq!(count, 2);
+        let back = import_filezilla(&path).unwrap();
+        let overridden = back
+            .servers
+            .iter()
+            .find(|s| s.name == "OverrideS3")
+            .unwrap();
+        assert_eq!(overridden.host, "objects.example.test");
+        assert_eq!(overridden.port, 9000);
+        let plain = back.servers.iter().find(|s| s.name == "PlainS3").unwrap();
+        assert_eq!(plain.host, "s3.amazonaws.com");
+        assert_eq!(plain.port, 443);
+    }
+
+    #[test]
+    fn windows_s3_remote_dir_preserves_non_ascii_and_empty_prefix_segments() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sitemanager.xml");
+        std::fs::write(
+            &path,
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
+<FileZilla3 version=\"3.72.1\" platform=\"windows\">\n\
+  <Servers>\n\
+    <Server>\n\
+      <Host>s3.amazonaws.com</Host>\n\
+      <Port>443</Port>\n\
+      <Protocol>7</Protocol>\n\
+      <User>DEMOKEY</User>\n\
+      <Name>WinS3</Name>\n\
+      <RemoteDir>1 0 6 photos 3 \u{00E9}t\u{00E9} 6 /2026/</RemoteDir>\n\
+    </Server>\n\
+  </Servers>\n\
+</FileZilla3>",
+        )
+        .unwrap();
+        let imported = import_filezilla(&path).unwrap();
+        assert_eq!(imported.servers.len(), 1);
+        let srv = &imported.servers[0];
+        assert_eq!(
+            srv.options
+                .as_ref()
+                .and_then(|o| o.get("bucket"))
+                .and_then(|v| v.as_str()),
+            Some("photos")
+        );
+        assert_eq!(
+            srv.initial_path.as_deref(),
+            Some("/\u{00E9}t\u{00E9}//2026/")
+        );
+
+        let out = dir.path().join("roundtrip.xml");
+        let export_item = FileZillaExportServer {
+            id: srv.id.clone(),
+            name: srv.name.clone(),
+            host: srv.host.clone(),
+            port: srv.port,
+            username: srv.username.clone(),
+            protocol: srv.protocol.clone(),
+            initial_path: srv.initial_path.clone(),
+            options: srv.options.clone(),
+        };
+        assert_eq!(
+            export_filezilla(&[export_item], &HashMap::new(), &out).unwrap(),
+            1
+        );
+        let roundtrip = import_filezilla(&out).unwrap();
+        assert_eq!(
+            roundtrip.servers[0]
+                .options
+                .as_ref()
+                .and_then(|o| o.get("bucket"))
+                .and_then(|v| v.as_str()),
+            Some("photos")
+        );
+        assert_eq!(
+            roundtrip.servers[0].initial_path.as_deref(),
+            Some("/\u{00E9}t\u{00E9}//2026/")
         );
     }
 }
