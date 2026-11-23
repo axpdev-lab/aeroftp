@@ -287,6 +287,7 @@ const HASHCASH_MAX_CHALLENGES: usize = 3;
 /// Solver threads, the MEGA SDK's desktop cap (`MAX_WORKERS_FOR_GENCASH`).
 const HASHCASH_MAX_WORKERS: usize = 8;
 const MEGA_ERROR_BODY_LIMIT: usize = 64 * 1024;
+const MEGA_ERROR_BODY_READ_TIMEOUT: Duration = Duration::from_secs(30);
 
 fn parse_hashcash_challenge(header: &str) -> Option<MegaHashcashChallenge> {
     let mut parts = header.trim().split(':');
@@ -499,21 +500,22 @@ fn negative_mega_code(body: &str) -> Option<i64> {
 
 async fn read_mega_error_body(
     mut response: reqwest::Response,
+    timeout: Duration,
 ) -> Result<(String, bool), ProviderError> {
-    let mut bytes = Vec::new();
-    while let Some(chunk) = response.chunk().await.map_err(map_reqwest_error)? {
-        let remaining = MEGA_ERROR_BODY_LIMIT.saturating_sub(bytes.len());
-        if chunk.len() > remaining {
-            bytes.extend_from_slice(&chunk[..remaining]);
-            return Ok((String::from_utf8_lossy(&bytes).into_owned(), false));
+    tokio::time::timeout(timeout, async move {
+        let mut bytes = Vec::new();
+        while let Some(chunk) = response.chunk().await.map_err(map_reqwest_error)? {
+            let remaining = MEGA_ERROR_BODY_LIMIT.saturating_sub(bytes.len());
+            if chunk.len() > remaining {
+                bytes.extend_from_slice(&chunk[..remaining]);
+                return Ok((String::from_utf8_lossy(&bytes).into_owned(), false));
+            }
+            bytes.extend_from_slice(&chunk);
         }
-        bytes.extend_from_slice(&chunk);
-    }
-    Ok((String::from_utf8_lossy(&bytes).into_owned(), true))
-}
-
-fn mega_body_preview(body: &str) -> String {
-    body.trim().chars().take(200).collect()
+        Ok((String::from_utf8_lossy(&bytes).into_owned(), true))
+    })
+    .await
+    .map_err(|_| ProviderError::Timeout)?
 }
 
 fn mega_402_error(challenges_answered: usize) -> ProviderError {
@@ -537,6 +539,8 @@ struct MegaApiClient {
     /// Per-challenge normal budgets in tests; extended budget stays fixed.
     #[cfg(test)]
     hashcash_budgets: Option<Vec<Duration>>,
+    #[cfg(test)]
+    error_body_read_timeout: Option<Duration>,
 }
 
 impl MegaApiClient {
@@ -562,6 +566,8 @@ impl MegaApiClient {
             base_url_override: None,
             #[cfg(test)]
             hashcash_budgets: None,
+            #[cfg(test)]
+            error_body_read_timeout: None,
         }
     }
 
@@ -571,6 +577,14 @@ impl MegaApiClient {
             return url;
         }
         MEGA_API_BASE_URL
+    }
+
+    fn error_body_read_timeout(&self) -> Duration {
+        #[cfg(test)]
+        if let Some(timeout) = self.error_body_read_timeout {
+            return timeout;
+        }
+        MEGA_ERROR_BODY_READ_TIMEOUT
     }
 
     /// Only two forced timeouts select the SDK's finite extended budget.
@@ -643,17 +657,27 @@ impl MegaApiClient {
                 .get("X-Hashcash")
                 .and_then(|value| value.to_str().ok())
                 .and_then(parse_hashcash_challenge);
-            let (body, complete) = read_mega_error_body(response).await?;
-            let body_preview = mega_body_preview(&body);
+            let (body, complete) =
+                read_mega_error_body(response, self.error_body_read_timeout()).await?;
+            let mega_code = if complete {
+                negative_mega_code(&body)
+            } else {
+                None
+            };
             tracing::warn!(
-                "[MEGA Native] non-success HTTP 402 cmd={} body={:?}",
+                "[MEGA Native] non-success HTTP 402 cmd={} body_len={} complete={} mega_code={:?}",
                 cmd_name,
-                body_preview
+                body.len(),
+                complete,
+                mega_code
             );
-            if complete {
-                if let Some(code) = negative_mega_code(&body) {
-                    return Err(map_mega_error_code(code));
+            if let Some(code) = mega_code {
+                // MEGA's -13 is EINCOMPLETE, not a session rejection. On a 402
+                // it must not clear a saved session; -15 remains ESID.
+                if code == -13 {
+                    return Err(mega_402_error(challenges_answered));
                 }
+                return Err(map_mega_error_code(code));
             }
             // Like the SDK, PoW is only for an empty-body challenge. A body is
             // classified first and never triggers a proof-bearing retry.
@@ -702,30 +726,27 @@ impl MegaApiClient {
 
         if !response.status().is_success() {
             let status = response.status();
-            // Read the body before classifying. MEGA sometimes encodes the
-            // real reason as a negative numeric code in the response body
-            // (-15 ESID, -13 ESESSION, -26 EMFAREQUIRED) even when the HTTP
-            // layer chooses a non-2xx status. Surfacing the body in the log
-            // (truncated, no secrets) gives users and bug reports something
-            // actionable instead of a bare "402 Payment Required".
-            let body_preview = response
-                .text()
-                .await
-                .ok()
-                .map(|t| {
-                    let trimmed = t.trim();
-                    trimmed.chars().take(200).collect::<String>()
-                })
-                .unwrap_or_default();
+            let (body, complete) =
+                read_mega_error_body(response, self.error_body_read_timeout()).await?;
+            let mega_code = if complete {
+                negative_mega_code(&body)
+            } else {
+                None
+            };
             tracing::warn!(
-                "[MEGA Native] non-success HTTP {} cmd={} body={:?}",
+                "[MEGA Native] non-success HTTP {} cmd={} body_len={} complete={} mega_code={:?}",
                 status,
                 cmd_name,
-                body_preview
+                body.len(),
+                complete,
+                mega_code
             );
+            if let Some(code) = mega_code {
+                return Err(map_mega_error_code(code));
+            }
+            // Keep the legacy kind and recoverability for non-MEGA HTTP errors.
             return Err(ProviderError::NetworkError(format!(
-                "MEGA API returned HTTP {} (body: {body_preview:?})",
-                status
+                "MEGA API returned HTTP {status}"
             )));
         }
 
@@ -3177,6 +3198,31 @@ mod tests {
 
     type SeenProofs = std::sync::Arc<std::sync::Mutex<Vec<Option<String>>>>;
 
+    fn capture_logs() -> (
+        tracing::subscriber::DefaultGuard,
+        std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
+    ) {
+        #[derive(Clone)]
+        struct Sink(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+        impl std::io::Write for Sink {
+            fn write(&mut self, data: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(data);
+                Ok(data.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let buffer = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let sink = Sink(buffer.clone());
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::TRACE)
+            .with_ansi(false)
+            .with_writer(move || sink.clone())
+            .finish();
+        (tracing::subscriber::set_default(subscriber), buffer)
+    }
+
     /// A MEGA API double. Request `n` gets `replies[n]`, the last reply
     /// repeating: a status, an optional `X-Hashcash` challenge and a body. It
     /// records the `X-Hashcash` header of every request it receives.
@@ -3502,9 +3548,15 @@ mod tests {
         let oversized = Box::leak(
             format!("[-15{}]", " ".repeat(super::MEGA_ERROR_BODY_LIMIT)).into_boxed_str(),
         );
-        for (body, authentication_failure) in
-            [(&*padded, true), ("[-1", false), (&*oversized, false)]
-        {
+        let oversized_valid_prefix = Box::leak(
+            format!("[-15]{}", " ".repeat(super::MEGA_ERROR_BODY_LIMIT)).into_boxed_str(),
+        );
+        for (body, authentication_failure) in [
+            (&*padded, true),
+            ("[-1", false),
+            (&*oversized, false),
+            (&*oversized_valid_prefix, false),
+        ] {
             let (client, seen, server) = hashcash_double(vec![(402, None, body)]).await;
             let err = client
                 .command::<serde_json::Value>(json!({ "a": "ug" }))
@@ -3532,6 +3584,71 @@ mod tests {
         server.abort();
         assert!(matches!(err, ProviderError::ServerError(_)));
         assert!(!err.to_string().contains(secret), "returned error: {err}");
+    }
+
+    #[tokio::test]
+    async fn error_body_read_has_a_total_deadline_even_when_chunks_keep_arriving() {
+        let app = axum::Router::new().fallback(axum::routing::post(|| async {
+            let stream = futures_util::stream::unfold((), |_| async {
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+                Some((Ok::<&'static str, std::io::Error>("x"), ()))
+            });
+            axum::response::Response::builder()
+                .status(axum::http::StatusCode::PAYMENT_REQUIRED)
+                .body(axum::body::Body::from_stream(stream))
+                .unwrap()
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await });
+        let mut client = super::MegaApiClient::new(None);
+        client.base_url_override = Some(format!("http://{addr}/cs"));
+        client.error_body_read_timeout = Some(std::time::Duration::from_millis(30));
+
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            client.command::<serde_json::Value>(json!({ "a": "ug" })),
+        )
+        .await;
+        server.abort();
+        let err = result
+            .expect("error body read ignored its total deadline")
+            .unwrap_err();
+        assert!(matches!(err, ProviderError::Timeout), "got {err:?}");
+    }
+
+    #[test]
+    fn error_logs_and_returns_keep_402_and_500_body_text_secret() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::mega_native::tests::error_logs_and_returns_keep_402_and_500_body_text_secret",
+        ) {
+            return;
+        }
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+                let secret = "synthetic-http-body-secret-for-logs";
+                for status in [402, 500] {
+                    let (_guard, buffer) = capture_logs();
+                    let (client, _, server) = hashcash_double(vec![(status, None, secret)]).await;
+                    let err = client
+                        .command::<serde_json::Value>(json!({ "a": "ug" }))
+                        .await
+                        .unwrap_err();
+                    server.abort();
+                    let logged = String::from_utf8_lossy(&buffer.lock().unwrap()).into_owned();
+                    assert!(!logged.contains(secret), "HTTP {status} log: {logged}");
+                    assert!(
+                        !err.to_string().contains(secret),
+                        "HTTP {status} error: {err}"
+                    );
+                    assert!(logged.contains(&format!("HTTP {status}")), "{logged}");
+                    assert!(logged.contains("cmd=ug"), "{logged}");
+                    assert!(err.to_string().contains(&status.to_string()), "{err}");
+                }
+            });
     }
 
     #[tokio::test]
@@ -3612,6 +3729,18 @@ mod tests {
             );
             assert_eq!(seen.lock().unwrap().len(), 1, "{challenge:?} was retried");
         }
+    }
+
+    #[tokio::test]
+    async fn command_402_incomplete_request_code_is_not_a_session_verdict() {
+        let (client, seen, server) = hashcash_double(vec![(402, None, "-13")]).await;
+        let err = client
+            .command::<serde_json::Value>(json!({ "a": "ug" }))
+            .await
+            .unwrap_err();
+        server.abort();
+        assert!(matches!(err, ProviderError::ServerError(_)), "got {err:?}");
+        assert_eq!(seen.lock().unwrap().len(), 1);
     }
 
     #[tokio::test]
@@ -3790,6 +3919,43 @@ mod tests {
                 server.abort();
                 assert!(matches!(err, ProviderError::ServerError(_)), "got {err:?}");
                 assert_eq!(store.get(&key).unwrap(), serialized);
+
+                use crate::providers::StorageProvider;
+                use std::sync::atomic::{AtomicUsize, Ordering};
+                let requests = std::sync::Arc::new(AtomicUsize::new(0));
+                let received = requests.clone();
+                let rejected = axum::Router::new().fallback(axum::routing::post(move || {
+                    let received = received.clone();
+                    async move {
+                        received.fetch_add(1, Ordering::SeqCst);
+                        (axum::http::StatusCode::PAYMENT_REQUIRED, "-15")
+                    }
+                }));
+                let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+                let addr = listener.local_addr().unwrap();
+                let rejected_server =
+                    tokio::spawn(async move { axum::serve(listener, rejected).await });
+                let mut provider = super::MegaNativeProvider::new(super::MegaConfig {
+                    email: "rejected@example.invalid".into(),
+                    password: secrecy::SecretString::new(String::new().into()),
+                    two_factor_code: None,
+                    totp_secret: None,
+                    save_session: true,
+                    logout_on_disconnect: None,
+                    connection_mode: crate::providers::types::MegaConnectionMode::Native,
+                });
+                provider.api_client.base_url_override = Some(format!("http://{addr}/cs"));
+                let rejected_key = provider.session_vault_key();
+                store.store(&rejected_key, &serialized).unwrap();
+                let err = provider.connect().await.unwrap_err();
+                rejected_server.abort();
+                assert!(matches!(err, ProviderError::AuthenticationFailed(_)));
+                assert!(err.to_string().contains("password is required"));
+                assert!(matches!(
+                    store.get(&rejected_key),
+                    Err(crate::credential_store::CredentialError::NotFound(_))
+                ));
+                assert_eq!(requests.load(Ordering::SeqCst), 1);
             });
         CredentialStore::clear_cache();
     }
