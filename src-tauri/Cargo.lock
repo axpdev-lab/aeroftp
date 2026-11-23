@@ -5754,9 +5754,9 @@ dependencies = [
 
 [[package]]
 name = "libunftp"
-version = "0.24.0"
+version = "0.25.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7d94587cfb90dd87b7cced3bff07d32cb56ad1192baa5d688dfaa8728f22d48d"
+checksum = "96b019a8d208e2672b68fddc84cc9f15c64df3b717b58773d3b2c9dd28729b30"
 dependencies = [
  "async-trait",
  "bitflags 2.13.2",
@@ -9600,9 +9600,9 @@ checksum = "f87165f0995f63a9fbeea62b64d10b4d9d8e78ec6d7d51fb2125fda7bb36788f"
 
 [[package]]
 name = "rustls-webpki"
-version = "0.103.16"
+version = "0.103.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4443b1b6d39d7c663139942cc4558262562d2c84123bb6282ef177009ca8b281"
+checksum = "e3a0760a887c14823fca5a1c970b01d47c328c696c0c64829d1df50e8f853fd5"
 dependencies = [
  "aws-lc-rs",
  "ring",
