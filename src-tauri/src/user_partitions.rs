@@ -5845,6 +5845,130 @@ fn realign_generation(conn: &Connection, user_id: i64) -> Result<u64, String> {
     })
 }
 
+/// The digest of the value the private-token alignment last wrote into each
+/// of `user_id`'s rows, by credential id, kept in `global_state` until the
+/// vault copy's fate is known: a later pass replaces such a row with a
+/// rotated vault chain only while the row still holds that value
+/// ([`align_private_tokens_of`]).
+const PRIVATE_TOKENS_INSERTED_PREFIX: &str = "private_tokens_inserted_";
+
+fn inserted_row_digests_key(user_id: i64) -> String {
+    format!("{PRIVATE_TOKENS_INSERTED_PREFIX}{user_id}")
+}
+
+/// SHA-256 over the row's plaintext: enough to tell the value the alignment
+/// wrote is still there without keeping the token itself in `global_state`.
+fn private_token_value_digest(value: &str) -> String {
+    format!("{:x}", Sha256::digest(value.as_bytes()))
+}
+
+fn read_inserted_row_digests(
+    conn: &Connection,
+    user_id: i64,
+) -> Result<HashMap<String, String>, String> {
+    let value: Option<String> = conn
+        .query_row(
+            "SELECT value FROM global_state WHERE key = ?1",
+            params![inserted_row_digests_key(user_id)],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| format!("Read inserted private token rows: {e}"))?;
+    value
+        .map(|raw| {
+            serde_json::from_str(&raw).map_err(|e| format!("Read inserted private token rows: {e}"))
+        })
+        .transpose()
+        .map(Option::unwrap_or_default)
+}
+
+fn write_inserted_row_digests(
+    conn: &Connection,
+    user_id: i64,
+    digests: &HashMap<String, String>,
+) -> Result<(), String> {
+    if digests.is_empty() {
+        conn.execute(
+            "DELETE FROM global_state WHERE key = ?1",
+            params![inserted_row_digests_key(user_id)],
+        )
+        .map_err(|e| format!("Clear inserted private token rows: {e}"))?;
+        return Ok(());
+    }
+    let value = serde_json::to_string(digests)
+        .map_err(|e| format!("Record inserted private token rows: {e}"))?;
+    conn.execute(
+        "INSERT INTO global_state(key, value, updated_at)
+         VALUES (?1, ?2, ?3)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+        params![inserted_row_digests_key(user_id), value, now_ms()],
+    )
+    .map_err(|e| format!("Record inserted private token rows: {e}"))?;
+    Ok(())
+}
+
+/// What [`align_private_tokens_of`] did with one sole key's row.
+enum SoleRow {
+    /// The row now holds the vault chain, written by the alignment or already
+    /// equal to it: the vault copy may go.
+    Moved,
+    /// The row holds a value the alignment wrote before but no longer does,
+    /// while the vault chain differs: another writer's row, left alone with
+    /// its vault copy.
+    Skipped,
+}
+
+/// The row side of one [`align_private_tokens_of`] sole key, inside its
+/// transaction. A missing row takes the vault chain; a row already equal to
+/// it needs nothing; a row still holding the value an earlier pass of this
+/// alignment wrote ([`inserted`]) takes the vault chain too, in the same
+/// transaction; a row that moved away from that value is another writer's
+/// and keeps its vault copy; any other row keeps the old rule, the vault
+/// copy still leaves.
+fn sole_row_state(
+    tx: &Connection,
+    user_id: i64,
+    dek: &SecretKey,
+    key: &str,
+    kind: &str,
+    vault: Option<&str>,
+    inserted: &mut HashMap<String, String>,
+) -> Result<SoleRow, String> {
+    let Some(vault) = vault else {
+        return Ok(SoleRow::Moved);
+    };
+    let digest = private_token_value_digest(vault);
+    match read_credential_with_dek(tx, user_id, dek, key)? {
+        None => {
+            set_user_credential_with_dek(tx, user_id, dek, key, kind, vault)?;
+            inserted.insert(key.to_string(), digest);
+            Ok(SoleRow::Moved)
+        }
+        Some(row) if row.as_str() == vault => {
+            if inserted.get(key) != Some(&digest) {
+                inserted.remove(key);
+            }
+            Ok(SoleRow::Moved)
+        }
+        Some(row) => {
+            // A row the alignment never wrote keeps the old rule: it wins
+            // over the vault copy, which still leaves. Only a row that moved
+            // away from a value this alignment wrote is another writer's,
+            // and it keeps its vault copy.
+            let Some(recorded) = inserted.get(key).cloned() else {
+                return Ok(SoleRow::Moved);
+            };
+            if recorded != private_token_value_digest(row.as_str()) {
+                inserted.remove(key);
+                return Ok(SoleRow::Skipped);
+            }
+            set_user_credential_with_dek(tx, user_id, dek, key, kind, vault)?;
+            inserted.insert(key.to_string(), digest);
+            Ok(SoleRow::Moved)
+        }
+    }
+}
+
 /// The tags of the keys a targeted pass left to the next one, `None` when
 /// none waits.
 fn deferred_realign_tags(conn: &Connection, user_id: i64) -> Result<Option<Vec<String>>, String> {
@@ -6038,6 +6162,7 @@ fn align_private_tokens_of(
     }
     if nonprofile_secret_owner(conn)? == Some(user_id) {
         if only.is_none() {
+            write_inserted_row_digests(conn, user_id, &HashMap::new())?;
             mark_private_tokens_aligned(conn, user_id)?;
         }
         return Ok(Some(0));
@@ -6179,8 +6304,16 @@ fn align_private_tokens_of(
                 held_elsewhere.insert(held);
             }
         }
+        let mut inserted = read_inserted_row_digests(&tx, uid)?;
+        let mut skipped = Vec::new();
         for key in &sole {
-            expected.insert(key.clone(), read_secret(key)?);
+            let vault_now = read_secret(key)?;
+            expected.insert(
+                key.clone(),
+                vault_now
+                    .as_ref()
+                    .map(|value| Zeroizing::new((**value).clone())),
+            );
             let kind = private_token_type(key).unwrap_or("oauth");
             if is_proton_session_key(key) {
                 let copy_uid = match read_credential_with_dek(&tx, uid, dek, key)? {
@@ -6189,11 +6322,27 @@ fn align_private_tokens_of(
                 };
                 if copy_uid.is_some_and(|copy| held_elsewhere.contains(&copy)) {
                     delete_user_credential_for(&tx, uid, key)?;
+                    inserted.remove(key);
                     continue;
                 }
             }
-            copy_one_credential(&tx, uid, dek, key, kind, read_secret)?;
+            let vault_str = vault_now.as_ref().map(|value| value.as_str());
+            match sole_row_state(&tx, uid, dek, key, kind, vault_str, &mut inserted)? {
+                SoleRow::Moved => {}
+                SoleRow::Skipped => skipped.push(key.clone()),
+            }
         }
+        if !skipped.is_empty() {
+            sole.retain(|key| !skipped.contains(key));
+            for key in &skipped {
+                expected.remove(key);
+            }
+        }
+        if only.is_none() {
+            let held: HashSet<&str> = sole.iter().map(String::as_str).collect();
+            inserted.retain(|key, _| held.contains(key.as_str()));
+        }
+        write_inserted_row_digests(&tx, uid, &inserted)?;
         tx.commit()
             .map_err(|e| format!("Commit private token alignment: {e}"))?;
         Ok(Some((sole, waits, expected)))
@@ -6228,6 +6377,7 @@ fn align_private_tokens_of(
         return Ok(None);
     }
     if only.is_none() && !incomplete {
+        write_inserted_row_digests(conn, user_id, &HashMap::new())?;
         mark_private_tokens_aligned(conn, user_id)?;
     }
     Ok(Some(moved.len()))
@@ -13328,6 +13478,92 @@ mod tests {
         );
         assert!(deleted.borrow().is_empty());
         assert!(private_tokens_aligned(&conn, owner).unwrap());
+    }
+
+    /// A private-token row the alignment inserted follows the vault chain a
+    /// refresh rotated before the vault copy could leave; a row another
+    /// writer moved keeps its value and its vault copy.
+    #[test]
+    fn a_row_the_alignment_inserted_follows_a_rotated_vault_chain() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(1);
+        let root = test_root();
+        let _owner = nonprofile_secret_owner(&conn).unwrap().unwrap();
+        let first = create_passphrase_less_user(&mut conn, &root, "First", None, None).unwrap();
+        let second = create_passphrase_less_user(&mut conn, &root, "Second", None, None).unwrap();
+        clear_user_session();
+        let profile = |id: &str| {
+            json!({"id": id, "name": id, "protocol": "dropbox", "host": "", "port": 0,
+                   "username": format!("{id}@example.test")})
+        };
+        replace_server_profiles_for(&mut conn, &root, first.id, &[profile("mine-a")]).unwrap();
+        replace_server_profiles_for(&mut conn, &root, second.id, &[profile("mine-b")]).unwrap();
+        let key_a = "oauth_dropbox_mine-a".to_string();
+        let key_b = "oauth_dropbox_mine-b".to_string();
+        let vault = RefCell::new(HashMap::from([
+            (key_a.clone(), "chain-a0".to_string()),
+            (key_b.clone(), "chain-b0".to_string()),
+        ]));
+        let keys = vec![key_a.clone(), key_b.clone()];
+        let read = |key: &str| -> Result<Option<Zeroizing<String>>, String> {
+            Ok(vault.borrow().get(key).map(|v| Zeroizing::new(v.clone())))
+        };
+        // The vault copy leaves only while it still holds the value the pass
+        // read; the first attempt of each key finds it rotated and refuses.
+        let rotated = RefCell::new(HashSet::new());
+        let delete = |key: &str, expected: Option<&str>| -> Result<bool, String> {
+            if rotated.borrow_mut().insert(key.to_string()) {
+                if let Some(slot) = vault.borrow_mut().get_mut(key) {
+                    *slot = format!("rotated-{key}");
+                }
+            }
+            let mut map = vault.borrow_mut();
+            match (map.get(key), expected) {
+                (Some(current), Some(expected)) if current == expected => {
+                    map.remove(key);
+                    Ok(true)
+                }
+                _ => Ok(false),
+            }
+        };
+        let list = || Ok(keys.clone());
+        let row = |user: i64, key: &str| {
+            get_user_credential_for(&conn, &root, user, key)
+                .unwrap()
+                .map(|value| value.to_string())
+        };
+        let align = |user: i64| {
+            align_private_tokens_inner(&conn, &root, user, &keys, &list, &read, &delete).unwrap()
+        };
+
+        // First pass inserts chain-a0, the vault rotates before the delete,
+        // the pass stays incomplete; the second moves the row to the rotated
+        // chain and the vault copy leaves.
+        align(first.id);
+        assert_eq!(row(first.id, &key_a).as_deref(), Some("chain-a0"));
+        assert_eq!(
+            vault.borrow().get(&key_a).map(String::as_str),
+            Some("rotated-oauth_dropbox_mine-a")
+        );
+        align(first.id);
+        assert_eq!(
+            row(first.id, &key_a).as_deref(),
+            Some("rotated-oauth_dropbox_mine-a")
+        );
+        assert!(!vault.borrow().contains_key(&key_a));
+
+        // Second account: same rotation, then another writer moves the row
+        // to a value the alignment never wrote; the row keeps it and the
+        // vault keeps the rotated chain.
+        align(second.id);
+        assert_eq!(row(second.id, &key_b).as_deref(), Some("chain-b0"));
+        set_user_credential_for(&conn, &root, second.id, &key_b, "oauth", "writer-c").unwrap();
+        align(second.id);
+        assert_eq!(row(second.id, &key_b).as_deref(), Some("writer-c"));
+        assert_eq!(
+            vault.borrow().get(&key_b).map(String::as_str),
+            Some("rotated-oauth_dropbox_mine-b")
+        );
     }
 
     /// A profile id the legacy owner and another account both hold: the vault
