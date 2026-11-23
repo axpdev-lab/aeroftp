@@ -167,6 +167,10 @@ pub struct ProtonApi {
     throttle: StdMutex<Throttle>,
     /// Shares the session with other processes and persists refreshes.
     session_store: StdMutex<Option<std::sync::Arc<dyn SessionStore>>>,
+    /// The refresh tokens this connection already rotated past: a stored
+    /// pair carrying one of them is older than the pair in memory, whatever
+    /// its access token says, and must not be adopted back.
+    spent_refresh_tokens: StdMutex<Vec<SecretString>>,
 }
 
 /// Body of a Proton error response.
@@ -223,6 +227,7 @@ impl ProtonApi {
             refresh_gate: Mutex::new(()),
             throttle: StdMutex::new(Throttle::default()),
             session_store: StdMutex::new(None),
+            spent_refresh_tokens: StdMutex::new(Vec::new()),
         }
     }
 
@@ -731,6 +736,15 @@ impl ProtonApi {
                 RefreshLock::Unavailable(error) => {
                     // A pair another process saved since needs no lease to
                     // adopt: nothing is sent, so nothing can race a rotation.
+                    // A saved session of another UID replaced this one,
+                    // as the leased path reports it, not an IO failure.
+                    if store
+                        .as_deref()
+                        .and_then(|store| store.load())
+                        .is_some_and(|saved| saved.uid != current.uid)
+                    {
+                        return Ok(Refreshed::Replaced);
+                    }
                     if let Some(saved) = self.newer_saved_tokens(Some(store.as_ref()), &current) {
                         *self.tokens.write().await = Some(saved);
                         return Ok(Refreshed::Retry);
@@ -826,9 +840,21 @@ impl ProtonApi {
                 refreshed
                     .refresh_token
                     .map(SecretString::from)
-                    .unwrap_or(refresh_token),
+                    .unwrap_or_else(|| refresh_token.clone()),
             ),
         };
+        // A rotated refresh token is spent: a stored pair still carrying it
+        // predates this rotation and is never "newer" than it.
+        if tokens
+            .refresh_token
+            .as_ref()
+            .is_some_and(|next| next.expose_secret() != refresh_token.expose_secret())
+        {
+            self.spent_refresh_tokens
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .push(refresh_token.clone());
+        }
         *self.tokens.write().await = Some(tokens.clone());
         if let Some(store) = store.as_ref() {
             store.save(&tokens);
@@ -836,8 +862,12 @@ impl ProtonApi {
         Ok(Refreshed::Retry)
     }
 
-    /// The saved tokens when they belong to the same session and differ from
-    /// `current`: another process refreshed them.
+    /// The saved tokens when they belong to the same session, differ from
+    /// `current`, and are not a pair this connection already rotated past:
+    /// another process refreshed them. A stored pair whose refresh token
+    /// this connection spent is older than the pair in memory, whatever its
+    /// access token says (a withheld write leaves exactly that pair in the
+    /// row while the rotated one stays here).
     fn newer_saved_tokens(
         &self,
         store: Option<&dyn SessionStore>,
@@ -846,7 +876,14 @@ impl ProtonApi {
         let saved = store?.load()?;
         let same_session = saved.uid == current.uid;
         let newer = saved.access_token.expose_secret() != current.access_token.expose_secret();
-        (same_session && newer).then_some(saved)
+        let spent = saved.refresh_token.as_ref().is_some_and(|token| {
+            self.spent_refresh_tokens
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .iter()
+                .any(|spent| spent.expose_secret() == token.expose_secret())
+        });
+        (same_session && newer && !spent).then_some(saved)
     }
 }
 
@@ -993,6 +1030,14 @@ mod tests {
             uid: "uid-1".into(),
             access_token: SecretString::from(access.to_string()),
             refresh_token: Some(SecretString::from("refresh-1".to_string())),
+        }
+    }
+
+    fn pair(access: &str, refresh: &str) -> SessionTokens {
+        SessionTokens {
+            uid: "uid-1".into(),
+            access_token: SecretString::from(access.to_string()),
+            refresh_token: Some(SecretString::from(refresh.to_string())),
         }
     }
 
@@ -1250,6 +1295,79 @@ mod tests {
         assert_eq!(store.locks.load(Ordering::SeqCst), 1);
         let adopted = api.tokens().await.expect("tokens kept");
         assert_eq!(adopted.access_token.expose_secret(), "access-2");
+    }
+
+    /// CodeRabbit body-C9: a refresh lease whose storage fails still reports
+    /// a saved session of another UID as replaced, like the leased path
+    /// does, instead of an IO error that hides the new sign-in.
+    #[tokio::test]
+    async fn a_lease_storage_failure_reports_a_saved_session_of_another_uid() {
+        let refreshes = Arc::new(AtomicUsize::new(0));
+        let api = ProtonApi::with_base_url(
+            serve(users_app(Arc::clone(&refreshes), REFRESH_DEAD)).await,
+            "external-drive-aeroftp@1.2.3-alpha".into(),
+        )
+        .with_policy(FAST);
+        api.set_tokens(Some(tokens("access-1"))).await;
+        let store = Arc::new(MemoryStore::default());
+        let mut other = tokens("access-2");
+        other.uid = "uid-other".into();
+        store.save(&other);
+        *store.lock_unavailable.lock().unwrap() = true;
+        api.set_session_store(Arc::clone(&store) as Arc<dyn SessionStore>);
+
+        let error = api.get::<Value>("/core/v4/users", &[]).await.unwrap_err();
+        assert!(matches!(error, ProtonError::SessionReplaced), "{error:?}");
+        assert_eq!(
+            refreshes.load(Ordering::SeqCst),
+            0,
+            "no refresh is sent without the lease"
+        );
+    }
+
+    /// CodeRabbit 4661192953: a stored pair carrying a refresh token this
+    /// connection already rotated past is older than the pair in memory,
+    /// so a 401 on the rotated access token does not adopt it back; the
+    /// refresh runs instead.
+    #[tokio::test]
+    async fn a_stored_pair_older_than_this_connections_rotation_is_not_adopted() {
+        let refreshes = Arc::new(AtomicUsize::new(0));
+        let api = ProtonApi::with_base_url(
+            serve(users_app(Arc::clone(&refreshes), REFRESH_OK)).await,
+            "external-drive-aeroftp@1.2.3-alpha".into(),
+        )
+        .with_policy(FAST);
+        api.set_tokens(Some(pair("access-1", "rt-1"))).await;
+        let store = Arc::new(MemoryStore::default());
+        store.save(&pair("access-1", "rt-1"));
+        api.set_session_store(Arc::clone(&store) as Arc<dyn SessionStore>);
+
+        // The first 401 rotates rt-1 into the pair REFRESH_OK answers.
+        let _: Value = api.get("/core/v4/users", &[]).await.expect("replayed");
+        assert_eq!(refreshes.load(Ordering::SeqCst), 1);
+        let rotated = api.tokens().await.expect("tokens kept");
+        assert_eq!(rotated.access_token.expose_secret(), "access-2");
+
+        // The withheld row still holds the pre-rotation pair.
+        store.save(&pair("access-1", "rt-1"));
+
+        // A 401 on the rotated access token must not adopt the spent pair
+        // back: the refresh runs again instead of replaying access-1.
+        let outcome = api.refresh_if_possible("access-2").await;
+        assert!(matches!(outcome, Ok(Refreshed::Retry)), "{outcome:?}");
+        assert_eq!(
+            refreshes.load(Ordering::SeqCst),
+            2,
+            "the stale pair was not adopted"
+        );
+        let kept = api.tokens().await.expect("tokens kept");
+        assert_eq!(kept.access_token.expose_secret(), "access-2");
+        assert_eq!(
+            kept.refresh_token
+                .as_ref()
+                .map(|token| token.expose_secret().as_str()),
+            Some("refresh-2")
+        );
     }
 
     /// Another process refreshed the shared session: its saved tokens are
