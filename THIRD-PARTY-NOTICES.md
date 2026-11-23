@@ -191,7 +191,7 @@ source version and its SHA-256.
 | constant_time_eq | 0.4.2 | CC0-1.0 OR MIT-0 OR Apache-2.0 | [Link](https://github.com/cesarb/constant_time_eq) |
 | constant_time_eq | 0.6.1 | CC0-1.0 OR MIT-0 OR Apache-2.0 | [Link](https://codeberg.org/cesarb/constant_time_eq) |
 | convert_case | 0.10.0 | MIT | [Link](https://github.com/rutrum/convert-case) |
-| cookie | 0.18.2 | MIT OR Apache-2.0 | [Link](https://github.com/SergioBenitez/cookie-rs) |
+| cookie | 0.18.3 | MIT OR Apache-2.0 | [Link](https://github.com/SergioBenitez/cookie-rs) |
 | cordyceps | 0.3.5 | MIT | [Link](https://github.com/hawkw/mycelium) |
 | core-foundation | 0.10.1 | MIT OR Apache-2.0 | [Link](https://github.com/servo/core-foundation-rs) |
 | core-foundation | 0.9.4 | MIT OR Apache-2.0 | [Link](https://github.com/servo/core-foundation-rs) |
@@ -13534,7 +13534,7 @@ SOFTWARE.
 ### Notice Entry 131
 
 **Used by component(s):**
-- `cookie@0.18.2` (cargo, file: `LICENSE-APACHE`)
+- `cookie@0.18.3` (cargo, file: `LICENSE-APACHE`)
 
 ```text
 Apache License
@@ -13744,7 +13744,7 @@ limitations under the License.
 ### Notice Entry 132
 
 **Used by component(s):**
-- `cookie@0.18.2` (cargo, file: `LICENSE-MIT`)
+- `cookie@0.18.3` (cargo, file: `LICENSE-MIT`)
 
 ```text
 Copyright (c) 2017 Sergio Benitez
