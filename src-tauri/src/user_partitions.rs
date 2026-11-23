@@ -3243,16 +3243,24 @@ fn relocate_server_profile_and_credentials(
             })?;
     }
     #[cfg(not(feature = "proton-native"))]
-    if source_has_session
-        && relocation.moved
-        && !vault_copy_is_another_accounts(conn, source_user_id, &source_key)?
-    {
-        delete_optional_secret(store, &source_key).map_err(|error| {
-            format!(
-                "{RELOCATION_COMMITTED}: profile {} is saved in target user {}; removal of the source's Proton session from the vault failed: {error}",
-                relocation.new_profile_id, target_user_id,
-            )
-        })?;
+    if source_has_session && relocation.moved {
+        // The Move already committed: an ownership lookup that fails is
+        // reported like the vault deletion's, and the vault entry stays.
+        let vault_is_theirs = vault_copy_is_another_accounts(conn, source_user_id, &source_key)
+            .map_err(|error| {
+                format!(
+                    "{RELOCATION_COMMITTED}: profile {} is saved in target user {}; the vault copy's owner could not be read: {error}",
+                    relocation.new_profile_id, target_user_id,
+                )
+            })?;
+        if !vault_is_theirs {
+            delete_optional_secret(store, &source_key).map_err(|error| {
+                format!(
+                    "{RELOCATION_COMMITTED}: profile {} is saved in target user {}; removal of the source's Proton session from the vault failed: {error}",
+                    relocation.new_profile_id, target_user_id,
+                )
+            })?;
+        }
     }
     Ok(relocation)
 }
@@ -5344,8 +5352,11 @@ const CREDS_MIGRATED_PREFIX: &str = "creds_migrated_";
 /// `None`. Lets the migration engine run against a fake vault in tests.
 type SecretReader<'a> = dyn Fn(&str) -> Result<Option<Zeroizing<String>>, String> + 'a;
 
-/// Closure that removes one secret from the legacy vault; absent is not an error.
-type SecretDeleter<'a> = dyn Fn(&str) -> Result<(), String> + 'a;
+/// Deletes one vault key after the alignment committed. `expected` is the
+/// value the pass read: the delete lands only while the vault still holds
+/// it, and `Ok(false)` reports a value another writer stored since, which
+/// keeps the alignment pending for the next pass.
+type SecretDeleter<'a> = dyn Fn(&str, Option<&str>) -> Result<bool, String> + 'a;
 
 /// Closure that lists the legacy vault's keys now.
 type SecretLister<'a> = dyn Fn() -> Result<Vec<String>, String> + 'a;
@@ -5491,6 +5502,7 @@ fn nonprofile_secret_owner_in(conn: &Connection, persist: bool) -> Result<Option
 }
 
 /// Remove one secret from the live store; one already absent is not an error.
+#[cfg(any(test, not(feature = "proton-native")))]
 fn delete_optional_secret(store: &CredentialStore, account: &str) -> Result<(), String> {
     match store.delete(account) {
         Ok(()) | Err(CredentialError::NotFound(_)) => Ok(()),
@@ -5758,8 +5770,7 @@ fn token_key_present(
 /// into its partition when no row is there yet, then removed from the vault.
 /// A profile id another account also holds is left: the vault copy cannot be
 /// told apart, and the legacy owner reads it as its own; a row of this account
-/// that its own sign-in did not stamp ([`signed_in_row`]), and that is not a
-/// Jottacloud chain of another user ([`another_jottacloud_user`]), may be a
+/// that its own sign-in did not stamp ([`signed_in_row`]), may be a
 /// copy an earlier migration made of it, and is dropped. Idempotent via the
 /// `private_tokens_aligned_<id>` marker, set once the vault has let go of the
 /// keys moved; a locked passphrase account is left unmarked until its first
@@ -6092,6 +6103,9 @@ fn align_private_tokens_of(
         };
         let mut sole = Vec::new();
         let mut waits = false;
+        // The vault value each moved key held when the pass read it: the
+        // post-commit delete lands only while the vault still holds it.
+        let mut expected: HashMap<String, Option<Zeroizing<String>>> = HashMap::new();
         for id in profiles
             .iter()
             .filter_map(|p| value_str(p, &["id", "uid", "profileUid"]))
@@ -6166,6 +6180,7 @@ fn align_private_tokens_of(
             }
         }
         for key in &sole {
+            expected.insert(key.clone(), read_secret(key)?);
             let kind = private_token_type(key).unwrap_or("oauth");
             if is_proton_session_key(key) {
                 let copy_uid = match read_credential_with_dek(&tx, uid, dek, key)? {
@@ -6181,18 +6196,26 @@ fn align_private_tokens_of(
         }
         tx.commit()
             .map_err(|e| format!("Commit private token alignment: {e}"))?;
-        Ok(Some((sole, waits)))
+        Ok(Some((sole, waits, expected)))
     });
-    let (moved, waits) = match outcome {
+    let (moved, waits, expected) = match outcome {
         Ok(Some(done)) => done,
         Ok(None) => return Ok(None),
         Err(e) if e == "USER_LOCKED" => return Ok(None),
         Err(e) => return Err(e),
     };
-    // The copies are committed: only now does the vault let go of them.
+    // The copies are committed: only now does the vault let go of them. A
+    // value another writer stored since the pass read it stays, and the
+    // account stays unmarked so the next pass reconciles that newer chain.
+    let mut changed = false;
     if vault_lets_go {
         for key in &moved {
-            delete_secret(key)?;
+            let held = expected
+                .get(key)
+                .and_then(|value| value.as_ref().map(|raw| raw.as_str()));
+            if !delete_secret(key, held)? {
+                changed = true;
+            }
         }
     }
     // A pass that left them in the vault is not done: the next one that can
@@ -6200,7 +6223,7 @@ fn align_private_tokens_of(
     // waits for token tags: the next pass runs it. A targeted pass marks
     // nothing, so it reports itself incomplete, and its caller keeps the keys
     // for that pass ([`realign_deferred_tokens`], [`defer_realign`]).
-    let incomplete = waits || (!vault_lets_go && !moved.is_empty());
+    let incomplete = waits || changed || (!vault_lets_go && !moved.is_empty());
     if incomplete && only.is_some() {
         return Ok(None);
     }
@@ -6217,8 +6240,7 @@ fn align_private_tokens_of(
 /// native Proton session is the same session by its UID, whatever pair a
 /// refresh has rotated it to since; any other row is a copy unless its own
 /// sign-in stamped it ([`stamp_matches`], against `digest`, the digest of
-/// the ciphertext `row` was decrypted from) or it signs in to another
-/// Jottacloud user ([`another_jottacloud_user`]). With no vault value the
+/// the ciphertext `row` was decrypted from). With no vault value the
 /// owner signed out first, and a copy outlives its key: any unstamped row is
 /// a copy all the same, but a Proton session, whose owner's sign-out ended
 /// it.
@@ -6237,18 +6259,37 @@ fn row_may_be_a_copy(
         return Ok(proton_session_uid(row)
             .is_some_and(|copy| proton_session_uid(vault).is_some_and(|held| held == copy)));
     }
-    Ok(!stamp_matches(conn, user_id, key, digest)? && !another_jottacloud_user(key, row, vault))
+    // Only the sign-in stamp proves a row is this account's own: a changed
+    // Jottacloud username or refresh token cannot, since a copied chain an
+    // earlier migration made drifts in both once it is refreshed, and an
+    // ambiguous legacy row signs in again instead.
+    Ok(!stamp_matches(conn, user_id, key, digest)?)
+}
+
+/// Whether a profile of another account still misses its token tag: which
+/// token keys its profiles name cannot be read until they are filled, which
+/// matters for a key that folds case ([`token_key_folds_case`]), where two
+/// profile ids that differ only in case name the same vault key.
+fn token_tags_pending_elsewhere(conn: &Connection, user_id: i64) -> Result<bool, String> {
+    conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM server_profiles
+         WHERE user_id <> ?1 AND token_uid IS NULL)",
+        params![user_id],
+        |row| row.get(0),
+    )
+    .map_err(|e| format!("Read profile token tags: {e}"))
 }
 
 /// Whether the private-token row `key` of `user_id`, read as `row`, must read
 /// as absent: the account is not the legacy owner and not yet aligned, and
-/// the alignment waits for profile tags ([`waits_for_profile_tags`]), so
-/// nothing yet tells whether another account holds the profile, while the
-/// row may be a copy of the vault's value ([`row_may_be_a_copy`]). A copy an
-/// earlier migration made of the legacy owner's token would otherwise sign
-/// this account in to the owner's cloud until an unrelated account is
-/// unlocked. A row the account's own sign-in stamped stays readable, and so
-/// does every row of an aligned account; only a restore sets the wait.
+/// the alignment waits for profile tags ([`waits_for_profile_tags`], or, for
+/// a key that folds case, [`token_tags_pending_elsewhere`]), so nothing yet
+/// tells whether another account holds the profile, while the row may be a
+/// copy of the vault's value ([`row_may_be_a_copy`]). A copy an earlier
+/// migration made of the legacy owner's token would otherwise sign this
+/// account in to the owner's cloud until an unrelated account is unlocked.
+/// A row the account's own sign-in stamped stays readable, and so does every
+/// row of an aligned account.
 fn unverified_while_tags_pending(
     conn: &Connection,
     user_id: i64,
@@ -6257,10 +6298,13 @@ fn unverified_while_tags_pending(
     digest: &str,
     read_secret: &SecretReader<'_>,
 ) -> Result<bool, String> {
-    if private_token_type(key).is_none()
-        || !waits_for_profile_tags(conn, user_id)?
-        || private_tokens_aligned(conn, user_id)?
-    {
+    // A key that folds case is ambiguous while another account's token tags
+    // are pending even without a restore's wait: `Team` here and `team`
+    // there are one vault key, and nothing yet says which profile's token
+    // the vault holds.
+    let waits = waits_for_profile_tags(conn, user_id)?
+        || (token_key_folds_case(key) && token_tags_pending_elsewhere(conn, user_id)?);
+    if private_token_type(key).is_none() || !waits || private_tokens_aligned(conn, user_id)? {
         return Ok(false);
     }
     let vault = read_secret(key)?;
@@ -6404,39 +6448,6 @@ pub(crate) fn backup_row_if_own(
     Ok(own.then_some(row))
 }
 
-/// Whether `row`, this account's unstamped copy of the Jottacloud chain `key`
-/// on a profile id another account also holds, signs in to another
-/// Jottacloud user than the vault's chain, with another refresh token: a
-/// copy of the owner's chain, refreshed or not, carries the owner's user, so
-/// another user is a sign-in of its own. A value that differs proves nothing
-/// else (every refresh of the vault's token rewrites it), nor does an OAuth
-/// record's own `v1:` family: a copy an earlier migration made keeps the
-/// family the owner had then, and the owner's next sign-in mints another.
-/// Only the sign-in stamp ([`signed_in_row`]) proves those; any other row
-/// is dropped, and that account signs in again.
-fn another_jottacloud_user(key: &str, row: &str, vault: &str) -> bool {
-    if !key.starts_with("jottacloud_refresh") {
-        return false;
-    }
-    let (Ok(row), Ok(vault)) = (
-        serde_json::from_str::<Value>(row),
-        serde_json::from_str::<Value>(vault),
-    ) else {
-        return false;
-    };
-    let field = |record: &Value, name: &str| {
-        record
-            .get(name)
-            .and_then(Value::as_str)
-            .filter(|value| !value.is_empty())
-            .map(str::to_string)
-    };
-    let another = |name: &str| {
-        field(&row, name).is_some_and(|own| field(&vault, name).as_deref() != Some(own.as_str()))
-    };
-    another("username") && another("refresh_token")
-}
-
 /// The account active before a keystore restore, and what it held then, for
 /// [`realign_private_tokens_after_restore`].
 pub struct ActiveBeforeRestore<'a> {
@@ -6492,7 +6503,18 @@ pub fn realign_private_tokens_after_restore(
         .list_accounts()
         .map_err(|e| format!("List vault keys: {e}"))?;
     let read_secret = |key: &str| get_optional_secret(before.store, key);
-    let delete_secret = |key: &str| delete_optional_secret(before.store, key);
+    let delete_secret = |key: &str, expected: Option<&str>| -> Result<bool, String> {
+        match expected {
+            Some(expected) => before
+                .store
+                .delete_secret_if_unchanged(key, expected)
+                .map_err(|e| format!("Delete legacy secret: {e}")),
+            None => match get_optional_secret(before.store, key)? {
+                Some(_) => Ok(false),
+                None => Ok(true),
+            },
+        }
+    };
     let root_key = Zeroizing::new(before.store.derive_user_partition_wrapping_key());
     match align_private_tokens_of(
         &conn,
@@ -6584,7 +6606,17 @@ pub fn migrate_credentials_eager_all(
     }
     let vault_keys = list_vault_keys(store)?;
     let read_secret = |key: &str| get_optional_secret(store, key);
-    let delete_secret = |key: &str| delete_optional_secret(store, key);
+    let delete_secret = |key: &str, expected: Option<&str>| -> Result<bool, String> {
+        match expected {
+            Some(expected) => store
+                .delete_secret_if_unchanged(key, expected)
+                .map_err(|e| format!("Delete legacy secret: {e}")),
+            None => match get_optional_secret(store, key)? {
+                Some(_) => Ok(false),
+                None => Ok(true),
+            },
+        }
+    };
     let list_secrets = || list_vault_keys(store);
     let mut total = 0usize;
     for user_id in pending {
@@ -6624,7 +6656,17 @@ pub fn migrate_credentials_for_user(
     }
     let vault_keys = list_vault_keys(store)?;
     let read_secret = |key: &str| get_optional_secret(store, key);
-    let delete_secret = |key: &str| delete_optional_secret(store, key);
+    let delete_secret = |key: &str, expected: Option<&str>| -> Result<bool, String> {
+        match expected {
+            Some(expected) => store
+                .delete_secret_if_unchanged(key, expected)
+                .map_err(|e| format!("Delete legacy secret: {e}")),
+            None => match get_optional_secret(store, key)? {
+                Some(_) => Ok(false),
+                None => Ok(true),
+            },
+        }
+    };
     let list_secrets = || list_vault_keys(store);
     let migrated =
         migrate_user_credentials_inner(conn, root_key, user_id, &vault_keys, &read_secret)?;
@@ -13053,10 +13095,10 @@ mod tests {
             ("oauth_dropbox_client_id", "app-id"),
         ]);
         let deleted = RefCell::new(Vec::<String>::new());
-        let refuse = |_: &str| Err("vault busy".to_string());
-        let delete = |key: &str| {
+        let refuse = |_: &str, _: Option<&str>| Err("vault busy".to_string());
+        let delete = |key: &str, _: Option<&str>| {
             deleted.borrow_mut().push(key.to_string());
-            Ok(())
+            Ok(true)
         };
         let row = |key: &str| {
             get_user_credential_for(&conn, &root, other.id, key)
@@ -13184,9 +13226,9 @@ mod tests {
             ("oauth_dropbox_mine", "mine-token"),
         ]);
         let deleted = RefCell::new(Vec::<String>::new());
-        let delete = |key: &str| {
+        let delete = |key: &str, _: Option<&str>| {
             deleted.borrow_mut().push(key.to_string());
-            Ok(())
+            Ok(true)
         };
         let row = |key: &str| {
             get_user_credential_for(&conn, &root, other.id, key)
@@ -13980,9 +14022,9 @@ mod tests {
             .unwrap();
         let (keys, read) = fake_vault(&[("oauth_dropbox_p", "owners-token")]);
         let deleted = RefCell::new(Vec::<String>::new());
-        let delete = |key: &str| {
+        let delete = |key: &str, _: Option<&str>| {
             deleted.borrow_mut().push(key.to_string());
-            Ok(())
+            Ok(true)
         };
 
         let writer = ProfileListLock::acquire(&conn).unwrap();
@@ -14158,9 +14200,9 @@ mod tests {
         .unwrap();
         let (all, read) = fake_vault(&[(first, "p-token"), (later, "q-token")]);
         let deleted = RefCell::new(Vec::<String>::new());
-        let delete = |key: &str| {
+        let delete = |key: &str, _: Option<&str>| {
             deleted.borrow_mut().push(key.to_string());
-            Ok(())
+            Ok(true)
         };
         let row = |key: &str| {
             get_user_credential_for(&conn, &root, other, key)
@@ -14234,7 +14276,7 @@ mod tests {
         let (again, new) = ("oauth_dropbox_p", "oauth_dropbox_q");
         defer_realign(&conn, &root, other, &[again.to_string()]).unwrap();
         let (all, read) = fake_vault(&[(again, "p-token"), (new, "q-token")]);
-        let delete = |_: &str| Ok(());
+        let delete = |_: &str, _: Option<&str>| Ok(true);
         let root_secret = user_crypto::secret_key_from_bytes(&root);
         let tag = |key: &str| user_crypto::metadata_tag(&root_secret, b"realign-key", key).unwrap();
         // The restore puts both keys back in the vault and defers them, once
@@ -14299,9 +14341,9 @@ mod tests {
         defer_realign(&conn, &root, other, &[key.to_string()]).unwrap();
         let (keys, read) = fake_vault(&[(key, "mine-token")]);
         let deleted = RefCell::new(Vec::<String>::new());
-        let delete = |key: &str| {
+        let delete = |key: &str, _: Option<&str>| {
             deleted.borrow_mut().push(key.to_string());
-            Ok(())
+            Ok(true)
         };
         let row = || {
             get_user_credential_for(&conn, &root, other, key)
@@ -14396,9 +14438,9 @@ mod tests {
             ("proton_native_session_profile-1", &owners_other),
         ]);
         let deleted = RefCell::new(Vec::<String>::new());
-        let delete = |key: &str| {
+        let delete = |key: &str, _: Option<&str>| {
             deleted.borrow_mut().push(key.to_string());
-            Ok(())
+            Ok(true)
         };
         let row = |key: &str| {
             get_user_credential_for(&conn, &root, other.id, key)
@@ -14475,9 +14517,9 @@ mod tests {
         mark_private_tokens_aligned(&conn, owner).unwrap();
         let (keys, read) = fake_vault(&[("oauth_dropbox_p", "token")]);
         let deleted = RefCell::new(Vec::<String>::new());
-        let delete = |key: &str| {
+        let delete = |key: &str, _: Option<&str>| {
             deleted.borrow_mut().push(key.to_string());
-            Ok(())
+            Ok(true)
         };
 
         assert_eq!(
@@ -14758,7 +14800,7 @@ mod tests {
             .unwrap();
         let held: Vec<(&str, &str)> = rows.iter().map(|(k, _, v)| (*k, v.as_str())).collect();
         let (keys, read) = fake_vault(&held);
-        let delete = |_: &str| Ok(());
+        let delete = |_: &str, _: Option<&str>| Ok(true);
         align_private_tokens_inner(
             &conn,
             &root,
@@ -14831,7 +14873,7 @@ mod tests {
         let key = "github_oauth_profile-0";
         set_signed_in_credential_for(&conn, &root, other.id, key, "oauth", "gho_other").unwrap();
         let (keys, read) = fake_vault(&[(key, "gho_owner")]);
-        let delete = |_: &str| Ok(());
+        let delete = |_: &str, _: Option<&str>| Ok(true);
         align_private_tokens_inner(
             &conn,
             &root,
@@ -14885,9 +14927,9 @@ mod tests {
         set_user_credential_for(&conn, &root, owner, oauth, "oauth", &owners).unwrap();
         let (keys, read) = fake_vault(&[(oauth, owners.as_str()), (github, "gho_owner")]);
         let deleted = RefCell::new(Vec::<String>::new());
-        let delete = |key: &str| {
+        let delete = |key: &str, _: Option<&str>| {
             deleted.borrow_mut().push(key.to_string());
-            Ok(())
+            Ok(true)
         };
         align_private_tokens_inner(
             &conn,
@@ -14941,7 +14983,7 @@ mod tests {
         set_user_credential_for(&conn, &root, other.id, key, "oauth", &copied).unwrap();
         let signed_in_again = oauth_record("new-access", "new-refresh", "v1:owners-second");
         let (keys, read) = fake_vault(&[(key, signed_in_again.as_str())]);
-        let delete = |_: &str| Ok(());
+        let delete = |_: &str, _: Option<&str>| Ok(true);
         align_private_tokens_inner(
             &conn,
             &root,
@@ -14999,7 +15041,7 @@ mod tests {
         )
         .unwrap();
         let (keys, read) = fake_vault(&[]);
-        let delete = |_: &str| Ok(());
+        let delete = |_: &str, _: Option<&str>| Ok(true);
         align_private_tokens_inner(
             &conn,
             &root,
@@ -15064,7 +15106,7 @@ mod tests {
         forget_sign_in_stamps_in_db(&path).unwrap();
         let owners = oauth_record("owners-access", "owners-refresh", "v1:owners");
         let (keys, read) = fake_vault(&[(oauth, owners.as_str()), (github, "gho_owner")]);
-        let delete = |_: &str| Ok(());
+        let delete = |_: &str, _: Option<&str>| Ok(true);
         align_private_tokens_inner(
             &conn,
             &root,
@@ -15102,7 +15144,7 @@ mod tests {
         set_user_credential_for(&conn, &root, owner, github, "oauth", "gho_owner_row").unwrap();
         let vault = oauth_record("vault-access", "vault-refresh", "v1:vault");
         let (keys, read) = fake_vault(&[(oauth, vault.as_str()), (github, "gho_vault")]);
-        let delete = |_: &str| Ok(());
+        let delete = |_: &str, _: Option<&str>| Ok(true);
         for user in [owner, other.id, owner] {
             reset_alignment(&conn, user);
             align_private_tokens_inner(
@@ -15152,7 +15194,7 @@ mod tests {
         .unwrap());
         let owners = oauth_record("owners-access", "owners-refresh", "v1:owners");
         let (keys, read) = fake_vault(&[(key, owners.as_str())]);
-        let delete = |_: &str| Ok(());
+        let delete = |_: &str, _: Option<&str>| Ok(true);
         align_private_tokens_inner(
             &conn,
             &root,
@@ -15233,9 +15275,9 @@ mod tests {
         replace_server_profiles_for(&mut conn, &root, other.id, &[profile]).unwrap();
         let (keys, read) = fake_vault(&[("oauth_dropbox_p", "mine-token")]);
         let deleted = RefCell::new(Vec::<String>::new());
-        let delete = |key: &str| {
+        let delete = |key: &str, _: Option<&str>| {
             deleted.borrow_mut().push(key.to_string());
-            Ok(())
+            Ok(true)
         };
         NO_FILE_LOCKS_IN_TEST.set(true);
         let aligned = align_private_tokens_inner(
@@ -15312,9 +15354,9 @@ mod tests {
                 replace_server_profiles_for(&mut conn, &root, owner, &list).unwrap();
             }
             let deleted = RefCell::new(Vec::<String>::new());
-            let delete = |key: &str| {
+            let delete = |key: &str, _: Option<&str>| {
                 deleted.borrow_mut().push(key.to_string());
-                Ok(())
+                Ok(true)
             };
             let row = |key: &str| {
                 get_user_credential_for(&conn, &root, other, key)
@@ -15432,7 +15474,12 @@ mod tests {
                 &vault_keys,
                 &|| list_vault_keys(&store),
                 &|key: &str| get_optional_secret(&store, key),
-                &|key: &str| delete_optional_secret(&store, key),
+                &|key: &str, expected: Option<&str>| match expected {
+                    Some(expected) => store
+                        .delete_secret_if_unchanged(key, expected)
+                        .map_err(|e| format!("Delete legacy secret: {e}")),
+                    None => delete_optional_secret(&store, key).map(|_| true),
+                },
             )
             .unwrap()
         };
@@ -15620,7 +15667,13 @@ mod tests {
                 &vault_keys,
                 &|| list_vault_keys(&self.store),
                 &|key: &str| get_optional_secret(&self.store, key),
-                &|key: &str| delete_optional_secret(&self.store, key),
+                &|key: &str, expected: Option<&str>| match expected {
+                    Some(expected) => self
+                        .store
+                        .delete_secret_if_unchanged(key, expected)
+                        .map_err(|e| format!("Delete legacy secret: {e}")),
+                    None => delete_optional_secret(&self.store, key).map(|_| true),
+                },
             )
             .unwrap();
         }
@@ -15777,9 +15830,9 @@ mod tests {
             (&unbound, &pending),
         ]);
         let deleted = RefCell::new(Vec::<String>::new());
-        let delete = |key: &str| {
+        let delete = |key: &str, _: Option<&str>| {
             deleted.borrow_mut().push(key.to_string());
-            Ok(())
+            Ok(true)
         };
         align_private_tokens_inner(
             &conn,
