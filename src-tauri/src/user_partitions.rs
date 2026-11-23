@@ -14482,10 +14482,10 @@ mod tests {
         )
         .unwrap();
         assert_eq!(row("oauth_dropbox_profile-0"), None);
-        assert_eq!(
-            row("jottacloud_refresh_profile-0").as_deref(),
-            Some(others_chain.as_str())
-        );
+        // An unstamped Jottacloud row is a copy like any other: a changed
+        // username or refresh token proves nothing, since a copied chain
+        // drifts in both once it is refreshed. Only the sign-in stamp does.
+        assert_eq!(row("jottacloud_refresh_profile-0"), None);
         // The owner's session, rotated since the copy, is the same session.
         assert_eq!(row("proton_native_session_profile-0"), None);
         assert_eq!(
