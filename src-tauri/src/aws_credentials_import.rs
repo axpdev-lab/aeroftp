@@ -1332,6 +1332,14 @@ fn acquire_aws_export_file_lock(key: &str) -> Result<AwsExportFileLock, String> 
     Ok(AwsExportFileLock(file))
 }
 
+/// Error returned by [`write_aws_protected_staged_with`] when a PAIR-selected
+/// side slot (`SideAt`/`ReplaceSide` on a pair write, `paired == true`) collides
+/// or loses ownership at write time. The caller must then roll back the already
+/// published sibling and replan BOTH files from the pair selector: an
+/// independent per-side `Side` scan must never run for a pair write, because it
+/// can replace a side file of an older pair and split that pair (C1).
+const AWS_PAIR_SLOT_COLLISION: &str = "aws protected pair side slot collision";
+
 #[allow(clippy::too_many_arguments)]
 fn write_aws_protected_staged_with(
     target_path: &Path,
@@ -1342,6 +1350,7 @@ fn write_aws_protected_staged_with(
     initial_mode: AwsProtectedWriteMode,
     existing_was_legacy: bool,
     max_side_slots: usize,
+    paired: bool,
     mut persist_replace: impl FnMut(
         tempfile::NamedTempFile,
         &Path,
@@ -1388,11 +1397,17 @@ fn write_aws_protected_staged_with(
             AwsProtectedWriteMode::ReplaceSide(index) => {
                 let candidate = aws_side_path(target_path, index);
                 if paths_collide(&candidate, avoid) {
+                    if paired {
+                        return Err(AWS_PAIR_SLOT_COLLISION.to_string());
+                    }
                     mode = AwsProtectedWriteMode::Side;
                     continue;
                 }
                 let Some(previous_bytes) = read_owned_aws_file_bytes(&candidate, expected_marker)
                 else {
+                    if paired {
+                        return Err(AWS_PAIR_SLOT_COLLISION.to_string());
+                    }
                     mode = AwsProtectedWriteMode::Side;
                     continue;
                 };
@@ -1414,6 +1429,9 @@ fn write_aws_protected_staged_with(
             AwsProtectedWriteMode::SideAt(index) => {
                 let candidate = aws_side_path(target_path, index);
                 if paths_collide(&candidate, avoid) {
+                    if paired {
+                        return Err(AWS_PAIR_SLOT_COLLISION.to_string());
+                    }
                     mode = AwsProtectedWriteMode::Side;
                     continue;
                 }
@@ -1428,6 +1446,12 @@ fn write_aws_protected_staged_with(
                         });
                     }
                     Err(err) if err.error.kind() == std::io::ErrorKind::AlreadyExists => {
+                        if paired {
+                            // A pair write never falls back to the independent
+                            // per-side scan: report the collision so the caller
+                            // rolls back the published sibling and replans both.
+                            return Err(AWS_PAIR_SLOT_COLLISION.to_string());
+                        }
                         tmp = err.file;
                         retries += 1;
                         if retries >= MAX_RETRIES {
@@ -1637,11 +1661,6 @@ fn persist_aws_export_pair_with_hooks(
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
         .unwrap_or_else(|| Path::new("."));
-    // AWS-09: stage and sync BOTH 0600 temp files before touching either target.
-    let config_tmp =
-        stage_temp(parent, config_bytes).map_err(|e| format!("stage AWS config temp file: {e}"))?;
-    let cred_tmp = stage_temp(parent, cred_bytes)
-        .map_err(|e| format!("stage AWS credentials temp file: {e}"))?;
 
     // Plan BOTH outputs before publishing either one: if either destination
     // requires a manual-merge side file, keep BOTH outputs inactive in side
@@ -1679,92 +1698,141 @@ fn persist_aws_export_pair_with_hooks(
     );
     let force_inactive_pair = config_needs_side || cred_needs_side;
 
-    let (config_mode, mut cred_mode) = if force_inactive_pair {
-        aws_side_pair_modes_with_limit(
+    // C1: a pair-selected side slot that collides at write time (an external
+    // writer claims it between the plan and the persist) never falls back to an
+    // independent per-side scan, which could replace a side file of an older
+    // pair and split that pair. Instead the published sibling is rolled back
+    // and BOTH files are replanned from the pair selector, advancing the pair
+    // to the next free slot together.
+    let mut pair_replans = 0usize;
+    let (mut config_written, cred_written) = loop {
+        let (config_mode, mut cred_mode) = if force_inactive_pair {
+            aws_side_pair_modes_with_limit(
+                config_path,
+                cred_path,
+                &config_marker,
+                &cred_marker,
+                max_side_slots,
+            )?
+        } else {
+            (raw_config_mode, raw_cred_mode)
+        };
+
+        // AWS-09: stage and sync BOTH 0600 temp files before touching either target.
+        let config_tmp = stage_temp(parent, config_bytes)
+            .map_err(|e| format!("stage AWS config temp file: {e}"))?;
+        let cred_tmp = stage_temp(parent, cred_bytes)
+            .map_err(|e| format!("stage AWS credentials temp file: {e}"))?;
+
+        // Persist config first (holds no secrets), then credentials.
+        let mut cfg_written = match write_aws_protected_staged_with(
             config_path,
-            cred_path,
+            Some(cred_path),
             &config_marker,
-            &cred_marker,
+            "AWS config",
+            config_tmp,
+            config_mode,
+            config_legacy,
             max_side_slots,
-        )?
-    } else {
-        (raw_config_mode, raw_cred_mode)
-    };
-
-    // Persist config first (holds no secrets), then credentials.
-    let mut config_written = write_aws_protected_staged_with(
-        config_path,
-        Some(cred_path),
-        &config_marker,
-        "AWS config",
-        config_tmp,
-        config_mode,
-        config_legacy,
-        max_side_slots,
-        |tmp, path| persist_replace("config", tmp, path),
-        |tmp, path| persist_noclobber("config", tmp, path),
-    )?;
-    if force_inactive_pair && !config_needs_side {
-        config_written.paired_inactive = true;
-    }
-
-    // If config raced from active to side file, force credentials inactive too
-    // so the pair stays matched. If no credentials side slot is available, roll
-    // back the redirected config write instead of leaving it orphaned.
-    let mut cred_forced_by_config_race = false;
-    if config_written.protected
-        && !matches!(
-            cred_mode,
-            AwsProtectedWriteMode::Side
-                | AwsProtectedWriteMode::SideAt(_)
-                | AwsProtectedWriteMode::ReplaceSide(_)
-        )
-    {
-        cred_mode = match aws_side_output_path_with_limit(
-            cred_path,
-            Some(&config_written.path),
-            &cred_marker,
-            0,
-            max_side_slots,
+            force_inactive_pair,
+            |tmp, path| persist_replace("config", tmp, path),
+            |tmp, path| persist_noclobber("config", tmp, path),
         ) {
-            Ok((_, mode)) => mode,
+            Ok(written) => written,
+            Err(err) if force_inactive_pair && err == AWS_PAIR_SLOT_COLLISION => {
+                pair_replans += 1;
+                if pair_replans > max_side_slots {
+                    return Err(format!(
+                        "write AWS protected pair: no free matched .aeroftp side-file pair after {pair_replans} replans"
+                    ));
+                }
+                continue;
+            }
+            Err(err) => return Err(err),
+        };
+        if force_inactive_pair && !config_needs_side {
+            cfg_written.paired_inactive = true;
+        }
+
+        // If config raced from active to side file, force credentials inactive too
+        // so the pair stays matched. If no credentials side slot is available, roll
+        // back the redirected config write instead of leaving it orphaned.
+        let mut cred_forced_by_config_race = false;
+        if cfg_written.protected
+            && !matches!(
+                cred_mode,
+                AwsProtectedWriteMode::Side
+                    | AwsProtectedWriteMode::SideAt(_)
+                    | AwsProtectedWriteMode::ReplaceSide(_)
+            )
+        {
+            cred_mode = match aws_side_output_path_with_limit(
+                cred_path,
+                Some(&cfg_written.path),
+                &cred_marker,
+                0,
+                max_side_slots,
+            ) {
+                Ok((_, mode)) => mode,
+                Err(err) => {
+                    return Err(format_error_with_rollback(
+                        err,
+                        &cfg_written,
+                        config_bytes,
+                        "AWS config",
+                    ));
+                }
+            };
+            cred_forced_by_config_race = true;
+        }
+
+        match write_aws_protected_staged_with(
+            cred_path,
+            Some(&cfg_written.path),
+            &cred_marker,
+            "AWS credentials",
+            cred_tmp,
+            cred_mode,
+            cred_legacy,
+            max_side_slots,
+            force_inactive_pair,
+            |tmp, path| persist_replace("credentials", tmp, path),
+            |tmp, path| persist_noclobber("credentials", tmp, path),
+        ) {
+            Ok(mut written) => {
+                if (force_inactive_pair && !cred_needs_side) || cred_forced_by_config_race {
+                    written.paired_inactive = true;
+                }
+                break (cfg_written, written);
+            }
+            Err(err) if force_inactive_pair && err == AWS_PAIR_SLOT_COLLISION => {
+                // Roll back the published side file, then replan BOTH files as
+                // one pair from the selector.
+                if let Err(rb_err) = rollback_written_file(&cfg_written, config_bytes, "AWS config")
+                {
+                    return Err(format!(
+                        "an AWS credentials side slot raced after {} was published, and rolling that config write back failed: {rb_err}",
+                        cfg_written.path.display()
+                    ));
+                }
+                pair_replans += 1;
+                if pair_replans > max_side_slots {
+                    return Err(format!(
+                        "write AWS protected pair: no free matched .aeroftp side-file pair after {pair_replans} replans"
+                    ));
+                }
+                continue;
+            }
             Err(err) => {
                 return Err(format_error_with_rollback(
                     err,
-                    &config_written,
+                    &cfg_written,
                     config_bytes,
                     "AWS config",
                 ));
             }
-        };
-        cred_forced_by_config_race = true;
-    }
-
-    let mut cred_written = match write_aws_protected_staged_with(
-        cred_path,
-        Some(&config_written.path),
-        &cred_marker,
-        "AWS credentials",
-        cred_tmp,
-        cred_mode,
-        cred_legacy,
-        max_side_slots,
-        |tmp, path| persist_replace("credentials", tmp, path),
-        |tmp, path| persist_noclobber("credentials", tmp, path),
-    ) {
-        Ok(outcome) => outcome,
-        Err(err) => {
-            return Err(format_error_with_rollback(
-                err,
-                &config_written,
-                config_bytes,
-                "AWS config",
-            ));
         }
     };
-    if (force_inactive_pair && !cred_needs_side) || cred_forced_by_config_race {
-        cred_written.paired_inactive = true;
-    }
 
     // If credentials raced from active to side file after config was already
     // published actively, roll back active config and publish config to its
@@ -1806,6 +1874,7 @@ fn persist_aws_export_pair_with_hooks(
                 side_cfg_mode,
                 config_legacy,
                 max_side_slots,
+                false,
                 |tmp, path| persist_replace("config", tmp, path),
                 |tmp, path| persist_noclobber("config", tmp, path),
             )
@@ -2523,6 +2592,7 @@ region = eu-west-1
             mode,
             false,
             AWS_MAX_SIDE_SLOTS,
+            false,
             crate::bridge_shared::persist_staged_temp,
             crate::bridge_shared::persist_staged_temp_noclobber,
         )
@@ -3224,6 +3294,7 @@ region = eu-west-1
             AwsProtectedWriteMode::Side,
             false,
             AWS_MAX_SIDE_SLOTS,
+            false,
             crate::bridge_shared::persist_staged_temp,
             |t, p| {
                 if !raced_once && p == side0 {
@@ -5442,6 +5513,99 @@ region = eu-west-1
         );
     }
 
+    /// C1 write-time collision (PR #1613 round 3, r4670293574): with an old
+    /// asymmetric pair (`credentials.aeroftp` + `config.aeroftp.1`) present, the
+    /// pair selector picks slot 2 and `config.aeroftp.2` is published; an
+    /// external writer then claims `credentials.aeroftp.2`. The credentials
+    /// write must NOT fall back to an independent per-side scan that replaces
+    /// the owned `credentials.aeroftp` of the old pair: the published config
+    /// side is rolled back and BOTH files are replanned together to the next
+    /// free pair slot. The old pair is never split.
+    #[test]
+    fn export_side_pair_survives_write_time_collision_without_splitting_old_pair() {
+        let dir = tempfile::tempdir().unwrap();
+        let cred = dir.path().join("credentials");
+        let cfg = dir.path().join("config");
+        // Active targets are user files, so the export must go to side files.
+        std::fs::write(&cfg, b"[profile user]\nregion = us-east-1\n").unwrap();
+        std::fs::write(&cred, b"[user]\naws_access_key_id = AKUSER\n").unwrap();
+        // Old asymmetric pair: owned `credentials.aeroftp` + owned `config.aeroftp.1`.
+        let old_cred0 = aws_marked_file_bytes(
+            &aws_credentials_marker_for(&cred),
+            "\n[old]\naws_access_key_id = AKOLD\naws_secret_access_key = oldsec\n",
+        );
+        let old_cfg1 = aws_marked_file_bytes(
+            &aws_config_marker_for(&cred),
+            "\n[profile old]\nregion = us-west-1\n",
+        );
+        std::fs::write(dir.path().join("credentials.aeroftp"), &old_cred0).unwrap();
+        std::fs::write(dir.path().join("config.aeroftp.1"), &old_cfg1).unwrap();
+
+        let new_cfg = aws_marked_file_bytes(
+            &aws_config_marker_for(&cred),
+            "\n[profile new]\nregion = eu-west-1\n",
+        );
+        let new_cred = aws_marked_file_bytes(
+            &aws_credentials_marker_for(&cred),
+            "\n[new]\naws_access_key_id = AKNEW\naws_secret_access_key = newsec\n",
+        );
+        let external = b"[external]\naws_access_key_id = AKEXT\n";
+
+        let collided = std::cell::Cell::new(false);
+        let (cfg_out, cred_out) = persist_aws_export_pair(
+            &cred,
+            &cfg,
+            &new_cfg,
+            &new_cred,
+            |_, tmp, path| crate::bridge_shared::persist_staged_temp(tmp, path),
+            |kind, tmp, path| {
+                // The external writer claims the pair slot for credentials
+                // between the config publish and the credentials write.
+                if kind == "credentials"
+                    && path.file_name().and_then(|n| n.to_str()) == Some("credentials.aeroftp.2")
+                    && !collided.replace(true)
+                {
+                    std::fs::write(path, external).unwrap();
+                }
+                crate::bridge_shared::persist_staged_temp_noclobber(tmp, path)
+            },
+        )
+        .unwrap();
+
+        assert!(collided.get(), "the injected collision must have fired");
+        // The old pair is untouched: never split, never replaced.
+        assert_eq!(
+            std::fs::read(dir.path().join("credentials.aeroftp")).unwrap(),
+            old_cred0,
+            "owned credentials.aeroftp of the old pair must not be replaced"
+        );
+        assert_eq!(
+            std::fs::read(dir.path().join("config.aeroftp.1")).unwrap(),
+            old_cfg1,
+            "owned config.aeroftp.1 of the old pair must not be replaced"
+        );
+        // The external claim on the slot is preserved.
+        assert_eq!(
+            std::fs::read(dir.path().join("credentials.aeroftp.2")).unwrap(),
+            external
+        );
+        // The published config side at slot 2 was rolled back...
+        assert!(!dir.path().join("config.aeroftp.2").exists());
+        // ...and both new outputs landed together at the next free pair slot (3).
+        assert_eq!(cfg_out.path, dir.path().join("config.aeroftp.3"));
+        assert_eq!(cred_out.path, dir.path().join("credentials.aeroftp.3"));
+        assert_eq!(std::fs::read(&cfg_out.path).unwrap(), new_cfg);
+        assert_eq!(std::fs::read(&cred_out.path).unwrap(), new_cred);
+        assert!(aws_file_is_aeroftp_owned(
+            &cfg_out.path,
+            &aws_config_marker_for(&cred)
+        ));
+        assert!(aws_file_is_aeroftp_owned(
+            &cred_out.path,
+            &aws_credentials_marker_for(&cred)
+        ));
+    }
+
     /// C2: repeated `AlreadyExists` collisions on the `Absent` target path are
     /// charged to `retries` / `MAX_RETRIES` so the write loop terminates cleanly.
     #[test]
@@ -5458,6 +5622,7 @@ region = eu-west-1
             AwsProtectedWriteMode::Absent,
             false,
             AWS_MAX_SIDE_SLOTS,
+            false,
             |_, _| unreachable!("replace must not run"),
             |t, _| {
                 Err(tempfile::PersistError {
