@@ -1619,17 +1619,24 @@ fn a_lagging_base_survives_a_rotation_with_unreadable_counts() {
             ));
         }
 
-        // The next rotation lands while the deletion counts cannot be
+        // The next rotations land while the deletion counts cannot be
         // read: nothing is written, and the pending rotation keeps the
-        // follower's base, not the primary's newer token.
+        // follower's base, not the primary's newer token, and every token
+        // its exchanges consumed, so each copy still holding one is handed
+        // the live chain and not its spent token.
         partitions::CHAIN_DELETIONS_REFUSED.store(true, SeqCst);
         connection.token_expiry = Instant::now();
         chains
             .runtime()
             .block_on(connection.refresh_if_needed())
             .expect("refresh");
+        connection.token_expiry = Instant::now();
+        chains
+            .runtime()
+            .block_on(connection.refresh_if_needed())
+            .expect("refresh");
         partitions::CHAIN_DELETIONS_REFUSED.store(false, SeqCst);
-        let third = connection.refresh_token.expose_secret().to_string();
+        let fourth = connection.refresh_token.expose_secret().to_string();
         let kept = chains
             .pending(&key)
             .map(|json| serde_json::from_str::<serde_json::Value>(&json).unwrap());
@@ -1639,11 +1646,26 @@ fn a_lagging_base_survives_a_rotation_with_unreadable_counts() {
         let kept_base = kept
             .as_ref()
             .and_then(|filed| filed[PENDING_BASE].as_str().map(str::to_string));
-        if kept_token.as_deref() != Some(third.as_str())
+        let kept_consumed: Vec<String> = kept
+            .as_ref()
+            .map(|filed| {
+                filed[PENDING_CONSUMED]
+                    .as_array()
+                    .map(|items| {
+                        items
+                            .iter()
+                            .filter_map(|item| item.as_str().map(str::to_string))
+                            .collect()
+                    })
+                    .unwrap_or_default()
+            })
+            .unwrap_or_default();
+        if kept_token.as_deref() != Some(fourth.as_str())
             || kept_base.as_deref() != Some(first.as_str())
+            || !kept_consumed.iter().any(|token| token == &second)
         {
             failures.push(format!(
-                "{case}: with unreadable counts the pending is {kept_token:?} on base {kept_base:?}, expected {third} on {first}"
+                "{case}: with unreadable counts the pending is {kept_token:?} on base {kept_base:?} having consumed {kept_consumed:?}, expected {fourth} on {first} having consumed second"
             ));
         }
         if written(&key) != second || follower(&key) != first {
@@ -1656,15 +1678,15 @@ fn a_lagging_base_survives_a_rotation_with_unreadable_counts() {
 
         // Reads recover: each copy's reader gets the newest chain, the one
         // on the follower through its base and the one on the primary
-        // through the consumed predecessor it still holds.
+        // through a consumed predecessor it still holds.
         for (reader, reader_user) in [("written copy", user), ("copy left behind", other)] {
             let loaded =
                 JottacloudProvider::load_refresh_chain(Some(reader_user), Some(chains.owner), &key)
                     .chain()
                     .map(|((rt, _, _), _)| rt);
-            if loaded.as_deref() != Some(third.as_str()) {
+            if loaded.as_deref() != Some(fourth.as_str()) {
                 failures.push(format!(
-                    "{case}: the reader of the {reader} loads {loaded:?}, expected {third}"
+                    "{case}: the reader of the {reader} loads {loaded:?}, expected {fourth}"
                 ));
             }
         }

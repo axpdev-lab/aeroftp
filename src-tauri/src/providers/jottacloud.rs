@@ -185,6 +185,29 @@ const PENDING_SOURCE_GEN: &str = "source_chain_deletions";
 /// missed the write, so the rotation stays and is handed out in its place.
 const PENDING_CONSUMED: &str = "consumed_refresh_token";
 
+/// The refresh tokens a pending rotation's exchanges consumed, as its
+/// `PENDING_CONSUMED` field holds them: one string for a rotation filed
+/// before the list, an array once rotations accumulate.
+fn consumed_tokens_of(value: &serde_json::Value) -> Vec<String> {
+    let field = &value[PENDING_CONSUMED];
+    if let Some(one) = field.as_str() {
+        return if one.is_empty() {
+            Vec::new()
+        } else {
+            vec![one.to_string()]
+        };
+    }
+    field
+        .as_array()
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| item.as_str().filter(|s| !s.is_empty()).map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// What [`JottacloudProvider::write_rotation`] did with each key.
 #[derive(Default)]
 struct PersistOutcome {
@@ -1060,8 +1083,24 @@ impl JottacloudProvider {
             if let Some(base) = base {
                 chain[PENDING_BASE] = serde_json::Value::String(base);
             }
+            let mut consumed_tokens = pending
+                .get(&key)
+                .and_then(|json| serde_json::from_str::<serde_json::Value>(json.as_str()).ok())
+                .map(|old| consumed_tokens_of(&old))
+                .unwrap_or_default();
             if let Some(consumed) = consumed.as_ref() {
-                chain[PENDING_CONSUMED] = serde_json::Value::String(consumed.as_str().to_string());
+                let token = consumed.as_str().to_string();
+                if !token.is_empty() && !consumed_tokens.iter().any(|kept| kept == &token) {
+                    consumed_tokens.push(token);
+                }
+            }
+            if !consumed_tokens.is_empty() {
+                chain[PENDING_CONSUMED] = serde_json::Value::Array(
+                    consumed_tokens
+                        .into_iter()
+                        .map(serde_json::Value::String)
+                        .collect(),
+                );
             }
             chain[PENDING_GEN] = (*generation).into();
             if let (Some(source), Some(source_generation)) = (source, source_generation) {
@@ -1603,8 +1642,14 @@ impl JottacloudProvider {
             // stays and is handed out: the stored token is already spent, and
             // handing it out would leave its reader with a dead chain while
             // the live one stays pending for another copy.
+            let consumed_field = &filed[PENDING_CONSUMED];
             let consumed_predecessor = !stored_token.is_empty()
-                && filed[PENDING_CONSUMED].as_str() == Some(stored_token.as_str());
+                && (consumed_field.as_str() == Some(stored_token.as_str())
+                    || consumed_field.as_array().is_some_and(|items| {
+                        items
+                            .iter()
+                            .any(|item| item.as_str() == Some(stored_token.as_str()))
+                    }));
             if stored.is_some()
                 && !own_chain
                 && !consumed_predecessor
