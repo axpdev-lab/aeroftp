@@ -2525,19 +2525,19 @@ impl ProviderConnectionParams {
         }
         // AWS-11: imported S3 session tokens live in the encrypted vault under
         // `aws_session_token_<profile_id>` so they never cross into the webview.
-        // An explicit form token or launch-URL token already populated above wins.
+        // Owner-aware lookup ensures another user with the same profile id never
+        // receives the legacy owner's shared-vault token. An explicit form token
+        // or launch-URL token already populated above wins.
         crate::profile_loader::inject_vault_s3_session_token(
             config.provider_type,
             self.profile_id.as_deref(),
             &mut config.extra,
             |key| {
-                crate::credential_store::CredentialStore::from_cache()
-                    .and_then(|store| {
-                        crate::user_partitions::resolve_active_credential(&store, key)
-                            .ok()
-                            .flatten()
-                    })
-                    .map(|secret| secret.to_string())
+                crate::credential_store::CredentialStore::from_cache().and_then(|store| {
+                    crate::profile_loader::resolve_vault_s3_session_token_owner_aware(
+                        &store, None, key,
+                    )
+                })
             },
         );
         Ok(config)
@@ -25015,6 +25015,11 @@ mod tests {
 
     #[test]
     fn s3_connect_reads_vault_session_token_by_profile_id() {
+        if !isolated_account_fixture::in_isolated_child(
+            "provider_commands::tests::s3_connect_reads_vault_session_token_by_profile_id",
+        ) {
+            return;
+        }
         let _env = crate::test_env::lock();
         let _partition = crate::user_partitions::test_lock();
         let dir = tempfile::TempDir::new().unwrap();
@@ -25031,6 +25036,11 @@ mod tests {
             .unwrap();
         let store = crate::credential_store::CredentialStore::from_cache().unwrap();
         crate::user_partitions::init_or_migrate_cli(&store).unwrap();
+        let conn = crate::user_partitions::open_or_init_cli().unwrap();
+        let first_user = crate::user_partitions::get_active_user(&conn)
+            .unwrap()
+            .expect("first user");
+        drop(conn);
         crate::user_partitions::store_active_credential_dual(
             &store,
             "aws_session_token_aws-sts-1",
@@ -25055,6 +25065,45 @@ mod tests {
             .get("session_token")
             .cloned();
 
+        // Class A (findings 12, 13, 14): create user B without a token on the
+        // shared profile id `aws-sts-1`. Switching active user to B must NEVER
+        // leak user A's shared-vault token on connect or export, while an
+        // explicit scoped lookup for user A still resolves A's token.
+        let mut conn = crate::user_partitions::open_or_init_cli().unwrap();
+        let root_key = store.derive_user_partition_wrapping_key();
+        let second_user =
+            crate::user_partitions::create_user(&mut conn, &root_key, "Second", None, None, None)
+                .unwrap();
+        crate::user_partitions::set_active_user(&conn, second_user.id).unwrap();
+        drop(conn);
+
+        let mut second_params = s3_params(None);
+        second_params.profile_id = Some("aws-sts-1".to_string());
+        second_params.session_token = None;
+        let got_second_connect = second_params
+            .to_provider_config()
+            .unwrap()
+            .extra
+            .get("session_token")
+            .cloned();
+
+        let mut export_opts_b: Option<serde_json::Value> = None;
+        crate::bridge_commands::inject_aws_session_token_export_option_for_user(
+            &mut export_opts_b,
+            &store,
+            Some(second_user.id),
+            "s3",
+            "aws-sts-1",
+        );
+        let mut export_opts_a: Option<serde_json::Value> = None;
+        crate::bridge_commands::inject_aws_session_token_export_option_for_user(
+            &mut export_opts_a,
+            &store,
+            Some(first_user.id),
+            "s3",
+            "aws-sts-1",
+        );
+
         crate::credential_store::CredentialStore::clear_cache();
         match previous_xdg {
             Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
@@ -25067,6 +25116,22 @@ mod tests {
 
         assert_eq!(got_vault.as_deref(), Some("VAULT-STS-TOKEN-42"));
         assert_eq!(got_explicit.as_deref(), Some("EXPLICIT-TOKEN"));
+        assert_eq!(
+            got_second_connect, None,
+            "user B without a token must never inherit user A's shared-vault token on connect"
+        );
+        assert!(
+            export_opts_b.is_none(),
+            "user B without a token must never inherit user A's shared-vault token on export"
+        );
+        assert_eq!(
+            export_opts_a
+                .as_ref()
+                .and_then(|o| o.get("sessionToken"))
+                .and_then(|v| v.as_str()),
+            Some("VAULT-STS-TOKEN-42"),
+            "explicit scoped lookup for user A must still resolve A's token when user B is active"
+        );
     }
 
     #[test]

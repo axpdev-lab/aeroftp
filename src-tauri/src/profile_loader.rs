@@ -23,6 +23,31 @@ pub fn aws_session_token_vault_key(profile_id: &str) -> String {
     format!("aws_session_token_{profile_id}")
 }
 
+/// Owner-aware vault read for `aws_session_token_<id>`.
+///
+/// When `user_id` is `Some(uid)`, reads strictly from `uid`'s partition
+/// (falling back to the shared vault only when `uid` is the legacy owner).
+/// When `user_id` is `None`, reads for the active user via the same
+/// owner-aware rule so another user sharing a profile id never receives a
+/// token from the shared vault.
+pub fn resolve_vault_s3_session_token_owner_aware(
+    store: &crate::credential_store::CredentialStore,
+    user_id: Option<i64>,
+    key: &str,
+) -> Option<String> {
+    let resolved = match user_id {
+        Some(uid) => {
+            crate::user_partitions::resolve_credential_for_user_owner_aware(store, uid, key)
+        }
+        None => crate::user_partitions::resolve_active_credential_owner_aware(store, key),
+    };
+    resolved
+        .ok()
+        .flatten()
+        .map(|secret| secret.to_string())
+        .filter(|s| !s.trim().is_empty())
+}
+
 /// Populate `extra["session_token"]` for an S3 connection from the vault when
 /// neither the connect form nor a launch URL already provided one. Explicit
 /// session tokens always take precedence.

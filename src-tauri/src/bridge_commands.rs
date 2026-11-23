@@ -1421,9 +1421,22 @@ pub fn inject_rclone_filen_export_options(
 /// profile's vaulted `aws_session_token_<id>` and inject it into a transient
 /// copy of `options.sessionToken` so the exported credentials file carries
 /// `aws_session_token`. An inline `options.sessionToken` already present wins.
+/// Uses owner-aware lookup for the active user.
 pub fn inject_aws_session_token_export_option(
     options: &mut Option<Value>,
     store: &CredentialStore,
+    protocol: &str,
+    id: &str,
+) {
+    inject_aws_session_token_export_option_for_user(options, store, None, protocol, id);
+}
+
+/// Owner-aware variant of [`inject_aws_session_token_export_option`] scoped to
+/// an explicit `user_id` (e.g. CLI `--user`), or the active user when `None`.
+pub fn inject_aws_session_token_export_option_for_user(
+    options: &mut Option<Value>,
+    store: &CredentialStore,
+    user_id: Option<i64>,
     protocol: &str,
     id: &str,
 ) {
@@ -1440,12 +1453,9 @@ pub fn inject_aws_session_token_export_option(
         return;
     }
     let key = crate::profile_loader::aws_session_token_vault_key(id);
-    let token = crate::user_partitions::resolve_active_credential(store, &key)
-        .ok()
-        .flatten()
-        .map(|s| s.to_string())
-        .filter(|s| !s.trim().is_empty());
-    let Some(token) = token else {
+    let Some(token) =
+        crate::profile_loader::resolve_vault_s3_session_token_owner_aware(store, user_id, &key)
+    else {
         return;
     };
     if !matches!(options, Some(Value::Object(_))) {
@@ -3108,6 +3118,48 @@ mod tests {
                     .as_str()
                     .is_some_and(|r| r.contains("AWS session token"))),
             "expected vault-locked session token warning: {locked}"
+        );
+
+        // Legacy `aws_security_token` alias also moves strictly into the vault
+        // and never survives GUI redaction or CLI `options_without_secrets`.
+        let alias_cred = dir.path().join("credentials_alias");
+        std::fs::write(
+            &alias_cred,
+            "[legacy]\naws_access_key_id = ASIALEGACY\naws_secret_access_key = secret2\naws_security_token = LEGACY-STS-ALIAS-TOKEN\n",
+        )
+        .unwrap();
+        let alias_parsed =
+            crate::aws_credentials_import::import_aws_credentials_with_config(&alias_cred, None)
+                .unwrap();
+        let alias_id = alias_parsed.servers[0].id.clone();
+        let alias_value = serde_json::to_value(&alias_parsed).unwrap();
+        let mut alias_vault: HashMap<String, String> = HashMap::new();
+        let alias_res = finish_bridge_import(
+            "aws",
+            &alias_value,
+            Vec::new(),
+            Some(&mut |k: &str, v: &str| {
+                alias_vault.insert(k.to_string(), v.to_string());
+                Ok(())
+            }),
+        )
+        .unwrap();
+        assert!(
+            !alias_res.to_string().contains("LEGACY-STS-ALIAS-TOKEN"),
+            "aws_security_token leaked to GUI payload: {alias_res}"
+        );
+        assert_eq!(
+            alias_vault
+                .get(&format!("aws_session_token_{alias_id}"))
+                .map(String::as_str),
+            Some("LEGACY-STS-ALIAS-TOKEN")
+        );
+        let cli_opts =
+            crate::rclone_import::options_without_secrets(alias_parsed.servers[0].options.as_ref())
+                .unwrap_or(Value::Null);
+        assert!(
+            !cli_opts.to_string().contains("LEGACY-STS-ALIAS-TOKEN"),
+            "aws_security_token leaked through CLI options_without_secrets: {cli_opts}"
         );
     }
 

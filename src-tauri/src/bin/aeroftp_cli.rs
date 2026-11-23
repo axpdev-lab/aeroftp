@@ -30547,7 +30547,11 @@ async fn create_and_connect_for_agent(
             provider_type,
             Some(profile_id),
             &mut extra,
-            |key| read_server_cred(&store, active_uid, key),
+            |key| {
+                ftp_client_gui_lib::profile_loader::resolve_vault_s3_session_token_owner_aware(
+                    &store, active_uid, key,
+                )
+            },
         );
     }
 
@@ -32021,7 +32025,11 @@ fn profile_value_to_provider_config(
             provider_type,
             profile_id,
             &mut extra,
-            |key| read_server_cred(store, scoped_uid, key),
+            |key| {
+                ftp_client_gui_lib::profile_loader::resolve_vault_s3_session_token_owner_aware(
+                    store, scoped_uid, key,
+                )
+            },
         );
     }
 
@@ -44424,6 +44432,7 @@ async fn cmd_export_bridge(
     // `(&[<Src>ExportServer], &HashMap<String,String>, &Path) -> Result<R,String>`,
     // where `R` is a count or an outcome that also names what it refused).
     use ftp_client_gui_lib::bridge_shared::{ExportParts, ExportReport};
+    let scoped_uid = scoped_credential_user_id(cli, &store);
     macro_rules! run_export {
         ($ty:ident, $f:expr) => {{
             let exportable: Vec<$ty> = collected
@@ -44432,9 +44441,10 @@ async fn cmd_export_bridge(
                 .map(|p| {
                     let mut opts = p.options.clone();
                     if src == "aws" || src == "kopia" {
-                        ftp_client_gui_lib::bridge_commands::inject_aws_session_token_export_option(
+                        ftp_client_gui_lib::bridge_commands::inject_aws_session_token_export_option_for_user(
                             &mut opts,
                             &store,
+                            scoped_uid,
                             &p.protocol,
                             &p.id,
                         );

@@ -703,6 +703,11 @@ async fn create_provider_from_vault_with_reader(
     // otherwise the dual-written vault copy still answers.
     // Strict mode holds here too: the read is never attempted for a relaxed
     // saved profile when strict mode is active.
+    // Capture the active user id ONCE before reading credentials or awaiting
+    // auth providers, so password and session token always come from the same
+    // user partition (Class A: findings 13 & 14).
+    let user_id = crate::user_partitions::cli_get_active_user(&store)?.map(|user| user.id);
+
     let raw_cred = credential_after_strict_check(matched, strict, || {
         read_credential(&store, &format!("server_{}", profile_id))
     })?;
@@ -737,7 +742,6 @@ async fn create_provider_from_vault_with_reader(
         }
     };
 
-    let user_id = crate::user_partitions::cli_get_active_user(&store)?.map(|user| user.id);
     let scope = crate::profile_auth::AuthScope {
         store: &store,
         user_id,
@@ -776,10 +780,7 @@ async fn create_provider_from_vault_with_reader(
         Some(profile_id),
         &mut extra,
         |key| {
-            crate::user_partitions::resolve_active_credential(&store, key)
-                .ok()
-                .flatten()
-                .map(|secret| secret.to_string())
+            crate::profile_loader::resolve_vault_s3_session_token_owner_aware(&store, user_id, key)
         },
     );
 

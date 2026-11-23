@@ -966,7 +966,12 @@ async fn connect_provider(profile: &ProfileSummary, no_scp_fallback: bool) -> Co
     let Some(store) = CredentialStore::from_cache() else {
         return ConnectOutcome::Err("Vault not open".to_string());
     };
-    // MUV-3: per-user store (active user) with fallback to the legacy vault.
+    // MUV-3: capture user id once so password and session token share the same
+    // owner-aware user partition (Class A).
+    let user_id = crate::user_partitions::cli_get_active_user(&store)
+        .ok()
+        .flatten()
+        .map(|u| u.id);
     let password = crate::user_partitions::resolve_active_credential(
         &store,
         &format!("server_{}", profile.id),
@@ -998,10 +1003,7 @@ async fn connect_provider(profile: &ProfileSummary, no_scp_fallback: bool) -> Co
         Some(&profile.id),
         &mut extra,
         |key| {
-            crate::user_partitions::resolve_active_credential(&store, key)
-                .ok()
-                .flatten()
-                .map(|secret| secret.to_string())
+            crate::profile_loader::resolve_vault_s3_session_token_owner_aware(&store, user_id, key)
         },
     );
 

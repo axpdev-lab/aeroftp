@@ -145,6 +145,24 @@ struct AwsSection {
     nested: std::collections::HashMap<String, std::collections::HashMap<String, String>>,
 }
 
+/// Keys that form an AWS static credential set (botocore
+/// `SharedCredentialProvider` vs `ConfigProvider`). These are selected
+/// atomically from one file rather than merged field-by-field across
+/// `credentials` and `config`.
+const AWS_CREDENTIAL_KEYS: &[&str] = &[
+    "aws_access_key_id",
+    "aws_secret_access_key",
+    "aws_session_token",
+    "aws_security_token",
+];
+
+#[derive(Default, Clone, Debug)]
+struct AwsCredentialSet {
+    access_key_id: Option<String>,
+    secret_access_key: Option<String>,
+    session_token: Option<String>,
+}
+
 impl AwsSection {
     fn get(&self, key: &str) -> Option<&str> {
         self.values
@@ -166,10 +184,33 @@ impl AwsSection {
             .is_some_and(|v| v.eq_ignore_ascii_case("true"))
     }
 
-    /// botocore `Session.full_config`: the credentials file's keys win.
-    fn merge_over(&mut self, other: AwsSection) {
-        self.values.extend(other.values);
-        self.nested.extend(other.nested);
+    fn has_any_credential_key(&self) -> bool {
+        AWS_CREDENTIAL_KEYS.iter().any(|k| self.get(k).is_some())
+    }
+
+    fn credential_set(&self) -> AwsCredentialSet {
+        AwsCredentialSet {
+            access_key_id: self.get("aws_access_key_id").map(str::to_string),
+            secret_access_key: self.get("aws_secret_access_key").map(str::to_string),
+            session_token: self
+                .get("aws_session_token")
+                .or_else(|| self.get("aws_security_token"))
+                .map(str::to_string),
+        }
+    }
+
+    /// Merge non-credential settings from `other` (credentials file wins over
+    /// config for settings like `region`, while static credential keys stay
+    /// isolated per source file).
+    fn merge_non_credential_over(&mut self, other: &AwsSection) {
+        for (k, v) in &other.values {
+            if !AWS_CREDENTIAL_KEYS.contains(&k.as_str()) {
+                self.values.insert(k.clone(), v.clone());
+            }
+        }
+        for (block, map) in &other.nested {
+            self.nested.insert(block.clone(), map.clone());
+        }
     }
 }
 
@@ -179,16 +220,19 @@ impl AwsSection {
 /// ends a key (the first of the two), a line starting with `#` or `;` is a
 /// comment, a line indented deeper than its key continues that key's value,
 /// and a value that starts on the next line is a sub-section of `key = value`
-/// lines. A section or a key declared twice, a line with neither delimiter
-/// and a key before any section are what configparser refuses, and with it
-/// every AWS CLI command: the import refuses them too. The reason names the
-/// line, never its text, which can hold a secret.
+/// lines. `[DEFAULT]` supplies fallback keys to every ordinary section without
+/// being emitted as a section itself. A section or a key declared twice, a
+/// line with neither delimiter and a key before any section are what
+/// configparser refuses, and with it every AWS CLI command: the import refuses
+/// them too. The reason names the line, never its text, which can hold a
+/// secret.
 fn parse_aws_ini(content: &str, label: &str) -> Result<Vec<(String, AwsSection)>, String> {
     let refuse =
         |line: usize, why: &str| format!("the AWS CLI cannot read {label}: line {line} {why}");
     type RawOptions = Vec<(String, Vec<String>)>;
     let mut raw: Vec<(String, RawOptions)> = Vec::new();
     let mut seen = std::collections::HashSet::new();
+    let mut section_keys = std::collections::HashSet::new();
     // The indent of the key line the next deeper line continues.
     let mut key_indent: Option<usize> = None;
     for (index, line) in content.lines().enumerate() {
@@ -223,6 +267,7 @@ fn parse_aws_ini(content: &str, label: &str) -> Result<Vec<(String, AwsSection)>
                     ));
                 }
                 raw.push((name, Vec::new()));
+                section_keys.clear();
                 key_indent = None;
                 continue;
             }
@@ -237,13 +282,14 @@ fn parse_aws_ini(content: &str, label: &str) -> Result<Vec<(String, AwsSection)>
         if key.is_empty() {
             return Err(refuse(lineno, "has no key"));
         }
-        if options.iter().any(|(k, _)| *k == key) {
+        if !section_keys.insert(key.clone()) {
             return Err(refuse(lineno, "sets a key its section already set"));
         }
         options.push((key, vec![trimmed[split + 1..].trim().to_string()]));
         key_indent = Some(indent);
     }
 
+    let mut defaults: Option<AwsSection> = None;
     let mut sections = Vec::with_capacity(raw.len());
     for (name, options) in raw {
         let mut section = AwsSection::default();
@@ -264,7 +310,26 @@ fn parse_aws_ini(content: &str, label: &str) -> Result<Vec<(String, AwsSection)>
                 section.values.insert(key, value);
             }
         }
-        sections.push((name, section));
+        // Python `configparser.DEFAULTSECT` is exact uppercase `DEFAULT`.
+        if name == "DEFAULT" {
+            defaults = Some(section);
+        } else {
+            sections.push((name, section));
+        }
+    }
+
+    if let Some(default_section) = defaults {
+        for (_, section) in &mut sections {
+            for (k, v) in &default_section.values {
+                section.values.entry(k.clone()).or_insert_with(|| v.clone());
+            }
+            for (block, map) in &default_section.nested {
+                section
+                    .nested
+                    .entry(block.clone())
+                    .or_insert_with(|| map.clone());
+            }
+        }
     }
     Ok(sections)
 }
@@ -378,6 +443,30 @@ const AWS_UNAPPLIED_SETTINGS: &[(Option<&str>, &str, bool)] = &[
     (Some("s3"), "use_dualstack_endpoint", true),
 ];
 
+/// Validate an imported AWS `endpoint_url` (from either a `services` section
+/// or the profile itself) before it reaches provider classification, profile
+/// options, or any report. Rejects URL userinfo (`user:pass@`), query strings
+/// (`?token=...`), fragments, and non-HTTP(S) URLs without ever echoing the
+/// raw URL in the skip reason.
+fn validate_aws_import_endpoint(raw: &str) -> Result<String, String> {
+    let trimmed = raw.trim();
+    let parsed = url::Url::parse(trimmed)
+        .map_err(|_| "its endpoint URL is not a valid HTTP(S) URL".to_string())?;
+    if !matches!(parsed.scheme(), "http" | "https") || parsed.host_str().is_none_or(str::is_empty) {
+        return Err("its endpoint URL is not a valid HTTP(S) URL".to_string());
+    }
+    if !parsed.username().is_empty()
+        || parsed.password().is_some()
+        || parsed.query().is_some()
+        || parsed.fragment().is_some()
+    {
+        return Err(
+            "its endpoint URL carries embedded credentials or query parameters, which AeroFTP refuses to import".to_string(),
+        );
+    }
+    Ok(trimmed.trim_end_matches('/').to_string())
+}
+
 /// Import with an explicit (optional) config path. Kept separate for
 /// testability: `import_aws_credentials` resolves the sibling/env config,
 /// while tests inject a known config path or `None`.
@@ -402,25 +491,47 @@ pub fn import_aws_credentials_with_config(
         }
     }
 
-    // botocore `Session.full_config`: each credentials section is the profile
-    // of its own name (no `profile` prefix in this file), over the config's.
+    // Keep static credentials isolated per source file (botocore selects
+    // `SharedCredentialProvider` as a complete set before falling back to
+    // `ConfigProvider`, never mixing a config token or secret into a
+    // credentials-file entry), while merging non-credential settings.
     let services = config.services;
-    let mut profiles = config.profiles;
+    let config_profiles = config.profiles;
+    let mut cred_profiles: std::collections::HashMap<String, AwsSection> =
+        std::collections::HashMap::with_capacity(cred_sections.len());
     for (name, section) in cred_sections {
-        profiles.entry(name).or_default().merge_over(section);
+        cred_profiles.insert(name, section);
     }
 
-    let total_remotes = profiles.len();
+    let mut name_set: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    name_set.extend(config_profiles.keys().cloned());
+    name_set.extend(cred_profiles.keys().cloned());
+
+    let total_remotes = name_set.len();
     let mut servers = Vec::new();
     let mut skipped = Vec::new();
     let mut warnings = Vec::new();
 
-    // Stable ordering so the output is deterministic across runs.
-    let mut names: Vec<&String> = profiles.keys().collect();
-    names.sort();
+    for name in name_set {
+        let cfg_sec = config_profiles.get(&name);
+        let cred_sec = cred_profiles.get(&name);
 
-    for name in names {
-        let kv = &profiles[name];
+        let mut kv = AwsSection::default();
+        if let Some(s) = cfg_sec {
+            kv.merge_non_credential_over(s);
+        }
+        if let Some(s) = cred_sec {
+            kv.merge_non_credential_over(s);
+        }
+
+        let cred_set = if let Some(s) = cred_sec.filter(|s| s.has_any_credential_key()) {
+            s.credential_set()
+        } else if let Some(s) = cfg_sec.filter(|s| s.has_any_credential_key()) {
+            s.credential_set()
+        } else {
+            AwsCredentialSet::default()
+        };
+
         let entry = |reason: String| AwsSkippedRemote {
             name: name.clone(),
             kind: "aws".to_string(),
@@ -439,8 +550,8 @@ pub fn import_aws_credentials_with_config(
         .iter()
         .any(|k| kv.get(k).is_some());
 
-        let akid = match kv.get("aws_access_key_id") {
-            Some(v) => v.to_string(),
+        let akid = match cred_set.access_key_id {
+            Some(v) => v,
             None => {
                 let why = if assumes_role {
                     ": it assumes a role (role_arn), which AeroFTP does not do; import the profile its source credentials come from"
@@ -456,7 +567,7 @@ pub fn import_aws_credentials_with_config(
             }
         };
 
-        let Some(secret_key) = kv.get("aws_secret_access_key") else {
+        let Some(secret_key) = cred_set.secret_access_key else {
             skipped.push(entry(
                 "no aws_secret_access_key: the AWS CLI rejects partial credentials without a secret key".to_string(),
             ));
@@ -478,12 +589,22 @@ pub fn import_aws_credentials_with_config(
             },
             None => None,
         };
-        let endpoint_url = if kv.is_true("ignore_configured_endpoint_urls") {
+        let raw_endpoint_url = if kv.is_true("ignore_configured_endpoint_urls") {
             None
         } else {
             service
                 .and_then(|s| s.nested_get("s3", "endpoint_url"))
                 .or_else(|| kv.get("endpoint_url"))
+        };
+        let endpoint_url = match raw_endpoint_url {
+            Some(ep) => match validate_aws_import_endpoint(ep) {
+                Ok(clean) => Some(clean),
+                Err(reason) => {
+                    skipped.push(entry(reason));
+                    continue;
+                }
+            },
+            None => None,
         };
 
         if assumes_role {
@@ -512,7 +633,7 @@ pub fn import_aws_credentials_with_config(
             }
         }
 
-        let (host, port, provider_id) = match endpoint_url {
+        let (host, port, provider_id) = match endpoint_url.as_deref() {
             Some(ep) => {
                 let host_port = crate::bridge_shared::endpoint_host(ep);
                 let port = match host_port.rsplit_once(':') {
@@ -531,20 +652,14 @@ pub fn import_aws_credentials_with_config(
             ),
         };
 
-        // `endpoint_url` is a URL: keep it whole, or a cleartext endpoint
-        // off the ports the S3 connection guesses as HTTP comes back as HTTPS.
+        // `endpoint_url` is a validated URL without userinfo or query string.
         // AWS itself stays implicit: an explicit endpoint switches the S3
         // connection to path-style, which AWS refuses for newer buckets.
         let endpoint = endpoint_url
-            .map(|s| s.trim().trim_end_matches('/').to_string())
-            .filter(|s| s.starts_with("http://") || s.starts_with("https://"))
             .filter(|s| crate::bridge_shared::map_s3_provider_from_endpoint(s) != "amazon-s3");
-        let token = kv
-            .get("aws_session_token")
-            .or_else(|| kv.get("aws_security_token"));
         let mut options = crate::bridge_shared::json_map(&[
             ("region", kv.get("region").map(str::to_string)),
-            ("sessionToken", token.map(str::to_string)),
+            ("sessionToken", cred_set.session_token),
             ("endpoint", endpoint),
         ]);
         // The `s3` sub-section's `addressing_style`.
@@ -585,7 +700,7 @@ pub fn import_aws_credentials_with_config(
                 Some(serde_json::Value::Object(options))
             },
             provider_id: Some(provider_id),
-            credential: Some(secret_key.to_string()),
+            credential: Some(secret_key),
             has_stored_credential: None,
             public_url_base: None,
             ..Default::default()
@@ -682,6 +797,7 @@ struct ProtectedWriteOutcome {
     path: PathBuf,
     protected: bool,
     existing_was_legacy: bool,
+    paired_inactive: bool,
 }
 
 /// Read the bytes of the regular file at `path` through one handle that does
@@ -812,6 +928,62 @@ fn aws_protected_output_path(
     aws_side_output_path(target_path, avoid, expected_marker, 0)
 }
 
+fn aws_export_pair_lock_key(cred_path: &Path, config_path: &Path) -> String {
+    let parent = cred_path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let canon_parent = std::fs::canonicalize(parent).unwrap_or_else(|_| parent.to_path_buf());
+    let cred_name = cred_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("credentials")
+        .to_ascii_lowercase();
+    let cfg_name = config_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("config")
+        .to_ascii_lowercase();
+    format!("{}|{}|{}", canon_parent.display(), cfg_name, cred_name)
+}
+
+fn aws_export_pair_mutex(key: &str) -> std::sync::Arc<std::sync::Mutex<()>> {
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex, OnceLock};
+    static LOCKS: OnceLock<Mutex<HashMap<String, Arc<Mutex<()>>>>> = OnceLock::new();
+    let mut map = LOCKS
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    Arc::clone(
+        map.entry(key.to_string())
+            .or_insert_with(|| Arc::new(Mutex::new(()))),
+    )
+}
+
+struct AwsExportFileLock(std::fs::File);
+
+impl Drop for AwsExportFileLock {
+    fn drop(&mut self) {
+        let _ = self.0.unlock();
+    }
+}
+
+fn acquire_aws_export_file_lock(key: &str) -> Result<AwsExportFileLock, String> {
+    let digest = sha256_hex(key.as_bytes());
+    let lock_path = std::env::temp_dir().join(format!("aeroftp-aws-export-{}.lock", &digest[..16]));
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(&lock_path)
+        .map_err(|e| format!("open AWS export lock: {e}"))?;
+    file.lock()
+        .map_err(|e| format!("lock AWS export destination pair: {e}"))?;
+    Ok(AwsExportFileLock(file))
+}
+
 #[allow(clippy::too_many_arguments)]
 fn write_aws_protected_staged_with(
     target_path: &Path,
@@ -820,6 +992,7 @@ fn write_aws_protected_staged_with(
     label: &str,
     mut tmp: tempfile::NamedTempFile,
     initial_mode: AwsProtectedWriteMode,
+    existing_was_legacy: bool,
     mut persist_replace: impl FnMut(
         tempfile::NamedTempFile,
         &Path,
@@ -836,7 +1009,9 @@ fn write_aws_protected_staged_with(
         match mode {
             AwsProtectedWriteMode::Replace => {
                 // Re-probe immediately before atomic rename: narrows the race
-                // (AWS-14 residual race is inherent without advisory locks).
+                // (AWS-14 residual race against lockless external writers like
+                // `aws configure` is inherent on POSIX and explicitly accepted;
+                // cooperating AeroFTP exports are serialized by the pair lock).
                 if !aws_file_is_aeroftp_owned(target_path, expected_marker) {
                     (_, mode) =
                         aws_protected_output_path(target_path, avoid, expected_marker, label)?;
@@ -848,6 +1023,7 @@ fn write_aws_protected_staged_with(
                     path: target_path.to_path_buf(),
                     protected: false,
                     existing_was_legacy: false,
+                    paired_inactive: false,
                 });
             }
             AwsProtectedWriteMode::ReplaceSide(index) => {
@@ -858,8 +1034,6 @@ fn write_aws_protected_staged_with(
                     mode = AwsProtectedWriteMode::Side;
                     continue;
                 }
-                let existing_was_legacy = probe_aws_file_ownership(target_path, expected_marker)
-                    == AwsFileOwnership::LegacyHeaderOnly;
                 persist_replace(tmp, &candidate).map_err(|e| {
                     format!(
                         "write {label} side file {}: {}",
@@ -871,6 +1045,7 @@ fn write_aws_protected_staged_with(
                     path: candidate,
                     protected: true,
                     existing_was_legacy,
+                    paired_inactive: false,
                 });
             }
             AwsProtectedWriteMode::Side => {
@@ -884,13 +1059,11 @@ fn write_aws_protected_staged_with(
                 }
                 match persist_noclobber(tmp, &candidate) {
                     Ok(()) => {
-                        let existing_was_legacy =
-                            probe_aws_file_ownership(target_path, expected_marker)
-                                == AwsFileOwnership::LegacyHeaderOnly;
                         return Ok(ProtectedWriteOutcome {
                             path: candidate,
                             protected: true,
                             existing_was_legacy,
+                            paired_inactive: false,
                         });
                     }
                     Err(err) if err.error.kind() == std::io::ErrorKind::AlreadyExists => {
@@ -918,6 +1091,7 @@ fn write_aws_protected_staged_with(
                         path: target_path.to_path_buf(),
                         protected: false,
                         existing_was_legacy: false,
+                        paired_inactive: false,
                     });
                 }
                 Err(err) if err.error.kind() == std::io::ErrorKind::AlreadyExists => {
@@ -937,6 +1111,23 @@ fn write_aws_protected_staged_with(
     }
 }
 
+fn rollback_active_config(
+    config_path: &Path,
+    previous_config_bytes: Option<&[u8]>,
+    config_was_absent: bool,
+) -> Result<&'static str, String> {
+    if let Some(prev) = previous_config_bytes {
+        crate::bridge_shared::atomic_write_600(config_path, prev)?;
+        Ok("previous AWS config was restored")
+    } else if config_was_absent {
+        std::fs::remove_file(config_path)
+            .map_err(|e| format!("remove newly written AWS config: {e}"))?;
+        Ok("newly written AWS config was removed")
+    } else {
+        Ok("previous AWS config was unchanged")
+    }
+}
+
 fn persist_aws_export_pair(
     cred_path: &Path,
     config_path: &Path,
@@ -953,6 +1144,14 @@ fn persist_aws_export_pair(
         &Path,
     ) -> Result<(), tempfile::PersistError>,
 ) -> Result<(ProtectedWriteOutcome, ProtectedWriteOutcome), String> {
+    // Serialize cooperating exports targeting the same destination pair across
+    // threads and processes so two exports can never interleave config and
+    // credentials from different generations.
+    let pair_key = aws_export_pair_lock_key(cred_path, config_path);
+    let pair_mutex = aws_export_pair_mutex(&pair_key);
+    let _thread_guard = pair_mutex.lock().unwrap_or_else(|e| e.into_inner());
+    let _file_guard = acquire_aws_export_file_lock(&pair_key)?;
+
     let parent = cred_path
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
@@ -963,52 +1162,161 @@ fn persist_aws_export_pair(
     let cred_tmp = crate::bridge_shared::stage_export_temp_600(parent, cred_bytes)
         .map_err(|e| format!("stage AWS credentials temp file: {e}"))?;
 
-    // Persist config first (holds no secrets), then credentials.
-    let (_, config_mode) = aws_protected_output_path(
+    // Plan BOTH outputs before publishing either one: if either destination
+    // requires a manual-merge side file, keep BOTH outputs inactive in side
+    // files so an active file is never paired with a stale sibling.
+    let (_, raw_config_mode) = aws_protected_output_path(
         config_path,
         Some(cred_path),
         AWS_CONFIG_MARKER,
         "AWS config",
     )?;
-    let config_written = write_aws_protected_staged_with(
+    let (_, raw_cred_mode) = aws_protected_output_path(
+        cred_path,
+        Some(config_path),
+        AWS_CREDENTIALS_MARKER,
+        "AWS credentials",
+    )?;
+    let config_legacy = probe_aws_file_ownership(config_path, AWS_CONFIG_MARKER)
+        == AwsFileOwnership::LegacyHeaderOnly;
+    let cred_legacy = probe_aws_file_ownership(cred_path, AWS_CREDENTIALS_MARKER)
+        == AwsFileOwnership::LegacyHeaderOnly;
+
+    let config_needs_side = matches!(
+        raw_config_mode,
+        AwsProtectedWriteMode::Side | AwsProtectedWriteMode::ReplaceSide(_)
+    );
+    let cred_needs_side = matches!(
+        raw_cred_mode,
+        AwsProtectedWriteMode::Side | AwsProtectedWriteMode::ReplaceSide(_)
+    );
+    let force_inactive_pair = config_needs_side || cred_needs_side;
+
+    let config_mode = if force_inactive_pair && !config_needs_side {
+        aws_side_output_path(config_path, Some(cred_path), AWS_CONFIG_MARKER, 0)?.1
+    } else {
+        raw_config_mode
+    };
+    let mut cred_mode = if force_inactive_pair && !cred_needs_side {
+        aws_side_output_path(cred_path, Some(config_path), AWS_CREDENTIALS_MARKER, 0)?.1
+    } else {
+        raw_cred_mode
+    };
+
+    // Snapshot previous active config so a failed credentials publish (or a
+    // late race turning credentials into a side file) rolls back active config
+    // instead of leaving old keys active against a new endpoint.
+    let config_was_absent = config_mode == AwsProtectedWriteMode::Absent;
+    let previous_config_bytes = if config_mode == AwsProtectedWriteMode::Replace {
+        read_regular_file_no_follow(config_path)
+    } else {
+        None
+    };
+
+    // Persist config first (holds no secrets), then credentials.
+    let mut config_written = write_aws_protected_staged_with(
         config_path,
         Some(cred_path),
         AWS_CONFIG_MARKER,
         "AWS config",
         config_tmp,
         config_mode,
+        config_legacy,
         |tmp, path| persist_replace("config", tmp, path),
         |tmp, path| persist_noclobber("config", tmp, path),
     )?;
+    if force_inactive_pair && !config_needs_side {
+        config_written.paired_inactive = true;
+    }
 
-    let (_, cred_mode) = aws_protected_output_path(
-        cred_path,
-        Some(&config_written.path),
-        AWS_CREDENTIALS_MARKER,
-        "AWS credentials",
-    )
-    .map_err(|e| {
-        format!(
-            "{e} (AWS config was already written to {})",
-            config_written.path.display()
+    // If config raced from active to side file, force credentials inactive too
+    // so the pair stays matched.
+    let mut cred_forced_by_config_race = false;
+    if config_written.protected
+        && !matches!(
+            cred_mode,
+            AwsProtectedWriteMode::Side | AwsProtectedWriteMode::ReplaceSide(_)
         )
-    })?;
-    let cred_written = write_aws_protected_staged_with(
+    {
+        cred_mode = aws_side_output_path(
+            cred_path,
+            Some(&config_written.path),
+            AWS_CREDENTIALS_MARKER,
+            0,
+        )?
+        .1;
+        cred_forced_by_config_race = true;
+    }
+
+    let mut cred_written = match write_aws_protected_staged_with(
         cred_path,
         Some(&config_written.path),
         AWS_CREDENTIALS_MARKER,
         "AWS credentials",
         cred_tmp,
         cred_mode,
+        cred_legacy,
         |tmp, path| persist_replace("credentials", tmp, path),
         |tmp, path| persist_noclobber("credentials", tmp, path),
-    )
-    .map_err(|e| {
-        format!(
-            "{e} (AWS config was already written to {})",
-            config_written.path.display()
-        )
-    })?;
+    ) {
+        Ok(outcome) => outcome,
+        Err(err) => {
+            if !config_written.protected {
+                match rollback_active_config(
+                    config_path,
+                    previous_config_bytes.as_deref(),
+                    config_was_absent,
+                ) {
+                    Ok(note) => {
+                        return Err(format!(
+                            "{err} ({note} at {})",
+                            config_written.path.display()
+                        ));
+                    }
+                    Err(rb_err) => {
+                        return Err(format!(
+                            "{err} (AWS config was already written to {} and rollback failed: {rb_err})",
+                            config_written.path.display()
+                        ));
+                    }
+                }
+            }
+            return Err(format!(
+                "{err} (AWS config side file was written to {})",
+                config_written.path.display()
+            ));
+        }
+    };
+    if (force_inactive_pair && !cred_needs_side) || cred_forced_by_config_race {
+        cred_written.paired_inactive = true;
+    }
+
+    // If credentials raced from active to side file after config was already
+    // published actively, roll back active config and publish config to its
+    // side file so the whole pair remains inactive.
+    if !config_written.protected && cred_written.protected {
+        let _ = rollback_active_config(
+            config_path,
+            previous_config_bytes.as_deref(),
+            config_was_absent,
+        );
+        let side_config_tmp = crate::bridge_shared::stage_export_temp_600(parent, config_bytes)
+            .map_err(|e| format!("stage AWS config side file after credentials race: {e}"))?;
+        let (_, side_cfg_mode) =
+            aws_side_output_path(config_path, Some(&cred_written.path), AWS_CONFIG_MARKER, 0)?;
+        config_written = write_aws_protected_staged_with(
+            config_path,
+            Some(&cred_written.path),
+            AWS_CONFIG_MARKER,
+            "AWS config",
+            side_config_tmp,
+            side_cfg_mode,
+            config_legacy,
+            |tmp, path| persist_replace("config", tmp, path),
+            |tmp, path| persist_noclobber("config", tmp, path),
+        )?;
+        config_written.paired_inactive = true;
+    }
 
     Ok((config_written, cred_written))
 }
@@ -1055,8 +1363,15 @@ fn format_side_file_warning(
     target_path: &Path,
     side_path: &Path,
     legacy_header_only: bool,
+    paired_inactive: bool,
 ) -> String {
-    if legacy_header_only {
+    if paired_inactive {
+        format!(
+            "{} was kept inactive so the exported pair stays matched; AeroFTP {kind} were written to {}. Merge that file manually",
+            target_path.display(),
+            side_path.display()
+        )
+    } else if legacy_header_only {
         format!(
             "existing {} was left unchanged (it has no AeroFTP integrity marker, so edits cannot be ruled out); AeroFTP {kind} were written to {}. Merge that file manually",
             target_path.display(),
@@ -1237,6 +1552,7 @@ pub fn export_aws_credentials(
                 &config_path,
                 &config_written.path,
                 config_written.existing_was_legacy,
+                config_written.paired_inactive,
             ),
         );
     }
@@ -1248,6 +1564,7 @@ pub fn export_aws_credentials(
                 out,
                 &cred_written.path,
                 cred_written.existing_was_legacy,
+                cred_written.paired_inactive,
             ),
         );
     }
@@ -1567,12 +1884,18 @@ region = eu-west-1
     }
 
     fn zero_export_inputs() -> Vec<Vec<AwsExportServer>> {
-        let refused: AwsExportServer = serde_json::from_value(serde_json::json!({
+        let newline_refused: AwsExportServer = serde_json::from_value(serde_json::json!({
             "id": "refused", "name": "refused\nprofile", "host": "", "port": 443,
             "username": "KEY", "protocol": "s3", "providerId": "amazon-s3"
         }))
         .unwrap();
-        vec![Vec::new(), vec![refused]]
+        let header_refused: AwsExportServer = serde_json::from_value(serde_json::json!({
+            "id": "quote", "name": "lab \"x\"", "host": "", "port": 443,
+            "username": "KEY", "protocol": "s3", "providerId": "minio",
+            "options": {"endpoint": "https://s3.lab.example.com:9000", "region": "eu-west-1"}
+        }))
+        .unwrap();
+        vec![Vec::new(), vec![newline_refused], vec![header_refused]]
     }
 
     #[test]
@@ -1649,11 +1972,23 @@ region = eu-west-1
         assert!(std::fs::read_to_string(side)
             .unwrap()
             .contains("region = eu-west-1"));
-        assert_eq!(outcome.warnings.len(), 1);
+        assert!(
+            !dir.path().join("credentials").exists(),
+            "credentials must stay inactive when config needed a side file"
+        );
+        assert!(
+            std::fs::read_to_string(dir.path().join("credentials.aeroftp"))
+                .unwrap()
+                .contains("[static]\naws_access_key_id = NEWKEY\n")
+        );
+        assert_eq!(outcome.warnings.len(), 2, "{:?}", outcome.warnings);
+        assert_eq!(outcome.warnings[0].name, "AWS config");
         assert!(outcome.warnings[0].reason.contains("config.aeroftp.1"));
         assert!(outcome.warnings[0]
             .reason
             .contains("Merge that file manually"));
+        assert_eq!(outcome.warnings[1].name, "AWS credentials");
+        assert!(outcome.warnings[1].reason.contains("credentials.aeroftp"));
     }
 
     fn write_test_protected_config(
@@ -1670,6 +2005,7 @@ region = eu-west-1
             "AWS config",
             tmp,
             mode,
+            false,
             crate::bridge_shared::persist_staged_temp,
             crate::bridge_shared::persist_staged_temp_noclobber,
         )
@@ -1756,17 +2092,20 @@ region = eu-west-1
         std::fs::write(&config, original).unwrap();
 
         let first = export_static(dir.path()).unwrap();
-        assert_eq!(first.warnings.len(), 1);
+        assert_eq!(first.warnings.len(), 2, "{:?}", first.warnings);
         assert!(std::fs::read_to_string(&side)
             .unwrap()
             .contains("region = eu-west-1"));
+        assert!(dir.path().join("credentials.aeroftp").exists());
+        assert!(!dir.path().join("credentials").exists());
         let second = export_static(dir.path()).unwrap();
-        assert_eq!(second.warnings.len(), 1);
+        assert_eq!(second.warnings.len(), 2, "{:?}", second.warnings);
         assert_eq!(std::fs::read(&config).unwrap(), original);
         assert!(std::fs::read_to_string(&side)
             .unwrap()
             .starts_with(AWS_EXPORT_HEADER));
         assert!(!dir.path().join("config.aeroftp.1").exists());
+        assert!(!dir.path().join("credentials.aeroftp.1").exists());
     }
 
     #[test]
@@ -1953,25 +2292,39 @@ region = eu-west-1
     #[test]
     fn credentials_written_under_a_side_file_name_are_never_replaced_by_the_config() {
         let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("config.aeroftp");
+        // First export with no user config writes AeroFTP-marked credentials
+        // directly to `config.aeroftp` and config to `config`.
+        export_static_to(&out).unwrap();
+        let cred_at_out = std::fs::read_to_string(&out).unwrap();
+        assert!(
+            cred_at_out.contains(
+                "[static]\naws_access_key_id = NEWKEY\naws_secret_access_key = newsecret\n"
+            ),
+            "{cred_at_out}"
+        );
+        assert!(
+            !aws_file_is_aeroftp_owned(&out, AWS_CONFIG_MARKER),
+            "credentials file must never be recognized as an aws-config export"
+        );
+
+        // Now user replaces `config` with their own config. On subsequent
+        // exports, `config.aeroftp` (carrying `aws-credentials` marker) must
+        // NEVER be treated as an owned config side file or overwritten by
+        // config; config must go to `config.aeroftp.1`.
         std::fs::write(
             dir.path().join("config"),
             b"[profile user]\nregion = us-east-1\n",
         )
         .unwrap();
-        let out = dir.path().join("config.aeroftp");
         let config_side = dir.path().join("config.aeroftp.1");
+        let cred_side = dir.path().join("config.aeroftp.aeroftp");
         for _ in 0..2 {
             export_static_to(&out).unwrap();
-            let cred = std::fs::read_to_string(&out).unwrap();
-            assert!(
-                cred.contains(
-                    "[static]\naws_access_key_id = NEWKEY\naws_secret_access_key = newsecret\n"
-                ),
-                "{cred}"
-            );
-            assert!(
-                !aws_file_is_aeroftp_owned(&out, AWS_CONFIG_MARKER),
-                "credentials file must never be recognized as an aws-config export"
+            assert_eq!(
+                std::fs::read_to_string(&out).unwrap(),
+                cred_at_out,
+                "existing credentials at config.aeroftp must never be overwritten by config"
             );
             let cfg = std::fs::read_to_string(&config_side).unwrap();
             assert!(
@@ -1981,6 +2334,13 @@ region = eu-west-1
             assert!(
                 !aws_file_is_aeroftp_owned(&config_side, AWS_CREDENTIALS_MARKER),
                 "config side file must never be recognized as an aws-credentials export"
+            );
+            let cred_inactive = std::fs::read_to_string(&cred_side).unwrap();
+            assert!(
+                cred_inactive.contains(
+                    "[static]\naws_access_key_id = NEWKEY\naws_secret_access_key = newsecret\n"
+                ),
+                "{cred_inactive}"
             );
         }
     }
@@ -2004,7 +2364,14 @@ region = eu-west-1
                 side.contains("[profile static]\nregion = eu-west-1\n"),
                 "{side}"
             );
-            assert_eq!(outcome.warnings.len(), 1, "{target:?}");
+            assert!(!case.path().join("credentials").exists());
+            assert!(case.path().join("credentials.aeroftp").exists());
+            assert_eq!(
+                outcome.warnings.len(),
+                2,
+                "{target:?}: {:?}",
+                outcome.warnings
+            );
         }
         assert_eq!(std::fs::read_to_string(&owned_looking).unwrap(), original);
 
@@ -2013,7 +2380,9 @@ region = eu-west-1
         let outcome = export_static(dir_case.path()).unwrap();
         assert!(dir_case.path().join("config").is_dir());
         assert!(dir_case.path().join("config.aeroftp").exists());
-        assert_eq!(outcome.warnings.len(), 1);
+        assert!(!dir_case.path().join("credentials").exists());
+        assert!(dir_case.path().join("credentials.aeroftp").exists());
+        assert_eq!(outcome.warnings.len(), 2, "{:?}", outcome.warnings);
     }
 
     #[test]
@@ -2336,6 +2705,7 @@ region = eu-west-1
             "AWS config",
             tmp,
             AwsProtectedWriteMode::Side,
+            false,
             crate::bridge_shared::persist_staged_temp,
             |t, p| {
                 if !raced_once && p == side0 {
@@ -2414,17 +2784,345 @@ region = eu-west-1
 
         assert_eq!(*order.borrow(), ["config", "credentials"]);
         assert!(
-            config_path.exists(),
-            "config should have been persisted first"
+            !config_path.exists(),
+            "newly written active config must be rolled back when credentials persist fails"
         );
         assert!(!cred_path.exists(), "credentials persist failed");
         assert!(
             err.contains(&config_path.display().to_string()),
-            "partial write error must report written config path: {err}"
+            "partial write error must report config path status: {err}"
         );
         assert!(
             !err.contains("SUPERSECRET99"),
             "secret leaked into error: {err}"
+        );
+    }
+
+    // ---- CodeRabbit CLI cycle 1 (NAS 2243) regression tests ----
+
+    /// Finding 1: `[DEFAULT]` keys apply to ordinary sections in AWS config
+    /// without emitting `DEFAULT` as a profile, and explicit profile values
+    /// override inherited defaults.
+    #[test]
+    fn default_section_values_apply_to_profiles_with_explicit_override() {
+        let result = import_pair(
+            "[inherited]\naws_access_key_id = AKINH\naws_secret_access_key = inh-secret\n\n\
+             [overridden]\naws_access_key_id = AKOVR\naws_secret_access_key = ovr-secret\n",
+            Some(
+                "[DEFAULT]\nendpoint_url = https://default.lab.example.com:9000\nregion = us-west-2\n\n\
+                 [profile inherited]\nregion = eu-west-1\n\n\
+                 [profile overridden]\nendpoint_url = https://custom.lab.example.com:9001\n",
+            ),
+        )
+        .unwrap();
+        assert_eq!(result.total_remotes, 2);
+        assert_eq!(result.servers.len(), 2);
+        assert!(result.servers.iter().all(|s| s.name != "DEFAULT"));
+
+        let inh = result
+            .servers
+            .iter()
+            .find(|s| s.name == "inherited")
+            .unwrap();
+        assert_eq!(inh.host, "default.lab.example.com:9000");
+        assert_eq!(
+            inh.options.as_ref().unwrap()["region"],
+            serde_json::json!("eu-west-1")
+        );
+
+        let ovr = result
+            .servers
+            .iter()
+            .find(|s| s.name == "overridden")
+            .unwrap();
+        assert_eq!(ovr.host, "custom.lab.example.com:9001");
+        assert_eq!(
+            ovr.options.as_ref().unwrap()["region"],
+            serde_json::json!("us-west-2")
+        );
+    }
+
+    /// Finding 2: if existing user `credentials` contains `lab` and `config`
+    /// is absent, BOTH outputs go to inactive `.aeroftp` side files so `config`
+    /// is never activated against the user's old `credentials`.
+    #[test]
+    fn export_keeps_both_files_inactive_when_credentials_needs_side_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let cred = dir.path().join("credentials");
+        let cfg = dir.path().join("config");
+        let original_cred =
+            b"[lab]\naws_access_key_id = AKOLD\naws_secret_access_key = oldsecret\n";
+        std::fs::write(&cred, original_cred).unwrap();
+        assert!(!cfg.exists());
+
+        let server: AwsExportServer = serde_json::from_value(serde_json::json!({
+            "id": "lab", "name": "lab", "host": "", "port": 443,
+            "username": "AKNEW", "protocol": "s3", "providerId": "minio",
+            "options": {"endpoint": "https://new.lab.example.com:9000", "region": "eu-west-1"}
+        }))
+        .unwrap();
+        let passwords = HashMap::from([("lab".to_string(), "newsecret".to_string())]);
+        let outcome = export_aws_credentials(&[server], &passwords, &cred).unwrap();
+
+        assert_eq!(outcome.exported, 1);
+        assert_eq!(std::fs::read(&cred).unwrap(), original_cred);
+        assert!(
+            !cfg.exists(),
+            "active config must not be created while credentials needed a side file"
+        );
+        let side_cfg = std::fs::read_to_string(dir.path().join("config.aeroftp")).unwrap();
+        let side_cred = std::fs::read_to_string(dir.path().join("credentials.aeroftp")).unwrap();
+        assert!(side_cfg.contains("endpoint_url = https://new.lab.example.com:9000"));
+        assert!(side_cred.contains("aws_access_key_id = AKNEW"));
+        assert_eq!(outcome.warnings.len(), 2, "{:?}", outcome.warnings);
+    }
+
+    /// Finding 3: per-section hash set handles large single-section INI inputs
+    /// linearly and still rejects case-insensitive duplicate keys.
+    #[test]
+    fn large_single_section_parses_linearly_and_rejects_case_insensitive_duplicate_key() {
+        let mut ini = String::from("[big]\n");
+        for i in 0..10_000 {
+            ini.push_str(&format!("k{i} = v{i}\n"));
+        }
+        let parsed = parse_aws_ini(&ini, "big.ini").unwrap();
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0].1.values.len(), 10_000);
+
+        ini.push_str("K9999 = dup\n");
+        let err = parse_aws_ini(&ini, "big.ini").unwrap_err();
+        assert!(err.contains("sets a key its section already set"), "{err}");
+    }
+
+    /// Finding 4: when replacing an existing active generated pair and
+    /// credentials persistence fails after config replacement, the previous
+    /// active config is restored so old credentials stay paired with their
+    /// original endpoint.
+    #[test]
+    fn existing_pair_restores_previous_config_when_credentials_persist_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let cred_path = dir.path().join("credentials");
+        let config_path = dir.path().join("config");
+
+        let old_config = aws_marked_file_bytes(
+            AWS_CONFIG_MARKER,
+            "\n[profile lab]\nendpoint_url = https://old.lab.example.com:9000\n",
+        );
+        let old_cred = aws_marked_file_bytes(
+            AWS_CREDENTIALS_MARKER,
+            "\n[lab]\naws_access_key_id = AKOLD\naws_secret_access_key = oldsecret\n",
+        );
+        std::fs::write(&config_path, &old_config).unwrap();
+        std::fs::write(&cred_path, &old_cred).unwrap();
+
+        let new_config = aws_marked_file_bytes(
+            AWS_CONFIG_MARKER,
+            "\n[profile lab]\nendpoint_url = https://new.lab.example.com:9000\n",
+        );
+        let new_cred = aws_marked_file_bytes(
+            AWS_CREDENTIALS_MARKER,
+            "\n[lab]\naws_access_key_id = AKNEW\naws_secret_access_key = NEWSECRET42\n",
+        );
+
+        let err = persist_aws_export_pair(
+            &cred_path,
+            &config_path,
+            &new_config,
+            &new_cred,
+            |kind, tmp, path| {
+                if kind == "credentials" {
+                    return Err(tempfile::PersistError {
+                        error: std::io::Error::new(
+                            std::io::ErrorKind::PermissionDenied,
+                            "simulated replace failure",
+                        ),
+                        file: tmp,
+                    });
+                }
+                crate::bridge_shared::persist_staged_temp(tmp, path)
+            },
+            |_, tmp, path| crate::bridge_shared::persist_staged_temp_noclobber(tmp, path),
+        )
+        .err()
+        .expect("expected credentials replace failure");
+
+        assert_eq!(
+            std::fs::read(&config_path).unwrap(),
+            old_config,
+            "previous config must be restored when credentials replace fails"
+        );
+        assert_eq!(std::fs::read(&cred_path).unwrap(), old_cred);
+        assert!(err.contains("restored"), "{err}");
+        assert!(!err.contains("NEWSECRET42"), "{err}");
+    }
+
+    /// Finding 6: a `services` or profile `endpoint_url` carrying URL userinfo
+    /// or query parameters is refused without echoing any secret into reports
+    /// or profile options.
+    #[test]
+    fn services_and_profile_endpoints_with_userinfo_or_query_are_refused_without_leaking() {
+        let result = import_pair(
+            "[svc]\naws_access_key_id = AKSVC\naws_secret_access_key = svc-secret\n\n\
+             [prof]\naws_access_key_id = AKPROF\naws_secret_access_key = prof-secret\n",
+            Some(
+                "[profile svc]\nservices = bad-s3\n\n\
+                 [services bad-s3]\ns3 =\n  endpoint_url = https://u:USERINFO_SECRET@s3.lab.example.com:9000/?token=QUERY_SECRET\n\n\
+                 [profile prof]\nendpoint_url = https://s3.lab.example.com:9000/?sig=PROF_QUERY_SECRET\n",
+            ),
+        )
+        .unwrap();
+
+        assert!(
+            result.servers.is_empty(),
+            "unsafe endpoints must not import"
+        );
+        assert_eq!(result.skipped.len(), 2);
+        let serialized = serde_json::to_string(&result).unwrap();
+        for secret in ["USERINFO_SECRET", "QUERY_SECRET", "PROF_QUERY_SECRET"] {
+            assert!(
+                !serialized.contains(secret),
+                "secret {secret} leaked in import result: {serialized}"
+            );
+        }
+    }
+
+    /// Finding 8: concurrent exports targeting the same destination pair are
+    /// serialized so the final config endpoint and credentials key always come
+    /// from the same export.
+    #[test]
+    fn concurrent_exports_to_same_destination_pair_never_mix_config_and_credentials() {
+        let dir = tempfile::tempdir().unwrap();
+        let cred_path = dir.path().join("credentials");
+        let config_path = dir.path().join("config");
+
+        let cfg_a = aws_marked_file_bytes(
+            AWS_CONFIG_MARKER,
+            "\n[profile lab]\nendpoint_url = https://a.lab.example.com:9000\n",
+        );
+        let cred_a = aws_marked_file_bytes(
+            AWS_CREDENTIALS_MARKER,
+            "\n[lab]\naws_access_key_id = AKA\naws_secret_access_key = secreta\n",
+        );
+        let cfg_b = aws_marked_file_bytes(
+            AWS_CONFIG_MARKER,
+            "\n[profile lab]\nendpoint_url = https://b.lab.example.com:9000\n",
+        );
+        let cred_b = aws_marked_file_bytes(
+            AWS_CREDENTIALS_MARKER,
+            "\n[lab]\naws_access_key_id = AKB\naws_secret_access_key = secretb\n",
+        );
+
+        let started_a = std::sync::Arc::new(std::sync::Barrier::new(2));
+        let started_a_clone = std::sync::Arc::clone(&started_a);
+        let cred_a_path = cred_path.clone();
+        let config_a_path = config_path.clone();
+
+        let thread_a = std::thread::spawn(move || {
+            persist_aws_export_pair(
+                &cred_a_path,
+                &config_a_path,
+                &cfg_a,
+                &cred_a,
+                |kind, tmp, path| {
+                    let res = crate::bridge_shared::persist_staged_temp(tmp, path);
+                    if kind == "config" {
+                        started_a_clone.wait();
+                        std::thread::sleep(std::time::Duration::from_millis(60));
+                    }
+                    res
+                },
+                |kind, tmp, path| {
+                    let res = crate::bridge_shared::persist_staged_temp_noclobber(tmp, path);
+                    if kind == "config" {
+                        started_a_clone.wait();
+                        std::thread::sleep(std::time::Duration::from_millis(60));
+                    }
+                    res
+                },
+            )
+            .unwrap();
+        });
+
+        // Wait until A has persisted config and is paused before persisting
+        // credentials; B must block on the destination-pair lock rather than
+        // interleaving between A's config and A's credentials.
+        started_a.wait();
+        persist_aws_export_pair(
+            &cred_path,
+            &config_path,
+            &cfg_b,
+            &cred_b,
+            |_, tmp, path| crate::bridge_shared::persist_staged_temp(tmp, path),
+            |_, tmp, path| crate::bridge_shared::persist_staged_temp_noclobber(tmp, path),
+        )
+        .unwrap();
+        thread_a.join().unwrap();
+
+        let final_cfg = std::fs::read_to_string(&config_path).unwrap();
+        let final_cred = std::fs::read_to_string(&cred_path).unwrap();
+        let is_pair_a = final_cfg.contains("a.lab.example.com")
+            && final_cred.contains("aws_access_key_id = AKA");
+        let is_pair_b = final_cfg.contains("b.lab.example.com")
+            && final_cred.contains("aws_access_key_id = AKB");
+        assert!(
+            is_pair_a || is_pair_b,
+            "mixed export pair detected!\nconfig:\n{final_cfg}\ncredentials:\n{final_cred}"
+        );
+    }
+
+    /// Finding 9: static credentials are selected as an atomic set per file
+    /// (matching botocore `SharedCredentialProvider` vs `ConfigProvider`):
+    /// (a) a complete credentials-file pair never borrows a stale config token,
+    /// (b) a partial credentials-file entry is never completed from config,
+    /// (c) a complete config-only credential set imports cleanly.
+    #[test]
+    fn static_credentials_are_selected_as_a_set_per_file() {
+        let result = import_pair(
+            "[lab]\naws_access_key_id = AKLAB\naws_secret_access_key = labsecret\n\n\
+             [partial]\naws_access_key_id = AKPARTIAL\n",
+            Some(
+                "[profile lab]\naws_access_key_id = AKOLD\naws_secret_access_key = oldsecret\n\
+                 aws_session_token = STALE_CONFIG_TOKEN\nregion = eu-west-1\n\n\
+                 [profile partial]\naws_secret_access_key = cfgsecret\nregion = eu-west-1\n\n\
+                 [profile cfgonly]\naws_access_key_id = AKCFG\naws_secret_access_key = cfgsecret\n\
+                 aws_session_token = CFG_TOKEN\nregion = us-west-2\n",
+            ),
+        )
+        .unwrap();
+
+        // `lab` uses credentials-file keys alone (no stale config token) + config region.
+        let lab = result.servers.iter().find(|s| s.name == "lab").unwrap();
+        assert_eq!(lab.username, "AKLAB");
+        assert_eq!(lab.credential.as_deref(), Some("labsecret"));
+        assert!(
+            lab.options
+                .as_ref()
+                .and_then(|o| o.get("sessionToken"))
+                .is_none(),
+            "stale config session token must not be borrowed into complete credentials-file pair: {:?}",
+            lab.options
+        );
+        assert_eq!(
+            lab.options.as_ref().unwrap()["region"],
+            serde_json::json!("eu-west-1")
+        );
+
+        // `partial` is skipped because credentials file has key id without secret.
+        assert!(result.servers.iter().all(|s| s.name != "partial"));
+        let partial_skip = result
+            .skipped
+            .iter()
+            .find(|s| s.name == "partial")
+            .expect("partial profile must be skipped");
+        assert!(partial_skip.reason.contains("aws_secret_access_key"));
+
+        // `cfgonly` imports cleanly from config's complete static set.
+        let cfgonly = result.servers.iter().find(|s| s.name == "cfgonly").unwrap();
+        assert_eq!(cfgonly.username, "AKCFG");
+        assert_eq!(cfgonly.credential.as_deref(), Some("cfgsecret"));
+        assert_eq!(
+            cfgonly.options.as_ref().unwrap()["sessionToken"],
+            serde_json::json!("CFG_TOKEN")
         );
     }
 }

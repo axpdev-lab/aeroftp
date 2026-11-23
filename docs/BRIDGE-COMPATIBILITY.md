@@ -138,29 +138,35 @@ way: an importer reads whatever connection types it recognizes in the file.)
 - **OpenSSH, PuTTY, AWS CLI, mc and s3cmd** are metadata or single-protocol
   bridges: SSH and PuTTY carry no secret, while AWS CLI, mc and s3cmd are
   S3-only credential files. AWS files are read as the AWS CLI reads them:
-  `[profile "name"]` and `[default]` in `config`, `=` or `:`, sub-sections,
-  verbatim section names in `credentials`, and the `s3` endpoint of a
-  `services` section ahead of `endpoint_url`; a file the AWS CLI refuses (a
-  section or key declared twice, or a malformed line) is refused. Profiles
-  without a non-empty access key are reported as skipped, naming what they use
-  instead (a role, SSO, `credential_process`), and profiles with an access key
-  but no `aws_secret_access_key` are skipped. A profile with static keys and
+  `[DEFAULT]` fallback values, `[profile "name"]` and `[default]` in `config`,
+  `=` or `:`, sub-sections, verbatim section names in `credentials`, static
+  credentials selected as an atomic per-file set (shared credentials ahead of
+  config without mixing keys or tokens across files), and the `s3` endpoint of
+  a `services` section ahead of `endpoint_url`; endpoints carrying URL userinfo
+  or query parameters are skipped, and a file the AWS CLI refuses (a section or
+  key declared twice, or a malformed line) is refused. Profiles without a
+  non-empty access key are reported as skipped, naming what they use instead (a
+  role, SSO, `credential_process`), and profiles with an access key but no
+  `aws_secret_access_key` are skipped. A profile with static keys and
   `role_arn` or SSO settings imports with those keys and a warning because the
   AWS CLI would sign in as another identity; unapplied settings (`ca_bundle`,
   FIPS, dual-stack, accelerate) also emit a warning. Imported STS session
-  tokens are moved into the encrypted vault and redacted from profile options.
-  `credential_cache` is an AWS CLI cache choice for assume-role, not a static
-  credential. Export stages both `0600` temp files before touching either
-  target, persists `config` before `credentials`, and replaces an existing
-  `config` or `credentials` file only when its typed line-2 marker carries a
-  matching SHA-256 digest of the exported body. Any other existing entry (a
-  user file, a file `aws configure` edited, a pre-marker legacy AeroFTP export,
-  a symlink, or a directory) stays untouched and the generated output goes to
-  the first absent or AeroFTP-owned `.aeroftp` side file at write time with a
-  manual-merge warning. A profile name with a space, tab or `'` is written as
-  `[profile "name"]`; one with `"` or `\` is skipped when a config section is
-  needed. When `aeroftp-cli export aws` runs without `--output`, it writes into
-  a private `0700` temporary directory.
+  tokens are moved into the encrypted vault under owner-aware per-user storage
+  and redacted from profile options. `credential_cache` is an AWS CLI cache
+  choice for assume-role, not a static credential. Export serializes concurrent
+  writes to the same destination pair, stages both `0600` temp files before
+  touching either target, plans both outputs together, persists `config` before
+  `credentials` (rolling back active `config` if `credentials` persistence
+  fails), and replaces an existing `config` or `credentials` file only when its
+  typed line-2 marker carries a matching SHA-256 digest of the exported body.
+  If either destination is a user file, a file `aws configure` edited, a
+  pre-marker legacy AeroFTP export, a symlink, or a directory, both active
+  targets stay untouched and the complete pair goes to the first absent or
+  AeroFTP-owned `.aeroftp` side files at write time with manual-merge warnings.
+  A profile name with a space, tab or `'` is written as `[profile "name"]`; one
+  with `"` or `\` is skipped when a config section is needed. When
+  `aeroftp-cli export aws` runs without `--output`, it writes into a private
+  `0700` temporary directory.
 
 ---
 

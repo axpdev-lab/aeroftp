@@ -31,7 +31,6 @@ pub fn read_vault_secret(
 pub fn is_shared_vault_key(key: &str) -> bool {
     [
         "filen_api_key_",
-        "aws_session_token_",
         "onedrive_drive_id_",
         "onedrive_drive_type_",
     ]
@@ -46,6 +45,8 @@ pub fn is_shared_vault_key(key: &str) -> bool {
 pub fn copied_secret_type(base: &str) -> Option<&'static str> {
     if crate::profile_auth::DURABLE_KEY_PREFIXES.contains(&base) {
         Some("oauth")
+    } else if base == "aws_session_token" {
+        Some("aws_session_token")
     } else if base == "proton_native_session" {
         Some("proton_native_session")
     } else if base == "jottacloud_refresh" {
