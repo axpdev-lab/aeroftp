@@ -3291,7 +3291,7 @@ mod tests {
         // 0x00000127 is the first big-endian nonce that answers this token
         // (computed outside this code). The MEGA SDK test uses the same token
         // but only validates its proof, since its workers race.
-        let outcome = super::solve_hashcash_with(&challenge, None, super::HASHCASH_SOLVE_BUDGET, 1);
+        let outcome = super::solve_hashcash_with(&challenge, None, std::time::Duration::MAX, 1);
         assert_eq!(outcome, super::HashcashOutcome::Solved("AAABJw".into()));
         assert!(mega_accepts(&challenge.token, 192, "AAABJw"));
         assert!(super::parse_hashcash_challenge("2:192:1731410499:invalid").is_none());
@@ -3302,12 +3302,7 @@ mod tests {
         let challenge =
             super::parse_hashcash_challenge(&format!("1:200:1731410499:{SDK_TOKEN}")).unwrap();
         for workers in [2, 3, 8] {
-            match super::solve_hashcash_with(
-                &challenge,
-                None,
-                super::HASHCASH_SOLVE_BUDGET,
-                workers,
-            ) {
+            match super::solve_hashcash_with(&challenge, None, std::time::Duration::MAX, workers) {
                 super::HashcashOutcome::Solved(nonce) => assert!(
                     mega_accepts(&challenge.token, 200, &nonce),
                     "{workers} workers returned {nonce}, which MEGA would refuse"
@@ -3322,8 +3317,7 @@ mod tests {
         let (header, _) = easy_challenge(0);
         let challenge = super::parse_hashcash_challenge(&header).unwrap();
         super::HASHCASH_FAIL_SPAWN.with(|slot| slot.set(Some(1)));
-        let outcome =
-            super::solve_hashcash_with(&challenge, None, std::time::Duration::from_secs(30), 2);
+        let outcome = super::solve_hashcash_with(&challenge, None, std::time::Duration::MAX, 2);
         super::HASHCASH_FAIL_SPAWN.with(|slot| slot.set(None));
         assert_eq!(outcome, super::HashcashOutcome::WorkerStartFailed);
     }
@@ -3448,6 +3442,7 @@ mod tests {
 
         let mut client = super::MegaApiClient::new(None);
         client.base_url_override = Some(format!("http://{addr}/cs"));
+        client.hashcash_budgets = Some(vec![std::time::Duration::MAX]);
         let response: SampleResponse = client.command(json!({ "a": "us" })).await.unwrap();
         server.abort();
 
@@ -3468,12 +3463,13 @@ mod tests {
     async fn command_answers_each_fresh_challenge_until_mega_accepts() {
         let (first, first_token) = easy_challenge(0);
         let (second, second_token) = easy_challenge(1);
-        let (client, seen, server) = hashcash_double(vec![
+        let (mut client, seen, server) = hashcash_double(vec![
             (402, Some(first), ""),
             (402, Some(second), ""),
             (200, None, r#"[{"ok":1}]"#),
         ])
         .await;
+        client.hashcash_budgets = Some(vec![std::time::Duration::MAX]);
 
         let response: SampleResponse = client.command(json!({ "a": "ug" })).await.unwrap();
         server.abort();
@@ -3511,8 +3507,8 @@ mod tests {
         ])
         .await;
         client.hashcash_budgets = Some(vec![
-            std::time::Duration::from_secs(30),
-            std::time::Duration::from_secs(30),
+            std::time::Duration::MAX,
+            std::time::Duration::MAX,
             std::time::Duration::ZERO,
         ]);
 
@@ -3654,7 +3650,8 @@ mod tests {
     #[tokio::test]
     async fn command_stops_answering_challenges_after_the_limit() {
         let (challenge, _) = easy_challenge(0);
-        let (client, seen, server) = hashcash_double(vec![(402, Some(challenge), "")]).await;
+        let (mut client, seen, server) = hashcash_double(vec![(402, Some(challenge), "")]).await;
+        client.hashcash_budgets = Some(vec![std::time::Duration::MAX]);
 
         let err = client
             .command::<serde_json::Value>(json!({ "a": "ug" }))
