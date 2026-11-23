@@ -159,12 +159,14 @@ way: an importer reads whatever connection types it recognizes in the file.)
   concurrent writes to the same destination directory using a private lock
   under AeroFTP's own data root, stages both `0600` (owner-ACL on Windows) temp
   files before touching either target, plans both outputs together, preserves
-  path-prefixed S3 endpoints, persists `config` before `credentials` (rolling
-  back active or side-file `config` writes when they still match what was just
-  published, preserving external edits it detects, though it cannot exclude a
-  lockless external writer editing the file between revalidation and restoration
-  or removal), and replaces an existing `config` or `credentials` file only when
-  its typed line-2 marker carries a matching SHA-256 digest bound to the
+  path-prefixed S3 endpoints, persists `config` before `credentials` (attempting
+  to roll back active or side-file `config` or side-file `credentials` writes
+  when they still match what was just published, preserving external edits it
+  detects, though it cannot exclude a lockless external writer editing the file
+  between revalidation and restoration or removal and rollback itself can fail,
+  so check the reported rollback status before using the pair or retrying the
+  export), and replaces an existing `config` or `credentials` file only when
+  its typed line-2 marker carries a matching SHA-256 digest bound to the exact
   requested credentials filename. If either destination is a user file, a
   file `aws configure` edited, a pre-marker legacy AeroFTP export, another
   credentials pair's `config`, a symlink, or a directory, both active targets

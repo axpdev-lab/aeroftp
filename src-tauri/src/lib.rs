@@ -25090,8 +25090,17 @@ pub fn per_profile_vault_keys_for_target_reset(
 /// The singleton is read only when the profile's own key is absent; a key
 /// that cannot be read fails the export (`Err`), because the singleton may
 /// be another profile's account.
+#[cfg(test)]
 pub(crate) fn collect_provider_secrets_for_server(
     store: &credential_store::CredentialStore,
+    server: &profile_export::ServerProfileExport,
+) -> Result<profile_export::ProviderSecrets, String> {
+    collect_provider_secrets_for_server_for_user(store, None, server)
+}
+
+pub(crate) fn collect_provider_secrets_for_server_for_user(
+    store: &credential_store::CredentialStore,
+    user_id: Option<i64>,
     server: &profile_export::ServerProfileExport,
 ) -> Result<profile_export::ProviderSecrets, String> {
     let mut out = profile_export::ProviderSecrets::default();
@@ -25216,11 +25225,12 @@ pub(crate) fn collect_provider_secrets_for_server(
     }
 
     // AWS-11: bundle the per-profile AWS STS session token (`aws_session_token_<id>`)
-    // via owner-aware lookup so credential-enabled `.aeroftp` backups restore
-    // working STS profiles into an empty vault without leaking another user's token.
+    // via owner-aware lookup scoped to `user_id` when captured so credential-enabled
+    // `.aeroftp` backups restore working STS profiles into an empty vault without
+    // leaking another user's token or mixing credentials across an account switch.
     if let Some(session_token) = profile_loader::resolve_vault_s3_session_token_owner_aware(
         store,
-        None,
+        user_id,
         &profile_loader::aws_session_token_vault_key(&server.id),
     )? {
         out.aws_session_token = Some(session_token);
@@ -25302,19 +25312,31 @@ pub async fn export_server_profiles_core(
     if include_credentials {
         match credential_store::CredentialStore::from_cache() {
             Some(store) => {
+                // Capture the active user once per export so password and
+                // per-profile provider secrets (such as AWS STS session tokens)
+                // always come from the same partition even across an account switch.
+                let active_user = user_partitions::cli_get_active_user(&store)
+                    .ok()
+                    .flatten()
+                    .map(|u| u.id);
                 for server in &mut servers {
-                    // MUV-3: export the active user's per-user credential, with
+                    // MUV-3: export the captured user's per-user credential, with
                     // fallback to the legacy vault.
-                    if let Ok(Some(cred)) = user_partitions::resolve_active_credential(
-                        &store,
-                        &format!("server_{}", server.id),
-                    ) {
+                    let key = format!("server_{}", server.id);
+                    let resolved_cred = match active_user {
+                        Some(uid) => {
+                            user_partitions::resolve_credential_for_user(&store, uid, &key)
+                        }
+                        None => user_partitions::resolve_active_credential(&store, &key),
+                    };
+                    if let Ok(Some(cred)) = resolved_cred {
                         server.credential = Some(cred.to_string());
                     }
                     // Issue #214: bundle OAuth / Jotta tokens alongside the
                     // per-profile password so an import on a fresh device
                     // reconnects without a browser re-auth.
-                    let secrets = collect_provider_secrets_for_server(&store, server)?;
+                    let secrets =
+                        collect_provider_secrets_for_server_for_user(&store, active_user, server)?;
                     if secrets.oauth.is_some()
                         || secrets.jotta_refresh.is_some()
                         || secrets.aerocrypt_overlay_pw.is_some()
@@ -26111,6 +26133,23 @@ pub(crate) fn import_secret_writes(
                 None,
                 cred,
             ));
+            // AWS-11: when a credential-enabled backup overwrites an S3 profile
+            // without an `aws_session_token`, clear any stale vaulted token so
+            // restored non-STS credentials never mix with an expired token.
+            // Credential-less backups (`server.credential.is_none()`) preserve
+            // existing vault secrets per `profile_import_plan`.
+            let protocol = server.protocol.as_deref().unwrap_or("").to_lowercase();
+            if matches!(protocol.as_str(), "s3" | "s3-compatible")
+                && provider_secrets
+                    .get(&server.id)
+                    .and_then(|s| s.aws_session_token.as_ref())
+                    .is_none()
+            {
+                writes.push(SecretWrite::delete(
+                    profile_loader::aws_session_token_vault_key(&server.id),
+                    Some("aws_session_token"),
+                ));
+            }
         }
     }
     // In file order, like the shared secrets written after them.
@@ -27326,6 +27365,32 @@ mod per_profile_vault_keys_tests {
         let redacted = super::redact_imported_server(&server, &restored);
         assert_eq!(redacted["hasStoredSessionToken"], true);
         assert!(!redacted.to_string().contains("TOK-BACKUP-99"));
+
+        // Overwriting an S3 profile with new permanent credentials (no STS token)
+        // emits a delete for `aws_session_token_<id>` so stale tokens are cleared.
+        let empty_secrets = std::collections::HashMap::new();
+        let overwrite_writes =
+            super::import_secret_writes(std::slice::from_ref(&server), &empty_secrets);
+        let del_write = overwrite_writes
+            .iter()
+            .find(|w| w.key == "aws_session_token_srv_sts_backup")
+            .expect("credential-enabled S3 overwrite without token must emit delete");
+        assert!(del_write.delete);
+        assert_eq!(del_write.kind, Some("aws_session_token"));
+
+        // Credential-less backup preserves existing secrets (no delete emitted).
+        let credless = crate::profile_export::ServerProfileExport {
+            credential: None,
+            ..server
+        };
+        let credless_writes =
+            super::import_secret_writes(std::slice::from_ref(&credless), &empty_secrets);
+        assert!(
+            credless_writes
+                .iter()
+                .all(|w| w.key != "aws_session_token_srv_sts_backup"),
+            "credential-less backup must not delete existing aws_session_token"
+        );
     }
 
     #[test]

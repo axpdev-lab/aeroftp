@@ -284,6 +284,25 @@ fn stage_export_temp_600_with_acl(
     restrict_acl: impl FnOnce(&Path) -> std::io::Result<()>,
 ) -> std::io::Result<tempfile::NamedTempFile> {
     use std::io::Write;
+    #[cfg(windows)]
+    let mut tmp = {
+        use std::os::windows::fs::OpenOptionsExt;
+        // Create the temp file with exclusive sharing (`share_mode(0)`) so no
+        // other local account can open a read handle between creation and
+        // `restrict_acl`, which applies the owner-only DACL before secret bytes
+        // are written.
+        tempfile::Builder::new()
+            .prefix(".aeroftp-bridge-export-")
+            .make_in(parent, |path| {
+                std::fs::OpenOptions::new()
+                    .create_new(true)
+                    .read(true)
+                    .write(true)
+                    .share_mode(0)
+                    .open(path)
+            })?
+    };
+    #[cfg(not(windows))]
     let mut tmp = tempfile::Builder::new()
         .prefix(".aeroftp-bridge-export-")
         .tempfile_in(parent)?;

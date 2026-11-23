@@ -837,8 +837,10 @@ pub(crate) fn finish_bridge_import_with_policy_and_cap(
     let mut vault_write_attempts = 0usize;
     let mut cap_hit = false;
     let mut cred_errors: Vec<String> = Vec::new();
+    let mut skipped_crypt: Vec<Value> = Vec::new();
     if source == "rclone" {
-        for server in &mut servers {
+        let mut kept_servers = Vec::with_capacity(servers.len());
+        for mut server in servers {
             let crypt_enabled = server
                 .pointer("/options/rcloneCryptEnabled")
                 .and_then(Value::as_bool)
@@ -862,31 +864,34 @@ pub(crate) fn finish_bridge_import_with_policy_and_cap(
                             "stopped after {max_vault_writes} credentials (import too large)"
                         ));
                     }
-                    if let Some(opts) = server.get_mut("options").and_then(Value::as_object_mut) {
-                        opts.remove("rcloneCryptPassword");
-                        opts.remove("rcloneCryptPassword2");
-                    }
-                    let id = server
-                        .get("id")
+                    // Fail closed: omit the capped crypt profile from `servers`
+                    // and record it in `skipped` instead of emitting an unbound
+                    // backing-folder profile that could open without encryption.
+                    let name = server
+                        .get("name")
                         .and_then(Value::as_str)
-                        .unwrap_or("")
+                        .filter(|s| !s.is_empty())
+                        .or_else(|| server.get("id").and_then(Value::as_str))
+                        .unwrap_or("crypt")
                         .to_string();
-                    secret_failures.push((
-                        id,
-                        "its rclone-crypt secrets were not stored: the import is too large"
-                            .to_string(),
-                    ));
+                    skipped_crypt.push(json!({
+                        "name": name,
+                        "kind": "crypt",
+                        "reason": "its rclone-crypt secrets were not stored: the import is too large",
+                    }));
                     continue;
                 }
             }
-            materialize_imported_crypt_overlay(server, |key, secret| match vault.as_mut() {
+            materialize_imported_crypt_overlay(&mut server, |key, secret| match vault.as_mut() {
                 Some(write) => {
                     vault_write_attempts += 1;
                     write(key, secret)
                 }
                 None => Err("Unlock the credential vault before importing Crypt profiles".into()),
             })?;
+            kept_servers.push(server);
         }
+        servers = kept_servers;
         for server in &mut servers {
             let id = server
                 .get("id")
@@ -1139,13 +1144,14 @@ pub(crate) fn finish_bridge_import_with_policy_and_cap(
             json!({ "name": name, "reason": reason })
         })
         .collect();
-    Ok(bridge_import_response(
-        value,
-        redacted,
-        servers.len(),
-        secret_warnings,
-        security,
-    ))
+    let mut resp =
+        bridge_import_response(value, redacted, servers.len(), secret_warnings, security);
+    if !skipped_crypt.is_empty() {
+        if let Some(arr) = resp.get_mut("skipped").and_then(Value::as_array_mut) {
+            arr.extend(skipped_crypt);
+        }
+    }
+    Ok(resp)
 }
 
 /// What an import hands back to the renderer: the redacted profiles, what the
@@ -3910,9 +3916,181 @@ mod tests {
         assert!(!serialized.contains("pw1"));
         assert!(!serialized.contains("salt1"));
         assert!(!serialized.contains("FILEN-KEY-1"));
-        assert_eq!(out["servers"][0]["hasStoredAeroCryptPassword"], false);
-        assert_eq!(out["servers"][1]["hasStoredFilenApiKey"], false);
-        assert_eq!(out["servers"][1]["hasStoredCredential"], false);
+        // CR-CLI #16: capped crypt profile must be omitted from `servers` (never
+        // emitted as an unbound plaintext backing-folder profile) and listed in `skipped`.
+        let out_servers = out["servers"].as_array().unwrap();
+        assert_eq!(out_servers.len(), 1);
+        assert_eq!(out_servers[0]["id"], "filen-1");
+        assert_eq!(out_servers[0]["hasStoredFilenApiKey"], false);
+        assert_eq!(out_servers[0]["hasStoredCredential"], false);
+        let out_skipped = out["skipped"].as_array().unwrap();
+        assert!(
+            out_skipped
+                .iter()
+                .any(|s| s["name"] == "Crypt 1" && s["kind"] == "crypt"),
+            "capped crypt profile must move to skipped: {out_skipped:?}"
+        );
+
+        // CR-CLI #15 Case A: exact-fit 2-write crypt pair followed by a Filen
+        // API key under cap=2 stores ONLY the crypt pair and rejects the Filen key.
+        let mut writes_a: Vec<String> = Vec::new();
+        let mut write_a = |key: &str, _val: &str| -> Result<(), String> {
+            writes_a.push(key.to_string());
+            Ok(())
+        };
+        let out_a = finish_bridge_import_with_policy_and_cap(
+            "rclone",
+            &parsed,
+            Vec::new(),
+            Some(&mut write_a),
+            &crate::profile_security::RelaxationPolicy::ResetAll,
+            2,
+        )
+        .unwrap();
+        assert_eq!(
+            writes_a.len(),
+            2,
+            "cap=2 must store exact-fit 2-write crypt pair only: {writes_a:?}"
+        );
+        assert!(writes_a.iter().all(|k| k.starts_with("aerocrypt_overlay_")));
+        assert_eq!(out_a["servers"][0]["hasStoredAeroCryptPassword"], true);
+        assert_eq!(out_a["servers"][1]["hasStoredFilenApiKey"], false);
+
+        // CR-CLI #15 Case B: two Filen API keys under cap=1 stores ONLY the
+        // first key and warns on the second.
+        let two_filen = json!({
+            "servers": [
+                {
+                    "id": "filen-a",
+                    "name": "Filen A",
+                    "host": "filen.io",
+                    "port": 443,
+                    "username": "a@example.com",
+                    "protocol": "filen",
+                    "options": { "filen_api_key": "KEY-A" }
+                },
+                {
+                    "id": "filen-b",
+                    "name": "Filen B",
+                    "host": "filen.io",
+                    "port": 443,
+                    "username": "b@example.com",
+                    "protocol": "filen",
+                    "options": { "filen_api_key": "KEY-B" }
+                }
+            ],
+            "skipped": [],
+            "warnings": [],
+            "totalRemotes": 2
+        });
+        let mut writes_b: Vec<String> = Vec::new();
+        let mut write_b = |key: &str, _val: &str| -> Result<(), String> {
+            writes_b.push(key.to_string());
+            Ok(())
+        };
+        let out_b = finish_bridge_import_with_policy_and_cap(
+            "rclone",
+            &two_filen,
+            Vec::new(),
+            Some(&mut write_b),
+            &crate::profile_security::RelaxationPolicy::ResetAll,
+            1,
+        )
+        .unwrap();
+        assert_eq!(writes_b, vec!["filen_api_key_filen-a"]);
+        assert_eq!(out_b["servers"][0]["hasStoredFilenApiKey"], true);
+        assert_eq!(out_b["servers"][1]["hasStoredFilenApiKey"], false);
+        assert!(
+            out_b["warnings"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|w| w["name"] == "Filen B"
+                    && w["reason"].as_str().unwrap_or("").contains("too large")),
+            "second Filen profile must warn when cap=1 is exhausted: {}",
+            out_b["warnings"]
+        );
+    }
+
+    /// CR-CLI #8: `aws_security_token` (selected over `aws_session_token`) is
+    /// stripped from `options.sessionToken` in BOTH preview and commit IPC
+    /// responses and vaulted ONLY under `aws_session_token_<id>`.
+    #[test]
+    fn aws_security_token_is_redacted_from_preview_and_commit_and_vaulted() {
+        let dir = tempfile::tempdir().unwrap();
+        let cred_path = dir.path().join("credentials");
+        std::fs::write(
+            &cred_path,
+            "[sts]\naws_access_key_id = ASIASEC1\naws_secret_access_key = SECRET-KEY-99\n\
+             aws_security_token = SENTINEL-SEC-TOKEN-77\naws_session_token = SENTINEL-SESS-TOKEN-88\n",
+        )
+        .unwrap();
+
+        let imported =
+            crate::aws_credentials_import::import_aws_credentials_with_config(&cred_path, None)
+                .unwrap();
+        let parsed = serde_json::to_value(&imported).unwrap();
+
+        // Preview path (vault = None): neither sentinel nor secret key reaches the webview.
+        let preview = finish_bridge_import_with_policy_and_cap(
+            "aws",
+            &parsed,
+            Vec::new(),
+            None,
+            &crate::profile_security::RelaxationPolicy::ResetAll,
+            MAX_IMPORTED_CREDENTIALS,
+        )
+        .unwrap();
+        let preview_json = preview.to_string();
+        for secret in [
+            "SENTINEL-SEC-TOKEN-77",
+            "SENTINEL-SESS-TOKEN-88",
+            "SECRET-KEY-99",
+        ] {
+            assert!(
+                !preview_json.contains(secret),
+                "preview leaked {secret}: {preview_json}"
+            );
+        }
+        assert!(preview["servers"][0]["options"]
+            .get("sessionToken")
+            .is_none());
+
+        // Commit path (vault = Some): aws_security_token is vaulted under
+        // `aws_session_token_<id>`, and neither sentinel leaks in the IPC response.
+        let mut stored: Vec<(String, String)> = Vec::new();
+        let mut write = |k: &str, v: &str| -> Result<(), String> {
+            stored.push((k.to_string(), v.to_string()));
+            Ok(())
+        };
+        let commit = finish_bridge_import_with_policy_and_cap(
+            "aws",
+            &parsed,
+            Vec::new(),
+            Some(&mut write),
+            &crate::profile_security::RelaxationPolicy::ResetAll,
+            MAX_IMPORTED_CREDENTIALS,
+        )
+        .unwrap();
+        let commit_json = commit.to_string();
+        for secret in [
+            "SENTINEL-SEC-TOKEN-77",
+            "SENTINEL-SESS-TOKEN-88",
+            "SECRET-KEY-99",
+        ] {
+            assert!(
+                !commit_json.contains(secret),
+                "commit leaked {secret}: {commit_json}"
+            );
+        }
+        let id = commit["servers"][0]["id"].as_str().unwrap();
+        assert_eq!(commit["servers"][0]["hasStoredSessionToken"], true);
+        assert!(
+            stored.iter().any(|(k, v)| k
+                == &crate::profile_loader::aws_session_token_vault_key(id)
+                && v == "SENTINEL-SEC-TOKEN-77"),
+            "expected vaulted aws_security_token under owner key, got: {stored:?}"
+        );
     }
 
     #[tokio::test]

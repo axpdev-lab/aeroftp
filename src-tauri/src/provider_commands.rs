@@ -25210,6 +25210,61 @@ mod tests {
             .get("session_token")
             .cloned();
 
+        // CR-CLI #14: scoped backup collection for captured user A still reads
+        // user A's session token even after active user switched to user B.
+        let scoped_a_server = crate::profile_export::ServerProfileExport {
+            id: "aws-sts-1".to_string(),
+            name: "STS Backup".to_string(),
+            host: String::new(),
+            port: 443,
+            username: "ASIABACKUP".to_string(),
+            protocol: Some("s3".to_string()),
+            ..Default::default()
+        };
+        let collected_for_a_after_switch = crate::collect_provider_secrets_for_server_for_user(
+            &store,
+            Some(first_user.id),
+            &scoped_a_server,
+        )
+        .unwrap();
+
+        // CR-CLI #13: overwriting `aws-sts-restored` with a credential-enabled
+        // S3 backup carrying NO session token emits a delete write that removes
+        // the stale vaulted token so subsequent connects send no expired token.
+        let replacement_server = crate::profile_export::ServerProfileExport {
+            id: restored_backup_id.to_string(),
+            name: "Permanent S3".to_string(),
+            host: String::new(),
+            port: 443,
+            username: "AKIAPERM".to_string(),
+            protocol: Some("s3".to_string()),
+            credential: Some("perm-secret".to_string()),
+            ..Default::default()
+        };
+        let overwrite_writes = crate::import_secret_writes(
+            std::slice::from_ref(&replacement_server),
+            &std::collections::HashMap::new(),
+        );
+        for w in &overwrite_writes {
+            if w.delete {
+                crate::user_partitions::delete_imported_credential_for_user(
+                    &store,
+                    second_user.id,
+                    &w.key,
+                )
+                .unwrap();
+            }
+        }
+        let mut after_overwrite_params = s3_params(None);
+        after_overwrite_params.profile_id = Some(restored_backup_id.to_string());
+        after_overwrite_params.has_stored_session_token = Some(false);
+        let got_after_overwrite_connect = after_overwrite_params
+            .to_provider_config()
+            .unwrap()
+            .extra
+            .get("session_token")
+            .cloned();
+
         let mut export_opts_b: Option<serde_json::Value> = None;
         crate::bridge_commands::inject_aws_session_token_export_option_for_user(
             &mut export_opts_b,
@@ -25272,6 +25327,15 @@ mod tests {
             got_restored_backup_connect.as_deref(),
             Some("VAULT-STS-TOKEN-42"),
             "restoring a credential-enabled .aeroftp backup must preserve aws_session_token"
+        );
+        assert_eq!(
+            collected_for_a_after_switch.aws_session_token.as_deref(),
+            Some("VAULT-STS-TOKEN-42"),
+            "captured user A export collection must still read user A's token after switch to user B"
+        );
+        assert_eq!(
+            got_after_overwrite_connect, None,
+            "overwriting an STS profile with permanent credentials must clear stale aws_session_token"
         );
         assert_eq!(
             got_second_connect, None,

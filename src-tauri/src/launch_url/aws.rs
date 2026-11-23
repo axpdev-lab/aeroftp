@@ -621,10 +621,20 @@ mod tests {
         });
         let sections = match rx.recv_timeout(std::time::Duration::from_secs(5)) {
             Ok(s) => s,
-            Err(_) => {
-                let _ = std::fs::OpenOptions::new().write(true).open(&fifo);
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                // O_NONBLOCK ensures write-side open returns ENXIO instead of
+                // blocking if the worker already exited or closed its handle.
+                use std::os::unix::fs::OpenOptionsExt;
+                let _ = std::fs::OpenOptions::new()
+                    .write(true)
+                    .custom_flags(libc::O_NONBLOCK)
+                    .open(&fifo);
                 let _ = worker.join();
                 panic!("launch_url::aws::read_sections hung on FIFO");
+            }
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                let _ = worker.join();
+                panic!("launch_url::aws::read_sections worker exited unexpectedly");
             }
         };
         worker.join().unwrap();

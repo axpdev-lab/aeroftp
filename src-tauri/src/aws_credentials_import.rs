@@ -158,11 +158,11 @@ const AWS_CREDENTIAL_KEYS: &[&str] = &[
     "aws_security_token",
 ];
 
-#[derive(Default, Clone, Debug)]
-struct AwsCredentialSet {
-    access_key_id: Option<String>,
-    secret_access_key: Option<String>,
-    session_token: Option<String>,
+#[derive(Default, Clone, Copy, Debug)]
+struct AwsCredentialRef<'a> {
+    access_key_id: Option<&'a str>,
+    secret_access_key: Option<&'a str>,
+    session_token: Option<&'a str>,
 }
 
 impl AwsSection {
@@ -206,23 +206,29 @@ impl AwsSection {
     }
 
     /// Botocore's `SharedCredentialProvider` and `ConfigProvider` select a
-    /// section only when `aws_access_key_id` is present; a leftover
-    /// `aws_session_token` or `aws_secret_access_key` alone does not shadow
-    /// a later provider with a complete key pair.
+    /// section by field presence (`aws_access_key_id` defined, even if empty);
+    /// a leftover `aws_session_token` or `aws_secret_access_key` alone does not
+    /// shadow a later provider with a complete key pair, while an explicitly
+    /// empty `aws_access_key_id =` still claims the section so we fail/skip
+    /// instead of silently falling back to a different identity in `config`.
     fn has_access_key_id(&self) -> bool {
-        self.get("aws_access_key_id").is_some()
+        self.raw_get("aws_access_key_id").is_some()
     }
 
-    fn credential_set(&self) -> AwsCredentialSet {
-        // Match botocore's static credential providers: `aws_security_token`
-        // takes precedence over `aws_session_token` when both are set.
-        AwsCredentialSet {
-            access_key_id: self.get("aws_access_key_id").map(str::to_string),
-            secret_access_key: self.get("aws_secret_access_key").map(str::to_string),
+    /// Borrow static credential fields without cloning inherited `[DEFAULT]`
+    /// values until after skip and size-bound checks succeed.
+    fn credential_set(&self) -> AwsCredentialRef<'_> {
+        // Match botocore's static credential providers: check `aws_security_token`
+        // presence before `aws_session_token`, then filter out empty values so
+        // an explicit empty `aws_security_token =` does not resurrect a stale
+        // `aws_session_token`.
+        AwsCredentialRef {
+            access_key_id: self.get("aws_access_key_id"),
+            secret_access_key: self.get("aws_secret_access_key"),
             session_token: self
-                .get("aws_security_token")
-                .or_else(|| self.get("aws_session_token"))
-                .map(str::to_string),
+                .raw_get("aws_security_token")
+                .or_else(|| self.raw_get("aws_session_token"))
+                .filter(|v| !v.is_empty()),
         }
     }
 }
@@ -593,7 +599,7 @@ fn import_aws_credentials_with_config_limits(
             } else if let Some(s) = cfg_sec.filter(|s| s.has_access_key_id()) {
                 (s.credential_set(), true)
             } else {
-                (AwsCredentialSet::default(), false)
+                (AwsCredentialRef::default(), false)
             };
 
         let entry = |reason: String| AwsSkippedRemote {
@@ -660,6 +666,15 @@ fn import_aws_credentials_with_config_limits(
                 },
                 None => None,
             };
+            if let Some(svc) = service {
+                if svc.defines_key("s3") && svc.nested_block("s3").is_none() {
+                    skipped.push(entry(
+                        "its referenced services section defines s3 as a scalar instead of a nested block, and the AWS CLI refuses the profile"
+                            .to_string(),
+                    ));
+                    continue;
+                }
+            }
             service
                 .and_then(|s| s.nested_get("s3", "endpoint_url"))
                 .or_else(|| kv.get("endpoint_url"))
@@ -713,7 +728,7 @@ fn import_aws_credentials_with_config_limits(
             name.len(),
             akid.len(),
             secret_key.len(),
-            cred_set.session_token.as_ref().map_or(0, String::len),
+            cred_set.session_token.map_or(0, str::len),
             endpoint_url.as_ref().map_or(0, String::len),
             region_opt.map_or(0, str::len),
         ];
@@ -759,7 +774,7 @@ fn import_aws_credentials_with_config_limits(
             .filter(|s| crate::bridge_shared::map_s3_provider_from_endpoint(s) != "amazon-s3");
         let mut options = crate::bridge_shared::json_map(&[
             ("region", region_opt.map(str::to_string)),
-            ("sessionToken", cred_set.session_token),
+            ("sessionToken", cred_set.session_token.map(str::to_string)),
             ("endpoint", endpoint),
         ]);
         // The `s3` sub-section's `addressing_style`.
@@ -788,7 +803,7 @@ fn import_aws_credentials_with_config_limits(
             name: name.clone(),
             host,
             port,
-            username: akid,
+            username: akid.to_string(),
             protocol: Some("s3".to_string()),
             initial_path: None,
             local_initial_path: None,
@@ -800,7 +815,7 @@ fn import_aws_credentials_with_config_limits(
                 Some(serde_json::Value::Object(options))
             },
             provider_id: Some(provider_id),
-            credential: Some(secret_key),
+            credential: Some(secret_key.to_string()),
             has_stored_credential: None,
             public_url_base: None,
             ..Default::default()
@@ -822,23 +837,31 @@ const AWS_EXPORT_HEADER: &str = "# Generated by AeroFTP - https://aeroftp.app";
 
 /// Typed integrity markers for AeroFTP AWS exports (AWS-01, AWS-02, AWS-15).
 /// The marker sits on line 2 and carries the SHA-256 of every byte after the
-/// marker line. Both `config` and `credentials` markers bind to the requested
-/// credentials filename (case-sensitive on Unix, case-folded on Windows/macOS)
-/// so exporting distinct credentials files in the same directory (including
-/// case variants or `credentials.aeroftp` vs `credentials`) never overwrites
-/// another pair's `config` or side-file credentials.
+/// marker line. Both `config` and `credentials` markers bind to the lossless
+/// exact-case bytes of the requested credentials filename so exporting distinct
+/// credentials files in the same directory (including case variants on
+/// case-sensitive Linux/APFS/NTFS volumes, non-UTF-8 Unix filenames, or
+/// `credentials.aeroftp` vs `credentials`) never overwrites another pair's
+/// `config` or side-file credentials.
 const AWS_MARKER_PREFIX: &str = "# AeroFTP-Export: ";
 
 fn aws_pair_binding_id(cred_path: &Path) -> String {
-    let raw_name = cred_path
+    #[cfg(unix)]
+    let raw_bytes: &[u8] = {
+        use std::os::unix::ffi::OsStrExt;
+        cred_path
+            .file_name()
+            .filter(|n| !n.is_empty())
+            .map(OsStrExt::as_bytes)
+            .unwrap_or(b"credentials")
+    };
+    #[cfg(not(unix))]
+    let raw_bytes: &[u8] = cred_path
         .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("credentials");
-    #[cfg(any(target_os = "windows", target_os = "macos"))]
-    let key = raw_name.to_ascii_lowercase();
-    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
-    let key = raw_name;
-    sha256_hex(key.as_bytes())[..16].to_string()
+        .filter(|n| !n.is_empty())
+        .map(std::ffi::OsStr::as_encoded_bytes)
+        .unwrap_or(b"credentials");
+    sha256_hex(raw_bytes)[..16].to_string()
 }
 
 fn aws_config_marker_for(cred_path: &Path) -> String {
@@ -887,16 +910,16 @@ pub fn default_aws_cli_export_path() -> Result<PathBuf, String> {
 }
 
 fn aws_side_path(target_path: &Path, index: usize) -> PathBuf {
-    let base = target_path
+    let mut name = target_path
         .file_name()
-        .and_then(|n| n.to_str())
         .filter(|n| !n.is_empty())
-        .unwrap_or("aws");
-    let name = if index == 0 {
-        format!("{base}.aeroftp")
+        .map(std::ffi::OsStr::to_os_string)
+        .unwrap_or_else(|| std::ffi::OsString::from("aws"));
+    if index == 0 {
+        name.push(".aeroftp");
     } else {
-        format!("{base}.aeroftp.{index}")
-    };
+        name.push(format!(".aeroftp.{index}"));
+    }
     target_path.with_file_name(name)
 }
 
@@ -941,6 +964,10 @@ struct ProtectedWriteOutcome {
 /// checking `fstat` on that same handle (AWS-07). Returns `None` for symlinks,
 /// directories, FIFOs, devices, or files over `MAX_IMPORT_FILE_BYTES`.
 fn read_regular_file_no_follow(path: &Path) -> Option<Vec<u8>> {
+    read_regular_file_no_follow_bounded(path, crate::bridge_shared::MAX_IMPORT_FILE_BYTES)
+}
+
+fn read_regular_file_no_follow_bounded(path: &Path, cap: u64) -> Option<Vec<u8>> {
     use std::io::Read;
     let mut options = std::fs::OpenOptions::new();
     options.read(true);
@@ -957,12 +984,13 @@ fn read_regular_file_no_follow(path: &Path) -> Option<Vec<u8>> {
     }
     let file = options.open(path).ok()?;
     let metadata = file.metadata().ok()?;
-    let cap = crate::bridge_shared::MAX_IMPORT_FILE_BYTES;
     if !metadata.is_file() || metadata.len() > cap {
         return None;
     }
     let mut bytes = Vec::new();
-    file.take(cap + 1).read_to_end(&mut bytes).ok()?;
+    file.take(cap.saturating_add(1))
+        .read_to_end(&mut bytes)
+        .ok()?;
     (bytes.len() as u64 <= cap).then_some(bytes)
 }
 
@@ -1335,7 +1363,7 @@ fn rollback_written_file(
     published_bytes: &[u8],
     label: &str,
 ) -> Result<String, String> {
-    match read_regular_file_no_follow(&written.path) {
+    match read_regular_file_no_follow_bounded(&written.path, published_bytes.len() as u64) {
         Some(current) if current == published_bytes => {}
         _ => {
             return Err(format!(
@@ -3969,11 +3997,20 @@ region = eu-west-1
         });
         let res1 = match rx1.recv_timeout(std::time::Duration::from_secs(5)) {
             Ok(r) => r,
-            Err(_) => {
-                // Unblock any stalled reader so the test thread can terminate.
-                let _ = std::fs::OpenOptions::new().write(true).open(&cred_fifo);
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                // O_NONBLOCK ensures write-side open returns ENXIO instead of
+                // blocking if the worker already exited or closed its handle.
+                use std::os::unix::fs::OpenOptionsExt;
+                let _ = std::fs::OpenOptions::new()
+                    .write(true)
+                    .custom_flags(libc::O_NONBLOCK)
+                    .open(&cred_fifo);
                 let _ = t1.join();
                 panic!("import hung on credentials FIFO instead of failing immediately");
+            }
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                let _ = t1.join();
+                panic!("credentials FIFO worker exited unexpectedly");
             }
         };
         t1.join().unwrap();
@@ -3999,10 +4036,18 @@ region = eu-west-1
         });
         let res2 = match rx2.recv_timeout(std::time::Duration::from_secs(5)) {
             Ok(r) => r,
-            Err(_) => {
-                let _ = std::fs::OpenOptions::new().write(true).open(&cfg_fifo);
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                use std::os::unix::fs::OpenOptionsExt;
+                let _ = std::fs::OpenOptions::new()
+                    .write(true)
+                    .custom_flags(libc::O_NONBLOCK)
+                    .open(&cfg_fifo);
                 let _ = t2.join();
                 panic!("import hung on config FIFO instead of failing immediately");
+            }
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                let _ = t2.join();
+                panic!("config FIFO worker exited unexpectedly");
             }
         };
         t2.join().unwrap();
@@ -4628,6 +4673,229 @@ region = eu-west-1
         assert!(
             worker_err.contains("fail before config callback"),
             "{worker_err}"
+        );
+    }
+
+    // ---- CodeRabbit CLI Round 2 Cycle 1 regression tests ----
+
+    /// CR-CLI #1: an explicitly empty `aws_access_key_id =` in `credentials`
+    /// still claims the section (matching botocore field-presence selection)
+    /// and skips as unusable instead of silently falling back to a different
+    /// identity in `config`.
+    #[test]
+    fn explicit_empty_shared_access_key_does_not_fall_back_to_config() {
+        let result = import_pair(
+            "[empty_akid]\naws_access_key_id =\naws_secret_access_key = shared_sec\n",
+            Some(
+                "[profile empty_akid]\naws_access_key_id = AK_OTHER_IDENTITY\n\
+                 aws_secret_access_key = other_sec\nregion = eu-west-1\n",
+            ),
+        )
+        .unwrap();
+        assert!(
+            result.servers.is_empty(),
+            "explicit empty aws_access_key_id in credentials must not fall back to config"
+        );
+        assert!(
+            result.skipped.iter().any(|s| s.name == "empty_akid"),
+            "expected empty_akid to be skipped"
+        );
+    }
+
+    /// CR-CLI #3: an explicitly empty `aws_security_token =` takes precedence
+    /// over `aws_session_token` and prevents importing a stale session token.
+    #[test]
+    fn explicit_empty_aws_security_token_masks_stale_session_token() {
+        let result = import_pair(
+            "[masked]\naws_access_key_id = AKM\naws_secret_access_key = secm\n\
+             aws_security_token =\naws_session_token = STALE_TOKEN_MUST_NOT_IMPORT\n",
+            None,
+        )
+        .unwrap();
+        assert_eq!(result.servers.len(), 1);
+        assert!(
+            result.servers[0]
+                .options
+                .as_ref()
+                .and_then(|o| o.get("sessionToken"))
+                .is_none(),
+            "explicit empty aws_security_token must mask aws_session_token: {:?}",
+            result.servers[0].options
+        );
+    }
+
+    /// CR-CLI #4: a scalar `s3 =` inside a referenced `[services ...]` section
+    /// is refused when configured endpoints are active, and ignored when
+    /// `ignore_configured_endpoint_urls = true`.
+    #[test]
+    fn scalar_s3_in_referenced_services_section_is_rejected_unless_endpoints_ignored() {
+        let result = import_pair(
+            "[strict]\naws_access_key_id = AK1\naws_secret_access_key = sec1\n\n\
+             [ignored]\naws_access_key_id = AK2\naws_secret_access_key = sec2\n",
+            Some(
+                "[DEFAULT]\ns3 =\n  endpoint_url = https://default.example.com:9000\n\n\
+                 [services bad-svc]\ns3 =\n\n\
+                 [profile strict]\nservices = bad-svc\nregion = eu-west-1\n\n\
+                 [profile ignored]\nservices = bad-svc\nignore_configured_endpoint_urls = true\n\
+                 region = eu-west-1\n",
+            ),
+        )
+        .unwrap();
+
+        assert!(
+            result.servers.iter().all(|s| s.name != "strict"),
+            "scalar s3 in referenced services section must be skipped when endpoints are active"
+        );
+        let skip = result
+            .skipped
+            .iter()
+            .find(|s| s.name == "strict")
+            .expect("strict must be skipped");
+        assert!(skip.reason.contains("scalar"), "{}", skip.reason);
+
+        let ok = result.servers.iter().find(|s| s.name == "ignored").expect(
+            "ignored profile must import cleanly when ignore_configured_endpoint_urls=true",
+        );
+        assert_eq!(ok.provider_id.as_deref(), Some("amazon-s3"));
+    }
+
+    /// CR-CLI #2 & #10: `aws_pair_binding_id` preserves exact filename bytes
+    /// on all platforms (distinguishing `credentials` vs `CREDENTIALS` even on
+    /// macOS case-sensitive APFS) and never collides non-UTF-8 Unix filenames
+    /// with literal `credentials`.
+    #[test]
+    fn aws_pair_binding_id_distinguishes_case_variants_on_all_platforms() {
+        assert_ne!(
+            aws_config_marker_for(Path::new("/tmp/credentials")),
+            aws_config_marker_for(Path::new("/tmp/CREDENTIALS")),
+            "case-variant credentials filenames must produce distinct config markers on all platforms"
+        );
+        assert_ne!(
+            aws_credentials_marker_for(Path::new("/tmp/credentials")),
+            aws_credentials_marker_for(Path::new("/tmp/CREDENTIALS")),
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn non_utf8_credentials_filename_does_not_collide_with_credentials_config_marker() {
+        use std::ffi::OsString;
+        use std::os::unix::ffi::OsStringExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let non_utf8_name = OsString::from_vec(b"cred\xff".to_vec());
+        let non_utf8_path = dir.path().join(&non_utf8_name);
+        let literal_cred = dir.path().join("credentials");
+
+        let make_server = |name: &str, region: &str| AwsExportServer {
+            id: format!("id-{name}"),
+            name: name.to_string(),
+            host: format!("{name}.example.com"),
+            port: 443,
+            username: format!("AK{name}"),
+            protocol: Some("s3".to_string()),
+            options: Some(serde_json::json!({ "region": region })),
+            provider_id: Some("custom-s3".to_string()),
+            initial_path: None,
+        };
+        let pw_a = HashMap::from([("id-raw".to_string(), "sec-a".to_string())]);
+        let pw_b = HashMap::from([("id-lit".to_string(), "sec-b".to_string())]);
+
+        let out_a =
+            export_aws_credentials(&[make_server("raw", "us-east-1")], &pw_a, &non_utf8_path)
+                .unwrap();
+        assert!(out_a.warnings.is_empty(), "{:?}", out_a.warnings);
+        let cfg_a = std::fs::read_to_string(dir.path().join("config")).unwrap();
+        assert!(cfg_a.contains("region = us-east-1"), "{cfg_a}");
+
+        // Exporting to literal `credentials` in the same dir must NOT replace
+        // the non-UTF-8 pair's `config`.
+        let out_b =
+            export_aws_credentials(&[make_server("lit", "eu-west-1")], &pw_b, &literal_cred)
+                .unwrap();
+        assert_eq!(out_b.warnings.len(), 2, "{:?}", out_b.warnings);
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("config")).unwrap(),
+            cfg_a,
+            "literal credentials export must preserve non-UTF-8 pair's config"
+        );
+    }
+
+    /// CR-CLI #6: rollback verifies full payloads larger than the 10 MiB
+    /// import cap, removing unchanged large files and still preserving
+    /// externally modified large files.
+    #[test]
+    fn rollback_written_file_removes_unchanged_large_file_over_10_mib_and_preserves_modified() {
+        let dir = tempfile::tempdir().unwrap();
+        let large_size = (crate::bridge_shared::MAX_IMPORT_FILE_BYTES as usize) + 64 * 1024;
+        let payload = vec![b'A'; large_size];
+
+        // Case A: unchanged >10 MiB newly created file is cleanly removed.
+        let path_unchanged = dir.path().join("large_cred.aeroftp");
+        std::fs::write(&path_unchanged, &payload).unwrap();
+        let outcome_unchanged = ProtectedWriteOutcome {
+            path: path_unchanged.clone(),
+            protected: true,
+            existing_was_legacy: false,
+            paired_inactive: true,
+            action: ActualWriteAction::CreatedNew,
+        };
+        let note = rollback_written_file(&outcome_unchanged, &payload, "AWS credentials")
+            .expect("rollback must succeed on unchanged >10 MiB file");
+        assert!(note.contains("removed"), "{note}");
+        assert!(!path_unchanged.exists());
+
+        // Case B: externally modified >10 MiB file is preserved and reports error.
+        let path_modified = dir.path().join("large_cred_mod.aeroftp");
+        let mut modified = payload.clone();
+        modified[large_size - 1] = b'B';
+        std::fs::write(&path_modified, &modified).unwrap();
+        let outcome_modified = ProtectedWriteOutcome {
+            path: path_modified.clone(),
+            protected: true,
+            existing_was_legacy: false,
+            paired_inactive: true,
+            action: ActualWriteAction::CreatedNew,
+        };
+        let err = rollback_written_file(&outcome_modified, &payload, "AWS credentials")
+            .expect_err("rollback must refuse modified >10 MiB file");
+        assert!(err.contains("modified after export wrote it"), "{err}");
+        assert_eq!(std::fs::read(&path_modified).unwrap().len(), large_size);
+    }
+
+    /// CR-CLI #12: skipped missing-secret profiles borrow `[DEFAULT]` fields
+    /// without cloning them, so a large `[DEFAULT]` token across hundreds of
+    /// skipped profiles never amplifies memory or charges the materialized cap.
+    #[test]
+    fn large_default_session_token_with_many_skipped_profiles_does_not_amplify_memory() {
+        let dir = tempfile::tempdir().unwrap();
+        let cred = dir.path().join("credentials");
+        let big_default_token = "T".repeat(512 * 1024);
+        let mut ini = format!("[DEFAULT]\naws_session_token = {big_default_token}\n\n");
+        for i in 0..400 {
+            ini.push_str(&format!("[skip_{i}]\naws_access_key_id = AKSKIP{i}\n"));
+        }
+        ini.push_str(
+            "[valid]\naws_access_key_id = AKVALID\naws_secret_access_key = secvalid\n\
+             aws_session_token = SMALL_OK\n",
+        );
+        std::fs::write(&cred, &ini).unwrap();
+
+        // Tight 64 KiB materialized budget: if skipped profiles had been
+        // materialized or charged, 400 * 512 KiB (~200 MiB) would explode.
+        let res = import_aws_credentials_with_config_limits(
+            &cred,
+            None,
+            crate::bridge_shared::MAX_IMPORT_FILE_BYTES,
+            64 * 1024,
+        )
+        .expect("skipped profiles must not clone or charge large [DEFAULT] session token");
+        assert_eq!(res.skipped.len(), 400);
+        assert_eq!(res.servers.len(), 1);
+        assert_eq!(res.servers[0].name, "valid");
+        assert_eq!(
+            res.servers[0].options.as_ref().unwrap()["sessionToken"],
+            serde_json::json!("SMALL_OK")
         );
     }
 }
