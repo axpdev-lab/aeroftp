@@ -333,8 +333,13 @@ pub(crate) mod test_seams {
 
     /// Counts a sign-out on Proton in place of sending it, so a test never
     /// reaches Proton's host: done, or failed while [`fail_revokes`] is on.
-    /// Always `Some`.
+    /// `None` while a test installed a real API double
+    /// ([`set_revoke_api_base`]), which the sign-out is then really sent
+    /// to. Always `Some` otherwise.
     pub(super) fn revoke_counted() -> Option<super::RevokeOutcome> {
+        if revoke_api_base().is_some() {
+            return None;
+        }
         if FAIL_REVOKES.load(Ordering::SeqCst) {
             FAILED_REVOKES.fetch_add(1, Ordering::SeqCst);
             return Some(super::RevokeOutcome::Failed(
@@ -343,6 +348,25 @@ pub(crate) mod test_seams {
         }
         REVOKES.fetch_add(1, Ordering::SeqCst);
         Some(super::RevokeOutcome::Revoked)
+    }
+
+    static REVOKE_API_BASE: Mutex<Option<String>> = Mutex::new(None);
+
+    /// The base URL [`super::revoke_session`]'s Proton API is built with
+    /// (test only): a local double the sign-out really reaches, so the
+    /// error it answers is the one production reports. `None` restores the
+    /// official host.
+    pub(crate) fn set_revoke_api_base(url: Option<String>) {
+        *REVOKE_API_BASE
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = url;
+    }
+
+    pub(super) fn revoke_api_base() -> Option<String> {
+        REVOKE_API_BASE
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
     }
 }
 
@@ -1731,6 +1755,11 @@ async fn revoke_session(
         return outcome;
     }
     let api = ProtonApi::new(super::app_version::app_version());
+    #[cfg(test)]
+    let api = match test_seams::revoke_api_base() {
+        Some(url) => ProtonApi::with_base_url(url, super::app_version::app_version()),
+        None => api,
+    };
     api.set_tokens(Some(session.tokens)).await;
     match tokio::time::timeout(REVOKE_TIMEOUT, super::auth::sign_out(&api)).await {
         Ok(Ok(())) => {
@@ -2151,6 +2180,73 @@ mod tests {
         assert_eq!(detail, "HTTP 503, Proton code 7000");
         assert!(!detail.contains("s3cr3t-token-value"));
         assert_ne!(detail, error.to_string());
+    }
+
+    /// The whole [`revoke_session`] path against a local Proton double: the
+    /// sign-out is really sent, Proton answers an API error whose `Error`
+    /// text carries a secret, and the outcome a caller logs or returns keeps
+    /// the HTTP status and Proton's code only. Red if the raw provider
+    /// error is reported again.
+    #[test]
+    fn a_failed_revoke_session_reports_status_and_code_without_the_provider_message() {
+        let _env = crate::test_env::lock();
+        let _partition = crate::user_partitions::test_lock();
+        let temporary = tempfile::tempdir().expect("temporary config");
+        std::env::set_var("XDG_CONFIG_HOME", temporary.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("proton-revoke-pass").expect("bootstrap");
+        CredentialStore::unlock_with_master("proton-revoke-pass", None).expect("unlock");
+        let store = CredentialStore::from_cache().expect("cached vault");
+        crate::user_partitions::init_or_migrate_cli(&store).expect("init partitions");
+        let _ = crate::user_partitions::open_or_init_cli().expect("partition DB");
+
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .unwrap();
+        let (endpoint, server) = runtime.block_on(async {
+            let app = axum::Router::new().route(
+                "/auth/v4",
+                axum::routing::delete(|| async move {
+                    (
+                        axum::http::StatusCode::BAD_REQUEST,
+                        axum::Json(serde_json::json!({
+                            "Code": 1001,
+                            "Error": "upstream refused s3cr3t-token-value",
+                        })),
+                    )
+                }),
+            );
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let endpoint = format!("http://{}", listener.local_addr().unwrap());
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            (endpoint, server)
+        });
+        test_seams::set_revoke_api_base(Some(endpoint));
+        let outcome = runtime.block_on(revoke_session(
+            &store,
+            SessionOwner::for_user(None),
+            "proton_native_session_revokeapi",
+            session("revoke-api-uid"),
+        ));
+        test_seams::set_revoke_api_base(None);
+        server.abort();
+        drop(runtime);
+        CredentialStore::clear_cache();
+
+        let RevokeOutcome::Failed(detail) = outcome else {
+            panic!("the refused sign-out is a failure, got {outcome:?}");
+        };
+        assert!(
+            detail.contains("HTTP 400") && detail.contains("1001"),
+            "the outcome keeps status and code: {detail}"
+        );
+        assert!(
+            !detail.contains("s3cr3t-token-value"),
+            "the provider's message reached the outcome: {detail}"
+        );
     }
 
     fn session(uid: &str) -> ProtonSession {

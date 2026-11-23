@@ -738,11 +738,7 @@ impl ProtonApi {
                     // adopt: nothing is sent, so nothing can race a rotation.
                     // A saved session of another UID replaced this one,
                     // as the leased path reports it, not an IO failure.
-                    if store
-                        .as_deref()
-                        .and_then(|store| store.load())
-                        .is_some_and(|saved| saved.uid != current.uid)
-                    {
+                    if store.load().is_some_and(|saved| saved.uid != current.uid) {
                         return Ok(Refreshed::Replaced);
                     }
                     if let Some(saved) = self.newer_saved_tokens(Some(store.as_ref()), &current) {
@@ -888,6 +884,7 @@ impl ProtonApi {
 }
 
 /// What [`ProtonApi::refresh_if_possible`] leaves the rejected request with.
+#[derive(Debug)]
 enum Refreshed {
     /// Retry with the current tokens (refreshed here or by another request
     /// or process).
@@ -1365,7 +1362,7 @@ mod tests {
         assert_eq!(
             kept.refresh_token
                 .as_ref()
-                .map(|token| token.expose_secret().as_str()),
+                .map(|token| token.expose_secret()),
             Some("refresh-2")
         );
     }
