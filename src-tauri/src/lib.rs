@@ -25090,7 +25090,7 @@ pub fn per_profile_vault_keys_for_target_reset(
 /// The singleton is read only when the profile's own key is absent; a key
 /// that cannot be read fails the export (`Err`), because the singleton may
 /// be another profile's account.
-fn collect_provider_secrets_for_server(
+pub(crate) fn collect_provider_secrets_for_server(
     store: &credential_store::CredentialStore,
     server: &profile_export::ServerProfileExport,
 ) -> Result<profile_export::ProviderSecrets, String> {
@@ -25215,6 +25215,17 @@ fn collect_provider_secrets_for_server(
         out.filen_api_key = Some(api_key.to_string());
     }
 
+    // AWS-11: bundle the per-profile AWS STS session token (`aws_session_token_<id>`)
+    // via owner-aware lookup so credential-enabled `.aeroftp` backups restore
+    // working STS profiles into an empty vault without leaking another user's token.
+    if let Some(session_token) = profile_loader::resolve_vault_s3_session_token_owner_aware(
+        store,
+        None,
+        &profile_loader::aws_session_token_vault_key(&server.id),
+    )? {
+        out.aws_session_token = Some(session_token);
+    }
+
     // OneDrive drive id/type captured at connect (`onedrive_drive_id_<id>` /
     // `onedrive_drive_type_<id>`). Vault-only like the Filen key, so the export
     // dropped them; carried so a re-import is a complete snapshot.
@@ -25314,6 +25325,7 @@ pub async fn export_server_profiles_core(
                         || secrets.oauth_client_id.is_some()
                         || secrets.oauth_client_secret.is_some()
                         || secrets.filen_api_key.is_some()
+                        || secrets.aws_session_token.is_some()
                         || secrets.onedrive_drive_id.is_some()
                         || secrets.onedrive_drive_type.is_some()
                         || secrets.proton_native_session.is_some()
@@ -26040,6 +26052,7 @@ pub(crate) struct RestoredImportSecrets {
     pub(crate) aerocrypt_keyfile_path: std::collections::HashSet<String>,
     pub(crate) aerocrypt_config: std::collections::HashSet<String>,
     pub(crate) filen_api_key: std::collections::HashSet<String>,
+    pub(crate) aws_session_token: std::collections::HashSet<String>,
 }
 
 /// The secrets [`import_secret_writes`] writes for `servers`, by kind.
@@ -26060,6 +26073,7 @@ pub(crate) fn restored_import_secrets(
         aerocrypt_keyfile_path: with(|s| s.aerocrypt_overlay_keyfile_path.is_some()),
         aerocrypt_config: with(|s| s.aerocrypt_overlay_config.is_some()),
         filen_api_key: with(|s| s.filen_api_key.is_some()),
+        aws_session_token: with(|s| s.aws_session_token.is_some()),
     }
 }
 
@@ -26123,6 +26137,13 @@ pub(crate) fn import_secret_writes(
                     jotta_json,
                 ));
             }
+        }
+        if let Some(session_token) = &secrets.aws_session_token {
+            writes.push(SecretWrite::new(
+                profile_loader::aws_session_token_vault_key(id),
+                Some("aws_session_token"),
+                session_token,
+            ));
         }
         // CWP-20B: the crypt-overlay secrets, shared by both overlay kinds
         // (AeroCrypt + rclone) and protocol-agnostic. The keyfile PATH, not the
@@ -26370,6 +26391,7 @@ pub(crate) fn redact_imported_server(
         // restored so the profile reconnects via the key (skipping the
         // TOTP window) instead of falling back to password + 2FA.
         "hasStoredFilenApiKey": restored.filen_api_key.contains(&s.id),
+        "hasStoredSessionToken": restored.aws_session_token.contains(&s.id),
         // CWP-20B: re-import a Crypt profile AS a Crypt profile (both
         // kinds). The flags reflect what was actually restored, not the
         // source state, so the UI prompts for the overlay password only
@@ -27269,6 +27291,41 @@ mod per_profile_vault_keys_tests {
             );
             assert!(deleted.contains(&key), "transient auth must be purged");
         }
+    }
+
+    #[test]
+    fn native_backup_restore_writes_typed_aws_session_token_and_sets_flag() {
+        let server = crate::profile_export::ServerProfileExport {
+            id: "srv_sts_backup".to_string(),
+            name: "STS Backup".to_string(),
+            host: String::new(),
+            port: 443,
+            username: "ASIABACKUP".to_string(),
+            protocol: Some("s3".to_string()),
+            credential: Some("secret-backup".to_string()),
+            ..Default::default()
+        };
+        let secrets = std::collections::HashMap::from([(
+            "srv_sts_backup".to_string(),
+            crate::profile_export::ProviderSecrets {
+                aws_session_token: Some("TOK-BACKUP-99".to_string()),
+                ..Default::default()
+            },
+        )]);
+
+        let writes = super::import_secret_writes(std::slice::from_ref(&server), &secrets);
+        let token_write = writes
+            .iter()
+            .find(|w| w.key == "aws_session_token_srv_sts_backup")
+            .expect("aws_session_token write must be emitted");
+        assert_eq!(token_write.kind, Some("aws_session_token"));
+        assert_eq!(token_write.value.as_str(), "TOK-BACKUP-99");
+
+        let restored = super::restored_import_secrets(std::slice::from_ref(&server), &secrets);
+        assert!(restored.aws_session_token.contains("srv_sts_backup"));
+        let redacted = super::redact_imported_server(&server, &restored);
+        assert_eq!(redacted["hasStoredSessionToken"], true);
+        assert!(!redacted.to_string().contains("TOK-BACKUP-99"));
     }
 
     #[test]

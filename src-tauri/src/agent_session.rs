@@ -968,26 +968,37 @@ enum ConnectOutcome {
     Err(String),
 }
 
+fn resolve_profile_password_for_user(
+    store: &CredentialStore,
+    user_id: Option<i64>,
+    profile_id: &str,
+) -> String {
+    let key = format!("server_{profile_id}");
+    let resolved = match user_id {
+        Some(uid) => crate::user_partitions::resolve_credential_for_user(store, uid, &key),
+        None => crate::user_partitions::resolve_active_credential(store, &key),
+    };
+    resolved
+        .ok()
+        .flatten()
+        .map(|s| s.to_string())
+        .unwrap_or_default()
+}
+
 /// Attempt to instantiate + connect a provider for the given profile.
 /// Reads the per-profile credential blob from the open vault.
 async fn connect_provider(profile: &ProfileSummary, no_scp_fallback: bool) -> ConnectOutcome {
     let Some(store) = CredentialStore::from_cache() else {
         return ConnectOutcome::Err("Vault not open".to_string());
     };
-    // MUV-3: capture user id once so password and session token share the same
-    // owner-aware user partition (Class A).
+    // MUV-3: capture user id once and pass it to BOTH the password lookup and
+    // the session-token lookup so an intervening active-account switch cannot
+    // mix credentials across accounts.
     let user_id = crate::user_partitions::cli_get_active_user(&store)
         .ok()
         .flatten()
         .map(|u| u.id);
-    let password = crate::user_partitions::resolve_active_credential(
-        &store,
-        &format!("server_{}", profile.id),
-    )
-    .ok()
-    .flatten()
-    .map(|s| s.to_string())
-    .unwrap_or_default();
+    let password = resolve_profile_password_for_user(&store, user_id, &profile.id);
 
     let Some(provider_type) = resolve_provider_type(&profile.protocol) else {
         return ConnectOutcome::Unsupported;
@@ -1761,5 +1772,100 @@ mod tests {
         let payload = lookup_error_payload("prod", &err);
         assert_eq!(payload["lookup"]["kind"], "ambiguous");
         assert_eq!(payload["lookup"]["candidates"], json!(["prod-a", "prod-b"]));
+    }
+
+    #[test]
+    fn connect_provider_reads_password_and_session_token_from_captured_user_across_switch() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "agent_session::tests::connect_provider_reads_password_and_session_token_from_captured_user_across_switch",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = crate::user_partitions::test_lock();
+        let xdg = tempfile::tempdir().unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", xdg.path());
+        std::env::set_var("AEROFTP_MASTER_PASSWORD", "synthetic test master");
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("synthetic test master").unwrap();
+        CredentialStore::unlock_with_master("synthetic test master", None).unwrap();
+        let store = CredentialStore::from_cache().unwrap();
+        crate::user_partitions::init_or_migrate_cli(&store).unwrap();
+        let mut conn = crate::user_partitions::open_or_init_cli().unwrap();
+        let root_key = store.derive_user_partition_wrapping_key();
+        let user_a =
+            crate::user_partitions::create_user(&mut conn, &root_key, "Alice", None, None, None)
+                .unwrap();
+        let user_b =
+            crate::user_partitions::create_user(&mut conn, &root_key, "Bob", None, None, None)
+                .unwrap();
+        crate::user_partitions::set_active_user(&conn, user_a.id).unwrap();
+        drop(conn);
+
+        let pid = "srv_switch_test";
+        crate::user_partitions::store_credential_for_user_dual(
+            &store,
+            user_a.id,
+            &format!("server_{pid}"),
+            "ALICE-SECRET",
+        )
+        .unwrap();
+        crate::user_partitions::store_credential_for_user_typed_dual(
+            &store,
+            user_a.id,
+            &crate::profile_loader::aws_session_token_vault_key(pid),
+            "aws_session_token",
+            "ALICE-TOKEN",
+        )
+        .unwrap();
+        crate::user_partitions::store_credential_for_user_dual(
+            &store,
+            user_b.id,
+            &format!("server_{pid}"),
+            "BOB-SECRET",
+        )
+        .unwrap();
+        crate::user_partitions::store_credential_for_user_typed_dual(
+            &store,
+            user_b.id,
+            &crate::profile_loader::aws_session_token_vault_key(pid),
+            "aws_session_token",
+            "BOB-TOKEN",
+        )
+        .unwrap();
+
+        // Capture Alice's user_id, then switch active user to Bob BEFORE the
+        // password and session-token reads run. Both must come from Alice.
+        let captured = crate::user_partitions::cli_get_active_user(&store)
+            .unwrap()
+            .map(|u| u.id);
+        assert_eq!(captured, Some(user_a.id));
+
+        let conn = crate::user_partitions::open_or_init_cli().unwrap();
+        crate::user_partitions::set_active_user(&conn, user_b.id).unwrap();
+        drop(conn);
+
+        let pw = resolve_profile_password_for_user(&store, captured, pid);
+        let mut extra = HashMap::new();
+        crate::profile_loader::inject_vault_s3_session_token(
+            ProviderType::S3,
+            Some(pid),
+            true,
+            &mut extra,
+            |key| {
+                crate::profile_loader::resolve_vault_s3_session_token_owner_aware(
+                    &store, captured, key,
+                )
+            },
+        )
+        .unwrap();
+
+        assert_eq!(pw, "ALICE-SECRET");
+        assert_eq!(
+            extra.get("session_token").map(String::as_str),
+            Some("ALICE-TOKEN")
+        );
     }
 }

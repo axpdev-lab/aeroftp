@@ -37,6 +37,10 @@ interface BridgeExportResult {
     warnings: Array<{ name: string; reason: string }>;
 }
 
+export const shouldAutoCloseBridgeExport = (
+    r: Pick<BridgeExportResult, 'skipped' | 'warnings'>,
+): boolean => r.skipped.length === 0 && (r.warnings?.length ?? 0) === 0;
+
 interface Props {
     source: BridgeSourceDescriptor;
     direction: 'import' | 'export';
@@ -300,8 +304,9 @@ export const BridgeSourcePanel: React.FC<Props> = ({
             });
             setExportResult(r);
             setSuccess(t('settings.bridgeExportSuccess').replace('{count}', String(r.exported)));
-            // Stay open when something was left out, so its reason can be read.
-            if (r.skipped.length === 0) closeTimerRef.current = setTimeout(() => onClose(), 2500);
+            // Stay open when something was skipped or warned (e.g. AWS side-file
+            // manual merge), so the operator can read the message before closing.
+            if (shouldAutoCloseBridgeExport(r)) closeTimerRef.current = setTimeout(() => onClose(), 2500);
         } catch (e) {
             setError(String(e));
         } finally {

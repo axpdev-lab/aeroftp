@@ -161,6 +161,12 @@ pub struct ProviderSecrets {
     /// profiles or when credentials are excluded from the export.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub filen_api_key: Option<String>,
+    /// Per-profile AWS STS session token (`aws_session_token_<id>` vault entry).
+    /// Imported STS tokens move out of `options.sessionToken` into the vault so
+    /// they never sit in plaintext profile metadata; carrying them here keeps
+    /// credential-enabled `.aeroftp` backups restorable into an empty vault.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub aws_session_token: Option<String>,
     /// OneDrive Graph drive id captured at connect (`onedrive_drive_id_<id>`).
     /// Like the Filen key it lives only in the vault, not on the profile, so the
     /// export dropped it; carried here so a re-import is a complete snapshot.
@@ -383,6 +389,7 @@ pub fn export_profiles(
             || s.oauth_client_id.is_some()
             || s.oauth_client_secret.is_some()
             || s.filen_api_key.is_some()
+            || s.aws_session_token.is_some()
             || s.onedrive_drive_id.is_some()
             || s.onedrive_drive_type.is_some()
             || s.proton_native_session.is_some()
@@ -750,6 +757,7 @@ mod tests {
             "filen-profile".to_string(),
             ProviderSecrets {
                 filen_api_key: Some("filen-cli-api-key-secret".to_string()),
+                aws_session_token: Some("aws-sts-token-secret".to_string()),
                 onedrive_drive_id: Some("b!driveid123".to_string()),
                 onedrive_drive_type: Some("business".to_string()),
                 proton_native_session: Some(
@@ -791,6 +799,13 @@ mod tests {
                 .and_then(|s| s.filen_api_key.clone()),
             Some("filen-cli-api-key-secret".to_string()),
             "Filen CLI API key must survive as a provider secret"
+        );
+        assert_eq!(
+            restored_secrets
+                .get("filen-profile")
+                .and_then(|s| s.aws_session_token.clone()),
+            Some("aws-sts-token-secret".to_string()),
+            "AWS STS session token must survive as a provider secret"
         );
         assert_eq!(
             restored_secrets

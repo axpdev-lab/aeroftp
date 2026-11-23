@@ -279,6 +279,25 @@ describe('an imported AWS STS session token', () => {
     });
 });
 
+describe('BridgeSourcePanel export auto-close guard', () => {
+    it('stays open when export returns warnings even with zero skipped profiles', async () => {
+        const { shouldAutoCloseBridgeExport } = await import('../BridgeSourcePanel');
+        expect(shouldAutoCloseBridgeExport({ skipped: [], warnings: [] })).toBe(true);
+        expect(
+            shouldAutoCloseBridgeExport({
+                skipped: [],
+                warnings: [{ name: 'AWS config', reason: 'merge config.aeroftp manually' }],
+            }),
+        ).toBe(false);
+        expect(
+            shouldAutoCloseBridgeExport({
+                skipped: [{ name: 'ftp-1', reason: 'not exportable' }],
+                warnings: [],
+            }),
+        ).toBe(false);
+    });
+});
+
 describe('importedServerProfile security relaxations on bridge imports', () => {
     const winscpWebdavResetByBackend: ImportedServer = {
         id: 'winscp-webdav-1',

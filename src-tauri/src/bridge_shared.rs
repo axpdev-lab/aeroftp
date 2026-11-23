@@ -275,6 +275,14 @@ pub(crate) fn stage_export_temp_600(
     parent: &Path,
     bytes: &[u8],
 ) -> std::io::Result<tempfile::NamedTempFile> {
+    stage_export_temp_600_with_acl(parent, bytes, crate::windows_acl::restrict_to_owner_checked)
+}
+
+fn stage_export_temp_600_with_acl(
+    parent: &Path,
+    bytes: &[u8],
+    restrict_acl: impl FnOnce(&Path) -> std::io::Result<()>,
+) -> std::io::Result<tempfile::NamedTempFile> {
     use std::io::Write;
     let mut tmp = tempfile::Builder::new()
         .prefix(".aeroftp-bridge-export-")
@@ -286,9 +294,9 @@ pub(crate) fn stage_export_temp_600(
             .set_permissions(std::fs::Permissions::from_mode(0o600))?;
     }
     // On Windows, `tempfile` inherits the parent directory's DACL; restrict
-    // access to the current user (+ SYSTEM/Administrators) before writing any
-    // secret bytes so a shared destination directory never exposes them.
-    crate::windows_acl::restrict_to_owner(tmp.path());
+    // access to the current user (+ SYSTEM/Administrators) BEFORE writing any
+    // secret bytes, failing closed if owner-only restriction fails.
+    restrict_acl(tmp.path())?;
     tmp.write_all(bytes)?;
     tmp.as_file().sync_all()?;
     Ok(tmp)
@@ -380,6 +388,86 @@ pub fn ensure_import_file_size_ok(path: &Path) -> Result<(), String> {
         Ok(m) if m.len() > MAX_IMPORT_FILE_BYTES => Err("File too large (max 10 MB)".to_string()),
         _ => Ok(()),
     }
+}
+
+/// Open `path` for reading only if it is a regular file, without blocking on a
+/// FIFO. A FIFO blocks `open(2)` until a writer appears, before any check on
+/// the opened handle could refuse it; `O_NONBLOCK` makes the open return at
+/// once and does not change reads from a regular file.
+pub(crate) fn open_regular_file(path: &Path) -> std::io::Result<std::fs::File> {
+    let mut options = std::fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NONBLOCK);
+    }
+    let file = options.open(path)?;
+    if !file.metadata()?.is_file() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "not a regular file",
+        ));
+    }
+    Ok(file)
+}
+
+/// Read at most `max_bytes` UTF-8 bytes from `reader`, refusing oversized input
+/// without reading past `max_bytes + 1` bytes.
+pub(crate) fn read_bounded_utf8<R: std::io::Read>(
+    reader: R,
+    max_bytes: u64,
+) -> Result<String, String> {
+    use std::io::Read;
+
+    let mut bytes = Vec::new();
+    reader
+        .take(max_bytes.saturating_add(1))
+        .read_to_end(&mut bytes)
+        .map_err(|e| format!("read: {e}"))?;
+    if bytes.len() as u64 > max_bytes {
+        return Err(format!(
+            "File too large (max {} MB)",
+            max_bytes.div_ceil(1024 * 1024)
+        ));
+    }
+    String::from_utf8(bytes).map_err(|e| format!("invalid UTF-8: {e}"))
+}
+
+/// Read a regular UTF-8 import file through one handle, enforcing `max_bytes`
+/// on the open handle and during the read so a file that grows or is swapped
+/// after opening cannot bypass the cap, and a FIFO fails without blocking.
+pub(crate) fn read_bounded_utf8_file(path: &Path, max_bytes: u64) -> Result<String, String> {
+    let file = open_regular_file(path).map_err(|e| format!("open: {e}"))?;
+    let metadata = file.metadata().map_err(|e| format!("metadata: {e}"))?;
+    if metadata.len() > max_bytes {
+        return Err(format!(
+            "File too large (max {} MB)",
+            max_bytes.div_ceil(1024 * 1024)
+        ));
+    }
+    read_bounded_utf8(file, max_bytes)
+}
+
+/// Like [`read_bounded_utf8_file`], returning `Ok(None)` when `path` does not
+/// exist while still refusing FIFOs, non-regular files, and oversized files.
+pub(crate) fn read_optional_bounded_utf8_file(
+    path: &Path,
+    max_bytes: u64,
+) -> Result<Option<String>, String> {
+    let file = match open_regular_file(path) {
+        Ok(f) => f,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(format!("open: {e}")),
+    };
+    let metadata = file.metadata().map_err(|e| format!("metadata: {e}"))?;
+    if metadata.len() > max_bytes {
+        return Err(format!(
+            "File too large (max {} MB)",
+            max_bytes.div_ceil(1024 * 1024)
+        ));
+    }
+    read_bounded_utf8(file, max_bytes).map(Some)
 }
 
 // ============ INI parser (aws, s3cmd, ...) ============
@@ -1406,6 +1494,38 @@ mod tests {
             written_path,
             Some(std::path::PathBuf::from("/tmp/credentials.aeroftp"))
         );
+    }
+
+    #[test]
+    fn stage_export_temp_stops_before_writing_secrets_when_acl_restriction_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut captured_path: Option<std::path::PathBuf> = None;
+        let err = stage_export_temp_600_with_acl(dir.path(), b"TOP_SECRET_PAYLOAD_99", |p| {
+            captured_path = Some(p.to_path_buf());
+            // Before returning error, file must still be 0 bytes (no secrets written).
+            assert_eq!(std::fs::metadata(p).unwrap().len(), 0);
+            Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "simulated owner ACL failure",
+            ))
+        })
+        .unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::PermissionDenied);
+        assert!(!err.to_string().contains("TOP_SECRET_PAYLOAD_99"));
+        // Dropped NamedTempFile must have unlinked the staged file too.
+        if let Some(p) = captured_path {
+            assert!(!p.exists(), "temp file must be unlinked on ACL failure");
+        }
+    }
+
+    #[test]
+    fn read_bounded_utf8_refuses_oversized_reader_at_read_time() {
+        let cursor = std::io::Cursor::new(vec![b'a'; 65]);
+        let err = read_bounded_utf8(cursor, 64).unwrap_err();
+        assert!(err.contains("File too large"), "{err}");
+
+        let ok = read_bounded_utf8(std::io::Cursor::new(vec![b'a'; 64]), 64).unwrap();
+        assert_eq!(ok.len(), 64);
     }
 
     /// FileLu has an rclone backend, so "not exportable" would read as "rclone

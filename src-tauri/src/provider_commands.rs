@@ -25129,6 +25129,32 @@ mod tests {
             .get("session_token")
             .cloned();
 
+        // Greptile #1: credential-enabled `.aeroftp` backup collects vaulted
+        // `aws_session_token_<id>` and restores it into an empty vault partition.
+        let backup_server = crate::profile_export::ServerProfileExport {
+            id: "aws-sts-1".to_string(),
+            name: "STS Backup".to_string(),
+            host: String::new(),
+            port: 443,
+            username: "ASIABACKUP".to_string(),
+            protocol: Some("s3".to_string()),
+            credential: Some("secret-backup".to_string()),
+            ..Default::default()
+        };
+        let collected_secrets =
+            crate::collect_provider_secrets_for_server(&store, &backup_server).unwrap();
+        let backup_path = dir.path().join("sts-backup.aeroftp");
+        crate::profile_export::export_profiles(
+            vec![backup_server],
+            std::collections::HashMap::from([("aws-sts-1".to_string(), collected_secrets)]),
+            "backup-passphrase-123",
+            &backup_path,
+        )
+        .unwrap();
+        let (backup_servers, backup_secrets, backup_meta) =
+            crate::profile_export::import_profiles(&backup_path, "backup-passphrase-123").unwrap();
+        let backup_writes = crate::import_secret_writes(&backup_servers, &backup_secrets);
+
         // Class A (findings 12, 13, 14): create user B without a token on the
         // shared profile id `aws-sts-1`. Switching active user to B must NEVER
         // leak user A's shared-vault token on connect or export, while an
@@ -25158,6 +25184,31 @@ mod tests {
         missing_required_params.profile_id = Some("aws-sts-1".to_string());
         missing_required_params.has_stored_session_token = Some(true);
         let missing_required_err = missing_required_params.to_provider_config().unwrap_err();
+
+        // Now restore the `.aeroftp` backup secrets into user B's empty partition
+        // under a fresh profile id and verify connect recovers the STS token.
+        let restored_backup_id = "aws-sts-restored";
+        for w in &backup_writes {
+            if w.key == "aws_session_token_aws-sts-1" {
+                crate::user_partitions::store_credential_for_user_typed_dual(
+                    &store,
+                    second_user.id,
+                    &crate::profile_loader::aws_session_token_vault_key(restored_backup_id),
+                    w.kind.unwrap_or("aws_session_token"),
+                    w.value.as_str(),
+                )
+                .unwrap();
+            }
+        }
+        let mut restored_params = s3_params(None);
+        restored_params.profile_id = Some(restored_backup_id.to_string());
+        restored_params.has_stored_session_token = Some(true);
+        let got_restored_backup_connect = restored_params
+            .to_provider_config()
+            .unwrap()
+            .extra
+            .get("session_token")
+            .cloned();
 
         let mut export_opts_b: Option<serde_json::Value> = None;
         crate::bridge_commands::inject_aws_session_token_export_option_for_user(
@@ -25215,6 +25266,12 @@ mod tests {
             got_copy_connect.as_deref(),
             Some("VAULT-STS-TOKEN-42"),
             "duplicated STS profile must carry aws_session_token under its new profile id"
+        );
+        assert!(backup_meta.has_credentials);
+        assert_eq!(
+            got_restored_backup_connect.as_deref(),
+            Some("VAULT-STS-TOKEN-42"),
+            "restoring a credential-enabled .aeroftp backup must preserve aws_session_token"
         );
         assert_eq!(
             got_second_connect, None,

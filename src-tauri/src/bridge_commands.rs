@@ -835,8 +835,50 @@ pub(crate) fn finish_bridge_import_with_policy_and_cap(
         .unwrap_or_default();
 
     let mut vault_write_attempts = 0usize;
+    let mut cap_hit = false;
+    let mut cred_errors: Vec<String> = Vec::new();
     if source == "rclone" {
         for server in &mut servers {
+            let crypt_enabled = server
+                .pointer("/options/rcloneCryptEnabled")
+                .and_then(Value::as_bool)
+                == Some(true);
+            if crypt_enabled && vault.is_some() {
+                let needed_crypt = ["rcloneCryptPassword", "rcloneCryptPassword2"]
+                    .iter()
+                    .filter(|k| {
+                        server
+                            .pointer(&format!("/options/{k}"))
+                            .and_then(Value::as_str)
+                            .is_some_and(|s| !s.is_empty())
+                    })
+                    .count();
+                if needed_crypt > 0
+                    && (cap_hit || vault_write_attempts + needed_crypt > max_vault_writes)
+                {
+                    if !cap_hit {
+                        cap_hit = true;
+                        cred_errors.push(format!(
+                            "stopped after {max_vault_writes} credentials (import too large)"
+                        ));
+                    }
+                    if let Some(opts) = server.get_mut("options").and_then(Value::as_object_mut) {
+                        opts.remove("rcloneCryptPassword");
+                        opts.remove("rcloneCryptPassword2");
+                    }
+                    let id = server
+                        .get("id")
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .to_string();
+                    secret_failures.push((
+                        id,
+                        "its rclone-crypt secrets were not stored: the import is too large"
+                            .to_string(),
+                    ));
+                    continue;
+                }
+            }
             materialize_imported_crypt_overlay(server, |key, secret| match vault.as_mut() {
                 Some(write) => {
                     vault_write_attempts += 1;
@@ -853,6 +895,15 @@ pub(crate) fn finish_bridge_import_with_policy_and_cap(
                 .to_string();
             let moved = move_imported_filen_api_key(server, |key, secret| match vault.as_mut() {
                 Some(write) => {
+                    if cap_hit || vault_write_attempts >= max_vault_writes {
+                        if !cap_hit {
+                            cap_hit = true;
+                            cred_errors.push(format!(
+                                "stopped after {max_vault_writes} credentials (import too large)"
+                            ));
+                        }
+                        return Err("the import is too large".into());
+                    }
                     vault_write_attempts += 1;
                     write(key, secret)
                 }
@@ -874,10 +925,8 @@ pub(crate) fn finish_bridge_import_with_policy_and_cap(
     // budget. Every `options.sessionToken` is stripped unconditionally before
     // `relaxed_before_reset` captures raw options and before the redacted
     // preview crosses into the renderer.
-    let mut cred_errors: Vec<String> = Vec::new();
     let mut unsaved_credentials: std::collections::HashSet<String> =
         std::collections::HashSet::new();
-    let mut cap_hit = false;
 
     match vault.as_mut() {
         Some(write) => {
@@ -3800,6 +3849,70 @@ mod tests {
         );
         assert_eq!(failed["servers"][0]["hasStoredSessionToken"], false);
         assert_eq!(failed["servers"][0]["hasStoredCredential"], false);
+    }
+
+    #[test]
+    fn finish_bridge_import_enforces_vault_write_cap_in_rclone_crypt_and_filen_prepasses() {
+        let parsed = json!({
+            "servers": [
+                {
+                    "id": "crypt-1",
+                    "name": "Crypt 1",
+                    "host": "s3.example.com",
+                    "port": 443,
+                    "username": "u",
+                    "protocol": "s3",
+                    "initialPath": "/enc",
+                    "options": {
+                        "rcloneCryptEnabled": true,
+                        "rcloneCryptPassword": "pw1",
+                        "rcloneCryptPassword2": "salt1"
+                    }
+                },
+                {
+                    "id": "filen-1",
+                    "name": "Filen 1",
+                    "host": "filen.io",
+                    "port": 443,
+                    "username": "f@example.com",
+                    "protocol": "filen",
+                    "credential": "fpass",
+                    "options": {
+                        "filen_api_key": "FILEN-KEY-1"
+                    }
+                }
+            ],
+            "skipped": [],
+            "warnings": [],
+            "sourcePath": "/tmp/rclone.conf",
+            "totalRemotes": 2
+        });
+
+        let mut writes: Vec<String> = Vec::new();
+        let mut write = |k: &str, _: &str| -> Result<(), String> {
+            writes.push(k.to_string());
+            Ok(())
+        };
+        let out = finish_bridge_import_with_policy_and_cap(
+            "rclone",
+            &parsed,
+            Vec::new(),
+            Some(&mut write),
+            &crate::profile_security::RelaxationPolicy::ResetAll,
+            1,
+        )
+        .unwrap();
+        assert!(
+            writes.is_empty(),
+            "cap of 1 must stop a 2-write crypt prepass before writing: {writes:?}"
+        );
+        let serialized = out.to_string();
+        assert!(!serialized.contains("pw1"));
+        assert!(!serialized.contains("salt1"));
+        assert!(!serialized.contains("FILEN-KEY-1"));
+        assert_eq!(out["servers"][0]["hasStoredAeroCryptPassword"], false);
+        assert_eq!(out["servers"][1]["hasStoredFilenApiKey"], false);
+        assert_eq!(out["servers"][1]["hasStoredCredential"], false);
     }
 
     #[tokio::test]

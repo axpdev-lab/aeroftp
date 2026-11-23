@@ -78,6 +78,38 @@ pub fn restrict_to_owner(path: &Path) {
 #[cfg(not(windows))]
 pub fn restrict_to_owner(_path: &Path) {}
 
+/// Restrict file/directory access to the current user, SYSTEM and
+/// Administrators, failing closed if the owner-only DACL cannot be applied or
+/// verified. Used before writing secret-bearing export payloads into a temp
+/// file so an export directory with a permissive parent DACL never exposes
+/// secret bytes on disk.
+#[cfg(windows)]
+pub fn restrict_to_owner_checked(path: &Path) -> std::io::Result<()> {
+    let is_dir = path.is_dir();
+    match win::apply_owner_only_dacl(path, is_dir) {
+        Ok(()) => {
+            if win::can_still_access(path, is_dir) {
+                return Ok(());
+            }
+            let _ = win::set_inherited_dacl(path);
+            Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "owner-only ACL verification failed",
+            ))
+        }
+        Err(_) => Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "failed to apply owner-only ACL",
+        )),
+    }
+}
+
+/// No-op on non-Windows platforms (Unix enforces `0600` on the open handle).
+#[cfg(not(windows))]
+pub fn restrict_to_owner_checked(_path: &Path) -> std::io::Result<()> {
+    Ok(())
+}
+
 /// Drop the explicit DACL and re-enable inheritance from the parent
 /// (equivalent to `icacls <path> /reset`).
 ///

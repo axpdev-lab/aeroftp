@@ -90,10 +90,7 @@ fn shared_file_paths(
 }
 
 fn read_sections(path: &std::path::Path) -> Sections {
-    if !crate::aws_credentials_import::is_readable_regular_file(path) {
-        return Sections::new();
-    }
-    std::fs::read_to_string(path)
+    crate::bridge_shared::read_bounded_utf8_file(path, crate::bridge_shared::MAX_IMPORT_FILE_BYTES)
         .map(|content| crate::bridge_shared::parse_ini_sections(&content))
         .unwrap_or_default()
 }
@@ -604,5 +601,33 @@ mod tests {
         assert_eq!(resolved.access_key_id, "FILEKEY");
         assert_eq!(resolved.secret_source, Some(CredentialSource::AwsFiles));
         assert_eq!(resolved.region.as_deref(), Some("eu-west-3"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn read_sections_ignores_fifo_without_blocking() {
+        let dir = tempfile::tempdir().unwrap();
+        let fifo = dir.path().join("credentials");
+        let status = std::process::Command::new("mkfifo")
+            .arg(&fifo)
+            .status()
+            .expect("mkfifo available");
+        assert!(status.success());
+
+        let fifo_run = fifo.clone();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            let _ = tx.send(read_sections(&fifo_run));
+        });
+        let sections = match rx.recv_timeout(std::time::Duration::from_secs(5)) {
+            Ok(s) => s,
+            Err(_) => {
+                let _ = std::fs::OpenOptions::new().write(true).open(&fifo);
+                let _ = worker.join();
+                panic!("launch_url::aws::read_sections hung on FIFO");
+            }
+        };
+        worker.join().unwrap();
+        assert!(sections.is_empty());
     }
 }
