@@ -44259,18 +44259,21 @@ async fn cmd_export_rclone(
             &store,
             &p.protocol,
             &p.id,
+            export_user,
         );
         ftp_client_gui_lib::bridge_commands::inject_rclone_proton_export_options(
             &mut options,
             &store,
             &p.protocol,
             &p.id,
+            export_user,
         );
         ftp_client_gui_lib::bridge_commands::inject_rclone_onedrive_export_options(
             &mut options,
             &store,
             &p.protocol,
             &p.id,
+            export_user,
         );
         ftp_client_gui_lib::bridge_commands::inject_rclone_zoho_export_options(
             &mut options,

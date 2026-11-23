@@ -1477,11 +1477,16 @@ fn options_gained_a_secret(before: Option<&Value>, after: Option<&Value>) -> boo
 /// (`proton_native_session_<id>`) into a copy of the options, where the
 /// `protondrive` writer turns it into rclone's cached login. A CLI profile
 /// (no `proton_mode = native`) has no such session and gets nothing.
+///
+/// `user` is the account the exported list belongs to, captured before the
+/// export ran: the session is read for that account whichever is active by
+/// the time the profile is reached, like the OAuth token of the same export.
 pub fn inject_rclone_proton_export_options(
     options: &mut Option<Value>,
     store: &CredentialStore,
     protocol: &str,
     id: &str,
+    user: Option<i64>,
 ) {
     if protocol != "proton" || id.is_empty() {
         return;
@@ -1494,13 +1499,18 @@ pub fn inject_rclone_proton_export_options(
     if !native {
         return;
     }
-    let Some(session) = crate::user_partitions::resolve_active_credential(
-        store,
-        &format!("proton_native_session_{}", id),
-    )
-    .ok()
-    .flatten()
-    .filter(|s| !s.trim().is_empty()) else {
+    let session = match user {
+        Some(user) => crate::user_partitions::resolve_credential_for_user_owner_aware(
+            store,
+            user,
+            &format!("proton_native_session_{}", id),
+        ),
+        None => crate::user_partitions::resolve_active_credential_owner_aware(
+            store,
+            &format!("proton_native_session_{}", id),
+        ),
+    };
+    let Some(session) = session.ok().flatten().filter(|s| !s.trim().is_empty()) else {
         return;
     };
     if let Some(map) = options.as_mut().and_then(|o| o.as_object_mut()) {
@@ -1511,11 +1521,15 @@ pub fn inject_rclone_proton_export_options(
     }
 }
 
+/// `user` is the account the exported list belongs to, captured before the
+/// export ran: the key is read for that account whichever is active by the
+/// time the profile is reached, like the OAuth token of the same export.
 pub fn inject_rclone_filen_export_options(
     options: &mut Option<Value>,
     store: &CredentialStore,
     protocol: &str,
     id: &str,
+    user: Option<i64>,
 ) {
     if protocol != "filen" || id.is_empty() {
         return;
@@ -1532,12 +1546,22 @@ pub fn inject_rclone_filen_export_options(
     {
         return;
     }
-    let api_key =
-        crate::user_partitions::resolve_active_credential(store, &format!("filen_api_key_{}", id))
-            .ok()
-            .flatten()
-            .map(|s| s.to_string())
-            .filter(|s| !s.trim().is_empty());
+    let api_key = match user {
+        Some(user) => crate::user_partitions::resolve_credential_for_user_owner_aware(
+            store,
+            user,
+            &format!("filen_api_key_{}", id),
+        ),
+        None => crate::user_partitions::resolve_active_credential_owner_aware(
+            store,
+            &format!("filen_api_key_{}", id),
+        ),
+    };
+    let api_key = api_key
+        .ok()
+        .flatten()
+        .map(|s| s.to_string())
+        .filter(|s| !s.trim().is_empty());
     let api_key = match api_key {
         Some(k) => k,
         None => return,
@@ -1560,17 +1584,28 @@ pub fn inject_rclone_filen_export_options(
 /// "unable to get drive_id and drive_type"); AeroFTP runs on the `/me/drive`
 /// shortcut and never put them on the profile. Shared by the GUI bridge export
 /// and the CLI `cmd_export_rclone` so the two paths never diverge.
+/// `user` is the account the exported list belongs to, captured before the
+/// export ran: the selectors are read for that account whichever is active
+/// by the time the profile is reached, so they cannot be paired with
+/// another account's OAuth token.
 pub fn inject_rclone_onedrive_export_options(
     options: &mut Option<Value>,
     store: &CredentialStore,
     protocol: &str,
     id: &str,
+    user: Option<i64>,
 ) {
     if protocol != "onedrive" || id.is_empty() {
         return;
     }
     let read = |key: &str| {
-        crate::user_partitions::resolve_active_credential(store, key)
+        let value = match user {
+            Some(user) => {
+                crate::user_partitions::resolve_credential_for_user_owner_aware(store, user, key)
+            }
+            None => crate::user_partitions::resolve_active_credential_owner_aware(store, key),
+        };
+        value
             .ok()
             .flatten()
             .map(|s| s.to_string())
@@ -2066,9 +2101,9 @@ async fn export_bridge_profiles(
                             skipped.push(json!({ "name": name, "reason": reason }));
                             continue;
                         }
-                        inject_rclone_filen_export_options(&mut opts, st, &proto, &id);
-                        inject_rclone_proton_export_options(&mut opts, st, &proto, &id);
-                        inject_rclone_onedrive_export_options(&mut opts, st, &proto, &id);
+                        inject_rclone_filen_export_options(&mut opts, st, &proto, &id, user);
+                        inject_rclone_proton_export_options(&mut opts, st, &proto, &id, user);
+                        inject_rclone_onedrive_export_options(&mut opts, st, &proto, &id, user);
                         let initial_path = e.get("initialPath").and_then(|v| v.as_str());
                         inject_rclone_zoho_export_options(&mut opts, &proto, initial_path);
                         if proto == "zohoworkdrive" {
@@ -3563,5 +3598,107 @@ mod tests {
             .unwrap();
         bridge_import_scan::settle(&store, scan.id()).unwrap();
         stored("a write read by its key");
+    }
+
+    /// CodeRabbit r4668518983: an rclone export captured under account A
+    /// reads A's OAuth token and A's OneDrive drive selectors even while
+    /// account B is the active one — the selectors can no longer be paired
+    /// with another account's token.
+    #[test]
+    fn rclone_onedrive_selectors_follow_the_captured_account() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "bridge_commands::tests::rclone_onedrive_selectors_follow_the_captured_account",
+        ) {
+            return;
+        }
+        use crate::credential_store::CredentialStore;
+        use crate::providers::oauth2::{OAuth2Manager, OAuthProvider, StoredTokens};
+        use crate::user_partitions as partitions;
+        let _env = crate::test_env::lock();
+        let _partition = partitions::test_lock();
+        let temporary = tempfile::tempdir().expect("temporary config");
+        std::env::set_var("XDG_CONFIG_HOME", temporary.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("export-selectors-pass").expect("bootstrap");
+        CredentialStore::unlock_with_master("export-selectors-pass", None).expect("unlock");
+        let store = CredentialStore::from_cache().expect("cached vault");
+        partitions::init_or_migrate_cli(&store).expect("init partitions");
+        let mut conn = partitions::open_or_init_cli().expect("partition DB");
+        let root_key = store.derive_user_partition_wrapping_key();
+        let first = partitions::get_active_user(&conn)
+            .expect("active user")
+            .expect("first account")
+            .id;
+        let second = partitions::create_user(&mut conn, &root_key, "Second", None, None, None)
+            .expect("create second account")
+            .id;
+        for (user, tag) in [(first, "first"), (second, "second")] {
+            OAuth2Manager::new()
+                .with_credential_user(Some(user))
+                .store_tokens(
+                    OAuthProvider::OneDrive,
+                    "shared",
+                    &StoredTokens {
+                        access_token: format!("{tag}-access"),
+                        refresh_token: Some(format!("{tag}-refresh")),
+                        expires_at: None,
+                        token_type: "Bearer".into(),
+                        scopes: vec![],
+                    },
+                )
+                .expect("store the account's token");
+            for (key, value) in [
+                (
+                    "onedrive_drive_id_shared".to_string(),
+                    format!("drive-{tag}"),
+                ),
+                (
+                    "onedrive_drive_type_shared".to_string(),
+                    format!("type-{tag}"),
+                ),
+            ] {
+                partitions::store_credential_for_user(
+                    &store,
+                    user,
+                    &key,
+                    "onedrive_drive_id",
+                    &value,
+                )
+                .expect("store the account's selector");
+            }
+        }
+        // The export was captured under `first`; `second` is active now.
+        partitions::set_active_user(&conn, second).expect("switch active account");
+
+        let mut options = None;
+        inject_rclone_oauth_export_options(&mut options, &store, "onedrive", "shared", Some(first))
+            .expect("the captured account's token is read");
+        inject_rclone_onedrive_export_options(
+            &mut options,
+            &store,
+            "onedrive",
+            "shared",
+            Some(first),
+        );
+        let options = options.expect("options object");
+        let token = options
+            .get("__aeroftp_oauth_token")
+            .and_then(|v| v.as_str())
+            .expect("oauth token injected");
+        assert!(
+            token.contains("first-access"),
+            "the token is the captured account's: {token}"
+        );
+        assert_eq!(
+            options.get("drive_id").and_then(|v| v.as_str()),
+            Some("drive-first"),
+            "the drive id is the captured account's"
+        );
+        assert_eq!(
+            options.get("drive_type").and_then(|v| v.as_str()),
+            Some("type-first"),
+            "the drive type is the captured account's"
+        );
     }
 }
