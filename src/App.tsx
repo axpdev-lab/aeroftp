@@ -8836,7 +8836,11 @@ const App: React.FC = () => {
     // overrideParams: used by IntroHub form tabs to pass params directly (avoids stale React state)
     let effectiveParams = overrideParams || connectionParams;
     const remoteDirInput = opts?.initialRemotePath ?? quickConnectDirs.remoteDir;
-    if (connectionParams.server && connectionParams.server.includes(':')) {
+    // The inline `host:port` shortcut belongs to the Quick Connect form.
+    // A launch URL already split its host and port into `overrideParams`.
+    // Reading the form here dropped that connection and still opened the
+    // URL's folder on the form's server.
+    if (!overrideParams && connectionParams.server && connectionParams.server.includes(':')) {
       const lastColon = connectionParams.server.lastIndexOf(':');
       const possiblePort = connectionParams.server.substring(lastColon + 1);
       const parsedPort = parseInt(possiblePort, 10);

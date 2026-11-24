@@ -152,6 +152,9 @@ describe('launchFolderToOpen', () => {
     // none (open_request.rs) and leaves the tab where it is.
     expect(remote).toMatch(/if \(!await switchSession\(existingSession\.id\)\) return;\s*const folder = launchFolderToOpen\(req\.initialPath\);\s*if \(folder\) await navigateAfterLaunch\(folder, targetProtocol, existingSession\.id\);/);
     expect(remote).toContain('await connectToFtp(params, { initialRemotePath: launchStartFolder(req.initialPath, matchedProfile) });');
+    const connectStart = app.indexOf('const connectToFtpImpl = async');
+    const connectGate = app.slice(connectStart, app.indexOf('effectiveParams = normalizeProviderConnectionParams', connectStart));
+    expect(connectGate).toContain("if (!overrideParams && connectionParams.server && connectionParams.server.includes(':'))");
     expect(remote).toMatch(/const match = all\.find\(s => savedProfileMatchesLaunch\(s, req\)\);\s*matchedProfile = match;/);
     expect(remote).not.toMatch(/req\.initialPath \|\| '\/'/);
     expect(saved + remote).not.toMatch(/!== '\/'/);
