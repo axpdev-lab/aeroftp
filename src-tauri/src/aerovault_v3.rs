@@ -1455,6 +1455,17 @@ pub(crate) fn vault_basename(path: &str) -> String {
         .unwrap_or_else(|| path.to_string())
 }
 
+/// The text of a vault error as it may be written to the Debug log. The
+/// full path is replaced by its basename. The password is not part of these
+/// strings; the path is, when Change Mode refuses a symlink or a non-file.
+pub(crate) fn vault_error_for_log(err: &str, vault_path: &str) -> String {
+    let label = vault_basename(vault_path);
+    if vault_path.is_empty() || vault_path == label {
+        return err.to_string();
+    }
+    err.replace(vault_path, &label)
+}
+
 /// Change the "mode" of an existing vault (Ehud #2): re-pack it under a new security
 /// level (v2 <-> v3 / cascade), compression profile and/or Error-Correction setting,
 /// keeping the same password. `target_security_level` (`None` keeps the current
@@ -1473,6 +1484,7 @@ pub async fn vault_v3_change_mode(
     // Activity logging (surfaces in the Debug panel "Logs" tab via tauri-plugin-log).
     // Log the basename only, never the full path, to avoid home-dir leakage on disk.
     let vault_label = vault_basename(&vault_path);
+    let vault_path_for_log = vault_path.clone();
     let level_label = target_security_level
         .clone()
         .unwrap_or_else(|| "(unchanged)".to_string());
@@ -1490,7 +1502,10 @@ pub async fn vault_v3_change_mode(
     .map_err(|e| format!("vault change-mode task failed: {e}"))?;
     match &result {
         Ok(_) => log::info!("vault change-mode: '{vault_label}' done"),
-        Err(e) => log::error!("vault change-mode: '{vault_label}' failed: {e}"),
+        Err(e) => {
+            let shown = vault_error_for_log(e, &vault_path_for_log);
+            log::error!("vault change-mode: '{vault_label}' failed: {shown}");
+        }
     }
     result
 }
@@ -2171,6 +2186,21 @@ mod tests {
     // app-side and is exercised here is only the handler-layer glue: path
     // normalization, the compression-profile mapping, the OOM pre-flight helper
     // and the per-vault write lock.
+
+    #[test]
+    fn a_change_mode_log_keeps_the_vault_basename_only() {
+        let path = "/home/ada/secrets/vault.av3";
+        let shown = vault_error_for_log(
+            &format!("{path} is a symbolic link; use the target path"),
+            path,
+        );
+        assert!(!shown.contains("/home/ada"), "{shown}");
+        assert!(shown.contains("vault.av3"), "{shown}");
+        assert_eq!(
+            vault_error_for_log("AES-KW unwrap failed", path),
+            "AES-KW unwrap failed"
+        );
+    }
 
     #[test]
     fn a_large_add_reports_progress_while_the_percentage_stands_still() {
