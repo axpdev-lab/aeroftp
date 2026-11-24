@@ -3311,9 +3311,11 @@ fn import_keystore_with_store(
     // writer moved stays.
     #[cfg(test)]
     tests::run_before_foreign_token_sweep(store);
+    let mut partition_rolled_back = false;
     if partition_in_restore {
         if let Some((inputs, _)) = &profile_plan {
             if inputs.legacy_owner_reads_vault {
+                let mut foreign_exposed = false;
                 for (key, expected) in &inputs.vault_foreign_private {
                     #[cfg(test)]
                     let deleted = if tests::foreign_token_delete_fails() {
@@ -3334,22 +3336,66 @@ fn import_keystore_with_store(
                         // key is recorded as blocked so the owner's read
                         // treats it as absent. A value another writer
                         // moved is not blocked.
-                        if matches!(store.get(key), Ok(current) if current == expected.as_str()) {
-                            if let Some(cfg) = config_dir {
-                                let db = cfg.join("user_partitions.db");
-                                let blocked = crate::user_partitions::open_restored_db(&db)
-                                    .and_then(|conn| {
-                                        crate::user_partitions::block_vault_secret(
-                                            &conn, key, expected,
+                        match store.get(key) {
+                            Ok(current) if current == expected.as_str() => {
+                                let mut blocked_ok = false;
+                                if let Some(cfg) = config_dir {
+                                    let db = cfg.join("user_partitions.db");
+                                    #[cfg(test)]
+                                    let blocked = if tests::foreign_token_block_fails() {
+                                        Err("refused (test)".to_string())
+                                    } else {
+                                        crate::user_partitions::open_restored_db(&db).and_then(
+                                            |conn| {
+                                                crate::user_partitions::block_vault_secret(
+                                                    &conn, key, expected,
+                                                )
+                                            },
                                         )
-                                    });
-                                if let Err(e) = blocked {
-                                    tracing::warn!(
-                                        "Keystore import: foreign vault token {key} not blocked: {e}"
-                                    );
+                                    };
+                                    #[cfg(not(test))]
+                                    let blocked = crate::user_partitions::open_restored_db(&db)
+                                        .and_then(|conn| {
+                                            crate::user_partitions::block_vault_secret(
+                                                &conn, key, expected,
+                                            )
+                                        });
+                                    match blocked {
+                                        Ok(()) => blocked_ok = true,
+                                        Err(e) => tracing::warn!(
+                                            "Keystore import: foreign vault token {key} not blocked: {e}"
+                                        ),
+                                    }
+                                }
+                                if !blocked_ok {
+                                    foreign_exposed = true;
                                 }
                             }
+                            // Another writer moved the value: the plan's
+                            // token is already gone.
+                            Ok(_) => {}
+                            // The vault cannot be read back: the foreign
+                            // value may still be there.
+                            Err(_) => foreign_exposed = true,
                         }
+                    }
+                }
+                if foreign_exposed {
+                    // Neither the delete nor a durable block kept the
+                    // foreign token away from the published partition's
+                    // owner: the restore is not exposed. The pre-import
+                    // partition goes back byte for byte and the import
+                    // reports the database as not restored.
+                    partition_rolled_back = rollback_partition_restore(
+                        config_dir,
+                        user_partitions_backup_path.as_deref(),
+                    );
+                    tracing::warn!(
+                        "Keystore import: a foreign vault token could be neither removed nor \
+                         blocked; the restored partition was rolled back"
+                    );
+                    if !sqlite_dbs_failed.iter().any(|n| n == "user_partitions.db") {
+                        sqlite_dbs_failed.push("user_partitions.db".to_string());
                     }
                 }
             }
@@ -3441,7 +3487,13 @@ fn import_keystore_with_store(
     // the import; the other sections stay imported.
     let mut profiles_after_decisions = None;
     let mut profile_decisions_error = None;
-    if let Some((inputs, choices)) = &profile_plan {
+    if partition_rolled_back {
+        // The published partition went back to the pre-import one: no
+        // decision may write into it.
+        profile_decisions_error = Some(
+            "the restored partition was rolled back; profile decisions not applied".to_string(),
+        );
+    } else if let Some((inputs, choices)) = &profile_plan {
         match apply_profile_decisions(
             store,
             config_dir,
@@ -3474,6 +3526,7 @@ fn import_keystore_with_store(
     // that brought no list (files only, say) has nothing to adopt: the blob may be old.
     let decided = profiles_after_decisions.is_some();
     if profile_decisions_error.is_none()
+        && !partition_rolled_back
         && (list_in_vault || partition_in_restore || decided)
         && (!restored_list_unread || decided)
     {
@@ -3490,7 +3543,7 @@ fn import_keystore_with_store(
     // alignment takes the profile list lock itself, and every write of this
     // import is done: the lock goes first.
     drop(list_lock);
-    if !restored_private_keys.is_empty() {
+    if !restored_private_keys.is_empty() && !partition_rolled_back {
         if let Some(db) = partition_db(config_dir) {
             // The account active before the import gets its own tokens back
             // when it is still the active one, in this device's partition.
@@ -3563,6 +3616,32 @@ fn import_keystore_with_store(
         security_reset_failed,
         security_reset_quarantine,
     })
+}
+
+/// Put the partition the import replaced back the way it was, after a
+/// foreign vault token could be neither removed nor blocked: the published
+/// partition is never exposed. `backup` is the pre-import snapshot kept by
+/// the restore; `None` means there was no partition before, so the
+/// published file goes. The database file ends byte-identical to the
+/// pre-restore state; stale `-wal`/`-shm` sidecars are dropped either way.
+fn rollback_partition_restore(config_dir: Option<&Path>, backup: Option<&str>) -> bool {
+    let Some(cfg) = config_dir else {
+        return false;
+    };
+    let db = cfg.join("user_partitions.db");
+    let restored = match backup {
+        Some(path) => std::fs::read(path)
+            .map_err(|e| e.to_string())
+            .and_then(|bytes| atomic_write_synced(&db, &bytes).map_err(|e| e.to_string())),
+        None => match std::fs::remove_file(&db) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(e.to_string()),
+        },
+    };
+    let _ = std::fs::remove_file(cfg.join("user_partitions.db-wal"));
+    let _ = std::fs::remove_file(cfg.join("user_partitions.db-shm"));
+    restored.is_ok()
 }
 
 /// Mirror the active partition's profile list into the vault blob
@@ -3945,6 +4024,23 @@ mod tests {
     /// [`fail_next_foreign_token_delete`].
     pub(super) fn foreign_token_delete_fails() -> bool {
         FOREIGN_TOKEN_DELETE_FAILS.with(|slot| slot.replace(false))
+    }
+
+    thread_local! {
+        static FOREIGN_TOKEN_BLOCK_FAILS: std::cell::Cell<bool> =
+            const { std::cell::Cell::new(false) };
+    }
+
+    /// Arm the next foreign-token sweep block to fail as a partition that
+    /// cannot be opened would, leaving no record. Consumed once.
+    pub(super) fn fail_next_foreign_token_block() {
+        FOREIGN_TOKEN_BLOCK_FAILS.with(|slot| slot.set(true));
+    }
+
+    /// Whether the armed failure is due, consumed once armed by
+    /// [`fail_next_foreign_token_block`].
+    pub(super) fn foreign_token_block_fails() -> bool {
+        FOREIGN_TOKEN_BLOCK_FAILS.with(|slot| slot.replace(false))
     }
 
     fn before_profile_decisions(
@@ -6760,6 +6856,102 @@ mod tests {
         let conn = rusqlite::Connection::open(&db).unwrap();
         let read = read_effective_secret(&store, Some(&conn), &root, key).unwrap();
         assert_eq!(read, None, "the receiver reads no foreign token");
+    }
+
+    /// When neither the foreign-token delete nor the block record succeeds,
+    /// the published partition is not exposed: the pre-import database goes
+    /// back byte for byte, the original active account stays, the vault
+    /// keeps the value it had, and the import reports the database as not
+    /// restored. The deletion-fails/block-succeeds control is
+    /// `a_failed_foreign_token_sweep_keeps_the_token_unreadable`. Red if the
+    /// combined failure only warns and leaves the restored partition.
+    #[test]
+    fn a_foreign_token_that_can_be_neither_deleted_nor_blocked_rolls_back() {
+        let _guard = crate::user_partitions::test_lock();
+        crate::user_partitions::clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let cfg = dir.path().join("config");
+        let key = "oauth_dropbox_srv_drive";
+        let list = [dropbox("srv_drive", "Drive")];
+        partition_with(&store, &cfg, &list);
+        store.store(key, "local-token").unwrap();
+        let source_cfg = dir.path().join("source");
+        partition_with(&store, &source_cfg, &list);
+        let source_db = source_cfg.join("user_partitions.db");
+        let root = store.derive_user_partition_wrapping_key();
+        let mut source = rusqlite::Connection::open(&source_db).unwrap();
+        let second = crate::user_partitions::create_passphrase_less_user(
+            &mut source,
+            &root,
+            "Second",
+            None,
+            None,
+        )
+        .unwrap();
+        crate::user_partitions::set_active_user(&source, second.id).unwrap();
+        drop(source);
+        let mut payload = ExportPayload::default();
+        payload.vault_entries.insert(
+            "config_server_profiles".to_string(),
+            serde_json::to_string(&list).unwrap(),
+        );
+        payload.sqlite_dumps.insert(
+            "user_partitions.db".to_string(),
+            snapshot_sqlite_db(&source_db).unwrap().unwrap(),
+        );
+        let backup = dir.path().join("nonowner.aeroftp-keystore");
+        seal_backup(&backup, PASSWORD_736, &payload);
+        let db = cfg.join("user_partitions.db");
+        let before_bytes = std::fs::read(&db).unwrap();
+        let before_active =
+            crate::user_partitions::active_user_id(&rusqlite::Connection::open(&db).unwrap())
+                .unwrap();
+        before_foreign_token_sweep(|_| {
+            fail_next_foreign_token_delete();
+            fail_next_foreign_token_block();
+        });
+
+        let result = import_keystore_with_store(
+            &store,
+            PASSWORD_736,
+            &backup,
+            "skip_existing",
+            ImportSections::default(),
+            Some(&cfg),
+            None,
+            None,
+        )
+        .unwrap();
+        assert!(
+            result
+                .sqlite_dbs_failed
+                .iter()
+                .any(|name| name == "user_partitions.db"),
+            "{:?}",
+            result.sqlite_dbs_failed
+        );
+        assert!(
+            result.profile_decisions_error.is_some(),
+            "the rolled-back partition reports its decisions as not applied"
+        );
+        assert_eq!(
+            std::fs::read(&db).unwrap(),
+            before_bytes,
+            "the partition is byte-identical to the pre-restore state"
+        );
+        let conn = rusqlite::Connection::open(&db).unwrap();
+        assert_eq!(
+            crate::user_partitions::active_user_id(&conn).unwrap(),
+            before_active,
+            "the original active account stays"
+        );
+        drop(conn);
+        assert_eq!(
+            store.get(key).unwrap(),
+            "local-token",
+            "the vault keeps the value the failed delete left"
+        );
     }
 
     /// `cli_db_path` isolation for the block-record pins: the readers under
