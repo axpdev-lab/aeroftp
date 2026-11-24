@@ -912,6 +912,29 @@ thread_local! {
     /// A vault file name whose permissions [`secure_vault_file`] refuses.
     static SECURE_FAILS_FOR: std::cell::RefCell<Option<String>> =
         const { std::cell::RefCell::new(None) };
+    /// An account name whose [`CredentialStore::store`] and
+    /// [`CredentialStore::store_entries`] refuse, to prove a multi-key update
+    /// cannot be split into separate writes.
+    static STORE_FAILS_FOR: std::cell::RefCell<Option<String>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Whether tests refuse a store of `account` (see [`STORE_FAILS_FOR`]).
+#[cfg(test)]
+fn store_fails_for(account: &str) -> bool {
+    STORE_FAILS_FOR.with(|name| name.borrow().as_deref().is_some_and(|name| name == account))
+}
+
+/// Refuse stores of `account` on this thread until [`allow_store_for_test`].
+#[cfg(test)]
+pub(crate) fn refuse_store_for_test(account: &str) {
+    STORE_FAILS_FOR.with(|name| *name.borrow_mut() = Some(account.to_string()));
+}
+
+/// Lift a [`refuse_store_for_test`] refusal on this thread.
+#[cfg(test)]
+pub(crate) fn allow_store_for_test() {
+    STORE_FAILS_FOR.with(|name| *name.borrow_mut() = None);
 }
 
 fn write_and_rename(tmp_path: &Path, path: &Path, data: &[u8]) -> Result<(), CredentialError> {
@@ -2697,8 +2720,54 @@ impl CredentialStore {
         self.store_entry(account, secret)
     }
 
+    /// Apply several entry updates in ONE vault write: each `Some` stores the
+    /// plaintext, each `None` removes the key. Read, change and write share
+    /// the cross-process vault lock, so an interrupted update can never
+    /// publish one key without the others.
+    pub(crate) fn store_entries(
+        &self,
+        updates: &[(&str, Option<&str>)],
+    ) -> Result<(), CredentialError> {
+        for (account, _) in updates {
+            Self::reject_reserved_account(account)?;
+            #[cfg(test)]
+            if store_fails_for(account) {
+                return Err(CredentialError::Io(std::io::Error::other(
+                    "store refused (test)",
+                )));
+            }
+        }
+        let guard = VaultWriteGuard::acquire(Self::lock_dir(&self.vault_path)?)?;
+        let mut vault = Self::read_vault(&self.vault_path)?;
+        Self::ensure_vault_opens_with(&vault, &self.vault_key)?;
+        for (account, secret) in updates {
+            match secret {
+                Some(secret) => {
+                    let nonce = crate::crypto::random_bytes(12);
+                    let data =
+                        crate::crypto::encrypt_aes_gcm(&self.vault_key, &nonce, secret.as_bytes())
+                            .map_err(CredentialError::Encryption)?;
+                    vault
+                        .entries
+                        .insert((*account).to_string(), VaultEntry { nonce, data });
+                }
+                None => {
+                    vault.entries.remove(*account);
+                }
+            }
+        }
+        Self::write_vault(&self.vault_path, &vault, &guard)?;
+        Ok(())
+    }
+
     /// Shared store implementation
     fn store_entry(&self, account: &str, secret: &str) -> Result<(), CredentialError> {
+        #[cfg(test)]
+        if store_fails_for(account) {
+            return Err(CredentialError::Io(std::io::Error::other(
+                "store refused (test)",
+            )));
+        }
         // Read under the lock, so a write of another process is never lost.
         let guard = VaultWriteGuard::acquire(Self::lock_dir(&self.vault_path)?)?;
         let mut vault = Self::read_vault(&self.vault_path)?;

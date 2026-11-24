@@ -10804,10 +10804,10 @@ pub fn cli_list_active_server_profiles(store: &CredentialStore) -> Result<Vec<Va
 /// Writes only when the list differs (compared as JSON values, so key order in
 /// the serialized form does not cause a rewrite). `owner` is the account the
 /// list belongs to: it is written to [`LEGACY_PROFILES_OWNER`] in the same
-/// step, after the blob, so a crash between the two leaves the older owner,
-/// which refuses the bind rather than proving a wrong one; `None` removes the
-/// key, since without an account there is no owner to prove. Returns whether
-/// it wrote.
+/// vault update as the blob (`None` removes the key, since without an account
+/// there is no owner to prove), so the two keys can never be observed apart:
+/// a failed write leaves the older blob and the older owner together. Returns
+/// whether it wrote.
 pub fn mirror_active_profiles_to_legacy_blob(
     store: &CredentialStore,
     owner: Option<i64>,
@@ -10817,27 +10817,19 @@ pub fn mirror_active_profiles_to_legacy_blob(
         .and_then(|raw| serde_json::from_str::<Vec<Value>>(&raw).ok());
     let owner_current = get_optional_store_entry(store, LEGACY_PROFILES_OWNER)?
         .and_then(|raw| raw.trim().parse::<i64>().ok());
-    let mut wrote = false;
-    if current.as_deref() != Some(profiles) {
-        let serialized =
-            serde_json::to_string(profiles).map_err(|e| format!("Serialize profiles: {e}"))?;
-        store
-            .store(LEGACY_PROFILES_BLOB, &serialized)
-            .map_err(|e| format!("Write {LEGACY_PROFILES_BLOB}: {e}"))?;
-        wrote = true;
+    if current.as_deref() == Some(profiles) && owner_current == owner {
+        return Ok(false);
     }
-    if owner_current != owner {
-        match owner {
-            Some(owner) => store
-                .store(LEGACY_PROFILES_OWNER, &owner.to_string())
-                .map_err(|e| format!("Write {LEGACY_PROFILES_OWNER}: {e}"))?,
-            None => {
-                let _ = store.delete(LEGACY_PROFILES_OWNER);
-            }
-        }
-        wrote = true;
-    }
-    Ok(wrote)
+    let serialized =
+        serde_json::to_string(profiles).map_err(|e| format!("Serialize profiles: {e}"))?;
+    let owner_value = owner.map(|owner| owner.to_string());
+    store
+        .store_entries(&[
+            (LEGACY_PROFILES_BLOB, Some(serialized.as_str())),
+            (LEGACY_PROFILES_OWNER, owner_value.as_deref()),
+        ])
+        .map_err(|e| format!("Write legacy profiles blob and owner: {e}"))?;
+    Ok(true)
 }
 
 /// Read the active user's profiles from the partition database at `db_path`
@@ -12325,21 +12317,15 @@ pub async fn user_partitions_store_legacy_server_profiles(
         return Err(PROFILES_CHANGED.to_string());
     }
     let (stored, _) = crate::util::profile_name::unique_profile_names(&held, &profiles);
-    let serialized = serde_json::to_string(&stored).map_err(|e| e.to_string())?;
-    store
-        .store(LEGACY_PROFILES_BLOB, &serialized)
-        .map_err(|e| format!("Store server profiles in vault: {e}"))?;
     // The blob names its account in LEGACY_PROFILES_OWNER: with the active
     // account readable the list is its mirror, without proof the key goes so
-    // no stale owner binds the list later.
-    match active_user_id_readonly(&db_path(&app)?) {
-        Ok(Some(owner)) => store
-            .store(LEGACY_PROFILES_OWNER, &owner.to_string())
-            .map_err(|e| format!("Store {LEGACY_PROFILES_OWNER}: {e}"))?,
-        _ => {
-            let _ = store.delete(LEGACY_PROFILES_OWNER);
-        }
-    }
+    // no stale owner binds the list later. Blob and owner go out in the same
+    // vault update, so they can never be observed apart.
+    let owner = match active_user_id_readonly(&db_path(&app)?) {
+        Ok(active) => active,
+        Err(_) => None,
+    };
+    mirror_active_profiles_to_legacy_blob(&store, owner, &stored)?;
     Ok(stored)
 }
 
@@ -13440,6 +13426,36 @@ mod tests {
         assert!(get_optional_store_entry(&store, LEGACY_PROFILES_OWNER)
             .unwrap()
             .is_none());
+    }
+
+    /// The blob and its owner are one vault update: a mirror refused before
+    /// `write_vault` leaves the older pair whole, never the new list under
+    /// the old owner. Two separate stores would publish exactly that split.
+    #[test]
+    fn a_failed_legacy_blob_mirror_leaves_blob_and_owner_together() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_vault(dir.path());
+        let list_a = vec![json!({ "id": "srv_a", "name": "A" })];
+        let list_b = vec![json!({ "id": "srv_b", "name": "B" })];
+        mirror_active_profiles_to_legacy_blob(&store, Some(1), &list_a).unwrap();
+
+        crate::credential_store::refuse_store_for_test(LEGACY_PROFILES_OWNER);
+        let failed = mirror_active_profiles_to_legacy_blob(&store, Some(2), &list_b);
+        crate::credential_store::allow_store_for_test();
+        assert!(failed.is_err());
+        let blob: Vec<Value> =
+            serde_json::from_str(&store.get(LEGACY_PROFILES_BLOB).unwrap()).unwrap();
+        assert_eq!(blob, list_a);
+        assert_eq!(store.get(LEGACY_PROFILES_OWNER).unwrap(), "1");
+
+        // Without an account the owner key leaves in the same update.
+        mirror_active_profiles_to_legacy_blob(&store, None, &list_b).unwrap();
+        assert!(get_optional_store_entry(&store, LEGACY_PROFILES_OWNER)
+            .unwrap()
+            .is_none());
+        let blob: Vec<Value> =
+            serde_json::from_str(&store.get(LEGACY_PROFILES_BLOB).unwrap()).unwrap();
+        assert_eq!(blob, list_b);
     }
 
     /// A Move drops the source secret only after the copy reached somewhere.
