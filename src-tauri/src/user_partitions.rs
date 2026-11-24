@@ -12353,13 +12353,13 @@ fn store_legacy_server_profiles_at(
     // account readable the list is its mirror, without proof the key goes so
     // no stale owner binds the list later. Blob and owner go out in the same
     // vault update, so they can never be observed apart.
-    let active = active_user_id_readonly(db_path);
-    if let Ok(Some(active_id)) = active {
+    let active = active_user_id_readonly(db_path)?;
+    if let Some(active_id) = active {
         if expected_user_id != Some(active_id) {
             return Err(ACCOUNT_CHANGED.to_string());
         }
     }
-    let owner = active.ok().flatten();
+    let owner = active;
     mirror_active_profiles_to_legacy_blob(store, owner, &stored)?;
     Ok(stored)
 }
@@ -13198,6 +13198,44 @@ mod tests {
             store.get(LEGACY_PROFILES_OWNER).unwrap(),
             account_b.to_string()
         );
+    }
+
+    /// A partitions file that exists but cannot be read is not "no account":
+    /// the write propagates the read error and touches neither the blob nor
+    /// the owner, instead of treating the failure as an unbound write.
+    #[test]
+    fn an_unreadable_active_account_refuses_the_legacy_store_write() {
+        let _env = crate::test_env::lock();
+        let _guard = test_lock();
+        let dir = tempfile::tempdir().unwrap();
+        let _root = LegacyStoreDataRoot::new(dir.path());
+        let db = dir.path().join("partitions.db");
+        std::fs::write(&db, b"not-a-database").unwrap();
+        let expected_err = active_user_id_readonly(&db).unwrap_err();
+        let vault_path = dir.path().join("vault.db");
+        CredentialStore::write_test_vault(&vault_path, &test_root());
+        CredentialStore::cache_vault(vault_path.clone(), test_root());
+        let store = CredentialStore::from_verified_key(&vault_path, &test_root());
+        store
+            .store(LEGACY_PROFILES_BLOB, r#"[{"id":"srv_a","name":"A"}]"#)
+            .unwrap();
+        store.store(LEGACY_PROFILES_OWNER, "7").unwrap();
+
+        let result = store_legacy_server_profiles_at(
+            &store,
+            &db,
+            vec![json!({ "id": "srv_new", "name": "New" })],
+            None,
+            Some(7),
+        );
+
+        assert_eq!(result.unwrap_err(), expected_err);
+        assert_eq!(
+            store.get(LEGACY_PROFILES_BLOB).unwrap(),
+            r#"[{"id":"srv_a","name":"A"}]"#
+        );
+        assert_eq!(store.get(LEGACY_PROFILES_OWNER).unwrap(), "7");
+        CredentialStore::clear_cache();
     }
 
     /// A running deletion is settled as completed once it can never end
