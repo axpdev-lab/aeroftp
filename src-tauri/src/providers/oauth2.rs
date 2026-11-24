@@ -2369,6 +2369,11 @@ impl OAuth2Manager {
                         .value();
                         if let Some(chain) = chain {
                             Self::decode_record(&chain, TokenSource::Unavailable, credential_user)?;
+                            // The vault singleton is captured before the
+                            // adoption swap: the cleanup below may remove
+                            // only this observed value, and only while it
+                            // still holds it.
+                            let vault_before = store.get(&legacy).ok();
                             let written = crate::user_partitions::swap_user_credential_if(
                                 &conn,
                                 &root,
@@ -2410,8 +2415,11 @@ impl OAuth2Manager {
                                 &legacy,
                                 &|current| current == chain.as_str(),
                             );
-                            if let Ok(vault) = store.get(&legacy) {
-                                if vault != *chain {
+                            if let Some(vault) = vault_before {
+                                // An equal copy of the adopted record is
+                                // consumed, so a second empty profile does
+                                // not adopt it again.
+                                if vault == chain.as_str() {
                                     let _ = store.delete_secret_if_unchanged(&legacy, &vault);
                                 }
                             }
@@ -6669,5 +6677,59 @@ mod tests {
             Some(value) => std::env::set_var("AEROFTP_USER_PASSPHRASE", value),
             None => std::env::remove_var("AEROFTP_USER_PASSPHRASE"),
         }
+    }
+
+    /// CodeRabbit r6034347929: the singleton's partition row and vault
+    /// entry hold the same record. The first empty profile adopts it and
+    /// the equal vault copy is consumed, so a second empty profile finds
+    /// nothing to adopt. Red if the equal copy stays for the second load.
+    #[test]
+    fn an_equal_vault_copy_is_consumed_by_the_first_adoption() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::oauth2::tests::an_equal_vault_copy_is_consumed_by_the_first_adoption",
+        ) {
+            return;
+        }
+        with_two_box_accounts(|store, first, _second, _shared| {
+            let legacy = OAuth2Manager::legacy_token_account_key(OAuthProvider::Box);
+            let account = OAuth2Manager::token_account_key(OAuthProvider::Box, "p");
+            let record = |access: &str, refresh: &str| {
+                serde_json::json!({
+                    "access_token": access, "refresh_token": refresh,
+                    "expires_at": null, "token_type": "Bearer", "scopes": [],
+                    "owner_family": "v1:singleton-owner",
+                })
+                .to_string()
+            };
+            let chain = record("s-access", "s-refresh");
+            let conn = crate::user_partitions::open_or_init_cli().unwrap();
+            let root = Zeroizing::new(store.derive_user_partition_wrapping_key());
+            crate::user_partitions::set_user_credential_for(
+                &conn, &root, first, &legacy, "oauth", &chain,
+            )
+            .unwrap();
+            store.store(&legacy, &chain).unwrap();
+
+            let got = OAuth2Manager::new()
+                .load_token_record(OAuthProvider::Box, "p")
+                .expect("the singleton's chain is read");
+            assert_eq!(got.tokens.access_token, "s-access");
+            assert_eq!(
+                stored_row(store, first, &account).as_deref(),
+                Some(chain.as_str())
+            );
+            assert!(
+                store.get(&legacy).is_err(),
+                "the equal vault copy was consumed by the adoption"
+            );
+            let second_profile = OAuth2Manager::token_account_key(OAuthProvider::Box, "q");
+            if let Ok(got) = OAuth2Manager::new().load_token_record(OAuthProvider::Box, "q") {
+                assert_ne!(
+                    got.tokens.access_token, "s-access",
+                    "the second empty profile adopted the consumed copy"
+                );
+            }
+            assert_eq!(stored_row(store, first, &second_profile), None);
+        });
     }
 }
