@@ -195,6 +195,9 @@ const EXCLUDED_HIDDEN: &[&str] = &[
 /// `.dockerignore`, `.editorconfig`, `.htaccess` are preserved.
 pub fn should_exclude_path(path: &Path) -> bool {
     if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+        if crate::sync_exclude::is_vault_sync_artifact(name) {
+            return true;
+        }
         // Check suffix patterns (temp/editor files)
         for suffix in EXCLUDE_SUFFIXES {
             if name.ends_with(suffix) {
@@ -224,6 +227,11 @@ pub fn should_exclude_path(path: &Path) -> bool {
                 return true;
             }
             if crate::providers::atomic_write::is_download_staging_dir_name(s) {
+                return true;
+            }
+            // A vault artifact folder (repack staging, extraction and strip
+            // scratch) hides every write inside it, as the sync rule does.
+            if crate::sync_exclude::is_vault_sync_artifact(s) {
                 return true;
             }
         }
@@ -803,6 +811,28 @@ mod tests {
         let changes = collect_changes(events.iter());
         assert!(changes.renames.is_empty());
         assert_eq!(changes.paths, vec![PathBuf::from("/sync/x")]);
+    }
+
+    /// Writes inside a vault artifact folder never reach a sync batch; an
+    /// ordinary file renamed out of one is still a write of that file.
+    #[test]
+    fn writes_inside_vault_staging_folders_are_not_changes() {
+        let events = [
+            event(
+                EventKind::Modify(ModifyKind::Any),
+                &["/sync/.aerovault-repack-Abc123/decrypted.txt"],
+            ),
+            event(
+                EventKind::Modify(ModifyKind::Name(RenameMode::Both)),
+                &[
+                    "/sync/.aerovault-repack-Abc123/report.txt",
+                    "/sync/report.txt",
+                ],
+            ),
+        ];
+        let changes = collect_changes(events.iter());
+        assert!(changes.renames.is_empty());
+        assert_eq!(changes.paths, vec![PathBuf::from("/sync/report.txt")]);
     }
 
     /// The kernel's overflow arrives as a rescan event with no path. It used

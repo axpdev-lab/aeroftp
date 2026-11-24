@@ -121,32 +121,16 @@ mod cli_tui;
 
 // ── CLI Argument Parsing ───────────────────────────────────────────
 
-/// Canonical list of URL schemes accepted by `connect`, `ls`, `get`, etc.
-/// Aliases (`ssh`, `http`, `https`) are accepted by the URL parser but are
-/// not listed here so the public surface stays compact. Both the banner
-/// help line and the "Unsupported protocol" error derive from this slice
-/// so the two cannot drift apart again (issue #125 polish).
-const SUPPORTED_URL_SCHEMES: &[&str] = &[
-    "ftp",
-    "ftps",
-    "sftp",
-    "scp",
-    "webdav",
-    "webdavs",
-    "s3",
-    "mega",
-    "azure",
-    "filen",
-    "internxt",
-    "jottacloud",
-    "filelu",
-    "koofr",
-    "opendrive",
-    "yandexdisk",
-    "github",
-    "gitlab",
-    "file",
-];
+/// The URL schemes help and error texts list: the launch table the desktop
+/// app reads too (`launch_url::LAUNCH_SCHEMES`, aliases left out), then
+/// `file` for a folder of this machine. Both the banner help line and the
+/// "Unsupported protocol" error derive from it, so they cannot drift apart
+/// again (issue #125 polish, #1534).
+fn supported_url_schemes() -> Vec<&'static str> {
+    let mut schemes = ftp_client_gui_lib::launch_url::listed_schemes();
+    schemes.push("file");
+    schemes
+}
 
 #[derive(Parser, Clone)]
 #[command(
@@ -4746,7 +4730,8 @@ enum VaultCommands {
 #[derive(Subcommand, Clone)]
 enum CorrectCommands {
     /// Generate a `.aerocorrect` recovery sidecar for a file. Default output is
-    /// `<file>.aerocorrect`. The level sets the storage overhead (low ~7%, medium ~15%,
+    /// `<file>.aerocorrect`. The write leaves a persistent `<file>.aerolock` and
+    /// a lock next to the sidecar. The level sets the storage overhead (low ~7%, medium ~15%,
     /// quartile ~25%, high ~30%, or a percentage 5-50; default medium).
     Gen {
         /// Path to the file to protect
@@ -4771,7 +4756,8 @@ enum CorrectCommands {
         #[arg(long)]
         parity: Option<String>,
     },
-    /// Repair a corrupted file in place from its `.aerocorrect` sidecar. Atomic and
+    /// Repair a corrupted file in place from its `.aerocorrect` sidecar. A write
+    /// leaves a persistent `<file>.aerolock` next to the repaired file. Atomic and
     /// all-or-nothing: the original is replaced only if the repaired stream hashes back
     /// to the sidecar's recorded content; otherwise it is left byte-for-byte untouched.
     Repair {
@@ -8544,7 +8530,7 @@ type SyncExcludes = ftp_client_gui_lib::sync_exclude::ExcludeMatcher;
 /// (`sync_exclude`). An invalid pattern is a usage error (exit 5): it used to be
 /// dropped in silence, which left the files it was meant to protect in scope.
 fn compile_sync_excludes(patterns: &[String], format: OutputFormat) -> Result<SyncExcludes, i32> {
-    SyncExcludes::new(patterns).map_err(|e| {
+    SyncExcludes::for_sync(patterns).map_err(|e| {
         print_error(format, &e.to_string(), 5);
         5
     })
@@ -13249,12 +13235,82 @@ async fn screen_put_targets_by_listing(
 
 fn resolve_password(
     url_obj: &url::Url,
-    provider_type: &ProviderType,
+    scheme: &ftp_client_gui_lib::launch_url::LaunchScheme,
     cli: &Cli,
 ) -> Result<String, String> {
+    // 1-2. --token, then --password-stdin
+    if let Some(secret) = flag_secret(cli)? {
+        return Ok(secret);
+    }
+
+    // 3. Environment variable (protocol-specific, then generic)
+    for var in scheme
+        .secret_env
+        .iter()
+        .copied()
+        .chain(["AEROFTP_PASSWORD"])
+    {
+        if let Ok(pass) = std::env::var(var) {
+            return Ok(pass);
+        }
+    }
+
+    // 4. URL-embedded password
+    if let Some(pass) = url_obj.password() {
+        warn_url_secret();
+        return Ok(urlencoding::decode(pass)
+            .map(|s| s.to_string())
+            .unwrap_or_else(|_| pass.to_string()));
+    }
+
+    // 5-6. Interactive prompt, else none (FTP anonymous, etc.)
+    prompt_secret()
+}
+
+/// The secret key of an `s3://` URL and the session token that goes with it:
+/// the --token and --password-stdin flags, then what the AWS chain of
+/// `LaunchTarget::s3_credentials` resolved, then the prompt. The chain's
+/// session token belongs to the chain's secret, so a secret from a flag or
+/// the prompt comes without one.
+fn resolve_s3_secret(
+    credentials: &ftp_client_gui_lib::launch_url::aws::S3Credentials,
+    cli: &Cli,
+) -> Result<(String, Option<String>), String> {
+    if let Some(secret) = flag_secret(cli)? {
+        return Ok((secret, None));
+    }
+    if let Some(secret) = credentials.secret_access_key.clone() {
+        if credentials.secret_source
+            == Some(ftp_client_gui_lib::launch_url::aws::CredentialSource::Url)
+        {
+            warn_url_secret();
+        }
+        return Ok((secret, credentials.session_token.clone()));
+    }
+    Ok((prompt_secret()?, None))
+}
+
+fn warn_url_secret() {
+    if !cfg!(test) {
+        eprintln!("Warning: password in URL is insecure. Use --password-stdin or env var instead.");
+    }
+}
+
+/// The secret typed at the terminal, or none when there is no terminal.
+fn prompt_secret() -> Result<String, String> {
+    if std::io::stdin().is_terminal() {
+        eprint!("Password: ");
+        let _ = io::stderr().flush();
+        return rpassword::read_password().map_err(|e| format!("Failed to read password: {}", e));
+    }
+    Ok(String::new())
+}
+
+/// The secret a flag gives: --token, then --password-stdin.
+fn flag_secret(cli: &Cli) -> Result<Option<String>, String> {
     // 1. --token flag (API key providers)
     if let Some(ref token) = cli.token {
-        return Ok(token.clone());
+        return Ok(Some(token.clone()));
     }
 
     // 2. --password-stdin (limit to 4 KB to prevent abuse)
@@ -13284,46 +13340,11 @@ fn resolve_password(
                 }
                 Ok(password.trim().to_string())
             })
-            .clone();
+            .clone()
+            .map(Some);
     }
 
-    // 3. Environment variable (protocol-specific, then generic)
-    let env_vars = match provider_type {
-        ProviderType::Ftp | ProviderType::Ftps => vec!["FTP_PASSWORD", "AEROFTP_PASSWORD"],
-        ProviderType::Sftp | ProviderType::Scp => vec!["SFTP_PASSWORD", "AEROFTP_PASSWORD"],
-        ProviderType::WebDav => vec!["WEBDAV_PASSWORD", "AEROFTP_PASSWORD"],
-        ProviderType::S3 => vec!["AWS_SECRET_ACCESS_KEY", "AEROFTP_PASSWORD"],
-        _ => vec!["AEROFTP_PASSWORD"],
-    };
-    for var in env_vars {
-        if let Ok(pass) = std::env::var(var) {
-            return Ok(pass);
-        }
-    }
-
-    // 4. URL-embedded password
-    if let Some(pass) = url_obj.password() {
-        if !cfg!(test) {
-            eprintln!(
-                "Warning: password in URL is insecure. Use --password-stdin or env var instead."
-            );
-        }
-        return Ok(urlencoding::decode(pass)
-            .map(|s| s.to_string())
-            .unwrap_or_else(|_| pass.to_string()));
-    }
-
-    // 5. Interactive prompt (only if terminal)
-    if std::io::stdin().is_terminal() {
-        eprint!("Password: ");
-        let _ = io::stderr().flush();
-        let pass =
-            rpassword::read_password().map_err(|e| format!("Failed to read password: {}", e))?;
-        return Ok(pass);
-    }
-
-    // 6. No password (FTP anonymous, etc.)
-    Ok(String::new())
+    Ok(None)
 }
 
 /// The folder or file of this machine a positional names, when it names one
@@ -13448,22 +13469,35 @@ fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, Strin
         if !url.contains("://") {
             format!(
                 "Invalid URL or unknown profile in '{}'. Use --profile <name> for saved profiles, protocol://host/path for direct URLs (supported: {}), or a local folder as /abs/path, ./rel/path or file:///abs/path.",
-                url,
-                SUPPORTED_URL_SCHEMES.join(", ")
+                ftp_client_gui_lib::launch_url::redact(url),
+                supported_url_schemes().join(", ")
             )
         } else {
             format!("Invalid URL: {}", e)
         }
     })?;
 
-    let scheme = url_obj.scheme().to_lowercase();
-    let host_str = url_obj.host_str().ok_or("Missing host in URL")?.to_string();
-
-    let (provider_type, effective_host) = match scheme.as_str() {
-        "ftp" => (ProviderType::Ftp, host_str.clone()),
-        "ftps" => (ProviderType::Ftps, host_str.clone()),
-        "sftp" | "ssh" => (ProviderType::Sftp, host_str.clone()),
-        "scp" => (ProviderType::Scp, host_str.clone()),
+    let target = match ftp_client_gui_lib::launch_url::scheme_of(url) {
+        Some(_) => ftp_client_gui_lib::launch_url::parse(url)?,
+        None => {
+            return Err(format!(
+                "Unsupported protocol: {}. Supported: {}",
+                url_obj.scheme().to_lowercase(),
+                supported_url_schemes().join(", ")
+            ))
+        }
+    };
+    let scheme = target.scheme;
+    if scheme.auth == ftp_client_gui_lib::launch_url::LaunchAuth::Account
+        && !ftp_client_gui_lib::launch_url::TOKEN_LOGIN_ACCOUNTS.contains(&scheme.token)
+    {
+        return Err(format!(
+            "{}:// signs in through the provider's browser authorization, which a URL cannot carry: use --profile <name> with a profile authorized in AeroFTP",
+            scheme.scheme
+        ));
+    }
+    let host_str = target.host.clone();
+    let (provider_type, effective_host) = match scheme.scheme {
         "webdav" | "http" => {
             let port_str = url_obj
                 .port()
@@ -13508,19 +13542,9 @@ fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, Strin
                 format!("https://{}{}{}", host_str, port_str, base_path),
             )
         }
-        "s3" => (ProviderType::S3, host_str.clone()),
-        "mega" => (ProviderType::Mega, "mega.nz".to_string()),
-        "proton" | "protondrive" => (ProviderType::Proton, "drive.proton.me".to_string()),
-        "azure" => (ProviderType::Azure, host_str.clone()),
-        "filen" => (ProviderType::Filen, "gateway.filen.io".to_string()),
-        "internxt" => (ProviderType::Internxt, "drive.internxt.com".to_string()),
-        "jottacloud" => (ProviderType::Jottacloud, "jfs.jottacloud.com".to_string()),
-        "filelu" => (ProviderType::FileLu, "filelu.com".to_string()),
-        "koofr" => (ProviderType::Koofr, "app.koofr.net".to_string()),
-        "opendrive" => (ProviderType::OpenDrive, "dev.opendrive.com".to_string()),
-        "yandexdisk" => (ProviderType::YandexDisk, "cloud-api.yandex.net".to_string()),
         "github" => {
-            let (github_host, github_branch) = parse_github_target(&url_obj)?;
+            let (github_host, github_branch) =
+                ftp_client_gui_lib::launch_url::github_repository(&target)?;
             let mut extra = HashMap::new();
             if let Some(branch_name) = github_branch {
                 extra.insert("branch".to_string(), branch_name);
@@ -13533,7 +13557,7 @@ fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, Strin
                     .map(|s| s.to_string())
                     .unwrap_or_else(|_| url_obj.username().to_string())
             };
-            let password = resolve_password(&url_obj, &ProviderType::GitHub, cli)?;
+            let password = resolve_password(&url_obj, scheme, cli)?;
 
             let config = ProviderConfig {
                 name: "GitHub CLI".to_string(),
@@ -13549,16 +13573,14 @@ fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, Strin
             return Ok((config, "/".to_string()));
         }
         "gitlab" => {
-            // gitlab://gitlab.com/owner/repo or gitlab://self-hosted.com/owner/repo
-            let host = url_obj.host_str().unwrap_or("gitlab.com");
-            let path = url_obj.path().trim_matches('/');
-            let gitlab_host = if path.is_empty() {
-                host.to_string()
-            } else {
-                format!("{}/{}", host, path)
-            };
+            let (gitlab_host, gitlab_branch) =
+                ftp_client_gui_lib::launch_url::gitlab_project(&target)?;
+            let mut extra = HashMap::new();
+            if let Some(branch_name) = gitlab_branch {
+                extra.insert("branch".to_string(), branch_name);
+            }
 
-            let password = resolve_password(&url_obj, &ProviderType::GitLab, cli)?;
+            let password = resolve_password(&url_obj, scheme, cli)?;
 
             let config = ProviderConfig {
                 name: "GitLab CLI".to_string(),
@@ -13568,34 +13590,42 @@ fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, Strin
                 username: None,
                 password: Some(password),
                 initial_path: Some("/".to_string()),
-                extra: HashMap::new(),
+                extra,
             };
 
             return Ok((config, "/".to_string()));
         }
         _ => {
-            return Err(format!(
-                "Unsupported protocol: {}. Supported: {}",
-                scheme,
-                SUPPORTED_URL_SCHEMES.join(", ")
-            ))
+            let kind = ftp_client_gui_lib::connection_manifest::provider_type(scheme.token)
+                .ok_or_else(|| format!("{}:// has no connection backend", scheme.scheme))?;
+            (kind, target.connection_host())
         }
     };
 
-    let username = if url_obj.username().is_empty() {
-        match provider_type {
-            ProviderType::Ftp | ProviderType::Ftps => "anonymous".to_string(),
-            _ => String::new(),
+    let username = target.connection_username();
+    let username =
+        if username.is_empty() && matches!(provider_type, ProviderType::Ftp | ProviderType::Ftps) {
+            "anonymous".to_string()
+        } else {
+            username
+        };
+
+    // S3 reads the AWS chain (URL, AEROFTP_PASSWORD, AWS variables, AWS
+    // files) below the --token and --password-stdin flags; the other schemes
+    // keep their order.
+    let s3_credentials = (provider_type == ProviderType::S3).then(|| target.s3_credentials());
+    let mut s3_session_token = None;
+    let (username, password) = match &s3_credentials {
+        Some(credentials) => {
+            let (secret, session_token) = resolve_s3_secret(credentials, cli)?;
+            s3_session_token = session_token;
+            (credentials.access_key_id.clone(), secret)
         }
-    } else {
-        urlencoding::decode(url_obj.username())
-            .map(|s| s.to_string())
-            .unwrap_or_else(|_| url_obj.username().to_string())
+        None => (username, resolve_password(&url_obj, scheme, cli)?),
     };
 
-    let password = resolve_password(&url_obj, &provider_type, cli)?;
-
-    let port = url_obj.port();
+    // An S3 link's own endpoint carries its port: the host's is not added.
+    let port = target.connection_port();
 
     // For WebDAV/GitHub, the URL path is part of the host - initial_path is always /
     let url_path = match provider_type {
@@ -13661,8 +13691,19 @@ fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, Strin
         check_remote_path_safe(target).map_err(|e| e.to_string())?;
     }
 
-    // Build extra HashMap from CLI flags
-    let mut extra = HashMap::new();
+    // The URL's own options (query, and the account its host names), then
+    // the CLI flags, which override them.
+    let mut extra: HashMap<String, String> = target.options.clone().into_iter().collect();
+    extra.extend(target.host_options());
+    match provider_type {
+        ProviderType::ImageKit => {
+            extra.insert("imagekit_id".to_string(), username.clone());
+        }
+        ProviderType::Uploadcare => {
+            extra.insert("public_key".to_string(), username.clone());
+        }
+        _ => {}
+    }
 
     // SFTP
     apply_cli_ssh_extras(cli, &mut extra);
@@ -13694,11 +13735,24 @@ fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, Strin
     }
 
     // S3
+    if let Some(credentials) = s3_credentials {
+        if let Some(region) = credentials.region {
+            extra.insert("region".to_string(), region);
+        }
+        if let Some(token) = s3_session_token {
+            extra.insert("session_token".to_string(), token);
+        }
+    }
     if let Some(ref bucket) = cli.bucket {
         extra.insert("bucket".to_string(), bucket.clone());
     }
     if let Some(ref region) = cli.region {
         extra.insert("region".to_string(), region.clone());
+    }
+    if provider_type == ProviderType::S3 {
+        // The endpoint's preset (Wasabi, R2, ...) sets the region its host
+        // names and its path style, as a saved profile of it would.
+        apply_s3_profile_defaults(&mut extra, Some(target.s3_provider_id()), &effective_host);
     }
 
     // Azure
@@ -13768,46 +13822,6 @@ fn webdav_url_target(url_obj: &url::Url) -> Result<Option<String>, String> {
         );
     }
     Ok(Some(format!("/{name}")))
-}
-
-fn parse_github_target(url_obj: &url::Url) -> Result<(String, Option<String>), String> {
-    let host = url_obj
-        .host_str()
-        .ok_or_else(|| "Missing GitHub owner/repository in URL".to_string())?;
-
-    let segments: Vec<&str> = url_obj
-        .path_segments()
-        .map(|segments| segments.filter(|segment| !segment.is_empty()).collect())
-        .unwrap_or_default();
-
-    let (owner, repo_with_branch) = if host.eq_ignore_ascii_case("github.com") {
-        if segments.len() < 2 {
-            return Err(
-                "GitHub URL must be github://owner/repo or github://owner/repo@branch".to_string(),
-            );
-        }
-        (segments[0], segments[1])
-    } else {
-        let repo_segment = segments.first().copied().ok_or_else(|| {
-            "GitHub URL must be github://owner/repo or github://owner/repo@branch".to_string()
-        })?;
-        (host, repo_segment)
-    };
-
-    let (repo, branch) = match repo_with_branch.rsplit_once('@') {
-        Some((repo_name, branch_name)) if !repo_name.is_empty() && !branch_name.is_empty() => {
-            (repo_name, Some(branch_name.to_string()))
-        }
-        _ => (repo_with_branch, None),
-    };
-
-    if owner.is_empty() || repo.is_empty() {
-        return Err(
-            "GitHub URL must be github://owner/repo or github://owner/repo@branch".to_string(),
-        );
-    }
-
-    Ok((format!("{}/{}", owner, repo), branch))
 }
 
 // ── Vault Profile Support ─────────────────────────────────────────
@@ -13975,6 +13989,45 @@ fn unlock_vault(cli: &Cli, asking: Asking) -> Result<(), String> {
         Err(e) => return Err(format!("Failed to open vault: {}", e)),
     }
     Ok(())
+}
+
+/// True when an AeroVault repair report leaves damaged chunks unrepaired, in a
+/// real run or a dry run. `vault repair` then exits non-zero after printing it.
+/// A report without both counts fails closed.
+fn vault_repair_left_damage(report: &serde_json::Value) -> bool {
+    let count = |key: &str| report.get(key).and_then(|v| v.as_u64());
+    match (count("repaired"), count("damaged")) {
+        (Some(repaired), Some(damaged)) => repaired < damaged,
+        _ => true,
+    }
+}
+
+#[cfg(test)]
+mod vault_repair_exit_tests {
+    use super::vault_repair_left_damage;
+    use serde_json::json;
+
+    #[test]
+    fn a_repair_that_leaves_damage_is_a_failure() {
+        for dry_run in [false, true] {
+            assert!(vault_repair_left_damage(
+                &json!({"repaired": 0, "damaged": 3, "dry_run": dry_run})
+            ));
+            assert!(vault_repair_left_damage(
+                &json!({"repaired": 2, "damaged": 3, "dry_run": dry_run})
+            ));
+            assert!(!vault_repair_left_damage(
+                &json!({"repaired": 3, "damaged": 3, "dry_run": dry_run})
+            ));
+            assert!(!vault_repair_left_damage(
+                &json!({"repaired": 0, "damaged": 0, "dry_run": dry_run})
+            ));
+        }
+        assert!(vault_repair_left_damage(&json!({"repaired": 0})));
+        assert!(vault_repair_left_damage(
+            &json!({"repaired": 0, "damaged": "3"})
+        ));
+    }
 }
 
 #[cfg(test)]
@@ -80137,7 +80190,7 @@ async fn main() {
                 env!("CARGO_PKG_VERSION"),
                 protocols,
                 integrations,
-                SUPPORTED_URL_SCHEMES.len()
+                supported_url_schemes().len()
             );
             eprintln!("\x1b[38;2;140;140;160m  transfer engine for operators, shell users, and terminal obsessives{r}");
         } else {
@@ -80153,7 +80206,7 @@ async fn main() {
                 env!("CARGO_PKG_VERSION"),
                 protocols,
                 integrations,
-                SUPPORTED_URL_SCHEMES.len()
+                supported_url_schemes().len()
             );
             eprintln!("  transfer engine for operators, shell users, and terminal obsessives");
         }
@@ -81920,7 +81973,14 @@ async fn main() {
                                         }
                                     }
                                 }
-                                0
+                                // Damage that stays after the run is a failure
+                                // for a script, as the crate's error was before
+                                // the GUI summary for it.
+                                if vault_repair_left_damage(&report) {
+                                    1
+                                } else {
+                                    0
+                                }
                             }
                             Err(e) => {
                                 print_error(format, &e, 1);
@@ -90220,6 +90280,220 @@ mod tests {
     }
 
     #[test]
+    fn the_cli_takes_every_scheme_the_launch_table_has() {
+        use ftp_client_gui_lib::launch_url::{
+            example_url, LaunchAuth, LAUNCH_SCHEMES, TOKEN_LOGIN_ACCOUNTS,
+        };
+        let cli = test_cli();
+        for entry in LAUNCH_SCHEMES {
+            let url = example_url(entry);
+            let result = url_to_provider_config(&url, &cli);
+            if entry.auth == LaunchAuth::Account && !TOKEN_LOGIN_ACCOUNTS.contains(&entry.token) {
+                let error = result.err().unwrap_or_else(|| panic!("{url} connected"));
+                assert!(error.contains("--profile"), "{url}: {error}");
+                continue;
+            }
+            let (config, _) = result.unwrap_or_else(|e| panic!("{url}: {e}"));
+            assert_eq!(
+                Some(config.provider_type),
+                ftp_client_gui_lib::connection_manifest::provider_type(entry.token),
+                "{url}"
+            );
+        }
+        // Every listed scheme but `file` is one of the table's.
+        for scheme in supported_url_schemes() {
+            assert!(
+                scheme == "file" || ftp_client_gui_lib::launch_url::launch_scheme(scheme).is_some(),
+                "{scheme}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_new_services_read_their_account_from_the_url() {
+        let cli = test_cli();
+        let (b2, path) = url_to_provider_config("b2://KEYID:k@my-bucket/backups/", &cli).unwrap();
+        assert_eq!(b2.provider_type, ProviderType::Backblaze);
+        assert_eq!(b2.host, "api.backblazeb2.com");
+        assert_eq!(b2.username.as_deref(), Some("KEYID"));
+        assert_eq!(
+            b2.extra.get("bucket").map(String::as_str),
+            Some("my-bucket")
+        );
+        assert_eq!(path, "/backups/");
+
+        let (kdrive, _) = url_to_provider_config("kdrive://123456/Docs/", &cli).unwrap();
+        assert_eq!(kdrive.provider_type, ProviderType::KDrive);
+        assert_eq!(
+            kdrive.extra.get("drive_id").map(String::as_str),
+            Some("123456")
+        );
+
+        let (cloudinary, _) =
+            url_to_provider_config("cloudinary://APIKEY:s@my-cloud/", &cli).unwrap();
+        assert_eq!(cloudinary.username.as_deref(), Some("APIKEY"));
+        assert_eq!(
+            cloudinary.extra.get("cloud_name").map(String::as_str),
+            Some("my-cloud")
+        );
+
+        let (imagekit, _) = url_to_provider_config("imagekit://my_id/", &cli).unwrap();
+        assert_eq!(
+            imagekit.extra.get("imagekit_id").map(String::as_str),
+            Some("my_id")
+        );
+        let (uploadcare, _) = url_to_provider_config("uploadcare://PUB/", &cli).unwrap();
+        assert_eq!(
+            uploadcare.extra.get("public_key").map(String::as_str),
+            Some("PUB")
+        );
+
+        let (immich, _) = url_to_provider_config("immich://10.0.0.2:2283/", &cli).unwrap();
+        assert_eq!(immich.host, "https://10.0.0.2:2283");
+
+        let (swift, _) = url_to_provider_config("swift://u@auth.example.com/", &cli).unwrap();
+        assert_eq!(swift.provider_type, ProviderType::Swift);
+        assert_eq!(swift.host, "auth.example.com");
+
+        let (drime, _) = url_to_provider_config("drime:///Projects/", &cli).unwrap();
+        assert_eq!(drime.provider_type, ProviderType::DrimeCloud);
+    }
+
+    #[test]
+    fn s3_url_options_apply_and_the_flags_win() {
+        let mut cli = test_cli();
+        let (config, _) = url_to_provider_config(
+            "s3://AKID@s3.example.com/?bucket=from-url&region=eu-west-1",
+            &cli,
+        )
+        .unwrap();
+        assert_eq!(
+            config.extra.get("bucket").map(String::as_str),
+            Some("from-url")
+        );
+        assert_eq!(
+            config.extra.get("region").map(String::as_str),
+            Some("eu-west-1")
+        );
+        cli.bucket = Some("from-flag".to_string());
+        let (config, _) =
+            url_to_provider_config("s3://AKID@s3.example.com/?bucket=from-url", &cli).unwrap();
+        assert_eq!(
+            config.extra.get("bucket").map(String::as_str),
+            Some("from-flag")
+        );
+        let error =
+            url_to_provider_config("s3://AKID@s3.example.com/?secret=hunter2", &cli).unwrap_err();
+        assert!(!error.contains("hunter2"), "{error}");
+    }
+
+    #[test]
+    fn an_s3_url_keeps_the_flags_above_the_aws_chain_and_signs_with_the_hosts_region() {
+        let mut cli = test_cli();
+        let (config, _) = url_to_provider_config(
+            "s3://KEY:urlsecret@s3.eu-central-2.wasabisys.com/?bucket=b1&region=us-east-1",
+            &cli,
+        )
+        .unwrap();
+        assert_eq!(config.username.as_deref(), Some("KEY"));
+        assert_eq!(config.password.as_deref(), Some("urlsecret"));
+        assert_eq!(
+            config.extra.get("region").map(String::as_str),
+            Some("eu-central-2")
+        );
+        assert_eq!(
+            config
+                .extra
+                .get(ftp_client_gui_lib::profile_loader::S3_PROVIDER_ID_META_KEY)
+                .map(String::as_str),
+            Some("wasabi")
+        );
+        assert!(!config.extra.contains_key("session_token"));
+
+        cli.token = Some("flagsecret".to_string());
+        let (config, _) = url_to_provider_config(
+            "s3://KEY:urlsecret@s3.eu-central-2.wasabisys.com/?bucket=b1",
+            &cli,
+        )
+        .unwrap();
+        assert_eq!(config.password.as_deref(), Some("flagsecret"));
+
+        // A host that spells its region signs with it over --region too:
+        // SigV4 must use the region the host serves (docs/CLI-GUIDE.md).
+        cli.region = Some("us-east-1".to_string());
+        let (config, _) = url_to_provider_config(
+            "s3://KEY:urlsecret@s3.eu-central-2.wasabisys.com/?bucket=b1",
+            &cli,
+        )
+        .unwrap();
+        assert_eq!(
+            config.extra.get("region").map(String::as_str),
+            Some("eu-central-2")
+        );
+        // A host that spells none takes --region.
+        let (config, _) =
+            url_to_provider_config("s3://KEY:urlsecret@storage.example.net/?bucket=b1", &cli)
+                .unwrap();
+        assert_eq!(
+            config.extra.get("region").map(String::as_str),
+            Some("us-east-1")
+        );
+    }
+
+    #[test]
+    fn a_repository_url_takes_its_branch_from_the_suffix_or_the_query() {
+        let cli = test_cli();
+        let (config, path) =
+            url_to_provider_config("gitlab://gitlab.com/group/project?branch=dev", &cli).unwrap();
+        assert_eq!(config.host, "gitlab.com/group/project");
+        assert_eq!(config.extra.get("branch").map(String::as_str), Some("dev"));
+        assert_eq!(path, "/");
+        let (config, _) =
+            url_to_provider_config("gitlab://git.example.com/group/sub/project@main", &cli)
+                .unwrap();
+        assert_eq!(config.host, "git.example.com/group/sub/project");
+        assert_eq!(config.extra.get("branch").map(String::as_str), Some("main"));
+        let (config, _) = url_to_provider_config("github://owner/repo?branch=dev", &cli).unwrap();
+        assert_eq!(config.host, "owner/repo");
+        assert_eq!(config.extra.get("branch").map(String::as_str), Some("dev"));
+        assert!(url_to_provider_config("github://owner/repo@main?branch=dev", &cli).is_err());
+    }
+
+    #[test]
+    fn a_flag_secret_drops_the_aws_chains_session_token() {
+        use ftp_client_gui_lib::launch_url::aws::{CredentialSource, S3Credentials};
+        let credentials = S3Credentials {
+            access_key_id: "ENVKEY".to_string(),
+            secret_access_key: Some("envsecret".to_string()),
+            session_token: Some("envtoken".to_string()),
+            region: None,
+            secret_source: Some(CredentialSource::AwsEnv),
+            key_from_url: false,
+        };
+        let mut cli = test_cli();
+        assert_eq!(
+            resolve_s3_secret(&credentials, &cli).unwrap(),
+            ("envsecret".to_string(), Some("envtoken".to_string()))
+        );
+        cli.token = Some("flagsecret".to_string());
+        assert_eq!(
+            resolve_s3_secret(&credentials, &cli).unwrap(),
+            ("flagsecret".to_string(), None)
+        );
+    }
+
+    #[test]
+    fn ftpes_connects_over_ftp_with_explicit_tls() {
+        let cli = test_cli();
+        let (config, _) = url_to_provider_config("ftpes://u@ftp.example.com/", &cli).unwrap();
+        assert_eq!(config.provider_type, ProviderType::Ftp);
+        assert_eq!(
+            config.extra.get("tls_mode").map(String::as_str),
+            Some("explicit")
+        );
+    }
+
+    #[test]
     fn test_url_parsing_mega() {
         let cli = test_cli();
         let (config, _) = url_to_provider_config("mega://user:test@mega.nz", &cli).unwrap();
@@ -90235,6 +90509,17 @@ mod tests {
         };
         let (config, _) = url_to_provider_config("mega://user:test@mega.nz", &cli).unwrap();
         assert_eq!(config.extra.get("mega_mode"), Some(&"native".to_string()));
+    }
+
+    #[test]
+    fn an_argument_that_is_not_a_url_is_echoed_without_its_password() {
+        let cli = test_cli();
+        let err = url_to_provider_config("alice_smith:hunter2@host/data", &cli).unwrap_err();
+        assert!(!err.contains("hunter2"), "{err}");
+        assert!(err.contains("'alice_smith:***@host/data'"), "{err}");
+        let err = url_to_provider_config("alice_smith:hunter2", &cli).unwrap_err();
+        assert!(!err.contains("hunter2"), "{err}");
+        assert!(err.contains("'alice_smith:***'"), "{err}");
     }
 
     #[test]
@@ -91993,6 +92278,9 @@ mod tests {
                 )
                 .unwrap();
                 assert_eq!(patterns, vec!["x", "*.log", "node_modules", "*.tmp"]);
+                let matcher = compile_sync_excludes(&patterns, OutputFormat::Json).unwrap();
+                assert!(matcher.is_excluded("backup/vault.aerovault.aerolock"));
+                assert!(matcher.is_excluded("backup/data.bin.aerocorrect.aerolock"));
 
                 let missing = dir.path().join("missing.txt");
                 let cli = Cli::try_parse_from([

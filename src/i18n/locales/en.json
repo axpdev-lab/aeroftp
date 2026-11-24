@@ -2715,7 +2715,13 @@
             "modeNonIdentical": "Non-identical",
             "groupsCount": "Groups: {count}",
             "duplicateFilesCount": "Duplicate files: {count}",
-            "copiesCount": "{count} copies"
+            "copiesCount": "{count} copies",
+            "refreshTooltip": "Check if detected duplicates still exist and remove missing files without rescanning",
+            "refreshRemoved": "{count} missing files dropped from the list",
+            "refreshChanged": "{count} changed files dropped from the list",
+            "refreshUnverified": "{count} could not be checked",
+            "refreshFailed": "Refresh failed: {error}",
+            "refreshUpToDate": "All files still exist"
         },
         "error": {
             "description": "AeroFTP encountered an unexpected error. You can try to recover or reload the application.",
@@ -4723,7 +4729,10 @@
         },
         "openRequest": {
             "folderBusyTitle": "Folder still loading",
-            "folderBusy": "The file you opened was not shown: another folder was still loading when {folder} was requested. Open it again."
+            "folderBusy": "The file you opened was not shown: another folder was still loading when {folder} was requested. Open it again.",
+            "signInNeedsProfileTitle": "{provider} needs its saved sign-in",
+            "signInNeedsProfile": "{provider} signs in through its own browser authorization, which a link cannot carry. Add and authorize the account in My Servers, then open {scheme}://<profile name>/folder/.",
+            "signInNameTheProfile": "Several {provider} accounts are saved. Name the one to open: {scheme}://<profile name>/folder/."
         },
         "tags": {
             "addTag": "Add Tag",

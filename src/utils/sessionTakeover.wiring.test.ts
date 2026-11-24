@@ -196,7 +196,7 @@ describe('a tab switch from a live tab that is cancelled or fails leaves nothing
         // Asked before anything of the current tab changes, so a refusal from
         // a live tab leaves it active and connected.
         const body = slice('  const switchSession = async', '\n  const ', SWITCH_AT);
-        expect(body).toContain('if (!accepted) { if (fromParked) leaveNothingActive(); return; }');
+        expect(body).toContain('if (!accepted) { if (fromParked) leaveNothingActive(); return false; }');
         expect(body.indexOf('if (!accepted)')).toBeLessThan(body.indexOf('// Capture current state values'));
     });
 });
@@ -233,9 +233,11 @@ describe('a reconnected tab', () => {
             connectScope: { assert: () => {}, step: (run: () => Promise<unknown>) => run() },
             invoke: vi.fn(async () => { throw new Error('No such file or directory'); }),
             logger: { warn: vi.fn() },
+            phaseVersion: 3, remoteConnectPhaseVersionRef: { current: 3 },
         };
         const tail = slice("      // Also refresh local files for this session's local path.", '    } catch (e) {', SWITCH_AT);
-        await expect(run(tail, ctx, "return 'listed';")).resolves.toBe('listed');
+        // The switch still ends on its target: switchSession resolves true.
+        await expect(run(tail, ctx, '')).resolves.toBe(true);
         expect(ctx.setLocalFiles).not.toHaveBeenCalled();
         expect(ctx.logger).toMatchObject({ warn: expect.any(Function) });
         expect((ctx.logger as { warn: Spy }).warn).toHaveBeenCalled();

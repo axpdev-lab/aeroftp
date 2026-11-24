@@ -4455,7 +4455,13 @@
             "modeNonIdentical": "Ikke identisk",
             "groupsCount": "Grupper: {count}",
             "duplicateFilesCount": "Dubletfiler: {count}",
-            "copiesCount": "{count} kopier"
+            "copiesCount": "{count} kopier",
+            "refreshTooltip": "Kontrollér, om fundne dubletter stadig findes, og fjern manglende filer uden at scanne igen",
+            "refreshRemoved": "{count} manglende filer fjernet fra listen",
+            "refreshUpToDate": "Alle filer findes stadig",
+            "refreshChanged": "{count} ændrede filer fjernet fra listen",
+            "refreshUnverified": "{count} kunne ikke kontrolleres",
+            "refreshFailed": "Opdatering mislykkedes: {error}"
         },
         "diskUsage": {
             "title": "Diskforbrug",
@@ -7189,7 +7195,10 @@
         },
         "openRequest": {
             "folderBusyTitle": "Mappen indlæses stadig",
-            "folderBusy": "Den fil, du åbnede, blev ikke vist: en anden mappe var stadig ved at blive indlæst, da der blev anmodet om {folder}. Åbn den igen."
+            "folderBusy": "Den fil, du åbnede, blev ikke vist: en anden mappe var stadig ved at blive indlæst, da der blev anmodet om {folder}. Åbn den igen.",
+            "signInNeedsProfileTitle": "{provider} kræver sit gemte login",
+            "signInNeedsProfile": "{provider} logger ind via sin egen godkendelse i browseren, som et link ikke kan bære. Tilføj og godkend kontoen i Mine servere, og åbn derefter {scheme}://<profilnavn>/mappe/.",
+            "signInNameTheProfile": "Der er gemt flere {provider}-konti. Angiv, hvilken der skal åbnes: {scheme}://<profilnavn>/mappe/."
         }
     }
 }

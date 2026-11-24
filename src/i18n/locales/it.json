@@ -4904,7 +4904,13 @@
             "modeNonIdentical": "Non identica",
             "groupsCount": "Gruppi: {count}",
             "duplicateFilesCount": "File duplicati: {count}",
-            "copiesCount": "{count} copie"
+            "copiesCount": "{count} copie",
+            "refreshTooltip": "Controlla se i duplicati rilevati esistono ancora e rimuovi i file mancanti senza ripetere la scansione",
+            "refreshRemoved": "{count} file mancanti rimossi dall'elenco",
+            "refreshUpToDate": "Tutti i file esistono ancora",
+            "refreshChanged": "{count} file modificati rimossi dall'elenco",
+            "refreshUnverified": "{count} non verificabili",
+            "refreshFailed": "Aggiornamento non riuscito: {error}"
         },
         "diskUsage": {
             "title": "Uso Disco",
@@ -7189,7 +7195,10 @@
         },
         "openRequest": {
             "folderBusyTitle": "Cartella ancora in caricamento",
-            "folderBusy": "Il file che hai aperto non è stato mostrato: un'altra cartella era ancora in caricamento quando è stata richiesta {folder}. Aprilo di nuovo."
+            "folderBusy": "Il file che hai aperto non è stato mostrato: un'altra cartella era ancora in caricamento quando è stata richiesta {folder}. Aprilo di nuovo.",
+            "signInNeedsProfileTitle": "{provider} richiede l'accesso salvato",
+            "signInNeedsProfile": "{provider} accede con la propria autorizzazione dal browser, che un link non può portare con sé. Aggiungi e autorizza l'account in I miei server, poi apri {scheme}://<nome profilo>/cartella/.",
+            "signInNameTheProfile": "Sono salvati più account {provider}. Indica quale aprire: {scheme}://<nome profilo>/cartella/."
         }
     }
 }

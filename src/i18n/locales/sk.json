@@ -4455,7 +4455,13 @@
             "modeNonIdentical": "Neidentické",
             "groupsCount": "Skupiny: {count}",
             "duplicateFilesCount": "Duplicitné súbory: {count}",
-            "copiesCount": "{count} ks"
+            "copiesCount": "{count} ks",
+            "refreshTooltip": "Skontrolovať, či zistené duplikáty stále existujú, a odstrániť chýbajúce súbory bez opätovného skenovania",
+            "refreshRemoved": "{count} chýbajúcich súborov vyradených zo zoznamu",
+            "refreshUpToDate": "Všetky súbory stále existujú",
+            "refreshChanged": "{count} zmenených súborov odstránených zo zoznamu",
+            "refreshUnverified": "{count} sa nepodarilo skontrolovať",
+            "refreshFailed": "Obnovenie zlyhalo: {error}"
         },
         "diskUsage": {
             "title": "Využitie disku",
@@ -7189,7 +7195,10 @@
         },
         "openRequest": {
             "folderBusyTitle": "Priečinok sa stále načítava",
-            "folderBusy": "Otvorený súbor sa nezobrazil: keď sa požadoval priečinok {folder}, iný priečinok sa ešte načítaval. Otvorte ho znova."
+            "folderBusy": "Otvorený súbor sa nezobrazil: keď sa požadoval priečinok {folder}, iný priečinok sa ešte načítaval. Otvorte ho znova.",
+            "signInNeedsProfileTitle": "{provider} potrebuje svoje uložené prihlásenie",
+            "signInNeedsProfile": "{provider} sa prihlasuje vlastnou autorizáciou v prehliadači, ktorú odkaz nedokáže preniesť. Pridajte a autorizujte účet v Moje servery a potom otvorte {scheme}://<názov profilu>/priečinok/.",
+            "signInNameTheProfile": "Je uložených viac účtov {provider}. Uveďte, ktorý otvoriť: {scheme}://<názov profilu>/priečinok/."
         }
     }
 }

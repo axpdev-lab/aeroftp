@@ -6,11 +6,29 @@ import {
     AEROSYNC_DEFAULT_EXCLUDES,
     aeroSyncCompareOptions,
     compareExcludePatterns,
+    cliExcludePatterns,
     sameExcludePatterns,
     appliedCompareFilters,
 } from './aeroSyncExcludes';
 
 describe('AeroSync compare exclusions', () => {
+    it('excludes persistent vault locks from Compare and exported commands by default', () => {
+        expect(compareExcludePatterns([])).toContain('*.aerolock');
+        expect(cliExcludePatterns([], AEROSYNC_DEFAULT_BACKUP_DIR)).toContain('*.aerolock');
+    });
+
+    it('excludes private vault journals from Compare and exported commands', () => {
+        const journals = ['.aerovault-state', 'aerovault/journals'];
+        expect(compareExcludePatterns([])).toEqual(expect.arrayContaining(journals));
+        expect(cliExcludePatterns([], AEROSYNC_DEFAULT_BACKUP_DIR)).toEqual(expect.arrayContaining(journals));
+    });
+
+    it('leaves an ordinary dot file ending in .aerostrip to the Rust journal rule', () => {
+        // The Rust artifact rule excludes only the 64-hex strip journals; a
+        // default glob ending in .aerostrip would also drop `.notes.aerostrip`.
+        expect(compareExcludePatterns([]).filter((p) => p.endsWith('.aerostrip'))).toEqual([]);
+    });
+
     it('sends the Plan tab patterns to every compare, after the defaults', () => {
         // Before the Plan had an exclude field, a remote compare ran with the
         // defaults only, so a file matching the user's pattern was planned

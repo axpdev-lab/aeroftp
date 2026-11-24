@@ -61,6 +61,17 @@ updates:
         update-types: ["version-update:semver-major"]
       - dependency-name: "notify-debouncer-full"
         update-types: ["version-update:semver-major"]
+      # zbus 6 removes the blocking connection the Linux UDisks2 client uses
+      # (filesystem.rs: blocking::Connection, Guid::generate, p2p). An fdo
+      # AccessDenied reply is Error::FDO there, not Error::MethodError, which
+      # is how a refused snap plug is recognized. tauri 2.11.0 does not depend
+      # on zbus. tauri-plugin-single-instance 2.4.5 requires zbus ^5, and
+      # 2.5.5 still requires zbus ^5 plus tauri ^2.12, which the tauri pin
+      # forbids. notify-rust 4.18.0 (through tauri-plugin-notification) stays
+      # on zbus ^5. ashpd is not in this graph; ashpd 0.14.3 wants zbus ^6
+      # and does not hold the tree. Sparse index at 998d2ff50, 2026-11-23.
+      - dependency-name: "zbus"
+        versions: [">=6.0.0"]
       - dependency-name: "windows"
         update-types: ["version-update:semver-patch", "version-update:semver-minor", "version-update:semver-major"]
       - dependency-name: "rusqlite"

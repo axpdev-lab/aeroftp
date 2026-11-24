@@ -4455,7 +4455,13 @@
             "modeNonIdentical": "Mitteidentne",
             "groupsCount": "Rühmad: {count}",
             "duplicateFilesCount": "Duplikaatfailid: {count}",
-            "copiesCount": "{count} koopiat"
+            "copiesCount": "{count} koopiat",
+            "refreshTooltip": "Kontrolli, kas leitud duplikaadid on endiselt olemas, ja eemalda puuduvad failid uuesti skannimata",
+            "refreshRemoved": "{count} puuduvat faili nimekirjast eemaldatud",
+            "refreshUpToDate": "Kõik failid on endiselt olemas",
+            "refreshChanged": "{count} muutunud faili eemaldati loendist",
+            "refreshUnverified": "{count} ei saanud kontrollida",
+            "refreshFailed": "Värskendamine ebaõnnestus: {error}"
         },
         "diskUsage": {
             "title": "Kettakasutus",
@@ -7189,7 +7195,10 @@
         },
         "openRequest": {
             "folderBusyTitle": "Kausta laaditakse veel",
-            "folderBusy": "Avatud faili ei kuvatud: kui küsiti kausta {folder}, laaditi veel mõnda teist kausta. Avage fail uuesti."
+            "folderBusy": "Avatud faili ei kuvatud: kui küsiti kausta {folder}, laaditi veel mõnda teist kausta. Avage fail uuesti.",
+            "signInNeedsProfileTitle": "{provider} vajab salvestatud sisselogimist",
+            "signInNeedsProfile": "{provider} logib sisse oma brauseriautoriseerimisega, mida link edastada ei saa. Lisa ja autoriseeri konto jaotises Minu serverid ning ava seejärel {scheme}://<profiili nimi>/kaust/.",
+            "signInNameTheProfile": "Salvestatud on mitu {provider} kontot. Nimeta see, mida avada: {scheme}://<profiili nimi>/kaust/."
         }
     }
 }

@@ -4455,7 +4455,13 @@
             "modeNonIdentical": "Tidak identik",
             "groupsCount": "{count} grup",
             "duplicateFilesCount": "{count} file duplikat",
-            "copiesCount": "{count} salinan"
+            "copiesCount": "{count} salinan",
+            "refreshTooltip": "Periksa apakah duplikat yang terdeteksi masih ada dan hapus file yang hilang tanpa memindai ulang",
+            "refreshRemoved": "{count} file yang hilang dikeluarkan dari daftar",
+            "refreshUpToDate": "Semua file masih ada",
+            "refreshChanged": "{count} file yang berubah dikeluarkan dari daftar",
+            "refreshUnverified": "{count} tidak dapat diperiksa",
+            "refreshFailed": "Penyegaran gagal: {error}"
         },
         "diskUsage": {
             "title": "Penggunaan Disk",
@@ -7189,7 +7195,10 @@
         },
         "openRequest": {
             "folderBusyTitle": "Folder masih dimuat",
-            "folderBusy": "File yang Anda buka tidak ditampilkan: folder lain masih dimuat saat {folder} diminta. Buka kembali file tersebut."
+            "folderBusy": "File yang Anda buka tidak ditampilkan: folder lain masih dimuat saat {folder} diminta. Buka kembali file tersebut.",
+            "signInNeedsProfileTitle": "{provider} memerlukan login tersimpannya",
+            "signInNeedsProfile": "{provider} masuk melalui otorisasi browser miliknya sendiri, yang tidak dapat dibawa oleh tautan. Tambahkan dan otorisasi akun di Server Saya, lalu buka {scheme}://<nama profil>/folder/.",
+            "signInNameTheProfile": "Beberapa akun {provider} tersimpan. Sebutkan yang akan dibuka: {scheme}://<nama profil>/folder/."
         }
     }
 }

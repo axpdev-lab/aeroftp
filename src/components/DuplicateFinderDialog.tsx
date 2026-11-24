@@ -14,13 +14,14 @@ import * as React from 'react';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import { Search, X, Trash2, CheckCircle, AlertCircle, Loader2, Copy, FileX, Check, ExternalLink, FolderOpen } from 'lucide-react';
+import { Search, X, Trash2, CheckCircle, AlertCircle, Loader2, Copy, FileX, Check, ExternalLink, FolderOpen, RefreshCw } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { formatBytes } from '../utils/formatters';
 import { DuplicateGroup } from '../types/aerofile';
 import { Checkbox } from './ui/Checkbox';
 import { useDraggableModal } from '../hooks/useDraggableModal';
 import { useClipboardCopy } from '../hooks/useClipboardCopy';
+import { useGuardedClose } from '../hooks/useGuardedClose';
 import { MODAL_Z } from '../utils/modalLayers';
 import { ImageThumbnail } from './ImageThumbnail';
 import { signatureOf } from '../utils/thumbnailCache';
@@ -30,7 +31,7 @@ const PREVIEWABLE_IMAGE = /\.(jpe?g|png|gif|svg|webp|bmp|ico)$/i;
 const isPreviewableImage = (name: string): boolean => PREVIEWABLE_IMAGE.test(name);
 
 /** Payload of the backend's `duplicate-scan-progress` event (filesystem.rs). */
-interface DuplicateScanProgress {
+export interface DuplicateScanProgress {
   scan_id: string;
   phase: 'walk' | 'analyze';
   files_scanned: number;
@@ -39,8 +40,40 @@ interface DuplicateScanProgress {
   max_depth: number;
   files_processed: number;
   files_total: number;
+  bytes_processed?: number;
+  bytes_total?: number;
   files_skipped: number;
   current_path: string;
+}
+
+export interface ScanProgressCounters {
+  filesLabel: string;
+  bytesLabel: string;
+}
+
+/**
+ * Formats the file and byte counters for the scan progress strip.
+ *
+ * During `analyze`, the file count is shown once as `processed / total`
+ * instead of repeating the folder total next to `files_scanned` (Discussion #347),
+ * and bytes show `processed / total` whenever the analysis total is known.
+ */
+export function formatScanProgressCounters(
+  progress: DuplicateScanProgress | null,
+): ScanProgressCounters {
+  const isAnalyze = progress?.phase === 'analyze';
+  const filesTotal = progress?.files_total ?? 0;
+  const filesLabel = isAnalyze && filesTotal > 0
+    ? `${Math.min(progress!.files_processed, filesTotal).toLocaleString()} / ${filesTotal.toLocaleString()}`
+    : (progress?.files_scanned ?? 0).toLocaleString();
+
+  const bytesTotal = progress?.bytes_total ?? 0;
+  const bytesProcessed = progress?.bytes_processed ?? 0;
+  const bytesLabel = isAnalyze && bytesTotal > 0
+    ? `${formatBytes(Math.min(bytesProcessed, bytesTotal))} / ${formatBytes(bytesTotal)}`
+    : formatBytes(progress?.bytes_scanned ?? 0);
+
+  return { filesLabel, bytesLabel };
 }
 
 /** m:ss, or h:mm:ss once a scan has been running that long. */
@@ -74,7 +107,7 @@ interface DuplicateFinderDialogProps {
    * Opens one file in the app's preview, where it can also be edited. Given, the
    * rows grow a clickable thumbnail; omitted, they do not.
    */
-  onPreviewFile?: (path: string) => void;
+  onPreviewFile?: (path: string, size?: number) => void;
 }
 
 /** Extract the filename from a full path */
@@ -194,6 +227,137 @@ export function shortHash(hash: string): string {
     : hash;
 }
 
+/**
+ * Drops files failing `keep` while keeping parallel `file_hashes` and
+ * `file_sizes` aligned and discarding groups left with fewer than two copies.
+ */
+export function pruneDuplicateGroups(
+  groups: DuplicateGroup[],
+  keep: (path: string) => boolean,
+): DuplicateGroup[] {
+  const updatedGroups: DuplicateGroup[] = [];
+  for (const group of groups) {
+    // `file_hashes` and `file_sizes` are parallel to `files`; filtering
+    // one and not the others would silently shift every row's hash and
+    // size by the number of copies removed above it.
+    const kept = group.files
+      .map((f, i) => ({ f, i }))
+      .filter(({ f }) => keep(f));
+    if (kept.length > 1) {
+      updatedGroups.push({
+        ...group,
+        size: group.file_sizes ? group.file_sizes[kept[0].i] : group.size,
+        files: kept.map(({ f }) => f),
+        file_hashes: group.file_hashes ? kept.map(({ i }) => group.file_hashes![i]) : undefined,
+        file_sizes: group.file_sizes ? kept.map(({ i }) => group.file_sizes![i]) : undefined,
+      });
+    }
+  }
+  return updatedGroups;
+}
+
+/**
+ * Intersects a selection set with the paths currently belonging to `groups` so
+ * no orphaned path from a dropped group can stay counted or reach delete.
+ */
+export function retainVisibleSelection(
+  selected: Set<string>,
+  groups: DuplicateGroup[],
+): Set<string> {
+  const visible = new Set<string>();
+  for (const group of groups) {
+    for (const file of group.files) visible.add(file);
+  }
+  const retained = new Set<string>();
+  for (const path of selected) {
+    if (visible.has(path)) retained.add(path);
+  }
+  return retained;
+}
+
+/**
+ * Reconciles the selection set after a delete or refresh prunes `groups`:
+ * removes `droppedPaths` and intersects the remaining ticks with `survivingGroups`
+ * so ticks on surviving rows stay intact while ticks on dropped groups vanish.
+ */
+export function reconcileSelectionAfterPrune(
+  selected: Set<string>,
+  survivingGroups: DuplicateGroup[],
+  droppedPaths: Iterable<string>,
+): Set<string> {
+  const dropped = new Set(droppedPaths);
+  const withoutDropped = new Set<string>();
+  for (const path of selected) {
+    if (!dropped.has(path)) withoutDropped.add(path);
+  }
+  return retainVisibleSelection(withoutDropped, survivingGroups);
+}
+
+/** Per-path status returned by `filter_existing_local_paths` (filesystem.rs). */
+export type LocalPathCheckStatus =
+  | { status: 'present'; path: string; size: number }
+  | { status: 'missing'; path: string }
+  | { status: 'unverified'; path: string };
+
+export interface RefreshEvaluation {
+  nextGroups: DuplicateGroup[];
+  droppedPaths: Set<string>;
+  missingCount: number;
+  changedCount: number;
+  unverifiedCount: number;
+}
+
+/**
+ * Classifies per-path refresh statuses against the current duplicate groups:
+ * - `missing`: dropped from groups and selection;
+ * - `present` whose current byte size differs from scan-time size: treated as
+ *   changed and dropped from groups and selection;
+ * - `unverified` (e.g. permission error): kept in groups and counted separately
+ *   so it is neither dropped nor reported as verified.
+ */
+export function evaluateRefreshStatuses(
+  groups: DuplicateGroup[],
+  statuses: LocalPathCheckStatus[],
+): RefreshEvaluation {
+  const byPath = new Map<string, LocalPathCheckStatus>();
+  for (const entry of statuses) {
+    byPath.set(entry.path, entry);
+  }
+
+  const missingPaths = new Set<string>();
+  const changedPaths = new Set<string>();
+  const unverifiedPaths = new Set<string>();
+
+  for (const group of groups) {
+    for (let i = 0; i < group.files.length; i++) {
+      const filePath = group.files[i];
+      const entry = byPath.get(filePath);
+      if (!entry) continue;
+      if (entry.status === 'missing') {
+        missingPaths.add(filePath);
+      } else if (entry.status === 'unverified') {
+        unverifiedPaths.add(filePath);
+      } else {
+        const expectedSize = group.file_sizes?.[i] ?? group.size;
+        if (entry.size !== expectedSize) {
+          changedPaths.add(filePath);
+        }
+      }
+    }
+  }
+
+  const droppedPaths = new Set<string>([...missingPaths, ...changedPaths]);
+  const nextGroups = pruneDuplicateGroups(groups, (f) => !droppedPaths.has(f));
+
+  return {
+    nextGroups,
+    droppedPaths,
+    missingCount: missingPaths.size,
+    changedCount: changedPaths.size,
+    unverifiedCount: unverifiedPaths.size,
+  };
+}
+
 export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
   isOpen,
   scanPath,
@@ -208,7 +372,16 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
   const [groups, setGroups] = useState<DuplicateGroup[]>([]);
   const [isScanning, setIsScanning] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshNotice, setRefreshNotice] = useState<
+    | { kind: 'summary'; missing: number; changed: number; unverified: number }
+    | { kind: 'upToDate' }
+    | { kind: 'error'; message: string }
+    | null
+  >(null);
   const [error, setError] = useState<string | null>(null);
+  // Inline confirmation dialog state (replaces window.confirm for styled UX)
+  const [pendingDeleteConfirm, setPendingDeleteConfirm] = useState(false);
   // Set of file paths selected for deletion
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
   // Mode: 'exact' (default, byte-identical) or 'non-identical' (consumes shared engine)
@@ -240,6 +413,12 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
   useEffect(() => {
     keepPolicyRef.current = keepPolicy;
   }, [keepPolicy]);
+  const refreshSequenceRef = useRef(0);
+  const isRefreshingRef = useRef(false);
+  const groupsRef = useRef(groups);
+  useEffect(() => {
+    groupsRef.current = groups;
+  }, [groups]);
   // The fuzzy cutoff, applied only in non-identical mode. null = engine defaults
   // (raster <=10, text <=3, other <=100), which is what every scan used before.
   const [threshold, setThreshold] = useState<number | null>(null);
@@ -251,7 +430,11 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
   const scan = useCallback(async () => {
     const scanId = `duplicate-${Date.now()}-${++scanSequenceRef.current}`;
     activeScanIdRef.current = scanId;
+    refreshSequenceRef.current += 1;
+    isRefreshingRef.current = false;
     setIsScanning(true);
+    setIsRefreshing(false);
+    setRefreshNotice(null);
     setError(null);
     setGroups([]);
     setSelectedPaths(new Set());
@@ -292,12 +475,17 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
       scan();
     } else {
       activeScanIdRef.current = null;
+      refreshSequenceRef.current += 1;
+      isRefreshingRef.current = false;
       // Reset state when dialog closes
       setGroups([]);
       setSelectedPaths(new Set());
       setError(null);
       setIsScanning(false);
       setIsDeleting(false);
+      setIsRefreshing(false);
+      setRefreshNotice(null);
+      setPendingDeleteConfirm(false);
     }
     // Note: `scan` depends on `mode` and on the applied fuzzy threshold, so
     // changing either re-runs this effect and re-scans. No separate effect.
@@ -341,21 +529,71 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
     }
   }, [isOpen]);
 
-  // Keyboard handler: Escape to close
-  useEffect(() => {
-    if (!isOpen) return;
+  // Route Escape through the shared modal stack so overlays opened on top
+  // (UniversalPreview fullscreen image viewer, or the inline delete confirm)
+  // consume Escape first without closing Find Duplicates underneath (#347).
+  useGuardedClose({
+    guard: null,
+    onClose,
+    backdrop: 'never',
+    escape: isOpen,
+  });
+  useGuardedClose({
+    guard: null,
+    onClose: () => setPendingDeleteConfirm(false),
+    backdrop: 'never',
+    escape: isOpen && pendingDeleteConfirm,
+  });
 
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        e.stopPropagation();
-        onClose();
+  // Re-check only the already-detected duplicate paths on disk without
+  // walking or re-hashing the whole folder (#347).
+  const refreshDuplicates = useCallback(async () => {
+    if (isScanning || isDeleting || isRefreshingRef.current || pendingDeleteConfirm) return;
+    const paths = Array.from(new Set(groupsRef.current.flatMap((g) => g.files)));
+    if (paths.length === 0) return;
+
+    const scanIdAtStart = activeScanIdRef.current;
+    const seq = ++refreshSequenceRef.current;
+    isRefreshingRef.current = true;
+    setIsRefreshing(true);
+    setRefreshNotice(null);
+
+    try {
+      const statuses = await invoke<LocalPathCheckStatus[]>('filter_existing_local_paths', { paths });
+      if (activeScanIdRef.current !== scanIdAtStart || refreshSequenceRef.current !== seq) return;
+
+      const evaluated = evaluateRefreshStatuses(groupsRef.current, statuses);
+
+      setGroups((current) => pruneDuplicateGroups(current, (f) => !evaluated.droppedPaths.has(f)));
+      setSelectedPaths((prev) =>
+        reconcileSelectionAfterPrune(prev, evaluated.nextGroups, evaluated.droppedPaths),
+      );
+
+      if (evaluated.missingCount === 0 && evaluated.changedCount === 0 && evaluated.unverifiedCount === 0) {
+        setRefreshNotice({ kind: 'upToDate' });
+      } else {
+        setRefreshNotice({
+          kind: 'summary',
+          missing: evaluated.missingCount,
+          changed: evaluated.changedCount,
+          unverified: evaluated.unverifiedCount,
+        });
       }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
+    } catch (err) {
+      if (activeScanIdRef.current !== scanIdAtStart || refreshSequenceRef.current !== seq) return;
+      // Keep the existing results and selection visible; surface refresh errors
+      // inline in the summary bar so clicking Refresh retries without rescanning.
+      setRefreshNotice({
+        kind: 'error',
+        message: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      if (refreshSequenceRef.current === seq) {
+        isRefreshingRef.current = false;
+        setIsRefreshing(false);
+      }
+    }
+  }, [isScanning, isDeleting, pendingDeleteConfirm]);
 
   // Toggle a single file's selection
   const toggleFile = useCallback((path: string) => {
@@ -392,6 +630,14 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
     setSelectedPaths(new Set());
   }, []);
 
+  // Invariant: a selected path must always belong to a visible group. Deriving
+  // the visible intersection here defends the button count, confirmation prompt
+  // and summary against any orphaned path that could ever fall out of `groups`.
+  const visibleSelectedPaths = useMemo(
+    () => retainVisibleSelection(selectedPaths, groups),
+    [selectedPaths, groups],
+  );
+
   /**
    * The groups where every single copy is ticked.
    *
@@ -402,19 +648,20 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
    * amputating the control gives the choice back and still refuses the accident.
    */
   const fullyTickedGroups = useMemo(
-    () => groups.filter((g) => g.files.length > 0 && g.files.every((f) => selectedPaths.has(f))),
-    [groups, selectedPaths],
+    () => groups.filter((g) => g.files.length > 0 && g.files.every((f) => visibleSelectedPaths.has(f))),
+    [groups, visibleSelectedPaths],
   );
 
-  // Inline confirmation dialog state (replaces window.confirm for styled UX)
-  const [pendingDeleteConfirm, setPendingDeleteConfirm] = useState(false);
-
   const runDelete = useCallback(async () => {
+    if (isRefreshingRef.current) return;
     setPendingDeleteConfirm(false);
-    const paths = Array.from(selectedPaths);
+    // Point-of-action defence: only paths belonging to a currently visible group
+    // may reach `onDeleteFiles`, so an orphaned path can never be deleted.
+    const paths = Array.from(retainVisibleSelection(selectedPaths, groupsRef.current));
     if (paths.length === 0) return;
 
     setIsDeleting(true);
+    setRefreshNotice(null);
     try {
       await onDeleteFiles(paths);
       // Reconcile against whatever the state is NOW, not against the snapshot
@@ -423,33 +670,11 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
       // back the captured `groups` would then discard the newer results and
       // clear a selection the user made after pressing the button.
       const deleted = new Set(paths);
-      setGroups((current) => {
-        const updatedGroups: DuplicateGroup[] = [];
-        for (const group of current) {
-          // `file_hashes` and `file_sizes` are parallel to `files`; filtering
-          // one and not the others would silently shift every row's hash and
-          // size by the number of copies deleted above it.
-          const kept = group.files
-            .map((f, i) => ({ f, i }))
-            .filter(({ f }) => !deleted.has(f));
-          if (kept.length > 1) {
-            updatedGroups.push({
-              ...group,
-              files: kept.map(({ f }) => f),
-              file_hashes: group.file_hashes ? kept.map(({ i }) => group.file_hashes![i]) : undefined,
-              file_sizes: group.file_sizes ? kept.map(({ i }) => group.file_sizes![i]) : undefined,
-            });
-          }
-        }
-        return updatedGroups;
-      });
-      // Drop only what was actually deleted; anything ticked in the meantime
-      // stays ticked.
-      setSelectedPaths((prev) => {
-        const next = new Set(prev);
-        for (const p of deleted) next.delete(p);
-        return next;
-      });
+      const survivingGroups = pruneDuplicateGroups(groupsRef.current, (f) => !deleted.has(f));
+      setGroups((current) => pruneDuplicateGroups(current, (f) => !deleted.has(f)));
+      // Drop deleted paths and any tick whose group ceased to exist, while
+      // keeping later ticks on rows that still belong to a surviving group.
+      setSelectedPaths((prev) => reconcileSelectionAfterPrune(prev, survivingGroups, deleted));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       // A reject does not mean nothing was deleted: `onDeleteFiles` walks the
@@ -468,7 +693,7 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
    * is raised at all; `onDeleteFiles` must not raise a second one (#537).
    */
   const handleDelete = useCallback(() => {
-    if (selectedPaths.size === 0) return;
+    if (visibleSelectedPaths.size === 0 || isRefreshing) return;
     // A selection that would leave a group with no copy at all is confirmed even
     // when `confirmBeforeDelete` is off: that setting is about the routine case,
     // and Select All deliberately produces the case that is not routine. The
@@ -479,7 +704,7 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
       return;
     }
     setPendingDeleteConfirm(true);
-  }, [selectedPaths, confirmBeforeDelete, fullyTickedGroups, runDelete]);
+  }, [visibleSelectedPaths, isRefreshing, confirmBeforeDelete, fullyTickedGroups, runDelete]);
 
   // Summary calculations
   const summary = useMemo(() => {
@@ -491,7 +716,7 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
       // Non-identical: "potential" waste only from user-selected files (nothing auto-selected)
       for (const group of groups) {
         for (const f of group.files) {
-          if (selectedPaths.has(f)) {
+          if (visibleSelectedPaths.has(f)) {
             // count as potential dupe (size is group size, approximate)
             totalDuplicates += 1;
             wastedBytes += group.size;
@@ -507,7 +732,7 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
     }
 
     return { totalGroups, totalDuplicates, wastedBytes };
-  }, [groups, mode, selectedPaths]);
+  }, [groups, mode, visibleSelectedPaths]);
 
   // The order the groups are shown in. The backend returns them by reclaimable
   // space; 'similarity' re-sorts by how alike the group's members actually are,
@@ -549,7 +774,26 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
     });
   }, [groups, sortBy]);
 
-  const selectedCount = selectedPaths.size;
+  const selectedCount = visibleSelectedPaths.size;
+
+  const refreshNoticeText = useMemo(() => {
+    if (!refreshNotice) return null;
+    if (refreshNotice.kind === 'upToDate') return t('duplicates.refreshUpToDate');
+    if (refreshNotice.kind === 'error') {
+      return t('duplicates.refreshFailed', { error: refreshNotice.message });
+    }
+    const parts: string[] = [];
+    if (refreshNotice.missing > 0) {
+      parts.push(t('duplicates.refreshRemoved', { count: refreshNotice.missing }));
+    }
+    if (refreshNotice.changed > 0) {
+      parts.push(t('duplicates.refreshChanged', { count: refreshNotice.changed }));
+    }
+    if (refreshNotice.unverified > 0) {
+      parts.push(t('duplicates.refreshUnverified', { count: refreshNotice.unverified }));
+    }
+    return parts.join(' · ');
+  }, [refreshNotice, t]);
 
   if (!isOpen) return null;
 
@@ -702,29 +946,34 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
               </div>
             )}
 
-            <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
-              <span className="tabular-nums">⏱ {formatElapsed(elapsedMs)}</span>
-              <span className="tabular-nums">
-                📄 {(progress?.files_scanned ?? 0).toLocaleString()}
-              </span>
-              <span className="tabular-nums">
-                📁 {(progress?.dirs_scanned ?? 0).toLocaleString()}
-              </span>
-              <span className="tabular-nums">{formatBytes(progress?.bytes_scanned ?? 0)}</span>
-              {(progress?.max_depth ?? 0) > 0 && (
-                <span className="tabular-nums">↳ {progress?.max_depth}</span>
-              )}
-              {progress?.phase === 'analyze' && progress.files_total > 0 && (
-                <span className="tabular-nums">
-                  {progress.files_processed.toLocaleString()} / {progress.files_total.toLocaleString()}
-                </span>
-              )}
-              {(progress?.files_skipped ?? 0) > 0 && (
-                <span className="tabular-nums text-amber-600 dark:text-amber-400">
-                  ⚠ {t('saveAll.skipped', { count: progress!.files_skipped })}
-                </span>
-              )}
-            </div>
+            {(() => {
+              const counters = formatScanProgressCounters(progress);
+              return (
+                <div
+                  data-testid="duplicates-scan-counters"
+                  className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400"
+                >
+                  <span className="tabular-nums">⏱ {formatElapsed(elapsedMs)}</span>
+                  <span className="tabular-nums" data-testid="duplicates-scan-files">
+                    📄 {counters.filesLabel}
+                  </span>
+                  <span className="tabular-nums">
+                    📁 {(progress?.dirs_scanned ?? 0).toLocaleString()}
+                  </span>
+                  {(progress?.max_depth ?? 0) > 0 && (
+                    <span className="tabular-nums">↳ {progress?.max_depth}</span>
+                  )}
+                  <span className="tabular-nums" data-testid="duplicates-scan-bytes">
+                    {counters.bytesLabel}
+                  </span>
+                  {(progress?.files_skipped ?? 0) > 0 && (
+                    <span className="tabular-nums text-amber-600 dark:text-amber-400">
+                      ⚠ {t('saveAll.skipped', { count: progress!.files_skipped })}
+                    </span>
+                  )}
+                </div>
+              );
+            })()}
 
             {progress?.phase === 'walk' && progress.current_path && (
               <span className="max-w-full truncate text-[10px] text-gray-400 dark:text-gray-500" title={progress.current_path}>
@@ -757,6 +1006,11 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
             <span className="text-sm text-gray-600 dark:text-gray-400">
               {t('duplicates.noDuplicates')}
             </span>
+            {refreshNotice?.kind === 'summary' && refreshNoticeText && (
+              <span data-testid="duplicates-refresh-notice" className="text-xs text-green-600 dark:text-green-400">
+                {refreshNoticeText}
+              </span>
+            )}
             {(progress?.files_skipped ?? 0) > 0 && (
               <span className="text-xs text-amber-600 dark:text-amber-400">
                 {t('saveAll.skipped', { count: progress!.files_skipped })}
@@ -769,7 +1023,7 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
         {!isScanning && !error && groups.length > 0 && (
           <>
             {/* Summary bar */}
-            <div className="flex items-center gap-4 px-4 py-2.5 bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-700 text-xs text-gray-600 dark:text-gray-400">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5 bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-700 text-xs text-gray-600 dark:text-gray-400">
               <span className="flex items-center gap-1.5">
                 <Copy size={13} className="text-blue-400" />
                 {t('duplicates.groupsCount', { count: summary.totalGroups })}
@@ -787,6 +1041,37 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
                   ⚠ {t('saveAll.skipped', { count: progress!.files_skipped })}
                 </span>
               )}
+              <div className="ml-auto flex items-center gap-2 shrink-0">
+                {refreshNotice && refreshNoticeText && (
+                  <span
+                    data-testid="duplicates-refresh-notice"
+                    className={`text-[11px] max-w-[260px] truncate ${
+                      refreshNotice.kind === 'error'
+                        ? 'text-red-600 dark:text-red-400'
+                        : refreshNotice.kind === 'summary' && refreshNotice.unverified > 0
+                          ? 'text-amber-600 dark:text-amber-400'
+                          : refreshNotice.kind === 'summary'
+                            ? 'text-green-600 dark:text-green-400'
+                            : 'text-gray-400 dark:text-gray-500'
+                    }`}
+                    title={refreshNoticeText}
+                  >
+                    {refreshNoticeText}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  data-testid="duplicates-refresh-btn"
+                  onClick={() => void refreshDuplicates()}
+                  disabled={isRefreshing || isScanning || isDeleting || pendingDeleteConfirm}
+                  title={t('duplicates.refreshTooltip')}
+                  aria-label={t('common.refresh')}
+                  className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  <RefreshCw size={12} className={isRefreshing ? 'animate-spin' : ''} />
+                  {t('common.refresh')}
+                </button>
+              </div>
             </div>
 
             {/* Groups list (scrollable) */}
@@ -808,7 +1093,7 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
                     <span className="text-gray-400 dark:text-gray-500 ml-auto shrink-0">
                       {formatBytes(group.size)} &times; {t('duplicates.copiesCount', { count: group.files.length })}
                     </span>
-                    {group.files.every((f) => selectedPaths.has(f)) && (
+                    {group.files.every((f) => visibleSelectedPaths.has(f)) && (
                       <span className="ml-2 px-1.5 py-0.5 text-[10px] rounded bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 shrink-0">
                         {t('duplicates.everyCopyTicked')}
                       </span>
@@ -831,7 +1116,7 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
                         ? extentOf(group.file_sizes)[1]
                         : undefined;
                       return group.files.map((filePath, fileIdx) => {
-                      const isChecked = selectedPaths.has(filePath);
+                      const isChecked = visibleSelectedPaths.has(filePath);
                       const isKept = !isChecked;
                       const fileName = getFileName(filePath);
                       const dirPath = getDirectory(filePath);
@@ -876,7 +1161,7 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
                           {onPreviewFile && isPreviewableImage(fileName) ? (
                             <button
                               type="button"
-                              onClick={(e) => { e.stopPropagation(); onPreviewFile(filePath); }}
+                              onClick={(e) => { e.stopPropagation(); onPreviewFile(filePath, fileSize ?? group.size); }}
                               title={t('contextMenu.preview')}
                               className="shrink-0 mt-0.5 rounded overflow-hidden border border-gray-200 dark:border-gray-600 hover:border-blue-400 transition-colors"
                             >
@@ -1013,7 +1298,7 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
               <button
                 onClick={handleDelete}
                 title={fullyTickedGroups.length > 0 ? t('duplicates.everyCopyTickedHint') : undefined}
-                disabled={selectedCount === 0 || isDeleting}
+                disabled={selectedCount === 0 || isDeleting || isRefreshing}
                 className="flex items-center gap-2 px-4 py-1.5 bg-red-500 hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded text-sm"
               >
                 {isDeleting ? (
@@ -1048,7 +1333,7 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
               {/* `deleteConfirm`, the key that exists. `duplicates.confirmDelete`
                   was in none of the 47 locales, so this line printed its own key
                   name at the user instead of a question (#537). */}
-              {t('duplicates.deleteConfirm', { count: selectedPaths.size })}
+              {t('duplicates.deleteConfirm', { count: selectedCount })}
             </p>
             {fullyTickedGroups.length > 0 && (
               /* Named, not just counted: "3 groups" is not something a user can
@@ -1078,7 +1363,8 @@ export const DuplicateFinderDialog: React.FC<DuplicateFinderDialogProps> = ({
               </button>
               <button
                 onClick={runDelete}
-                className="px-4 py-2 text-white rounded-lg bg-red-500 hover:bg-red-600"
+                disabled={isDeleting || isRefreshing}
+                className="px-4 py-2 text-white rounded-lg bg-red-500 hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {t('common.delete')}
               </button>

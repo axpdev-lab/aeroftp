@@ -216,6 +216,10 @@ impl AeroIgnore {
         is_dir: bool,
         config_excludes: &crate::sync_exclude::ExcludeMatcher,
     ) -> bool {
+        if config_excludes.excludes_vault_artifact_path(relative_path) {
+            return true;
+        }
+
         // First check .aeroignore (has negation support)
         let aeroignore_result = self.is_ignored(relative_path, is_dir);
 
@@ -291,6 +295,9 @@ pub fn scan_decision(
     is_dir: bool,
     config_excludes: &crate::sync_exclude::ExcludeMatcher,
 ) -> ScanDecision {
+    if config_excludes.excludes_vault_artifact_path(relative_path) {
+        return ScanDecision::Skip;
+    }
     let excluded = match aeroignore {
         Some(rules) => rules.should_exclude(relative_path, is_dir, config_excludes),
         None => config_excludes.is_excluded(relative_path),

@@ -133,7 +133,12 @@ impl ScanOptions {
     /// scan it fails closed: every path excluded, and the scan reported
     /// incomplete so no orphan delete trusts the empty result.
     pub fn excludes_or_everything(&self) -> crate::sync_exclude::ExcludeMatcher {
-        crate::sync::compile_excludes(&self.exclude_patterns).unwrap_or_else(|e| {
+        let result = if self.remote_totals_only {
+            crate::sync_exclude::ExcludeMatcher::new(&self.exclude_patterns)
+        } else {
+            crate::sync_exclude::ExcludeMatcher::for_sync(&self.exclude_patterns)
+        };
+        result.unwrap_or_else(|e| {
             tracing::error!("{e}: the scan excludes every path and reports itself incomplete");
             crate::sync_exclude::ExcludeMatcher::everything()
         })

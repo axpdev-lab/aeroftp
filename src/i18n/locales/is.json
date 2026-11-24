@@ -4455,7 +4455,13 @@
             "modeNonIdentical": "Ekki eins",
             "groupsCount": "Hópar: {count}",
             "duplicateFilesCount": "Tvíteknar skrár: {count}",
-            "copiesCount": "{count} afrit"
+            "copiesCount": "{count} afrit",
+            "refreshTooltip": "Athuga hvort greind tvírit séu enn til og fjarlægja skrár sem vantar án þess að skanna aftur",
+            "refreshRemoved": "{count} skrár sem vantar fjarlægðar af listanum",
+            "refreshUpToDate": "Allar skrár eru enn til",
+            "refreshChanged": "{count} breyttar skrár fjarlægðar af listanum",
+            "refreshUnverified": "Ekki tókst að athuga {count}",
+            "refreshFailed": "Endurnýjun mistókst: {error}"
         },
         "diskUsage": {
             "title": "Disknotkun",
@@ -7208,7 +7214,10 @@
         },
         "openRequest": {
             "folderBusyTitle": "Mappan er enn að hlaðast",
-            "folderBusy": "Skráin sem þú opnaðir var ekki birt: önnur mappa var enn að hlaðast þegar beðið var um {folder}. Opnaðu hana aftur."
+            "folderBusy": "Skráin sem þú opnaðir var ekki birt: önnur mappa var enn að hlaðast þegar beðið var um {folder}. Opnaðu hana aftur.",
+            "signInNeedsProfileTitle": "{provider} þarf vistaða innskráningu sína",
+            "signInNeedsProfile": "{provider} skráir sig inn með eigin vafraheimild, sem tengill getur ekki borið. Bættu reikningnum við og heimilaðu hann í Netþjónarnir mínir og opnaðu síðan {scheme}://<heiti sniðs>/mappa/.",
+            "signInNameTheProfile": "Nokkrir {provider} reikningar eru vistaðir. Nefndu þann sem á að opna: {scheme}://<heiti sniðs>/mappa/."
         }
     }
 }

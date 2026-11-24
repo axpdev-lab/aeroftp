@@ -4455,7 +4455,13 @@
             "modeNonIdentical": "不完全相同",
             "groupsCount": "{count} 个组",
             "duplicateFilesCount": "{count} 个重复文件",
-            "copiesCount": "{count} 个副本"
+            "copiesCount": "{count} 个副本",
+            "refreshTooltip": "检查检测到的重复文件是否仍然存在，无需重新扫描即可移除缺失的文件",
+            "refreshRemoved": "已从列表中移除 {count} 个缺失的文件",
+            "refreshUpToDate": "所有文件仍然存在",
+            "refreshChanged": "已从列表中移除 {count} 个已更改的文件",
+            "refreshUnverified": "{count} 项无法检查",
+            "refreshFailed": "刷新失败：{error}"
         },
         "diskUsage": {
             "title": "磁盘使用情况",
@@ -7189,7 +7195,10 @@
         },
         "openRequest": {
             "folderBusyTitle": "文件夹仍在加载",
-            "folderBusy": "您打开的文件未显示：请求 {folder} 时，另一个文件夹仍在加载。请重新打开。"
+            "folderBusy": "您打开的文件未显示：请求 {folder} 时，另一个文件夹仍在加载。请重新打开。",
+            "signInNeedsProfileTitle": "{provider} 需要已保存的登录信息",
+            "signInNeedsProfile": "{provider} 通过其自带的浏览器授权登录,链接无法携带该授权。请在“我的服务器”中添加并授权该账户,然后打开 {scheme}://<配置文件名称>/文件夹/。",
+            "signInNameTheProfile": "已保存多个 {provider} 账户。请指定要打开的账户:{scheme}://<配置文件名称>/文件夹/。"
         }
     }
 }

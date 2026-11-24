@@ -122,6 +122,11 @@ pub fn insert_profile_option(
     if normalized_key == "profile_id" {
         return;
     }
+    // A launch link's secret handle belongs to that link's session: a
+    // profile never carries one into a connection (launch_url::launch_secret).
+    if normalized_key == "launch_secret" {
+        return;
+    }
     // `ftpsMode` is only the fallback for profiles imported before the
     // importers wrote `tlsMode`: it never replaces a mode already set, so the
     // user's `tlsMode` wins whatever order the options are iterated in (the
@@ -465,11 +470,16 @@ fn s3_profile_static_endpoint(provider_id: &str) -> Option<&'static str> {
 /// not produce (a virtual-hosted `bucket.` host, another provider). Mirrors
 /// `regionFromS3Endpoint` in `src/providers/registry.ts`.
 fn region_from_s3_template(template: &str, endpoint: &str) -> Option<String> {
+    // A URI scheme is read in any case (`HTTPS://` as `https://`).
     fn without_scheme(value: &str) -> &str {
-        value
-            .strip_prefix("https://")
-            .or_else(|| value.strip_prefix("http://"))
-            .unwrap_or(value)
+        ["https://", "http://"]
+            .into_iter()
+            .find(|scheme| {
+                value
+                    .get(..scheme.len())
+                    .is_some_and(|head| head.eq_ignore_ascii_case(scheme))
+            })
+            .map_or(value, |scheme| &value[scheme.len()..])
     }
     let template = without_scheme(template);
     let (prefix, suffix) = template.split_once("{region}")?;
@@ -1157,6 +1167,16 @@ mod tests {
                 "https://bucket.eu-west-1.object.fastlystorage.app",
                 None,
             ),
+            (
+                "wasabi",
+                "https://s3.eu-central-2.wasabisys.com",
+                Some("eu-central-2"),
+            ),
+            (
+                "wasabi",
+                "HTTPS://s3.eu-central-2.wasabisys.com",
+                Some("eu-central-2"),
+            ),
         ] {
             assert_eq!(
                 s3_region_from_endpoint(preset, endpoint).as_deref(),
@@ -1389,6 +1409,18 @@ mod tests {
             !extra.contains_key("webdavScheme"),
             "raw camelCase key must not leak into provider config"
         );
+    }
+
+    #[test]
+    fn a_profile_never_carries_a_launch_handle_into_a_connection() {
+        let mut extra = HashMap::new();
+        apply_profile_options(
+            &mut extra,
+            &json!({"options": {"launchSecret": "0123456789abcdef0123456789abcdef", "launch_secret": "x", "bucket": "b1"}}),
+        );
+        assert!(!extra.contains_key("launch_secret"), "{extra:?}");
+        assert!(!extra.contains_key("launchSecret"), "{extra:?}");
+        assert_eq!(extra.get("bucket").map(String::as_str), Some("b1"));
     }
 
     #[test]
