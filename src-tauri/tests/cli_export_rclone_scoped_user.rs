@@ -454,7 +454,17 @@ fn export_rclone_without_user_and_no_active_account_reads_no_vault() {
     drop(_env);
     drop(_lock);
 
-    let out = cli(root, &["export", "rclone", "--json"]);
+    let out_path = root.join("export.conf");
+    let out = cli(
+        root,
+        &[
+            "export",
+            "rclone",
+            "-o",
+            out_path.to_str().unwrap(),
+            "--json",
+        ],
+    );
     assert_ne!(
         out.status.code(),
         Some(0),
@@ -462,9 +472,12 @@ fn export_rclone_without_user_and_no_active_account_reads_no_vault() {
         describe(&out)
     );
     assert!(
-        !root.join("export.conf").exists(),
-        "no export file may be written"
+        String::from_utf8_lossy(&out.stdout).contains("NO_ACTIVE_USER")
+            || String::from_utf8_lossy(&out.stderr).contains("NO_ACTIVE_USER"),
+        "the export must fail on the missing scope, not on a vault read:\n{}",
+        describe(&out)
     );
+    assert!(!out_path.exists(), "no export file may be written");
 }
 
 /// Environment guards whose drop is slow enough for an observer to see the
