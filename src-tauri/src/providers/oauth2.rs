@@ -2255,9 +2255,13 @@ impl OAuth2Manager {
                 // the settle wrote to the singleton's partition row is the
                 // live chain: an empty profile adopts it from the row, and
                 // the vault copy of the spent predecessor is not moved.
-                let (partition_successor, had_pending) = {
+                let (partition_successor, had_pending, vault_predecessor) = {
                     let pending = pending_rotations();
                     let kept = pending.get(&(credential_user, legacy.clone()));
+                    let vault_predecessor = kept.and_then(|pending| match pending.source {
+                        PendingSource::Vault => Some(pending.read.clone()),
+                        PendingSource::Partition(_) => None,
+                    });
                     (
                         kept.and_then(|pending| match pending.source {
                             PendingSource::Partition(user) => {
@@ -2266,6 +2270,7 @@ impl OAuth2Manager {
                             PendingSource::Vault => None,
                         }),
                         kept.is_some(),
+                        vault_predecessor,
                     )
                 };
                 let partition_pending = partition_successor.is_some();
@@ -2430,6 +2435,20 @@ impl OAuth2Manager {
                     let destination =
                         vault_token_read(&store, &account).map_err(|_| token_owner_changed())?;
                     if moved || destination.is_some() {
+                        // The partition singleton still holds the record
+                        // the vault successor replaced: it leaves only
+                        // while it is still that predecessor, so a
+                        // different row written meanwhile stays.
+                        if let (Some(user), Some(predecessor)) =
+                            (credential_user, vault_predecessor.as_ref())
+                        {
+                            let _ = crate::user_partitions::delete_user_credential_where(
+                                &store,
+                                user,
+                                &legacy,
+                                &|current| current == predecessor.as_str(),
+                            );
+                        }
                         let current = destination.ok_or_else(token_owner_changed)?;
                         return Self::decode_record(
                             current.as_str(),
@@ -3589,6 +3608,22 @@ mod tests {
                     Some(successor.as_str()),
                     "the vault successor moved to the profile key"
                 );
+                // The partition singleton still held the spent
+                // predecessor the vault successor replaced: it is gone,
+                // so a second empty profile cannot adopt it.
+                assert_eq!(
+                    stored_row(store, first, &legacy),
+                    None,
+                    "the partition predecessor of the vault successor is cleared"
+                );
+                let second_profile = OAuth2Manager::token_account_key(OAuthProvider::Box, "q");
+                if let Ok(got) = OAuth2Manager::new().load_token_record(OAuthProvider::Box, "q") {
+                    assert_ne!(
+                        got.tokens.access_token, "r-access",
+                        "the second empty profile adopted the retired predecessor"
+                    );
+                }
+                assert_eq!(stored_row(store, first, &second_profile), None);
             }
             assert_eq!(pending_rotation_record(Some(first), &legacy), None);
         });
