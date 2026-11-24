@@ -713,8 +713,8 @@ pub fn export_cyberduck(
             ),
         };
 
-        // Cyberduck S3 Path is bucket[/prefix]. Join the bucket and start
-        // folder unless an imported start folder already contains the bucket.
+        // Cyberduck S3 Path is bucket[/prefix]. The stored start folder is
+        // always bucket-relative, even when its first segment repeats the bucket.
         // WebDAV Path is the
         // server path: the URL's own path, then the profile's start folder.
         // The start folder as the profile opens it: `{username}` filled, or
@@ -742,12 +742,7 @@ pub fn export_cyberduck(
                 .map(|s| s.to_string());
             match (bucket, initial_path) {
                 (Some(bucket), Some(path)) => {
-                    let path = path.trim_start_matches('/');
-                    if path == bucket || path.starts_with(&format!("{bucket}/")) {
-                        Some(path.to_string())
-                    } else {
-                        Some(format!("{bucket}/{path}"))
-                    }
+                    Some(format!("{bucket}/{}", path.trim_start_matches('/')))
                 }
                 (Some(bucket), None) => Some(bucket),
                 (None, path) => path,
@@ -1637,11 +1632,19 @@ mod tests {
             .unwrap()
         };
         let dir = tempfile::tempdir().unwrap();
-        let servers = [server("plain", "/archive"), server("scoped", "/photos")];
+        let servers = [
+            server("plain", "/archive"),
+            server("scoped", "/photos"),
+            server("bucket-named", "/media/photos"),
+        ];
 
         let outcome = export_cyberduck(&servers, &HashMap::new(), dir.path()).unwrap();
-        assert_eq!((outcome.exported, outcome.skipped.len()), (2, 0));
-        for (name, path) in [("plain", "media/archive"), ("scoped", "media/photos")] {
+        assert_eq!((outcome.exported, outcome.skipped.len()), (3, 0));
+        for (name, path) in [
+            ("plain", "media/archive"),
+            ("scoped", "media/photos"),
+            ("bucket-named", "media/media/photos"),
+        ] {
             let duck = std::fs::read_to_string(dir.path().join(format!("{name}.duck"))).unwrap();
             assert!(
                 duck.contains(&format!("<key>Path</key>\n\t<string>{path}</string>")),
@@ -1650,7 +1653,11 @@ mod tests {
         }
 
         let back = import_cyberduck(dir.path()).unwrap();
-        for (name, prefix) in [("plain", "/archive"), ("scoped", "/photos")] {
+        for (name, prefix) in [
+            ("plain", "/archive"),
+            ("scoped", "/photos"),
+            ("bucket-named", "/media/photos"),
+        ] {
             let server = back.servers.iter().find(|s| s.name == name).unwrap();
             assert_eq!(server.initial_path.as_deref(), Some(prefix));
             let config = crate::providers::types::S3Config::from_provider_config(
