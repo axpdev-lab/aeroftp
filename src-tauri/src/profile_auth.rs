@@ -39,7 +39,10 @@ impl AuthScope<'_> {
         match self.user_id {
             Some(id) => users::resolve_credential_for_user(self.store, id, key)
                 .map(|v| v.map(|s| s.to_string())),
-            None => Ok(self.store.get(key).ok()),
+            None => crate::user_partitions::vault_secret_blocked_read(key, &|k| {
+                Ok(self.store.get_secret(k).ok())
+            })
+            .map(|value| value.map(|s| s.to_string())),
         }
     }
     /// Profile-bound reads cannot adopt another account's global mirror when
@@ -75,7 +78,10 @@ impl AuthScope<'_> {
         if owners.as_slice() == [user_id]
             || (owners.is_empty() && users::legacy_credential_owner_id()? == Some(user_id))
         {
-            return Ok(self.store.get(key).ok());
+            return crate::user_partitions::vault_secret_blocked_read(key, &|k| {
+                Ok(self.store.get_secret(k).ok())
+            })
+            .map(|value| value.map(|s| s.to_string()));
         }
         Ok(None)
     }

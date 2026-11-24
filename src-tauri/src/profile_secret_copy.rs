@@ -13,11 +13,13 @@ pub fn read_vault_secret(
     store: &CredentialStore,
     key: &str,
 ) -> Result<Option<Zeroizing<String>>, String> {
-    match store.get_secret(key) {
+    // A private token under a live block record reads as absent here too:
+    // a blocked token is never copied onto the new profile id.
+    crate::user_partitions::vault_secret_blocked_read(key, &|k| match store.get_secret(k) {
         Ok(value) => Ok(Some(value)),
         Err(CredentialError::NotFound(_)) => Ok(None),
         Err(error) => Err(error.to_string()),
-    }
+    })
 }
 
 /// True for a secret no writer gives a partition home: the editor saves the

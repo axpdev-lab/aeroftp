@@ -1245,7 +1245,9 @@ fn resolve_relocate_secret_with(
             continue;
         }
         // Dual-write fallback: vault still holds secrets not yet mirrored.
-        if let Ok(Some(secret)) = read_vault(key) {
+        // A private token under a live block record reads as absent here
+        // too: its plaintext must not enter the fingerprint.
+        if let Ok(Some(secret)) = vault_secret_blocked_read_with(conn, key, read_vault) {
             if !secret.is_empty() {
                 return Ok(Some(secret));
             }
@@ -5556,6 +5558,13 @@ fn copy_one_credential(
     if exists {
         return Ok(0);
     }
+    // A private token under a live block record is another account's
+    // value: it must not be copied into this partition either.
+    if private_token_type(credential_id).is_some()
+        && blocked_vault_secret(tx, credential_id)?.is_some()
+    {
+        return Ok(0);
+    }
     let Some(secret) = read_secret(credential_id)? else {
         return Ok(0);
     };
@@ -5943,6 +5952,11 @@ fn sole_row_state(
     let Some(vault) = vault else {
         return Ok(SoleRow::Moved);
     };
+    // A vault copy under a live block record is another account's token:
+    // the row must not take it, and the vault copy must not leave.
+    if private_token_type(key).is_some() && blocked_vault_secret(tx, key)?.is_some() {
+        return Ok(SoleRow::Skipped);
+    }
     // The digest an entry keeps is of the row's ciphertext, read in the
     // same transaction: a rewrite of the same plaintext under a new nonce
     // is another writer's row, not the one this alignment wrote.
@@ -6831,6 +6845,54 @@ fn unblock_vault_secret(conn: &Connection, key: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// The read rule of a `vault_blocked_secret:` record, shared by every
+/// plaintext return of a vault secret: while the record of a private token
+/// ([`private_token_type`]) exists the key reads as absent, whatever the
+/// value became: a changed digest does not lift the block; only a missing
+/// value or a successful legacy-owner store does. A record whose value is
+/// already gone lifts here. Any other key, and a missing record, reads
+/// through.
+fn vault_secret_blocked_read_with(
+    conn: &Connection,
+    key: &str,
+    read_secret: &SecretReader<'_>,
+) -> Result<Option<Zeroizing<String>>, String> {
+    if private_token_type(key).is_none() || blocked_vault_secret(conn, key)?.is_none() {
+        return read_secret(key);
+    }
+    if read_secret(key)?.is_none() {
+        unblock_vault_secret(conn, key)?;
+    }
+    Ok(None)
+}
+
+/// [`vault_secret_blocked_read_with`] for a caller holding no connection:
+/// the partition is opened only for a private token key and only when its
+/// file exists, so a vault-only read never creates it. A file that exists
+/// but does not open fails the read: the plaintext does not escape.
+pub(crate) fn vault_secret_blocked_read(
+    key: &str,
+    read_secret: &SecretReader<'_>,
+) -> Result<Option<Zeroizing<String>>, String> {
+    if private_token_type(key).is_none() || !cli_db_path()?.exists() {
+        return read_secret(key);
+    }
+    let conn = open_or_init_cli()?;
+    vault_secret_blocked_read_with(&conn, key, read_secret)
+}
+
+/// Whether `key`'s `vault_blocked_secret:` record exists right now, for a
+/// caller that reads the value somewhere the shared read cannot reach (the
+/// OAuth runtime's in-memory cache): a blocked token reads as absent there
+/// too.
+pub(crate) fn vault_secret_is_blocked(key: &str) -> Result<bool, String> {
+    if private_token_type(key).is_none() || !cli_db_path()?.exists() {
+        return Ok(false);
+    }
+    let conn = open_or_init_cli()?;
+    Ok(blocked_vault_secret(&conn, key)?.is_some())
+}
+
 /// Reader-fallback net (sec 3.3), engine form: prefer the per-user encrypted
 /// store, falling back to the legacy vault only when its per-user row is absent.
 /// A locked partition refuses access; MUV-6 drops the fallback once purged.
@@ -6852,16 +6914,9 @@ fn read_credential_with_fallback_inner(
         return Ok(None);
     }
     // A vault value a failed import sweep could not remove is recorded in
-    // the partition by digest: while it still holds that value the key
-    // reads as absent. Gone or moved by another writer, the block lifts
-    // and the real value reads.
-    if let Some(digest) = blocked_vault_secret(conn, credential_id)? {
-        match read_secret(credential_id)? {
-            Some(value) if secret_value_digest(value.as_str()) == digest => return Ok(None),
-            _ => unblock_vault_secret(conn, credential_id)?,
-        }
-    }
-    read_secret(credential_id)
+    // the partition: while the record exists the key reads as absent,
+    // whatever the value became. A value already gone lifts the record.
+    vault_secret_blocked_read_with(conn, credential_id, read_secret)
 }
 
 /// True if any user can be migrated eagerly right now (device-wrapped, or a
@@ -7358,7 +7413,9 @@ pub fn resolve_active_credential(
     init_or_migrate_cli(store)?;
     let conn = open_or_init_cli()?;
     match active_user_id(&conn)? {
-        None => get_optional_secret(store, credential_id),
+        None => vault_secret_blocked_read_with(&conn, credential_id, &|key| {
+            get_optional_secret(store, key)
+        }),
         Some(user_id) => read_credential_for_user(&conn, store, user_id, credential_id),
     }
 }
@@ -7418,7 +7475,7 @@ fn read_legacy_only_credential(
 ) -> Result<Option<Zeroizing<String>>, String> {
     let owner = match legacy_only_copies(credential_id)? {
         LegacyOnlyCopies::VaultAlone | LegacyOnlyCopies::VaultThenOwnersRow(_) => {
-            return get_optional_secret(store, credential_id)
+            return vault_secret_blocked_read(credential_id, &|key| get_optional_secret(store, key))
         }
         LegacyOnlyCopies::OwnersRow(owner) => owner,
     };
@@ -7458,7 +7515,9 @@ pub fn resolve_active_credential_owner_aware(
     init_or_migrate_cli(store)?;
     let conn = open_or_init_cli()?;
     match active_user_id(&conn)? {
-        None => get_optional_secret(store, credential_id),
+        None => vault_secret_blocked_read_with(&conn, credential_id, &|key| {
+            get_optional_secret(store, key)
+        }),
         Some(user_id) => read_credential_for_user_owner_aware(&conn, store, user_id, credential_id),
     }
 }
@@ -7501,7 +7560,12 @@ pub(crate) fn resolve_owner_aware_checked(
         Some(user_id) => user_id,
         None => match active_user_id(&conn)? {
             Some(user_id) => user_id,
-            None => return get_optional_secret(store, credential_id).map(checked),
+            None => {
+                return vault_secret_blocked_read_with(&conn, credential_id, &|key| {
+                    get_optional_secret(store, key)
+                })
+                .map(checked)
+            }
         },
     };
     let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());

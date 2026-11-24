@@ -1035,6 +1035,21 @@ fn export_keystore_with_store(
     let mut entries: HashMap<String, String> = HashMap::new();
     let mut read_errors: u32 = 0;
     for account in &accounts {
+        // A private token under a live block record is another account's
+        // value: it is omitted like a missing key, never backed up.
+        match crate::user_partitions::vault_secret_is_blocked(account) {
+            Ok(true) => continue,
+            Ok(false) => {}
+            Err(error) => {
+                read_errors = read_errors.saturating_add(1);
+                tracing::warn!(
+                    "Vault block check failed for account '{}' during export: {} (entry omitted from backup)",
+                    account,
+                    error
+                );
+                continue;
+            }
+        }
         match store.get(account) {
             Ok(value) => {
                 entries.insert(account.clone(), value);
@@ -1378,11 +1393,14 @@ fn read_effective_secret(
             }
         }
     }
-    match store.get(key) {
-        Ok(v) => Ok(Some(Zeroizing::new(v))),
+    // A private token under a live block record reads as absent here too:
+    // the plan never treats the foreign value as this device's secret.
+    crate::user_partitions::vault_secret_blocked_read(key, &|k| match store.get_secret(k) {
+        Ok(value) => Ok(Some(value)),
         Err(crate::credential_store::CredentialError::NotFound(_)) => Ok(None),
-        Err(e) => Err(from_store_error(e)),
-    }
+        Err(error) => Err(error.to_string()),
+    })
+    .map_err(KeystoreExportError::Encryption)
 }
 
 /// The account `conn`'s partition writes go to: its active one, with what
@@ -6462,6 +6480,315 @@ mod tests {
                 assert_eq!(blocked, None, "the block lifted with the delete");
             }
             drop(conn);
+        }
+    }
+
+    /// `cli_db_path` isolation for the block-record pins: the readers under
+    /// test resolve the partition database through the portable data root,
+    /// so the throwaway root is restored on drop.
+    struct TestDataRoot {
+        previous: Option<PathBuf>,
+    }
+
+    impl TestDataRoot {
+        fn new(dir: &Path) -> Self {
+            Self {
+                previous: crate::portable::set_test_data_root(Some(dir.to_path_buf())),
+            }
+        }
+    }
+
+    impl Drop for TestDataRoot {
+        fn drop(&mut self) {
+            crate::portable::set_test_data_root(self.previous.take());
+        }
+    }
+
+    /// A partition database at the resolved CLI path, seeded with the legacy
+    /// profile list and one block record for `key` whose digest matches
+    /// nothing the vault holds.
+    fn blocked_partition(
+        store: &crate::credential_store::CredentialStore,
+        dir: &Path,
+        list: &[serde_json::Value],
+        key: &str,
+    ) -> (TestDataRoot, PathBuf) {
+        let root = TestDataRoot::new(dir);
+        let cfg = crate::portable::aeroftp_data_root().unwrap();
+        partition_with(store, &cfg, list);
+        let conn = rusqlite::Connection::open(cfg.join("user_partitions.db")).unwrap();
+        crate::user_partitions::block_vault_secret(&conn, key, "plan-token").unwrap();
+        drop(conn);
+        (root, cfg)
+    }
+
+    /// G1: `LEGACY_ONLY_ACCOUNT` reads a `VaultThenOwnersRow` private token
+    /// through the block record too. With the record present and the vault
+    /// holding a value the plan never saw, the read is absent and the
+    /// vault keeps the foreign bytes. Red if the legacy-only read bypasses
+    /// the block.
+    #[test]
+    fn a_blocked_legacy_only_read_of_a_private_token_stays_absent() {
+        let _env = crate::test_env::lock();
+        let _guard = crate::user_partitions::test_lock();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let key = "oauth_dropbox_srv_drive";
+        let (_root, _cfg) = blocked_partition(&store, dir.path(), &[], key);
+        store.store(key, "foreign-token").unwrap();
+
+        let read = crate::user_partitions::resolve_credential_for_user(
+            &store,
+            crate::user_partitions::LEGACY_ONLY_ACCOUNT,
+            key,
+        )
+        .unwrap();
+        assert!(read.is_none(), "the blocked token reads as absent");
+        assert_eq!(store.get(key).unwrap(), "foreign-token");
+    }
+
+    /// G1: accounts exist but no active user is set (`active_user_id`
+    /// None): the owner-aware active read honors the block record the same
+    /// way. Red if the None-active branch reads the vault raw.
+    #[test]
+    fn a_blocked_read_with_accounts_and_no_active_user_stays_absent() {
+        let _env = crate::test_env::lock();
+        let _guard = crate::user_partitions::test_lock();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let key = "oauth_dropbox_srv_drive";
+        let (_root, cfg) = blocked_partition(&store, dir.path(), &[], key);
+        store.store(key, "foreign-token").unwrap();
+        let conn = rusqlite::Connection::open(cfg.join("user_partitions.db")).unwrap();
+        conn.execute("DELETE FROM global_state WHERE key = 'active_user_id'", [])
+            .unwrap();
+        drop(conn);
+
+        let read =
+            crate::user_partitions::resolve_active_credential_owner_aware(&store, key).unwrap();
+        assert!(read.is_none(), "the blocked token reads as absent");
+        assert_eq!(store.get(key).unwrap(), "foreign-token");
+    }
+
+    /// G1: the keystore export omits a blocked private token like a missing
+    /// key, while an ordinary `server_` secret still backs up. Red if the
+    /// export loop reads the vault raw.
+    #[test]
+    fn a_blocked_private_token_is_not_exported_but_server_secrets_are() {
+        let _env = crate::test_env::lock();
+        let _guard = crate::user_partitions::test_lock();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let key = "oauth_dropbox_srv_drive";
+        let (_root, _cfg) = blocked_partition(&store, dir.path(), &[], key);
+        store.store(key, "foreign-token").unwrap();
+        store.store("server_42", "server-pw").unwrap();
+
+        let backup = dir.path().join("blocked.aeroftp-keystore");
+        export_keystore_with_store(
+            &store,
+            PASSWORD_736,
+            &backup,
+            ExportMode::VaultOnly,
+            KeystoreScope::AllUsers,
+            None,
+            None,
+        )
+        .unwrap();
+        let payload = open_backup(PASSWORD_736, &backup, None).unwrap();
+        assert!(
+            !payload.vault_entries.contains_key(key),
+            "the blocked token is not in the backup"
+        );
+        assert_eq!(
+            payload.vault_entries.get("server_42").map(String::as_str),
+            Some("server-pw")
+        );
+    }
+
+    /// G1: a legacy owner whose private token has no row and a live block
+    /// record gets no row from the credential migration either: the vault
+    /// copy stays, the record stays, and the owner's read is absent. Red if
+    /// the migration's row sites write through or lift the block.
+    #[test]
+    fn a_blocked_private_token_gets_no_row_on_migration_and_stays_unreadable() {
+        let _env = crate::test_env::lock();
+        let _guard = crate::user_partitions::test_lock();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let key = "oauth_dropbox_srv_drive";
+        // The alignment enumerates private token keys per profile: the
+        // owner's list must carry `srv_drive` for the vault key to be its.
+        let (_root, cfg) =
+            blocked_partition(&store, dir.path(), &[dropbox("srv_drive", "Drive")], key);
+        store.store(key, "foreign-token").unwrap();
+        let conn = rusqlite::Connection::open(cfg.join("user_partitions.db")).unwrap();
+        let owner = crate::user_partitions::nonprofile_secret_owner_unpersisted(&conn)
+            .unwrap()
+            .expect("the partition has a legacy owner");
+        let root_key = store.derive_user_partition_wrapping_key();
+        crate::user_partitions::migrate_credentials_for_user(&conn, &store, &root_key, owner)
+            .unwrap();
+
+        let rows: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM user_credentials WHERE credential_id = ?1",
+                rusqlite::params![key],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(rows, 0, "the blocked token gets no partition row");
+        assert_eq!(store.get(key).unwrap(), "foreign-token");
+        let blocked: Option<String> = conn
+            .query_row(
+                "SELECT value FROM global_state WHERE key = ?1",
+                rusqlite::params!["vault_blocked_secret:oauth_dropbox_srv_drive"],
+                |row| row.get(0),
+            )
+            .ok();
+        assert!(blocked.is_some(), "the block record stays");
+
+        crate::user_partitions::set_active_user(&conn, owner).unwrap();
+        let read =
+            crate::user_partitions::resolve_active_credential_owner_aware(&store, key).unwrap();
+        assert!(read.is_none(), "the owner's read of the token is absent");
+    }
+
+    /// G1: the same block on a NON-owner account's alignment: its profile
+    /// names the vault key, no row exists yet, and `sole_row_state` must
+    /// answer `Skipped`: no row, the vault copy stays, the record stays,
+    /// and the account's read is absent. Red if the alignment writes the
+    /// row or lifts the block.
+    #[test]
+    fn a_blocked_private_token_gets_no_row_on_alignment_and_stays_unreadable() {
+        let _env = crate::test_env::lock();
+        let _guard = crate::user_partitions::test_lock();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let key = "oauth_dropbox_srv_drive";
+        let (_root, cfg) = blocked_partition(&store, dir.path(), &[], key);
+        store.store(key, "foreign-token").unwrap();
+        let mut conn = rusqlite::Connection::open(cfg.join("user_partitions.db")).unwrap();
+        let root_key = store.derive_user_partition_wrapping_key();
+        // A second account whose own profile names the vault key: for it
+        // the key is a sole private token the alignment would adopt.
+        let other = crate::user_partitions::create_passphrase_less_user(
+            &mut conn, &root_key, "Other", None, None,
+        )
+        .unwrap()
+        .id;
+        crate::user_partitions::replace_server_profiles_for(
+            &mut conn,
+            &root_key,
+            other,
+            &[dropbox("srv_drive", "Drive")],
+        )
+        .unwrap();
+        crate::user_partitions::migrate_credentials_for_user(&conn, &store, &root_key, other)
+            .unwrap();
+
+        let rows: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM user_credentials WHERE user_id = ?1 AND credential_id = ?2",
+                rusqlite::params![other, key],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(rows, 0, "the blocked token gets no partition row");
+        assert_eq!(store.get(key).unwrap(), "foreign-token");
+        let blocked: Option<String> = conn
+            .query_row(
+                "SELECT value FROM global_state WHERE key = ?1",
+                rusqlite::params!["vault_blocked_secret:oauth_dropbox_srv_drive"],
+                |row| row.get(0),
+            )
+            .ok();
+        assert!(blocked.is_some(), "the block record stays");
+
+        crate::user_partitions::set_active_user(&conn, other).unwrap();
+        let read =
+            crate::user_partitions::resolve_active_credential_owner_aware(&store, key).unwrap();
+        assert!(read.is_none(), "the account's read of the token is absent");
+    }
+
+    /// G1: the legacy owner's Proton session keeps its row's tokens when the
+    /// vault copy of the same UID sits under a block record: `load_session`
+    /// does not let the blocked pair replace them, and the vault bytes
+    /// stay. Red if the vault-copy read bypasses the block.
+    #[cfg(feature = "proton-native")]
+    #[test]
+    fn a_blocked_proton_session_vault_copy_does_not_replace_the_row_tokens() {
+        use crate::providers::proton_native::{
+            session::{ProtonSession, SessionTokens, StoredSession},
+            vault,
+        };
+        use secrecy::{ExposeSecret, SecretString};
+
+        let _env = crate::test_env::lock();
+        let _guard = crate::user_partitions::test_lock();
+        let dir = tempfile::tempdir().unwrap();
+        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        let previous_passphrase = std::env::var_os("AEROFTP_USER_PASSPHRASE");
+        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        crate::credential_store::CredentialStore::clear_cache();
+        crate::credential_store::CredentialStore::bootstrap_master_password("g1-proton-pass")
+            .unwrap();
+        crate::credential_store::CredentialStore::unlock_with_master("g1-proton-pass", None)
+            .unwrap();
+        let store = crate::credential_store::CredentialStore::from_cache().unwrap();
+        crate::user_partitions::init_or_migrate_cli(&store).unwrap();
+        let conn = crate::user_partitions::open_or_init_cli().unwrap();
+        let owner = crate::user_partitions::nonprofile_secret_owner_unpersisted(&conn)
+            .unwrap()
+            .expect("the partition has a legacy owner");
+
+        let session = |access: &str| ProtonSession {
+            tokens: SessionTokens {
+                uid: "same-uid".into(),
+                access_token: SecretString::from(access.to_string()),
+                refresh_token: Some(SecretString::from(format!("refresh-{access}"))),
+            },
+            key_password: SecretString::from("key-password".to_string()),
+        };
+        let profile = Some("native-blocked");
+        vault::store_session(
+            vault::SessionOwner::for_user(Some(owner)),
+            profile,
+            &session("row-access"),
+        )
+        .unwrap();
+        let key = vault::session_key(profile);
+        // The vault copy of the same UID is another writer's pair now.
+        let vault_json = serde_json::to_string(&StoredSession {
+            uid: "same-uid".into(),
+            access_token: "vault-access".into(),
+            refresh_token: Some("refresh-vault-access".into()),
+            key_password: "key-password".into(),
+        })
+        .unwrap();
+        store.store(&key, &vault_json).unwrap();
+        crate::user_partitions::block_vault_secret(&conn, &key, "plan-session").unwrap();
+
+        let loaded = vault::load_session(vault::SessionOwner::for_user(Some(owner)), profile)
+            .unwrap()
+            .expect("the session is there");
+        assert_eq!(loaded.tokens.uid, "same-uid");
+        assert_eq!(
+            loaded.tokens.access_token.expose_secret(),
+            "row-access",
+            "the blocked vault pair does not replace the row's tokens"
+        );
+        assert_eq!(store.get(&key).unwrap(), vault_json, "the vault bytes stay");
+
+        crate::credential_store::CredentialStore::clear_cache();
+        match previous_xdg {
+            Some(value) => std::env::set_var("XDG_CONFIG_HOME", value),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        match previous_passphrase {
+            Some(value) => std::env::set_var("AEROFTP_USER_PASSPHRASE", value),
+            None => std::env::remove_var("AEROFTP_USER_PASSPHRASE"),
         }
     }
 

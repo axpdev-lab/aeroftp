@@ -659,6 +659,20 @@ fn token_owner_changed() -> ProviderError {
     ProviderError::TargetChanged
 }
 
+/// The vault read of a token key through the partition's block record: a
+/// private token a failed foreign sweep could not remove reads as absent
+/// here too, so its plaintext never reaches a connection.
+fn vault_token_read(
+    store: &crate::credential_store::CredentialStore,
+    key: &str,
+) -> Result<Option<Zeroizing<String>>, String> {
+    crate::user_partitions::vault_secret_blocked_read(key, &|k| match store.get_secret(k) {
+        Ok(value) => Ok(Some(value)),
+        Err(crate::credential_store::CredentialError::NotFound(_)) => Ok(None),
+        Err(error) => Err(error.to_string()),
+    })
+}
+
 /// What a refresh reports when its write found the vault closed (locked
 /// since the refresh read the token): not a change of the token's owner.
 const REFRESH_VAULT_CLOSED: &str =
@@ -2229,8 +2243,8 @@ impl OAuth2Manager {
 
         // Try vault first under the per-profile (or legacy when profile_id is empty) key.
         if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-            if let Ok(json) = store.get(&account) {
-                return Self::decode_record(&json, TokenSource::Vault, credential_user);
+            if let Ok(Some(json)) = vault_token_read(&store, &account) {
+                return Self::decode_record(json.as_str(), TokenSource::Vault, credential_user);
             }
 
             // Lazy migration: per-profile key missing, legacy hit ➜ rebind + remove.
@@ -2404,18 +2418,24 @@ impl OAuth2Manager {
                         }
                     }
                 }
-                if let Ok(json) = store.get(&legacy) {
-                    Self::decode_record(&json, TokenSource::Unavailable, credential_user)?;
+                if let Ok(Some(json)) = vault_token_read(&store, &legacy) {
+                    Self::decode_record(json.as_str(), TokenSource::Unavailable, credential_user)?;
                     let moved = store
-                        .move_secret_if_unchanged(&legacy, &account, &json)
+                        .move_secret_if_unchanged(&legacy, &account, json.as_str())
                         .map_err(|_| token_owner_changed())?;
                     // A concurrent authorization wins. Re-read the actual
-                    // destination, not the stale singleton we inspected.
-                    if moved || store.get_secret(&account).is_ok() {
-                        let current = store
-                            .get_secret(&account)
-                            .map_err(|_| token_owner_changed())?;
-                        return Self::decode_record(&current, TokenSource::Vault, credential_user);
+                    // destination, not the stale singleton we inspected; a
+                    // blocked destination reads as absent and cannot be
+                    // handed to a connection either.
+                    let destination =
+                        vault_token_read(&store, &account).map_err(|_| token_owner_changed())?;
+                    if moved || destination.is_some() {
+                        let current = destination.ok_or_else(token_owner_changed)?;
+                        return Self::decode_record(
+                            current.as_str(),
+                            TokenSource::Vault,
+                            credential_user,
+                        );
                     }
                     return Err(token_owner_changed());
                 }
@@ -2434,12 +2454,19 @@ impl OAuth2Manager {
                             .map(drop)
                     })?;
                 if let Some(json) = adopted {
-                    let incarnation = memory_incarnation(map, &account);
-                    return Self::decode_record(
-                        &json,
-                        TokenSource::Memory(account.clone(), incarnation),
-                        credential_user,
-                    );
+                    // The memory copy is the same token the vault block
+                    // record hides: while the record stands it reads as
+                    // absent here too.
+                    if !crate::user_partitions::vault_secret_is_blocked(&account).map_err(|e| {
+                        ProviderError::Other(format!("Failed to read user tokens: {e}"))
+                    })? {
+                        let incarnation = memory_incarnation(map, &account);
+                        return Self::decode_record(
+                            &json,
+                            TokenSource::Memory(account.clone(), incarnation),
+                            credential_user,
+                        );
+                    }
                 }
             }
         }
@@ -2496,10 +2523,13 @@ impl OAuth2Manager {
         store
             .store_secret_if_absent(account, json)
             .map_err(|_| token_owner_changed())?;
-        let current = store
-            .get_secret(account)
-            .map_err(|_| token_owner_changed())?;
-        let result = Self::decode_record(&current, TokenSource::Vault, credential_user)?;
+        // `store_secret_if_absent` does not overwrite a blocked value, and
+        // the block reads as absent here: the claimed file cannot become
+        // the live token.
+        let current = vault_token_read(store, account)
+            .map_err(|_| token_owner_changed())?
+            .ok_or_else(token_owner_changed)?;
+        let result = Self::decode_record(current.as_str(), TokenSource::Vault, credential_user)?;
         // A newer login also consumes this obsolete legacy candidate. Restoring
         // it would let a second profile silently import the old cloud account.
         claimed.discard()?;
@@ -6530,5 +6560,79 @@ mod tests {
         ));
         let _ = primary.delete_tokens(OAuthProvider::Dropbox, &profile);
         let _ = primary.delete_tokens(OAuthProvider::Dropbox, &other_profile);
+    }
+
+    /// G1: the in-memory token cache honors the same block record: with the
+    /// vault closed, a token the block hides does not come back through
+    /// `load_tokens` either. Red if the memory fallback skips the block
+    /// check.
+    #[test]
+    fn a_blocked_token_does_not_return_through_the_memory_cache() {
+        use crate::credential_store::CredentialStore;
+        use crate::user_partitions as partitions;
+
+        let _env = crate::test_env::lock();
+        let _partition = partitions::test_lock();
+        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        let previous_passphrase = std::env::var_os("AEROFTP_USER_PASSPHRASE");
+        let temporary = tempfile::TempDir::new().expect("temporary config");
+        std::env::set_var("XDG_CONFIG_HOME", temporary.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("blocked-memory-pass").expect("bootstrap vault");
+        CredentialStore::unlock_with_master("blocked-memory-pass", None).expect("unlock vault");
+        let store = CredentialStore::from_cache().expect("cached vault");
+        partitions::init_or_migrate_cli(&store).expect("init partitions");
+
+        let manager = OAuth2Manager::new();
+        let account = OAuth2Manager::token_account_key(OAuthProvider::Box, "mem-profile");
+        let record = |access: &str| {
+            serde_json::to_string(&TokenRecord {
+                tokens: StoredTokens {
+                    access_token: access.into(),
+                    refresh_token: None,
+                    expires_at: None,
+                    token_type: "Bearer".into(),
+                    scopes: vec![],
+                },
+                owner_family: Some("v1:blocked-memory".into()),
+                client_id: None,
+                source: TokenSource::Unavailable,
+                credential_owner: None,
+                raw: Zeroizing::new(String::new()),
+            })
+            .expect("serialize record")
+        };
+        // The vault holds the foreign value the block record hides, and the
+        // same token sits in the process memory cache.
+        store.store(&account, &record("vault-token")).unwrap();
+        {
+            let conn = partitions::open_or_init_cli().expect("partition DB");
+            partitions::block_vault_secret(&conn, &account, "plan-token").expect("block record");
+        }
+        insert_memory_record(
+            MEMORY_TOKEN_CACHE
+                .lock()
+                .expect("memory cache")
+                .get_or_insert_with(HashMap::new),
+            &account,
+            record("memory-token"),
+        );
+        CredentialStore::clear_cache();
+
+        let result = manager.load_tokens(OAuthProvider::Box, "mem-profile");
+        let error = result.err().expect("the blocked token must not load");
+        assert!(!format!("{error:?}").contains("memory-token"), "{error:?}");
+
+        CredentialStore::clear_cache();
+        *MEMORY_TOKEN_CACHE.lock().expect("memory cache") = None;
+        match previous_xdg {
+            Some(value) => std::env::set_var("XDG_CONFIG_HOME", value),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        match previous_passphrase {
+            Some(value) => std::env::set_var("AEROFTP_USER_PASSPHRASE", value),
+            None => std::env::remove_var("AEROFTP_USER_PASSPHRASE"),
+        }
     }
 }

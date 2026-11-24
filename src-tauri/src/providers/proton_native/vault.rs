@@ -633,6 +633,13 @@ fn vault_sessions(
     keys.sort_unstable();
     let mut sessions = Vec::new();
     for key in keys.into_iter().filter(|key| is_session_key(key)) {
+        // A session under a live block record is another account's: it is
+        // not this owner's to list, refresh or sign out with.
+        if crate::user_partitions::vault_secret_is_blocked(&key).map_err(|error| {
+            ProviderError::Other(format!("the vault could not read a saved session: {error}"))
+        })? {
+            continue;
+        }
         let raw = match get(&key) {
             Ok(raw) => raw,
             Err(CredentialError::NotFound(_)) => continue,
@@ -688,7 +695,9 @@ fn read(
         Some(user) => {
             crate::user_partitions::resolve_credential_for_user_owner_aware(store, user, key)
         }
-        None => vault_value(store, key).map_err(|error| error.to_string()),
+        None => crate::user_partitions::vault_secret_blocked_read(key, &|k| {
+            vault_value(store, k).map_err(|error| error.to_string())
+        }),
     };
     match result {
         Ok(Some(json)) => {
@@ -701,7 +710,10 @@ fn read(
             // Without an account the value read above is the vault's.
             let shares_the_vault = owner.user_id.is_some() && private_account(owner)?.is_none();
             let vault_copy = if shares_the_vault {
-                vault_value(store, key).map_err(|error| {
+                crate::user_partitions::vault_secret_blocked_read(key, &|k| {
+                    vault_value(store, k).map_err(|error| error.to_string())
+                })
+                .map_err(|error| {
                     ProviderError::Other(format!(
                         "the saved Proton session could not be read: {error}"
                     ))
