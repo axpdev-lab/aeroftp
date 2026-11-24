@@ -1460,10 +1460,15 @@ pub(crate) fn vault_basename(path: &str) -> String {
 /// strings; the path is, when Change Mode refuses a symlink or a non-file.
 pub(crate) fn vault_error_for_log(err: &str, vault_path: &str) -> String {
     let label = vault_basename(vault_path);
-    if vault_path.is_empty() || vault_path == label {
-        return err.to_string();
+    let mut shown = err.to_string();
+    if !vault_path.is_empty() {
+        shown = shown.replace(vault_path, &label);
+        if let Ok(lock_path) = lock_path_for(std::path::Path::new(vault_path)) {
+            let lock_path = lock_path.to_string_lossy().into_owned();
+            shown = shown.replace(&lock_path, &vault_basename(&lock_path));
+        }
     }
-    err.replace(vault_path, &label)
+    shown
 }
 
 /// Change the "mode" of an existing vault (Ehud #2): re-pack it under a new security
@@ -2200,6 +2205,17 @@ mod tests {
             vault_error_for_log("AES-KW unwrap failed", path),
             "AES-KW unwrap failed"
         );
+        assert_eq!(vault_error_for_log(path, ""), path);
+    }
+
+    #[test]
+    fn a_change_mode_log_redacts_the_derived_lock_path() {
+        let path = "/home/ada/secrets/vault.av3";
+        let lock_path = lock_path_for(std::path::Path::new(path)).unwrap();
+        let err = format!("AeroVault v3 write lock is busy: {}", lock_path.display());
+        let shown = vault_error_for_log(&err, path);
+        assert!(!shown.contains("/home/ada"), "{shown}");
+        assert!(shown.contains(".vault.av3.lock"), "{shown}");
     }
 
     #[test]
