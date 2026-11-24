@@ -16,7 +16,7 @@ import { getTotalServiceCount } from './discoverData';
 import { getProviderById } from '../../providers';
 import { newFormTabOptions } from './newFormTabOptions';
 import { useTranslation } from '../../i18n';
-import { loadSavedServerProfiles, loadSavedServerProfilesWithAccount } from '../../utils/serverProfileStore';
+import { loadSavedServerProfilesWithAccount } from '../../utils/serverProfileStore';
 import { accountChangeGeneration } from '../../utils/userPartitions';
 import { appendImportedProfiles } from '../bridge/bridgeImportCommit';
 import type { ProviderType } from '../../types';
@@ -171,17 +171,28 @@ export function IntroHub(props: IntroHubProps) {
     // The account paletteServers was read under, captured in that read; the
     // export dialog sends it so the backend refuses the export on a switch.
     const [paletteAccountId, setPaletteAccountId] = useState<number | null>(null);
+    // Monotonic read generation: only the LATEST account-scoped read may commit
+    // its pair, so an older completion (e.g. one that answered after an account
+    // switch) is discarded and a stale list can never reach the export.
+    const paletteReadGenerationRef = useRef(0);
+    // Load paletteServers and paletteAccountId TOGETHER from one account-scoped
+    // read and store them as one coherent snapshot; clear both on error.
+    const reloadPalette = useCallback(async (): Promise<void> => {
+        const generation = ++paletteReadGenerationRef.current;
+        try {
+            const read = await loadSavedServerProfilesWithAccount();
+            if (generation !== paletteReadGenerationRef.current) return;
+            setPaletteServers(read.profiles);
+            setPaletteAccountId(read.userId ?? null);
+        } catch {
+            if (generation !== paletteReadGenerationRef.current) return;
+            setPaletteServers([]);
+            setPaletteAccountId(null);
+        }
+    }, []);
     useEffect(() => {
-        let cancelled = false;
-        (async () => {
-            const vaultRead = await loadSavedServerProfilesWithAccount();
-            if (!cancelled) {
-                setPaletteServers(vaultRead.profiles);
-                setPaletteAccountId(vaultRead.userId ?? null);
-            }
-        })();
-        return () => { cancelled = true; };
-    }, [serversRefreshKey]);
+        void reloadPalette();
+    }, [serversRefreshKey, reloadPalette]);
 
     // Export/Import dialog. `exportPreselect` holds the profile ids handed
     // over by a My Servers context menu "Export...": the dialog then opens
@@ -193,16 +204,12 @@ export function IntroHub(props: IntroHubProps) {
         setShowExportImport(true);
     }, []);
     const openExportForProfiles = useCallback(async (serverIds: string[]) => {
-        // Reload from the vault so a profile saved a moment ago is in the
-        // list the dialog selects from.
-        try {
-            const read = await loadSavedServerProfilesWithAccount();
-            setPaletteServers(read.profiles);
-            setPaletteAccountId(read.userId ?? null);
-        } catch { /* keep the cached list */ }
+        // Reload list and account together from the vault so a profile saved a
+        // moment ago is in the list the dialog selects from.
+        await reloadPalette();
         setExportPreselect(serverIds);
         setShowExportImport(true);
-    }, []);
+    }, [reloadPalette]);
     const closeExportImport = useCallback(() => {
         setShowExportImport(false);
         setExportPreselect(null);
@@ -468,12 +475,8 @@ export function IntroHub(props: IntroHubProps) {
                         onOpenExportImport={openExportImport}
                         onExportProfiles={(ids) => { void openExportForProfiles(ids); }}
                         onServersChange={() => {
-                            (async () => {
-                                try {
-                                    const vaultServers = await loadSavedServerProfiles();
-                                    setPaletteServers(vaultServers);
-                                } catch { setPaletteServers([]); }
-                            })();
+                            // List and account reload together (one scoped read).
+                            void reloadPalette();
                         }}
                         onOpenCrossProfile={onOpenCrossProfile}
                         onOpenMountManager={onOpenMountManager}
@@ -540,16 +543,23 @@ export function IntroHub(props: IntroHubProps) {
                     accountId={paletteAccountId}
                     initialMode={exportPreselect ? 'export' : undefined}
                     initialSelectedServerIds={exportPreselect ?? undefined}
-                    onImport={async (newServers, expectedUserId) => {
+                    onImport={async (newServers, expectedUserId, removeKeys) => {
                         // The dialog closes itself (onClose) after its result.
                         const accountBefore = accountChangeGeneration();
-                        const updated = await appendImportedProfiles(newServers, expectedUserId);
+                        const updated = await appendImportedProfiles(newServers, expectedUserId, removeKeys);
                         // A switch meanwhile brings its own re-read: this list is the previous account's.
-                        if (accountChangeGeneration() === accountBefore) setPaletteServers(updated);
+                        // List and account update together, in one update; an unknown
+                        // account (undefined) retains the current id.
+                        if (accountChangeGeneration() === accountBefore) {
+                            setPaletteServers(updated);
+                            if (expectedUserId !== undefined) setPaletteAccountId(expectedUserId ?? null);
+                        }
                         onServersChanged?.();
                     }}
-                    onProfilesStored={(stored) => {
-                        setPaletteServers(stored);
+                    onProfilesStored={() => {
+                        // Re-read list AND account from one scoped read (generation-
+                        // gated); a failed read clears both, never a stale pair.
+                        void reloadPalette();
                         onServersChanged?.();
                     }}
                     onClose={closeExportImport}

@@ -377,7 +377,9 @@ describe('a list read from the legacy store', () => {
     it('goes only to the guarded legacy write, with the list it read, and a refusal stays one', async () => {
         const legacy = [sampleProfile({ name: 'from the legacy store' })];
         mockInvoke.mockImplementation(async (command: string) => {
-            if (command === 'user_partitions_load_active_server_profiles_scoped') throw new Error('STORE_NOT_READY');
+            // NO_ACTIVE_USER is a CONFIRMED legacy store: the backend says no
+            // account exists, so the legacy blob is the real answer.
+            if (command === 'user_partitions_load_active_server_profiles_scoped') throw new Error('NO_ACTIVE_USER');
             if (command === 'get_credential') return JSON.stringify(legacy);
             return undefined;
         });
@@ -396,6 +398,23 @@ describe('a list read from the legacy store', () => {
         mockInvoke.mockRejectedValueOnce(new Error('PROFILES_CHANGED: nothing was saved'));
         await expect(storeSavedServerProfiles(edited, false, read.userId, read.revision)).rejects.toThrow('PROFILES_CHANGED');
         expect(mockInvoke).toHaveBeenCalledTimes(1);
+        mockInvoke.mockReset();
+    });
+
+    it('an UNAVAILABLE owner read (locked vault / unreachable partition) throws instead of posing as a confirmed legacy store', async () => {
+        // STORE_NOT_READY / USER_LOCKED mean the owner could not be read. For a
+        // WRITE that is a retryable failure, not a legacy answer: returning the
+        // legacy blob with no userId would let the write proceed as if the
+        // legacy store were confirmed and later trip a false ACCOUNT_CHANGED.
+        for (const unavailable of ['STORE_NOT_READY', 'USER_LOCKED']) {
+            mockInvoke.mockReset();
+            mockInvoke.mockImplementation(async (command: string) => {
+                if (command === 'user_partitions_load_active_server_profiles_scoped') throw new Error(unavailable);
+                if (command === 'get_credential') return JSON.stringify([sampleProfile()]);
+                return undefined;
+            });
+            await expect(readSavedServerProfilesForWrite()).rejects.toThrow(unavailable);
+        }
         mockInvoke.mockReset();
     });
 });

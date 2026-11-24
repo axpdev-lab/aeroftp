@@ -62,8 +62,13 @@ interface Props {
     source: BridgeSourceDescriptor;
     direction: 'import' | 'export';
     servers: ServerProfile[];
+    /** The account the `servers` list was read under, captured in that read.
+     *  Sent with the export so the backend refuses it (ACCOUNT_CHANGED, no
+     *  file) when the active account changed since. Null/undefined for a
+     *  pre-multi-user legacy list. */
+    accountId?: number | null;
     existingServerKeys: Set<string>;
-    onImport: (servers: ServerProfile[], expectedUserId?: number | null) => void | Promise<void>;
+    onImport: (servers: ServerProfile[], expectedUserId?: number | null, removeKeys?: ReadonlySet<string>) => void | Promise<void>;
     onClose: () => void;
     onBack: () => void;
     /** A profile file dragged onto the import dialog and identified as
@@ -80,7 +85,7 @@ const DEFAULT_EXPORT_NAME: Record<string, string> = {
 };
 
 export const BridgeSourcePanel: React.FC<Props> = ({
-    source, direction, servers, existingServerKeys, onImport, onClose, onBack,
+    source, direction, servers, accountId, existingServerKeys, onImport, onClose, onBack,
     presetFilePath,
 }) => {
     const t = useTranslation();
@@ -94,8 +99,15 @@ export const BridgeSourcePanel: React.FC<Props> = ({
     // import state
     const [detectedPath, setDetectedPath] = useState<string | null>(null);
     const [result, setResult] = useState<BridgeImportResult | null>(null);
-    // The account the last scan wrote its secrets into; the commit is bound to it.
-    const [scanUserId, setScanUserId] = useState<number | null>(null);
+    // The account the last scan wrote its secrets into; the commit is bound to
+    // it. `undefined` means the scan could not read an owner (locked vault):
+    // unknown, NOT a confirmed legacy (null), so a later unlock + rescan does
+    // not trip a false account-changed refusal.
+    const [scanUserId, setScanUserId] = useState<number | null | undefined>(undefined);
+    // Monotonic scan generation: only the LATEST scan may commit rows, its
+    // account id, an error or the loading flag. Two dropped files resolving in
+    // reverse order must leave the newer scan's result on screen.
+    const scanGenerationRef = useRef(0);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [keptRelaxed, setKeptRelaxed] = useState<Set<string>>(() => new Set());
 
@@ -205,6 +217,7 @@ export const BridgeSourcePanel: React.FC<Props> = ({
 
     const runScan = async (filePath: string) => {
         if (!filePath) return;
+        const generation = ++scanGenerationRef.current;
         setLoading(true);
         setError(null);
         setResult(null);
@@ -213,13 +226,17 @@ export const BridgeSourcePanel: React.FC<Props> = ({
             const r = await invoke<BridgeImportResult>('import_bridge_config', {
                 source: source.id, filePath,
             });
+            // A newer scan started while this one was in flight: its rows,
+            // account id and error win, this one is dropped entirely.
+            if (generation !== scanGenerationRef.current) return;
             setResult(r);
-            setScanUserId(r.scanUserId ?? null);
+            setScanUserId(r.scanUserId);
             setSelectedIds(new Set(r.servers.map(s => s.id)));
         } catch (e) {
+            if (generation !== scanGenerationRef.current) return;
             setError(String(e));
         } finally {
-            setLoading(false);
+            if (generation === scanGenerationRef.current) setLoading(false);
         }
     };
 
@@ -318,6 +335,10 @@ export const BridgeSourcePanel: React.FC<Props> = ({
                 serversJson: JSON.stringify(chosen),
                 includeCredentials,
                 filePath,
+                // The account the list was read under: the backend refuses the
+                // export (ACCOUNT_CHANGED, no file written) when the active
+                // account changed since that read.
+                accountId: accountId ?? null,
             });
             setExportResult(r);
             setSuccess(t('settings.bridgeExportSuccess').replace('{count}', String(r.exported)));

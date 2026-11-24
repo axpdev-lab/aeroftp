@@ -39,7 +39,7 @@ interface ExportImportDialogProps {
      * Store the profiles a bridge import read from another client's config; the
      * write is refused unless the active account is still `expectedUserId`.
      */
-    onImport: (servers: ServerProfile[], expectedUserId?: number | null) => void | Promise<void>;
+    onImport: (servers: ServerProfile[], expectedUserId?: number | null, removeKeys?: ReadonlySet<string>) => void | Promise<void>;
     /**
      * A `.aeroftp` import stored this list in the backend, secrets and list in one
      * operation: the host only shows it.
@@ -714,6 +714,7 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                             source={bridgeSrc}
                             direction={bridgeSrcDir}
                             servers={servers}
+                            accountId={accountId ?? null}
                             existingServerKeys={existingServerKeys}
                             onImport={onImport}
                             onClose={onClose}

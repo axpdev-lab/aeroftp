@@ -1,4 +1,7 @@
-import { describe, expect, it, vi } from 'vitest';
+// @vitest-environment jsdom
+import { act, createElement } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ServerProfile } from '../../types';
 import { appendImportedProfiles, bridgeProfileKey, commitImportedServers, commitImportedServersForScan, importedServerProfile, type ImportedServer } from './bridgeImportCommit';
 import { readSavedServerProfilesForWrite, storeSavedServerProfiles } from '../../utils/serverProfileStore';
@@ -6,6 +9,17 @@ import { readSavedServerProfilesForWrite, storeSavedServerProfiles } from '../..
 vi.mock('../../utils/serverProfileStore', () => ({
     readSavedServerProfilesForWrite: vi.fn(), storeSavedServerProfiles: vi.fn().mockResolvedValue(undefined),
 }));
+vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
+vi.mock('../../i18n', () => ({
+    useTranslation: () => (key: string, params?: Record<string, unknown>) =>
+        params ? `${key} ${JSON.stringify(params)}` : key,
+}));
+vi.mock('../../utils/pickPath', () => ({ pickFile: vi.fn(), pickSave: vi.fn() }));
+vi.mock('../../hooks/useDetectedBridgeConfigs', () => ({
+    detectBridgeConfigBounded: vi.fn(async () => null),
+}));
+
+import { invoke } from '@tauri-apps/api/core';
 
 const base: ServerProfile = { id: 'base', name: 'Koofr', host: 'app.koofr.net', port: 443, username: 'test', protocol: 'koofr' };
 const crypt: ServerProfile = { ...base, id: 'crypt', name: 'Encrypted', initialPath: 'encrypted',
@@ -21,16 +35,22 @@ describe('Crypt bridge import', () => {
         expect(outcome).toEqual({ added: 1, updated: 0 });
         // Bound to the account the list was read from (3), so a switch in
         // between refuses the write instead of landing in another account.
-        expect(onImport).toHaveBeenCalledWith([crypt], 3);
+        expect(onImport).toHaveBeenCalledWith([crypt], 3, undefined);
     });
 
-    it('waits for a failed async import before restoring the profile list', async () => {
+    it('a failed commit write is reported as failed with the vault untouched (one atomic write, no rollback)', async () => {
         vi.mocked(readSavedServerProfilesForWrite).mockResolvedValue({ profiles: [base, crypt], userId: 3 });
-        const outcome = await commitImportedServers([{ ...crypt, id: 'replacement' }], new Set([bridgeProfileKey(crypt)]),
-            async () => { throw new Error('vault write failed'); });
-        expect(outcome.error).toBeDefined();
-        // The rollback goes back to the account the backup was read from.
-        expect(storeSavedServerProfiles).toHaveBeenLastCalledWith([base, crypt], false, 3, undefined);
+        vi.mocked(storeSavedServerProfiles).mockRejectedValueOnce(new Error('vault write failed'));
+        const outcome = await commitImportedServers(
+            [{ ...crypt, id: 'replacement' }],
+            new Set([bridgeProfileKey(crypt)]),
+            async (servers, expected, removeKeys) => { await appendImportedProfiles(servers, expected, removeKeys); },
+        );
+        expect(outcome.error).toContain('No changes were made');
+        expect(outcome.updated).toBe(0);
+        // The single atomic write failed: nothing was removed, so there is
+        // nothing to restore and no second write runs.
+        expect(storeSavedServerProfiles).toHaveBeenCalledTimes(1);
     });
 });
 
@@ -126,48 +146,39 @@ describe('the import callback and the commit helper together', () => {
         // vault as empty and falling back to it is what put the two side by side.
         const staleSnapshot = [base];
         const outcome = await commitImportedServers([replacement], new Set([bridgeProfileKey(base)]),
-            async servers => { expect(staleSnapshot).toHaveLength(1); await appendImportedProfiles(servers); });
+            async (servers, expected, removeKeys) => { expect(staleSnapshot).toHaveLength(1); await appendImportedProfiles(servers, expected, removeKeys); });
         expect(outcome).toEqual({ added: 0, updated: 1 });
+        // One atomic write: base removed and replacement appended together.
+        expect(vault.writes).toBe(1);
         expect(vault.profiles.map(s => s.id)).toEqual(['replacement']);
     });
 
-    it('reports a failed vault write as a failed import and restores the replaced profile', async () => {
+    it('removes the replaced profile and appends the replacement in ONE account-bound write', async () => {
         const vault = fakeVault([base]);
-        const write = vi.mocked(storeSavedServerProfiles).getMockImplementation()!;
-        // Write 1 removes the profile being replaced, write 2 is the callback
-        // persisting the merged list, and that is the one whose failure used to
-        // be swallowed. Write 3 is the rollback, which must still go through.
-        let calls = 0;
-        vi.mocked(storeSavedServerProfiles).mockImplementation(async (profiles: ServerProfile[]) => {
-            calls += 1;
-            if (calls === 2) throw new Error('vault write failed');
-            return write(profiles);
-        });
         const replacement: ServerProfile = { ...base, id: 'replacement', name: 'Koofr renamed' };
-        const outcome = await commitImportedServers([replacement], new Set([bridgeProfileKey(base)]),
-            async servers => { await appendImportedProfiles(servers); });
-        expect(outcome.error).toBeDefined();
-        expect(outcome.updated).toBe(0);
-        expect(vault.profiles.map(s => s.id)).toEqual(['base']);
+        const onImport = vi.fn(async (servers: ServerProfile[], expected?: number | null, removeKeys?: ReadonlySet<string>) => {
+            await appendImportedProfiles(servers, expected, removeKeys);
+        });
+        const outcome = await commitImportedServers([replacement], new Set([bridgeProfileKey(base)]), onImport);
+        expect(outcome).toEqual({ added: 0, updated: 1 });
+        // Exactly one vault write, carrying removal + append, under account 3.
+        expect(vault.writes).toBe(1);
+        expect(storeSavedServerProfiles).toHaveBeenCalledWith([replacement], false, 3, 'r0');
+        expect(vault.profiles.map(s => s.id)).toEqual(['replacement']);
+        // The callback received the removal keys so ITS write is the atomic one.
+        expect(onImport).toHaveBeenCalledWith([replacement], 3, new Set([bridgeProfileKey(base)]));
     });
 
-    it('does not claim that nothing changed when the rollback itself failed', async () => {
+    it('a failed atomic write leaves the replaced profile in place, so the error can honestly say no changes were made', async () => {
         const vault = fakeVault([base]);
-        const write = vi.mocked(storeSavedServerProfiles).getMockImplementation()!;
-        // Write 1 removes the replaced profile, write 2 is the callback, write 3
-        // is the rollback. Everything after the first one fails, which is the
-        // case where the vault is left without the profile it started with.
-        let calls = 0;
-        vi.mocked(storeSavedServerProfiles).mockImplementation(async (profiles: ServerProfile[]) => {
-            calls += 1;
-            if (calls >= 2) throw new Error('vault write failed');
-            return write(profiles);
-        });
+        vi.mocked(storeSavedServerProfiles).mockRejectedValueOnce(new Error('vault write failed'));
         const replacement: ServerProfile = { ...base, id: 'replacement', name: 'Koofr renamed' };
         const outcome = await commitImportedServers([replacement], new Set([bridgeProfileKey(base)]),
-            async servers => { await appendImportedProfiles(servers); });
-        expect(vault.profiles).toEqual([]);
-        expect(outcome.error).toContain('could not be restored');
+            async (servers, expected, removeKeys) => { await appendImportedProfiles(servers, expected, removeKeys); });
+        expect(outcome.error).toContain('No changes were made');
+        expect(outcome.updated).toBe(0);
+        expect(vault.profiles.map(s => s.id)).toEqual(['base']);
+        expect(vault.writes).toBe(0);
     });
 
     // The write carries the revision of its own read, so a save from another
@@ -179,38 +190,21 @@ describe('the import callback and the commit helper together', () => {
         expect(storeSavedServerProfiles).toHaveBeenLastCalledWith([base, imported], false, 3, 'r0');
     });
 
-    // The rollback restores only what this call removed, into the list as it
-    // stands: what another window saved during the import stays.
-    it('a rollback puts back only the removed profile, into a list read again', async () => {
+    // The write is one atomic operation: if it is refused (here: the revision
+    // was taken by another window), nothing was removed and nothing is appended.
+    it('a refused atomic write removes nothing and appends nothing', async () => {
         const vault = fakeVault([base]);
-        const other: ServerProfile = { ...base, id: 'other', name: 'Saved elsewhere' };
+        // The single write is refused (another window saved in between).
+        vi.mocked(storeSavedServerProfiles).mockRejectedValue(new Error('PROFILES_CHANGED'));
         const replacement: ServerProfile = { ...base, id: 'replacement', name: 'Koofr renamed' };
         const outcome = await commitImportedServers([replacement], new Set([bridgeProfileKey(base)]),
-            async () => {
-                vault.profiles = [other];
-                throw new Error('vault write failed');
-            });
+            async (servers, expected, removeKeys) => { await appendImportedProfiles(servers, expected, removeKeys); });
         expect(outcome.error).toContain('No changes were made');
-        expect(vault.profiles).toEqual([other, base]);
-    });
-
-    // Another profile took the removed profile's name meanwhile: the rollback keeps
-    // it and says so, rather than claim nothing changed.
-    it('a rollback reports a profile put back under another name', async () => {
-        const vault = fakeVault([base]);
-        const other: ServerProfile = { ...base, id: 'other' };
-        vi.mocked(storeSavedServerProfiles).mockImplementation(async (profiles: ServerProfile[]) => {
-            vault.profiles = profiles.map(p => (p.id === base.id && profiles.some(q => q.id === 'other') ? { ...p, name: `${p.name} (1)` } : p));
-            return vault.profiles;
-        });
-        const replacement: ServerProfile = { ...base, id: 'replacement' };
-        const outcome = await commitImportedServers([replacement], new Set([bridgeProfileKey(base)]),
-            async () => {
-                vault.profiles = [other];
-                throw new Error('vault write failed');
-            });
-        expect(outcome.error).toContain('stored with a number');
-        expect(outcome.error).not.toContain('No changes were made');
+        expect(outcome.updated).toBe(0);
+        // The vault still holds exactly what it held before the import: the
+        // removal and the append were one write, and it never landed.
+        expect(vault.profiles.map(s => s.id)).toEqual(['base']);
+        expect(vault.writes).toBe(0);
     });
 
     it('refuses the import when the saved profiles cannot be read, without writing or calling back', async () => {
@@ -407,12 +401,12 @@ describe('a scan-bound commit', () => {
         expect(onImport).not.toHaveBeenCalled();
     });
 
-    it('uses one validated scan account for both the removal and the append', async () => {
+    it('hands the validated scan account and the removal keys to the ONE atomic write', async () => {
         // Scan and commit both under account 7; the import replaces base.
         vi.mocked(readSavedServerProfilesForWrite).mockResolvedValue({ profiles: [base], userId: 7, revision: 'r1' });
         vi.mocked(storeSavedServerProfiles).mockClear();
         vi.mocked(storeSavedServerProfiles).mockImplementation(async (profiles: ServerProfile[]) => profiles);
-        const onImport = vi.fn(async (_servers: ServerProfile[], _expected?: number | null) => undefined);
+        const onImport = vi.fn(async (_servers: ServerProfile[], _expected?: number | null, _removeKeys?: ReadonlySet<string>) => undefined);
         const outcome = await commitImportedServersForScan(
             [{ ...base, id: 'replacement', name: 'New' }],
             new Set([bridgeProfileKey(base)]),
@@ -420,20 +414,109 @@ describe('a scan-bound commit', () => {
             onImport,
         );
         expect(outcome).toEqual({ added: 0, updated: 1 });
-        // Removal write under the validated scan account...
-        expect(storeSavedServerProfiles).toHaveBeenNthCalledWith(1, [], false, 7, 'r1');
-        // ...and the append bound to the same account.
-        expect(onImport).toHaveBeenCalledWith([expect.objectContaining({ id: 'replacement' })], 7);
+        // No separate removal write: the one write happens inside onImport,
+        // carrying the validated account and the removal keys together.
+        expect(storeSavedServerProfiles).not.toHaveBeenCalled();
+        expect(onImport).toHaveBeenCalledWith([expect.objectContaining({ id: 'replacement' })], 7, new Set([bridgeProfileKey(base)]));
     });
 
     it('commits normally when the account did not change since the scan', async () => {
         vi.mocked(readSavedServerProfilesForWrite).mockResolvedValue({ profiles: [base], userId: 7, revision: 'r1' });
         vi.mocked(storeSavedServerProfiles).mockImplementation(async (profiles: ServerProfile[]) => profiles);
-        const onImport = vi.fn(async (servers: ServerProfile[], expected?: number | null) => {
-            await appendImportedProfiles(servers, expected);
+        const onImport = vi.fn(async (servers: ServerProfile[], expected?: number | null, removeKeys?: ReadonlySet<string>) => {
+            await appendImportedProfiles(servers, expected, removeKeys);
         });
         const outcome = await commitImportedServersForScan([crypt], new Set([bridgeProfileKey(base)]), 7, onImport);
         expect(outcome).toEqual({ added: 1, updated: 0 });
-        expect(onImport).toHaveBeenCalledWith([crypt], 7);
+        expect(onImport).toHaveBeenCalledWith([crypt], 7, undefined);
+    });
+
+    // A locked scan could not read an owner: scanUserId is UNDEFINED (unknown),
+    // not null (confirmed legacy). After unlock + rescan the account reads as
+    // 7 and the commit proceeds: no false account-changed refusal.
+    it('an unknown scan owner (undefined, locked scan) does not trip a false account-changed refusal after unlock + rescan', async () => {
+        vi.mocked(readSavedServerProfilesForWrite).mockResolvedValue({ profiles: [base], userId: 7, revision: 'r1' });
+        vi.mocked(storeSavedServerProfiles).mockImplementation(async (profiles: ServerProfile[]) => profiles);
+        const onImport = vi.fn(async (servers: ServerProfile[], expected?: number | null, removeKeys?: ReadonlySet<string>) => {
+            await appendImportedProfiles(servers, expected, removeKeys);
+        });
+        const outcome = await commitImportedServersForScan([crypt], new Set([bridgeProfileKey(base)]), undefined, onImport);
+        expect(outcome).toEqual({ added: 1, updated: 0 });
+        expect(onImport).toHaveBeenCalledWith([crypt], 7, undefined);
+    });
+
+    // A CONFIRMED legacy scan (null: vault open, no account) is still refused
+    // once an account is active: null is a real answer, not a missing one.
+    it('a confirmed legacy scan (null) is refused once an account is active', async () => {
+        vi.mocked(readSavedServerProfilesForWrite).mockResolvedValue({ profiles: [base], userId: 7, revision: 'r1' });
+        vi.mocked(storeSavedServerProfiles).mockClear();
+        const onImport = vi.fn();
+        const outcome = await commitImportedServersForScan([crypt], new Set(), null, onImport);
+        expect(outcome.error).toMatch(/active account changed since the scan/);
+        expect(onImport).not.toHaveBeenCalled();
+        expect(storeSavedServerProfiles).not.toHaveBeenCalled();
+    });
+});
+
+describe('BridgeSourcePanel scan generation', () => {
+    let root: Root;
+    let host: HTMLDivElement;
+
+    beforeEach(() => {
+        (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+        host = document.createElement('div');
+        document.body.appendChild(host);
+        root = createRoot(host);
+    });
+
+    afterEach(() => {
+        act(() => root.unmount());
+        host.remove();
+        vi.mocked(invoke).mockReset();
+    });
+
+    /// Two dropped files resolving in REVERSE order: the newer scan's rows,
+    /// account id and errors win, the older one is dropped entirely.
+    it('a superseded scan cannot overwrite the newer scan\'s rows', async () => {
+        const { BridgeSourcePanel } = await import('../BridgeSourcePanel');
+        const { detectBridgeConfigBounded } = await import('../../hooks/useDetectedBridgeConfigs');
+        vi.mocked(detectBridgeConfigBounded).mockResolvedValue(null as unknown as string);
+        const meta = {
+            id: 'aws', label: 'AWS', supportedProtocols: ['s3'], importExtensions: ['ini'],
+            exportExt: 'ini', exportLabel: 'AWS', secretPolicy: 'full', importFilterName: 'AWS',
+        };
+        const deferred: Array<{ resolve: (v: unknown) => void }> = [];
+        vi.mocked(invoke).mockImplementation((cmd: string) => {
+            if (cmd === 'bridge_source_meta') return Promise.resolve(meta);
+            if (cmd === 'import_bridge_config') {
+                let resolve!: (v: unknown) => void;
+                const promise = new Promise(r => { resolve = r; });
+                deferred.push({ resolve });
+                return promise;
+            }
+            return Promise.reject(new Error(`unexpected invoke ${cmd}`));
+        });
+        const source = { id: 'aws', label: 'AWS' } as never;
+        const props = {
+            source, direction: 'import' as const, servers: [] as ServerProfile[], accountId: 7,
+            existingServerKeys: new Set<string>(), onImport: vi.fn(), onClose: vi.fn(), onBack: vi.fn(),
+        };
+        act(() => { root.render(createElement(BridgeSourcePanel, { ...props, presetFilePath: '/a.ini' })); });
+        act(() => { root.render(createElement(BridgeSourcePanel, { ...props, presetFilePath: '/b.ini' })); });
+        expect(deferred.length).toBe(2);
+
+        const scanA = {
+            servers: [{ id: 'a1', name: 'scan-A', host: '', port: 443, username: 'x', protocol: 's3' }],
+            skipped: [], sourcePath: '/a.ini', totalRemotes: 1, scanUserId: 7,
+        };
+        const scanB = {
+            servers: [{ id: 'b1', name: 'scan-B', host: '', port: 443, username: 'x', protocol: 's3' }],
+            skipped: [], sourcePath: '/b.ini', totalRemotes: 1, scanUserId: 7,
+        };
+        // Reverse order: the NEWER scan (b) resolves first, then the older (a).
+        await act(async () => { deferred[1].resolve(scanB); });
+        await act(async () => { deferred[0].resolve(scanA); });
+        expect(host.textContent).toContain('scan-B');
+        expect(host.textContent).not.toContain('scan-A');
     });
 });

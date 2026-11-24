@@ -176,7 +176,22 @@ export const readSavedServerProfilesForWrite = async (): Promise<SavedProfilesRe
         const scoped = await loadActiveServerProfilesScoped();
         return { profiles: scoped.profiles, userId: scoped.userId, revision: scoped.revision };
     } catch (error) {
-        if (!canUseLegacyProfileFallback(error)) throw error;
+        // A CONFIRMED legacy store is one the backend says has no accounts
+        // (NO_ACTIVE_USER) or an old backend without the partition commands.
+        // An owner read that failed for any other reason (vault locked,
+        // partition unreachable: STORE_NOT_READY, USER_LOCKED) is UNAVAILABLE,
+        // not legacy: returning it with no userId would let a write proceed as
+        // if the legacy store were confirmed and later trip a false
+        // account-changed refusal. It throws instead: the caller reports a
+        // retryable failure and nothing is written.
+        const message = String(error ?? '');
+        const confirmedLegacy =
+            message.includes('NO_ACTIVE_USER') ||
+            message.includes('unknown command') ||
+            message.includes('not found') ||
+            message.includes('failed to invoke') ||
+            message.includes('window.__TAURI_INTERNALS__');
+        if (!confirmedLegacy) throw error;
         const legacy = await loadLegacySavedServerProfiles();
         if (legacy.length > 0) return { profiles: legacy, revision: LEGACY_STORE_REVISION + JSON.stringify(legacy) };
         throw error;
@@ -361,6 +376,31 @@ export const reloadRestoredServerProfiles = async (): Promise<ServerProfile[]> =
     const profiles = await loadSavedServerProfilesStrict();
     announceStoredServerProfiles(profiles, accountBefore);
     return profiles;
+};
+
+/**
+ * [`reloadRestoredServerProfiles`] plus the account the list was read under, in
+ * the SAME read, so a view can store the pair as one coherent snapshot: the
+ * list and its account never come from two reads that an account switch could
+ * have split. Strict like the list-only reload: an unreachable partition is a
+ * failure, not an empty list.
+ */
+export const reloadRestoredServerProfilesWithAccount = async (): Promise<SavedProfilesRead> => {
+    const accountBefore = accountChangeGeneration();
+    try {
+        await seedLegacyLocalProfilesForPartitionMigration();
+        const scoped = await loadActiveServerProfilesScoped();
+        announceStoredServerProfiles(scoped.profiles, accountBefore);
+        return { profiles: scoped.profiles, userId: scoped.userId, revision: scoped.revision };
+    } catch (error) {
+        if (!canUseLegacyProfileFallback(error) && !String(error ?? '').includes('NO_ACTIVE_USER')) {
+            throw error;
+        }
+        const legacy = await loadLegacySavedServerProfiles();
+        if (legacy.length === 0 && !String(error ?? '').includes('NO_ACTIVE_USER')) throw error;
+        announceStoredServerProfiles(legacy, accountBefore);
+        return { profiles: legacy };
+    }
 };
 
 /**
