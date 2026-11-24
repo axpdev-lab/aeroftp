@@ -429,12 +429,15 @@ fn storage_block(
             })
         }
         Some("s3") => {
-            // Keep the established bare authority for a pathless endpoint. A
-            // nonempty base path needs the URL form Kopia also accepts.
-            // No endpoint of its own means AWS.
+            // Kopia 0.22.3 passes `endpoint` directly to minio-go, which adds
+            // the scheme itself and rejects non-root base paths.
             let (endpoint, no_tls) = match endpoint {
                 Some(ep) if ep.path.is_empty() => (ep.authority(), !ep.is_tls()),
-                Some(ep) => (ep.url(), !ep.is_tls()),
+                Some(_) => {
+                    return Err(
+                        "kopia export: Kopia S3 endpoints cannot carry a base path".to_string()
+                    );
+                }
                 None => ("s3.amazonaws.com".to_string(), false),
             };
             let mut config = serde_json::json!({
@@ -1005,7 +1008,43 @@ mod tests {
     }
 
     #[test]
-    fn s3_endpoint_with_port_and_at_in_path_preserves_target_and_refused_endpoint_skips() {
+    fn s3_root_endpoints_export_bare_authorities_and_their_tls_mode() {
+        let dir = tempfile::tempdir().unwrap();
+        for (scheme, expected_no_tls) in [("http", true), ("https", false)] {
+            let server: KopiaExportServer = serde_json::from_value(serde_json::json!({
+                "id": scheme,
+                "name": scheme,
+                "host": "",
+                "port": 9000,
+                "username": "DEMOKEY",
+                "protocol": "s3",
+                "providerId": "custom-s3",
+                "options": {
+                    "endpoint": format!("{scheme}://objects.example.test:9000"),
+                    "bucket": "backups"
+                },
+                "initialPath": null
+            }))
+            .unwrap();
+            let out = dir.path().join(format!("{scheme}.config"));
+            let outcome = export_kopia(&[server], &HashMap::new(), &out).unwrap();
+            assert_eq!((outcome.exported, outcome.skipped.len()), (1, 0));
+            let doc: serde_json::Value =
+                serde_json::from_str(&std::fs::read_to_string(&out).unwrap()).unwrap();
+            assert_eq!(
+                doc["storage"]["config"]["endpoint"],
+                "objects.example.test:9000"
+            );
+            if expected_no_tls {
+                assert_eq!(doc["storage"]["config"]["doNotUseTLS"], true);
+            } else {
+                assert!(doc["storage"]["config"].get("doNotUseTLS").is_none());
+            }
+        }
+    }
+
+    #[test]
+    fn s3_endpoint_with_base_path_preserves_import_and_refuses_export() {
         let dir = tempfile::tempdir().unwrap();
 
         let valid_path = dir.path().join("valid.config");
@@ -1067,17 +1106,11 @@ mod tests {
         };
         let passwords = HashMap::from([(srv.id.clone(), "secret-at-path".to_string())]);
         let export_path = dir.path().join("roundtrip.config");
+        std::fs::write(&export_path, b"unchanged").unwrap();
         let outcome = export_kopia(&[export], &passwords, &export_path).unwrap();
-        assert_eq!((outcome.exported, outcome.skipped.len()), (1, 0));
-        let roundtrip = import_kopia(&export_path).unwrap();
-        assert_eq!(
-            roundtrip.servers[0]
-                .options
-                .as_ref()
-                .and_then(|o| o.get("endpoint"))
-                .and_then(|v| v.as_str()),
-            Some(saved_ep)
-        );
+        assert_eq!((outcome.exported, outcome.skipped.len()), (0, 1));
+        assert!(outcome.skipped[0].reason.contains("base path"));
+        assert_eq!(std::fs::read(&export_path).unwrap(), b"unchanged");
 
         let refused_path = dir.path().join("refused.config");
         let refused_cfg = serde_json::json!({
