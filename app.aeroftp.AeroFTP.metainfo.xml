@@ -146,6 +146,19 @@
   </languages>
 
   <releases>
+    <release version="4.2.8" date="2026-11-24">
+      <description>
+        <p>AeroFTP 4.2.8 makes connecting and managing remote files faster and more dependable. Open remote links and saved profiles straight into a connected tab, connect to four newly added cloud services (Puter, LifetimeCloud, Neon Object Storage and Blomp) or import profiles from INI templates, browse file version history on Nextcloud and MEGA, and refresh Find Duplicates results without running a full rescan. This release also restores local network access on macOS 15+, expands SFTP server compatibility, and hardens transfers, sync and encrypted folders so active work always stays on the right server and account.</p>
+        <ul>
+          <li>Sync, transfers and panel actions keep the connection, account and encrypted folder they started on.</li>
+          <li>Relative FTP, FTPS, SFTP and SCP start folders open under the login folder, including AeroCloud and the encrypted overlay.</li>
+          <li>FTP and FTPS refuse a backslash parent step inside an encrypted folder even when the server reports a slash-absolute path.</li>
+          <li>Launch links and profile flags open a connected tab, and new presets cover Puter, LifetimeCloud, Neon Object Storage and Blomp.</li>
+          <li>macOS declares Local Network usage, and SFTP offers NIST curves for servers that require them.</li>
+          <li>Dependency updates close the rustix, quinn-udp, zlib, russh and cookie advisories recorded for this release.</li>
+        </ul>
+      </description>
+    </release>
     <release version="4.2.7" date="2026-11-08">
       <description>
         <p>Network trust hardening, Tigris and Fastly Object Storage S3 presets, native MEGA bulk transfers, and imported profile security reviews.</p>
