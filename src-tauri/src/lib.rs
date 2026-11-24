@@ -24281,13 +24281,15 @@ pub(crate) fn fill_oauth_app_recorded(
     // its value relies on every slot the app holds, the ones whose value it
     // does not carry included. A share of the id alone would let the scan
     // that filled the secret take it back and leave an id with no secret.
+    let omits_app = given_id.is_none() && given_secret.is_none();
     let relies_on_app = !other_app
-        && [
-            (given_id, stored_id.as_deref()),
-            (given_secret, stored_secret.as_deref()),
-        ]
-        .iter()
-        .any(|(given, stored)| given.is_some() && given == stored);
+        && (omits_app
+            || [
+                (given_id, stored_id.as_deref()),
+                (given_secret, stored_secret.as_deref()),
+            ]
+            .iter()
+            .any(|(given, stored)| given.is_some() && given == stored));
     for (name, fills, stored) in [
         ("client_id", client_id, stored_id.as_deref()),
         ("client_secret", client_secret, stored_secret.as_deref()),
@@ -25265,6 +25267,55 @@ mod copy_profile_secrets_for_tests {
             .unwrap()
             .map(|value| value.to_string()),
             Some(token.to_string())
+        );
+    }
+
+    /// CodeRabbit r6034347929: a config that omits both app fields relies
+    /// on the stored provider app, so `fill_oauth_app_recorded` records
+    /// the stored id and secret as shares (fills=false) for the scan's
+    /// ledger: another unsettled scan's settle cannot take the app this
+    /// config's profiles still use. Red if the omitted config records no
+    /// share.
+    #[test]
+    fn a_config_omitting_the_app_records_the_stored_app_as_a_share() {
+        let env = Accounts::new();
+        env.store
+            .store("oauth_shareprov_client_id", "stored-id")
+            .unwrap();
+        env.store
+            .store("oauth_shareprov_client_secret", "stored-secret")
+            .unwrap();
+        let recorded = std::cell::RefCell::new(Vec::new());
+        let filled = crate::fill_oauth_app_recorded(
+            &env.store,
+            "shareprov",
+            None,
+            None,
+            |key, value, fills| {
+                recorded
+                    .borrow_mut()
+                    .push((key.to_string(), value.to_string(), fills));
+                Ok(())
+            },
+        )
+        .unwrap();
+        let recorded = recorded.into_inner();
+        assert!(!filled, "no other app is stored");
+        assert_eq!(
+            recorded,
+            vec![
+                (
+                    "oauth_shareprov_client_id".to_string(),
+                    "stored-id".to_string(),
+                    false
+                ),
+                (
+                    "oauth_shareprov_client_secret".to_string(),
+                    "stored-secret".to_string(),
+                    false
+                ),
+            ],
+            "the omitted config shares both stored app slots"
         );
     }
 }
