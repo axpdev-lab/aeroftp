@@ -1977,6 +1977,15 @@ fn profile_plan_inputs(
         .unwrap_or(false);
     let mut root_key = store.derive_user_partition_wrapping_key();
 
+    // The legacy owner of the backup's partition: the account whose token a
+    // foreign vault key may be replaced with, resolved apart from the
+    // active receiver.
+    let backup_legacy_owner = backup_conn
+        .as_ref()
+        .map(|conn| crate::user_partitions::nonprofile_secret_owner_unpersisted(conn))
+        .transpose()
+        .map_err(|e| KeystoreExportError::Encryption(format!("Read the backup legacy owner: {e}")))?
+        .flatten();
     let mut local_secrets = HashMap::new();
     let mut backup_secrets = HashMap::new();
     let mut local_vault = HashMap::new();
@@ -2072,7 +2081,29 @@ fn profile_plan_inputs(
             // would read that foreign token as its own.
             if !attributable && merge_strategy == "skip_existing" {
                 if let Some(Some(value)) = local_vault.get(&key) {
-                    vault_foreign_private.push((key.clone(), value.clone()));
+                    // The token the backup gives the restored legacy owner
+                    // for this key, when it gives one: its row in the
+                    // backup's partition first, then its vault entry. The
+                    // sweep compare-and-writes it over the foreign value
+                    // so the owner is not left with no credentials.
+                    let owner_token = backup_conn
+                        .as_ref()
+                        .zip(backup_legacy_owner)
+                        .and_then(|(conn, owner)| {
+                            crate::user_partitions::get_user_credential_for(
+                                conn, &root_key, owner, &key,
+                            )
+                            .ok()
+                            .flatten()
+                        })
+                        .or_else(|| {
+                            sections
+                                .vault
+                                .then(|| payload.vault_entries.get(&key))
+                                .flatten()
+                                .map(|v| Zeroizing::new(v.clone()))
+                        });
+                    vault_foreign_private.push((key.clone(), value.clone(), owner_token));
                 }
             }
             Ok((attributable && reads_vault_tokens(receiver))
@@ -2551,8 +2582,8 @@ fn apply_profile_decisions(
                         inputs
                             .vault_foreign_private
                             .iter()
-                            .find(|(k, _)| k == key)
-                            .map(|(_, v)| v.as_str())
+                            .find(|(k, ..)| k == key)
+                            .map(|(_, v, _)| v.as_str())
                     } else {
                         None
                     };
@@ -3329,15 +3360,35 @@ fn import_keystore_with_store(
     // writer moved stays.
     #[cfg(test)]
     tests::run_before_foreign_token_sweep(store);
-    // What this sweep deleted from the vault, to put back if the published
-    // partition goes back to its pre-import bytes.
-    let mut swept: Vec<(String, Zeroizing<String>)> = Vec::new();
+    // What this sweep changed in the vault, to put back if the published
+    // partition goes back to its pre-import bytes: the value the plan read
+    // and, for a compare-and-write, the token it was swapped for.
+    let mut swept: Vec<(String, Zeroizing<String>, Option<Zeroizing<String>>)> = Vec::new();
     let mut partition_rolled_back = false;
     if partition_in_restore {
         if let Some((inputs, _)) = &profile_plan {
             if inputs.legacy_owner_reads_vault {
                 let mut foreign_exposed = false;
-                for (key, expected) in &inputs.vault_foreign_private {
+                for (key, expected, owner_token) in &inputs.vault_foreign_private {
+                    // The backup supplies the restored owner's own token:
+                    // compare-and-write swaps the foreign value for it, so
+                    // the owner reads its credentials and the foreign token
+                    // is gone in the same write. A value another writer
+                    // moved is left as it is.
+                    if let Some(token) = owner_token {
+                        match store.replace_secret_if_unchanged(key, expected, token.as_str()) {
+                            Ok(true) => {
+                                swept.push((key.clone(), expected.clone(), Some(token.clone())));
+                                continue;
+                            }
+                            Ok(false) => {}
+                            Err(e) => {
+                                tracing::warn!(
+                                    "Keystore import: backup owner token for {key} not written: {e}"
+                                );
+                            }
+                        }
+                    }
                     #[cfg(test)]
                     let deleted = if tests::foreign_token_delete_fails() {
                         Err(crate::credential_store::CredentialError::Encryption(
@@ -3349,7 +3400,7 @@ fn import_keystore_with_store(
                     #[cfg(not(test))]
                     let deleted = store.delete_secret_if_unchanged(key, expected);
                     if let Ok(true) = deleted {
-                        swept.push((key.clone(), expected.clone()));
+                        swept.push((key.clone(), expected.clone(), None));
                     }
                     if let Err(e) = deleted {
                         tracing::warn!(
@@ -3419,12 +3470,21 @@ fn import_keystore_with_store(
                          blocked; the restored partition was rolled back"
                     );
                     if bytes_restored {
-                        // Only what this sweep deleted goes back, and only
-                        // into a slot no other writer filled since. When
+                        // Only what this sweep changed goes back, and only
+                        // into a slot no other writer filled since: a value
+                        // another writer stored is never overwritten. When
                         // the bytes did not go back the foreign partition
                         // is still published, so its swept tokens stay gone.
-                        for (key, expected) in &swept {
-                            if let Err(e) = store.store_secret_if_absent(key, expected.as_str()) {
+                        for (key, expected, cas) in &swept {
+                            let restored = match cas {
+                                Some(token) => store.replace_secret_if_unchanged(
+                                    key,
+                                    token.as_str(),
+                                    expected.as_str(),
+                                ),
+                                None => store.store_secret_if_absent(key, expected.as_str()),
+                            };
+                            if let Err(e) = restored {
                                 tracing::warn!(
                                     "Keystore import: swept vault token {key} not restored: {e}"
                                 );
@@ -6766,11 +6826,10 @@ mod tests {
             "{:?}",
             result.sqlite_dbs_failed
         );
+        // The foreign value must be gone: the sweep either deletes it or
+        // compare-and-writes the restored owner's own backup token over it.
         assert!(
-            matches!(
-                store.get(key),
-                Err(crate::credential_store::CredentialError::NotFound(_))
-            ),
+            !matches!(store.get(key).ok().as_deref(), Some("local-token")),
             "the inactive owner's foreign token must not stay in the vault"
         );
     }
@@ -7090,6 +7149,91 @@ mod tests {
             store.get(key).unwrap(),
             "local-token",
             "the vault keeps the value the failed delete left"
+        );
+    }
+
+    /// "Skip existing" with a non-owner active account: the plan reads a
+    /// foreign local token for a key the restored legacy owner will fall
+    /// back to the vault for, and the backup supplies that owner's own
+    /// token in its vault section. The sweep compare-and-writes the
+    /// backup's token over the foreign value, so the restored owner reads
+    /// its credentials instead of nothing. Red if the sweep deletes the
+    /// foreign value without writing the owner's token.
+    #[test]
+    fn a_backup_supplied_owner_token_replaces_the_foreign_vault_value() {
+        let _guard = crate::user_partitions::test_lock();
+        crate::user_partitions::clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let cfg = dir.path().join("config");
+        let key = "oauth_dropbox_srv_drive";
+        let list = [dropbox("srv_drive", "Drive")];
+        partition_with(&store, &cfg, &list);
+        store.store(key, "local-token").unwrap();
+        let source_cfg = dir.path().join("source");
+        partition_with(&store, &source_cfg, &list);
+        let source_db = source_cfg.join("user_partitions.db");
+        let root = store.derive_user_partition_wrapping_key();
+        let mut source = rusqlite::Connection::open(&source_db).unwrap();
+        let second = crate::user_partitions::create_passphrase_less_user(
+            &mut source,
+            &root,
+            "Second",
+            None,
+            None,
+        )
+        .unwrap();
+        crate::user_partitions::set_active_user(&source, second.id).unwrap();
+        drop(source);
+        let mut payload = ExportPayload::default();
+        payload.vault_entries.insert(
+            "config_server_profiles".to_string(),
+            serde_json::to_string(&list).unwrap(),
+        );
+        payload
+            .vault_entries
+            .insert(key.to_string(), "owner-token".to_string());
+        payload.sqlite_dumps.insert(
+            "user_partitions.db".to_string(),
+            snapshot_sqlite_db(&source_db).unwrap().unwrap(),
+        );
+        let backup = dir.path().join("nonowner.aeroftp-keystore");
+        seal_backup(&backup, PASSWORD_736, &payload);
+        let db = cfg.join("user_partitions.db");
+
+        let result = import_keystore_with_store(
+            &store,
+            PASSWORD_736,
+            &backup,
+            "skip_existing",
+            ImportSections::default(),
+            Some(&cfg),
+            None,
+            None,
+        )
+        .unwrap();
+        assert!(
+            result.sqlite_dbs_failed.is_empty(),
+            "{:?}",
+            result.sqlite_dbs_failed
+        );
+        assert_eq!(
+            store.get(key).unwrap(),
+            "owner-token",
+            "the sweep wrote the backup's owner token over the foreign value"
+        );
+        let conn = rusqlite::Connection::open(&db).unwrap();
+        let owner = crate::user_partitions::nonprofile_secret_owner_unpersisted(&conn)
+            .unwrap()
+            .expect("the published partition has a legacy owner");
+        let root = Zeroizing::new(store.derive_user_partition_wrapping_key());
+        let read =
+            crate::user_partitions::read_credential_with_fallback(&conn, &store, &root, owner, key)
+                .unwrap();
+        assert_eq!(
+            read.as_ref().map(|v| v.as_str()),
+            Some("owner-token"),
+            "the restored owner reads the backup-supplied token"
         );
     }
 

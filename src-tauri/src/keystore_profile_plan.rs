@@ -187,7 +187,7 @@ pub struct PlanInputs {
     /// the vault: once the backup's partition is published its owner has no
     /// row for them and would read that foreign token as its own, so the
     /// import deletes each while it still holds the value read here.
-    pub vault_foreign_private: Vec<(String, Zeroizing<String>)>,
+    pub vault_foreign_private: Vec<(String, Zeroizing<String>, Option<Zeroizing<String>>)>,
     /// The partition the import publishes has a legacy owner, the account
     /// whose private tokens fall back to the vault copy: the foreign-token
     /// sweep runs for it even when the plan's receiver, the active account,
