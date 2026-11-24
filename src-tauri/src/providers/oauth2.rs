@@ -2368,7 +2368,11 @@ impl OAuth2Manager {
                         })?
                         .value();
                         if let Some(chain) = chain {
-                            Self::decode_record(&chain, TokenSource::Unavailable, credential_user)?;
+                            let adopted = Self::decode_record(
+                                &chain,
+                                TokenSource::Unavailable,
+                                credential_user,
+                            )?;
                             // The vault singleton is captured before the
                             // adoption swap: the cleanup below may remove
                             // only this observed value, and only while it
@@ -2418,8 +2422,33 @@ impl OAuth2Manager {
                             if let Some(vault) = vault_before {
                                 // An equal copy of the adopted record is
                                 // consumed, so a second empty profile does
-                                // not adopt it again.
-                                if vault == chain.as_str() {
+                                // not adopt it again. An unequal value
+                                // leaves only while it is the spent
+                                // predecessor of this same authorization:
+                                // owner_family absent or the adopted
+                                // chain's. A fresh sign-in's family and a
+                                // value another writer stored after the
+                                // capture stay.
+                                let consume = if vault == chain.as_str() {
+                                    true
+                                } else {
+                                    let chain_family = adopted.family().ok();
+                                    Self::decode_record(
+                                        &vault,
+                                        TokenSource::Unavailable,
+                                        credential_user,
+                                    )
+                                    .ok()
+                                    .is_some_and(|record| {
+                                        match &record.owner_family {
+                                            None => true,
+                                            Some(family) => {
+                                                chain_family.as_deref() == Some(family.as_str())
+                                            }
+                                        }
+                                    })
+                                };
+                                if consume {
                                     let _ = store.delete_secret_if_unchanged(&legacy, &vault);
                                 }
                             }
@@ -6730,6 +6759,52 @@ mod tests {
                 );
             }
             assert_eq!(stored_row(store, first, &second_profile), None);
+        });
+    }
+
+    /// G2 (2457): a fresh singleton sign-in with a new owner family sits in
+    /// the vault when an empty profile adopts the partition row's chain.
+    /// The cleanup keeps it: only a record of the same authorization, or
+    /// one whose owner_family is absent, is the spent predecessor.
+    /// Red if every value different from the chain is deleted.
+    #[test]
+    fn a_fresh_singleton_sign_in_survives_the_adoption_cleanup() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::oauth2::tests::a_fresh_singleton_sign_in_survives_the_adoption_cleanup",
+        ) {
+            return;
+        }
+        with_two_box_accounts(|store, first, _second, _shared| {
+            let legacy = OAuth2Manager::legacy_token_account_key(OAuthProvider::Box);
+            let record = |access: &str, refresh: &str, family: &str| {
+                serde_json::json!({
+                    "access_token": access, "refresh_token": refresh,
+                    "expires_at": null, "token_type": "Bearer", "scopes": [],
+                    "owner_family": family,
+                })
+                .to_string()
+            };
+            let chain = record("s-access", "s-refresh", "v1:singleton-owner");
+            // The fresh sign-in another manager just stored: a new
+            // authorization, so a new family.
+            let fresh = record("n-access", "n-refresh", "v1:fresh-sign-in");
+            let conn = crate::user_partitions::open_or_init_cli().unwrap();
+            let root = Zeroizing::new(store.derive_user_partition_wrapping_key());
+            crate::user_partitions::set_user_credential_for(
+                &conn, &root, first, &legacy, "oauth", &chain,
+            )
+            .unwrap();
+            store.store(&legacy, &fresh).unwrap();
+
+            let got = OAuth2Manager::new()
+                .load_token_record(OAuthProvider::Box, "p")
+                .expect("the singleton row's chain is read");
+            assert_eq!(got.tokens.access_token, "s-access");
+            assert_eq!(
+                store.get(&legacy).ok().as_deref(),
+                Some(fresh.as_str()),
+                "the fresh sign-in's authorization is not the spent predecessor"
+            );
         });
     }
 }
