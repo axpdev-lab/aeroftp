@@ -15061,8 +15061,19 @@ mod tests {
     /// name the rebuild's guard never opened. The guard still sees the
     /// damaged inode, so the refusal is the damaged-database one, not the
     /// writer one: either way the writer's file is never touched.
+    ///
+    /// Unix only: the fixture renames a fresh database over the path while
+    /// the rebuild's guard still holds the damaged file open, which POSIX
+    /// allows and Windows refuses. The child process keeps a panic here
+    /// from poisoning the shared `USER_SESSION` for the rest of the suite.
+    #[cfg(unix)]
     #[test]
     fn a_commit_in_the_damaged_removal_gap_keeps_the_file() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "user_partitions::tests::a_commit_in_the_damaged_removal_gap_keeps_the_file",
+        ) {
+            return;
+        }
         let _guard = test_lock();
         clear_user_session();
         let dir = tempfile::tempdir().unwrap();
