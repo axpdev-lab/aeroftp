@@ -2056,7 +2056,9 @@ fn profile_plan_inputs(
                     // only when that copy belongs to the receiver: the
                     // vault key is the legacy owner's, so the local
                     // persisted owner must be the receiver's account.
-                    (r.identity == h.identity && local_legacy_owner == Some(r.identity))
+                    (r.identity == h.identity
+                        && local_legacy_owner == Some(r.identity)
+                        && receiver_legacy_owner == Some(r.identity))
                         || matches!(
                             (local_legacy_owner, receiver_legacy_owner),
                             (Some(local), Some(receiver)) if local == receiver
@@ -6856,6 +6858,88 @@ mod tests {
         let conn = rusqlite::Connection::open(&db).unwrap();
         let read = read_effective_secret(&store, Some(&conn), &root, key).unwrap();
         assert_eq!(read, None, "the receiver reads no foreign token");
+    }
+
+    /// The other direction of the same state: the backup is sealed while
+    /// the persisted legacy owner is a second account and the first one is
+    /// still active, then the local pointer returns to the first account
+    /// and its scope and the vault hold the token. The active identities
+    /// match but the published partition's owner is the second account, so
+    /// the vault copy is not the receiver's and the sweep removes it. Red
+    /// if the active-identity match alone keeps the token.
+    #[test]
+    fn a_matching_active_identity_with_a_different_published_owner_does_not_keep_the_token() {
+        let _guard = crate::user_partitions::test_lock();
+        crate::user_partitions::clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let cfg = dir.path().join("config");
+        let key = "oauth_dropbox_srv_shared";
+        let list = [dropbox("srv_shared", "Shared")];
+        partition_with(&store, &cfg, &list);
+        let db = cfg.join("user_partitions.db");
+        let root = store.derive_user_partition_wrapping_key();
+        let mut conn = rusqlite::Connection::open(&db).unwrap();
+        let first = crate::user_partitions::nonprofile_secret_owner_unpersisted(&conn)
+            .unwrap()
+            .expect("a legacy owner");
+        let second = crate::user_partitions::create_passphrase_less_user(
+            &mut conn, &root, "Second", None, None,
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT OR REPLACE INTO global_state(key, value, updated_at) VALUES (?1, ?2, 0)",
+            rusqlite::params!["legacy_credential_owner_id", second.id.to_string()],
+        )
+        .unwrap();
+        // The backup is sealed in this state: Second owns the legacy
+        // secrets, the first account is still the active one.
+        let backup = full_backup(dir.path(), &db, &list);
+        // The local pointer returns to the first account and its scope and
+        // the vault hold the token, written only after the backup.
+        conn.execute(
+            "INSERT OR REPLACE INTO global_state(key, value, updated_at) VALUES (?1, ?2, 0)",
+            rusqlite::params!["legacy_credential_owner_id", first.to_string()],
+        )
+        .unwrap();
+        crate::user_partitions::set_user_credential_for(
+            &conn,
+            &root,
+            first,
+            key,
+            "oauth",
+            "local-token",
+        )
+        .unwrap();
+        drop(conn);
+        store.store(key, "local-token").unwrap();
+
+        let result = import_keystore_with_store(
+            &store,
+            PASSWORD_736,
+            &backup,
+            "skip_existing",
+            ImportSections::default(),
+            Some(&cfg),
+            None,
+            None,
+        )
+        .unwrap();
+        assert!(
+            result.sqlite_dbs_failed.is_empty(),
+            "{:?}",
+            result.sqlite_dbs_failed
+        );
+        assert!(
+            !matches!(store.get(key).ok().as_deref(), Some("local-token")),
+            "the vault must not keep a token the published owner cannot claim"
+        );
+        // The published partition's legacy owner is Second: it becomes the
+        // active account and reads nothing for the key.
+        let conn = rusqlite::Connection::open(&db).unwrap();
+        crate::user_partitions::set_active_user(&conn, second.id).unwrap();
+        let read = read_effective_secret(&store, Some(&conn), &root, key).unwrap();
+        assert_eq!(read, None, "the published owner reads no foreign token");
     }
 
     /// When neither the foreign-token delete nor the block record succeeds,
