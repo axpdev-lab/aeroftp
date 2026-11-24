@@ -12004,6 +12004,13 @@ fn snapshot_before_rebuild(path: &std::path::Path) -> Result<PathBuf, String> {
 const REBUILD_WHILE_WRITTEN: &str =
     "The account database is being written right now, so it was not rebuilt; try again";
 
+/// A rebuild refused because the partition file is not a readable database
+/// while no writer holds it: the file cannot be emptied in place, and no
+/// snapshot of it can be taken. Recovery is manual: restore the file from a
+/// backup, or remove it and rebuild again so the legacy vault migration
+/// recreates the partition.
+const REBUILD_DB_DAMAGED: &str = "The account database is damaged and no writer holds it, so it was not rebuilt; restore it from a backup or remove it and rebuild again";
+
 #[cfg(test)]
 thread_local! {
     /// Runs once on this thread in the next [`remove_partitions_db_for_rebuild`],
@@ -12056,9 +12063,11 @@ fn empty_partition_database(conn: &Connection) -> Result<(), String> {
 /// where it stands, inside that transaction: there is no removal a commit
 /// could fall into the gap of, on Windows included, where a file a
 /// connection holds open cannot be removed at all. A `BEGIN IMMEDIATE` that
-/// fails for any reason refuses the rebuild ([`REBUILD_WHILE_WRITTEN`])
-/// before the snapshot and before the session is dropped: the file a writer
-/// may still hold stays, and so does the unlocked session.
+/// fails refuses the rebuild before the snapshot and before the session is
+/// dropped: a held lock is [`REBUILD_WHILE_WRITTEN`], an idle file that is
+/// not a readable database is [`REBUILD_DB_DAMAGED`]. Either way the file
+/// stays and the unlocked session is not dropped for a rebuild that never
+/// ran.
 fn remove_partitions_db_for_rebuild(path: &std::path::Path) -> Result<Option<PathBuf>, String> {
     if !path.is_file() {
         return Ok(None);
@@ -12075,11 +12084,26 @@ fn remove_partitions_db_for_rebuild(path: &std::path::Path) -> Result<Option<Pat
     let mut session = hold_session().unwrap_or(SessionHold(None));
     #[cfg(test)]
     run_dual_write_hook(&BEFORE_REBUILD_WRITE_LOCK);
-    if guard.execute_batch("BEGIN IMMEDIATE").is_err() {
-        // Busy, locked, or a database that cannot be emptied in place: the
-        // rebuild refuses before the snapshot, so no commit can land in a
-        // removal gap and the unlocked session is not dropped for nothing.
-        return Err(REBUILD_WHILE_WRITTEN.to_string());
+    if let Err(e) = guard.execute_batch("BEGIN IMMEDIATE") {
+        // Busy or locked: a writer holds the file, so the rebuild refuses
+        // before the snapshot, no commit can land in a removal gap and the
+        // unlocked session is not dropped for nothing. Any other failure is
+        // an idle file that cannot be emptied in place (a damaged database,
+        // not a database at all): it is a different refusal, with recovery
+        // steps, not a transient writer.
+        let held = matches!(
+            e,
+            rusqlite::Error::SqliteFailure(ref err, _)
+                if matches!(
+                    err.code,
+                    rusqlite::ErrorCode::DatabaseBusy | rusqlite::ErrorCode::DatabaseLocked
+                )
+        );
+        return Err(if held {
+            REBUILD_WHILE_WRITTEN.to_string()
+        } else {
+            REBUILD_DB_DAMAGED.to_string()
+        });
     }
     let backup = snapshot_before_rebuild(path)?;
     #[cfg(test)]
@@ -15034,7 +15058,9 @@ mod tests {
     /// rebuild refuses instead of removing: the file a writer replaced
     /// stays, commits and all. The refusal now comes before the snapshot,
     /// so the writer lands while the rebuild takes its locks, on a new
-    /// name the rebuild's guard never opened.
+    /// name the rebuild's guard never opened. The guard still sees the
+    /// damaged inode, so the refusal is the damaged-database one, not the
+    /// writer one: either way the writer's file is never touched.
     #[test]
     fn a_commit_in_the_damaged_removal_gap_keeps_the_file() {
         let _guard = test_lock();
@@ -15062,7 +15088,8 @@ mod tests {
         })));
         let refused = remove_partitions_db_for_rebuild(&path);
         let error = refused.expect_err("a commit in the gap was not seen");
-        assert!(error.contains("being written"), "{error}");
+        assert!(error.contains("damaged"), "{error}");
+        assert!(!error.contains("being written"), "{error}");
         assert!(path.exists(), "the file a writer touched stays");
         let raced: i64 = Connection::open(&path)
             .unwrap()
@@ -15071,10 +15098,46 @@ mod tests {
         assert_eq!(raced, 1, "the writer's commit is still there");
     }
 
-    /// A rebuild refused on a `BEGIN IMMEDIATE` that is not a held lock
-    /// returns before the snapshot and before `session.clear`: the file
-    /// stays and the unlocked session is not dropped for a rebuild that
-    /// never ran.
+    /// A rebuild refused on a `BEGIN IMMEDIATE` that is genuinely busy or
+    /// locked is the writer refusal: a connection holding the database's
+    /// write lock makes the rebuild answer `REBUILD_WHILE_WRITTEN`, before
+    /// the snapshot and before `session.clear`, so the file and the
+    /// unlocked session both stay.
+    #[test]
+    fn a_live_writer_refuses_the_rebuild() {
+        let _guard = test_lock();
+        clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(DB_FILENAME);
+        let setup = Connection::open(&path).unwrap();
+        setup
+            .execute_batch("CREATE TABLE t (id INTEGER); INSERT INTO t VALUES (1);")
+            .unwrap();
+        drop(setup);
+        set_user_session(7, user_crypto::secret_key_from_bytes(&[7u8; 32])).unwrap();
+        let before = session_generation();
+        // A writer holding the database's write lock: the rebuild's own
+        // BEGIN IMMEDIATE comes back busy on the same inode.
+        let writer = Connection::open(&path).unwrap();
+        writer.execute_batch("BEGIN IMMEDIATE").unwrap();
+        let error =
+            remove_partitions_db_for_rebuild(&path).expect_err("a written database was rebuilt");
+        assert!(error.contains("being written"), "{error}");
+        writer.execute_batch("ROLLBACK").unwrap();
+        assert_eq!(
+            session_generation(),
+            before,
+            "the refused rebuild dropped the session"
+        );
+        assert_eq!(session_user_id(), Some(7));
+        assert!(path.exists(), "the refused rebuild removed the file");
+    }
+
+    /// A rebuild refused on an idle damaged file is not a writer refusal:
+    /// it returns the damaged-database error, still before the snapshot and
+    /// before `session.clear`, so the file stays and the unlocked session is
+    /// not dropped for a rebuild that never ran. The live-writer refusal is
+    /// pinned separately by `a_live_writer_refuses_the_rebuild`.
     #[test]
     fn a_refused_rebuild_keeps_the_unlocked_session() {
         let _guard = test_lock();
@@ -15082,14 +15145,15 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join(DB_FILENAME);
         // A file that is not a database makes `BEGIN IMMEDIATE` fail with
-        // an error that is neither busy nor locked.
+        // an error that is neither busy nor locked: no writer holds it.
         std::fs::write(&path, b"not a sqlite database").unwrap();
         set_user_session(7, user_crypto::secret_key_from_bytes(&[7u8; 32])).unwrap();
         assert_eq!(session_user_id(), Some(7));
         let before = session_generation();
         let error =
             remove_partitions_db_for_rebuild(&path).expect_err("a damaged database was rebuilt");
-        assert!(error.contains("being written"), "{error}");
+        assert!(error.contains("damaged"), "{error}");
+        assert!(!error.contains("being written"), "{error}");
         assert_eq!(
             session_generation(),
             before,
