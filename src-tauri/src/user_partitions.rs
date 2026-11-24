@@ -5861,9 +5861,10 @@ fn inserted_row_digests_key(user_id: i64) -> String {
     format!("{PRIVATE_TOKENS_INSERTED_PREFIX}{user_id}")
 }
 
-/// SHA-256 over the row's plaintext: enough to tell the value the alignment
-/// wrote is still there without keeping the token itself in `global_state`.
-fn private_token_value_digest(value: &str) -> String {
+/// SHA-256 over a secret's plaintext: enough to tell the value a step
+/// wrote or blocked is still there without keeping the secret itself in
+/// `global_state`, which exports copy unencrypted.
+fn secret_value_digest(value: &str) -> String {
     format!("{:x}", Sha256::digest(value.as_bytes()))
 }
 
@@ -5942,7 +5943,7 @@ fn sole_row_state(
     let Some(vault) = vault else {
         return Ok(SoleRow::Moved);
     };
-    let digest = private_token_value_digest(vault);
+    let digest = secret_value_digest(vault);
     match read_credential_with_dek(tx, user_id, dek, key)? {
         None => {
             set_user_credential_with_dek(tx, user_id, dek, key, kind, vault)?;
@@ -5963,7 +5964,7 @@ fn sole_row_state(
             let Some(recorded) = inserted.get(key).cloned() else {
                 return Ok(SoleRow::Moved);
             };
-            if recorded != private_token_value_digest(row.as_str()) {
+            if recorded != secret_value_digest(row.as_str()) {
                 inserted.remove(key);
                 return Ok(SoleRow::Skipped);
             }
@@ -6766,9 +6767,9 @@ pub fn realign_private_tokens_after_restore(
 }
 
 /// A vault value a failed import sweep could not remove, recorded in the
-/// partition's global state with the value it still holds: the legacy
-/// owner's read of a rowless private token treats the key as absent until
-/// a later delete takes that value out.
+/// partition's global state with the digest of the value it still holds:
+/// the legacy owner's read of a rowless private token treats the key as
+/// absent until a later delete takes that value out.
 const BLOCKED_VAULT_SECRET_PREFIX: &str = "vault_blocked_secret:";
 
 fn blocked_vault_secret_key(key: &str) -> String {
@@ -6777,6 +6778,8 @@ fn blocked_vault_secret_key(key: &str) -> String {
 
 /// Record `key`'s vault value `expected` as blocked: the partition's
 /// legacy owner reads the key as absent while the vault still holds it.
+/// Only the value's digest is kept: `user_partitions.db` is opened
+/// unencrypted and copied by exports.
 pub(crate) fn block_vault_secret(
     conn: &Connection,
     key: &str,
@@ -6784,7 +6787,11 @@ pub(crate) fn block_vault_secret(
 ) -> Result<(), String> {
     conn.execute(
         "INSERT OR REPLACE INTO global_state(key, value, updated_at) VALUES (?1, ?2, ?3)",
-        params![blocked_vault_secret_key(key), expected, now_ms()],
+        params![
+            blocked_vault_secret_key(key),
+            secret_value_digest(expected),
+            now_ms()
+        ],
     )
     .map_err(|e| format!("Block vault secret: {e}"))?;
     Ok(())
@@ -6830,12 +6837,12 @@ fn read_credential_with_fallback_inner(
         return Ok(None);
     }
     // A vault value a failed import sweep could not remove is recorded in
-    // the partition: while it still holds that value the key reads as
-    // absent. Gone or moved by another writer, the block lifts and the real
-    // value reads.
-    if let Some(expected) = blocked_vault_secret(conn, credential_id)? {
+    // the partition by digest: while it still holds that value the key
+    // reads as absent. Gone or moved by another writer, the block lifts
+    // and the real value reads.
+    if let Some(digest) = blocked_vault_secret(conn, credential_id)? {
         match read_secret(credential_id)? {
-            Some(value) if value.as_str() == expected => return Ok(None),
+            Some(value) if secret_value_digest(value.as_str()) == digest => return Ok(None),
             _ => unblock_vault_secret(conn, credential_id)?,
         }
     }

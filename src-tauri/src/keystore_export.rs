@@ -6431,6 +6431,20 @@ mod tests {
                 assert!(read.is_none(), "the blocked token reads as absent");
                 // The vault still holds it: only the block hides it.
                 assert_eq!(store.get(key).unwrap(), "local-token");
+                // The block row keeps only the value's digest: the
+                // partition db is copied unencrypted, so the token itself
+                // never lands there.
+                let blocked_row: Option<String> = conn
+                    .query_row(
+                        "SELECT value FROM global_state WHERE key = ?1",
+                        rusqlite::params!["vault_blocked_secret:oauth_dropbox_srv_drive"],
+                        |row| row.get(0),
+                    )
+                    .ok();
+                assert!(
+                    blocked_row.is_some_and(|row| !row.contains("local-token")),
+                    "the block row never holds the token in clear"
+                );
                 // A later delete that succeeds lifts the block.
                 store.delete(key).unwrap();
                 let read = crate::user_partitions::read_credential_with_fallback(
