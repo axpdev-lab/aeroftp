@@ -25595,6 +25595,33 @@ pub fn per_profile_vault_keys_for_target_reset(
     keys
 }
 
+/// The export's credential read bound to `account`, the account that
+/// produced the profile list, or to the active account when the caller has
+/// no binding (`None`).
+fn resolve_export_credential(
+    store: &credential_store::CredentialStore,
+    account: Option<i64>,
+    key: &str,
+) -> Result<Option<zeroize::Zeroizing<String>>, String> {
+    match account {
+        Some(user) => user_partitions::resolve_credential_for_user(store, user, key),
+        None => user_partitions::resolve_active_credential(store, key),
+    }
+}
+
+/// [`resolve_export_credential`] for the owner-aware read the OAuth and
+/// Jottacloud tokens use.
+fn resolve_export_credential_owner_aware(
+    store: &credential_store::CredentialStore,
+    account: Option<i64>,
+    key: &str,
+) -> Result<Option<zeroize::Zeroizing<String>>, String> {
+    match account {
+        Some(user) => user_partitions::resolve_credential_for_user_owner_aware(store, user, key),
+        None => user_partitions::resolve_active_credential_owner_aware(store, key),
+    }
+}
+
 /// Read the per-profile OAuth or Jotta token blob for a server profile, with
 /// a one-shot fallback to the legacy singleton key. The export bundle copies
 /// the value verbatim so the destination device can write it back without
@@ -25606,6 +25633,7 @@ pub fn per_profile_vault_keys_for_target_reset(
 fn collect_provider_secrets_for_server(
     store: &credential_store::CredentialStore,
     server: &profile_export::ServerProfileExport,
+    account: Option<i64>,
 ) -> Result<profile_export::ProviderSecrets, String> {
     let mut out = profile_export::ProviderSecrets::default();
     let protocol = server.protocol.as_deref().unwrap_or("").to_lowercase();
@@ -25615,7 +25643,7 @@ fn collect_provider_secrets_for_server(
     if let Some(slug) = oauth_vault_slug_for_protocol(&protocol) {
         let per_profile = providers::oauth2::oauth_token_key(slug, &server.id);
         let read = |key: &str| {
-            user_partitions::resolve_active_credential_owner_aware(store, key)
+            resolve_export_credential_owner_aware(store, account, key)
                 .map_err(|e| format!("{}: cannot read its OAuth token: {e}", server.name))
         };
         if let Some(value) = read(&per_profile)? {
@@ -25634,7 +25662,7 @@ fn collect_provider_secrets_for_server(
     if protocol == "jottacloud" {
         let per_profile = format!("jottacloud_refresh_{}", server.id);
         let read = |key: &str| {
-            user_partitions::resolve_active_credential_owner_aware(store, key)
+            resolve_export_credential_owner_aware(store, account, key)
                 .map(|value| value.map(|value| value.to_string()))
                 .map_err(|e| format!("{}: cannot read its Jottacloud token: {e}", server.name))
         };
@@ -25679,14 +25707,16 @@ fn collect_provider_secrets_for_server(
     // and interop rclone-crypt share these generic vault keys) so an exported
     // Crypt profile reconnects on import without re-entering the overlay password.
     // Protocol-agnostic: the overlay can sit on any provider-API backend.
-    if let Ok(Some(pw)) = user_partitions::resolve_active_credential(
+    if let Ok(Some(pw)) = resolve_export_credential(
         store,
+        account,
         &format!("aerocrypt_overlay_pw_{}", server.id),
     ) {
         out.aerocrypt_overlay_pw = Some(pw.to_string());
     }
-    if let Ok(Some(salt)) = user_partitions::resolve_active_credential(
+    if let Ok(Some(salt)) = resolve_export_credential(
         store,
+        account,
         &format!("aerocrypt_overlay_salt_{}", server.id),
     ) {
         out.aerocrypt_overlay_salt = Some(salt.to_string());
@@ -25694,14 +25724,16 @@ fn collect_provider_secrets_for_server(
     // AeroCrypt keyfile PATH (not the keyfile contents). Lets a same-device
     // re-import find the keyfile without re-picking it; on another device the
     // path may be stale and the UI must re-point.
-    if let Ok(Some(kf_path)) = user_partitions::resolve_active_credential(
+    if let Ok(Some(kf_path)) = resolve_export_credential(
         store,
+        account,
         &format!("aerocrypt_overlay_keyfile_path_{}", server.id),
     ) {
         out.aerocrypt_overlay_keyfile_path = Some(kf_path.to_string());
     }
-    if let Ok(Some(config)) = user_partitions::resolve_active_credential(
+    if let Ok(Some(config)) = resolve_export_credential(
         store,
+        account,
         &format!("aerocrypt_overlay_config_{}", server.id),
     ) {
         out.aerocrypt_overlay_config = Some(config.to_string());
@@ -25713,7 +25745,7 @@ fn collect_provider_secrets_for_server(
     // like the per-profile password (modeCredentialStore already stripped the
     // single-use TOTP/STS codes at write time).
     if let Ok(Some(modes)) =
-        user_partitions::resolve_active_credential(store, &format!("server_modes_{}", server.id))
+        resolve_export_credential(store, account, &format!("server_modes_{}", server.id))
     {
         out.mode_credentials = Some(modes.to_string());
     }
@@ -25723,7 +25755,7 @@ fn collect_provider_secrets_for_server(
     // profile's `options`), so without this the `.aeroftp` export dropped it and a
     // re-imported Filen profile fell back to password + TOTP.
     if let Ok(Some(api_key)) =
-        user_partitions::resolve_active_credential(store, &format!("filen_api_key_{}", server.id))
+        resolve_export_credential(store, account, &format!("filen_api_key_{}", server.id))
     {
         out.filen_api_key = Some(api_key.to_string());
     }
@@ -25731,14 +25763,14 @@ fn collect_provider_secrets_for_server(
     // OneDrive drive id/type captured at connect (`onedrive_drive_id_<id>` /
     // `onedrive_drive_type_<id>`). Vault-only like the Filen key, so the export
     // dropped them; carried so a re-import is a complete snapshot.
-    if let Ok(Some(v)) = user_partitions::resolve_active_credential(
-        store,
-        &format!("onedrive_drive_id_{}", server.id),
-    ) {
+    if let Ok(Some(v)) =
+        resolve_export_credential(store, account, &format!("onedrive_drive_id_{}", server.id))
+    {
         out.onedrive_drive_id = Some(v.to_string());
     }
-    if let Ok(Some(v)) = user_partitions::resolve_active_credential(
+    if let Ok(Some(v)) = resolve_export_credential(
         store,
+        account,
         &format!("onedrive_drive_type_{}", server.id),
     ) {
         out.onedrive_drive_type = Some(v.to_string());
@@ -25747,15 +25779,16 @@ fn collect_provider_secrets_for_server(
     // The native Proton Drive session (`proton_native_session_<id>`), written
     // at sign-in and at every refresh. Vault-only like the Filen key; it
     // travels like every other per-profile secret (owner decision 2026-10-17).
-    if let Ok(Some(v)) = user_partitions::resolve_active_credential(
+    if let Ok(Some(v)) = resolve_export_credential(
         store,
+        account,
         &format!("proton_native_session_{}", server.id),
     ) {
         out.proton_native_session = Some(v.to_string());
     }
 
     let read_auth = |prefix: &str| {
-        user_partitions::resolve_active_credential(store, &format!("{prefix}_{}", server.id))
+        resolve_export_credential(store, account, &format!("{prefix}_{}", server.id))
             .ok()
             .flatten()
             .map(|value| value.to_string())
@@ -25779,8 +25812,16 @@ async fn export_server_profiles(
     password: String,
     include_credentials: bool,
     file_path: String,
+    account_id: Option<i64>,
 ) -> Result<profile_export::ExportMetadata, String> {
-    export_server_profiles_core(servers_json, password, include_credentials, file_path).await
+    export_server_profiles_core(
+        servers_json,
+        password,
+        include_credentials,
+        file_path,
+        account_id,
+    )
+    .await
 }
 
 /// Core of [`export_server_profiles`], callable outside the Tauri command
@@ -25788,11 +25829,17 @@ async fn export_server_profiles(
 /// and GUI share ONE credential-collection + encryption implementation (a
 /// `#[tauri::command]` cannot be `pub` without a macro-name clash, hence the
 /// split).
+///
+/// `account` is the account that produced the profile list: every secret is
+/// resolved for it, not for whichever account is active when the export
+/// runs. `None` keeps the active-account resolution for callers that have
+/// no account binding.
 pub async fn export_server_profiles_core(
     servers_json: String,
     password: String,
     include_credentials: bool,
     file_path: String,
+    account: Option<i64>,
 ) -> Result<profile_export::ExportMetadata, String> {
     let mut servers: Vec<profile_export::ServerProfileExport> =
         serde_json::from_str(&servers_json).map_err(|e| format!("Invalid server data: {}", e))?;
@@ -25805,18 +25852,17 @@ pub async fn export_server_profiles_core(
         match credential_store::CredentialStore::from_cache() {
             Some(store) => {
                 for server in &mut servers {
-                    // MUV-3: export the active user's per-user credential, with
-                    // fallback to the legacy vault.
-                    if let Ok(Some(cred)) = user_partitions::resolve_active_credential(
-                        &store,
-                        &format!("server_{}", server.id),
-                    ) {
+                    // MUV-3: export the list account's per-user credential,
+                    // with fallback to the legacy vault.
+                    if let Ok(Some(cred)) =
+                        resolve_export_credential(&store, account, &format!("server_{}", server.id))
+                    {
                         server.credential = Some(cred.to_string());
                     }
                     // Issue #214: bundle OAuth / Jotta tokens alongside the
                     // per-profile password so an import on a fresh device
                     // reconnects without a browser re-auth.
-                    let secrets = collect_provider_secrets_for_server(&store, server)?;
+                    let secrets = collect_provider_secrets_for_server(&store, server, account)?;
                     if secrets.oauth.is_some()
                         || secrets.jotta_refresh.is_some()
                         || secrets.aerocrypt_overlay_pw.is_some()

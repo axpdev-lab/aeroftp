@@ -1136,6 +1136,7 @@ mod secval_a_tests {
             "pw-12345678".to_string(),
             false,
             path.to_string_lossy().to_string(),
+            None,
         )
         .await
         .expect("credentials-off export");

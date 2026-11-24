@@ -29494,7 +29494,7 @@ mod fourshared_attempt_key_tests {
                 "protocol": "fourshared"
             }))
             .unwrap();
-        let exported = crate::collect_provider_secrets_for_server(&store, &server).unwrap();
+        let exported = crate::collect_provider_secrets_for_server(&store, &server, None).unwrap();
         assert_eq!(exported.oauth.as_deref(), Some("token-t:secret-t"));
 
         // What the purge must leave: no copy the account can read, in the

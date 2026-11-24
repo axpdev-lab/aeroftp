@@ -44840,9 +44840,24 @@ async fn cmd_profile_export(
         }
     };
 
-    // 2. Load the active user's profiles (the GUI-shared config_server_profiles
-    //    shape, camelCase, already carrying persistModeCredentials).
-    let mut profiles = match load_active_user_profiles(cli, &store) {
+    // 2. Load the target account's profiles (the GUI-shared
+    //    config_server_profiles shape, camelCase, already carrying
+    //    persistModeCredentials). The same resolved account then binds the
+    //    credential reads of the export: `--user` names a non-active account
+    //    whose secrets must come from it, not from whichever account is
+    //    active when the export runs.
+    let target = match profile_target(cli, &store) {
+        Ok(t) => t,
+        Err(e) => {
+            print_error(
+                format,
+                &format!("cannot resolve the export account: {e}"),
+                1,
+            );
+            return 1;
+        }
+    };
+    let mut profiles = match load_profiles_of(cli, &store, &target) {
         Ok(p) => p,
         Err(e) => {
             print_error(format, &format!("cannot read profiles: {e}"), 1);
@@ -44920,6 +44935,7 @@ async fn cmd_profile_export(
         password.clone(),
         include_credentials,
         output.to_string(),
+        Some(target.id),
     )
     .await;
     password.zeroize();

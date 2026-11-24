@@ -22,7 +22,7 @@ import { useGuardedClose } from '../hooks/useGuardedClose';
 import { GuardedCloseConfirm } from './GuardedCloseConfirm';
 import { useDetectedBridgeConfigs, shortenConfigPath, orderBridgeSourcesByDetection } from '../hooks/useDetectedBridgeConfigs';
 import { announceStoredServerProfiles } from '../utils/serverProfileStore';
-import { accountChangeGeneration } from '../utils/userPartitions';
+import { accountChangeGeneration, getUnlockStatus } from '../utils/userPartitions';
 import { ServerChecklistNoMatch, ServerChecklistSearch, ServerChecklistSummary, SelectShownButton, useServerChecklistFilter } from './ServerChecklistFilter';
 import { ImportSecurityReview, keptRelaxationId, type ImportedSecurity } from './ImportSecurityReview';
 
@@ -244,6 +244,20 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
         }
         if (noneSelected) return;
 
+        // The export's secrets must come from the account that produced the
+        // profile list, not from whichever account is active when the write
+        // runs. The account is captured with the generation before the save
+        // picker opens; a switch while the picker is open (or between the
+        // status read and it) refuses the export, like the import path's
+        // accountChangeGeneration check.
+        const accountBefore = accountChangeGeneration();
+        const status = await getUnlockStatus().catch(() => null);
+        if (accountChangeGeneration() !== accountBefore) {
+            setError('ACCOUNT_CHANGED: the active account changed; nothing was exported');
+            return;
+        }
+        const accountId = status?.activeUserId ?? null;
+
         // Open save dialog first
         const filePath = await pickSave({
             title: t('settings.exportServers'),
@@ -251,6 +265,10 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
             defaultPath: `aeroftp_backup_${new Date().toISOString().slice(0, 10)}.aeroftp`,
         });
         if (!filePath) return;
+        if (accountChangeGeneration() !== accountBefore) {
+            setError('ACCOUNT_CHANGED: the active account changed while the save dialog was open; nothing was exported');
+            return;
+        }
 
         setLoading(true);
         setError(null);
@@ -261,6 +279,7 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                 password,
                 includeCredentials,
                 filePath,
+                accountId,
             });
             setSuccess(t('settings.exportSuccess').replace('{count}', String(selectedServers.length)));
             cancelScheduledClose();

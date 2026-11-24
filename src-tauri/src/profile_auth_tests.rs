@@ -658,6 +658,7 @@ async fn durable_profile_auth_lifecycle(
         "fixture-export-password".into(),
         true,
         file.to_string_lossy().into_owned(),
+        None,
     )
     .await
     .unwrap();
@@ -789,6 +790,7 @@ async fn durable_profile_auth_lifecycle(
         "fixture-export-password".into(),
         true,
         jotta_file.to_string_lossy().into_owned(),
+        None,
     )
     .await
     .unwrap();
@@ -873,6 +875,7 @@ async fn durable_profile_auth_lifecycle(
         "fixture-export-password".into(),
         false,
         weaker_file.to_string_lossy().into_owned(),
+        None,
     )
     .await
     .unwrap();
@@ -900,6 +903,7 @@ async fn durable_profile_auth_lifecycle(
         "fixture-export-password".into(),
         false,
         conflicting_file.to_string_lossy().into_owned(),
+        None,
     )
     .await
     .unwrap();
@@ -1499,6 +1503,7 @@ async fn durable_profile_auth_lifecycle(
         "fixture-export-password".into(),
         true,
         repeated_file.to_string_lossy().into_owned(),
+        None,
     )
     .await
     .unwrap();
@@ -1585,6 +1590,7 @@ async fn durable_profile_auth_lifecycle(
         "fixture-export-password".into(),
         false,
         redacted.to_string_lossy().into_owned(),
+        None,
     )
     .await
     .unwrap();
@@ -1764,6 +1770,7 @@ async fn native_session_ownership(store: &CredentialStore, active_id: i64, selec
         "native-fixture-export-password".into(),
         true,
         file.to_string_lossy().into_owned(),
+        None,
     )
     .await
     .unwrap();
@@ -2569,10 +2576,10 @@ fn an_unreadable_oauth_token_fails_the_profile_export() {
             protocol: Some("googledrive".into()),
             ..Default::default()
         };
-        let secrets = crate::collect_provider_secrets_for_server(store, &server).unwrap();
+        let secrets = crate::collect_provider_secrets_for_server(store, &server, None).unwrap();
         assert_eq!(secrets.oauth.as_deref(), Some("own-google"));
         store.corrupt_entry_for_test("oauth_google_mine");
-        let secrets = crate::collect_provider_secrets_for_server(store, &server);
+        let secrets = crate::collect_provider_secrets_for_server(store, &server, None);
         assert!(
             secrets.as_ref().is_err_and(|e| e.contains("drive")),
             "{:?}",
@@ -2580,7 +2587,7 @@ fn an_unreadable_oauth_token_fails_the_profile_export() {
         );
         // Absent, not unreadable: the singleton is still the fallback.
         store.delete("oauth_google_mine").unwrap();
-        let secrets = crate::collect_provider_secrets_for_server(store, &server).unwrap();
+        let secrets = crate::collect_provider_secrets_for_server(store, &server, None).unwrap();
         assert_eq!(secrets.oauth.as_deref(), Some("other-google"));
     });
 }
@@ -2651,14 +2658,14 @@ fn an_unreadable_jotta_token_fails_the_profile_export() {
             ..Default::default()
         };
         store.corrupt_entry_for_test("jottacloud_refresh_mine");
-        let secrets = crate::collect_provider_secrets_for_server(store, &server);
+        let secrets = crate::collect_provider_secrets_for_server(store, &server, None);
         assert!(
             secrets.as_ref().is_err_and(|e| e.contains("jotta")),
             "{:?}",
             secrets.map(|s| s.jotta_refresh)
         );
         store.delete("jottacloud_refresh_mine").unwrap();
-        let secrets = crate::collect_provider_secrets_for_server(store, &server).unwrap();
+        let secrets = crate::collect_provider_secrets_for_server(store, &server, None).unwrap();
         assert_eq!(secrets.jotta_refresh.as_deref(), Some("other-jotta"));
     });
 }
@@ -2929,4 +2936,60 @@ fn a_rollback_puts_a_rows_sign_in_stamp_back_with_it() {
             "{key} came back with another sign-in stamp than it had"
         );
     }
+}
+
+/// CodeRabbit r6034350279: the export's secrets come from the account that
+/// produced the profile list. With `--user` naming a non-active account, the
+/// same profile id holds a different password in the active account's
+/// partition: the export bound to the list's account carries that account's
+/// password, never the active one's. Red if the export resolves the active
+/// account's credential.
+#[test]
+fn an_export_reads_the_secrets_of_the_account_that_produced_the_list() {
+    with_unreadable_profile_vault(|store| {
+        let active = users::cli_get_active_user(store)
+            .unwrap()
+            .expect("the fixture has an active account")
+            .id;
+        let listed = users::cli_create_user(store, "Listed account", None, None, None).unwrap();
+        let profile = json!({
+            "id": "srv_bound", "name": "Bound", "protocol": "ftp",
+            "host": "example.com", "port": 21, "username": "u",
+        });
+        users::store_credential_for_user(
+            store,
+            listed.id,
+            "server_srv_bound",
+            "server",
+            "listed-password",
+        )
+        .unwrap();
+        users::store_credential_for_user(
+            store,
+            active,
+            "server_srv_bound",
+            "server",
+            "active-password",
+        )
+        .unwrap();
+
+        let directory = tempfile::tempdir().unwrap();
+        let file = directory.path().join("bound.aeroftp");
+        let metadata = tauri::async_runtime::block_on(crate::export_server_profiles_core(
+            json!([profile]).to_string(),
+            "fixture-export-password".into(),
+            true,
+            file.to_string_lossy().into_owned(),
+            Some(listed.id),
+        ))
+        .unwrap();
+        assert!(metadata.has_credentials);
+        let (out, _secrets, _) =
+            crate::profile_export::import_profiles(&file, "fixture-export-password").unwrap();
+        assert_eq!(
+            out[0].credential.as_deref(),
+            Some("listed-password"),
+            "the export carried the active account's credential, not the list account's"
+        );
+    });
 }
