@@ -4137,11 +4137,14 @@ pub(crate) async fn resolve_home_scope(
         }
     };
     // The window places a path the same way (`placeUnderLoginFolder`).
+    // Classify the login folder before trimming: POSIX root `/` would
+    // become empty and look like a relative Windows folder.
+    let home_is_posix_abs = home.starts_with('/');
     let home = home.trim_end_matches('/');
     if matches!(
         provider.provider_type(),
         ProviderType::Ftp | ProviderType::Ftps
-    ) && !home.starts_with('/')
+    ) && !home_is_posix_abs
         && crate::util::path_location::backslash_parent_step(rest_raw)
     {
         return Err("the overlay folder leaves the login folder".to_string());
@@ -8552,6 +8555,17 @@ pub(crate) mod tests {
             assert!(
                 err.contains("leaves the login folder"),
                 "{kind:?} refuses a backslash parent step on a Windows login folder: {err}"
+            );
+            let mut root = MemProvider::new();
+            root.kind = kind;
+            root.login_folder = Some("/".to_string());
+            assert_eq!(
+                resolve_home_scope(&mut root, "~/foo\\..\\outside")
+                    .await
+                    .unwrap()
+                    .as_deref(),
+                Some("/foo\\..\\outside"),
+                "{kind:?} keeps a literal backslash under the POSIX root"
             );
         }
         assert_eq!(
