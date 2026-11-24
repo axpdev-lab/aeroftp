@@ -3337,8 +3337,13 @@ mod tests {
         let outcome =
             super::solve_hashcash_with(&challenge, None, std::time::Duration::from_millis(300), 2);
         assert_eq!(outcome, super::HashcashOutcome::OutOfBudget);
+        // The outcome above is the budget. This clock is a runaway guard
+        // only: a full `cargo test` shares the machine with the hard proofs,
+        // so the wall time includes seconds in which these workers were not
+        // scheduled. 20s is still far above the 300ms budget and a fraction
+        // of the 300s server lifetime.
         assert!(
-            started.elapsed() < std::time::Duration::from_secs(5),
+            started.elapsed() < std::time::Duration::from_secs(20),
             "a 300 ms budget ran for {:?}",
             started.elapsed()
         );
