@@ -1112,7 +1112,10 @@ mystery gopher://old.example.com/0/
                 .iter()
                 .zip(servers.iter().zip(["name", "host"]))
             {
-                assert_eq!(skip.name, server.name);
+                assert_eq!(
+                    skip.name,
+                    crate::bridge_shared::sanitize_warning_name(&server.name, "export profile")
+                );
                 assert!(
                     skip.reason.starts_with(&format!("its {field} ")),
                     "{}",

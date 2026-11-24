@@ -8516,16 +8516,26 @@ http_proxy =
         let secret = "RCLONE_KEY_PATH_SECRET";
         let input = format!(
             "[sftp://alice:{secret}@files.example.test]\ntype = sftp\nhost = files.example.test\n\"key_file\" = {}\n",
-            "${HOME}".repeat(1025)
+            "${HOME}".repeat(5000)
         );
         let path = tmp_write(
             &input,
             &format!("aeroftp-test-key-path-error-{}.conf", std::process::id()),
         );
+        let _env = crate::test_env::lock();
+        let variable = "AEROFTP_TEST_KEY_PATH_HOME";
+        let previous = std::env::var_os(variable);
+        std::env::set_var(variable, "h");
+        let input = input.replace("${HOME}", &format!("${{{variable}}}"));
+        std::fs::write(&path, input).unwrap();
         let error = match import_rclone(&path) {
             Ok(_) => panic!("oversized key_file expansion must be refused"),
             Err(error) => error,
         };
+        match previous {
+            Some(value) => std::env::set_var(variable, value),
+            None => std::env::remove_var(variable),
+        }
         std::fs::remove_file(&path).ok();
         assert!(error.contains("expands past 4096 bytes"), "{error}");
         assert!(error.contains("check its environment variables"), "{error}");
