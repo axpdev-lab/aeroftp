@@ -1936,29 +1936,7 @@ impl StorageProvider for AzureProvider {
                 status
             )));
         }
-        let answered = resp
-            .headers()
-            .get(reqwest::header::CONTENT_RANGE)
-            .and_then(|value| value.to_str().ok())
-            .map(|value| value.to_string());
-        let bytes = super::range_window_with_limit(resp, super::MAX_DOWNLOAD_TO_BYTES).await?;
-        // A 206 that does not name the window it carries is written at this
-        // offset just the same, so it has to say which range it is.
-        match super::multi_thread::ranged_answer(
-            status,
-            answered.as_deref(),
-            bytes.len() as u64,
-            offset,
-            end,
-        ) {
-            Ok(super::multi_thread::RangedAnswer::Window) => Ok(bytes),
-            Ok(super::multi_thread::RangedAnswer::WholeObject) => {
-                Ok(super::multi_thread::slice_whole_object(&bytes, offset, len))
-            }
-            Err(why) => Err(ProviderError::ParallelRefused(
-                super::multi_thread::parallel_refused("Azure range read", remote_path, &why),
-            )),
-        }
+        super::ranged_read_window(resp, offset, len, "Azure range read", remote_path).await
     }
 
     /// AZ-001: Upload with block upload support for files >100MB.
@@ -3079,6 +3057,23 @@ mod tests {
             provider.connected = true;
             Box::new(provider)
         })
+        .await;
+    }
+
+    /// A range read the service answers with the whole blob (the range
+    /// ignored) is read only up to the window's end: it was read whole, up to
+    /// the in-memory cap, before the window was cut out of it.
+    #[tokio::test]
+    async fn a_range_ignored_answer_reads_only_the_window() {
+        super::super::multi_thread::window_server::assert_a_range_ignored_answer_reads_only_the_window(
+            |addr| {
+                let mut config = test_config();
+                config.endpoint = Some(format!("http://{addr}"));
+                let mut provider = AzureProvider::new(config);
+                provider.connected = true;
+                Box::new(provider)
+            },
+        )
         .await;
     }
 
