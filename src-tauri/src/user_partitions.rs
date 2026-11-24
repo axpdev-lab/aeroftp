@@ -6962,10 +6962,10 @@ fn blocked_vault_secret(conn: &Connection, key: &str) -> Result<Option<String>, 
     .map_err(|e| format!("Read blocked vault secret: {e}"))
 }
 
-fn unblock_vault_secret(conn: &Connection, key: &str) -> Result<(), String> {
+fn unblock_vault_secret(conn: &Connection, key: &str, expected: &str) -> Result<(), String> {
     conn.execute(
-        "DELETE FROM global_state WHERE key = ?1",
-        params![blocked_vault_secret_key(key)],
+        "DELETE FROM global_state WHERE key = ?1 AND value = ?2",
+        params![blocked_vault_secret_key(key), expected],
     )
     .map_err(|e| format!("Unblock vault secret: {e}"))?;
     Ok(())
@@ -6983,11 +6983,16 @@ fn vault_secret_blocked_read_with(
     key: &str,
     read_secret: &SecretReader<'_>,
 ) -> Result<Option<Zeroizing<String>>, String> {
-    if private_token_type(key).is_none() || blocked_vault_secret(conn, key)?.is_none() {
+    if private_token_type(key).is_none() {
         return read_secret(key);
     }
+    let Some(recorded) = blocked_vault_secret(conn, key)? else {
+        return read_secret(key);
+    };
     if read_secret(key)?.is_none() {
-        unblock_vault_secret(conn, key)?;
+        #[cfg(test)]
+        run_dual_write_hook(&BEFORE_BLOCKED_UNBLOCK);
+        unblock_vault_secret(conn, key, &recorded)?;
     }
     Ok(None)
 }
@@ -8857,6 +8862,10 @@ thread_local! {
     /// Runs once on this thread in the next [`store_vault_then_mirror`],
     /// between its vault write and its mirror.
     pub(crate) static BEFORE_MIRROR: DualWriteHook = const { RefCell::new(None) };
+    /// Runs once on this thread in the next [`vault_secret_blocked_read_with`]
+    /// whose record is about to lift, between the checked record and its
+    /// delete: another writer replacing the record in between.
+    pub(crate) static BEFORE_BLOCKED_UNBLOCK: DualWriteHook = const { RefCell::new(None) };
 }
 
 #[cfg(test)]
@@ -14150,6 +14159,33 @@ mod tests {
         let _ = resolve_relocate_secret(&conn, &root, owner, None, "dropbox", "mine");
         assert!(blocked_vault_secret(&conn, key).unwrap().is_some());
         CredentialStore::clear_cache();
+    }
+
+    /// The block-clear race: the record a read checked is the only one its
+    /// lift may delete. A newer record another writer stored between the
+    /// check and the delete survives; red if the delete matches the key
+    /// alone.
+    #[test]
+    fn a_newer_block_record_survives_the_lift_of_the_checked_one() {
+        let _guard = test_lock();
+        clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("partitions.db");
+        let mut conn = open_or_init_path(path.clone()).expect("open");
+        migrate_legacy_payloads(&mut conn, Some("[]"), None, &test_root()).expect("seed");
+        let key = "oauth_dropbox_mine";
+        block_vault_secret(&conn, key, "old-value").unwrap();
+        BEFORE_BLOCKED_UNBLOCK.set(Some(Box::new(move || {
+            let conn = Connection::open(&path).unwrap();
+            block_vault_secret(&conn, key, "new-value").unwrap();
+        })));
+        let gone = vault_secret_blocked_read_with(&conn, key, &|_| Ok(None)).unwrap();
+        assert!(gone.is_none());
+        assert_eq!(
+            blocked_vault_secret(&conn, key).unwrap(),
+            Some(secret_value_digest("new-value")),
+            "the newer record survives the lift of the checked one"
+        );
     }
 
     /// MUV-6 for private tokens: what another account saved in the vault before
