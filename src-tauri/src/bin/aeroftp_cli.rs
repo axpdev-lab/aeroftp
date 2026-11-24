@@ -41854,16 +41854,9 @@ async fn cmd_versions_purge(
         return versions_unsupported(format);
     }
     let rpath = resolve_cli_remote_path(&initial_path, path);
-    let purged = match ftp_client_gui_lib::providers::refuse_a_purge_of_the_live_version(
-        provider.as_mut(),
-        &rpath,
-        version_id,
-    )
-    .await
-    {
-        Ok(()) => provider.delete_version(&rpath, version_id).await,
-        Err(e) => Err(e),
-    };
+    let purged =
+        ftp_client_gui_lib::providers::purge_version_guarded(provider.as_mut(), &rpath, version_id)
+            .await;
     let code = match purged {
         Ok(()) => {
             let msg = format!("Purged version {} of {}", version_id, rpath);
@@ -94950,6 +94943,10 @@ mod tests {
         refuse_hash_ranges: bool,
         /// Keeps file versions: each version call answers, none are listed.
         versions: bool,
+        /// The credentials may not list the versions.
+        deny_version_listing: bool,
+        /// Versions returned by `list_versions` when listing is allowed.
+        listed_versions: Vec<FileVersion>,
         /// Completes an upload instead of stalling.
         finish_upload: bool,
         /// The remote paths `stat`, an upload and the version calls were
@@ -95118,7 +95115,10 @@ mod tests {
                 .lock()
                 .unwrap()
                 .push(("list_versions", path.to_string()));
-            Ok(Vec::new())
+            if self.deny_version_listing {
+                return Err(ProviderError::PermissionDenied("listing".to_string()));
+            }
+            Ok(self.listed_versions.clone())
         }
         async fn download_version(
             &mut self,
@@ -95558,6 +95558,103 @@ mod tests {
         let code = against_stalling(provider, command);
         let calls = calls.lock().unwrap().clone();
         (code, calls)
+    }
+
+    /// A purge whose versions these credentials may not list is refused, as
+    /// the live version cannot be told: no version is deleted, and the exit
+    /// code says permission.
+    #[test]
+    fn a_purge_whose_listing_is_denied_deletes_no_version() {
+        let provider = StallingProvider {
+            versions: true,
+            deny_version_listing: true,
+            ..StallingProvider::default()
+        };
+        let calls = Arc::clone(&provider.version_calls);
+        let code = against_stalling(provider, |_| async {
+            cmd_versions_purge(
+                "memory://",
+                "/f.bin",
+                "v1",
+                true,
+                &quiet_cli(),
+                OutputFormat::Json,
+            )
+            .await
+        });
+        assert_eq!(code, 3);
+        assert_eq!(
+            *calls.lock().unwrap(),
+            [("list_versions", "/f.bin".to_string())]
+        );
+    }
+
+    #[test]
+    fn a_purge_of_a_listed_live_version_is_refused_while_noncurrent_proceeds() {
+        let versions = vec![
+            FileVersion {
+                id: "v2".to_string(),
+                modified: None,
+                size: 10,
+                modified_by: None,
+                deleted: false,
+            },
+            FileVersion {
+                id: "v1".to_string(),
+                modified: None,
+                size: 5,
+                modified_by: None,
+                deleted: false,
+            },
+        ];
+        let live_provider = StallingProvider {
+            versions: true,
+            listed_versions: versions.clone(),
+            ..StallingProvider::default()
+        };
+        let live_calls = Arc::clone(&live_provider.version_calls);
+        let refused_code = against_stalling(live_provider, |_| async {
+            cmd_versions_purge(
+                "memory://",
+                "/f.bin",
+                "v2",
+                true,
+                &quiet_cli(),
+                OutputFormat::Json,
+            )
+            .await
+        });
+        assert_ne!(refused_code, 0);
+        assert_eq!(
+            *live_calls.lock().unwrap(),
+            [("list_versions", "/f.bin".to_string())]
+        );
+
+        let old_provider = StallingProvider {
+            versions: true,
+            listed_versions: versions,
+            ..StallingProvider::default()
+        };
+        let old_calls = Arc::clone(&old_provider.version_calls);
+        let ok_code = against_stalling(old_provider, |_| async {
+            cmd_versions_purge(
+                "memory://",
+                "/f.bin",
+                "v1",
+                true,
+                &quiet_cli(),
+                OutputFormat::Json,
+            )
+            .await
+        });
+        assert_eq!(ok_code, 0);
+        assert_eq!(
+            *old_calls.lock().unwrap(),
+            [
+                ("list_versions", "/f.bin".to_string()),
+                ("delete_version", "/f.bin".to_string()),
+            ]
+        );
     }
 
     /// `get` of `/f.bin` into a local file that already holds "keep me", with

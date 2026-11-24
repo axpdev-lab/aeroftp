@@ -1152,8 +1152,10 @@ pub async fn refuse_a_restore_that_changes_nothing_when_listed<P: StorageProvide
 /// the file itself, and deleting it is a deletion, not a purge of history
 /// (the providers whose top row is `current` refuse it by that id already;
 /// S3 and B2 name it by a native id). A delete marker on top stays
-/// purgeable: that undeletes the file. The listing is read fresh; a listing
-/// denied (S3, B2) decides nothing, any other failure refuses the purge.
+/// purgeable: that undeletes the file. The listing is read fresh, and a
+/// purge goes on only when it shows the version is not the live one: a
+/// listing denied (S3, B2 keys with delete but no list rights) cannot tell,
+/// so it refuses the purge, as any other failure does.
 pub async fn refuse_a_purge_of_the_live_version<P: StorageProvider + ?Sized>(
     provider: &mut P,
     path: &str,
@@ -1161,7 +1163,13 @@ pub async fn refuse_a_purge_of_the_live_version<P: StorageProvider + ?Sized>(
 ) -> Result<(), ProviderError> {
     let versions = match provider.list_versions(path).await {
         Ok(versions) => versions,
-        Err(ProviderError::PermissionDenied(_)) => return Ok(()),
+        Err(ProviderError::PermissionDenied(detail)) => {
+            return Err(ProviderError::PermissionDenied(format!(
+                "The versions of {path} cannot be listed with these credentials, so AeroFTP \
+                 cannot tell the live version and nothing was purged: purge it with a key \
+                 that may list versions ({detail})"
+            )))
+        }
         Err(e @ (ProviderError::NotFound(_) | ProviderError::NotConnected)) => return Err(e),
         Err(e) => {
             return Err(ProviderError::TransferFailed(format!(
@@ -1178,6 +1186,17 @@ pub async fn refuse_a_purge_of_the_live_version<P: StorageProvider + ?Sized>(
         }
         _ => Ok(()),
     }
+}
+
+/// Guard a version purge against deleting the live version (or doing so blind
+/// when the version listing is denied) and then execute `delete_version`.
+pub async fn purge_version_guarded<P: StorageProvider + ?Sized>(
+    provider: &mut P,
+    path: &str,
+    version_id: &str,
+) -> Result<(), ProviderError> {
+    refuse_a_purge_of_the_live_version(provider, path, version_id).await?;
+    provider.delete_version(path, version_id).await
 }
 
 /// The error of a restore whose version listing failed: a file gone or
@@ -2872,6 +2891,24 @@ pub struct MultipartHandle {
     pub upload_id: String,
     /// Destination remote path or key the handle is bound to.
     pub remote_path: String,
+}
+
+/// Phrase emitted when a persisted multipart handle is unbound or stale (e.g.
+/// a legacy Nextcloud `webdav-chunked-v2` handle without destination binding, or
+/// a handle whose profile root moved) and the caller must drop any stored
+/// checkpoint before restarting the upload.
+pub(crate) const MULTIPART_RESTART_UPLOAD_HINT: &str = "start the upload again";
+
+/// Whether a multipart transfer error means the persisted handle itself cannot
+/// be resumed, so any durable checkpoint holding it must be dropped rather than
+/// kept for resume.
+pub(crate) fn is_unresumable_multipart_handle_error(err: &ProviderError) -> bool {
+    match err {
+        ProviderError::Other(msg) | ProviderError::PermissionDenied(msg) => {
+            msg.contains(MULTIPART_RESTART_UPLOAD_HINT)
+        }
+        _ => false,
+    }
 }
 
 impl std::fmt::Debug for MultipartHandle {
@@ -7448,11 +7485,15 @@ mod non_recursive_delete_tests {
             .await
             .is_err());
 
+        // A listing denied cannot tell the live version: no purge.
         let mut denied = Scripted::new(file, no_child);
         denied.versions = || Err(ProviderError::PermissionDenied("listing".into()));
-        refuse_a_purge_of_the_live_version(&mut denied, "/f", "v3")
-            .await
-            .unwrap();
+        let unknown = refuse_a_purge_of_the_live_version(&mut denied, "/f", "v3").await;
+        assert!(
+            matches!(&unknown, Err(ProviderError::PermissionDenied(m)) if m.contains("cannot tell the live version")),
+            "{unknown:?}"
+        );
+        assert_eq!(denied.calls, ["list_versions"]);
 
         let mut cut = Scripted::new(file, no_child);
         cut.versions = || Err(ProviderError::ConnectionLost("reset".into()));
