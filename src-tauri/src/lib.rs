@@ -24245,8 +24245,9 @@ pub fn fill_oauth_app(
 /// [`fill_oauth_app`] that hands `record` each slot it fills, by key and
 /// value, before it writes any: a bridge scan keeps them in its ledger
 /// ([`bridge_import_scan`]), so a scan never confirmed takes them back. It
-/// hands it too, with `fills` false, each slot that already holds the value
-/// the config carries: another scan may have filled it and not settled
+/// hands it too, with `fills` false, each slot that already holds a value
+/// the config carries or, when it carries neither app field, the stored
+/// app it relies on: another scan may have filled it and not settled
 /// ([`bridge_import_scan::Scan::share_app`]). A record refused writes nothing.
 pub(crate) fn fill_oauth_app_recorded(
     store: &credential_store::CredentialStore,
