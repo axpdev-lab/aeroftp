@@ -31,7 +31,7 @@ import { useTauriListener, guardedUnlisten } from './hooks/useTauriListener';
 import { useSelectionFolderSizes } from './hooks/useSelectionFolderSizes';
 import type { BackendSwapDetail } from './hooks/useOAuth2';
 import { connectionProtocol, getConnectionPreset } from './providers/connectionManifest';
-import { launchFolderToOpen, launchStartFolder, matchSignInProfile, openSessionMatchesLaunch, savedProfileMatchesLaunch } from './utils/launchUrlProfile';
+import { launchFolderToOpen, launchStartFolder, matchSignInProfile, openSessionMatchesLaunch, redactServerForLog, savedProfileMatchesLaunch, splitInlineHostPort } from './utils/launchUrlProfile';
 import { protocolDisplayName } from './utils/protocolDisplayName';
 import { pickFile } from './utils/pickPath';
 import { homeDir, downloadDir } from '@tauri-apps/api/path';
@@ -8836,18 +8836,14 @@ const App: React.FC = () => {
     // overrideParams: used by IntroHub form tabs to pass params directly (avoids stale React state)
     let effectiveParams = overrideParams || connectionParams;
     const remoteDirInput = opts?.initialRemotePath ?? quickConnectDirs.remoteDir;
-    // The inline host:port shortcut applies to the effective server. Quick
-    // Connect and an IntroHub form tab (overrideParams such as
-    // example.com:2222) both arrive here. A launch URL already split its
-    // host and port, so its server has no colon and this branch does not run.
-    if (effectiveParams.server && effectiveParams.server.includes(':')) {
-      const lastColon = effectiveParams.server.lastIndexOf(':');
-      const possiblePort = effectiveParams.server.substring(lastColon + 1);
-      const parsedPort = parseInt(possiblePort, 10);
-      if (parsedPort > 0 && parsedPort <= 65535 && String(parsedPort) === possiblePort) {
-        const cleanHost = effectiveParams.server.substring(0, lastColon);
-        effectiveParams = { ...effectiveParams, server: cleanHost, port: parsedPort };
-        setConnectionParams(prev => ({ ...prev, server: cleanHost, port: parsedPort }));
+    // A bare host:port in the form is split. An override keeps that split
+    // off the Quick Connect form, so a failed tab cannot mix the next
+    // connect. A launch URL already has a separate host and port.
+    const inlineTarget = splitInlineHostPort(effectiveParams.server);
+    if (inlineTarget) {
+      effectiveParams = { ...effectiveParams, server: inlineTarget.host, port: inlineTarget.port };
+      if (!overrideParams) {
+        setConnectionParams(prev => ({ ...prev, server: inlineTarget.host, port: inlineTarget.port }));
       }
     }
 
@@ -8858,7 +8854,7 @@ const App: React.FC = () => {
     logger.debug('[connectToFtp] effectiveParams:', {
       protocol: effectiveParams.protocol,
       providerId: effectiveParams.providerId,
-      server: effectiveParams.server,
+      server: redactServerForLog(effectiveParams.server),
       port: effectiveParams.port,
       savedServerId: effectiveParams.savedServerId,
     });
