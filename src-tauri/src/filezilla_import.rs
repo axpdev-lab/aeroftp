@@ -797,6 +797,13 @@ fn map_server_with_context(
         // mis-infer `http://` on ports like 9000. AWS stays implicit so virtual-
         // hosted bucket addressing is preserved.
         if let Some(clean_host) = crate::bridge_shared::try_endpoint_host(&host) {
+            let clean_host = if crate::bridge_shared::is_ipv6_host_literal(&clean_host)
+                && !clean_host.starts_with('[')
+            {
+                format!("[{clean_host}]")
+            } else {
+                clean_host
+            };
             let aws =
                 crate::bridge_shared::map_s3_provider_from_endpoint(&clean_host) == "amazon-s3";
             let default_aws_transport = aws && actual_port == 443;
@@ -1665,7 +1672,16 @@ pub fn export_filezilla(
                             ep.scheme,
                             ep.path,
                         ),
-                        None => (server.host.clone(), server.port, "https", String::new()),
+                        None => (
+                            if server.host.trim().is_empty() {
+                                "s3.amazonaws.com".to_string()
+                            } else {
+                                server.host.clone()
+                            },
+                            if server.port == 0 { 443 } else { server.port },
+                            "https",
+                            String::new(),
+                        ),
                     };
                     if scheme != "https" {
                         outcome.skip(
@@ -1718,6 +1734,58 @@ pub fn export_filezilla(
             continue;
         }
 
+        // FileZilla loads `<RemoteDir>` only through `SetSafePath`. An S3 site
+        // keeps `/<bucket>` as its first segment. Any start path the format
+        // cannot represent makes the profile a reported refusal, not a success
+        // that silently reopens at another directory.
+        let exported_remote_dir: Option<String> = if protocol == "s3" {
+            let bucket = server
+                .options
+                .as_ref()
+                .and_then(|o| o.get("bucket"))
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|b| !b.is_empty());
+            match bucket {
+                Some(bucket) => Some(format_filezilla_s3_remote_dir(
+                    bucket,
+                    server.initial_path.as_deref().unwrap_or(""),
+                )),
+                None if server
+                    .initial_path
+                    .as_deref()
+                    .is_some_and(|p| !p.is_empty()) =>
+                {
+                    outcome.skip(
+                        &crate::bridge_shared::sanitize_warning_name(
+                            &server.name,
+                            "FileZilla site",
+                        ),
+                        "FileZilla cannot preserve an S3 initial path without a bucket",
+                    );
+                    continue;
+                }
+                None => None,
+            }
+        } else {
+            match server.initial_path.as_deref().filter(|p| !p.is_empty()) {
+                Some(path) => match format_filezilla_remote_dir(path) {
+                    Some(safe_path) => Some(safe_path),
+                    None => {
+                        outcome.skip(
+                            &crate::bridge_shared::sanitize_warning_name(
+                                &server.name,
+                                "FileZilla site",
+                            ),
+                            "FileZilla cannot preserve this initial directory as a RemoteDir",
+                        );
+                        continue;
+                    }
+                },
+                None => None,
+            }
+        };
+
         // Sanitize values for XML
         let sanitize = |s: &str| -> String {
             s.replace('&', "&amp;")
@@ -1748,34 +1816,6 @@ pub fn export_filezilla(
             xml.push_str("      <Logontype>0</Logontype>\n"); // Anonymous
         }
 
-        // Remote directory, in FileZilla's `CServerPath::GetSafePath()` format:
-        // FileZilla loads `<RemoteDir>` only through `SetSafePath`. An S3 site
-        // keeps `/<bucket>` as its first segment. An S3 profile without a
-        // bucket writes none: its start path is a prefix inside a bucket the
-        // profile does not name, and written alone FileZilla would open the
-        // prefix's first segment as the bucket. That site starts at the bucket
-        // list instead.
-        let exported_remote_dir: Option<String> = if protocol == "s3" {
-            server
-                .options
-                .as_ref()
-                .and_then(|o| o.get("bucket"))
-                .and_then(|v| v.as_str())
-                .map(str::trim)
-                .filter(|b| !b.is_empty())
-                .map(|bucket| {
-                    format_filezilla_s3_remote_dir(
-                        bucket,
-                        server.initial_path.as_deref().unwrap_or(""),
-                    )
-                })
-        } else {
-            server
-                .initial_path
-                .as_deref()
-                .filter(|p| !p.is_empty())
-                .and_then(format_filezilla_remote_dir)
-        };
         if let Some(ref safe_path) = exported_remote_dir {
             xml.push_str(&format!(
                 "      <RemoteDir>{}</RemoteDir>\n",
@@ -2899,10 +2939,14 @@ mod tests {
         ];
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("sitemanager.xml");
+        let outcome = export_filezilla(&rows, &HashMap::new(), &path).unwrap();
         assert_eq!(
-            export_filezilla(&rows, &HashMap::new(), &path).map(|outcome| outcome.exported),
-            Ok(rows.len())
+            (outcome.exported, outcome.skipped.len()),
+            (rows.len() - 2, 2)
         );
+        for name in ["Relative", "NoBucket"] {
+            assert!(outcome.skipped.iter().any(|skip| skip.name == name));
+        }
 
         let raw = parse_sitemanager_xml(&std::fs::read_to_string(&path).unwrap());
         let raw_dir = |name: &str| {
@@ -2927,7 +2971,8 @@ mod tests {
             raw_dir("TrailingPrefix").as_deref(),
             Some("1 0 5 media 7 reports 6 /2026/")
         );
-        // No bucket: no prefix written as if its first segment were one.
+        // No bucket: the profile is refused instead of treating the prefix's
+        // first segment as a bucket.
         assert_eq!(raw_dir("NoBucket"), None);
 
         let back = import_filezilla(&path).unwrap();
@@ -3406,7 +3451,7 @@ mod tests {
     }
 
     #[test]
-    fn unix_path_with_colon_bracket_round_trips_while_vms_stays_omitted() {
+    fn unix_path_with_colon_bracket_round_trips_while_vms_is_refused() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(
             dir.path().join("filezilla.xml"),
@@ -3436,10 +3481,10 @@ mod tests {
             },
         ];
         let out = dir.path().join("sitemanager.xml");
-        assert_eq!(
-            export_filezilla(&rows, &HashMap::new(), &out).map(|outcome| outcome.exported),
-            Ok(2)
-        );
+        let outcome = export_filezilla(&rows, &HashMap::new(), &out).unwrap();
+        assert_eq!((outcome.exported, outcome.skipped.len()), (1, 1));
+        assert_eq!(outcome.skipped[0].name, "VmsPath");
+        assert!(outcome.skipped[0].reason.contains("RemoteDir"));
 
         let imported = import_filezilla(&out).unwrap();
         let unix = imported
@@ -3448,12 +3493,7 @@ mod tests {
             .find(|s| s.name == "UnixBracket")
             .unwrap();
         assert_eq!(unix.initial_path.as_deref(), Some("/data/snapshot:[2026]"));
-        let vms = imported
-            .servers
-            .iter()
-            .find(|s| s.name == "VmsPath")
-            .unwrap();
-        assert_eq!(vms.initial_path, None);
+        assert!(!imported.servers.iter().any(|s| s.name == "VmsPath"));
     }
 
     #[test]
@@ -3646,6 +3686,28 @@ mod tests {
     }
 
     #[test]
+    fn scoped_ipv6_secret_suffix_is_absent_from_serialized_import() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sitemanager.xml");
+        let hostile = "fe80::1%eth0?token=SCOPED_IPV6_SECRET";
+        std::fs::write(
+            &path,
+            format!(
+                r#"<?xml version="1.0"?><FileZilla3><Servers><Server><Host>{hostile}</Host><Port>22</Port><Protocol>1</Protocol><User>u</User><Name>{hostile}</Name></Server></Servers></FileZilla3>"#
+            ),
+        )
+        .unwrap();
+
+        let result = import_filezilla(&path).unwrap();
+        assert!(result.servers.is_empty());
+        assert_eq!(result.skipped.len(), 1);
+        assert_eq!(result.skipped[0].name, "FileZilla site");
+        let serialized = serde_json::to_string(&result).unwrap();
+        assert!(!serialized.contains("SCOPED_IPV6_SECRET"), "{serialized}");
+        assert!(!serialized.contains("token="), "{serialized}");
+    }
+
+    #[test]
     fn native_s3_protocol_7_without_remote_dir_warns_missing_bucket() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("sitemanager.xml");
@@ -3737,6 +3799,31 @@ mod tests {
         let plain = back.servers.iter().find(|s| s.name == "PlainS3").unwrap();
         assert_eq!(plain.host, "s3.amazonaws.com");
         assert_eq!(plain.port, 443);
+    }
+
+    #[test]
+    fn export_root_aws_with_empty_host_writes_the_default_s3_address() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sitemanager.xml");
+        let server = FileZillaExportServer {
+            id: "root-aws".into(),
+            name: "RootAws".into(),
+            host: String::new(),
+            port: 0,
+            username: "DEMOKEY".into(),
+            protocol: Some("s3".into()),
+            initial_path: None,
+            options: Some(serde_json::json!({"bucket": "media"})),
+        };
+
+        let outcome = export_filezilla(&[server], &HashMap::new(), &path).unwrap();
+        assert_eq!((outcome.exported, outcome.skipped.len()), (1, 0));
+        let xml = std::fs::read_to_string(&path).unwrap();
+        assert!(xml.contains("<Host>s3.amazonaws.com</Host>"), "{xml}");
+        assert!(xml.contains("<Port>443</Port>"), "{xml}");
+        let back = import_filezilla(&path).unwrap();
+        assert_eq!(back.servers[0].host, "s3.amazonaws.com");
+        assert_eq!(back.servers[0].port, 443);
     }
 
     #[test]
@@ -3902,6 +3989,61 @@ mod tests {
         )
         .expect("default AWS port builds S3Config");
         assert_eq!(default_cfg.endpoint, None);
+    }
+
+    #[test]
+    fn native_s3_ipv6_literals_keep_brackets_and_the_configured_port() {
+        let mut servers = String::new();
+        for (name, host, port) in [
+            ("UnbracketedDefault", "2001:db8::1", 443),
+            ("UnbracketedCustom", "2001:db8::1", 9443),
+            ("BracketedDefault", "[2001:db8::1]", 443),
+            ("BracketedCustom", "[2001:db8::1]", 9443),
+        ] {
+            servers.push_str(&format!(
+                r#"<Server><Host>{host}</Host><Port>{port}</Port><Protocol>7</Protocol><User>DEMOKEY</User><RemoteDir>1 0 5 media</RemoteDir><Name>{name}</Name></Server>"#
+            ));
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sitemanager.xml");
+        std::fs::write(
+            &path,
+            format!(
+                r#"<?xml version="1.0"?><FileZilla3><Servers>{servers}</Servers></FileZilla3>"#
+            ),
+        )
+        .unwrap();
+
+        let result = import_filezilla(&path).unwrap();
+        assert_eq!(
+            result.servers.len(),
+            4,
+            "unexpected skip count: {}",
+            result.skipped.len()
+        );
+        for (name, port) in [
+            ("UnbracketedDefault", 443),
+            ("UnbracketedCustom", 9443),
+            ("BracketedDefault", 443),
+            ("BracketedCustom", 9443),
+        ] {
+            let server = result.servers.iter().find(|s| s.name == name).unwrap();
+            assert_eq!(server.port, port);
+            let expected = if port == 443 {
+                "https://[2001:db8::1]".to_string()
+            } else {
+                format!("https://[2001:db8::1]:{port}")
+            };
+            assert_eq!(
+                server
+                    .options
+                    .as_ref()
+                    .and_then(|o| o.get("endpoint"))
+                    .and_then(|v| v.as_str()),
+                Some(expected.as_str()),
+                "{name}"
+            );
+        }
     }
 
     #[test]

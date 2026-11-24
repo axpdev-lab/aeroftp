@@ -560,7 +560,7 @@ pub fn export_dreamweaver(
             format!(
                 "a Dreamweaver .ste holds one site and it went to \"{}\": \
                  export this profile on its own",
-                server.name
+                crate::bridge_shared::sanitize_warning_name(&server.name, "Dreamweaver site")
             ),
         );
     }

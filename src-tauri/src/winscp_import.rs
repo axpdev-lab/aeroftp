@@ -864,6 +864,47 @@ pub fn export_winscp(
             _ => continue, // Skip unsupported protocols
         };
 
+        let (export_host, export_port) = if protocol == "s3" {
+            if let Err(reason) = crate::bridge_shared::export_line_value("host", &server.host) {
+                outcome.skip(&server.name, reason);
+                continue;
+            }
+            match crate::bridge_shared::resolve_export_endpoint(
+                "s3",
+                &server.host,
+                server.port,
+                &server.username,
+                server.options.as_ref(),
+                None,
+            ) {
+                Ok(Some(endpoint)) if !endpoint.is_tls() => {
+                    outcome.skip(
+                        &server.name,
+                        "WinSCP cannot preserve a non-HTTPS S3 endpoint",
+                    );
+                    continue;
+                }
+                Ok(Some(endpoint)) if !endpoint.path.is_empty() => {
+                    outcome.skip(
+                        &server.name,
+                        "WinSCP cannot preserve an S3 endpoint base path",
+                    );
+                    continue;
+                }
+                Ok(Some(endpoint)) => {
+                    let port = u32::from(endpoint.effective_port());
+                    (endpoint.host, port)
+                }
+                Ok(None) => ("s3.amazonaws.com".to_string(), 443),
+                Err(reason) => {
+                    outcome.skip(&server.name, reason);
+                    continue;
+                }
+            }
+        } else {
+            (server.host.clone(), server.port)
+        };
+
         let initial_path = server.initial_path.as_deref().filter(|p| !p.is_empty());
         let region = (protocol == "s3")
             .then_some(server.options.as_ref())
@@ -876,7 +917,7 @@ pub fn export_winscp(
         // is another host or folder than the profile holds. The session name
         // needs no check: `winscp_session_name` percent-encodes it.
         let line = crate::bridge_shared::export_line_value;
-        let unwritable = line("host", &server.host)
+        let unwritable = line("host", &export_host)
             .and_then(|()| line("user name", &server.username))
             .and_then(|()| line("initial folder", initial_path.unwrap_or("")))
             .and_then(|()| line("region", region.unwrap_or("")));
@@ -888,15 +929,15 @@ pub fn export_winscp(
         let encoded_name = names.claim(&winscp_session_name(&server.name));
 
         ini.push_str(&format!("[Sessions\\{}]\n", encoded_name));
-        ini.push_str(&format!("HostName={}\n", server.host));
-        ini.push_str(&format!("PortNumber={}\n", server.port));
+        ini.push_str(&format!("HostName={}\n", export_host));
+        ini.push_str(&format!("PortNumber={}\n", export_port));
         ini.push_str(&format!("UserName={}\n", server.username));
         ini.push_str(&format!("FSProtocol={}\n", fs_protocol));
         ini.push_str(&format!("Ftps={}\n", ftps));
 
         // Password
         if let Some(password) = crate::bridge_shared::export_secret(passwords, &server.id) {
-            let key = format!("{}{}", server.username, server.host);
+            let key = format!("{}{}", server.username, export_host);
             let obfuscated = obfuscate_winscp_password(password, &key);
             ini.push_str(&format!("Password={}\n", obfuscated));
         }
@@ -1929,6 +1970,51 @@ FSProtocol=1
             .servers
             .iter()
             .any(|server| server.host == "prod.example.test" && server.name == "Prod"));
+    }
+
+    #[test]
+    fn export_root_aws_with_empty_host_writes_the_default_s3_address() {
+        let server = WinScpExportServer {
+            id: "root-aws".into(),
+            name: "RootAws".into(),
+            host: String::new(),
+            port: 0,
+            username: "DEMOKEY".into(),
+            protocol: Some("s3".into()),
+            options: None,
+            initial_path: None,
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("WinSCP.ini");
+
+        let outcome = export_winscp(&[server], &HashMap::new(), &out).unwrap();
+        assert_eq!((outcome.exported, outcome.skipped.len()), (1, 0));
+        let ini = std::fs::read_to_string(&out).unwrap();
+        assert!(ini.contains("HostName=s3.amazonaws.com\n"), "{ini}");
+        assert!(ini.contains("PortNumber=443\n"), "{ini}");
+    }
+
+    #[test]
+    fn export_reports_an_s3_endpoint_base_path_it_cannot_hold() {
+        let server = WinScpExportServer {
+            id: "path".into(),
+            name: "Path".into(),
+            host: String::new(),
+            port: 443,
+            username: "DEMOKEY".into(),
+            protocol: Some("s3".into()),
+            options: Some(serde_json::json!({
+                "endpoint": "https://objects.example.test:9000/gateway"
+            })),
+            initial_path: None,
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("WinSCP.ini");
+
+        let outcome = export_winscp(&[server], &HashMap::new(), &out).unwrap();
+        assert_eq!((outcome.exported, outcome.skipped.len()), (0, 1));
+        assert!(outcome.skipped[0].reason.contains("base path"));
+        assert!(!out.exists());
     }
 
     #[test]

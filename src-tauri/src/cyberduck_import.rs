@@ -597,8 +597,9 @@ fn sanitize_filename(name: &str) -> String {
 ///
 /// `Hostname` is a bare host: WebDAV and S3 addresses are resolved through
 /// [`crate::bridge_shared::resolve_export_endpoint`], the same rules the
-/// connection uses, so a URL stored in `host` or an endpoint stored in
-/// `options` lands as host + port + path. An S3 connection that addresses
+/// connection uses, so a WebDAV URL stored in `host` or `options` lands as
+/// host + port + path. An S3 endpoint base path is a reported refusal because
+/// the bookmark has no field for it. An S3 connection that addresses
 /// buckets path-style (MinIO and most self-hosted gateways answer only that
 /// way) carries Cyberduck's per-host `s3.bucket.virtualhost.disable`
 /// property in the bookmark's `Custom` dictionary.
@@ -654,6 +655,18 @@ pub fn export_cyberduck(
             }
         };
 
+        if duck_proto == "s3"
+            && endpoint
+                .as_ref()
+                .is_some_and(|endpoint| !endpoint.path.is_empty())
+        {
+            outcome.skip(
+                &server.name,
+                "Cyberduck's S3 bookmark cannot preserve an endpoint base path",
+            );
+            continue;
+        }
+
         // (Hostname, Port, server path prefix, path-style)
         let (hostname, port, base_path, path_style) = match (duck_proto, &endpoint) {
             // Native B2 talks to the B2 API host, never to the S3 gateway.
@@ -695,8 +708,9 @@ pub fn export_cyberduck(
             ),
         };
 
-        // Cyberduck S3 Path is bucket[/prefix]; prefer the options.bucket
-        // when present, else the stored initial_path. WebDAV Path is the
+        // Cyberduck S3 Path is bucket[/prefix]. Join the bucket and start
+        // folder unless an imported start folder already contains the bucket.
+        // WebDAV Path is the
         // server path: the URL's own path, then the profile's start folder.
         // The start folder as the profile opens it: `{username}` filled, or
         // the profile skipped with the reason (`export_start_folder`).
@@ -721,7 +735,18 @@ pub fn export_cyberduck(
                 .and_then(|v| v.as_str())
                 .filter(|s| !s.is_empty())
                 .map(|s| s.to_string());
-            bucket.or(initial_path)
+            match (bucket, initial_path) {
+                (Some(bucket), Some(path)) => {
+                    let path = path.trim_start_matches('/');
+                    if path == bucket || path.starts_with(&format!("{bucket}/")) {
+                        Some(path.to_string())
+                    } else {
+                        Some(format!("{bucket}/{path}"))
+                    }
+                }
+                (Some(bucket), None) => Some(bucket),
+                (None, path) => path,
+            }
         } else {
             match (base_path.is_empty(), initial_path) {
                 (true, p) => p,
@@ -1565,6 +1590,62 @@ mod tests {
         let edge = back.servers.iter().find(|s| s.name == "edge").unwrap();
         assert_eq!(edge.username, "alice ");
         assert_eq!(edge.initial_path.as_deref(), Some("/home/alice /backup"));
+    }
+
+    #[test]
+    fn export_refuses_an_s3_endpoint_base_path() {
+        let server: CyberduckExportServer = serde_json::from_value(serde_json::json!({
+            "id": "path",
+            "name": "path",
+            "host": "",
+            "port": 443,
+            "username": "DEMOKEY",
+            "protocol": "s3",
+            "providerId": "custom-s3",
+            "options": {"endpoint": "https://objects.example.test:9000/gateway"},
+            "initialPath": null
+        }))
+        .unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("bookmarks");
+
+        let outcome = export_cyberduck(&[server], &HashMap::new(), &out).unwrap();
+        assert_eq!((outcome.exported, outcome.skipped.len()), (0, 1));
+        assert!(outcome.skipped[0].reason.contains("base path"));
+        assert!(!out.exists());
+    }
+
+    #[test]
+    fn export_joins_an_s3_bucket_and_start_folder_without_duplicating_the_bucket() {
+        let server = |name: &str, path: &str| -> CyberduckExportServer {
+            serde_json::from_value(serde_json::json!({
+                "id": name,
+                "name": name,
+                "host": "s3.amazonaws.com",
+                "port": 443,
+                "username": "DEMOKEY",
+                "protocol": "s3",
+                "providerId": "amazon-s3",
+                "options": {"bucket": "media"},
+                "initialPath": path
+            }))
+            .unwrap()
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let servers = [
+            server("plain", "/archive"),
+            server("scoped", "/media/photos"),
+        ];
+
+        let outcome = export_cyberduck(&servers, &HashMap::new(), dir.path()).unwrap();
+        assert_eq!((outcome.exported, outcome.skipped.len()), (2, 0));
+        for (name, path) in [("plain", "media/archive"), ("scoped", "media/photos")] {
+            let duck = std::fs::read_to_string(dir.path().join(format!("{name}.duck"))).unwrap();
+            assert!(
+                duck.contains(&format!("<key>Path</key>\n\t<string>{path}</string>")),
+                "{name}:\n{duck}"
+            );
+        }
     }
 
     /// A hand-edited bookmark is read as written, as a profile typed in the

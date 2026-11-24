@@ -242,7 +242,12 @@ pub(crate) fn is_ipv6_host_literal(raw: &str) -> bool {
         .split_once('%')
         .map_or((inner, None), |(address, scope)| (address, Some(scope)));
     !address.is_empty()
-        && scope.is_none_or(|scope| !scope.is_empty())
+        && scope.is_none_or(|scope| {
+            !scope.is_empty()
+                && scope
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'_' | b'~'))
+        })
         && address.parse::<std::net::Ipv6Addr>().is_ok()
 }
 
@@ -1469,7 +1474,7 @@ pub struct BridgeExportOutcome {
 impl BridgeExportOutcome {
     pub fn skip(&mut self, name: &str, reason: impl Into<String>) {
         self.skipped.push(BridgeExportSkip {
-            name: name.to_string(),
+            name: sanitize_warning_name(name, "export profile"),
             reason: reason.into(),
         });
     }
@@ -2129,9 +2134,33 @@ mod tests {
             Some(("[fe80::1%eth0]".to_string(), None))
         );
         assert_eq!(
+            try_hostname_field("fe80::1%eth0").as_deref(),
+            Some("[fe80::1%eth0]")
+        );
+        let secret_scope = "fe80::1%eth0?token=SCOPED_IPV6_SECRET";
+        assert_eq!(try_hostname_field(secret_scope), None);
+        assert_eq!(
+            sanitize_warning_name(secret_scope, "scoped host"),
+            "scoped host"
+        );
+        assert_eq!(
             split_host_port("nas.example.test:2222"),
             Some(("nas.example.test".to_string(), Some(2222)))
         );
+    }
+
+    #[test]
+    fn export_skip_names_are_sanitized_before_serialization() {
+        let mut outcome = BridgeExportOutcome::default();
+        outcome.skip(
+            "ftp://alice:pw@files.example.test?token=EXPORT_NAME_SECRET",
+            "refused",
+        );
+        assert_eq!(outcome.skipped[0].name, "files.example.test");
+        let serialized = format!("{outcome:?}");
+        for secret in ["alice", "pw", "EXPORT_NAME_SECRET"] {
+            assert!(!serialized.contains(secret), "{serialized}");
+        }
     }
 
     #[test]

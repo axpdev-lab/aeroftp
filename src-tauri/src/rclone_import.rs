@@ -1117,8 +1117,9 @@ fn map_remote(
 
     for key in ["host", "endpoint", "hostname", "auth", "upload_prefix"] {
         if get_str(key).is_some_and(host_field_carries_userinfo) {
+            let safe_type = crate::bridge_shared::sanitize_warning_name(&rclone_type, "unknown");
             return Err(format!(
-                "{rclone_type} {key} must not contain userinfo (@); set credentials in their dedicated fields instead"
+                "{safe_type} {key} must not contain userinfo (@); set credentials in their dedicated fields instead"
             ));
         }
     }
@@ -3791,8 +3792,8 @@ pub fn import_rclone(config_path: &Path) -> Result<RcloneImportResult, String> {
         .collect();
     let raw_sections = parse_rclone_goconfig_raw_sections(&content);
     for (name, data) in &mut sections {
-        if let Some(effective_type) = raw_sections.get(name).and_then(|raw| raw.get("type")) {
-            data.insert("type".to_string(), effective_type.clone());
+        if let Some(raw) = raw_sections.get(name) {
+            data.clone_from(raw);
         }
     }
     let aeroftp_export = aeroftp_export_header(&content);
@@ -4884,7 +4885,7 @@ pub struct RcloneExportOutcome {
 impl RcloneExportOutcome {
     fn skip(&mut self, name: &str, reason: &str) {
         self.skipped.push(RcloneExportSkip {
-            name: name.to_string(),
+            name: crate::bridge_shared::sanitize_warning_name(name, "rclone remote"),
             reason: reason.to_string(),
         });
     }
@@ -8251,6 +8252,60 @@ http_proxy =
             .servers
             .iter()
             .any(|server| server.name == "ordinary-ftp"));
+    }
+
+    #[test]
+    fn goconfig_duplicate_assignments_control_backend_and_connection_fields() {
+        let result = import_text(
+            "[site]\ntype: sftp\nhost = old.example.test\nhost: files.example.test\nuser = alice\n\n\
+             [ordinary]\ntype = sftp\nhost = ordinary.example.test\nuser = bob\n",
+            "effective-connection-fields",
+        );
+
+        assert_eq!(imported(&result, "site").host, "files.example.test");
+        assert_eq!(imported(&result, "ordinary").host, "ordinary.example.test");
+    }
+
+    #[test]
+    fn credential_bearing_backend_is_sanitized_in_userinfo_rejection() {
+        let result = import_text(
+            "[secret-type]\ntype = ftp\n\"type\" = ftp://alice:pw@host?token=x\nhost = bob@server.example.test\n\n\
+             [ordinary-userinfo]\ntype = ftp\nhost = carol@files.example.test\n",
+            "sanitized-backend-userinfo-rejection",
+        );
+
+        let rejected = result
+            .skipped
+            .iter()
+            .find(|skip| skip.name == "secret-type")
+            .unwrap();
+        assert!(rejected.reason.contains("host must not contain userinfo"));
+        let ordinary = result
+            .skipped
+            .iter()
+            .find(|skip| skip.name == "ordinary-userinfo")
+            .unwrap();
+        assert!(ordinary
+            .reason
+            .starts_with("ftp host must not contain userinfo"));
+        let serialized = serde_json::to_string(&result).unwrap();
+        for secret in ["alice", "pw", "token=x"] {
+            assert!(!serialized.contains(secret), "{serialized}");
+        }
+    }
+
+    #[test]
+    fn export_skip_names_strip_credentials_and_query_secrets() {
+        let mut outcome = RcloneExportOutcome::default();
+        outcome.skip(
+            "ftp://alice:pw@files.example.test?token=RCLONE_EXPORT_NAME_SECRET",
+            "refused",
+        );
+        assert_eq!(outcome.skipped[0].name, "files.example.test");
+        let serialized = format!("{outcome:?}");
+        for secret in ["alice", "pw", "RCLONE_EXPORT_NAME_SECRET"] {
+            assert!(!serialized.contains(secret), "{serialized}");
+        }
     }
 
     #[test]

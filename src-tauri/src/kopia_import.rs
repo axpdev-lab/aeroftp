@@ -405,6 +405,17 @@ fn storage_block(
             .unwrap_or("")
             .to_string()
     };
+    if server.protocol.as_deref() == Some("s3")
+        && server
+            .initial_path
+            .as_deref()
+            .is_some_and(|path| !path.is_empty() && path != "/")
+    {
+        return Err(
+            "kopia export: an S3 initial path is not a repository prefix; set Kopia's prefix explicitly"
+                .to_string(),
+        );
+    }
 
     let storage = match server.protocol.as_deref() {
         Some("s3") if server.provider_id.as_deref() == Some("backblaze-b2") => {
@@ -418,10 +429,10 @@ fn storage_block(
             })
         }
         Some("s3") => {
-            // Kopia wants the bare `host[:port]` and the scheme as a flag.
-            // No endpoint of its own: the profile is on AWS, kopia's default.
+            // Kopia also accepts a URL here; keep an endpoint base path instead
+            // of reducing it to the authority. No endpoint of its own means AWS.
             let (endpoint, no_tls) = match endpoint {
-                Some(ep) => (ep.authority(), !ep.is_tls()),
+                Some(ep) => (ep.url(), !ep.is_tls()),
                 None => ("s3.amazonaws.com".to_string(), false),
             };
             let mut config = serde_json::json!({
@@ -506,12 +517,16 @@ pub fn export_kopia(
         .ok_or_else(|| "kopia export: no profile supplied".to_string())?;
 
     let secret = crate::bridge_shared::export_secret(passwords, &server.id);
-    let doc = storage_block(server, secret)?;
-    let body = serde_json::to_vec_pretty(&doc).map_err(|e| e.to_string())?;
-    let mut outcome = crate::bridge_shared::BridgeExportOutcome {
-        exported: 1,
-        skipped: Vec::new(),
+    let mut outcome = crate::bridge_shared::BridgeExportOutcome::default();
+    let doc = match storage_block(server, secret) {
+        Ok(doc) => doc,
+        Err(reason) => {
+            outcome.skip(&server.name, reason);
+            return Ok(outcome);
+        }
     };
+    let body = serde_json::to_vec_pretty(&doc).map_err(|e| e.to_string())?;
+    outcome.exported = 1;
     crate::bridge_shared::write_export(outcome.exported, out, &body)?;
     for extra in &servers[1..] {
         outcome.skip(
@@ -519,7 +534,7 @@ pub fn export_kopia(
             format!(
                 "a kopia config holds one repository and it went to \"{}\": \
                  export this profile on its own",
-                server.name
+                crate::bridge_shared::sanitize_warning_name(&server.name, "Kopia profile")
             ),
         );
     }
@@ -870,6 +885,29 @@ mod tests {
     }
 
     #[test]
+    fn export_reports_an_s3_initial_path_instead_of_dropping_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("repository.config");
+        let server: KopiaExportServer = serde_json::from_value(serde_json::json!({
+            "id": "s3-start",
+            "name": "S3 start folder",
+            "host": "s3.amazonaws.com",
+            "port": 443,
+            "username": "DEMOKEY",
+            "protocol": "s3",
+            "providerId": "amazon-s3",
+            "options": {"bucket": "media"},
+            "initialPath": "/archive"
+        }))
+        .unwrap();
+
+        let outcome = export_kopia(&[server], &HashMap::new(), &out).unwrap();
+        assert_eq!((outcome.exported, outcome.skipped.len()), (0, 1));
+        assert!(outcome.skipped[0].reason.contains("initial path"));
+        assert!(!out.exists());
+    }
+
+    #[test]
     fn test_default_path_env_override() {
         let dir = std::env::temp_dir().join(format!(
             "aeroftp-kopia-defpath-{}",
@@ -977,6 +1015,31 @@ mod tests {
         assert_eq!(
             s3_cfg.endpoint.as_deref(),
             Some("https://objects.example.test:9000/team@east")
+        );
+
+        let export = KopiaExportServer {
+            id: srv.id.clone(),
+            name: srv.name.clone(),
+            host: srv.host.clone(),
+            port: srv.port,
+            username: srv.username.clone(),
+            protocol: srv.protocol.clone(),
+            options: srv.options.clone(),
+            provider_id: srv.provider_id.clone(),
+            initial_path: srv.initial_path.clone(),
+        };
+        let passwords = HashMap::from([(srv.id.clone(), "secret-at-path".to_string())]);
+        let export_path = dir.path().join("roundtrip.config");
+        let outcome = export_kopia(&[export], &passwords, &export_path).unwrap();
+        assert_eq!((outcome.exported, outcome.skipped.len()), (1, 0));
+        let roundtrip = import_kopia(&export_path).unwrap();
+        assert_eq!(
+            roundtrip.servers[0]
+                .options
+                .as_ref()
+                .and_then(|o| o.get("endpoint"))
+                .and_then(|v| v.as_str()),
+            Some(saved_ep)
         );
 
         let refused_path = dir.path().join("refused.config");

@@ -337,7 +337,8 @@ pub struct McExportServer {
 /// with `0600` on unix via `atomic_write_600`. The alias URL is the endpoint
 /// the connection uses ([`crate::bridge_shared::resolve_export_endpoint`]),
 /// never a string glued from `host` and `port`; a profile whose endpoint
-/// cannot be resolved is skipped with the reason.
+/// cannot be resolved, or whose initial directory an alias cannot hold, is
+/// skipped with the reason.
 pub fn export_mc(
     servers: &[McExportServer],
     passwords: &HashMap<String, String>,
@@ -350,6 +351,17 @@ pub fn export_mc(
 
     for server in servers {
         if server.protocol.as_deref() != Some("s3") {
+            continue;
+        }
+        if server
+            .initial_path
+            .as_deref()
+            .is_some_and(|path| !path.is_empty() && path != "/")
+        {
+            outcome.skip(
+                &server.name,
+                "mc aliases cannot preserve an initial directory",
+            );
             continue;
         }
 
@@ -370,7 +382,7 @@ pub fn export_mc(
         // No endpoint of its own: the profile is on AWS.
         let url = endpoint
             .as_ref()
-            .map(|ep| ep.base_url())
+            .map(|ep| ep.url())
             .unwrap_or_else(|| "https://s3.amazonaws.com".to_string());
 
         let api = server
@@ -916,6 +928,64 @@ mod tests {
                 "{doc}"
             );
         }
+    }
+
+    #[test]
+    fn export_preserves_an_s3_endpoint_base_path() {
+        let server: McExportServer = serde_json::from_value(serde_json::json!({
+            "id": "path",
+            "name": "path",
+            "host": "",
+            "port": 443,
+            "username": "DEMOKEY",
+            "protocol": "s3",
+            "providerId": "custom-s3",
+            "options": {"endpoint": "https://objects.example.test:9000/team@east"},
+            "initialPath": null
+        }))
+        .unwrap();
+        let out = write_tmp("endpoint-path-out", "{}");
+
+        let outcome = export_mc(&[server], &HashMap::new(), &out).unwrap();
+        assert_eq!((outcome.exported, outcome.skipped.len()), (1, 0));
+        let doc: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&out).unwrap()).unwrap();
+        assert_eq!(
+            doc["aliases"]["path"]["url"],
+            "https://objects.example.test:9000/team@east"
+        );
+        let back = import_mc(&out).unwrap();
+        assert_eq!(
+            back.servers[0]
+                .options
+                .as_ref()
+                .and_then(|o| o.get("endpoint"))
+                .and_then(|v| v.as_str()),
+            Some("https://objects.example.test:9000/team@east")
+        );
+    }
+
+    #[test]
+    fn export_reports_an_initial_directory_mc_cannot_hold() {
+        let server: McExportServer = serde_json::from_value(serde_json::json!({
+            "id": "start",
+            "name": "start",
+            "host": "s3.amazonaws.com",
+            "port": 443,
+            "username": "DEMOKEY",
+            "protocol": "s3",
+            "providerId": "amazon-s3",
+            "options": null,
+            "initialPath": "/archive"
+        }))
+        .unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("config.json");
+
+        let outcome = export_mc(&[server], &HashMap::new(), &out).unwrap();
+        assert_eq!((outcome.exported, outcome.skipped.len()), (0, 1));
+        assert!(outcome.skipped[0].reason.contains("initial directory"));
+        assert!(!out.exists());
     }
 
     #[test]

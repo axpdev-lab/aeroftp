@@ -354,7 +354,9 @@ pub struct S3cmdExportServer {
 /// s3cmd does natively; the file is written `0600` via `atomic_write_600`.
 ///
 /// `host_base` is the bare `host[:port]` of the endpoint the connection uses
-/// ([`crate::bridge_shared::resolve_export_endpoint`]), `use_https` carries
+/// ([`crate::bridge_shared::resolve_export_endpoint`]); an endpoint base path
+/// or initial directory is a reported refusal because `.s3cfg` cannot hold it.
+/// `use_https` carries
 /// its scheme, and `host_bucket` is `host_base` itself when the connection
 /// addresses buckets path-style (s3cmd's own path-style switch), else the
 /// `%(bucket)s.` template on that host.
@@ -404,9 +406,16 @@ pub fn export_s3cmd(
                 format!(
                     "s3cmd holds one configuration and it went to \"{}\": \
                      export this profile on its own",
-                    first.name
+                    crate::bridge_shared::sanitize_warning_name(&first.name, "s3cmd profile")
                 ),
             );
+            continue;
+        }
+        if s.initial_path
+            .as_deref()
+            .is_some_and(|path| !path.is_empty() && path != "/")
+        {
+            outcome.skip(&s.name, "s3cmd cannot preserve an initial directory");
             continue;
         }
         match crate::bridge_shared::resolve_export_endpoint(
@@ -417,8 +426,12 @@ pub fn export_s3cmd(
             s.options.as_ref(),
             s.provider_id.as_deref(),
         )
-        .and_then(|ep| unwritable_s3cmd_value(s, passwords).map(|()| ep))
-        {
+        .and_then(|ep| {
+            if ep.as_ref().is_some_and(|ep| !ep.path.is_empty()) {
+                return Err("s3cmd cannot preserve an S3 endpoint base path".to_string());
+            }
+            unwritable_s3cmd_value(s, passwords).map(|()| ep)
+        }) {
             Ok(ep) => chosen = Some((s, ep)),
             Err(reason) => outcome.skip(&s.name, reason),
         }
@@ -937,6 +950,43 @@ bucket_location = us-east-1
             "{body}"
         );
         assert!(body.contains("host_base = a.example.com"), "{body}");
+    }
+
+    #[test]
+    fn export_reports_an_endpoint_base_path_and_an_initial_directory_it_cannot_hold() {
+        for (name, options, initial_path, expected) in [
+            (
+                "endpoint-path",
+                serde_json::json!({"endpoint": "https://objects.example.test:9000/gateway"}),
+                None,
+                "base path",
+            ),
+            (
+                "initial-path",
+                serde_json::json!({}),
+                Some("/archive"),
+                "initial directory",
+            ),
+        ] {
+            let server: S3cmdExportServer = serde_json::from_value(serde_json::json!({
+                "id": name,
+                "name": name,
+                "host": "objects.example.test",
+                "port": 9000,
+                "username": "DEMOKEY",
+                "protocol": "s3",
+                "providerId": "custom-s3",
+                "options": options,
+                "initialPath": initial_path
+            }))
+            .unwrap();
+            let dir = tempfile::tempdir().unwrap();
+            let out = dir.path().join("s3cfg");
+            let outcome = export_s3cmd(&[server], &HashMap::new(), &out).unwrap();
+            assert_eq!((outcome.exported, outcome.skipped.len()), (0, 1));
+            assert!(outcome.skipped[0].reason.contains(expected));
+            assert!(!out.exists());
+        }
     }
 
     /// A line break in a value added keys to `[default]`,
