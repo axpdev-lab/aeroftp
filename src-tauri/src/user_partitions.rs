@@ -1195,8 +1195,10 @@ fn resolve_relocate_secret(
     protocol: &str,
     profile_id: &str,
 ) -> Result<Option<Zeroizing<String>>, String> {
-    let read_vault =
-        |key: &str| Ok(CredentialStore::from_cache().and_then(|store| store.get_secret(key).ok()));
+    let read_vault = |key: &str| {
+        let store = CredentialStore::from_cache().ok_or_else(|| "STORE_NOT_READY".to_string())?;
+        get_optional_secret(&store, key)
+    };
     resolve_relocate_secret_with(
         conn,
         root_key,
@@ -5531,7 +5533,7 @@ fn list_vault_keys(store: &CredentialStore) -> Result<Vec<String>, String> {
         .map_err(|e| format!("List vault accounts: {e}"))
 }
 
-fn get_optional_secret(
+pub(crate) fn get_optional_secret(
     store: &CredentialStore,
     account: &str,
 ) -> Result<Option<Zeroizing<String>>, String> {
@@ -13803,6 +13805,44 @@ mod tests {
         assert_eq!(resolve(owner).as_deref(), Some("owners-token"));
         set_user_credential_for(&conn, &root, other.id, "oauth_dropbox_p", "oauth", "own").unwrap();
         assert_eq!(resolve(other.id).as_deref(), Some("own"));
+    }
+
+    /// G1: the relocate fingerprint's vault read shares the blocked-read
+    /// rule. A `get_secret` failing for a reason other than absence, and a
+    /// missing vault cache, must not read as absent: `Ok(None)` on either
+    /// would lift the `vault_blocked_secret:` record and a later read would
+    /// fingerprint the token. Red if the closure maps a failure to
+    /// `Ok(None)` again.
+    #[test]
+    fn an_unreadable_relocate_secret_keeps_its_block_record() {
+        let _env = crate::test_env::lock();
+        let _guard = test_lock();
+        let conn = migrated_conn(0);
+        let root = test_root();
+        let owner = nonprofile_secret_owner(&conn).unwrap().unwrap();
+        clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let vault_path = dir.path().join("vault.db");
+        CredentialStore::write_test_vault(&vault_path, &root);
+        CredentialStore::cache_vault(vault_path.clone(), root);
+        let store = CredentialStore::from_verified_key(&vault_path, &root);
+        let key = "oauth_dropbox_mine";
+        store.store(key, "owners-token").unwrap();
+        block_vault_secret(&conn, key, "another-value").unwrap();
+        store.corrupt_entry_for_test(key);
+
+        // The corrupted entry fails the read; the record must stay.
+        let _ = resolve_relocate_secret(&conn, &root, owner, None, "dropbox", "mine");
+        assert!(blocked_vault_secret(&conn, key).unwrap().is_some());
+
+        // A healthy entry with the vault locked: the missing cache is an
+        // error too, never an absent value, so the record stays as well.
+        store.delete(key).unwrap();
+        store.store(key, "owners-token").unwrap();
+        CredentialStore::lock();
+        let _ = resolve_relocate_secret(&conn, &root, owner, None, "dropbox", "mine");
+        assert!(blocked_vault_secret(&conn, key).unwrap().is_some());
+        CredentialStore::clear_cache();
     }
 
     /// MUV-6 for private tokens: what another account saved in the vault before

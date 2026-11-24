@@ -40,7 +40,7 @@ impl AuthScope<'_> {
             Some(id) => users::resolve_credential_for_user(self.store, id, key)
                 .map(|v| v.map(|s| s.to_string())),
             None => crate::user_partitions::vault_secret_blocked_read(key, &|k| {
-                Ok(self.store.get_secret(k).ok())
+                users::get_optional_secret(self.store, k)
             })
             .map(|value| value.map(|s| s.to_string())),
         }
@@ -79,7 +79,7 @@ impl AuthScope<'_> {
             || (owners.is_empty() && users::legacy_credential_owner_id()? == Some(user_id))
         {
             return crate::user_partitions::vault_secret_blocked_read(key, &|k| {
-                Ok(self.store.get_secret(k).ok())
+                users::get_optional_secret(self.store, k)
             })
             .map(|value| value.map(|s| s.to_string()));
         }

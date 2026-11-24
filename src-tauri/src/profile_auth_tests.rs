@@ -2585,6 +2585,59 @@ fn an_unreadable_oauth_token_fails_the_profile_export() {
     });
 }
 
+/// G1: inside the blocked-read rule a failed vault read is not an absent
+/// value. `Ok(None)` on a `get_secret` error would lift the
+/// `vault_blocked_secret:` record, and a later read would deliver the
+/// token; the record must stay while the entry cannot be decrypted.
+#[test]
+fn an_unreadable_blocked_token_keeps_its_record_on_the_legacy_read() {
+    with_unreadable_profile_vault(|store| {
+        let key = "oauth_dropbox_mine";
+        store.store(key, "own-dropbox").unwrap();
+        let conn = users::open_or_init_cli().unwrap();
+        // The record names another value: a changed digest does not lift
+        // the block either, so only the read result decides.
+        users::block_vault_secret(&conn, key, "another-value").unwrap();
+        store.corrupt_entry_for_test(key);
+
+        let scope = AuthScope {
+            store,
+            user_id: None,
+        };
+        assert!(scope.read(key).is_err());
+        assert!(users::vault_secret_is_blocked(key).unwrap());
+    });
+}
+
+/// The same rule on the profile-bound fallback of the legacy owner: with no
+/// partition row, the vault copy proven the owner's own and no recorded
+/// profile owner, the read still goes through the vault, and a failed
+/// `get_secret` must not read as absent and lift the block.
+#[test]
+fn an_unreadable_blocked_token_keeps_its_record_on_the_owner_profile_read() {
+    with_unreadable_profile_vault(|store| {
+        let key = "oauth_dropbox_mine";
+        store.store(key, "own-dropbox").unwrap();
+        let conn = users::open_or_init_cli().unwrap();
+        users::block_vault_secret(&conn, key, "another-value").unwrap();
+        store.corrupt_entry_for_test(key);
+        let owner_id = users::legacy_credential_owner_id()
+            .unwrap()
+            .expect("the migrated fixture has a legacy owner");
+        assert!(!users::vault_copy_is_another_accounts(&conn, owner_id, key).unwrap());
+        assert!(users::profile_credential_owner_ids(store, "mine", key)
+            .unwrap()
+            .is_empty());
+
+        let scope = AuthScope {
+            store,
+            user_id: Some(owner_id),
+        };
+        assert!(scope.read_profile("mine", key).is_err());
+        assert!(users::vault_secret_is_blocked(key).unwrap());
+    });
+}
+
 /// The same for a Jottacloud refresh token (CodeRabbit, #1574).
 #[test]
 fn an_unreadable_jotta_token_fails_the_profile_export() {
