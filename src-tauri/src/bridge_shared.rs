@@ -286,19 +286,8 @@ fn stage_export_temp_600_with_acl(
     use std::io::Write;
     #[cfg(windows)]
     let mut tmp = {
+        use crate::windows_acl::{FILE_SHARE_DELETE, STAGING_ACCESS};
         use std::os::windows::fs::OpenOptionsExt;
-        // GENERIC_READ | GENERIC_WRITE | WRITE_DAC: `restrict_acl` below calls
-        // `SetSecurityInfo` on THIS handle, and setting a DACL requires
-        // WRITE_DAC, which generic read/write access does not include. The
-        // same handle is later renamed onto the destination by handle (see
-        // `rename_staged_by_handle`), so it also needs the delete right that
-        // rename implies.
-        const STAGING_ACCESS: u32 = 0x8000_0000 | 0x4000_0000 | 0x0004_0000;
-        // Allow only `FILE_SHARE_DELETE` (0x4): blocks all concurrent read and
-        // write opens from other local accounts between creation and
-        // `restrict_acl`, while still permitting the handle-based rename to
-        // move the file while the handle is live.
-        const FILE_SHARE_DELETE: u32 = 0x0000_0004;
         tempfile::Builder::new()
             .prefix(".aeroftp-bridge-export-")
             .make_in(parent, |path| {

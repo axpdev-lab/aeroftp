@@ -46,6 +46,23 @@
 
 use std::path::Path;
 
+/// Access mask for the Windows staging handle opened by
+/// `bridge_shared::stage_export_temp_600_with_acl`: GENERIC_READ |
+/// GENERIC_WRITE | WRITE_DAC | DELETE. `restrict_acl` calls `SetSecurityInfo`
+/// on THIS handle and setting a DACL requires WRITE_DAC, which generic
+/// read/write access does not include; the same handle is later renamed onto
+/// the destination by handle (`rename_staged_by_handle`,
+/// `SetFileInformationByHandle(FileRenameInfo)`), and a rename by handle
+/// requires DELETE. GENERIC_WRITE alone implies neither right.
+#[cfg(windows)]
+pub(crate) const STAGING_ACCESS: u32 = 0x8000_0000 | 0x4000_0000 | 0x0004_0000 | 0x0001_0000;
+/// Share mode for the same staging handle: FILE_SHARE_DELETE only, so no
+/// other local account can open the file for read or write between creation
+/// and the handle-based rename, while the rename itself is still permitted
+/// while the handle is live.
+#[cfg(windows)]
+pub(crate) const FILE_SHARE_DELETE: u32 = 0x0000_0004;
+
 /// Restrict file/directory access to the current user, SYSTEM and
 /// Administrators. Best-effort: failures are logged and never propagated,
 /// because an object that could not be hardened is still usable, while an
@@ -700,6 +717,16 @@ pub fn check_windows_reserved(filename: &str) -> Option<&'static str> {
 mod tests {
     use super::*;
 
+    /// Pin: the production staging mask must carry DELETE (a rename by
+    /// handle fails without it) and WRITE_DAC (SetSecurityInfo on the handle
+    /// fails without it). GENERIC_WRITE alone implies neither right.
+    #[test]
+    fn the_production_staging_mask_carries_delete_and_write_dac() {
+        assert_ne!(STAGING_ACCESS & 0x0001_0000, 0, "DELETE right missing");
+        assert_ne!(STAGING_ACCESS & 0x0004_0000, 0, "WRITE_DAC right missing");
+        assert_eq!(FILE_SHARE_DELETE, 0x0000_0004);
+    }
+
     fn scratch(tag: &str) -> std::path::PathBuf {
         let dir = std::env::temp_dir().join(format!("aeroftp-acl-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
@@ -780,10 +807,6 @@ mod tests {
         use std::os::windows::fs::OpenOptionsExt;
         let dir = scratch("checked");
         let file = dir.join("staged.tmp");
-        // GENERIC_READ | GENERIC_WRITE | WRITE_DAC, the rights the production
-        // staging open requests (SetSecurityInfo on the handle needs WRITE_DAC).
-        const STAGING_ACCESS: u32 = 0x8000_0000 | 0x4000_0000 | 0x0004_0000;
-        const FILE_SHARE_DELETE: u32 = 0x0000_0004;
         let live_handle = std::fs::OpenOptions::new()
             .create_new(true)
             .access_mode(STAGING_ACCESS)
@@ -812,8 +835,6 @@ mod tests {
         use std::os::windows::fs::OpenOptionsExt;
         let dir = scratch("handle-bound");
         let file = dir.join("staged.tmp");
-        const STAGING_ACCESS: u32 = 0x8000_0000 | 0x4000_0000 | 0x0004_0000;
-        const FILE_SHARE_DELETE: u32 = 0x0000_0004;
         let live_handle = std::fs::OpenOptions::new()
             .create_new(true)
             .access_mode(STAGING_ACCESS)
@@ -878,10 +899,6 @@ mod tests {
         use std::os::windows::fs::OpenOptionsExt;
         let dir = scratch("renamed");
         let file = dir.join("staged.tmp");
-        // GENERIC_READ | GENERIC_WRITE | WRITE_DAC, the rights the production
-        // staging open requests (SetSecurityInfo on the handle needs WRITE_DAC).
-        const STAGING_ACCESS: u32 = 0x8000_0000 | 0x4000_0000 | 0x0004_0000;
-        const FILE_SHARE_DELETE: u32 = 0x0000_0004;
         let live_handle = std::fs::OpenOptions::new()
             .create_new(true)
             .access_mode(STAGING_ACCESS)
