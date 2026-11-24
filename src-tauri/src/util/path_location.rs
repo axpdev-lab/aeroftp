@@ -106,6 +106,30 @@ pub fn saved_location_problem(path: &str) -> Option<LocationProblem> {
         .then_some(LocationProblem::ParentStep)
 }
 
+/// A `..` step that a backslash isolates.
+///
+/// A forward-slash `..` is not one. An FTP profile root such as
+/// `docs/../shared` is valid: the server resolves it and the session records
+/// the folder it opened. A `\` is a name character in a POSIX path that
+/// starts with `/`. It is a separator in a relative `CWD`, which is what FTP
+/// sends when the login folder is not an absolute `/` path (a Windows
+/// `C:\...` reply).
+pub fn backslash_parent_step(path: &str) -> bool {
+    let bytes = path.as_bytes();
+    let mut step_start = 0;
+    let mut prev_backslash = false;
+    for (index, byte) in bytes.iter().copied().enumerate() {
+        if byte == b'/' || byte == b'\\' {
+            if &path[step_start..index] == ".." && (prev_backslash || byte == b'\\') {
+                return true;
+            }
+            prev_backslash = byte == b'\\';
+            step_start = index + 1;
+        }
+    }
+    &path[step_start..] == ".." && prev_backslash
+}
+
 /// `Err` saying `what` the saved `path` is and why it is refused, when it has
 /// a `..` step or a NUL ([`saved_location_problem`]).
 pub fn refuse_a_saved_location(what: &str, path: &str) -> Result<(), String> {
@@ -206,6 +230,33 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// A forward-slash `..` stays a profile root. Only a `..` that a
+    /// backslash isolates is the parent step a Windows-style relative
+    /// `CWD` would climb.
+    #[test]
+    fn a_backslash_isolates_a_parent_step_and_a_slash_does_not() {
+        assert!(!backslash_parent_step("docs/../shared"));
+        assert!(!backslash_parent_step("~/docs/../shared"));
+        assert!(!backslash_parent_step("~//docs/../shared"));
+        assert!(!backslash_parent_step("/home/u/docs"));
+        assert!(backslash_parent_step("foo\\..\\outside"));
+        assert!(backslash_parent_step("~/foo\\..\\outside"));
+        assert!(backslash_parent_step("..\\outside"));
+        assert!(backslash_parent_step("foo\\../bar"));
+        assert!(backslash_parent_step("foo/..\\bar"));
+        assert!(!backslash_parent_step("foo\\bar"));
+        let ftp = include_str!("../providers/ftp.rs");
+        let sftp = include_str!("../providers/sftp.rs");
+        assert!(
+            production(ftp).contains("backslash_parent_step"),
+            "FTP connect refuses a backslash parent step"
+        );
+        assert!(
+            production(sftp).contains("backslash_parent_step"),
+            "SFTP connect refuses a backslash parent step"
+        );
     }
 
     /// The refusal says what is refused and why, in the text the frontend

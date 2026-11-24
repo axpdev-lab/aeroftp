@@ -2197,7 +2197,23 @@ impl StorageProvider for FtpProvider {
         // non-"/" `initial_path` explicitly.
         if let Some(ref initial_path) = self.config.initial_path {
             if !initial_path.is_empty() && initial_path != "/" {
-                if let Some(target) = self.place_initial_path(initial_path) {
+                let placed = self.place_initial_path(initial_path);
+                // A forward-slash `..` is a profile root: the server resolves
+                // it (`docs/../shared`) and the session records that folder.
+                // A `..` isolated by `\` is a parent step only in a relative
+                // `CWD`. That is the argument sent when the login folder is
+                // not an absolute `/` path, and there `\` is a separator. A
+                // path that already starts with `/` keeps `\` as a name.
+                if placed.as_deref().is_some_and(|target| {
+                    !target.starts_with('/')
+                        && crate::util::path_location::backslash_parent_step(target)
+                }) {
+                    return Err(ProviderError::InvalidPath(
+                        "the start folder contains a '..' step (a backslash counts as a separator)"
+                            .to_string(),
+                    ));
+                }
+                if let Some(target) = placed {
                     stream
                         .cwd(&target)
                         .await

@@ -3044,6 +3044,18 @@ impl StorageProvider for SftpProvider {
 
                 self.home_dir = home;
 
+                // A forward-slash `..` in the saved start folder is a profile
+                // root, resolved like any other relative start. A `..` that a
+                // backslash isolates is refused here, before that resolution.
+                // Ordinary `.` and `..` navigation stays in `resolve_remote_path`.
+                if let Some(initial) = self.config.initial_path.as_deref() {
+                    if crate::util::path_location::backslash_parent_step(initial) {
+                        return Err(ProviderError::InvalidPath(
+                            "the start folder contains a '..' step (a backslash counts as a separator)"
+                                .to_string(),
+                        ));
+                    }
+                }
                 self.current_dir =
                     resolve_start_dir(&self.home_dir, self.config.initial_path.as_deref());
 

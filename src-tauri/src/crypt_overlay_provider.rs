@@ -4076,13 +4076,13 @@ pub(crate) async fn resolve_home_scope(
     if !is_login_relative_scope(scope) {
         return Ok(None);
     }
-    let segments: Vec<&str> = crate::util::path_location::login_relative_rest(scope)
-        .unwrap_or("")
-        .split('/')
-        .collect();
-    if segments.contains(&"..") {
+    let rest_raw = crate::util::path_location::login_relative_rest(scope).unwrap_or("");
+    // `\` ends a step, the same rule as `saved_location_problem`. A name that
+    // merely contains a backslash stays one step: only `..` is refused.
+    if rest_raw.split(['/', '\\']).any(|step| step == "..") {
         return Err("the overlay folder leaves the login folder".to_string());
     }
+    let segments: Vec<&str> = rest_raw.split('/').collect();
     // `.` and empty segments name the same folder, written as the server
     // lists it, as the window places it (`placeUnderLoginFolder`).
     let rest = segments
@@ -8514,6 +8514,9 @@ pub(crate) mod tests {
         assert_eq!(mem.pwd().await.unwrap(), "/srv");
         assert_eq!(login_folder(&mut mem).await.unwrap(), MEM_HOME);
         assert!(resolve_home_scope(&mut mem, "~/../etc").await.is_err());
+        assert!(resolve_home_scope(&mut mem, "~/foo\\..\\outside")
+            .await
+            .is_err());
         assert_eq!(
             resolve_home_scope(&mut mem, "~/./docs//sub/")
                 .await
