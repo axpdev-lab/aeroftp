@@ -1197,7 +1197,10 @@ const AWS_MAX_SIDE_SLOTS: usize = 10_000;
 
 /// Parse the side-slot index out of a directory entry name for `base_path`
 /// (`<name>.aeroftp` -> 0, `<name>.aeroftp.<n>` -> n), mirroring
-/// [`aws_side_path`].
+/// [`aws_side_path`]. Deliberately case-sensitive: on a case-insensitive
+/// filesystem a case-variant entry (`CONFIG.AEROFTP` for base `config`) is
+/// caught by the Pass 2 filesystem occupancy probe instead, so on
+/// case-sensitive Linux a case variant stays a different, free file.
 fn aws_side_index_of(entry_name: &std::ffi::OsStr, base_path: &Path) -> Option<usize> {
     let base_name = base_path.file_name()?.to_str()?;
     let name = entry_name.to_str()?;
@@ -1226,12 +1229,18 @@ fn aws_side_pair_modes_with_limit(
     // an owned matched pair, and only absent indices can be allocated.
     let mut existing: std::collections::BTreeSet<usize> = std::collections::BTreeSet::new();
     for path in [config_path, cred_path] {
-        if let Some(parent) = path.parent() {
-            if let Ok(entries) = std::fs::read_dir(parent) {
-                for entry in entries.flatten() {
-                    if let Some(index) = aws_side_index_of(&entry.file_name(), path) {
-                        existing.insert(index);
-                    }
+        // A relative file name like `credentials` has parent `Some("")`;
+        // read_dir("") fails, so normalize the empty parent to "." or the
+        // enumeration silently sees nothing and Pass 2 can pick an occupied
+        // slot.
+        let parent = match path.parent() {
+            Some(p) if !p.as_os_str().is_empty() => p,
+            _ => Path::new("."),
+        };
+        if let Ok(entries) = std::fs::read_dir(parent) {
+            for entry in entries.flatten() {
+                if let Some(index) = aws_side_index_of(&entry.file_name(), path) {
+                    existing.insert(index);
                 }
             }
         }
@@ -1258,9 +1267,14 @@ fn aws_side_pair_modes_with_limit(
         }
     }
     // Pass 2: allocate the first index absent from both directories, with no
-    // collision against the active paths or between the two candidates. A
-    // non-existing candidate cannot be same-file with anything, so textual
-    // comparison suffices here.
+    // collision against the active paths or between the two candidates.
+    // `existing` comes from a directory listing and can miss what the
+    // filesystem itself treats as occupied (a case-variant on a
+    // case-insensitive filesystem, or an entry in a parent that failed to
+    // enumerate), so ask the filesystem about BOTH candidates directly:
+    // symlink_metadata does not follow links, so dangling symlinks count as
+    // occupied too. On case-sensitive Linux a case-variant is a different
+    // file and correctly stays free.
     for index in 0..max_slots {
         if existing.contains(&index) {
             continue;
@@ -1268,6 +1282,17 @@ fn aws_side_pair_modes_with_limit(
         let cfg_cand = aws_side_path(config_path, index);
         let cred_cand = aws_side_path(cred_path, index);
         if cfg_cand == *cred_path || cred_cand == *config_path || cfg_cand == cred_cand {
+            continue;
+        }
+        if std::fs::symlink_metadata(&cfg_cand).is_ok()
+            || std::fs::symlink_metadata(&cred_cand).is_ok()
+        {
+            continue;
+        }
+        if paths_collide(&cfg_cand, Some(cred_path))
+            || paths_collide(&cred_cand, Some(config_path))
+            || paths_collide(&cfg_cand, Some(&cred_cand))
+        {
             continue;
         }
         return Ok((
@@ -6359,6 +6384,83 @@ region = eu-west-1
             matches!(m1, AwsProtectedWriteMode::ReplaceSide(3))
                 && matches!(m2, AwsProtectedWriteMode::ReplaceSide(3)),
             "an existing owned matched pair must win over free slot 0: {m1:?} {m2:?}"
+        );
+    }
+
+    /// A bare relative output name (`--output credentials`) has parent
+    /// `Some("")`, which read_dir cannot enumerate. The parent must be
+    /// normalized to "." so occupied slots on disk are still detected and
+    /// skipped instead of Pass 2 blindly allocating slot 0.
+    #[test]
+    fn relative_output_name_still_sees_occupied_slots_on_disk() {
+        static CWD_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        let _guard = CWD_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let prev = std::env::current_dir().unwrap();
+        std::env::set_current_dir(dir.path()).unwrap();
+        std::fs::write("credentials.aeroftp", b"occupied").unwrap();
+        let res = aws_side_pair_modes_with_limit(
+            Path::new("config"),
+            Path::new("credentials"),
+            "cfgm",
+            "credm",
+            AWS_MAX_SIDE_SLOTS,
+        );
+        std::env::set_current_dir(prev).unwrap();
+        let (m1, m2) = res.unwrap();
+        assert!(
+            matches!(m1, AwsProtectedWriteMode::SideAt(1))
+                && matches!(m2, AwsProtectedWriteMode::SideAt(1)),
+            "slot 0 is occupied on disk and must be skipped even for a relative output path: {m1:?} {m2:?}"
+        );
+    }
+
+    /// Pass 2 must ask the filesystem about each candidate pair, not only the
+    /// directory listing: on a case-insensitive filesystem a case-variant
+    /// entry (`CONFIG.AEROFTP` for base `config`) is not matched by the
+    /// case-sensitive listing but still occupies the candidate path, while on
+    /// case-sensitive Linux it is a different file and slot 0 stays free.
+    #[test]
+    fn pass2_occupancy_probe_follows_the_filesystem_case_folding() {
+        let dir = tempfile::tempdir().unwrap();
+        let cred = dir.path().join("credentials");
+        let cfg = dir.path().join("config");
+        std::fs::write(dir.path().join("CONFIG.AEROFTP"), b"case variant").unwrap();
+        let (m1, m2) =
+            aws_side_pair_modes_with_limit(&cfg, &cred, "cfgm", "credm", AWS_MAX_SIDE_SLOTS)
+                .unwrap();
+        if cfg!(any(target_os = "windows", target_os = "macos")) {
+            assert!(
+                matches!(m1, AwsProtectedWriteMode::SideAt(1))
+                    && matches!(m2, AwsProtectedWriteMode::SideAt(1)),
+                "on a case-insensitive filesystem the case variant occupies slot 0: {m1:?} {m2:?}"
+            );
+        } else {
+            assert!(
+                matches!(m1, AwsProtectedWriteMode::SideAt(0))
+                    && matches!(m2, AwsProtectedWriteMode::SideAt(0)),
+                "on a case-sensitive filesystem the case variant is a different file: {m1:?} {m2:?}"
+            );
+        }
+    }
+
+    /// A dangling symlink at a candidate path counts as occupied: a later
+    /// create_new must not silently replace what the link points at.
+    #[cfg(unix)]
+    #[test]
+    fn pass2_treats_a_dangling_symlink_as_occupied() {
+        let dir = tempfile::tempdir().unwrap();
+        let cred = dir.path().join("credentials");
+        let cfg = dir.path().join("config");
+        std::os::unix::fs::symlink("nonexistent-target", dir.path().join("config.aeroftp"))
+            .unwrap();
+        let (m1, m2) =
+            aws_side_pair_modes_with_limit(&cfg, &cred, "cfgm", "credm", AWS_MAX_SIDE_SLOTS)
+                .unwrap();
+        assert!(
+            matches!(m1, AwsProtectedWriteMode::SideAt(1))
+                && matches!(m2, AwsProtectedWriteMode::SideAt(1)),
+            "a dangling symlink occupies its slot: {m1:?} {m2:?}"
         );
     }
 
