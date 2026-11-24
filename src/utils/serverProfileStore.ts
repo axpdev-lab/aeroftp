@@ -5,7 +5,6 @@ import type { ServerProfile } from '../types';
 import { secureGet, secureStore } from './secureStorage';
 import {
     accountChangeGeneration,
-    getUnlockStatus,
     loadActiveServerProfiles,
     loadActiveServerProfilesScoped,
     readLegacyServerProfilesBound,
@@ -99,24 +98,36 @@ export const loadSavedServerProfiles = async (): Promise<ServerProfile[]> => {
 };
 
 /**
- * The saved profiles bound to the account that produced them. `accountId`
- * is the active account read in the same step as the list, so a caller that
- * keeps the pair can later prove the list is still that account's before
- * writing secrets against it. The whole answer is `null` when an account
- * switch landed while the list was being read: then it belongs to no
- * single account and must not be shown or exported.
+ * The saved profiles bound to the account that produced them. The scoped
+ * read answers the profiles and their account's id in one backend step, so
+ * the pair can never come from two different accounts; the legacy fallback
+ * reads the blob, its owner and the active account under the same lock.
+ * `accountId` is the account the list belongs to, so a caller that keeps
+ * the pair can later prove the list is still that account's before writing
+ * secrets against it. The whole answer is `null` when an account switch
+ * landed while the list was being read, or when the partitions database
+ * exists but its active account could not be read (`accountsUnknown`):
+ * then the list belongs to no single account and must not be shown or
+ * exported.
  */
 export const loadSavedServerProfilesBound = async (): Promise<{
     profiles: ServerProfile[];
     accountId: number | null;
 } | null> => {
     const accountBefore = accountChangeGeneration();
-    const [profiles, status] = await Promise.all([
-        loadSavedServerProfiles(),
-        getUnlockStatus().catch(() => null),
-    ]);
-    if (accountChangeGeneration() !== accountBefore) return null;
-    return { profiles, accountId: status?.activeUserId ?? null };
+    try {
+        await seedLegacyLocalProfilesForPartitionMigration();
+        const scoped = await loadActiveServerProfilesScoped();
+        if (accountChangeGeneration() !== accountBefore) return null;
+        return { profiles: scoped.profiles, accountId: scoped.userId };
+    } catch (error) {
+        if (!canUseLegacyProfileFallback(error)) throw error;
+        const locked = await readLegacyServerProfilesBound();
+        if (accountChangeGeneration() !== accountBefore || locked.accountsUnknown === true) {
+            return null;
+        }
+        return { profiles: locked.profiles ?? [], accountId: locked.activeUserId ?? null };
+    }
 };
 
 /**

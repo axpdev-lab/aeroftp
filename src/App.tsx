@@ -398,7 +398,6 @@ import {
     SECURITY_RESET_EVENT,
     decideBootAccountAction,
     defaultUserIdFromList,
-    activeAccountId,
     getUnlockStatus,
     initUserPartitions,
     legacyDefaultToMigrate,
@@ -20837,23 +20836,23 @@ const App: React.FC = () => {
               // The dialog closes itself (onClose) once its result has been
               // read, or stays open on a warning that must be seen.
               const accountBefore = accountChangeGeneration();
-              const merged = await appendImportedProfiles(newServers, expectedUserId);
+              await appendImportedProfiles(newServers, expectedUserId);
               // A switch meanwhile brings its own re-read: this list is the previous account's.
               if (accountChangeGeneration() === accountBefore) {
-                const id = await activeAccountId();
-                if (accountChangeGeneration() === accountBefore) {
-                  setExportImportServers(merged);
-                  setExportImportAccountId(id);
+                const bound = await loadSavedServerProfilesBound();
+                if (bound && accountChangeGeneration() === accountBefore) {
+                  setExportImportServers(bound.profiles);
+                  setExportImportAccountId(bound.accountId);
                 }
               }
               setServersRefreshKey(k => k + 1);
             }}
-            onProfilesStored={async (stored) => {
+            onProfilesStored={async (_stored) => {
               const accountBefore = accountChangeGeneration();
-              const id = await activeAccountId();
-              if (accountChangeGeneration() === accountBefore) {
-                setExportImportServers(stored);
-                setExportImportAccountId(id);
+              const bound = await loadSavedServerProfilesBound();
+              if (bound && accountChangeGeneration() === accountBefore) {
+                setExportImportServers(bound.profiles);
+                setExportImportAccountId(bound.accountId);
               }
               setServersRefreshKey(k => k + 1);
             }}

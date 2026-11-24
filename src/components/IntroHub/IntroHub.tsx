@@ -16,8 +16,8 @@ import { getTotalServiceCount } from './discoverData';
 import { getProviderById } from '../../providers';
 import { newFormTabOptions } from './newFormTabOptions';
 import { useTranslation } from '../../i18n';
-import { loadSavedServerProfiles, loadSavedServerProfilesBound } from '../../utils/serverProfileStore';
-import { accountChangeGeneration, activeAccountId } from '../../utils/userPartitions';
+import { loadSavedServerProfilesBound } from '../../utils/serverProfileStore';
+import { accountChangeGeneration } from '../../utils/userPartitions';
 import { appendImportedProfiles } from '../bridge/bridgeImportCommit';
 import type { ProviderType } from '../../types';
 import type { CatalogCategoryId } from '../../types/catalog';
@@ -547,23 +547,23 @@ export function IntroHub(props: IntroHubProps) {
                     onImport={async (newServers, expectedUserId) => {
                         // The dialog closes itself (onClose) after its result.
                         const accountBefore = accountChangeGeneration();
-                        const updated = await appendImportedProfiles(newServers, expectedUserId);
+                        await appendImportedProfiles(newServers, expectedUserId);
                         // A switch meanwhile brings its own re-read: this list is the previous account's.
                         if (accountChangeGeneration() === accountBefore) {
-                            const id = await activeAccountId();
-                            if (accountChangeGeneration() === accountBefore) {
-                                setPaletteServers(updated);
-                                setPaletteAccountId(id);
+                            const bound = await loadSavedServerProfilesBound();
+                            if (bound && accountChangeGeneration() === accountBefore) {
+                                setPaletteServers(bound.profiles);
+                                setPaletteAccountId(bound.accountId);
                             }
                         }
                         onServersChanged?.();
                     }}
-                    onProfilesStored={async (stored) => {
+                    onProfilesStored={async (_stored) => {
                         const accountBefore = accountChangeGeneration();
-                        const id = await activeAccountId();
-                        if (accountChangeGeneration() === accountBefore) {
-                            setPaletteServers(stored);
-                            setPaletteAccountId(id);
+                        const bound = await loadSavedServerProfilesBound();
+                        if (bound && accountChangeGeneration() === accountBefore) {
+                            setPaletteServers(bound.profiles);
+                            setPaletteAccountId(bound.accountId);
                         }
                         onServersChanged?.();
                     }}

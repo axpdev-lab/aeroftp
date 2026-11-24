@@ -18,6 +18,7 @@ vi.mock('@tauri-apps/api/core', () => ({
 import {
     PROFILES_CHANGED_EVENT,
     loadSavedServerProfiles,
+    loadSavedServerProfilesBound,
     loadSavedServerProfilesStrict,
     mergeSavedServerProfile,
     readSavedServerProfilesForWrite,
@@ -635,5 +636,44 @@ describe('account-bound profile writes', () => {
             profiles: [sampleProfile({ name: 'queued' })],
             expectedUserId: 4,
         });
+    });
+});
+
+describe('loadSavedServerProfilesBound', () => {
+    const legacyRead = (overrides: Record<string, unknown> = {}) => ({
+        profiles: [sampleProfile({ name: 'from the legacy store' })],
+        activeUserId: null,
+        ownerUserId: null,
+        accountsUnknown: false,
+        revision: 'legacy-store:test-revision',
+        ...overrides,
+    });
+
+    it('binds the list to the account the scoped read captured, not the later unlock status', async () => {
+        mockInvoke.mockImplementation(async (command: string) => {
+            if (command === 'user_partitions_load_active_server_profiles_scoped') {
+                return { userId: 7, profiles: [sampleProfile()], revision: 'part:test-revision' };
+            }
+            // A switch in another process lands between the read and this status call.
+            if (command === 'user_partitions_unlock_status') return { activeUserId: 9 };
+            return undefined;
+        });
+        const bound = await loadSavedServerProfilesBound();
+        expect(bound?.accountId).toBe(7);
+        expect(bound?.profiles).toEqual([sampleProfile()]);
+        mockInvoke.mockReset();
+    });
+
+    it('binds nothing when the legacy read cannot prove the account', async () => {
+        mockInvoke.mockImplementation(async (command: string) => {
+            if (command === 'user_partitions_load_active_server_profiles_scoped') throw new Error('STORE_NOT_READY');
+            if (command === 'user_partitions_read_legacy_server_profiles') {
+                return legacyRead({ activeUserId: 7, ownerUserId: null, accountsUnknown: true });
+            }
+            return undefined;
+        });
+        const bound = await loadSavedServerProfilesBound();
+        expect(bound).toBeNull();
+        mockInvoke.mockReset();
     });
 });
