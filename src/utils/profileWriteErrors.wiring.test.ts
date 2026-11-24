@@ -457,7 +457,8 @@ describe('saved profile write rejection in production handlers', () => {
         const fn = await execute(hub, ['handleDuplicate'], f.context);
         await fn.handleDuplicate(f.servers[0]);
         expect(f.context.copyProfileVaultSecrets).toHaveBeenCalledWith('old', expect.stringMatching(/^srv_/), 'ftp', 7);
-        expect(f.context.deleteProfileVaultSecrets).toHaveBeenCalledWith(expect.stringMatching(/^srv_/), 'ftp', 7);
+        const copiedId = f.context.copyProfileVaultSecrets.mock.calls[0][1];
+        expect(f.context.deleteProfileVaultSecrets).toHaveBeenCalledWith(copiedId, 'ftp', 7);
     });
 
     it('IntroHub stores no duplicate when its secrets cannot be copied, and shows why', async () => {
