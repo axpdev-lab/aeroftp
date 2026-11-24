@@ -13813,6 +13813,7 @@ mod tests {
     /// would lift the `vault_blocked_secret:` record and a later read would
     /// fingerprint the token. Red if the closure maps a failure to
     /// `Ok(None)` again.
+    #[cfg(target_os = "linux")]
     #[test]
     fn an_unreadable_relocate_secret_keeps_its_block_record() {
         let _env = crate::test_env::lock();
