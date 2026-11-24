@@ -1474,6 +1474,34 @@ mod tests {
         );
     }
 
+    #[test]
+    fn s3_provider_from_endpoint_coritan_keeps_the_port_and_a_domain_boundary() {
+        // The shared table cannot list a port (the frontend test appends
+        // one), and every Coritan endpoint carries `:7337`.
+        for endpoint in [
+            "https://s3.fra.coritan.com:7337",
+            "s3.sin.coritan.com:7337/bucket",
+            "HTTPS://S3.IAD.CORITAN.COM:7337",
+        ] {
+            assert_eq!(
+                map_s3_provider_from_endpoint(endpoint),
+                "coritan",
+                "{endpoint}"
+            );
+        }
+        for endpoint in [
+            "https://s3.fra.coritan.com.example:7337",
+            "https://s3.fra.notcoritan.com:7337",
+            "https://coritan.com.evil.net:7337/bucket",
+        ] {
+            assert_ne!(
+                map_s3_provider_from_endpoint(endpoint),
+                "coritan",
+                "{endpoint}"
+            );
+        }
+    }
+
     /// The host cases of `src/shared/s3-host-map.json`, which the frontend's
     /// `s3HostMap.test.ts` runs too: both sides read one table and agree on
     /// every listed host (#1506 Requested 173).

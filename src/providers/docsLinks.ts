@@ -32,6 +32,7 @@ const PROVIDER_ID_TO_SLUG: Record<string, string> = {
     tigris: 'tigris',
     fastly: 'fastly-object-storage',
     'neon-s3': 'neon',
+    coritan: 'coritan',
     minio: 'minio',
     'oracle-cloud': 'oracle-cloud',
     'google-cloud-storage': 'google-cloud-storage',

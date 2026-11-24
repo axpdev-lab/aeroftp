@@ -2434,7 +2434,8 @@
             "discoverFastly": "Fastly Object Storage: S3-ühilduv salvestusruum 12 piirkonnas (5 GB tasuta, vajalik on kaart)",
             "discoverNeon": "Neon Object Storage: S3-ga ühilduv salvestusruum iga projekti haru jaoks (5 GB tasuta projekti kohta)",
             "discoverPuter": "Puter pilvesalvestus WebDAV-i kaudu (25 MB tasuta, kaarti pole vaja)",
-            "discoverLifetimeCloud": "LifetimeCloud salvestusruum WebDAV-i kaudu (1 GB tasuta, kaardita)"
+            "discoverLifetimeCloud": "LifetimeCloud salvestusruum WebDAV-i kaudu (1 GB tasuta, kaardita)",
+            "discoverCoritan": "Coritan Object Storage: S3-ühilduv salvestusruum 6 piirkonnas (10 GB tasuta, kaarti pole vaja)"
         },
         "shortcuts": {
             "title": "Kiirklahvid",

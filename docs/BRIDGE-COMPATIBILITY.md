@@ -43,7 +43,10 @@ IONOS S3, Alibaba OSS, Tencent COS, Qiniu Kodo, Google Cloud Storage, and generi
 custom S3. Fastly Object Storage exports to rclone as `provider = Fastly`,
 which needs rclone 1.74.0 or newer (older versions reject the name), and is
 recognized on import from that token or from a `.object.fastlystorage.app`
-endpoint. WebDAV vendors (Nextcloud, ownCloud, and custom WebDAV for
+endpoint. Coritan Object Storage has no rclone token: it exports as
+`provider = Other` with its endpoint (port 7337 included) and its stored
+region, on rclone's path-style default, and is recognized on import from a
+`coritan.com` endpoint, whose region label fills a missing region. WebDAV vendors (Nextcloud, ownCloud, and custom WebDAV for
 SharePoint / Fastmail / Koofr-dav) likewise ride WebDAV.
 
 Use **rclone 1.76.0 or newer** with exported configurations. Before that
