@@ -175,7 +175,7 @@ fn map_duck(xml: &str) -> DuckOutcome {
     {
         crate::bridge_shared::try_hostname_field(&raw_hostname)
     } else {
-        Some(raw_hostname)
+        Some(raw_hostname.clone())
     };
     let Some((hostname, inline_port)) = cleaned_hostname
         .as_deref()
@@ -189,9 +189,13 @@ fn map_duck(xml: &str) -> DuckOutcome {
     let username = field("Username").unwrap_or_default();
     let region = field("Region");
     let path = field("Path").filter(|s| !s.is_empty());
-    // A separate Port wins; an inline port is next, then the protocol default.
+    let hostname_path = crate::bridge_shared::split_endpoint(&raw_hostname)
+        .map(|parts| parts.path.to_string())
+        .filter(|path| !path.is_empty() && path != "/");
+    // A separate valid Port wins; an inline port is next, then the default.
     let port_field = field("Port")
         .and_then(|p| p.trim().parse::<u32>().ok())
+        .filter(|port| (1..=65535).contains(port))
         .or_else(|| inline_port.map(u32::from));
 
     match protocol_raw.as_str() {
@@ -312,7 +316,7 @@ fn map_duck(xml: &str) -> DuckOutcome {
             port: port_field.unwrap_or(443),
             username,
             options: None,
-            initial_path: path,
+            initial_path: path.or(hostname_path),
         }),
 
         "dav" => DuckOutcome::Profile(MappedProfile {
@@ -322,7 +326,7 @@ fn map_duck(xml: &str) -> DuckOutcome {
             port: port_field.unwrap_or(443),
             username,
             options: None,
-            initial_path: path,
+            initial_path: path.or(hostname_path),
         }),
 
         // Azure needs a SAS token / account key that the bookmark never
@@ -958,6 +962,43 @@ mod tests {
             panic!("separate SFTP port must import");
         };
         assert_eq!(mapped.port, 22);
+
+        let invalid = separate.replace("<integer>22</integer>", "<integer>65536</integer>");
+        let DuckOutcome::Profile(mapped) = map_duck(&invalid) else {
+            panic!("an invalid separate port must not prevent the inline import");
+        };
+        assert_eq!(mapped.port, 2222);
+    }
+
+    #[test]
+    fn webdav_hostname_url_preserves_its_path_when_path_is_omitted() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>Protocol</key><string>davs</string><key>Hostname</key><string>https://dav.example.test/team</string></dict></plist>"#;
+        let DuckOutcome::Profile(mapped) = map_duck(xml) else {
+            panic!("URL-shaped WebDAV hostname must import");
+        };
+        assert_eq!(mapped.host, "dav.example.test");
+        assert_eq!(mapped.initial_path.as_deref(), Some("/team"));
+        let config = crate::providers::WebDavConfig::from_provider_config(
+            &crate::providers::ProviderConfig {
+                name: "dav".to_string(),
+                provider_type: crate::providers::ProviderType::WebDav,
+                host: mapped.host.clone(),
+                port: Some(mapped.port as u16),
+                username: None,
+                password: None,
+                initial_path: mapped.initial_path.clone(),
+                extra: HashMap::new(),
+            },
+        )
+        .unwrap();
+        assert_eq!(config.url, "https://dav.example.test");
+        assert_eq!(config.initial_path.as_deref(), Some("/team"));
+
+        let separate = xml.replace("</dict>", "<key>Path</key><string>/other</string></dict>");
+        let DuckOutcome::Profile(mapped) = map_duck(&separate) else {
+            panic!("separate Path must import");
+        };
+        assert_eq!(mapped.initial_path.as_deref(), Some("/other"));
     }
 
     #[test]
@@ -1669,7 +1710,16 @@ mod tests {
                     username: Some(server.username.clone()),
                     password: None,
                     initial_path: server.initial_path.clone(),
-                    extra: HashMap::from([("bucket".to_string(), "media".to_string())]),
+                    extra: HashMap::from([(
+                        "bucket".to_string(),
+                        server
+                            .options
+                            .as_ref()
+                            .and_then(|options| options.get("bucket"))
+                            .and_then(serde_json::Value::as_str)
+                            .expect("reimported bucket")
+                            .to_string(),
+                    )]),
                 },
             )
             .unwrap();
