@@ -2052,7 +2052,11 @@ fn profile_plan_inputs(
             // side has no account at all.
             let attributable = match (receiver, here) {
                 (Some(r), Some(h)) => {
-                    r.identity == h.identity
+                    // A matching active identity preserves the vault copy
+                    // only when that copy belongs to the receiver: the
+                    // vault key is the legacy owner's, so the local
+                    // persisted owner must be the receiver's account.
+                    (r.identity == h.identity && local_legacy_owner == Some(r.identity))
                         || matches!(
                             (local_legacy_owner, receiver_legacy_owner),
                             (Some(local), Some(receiver)) if local == receiver
@@ -6679,6 +6683,83 @@ mod tests {
             "local-token",
             "the same legacy owner on both sides keeps its vault token"
         );
+    }
+
+    /// A matching active identity preserves a vault token only when the
+    /// vault copy belongs to the receiver. The backup's resolved legacy
+    /// owner is its active account; this device's persisted owner is a
+    /// different account holding the token in its credential scope, so the
+    /// vault value is foreign and the sweep removes it. The receiver then
+    /// reads nothing for the key. Red if the active-identity match alone
+    /// keeps the token.
+    #[test]
+    fn a_matching_active_identity_does_not_keep_a_foreign_vault_token() {
+        let _guard = crate::user_partitions::test_lock();
+        crate::user_partitions::clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let cfg = dir.path().join("config");
+        let key = "oauth_dropbox_srv_shared";
+        let list = [dropbox("srv_other", "Other")];
+        partition_with(&store, &cfg, &list);
+        let db = cfg.join("user_partitions.db");
+        // The backup is this partition while its first account is still the
+        // legacy owner and the active one.
+        let backup = full_backup(dir.path(), &db, &list);
+        // Afterwards a second account holds the token in its credential
+        // scope and becomes the persisted legacy owner; the first account
+        // stays active, so the two sides' actives have the same identity.
+        let root = store.derive_user_partition_wrapping_key();
+        let mut conn = rusqlite::Connection::open(&db).unwrap();
+        let second = crate::user_partitions::create_passphrase_less_user(
+            &mut conn, &root, "Second", None, None,
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT OR REPLACE INTO global_state(key, value, updated_at) VALUES (?1, ?2, 0)",
+            rusqlite::params!["legacy_credential_owner_id", second.id.to_string()],
+        )
+        .unwrap();
+        crate::user_partitions::set_user_credential_for(
+            &conn,
+            &root,
+            second.id,
+            key,
+            "oauth",
+            "local-token",
+        )
+        .unwrap();
+        drop(conn);
+        store.store(key, "local-token").unwrap();
+
+        let result = import_keystore_with_store(
+            &store,
+            PASSWORD_736,
+            &backup,
+            "skip_existing",
+            ImportSections::default(),
+            Some(&cfg),
+            None,
+            None,
+        )
+        .unwrap();
+        assert!(
+            result.sqlite_dbs_failed.is_empty(),
+            "{:?}",
+            result.sqlite_dbs_failed
+        );
+        assert!(
+            matches!(
+                store.get(key),
+                Err(crate::credential_store::CredentialError::NotFound(_))
+            ),
+            "the vault copy of another account's token must be swept"
+        );
+        // The published partition's active account is the resolved owner:
+        // it has no row for the key and the vault no longer holds a value.
+        let conn = rusqlite::Connection::open(&db).unwrap();
+        let read = read_effective_secret(&store, Some(&conn), &root, key).unwrap();
+        assert_eq!(read, None, "the receiver reads no foreign token");
     }
 
     /// `cli_db_path` isolation for the block-record pins: the readers under
