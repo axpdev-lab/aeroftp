@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+import type { ProviderOptions } from '../types';
+
 type Invoke = <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
 
 /**
@@ -56,4 +58,22 @@ export function gitlabInstanceOf(server: string): string | null {
 export function namesSelfHostedGitLab(server: string): boolean {
     const instance = gitlabInstanceOf(server);
     return instance !== null && instance !== 'gitlab.com';
+}
+
+/**
+ * The form options for a newly typed server field. The self-signed
+ * certificate opt-out is bound to the instance it was chosen for: when the
+ * new server no longer names a self-hosted instance (a project on
+ * gitlab.com, or a refused field), `verifyCert: false` is dropped, so the
+ * token is never sent to gitlab.com with certificate validation off.
+ */
+export function gitlabOptionsForServer(
+    options: ProviderOptions | undefined,
+    server: string,
+): ProviderOptions | undefined {
+    if (options?.verifyCert === false && !namesSelfHostedGitLab(server)) {
+        const { verifyCert: _dropped, ...rest } = options;
+        return rest;
+    }
+    return options;
 }

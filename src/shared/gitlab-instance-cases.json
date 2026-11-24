@@ -42,6 +42,16 @@
             "project": "group/project"
         },
         {
+            "server": "HTTPS://git.example.com:8443/group/project",
+            "instance": "git.example.com:8443",
+            "project": "group/project"
+        },
+        {
+            "server": "HtTp://LOCALHOST:8080/team/svc",
+            "instance": "localhost:8080",
+            "project": "team/svc"
+        },
+        {
             "server": "git.example.com/group/project",
             "instance": "git.example.com",
             "project": "group/project"

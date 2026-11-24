@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import appSource from '../App.tsx?raw';
 import connectionScreenSource from '../components/ConnectionScreen.tsx?raw';
 import GITLAB_INSTANCES from '../shared/gitlab-instance-cases.json';
-import { gitlabInstanceOf, namesSelfHostedGitLab, openOnGitLab } from './gitlabWeb';
+import { gitlabInstanceOf, gitlabOptionsForServer, namesSelfHostedGitLab, openOnGitLab } from './gitlabWeb';
 
 /** The GitLab single-selection block of the remote context menu, from its guard to its closing brace. */
 const gitlabMenuBlock = (src: string): string => {
@@ -84,5 +84,38 @@ describe('gitlabInstanceOf', () => {
         const block = connectionScreenSource.slice(start, connectionScreenSource.indexOf("t('gitlab.accessToken')", start));
         expect(start).toBeGreaterThan(-1);
         expect(block).toContain("t('gitlab.tokenGoesTo', { instance: gitlabInstanceOf(connectionParams.server)");
+    });
+});
+
+/**
+ * The certificate opt-out is bound to the instance it was chosen for: the
+ * GitLab server field recomputes its options through `gitlabOptionsForServer`
+ * on every keystroke, so switching from `localhost:8443` to `owner/repo`
+ * drops `verifyCert: false` and the token never reaches gitlab.com with
+ * certificate validation off.
+ */
+describe('gitlabOptionsForServer', () => {
+    it('keeps the opt-out while the new server still names a self-hosted instance', () => {
+        expect(gitlabOptionsForServer({ verifyCert: false }, '10.0.0.5/group/project')).toEqual({ verifyCert: false });
+        expect(gitlabOptionsForServer({ verifyCert: false }, 'localhost:8443/group/project')).toEqual({ verifyCert: false });
+    });
+
+    it('drops the opt-out when the new server is a gitlab.com project or refused', () => {
+        expect(gitlabOptionsForServer({ verifyCert: false }, 'owner/repo')).toEqual({});
+        expect(gitlabOptionsForServer({ verifyCert: false }, 'gitlab:99999/group/project')).toEqual({});
+        expect(gitlabOptionsForServer({ verifyCert: false, anonymous: true }, 'owner/repo')).toEqual({ anonymous: true });
+    });
+
+    it('passes the options through when no opt-out is set', () => {
+        expect(gitlabOptionsForServer(undefined, 'owner/repo')).toBeUndefined();
+        expect(gitlabOptionsForServer({}, 'owner/repo')).toEqual({});
+        expect(gitlabOptionsForServer({ verifyCert: true }, 'owner/repo')).toEqual({ verifyCert: true });
+        expect(gitlabOptionsForServer({ anonymous: true }, 'owner/repo')).toEqual({ anonymous: true });
+    });
+
+    it('is applied by the GitLab server field on every change', () => {
+        const start = connectionScreenSource.indexOf("protocol === 'gitlab' ? (");
+        const block = connectionScreenSource.slice(start, connectionScreenSource.indexOf("t('gitlab.accessToken')", start));
+        expect(block).toContain('options: gitlabOptionsForServer(connectionParams.options, e.target.value)');
     });
 });

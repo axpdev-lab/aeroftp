@@ -96,10 +96,16 @@ impl GitLabConfig {
 
 /// Parse the host field into (api_base, project_path).
 fn parse_host_field(host: &str) -> Result<(String, String), ProviderError> {
-    let stripped = host
-        .strip_prefix("https://")
-        .or_else(|| host.strip_prefix("http://"))
-        .unwrap_or(host);
+    // The scheme is stripped case-insensitively, as the connection form does:
+    // `HTTPS://git.example.com/...` must name the same instance as the
+    // lowercase form, never a host read out of the scheme itself.
+    let stripped = match host.get(..8) {
+        Some(prefix) if prefix.eq_ignore_ascii_case("https://") => &host[8..],
+        _ => match host.get(..7) {
+            Some(prefix) if prefix.eq_ignore_ascii_case("http://") => &host[7..],
+            _ => host,
+        },
+    };
 
     // Split into domain and path parts
     let (domain, path) = match stripped.split_once('/') {
@@ -140,11 +146,10 @@ pub(crate) fn instance_authority(segment: &str) -> Result<Option<String>, Provid
     if !marked {
         return Ok(None);
     }
-    let invalid = || {
-        ProviderError::InvalidConfig(format!(
-            "GitLab host '{segment}' is not a valid instance address"
-        ))
-    };
+    // A refused segment can carry credentials (`user:password@host`), and a
+    // secret must never reach an error message, so the answer is fixed.
+    let invalid =
+        || ProviderError::InvalidConfig("GitLab host is not a valid instance address".into());
     if segment.contains(['@', '?', '#', '\\']) {
         return Err(invalid());
     }
@@ -1477,6 +1482,23 @@ mod tests {
                 ),
                 None => assert!(parse_host_field(server).is_err(), "{server}"),
             }
+        }
+    }
+
+    /// A refused authority can hold credentials (`user:password@host`), and a
+    /// secret must never reach an error message: the refusal is a fixed
+    /// string, so the password is in neither the message nor its Display.
+    #[test]
+    fn a_refused_host_never_leaks_credentials_into_the_error() {
+        let err = parse_host_field("https://user:secret-pw@git.example.com/group/project")
+            .expect_err("userinfo is refused");
+        match err {
+            ProviderError::InvalidConfig(msg) => {
+                assert!(!msg.contains("secret-pw"), "{msg}");
+                assert!(!msg.contains("user:"), "{msg}");
+                assert!(!msg.to_string().contains("secret-pw"));
+            }
+            other => panic!("expected InvalidConfig, got {other:?}"),
         }
     }
 
