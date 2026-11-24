@@ -293,6 +293,7 @@ fn stage_export_temp_600_with_acl(
             .make_in(parent, |path| {
                 std::fs::OpenOptions::new()
                     .create_new(true)
+                    .write(true)
                     .access_mode(STAGING_ACCESS)
                     .share_mode(FILE_SHARE_DELETE)
                     .open(path)
