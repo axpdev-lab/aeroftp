@@ -36,11 +36,14 @@ describe('the Settings panel mount-time server load', () => {
     });
 
     it('does not guard the vault/account status load, which still runs after it', () => {
-        const block = serverLoadBlock();
-        // The status invoke comes after the server-load block in the same init,
-        // outside the server load's catch, so a locked vault still reports its
-        // status instead of aborting the init.
-        expect(block.indexOf('catch')).toBeGreaterThan(-1);
-        expect(block.indexOf('get_credential_store_status')).toBeGreaterThan(block.indexOf('catch'));
+        const src = source();
+        const loadAt = src.indexOf('const vaultRead = await loadSavedServerProfilesWithAccount();');
+        expect(loadAt).toBeGreaterThan(-1);
+        const catchAt = src.indexOf('} catch {', loadAt);
+        const statusAt = src.indexOf("'get_credential_store_status'", loadAt);
+        // The status invoke comes after the server load's own catch in the same
+        // init, so a locked vault still reports its status instead of aborting.
+        expect(catchAt).toBeGreaterThan(loadAt);
+        expect(statusAt).toBeGreaterThan(catchAt);
     });
 });
