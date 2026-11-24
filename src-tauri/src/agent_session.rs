@@ -66,6 +66,13 @@ fn flatten_options(options: Option<&Value>) -> HashMap<String, String> {
     for (k, v) in obj {
         crate::profile_loader::insert_profile_option(&mut out, k, v);
     }
+    // Both spellings canonicalize to `session_token`, so without this the map
+    // iteration order alone decided which one won (a blank `sessionToken`
+    // could clobber a usable `session_token`). Resolve the pair once through
+    // the shared selector, like every other surface.
+    if let Some(token) = crate::profile_loader::inline_s3_session_token(options) {
+        out.insert("session_token".to_string(), token);
+    }
     out
 }
 
@@ -1055,7 +1062,9 @@ async fn connect_provider(
         profile.has_stored_session_token,
         &mut extra,
         |key| {
-            crate::profile_loader::resolve_vault_s3_session_token_owner_aware(&store, user_id, key)
+            // The captured account, not the active one: a `None` capture is a
+            // legacy read and fails closed if an account activated since.
+            crate::profile_loader::resolve_vault_s3_session_token_captured(&store, user_id, key)
         },
     ) {
         return ConnectOutcome::Err(e);
@@ -1679,6 +1688,43 @@ mod tests {
         assert!(!m.contains_key("pcloud_region"));
     }
 
+    /// Both inline token spellings canonicalize to `session_token`, so map
+    /// iteration order must not decide the winner: a blank `sessionToken`
+    /// must not clobber a usable `session_token` (and a usable camelCase must
+    /// win over a snake_case one), matching the shared selector every other
+    /// surface uses.
+    #[test]
+    fn flatten_options_resolves_the_inline_token_pair_deterministically() {
+        let blank_camel_usable_snake = json!({
+            "sessionToken": "   ",
+            "session_token": "tok-snake",
+        });
+        let m = flatten_options(Some(&blank_camel_usable_snake));
+        assert_eq!(
+            m.get("session_token").map(String::as_str),
+            Some("tok-snake"),
+            "a blank camelCase must fall back to the usable snake_case: {m:?}"
+        );
+
+        let usable_camel = json!({
+            "sessionToken": "tok-camel",
+            "session_token": "tok-snake",
+        });
+        let m = flatten_options(Some(&usable_camel));
+        assert_eq!(
+            m.get("session_token").map(String::as_str),
+            Some("tok-camel"),
+            "a usable camelCase wins over snake_case: {m:?}"
+        );
+
+        let both_blank = json!({ "sessionToken": "", "session_token": "  " });
+        let m = flatten_options(Some(&both_blank));
+        assert!(
+            m.get("session_token").is_none_or(|s| s.trim().is_empty()),
+            "two blank spellings yield no usable token: {m:?}"
+        );
+    }
+
     #[test]
     fn flatten_options_skips_complex_values() {
         let v = json!({
@@ -1911,6 +1957,77 @@ mod tests {
             extra.get("session_token").map(String::as_str),
             Some("ALICE-TOKEN")
         );
+    }
+
+    /// A session-token read captured with NO account (legacy) reads the legacy
+    /// vault key only, and fails closed with ACCOUNT_CHANGED when an account
+    /// has activated since the capture: the new account's partition token
+    /// must never be served to a caller that captured `None`. The no-switch
+    /// control reads the legacy key successfully.
+    #[test]
+    fn a_legacy_captured_token_read_fails_closed_when_an_account_activates() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "agent_session::tests::a_legacy_captured_token_read_fails_closed_when_an_account_activates",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = crate::user_partitions::test_lock();
+        let xdg = tempfile::tempdir().unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", xdg.path());
+        std::env::set_var("AEROFTP_MASTER_PASSWORD", "synthetic test master");
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("synthetic test master").unwrap();
+        CredentialStore::unlock_with_master("synthetic test master", None).unwrap();
+        let store = CredentialStore::from_cache().unwrap();
+        crate::user_partitions::init_or_migrate_cli(&store).unwrap();
+        let key = crate::profile_loader::aws_session_token_vault_key("srv-legacy");
+        store.store(&key, "LEGACY-TOKEN").unwrap();
+
+        // Control: no active account at read time -> the legacy vault key.
+        {
+            let conn = crate::user_partitions::open_or_init_cli().unwrap();
+            conn.execute(
+                "UPDATE global_state SET value = '' WHERE key = 'active_user_id'",
+                [],
+            )
+            .unwrap();
+        }
+        assert_eq!(
+            crate::profile_loader::resolve_vault_s3_session_token_captured(&store, None, &key)
+                .unwrap()
+                .as_deref(),
+            Some("LEGACY-TOKEN"),
+            "a no-switch legacy read returns the legacy vault token"
+        );
+
+        // An account activates after the capture: the same read must fail
+        // closed and must not serve that account's partition token.
+        let mut conn = crate::user_partitions::open_or_init_cli().unwrap();
+        let root_key = store.derive_user_partition_wrapping_key();
+        let bob =
+            crate::user_partitions::create_user(&mut conn, &root_key, "Bob", None, None, None)
+                .unwrap();
+        crate::user_partitions::set_active_user(&conn, bob.id).unwrap();
+        drop(conn);
+        crate::user_partitions::store_credential_for_user_typed_dual(
+            &store,
+            bob.id,
+            &key,
+            "aws_session_token",
+            "BOB-TOKEN",
+        )
+        .unwrap();
+        let err =
+            crate::profile_loader::resolve_vault_s3_session_token_captured(&store, None, &key)
+                .expect_err(
+                    "a legacy-captured token read must fail closed once an account is active",
+                );
+        assert_eq!(err, crate::user_partitions::ACCOUNT_CHANGED, "{err}");
+
+        CredentialStore::clear_cache();
     }
 
     /// R15 pin: a lookup bound to one account reads that account's partition,

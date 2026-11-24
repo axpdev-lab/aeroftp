@@ -25106,10 +25106,10 @@ pub(crate) fn collect_provider_secrets_for_server_for_user(
     let mut out = profile_export::ProviderSecrets::default();
     let protocol = server.protocol.as_deref().unwrap_or("").to_lowercase();
 
-    let resolve_user_cred = |key: &str| match user_id {
-        Some(uid) => user_partitions::resolve_credential_for_user(store, uid, key),
-        None => user_partitions::resolve_active_credential(store, key),
-    };
+    // Every profile-scoped secret below is read owner-aware: a secondary
+    // account exporting a profile with the same id must never pull the legacy
+    // owner's shared vault fallback (overlay password, mode credentials,
+    // Filen key, drive ids, Proton session, GitHub auth) into its archive.
     let resolve_user_owner_aware = |key: &str| match user_id {
         Some(uid) => user_partitions::resolve_credential_for_user_owner_aware(store, uid, key),
         None => user_partitions::resolve_active_credential_owner_aware(store, key),
@@ -25184,21 +25184,24 @@ pub(crate) fn collect_provider_secrets_for_server_for_user(
     // and interop rclone-crypt share these generic vault keys) so an exported
     // Crypt profile reconnects on import without re-entering the overlay password.
     // Protocol-agnostic: the overlay can sit on any provider-API backend.
-    if let Ok(Some(pw)) = resolve_user_cred(&format!("aerocrypt_overlay_pw_{}", server.id)) {
+    if let Ok(Some(pw)) = resolve_user_owner_aware(&format!("aerocrypt_overlay_pw_{}", server.id)) {
         out.aerocrypt_overlay_pw = Some(pw.to_string());
     }
-    if let Ok(Some(salt)) = resolve_user_cred(&format!("aerocrypt_overlay_salt_{}", server.id)) {
+    if let Ok(Some(salt)) =
+        resolve_user_owner_aware(&format!("aerocrypt_overlay_salt_{}", server.id))
+    {
         out.aerocrypt_overlay_salt = Some(salt.to_string());
     }
     // AeroCrypt keyfile PATH (not the keyfile contents). Lets a same-device
     // re-import find the keyfile without re-picking it; on another device the
     // path may be stale and the UI must re-point.
     if let Ok(Some(kf_path)) =
-        resolve_user_cred(&format!("aerocrypt_overlay_keyfile_path_{}", server.id))
+        resolve_user_owner_aware(&format!("aerocrypt_overlay_keyfile_path_{}", server.id))
     {
         out.aerocrypt_overlay_keyfile_path = Some(kf_path.to_string());
     }
-    if let Ok(Some(config)) = resolve_user_cred(&format!("aerocrypt_overlay_config_{}", server.id))
+    if let Ok(Some(config)) =
+        resolve_user_owner_aware(&format!("aerocrypt_overlay_config_{}", server.id))
     {
         out.aerocrypt_overlay_config = Some(config.to_string());
     }
@@ -25208,7 +25211,7 @@ pub(crate) fn collect_provider_secrets_for_server_for_user(
     // `server_` prefix routes this through the captured user's partition exactly
     // like the per-profile password (modeCredentialStore already stripped the
     // single-use TOTP/STS codes at write time).
-    if let Ok(Some(modes)) = resolve_user_cred(&format!("server_modes_{}", server.id)) {
+    if let Ok(Some(modes)) = resolve_user_owner_aware(&format!("server_modes_{}", server.id)) {
         out.mode_credentials = Some(modes.to_string());
     }
 
@@ -25216,7 +25219,7 @@ pub(crate) fn collect_provider_secrets_for_server_for_user(
     // It is a long-lived secret kept only in the vault (never on the saved
     // profile's `options`), so without this the `.aeroftp` export dropped it and a
     // re-imported Filen profile fell back to password + TOTP.
-    if let Ok(Some(api_key)) = resolve_user_cred(&format!("filen_api_key_{}", server.id)) {
+    if let Ok(Some(api_key)) = resolve_user_owner_aware(&format!("filen_api_key_{}", server.id)) {
         out.filen_api_key = Some(api_key.to_string());
     }
 
@@ -25247,22 +25250,22 @@ pub(crate) fn collect_provider_secrets_for_server_for_user(
     // OneDrive drive id/type captured at connect (`onedrive_drive_id_<id>` /
     // `onedrive_drive_type_<id>`). Vault-only like the Filen key, so the export
     // dropped them; carried so a re-import is a complete snapshot.
-    if let Ok(Some(v)) = resolve_user_cred(&format!("onedrive_drive_id_{}", server.id)) {
+    if let Ok(Some(v)) = resolve_user_owner_aware(&format!("onedrive_drive_id_{}", server.id)) {
         out.onedrive_drive_id = Some(v.to_string());
     }
-    if let Ok(Some(v)) = resolve_user_cred(&format!("onedrive_drive_type_{}", server.id)) {
+    if let Ok(Some(v)) = resolve_user_owner_aware(&format!("onedrive_drive_type_{}", server.id)) {
         out.onedrive_drive_type = Some(v.to_string());
     }
 
     // The native Proton Drive session (`proton_native_session_<id>`), written
     // at sign-in and at every refresh. Vault-only like the Filen key; it
     // travels like every other per-profile secret (owner decision 2026-10-17).
-    if let Ok(Some(v)) = resolve_user_cred(&format!("proton_native_session_{}", server.id)) {
+    if let Ok(Some(v)) = resolve_user_owner_aware(&format!("proton_native_session_{}", server.id)) {
         out.proton_native_session = Some(v.to_string());
     }
 
     let read_auth = |prefix: &str| {
-        resolve_user_cred(&format!("{prefix}_{}", server.id))
+        resolve_user_owner_aware(&format!("{prefix}_{}", server.id))
             .ok()
             .flatten()
             .map(|value| value.to_string())
@@ -25621,20 +25624,10 @@ fn extract_and_strip_inline_s3_session_token(
     camel.or(snake)
 }
 
-/// The inline S3 session token of `options` without stripping it, with the
-/// same precedence as [`extract_and_strip_inline_s3_session_token`]: a
-/// non-empty camelCase `sessionToken` wins, snake_case is the fallback.
-pub(crate) fn inline_s3_session_token(options: Option<&serde_json::Value>) -> Option<String> {
-    let opts = options.and_then(|v| v.as_object())?;
-    let pick = |key: &str| {
-        opts.get(key)
-            .and_then(|v| v.as_str())
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(str::to_string)
-    };
-    pick("sessionToken").or_else(|| pick("session_token"))
-}
+// Moved to `profile_loader` so the backup export, the bridge export
+// injection and the agent connect path share one selector; re-exported here
+// for the existing call sites.
+pub(crate) use profile_loader::inline_s3_session_token;
 
 fn prepare_import(
     servers: &[profile_export::ServerProfileExport],
@@ -36101,6 +36094,69 @@ mod sts_import_rollback_tests {
         let out =
             collect_provider_secrets_for_server_for_user(&store, Some(first), &unflagged).unwrap();
         assert_eq!(out.aws_session_token, None);
+
+        restore_env(previous_xdg, previous_passphrase);
+    }
+
+    /// A secondary account exporting a profile with the SAME id as the legacy
+    /// owner's must not pull the legacy owner's shared vault fallback
+    /// (overlay password, Filen API key, ...) into its archive; the legacy
+    /// owner still exports its own shared fallback.
+    #[test]
+    fn a_secondary_account_export_never_pulls_the_legacy_owners_shared_profile_secrets() {
+        if !in_isolated_child(
+            "sts_import_rollback_tests::a_secondary_account_export_never_pulls_the_legacy_owners_shared_profile_secrets",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = user_partitions::test_lock();
+        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        let previous_passphrase = std::env::var_os("AEROFTP_USER_PASSPHRASE");
+        let (_dir, store, first, second) = two_account_vault();
+
+        let pid = "shared-secret-pid";
+        store
+            .store(&format!("aerocrypt_overlay_pw_{pid}"), "LEGACY-OVERLAY-PW")
+            .unwrap();
+        store
+            .store(&format!("filen_api_key_{pid}"), "LEGACY-FILEN-KEY")
+            .unwrap();
+        let server = || crate::profile_export::ServerProfileExport {
+            id: pid.to_string(),
+            name: "Shared".to_string(),
+            host: "filen.io".to_string(),
+            port: 443,
+            username: "f@example.com".to_string(),
+            protocol: Some("filen".to_string()),
+            ..Default::default()
+        };
+
+        // The legacy owner: the shared vault fallback answers.
+        let out =
+            collect_provider_secrets_for_server_for_user(&store, Some(first), &server()).unwrap();
+        assert_eq!(
+            out.aerocrypt_overlay_pw.as_deref(),
+            Some("LEGACY-OVERLAY-PW"),
+            "the legacy owner exports its own shared overlay password"
+        );
+        assert_eq!(
+            out.filen_api_key.as_deref(),
+            Some("LEGACY-FILEN-KEY"),
+            "the legacy owner exports its own shared Filen key"
+        );
+
+        // The secondary account with the SAME profile id: nothing leaks.
+        let out =
+            collect_provider_secrets_for_server_for_user(&store, Some(second), &server()).unwrap();
+        assert_eq!(
+            out.aerocrypt_overlay_pw, None,
+            "a secondary account must not receive the legacy overlay password"
+        );
+        assert_eq!(
+            out.filen_api_key, None,
+            "a secondary account must not receive the legacy Filen key"
+        );
 
         restore_env(previous_xdg, previous_passphrase);
     }

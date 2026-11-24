@@ -23,6 +23,25 @@ pub fn aws_session_token_vault_key(profile_id: &str) -> String {
     format!("aws_session_token_{profile_id}")
 }
 
+/// The inline S3 session token of `options` without stripping it: a
+/// non-empty camelCase `sessionToken` wins, snake_case `session_token` is
+/// the fallback (the same precedence as
+/// [`crate::extract_and_strip_inline_s3_session_token`]). Shared by the
+/// backup export, the bridge export injection and the agent connect path,
+/// so every surface resolves a conflicting pair identically instead of
+/// depending on map iteration order.
+pub fn inline_s3_session_token(options: Option<&serde_json::Value>) -> Option<String> {
+    let opts = options.and_then(|v| v.as_object())?;
+    let pick = |key: &str| {
+        opts.get(key)
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+    };
+    pick("sessionToken").or_else(|| pick("session_token"))
+}
+
 /// Owner-aware vault read for `aws_session_token_<id>`.
 ///
 /// When `user_id` is `Some(uid)`, reads strictly from `uid`'s partition
@@ -40,6 +59,31 @@ pub fn resolve_vault_s3_session_token_owner_aware(
             crate::user_partitions::resolve_credential_for_user_owner_aware(store, uid, key)
         }
         None => crate::user_partitions::resolve_active_credential_owner_aware(store, key),
+    }?;
+    Ok(resolved
+        .map(|secret| secret.to_string())
+        .filter(|s| !s.trim().is_empty()))
+}
+
+/// [`resolve_vault_s3_session_token_owner_aware`] for a caller that CAPTURED
+/// the account alongside the profile read. A captured `Some(uid)` reads that
+/// account's partition; a captured `None` (legacy read) is checked legacy-only:
+/// it reads the legacy vault keys and fails closed with `ACCOUNT_CHANGED` if an
+/// account has become active since the capture, so the newly active account's
+/// token is never served to a caller that captured no account (matching the
+/// checked legacy password read). Callers that did NOT capture an account and
+/// mean "the active one" keep using
+/// [`resolve_vault_s3_session_token_owner_aware`].
+pub fn resolve_vault_s3_session_token_captured(
+    store: &crate::credential_store::CredentialStore,
+    user_id: Option<i64>,
+    key: &str,
+) -> Result<Option<String>, String> {
+    let resolved = match user_id {
+        Some(uid) => {
+            crate::user_partitions::resolve_credential_for_user_owner_aware(store, uid, key)
+        }
+        None => crate::user_partitions::resolve_legacy_only_credential_checked(store, key),
     }?;
     Ok(resolved
         .map(|secret| secret.to_string())
@@ -276,7 +320,7 @@ pub fn apply_profile_options(extra: &mut HashMap<String, String>, profile: &serd
             }
             insert_profile_option(extra, k, v);
         }
-        if let Some(token) = crate::inline_s3_session_token(profile.get("options")) {
+        if let Some(token) = inline_s3_session_token(profile.get("options")) {
             extra.insert("session_token".to_string(), token);
         }
     }
