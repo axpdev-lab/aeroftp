@@ -225,7 +225,7 @@ source version and its SHA-256.
 | ctor-proc-macro | 0.0.7 | Apache-2.0 OR MIT | [Link](https://github.com/mmastrac/rust-ctor) |
 | ctr | 0.10.1 | MIT OR Apache-2.0 | [Link](https://github.com/RustCrypto/block-modes) |
 | ctr | 0.9.2 | MIT OR Apache-2.0 | [Link](https://github.com/RustCrypto/block-modes) |
-| ctrlc | 3.5.2 | MIT/Apache-2.0 | [Link](https://github.com/Detegr/rust-ctrlc.git) |
+| ctrlc | 3.5.3 | MIT/Apache-2.0 | [Link](https://github.com/Detegr/rust-ctrlc.git) |
 | ctutils | 0.4.8 | Apache-2.0 OR MIT | [Link](https://github.com/RustCrypto/utils) |
 | curve25519-dalek | 4.1.3 | BSD-3-Clause | [Link](https://github.com/dalek-cryptography/curve25519-dalek/tree/main/curve25519-dalek) |
 | curve25519-dalek | 5.0.0 | BSD-3-Clause | [Link](https://github.com/dalek-cryptography/curve25519-dalek/tree/main/curve25519-dalek) |
@@ -785,7 +785,7 @@ source version and its SHA-256.
 | rfd | 0.16.0 | MIT | [Link](https://github.com/PolyMeilex/rfd) |
 | ring | 0.17.14 | Apache-2.0 AND ISC | [Link](https://github.com/briansmith/ring) |
 | ripemd | 0.1.3 | MIT OR Apache-2.0 | [Link](https://github.com/RustCrypto/hashes) |
-| rpassword | 7.5.4 | Apache-2.0 | [Link](https://github.com/conradkleinespel/rpassword) |
+| rpassword | 7.5.5 | Apache-2.0 | [Link](https://github.com/conradkleinespel/rpassword) |
 | rsa | 0.10.0 | MIT OR Apache-2.0 | [Link](https://github.com/RustCrypto/RSA) |
 | rsa | 0.9.10 | MIT OR Apache-2.0 | [Link](https://github.com/RustCrypto/RSA) |
 | rtoolbox | 0.0.6 | Apache-2.0 | [Link](https://github.com/conradkleinespel/rtoolbox) |
@@ -803,7 +803,7 @@ source version and its SHA-256.
 | rustix-linux-procfs | 0.1.1 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | [Link](https://github.com/sunfishcode/rustix-linux-procfs) |
 | rustls | 0.23.46 | Apache-2.0 OR ISC OR MIT | [Link](https://github.com/rustls/rustls) |
 | rustls-native-certs | 0.8.5 | Apache-2.0 OR ISC OR MIT | [Link](https://github.com/rustls/rustls-native-certs) |
-| rustls-pki-types | 1.15.1 | MIT OR Apache-2.0 | [Link](https://github.com/rustls/pki-types) |
+| rustls-pki-types | 1.16.0 | MIT OR Apache-2.0 | [Link](https://github.com/rustls/pki-types) |
 | rustls-platform-verifier | 0.7.0 | MIT OR Apache-2.0 | [Link](https://github.com/rustls/rustls-platform-verifier) |
 | rustls-platform-verifier-android | 0.1.1 | MIT OR Apache-2.0 | [Link](https://github.com/rustls/rustls-platform-verifier) |
 | rustls-webpki | 0.103.17 | ISC | [Link](https://github.com/rustls/webpki) |
@@ -1488,7 +1488,7 @@ SOFTWARE.
 - `portable-atomic-util@0.2.8` (cargo, file: `LICENSE-APACHE`)
   - No copyright notice is shipped in the package
 - `raw-window-handle@0.6.2` (cargo, file: `LICENSE-APACHE.md`)
-- `rpassword@7.5.4` (cargo, file: `LICENSE-APACHE`)
+- `rpassword@7.5.5` (cargo, file: `LICENSE-APACHE`)
   - No copyright notice is shipped in the package
 - `rtoolbox@0.0.6` (cargo, file: `LICENSE-APACHE`)
   - Copyright (c) 2015-2019 Doug Tangren (src/atty.rs)
@@ -3020,7 +3020,7 @@ limitations under the License.
   - No copyright notice is shipped in the package
 - `concurrent-queue@2.5.0` (cargo, file: `LICENSE-MIT`)
   - No copyright notice is shipped in the package
-- `ctrlc@3.5.2` (cargo, file: `LICENSE-MIT`)
+- `ctrlc@3.5.3` (cargo, file: `LICENSE-MIT`)
   - Copyright (c) 2015 CtrlC developers (examples/readme_example.rs)
   - Copyright (c) 2023 CtrlC developers (tests/main/harness.rs)
 - `curve25519-dalek-derive@0.1.1` (cargo, file: `LICENSE-MIT`)
@@ -15828,7 +15828,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 ### Notice Entry 158
 
 **Used by component(s):**
-- `ctrlc@3.5.2` (cargo, file: `LICENSE-APACHE`)
+- `ctrlc@3.5.3` (cargo, file: `LICENSE-APACHE`)
 
 ```text
 Apache License
@@ -38132,7 +38132,7 @@ of these licenses, at your option.
 ### Notice Entry 509
 
 **Used by component(s):**
-- `rustls-pki-types@1.15.1` (cargo, file: `LICENSE-APACHE`)
+- `rustls-pki-types@1.16.0` (cargo, file: `LICENSE-APACHE`)
 
 ```text
 Apache License
@@ -38341,7 +38341,7 @@ limitations under the License.
 ### Notice Entry 510
 
 **Used by component(s):**
-- `rustls-pki-types@1.15.1` (cargo, file: `LICENSE-MIT`)
+- `rustls-pki-types@1.16.0` (cargo, file: `LICENSE-MIT`)
 
 ```text
 Copyright (c) 2023 Dirkjan Ochtman <dirkjan@ochtman.nl>
