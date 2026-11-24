@@ -2231,6 +2231,7 @@ impl OAuth2Manager {
                         kept.is_some(),
                     )
                 };
+                let partition_pending = partition_successor.is_some();
                 crate::credential_store::off_async_worker(|| {
                     self.settle_pending_rotation(&legacy)
                 })?;
@@ -2299,16 +2300,20 @@ impl OAuth2Manager {
                         );
                     }
                 }
-                // With no journal left (the settle already wrote the
-                // successor to the singleton's row and dropped it), that
-                // row still holds the live chain while the vault may keep
-                // the spent predecessor: the row, not the vault, is what
-                // migrates. Once the row is adopted and dropped, the vault
-                // is read back: a value that is not the adopted chain is
-                // the spent predecessor and leaves conditionally, while a
-                // value equal to the chain is the live copy and stays.
-                // The vault fallback below stays for an absent row.
-                if !had_pending {
+                // The journal arm above returns only while the singleton's
+                // row still holds the successor it kept: an import that
+                // replaced that row since, or a settle that dropped the
+                // pending, leaves the row as the live chain and the vault
+                // possibly holding the spent predecessor. Whenever the arm
+                // did not return, the row, not the vault, is what migrates;
+                // the vault is read back only while the row is absent, and a
+                // value that is not the adopted chain is the spent
+                // predecessor and leaves conditionally, while a value equal
+                // to the chain is the live copy and stays. A pending kept
+                // in the vault is the exception: its successor lands in the
+                // vault, so the row still holds only the spent predecessor
+                // and must not be adopted.
+                if !had_pending || partition_pending {
                     if let Some(user) = credential_user {
                         let conn = crate::user_partitions::open_or_init_cli().map_err(|_| {
                             ProviderError::Other("Failed to open token owner".into())
@@ -3673,6 +3678,73 @@ mod tests {
                 );
             }
             assert_eq!(stored_row(store, first, &second_account), None);
+        });
+    }
+
+    /// Greptile r4673055500 follow-up: the pending's settle finds the
+    /// singleton's row no longer holding the successor it kept, so the
+    /// journal is dropped. An import meanwhile replaced that row with its
+    /// own chain, while the vault still keeps the spent predecessor: the
+    /// load must adopt the row's imported chain, not fall back to the
+    /// vault's predecessor.
+    #[test]
+    fn an_imported_singleton_row_is_adopted_when_the_settle_drops_the_journal() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::oauth2::tests::an_imported_singleton_row_is_adopted_when_the_settle_drops_the_journal",
+        ) {
+            return;
+        }
+        with_two_box_accounts(|store, first, _second, _shared| {
+            let legacy = OAuth2Manager::legacy_token_account_key(OAuthProvider::Box);
+            let account = OAuth2Manager::token_account_key(OAuthProvider::Box, "p");
+            let record = |access: &str, refresh: &str| {
+                serde_json::json!({
+                    "access_token": access, "refresh_token": refresh,
+                    "expires_at": null, "token_type": "Bearer", "scopes": [],
+                    "owner_family": "v1:singleton-owner",
+                })
+                .to_string()
+            };
+            let predecessor = record("r-access", "r-refresh");
+            let successor = record("s-access", "s-refresh");
+            let imported = record("i-access", "i-refresh");
+            let conn = crate::user_partitions::open_or_init_cli().unwrap();
+            let root = Zeroizing::new(store.derive_user_partition_wrapping_key());
+            // The row already holds the imported chain, not the pending's
+            // predecessor or successor; the vault still holds the
+            // predecessor.
+            crate::user_partitions::set_user_credential_for(
+                &conn, &root, first, &legacy, "oauth", &imported,
+            )
+            .unwrap();
+            store.store(&legacy, &predecessor).unwrap();
+            file_pending_rotation(
+                Some(first),
+                &legacy,
+                PendingRotation {
+                    source: PendingSource::Partition(first),
+                    read: Zeroizing::new(predecessor.clone()),
+                    record: Zeroizing::new(successor.clone()),
+                },
+                "test",
+            );
+
+            let got = OAuth2Manager::new()
+                .load_token_record(OAuthProvider::Box, "p")
+                .expect("the imported chain is read");
+            assert_eq!(got.tokens.access_token, "i-access");
+            assert_eq!(
+                stored_row(store, first, &account).as_deref(),
+                Some(imported.as_str()),
+                "the imported chain moved to the empty profile's row"
+            );
+            assert_eq!(stored_row(store, first, &legacy), None);
+            assert_ne!(
+                store.get(&legacy).ok().as_deref(),
+                Some(predecessor.as_str()),
+                "the spent predecessor left the vault once the row was adopted"
+            );
+            assert_eq!(pending_rotation_record(Some(first), &legacy), None);
         });
     }
 
