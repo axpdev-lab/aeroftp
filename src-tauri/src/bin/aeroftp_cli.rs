@@ -13243,14 +13243,16 @@ fn resolve_password(
         return Ok(secret);
     }
 
-    // 3. Environment variable (protocol-specific, then generic)
+    // 3. Environment variable (protocol-specific, then generic). An empty
+    // value is skipped, as `LaunchTarget::env_secret_var` skips it: the next
+    // variable, then the URL password, is the secret.
     for var in scheme
         .secret_env
         .iter()
         .copied()
         .chain(["AEROFTP_PASSWORD"])
     {
-        if let Ok(pass) = std::env::var(var) {
+        if let Some(pass) = ftp_client_gui_lib::launch_url::read_nonempty_env(var) {
             return Ok(pass);
         }
     }
