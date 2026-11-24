@@ -1,6 +1,16 @@
 use super::*;
 use std::sync::{Arc, Mutex};
 
+/// The account id an export caller sends for the profile list it just read:
+/// the active account of the fixture vault (the list was read under it).
+fn export_account_id() -> Option<i64> {
+    let store = CredentialStore::from_cache().unwrap();
+    users::cli_get_active_user(&store)
+        .ok()
+        .flatten()
+        .map(|u| u.id)
+}
+
 /// Slots whose write of one key fails, for a failure the real vault cannot be made
 /// to produce.
 struct FailingAt<'a, S> {
@@ -647,6 +657,7 @@ async fn durable_profile_auth_lifecycle(
         "fixture-export-password".into(),
         true,
         file.to_string_lossy().into_owned(),
+        export_account_id(),
     )
     .await
     .unwrap();
@@ -778,6 +789,7 @@ async fn durable_profile_auth_lifecycle(
         "fixture-export-password".into(),
         true,
         jotta_file.to_string_lossy().into_owned(),
+        export_account_id(),
     )
     .await
     .unwrap();
@@ -858,6 +870,7 @@ async fn durable_profile_auth_lifecycle(
         "fixture-export-password".into(),
         false,
         weaker_file.to_string_lossy().into_owned(),
+        None,
     )
     .await
     .unwrap();
@@ -885,6 +898,7 @@ async fn durable_profile_auth_lifecycle(
         "fixture-export-password".into(),
         false,
         conflicting_file.to_string_lossy().into_owned(),
+        None,
     )
     .await
     .unwrap();
@@ -1471,6 +1485,7 @@ async fn durable_profile_auth_lifecycle(
         "fixture-export-password".into(),
         true,
         repeated_file.to_string_lossy().into_owned(),
+        export_account_id(),
     )
     .await
     .unwrap();
@@ -1557,6 +1572,7 @@ async fn durable_profile_auth_lifecycle(
         "fixture-export-password".into(),
         false,
         redacted.to_string_lossy().into_owned(),
+        None,
     )
     .await
     .unwrap();
@@ -1704,6 +1720,7 @@ async fn native_session_ownership(store: &CredentialStore, active_id: i64, selec
         "native-fixture-export-password".into(),
         true,
         file.to_string_lossy().into_owned(),
+        export_account_id(),
     )
     .await
     .unwrap();
@@ -1906,6 +1923,7 @@ fn an_unreadable_profile_token_never_falls_back_to_the_singleton() {
         let injected = crate::bridge_commands::inject_rclone_oauth_export_options(
             &mut options,
             store,
+            None,
             "googledrive",
             "mine",
         );

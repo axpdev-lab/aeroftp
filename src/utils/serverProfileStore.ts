@@ -123,6 +123,27 @@ export const loadSavedServerProfilesStrict = async (): Promise<ServerProfile[]> 
 };
 
 /**
+ * `loadSavedServerProfiles` plus the account the list was read under, captured
+ * in the SAME read. An export sends `userId` with its `serversJson`, and the
+ * backend refuses the export (ACCOUNT_CHANGED, no file written) when the
+ * active account changed since that read, so one account's profile metadata
+ * can never be paired with another account's secrets. `userId` is absent for
+ * a pre-multi-user install, whose list comes from the legacy store.
+ */
+export const loadSavedServerProfilesWithAccount = async (): Promise<SavedProfilesRead> => {
+    try {
+        await seedLegacyLocalProfilesForPartitionMigration();
+        const scoped = await loadActiveServerProfilesScoped();
+        return { profiles: scoped.profiles, userId: scoped.userId, revision: scoped.revision };
+    } catch (error) {
+        if (!canUseLegacyProfileFallback(error) && !String(error ?? '').includes('NO_ACTIVE_USER')) {
+            throw error;
+        }
+        return { profiles: await loadLegacySavedServerProfiles() };
+    }
+};
+
+/**
  * A saved-profile list read for a read-modify-write, with the account it was
  * read from. `userId` is absent when the list came from the legacy store,
  * which has no accounts.

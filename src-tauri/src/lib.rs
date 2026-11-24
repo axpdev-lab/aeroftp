@@ -25286,8 +25286,16 @@ async fn export_server_profiles(
     password: String,
     include_credentials: bool,
     file_path: String,
+    account_id: Option<i64>,
 ) -> Result<profile_export::ExportMetadata, String> {
-    export_server_profiles_core(servers_json, password, include_credentials, file_path).await
+    export_server_profiles_core(
+        servers_json,
+        password,
+        include_credentials,
+        file_path,
+        account_id,
+    )
+    .await
 }
 
 /// Core of [`export_server_profiles`], callable outside the Tauri command
@@ -25295,11 +25303,19 @@ async fn export_server_profiles(
 /// and GUI share ONE credential-collection + encryption implementation (a
 /// `#[tauri::command]` cannot be `pub` without a macro-name clash, hence the
 /// split).
+///
+/// `account_id` is the account the caller read `servers_json` under: the
+/// export is bound to it and refused with
+/// [`user_partitions::ACCOUNT_CHANGED`] (writing no file) when the active
+/// account at export differs, so a switch between the list read and the
+/// export can never pair one account's profile metadata with another
+/// account's secrets.
 pub async fn export_server_profiles_core(
     servers_json: String,
     password: String,
     include_credentials: bool,
     file_path: String,
+    account_id: Option<i64>,
 ) -> Result<profile_export::ExportMetadata, String> {
     let mut servers: Vec<profile_export::ServerProfileExport> =
         serde_json::from_str(&servers_json).map_err(|e| format!("Invalid server data: {}", e))?;
@@ -25318,15 +25334,34 @@ pub async fn export_server_profiles_core(
                     .ok()
                     .flatten()
                     .map(|u| u.id);
+                // Bind the export to the account the caller read the profile
+                // list under: on a mismatch nothing is written.
+                if account_id != active_user {
+                    return Err(user_partitions::ACCOUNT_CHANGED.to_string());
+                }
+                // With no account at capture, read the legacy keys only and
+                // refuse if an account is active by the time of the read; a
+                // switch in between must not move the read into a partition.
+                let read_user: Option<i64> = match active_user {
+                    Some(uid) => Some(uid),
+                    None => {
+                        if user_partitions::cli_get_active_user(&store)?.is_some() {
+                            return Err(user_partitions::ACCOUNT_CHANGED.to_string());
+                        }
+                        Some(user_partitions::LEGACY_ONLY_ACCOUNT)
+                    }
+                };
                 for server in &mut servers {
                     // MUV-3: export the captured user's per-user credential, with
                     // fallback to the legacy vault.
                     let key = format!("server_{}", server.id);
-                    let resolved_cred = match active_user {
+                    let resolved_cred = match read_user {
                         Some(uid) => {
                             user_partitions::resolve_credential_for_user(&store, uid, &key)
                         }
-                        None => user_partitions::resolve_active_credential(&store, &key),
+                        None => {
+                            user_partitions::resolve_legacy_only_credential_checked(&store, &key)
+                        }
                     };
                     if let Ok(Some(cred)) = resolved_cred {
                         server.credential = Some(cred.to_string());
@@ -25335,7 +25370,7 @@ pub async fn export_server_profiles_core(
                     // per-profile password so an import on a fresh device
                     // reconnects without a browser re-auth.
                     let secrets =
-                        collect_provider_secrets_for_server_for_user(&store, active_user, server)?;
+                        collect_provider_secrets_for_server_for_user(&store, read_user, server)?;
                     if secrets.oauth.is_some()
                         || secrets.jotta_refresh.is_some()
                         || secrets.aerocrypt_overlay_pw.is_some()
@@ -35992,6 +36027,222 @@ mod sts_import_rollback_tests {
         let out =
             collect_provider_secrets_for_server_for_user(&store, Some(first), &unflagged).unwrap();
         assert_eq!(out.aws_session_token, None);
+
+        restore_env(previous_xdg, previous_passphrase);
+    }
+}
+
+#[cfg(test)]
+mod export_account_binding_tests {
+    //! A credential-enabled export is bound to the account the caller read the
+    //! profile list under: a switch between that read and the export is
+    //! refused with ACCOUNT_CHANGED and writes no file, a same-account export
+    //! succeeds, and a no-account legacy export reads the legacy keys only.
+    use super::*;
+    use crate::provider_commands::isolated_account_fixture::in_isolated_child;
+    use serde_json::json;
+
+    fn two_account_vault() -> (
+        tempfile::TempDir,
+        credential_store::CredentialStore,
+        i64,
+        i64,
+    ) {
+        let dir = tempfile::TempDir::new().unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        credential_store::CredentialStore::clear_cache();
+        credential_store::CredentialStore::bootstrap_master_password(
+            "synthetic export binding master",
+        )
+        .unwrap();
+        credential_store::CredentialStore::unlock_with_master(
+            "synthetic export binding master",
+            None,
+        )
+        .unwrap();
+        let store = credential_store::CredentialStore::from_cache().unwrap();
+        user_partitions::init_or_migrate_cli(&store).unwrap();
+        let mut conn = user_partitions::open_or_init_cli().unwrap();
+        let first = user_partitions::get_active_user(&conn)
+            .unwrap()
+            .expect("first account")
+            .id;
+        let root_key = store.derive_user_partition_wrapping_key();
+        let second = user_partitions::create_user(&mut conn, &root_key, "Second", None, None, None)
+            .unwrap()
+            .id;
+        user_partitions::set_active_user(&conn, first).unwrap();
+        drop(conn);
+        (dir, store, first, second)
+    }
+
+    fn restore_env(
+        previous_xdg: Option<std::ffi::OsString>,
+        previous_passphrase: Option<std::ffi::OsString>,
+    ) {
+        match previous_xdg {
+            Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        match previous_passphrase {
+            Some(v) => std::env::set_var("AEROFTP_USER_PASSPHRASE", v),
+            None => std::env::remove_var("AEROFTP_USER_PASSPHRASE"),
+        }
+        credential_store::CredentialStore::clear_cache();
+    }
+
+    fn sample_servers() -> String {
+        json!([{
+            "id": "srv-bind",
+            "name": "Bind",
+            "host": "files.example.com",
+            "port": 22,
+            "username": "user",
+            "protocol": "sftp"
+        }])
+        .to_string()
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn export_is_bound_to_the_account_the_list_was_read_under() {
+        if !in_isolated_child(
+            "export_account_binding_tests::export_is_bound_to_the_account_the_list_was_read_under",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = user_partitions::test_lock();
+        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        let previous_passphrase = std::env::var_os("AEROFTP_USER_PASSPHRASE");
+        let (dir, store, first, second) = two_account_vault();
+
+        // Distinct secrets per account so a mix-up is visible: the first
+        // account's partition holds the password, the second's another one.
+        user_partitions::store_credential_for_user(
+            &store,
+            first,
+            "server_srv-bind",
+            "password",
+            "first-account-pw",
+        )
+        .unwrap();
+        user_partitions::store_credential_for_user(
+            &store,
+            second,
+            "server_srv-bind",
+            "password",
+            "second-account-pw",
+        )
+        .unwrap();
+
+        let servers = sample_servers();
+
+        // Same account: the export succeeds and writes the file, and the
+        // credential in it is the first account's.
+        let same_file = dir.path().join("same.aeroftp");
+        let meta = export_server_profiles_core(
+            servers.clone(),
+            "export-file-password".to_string(),
+            true,
+            same_file.to_string_lossy().to_string(),
+            Some(first),
+        )
+        .await
+        .expect("same-account export must succeed");
+        assert!(meta.has_credentials);
+        assert!(same_file.exists());
+        let (imported, _secrets, _meta) =
+            profile_export::import_profiles(&same_file, "export-file-password")
+                .expect("the same-account export must decrypt");
+        assert_eq!(imported[0].credential.as_deref(), Some("first-account-pw"));
+
+        // A switch to the second account between the list read and the
+        // export: the export is refused and writes NO file. (Without the
+        // account comparison this call would succeed and write the second
+        // account's secret beside the first account's list, so this pin
+        // fails if the comparison is removed.)
+        {
+            let conn = user_partitions::open_or_init_cli().unwrap();
+            user_partitions::set_active_user(&conn, second).unwrap();
+        }
+        let switched_file = dir.path().join("switched.aeroftp");
+        let err = export_server_profiles_core(
+            servers.clone(),
+            "export-file-password".to_string(),
+            true,
+            switched_file.to_string_lossy().to_string(),
+            Some(first),
+        )
+        .await
+        .err()
+        .expect("an export whose list was read under another account must be refused");
+        assert_eq!(err, user_partitions::ACCOUNT_CHANGED);
+        assert!(
+            !switched_file.exists(),
+            "a refused export must not write a file"
+        );
+
+        // A request carrying no account while an account is active is
+        // refused the same way.
+        let none_file = dir.path().join("none.aeroftp");
+        let err = export_server_profiles_core(
+            servers.clone(),
+            "export-file-password".to_string(),
+            true,
+            none_file.to_string_lossy().to_string(),
+            None,
+        )
+        .await
+        .err()
+        .expect("a no-account request under an active account must be refused");
+        assert_eq!(err, user_partitions::ACCOUNT_CHANGED);
+        assert!(!none_file.exists());
+
+        // Legacy pin: with no active account at all, a no-account request
+        // reads the legacy keys only and exports them.
+        {
+            let conn = user_partitions::open_or_init_cli().unwrap();
+            conn.execute("DELETE FROM global_state WHERE key = 'active_user_id'", [])
+                .unwrap();
+        }
+        store.store("server_srv-bind", "legacy-vault-pw").unwrap();
+        let legacy_file = dir.path().join("legacy.aeroftp");
+        let meta = export_server_profiles_core(
+            servers.clone(),
+            "export-file-password".to_string(),
+            true,
+            legacy_file.to_string_lossy().to_string(),
+            None,
+        )
+        .await
+        .expect("a no-account legacy export must succeed");
+        assert!(meta.has_credentials);
+        let (imported, _secrets, _meta) =
+            profile_export::import_profiles(&legacy_file, "export-file-password")
+                .expect("the legacy export must decrypt");
+        assert_eq!(imported[0].credential.as_deref(), Some("legacy-vault-pw"));
+
+        // ...and the moment an account appears, the same no-account request
+        // is refused instead of reading a partition.
+        {
+            let conn = user_partitions::open_or_init_cli().unwrap();
+            user_partitions::set_active_user(&conn, first).unwrap();
+        }
+        let appeared_file = dir.path().join("appeared.aeroftp");
+        let err = export_server_profiles_core(
+            servers,
+            "export-file-password".to_string(),
+            true,
+            appeared_file.to_string_lossy().to_string(),
+            None,
+        )
+        .await
+        .err()
+        .expect("a no-account request must fail closed once an account appeared");
+        assert_eq!(err, user_partitions::ACCOUNT_CHANGED);
+        assert!(!appeared_file.exists());
 
         restore_env(previous_xdg, previous_passphrase);
     }

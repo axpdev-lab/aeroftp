@@ -287,18 +287,24 @@ fn stage_export_temp_600_with_acl(
     #[cfg(windows)]
     let mut tmp = {
         use std::os::windows::fs::OpenOptionsExt;
+        // GENERIC_READ | GENERIC_WRITE | WRITE_DAC: `restrict_acl` below calls
+        // `SetSecurityInfo` on THIS handle, and setting a DACL requires
+        // WRITE_DAC, which generic read/write access does not include. The
+        // same handle is later renamed onto the destination by handle (see
+        // `rename_staged_by_handle`), so it also needs the delete right that
+        // rename implies.
+        const STAGING_ACCESS: u32 = 0x8000_0000 | 0x4000_0000 | 0x0004_0000;
         // Allow only `FILE_SHARE_DELETE` (0x4): blocks all concurrent read and
         // write opens from other local accounts between creation and
-        // `restrict_acl`, while still permitting `NamedTempFile::persist`
-        // (`MoveFileExW`) to rename the file while the handle is live.
+        // `restrict_acl`, while still permitting the handle-based rename to
+        // move the file while the handle is live.
         const FILE_SHARE_DELETE: u32 = 0x0000_0004;
         tempfile::Builder::new()
             .prefix(".aeroftp-bridge-export-")
             .make_in(parent, |path| {
                 std::fs::OpenOptions::new()
                     .create_new(true)
-                    .read(true)
-                    .write(true)
+                    .access_mode(STAGING_ACCESS)
                     .share_mode(FILE_SHARE_DELETE)
                     .open(path)
             })?
@@ -325,24 +331,100 @@ fn stage_export_temp_600_with_acl(
 }
 
 /// Rename a pre-staged `0600` temp file into `path` and fsync the parent
-/// directory (Unix).
+/// directory. On Windows the rename goes through the OPEN HANDLE
+/// (`SetFileInformationByHandle`), so publication is bound to the file object
+/// that received the bytes: a path swapped under `FILE_SHARE_DELETE` in the
+/// meantime cannot publish a different file.
 pub(crate) fn persist_staged_temp(
     tmp: tempfile::NamedTempFile,
     path: &Path,
 ) -> Result<(), tempfile::PersistError> {
-    tmp.persist(path)?;
-    fsync_parent_dir(path);
-    Ok(())
+    persist_staged_temp_impl(tmp, path, true)
 }
 
 /// Rename a pre-staged `0600` temp file into `path` without replacing an
-/// existing entry, then fsync the parent directory (Unix).
+/// existing entry, then fsync the parent directory (handle-based on Windows,
+/// see [`persist_staged_temp`]).
 pub(crate) fn persist_staged_temp_noclobber(
     tmp: tempfile::NamedTempFile,
     path: &Path,
 ) -> Result<(), tempfile::PersistError> {
-    tmp.persist_noclobber(path)?;
-    fsync_parent_dir(path);
+    persist_staged_temp_impl(tmp, path, false)
+}
+
+fn persist_staged_temp_impl(
+    tmp: tempfile::NamedTempFile,
+    path: &Path,
+    replace: bool,
+) -> Result<(), tempfile::PersistError> {
+    #[cfg(windows)]
+    {
+        if let Err(error) = rename_staged_by_handle(tmp.as_file(), path, replace) {
+            return Err(tempfile::PersistError { error, file: tmp });
+        }
+        // The file object now sits at `path`; disarm the temp file's drop
+        // cleanup (the old temp path no longer exists).
+        let _ = tmp.keep();
+        fsync_parent_dir(path);
+        return Ok(());
+    }
+    #[cfg(not(windows))]
+    {
+        if replace {
+            tmp.persist(path)?;
+        } else {
+            tmp.persist_noclobber(path)?;
+        }
+        fsync_parent_dir(path);
+        Ok(())
+    }
+}
+
+/// Rename the file behind `file`'s open handle to `dest` with
+/// `SetFileInformationByHandle(FileRenameInfo)`: handle-based, so the
+/// publication targets the staged file object itself, never whatever a
+/// renamed path points at now.
+#[cfg(windows)]
+fn rename_staged_by_handle(
+    file: &std::fs::File,
+    dest: &Path,
+    replace: bool,
+) -> std::io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    use std::os::windows::io::AsRawHandle;
+    use windows::Win32::Foundation::{BOOLEAN, HANDLE};
+    use windows::Win32::Storage::FileSystem::{
+        FileRenameInfo, SetFileInformationByHandle, FILE_RENAME_INFO,
+    };
+    let wide: Vec<u16> = dest
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    // FILE_RENAME_INFO carries FileName as a trailing array: size the buffer
+    // for the full name (the struct's own FileName: [u16; 1] is the first
+    // element).
+    let size = std::mem::size_of::<FILE_RENAME_INFO>() + (wide.len() - 1) * 2;
+    let mut buf = vec![0u8; size];
+    unsafe {
+        let info = buf.as_mut_ptr() as *mut FILE_RENAME_INFO;
+        (*info).Anonymous.ReplaceIfExists = BOOLEAN(if replace { 1 } else { 0 });
+        (*info).RootDirectory = HANDLE(core::ptr::null_mut());
+        (*info).FileNameLength = ((wide.len() - 1) * 2) as u32;
+        std::ptr::copy_nonoverlapping(wide.as_ptr(), (*info).FileName.as_mut_ptr(), wide.len());
+        SetFileInformationByHandle(
+            HANDLE(file.as_raw_handle() as *mut core::ffi::c_void),
+            FileRenameInfo,
+            buf.as_ptr() as *const core::ffi::c_void,
+            size as u32,
+        )
+        .map_err(|e| {
+            std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("SetFileInformationByHandle(FileRenameInfo): {e}"),
+            )
+        })?;
+    }
     Ok(())
 }
 

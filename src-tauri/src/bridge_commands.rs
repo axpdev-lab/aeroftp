@@ -244,7 +244,12 @@ fn dispatch_import(source: &str, path: &Path) -> Result<Value, String> {
 /// surfaces that case to the caller.
 fn store_rclone_provider_secrets(
     result: &rclone_import::RcloneImportResult,
+    captured_user: Option<i64>,
 ) -> Vec<(String, String)> {
+    // Writes go to the account captured before the scan, never to whichever
+    // account is active when the write runs. With no account captured, the
+    // legacy-only sentinel writes the shared vault only.
+    let write_user = captured_user.unwrap_or(crate::user_partitions::LEGACY_ONLY_ACCOUNT);
     let mut failures = Vec::new();
     let store = match CredentialStore::from_cache() {
         Some(s) => s,
@@ -279,8 +284,9 @@ fn store_rclone_provider_secrets(
         if let Some(ref oauth_json) = secrets.oauth {
             if let Some(slug) = crate::oauth_vault_slug_for_protocol(protocol) {
                 // MUV-4: dual-write into vault + active user's partition.
-                if let Err(e) = crate::user_partitions::store_active_credential_typed_dual(
+                if let Err(e) = crate::user_partitions::store_credential_for_user_typed_dual(
                     &store,
+                    write_user,
                     &format!("oauth_{}_{}", slug, profile_id),
                     "oauth",
                     oauth_json,
@@ -295,8 +301,9 @@ fn store_rclone_provider_secrets(
         }
         if let Some(ref jotta_json) = secrets.jotta_refresh {
             if protocol == "jottacloud" {
-                if let Err(e) = crate::user_partitions::store_active_credential_typed_dual(
+                if let Err(e) = crate::user_partitions::store_credential_for_user_typed_dual(
                     &store,
+                    write_user,
                     &format!("jottacloud_refresh_{}", profile_id),
                     "jottacloud_refresh",
                     jotta_json,
@@ -313,8 +320,9 @@ fn store_rclone_provider_secrets(
         // the native Proton Drive client reads.
         if let Some(ref session_json) = secrets.proton_native_session {
             if protocol == "proton" {
-                if let Err(e) = crate::user_partitions::store_active_credential_typed_dual(
+                if let Err(e) = crate::user_partitions::store_credential_for_user_typed_dual(
                     &store,
+                    write_user,
                     &format!("proton_native_session_{}", profile_id),
                     "proton_native_session",
                     session_json,
@@ -796,13 +804,10 @@ pub async fn import_bridge_config(
     // import it natively here and persist those tokens before serialising the
     // server list back into the shared post-processing below.
     let mut secret_failures: Vec<(String, String)> = Vec::new();
-    let value = if source == "rclone" {
-        let result = rclone_import::import_rclone(&canonical).map_err(|e| e.to_string())?;
-        secret_failures = store_rclone_provider_secrets(&result);
-        serde_json::to_value(&result).map_err(|e| e.to_string())?
-    } else {
-        dispatch_import(&source, &canonical)?
-    };
+    // Capture the account BEFORE any vault write of this scan: the rclone
+    // provider-secret prepass below writes into an account, and the reported
+    // scanUserId must be the account those writes landed in, not whichever
+    // account is active after the prepass finished.
     let store = CredentialStore::from_cache();
     let captured_user = store.as_ref().and_then(|s| {
         crate::user_partitions::cli_get_active_user(s)
@@ -810,6 +815,13 @@ pub async fn import_bridge_config(
             .flatten()
             .map(|u| u.id)
     });
+    let value = if source == "rclone" {
+        let result = rclone_import::import_rclone(&canonical).map_err(|e| e.to_string())?;
+        secret_failures = store_rclone_provider_secrets(&result, captured_user);
+        serde_json::to_value(&result).map_err(|e| e.to_string())?
+    } else {
+        dispatch_import(&source, &canonical)?
+    };
     let mut write = |key: &str, secret: &str| -> Result<(), String> {
         let store = store.as_ref().ok_or("the credential vault is locked")?;
         store_bridge_import_secret_for_user(store, captured_user, key, secret)
@@ -1126,15 +1138,32 @@ pub(crate) fn finish_bridge_import_with_policy_and_cap(
                 // stay so the operator knows to retry.
                 if has_token && has_cred && token_stored != cred_stored {
                     if token_stored {
-                        if let Some(delete) = vault_delete.as_mut() {
-                            let _ =
-                                delete(&crate::profile_loader::aws_session_token_vault_key(&id));
+                        let key = crate::profile_loader::aws_session_token_vault_key(&id);
+                        let removed = match vault_delete.as_mut() {
+                            Some(delete) => delete(&key).is_ok(),
+                            None => false,
+                        };
+                        if !removed {
+                            // Name only the key left behind, never the secret
+                            // value: this string reaches the renderer.
+                            secret_failures.push((
+                                id.clone(),
+                                format!("could not remove the stored session token ({key}) left behind by the half-stored pair"),
+                            ));
                         }
                         server["hasStoredSessionToken"] = Value::Bool(false);
                     }
                     if cred_stored {
-                        if let Some(delete) = vault_delete.as_mut() {
-                            let _ = delete(&format!("server_{id}"));
+                        let key = format!("server_{id}");
+                        let removed = match vault_delete.as_mut() {
+                            Some(delete) => delete(&key).is_ok(),
+                            None => false,
+                        };
+                        if !removed {
+                            secret_failures.push((
+                                id.clone(),
+                                format!("could not remove the stored password ({key}) left behind by the half-stored pair"),
+                            ));
                         }
                         unsaved_credentials.insert(id.clone());
                     }
@@ -1518,6 +1547,7 @@ pub fn resolve_oauth_client_config(store: &CredentialStore, slug: &str) -> (Stri
 pub fn inject_rclone_oauth_export_options(
     options: &mut Option<Value>,
     store: &CredentialStore,
+    user: Option<i64>,
     protocol: &str,
     id: &str,
 ) -> Result<(), String> {
@@ -1531,7 +1561,7 @@ pub fn inject_rclone_oauth_export_options(
         None => return Ok(()),
     };
 
-    let token = resolve_profile_oauth_token(store, slug, id)?;
+    let token = resolve_profile_oauth_token_for(store, slug, id, user)?;
 
     let client_id = store
         .get(&format!("oauth_{}_client_id", cred_key))
@@ -1630,6 +1660,7 @@ fn options_gained_a_secret(before: Option<&Value>, after: Option<&Value>) -> boo
 pub fn inject_rclone_proton_export_options(
     options: &mut Option<Value>,
     store: &CredentialStore,
+    user: Option<i64>,
     protocol: &str,
     id: &str,
 ) {
@@ -1644,13 +1675,12 @@ pub fn inject_rclone_proton_export_options(
     if !native {
         return;
     }
-    let Some(session) = crate::user_partitions::resolve_active_credential(
-        store,
-        &format!("proton_native_session_{}", id),
-    )
-    .ok()
-    .flatten()
-    .filter(|s| !s.trim().is_empty()) else {
+    let Some(session) =
+        resolve_export_secret(store, user, &format!("proton_native_session_{}", id))
+            .ok()
+            .flatten()
+            .filter(|s| !s.trim().is_empty())
+    else {
         return;
     };
     if let Some(map) = options.as_mut().and_then(|o| o.as_object_mut()) {
@@ -1664,6 +1694,7 @@ pub fn inject_rclone_proton_export_options(
 pub fn inject_rclone_filen_export_options(
     options: &mut Option<Value>,
     store: &CredentialStore,
+    user: Option<i64>,
     protocol: &str,
     id: &str,
 ) {
@@ -1682,12 +1713,11 @@ pub fn inject_rclone_filen_export_options(
     {
         return;
     }
-    let api_key =
-        crate::user_partitions::resolve_active_credential(store, &format!("filen_api_key_{}", id))
-            .ok()
-            .flatten()
-            .map(|s| s.to_string())
-            .filter(|s| !s.trim().is_empty());
+    let api_key = resolve_export_secret(store, user, &format!("filen_api_key_{}", id))
+        .ok()
+        .flatten()
+        .map(|s| s.to_string())
+        .filter(|s| !s.trim().is_empty());
     let api_key = match api_key {
         Some(k) => k,
         None => return,
@@ -1790,6 +1820,7 @@ pub fn inject_aws_session_token_export_option_for_user(
 pub fn inject_rclone_onedrive_export_options(
     options: &mut Option<Value>,
     store: &CredentialStore,
+    user: Option<i64>,
     protocol: &str,
     id: &str,
 ) {
@@ -1797,7 +1828,7 @@ pub fn inject_rclone_onedrive_export_options(
         return;
     }
     let read = |key: &str| {
-        crate::user_partitions::resolve_active_credential(store, key)
+        resolve_export_secret(store, user, key)
             .ok()
             .flatten()
             .map(|s| s.to_string())
@@ -2007,6 +2038,7 @@ pub async fn ensure_zoho_rclone_root_folder(options: &mut Option<Value>, profile
 pub fn inject_rclone_crypt_export_options(
     options: &mut Option<Value>,
     store: &CredentialStore,
+    user: Option<i64>,
     id: &str,
     overlay: Option<&Value>,
 ) {
@@ -2059,7 +2091,7 @@ pub fn inject_rclone_crypt_export_options(
         if id.is_empty() {
             return None;
         }
-        crate::user_partitions::resolve_active_credential(store, &key)
+        resolve_export_secret(store, user, &key)
             .ok()
             .flatten()
             .map(|s| s.to_string())
@@ -2148,20 +2180,47 @@ pub async fn export_bridge_config(
         include_credentials,
         &file_path,
         store.as_ref(),
-        |id| store.as_ref().and_then(|st| vault_export_password(st, id)),
+        |user, id| {
+            store
+                .as_ref()
+                .and_then(|st| vault_export_password_for_user(st, user, id))
+        },
     )
     .await
 }
 
-/// The password the vault holds for the profile with id `id`, stored as a
-/// JSON credential blob (`{"password": "..."}`) or a bare string. MUV-3:
-/// per-user store (active user) with vault fallback.
-fn vault_export_password(store: &CredentialStore, id: &str) -> Option<String> {
-    let stored =
-        crate::user_partitions::resolve_active_credential(store, &format!("server_{}", id))
-            .ok()
-            .flatten()
-            .map(|s| s.to_string())?;
+/// Resolve one bridge-export secret through the account captured for this
+/// export run: the captured account's own partition (owner-aware, like the
+/// session-token path), or the legacy vault keys only when the run started
+/// with no account, failing closed if an account has appeared since. Every
+/// vault read in one export goes through here, so a mid-export account switch
+/// cannot pair one account's secrets with another account's profile.
+fn resolve_export_secret(
+    store: &CredentialStore,
+    user: Option<i64>,
+    key: &str,
+) -> Result<Option<zeroize::Zeroizing<String>>, String> {
+    match user {
+        Some(uid) => {
+            crate::user_partitions::resolve_credential_for_user_owner_aware(store, uid, key)
+        }
+        None => crate::user_partitions::resolve_legacy_only_credential_checked(store, key),
+    }
+}
+
+/// The password the vault holds for the profile with id `id`, read through the
+/// account captured for this export run (`user`), stored as a JSON credential
+/// blob (`{"password": "..."}`) or a bare string. MUV-3: per-user store with
+/// vault fallback, owner-aware.
+fn vault_export_password_for_user(
+    store: &CredentialStore,
+    user: Option<i64>,
+    id: &str,
+) -> Option<String> {
+    let stored = resolve_export_secret(store, user, &format!("server_{}", id))
+        .ok()
+        .flatten()
+        .map(|s| s.to_string())?;
     let pw = serde_json::from_str::<Value>(&stored)
         .ok()
         .and_then(|v| {
@@ -2182,9 +2241,33 @@ async fn export_bridge_profiles(
     include_credentials: bool,
     file_path: &str,
     store: Option<&CredentialStore>,
-    secret_for: impl Fn(&str) -> Option<String> + Send + Sync,
+    secret_for: impl Fn(Option<i64>, &str) -> Option<String> + Send + Sync,
 ) -> Result<Value, String> {
     known(source)?;
+    // Capture the account ONCE per export run and read every secret through
+    // it: the token injection and the password below used to re-resolve the
+    // active account each, so a switch mid-export could pair one account's
+    // session token with another account's password for the same profile id.
+    // With no account at capture the legacy keys only are read, and an
+    // account appearing before the reads refuses the export.
+    let read_user: Option<i64> = match store.and_then(|st| {
+        crate::user_partitions::cli_get_active_user(st)
+            .ok()
+            .flatten()
+            .map(|u| u.id)
+    }) {
+        Some(uid) => Some(uid),
+        None => {
+            if let Some(st) = store {
+                if crate::user_partitions::cli_get_active_user(st)?.is_some() {
+                    return Err(crate::user_partitions::ACCOUNT_CHANGED.to_string());
+                }
+                Some(crate::user_partitions::LEGACY_ONLY_ACCOUNT)
+            } else {
+                None
+            }
+        }
+    };
     let supported = bridge_supported_protocols(source);
     let (ext, _) = bridge_export_format(source).unwrap_or(("txt", ""));
 
@@ -2280,14 +2363,14 @@ async fn export_bridge_profiles(
                         let mut opts = e.get("options").cloned();
                         let before = opts.clone();
                         if let Err(reason) =
-                            inject_rclone_oauth_export_options(&mut opts, st, &proto, &id)
+                            inject_rclone_oauth_export_options(&mut opts, st, read_user, &proto, &id)
                         {
                             skipped.push(json!({ "name": name, "reason": reason }));
                             continue;
                         }
-                        inject_rclone_filen_export_options(&mut opts, st, &proto, &id);
-                        inject_rclone_proton_export_options(&mut opts, st, &proto, &id);
-                        inject_rclone_onedrive_export_options(&mut opts, st, &proto, &id);
+                        inject_rclone_filen_export_options(&mut opts, st, read_user, &proto, &id);
+                        inject_rclone_proton_export_options(&mut opts, st, read_user, &proto, &id);
+                        inject_rclone_onedrive_export_options(&mut opts, st, read_user, &proto, &id);
                         let initial_path = e.get("initialPath").and_then(|v| v.as_str());
                         inject_rclone_zoho_export_options(&mut opts, &proto, initial_path);
                         if proto == "zohoworkdrive" {
@@ -2296,6 +2379,7 @@ async fn export_bridge_profiles(
                         inject_rclone_crypt_export_options(
                             &mut opts,
                             st,
+                            read_user,
                             &id,
                             e.get("aeroCryptOverlay"),
                         );
@@ -2322,9 +2406,10 @@ async fn export_bridge_profiles(
                             .and_then(|v| v.as_str())
                             .is_some_and(|s| !s.trim().is_empty());
                         if let Some(st) = store {
-                            if let Err(reason) = inject_aws_session_token_export_option(
+                            if let Err(reason) = inject_aws_session_token_export_option_for_user(
                                 &mut opts,
                                 st,
+                                read_user,
                                 &proto,
                                 &id,
                                 requires_stored_token,
@@ -2366,8 +2451,19 @@ async fn export_bridge_profiles(
                 // By id, the key the secret is read under: by name, two
                 // profiles of one name both went out with the second one's.
                 if include_credentials && !id.is_empty() {
-                    if let Some(pw) = secret_for(&id) {
+                    if let Some(pw) = secret_for(read_user, &id) {
                         passwords.insert(id, pw);
+                    } else if matches!(source, "aws" | "kopia") {
+                        // The AWS and Kopia formats reject a section without
+                        // its secret (the AWS importer skips key-only
+                        // sections), so a profile whose vault secret is
+                        // missing is skipped here, never written and counted
+                        // as exported.
+                        skipped.push(json!({
+                            "name": name,
+                            "reason": "no secret in the vault for this profile; the target format cannot carry a section without one"
+                        }));
+                        continue;
                     }
                 }
                 typed.push(one);
@@ -3342,7 +3438,7 @@ mod tests {
             true,
             &output.to_string_lossy(),
             None,
-            |_| Some("newsecret".to_string()),
+            |_, _| Some("newsecret".to_string()),
         )
         .await
         .unwrap();
@@ -3390,7 +3486,7 @@ mod tests {
             false,
             &output.to_string_lossy(),
             None,
-            |_| Some("newsecret".to_string()),
+            |_, _| Some("newsecret".to_string()),
         )
         .await
         .unwrap();
@@ -3401,6 +3497,59 @@ mod tests {
         assert!(!written.contains("newsecret"), "{written}");
         let config = std::fs::read_to_string(dir.path().join("config")).unwrap();
         assert!(config.contains("region = eu-west-1"), "{config}");
+    }
+
+    /// R2 pin: with credentials requested, a profile whose vault secret is
+    /// missing (locked vault or no entry) is SKIPPED with a reason, never
+    /// written and counted as exported: the AWS/Kopia formats reject a section
+    /// without its secret. A complete static profile still exports.
+    #[tokio::test]
+    async fn an_aws_profile_without_a_vault_secret_is_skipped_not_counted() {
+        let dir = tempfile::tempdir().unwrap();
+        let output = dir.path().join("credentials.ini");
+        let servers = json!([
+            {
+                "id": "have", "name": "have", "host": "", "port": 443,
+                "username": "AKHAVE", "protocol": "s3", "providerId": "amazon-s3",
+                "options": {"region": "eu-west-1"}
+            },
+            {
+                "id": "missing", "name": "missing", "host": "", "port": 443,
+                "username": "AKMISSING", "protocol": "s3", "providerId": "amazon-s3",
+                "options": {"region": "us-east-1"}
+            }
+        ])
+        .to_string();
+
+        let out = export_bridge_profiles(
+            "aws",
+            &servers,
+            true,
+            &output.to_string_lossy(),
+            None,
+            |_, id| (id == "have").then(|| "sec-have".to_string()),
+        )
+        .await
+        .unwrap();
+        assert_eq!(out["exported"], 1, "{out}");
+        assert!(
+            out["skipped"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|s| s["name"] == "missing"
+                    && s["reason"]
+                        .as_str()
+                        .unwrap_or("")
+                        .contains("no secret in the vault")),
+            "the secretless profile must be skipped with a reason: {out}"
+        );
+        let written = std::fs::read_to_string(&output).unwrap();
+        assert!(written.contains("aws_access_key_id = AKHAVE"), "{written}");
+        assert!(
+            !written.contains("AKMISSING"),
+            "a partial key-only section must never be written: {written}"
+        );
     }
 
     #[test]
@@ -3523,7 +3672,8 @@ mod tests {
             profile("id-c", "", "c.example.com"),
         ])
         .to_string();
-        let secret_for = |id: &str| Some(format!("secret-{}", id.trim_start_matches("id-")));
+        let secret_for =
+            |_user: Option<i64>, id: &str| Some(format!("secret-{}", id.trim_start_matches("id-")));
         type ReadBack = fn(&Path) -> Vec<crate::profile_export::ServerProfileExport>;
         let read_back: [(&str, &str, ReadBack); 4] = [
             ("rclone", "rclone.conf", |p| {
@@ -3593,7 +3743,7 @@ mod tests {
                 false,
                 &path.to_string_lossy(),
                 None,
-                |_| None,
+                |_, _| None,
             )
             .await
             .unwrap();
@@ -3637,7 +3787,7 @@ mod tests {
                 false,
                 &path.to_string_lossy(),
                 None,
-                |_| None,
+                |_, _| None,
             )
             .await
             .unwrap_or_else(|e| panic!("{source}: {e}"));
@@ -3760,7 +3910,7 @@ mod tests {
                 include_credentials,
                 &path.to_string_lossy(),
                 None,
-                |_| None,
+                |_, _| None,
             )
             .await
             .unwrap();
@@ -4177,6 +4327,114 @@ mod tests {
         );
     }
 
+    /// When the rollback delete of a half-stored STS pair FAILS, the failure
+    /// must surface as a warning that names only the key left behind and which
+    /// half it is (never the secret value), and the profile must stay omitted.
+    /// Both rollback directions are pinned.
+    #[test]
+    fn a_failed_pair_rollback_delete_is_reported_and_the_profile_stays_omitted() {
+        let parsed = json!({
+            "servers": [
+                {
+                    "id": "sts-9",
+                    "name": "Ninth STS",
+                    "host": "",
+                    "port": 443,
+                    "username": "ASIA9",
+                    "protocol": "s3",
+                    "credential": "secret-9",
+                    "options": { "region": "us-east-1", "sessionToken": "TOK-9" }
+                }
+            ],
+            "skipped": [],
+            "warnings": [],
+            "sourcePath": "/tmp/credentials",
+            "totalRemotes": 1
+        });
+        let policy = crate::profile_security::RelaxationPolicy::ResetAll;
+        let fail_delete = |_k: &str| -> Result<(), String> { Err("vault locked".to_string()) };
+
+        // Direction 1: token stored, password write failed, token delete
+        // fails -> the leftover session-token key is named, profile omitted.
+        let out = finish_bridge_import_with_policy_and_cap(
+            "aws",
+            &parsed,
+            Vec::new(),
+            Some(&mut |k: &str, v: &str| -> Result<(), String> {
+                if k.starts_with("server_") {
+                    return Err("disk full".to_string());
+                }
+                let _ = v;
+                Ok(())
+            }),
+            Some(&mut |k: &str| fail_delete(k)),
+            &policy,
+            MAX_IMPORTED_CREDENTIALS,
+        )
+        .unwrap();
+        assert_eq!(
+            out["servers"].as_array().unwrap().len(),
+            0,
+            "the profile must stay omitted when the rollback delete fails: {out}"
+        );
+        assert!(
+            out["warnings"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|w| w["name"] == "Ninth STS"
+                    && w["reason"].as_str().unwrap_or("").contains(
+                        "could not remove the stored session token (aws_session_token_sts-9)"
+                    )),
+            "the leftover session-token key must be named: {out}"
+        );
+        assert!(
+            out["skipped"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|s| s["kind"] == "partial-credentials"),
+            "{out}"
+        );
+        assert!(!out.to_string().contains("TOK-9"));
+
+        // Direction 2: password stored, token write failed, password delete
+        // fails -> the leftover password key is named, profile omitted.
+        let out = finish_bridge_import_with_policy_and_cap(
+            "aws",
+            &parsed,
+            Vec::new(),
+            Some(&mut |k: &str, _v: &str| -> Result<(), String> {
+                if k.starts_with("aws_session_token_") {
+                    return Err("disk full".to_string());
+                }
+                Ok(())
+            }),
+            Some(&mut |k: &str| fail_delete(k)),
+            &policy,
+            MAX_IMPORTED_CREDENTIALS,
+        )
+        .unwrap();
+        assert_eq!(
+            out["servers"].as_array().unwrap().len(),
+            0,
+            "the profile must stay omitted when the rollback delete fails: {out}"
+        );
+        assert!(
+            out["warnings"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|w| w["name"] == "Ninth STS"
+                    && w["reason"]
+                        .as_str()
+                        .unwrap_or("")
+                        .contains("could not remove the stored password (server_sts-9)")),
+            "the leftover password key must be named: {out}"
+        );
+        assert!(!out.to_string().contains("secret-9"));
+    }
+
     /// A bridge scan reports the account it wrote its secrets into
     /// (`scanUserId`), so the commit can refuse when the active account changed
     /// between scan and commit. The secrets themselves must land in that same
@@ -4275,6 +4533,246 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(scan2["scanUserId"].as_i64(), Some(second), "{scan2}");
+
+        match previous_xdg {
+            Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        match previous_passphrase {
+            Some(v) => std::env::set_var("AEROFTP_USER_PASSPHRASE", v),
+            None => std::env::remove_var("AEROFTP_USER_PASSPHRASE"),
+        }
+        CredentialStore::clear_cache();
+    }
+
+    /// R13 pin: the rclone provider-secret prepass writes into the account
+    /// captured BEFORE the scan, not into whichever account is active when a
+    /// write runs. With the active account switched to the second account, a
+    /// prepass captured for the first still lands the OAuth token in the first
+    /// account's partition only.
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn the_rclone_prepass_writes_into_the_captured_account_not_the_active_one() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "bridge_commands::tests::the_rclone_prepass_writes_into_the_captured_account_not_the_active_one",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = crate::user_partitions::test_lock();
+        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        let previous_passphrase = std::env::var_os("AEROFTP_USER_PASSPHRASE");
+        let dir = tempfile::TempDir::new().unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("synthetic prepass master").unwrap();
+        CredentialStore::unlock_with_master("synthetic prepass master", None).unwrap();
+        let store = CredentialStore::from_cache().unwrap();
+        crate::user_partitions::init_or_migrate_cli(&store).unwrap();
+        let mut conn = crate::user_partitions::open_or_init_cli().unwrap();
+        let first = crate::user_partitions::get_active_user(&conn)
+            .unwrap()
+            .expect("first account")
+            .id;
+        let root_key = store.derive_user_partition_wrapping_key();
+        let second =
+            crate::user_partitions::create_user(&mut conn, &root_key, "Second", None, None, None)
+                .unwrap()
+                .id;
+        crate::user_partitions::set_active_user(&conn, first).unwrap();
+        drop(conn);
+
+        let conf = dir.path().join("rclone.conf");
+        std::fs::write(
+            &conf,
+            "[gdrive]\ntype = drive\nclient_id = app\nclient_secret = s\n\
+             token = {\"access_token\":\"PREPASS-TOKEN\",\"refresh_token\":\"r\"}\n",
+        )
+        .unwrap();
+        let result = crate::rclone_import::import_rclone(&conf).unwrap();
+        let (profile_id, _) = result.secrets_in_server_order()[0];
+        let profile_id = profile_id.clone();
+
+        // The active account switches to the second account BEFORE the prepass
+        // writes: the captured id must still win.
+        {
+            let conn = crate::user_partitions::open_or_init_cli().unwrap();
+            crate::user_partitions::set_active_user(&conn, second).unwrap();
+        }
+        let failures = store_rclone_provider_secrets(&result, Some(first));
+        assert!(
+            failures.is_empty(),
+            "prepass must store cleanly: {failures:?}"
+        );
+        let key = format!(
+            "oauth_{}_{}",
+            crate::oauth_vault_slug_for_protocol("googledrive").unwrap(),
+            profile_id
+        );
+        assert_eq!(
+            crate::user_partitions::resolve_credential_for_user_owner_aware(&store, first, &key)
+                .unwrap()
+                .map(|v| v.to_string())
+                .as_deref()
+                .and_then(|v| v.contains("PREPASS-TOKEN").then_some(v)),
+            Some(
+                result.secrets_in_server_order()[0]
+                    .1
+                    .oauth
+                    .as_deref()
+                    .unwrap()
+            ),
+            "the token must land in the captured (first) account's partition"
+        );
+        assert!(
+            crate::user_partitions::resolve_credential_for_user_owner_aware(&store, second, &key)
+                .unwrap()
+                .is_none(),
+            "the account active at write time must not receive the captured account's token"
+        );
+
+        match previous_xdg {
+            Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        match previous_passphrase {
+            Some(v) => std::env::set_var("AEROFTP_USER_PASSPHRASE", v),
+            None => std::env::remove_var("AEROFTP_USER_PASSPHRASE"),
+        }
+        CredentialStore::clear_cache();
+    }
+
+    /// R10 pin: one account per export run. The session token and the password
+    /// of one exported S3 profile come from the SAME captured account even
+    /// when the active account switches between the capture and the password
+    /// read: the written credentials file carries the first account's token
+    /// and password, never a mix.
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn an_aws_export_reads_token_and_password_from_one_captured_account() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "bridge_commands::tests::an_aws_export_reads_token_and_password_from_one_captured_account",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = crate::user_partitions::test_lock();
+        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        let previous_passphrase = std::env::var_os("AEROFTP_USER_PASSPHRASE");
+        let dir = tempfile::TempDir::new().unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("synthetic export capture master").unwrap();
+        CredentialStore::unlock_with_master("synthetic export capture master", None).unwrap();
+        let store = CredentialStore::from_cache().unwrap();
+        crate::user_partitions::init_or_migrate_cli(&store).unwrap();
+        let mut conn = crate::user_partitions::open_or_init_cli().unwrap();
+        let first = crate::user_partitions::get_active_user(&conn)
+            .unwrap()
+            .expect("first account")
+            .id;
+        let root_key = store.derive_user_partition_wrapping_key();
+        let second =
+            crate::user_partitions::create_user(&mut conn, &root_key, "Second", None, None, None)
+                .unwrap()
+                .id;
+        crate::user_partitions::set_active_user(&conn, first).unwrap();
+        drop(conn);
+
+        // Distinct per-account secrets for one profile id, so a mix is visible.
+        let token_key = crate::profile_loader::aws_session_token_vault_key("sts-x");
+        crate::user_partitions::store_credential_for_user(
+            &store,
+            first,
+            &token_key,
+            "aws_session_token",
+            "TOKEN-OF-FIRST",
+        )
+        .unwrap();
+        crate::user_partitions::store_credential_for_user(
+            &store,
+            second,
+            &token_key,
+            "aws_session_token",
+            "TOKEN-OF-SECOND",
+        )
+        .unwrap();
+        crate::user_partitions::store_credential_for_user(
+            &store,
+            first,
+            "server_sts-x",
+            "password",
+            "PW-OF-FIRST",
+        )
+        .unwrap();
+        crate::user_partitions::store_credential_for_user(
+            &store,
+            second,
+            "server_sts-x",
+            "password",
+            "PW-OF-SECOND",
+        )
+        .unwrap();
+
+        let servers = json!([{
+            "id": "sts-x",
+            "name": "sts",
+            "host": "",
+            "port": 443,
+            "username": "ASIAX",
+            "protocol": "s3",
+            "providerId": "amazon-s3",
+            "hasStoredSessionToken": true,
+            "options": { "region": "us-east-1" }
+        }])
+        .to_string();
+        let target = dir.path().join("credentials.ini");
+
+        // The password read lands after an account switch: the closure flips
+        // the active account to the second one, then resolves through the user
+        // id the export captured. The read must still return the first
+        // account's password.
+        let seen_pw = std::sync::Mutex::new(String::new());
+        let out = export_bridge_profiles(
+            "aws",
+            &servers,
+            true,
+            &target.to_string_lossy(),
+            Some(&store),
+            |user, id| {
+                let conn = crate::user_partitions::open_or_init_cli().unwrap();
+                crate::user_partitions::set_active_user(&conn, second).unwrap();
+                drop(conn);
+                let pw = vault_export_password_for_user(&store, user, id);
+                if let Some(pw) = &pw {
+                    seen_pw.lock().unwrap().push_str(pw);
+                }
+                pw
+            },
+        )
+        .await
+        .expect("the export must succeed");
+        assert_eq!(out["exported"], 1, "{out}");
+        assert_eq!(
+            seen_pw.lock().unwrap().as_str(),
+            "PW-OF-FIRST",
+            "the password must come from the captured account even after a switch"
+        );
+        let written = std::fs::read_to_string(&target).unwrap();
+        assert!(
+            written.contains("aws_session_token = TOKEN-OF-FIRST"),
+            "the exported session token must be the captured account's: {written}"
+        );
+        assert!(
+            written.contains("aws_secret_access_key = PW-OF-FIRST"),
+            "the exported password must be the captured account's: {written}"
+        );
+        assert!(
+            !written.contains("SECOND"),
+            "no second-account secret may leak in: {written}"
+        );
 
         match previous_xdg {
             Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
@@ -4647,7 +5145,7 @@ mod tests {
             true,
             &target.to_string_lossy(),
             None,
-            |id| (id == "srv-static").then(|| "static-secret".to_string()),
+            |_, id| (id == "srv-static").then(|| "static-secret".to_string()),
         )
         .await
         .unwrap();

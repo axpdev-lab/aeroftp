@@ -399,6 +399,13 @@ fn storage_block(
             if no_tls {
                 config["doNotUseTLS"] = serde_json::Value::Bool(true);
             }
+            // An STS profile exports its session token too: the import side
+            // reads `sessionToken`, and dropping it here exported a config
+            // that cannot authenticate while reporting success.
+            let session_token = get("sessionToken");
+            if !session_token.is_empty() {
+                config["sessionToken"] = serde_json::Value::String(session_token);
+            }
             serde_json::json!({ "type": "s3", "config": config })
         }
         Some("sftp") => serde_json::json!({
@@ -583,6 +590,56 @@ mod tests {
         let o = s.options.as_ref().unwrap().as_object().unwrap();
         assert_eq!(o.get("bucket").unwrap(), "my-b2-bucket");
         assert_eq!(o.get("repo_kind").unwrap(), "kopia");
+    }
+
+    /// An STS S3 profile exports its session token in the kopia s3 block: the
+    /// import side reads `sessionToken`, so an export that drops it writes a
+    /// config that cannot authenticate while reporting success.
+    #[test]
+    fn kopia_s3_block_carries_the_session_token_and_round_trips() {
+        let cfg = r#"{ "storage": { "type": "s3", "config": {
+            "bucket": "b", "endpoint": "s3.eu-west-1.amazonaws.com",
+            "accessKeyID": "ASIAX", "secretAccessKey": "s3cret",
+            "region": "eu-west-1", "sessionToken": "SESSION-TOK" } } }"#;
+        let r = import_str(cfg);
+        let profile = &r.servers[0];
+        let export: KopiaExportServer =
+            serde_json::from_value(serde_json::to_value(profile).unwrap()).unwrap();
+        let block = storage_block(&export, Some("s3cret")).unwrap();
+        assert_eq!(
+            block["storage"]["config"]["sessionToken"].as_str(),
+            Some("SESSION-TOK"),
+            "the session token must survive the export: {block}"
+        );
+        // ...and the re-import reads it back as the profile's token.
+        let reimported = import_str(&block.to_string());
+        let o = reimported.servers[0]
+            .options
+            .as_ref()
+            .unwrap()
+            .as_object()
+            .unwrap();
+        assert_eq!(
+            o.get("sessionToken").and_then(|v| v.as_str()),
+            Some("SESSION-TOK")
+        );
+        // A static profile (no token) gains no sessionToken key.
+        let plain = KopiaExportServer {
+            id: "static".to_string(),
+            name: "static".to_string(),
+            host: String::new(),
+            port: 443,
+            username: "AKIASTATIC".to_string(),
+            protocol: Some("s3".to_string()),
+            options: Some(serde_json::json!({"region": "us-east-1"})),
+            provider_id: Some("amazon-s3".to_string()),
+            initial_path: None,
+        };
+        let block = storage_block(&plain, Some("s3cret")).unwrap();
+        assert!(
+            block["storage"]["config"].get("sessionToken").is_none(),
+            "a static profile must not gain a sessionToken: {block}"
+        );
     }
 
     #[test]

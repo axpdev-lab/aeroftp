@@ -2145,7 +2145,11 @@ pub fn export_aws_credentials(
         |_, tmp, path| crate::bridge_shared::persist_staged_temp(tmp, path),
         |_, tmp, path| crate::bridge_shared::persist_staged_temp_noclobber(tmp, path),
     )?;
-    outcome.written_path = Some(cred_written.path.clone());
+    // `written_path` documents a REDIRECTION: Some only when the credentials
+    // actually landed on a side file, not on every active write.
+    if cred_written.path != *out {
+        outcome.written_path = Some(cred_written.path.clone());
+    }
 
     if config_written.protected {
         outcome.warn(
@@ -4046,7 +4050,8 @@ region = eu-west-1
         let out_a =
             export_aws_credentials(&[make_server("alpha", "us-east-1")], &pw_a, &cred_a).unwrap();
         assert!(out_a.warnings.is_empty(), "{:?}", out_a.warnings);
-        assert_eq!(out_a.written_path.as_deref(), Some(cred_a.as_path()));
+        // Active write to the requested path: not a redirection.
+        assert_eq!(out_a.written_path, None);
         let cfg_after_a = std::fs::read_to_string(dir.path().join("config")).unwrap();
         assert!(cfg_after_a.contains("[profile alpha]"), "{cfg_after_a}");
 
@@ -4206,16 +4211,17 @@ region = eu-west-1
         );
     }
 
-    /// Cycle 2 #17: `BridgeExportOutcome.written_path` reports the actual
-    /// credentials path written (active path when active, `credentials.aeroftp`
-    /// when user files were preserved).
+    /// `BridgeExportOutcome.written_path` documents a REDIRECTION only: `None`
+    /// for an ordinary active write, `Some(actual side path)` when user files
+    /// were preserved and the credentials went to `credentials.aeroftp[.N]`.
     #[test]
-    fn export_outcome_reports_actual_written_side_file_path() {
+    fn export_outcome_reports_written_path_only_on_redirection() {
         let dir_active = tempfile::tempdir().unwrap();
         let active = export_static(dir_active.path()).unwrap();
         assert_eq!(
-            active.written_path.as_deref(),
-            Some(dir_active.path().join("credentials").as_path())
+            active.written_path, None,
+            "an active write is not a redirection: {:?}",
+            active.written_path
         );
 
         let dir_side = tempfile::tempdir().unwrap();

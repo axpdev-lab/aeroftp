@@ -156,8 +156,14 @@ export async function commitImportedServersForScan(
     scanUserId: number | null | undefined,
     onImport: (servers: ServerProfile[], expectedUserId?: number | null) => void | Promise<void>,
 ): Promise<CommitOutcome> {
-    return commitImportedServers(selected, existingServerKeys, (servers) =>
-        onImport(servers, scanUserId ?? null));
+    // The scan account is validated BEFORE any removal and then drives both
+    // the removal write and the append: one validated account for both.
+    return commitImportedServers(
+        selected,
+        existingServerKeys,
+        (servers, expectedUserId) => onImport(servers, expectedUserId ?? scanUserId ?? null),
+        scanUserId,
+    );
 }
 
 /**
@@ -170,6 +176,7 @@ export async function commitImportedServers(
     selected: ServerProfile[],
     existingServerKeys: Set<string>,
     onImport: (servers: ServerProfile[], expectedUserId?: number | null) => void | Promise<void>,
+    scanAccountId?: number | null,
 ): Promise<CommitOutcome> {
     const key = bridgeProfileKey;
     const added = selected.filter(s => !existingServerKeys.has(key(s)));
@@ -195,6 +202,19 @@ export async function commitImportedServers(
         };
     }
 
+    // The scan account is validated BEFORE any removal: a switch between the
+    // scan and this commit must refuse the whole replace (removal included),
+    // never remove under one account and append under another. The validated
+    // account then drives both writes below.
+    if (scanAccountId !== undefined && (backupUserId ?? null) !== (scanAccountId ?? null)) {
+        return {
+            added: 0,
+            updated: 0,
+            error: 'The active account changed since the scan, so nothing was removed or saved. Make the scanned account the active one again and import the same file again.',
+        };
+    }
+    const commitUserId = backupUserId ?? null;
+
     let removed: ServerProfile[] = [];
     try {
         if (updated.length > 0 && backup.length > 0) {
@@ -203,9 +223,10 @@ export async function commitImportedServers(
             await storeSavedServerProfiles(filtered, false, backupUserId, backupRevision);
             removed = backup.filter(s => updatedKeys.has(key(s)));
         }
-        // Written for the account the removal above was made in: a switch in
-        // between refuses the write, and the rollback below restores that account.
-        await onImport([...updated, ...added], backupUserId ?? null);
+        // Written for the one validated account the removal above was made in:
+        // a switch in between refuses the write, and the rollback below restores
+        // that account.
+        await onImport([...updated, ...added], commitUserId);
     } catch {
         // "No changes were made" is a claim about the vault, so it may only be
         // made when the rollback actually succeeded. A failed restore leaves the

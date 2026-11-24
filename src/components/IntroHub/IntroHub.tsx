@@ -16,7 +16,7 @@ import { getTotalServiceCount } from './discoverData';
 import { getProviderById } from '../../providers';
 import { newFormTabOptions } from './newFormTabOptions';
 import { useTranslation } from '../../i18n';
-import { loadSavedServerProfiles } from '../../utils/serverProfileStore';
+import { loadSavedServerProfiles, loadSavedServerProfilesWithAccount } from '../../utils/serverProfileStore';
 import { accountChangeGeneration } from '../../utils/userPartitions';
 import { appendImportedProfiles } from '../bridge/bridgeImportCommit';
 import type { ProviderType } from '../../types';
@@ -168,11 +168,17 @@ export function IntroHub(props: IntroHubProps) {
 
     // Saved servers for Command Palette
     const [paletteServers, setPaletteServers] = useState<ServerProfile[]>([]);
+    // The account paletteServers was read under, captured in that read; the
+    // export dialog sends it so the backend refuses the export on a switch.
+    const [paletteAccountId, setPaletteAccountId] = useState<number | null>(null);
     useEffect(() => {
         let cancelled = false;
         (async () => {
-            const vaultServers = await loadSavedServerProfiles();
-            if (!cancelled) setPaletteServers(vaultServers);
+            const vaultRead = await loadSavedServerProfilesWithAccount();
+            if (!cancelled) {
+                setPaletteServers(vaultRead.profiles);
+                setPaletteAccountId(vaultRead.userId ?? null);
+            }
         })();
         return () => { cancelled = true; };
     }, [serversRefreshKey]);
@@ -190,7 +196,9 @@ export function IntroHub(props: IntroHubProps) {
         // Reload from the vault so a profile saved a moment ago is in the
         // list the dialog selects from.
         try {
-            setPaletteServers(await loadSavedServerProfiles());
+            const read = await loadSavedServerProfilesWithAccount();
+            setPaletteServers(read.profiles);
+            setPaletteAccountId(read.userId ?? null);
         } catch { /* keep the cached list */ }
         setExportPreselect(serverIds);
         setShowExportImport(true);
@@ -529,6 +537,7 @@ export function IntroHub(props: IntroHubProps) {
             {showExportImport && (
                 <ExportImportDialog
                     servers={paletteServers}
+                    accountId={paletteAccountId}
                     initialMode={exportPreselect ? 'export' : undefined}
                     initialSelectedServerIds={exportPreselect ?? undefined}
                     onImport={async (newServers, expectedUserId) => {

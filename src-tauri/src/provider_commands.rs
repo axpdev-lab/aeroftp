@@ -2569,9 +2569,9 @@ impl ProviderConnectionParams {
                 };
                 match crate::profile_loader::resolve_vault_s3_session_token_owner_aware(
                     &store, user_id, key,
-                )? {
-                    Some(token) => Ok(Some(token)),
-                    None => {
+                ) {
+                    Ok(Some(token)) => Ok(Some(token)),
+                    Ok(None) => {
                         let stored_flag = self.has_stored_session_token.is_none()
                             && self.profile_id.as_deref().is_some_and(|pid| {
                                 let profiles = match user_id {
@@ -2606,6 +2606,14 @@ impl ProviderConnectionParams {
                             Ok(None)
                         }
                     }
+                    // A static S3 profile (flag omitted or `Some(false)`) treats
+                    // an unreadable partition (root vault open, the captured
+                    // account's passphrase partition locked) as "no vault
+                    // token", exactly like the locked-root vault above; only a
+                    // request that declares the stored token required fails
+                    // closed on the error.
+                    Err(e) if fail_closed_when_locked => Err(e),
+                    Err(_) => Ok(None),
                 }
             },
         )?;
@@ -25216,6 +25224,84 @@ mod tests {
             config.extra.get("session_token").map(String::as_str),
             Some("FwoGZXIvYXdzEXAMPLEtoken==")
         );
+    }
+
+    /// A static S3 connect (profile id + keys, `hasStoredSessionToken =
+    /// Some(false)`) must keep working when the root vault is open but the
+    /// captured account's passphrase partition is locked: the owner-aware
+    /// token lookup's USER_LOCKED error is treated as "no vault token", like
+    /// the locked-root case. A profile that declares the token required still
+    /// fails closed.
+    #[test]
+    fn a_static_s3_connect_survives_a_locked_passphrase_partition_but_an_sts_one_fails_closed() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "provider_commands::tests::a_static_s3_connect_survives_a_locked_passphrase_partition_but_an_sts_one_fails_closed",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = crate::user_partitions::test_lock();
+        let dir = tempfile::TempDir::new().unwrap();
+        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        let previous_passphrase = std::env::var_os("AEROFTP_USER_PASSPHRASE");
+        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        crate::credential_store::CredentialStore::clear_cache();
+        crate::credential_store::CredentialStore::bootstrap_master_password(
+            "synthetic test master",
+        )
+        .unwrap();
+        crate::credential_store::CredentialStore::unlock_with_master("synthetic test master", None)
+            .unwrap();
+        let store = crate::credential_store::CredentialStore::from_cache().unwrap();
+        crate::user_partitions::init_or_migrate_cli(&store).unwrap();
+        // A passphrase-protected account that is never unlocked in this
+        // session: its partition stays locked while the root vault is open.
+        let mut conn = crate::user_partitions::open_or_init_cli().unwrap();
+        let root_key = store.derive_user_partition_wrapping_key();
+        let locked_user = crate::user_partitions::create_user(
+            &mut conn,
+            &root_key,
+            "Locked",
+            None,
+            None,
+            Some("synthetic partition passphrase"),
+        )
+        .unwrap();
+        drop(conn);
+
+        let mut static_params = s3_params(None);
+        static_params.profile_id = Some("aws-static-x".to_string());
+        static_params.has_stored_session_token = Some(false);
+        let config = static_params
+            .to_provider_config_for_user(Some(locked_user.id))
+            .expect("a static S3 connect must not be blocked by a locked passphrase partition");
+        assert!(
+            !config.extra.contains_key("session_token"),
+            "no token may be invented for a static profile: {:?}",
+            config.extra.get("session_token")
+        );
+
+        let mut sts_params = s3_params(None);
+        sts_params.profile_id = Some("aws-static-x".to_string());
+        sts_params.has_stored_session_token = Some(true);
+        let err = sts_params
+            .to_provider_config_for_user(Some(locked_user.id))
+            .expect_err("an STS profile must fail closed when its partition is locked");
+        assert!(
+            err.contains("USER_LOCKED") || err.contains("locked"),
+            "the locked-partition error must propagate for a token-requiring profile: {err}"
+        );
+
+        match previous_xdg {
+            Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        match previous_passphrase {
+            Some(v) => std::env::set_var("AEROFTP_USER_PASSPHRASE", v),
+            None => std::env::remove_var("AEROFTP_USER_PASSPHRASE"),
+        }
+        crate::credential_store::CredentialStore::clear_cache();
     }
 
     #[test]

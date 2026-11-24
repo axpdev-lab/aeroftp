@@ -377,25 +377,53 @@ describe('a scan-bound commit', () => {
     it('binds the commit to the account the scan wrote into, not the one active at commit time', async () => {
         // The scan ran under account 7; the vault now reads account 3.
         vi.mocked(readSavedServerProfilesForWrite).mockResolvedValue({ profiles: [base], userId: 3, revision: 'r1' });
-        // Compose with the real guard: onImport appends with the expected user it got.
-        let appendError: unknown;
-        const onImport = vi.fn(async (servers: ServerProfile[], expected?: number | null) => {
-            try {
-                await appendImportedProfiles(servers, expected);
-            } catch (e) {
-                appendError = e;
-                throw e;
-            }
-        });
+        const onImport = vi.fn();
         const outcome = await commitImportedServersForScan([crypt], new Set([bridgeProfileKey(base)]), 7, onImport);
-        // The callback received the SCAN account (7) as its expected account...
-        expect(onImport).toHaveBeenCalledWith([crypt], 7);
-        // ...so the append refused against the commit-time account (3)...
-        expect(String(appendError)).toMatch(/active account changed/);
-        // ...the commit reports failure and nothing was written.
-        expect(outcome.error).toBeDefined();
+        // The scan account is validated BEFORE anything is written: no removal,
+        // no append, the commit reports failure.
+        expect(outcome.error).toMatch(/active account changed since the scan/);
         expect(outcome.added).toBe(0);
+        expect(outcome.updated).toBe(0);
+        expect(onImport).not.toHaveBeenCalled();
         expect(storeSavedServerProfiles).not.toHaveBeenCalled();
+    });
+
+    it('refuses the replacement path before any removal when the scan account changed', async () => {
+        // The scan ran under account 7; the vault now reads account 3, and the
+        // import REPLACES base (its key is in the existing set), so the removal
+        // write would run first if the scan account were not validated first.
+        vi.mocked(readSavedServerProfilesForWrite).mockResolvedValue({ profiles: [base], userId: 3, revision: 'r1' });
+        vi.mocked(storeSavedServerProfiles).mockClear();
+        const onImport = vi.fn();
+        const outcome = await commitImportedServersForScan(
+            [{ ...base, id: 'replacement', name: 'New' }],
+            new Set([bridgeProfileKey(base)]),
+            7,
+            onImport,
+        );
+        expect(outcome.error).toMatch(/active account changed since the scan/);
+        // The removal write must not have run either.
+        expect(storeSavedServerProfiles).not.toHaveBeenCalled();
+        expect(onImport).not.toHaveBeenCalled();
+    });
+
+    it('uses one validated scan account for both the removal and the append', async () => {
+        // Scan and commit both under account 7; the import replaces base.
+        vi.mocked(readSavedServerProfilesForWrite).mockResolvedValue({ profiles: [base], userId: 7, revision: 'r1' });
+        vi.mocked(storeSavedServerProfiles).mockClear();
+        vi.mocked(storeSavedServerProfiles).mockImplementation(async (profiles: ServerProfile[]) => profiles);
+        const onImport = vi.fn(async (_servers: ServerProfile[], _expected?: number | null) => undefined);
+        const outcome = await commitImportedServersForScan(
+            [{ ...base, id: 'replacement', name: 'New' }],
+            new Set([bridgeProfileKey(base)]),
+            7,
+            onImport,
+        );
+        expect(outcome).toEqual({ added: 0, updated: 1 });
+        // Removal write under the validated scan account...
+        expect(storeSavedServerProfiles).toHaveBeenNthCalledWith(1, [], false, 7, 'r1');
+        // ...and the append bound to the same account.
+        expect(onImport).toHaveBeenCalledWith([expect.objectContaining({ id: 'replacement' })], 7);
     });
 
     it('commits normally when the account did not change since the scan', async () => {

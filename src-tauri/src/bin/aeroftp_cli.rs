@@ -44028,6 +44028,10 @@ async fn cmd_export_rclone(
             return 5;
         }
     };
+    // One account per export run: every vault read below (the token, api-key,
+    // session and crypt injections) goes through this captured id, so a switch
+    // mid-export cannot mix accounts.
+    let export_user = scoped_credential_user_id(cli, &store);
     let servers_json = match read_vault_profiles(cli, &store) {
         Ok(v) => v,
         Err(e) => {
@@ -44083,6 +44087,7 @@ async fn cmd_export_rclone(
         if let Err(reason) = ftp_client_gui_lib::bridge_commands::inject_rclone_oauth_export_options(
             &mut options,
             &store,
+            export_user,
             &p.protocol,
             &p.id,
         ) {
@@ -44092,18 +44097,21 @@ async fn cmd_export_rclone(
         ftp_client_gui_lib::bridge_commands::inject_rclone_filen_export_options(
             &mut options,
             &store,
+            export_user,
             &p.protocol,
             &p.id,
         );
         ftp_client_gui_lib::bridge_commands::inject_rclone_proton_export_options(
             &mut options,
             &store,
+            export_user,
             &p.protocol,
             &p.id,
         );
         ftp_client_gui_lib::bridge_commands::inject_rclone_onedrive_export_options(
             &mut options,
             &store,
+            export_user,
             &p.protocol,
             &p.id,
         );
@@ -44127,6 +44135,7 @@ async fn cmd_export_rclone(
         ftp_client_gui_lib::bridge_commands::inject_rclone_crypt_export_options(
             &mut options,
             &store,
+            export_user,
             &p.id,
             p.overlay.as_ref(),
         );
@@ -44786,12 +44795,16 @@ async fn cmd_profile_export(
 
     // 5. Reuse the GUI export path verbatim. It collects the credentials from
     //    the vault (under the include_credentials flag) and writes the strong-
-    //    KDF encrypted envelope.
+    //    KDF encrypted envelope. The account the list above was read under is
+    //    sent along, so the export is refused (ACCOUNT_CHANGED, no file) when
+    //    the active account changed since that read.
+    let account_id = scoped_credential_user_id(cli, &store);
     let result = ftp_client_gui_lib::export_server_profiles_core(
         servers_json,
         password.clone(),
         include_credentials,
         output.to_string(),
+        account_id,
     )
     .await;
     password.zeroize();

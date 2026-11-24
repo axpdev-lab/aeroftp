@@ -643,19 +643,30 @@ async fn create_provider_from_vault(
         identity,
         crate::user_partitions::mcp_list_server_profiles,
         crate::profile_security::strict_profiles_enabled(),
-        |store, user_id, key| {
-            let resolved = match user_id {
-                Some(uid) => crate::user_partitions::resolve_credential_for_user(store, uid, key),
-                None => crate::user_partitions::resolve_active_credential(store, key),
-            };
-            resolved
-                .ok()
-                .flatten()
-                .map(|s| s.to_string())
-                .unwrap_or_default()
-        },
+        vault_profile_password,
     )
     .await
+}
+
+/// The production password reader for [`create_provider_from_vault`]. A
+/// captured account reads its own partition only, with the same owner-aware
+/// legacy fallback the session-token path below uses, so a secondary account
+/// never receives the legacy owner's shared `server_<id>` row. A captured
+/// `None` reads the legacy keys only and fails closed when an account has
+/// appeared by the time of the read: the read must never follow a switch to
+/// another account.
+fn vault_profile_password(
+    store: &CredentialStore,
+    user_id: Option<i64>,
+    key: &str,
+) -> Result<String, String> {
+    let resolved = match user_id {
+        Some(uid) => {
+            crate::user_partitions::resolve_credential_for_user_owner_aware(store, uid, key)
+        }
+        None => crate::user_partitions::resolve_legacy_only_credential_checked(store, key),
+    };
+    Ok(resolved?.map(|s| s.to_string()).unwrap_or_default())
 }
 
 async fn create_provider_from_vault_with_reader(
@@ -663,7 +674,7 @@ async fn create_provider_from_vault_with_reader(
     identity: Option<&str>,
     read_profiles: impl FnOnce(&CredentialStore, Option<i64>) -> Result<Vec<serde_json::Value>, String>,
     strict: bool,
-    read_credential: impl FnOnce(&CredentialStore, Option<i64>, &str) -> String,
+    read_credential: impl FnOnce(&CredentialStore, Option<i64>, &str) -> Result<String, String>,
 ) -> Result<(Box<dyn StorageProvider>, String, String, Option<i64>), String> {
     let store = CredentialStore::from_cache()
         .ok_or_else(|| "Vault not open. Cannot connect to server.".to_string())?;
@@ -705,17 +716,18 @@ async fn create_provider_from_vault_with_reader(
     // JSON object with {username, password, access_token, ...}. The S3 bucket
     // and provider-specific options live in the profile's `options` field, not
     // in the credential blob.
-    // MUV-5: per-user store (active user) with fallback to the legacy vault. The
-    // profile listing above already unlocked a passphrase account from
-    // AEROFTP_USER_PASSPHRASE, so this resolves its own `server_<id>` row;
-    // otherwise the dual-written vault copy still answers.
+    // MUV-5: per-user store of the account captured above, owner-aware like the
+    // session-token path below (the legacy vault answers only its owner). A
+    // captured `None` reads the legacy keys only and fails closed if an account
+    // appeared since the capture.
     // Strict mode holds here too: the read is never attempted for a relaxed
     // saved profile when strict mode is active. The password reads through the
     // user captured above, so it always comes from the same partition as the
     // profile list and the session token below.
     let raw_cred = credential_after_strict_check(matched, strict, || {
         read_credential(&store, user_id, &format!("server_{}", profile_id))
-    })?;
+    })
+    .and_then(|inner| inner)?;
 
     let (mut resolved_username, mut password) = parse_server_credential(&raw_cred, username);
 
@@ -862,7 +874,7 @@ mod tests {
             |_, _, key| {
                 assert_eq!(key, "server_srv_relaxed");
                 read.set(true);
-                "fixture-secret".to_string()
+                Ok("fixture-secret".to_string())
             },
         )
         .await
@@ -936,7 +948,7 @@ mod tests {
             false,
             |_, user, key| {
                 seen.borrow_mut().push(format!("cred:{user:?}:{key}"));
-                "fixture-secret".to_string()
+                Ok("fixture-secret".to_string())
             },
         )
         .await;
@@ -950,6 +962,139 @@ mod tests {
                 format!("cred:{:?}:server_srv_pool", Some(first)),
             ],
             "both reads must carry the user captured before the profile read"
+        );
+
+        match previous_xdg {
+            Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        match previous_passphrase {
+            Some(v) => std::env::set_var("AEROFTP_USER_PASSPHRASE", v),
+            None => std::env::remove_var("AEROFTP_USER_PASSPHRASE"),
+        }
+        CredentialStore::clear_cache();
+    }
+
+    /// F9/R18 pins for the production password reader
+    /// [`vault_profile_password`]: a captured account reads its own partition
+    /// even after a switch (switch after owner capture, switch after profile
+    /// selection, no-switch control), a secondary account never falls back to
+    /// the legacy owner's shared vault row, and a captured `None` reads the
+    /// legacy keys only and fails closed once an account has appeared.
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn the_password_read_is_bound_to_the_captured_account_and_never_cross_account() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "mcp::pool::tests::the_password_read_is_bound_to_the_captured_account_and_never_cross_account",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = crate::user_partitions::test_lock();
+        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        let previous_passphrase = std::env::var_os("AEROFTP_USER_PASSPHRASE");
+        let dir = tempfile::TempDir::new().unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("synthetic pool reader master").unwrap();
+        CredentialStore::unlock_with_master("synthetic pool reader master", None).unwrap();
+        let store = CredentialStore::from_cache().unwrap();
+        crate::user_partitions::init_or_migrate_cli(&store).unwrap();
+        let mut conn = crate::user_partitions::open_or_init_cli().unwrap();
+        let first = crate::user_partitions::get_active_user(&conn)
+            .unwrap()
+            .expect("first account")
+            .id;
+        let root_key = store.derive_user_partition_wrapping_key();
+        let second =
+            crate::user_partitions::create_user(&mut conn, &root_key, "Second", None, None, None)
+                .unwrap()
+                .id;
+        crate::user_partitions::set_active_user(&conn, first).unwrap();
+        drop(conn);
+        let switch_to_second = || {
+            let conn = crate::user_partitions::open_or_init_cli().unwrap();
+            crate::user_partitions::set_active_user(&conn, second).unwrap();
+        };
+
+        // The first account is the legacy owner: its partition row and the
+        // shared vault both answer for it. The second account has no row.
+        crate::user_partitions::store_credential_for_user(
+            &store,
+            first,
+            "server_srv_pool",
+            "password",
+            "pw-of-first",
+        )
+        .unwrap();
+        store.store("server_shared", "legacy-owner-pw").unwrap();
+
+        // No-switch control: captured first, active first.
+        assert_eq!(
+            vault_profile_password(&store, Some(first), "server_srv_pool").unwrap(),
+            "pw-of-first"
+        );
+
+        // Switch after owner capture (before the profile read): the captured
+        // id still drives the read, so the password stays the first
+        // account's and is not an error.
+        switch_to_second();
+        assert_eq!(
+            vault_profile_password(&store, Some(first), "server_srv_pool").unwrap(),
+            "pw-of-first",
+            "a switch after the capture must not move the password read"
+        );
+
+        // Switch after profile selection: same captured id at the credential
+        // read, same answer.
+        switch_to_second();
+        assert_eq!(
+            vault_profile_password(&store, Some(first), "server_srv_pool").unwrap(),
+            "pw-of-first",
+            "a switch after profile selection must not move the password read"
+        );
+
+        // R18: the secondary account has no partition row; the owner-aware
+        // reader must NOT fall back to the legacy owner's shared vault row.
+        assert_eq!(
+            vault_profile_password(&store, Some(second), "server_shared").unwrap(),
+            "",
+            "a secondary account must not receive the legacy owner's shared credential"
+        );
+        // The legacy owner itself still gets the shared fallback.
+        assert_eq!(
+            vault_profile_password(&store, Some(first), "server_shared").unwrap(),
+            "legacy-owner-pw"
+        );
+
+        // A captured None with an account now active fails closed.
+        let err = vault_profile_password(&store, None, "server_shared").unwrap_err();
+        assert!(
+            err.contains(crate::user_partitions::ACCOUNT_CHANGED),
+            "a captured None must fail closed once an account appeared: {err}"
+        );
+
+        // Captured None with no account at all reads the legacy keys only.
+        {
+            let conn = crate::user_partitions::open_or_init_cli().unwrap();
+            conn.execute("DELETE FROM global_state WHERE key = 'active_user_id'", [])
+                .unwrap();
+        }
+        assert_eq!(
+            vault_profile_password(&store, None, "server_shared").unwrap(),
+            "legacy-owner-pw",
+            "with no account at capture the legacy keys are read"
+        );
+        // ...but the moment an account appears, the same None capture refuses.
+        {
+            let conn = crate::user_partitions::open_or_init_cli().unwrap();
+            crate::user_partitions::set_active_user(&conn, first).unwrap();
+        }
+        let err = vault_profile_password(&store, None, "server_shared").unwrap_err();
+        assert!(
+            err.contains(crate::user_partitions::ACCOUNT_CHANGED),
+            "legacy-only read must refuse once an account is active: {err}"
         );
 
         match previous_xdg {

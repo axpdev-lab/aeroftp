@@ -29,6 +29,13 @@ import { ImportSecurityReview, keptRelaxationId, type ImportedSecurity } from '.
 interface ExportImportDialogProps {
     servers: ServerProfile[];
     /**
+     * The account the `servers` list was read under, captured in that same
+     * read. Sent with `serversJson` so the backend can refuse the export
+     * (ACCOUNT_CHANGED, no file) when the active account changed since.
+     * Null/undefined for a pre-multi-user legacy list.
+     */
+    accountId?: number | null;
+    /**
      * Store the profiles a bridge import read from another client's config; the
      * write is refused unless the active account is still `expectedUserId`.
      */
@@ -104,7 +111,7 @@ interface ImportResult {
  * or without credentials; import with Skip, Overwrite or Duplicate for a
  * profile that already exists) and the bridges to other clients' configs.
  */
-export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers, onImport, onProfilesStored, onClose, initialMode, initialBridgeFilePath, initialSelectedServerIds }) => {
+export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers, accountId, onImport, onProfilesStored, onClose, initialMode, initialBridgeFilePath, initialSelectedServerIds }) => {
     const t = useTranslation();
     const modalDrag = useDraggableModal();
     const [mode, setMode] = useState<'export' | 'import' | 'template-import' | 'bridge-import' | 'bridge-export' | 'bridge-src' | null>(initialMode ?? null);
@@ -261,6 +268,7 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                 password,
                 includeCredentials,
                 filePath,
+                accountId: accountId ?? null,
             });
             setSuccess(t('settings.exportSuccess').replace('{count}', String(selectedServers.length)));
             cancelScheduledClose();

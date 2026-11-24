@@ -4236,6 +4236,22 @@ pub fn resolve_credential_for_user_owner_aware(
     read_credential_for_user_owner_aware(&conn, store, user_id, credential_id)
 }
 
+/// Read `credential_id` for a caller that captured NO active account: the
+/// legacy vault keys only, never a per-user partition, and refused with
+/// [`ACCOUNT_CHANGED`] when an account has become active by the time of the
+/// read. A switch between the capture and the read must not silently move the
+/// read into the new account's partition (the same hole as a caller that
+/// re-reads the active account at read time).
+pub fn resolve_legacy_only_credential_checked(
+    store: &CredentialStore,
+    credential_id: &str,
+) -> Result<Option<Zeroizing<String>>, String> {
+    if cli_get_active_user(store)?.is_some() {
+        return Err(ACCOUNT_CHANGED.to_string());
+    }
+    resolve_credential_for_user(store, LEGACY_ONLY_ACCOUNT, credential_id)
+}
+
 /// Owners of a profile-bound credential, including a profile whose first
 /// mirror has not been written yet. Refresh propagation must never attribute
 /// another profile's secret to whichever user happens to be active now.

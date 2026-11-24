@@ -46,7 +46,7 @@ import { secureGetWithFallback } from '../utils/secureStorage';
 import { loadOAuthClientCredentials } from '../utils/oauthClientCredentials';
 import { keyReadFailure, notifyOAuthKeysUnavailable } from '../utils/oauthKeysMissing';
 import { dispatchMasterPasswordChanged } from '../utils/masterPasswordEvents';
-import { loadSavedServerProfiles, readSavedServerProfilesForWrite, reloadRestoredServerProfiles } from '../utils/serverProfileStore';
+import { loadSavedServerProfilesWithAccount, readSavedServerProfilesForWrite, reloadRestoredServerProfiles } from '../utils/serverProfileStore';
 import { appendImportedProfiles } from './bridge/bridgeImportCommit';
 import {
     DEFAULT_APP_FONT_FAMILY,
@@ -405,6 +405,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     const [oauthSettings, setOauthSettings] = useState<OAuthSettings>(defaultOAuthSettings);
     const oauthEdits = useRef<Partial<Record<keyof OAuthSettings, { clientId?: boolean; clientSecret?: boolean }>>>({});
     const [servers, setServers] = useState<ServerProfile[]>([]);
+    // The account `servers` was read under, captured in that read; the export
+    // dialog sends it so the backend refuses the export on an account switch.
+    const [serversAccountId, setServersAccountId] = useState<number | null>(null);
     const [showExportImport, setShowExportImport] = useState(false);
     // #270 Backup table: starting mode handed to ExportImportDialog so a table
     // cell opens straight into the right action. Undefined = unified landing.
@@ -700,9 +703,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                         // Opening the dialog reads preferences; migration must not rewrite a stale snapshot.
                     }
 
-                    // Load servers from the active user's vault partition.
-                    const vaultServers = await loadSavedServerProfiles();
-                    setServers(vaultServers);
+                    // Load servers from the active user's vault partition, with
+                    // the account id captured in the same read.
+                    const vaultRead = await loadSavedServerProfilesWithAccount();
+                    setServers(vaultRead.profiles);
+                    setServersAccountId(vaultRead.userId ?? null);
 
                     // Resolve modern and legacy app pairs inside the vault only.
                     const loadOAuthFromStore = async () => {
@@ -4050,6 +4055,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
             {showExportImport && (
                 <ExportImportDialog
                     servers={servers}
+                    accountId={serversAccountId}
                     initialMode={exportImportInitialMode}
                     onImport={async (newServers, expectedUserId) => {
                         // The dialog closes itself (onClose) after its result.
