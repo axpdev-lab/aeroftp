@@ -4455,7 +4455,13 @@
             "modeNonIdentical": "Neidentično",
             "groupsCount": "Grupe: {count}",
             "duplicateFilesCount": "Duplicirane datoteke: {count}",
-            "copiesCount": "{count} kom."
+            "copiesCount": "{count} kom.",
+            "refreshTooltip": "Provjeri postoje li pronađeni duplikati i dalje te ukloni datoteke koje nedostaju bez ponovnog skeniranja",
+            "refreshRemoved": "{count} nedostajućih datoteka uklonjeno s popisa",
+            "refreshUpToDate": "Sve datoteke i dalje postoje",
+            "refreshChanged": "{count} promijenjenih datoteka uklonjeno s popisa",
+            "refreshUnverified": "{count} nije bilo moguće provjeriti",
+            "refreshFailed": "Osvježavanje nije uspjelo: {error}"
         },
         "diskUsage": {
             "title": "Korištenje diska",

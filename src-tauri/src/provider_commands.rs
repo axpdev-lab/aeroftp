@@ -10647,11 +10647,7 @@ pub(crate) async fn delete_version_of(
     let provider = provider_guard
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
-    crate::providers::refuse_a_purge_of_the_live_version(provider.as_mut(), path, version_id)
-        .await
-        .map_err(|e| format!("Delete version failed: {}", e))?;
-    provider
-        .delete_version(path, version_id)
+    crate::providers::purge_version_guarded(provider.as_mut(), path, version_id)
         .await
         .map_err(|e| format!("Delete version failed: {}", e))
 }
@@ -16446,8 +16442,7 @@ pub async fn s3_restore_from_trash(
             .restore_version(&key, &version_id)
             .await
             .map_err(|e| format!("Restore from trash failed: {}", e)),
-        "undelete" | "purge" => s3
-            .delete_version(&key, &version_id)
+        "undelete" | "purge" => crate::providers::purge_version_guarded(s3, &key, &version_id)
             .await
             .map_err(|e| format!("Restore from trash failed: {}", e)),
         other => Err(format!(

@@ -159,6 +159,168 @@ fn the_keystore_family_answers_in_json_under_machine_and_format_json() {
 }
 
 #[test]
+fn import_warning_reports_keep_stdout_for_data() {
+    let config = isolated_cli::root();
+    let dir = config.path();
+    let filezilla = dir.join("filezilla.xml");
+    let sitemanager = dir.join("sitemanager.xml");
+    std::fs::write(
+        &sitemanager,
+        r#"<?xml version="1.0"?><FileZilla3><Servers><Server><Host>sftp.example.invalid</Host><Protocol>1</Protocol><Name>Proxied SFTP</Name></Server></Servers></FileZilla3>"#,
+    )
+    .unwrap();
+    std::fs::write(
+        &filezilla,
+        r#"<?xml version="1.0"?><FileZilla3><Settings><Setting name="Proxy type">4</Setting></Settings></FileZilla3>"#,
+    )
+    .unwrap();
+    let winscp = dir.join("WinSCP.ini");
+    std::fs::write(
+        &winscp,
+        "[Sessions\\Proxied]\nHostName=sftp.example.invalid\nUserName=user\nFSProtocol=2\nProxyMethod=2\n",
+    )
+    .unwrap();
+    let cyberduck = dir.join("ActiveFTP.duck");
+    std::fs::write(
+        &cyberduck,
+        r#"<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>Protocol</key><string>ftp</string><key>Nickname</key><string>Active FTP</string><key>Hostname</key><string>ftp.example.invalid</string><key>Port</key><integer>21</integer><key>Username</key><string>user</string><key>FTP Connect Mode</key><string>active</string></dict></plist>"#,
+    )
+    .unwrap();
+    let rclone = dir.join("proxy-rclone.conf");
+    std::fs::write(
+        &rclone,
+        "[proxied]\ntype = sftp\nhost = sftp.example.invalid\nuser = user\nsocks_proxy = localhost:9005\n",
+    )
+    .unwrap();
+    let s3cfg = dir.join(".s3cfg");
+    std::fs::write(
+        &s3cfg,
+        "[default]\naccess_key = DEMOKEY\nsecret_key = DEMOSECRET\nhost_base = s3.example.invalid\nhost_bucket = %(bucket)s.s3.example.invalid\nproxy_host = proxy.example.invalid\n",
+    )
+    .unwrap();
+
+    for (source, path) in [
+        ("filezilla", &sitemanager),
+        ("winscp", &winscp),
+        ("cyberduck", &cyberduck),
+        ("rclone", &rclone),
+        ("s3cmd", &s3cfg),
+    ] {
+        let path = path.to_str().unwrap();
+        let text = cli(dir, &["import", source, path]);
+        assert!(text.status.success(), "{source}: {}", describe(&text));
+        let stdout = String::from_utf8_lossy(&text.stdout);
+        let stderr = String::from_utf8_lossy(&text.stderr);
+        assert!(!stdout.contains("Warnings ("), "{source}: {stdout}");
+        assert!(stderr.contains("Warnings (1)"), "{source}: {stderr}");
+
+        let json = cli(dir, &["import", source, path, "--json"]);
+        assert!(json.status.success(), "{source}: {}", describe(&json));
+        let json_stderr = String::from_utf8_lossy(&json.stderr);
+        assert!(
+            !json_stderr.contains("Warnings ("),
+            "{source}: {json_stderr}"
+        );
+        let report: serde_json::Value = serde_json::from_slice(&json.stdout)
+            .unwrap_or_else(|err| panic!("{source}: invalid JSON {err}: {}", describe(&json)));
+        assert_eq!(report["warnings"].as_array().unwrap().len(), 1, "{source}");
+        if source == "s3cmd" {
+            assert_eq!(
+                report
+                    .get("skipped")
+                    .and_then(|v| v.as_array())
+                    .map_or(0, Vec::len),
+                0,
+                "s3cmd warning case must have zero skipped entries"
+            );
+        }
+    }
+
+    // Verify invalid rclone FTP password warning never echoes the plaintext
+    // password value in CLI text or JSON modes (#20).
+    let rclone_bad_pass = dir.join("bad-pass-rclone.conf");
+    let plain_pass_marker = "PlainRclonePassMarker!99";
+    std::fs::write(
+        &rclone_bad_pass,
+        format!(
+            "[badpass]\ntype = ftp\nhost = ftp.example.invalid\nuser = alice\npass = {plain_pass_marker}\n"
+        ),
+    )
+    .unwrap();
+    let bad_pass_path = rclone_bad_pass.to_str().unwrap();
+    let text_bad = cli(dir, &["import", "rclone", bad_pass_path]);
+    assert!(
+        text_bad.status.success(),
+        "rclone bad pass: {}",
+        describe(&text_bad)
+    );
+    let text_bad_out = String::from_utf8_lossy(&text_bad.stdout);
+    let text_bad_err = String::from_utf8_lossy(&text_bad.stderr);
+    assert!(!text_bad_out.contains("Warnings ("), "{text_bad_out}");
+    assert!(text_bad_err.contains("Warnings (1)"), "{text_bad_err}");
+    assert!(!text_bad_out.contains(plain_pass_marker));
+    assert!(!text_bad_err.contains(plain_pass_marker));
+
+    let json_bad = cli(dir, &["import", "rclone", bad_pass_path, "--json"]);
+    assert!(
+        json_bad.status.success(),
+        "rclone bad pass json: {}",
+        describe(&json_bad)
+    );
+    let json_bad_out = String::from_utf8_lossy(&json_bad.stdout);
+    let json_bad_err = String::from_utf8_lossy(&json_bad.stderr);
+    assert!(!json_bad_err.contains("Warnings ("), "{json_bad_err}");
+    assert!(!json_bad_out.contains(plain_pass_marker));
+    assert!(!json_bad_err.contains(plain_pass_marker));
+    let bad_report: serde_json::Value = serde_json::from_slice(&json_bad.stdout)
+        .unwrap_or_else(|err| panic!("rclone bad pass JSON {err}: {}", describe(&json_bad)));
+    assert_eq!(bad_report["warnings"].as_array().unwrap().len(), 1);
+
+    // Verify WinSCP SSH tunnel warning survives CLI dispatch in both text and JSON
+    // modes without leaking TunnelHostName or TunnelUserName.
+    let winscp_tunnel = dir.join("WinSCP-tunnel.ini");
+    std::fs::write(
+        &winscp_tunnel,
+        "[Sessions\\Tunneled]\nHostName=internal.example.invalid\nUserName=app\nFSProtocol=2\nTunnel=1\nTunnelHostName=bastion.secret.invalid\nTunnelUserName=tunneladmin\n",
+    )
+    .unwrap();
+    let tunnel_path = winscp_tunnel.to_str().unwrap();
+
+    let text = cli(dir, &["import", "winscp", tunnel_path]);
+    assert!(text.status.success(), "winscp tunnel: {}", describe(&text));
+    let text_stdout = String::from_utf8_lossy(&text.stdout);
+    let text_stderr = String::from_utf8_lossy(&text.stderr);
+    assert!(!text_stdout.contains("Warnings ("), "{text_stdout}");
+    assert!(text_stderr.contains("Warnings (1)"), "{text_stderr}");
+    assert!(text_stderr.contains("SSH tunnel"), "{text_stderr}");
+    for secret in ["bastion.secret.invalid", "tunneladmin"] {
+        assert!(!text_stdout.contains(secret), "{secret} leaked on stdout");
+        assert!(!text_stderr.contains(secret), "{secret} leaked on stderr");
+    }
+
+    let json = cli(dir, &["import", "winscp", tunnel_path, "--json"]);
+    assert!(
+        json.status.success(),
+        "winscp tunnel json: {}",
+        describe(&json)
+    );
+    let json_stderr = String::from_utf8_lossy(&json.stderr);
+    assert!(!json_stderr.contains("Warnings ("), "{json_stderr}");
+    let report: serde_json::Value = serde_json::from_slice(&json.stdout)
+        .unwrap_or_else(|err| panic!("winscp tunnel invalid JSON {err}: {}", describe(&json)));
+    let warnings = report["warnings"].as_array().unwrap();
+    assert_eq!(warnings.len(), 1);
+    assert!(warnings[0]["reason"]
+        .as_str()
+        .unwrap_or("")
+        .contains("SSH tunnel"));
+    let json_text = String::from_utf8_lossy(&json.stdout);
+    for secret in ["bastion.secret.invalid", "tunneladmin"] {
+        assert!(!json_text.contains(secret), "{secret} leaked in JSON");
+    }
+}
+
+#[test]
 fn text_mode_stays_text() {
     let config = isolated_cli::root();
     let dir = config.path();

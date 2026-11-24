@@ -4455,7 +4455,13 @@
             "modeNonIdentical": "ไม่เหมือนกันทุกประการ",
             "groupsCount": "{count} กลุ่ม",
             "duplicateFilesCount": "ไฟล์ซ้ำ {count} ไฟล์",
-            "copiesCount": "{count} สำเนา"
+            "copiesCount": "{count} สำเนา",
+            "refreshTooltip": "ตรวจสอบว่าไฟล์ซ้ำที่ตรวจพบยังคงอยู่หรือไม่ และนำไฟล์ที่หายไปออกโดยไม่ต้องสแกนใหม่",
+            "refreshRemoved": "นำไฟล์ที่หายไป {count} ไฟล์ออกจากรายการแล้ว",
+            "refreshUpToDate": "ไฟล์ทั้งหมดยังคงอยู่",
+            "refreshChanged": "นำไฟล์ที่เปลี่ยนแปลง {count} ไฟล์ออกจากรายการแล้ว",
+            "refreshUnverified": "ไม่สามารถตรวจสอบ {count} รายการได้",
+            "refreshFailed": "รีเฟรชล้มเหลว: {error}"
         },
         "diskUsage": {
             "title": "การใช้พื้นที่ดิสก์",

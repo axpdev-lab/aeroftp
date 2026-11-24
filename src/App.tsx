@@ -31,7 +31,7 @@ import { useTauriListener, guardedUnlisten } from './hooks/useTauriListener';
 import { useSelectionFolderSizes } from './hooks/useSelectionFolderSizes';
 import type { BackendSwapDetail } from './hooks/useOAuth2';
 import { connectionProtocol, getConnectionPreset } from './providers/connectionManifest';
-import { launchFolderToOpen, launchStartFolder, matchSignInProfile, openSessionMatchesLaunch, savedProfileMatchesLaunch } from './utils/launchUrlProfile';
+import { launchFolderToOpen, launchStartFolder, matchSignInProfile, openSessionMatchesLaunch, redactServerForLog, savedProfileMatchesLaunch, splitInlineHostPort } from './utils/launchUrlProfile';
 import { protocolDisplayName } from './utils/protocolDisplayName';
 import { pickFile } from './utils/pickPath';
 import { homeDir, downloadDir } from '@tauri-apps/api/path';
@@ -8843,14 +8843,14 @@ const App: React.FC = () => {
     // overrideParams: used by IntroHub form tabs to pass params directly (avoids stale React state)
     let effectiveParams = overrideParams || connectionParams;
     const remoteDirInput = opts?.initialRemotePath ?? quickConnectDirs.remoteDir;
-    if (connectionParams.server && connectionParams.server.includes(':')) {
-      const lastColon = connectionParams.server.lastIndexOf(':');
-      const possiblePort = connectionParams.server.substring(lastColon + 1);
-      const parsedPort = parseInt(possiblePort, 10);
-      if (parsedPort > 0 && parsedPort <= 65535 && String(parsedPort) === possiblePort) {
-        const cleanHost = connectionParams.server.substring(0, lastColon);
-        effectiveParams = { ...connectionParams, server: cleanHost, port: parsedPort };
-        setConnectionParams(prev => ({ ...prev, server: cleanHost, port: parsedPort }));
+    // A bare host:port in the form is split. An override keeps that split
+    // off the Quick Connect form, so a failed tab cannot mix the next
+    // connect. A launch URL already has a separate host and port.
+    const inlineTarget = splitInlineHostPort(effectiveParams.server);
+    if (inlineTarget) {
+      effectiveParams = { ...effectiveParams, server: inlineTarget.host, port: inlineTarget.port };
+      if (!overrideParams) {
+        setConnectionParams(prev => ({ ...prev, server: inlineTarget.host, port: inlineTarget.port }));
       }
     }
 
@@ -8858,7 +8858,13 @@ const App: React.FC = () => {
 
     // OAuth providers don't need server/username validation - they're already connected
     const protocol = effectiveParams.protocol;
-    logger.debug('[connectToFtp] effectiveParams:', effectiveParams);
+    logger.debug('[connectToFtp] effectiveParams:', {
+      protocol: effectiveParams.protocol,
+      providerId: effectiveParams.providerId,
+      server: redactServerForLog(effectiveParams.server),
+      port: effectiveParams.port,
+      savedServerId: effectiveParams.savedServerId,
+    });
     logger.debug('[connectToFtp] protocol:', protocol);
     const isOAuth = !!protocol && (isOAuthProvider(protocol) || isFourSharedProvider(protocol));
     // An OAuth connect arrives after its sign-in's swap returned: the
@@ -20695,10 +20701,10 @@ const App: React.FC = () => {
             confirmBeforeDelete={confirmBeforeDelete}
             // Opens the row's thumbnail full size in the app's own viewer, which
             // is also the way into AeroImage and the <> editor (#347).
-            onPreviewFile={(filePath) => {
+            onPreviewFile={(filePath, fileSize) => {
               const name = localPathBasename(filePath) || filePath;
               openUniversalPreview(
-                { name, path: filePath, size: null, is_dir: false, modified: null },
+                { name, path: filePath, size: fileSize ?? null, is_dir: false, modified: null },
                 false,
                 [],
               );

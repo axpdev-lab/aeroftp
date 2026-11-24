@@ -16341,6 +16341,86 @@ mod tests {
         assert_eq!(rows, [("m3", true)]);
     }
 
+    /// S3 `undelete` removes the latest delete marker M to expose the earlier
+    /// data version V: `purge_version_guarded` must allow M (deleted=true)
+    /// while refusing V once V is the live data version on top.
+    #[tokio::test]
+    async fn undelete_marker_on_top_is_allowed_while_live_data_version_is_refused_by_guarded_purge()
+    {
+        const DELETED_WITH_HISTORY: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ListVersionsResult>
+  <IsTruncated>false</IsTruncated>
+  <Version>
+    <Key>docs/a.txt</Key>
+    <VersionId>V</VersionId>
+    <IsLatest>false</IsLatest>
+    <LastModified>2026-11-05T11:00:00.000Z</LastModified>
+    <Size>12</Size>
+  </Version>
+  <DeleteMarker>
+    <Key>docs/a.txt</Key>
+    <VersionId>M</VersionId>
+    <IsLatest>true</IsLatest>
+    <LastModified>2026-11-05T12:00:00.000Z</LastModified>
+  </DeleteMarker>
+</ListVersionsResult>"#;
+        let (mut provider, _, log) = tigris_double(
+            &[("docs/a.txt", "data")],
+            TigrisDoubleConfig {
+                versions_xml: Some(DELETED_WITH_HISTORY),
+                ..Default::default()
+            },
+        )
+        .await;
+        crate::providers::purge_version_guarded(&mut provider, "/docs/a.txt", "M")
+            .await
+            .expect("undelete marker M must proceed");
+        let deletes: Vec<String> = log
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|s| s.method == "DELETE")
+            .map(|s| s.uri.clone())
+            .collect();
+        assert_eq!(deletes.len(), 1, "{deletes:?}");
+        assert!(deletes[0].contains("versionId=M"), "{deletes:?}");
+
+        const LIVE_V: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ListVersionsResult>
+  <IsTruncated>false</IsTruncated>
+  <Version>
+    <Key>docs/a.txt</Key>
+    <VersionId>V</VersionId>
+    <IsLatest>true</IsLatest>
+    <LastModified>2026-11-05T11:00:00.000Z</LastModified>
+    <Size>12</Size>
+  </Version>
+</ListVersionsResult>"#;
+        let (mut live_provider, _, live_log) = tigris_double(
+            &[("docs/a.txt", "data")],
+            TigrisDoubleConfig {
+                versions_xml: Some(LIVE_V),
+                ..Default::default()
+            },
+        )
+        .await;
+        let refused =
+            crate::providers::purge_version_guarded(&mut live_provider, "/docs/a.txt", "V").await;
+        assert!(
+            matches!(&refused, Err(ProviderError::NotSupported(m)) if m.contains("current version")),
+            "{refused:?}"
+        );
+        assert!(
+            !live_log
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|s| s.method == "DELETE"),
+            "{:?}",
+            live_log.lock()
+        );
+    }
+
     /// The prefix of a key lists every longer key too (`docs/a.txt` lists
     /// `docs/a.txt.d/...`): the listing stops at the first of them, so a
     /// download or restore, which reads the list to refuse a delete marker,

@@ -154,6 +154,7 @@ enum Mapped {
 
 /// Map a parsed Kopia config into either a profile or a skip reason.
 fn map_storage(kind: &str, config: &serde_json::Value) -> Mapped {
+    let mut s3_port = None;
     let g = |k: &str| {
         config
             .get(k)
@@ -162,34 +163,65 @@ fn map_storage(kind: &str, config: &serde_json::Value) -> Mapped {
     };
 
     use crate::bridge_shared::{
-        default_port_for, endpoint_host, json_map, map_s3_provider_from_endpoint, uuid_v4,
+        default_port_for, endpoint_url_without_secrets, json_map, map_s3_provider_from_endpoint,
+        try_endpoint_host, uuid_v4,
     };
 
     let (protocol, provider_id, host, username, credential, key_ref, mut opts) = match kind {
         "s3" => {
             let ep = g("endpoint").unwrap_or_default();
-            // Kopia's endpoint is `host[:port]` and its scheme is the
-            // `doNotUseTLS` flag; carry both as the profile's endpoint URL,
-            // or a cleartext endpoint would come back as HTTPS.
-            let ep_host = endpoint_host(&ep);
-            // AWS stays implicit: an explicit endpoint switches the S3
-            // connection to path-style, which AWS refuses for newer buckets.
-            let endpoint_url =
-                if ep_host.is_empty() || map_s3_provider_from_endpoint(&ep_host) == "amazon-s3" {
-                    None
-                } else if ep.starts_with("http://") || ep.starts_with("https://") {
-                    Some(ep.trim_end_matches('/').to_string())
-                } else {
-                    let no_tls = config
-                        .get("doNotUseTLS")
-                        .and_then(|v| v.as_bool())
-                        .unwrap_or(false);
-                    Some(format!(
-                        "{}://{}",
-                        if no_tls { "http" } else { "https" },
-                        ep_host
-                    ))
-                };
+            let ep_trimmed = ep.trim();
+            // Kopia's endpoint is `host[:port]` (or a URL) and its scheme is
+            // the `doNotUseTLS` flag; carry both as the profile's endpoint URL,
+            // or a cleartext endpoint would come back as HTTPS. If an explicit
+            // endpoint is refused as invalid or ambiguous, skip instead of
+            // silently dropping it to an empty host.
+            let ep_host = if ep_trimmed.is_empty() {
+                String::new()
+            } else {
+                match try_endpoint_host(ep_trimmed) {
+                    Some(h) if !h.is_empty() => h,
+                    _ => {
+                        return Mapped::Skipped(
+                            "Kopia S3 endpoint is invalid or ambiguous".to_string(),
+                        );
+                    }
+                }
+            };
+            if let Some((_, port)) = crate::bridge_shared::split_host_port(&ep_host) {
+                s3_port = port.map(u32::from);
+            }
+            let ep_lower = ep_trimmed.to_ascii_lowercase();
+            let aws = map_s3_provider_from_endpoint(&ep_host) == "amazon-s3";
+            let no_tls = config
+                .get("doNotUseTLS")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let https =
+                ep_lower.starts_with("https://") || (!ep_lower.starts_with("http://") && !no_tls);
+            let default_aws_transport = aws
+                && https
+                && s3_port.unwrap_or(443) == 443
+                && crate::bridge_shared::split_endpoint(ep_trimmed)
+                    .is_some_and(|parts| parts.path.is_empty());
+            let endpoint_url = if ep_host.is_empty() || default_aws_transport {
+                None
+            } else if ep_lower.starts_with("http://") || ep_lower.starts_with("https://") {
+                endpoint_url_without_secrets(ep_trimmed).map(|u| {
+                    let normalized = if let Some((scheme, rest)) = u.split_once("://") {
+                        format!("{}://{}", scheme.to_ascii_lowercase(), rest)
+                    } else {
+                        u
+                    };
+                    normalized.trim_end_matches('/').to_string()
+                })
+            } else {
+                Some(format!(
+                    "{}://{}",
+                    if no_tls { "http" } else { "https" },
+                    ep_host
+                ))
+            };
             (
                 "s3",
                 Some(map_s3_provider_from_endpoint(&ep).to_string()),
@@ -202,6 +234,7 @@ fn map_storage(kind: &str, config: &serde_json::Value) -> Mapped {
                     ("prefix", g("prefix")),
                     ("region", g("region")),
                     ("sessionToken", g("sessionToken")),
+                    ("pathStyle", aws.then(|| "false".to_string())),
                     ("endpoint", endpoint_url),
                 ]),
             )
@@ -250,7 +283,8 @@ fn map_storage(kind: &str, config: &serde_json::Value) -> Mapped {
             return Mapped::Skipped("local filesystem, not a server".to_string());
         }
         other => {
-            return Mapped::Skipped(format!("unsupported kopia storage type: {other}"));
+            let safe_kind = crate::bridge_shared::sanitize_warning_name(other, "unknown");
+            return Mapped::Skipped(format!("unsupported kopia storage type: {safe_kind}"));
         }
     };
 
@@ -276,6 +310,7 @@ fn map_storage(kind: &str, config: &serde_json::Value) -> Mapped {
             .and_then(|v| v.as_u64())
             .and_then(|p| u32::try_from(p).ok())
             .filter(|p| protocol == "sftp" && *p > 0)
+            .or(s3_port)
             .unwrap_or_else(|| default_port_for(protocol)),
         username,
         protocol: Some(protocol.to_string()),
@@ -304,14 +339,15 @@ pub fn import_kopia(path: &Path) -> Result<KopiaImportResult, String> {
         serde_json::from_str(&raw).map_err(|e| format!("parse kopia json: {e}"))?;
 
     let kind = kc.storage.kind.to_lowercase();
+    let safe_kind = crate::bridge_shared::sanitize_warning_name(&kc.storage.kind, "unknown");
     let mut servers = Vec::new();
     let mut skipped = Vec::new();
 
     match map_storage(&kind, &kc.storage.config) {
         Mapped::Server(s) => servers.push(*s),
         Mapped::Skipped(reason) => skipped.push(KopiaSkippedRemote {
-            name: format!("Kopia ({})", kc.storage.kind),
-            kind: kc.storage.kind.clone(),
+            name: format!("Kopia ({safe_kind})"),
+            kind: safe_kind,
             reason,
         }),
     }
@@ -369,6 +405,17 @@ fn storage_block(
             .unwrap_or("")
             .to_string()
     };
+    if server.protocol.as_deref() == Some("s3")
+        && server
+            .initial_path
+            .as_deref()
+            .is_some_and(|path| !path.is_empty() && path != "/")
+    {
+        return Err(
+            "kopia export: an S3 initial path is not a repository prefix; set Kopia's prefix explicitly"
+                .to_string(),
+        );
+    }
 
     let storage = match server.protocol.as_deref() {
         Some("s3") if server.provider_id.as_deref() == Some("backblaze-b2") => {
@@ -382,10 +429,15 @@ fn storage_block(
             })
         }
         Some("s3") => {
-            // Kopia wants the bare `host[:port]` and the scheme as a flag.
-            // No endpoint of its own: the profile is on AWS, kopia's default.
+            // Kopia 0.22.3 passes `endpoint` directly to minio-go, which adds
+            // the scheme itself and rejects non-root base paths.
             let (endpoint, no_tls) = match endpoint {
-                Some(ep) => (ep.authority(), !ep.is_tls()),
+                Some(ep) if ep.path.is_empty() => (ep.authority(), !ep.is_tls()),
+                Some(_) => {
+                    return Err(
+                        "kopia export: Kopia S3 endpoints cannot carry a base path".to_string()
+                    );
+                }
                 None => ("s3.amazonaws.com".to_string(), false),
             };
             let mut config = serde_json::json!({
@@ -477,20 +529,22 @@ pub fn export_kopia(
         .ok_or_else(|| "kopia export: no profile supplied".to_string())?;
 
     let secret = crate::bridge_shared::export_secret(passwords, &server.id);
-    let doc = storage_block(server, secret)?;
-    let body = serde_json::to_vec_pretty(&doc).map_err(|e| e.to_string())?;
-    let mut outcome = crate::bridge_shared::BridgeExportOutcome {
-        exported: 1,
-        ..Default::default()
-    };
-    crate::bridge_shared::write_export(outcome.exported, out, &body)?;
+    let mut outcome = crate::bridge_shared::BridgeExportOutcome::default();
+    match storage_block(server, secret) {
+        Ok(doc) => {
+            let body = serde_json::to_vec_pretty(&doc).map_err(|e| e.to_string())?;
+            outcome.exported = 1;
+            crate::bridge_shared::write_export(outcome.exported, out, &body)?;
+        }
+        Err(reason) => outcome.skip(&server.name, reason),
+    }
     for extra in &servers[1..] {
         outcome.skip(
             &extra.name,
             format!(
                 "a kopia config holds one repository and it went to \"{}\": \
                  export this profile on its own",
-                server.name
+                crate::bridge_shared::sanitize_warning_name(&server.name, "Kopia profile")
             ),
         );
     }
@@ -574,6 +628,56 @@ mod tests {
         assert_eq!(o.get("region").unwrap(), "us-east-1");
         assert_eq!(o.get("sessionToken").unwrap(), "tok123");
         assert_eq!(o.get("repo_kind").unwrap(), "kopia");
+    }
+
+    #[test]
+    fn aws_explicit_transport_is_preserved_and_default_stays_implicit() {
+        let effective = |endpoint: &str| {
+            let result = import_str(
+                &serde_json::json!({
+                    "storage": {"type": "s3", "config": {
+                        "endpoint": endpoint,
+                        "bucket": "photos",
+                        "accessKeyID": "DEMOKEY",
+                        "secretAccessKey": "demosecret"
+                    }}
+                })
+                .to_string(),
+            );
+            assert_eq!(result.servers.len(), 1);
+            let server = &result.servers[0];
+            let mut extra = HashMap::new();
+            crate::profile_loader::apply_profile_options(
+                &mut extra,
+                &serde_json::json!({"options": server.options}),
+            );
+            let config = crate::providers::types::S3Config::from_provider_config(
+                &crate::providers::types::ProviderConfig {
+                    name: server.name.clone(),
+                    provider_type: crate::providers::types::ProviderType::S3,
+                    host: server.host.clone(),
+                    port: u16::try_from(server.port).ok(),
+                    username: Some(server.username.clone()),
+                    password: None,
+                    initial_path: None,
+                    extra,
+                },
+            )
+            .unwrap();
+            (server.port, config)
+        };
+
+        let (port, custom) = effective("http://s3.amazonaws.com:8080");
+        assert_eq!(port, 8080);
+        assert_eq!(
+            custom.endpoint.as_deref(),
+            Some("http://s3.amazonaws.com:8080")
+        );
+        assert!(!custom.path_style);
+
+        let (_, default) = effective("https://s3.amazonaws.com");
+        assert_eq!(default.endpoint, None);
+        assert!(!default.path_style);
     }
 
     #[test]
@@ -689,6 +793,21 @@ mod tests {
         assert_eq!(r.skipped.len(), 1);
         assert_eq!(r.skipped[0].kind, "gcs");
         assert_eq!(r.skipped[0].reason, "OAuth/SAS backend not bridgeable");
+    }
+
+    #[test]
+    fn credential_bearing_storage_type_is_sanitized_in_skip_report() {
+        let result =
+            import_str(r#"{ "storage": { "type": "ftp://alice:pw@host?token=x", "config": {} } }"#);
+
+        assert!(result.servers.is_empty());
+        assert_eq!(result.skipped.len(), 1);
+        assert_eq!(result.skipped[0].name, "Kopia (host)");
+        assert_eq!(result.skipped[0].kind, "host");
+        let serialized = serde_json::to_string(&result.skipped).unwrap();
+        for secret in ["alice", "pw", "token=x"] {
+            assert!(!serialized.contains(secret), "{serialized}");
+        }
     }
 
     #[test]
@@ -826,6 +945,66 @@ mod tests {
     }
 
     #[test]
+    fn export_reports_an_s3_initial_path_instead_of_dropping_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("repository.config");
+        let mut server: KopiaExportServer = serde_json::from_value(serde_json::json!({
+            "id": "s3-start",
+            "name": "S3 start folder",
+            "host": "s3.amazonaws.com",
+            "port": 443,
+            "username": "DEMOKEY",
+            "protocol": "s3",
+            "providerId": "amazon-s3",
+            "options": {"bucket": "media"},
+            "initialPath": "/archive"
+        }))
+        .unwrap();
+
+        let outcome = export_kopia(std::slice::from_ref(&server), &HashMap::new(), &out).unwrap();
+        assert_eq!((outcome.exported, outcome.skipped.len()), (0, 1));
+        assert!(outcome.skipped[0].reason.contains("initial path"));
+        assert!(!out.exists());
+
+        server.initial_path = None;
+        let control = export_kopia(&[server], &HashMap::new(), &out).unwrap();
+        assert_eq!((control.exported, control.skipped.len()), (1, 0));
+        assert!(out.exists());
+    }
+
+    #[test]
+    fn an_early_refusal_still_reports_every_later_profile() {
+        let profile = |name: &str, initial_path: Option<&str>| -> KopiaExportServer {
+            serde_json::from_value(serde_json::json!({
+                "id": name,
+                "name": name,
+                "host": "s3.amazonaws.com",
+                "port": 443,
+                "username": "DEMOKEY",
+                "protocol": "s3",
+                "providerId": "amazon-s3",
+                "options": {"bucket": "media"},
+                "initialPath": initial_path
+            }))
+            .unwrap()
+        };
+        let servers = [
+            profile("unsupported", Some("/archive")),
+            profile("later", None),
+        ];
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("repository.config");
+
+        let outcome = export_kopia(&servers, &HashMap::new(), &out).unwrap();
+        assert_eq!((outcome.exported, outcome.skipped.len()), (0, 2));
+        assert_eq!(outcome.skipped[0].name, "unsupported");
+        assert!(outcome.skipped[0].reason.contains("initial path"));
+        assert_eq!(outcome.skipped[1].name, "later");
+        assert!(outcome.skipped[1].reason.contains("one repository"));
+        assert!(!out.exists());
+    }
+
+    #[test]
     fn test_default_path_env_override() {
         let dir = std::env::temp_dir().join(format!(
             "aeroftp-kopia-defpath-{}",
@@ -883,5 +1062,131 @@ mod tests {
         let back = import_kopia(&path).unwrap();
         assert_eq!(back.servers[0].username, "AKA");
         assert_eq!(back.servers[0].credential.as_deref(), Some("secret-a"));
+    }
+
+    #[test]
+    fn s3_root_endpoints_export_bare_authorities_and_their_tls_mode() {
+        let dir = tempfile::tempdir().unwrap();
+        for (scheme, expected_no_tls) in [("http", true), ("https", false)] {
+            let server: KopiaExportServer = serde_json::from_value(serde_json::json!({
+                "id": scheme,
+                "name": scheme,
+                "host": "",
+                "port": 9000,
+                "username": "DEMOKEY",
+                "protocol": "s3",
+                "providerId": "custom-s3",
+                "options": {
+                    "endpoint": format!("{scheme}://objects.example.test:9000"),
+                    "bucket": "backups"
+                },
+                "initialPath": null
+            }))
+            .unwrap();
+            let out = dir.path().join(format!("{scheme}.config"));
+            let outcome = export_kopia(&[server], &HashMap::new(), &out).unwrap();
+            assert_eq!((outcome.exported, outcome.skipped.len()), (1, 0));
+            let doc: serde_json::Value =
+                serde_json::from_str(&std::fs::read_to_string(&out).unwrap()).unwrap();
+            assert_eq!(
+                doc["storage"]["config"]["endpoint"],
+                "objects.example.test:9000"
+            );
+            if expected_no_tls {
+                assert_eq!(doc["storage"]["config"]["doNotUseTLS"], true);
+            } else {
+                assert!(doc["storage"]["config"].get("doNotUseTLS").is_none());
+            }
+        }
+    }
+
+    #[test]
+    fn s3_endpoint_with_base_path_preserves_import_and_refuses_export() {
+        let dir = tempfile::tempdir().unwrap();
+
+        let valid_path = dir.path().join("valid.config");
+        let valid_cfg = serde_json::json!({
+            "storage": {
+                "type": "s3",
+                "config": {
+                    "bucket": "backups",
+                    "endpoint": "https://objects.example.test:9000/team@east",
+                    "accessKeyID": "AKIAATPATH",
+                    "secretAccessKey": "secret-at-path"
+                }
+            }
+        });
+        std::fs::write(&valid_path, serde_json::to_string(&valid_cfg).unwrap()).unwrap();
+        let res = import_kopia(&valid_path).expect("import valid endpoint with @ in path");
+        assert_eq!(res.servers.len(), 1);
+        assert!(res.skipped.is_empty());
+        let srv = &res.servers[0];
+        assert_eq!(srv.host, "objects.example.test:9000");
+        let saved_ep = srv
+            .options
+            .as_ref()
+            .and_then(|o| o.get("endpoint"))
+            .and_then(|v| v.as_str())
+            .expect("endpoint option present");
+        assert_eq!(saved_ep, "https://objects.example.test:9000/team@east");
+        let mut extra = HashMap::new();
+        extra.insert("bucket".to_string(), "backups".to_string());
+        extra.insert("endpoint".to_string(), saved_ep.to_string());
+        let s3_cfg = crate::providers::types::S3Config::from_provider_config(
+            &crate::providers::types::ProviderConfig {
+                name: srv.name.clone(),
+                provider_type: crate::providers::types::ProviderType::S3,
+                host: srv.host.clone(),
+                port: Some(srv.port as u16),
+                username: Some(srv.username.clone()),
+                password: srv.credential.clone(),
+                initial_path: None,
+                extra,
+            },
+        )
+        .expect("S3Config builds for endpoint with @ in path");
+        assert_eq!(
+            s3_cfg.endpoint.as_deref(),
+            Some("https://objects.example.test:9000/team@east")
+        );
+
+        let export = KopiaExportServer {
+            id: srv.id.clone(),
+            name: srv.name.clone(),
+            host: srv.host.clone(),
+            port: srv.port,
+            username: srv.username.clone(),
+            protocol: srv.protocol.clone(),
+            options: srv.options.clone(),
+            provider_id: srv.provider_id.clone(),
+            initial_path: srv.initial_path.clone(),
+        };
+        let passwords = HashMap::from([(srv.id.clone(), "secret-at-path".to_string())]);
+        let export_path = dir.path().join("roundtrip.config");
+        std::fs::write(&export_path, b"unchanged").unwrap();
+        let outcome = export_kopia(&[export], &passwords, &export_path).unwrap();
+        assert_eq!((outcome.exported, outcome.skipped.len()), (0, 1));
+        assert!(outcome.skipped[0].reason.contains("base path"));
+        assert_eq!(std::fs::read(&export_path).unwrap(), b"unchanged");
+
+        let refused_path = dir.path().join("refused.config");
+        let refused_cfg = serde_json::json!({
+            "storage": {
+                "type": "s3",
+                "config": {
+                    "bucket": "backups",
+                    "endpoint": "https://alice:pa/ss@objects.example.test:9000",
+                    "accessKeyID": "AKIAREFUSED",
+                    "secretAccessKey": "secret-refused"
+                }
+            }
+        });
+        std::fs::write(&refused_path, serde_json::to_string(&refused_cfg).unwrap()).unwrap();
+        let refused_res = import_kopia(&refused_path).expect("refused endpoint returns skipped");
+        assert!(
+            refused_res.servers.is_empty(),
+            "refused explicit endpoint must not be imported with empty host"
+        );
+        assert_eq!(refused_res.skipped.len(), 1);
     }
 }

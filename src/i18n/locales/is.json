@@ -4455,7 +4455,13 @@
             "modeNonIdentical": "Ekki eins",
             "groupsCount": "Hópar: {count}",
             "duplicateFilesCount": "Tvíteknar skrár: {count}",
-            "copiesCount": "{count} afrit"
+            "copiesCount": "{count} afrit",
+            "refreshTooltip": "Athuga hvort greind tvírit séu enn til og fjarlægja skrár sem vantar án þess að skanna aftur",
+            "refreshRemoved": "{count} skrár sem vantar fjarlægðar af listanum",
+            "refreshUpToDate": "Allar skrár eru enn til",
+            "refreshChanged": "{count} breyttar skrár fjarlægðar af listanum",
+            "refreshUnverified": "Ekki tókst að athuga {count}",
+            "refreshFailed": "Endurnýjun mistókst: {error}"
         },
         "diskUsage": {
             "title": "Disknotkun",

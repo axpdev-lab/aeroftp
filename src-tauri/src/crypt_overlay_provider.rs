@@ -4076,13 +4076,15 @@ pub(crate) async fn resolve_home_scope(
     if !is_login_relative_scope(scope) {
         return Ok(None);
     }
-    let segments: Vec<&str> = crate::util::path_location::login_relative_rest(scope)
-        .unwrap_or("")
-        .split('/')
-        .collect();
-    if segments.contains(&"..") {
+    let rest_raw = crate::util::path_location::login_relative_rest(scope).unwrap_or("");
+    // A forward-slash `..` leaves the login folder on every grammar. A
+    // backslash is a name character until the login folder is known: only a
+    // relative Windows CWD (FTP or FTPS, home not an absolute `/` path)
+    // treats it as a separator.
+    if rest_raw.split('/').any(|step| step == "..") {
         return Err("the overlay folder leaves the login folder".to_string());
     }
+    let segments: Vec<&str> = rest_raw.split('/').collect();
     // `.` and empty segments name the same folder, written as the server
     // lists it, as the window places it (`placeUnderLoginFolder`).
     let rest = segments
@@ -4135,7 +4137,18 @@ pub(crate) async fn resolve_home_scope(
         }
     };
     // The window places a path the same way (`placeUnderLoginFolder`).
+    // FTP and FTPS can report a slash-absolute login folder and still
+    // treat `\` as a separator. A backslash parent step is refused for
+    // those providers whatever that folder looks like. SFTP keeps `\`
+    // as a name character.
     let home = home.trim_end_matches('/');
+    if matches!(
+        provider.provider_type(),
+        ProviderType::Ftp | ProviderType::Ftps
+    ) && crate::util::path_location::backslash_parent_step(rest_raw)
+    {
+        return Err("the overlay folder leaves the login folder".to_string());
+    }
     Ok(Some(if rest.is_empty() {
         if home.is_empty() { "/" } else { home }.to_string()
     } else {
@@ -8514,6 +8527,27 @@ pub(crate) mod tests {
         assert_eq!(mem.pwd().await.unwrap(), "/srv");
         assert_eq!(login_folder(&mut mem).await.unwrap(), MEM_HOME);
         assert!(resolve_home_scope(&mut mem, "~/../etc").await.is_err());
+        assert_eq!(
+            resolve_home_scope(&mut mem, "~/foo\\..\\outside")
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("/home/mem/foo\\..\\outside")
+        );
+        for kind in [ProviderType::Ftp, ProviderType::Ftps] {
+            for home in ["/home/u", r"C:\users\ada", "/"] {
+                let mut server = MemProvider::new();
+                server.kind = kind;
+                server.login_folder = Some(home.to_string());
+                let err = resolve_home_scope(&mut server, "~/foo\\..\\outside")
+                    .await
+                    .unwrap_err();
+                assert!(
+                    err.contains("leaves the login folder"),
+                    "{kind:?} home {home} refuses a backslash parent step: {err}"
+                );
+            }
+        }
         assert_eq!(
             resolve_home_scope(&mut mem, "~/./docs//sub/")
                 .await

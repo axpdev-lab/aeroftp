@@ -4455,7 +4455,13 @@
             "modeNonIdentical": "অভিন্ন নয়",
             "groupsCount": "{count}টি গ্রুপ",
             "duplicateFilesCount": "{count}টি ডুপ্লিকেট ফাইল",
-            "copiesCount": "{count}টি কপি"
+            "copiesCount": "{count}টি কপি",
+            "refreshTooltip": "শনাক্তকৃত ডুপ্লিকেটগুলো এখনও আছে কিনা পরীক্ষা করুন এবং পুনরায় স্ক্যান না করেই অনুপস্থিত ফাইলগুলো সরিয়ে দিন",
+            "refreshRemoved": "তালিকা থেকে {count}টি অনুপস্থিত ফাইল বাদ দেওয়া হয়েছে",
+            "refreshUpToDate": "সব ফাইল এখনও রয়েছে",
+            "refreshChanged": "{count}টি পরিবর্তিত ফাইল তালিকা থেকে বাদ দেওয়া হয়েছে",
+            "refreshUnverified": "{count}টি পরীক্ষা করা যায়নি",
+            "refreshFailed": "রিফ্রেশ ব্যর্থ হয়েছে: {error}"
         },
         "diskUsage": {
             "title": "ডিস্ক ব্যবহার",

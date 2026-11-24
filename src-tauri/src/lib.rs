@@ -30041,6 +30041,7 @@ pub fn run() {
             filesystem::restore_trash_item,
             filesystem::empty_trash,
             filesystem::find_duplicate_files,
+            filesystem::filter_existing_local_paths,
             filesystem::scan_disk_usage,
             filesystem::volumes_changed,
             // MTP portable devices (APPENDIX-MTP Phase 2; PLACES wiring in Phase 4)

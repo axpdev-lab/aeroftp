@@ -474,6 +474,14 @@ fn names_a_path(raw: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// A variable that is set to a real secret. An empty value is not one:
+/// the CLI and the GUI both skip it and read the next variable, then the
+/// URL password. A set-but-empty `FTP_PASSWORD` must not hide
+/// `AEROFTP_PASSWORD` or the password written in the link.
+pub fn read_nonempty_env(var: &str) -> Option<String> {
+    std::env::var(var).ok().filter(|value| !value.is_empty())
+}
+
 impl LaunchTarget {
     pub fn token(&self) -> &'static str {
         self.scheme.token
@@ -494,7 +502,7 @@ impl LaunchTarget {
             .iter()
             .copied()
             .chain(["AEROFTP_PASSWORD"])
-            .find(|var| std::env::var(var).is_ok_and(|value| !value.is_empty()))
+            .find(|var| read_nonempty_env(var).is_some())
     }
 
     /// The port the connection is given: none for an S3 link that names its
@@ -1583,9 +1591,17 @@ mod tests {
         assert_eq!(target.env_secret().as_deref(), Some("specific"));
         std::env::set_var("IMMICH_API_KEY", "");
         assert_eq!(target.env_secret().as_deref(), Some("generic"));
+        assert_eq!(read_nonempty_env("IMMICH_API_KEY"), None);
         std::env::remove_var("IMMICH_API_KEY");
         std::env::remove_var("AEROFTP_PASSWORD");
         assert_eq!(target.env_secret(), None);
+        let cli = include_str!("bin/aeroftp_cli.rs");
+        let start = cli.find("fn resolve_password(").expect("resolve_password");
+        let window = &cli[start..start + 1800];
+        assert!(
+            window.contains("read_nonempty_env"),
+            "the CLI password chain skips an empty variable, as env_secret_var does"
+        );
 
         let s3 = parse("s3://h/?bucket=b").unwrap();
         std::env::set_var("AWS_ACCESS_KEY_ID", "AKENV");

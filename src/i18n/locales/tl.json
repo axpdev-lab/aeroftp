@@ -4455,7 +4455,13 @@
             "modeNonIdentical": "Hindi magkapareho",
             "groupsCount": "{count} grupo",
             "duplicateFilesCount": "{count} duplikadong file",
-            "copiesCount": "{count} kopya"
+            "copiesCount": "{count} kopya",
+            "refreshTooltip": "Suriin kung umiiral pa rin ang mga nakitang duplicate at alisin ang mga nawawalang file nang hindi nag-i-scan muli",
+            "refreshRemoved": "Inalis sa listahan ang {count} nawawalang file",
+            "refreshUpToDate": "Umiiral pa rin ang lahat ng file",
+            "refreshChanged": "{count} nabagong file ang inalis sa listahan",
+            "refreshUnverified": "{count} ang hindi masuri",
+            "refreshFailed": "Nabigo ang pag-refresh: {error}"
         },
         "diskUsage": {
             "title": "Paggamit ng Disk",

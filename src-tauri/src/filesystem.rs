@@ -2652,6 +2652,8 @@ pub struct DuplicateScanProgress {
     pub max_depth: u32,
     pub files_processed: u64,
     pub files_total: u64,
+    pub bytes_processed: u64,
+    pub bytes_total: u64,
     pub files_skipped: u64,
     pub current_path: String,
 }
@@ -2659,6 +2661,114 @@ pub struct DuplicateScanProgress {
 /// Emit at most this often. A tick per file would flood the event bridge on a
 /// large tree and slow the scan it is reporting on.
 const DUPLICATE_PROGRESS_INTERVAL_MS: u128 = 120;
+
+/// Prefix sums of walked file sizes so non-identical analysis byte progress
+/// advances past skipped, oversized, below-min or unreadable files in lockstep
+/// with `files_processed`, ensuring the final tick equals `bytes_total` (#347).
+fn walked_bytes_prefix(walked: &[(PathBuf, u64)]) -> Vec<u64> {
+    let mut prefix = Vec::with_capacity(walked.len() + 1);
+    prefix.push(0);
+    let mut acc: u64 = 0;
+    for (_, size) in walked {
+        acc = acc.saturating_add(*size);
+        prefix.push(acc);
+    }
+    prefix
+}
+
+/// Cumulative walked bytes covered after `files_processed` candidates have been
+/// visited (whether signed or skipped).
+fn bytes_processed_for_count(prefix: &[u64], files_processed: u64) -> u64 {
+    let idx = usize::try_from(files_processed)
+        .unwrap_or(usize::MAX)
+        .min(prefix.len().saturating_sub(1));
+    prefix.get(idx).copied().unwrap_or(0)
+}
+
+/// Phase 2 of exact duplicate detection: hashes files that share a byte size,
+/// advancing progress counters only after each hash attempt finishes (failed
+/// reads included) so an in-flight large file is never reported as completed.
+fn hash_exact_size_groups<F, P>(
+    size_groups: std::collections::HashMap<u64, Vec<PathBuf>>,
+    max_total_hash_bytes: u64,
+    mut hasher: F,
+    mut emit_progress: P,
+) -> std::collections::HashMap<String, (u64, Vec<String>)>
+where
+    F: FnMut(&Path) -> Result<String, std::io::Error>,
+    P: FnMut(u64, u64, u64, u64, u64, bool),
+{
+    let mut hash_groups: std::collections::HashMap<String, (u64, Vec<String>)> =
+        std::collections::HashMap::new();
+    let mut total_hash_bytes: u64 = 0;
+    let mut budget_exceeded = false;
+    // Only the files that share a size are ever hashed, so that (not the whole
+    // tree) is the denominator the user should be watching.
+    let hash_total: u64 = size_groups
+        .values()
+        .filter(|files| files.len() >= 2)
+        .map(|files| files.len() as u64)
+        .sum();
+    let hash_bytes_total: u64 = size_groups
+        .iter()
+        .filter(|(_, files)| files.len() >= 2)
+        .map(|(size, files)| size.saturating_mul(files.len() as u64))
+        .sum();
+    let mut hashed: u64 = 0;
+    let mut bytes_hashed: u64 = 0;
+
+    // Emit an initial 0 / total tick before the first hash attempt so a slow
+    // first file displays the analysis totals instead of staying stuck on walk.
+    if hash_total > 0 {
+        emit_progress(0, hash_total, 0, hash_bytes_total, 0, true);
+    }
+
+    for (size, files) in size_groups {
+        if budget_exceeded {
+            break;
+        }
+        if files.len() < 2 {
+            continue;
+        }
+
+        for file_path in &files {
+            // Check total hash I/O budget
+            total_hash_bytes = total_hash_bytes.saturating_add(size);
+            if total_hash_bytes > max_total_hash_bytes {
+                warn!(
+                    "find_duplicate_files: total hash I/O limit ({} bytes) reached",
+                    max_total_hash_bytes
+                );
+                budget_exceeded = true;
+                break;
+            }
+            if let Ok(hash) = hasher(file_path) {
+                let entry = hash_groups
+                    .entry(hash)
+                    .or_insert_with(|| (size, Vec::new()));
+                entry.1.push(file_path.to_string_lossy().to_string());
+            }
+            hashed += 1;
+            bytes_hashed = bytes_hashed.saturating_add(size);
+            emit_progress(hashed, hash_total, bytes_hashed, hash_bytes_total, 0, false);
+        }
+    }
+
+    let files_skipped = if budget_exceeded {
+        hash_total.saturating_sub(hashed)
+    } else {
+        0
+    };
+    emit_progress(
+        hashed,
+        hash_total,
+        bytes_hashed,
+        hash_bytes_total,
+        files_skipped,
+        true,
+    );
+    hash_groups
+}
 
 /// Scans a directory recursively for duplicate files.
 /// - mode "exact" (default): byte-identical using BLAKE3 (original behavior).
@@ -2748,6 +2858,8 @@ pub async fn find_duplicate_files(
                     max_depth,
                     files_processed: 0,
                     files_total: 0,
+                    bytes_processed: 0,
+                    bytes_total: 0,
                     files_skipped: 0,
                     current_path: entry.path().to_string_lossy().to_string(),
                 },
@@ -2762,11 +2874,26 @@ pub async fn find_duplicate_files(
     let mut emit_analysis = {
         let app = app.clone();
         let mut last = std::time::Instant::now();
-        move |files_processed: u64, files_total: u64, files_skipped: u64, force: bool| {
+        move |files_processed: u64,
+              files_total: u64,
+              bytes_processed: u64,
+              bytes_total: u64,
+              files_skipped: u64,
+              force: bool| {
             if !force && last.elapsed().as_millis() < DUPLICATE_PROGRESS_INTERVAL_MS {
                 return;
             }
             last = std::time::Instant::now();
+            let clamped_files = if files_total > 0 {
+                files_processed.min(files_total)
+            } else {
+                files_processed
+            };
+            let clamped_bytes = if bytes_total > 0 {
+                bytes_processed.min(bytes_total)
+            } else {
+                bytes_processed
+            };
             let _ = app.emit(
                 "duplicate-scan-progress",
                 DuplicateScanProgress {
@@ -2776,8 +2903,10 @@ pub async fn find_duplicate_files(
                     dirs_scanned,
                     bytes_scanned,
                     max_depth,
-                    files_processed,
+                    files_processed: clamped_files,
                     files_total,
+                    bytes_processed: clamped_bytes,
+                    bytes_total,
                     files_skipped,
                     current_path: String::new(),
                 },
@@ -2789,6 +2918,8 @@ pub async fn find_duplicate_files(
         // The perceptual/SimHash logic stays in the shared engine
         // (src-tauri/src/dedupe/) — Phase 1 source of truth. Only the walk moved
         // out, so this call cannot drift from the exact-mode file list.
+        let bytes_prefix = walked_bytes_prefix(&walked);
+        let bytes_total = *bytes_prefix.last().unwrap_or(&0);
         let paths: Vec<PathBuf> = walked.into_iter().map(|(p, _)| p).collect();
         let paths_total = paths.len() as u64;
         let mut final_skipped = 0;
@@ -2799,12 +2930,27 @@ pub async fn find_duplicate_files(
             min_size,
             &mut |p| {
                 final_skipped = p.files_skipped;
-                emit_analysis(p.files_processed, p.files_total, p.files_skipped, false);
+                let bytes_done = bytes_processed_for_count(&bytes_prefix, p.files_processed);
+                emit_analysis(
+                    p.files_processed,
+                    p.files_total,
+                    bytes_done,
+                    bytes_total,
+                    p.files_skipped,
+                    false,
+                );
             },
         );
         // The throttle can swallow the last tick, leaving the bar short of the
         // total for the rest of the dialog's life. Force one at the end.
-        emit_analysis(paths_total, paths_total, final_skipped, true);
+        emit_analysis(
+            paths_total,
+            paths_total,
+            bytes_processed_for_count(&bytes_prefix, paths_total),
+            bytes_total,
+            final_skipped,
+            true,
+        );
         let result: Vec<DuplicateGroup> = engine_groups
             .into_iter()
             .map(|g| DuplicateGroup {
@@ -2832,58 +2978,12 @@ pub async fn find_duplicate_files(
     }
 
     // Phase 2: hash only files with matching sizes (2+ files)
-    let mut hash_groups: std::collections::HashMap<String, (u64, Vec<String>)> =
-        std::collections::HashMap::new();
-    let mut total_hash_bytes: u64 = 0;
-    let mut budget_exceeded = false;
-    // Only the files that share a size are ever hashed, so that — not the whole
-    // tree — is the denominator the user should be watching.
-    let hash_total: u64 = size_groups
-        .values()
-        .filter(|files| files.len() >= 2)
-        .map(|files| files.len() as u64)
-        .sum();
-    let mut hashed: u64 = 0;
-
-    for (size, files) in size_groups {
-        if budget_exceeded {
-            break;
-        }
-        if files.len() < 2 {
-            continue;
-        }
-
-        for file_path in &files {
-            // Check total hash I/O budget
-            total_hash_bytes += size;
-            if total_hash_bytes > MAX_TOTAL_HASH_BYTES {
-                warn!(
-                    "find_duplicate_files: total hash I/O limit ({} bytes) reached",
-                    MAX_TOTAL_HASH_BYTES
-                );
-                budget_exceeded = true;
-                break;
-            }
-            hashed += 1;
-            emit_analysis(hashed, hash_total, 0, false);
-            match compute_file_hash(file_path) {
-                Ok(hash) => {
-                    let entry = hash_groups
-                        .entry(hash)
-                        .or_insert_with(|| (size, Vec::new()));
-                    entry.1.push(file_path.to_string_lossy().to_string());
-                }
-                Err(_) => continue,
-            }
-        }
-    }
-
-    let files_skipped = if budget_exceeded {
-        hash_total.saturating_sub(hashed)
-    } else {
-        0
-    };
-    emit_analysis(hashed, hash_total, files_skipped, true);
+    let hash_groups = hash_exact_size_groups(
+        size_groups,
+        MAX_TOTAL_HASH_BYTES,
+        compute_file_hash,
+        emit_analysis,
+    );
 
     // Phase 3: collect groups with 2+ files, sort by wasted space
     let mut result: Vec<DuplicateGroup> = hash_groups
@@ -2925,6 +3025,80 @@ fn compute_file_hash(path: &Path) -> Result<String, std::io::Error> {
         hasher.update(&buffer[..n]);
     }
     Ok(hasher.finalize().to_hex().to_string())
+}
+
+// ─── Command 11b: filter_existing_local_paths ───────────────────────────────
+
+const MAX_EXISTENCE_CHECK_PATHS: usize = 100_000;
+
+/// Per-path verification status returned by `filter_existing_local_paths` (#347).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "status", rename_all = "lowercase")]
+pub enum LocalPathCheckStatus {
+    /// Regular file still exists on disk with its current byte size.
+    Present { path: String, size: u64 },
+    /// File disappeared or ceased to be a regular file (directory, symlink).
+    Missing { path: String },
+    /// Metadata could not be read due to an error other than NotFound or
+    /// NotADirectory (for example PermissionDenied); kept unverified in UI.
+    Unverified { path: String },
+}
+
+fn check_local_paths_with<F>(
+    paths: Vec<String>,
+    mut stat_file_size: F,
+) -> Result<Vec<LocalPathCheckStatus>, String>
+where
+    F: FnMut(&Path) -> std::io::Result<Option<u64>>,
+{
+    if paths.len() > MAX_EXISTENCE_CHECK_PATHS {
+        return Err(format!(
+            "Too many paths to verify (max {})",
+            MAX_EXISTENCE_CHECK_PATHS
+        ));
+    }
+    let mut statuses = Vec::with_capacity(paths.len());
+    for path in paths {
+        validate_path(&path)?;
+        // Match `find_duplicate_files` (`follow_links(false)` + `is_file()`):
+        // mark absent or non-regular paths as Missing, return current size for
+        // regular files, and mark transient/permission errors as Unverified so
+        // the caller neither drops them nor reports them as verified.
+        let status = match stat_file_size(Path::new(&path)) {
+            Ok(Some(size)) => LocalPathCheckStatus::Present { path, size },
+            Ok(None) => LocalPathCheckStatus::Missing { path },
+            Err(err)
+                if matches!(
+                    err.kind(),
+                    std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
+                ) =>
+            {
+                LocalPathCheckStatus::Missing { path }
+            }
+            Err(_) => LocalPathCheckStatus::Unverified { path },
+        };
+        statuses.push(status);
+    }
+    Ok(statuses)
+}
+
+fn check_local_paths_sync(paths: Vec<String>) -> Result<Vec<LocalPathCheckStatus>, String> {
+    check_local_paths_with(paths, |p| {
+        let meta = std::fs::symlink_metadata(p)?;
+        Ok(meta.is_file().then_some(meta.len()))
+    })
+}
+
+/// Checks a list of previously detected local duplicate file paths and returns
+/// a per-path status (present with current byte size, missing, or unverified)
+/// without re-walking or re-hashing the scanned folder (Discussion #347).
+#[tauri::command]
+pub async fn filter_existing_local_paths(
+    paths: Vec<String>,
+) -> Result<Vec<LocalPathCheckStatus>, String> {
+    tokio::task::spawn_blocking(move || check_local_paths_sync(paths))
+        .await
+        .map_err(|e| format!("Path existence check task failed: {}", e))?
 }
 
 // ─── Structs (Disk Usage) ───────────────────────────────────────────────────
@@ -3850,6 +4024,256 @@ mod instant_offset_tests {
         assert_eq!(instant(&props.modified), secs(meta.modified()));
         assert_eq!(instant(&props.accessed), secs(meta.accessed()));
         assert_eq!(instant(&props.created), secs(meta.created()));
+    }
+
+    #[test]
+    fn filter_existing_paths_keeps_present_files_and_drops_deleted_ones() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let kept = dir.path().join("kept.png");
+        let deleted = dir.path().join("deleted.png");
+        let subdir = dir.path().join("now_a_dir");
+        std::fs::write(&kept, b"image-bytes").expect("write kept");
+        std::fs::write(&deleted, b"image-bytes").expect("write deleted");
+        std::fs::remove_file(&deleted).expect("remove deleted");
+        std::fs::create_dir(&subdir).expect("mkdir");
+
+        let kept_str = kept.to_string_lossy().to_string();
+        let deleted_str = deleted.to_string_lossy().to_string();
+        let subdir_str = subdir.to_string_lossy().to_string();
+        let inputs = vec![kept_str.clone(), deleted_str.clone(), subdir_str.clone()];
+        let expected = vec![
+            LocalPathCheckStatus::Present {
+                path: kept_str,
+                size: 11,
+            },
+            LocalPathCheckStatus::Missing { path: deleted_str },
+            LocalPathCheckStatus::Missing { path: subdir_str },
+        ];
+
+        let result = check_local_paths_sync(inputs).expect("check");
+        assert_eq!(result, expected);
+
+        #[cfg(unix)]
+        {
+            let link = dir.path().join("symlink.png");
+            std::os::unix::fs::symlink(&kept, &link).expect("symlink");
+            let link_str = link.to_string_lossy().to_string();
+            let link_result = check_local_paths_sync(vec![link_str.clone()]).expect("check");
+            assert_eq!(
+                link_result,
+                vec![LocalPathCheckStatus::Missing { path: link_str }]
+            );
+        }
+    }
+
+    #[test]
+    fn filter_existing_paths_marks_permission_denied_as_unverified() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let ok_path = dir.path().join("ok.png").to_string_lossy().to_string();
+        let denied_path = dir.path().join("denied.png").to_string_lossy().to_string();
+        let missing_path = dir.path().join("gone.png").to_string_lossy().to_string();
+
+        let result = check_local_paths_with(
+            vec![ok_path.clone(), denied_path.clone(), missing_path.clone()],
+            |p| {
+                if p.ends_with("ok.png") {
+                    Ok(Some(4096))
+                } else if p.ends_with("denied.png") {
+                    Err(std::io::Error::new(
+                        std::io::ErrorKind::PermissionDenied,
+                        "denied",
+                    ))
+                } else {
+                    Err(std::io::Error::new(std::io::ErrorKind::NotFound, "missing"))
+                }
+            },
+        )
+        .expect("check");
+
+        assert_eq!(
+            result,
+            vec![
+                LocalPathCheckStatus::Present {
+                    path: ok_path,
+                    size: 4096,
+                },
+                LocalPathCheckStatus::Unverified { path: denied_path },
+                LocalPathCheckStatus::Missing { path: missing_path },
+            ]
+        );
+    }
+
+    #[test]
+    fn filter_existing_paths_rejects_relative_and_traversal_paths() {
+        assert!(check_local_paths_sync(vec!["relative/file.txt".into()]).is_err());
+        let dir = tempfile::tempdir().expect("temp dir");
+        let traversal = format!("{}/../escape.txt", dir.path().display());
+        assert!(check_local_paths_sync(vec![traversal]).is_err());
+    }
+
+    #[test]
+    fn duplicate_scan_progress_serializes_byte_progress_fields() {
+        let payload = DuplicateScanProgress {
+            scan_id: "scan-1".into(),
+            phase: "analyze".into(),
+            files_scanned: 1931,
+            dirs_scanned: 6,
+            bytes_scanned: 428_300_000,
+            max_depth: 2,
+            files_processed: 1806,
+            files_total: 1931,
+            bytes_processed: 398_100_000,
+            bytes_total: 428_300_000,
+            files_skipped: 0,
+            current_path: String::new(),
+        };
+        let json = serde_json::to_value(&payload).expect("serialize");
+        assert_eq!(json["bytes_processed"], 398_100_000u64);
+        assert_eq!(json["bytes_total"], 428_300_000u64);
+        assert_eq!(json["files_processed"], 1806u64);
+        assert_eq!(json["files_total"], 1931u64);
+    }
+
+    #[test]
+    fn non_identical_byte_progress_reaches_total_across_skipped_files() {
+        // Includes a 0-byte (below min_size) file and a 1 GiB (above the 256 MB
+        // signature cap) video alongside normal images. The engine does not read
+        // either skipped file, yet byte progress tracks how far through the
+        // walked list analysis is and must land on the exact total at the end.
+        let walked = vec![
+            (PathBuf::from("/lib/empty.txt"), 0u64),
+            (PathBuf::from("/lib/photo_a.jpg"), 4_000_000u64),
+            (PathBuf::from("/lib/huge_movie.mkv"), 1_073_741_824u64),
+            (PathBuf::from("/lib/photo_b.jpg"), 6_000_000u64),
+        ];
+        let prefix = walked_bytes_prefix(&walked);
+        let total = *prefix.last().expect("non-empty prefix");
+        assert_eq!(total, 1_083_741_824u64);
+        assert_eq!(bytes_processed_for_count(&prefix, 0), 0);
+        assert_eq!(bytes_processed_for_count(&prefix, 1), 0);
+        assert_eq!(bytes_processed_for_count(&prefix, 2), 4_000_000);
+        assert_eq!(bytes_processed_for_count(&prefix, 3), 1_077_741_824);
+        assert_eq!(
+            bytes_processed_for_count(&prefix, walked.len() as u64),
+            total
+        );
+        assert_eq!(bytes_processed_for_count(&prefix, 999), total);
+    }
+
+    #[test]
+    fn exact_hash_progress_advances_after_hash_completes_including_failures() {
+        let mut size_groups = std::collections::HashMap::new();
+        size_groups.insert(
+            900_000_000u64,
+            vec![
+                PathBuf::from("/big/a.bin"),
+                PathBuf::from("/big/b.bin"),
+                PathBuf::from("/big/unreadable.bin"),
+            ],
+        );
+        let expected_total_files = 3u64;
+        let expected_total_bytes = 2_700_000_000u64;
+
+        let reported = std::cell::Cell::new(None);
+        let initial_tick_seen_before_first_hash = std::cell::Cell::new(false);
+        let mut completed_files = 0u64;
+        let mut completed_bytes = 0u64;
+        let mut final_tick = None;
+
+        let groups = hash_exact_size_groups(
+            size_groups,
+            u64::MAX,
+            |path| {
+                if completed_files == 0 {
+                    // Forced 0 / total event must arrive before the first hash begins.
+                    assert_eq!(
+                        reported.get(),
+                        Some((0, 0)),
+                        "expected initial 0 / total tick before first hash"
+                    );
+                    initial_tick_seen_before_first_hash.set(true);
+                }
+                // At the moment each hash begins, reported progress must equal
+                // only the files whose hash already finished, never the file
+                // currently being read.
+                assert_eq!(
+                    reported.get(),
+                    Some((completed_files, completed_bytes)),
+                    "progress reported {} before its hash completed",
+                    path.display()
+                );
+                completed_files += 1;
+                completed_bytes += 900_000_000;
+                if path.ends_with("unreadable.bin") {
+                    Err(std::io::Error::new(
+                        std::io::ErrorKind::PermissionDenied,
+                        "denied",
+                    ))
+                } else {
+                    Ok("same-digest".to_string())
+                }
+            },
+            |files_done, files_total, bytes_done, bytes_total, skipped, force| {
+                assert_eq!(files_total, expected_total_files);
+                assert_eq!(bytes_total, expected_total_bytes);
+                assert_eq!(skipped, 0);
+                reported.set(Some((files_done, bytes_done)));
+                if force {
+                    final_tick = Some((files_done, bytes_done));
+                }
+            },
+        );
+
+        assert!(initial_tick_seen_before_first_hash.get());
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups["same-digest"].1.len(), 2);
+        assert_eq!(
+            final_tick,
+            Some((expected_total_files, expected_total_bytes))
+        );
+    }
+
+    #[test]
+    fn exact_hash_progress_stops_at_io_budget_and_reports_skipped() {
+        let mut size_groups = std::collections::HashMap::new();
+        size_groups.insert(
+            900_000_000u64,
+            vec![
+                PathBuf::from("/big/a.bin"),
+                PathBuf::from("/big/b.bin"),
+                PathBuf::from("/big/c.bin"),
+            ],
+        );
+
+        let mut hash_calls = 0u64;
+        let mut forced_ticks = Vec::new();
+
+        let groups = hash_exact_size_groups(
+            size_groups,
+            2_000_000_000,
+            |_path| {
+                hash_calls += 1;
+                Ok("same-digest".to_string())
+            },
+            |files_done, files_total, bytes_done, bytes_total, skipped, force| {
+                if force {
+                    forced_ticks.push((files_done, files_total, bytes_done, bytes_total, skipped));
+                }
+            },
+        );
+
+        assert_eq!(hash_calls, 2);
+        assert_eq!(groups["same-digest"].1.len(), 2);
+        // First forced tick is the initial 0 / total event; last forced tick
+        // reports 2 processed, 1 skipped, 1.8 GB of 2.7 GB.
+        assert_eq!(
+            forced_ticks.first().copied(),
+            Some((0, 3, 0, 2_700_000_000, 0))
+        );
+        assert_eq!(
+            forced_ticks.last().copied(),
+            Some((2, 3, 1_800_000_000, 2_700_000_000, 1))
+        );
     }
 }
 

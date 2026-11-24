@@ -853,19 +853,18 @@ impl RemoteBackend for TauriRemoteBackend {
         match self {
             TauriRemoteBackend::Active { app } => {
                 if let Some(ref mut p) = *Self::active_provider(app).lock().await {
-                    return p
-                        .delete_version(path, version_id)
+                    return crate::providers::purge_version_guarded(p.as_mut(), path, version_id)
                         .await
                         .map_err(|e| e.to_string());
                 }
                 Err("versions require an active provider connection".to_string())
             }
-            TauriRemoteBackend::Temp { provider } => provider
-                .lock()
-                .await
-                .delete_version(path, version_id)
-                .await
-                .map_err(|e| e.to_string()),
+            TauriRemoteBackend::Temp { provider } => {
+                let mut guard = provider.lock().await;
+                crate::providers::purge_version_guarded(guard.as_mut(), path, version_id)
+                    .await
+                    .map_err(|e| e.to_string())
+            }
         }
     }
 
@@ -1086,5 +1085,61 @@ mod ftp_probe_tests {
         assert!(entries.iter().any(|entry| entry.name == "a.txt"));
         assert!(manager.is_connected());
         assert_eq!(manager.current_path(), "/d");
+    }
+
+    #[tokio::test]
+    async fn delete_version_refuses_when_listing_is_denied_or_live_without_sending_delete() {
+        use crate::providers::probe_fake::ProbeFake;
+        use crate::providers::FileVersion;
+        use std::sync::{Arc, Mutex};
+
+        let writes = Arc::new(Mutex::new(Vec::new()));
+        let mut fake = ProbeFake::new();
+        fake.shared_writes = Some(Arc::clone(&writes));
+        fake.list_versions_error = Some(|| ProviderError::PermissionDenied("listing".into()));
+        let denied_backend = TauriRemoteBackend::Temp {
+            provider: tokio::sync::Mutex::new(
+                Box::new(fake) as Box<dyn crate::providers::StorageProvider>
+            ),
+        };
+        let err = denied_backend
+            .delete_version("/f.bin", "v1")
+            .await
+            .unwrap_err();
+        assert!(err.contains("cannot tell the live version"), "{err}");
+        assert!(writes.lock().unwrap().is_empty(), "{:?}", writes.lock());
+
+        let mut fake_live = ProbeFake::new();
+        fake_live.shared_writes = Some(Arc::clone(&writes));
+        fake_live.versions = vec![
+            FileVersion {
+                id: "v2".into(),
+                modified: None,
+                size: 10,
+                modified_by: None,
+                deleted: false,
+            },
+            FileVersion {
+                id: "v1".into(),
+                modified: None,
+                size: 5,
+                modified_by: None,
+                deleted: false,
+            },
+        ];
+        let live_backend = TauriRemoteBackend::Temp {
+            provider: tokio::sync::Mutex::new(
+                Box::new(fake_live) as Box<dyn crate::providers::StorageProvider>
+            ),
+        };
+        let err = live_backend
+            .delete_version("/f.bin", "v2")
+            .await
+            .unwrap_err();
+        assert!(err.contains("current version"), "{err}");
+        assert!(writes.lock().unwrap().is_empty(), "{:?}", writes.lock());
+
+        live_backend.delete_version("/f.bin", "v1").await.unwrap();
+        assert_eq!(*writes.lock().unwrap(), ["delete_version /f.bin v1"]);
     }
 }

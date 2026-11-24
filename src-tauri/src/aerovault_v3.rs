@@ -1449,10 +1449,29 @@ fn repack_vault_blocking(
 /// Basename of a vault path, for activity logging. We never log the full path so the
 /// user's home directory is not written into the on-disk log file.
 pub(crate) fn vault_basename(path: &str) -> String {
+    if path.is_empty() {
+        return String::new();
+    }
     std::path::Path::new(path)
         .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_else(|| path.to_string())
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "<vault>".to_string())
+}
+
+/// The text of a vault error as it may be written to the Debug log. The
+/// full path is replaced by its basename. The password is not part of these
+/// strings; the path is, when Change Mode refuses a symlink or a non-file.
+pub(crate) fn vault_error_for_log(err: &str, vault_path: &str) -> String {
+    let label = vault_basename(vault_path);
+    let mut shown = err.to_string();
+    if !vault_path.is_empty() {
+        shown = shown.replace(vault_path, &label);
+        if let Ok(lock_path) = lock_path_for(std::path::Path::new(vault_path)) {
+            let lock_path = lock_path.to_string_lossy().into_owned();
+            shown = shown.replace(&lock_path, &vault_basename(&lock_path));
+        }
+    }
+    shown
 }
 
 /// Change the "mode" of an existing vault (Ehud #2): re-pack it under a new security
@@ -1473,6 +1492,7 @@ pub async fn vault_v3_change_mode(
     // Activity logging (surfaces in the Debug panel "Logs" tab via tauri-plugin-log).
     // Log the basename only, never the full path, to avoid home-dir leakage on disk.
     let vault_label = vault_basename(&vault_path);
+    let vault_path_for_log = vault_path.clone();
     let level_label = target_security_level
         .clone()
         .unwrap_or_else(|| "(unchanged)".to_string());
@@ -1490,7 +1510,10 @@ pub async fn vault_v3_change_mode(
     .map_err(|e| format!("vault change-mode task failed: {e}"))?;
     match &result {
         Ok(_) => log::info!("vault change-mode: '{vault_label}' done"),
-        Err(e) => log::error!("vault change-mode: '{vault_label}' failed: {e}"),
+        Err(e) => {
+            let shown = vault_error_for_log(e, &vault_path_for_log);
+            log::error!("vault change-mode: '{vault_label}' failed: {shown}");
+        }
     }
     result
 }
@@ -2171,6 +2194,42 @@ mod tests {
     // app-side and is exercised here is only the handler-layer glue: path
     // normalization, the compression-profile mapping, the OOM pre-flight helper
     // and the per-vault write lock.
+
+    #[test]
+    fn a_change_mode_log_keeps_the_vault_basename_only() {
+        let path = "/home/ada/secrets/vault.av3";
+        let shown = vault_error_for_log(
+            &format!("{path} is a symbolic link; use the target path"),
+            path,
+        );
+        assert!(!shown.contains("/home/ada"), "{shown}");
+        assert!(shown.contains("vault.av3"), "{shown}");
+        assert_eq!(
+            vault_error_for_log("AES-KW unwrap failed", path),
+            "AES-KW unwrap failed"
+        );
+        assert_eq!(vault_error_for_log(path, ""), path);
+    }
+
+    #[test]
+    fn a_change_mode_log_redacts_the_derived_lock_path() {
+        let path = "/home/ada/secrets/vault.av3";
+        let lock_path = lock_path_for(std::path::Path::new(path)).unwrap();
+        let err = format!("AeroVault v3 write lock is busy: {}", lock_path.display());
+        let shown = vault_error_for_log(&err, path);
+        assert!(!shown.contains("/home/ada"), "{shown}");
+        assert!(shown.contains(".vault.av3.lock"), "{shown}");
+    }
+
+    #[test]
+    fn a_basename_of_a_parent_step_does_not_leak_the_home() {
+        let path = "/home/ada/secrets/..";
+        assert_eq!(vault_basename(path), "<vault>");
+        let shown = vault_error_for_log(&format!("Change Mode refused: {path}"), path);
+        assert!(!shown.contains("/home/ada"), "{shown}");
+        assert!(shown.contains("<vault>"), "{shown}");
+        assert_eq!(vault_basename(""), "");
+    }
 
     #[test]
     fn a_large_add_reports_progress_while_the_percentage_stands_still() {

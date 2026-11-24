@@ -390,6 +390,15 @@ impl FtpProvider {
         })
     }
 
+    /// A relative start folder whose `\` isolates `..`. A known POSIX login
+    /// folder (an absolute `PWD`) keeps `\` as a name character. An unknown
+    /// or Windows login folder stays fail-closed.
+    fn relative_backslash_parent_is_refused(&self, target: &str) -> bool {
+        self.login_folder.is_none()
+            && !target.starts_with('/')
+            && crate::util::path_location::backslash_parent_step(target)
+    }
+
     /// Connection spec captured at `connect()` (`None` until connected, or
     /// until set by `clone_for_transfer()` on a pool worker). Mirrors
     /// `SftpProvider::connection_spec()`.
@@ -2197,7 +2206,25 @@ impl StorageProvider for FtpProvider {
         // non-"/" `initial_path` explicitly.
         if let Some(ref initial_path) = self.config.initial_path {
             if !initial_path.is_empty() && initial_path != "/" {
-                if let Some(target) = self.place_initial_path(initial_path) {
+                let placed = self.place_initial_path(initial_path);
+                // A forward-slash `..` is a profile root: the server resolves
+                // it (`docs/../shared`) and the session records that folder.
+                // A `..` isolated by `\` is a parent step only in a relative
+                // `CWD`. That is the argument sent when the login folder is
+                // not an absolute `/` path, and there `\` is a separator. A
+                // path that already starts with `/` keeps `\` as a name.
+                // A known POSIX login folder does too, including a relative
+                // name. Only an unknown or Windows login folder refuses it.
+                if placed
+                    .as_deref()
+                    .is_some_and(|target| self.relative_backslash_parent_is_refused(target))
+                {
+                    return Err(ProviderError::InvalidPath(
+                        "the start folder contains a '..' step (a backslash counts as a separator)"
+                            .to_string(),
+                    ));
+                }
+                if let Some(target) = placed {
                     stream
                         .cwd(&target)
                         .await
@@ -9733,6 +9760,32 @@ mod rename_contract_tests {
         assert_eq!(placed(&provider, "~/docs").as_deref(), Some("docs"));
         assert_eq!(placed(&provider, "~").as_deref(), None);
         assert_eq!(placed(&provider, "docs").as_deref(), Some("docs"));
+    }
+
+    /// A known POSIX login folder keeps `foo\..\outside` as a relative name.
+    /// Without that folder the same name is a parent step and is refused.
+    #[test]
+    fn a_known_posix_login_folder_keeps_a_literal_backslash_name() {
+        let mut provider = FtpProvider::new(FtpConfig {
+            host: "127.0.0.1".to_string(),
+            port: 21,
+            username: "u".to_string(),
+            password: "p".to_string().into(),
+            tls_mode: FtpTlsMode::None,
+            verify_cert: false,
+            initial_path: None,
+            trust_pasv_address: false,
+        });
+        provider.login_folder = Some("/home/u".to_string());
+        assert!(!provider.relative_backslash_parent_is_refused(r"foo\..\outside"));
+        assert_eq!(
+            provider.place_initial_path(r"foo\..\outside").as_deref(),
+            Some(r"foo\..\outside")
+        );
+        provider.login_folder = None;
+        assert!(provider.relative_backslash_parent_is_refused(r"foo\..\outside"));
+        assert!(!provider.relative_backslash_parent_is_refused(r"/foo\..\outside"));
+        assert!(!provider.relative_backslash_parent_is_refused("docs/../shared"));
     }
 
     #[tokio::test]
