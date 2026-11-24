@@ -4455,7 +4455,13 @@
             "modeNonIdentical": "Neidentic",
             "groupsCount": "Grupuri: {count}",
             "duplicateFilesCount": "Fișiere duplicate: {count}",
-            "copiesCount": "{count} buc."
+            "copiesCount": "{count} buc.",
+            "refreshTooltip": "Verifică dacă duplicatele detectate mai există și elimină fișierele lipsă fără a rescana",
+            "refreshRemoved": "{count} fișiere lipsă eliminate din listă",
+            "refreshUpToDate": "Toate fișierele există încă",
+            "refreshChanged": "{count} fișiere modificate eliminate din listă",
+            "refreshUnverified": "{count} nu au putut fi verificate",
+            "refreshFailed": "Reîmprospătarea a eșuat: {error}"
         },
         "diskUsage": {
             "title": "Utilizarea discului",
@@ -7189,7 +7195,10 @@
         },
         "openRequest": {
             "folderBusyTitle": "Folderul se încarcă încă",
-            "folderBusy": "Fișierul deschis nu a fost afișat: un alt folder era încă în curs de încărcare când a fost solicitat folderul {folder}. Deschideți-l din nou."
+            "folderBusy": "Fișierul deschis nu a fost afișat: un alt folder era încă în curs de încărcare când a fost solicitat folderul {folder}. Deschideți-l din nou.",
+            "signInNeedsProfileTitle": "{provider} necesită autentificarea salvată",
+            "signInNeedsProfile": "{provider} se autentifică prin propria autorizare în browser, pe care un link nu o poate transporta. Adăugați și autorizați contul în Serverele mele, apoi deschideți {scheme}://<nume profil>/folder/.",
+            "signInNameTheProfile": "Sunt salvate mai multe conturi {provider}. Indicați-l pe cel de deschis: {scheme}://<nume profil>/folder/."
         }
     }
 }

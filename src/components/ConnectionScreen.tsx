@@ -73,6 +73,7 @@ import { FILEN_BRIDGE_MAX_LENGTH, FILEN_BRIDGE_REJECTED_CHARACTERS, filenBridgeC
 import { isFilenDesktopBridge as isFilenDesktopBridgeProvider } from '../utils/filenDesktopBridge';
 import { isProtonNative, useProtonNativeAvailable } from '../utils/protonNative';
 import { useProtonSignIn } from '../hooks/useProtonSignIn';
+import { protocolDisplayName } from '../utils/protocolDisplayName';
 
 const PROTOCOL_COLORS: Record<string, string> = {
     ftp: 'from-blue-500 to-cyan-400',
@@ -3784,21 +3785,6 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             pixelunion: { name: 'PixelUnion', desc: t('protocol.discoverPixelUnion') },
             immich: { name: 'Immich', desc: t('protocol.discoverImmich') },
         };
-        // #369: single-preset OAuth/API providers launched by protocol
-        // alone (no providerId) used to fall back to protocol.toUpperCase(),
-        // rendering the header as DROPBOX / ONEDRIVE / BOX and so on. Map
-        // the protocol to its properly cased brand name so the header reads
-        // consistently (MEGA stays all-caps because that is its real style).
-        const PROTOCOL_FALLBACK_NAMES: Record<string, string> = {
-            dropbox: 'Dropbox', onedrive: 'OneDrive', googledrive: 'Google Drive',
-            googlephotos: 'Google Photos', box: 'Box', pcloud: 'pCloud Drive',
-            jottacloud: 'Jottacloud', filen: 'Filen', internxt: 'Internxt', proton: 'Proton Drive',
-            kdrive: 'kDrive', zohoworkdrive: 'Zoho WorkDrive', yandexdisk: 'Yandex Disk',
-            drime: 'Drime', mega: 'MEGA', backblaze: 'Backblaze B2', fourshared: '4shared',
-            imagekit: 'ImageKit', uploadcare: 'Uploadcare', cloudinary: 'Cloudinary', twake: 'Twake Drive',
-            filelu: 'FileLu', github: 'GitHub', gitlab: 'GitLab',
-            mtp: t('protocol.mtpName'),
-        };
         const pid = connectionParams.providerId || '';
         // When the active config belongs to a mode
         // group (Koofr/OpenDrive/...), the header
@@ -3815,7 +3801,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         const logoId = modeHeader?.providerId || selectedProviderId || pid || protocol || '';
         const LogoComponent = PROVIDER_LOGOS[logoId];
         const display = PROTOCOL_DISPLAY[pid] || PROTOCOL_DISPLAY[protocol || ''];
-        const providerName = modeHeader?.name || headerProv?.name || display?.name || PROTOCOL_FALLBACK_NAMES[protocol || ''] || protocol?.toUpperCase() || '';
+        const providerName = modeHeader?.name || headerProv?.name || display?.name || (protocol === 'mtp' ? t('protocol.mtpName') : protocolDisplayName(protocol || '')) || protocol?.toUpperCase() || '';
         // Description fallback: registry > PROTOCOL_DISPLAY > i18n protocol.<protocol>Desc
         const tryProtocolDesc = (key: string): string | undefined => {
             if (!key) return undefined;

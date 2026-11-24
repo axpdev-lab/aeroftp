@@ -4455,7 +4455,13 @@
             "modeNonIdentical": "Özdeş olmayan",
             "groupsCount": "{count} grup",
             "duplicateFilesCount": "{count} yinelenen dosya",
-            "copiesCount": "{count} kopya"
+            "copiesCount": "{count} kopya",
+            "refreshTooltip": "Tespit edilen yinelenen dosyaların hâlâ var olup olmadığını kontrol edin ve yeniden taramadan eksik dosyaları kaldırın",
+            "refreshRemoved": "{count} eksik dosya listeden çıkarıldı",
+            "refreshUpToDate": "Tüm dosyalar hâlâ mevcut",
+            "refreshChanged": "Değişen {count} dosya listeden çıkarıldı",
+            "refreshUnverified": "{count} tanesi denetlenemedi",
+            "refreshFailed": "Yenileme başarısız: {error}"
         },
         "diskUsage": {
             "title": "Disk Kullanımı",
@@ -7189,7 +7195,10 @@
         },
         "openRequest": {
             "folderBusyTitle": "Klasör hâlâ yükleniyor",
-            "folderBusy": "Açtığınız dosya gösterilmedi: {folder} istendiğinde başka bir klasör hâlâ yükleniyordu. Lütfen dosyayı yeniden açın."
+            "folderBusy": "Açtığınız dosya gösterilmedi: {folder} istendiğinde başka bir klasör hâlâ yükleniyordu. Lütfen dosyayı yeniden açın.",
+            "signInNeedsProfileTitle": "{provider} kayıtlı oturum açma bilgisine ihtiyaç duyuyor",
+            "signInNeedsProfile": "{provider}, tarayıcıdaki kendi yetkilendirmesiyle oturum açar ve bir bağlantı bunu taşıyamaz. Hesabı Sunucularım bölümünde ekleyip yetkilendirin, ardından {scheme}://<profil adı>/klasör/ adresini açın.",
+            "signInNameTheProfile": "Birden fazla {provider} hesabı kayıtlı. Açılacak olanı belirtin: {scheme}://<profil adı>/klasör/."
         }
     }
 }

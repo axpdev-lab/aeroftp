@@ -13,6 +13,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use crate::provider_commands::ProviderState;
+use crate::util::scratch::{self, REMOTE_VAULT_DIR_PREFIX, REMOTE_VAULT_DIR_RANDOM_LEN};
 use std::path::{Path, PathBuf};
 use tauri::State;
 
@@ -31,16 +32,67 @@ fn is_managed_temp_vault_filename(file_name: &str) -> bool {
     file_name.starts_with("aerovault_remote_") && file_name.ends_with(".aerovault")
 }
 
-/// Pick the on-disk staging path for a remote vault download: a unique file
-/// in the scratch folder (never the temporary folder, which is often a
-/// RAM-sized tmpfs), with room for `size` bytes checked first. Extracted for
-/// direct unit testing of the location gate.
-fn remote_vault_staging_path(size: u64) -> Result<PathBuf, String> {
-    let dir = crate::util::scratch::staging_dir(size)?;
-    Ok(dir.join(format!(
-        "aerovault_remote_{}.aerovault",
-        uuid::Uuid::new_v4()
-    )))
+const STAGED_VAULT_FILENAME: &str = "vault.aerovault";
+
+/// The private staging directory of a remote vault download, in the on-disk
+/// scratch folder (never the temporary folder, which is often a RAM-sized
+/// tmpfs), with room for `size` bytes checked first.
+fn new_remote_vault_staging(size: u64) -> Result<tempfile::TempDir, String> {
+    remote_vault_staging_dir(&scratch::staging_dir(size)?)
+}
+
+/// Keep the downloaded vault and its write/recovery sidecars in a private
+/// staging directory. The caller hands it to the GUI only after downloading.
+fn remote_vault_staging_dir(root: &Path) -> Result<tempfile::TempDir, String> {
+    let mut builder = tempfile::Builder::new();
+    builder
+        .prefix(REMOTE_VAULT_DIR_PREFIX)
+        .rand_bytes(REMOTE_VAULT_DIR_RANDOM_LEN);
+    // Owner-only from creation: the scratch root can be a shared folder
+    // (`<temp>/aeroftp-scratch`), and the vault's locks and journals live here.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        builder.permissions(std::fs::Permissions::from_mode(0o700));
+    }
+    builder
+        .tempdir_in(root)
+        .map_err(|e| format!("Create remote vault staging directory: {e}"))
+}
+
+/// Validate the private directory of a current remote vault. Legacy flat
+/// downloads retain their file-only cleanup and upload path.
+fn managed_session_dir(path: &Path, roots: &[PathBuf]) -> Result<Option<PathBuf>, String> {
+    let name = path.file_name().and_then(|n| n.to_str());
+    if name.is_some_and(is_managed_temp_vault_filename) {
+        return Ok(None);
+    }
+    let Some(parent) = path.parent().filter(|parent| {
+        name == Some(STAGED_VAULT_FILENAME)
+            && parent
+                .file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(scratch::is_remote_vault_dir_name)
+    }) else {
+        return Err("Not an AeroFTP-managed temporary vault file".into());
+    };
+
+    match std::fs::symlink_metadata(parent) {
+        Ok(meta) if meta.is_dir() && !meta.file_type().is_symlink() => {}
+        Ok(_) => return Err("Remote vault staging path is not a private directory".into()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(format!("Read remote vault staging directory: {e}")),
+    }
+    let parent = parent
+        .canonicalize()
+        .map_err(|e| format!("Resolve remote vault staging directory: {e}"))?;
+    if !parent
+        .parent()
+        .is_some_and(|p| roots.iter().any(|root| p == root))
+    {
+        return Err("Local vault file must be in an AeroFTP-managed temporary folder".into());
+    }
+    Ok(Some(parent))
 }
 
 /// Canonical roots an AeroFTP-managed temp vault file may live in: the OS
@@ -87,7 +139,8 @@ pub async fn vault_v2_download_remote(
         .ok_or("No active connection. Connect to a server first.")?;
 
     let size = provider.size(&remote_path).await.unwrap_or(0);
-    let local_path = remote_vault_staging_path(size)?;
+    let staging = new_remote_vault_staging(size)?;
+    let local_path = staging.path().join(STAGED_VAULT_FILENAME);
 
     let local_str = local_path
         .to_str()
@@ -110,11 +163,11 @@ pub async fn vault_v2_download_remote(
     let metadata = std::fs::metadata(&local_path)
         .map_err(|e| format!("Downloaded file not accessible: {}", e))?;
     if metadata.len() == 0 {
-        let _ = std::fs::remove_file(&local_path);
         return Err("Downloaded file is empty".into());
     }
 
-    Ok(local_path.to_string_lossy().to_string())
+    let _ = staging.keep();
+    Ok(local_path.to_string_lossy().into_owned())
 }
 
 /// Upload a local vault file back to the remote server.
@@ -139,7 +192,8 @@ pub async fn vault_v2_upload_remote(
     // renderer cannot exfiltrate an arbitrary readable *.aerovault (e.g. a user
     // vault outside temp) to the connected remote (CLAUDE-AV-021).
     let path = PathBuf::from(&local_path);
-    validate_managed_temp_vault_path(&path)?;
+    let path = validate_managed_temp_vault_path(&path, &managed_temp_vault_roots())?;
+    let local_path = path.to_str().ok_or("Temp path contains invalid UTF-8")?;
 
     let mut provider_guard = state.provider.lock().await;
     let provider = provider_guard
@@ -147,7 +201,7 @@ pub async fn vault_v2_upload_remote(
         .ok_or("No active connection. Connect to a server first.")?;
 
     provider
-        .upload(&local_path, &remote_path, None)
+        .upload(local_path, &remote_path, None)
         .await
         .map_err(|e| format!("Upload failed: {}", e))?;
 
@@ -158,14 +212,8 @@ pub async fn vault_v2_upload_remote(
 /// vault file confined to the OS temp directory or the on-disk scratch folder.
 /// Shared by the upload and cleanup commands so both enforce the same
 /// confinement (CLAUDE-AV-021).
-fn validate_managed_temp_vault_path(path: &Path) -> Result<PathBuf, String> {
-    let file_name = path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .ok_or("Invalid vault file name")?;
-    if !is_managed_temp_vault_filename(file_name) {
-        return Err("Not an AeroFTP-managed temporary vault file".into());
-    }
+fn validate_managed_temp_vault_path(path: &Path, roots: &[PathBuf]) -> Result<PathBuf, String> {
+    managed_session_dir(path, roots)?;
 
     let meta =
         std::fs::symlink_metadata(path).map_err(|_| "Local vault file not found".to_string())?;
@@ -179,10 +227,7 @@ fn validate_managed_temp_vault_path(path: &Path) -> Result<PathBuf, String> {
     let canonical_path = path
         .canonicalize()
         .map_err(|e| format!("Failed to resolve vault path: {}", e))?;
-    if !managed_temp_vault_roots()
-        .iter()
-        .any(|root| canonical_path.starts_with(root))
-    {
+    if !roots.iter().any(|root| canonical_path.starts_with(root)) {
         return Err("Local vault file must be in an AeroFTP-managed temporary folder".into());
     }
 
@@ -201,28 +246,43 @@ fn validate_managed_temp_vault_path(path: &Path) -> Result<PathBuf, String> {
 /// zero-fill on the blocking pool; the validation order is untouched.
 #[tauri::command]
 pub async fn vault_v2_cleanup_temp(local_path: String) -> Result<(), String> {
-    tokio::task::spawn_blocking(move || vault_v2_cleanup_temp_blocking(local_path))
-        .await
-        .unwrap_or_else(|err| Err(format!("Temp vault cleanup task failed: {err}")))
+    tokio::task::spawn_blocking(move || {
+        vault_v2_cleanup_temp_blocking(&local_path, &managed_temp_vault_roots())
+    })
+    .await
+    .unwrap_or_else(|err| Err(format!("Temp vault cleanup task failed: {err}")))
 }
 
-fn vault_v2_cleanup_temp_blocking(local_path: String) -> Result<(), String> {
-    validate_no_null_bytes(&local_path)?;
+fn vault_v2_cleanup_temp_blocking(local_path: &str, roots: &[PathBuf]) -> Result<(), String> {
+    validate_no_null_bytes(local_path)?;
 
-    let path = PathBuf::from(&local_path);
+    let path = Path::new(local_path);
+    let session_dir = managed_session_dir(path, roots)?;
+    let remove_staging = || {
+        if let Some(dir) = &session_dir {
+            std::fs::remove_dir_all(dir)
+        } else {
+            std::fs::remove_file(path)
+        }
+        .or_else(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                Ok(())
+            } else {
+                Err(e)
+            }
+        })
+        .map_err(|e| format!("Failed to remove temp vault staging: {e}"))
+    };
 
-    // Validate filename pattern: only clean up files we created
-    let file_name = path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .ok_or("Invalid filename")?;
-    if !is_managed_temp_vault_filename(file_name) {
-        return Err("Can only clean up AeroFTP temporary vault files".into());
-    }
-
-    let mut file = match open_temp_file_no_follow(&path) {
+    let mut file = match open_temp_file_no_follow(path) {
         Ok(file) => file,
-        Err(e) if e == "TEMP_NOT_FOUND" => return Ok(()),
+        Err(e) if e == "TEMP_NOT_FOUND" => {
+            return if session_dir.is_some() {
+                remove_staging()
+            } else {
+                Ok(())
+            };
+        }
         Err(e) => return Err(e),
     };
     let metadata = file
@@ -232,16 +292,8 @@ fn vault_v2_cleanup_temp_blocking(local_path: String) -> Result<(), String> {
         return Err("Can only clean up regular temp files".into());
     }
 
-    let canonical_path = path
-        .canonicalize()
-        .map_err(|e| format!("Path resolution failed: {}", e))?;
-    if !managed_temp_vault_roots()
-        .iter()
-        .any(|root| canonical_path.starts_with(root))
-    {
-        return Err("Can only clean up AeroFTP temporary vault files".into());
-    }
-    ensure_same_file(&file, &path)?;
+    validate_managed_temp_vault_path(path, roots)?;
+    ensure_same_file(&file, path)?;
 
     // Zero-fill before delete for security (best-effort on modern storage)
     let size = metadata.len();
@@ -262,17 +314,16 @@ fn vault_v2_cleanup_temp_blocking(local_path: String) -> Result<(), String> {
         let _ = file.sync_all();
 
         if write_failed {
-            ensure_same_file(&file, &path)?;
-            let _ = std::fs::remove_file(&path);
+            ensure_same_file(&file, path)?;
+            drop(file);
+            remove_staging()?;
             return Err("Secure zero-fill incomplete; file deleted without full overwrite".into());
         }
     }
 
-    ensure_same_file(&file, &path)?;
+    ensure_same_file(&file, path)?;
     drop(file);
-    std::fs::remove_file(&path).map_err(|e| format!("Failed to remove temp file: {}", e))?;
-
-    Ok(())
+    remove_staging()
 }
 
 fn open_temp_file_no_follow(path: &Path) -> Result<std::fs::File, String> {
@@ -360,45 +411,138 @@ mod tests {
         assert!(!is_managed_temp_vault_filename(".aerovault"));
     }
 
-    /// The download staging path lives in the on-disk scratch folder, never in
-    /// the temporary folder (on many Linux systems a tmpfs sized from RAM, so
-    /// a large vault staged there eats RAM and can fail).
+    /// The download staging directory lives in the on-disk scratch folder,
+    /// never in the temporary folder (on many Linux systems a tmpfs sized from
+    /// RAM, so a large vault staged there eats RAM and can fail), and the vault
+    /// staged in it passes the gate the upload-back and cleanup commands share.
     #[test]
     fn a_remote_vault_is_staged_on_disk_not_in_the_temporary_folder() {
-        let path = remote_vault_staging_path(0).unwrap();
+        let staging = new_remote_vault_staging(0).unwrap();
+        let dir = staging.path();
         if dirs::cache_dir().is_some() {
             assert!(
-                !path.starts_with(std::env::temp_dir()),
+                !dir.starts_with(std::env::temp_dir()),
                 "{} must not be in the temporary folder",
-                path.display()
+                dir.display()
             );
             assert!(
-                path.ancestors()
+                dir.ancestors()
                     .any(|a| a.file_name() == Some(std::ffi::OsStr::new("scratch"))),
                 "{} must live under a scratch folder",
-                path.display()
+                dir.display()
             );
         } else {
             // The documented fallback with no cache folder: scratch is
             // temp_dir()/aeroftp-scratch.
             assert!(
-                path.starts_with(std::env::temp_dir().join("aeroftp-scratch")),
+                dir.starts_with(std::env::temp_dir().join("aeroftp-scratch")),
                 "{} must live under the scratch fallback",
-                path.display()
+                dir.display()
             );
         }
-        assert!(is_managed_temp_vault_filename(
-            path.file_name().unwrap().to_str().unwrap()
-        ));
+        let path = dir.join(STAGED_VAULT_FILENAME);
+        std::fs::write(&path, b"vault").unwrap();
+        assert!(validate_managed_temp_vault_path(&path, &managed_temp_vault_roots()).is_ok());
     }
 
-    /// A vault staged in the scratch folder still passes the confinement gate
-    /// the upload-back and cleanup commands share.
+    #[cfg(unix)]
     #[test]
-    fn a_vault_staged_in_the_scratch_folder_passes_the_managed_path_gate() {
-        let path = remote_vault_staging_path(0).unwrap();
-        std::fs::write(&path, b"vault").unwrap();
-        assert!(validate_managed_temp_vault_path(&path).is_ok());
-        std::fs::remove_file(&path).unwrap();
+    fn remote_vault_session_directory_is_private_to_its_owner() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = tempfile::tempdir().unwrap();
+        std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o755)).unwrap();
+        let staging = remote_vault_staging_dir(root.path()).unwrap();
+        let mode = std::fs::metadata(staging.path())
+            .unwrap()
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o077, 0, "session directory mode {mode:o}");
+        assert_eq!(mode & 0o700, 0o700, "session directory mode {mode:o}");
+    }
+
+    #[tokio::test]
+    async fn edited_remote_vault_leaves_no_staging_files_after_close() {
+        let root = tempfile::tempdir().unwrap();
+        let roots = [root.path().canonicalize().unwrap()];
+        let staging = remote_vault_staging_dir(root.path()).unwrap();
+        let path = staging.path().join(STAGED_VAULT_FILENAME);
+        let pw = "fixture-password";
+        aerovault::v3::VaultV3::create(&aerovault::v3::CreateOptionsV3::new(&path, pw)).unwrap();
+        let local_path = path.to_str().unwrap().to_string();
+        crate::aerovault_v3::vault_v3_create_directory(
+            local_path.clone(),
+            pw.to_string(),
+            "edit".to_string(),
+        )
+        .await
+        .unwrap();
+        assert!(staging.path().join("vault.aerovault.aerolock").is_file());
+        assert_eq!(
+            validate_managed_temp_vault_path(&path, &roots).unwrap(),
+            path.canonicalize().unwrap()
+        );
+
+        let _ = staging.keep();
+        vault_v2_cleanup_temp_blocking(&local_path, &roots).unwrap();
+        assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 0);
+        vault_v2_cleanup_temp_blocking(&local_path, &roots).unwrap();
+    }
+
+    /// A session directory the cleanup must refuse, with its files intact.
+    fn assert_session_cleanup_refused(session: &Path, roots: &[PathBuf]) {
+        let names = [
+            STAGED_VAULT_FILENAME,
+            "vault.aerovault.aerolock",
+            "vault.aerovault.aerocorrect",
+            "sentinel.txt",
+        ];
+        for name in names {
+            std::fs::write(session.join(name), name.as_bytes()).unwrap();
+        }
+        let local_path = session.join(STAGED_VAULT_FILENAME);
+        vault_v2_cleanup_temp_blocking(local_path.to_str().unwrap(), roots).unwrap_err();
+        for name in names {
+            assert_eq!(
+                std::fs::read(session.join(name)).unwrap(),
+                name.as_bytes(),
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn cleanup_refuses_a_session_directory_outside_the_managed_roots() {
+        let root = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let roots = [root.path().canonicalize().unwrap()];
+        let session = outside.path().join("aerovault_remote_session_0123456789ab");
+        std::fs::create_dir(&session).unwrap();
+        assert_session_cleanup_refused(&session, &roots);
+
+        // With the vault already gone, the cleanup would remove the directory
+        // as a whole: the root check is then the only guard.
+        let emptied = outside.path().join("aerovault_remote_session_ba9876543210");
+        std::fs::create_dir(&emptied).unwrap();
+        std::fs::write(emptied.join("sentinel.txt"), b"kept").unwrap();
+        let gone = emptied.join(STAGED_VAULT_FILENAME);
+        vault_v2_cleanup_temp_blocking(gone.to_str().unwrap(), &roots).unwrap_err();
+        assert_eq!(
+            std::fs::read(emptied.join("sentinel.txt")).unwrap(),
+            b"kept"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cleanup_refuses_a_session_directory_that_is_a_link() {
+        let root = tempfile::tempdir().unwrap();
+        let roots = [root.path().canonicalize().unwrap()];
+        // The target passes the root check, so only the link check refuses.
+        let target = root.path().join("elsewhere");
+        std::fs::create_dir(&target).unwrap();
+        let link = root.path().join("aerovault_remote_session_0123456789ab");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert_session_cleanup_refused(&link, &roots);
+        assert!(link.symlink_metadata().unwrap().file_type().is_symlink());
     }
 }

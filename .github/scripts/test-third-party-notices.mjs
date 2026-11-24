@@ -5258,7 +5258,7 @@ test('hasCopyrightHolderInFiles: distinguishes true holders from CC0-1.0 non-hol
   // Also verify in THIRD-PARTY-NOTICES.md that the 5 CC0 crates have "No copyright notice is shipped in the package"
   const noticesFile = path.join(ROOT, 'THIRD-PARTY-NOTICES.md');
   const noticesContent = fs.readFileSync(noticesFile, 'utf8');
-  for (const crate of ['async_io_stream@0.3.3', 'ws_stream_wasm@0.7.5', 'dunce@1.0.5', 'notify@8.2.1', 'whisper-rs@0.16.0']) {
+  for (const crate of ['async_io_stream@0.3.3', 'ws_stream_wasm@0.7.5', 'dunce@1.0.5', 'notify@8.2.2', 'whisper-rs@0.16.0']) {
     assert.match(
       noticesContent,
       new RegExp(`- \`${crate.replace('+', '\\+')}\`[^\n]*\n\\s+- No copyright notice is shipped in the package`)

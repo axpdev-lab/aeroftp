@@ -4455,7 +4455,13 @@
             "modeNonIdentical": "Neidentisks",
             "groupsCount": "Grupas: {count}",
             "duplicateFilesCount": "Dublēti faili: {count}",
-            "copiesCount": "{count} gab."
+            "copiesCount": "{count} gab.",
+            "refreshTooltip": "Pārbaudīt, vai atrastie dublikāti joprojām pastāv, un noņemt trūkstošos failus bez atkārtotas skenēšanas",
+            "refreshRemoved": "No saraksta izņemti {count} trūkstoši faili",
+            "refreshUpToDate": "Visi faili joprojām pastāv",
+            "refreshChanged": "{count} mainīti faili izņemti no saraksta",
+            "refreshUnverified": "{count} nevarēja pārbaudīt",
+            "refreshFailed": "Atsvaidzināšana neizdevās: {error}"
         },
         "diskUsage": {
             "title": "Diska izmantošana",
@@ -7189,7 +7195,10 @@
         },
         "openRequest": {
             "folderBusyTitle": "Mape vēl tiek ielādēta",
-            "folderBusy": "Atvērtais fails netika parādīts: kad tika pieprasīta mape {folder}, cita mape vēl tika ielādēta. Atveriet failu vēlreiz."
+            "folderBusy": "Atvērtais fails netika parādīts: kad tika pieprasīta mape {folder}, cita mape vēl tika ielādēta. Atveriet failu vēlreiz.",
+            "signInNeedsProfileTitle": "{provider} ir nepieciešama saglabātā pierakstīšanās",
+            "signInNeedsProfile": "{provider} pierakstās ar savu autorizāciju pārlūkā, ko saite nevar pārnest. Pievienojiet un autorizējiet kontu sadaļā Mani serveri, pēc tam atveriet {scheme}://<profila nosaukums>/mape/.",
+            "signInNameTheProfile": "Saglabāti vairāki {provider} konti. Norādiet, kuru atvērt: {scheme}://<profila nosaukums>/mape/."
         }
     }
 }

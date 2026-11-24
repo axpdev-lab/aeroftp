@@ -4455,7 +4455,13 @@
             "modeNonIdentical": "Neidentično",
             "groupsCount": "Grupe: {count}",
             "duplicateFilesCount": "Duplicirane datoteke: {count}",
-            "copiesCount": "{count} kom."
+            "copiesCount": "{count} kom.",
+            "refreshTooltip": "Provjeri postoje li pronađeni duplikati i dalje te ukloni datoteke koje nedostaju bez ponovnog skeniranja",
+            "refreshRemoved": "{count} nedostajućih datoteka uklonjeno s popisa",
+            "refreshUpToDate": "Sve datoteke i dalje postoje",
+            "refreshChanged": "{count} promijenjenih datoteka uklonjeno s popisa",
+            "refreshUnverified": "{count} nije bilo moguće provjeriti",
+            "refreshFailed": "Osvježavanje nije uspjelo: {error}"
         },
         "diskUsage": {
             "title": "Korištenje diska",
@@ -7189,7 +7195,10 @@
         },
         "openRequest": {
             "folderBusyTitle": "Mapa se još učitava",
-            "folderBusy": "Datoteka koju ste otvorili nije prikazana: druga se mapa još učitavala kada je zatražena mapa {folder}. Otvorite je ponovno."
+            "folderBusy": "Datoteka koju ste otvorili nije prikazana: druga se mapa još učitavala kada je zatražena mapa {folder}. Otvorite je ponovno.",
+            "signInNeedsProfileTitle": "{provider} treba svoju spremljenu prijavu",
+            "signInNeedsProfile": "{provider} se prijavljuje vlastitom autorizacijom u pregledniku, koju poveznica ne može prenijeti. Dodajte i autorizirajte račun u Moji poslužitelji, zatim otvorite {scheme}://<naziv profila>/mapa/.",
+            "signInNameTheProfile": "Spremljeno je više računa za {provider}. Navedite koji otvoriti: {scheme}://<naziv profila>/mapa/."
         }
     }
 }

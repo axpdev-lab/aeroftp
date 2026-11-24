@@ -12,29 +12,64 @@ AeroFTP CLI is a production command-line client for multi-protocol file transfer
 
 ### Direct URL Protocols
 
-| Protocol | URL Scheme | Auth Method |
-|----------|-----------|-------------|
-| FTP | `ftp://` | Password |
-| FTPS | `ftps://` | Password + TLS |
-| SFTP | `sftp://` | Password / SSH Key |
-| SCP | `scp://` | Password / SSH Key |
-| WebDAV | `webdav://` / `webdavs://` | Password |
-| S3 | `s3://` | Access Key + Secret |
-| MEGA.nz | `mega://` | Password (E2E) |
-| Azure Blob | `azure://` | HMAC / SAS Token |
-| Filen | `filen://` | Password (E2E) |
-| Internxt | `internxt://` | Password (E2E) |
-| Jottacloud | `jottacloud://` | Bearer Token |
-| FileLu | `filelu://` | API Key |
-| Koofr | `koofr://` | OAuth2 Token |
-| OpenDrive | `opendrive://` | Password |
-| GitHub | `github://` | PAT / Device Flow |
-| Yandex Disk | `yandexdisk://` | OAuth2 (via `--profile`) |
+One table of URL schemes serves the CLI and the desktop app: `aeroftp-cli ls <url>` and `aeroftp <url>` (also a link handed to the running app) accept the same schemes and read them the same way, with one difference: a sign-in provider (see below) opens in the CLI only through `--profile <name>`, while the app opens the saved account a link names. A URL never has to carry a secret: each scheme reads it from its environment variable, then `AEROFTP_PASSWORD` (the CLI also takes `--password-stdin` and `--token`). A password written in the URL still works for tools that pass a single argument, and it is masked in every log.
+
+| Protocol | URL form | Secret from the environment |
+|----------|----------|-----------------------------|
+| FTP | `ftp://user@host/path` | `FTP_PASSWORD` |
+| FTP, explicit TLS | `ftpes://user@host/path` | `FTP_PASSWORD` |
+| FTPS, implicit TLS | `ftps://user@host/path` | `FTP_PASSWORD` |
+| SFTP | `sftp://user@host:22/path` (`ssh://` too) | `SFTP_PASSWORD`, or `--key` |
+| SCP | `scp://user@host/path` | `SFTP_PASSWORD`, or `--key` |
+| WebDAV | `webdav://user@host/path` (HTTP), `webdavs://user@host/path` (HTTPS) | `WEBDAV_PASSWORD` |
+| S3 and S3-compatible | `s3://ACCESS_KEY@endpoint/path?bucket=name&region=eu-central-1` (also `endpoint=`, `path_style=true`) | The AWS chain below |
+| Azure Blob | `azure://account@account.blob.core.windows.net/path?container=name` | `AZURE_STORAGE_KEY` |
+| Backblaze B2 | `backblaze://KEY_ID@bucket/path` (`b2://` too) | `B2_APPLICATION_KEY`; key id also from `B2_APPLICATION_KEY_ID` |
+| OpenStack Swift | `swift://user@auth-host/path` | `ST_KEY`, `OS_PASSWORD` |
+| MEGA | `mega://you%40example.com@mega.nz/path` | `AEROFTP_PASSWORD` |
+| Proton Drive | `proton://you%40proton.me@drive.proton.me/path` | `AEROFTP_PASSWORD` |
+| Filen | `filen://you%40example.com@gateway.filen.io/path` | `AEROFTP_PASSWORD` |
+| Internxt | `internxt://you%40example.com@drive.internxt.com/path` | `AEROFTP_PASSWORD` |
+| Jottacloud | `jottacloud://user@jfs.jottacloud.com/path` | `AEROFTP_PASSWORD` |
+| FileLu | `filelu://filelu.com/path` (the API key never goes in the URL) | `AEROFTP_PASSWORD` |
+| Koofr | `koofr://you%40example.com@app.koofr.net/path` | `AEROFTP_PASSWORD` |
+| OpenDrive | `opendrive://user@dev.opendrive.com/path` | `AEROFTP_PASSWORD` |
+| kDrive | `kdrive://DRIVE_ID/path` | `KDRIVE_TOKEN` |
+| Drime | `drime:///path` | `DRIME_TOKEN` |
+| Immich | `immich://host:2283/path` (`?scheme=http` for a plain-HTTP server) | `IMMICH_API_KEY` |
+| ImageKit | `imagekit://IMAGEKIT_ID/path` | `IMAGEKIT_PRIVATE_KEY` |
+| Uploadcare | `uploadcare://PUBLIC_KEY/path` | `UPLOADCARE_SECRET_KEY` |
+| Cloudinary | `cloudinary://API_KEY@cloud_name/path` (Cloudinary's own `CLOUDINARY_URL` form) | `CLOUDINARY_API_SECRET` |
+| GitHub | `github://owner/repo[@branch]` (or `?branch=`; a branch may hold `/`, as in `github://owner/repo@release/2026`) | `AEROFTP_PASSWORD`, or `--token` |
+| GitLab | `gitlab://host[:port]/group/project[@branch]` (or `?branch=`; subgroups allowed; the host is the instance's full name, such as `gitlab.com` or `git.example.com:8443`) | `GITLAB_TOKEN`, or `--token` |
+| Yandex Disk | `yandexdisk:///path` | `--token` (CLI); the app opens a saved profile |
 | Local folder | `/abs/path`, `./rel/path`, `file:///abs/path` | None (a folder of this machine) |
+
+A query string only takes the options listed above for its scheme; any other name, and any secret, is refused before connecting.
+
+### S3 credentials: the AWS chain
+
+An `s3://` URL reads the credentials the AWS tools read, highest first:
+
+| Source | Access key id | Secret key | Session token | Region |
+|--------|---------------|------------|---------------|--------|
+| The CLI flags | | `--token`, `--password-stdin` | | `--region` (below a host that spells its region) |
+| The URL | user part | password part | (never in a URL) | `?region=` |
+| AeroFTP environment | | `AEROFTP_PASSWORD` | | |
+| AWS environment | `AWS_ACCESS_KEY_ID` | `AWS_SECRET_ACCESS_KEY` | `AWS_SESSION_TOKEN` | `AWS_REGION`, `AWS_DEFAULT_REGION` |
+| AWS files | `aws_access_key_id` | `aws_secret_access_key` | `aws_session_token` | `region` |
+
+The files are `~/.aws/credentials` and `~/.aws/config` (or the paths in `AWS_SHARED_CREDENTIALS_FILE` and `AWS_CONFIG_FILE`), section `AWS_PROFILE` or `default`. A secret key and its session token are taken only together with their own access key id, so a key pair of another identity is never mixed in. A URL that names everything never reads `~/.aws`.
+
+The endpoint host selects its provider preset (Wasabi, Cloudflare R2, IBM COS, Backblaze S3, MinIO and the other S3 presets), with the preset's path style. A host that spells its region (`s3.eu-central-2.wasabisys.com`) signs with that region over any other source, `--region` included, as a saved profile of the same endpoint does: SigV4 signs with the region the host serves.
+
+### Sign-in providers
+
+Google Drive (`googledrive://`), Dropbox (`dropbox://`), OneDrive (`onedrive://`), Box (`box://`), pCloud (`pcloud://`), Zoho WorkDrive (`zohoworkdrive://`), 4shared (`fourshared://`) and Twake (`twake://`) sign in through the provider's own browser authorization, which no URL can carry. Authorize the account once in My Servers; then `--profile <name>` opens it in the CLI, and a link such as `dropbox://<profile name>/Photos/` opens it in the app on that folder (`dropbox:///Photos/` when only one Dropbox account is saved; without the final `/` the last name is read as a file). This is a limit of OAuth, not of AeroFTP: the token lives in the vault, never in a link.
 
 ### Profile-Backed Providers
 
-Use `--profile` for providers authorized or configured in the GUI vault. This includes Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho WorkDrive, Yandex Disk, 4shared, and Drime, and it also works for direct-auth providers when you prefer vault-backed credentials.
+Use `--profile` for any saved connection when you prefer vault-backed credentials over a URL.
 
 ---
 
@@ -1141,6 +1176,8 @@ aeroftp-cli correct repair ./report.bin --parity ./report.bin.aerocorrect --expe
 
 Replace the hash placeholder before running the command. A bare `correct repair` checks the sidecar's own content hash for integrity, but that hash does not authenticate a sidecar supplied by an attacker who can replace both objects. Detached recovery data must be refreshed after content changes.
 
+A repair that writes the file leaves a persistent `<file>.aerolock` beside it. `correct gen` likewise leaves locks next to the source and the sidecar it writes. Leave these files in place so readers and writers continue to coordinate on the same lock. A read-only verify leaves no new lock. AeroFTP sync excludes these locks even when Error Correction is off.
+
 EC covers damage within the selected Reed-Solomon budget. It does not recover
 logical deletes, ransomware replacing a whole file, complete file loss or damage
 beyond that budget. Each protected file adds a remote object and the selected
@@ -1398,7 +1435,8 @@ aeroftp-cli vault info myvault.aerovault --json   # has_error_correction: true, 
 # Scrub (returns checked + damaged list + the parity source repair would use)
 aeroftp-cli vault scrub myvault.aerovault
 
-# Repair (honest: "repaired R of D" or "vault left untouched"; --dry-run preview)
+# Repair (honest: "repaired R of D" or "vault left untouched"; --dry-run preview).
+# Exits 1 while any damaged chunk stays unrepaired, in a dry run as well.
 aeroftp-cli vault repair myvault.aerovault --dry-run
 aeroftp-cli vault repair myvault.aerovault
 ```
@@ -1438,6 +1476,8 @@ Repair resolves the parity source in priority order: explicit `--parity` ->
 `<vault>.aerocorrect` sidecar -> embedded extension, and reports which it used
 (`parity_source` in `--json`). Detached parity tracks a fixed data set, so re-run
 `export-parity` after editing a detached/both vault.
+
+**Memory and interrupted updates.** Before it loads a v3 vault into memory, AeroVault compares the data section with the memory the system reports (on Linux including reclaimable cache and the swap the cgroup allows), and Error Correction checks its own buffers the same way. When the check finds that they do not fit, open, save or repair fails with the number of bytes it needs. This is a preflight estimate for the buffers it checks, not a limit on the memory of the whole process. For a trusted vault on a host with enough memory, set `AEROVAULT_V3_DATA_BUDGET_BYTES` to a byte count before starting the GUI or the CLI: it replaces that estimate (a value outside the supported range makes every v3 open fail with an error naming the range). In the GUI, AeroFTP's own check on the size of the files being added still applies. On Linux, an update that publishes a vault together with its detached sidecar keeps a recovery journal under `$XDG_STATE_HOME/aerovault/journals` (default `~/.local/state/aerovault/journals`, fallback `~/.aerovault-state/journals`), and the next open finishes or rolls back an interrupted one. If that update ran with a different `XDG_STATE_HOME`, set it back before reopening the vault. AeroFTP sync never transfers these journal folders.
 
 See `aeroftp-cli vault --help`, [AEROVAULT-V3-SPEC §11](AEROVAULT-V3-SPEC.md#11-v4-evolution-note-t-aerovault-ecc-shipped), and [AGENTS.md](../AGENTS.md) (use direct paths for vault; `--profile` for remote servers). Receipts (`--receipt` or GUI) now include error_correction_* fields when present (P3-03). All via the shared engine (22 tests, live verified 20.1% overhead + full corrupt→repair→extract SHA-256 match).
 
@@ -1853,6 +1893,8 @@ aeroftp-cli export rclone --profiles "NAS,srv_1792220220358_7cks9su5d,3" --outpu
 ```
 
 `--profiles` takes a comma-separated list, and each selector picks a profile the way `--profile` does (see Profile Matching above). Without it every exportable profile is exported. A selector that picks nothing is listed with the skipped profiles, with the reason (`no profile matches 'NAS2'`, `no profile at index 9 (range 1..=8)`), and the rest is exported. One rule is stricter than `--profile`: a name that two profiles share, possible in a vault saved before names were unique, picks neither and the reason lists both ids, because the export would otherwise write the credentials of whichever comes first; select one by id. The command exits 4 when nothing was exported, whatever the reason.
+
+Use rclone 1.76.0 or newer with the exported file. Earlier releases can disclose OpenStack Swift credentials on redirects and have authentication-proxy flaws when an exported remote is exposed through `rclone serve`; the file header links to the upstream security advisories.
 
 OAuth profiles **are** exported to rclone for every provider that has a matching rclone backend: Google Drive, Dropbox, OneDrive, Box, pCloud Drive, Yandex Disk, Zoho WorkDrive and Jottacloud. Each remote is written with the profile's `token` and the `client_id` and `client_secret` configured in AeroFTP for that provider, so it is usable and refreshable without re-authorising. This requires all three to be in the vault, which is the case for a profile you authorised in AeroFTP with your own OAuth app, and rclone can refresh the token only while that app is still the one configured: after switching to another app, authorise the profile again before exporting. When any of the three is missing, the remote is still written and a comment tells you to run `rclone config reconnect "<remote>:"` before use, rather than emitting a silently broken half-remote. Zoho WorkDrive also carries `region` (mapped to rclone's TLD slug, so AeroFTP `us` becomes rclone `com`) and `root_folder_id` when the profile is pinned to a workspace or team folder.
 

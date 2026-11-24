@@ -4455,7 +4455,13 @@
             "modeNonIdentical": "Neidentiški",
             "groupsCount": "Grupės: {count}",
             "duplicateFilesCount": "Pasikartojantys failai: {count}",
-            "copiesCount": "{count} vnt."
+            "copiesCount": "{count} vnt.",
+            "refreshTooltip": "Patikrinti, ar aptikti dublikatai vis dar egzistuoja, ir pašalinti trūkstamus failus be pakartotinio nuskaitymo",
+            "refreshRemoved": "Iš sąrašo pašalinta {count} trūkstamų failų",
+            "refreshUpToDate": "Visi failai vis dar egzistuoja",
+            "refreshChanged": "{count} pakeistų failų pašalinta iš sąrašo",
+            "refreshUnverified": "{count} nepavyko patikrinti",
+            "refreshFailed": "Atnaujinti nepavyko: {error}"
         },
         "diskUsage": {
             "title": "Disko naudojimas",
@@ -7189,7 +7195,10 @@
         },
         "openRequest": {
             "folderBusyTitle": "Aplankas vis dar įkeliamas",
-            "folderBusy": "Atidarytas failas nebuvo parodytas: kai buvo paprašyta aplanko {folder}, kitas aplankas vis dar buvo įkeliamas. Atidarykite failą dar kartą."
+            "folderBusy": "Atidarytas failas nebuvo parodytas: kai buvo paprašyta aplanko {folder}, kitas aplankas vis dar buvo įkeliamas. Atidarykite failą dar kartą.",
+            "signInNeedsProfileTitle": "{provider} reikia išsaugoto prisijungimo",
+            "signInNeedsProfile": "{provider} prisijungia per savo autorizaciją naršyklėje, kurios nuoroda perduoti negali. Pridėkite ir autorizuokite paskyrą skiltyje Mano serveriai, tada atidarykite {scheme}://<profilio pavadinimas>/aplankas/.",
+            "signInNameTheProfile": "Išsaugota kelios {provider} paskyros. Nurodykite, kurią atidaryti: {scheme}://<profilio pavadinimas>/aplankas/."
         }
     }
 }

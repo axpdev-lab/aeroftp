@@ -4753,7 +4753,7 @@ pub fn export_rclone(
         env!("CARGO_PKG_VERSION")
     ));
     output.push_str(&format!(
-        "# Exported: {}\n\n",
+        "# Exported: {}\n# Use rclone 1.76.0 or newer: https://github.com/rclone/rclone/security/advisories\n\n",
         chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
     ));
 
@@ -10015,6 +10015,10 @@ auth = https://auth.example.com/v3
             env!("CARGO_PKG_VERSION")
         );
         assert!(conf.starts_with(&header), "{conf}");
+        assert!(
+            conf.contains("# Use rclone 1.76.0 or newer: https://github.com/rclone/rclone/security/advisories\n"),
+            "{conf}"
+        );
         let export = aeroftp_export_header(&conf).expect("recognised as an AeroFTP export");
         assert_eq!(
             export.version,

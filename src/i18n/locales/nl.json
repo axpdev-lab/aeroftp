@@ -4455,7 +4455,13 @@
             "modeNonIdentical": "Niet identiek",
             "groupsCount": "Groepen: {count}",
             "duplicateFilesCount": "Dubbele bestanden: {count}",
-            "copiesCount": "{count} kopieën"
+            "copiesCount": "{count} kopieën",
+            "refreshTooltip": "Controleer of gedetecteerde duplicaten nog bestaan en verwijder ontbrekende bestanden zonder opnieuw te scannen",
+            "refreshRemoved": "{count} ontbrekende bestanden uit de lijst gehaald",
+            "refreshUpToDate": "Alle bestanden bestaan nog",
+            "refreshChanged": "{count} gewijzigde bestanden uit de lijst verwijderd",
+            "refreshUnverified": "{count} konden niet worden gecontroleerd",
+            "refreshFailed": "Vernieuwen mislukt: {error}"
         },
         "diskUsage": {
             "title": "Schijfgebruik",
@@ -7189,7 +7195,10 @@
         },
         "openRequest": {
             "folderBusyTitle": "Map wordt nog geladen",
-            "folderBusy": "Het bestand dat u hebt geopend, is niet getoond: een andere map werd nog geladen toen {folder} werd opgevraagd. Open het opnieuw."
+            "folderBusy": "Het bestand dat u hebt geopend, is niet getoond: een andere map werd nog geladen toen {folder} werd opgevraagd. Open het opnieuw.",
+            "signInNeedsProfileTitle": "{provider} heeft zijn opgeslagen aanmelding nodig",
+            "signInNeedsProfile": "{provider} meldt zich aan via een eigen autorisatie in de browser, die een link niet kan meedragen. Voeg het account toe en autoriseer het in Mijn servers en open daarna {scheme}://<profielnaam>/map/.",
+            "signInNameTheProfile": "Er zijn meerdere {provider}-accounts opgeslagen. Geef aan welke geopend moet worden: {scheme}://<profielnaam>/map/."
         }
     }
 }

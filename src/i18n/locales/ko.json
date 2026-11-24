@@ -4455,7 +4455,13 @@
             "modeNonIdentical": "동일하지 않음",
             "groupsCount": "그룹 {count}개",
             "duplicateFilesCount": "중복 파일 {count}개",
-            "copiesCount": "사본 {count}개"
+            "copiesCount": "사본 {count}개",
+            "refreshTooltip": "감지된 중복 파일이 여전히 존재하는지 확인하고 다시 스캔하지 않고 없는 파일을 제거합니다",
+            "refreshRemoved": "누락된 파일 {count}개를 목록에서 제외했습니다",
+            "refreshUpToDate": "모든 파일이 여전히 존재합니다",
+            "refreshChanged": "변경된 파일 {count}개가 목록에서 제외되었습니다",
+            "refreshUnverified": "{count}개를 확인할 수 없습니다",
+            "refreshFailed": "새로 고침 실패: {error}"
         },
         "diskUsage": {
             "title": "디스크 사용량",
@@ -7189,7 +7195,10 @@
         },
         "openRequest": {
             "folderBusyTitle": "폴더를 불러오는 중입니다",
-            "folderBusy": "열려고 한 파일이 표시되지 않았습니다. {folder} 폴더를 요청했을 때 다른 폴더가 아직 로드 중이었습니다. 다시 열어 주세요."
+            "folderBusy": "열려고 한 파일이 표시되지 않았습니다. {folder} 폴더를 요청했을 때 다른 폴더가 아직 로드 중이었습니다. 다시 열어 주세요.",
+            "signInNeedsProfileTitle": "{provider}에는 저장된 로그인이 필요합니다",
+            "signInNeedsProfile": "{provider}는 브라우저에서 자체 인증으로 로그인하므로 링크로는 인증 정보를 전달할 수 없습니다. 내 서버에서 계정을 추가하고 인증한 다음 {scheme}://<프로필 이름>/폴더/ 를 여세요.",
+            "signInNameTheProfile": "{provider} 계정이 여러 개 저장되어 있습니다. 열 계정을 지정하세요: {scheme}://<프로필 이름>/폴더/"
         }
     }
 }

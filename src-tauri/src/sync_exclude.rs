@@ -44,6 +44,54 @@
 
 use globset::{GlobBuilder, GlobMatcher};
 
+pub const VAULT_LOCK_EXCLUDE_PATTERN: &str = "*.aerolock";
+const VAULT_LOCK_SUFFIX: &str = ".aerolock";
+
+/// Match the persistent lock names emitted by AeroVault, including names
+/// received from a case-insensitive filesystem.
+pub(crate) fn is_vault_lock_name(name: &str) -> bool {
+    let name = name.trim_end_matches(['.', ' ']);
+    if name.is_ascii() {
+        return name
+            .get(name.len().saturating_sub(VAULT_LOCK_SUFFIX.len())..)
+            .is_some_and(|suffix| suffix.eq_ignore_ascii_case(VAULT_LOCK_SUFFIX));
+    }
+    // Match the crate's filesystem-equivalent aliases on Windows and HFS+.
+    name.chars()
+        .filter(|c| !matches!(c, '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{206A}'..='\u{206F}' | '\u{FEFF}'))
+        .collect::<String>()
+        .trim_end_matches(['.', ' '])
+        .to_lowercase()
+        .ends_with(VAULT_LOCK_SUFFIX)
+}
+
+const VAULT_PRIVATE_DIR_PREFIXES: &[&str] = &[
+    ".aerovault-repack-",
+    ".aerovault-v3-",
+    ".aerovault_extract_",
+    ".aerocreate-prepare-",
+    ".aeropassword-prepare-",
+    ".aerorepair-private-",
+    ".aerostrip-",
+    // Windows ownership probe of a new destination (creation, strip, extraction).
+    ".aerovault-security-",
+];
+
+pub(crate) fn is_vault_sync_artifact(name: &str) -> bool {
+    is_vault_lock_name(name)
+        || name.eq_ignore_ascii_case(".aerovault-state")
+        || VAULT_PRIVATE_DIR_PREFIXES.iter().any(|prefix| {
+            name.get(..prefix.len())
+                .is_some_and(|start| start.eq_ignore_ascii_case(prefix))
+        })
+        || name
+            .strip_prefix('.')
+            .and_then(|name| name.strip_suffix(".aerostrip"))
+            .is_some_and(|hash| {
+                hash.len() == 64 && hash.bytes().all(|byte| byte.is_ascii_hexdigit())
+            })
+}
+
 /// A pattern that is not a valid glob.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExcludePatternError {
@@ -101,6 +149,7 @@ pub struct ExcludeMatcher {
     /// file called `\\`).
     as_written: Vec<GlobMatcher>,
     everything: bool,
+    exclude_vault_artifacts: bool,
 }
 
 impl ExcludeMatcher {
@@ -150,7 +199,39 @@ impl ExcludeMatcher {
             patterns: compiled,
             as_written,
             everything: false,
+            exclude_vault_artifacts: false,
         })
+    }
+
+    /// Persistent writer locks and private vault staging directories are
+    /// outside the sync namespace, even with an empty exclude list.
+    pub fn for_sync<S: AsRef<str>>(patterns: &[S]) -> Result<Self, ExcludePatternError> {
+        let mut matcher = Self::new(patterns)?;
+        matcher.exclude_vault_artifacts = true;
+        Ok(matcher)
+    }
+
+    pub(crate) fn excludes_vault_artifact_path(&self, rel_path: &str) -> bool {
+        if !self.exclude_vault_artifacts {
+            return false;
+        }
+        // Scanner keys separate with `/`. A backslash is a separator only on
+        // Windows; elsewhere it is part of a file name, and an ordinary file
+        // must never fall under a rule that no exclude list can override.
+        let separators: &[char] = if cfg!(windows) { &['/', '\\'] } else { &['/'] };
+        let mut in_aerovault = false;
+        for segment in rel_path
+            .split(separators)
+            .filter(|segment| !segment.is_empty())
+        {
+            if is_vault_sync_artifact(segment)
+                || in_aerovault && segment.eq_ignore_ascii_case("journals")
+            {
+                return true;
+            }
+            in_aerovault = segment.eq_ignore_ascii_case("aerovault");
+        }
+        false
     }
 
     /// A matcher that excludes every path: the fail-closed stand-in for a list
@@ -160,11 +241,15 @@ impl ExcludeMatcher {
             patterns: Vec::new(),
             as_written: Vec::new(),
             everything: true,
+            exclude_vault_artifacts: false,
         }
     }
 
     pub fn is_empty(&self) -> bool {
-        self.patterns.is_empty() && self.as_written.is_empty() && !self.everything
+        self.patterns.is_empty()
+            && self.as_written.is_empty()
+            && !self.everything
+            && !self.exclude_vault_artifacts
     }
 
     /// Whether this matcher excludes everything (see [`Self::everything`]).
@@ -181,10 +266,10 @@ impl ExcludeMatcher {
     /// a separator too, which is how the GUI read a Windows path. Excluded
     /// under either reading is excluded.
     pub fn is_excluded(&self, rel_path: &str) -> bool {
-        if self.everything {
+        if self.everything || self.excludes_vault_artifact_path(rel_path) {
             return true;
         }
-        if self.is_empty() {
+        if self.patterns.is_empty() && self.as_written.is_empty() {
             return false;
         }
         let last = rel_path.rsplit('/').next().unwrap_or(rel_path);
@@ -205,6 +290,7 @@ impl ExcludeMatcher {
     /// matched here as well.
     pub fn is_excluded_entry(&self, rel_path: &str, name: &str) -> bool {
         self.is_excluded(rel_path)
+            || (self.exclude_vault_artifacts && is_vault_sync_artifact(name))
             || self.matches_as_written(name)
             || (!self.patterns.is_empty()
                 && !name.is_empty()
@@ -399,6 +485,13 @@ mod tests {
         // Case-insensitive: the CLI missed a different case.
         ("*.TMP", "cache.tmp", true, true, false),
         ("Thumbs.db", "photos/thumbs.db", true, true, false),
+        (
+            "*.aerolock",
+            "vaults/a.aerovault.AEROLOCK",
+            true,
+            true,
+            false,
+        ),
         // Globs the GUI read literally and so never matched.
         ("~*", "~lock.docx", true, false, true),
         ("src*", "src2/main.rs", true, false, true),
@@ -509,6 +602,7 @@ mod tests {
         ".aeroignore",
         ".aeroversions",
         "*.aerocorrect",
+        VAULT_LOCK_EXCLUDE_PATTERN,
         "cache/**",
         "*.part",
     ];
@@ -536,6 +630,9 @@ mod tests {
         ".aeroignore",
         ".aeroversions/v1/a.txt",
         "f.bin.aerocorrect",
+        "vaults/a.aerovault.aerolock",
+        "vaults/a.aerovault.aerocorrect.aerolock",
+        "files/repaired.bin.aerolock",
         "cache/a/b",
         "download.part",
         "src/main.rs",
@@ -545,6 +642,60 @@ mod tests {
         "Node_Modules/pkg/i.js",
         "a\\b\\node_modules\\c.js",
     ];
+
+    #[test]
+    fn sync_engines_exclude_persistent_locks_without_error_correction_or_custom_patterns() {
+        let lock_paths = [
+            "entry.aerovault.aerolock",
+            "nested/entry.aerovault.aerocorrect.aerolock",
+            "data/report.bin.AEROLOCK",
+            "nested/entry.aerolock. ",
+            "nested/entry.aerolock/child",
+            "nested/.aerovault-repack-Abc123/decrypted.txt",
+            "nested/.aeropassword-prepare-abc/old-vault",
+            "nested/.aerovault-security-Abc123",
+            ".local/state/aerovault/journals/0123/old-vault",
+            "custom-state/AEROVAULT/journals/0123/old-sidecar",
+            ".aerovault-state/journals/0123/old-vault",
+            "nested/.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.aerostrip/old-sidecar",
+        ];
+        let matchers = [
+            crate::sync::CompareOptions::default().excludes_or_everything(),
+            crate::sync::compile_excludes(&[]).unwrap(),
+            crate::sync_core::ScanOptions::default().excludes_or_everything(),
+            ExcludeMatcher::for_sync(PRESET_DEFAULTS).unwrap(),
+        ];
+        let ignore = crate::sync_ignore::AeroIgnore::parse("!**").unwrap();
+        for matcher in &matchers {
+            assert!(!matcher.is_empty());
+            for path in lock_paths {
+                assert!(matcher.is_excluded(path), "{path}");
+                assert!(ignore.should_exclude(path, false, matcher), "{path}");
+            }
+            assert!(matcher.is_excluded_entry("encoded-entry", "file.aerolock"));
+            assert!(!matcher.is_excluded("docs/journals/meeting.md"));
+            assert!(!matcher.is_excluded("aerovault/docs/formats.md"));
+            assert!(!matcher.is_excluded("nested/entry.aerovault"));
+            assert!(!matcher.is_excluded("data/report.bin.aerolock.txt"));
+        }
+        // The rule that applies with an empty exclude list reads a backslash
+        // as a separator only on Windows. (The default `*.aerolock` pattern is
+        // an ordinary, removable pattern with the matcher's usual reading.)
+        let empty: [&str; 0] = [];
+        for matcher in [
+            ExcludeMatcher::for_sync(&empty).unwrap(),
+            crate::sync::compile_excludes(&[]).unwrap(),
+        ] {
+            assert!(!matcher.is_excluded(".notes.aerostrip"));
+            if cfg!(windows) {
+                assert!(matcher.is_excluded("nested\\entry.aerolock\\child"));
+            } else {
+                // One POSIX file name each, not a lock or a journal and a child.
+                assert!(!matcher.is_excluded("notes.aerolock\\report.txt"));
+                assert!(!matcher.is_excluded("profile\\aerovault\\journals\\x"));
+            }
+        }
+    }
 
     #[test]
     fn preset_defaults_exclude_a_superset_of_both_old_engines() {

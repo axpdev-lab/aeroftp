@@ -4455,7 +4455,13 @@
             "modeNonIdentical": "Não idêntico",
             "groupsCount": "Grupos: {count}",
             "duplicateFilesCount": "Arquivos duplicados: {count}",
-            "copiesCount": "{count} cópias"
+            "copiesCount": "{count} cópias",
+            "refreshTooltip": "Verificar se os duplicados detectados ainda existem e remover os arquivos ausentes sem verificar novamente",
+            "refreshRemoved": "{count} arquivos ausentes removidos da lista",
+            "refreshUpToDate": "Todos os arquivos ainda existem",
+            "refreshChanged": "{count} arquivos alterados removidos da lista",
+            "refreshUnverified": "{count} não puderam ser verificados",
+            "refreshFailed": "Falha ao atualizar: {error}"
         },
         "diskUsage": {
             "title": "Uso de Disco",
@@ -7189,7 +7195,10 @@
         },
         "openRequest": {
             "folderBusyTitle": "A pasta ainda está carregando",
-            "folderBusy": "O arquivo que você abriu não foi exibido: outra pasta ainda estava sendo carregada quando a pasta {folder} foi solicitada. Abra-o novamente."
+            "folderBusy": "O arquivo que você abriu não foi exibido: outra pasta ainda estava sendo carregada quando a pasta {folder} foi solicitada. Abra-o novamente.",
+            "signInNeedsProfileTitle": "{provider} precisa do seu início de sessão guardado",
+            "signInNeedsProfile": "{provider} inicia sessão através da sua própria autorização no navegador, que uma ligação não consegue transportar. Adicione e autorize a conta em Os meus servidores e depois abra {scheme}://<nome do perfil>/pasta/.",
+            "signInNameTheProfile": "Há várias contas {provider} guardadas. Indique qual abrir: {scheme}://<nome do perfil>/pasta/."
         }
     }
 }
