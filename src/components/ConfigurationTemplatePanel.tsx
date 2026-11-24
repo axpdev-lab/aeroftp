@@ -51,6 +51,7 @@ export interface TemplateBlockWarning {
 export interface TemplatePreviewRow {
     fileIndex: number;
     blockName: string;
+    selectionId?: string;
     targetName: string;
     startLine: number;
     protocol: string;
@@ -77,6 +78,8 @@ export interface TemplatePreviewRow {
  *  and a base that is not imported but an imported wrapper inherits. */
 const showsSecretChoice = (row: TemplatePreviewRow): boolean =>
     row.hasSecretInput && (row.action !== 'skip' || row.secretChoiceInherited);
+
+const blockSelectionKey = (row: TemplatePreviewRow): string => row.selectionId ?? row.blockName;
 
 export interface TemplatePreviewReport {
     rows: TemplatePreviewRow[];
@@ -315,7 +318,7 @@ export const ConfigurationTemplatePanel: React.FC<Props> = ({
                 const next = new Set<string>();
                 for (const row of report.rows) {
                     if (row.action === 'skip') continue;
-                    if (!initialized || prev.has(row.blockName)) next.add(row.blockName);
+                    if (!initialized || prev.has(blockSelectionKey(row))) next.add(blockSelectionKey(row));
                 }
                 return next;
             });
@@ -385,19 +388,19 @@ export const ConfigurationTemplatePanel: React.FC<Props> = ({
         setSourceTab(nextTab);
     };
 
-    const toggleBlockSelected = (blockName: string) => {
+    const toggleBlockSelected = (selectionKey: string) => {
         setSelectedBlocks(prev => {
             const next = new Set(prev);
-            if (next.has(blockName)) next.delete(blockName);
-            else next.add(blockName);
+            if (next.has(selectionKey)) next.delete(selectionKey);
+            else next.add(selectionKey);
             return next;
         });
     };
 
-    const setBlockSecretForm = (blockName: string, form: CryptSecretForm) => {
+    const setBlockSecretForm = (selectionKey: string, form: CryptSecretForm) => {
         setSecretForms(prev => ({
             ...prev,
-            [blockName]: form,
+            [selectionKey]: form,
         }));
     };
 
@@ -416,12 +419,12 @@ export const ConfigurationTemplatePanel: React.FC<Props> = ({
     );
 
     const activeSelectedCount = useMemo(
-        () => selectableRows.filter(r => selectedBlocks.has(r.blockName)).length,
+        () => selectableRows.filter(r => selectedBlocks.has(blockSelectionKey(r))).length,
         [selectableRows, selectedBlocks],
     );
 
     const missingSecretFormCount = useMemo(
-        () => selectableRows.filter(r => selectedBlocks.has(r.blockName) && r.needsSecretFormChoice).length,
+        () => selectableRows.filter(r => selectedBlocks.has(blockSelectionKey(r)) && r.needsSecretFormChoice).length,
         [selectableRows, selectedBlocks],
     );
 
@@ -441,8 +444,10 @@ export const ConfigurationTemplatePanel: React.FC<Props> = ({
                     .map(r => ({ fileIndex: sec.fileIndex, key: r.key })),
             );
             const activeSecretBlocks = new Set([
-                ...preview.secretChoiceBlocks,
-                ...preview.rows.filter(showsSecretChoice).map(r => r.blockName),
+                ...preview.secretChoiceBlocks.flatMap(name =>
+                    preview.rows.filter(r => r.blockName === name).map(blockSelectionKey),
+                ),
+                ...preview.rows.filter(showsSecretChoice).map(blockSelectionKey),
             ]);
             const activeSecretForms = Object.fromEntries(
                 Object.entries(secretForms).filter(([blockName]) =>
@@ -455,8 +460,8 @@ export const ConfigurationTemplatePanel: React.FC<Props> = ({
                     existing: existingMode,
                     secretForms: activeSecretForms,
                     selectedBlocks: selectableRows
-                        .filter(r => selectedBlocks.has(r.blockName))
-                        .map(r => r.blockName),
+                        .filter(r => selectedBlocks.has(blockSelectionKey(r)))
+                        .map(blockSelectionKey),
                     keepRelaxed: keepRelaxedList,
                     expectedDigestSha256: preview.digestSha256,
                     expectedPlanDigestSha256: preview.planDigestSha256,
@@ -734,7 +739,7 @@ export const ConfigurationTemplatePanel: React.FC<Props> = ({
                                     <div className="flex items-center gap-2">
                                         <button
                                             type="button"
-                                            onClick={() => setSelectedBlocks(new Set(selectableRows.map(r => r.blockName)))}
+                                            onClick={() => setSelectedBlocks(new Set(selectableRows.map(blockSelectionKey)))}
                                             className="text-blue-600 dark:text-blue-400 hover:underline"
                                         >
                                             {t('settings.templateSelectAll')}
@@ -755,15 +760,15 @@ export const ConfigurationTemplatePanel: React.FC<Props> = ({
                                         (row.providerId && PROVIDER_LOGOS[row.providerId])
                                         || PROVIDER_LOGOS[row.protocol.toLowerCase()]
                                         || PROVIDER_LOGOS[row.protocol];
-                                    const checked = row.action !== 'skip' && selectedBlocks.has(row.blockName);
-                                    const chosenForm = secretForms[row.blockName] ?? row.secretForm ?? undefined;
+                                    const checked = row.action !== 'skip' && selectedBlocks.has(blockSelectionKey(row));
+                                    const chosenForm = secretForms[blockSelectionKey(row)] ?? row.secretForm ?? undefined;
                                     return (
                                         <div key={`${row.blockName}-${row.fileIndex}`} className="px-3 py-2 text-xs space-y-1">
                                             <div className="flex items-center gap-2">
                                                 <Checkbox
                                                     checked={checked}
                                                     disabled={row.action === 'skip'}
-                                                    onChange={() => toggleBlockSelected(row.blockName)}
+                                                    onChange={() => toggleBlockSelected(blockSelectionKey(row))}
                                                     aria-label={t('settings.templateSelectProfile', { name: row.targetName })}
                                                 />
                                                 <div className="w-5 h-5 flex items-center justify-center flex-shrink-0">
@@ -810,7 +815,7 @@ export const ConfigurationTemplatePanel: React.FC<Props> = ({
                                                     <CryptSecretFormChoice
                                                         legend={row.blockName}
                                                         value={chosenForm}
-                                                        onChange={(form) => setBlockSecretForm(row.blockName, form)}
+                                                        onChange={(form) => setBlockSecretForm(blockSelectionKey(row), form)}
                                                         missing={checked && row.needsSecretFormChoice}
                                                         clearLabel={t('settings.templateSecretFormClear')}
                                                         obscuredLabel={t('settings.templateSecretFormObscured')}

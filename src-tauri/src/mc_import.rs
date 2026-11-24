@@ -62,17 +62,15 @@ struct MappedProfile {
     initial_path: Option<String>,
 }
 
-/// Resolve an `mc` alias `url` to `host`, `port`. `endpoint_host` strips the
-/// scheme and path and keeps an explicit `:port`; when no explicit port is
-/// present the scheme decides (`https` -> 443, `http` -> 80, default 443).
-fn host_port_from_url(url: &str) -> (String, u32) {
-    let host = crate::bridge_shared::endpoint_host(url);
-    if let Some((h, p)) = host.rsplit_once(':') {
-        // Only treat the trailing token as a port when it is numeric;
-        // otherwise it is part of the host (defensive, mc always emits a URL).
-        if let Ok(port) = p.parse::<u32>() {
-            return (h.to_string(), port);
-        }
+/// Resolve an `mc` alias `url` to `host`, `port`. `try_endpoint_host` strips the
+/// scheme, userinfo and path and keeps an explicit `:port`; when no explicit
+/// port is present the scheme decides (`https` -> 443, `http` -> 80, default
+/// 443). `None` when the URL is not a `host[:port]` endpoint.
+fn host_port_from_url(url: &str) -> Option<(String, u32)> {
+    let host = crate::bridge_shared::try_endpoint_host(url)?;
+    let (host, inline_port) = crate::bridge_shared::split_host_port(&host)?;
+    if let Some(port) = inline_port {
+        return Some((host, u32::from(port)));
     }
     let scheme = url.split_once("://").map(|(s, _)| s).unwrap_or("");
     let port = match scheme.to_lowercase().as_str() {
@@ -80,7 +78,7 @@ fn host_port_from_url(url: &str) -> (String, u32) {
         "https" => 443,
         _ => 443,
     };
-    (host, port)
+    Some((host, port))
 }
 
 /// Decide whether an alias is bridgeable, and how. Returns `Err(reason)` for a
@@ -92,7 +90,10 @@ fn map_alias(alias: &McAlias) -> Result<MappedProfile, String> {
         return Err("no accessKey".to_string());
     }
 
-    let provider_id = crate::bridge_shared::map_s3_provider_from_endpoint(&alias.url).to_string();
+    let (host, port) = host_port_from_url(&alias.url)
+        .ok_or_else(|| "url is not a valid host[:port] endpoint".to_string())?;
+
+    let provider_id = crate::bridge_shared::map_s3_provider_from_endpoint(&host).to_string();
     if provider_id == "google-cloud-storage"
         && (alias.access_key.trim().is_empty() || alias.secret_key.trim().is_empty())
     {
@@ -101,8 +102,6 @@ fn map_alias(alias: &McAlias) -> Result<MappedProfile, String> {
         // shared table's domain boundary, so a lookalike is not GCS.
         return Err("GCS without HMAC".to_string());
     }
-
-    let (host, port) = host_port_from_url(&alias.url);
 
     let mut options = serde_json::Map::new();
     if !alias.api.trim().is_empty() {
@@ -134,16 +133,41 @@ fn map_alias(alias: &McAlias) -> Result<MappedProfile, String> {
         }
     }
     // The alias URL is the endpoint, scheme included: `host` + `port` alone
-    // lose it (`http://nas:8080` would come back as HTTPS).
+    // lose it (`http://nas:8080` would come back as HTTPS). Userinfo, query
+    // and fragment are not kept.
     // AWS stays implicit: an explicit endpoint switches the S3 connection to
     // path-style, which AWS refuses for newer buckets.
     let url = alias.url.trim().trim_end_matches('/');
-    let aws = crate::bridge_shared::map_s3_provider_from_endpoint(url) == "amazon-s3";
-    if !aws && (url.starts_with("http://") || url.starts_with("https://")) {
+    let url_lower = url.to_ascii_lowercase();
+    let host_lower = host.to_ascii_lowercase();
+    if let Some(region) = host_lower
+        .strip_prefix("s3.")
+        .and_then(|host| host.strip_suffix(".amazonaws.com"))
+        .filter(|region| !region.is_empty() && !region.contains('.'))
+    {
         options.insert(
-            "endpoint".to_string(),
-            serde_json::Value::String(url.to_string()),
+            "region".to_string(),
+            serde_json::Value::String(region.to_string()),
         );
+    }
+    let default_aws_transport = provider_id == "amazon-s3"
+        && host_lower == "s3.amazonaws.com"
+        && url_lower.starts_with("https://")
+        && port == 443;
+    if !default_aws_transport
+        && (url_lower.starts_with("http://") || url_lower.starts_with("https://"))
+    {
+        if let Some(endpoint) = crate::bridge_shared::endpoint_url_without_secrets(url) {
+            let normalized = if let Some((scheme, rest)) = endpoint.split_once("://") {
+                format!("{}://{}", scheme.to_ascii_lowercase(), rest)
+            } else {
+                endpoint
+            };
+            options.insert(
+                "endpoint".to_string(),
+                serde_json::Value::String(normalized.trim_end_matches('/').to_string()),
+            );
+        }
     }
     let initial_path = None;
 
@@ -234,7 +258,11 @@ pub struct McImportResult {
 
 /// Import every bridgeable alias from an `mc` `config.json`.
 pub fn import_mc(path: &Path) -> Result<McImportResult, String> {
-    let content = std::fs::read_to_string(path).map_err(|e| format!("read mc config: {}", e))?;
+    let content = crate::bridge_shared::read_bounded_utf8_file(
+        path,
+        crate::bridge_shared::MAX_IMPORT_FILE_BYTES,
+    )
+    .map_err(|e| format!("read mc config: {}", e))?;
     let config: McConfig =
         serde_json::from_str(&content).map_err(|e| format!("parse mc config json: {}", e))?;
 
@@ -248,16 +276,17 @@ pub fn import_mc(path: &Path) -> Result<McImportResult, String> {
 
     for name in names {
         let alias = &config.aliases[name];
+        let report_name = crate::bridge_shared::sanitize_warning_name(name, "mc alias");
         match map_alias(alias) {
             Ok(mapped) => {
                 let id = format!(
                     "mc-{}-{}",
-                    name.to_lowercase().replace(' ', "-"),
+                    report_name.to_lowercase().replace(' ', "-"),
                     &crate::bridge_shared::uuid_v4()[..8]
                 );
                 servers.push(ServerProfileExport {
                     id,
-                    name: name.clone(),
+                    name: report_name,
                     host: mapped.host,
                     port: mapped.port,
                     username: mapped.username,
@@ -276,7 +305,7 @@ pub fn import_mc(path: &Path) -> Result<McImportResult, String> {
             }
             Err(reason) => {
                 skipped.push(McSkippedRemote {
-                    name: name.clone(),
+                    name: report_name,
                     kind: "s3".to_string(),
                     reason,
                 });
@@ -321,7 +350,8 @@ pub struct McExportServer {
 /// with `0600` on unix via `atomic_write_600`. The alias URL is the endpoint
 /// the connection uses ([`crate::bridge_shared::resolve_export_endpoint`]),
 /// never a string glued from `host` and `port`; a profile whose endpoint
-/// cannot be resolved is skipped with the reason.
+/// cannot be resolved, or whose initial directory an alias cannot hold, is
+/// skipped with the reason.
 pub fn export_mc(
     servers: &[McExportServer],
     passwords: &HashMap<String, String>,
@@ -334,6 +364,17 @@ pub fn export_mc(
 
     for server in servers {
         if server.protocol.as_deref() != Some("s3") {
+            continue;
+        }
+        if server
+            .initial_path
+            .as_deref()
+            .is_some_and(|path| !path.is_empty() && path != "/")
+        {
+            outcome.skip(
+                &server.name,
+                "mc aliases cannot preserve an initial directory",
+            );
             continue;
         }
 
@@ -351,6 +392,16 @@ pub fn export_mc(
                 continue;
             }
         };
+        if endpoint
+            .as_ref()
+            .is_some_and(|endpoint| !endpoint.path.is_empty())
+        {
+            outcome.skip(
+                &server.name,
+                "mc cannot preserve an S3 endpoint base path as an alias URL",
+            );
+            continue;
+        }
         // No endpoint of its own: the profile is on AWS.
         let url = endpoint
             .as_ref()
@@ -476,6 +527,248 @@ mod tests {
         assert_eq!(skipped.name, "noauth");
         assert_eq!(skipped.kind, "s3");
         assert_eq!(skipped.reason, "no accessKey");
+    }
+
+    #[test]
+    fn alias_url_userinfo_and_query_never_reach_the_profile() {
+        let user = "alice";
+        let pw_plain = "pwSecret";
+        let pw_slash = "pa/ssSecret";
+        let tok = "tokSecret";
+        let lab_url =
+            format!("https://{user}:{pw_plain}@minio.example.com:9000/?X-Amz-Security-Token={tok}");
+        let amb_url = format!("https://{user}:{pw_slash}@minio.example.com");
+        let body = serde_json::json!({
+            "version": "10",
+            "aliases": {
+                "lab": {
+                    "url": lab_url,
+                    "accessKey": "DEMOLABKEY",
+                    "secretKey": "labsecret",
+                    "api": "S3v4",
+                    "path": "auto"
+                },
+                "ambiguous": {
+                    "url": amb_url,
+                    "accessKey": "DEMOAMBKEY",
+                    "secretKey": "ambsecret",
+                    "api": "S3v4",
+                    "path": "auto"
+                }
+            }
+        })
+        .to_string();
+        let p = write_tmp("userinfo", &body);
+        let result = import_mc(&p).expect("import should succeed");
+        std::fs::remove_file(&p).ok();
+
+        let lab = result.servers.iter().find(|s| s.name == "lab").unwrap();
+        assert_eq!(lab.host, "minio.example.com");
+        assert_eq!(
+            lab.options.as_ref().and_then(|o| o.get("endpoint")),
+            Some(&serde_json::json!("https://minio.example.com:9000"))
+        );
+        assert!(result.skipped.iter().any(|s| s.name == "ambiguous"));
+        let serialized = serde_json::to_string(&(&result.servers, &result.skipped)).unwrap();
+        for secret in [user, pw_plain, "pa/ss", "ssSecret", tok] {
+            assert!(
+                !serialized.contains(secret),
+                "{secret} leaked: {serialized}"
+            );
+        }
+    }
+
+    #[test]
+    fn credential_shaped_alias_names_never_reach_profiles_or_skips() {
+        let user = "mcNameUser";
+        let pw = "mcNamePassword";
+        let tok = "mcNameToken";
+        let imported_name = format!("https://{user}:{pw}@imported.example.test?token={tok}");
+        let skipped_name = format!("https://{user}:{pw}@skipped.example.test?token={tok}");
+        let body = format!(
+            r#"{{"version":"10","aliases":{{"{imported_name}":{{"url":"https://objects.example.test:9000?token={tok}","accessKey":"DEMOKEY","secretKey":"demosecret","api":"S3v4","path":"auto"}},"{skipped_name}":{{"url":"https://objects.example.test","accessKey":"","secretKey":"","api":"S3v4","path":"auto"}}}}}}"#
+        );
+        let path = write_tmp("credential-names", &body);
+        let result = import_mc(&path).expect("import should succeed");
+        std::fs::remove_file(&path).ok();
+
+        assert_eq!(result.servers.len(), 1);
+        assert_eq!(result.servers[0].name, "imported.example.test");
+        assert_eq!(result.servers[0].host, "objects.example.test");
+        assert_eq!(
+            result.servers[0]
+                .options
+                .as_ref()
+                .and_then(|options| options.get("endpoint")),
+            Some(&serde_json::json!("https://objects.example.test:9000"))
+        );
+        assert_eq!(result.skipped.len(), 1);
+        assert_eq!(result.skipped[0].name, "skipped.example.test");
+        let serialized = serde_json::to_string(&(&result.servers, &result.skipped)).unwrap();
+        for secret in [user, pw, tok] {
+            assert!(
+                !serialized.contains(secret),
+                "{secret} leaked: {serialized}"
+            );
+        }
+    }
+
+    #[test]
+    fn credentialed_aws_alias_stays_implicit_and_empty_authority_is_skipped() {
+        let user = "alice";
+        let pw = "pwSecret";
+        let aws_url = format!("https://{user}:{pw}@s3.amazonaws.com");
+        let body = serde_json::json!({
+            "version": "10",
+            "aliases": {
+                "aws": {
+                    "url": aws_url,
+                    "accessKey": "DEMOAWSKEY",
+                    "secretKey": "awssecret",
+                    "api": "S3v4",
+                    "path": "auto"
+                },
+                "custom": {
+                    "url": "https://minio.example.com:9000",
+                    "accessKey": "DEMOCUSTKEY",
+                    "secretKey": "custsecret",
+                    "api": "S3v4",
+                    "path": "auto"
+                },
+                "emptyhost": {
+                    "url": "https:///bucket",
+                    "accessKey": "DEMOEMPTYKEY",
+                    "secretKey": "emptysecret",
+                    "api": "S3v4",
+                    "path": "auto"
+                }
+            }
+        })
+        .to_string();
+        let p = write_tmp("aws-classify", &body);
+        let result = import_mc(&p).expect("import should succeed");
+        std::fs::remove_file(&p).ok();
+
+        let aws = result.servers.iter().find(|s| s.name == "aws").unwrap();
+        assert_eq!(aws.provider_id.as_deref(), Some("amazon-s3"));
+        assert_eq!(aws.host, "s3.amazonaws.com");
+        assert!(aws
+            .options
+            .as_ref()
+            .and_then(|o| o.get("endpoint"))
+            .is_none());
+
+        let custom = result.servers.iter().find(|s| s.name == "custom").unwrap();
+        assert_eq!(custom.provider_id.as_deref(), Some("minio"));
+        assert_eq!(
+            custom.options.as_ref().and_then(|o| o.get("endpoint")),
+            Some(&serde_json::json!("https://minio.example.com:9000"))
+        );
+
+        assert!(result.skipped.iter().any(|s| s.name == "emptyhost"));
+        assert!(!result.servers.iter().any(|s| s.name == "emptyhost"));
+
+        // Non-default AWS transport (http + port 8080) preserves endpoint without userinfo;
+        // port-only endpoint `https://:9000` is skipped; bracketed IPv6 + port succeeds.
+        let aws_http_url = format!("http://{user}:{pw}@s3.amazonaws.com:8080");
+        let transport_body = serde_json::json!({
+            "version": "10",
+            "aliases": {
+                "aws_http": {
+                    "url": aws_http_url,
+                    "accessKey": "DEMOAWSHTTP",
+                    "secretKey": "awssecret",
+                    "api": "S3v4",
+                    "path": "auto"
+                },
+                "port_only": {
+                    "url": "https://:9000",
+                    "accessKey": "DEMOPORTONLY",
+                    "secretKey": "portsecret",
+                    "api": "S3v4",
+                    "path": "auto"
+                },
+                "ipv6_lab": {
+                    "url": "https://[::1]:9000",
+                    "accessKey": "DEMOIPV6",
+                    "secretKey": "v6secret",
+                    "api": "S3v4",
+                    "path": "auto"
+                }
+            }
+        })
+        .to_string();
+        let tp = write_tmp("aws-transport", &transport_body);
+        let tres = import_mc(&tp).expect("import should succeed");
+        std::fs::remove_file(&tp).ok();
+
+        let aws_http = tres.servers.iter().find(|s| s.name == "aws_http").unwrap();
+        assert_eq!(aws_http.host, "s3.amazonaws.com");
+        assert_eq!(aws_http.port, 8080);
+        assert_eq!(
+            aws_http.options.as_ref().and_then(|o| o.get("endpoint")),
+            Some(&serde_json::json!("http://s3.amazonaws.com:8080"))
+        );
+        let mut extra = HashMap::new();
+        extra.insert("bucket".to_string(), "demo".to_string());
+        if let Some(ep) = aws_http
+            .options
+            .as_ref()
+            .and_then(|o| o.get("endpoint"))
+            .and_then(|v| v.as_str())
+        {
+            extra.insert("endpoint".to_string(), ep.to_string());
+        }
+        let s3_cfg = crate::providers::types::S3Config::from_provider_config(
+            &crate::providers::types::ProviderConfig {
+                name: aws_http.name.clone(),
+                provider_type: crate::providers::types::ProviderType::S3,
+                host: aws_http.host.clone(),
+                port: Some(aws_http.port as u16),
+                username: Some(aws_http.username.clone()),
+                password: aws_http.credential.clone(),
+                initial_path: None,
+                extra,
+            },
+        )
+        .expect("aws_http builds S3Config");
+        assert_eq!(
+            s3_cfg.endpoint.as_deref(),
+            Some("http://s3.amazonaws.com:8080")
+        );
+
+        assert!(tres.skipped.iter().any(|s| s.name == "port_only"));
+        assert!(!tres.servers.iter().any(|s| s.name == "port_only"));
+
+        let ipv6 = tres.servers.iter().find(|s| s.name == "ipv6_lab").unwrap();
+        assert_eq!(ipv6.host, "[::1]");
+        assert_eq!(ipv6.port, 9000);
+
+        // Invalid TCP ports (70000, 0, non-numeric) are skipped.
+        for bad_url in [
+            "https://objects.example.test:70000",
+            "https://objects.example.test:0",
+            "https://objects.example.test:abc",
+        ] {
+            let bad_body = serde_json::json!({
+                "version": "10",
+                "aliases": {
+                    "badport": {
+                        "url": bad_url,
+                        "accessKey": "DEMOBADPORT",
+                        "secretKey": "badsecret",
+                        "api": "S3v4",
+                        "path": "auto"
+                    }
+                }
+            })
+            .to_string();
+            let bp = write_tmp("badport", &bad_body);
+            let bres = import_mc(&bp).unwrap();
+            std::fs::remove_file(&bp).ok();
+            assert!(bres.servers.is_empty(), "{bad_url} must be skipped");
+            assert_eq!(bres.skipped.len(), 1, "{bad_url}");
+        }
     }
 
     #[test]
@@ -656,6 +949,176 @@ mod tests {
             assert!(
                 aliases[alias]["url"].as_str().unwrap().contains(host),
                 "{doc}"
+            );
+        }
+    }
+
+    #[test]
+    fn export_refuses_an_s3_endpoint_base_path() {
+        let server: McExportServer = serde_json::from_value(serde_json::json!({
+            "id": "path",
+            "name": "path",
+            "host": "",
+            "port": 443,
+            "username": "DEMOKEY",
+            "protocol": "s3",
+            "providerId": "custom-s3",
+            "options": {"endpoint": "https://objects.example.test:9000/team@east"},
+            "initialPath": null
+        }))
+        .unwrap();
+        let out = write_tmp("endpoint-path-out", "{}");
+
+        let outcome = export_mc(&[server], &HashMap::new(), &out).unwrap();
+        assert_eq!((outcome.exported, outcome.skipped.len()), (0, 1));
+        assert!(outcome.skipped[0].reason.contains("base path"));
+        assert_eq!(std::fs::read_to_string(&out).unwrap(), "{}");
+    }
+
+    #[test]
+    fn export_reports_an_initial_directory_mc_cannot_hold() {
+        let server: McExportServer = serde_json::from_value(serde_json::json!({
+            "id": "start",
+            "name": "start",
+            "host": "s3.amazonaws.com",
+            "port": 443,
+            "username": "DEMOKEY",
+            "protocol": "s3",
+            "providerId": "amazon-s3",
+            "options": null,
+            "initialPath": "/archive"
+        }))
+        .unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("config.json");
+
+        let outcome = export_mc(&[server], &HashMap::new(), &out).unwrap();
+        assert_eq!((outcome.exported, outcome.skipped.len()), (0, 1));
+        assert!(outcome.skipped[0].reason.contains("initial directory"));
+        assert!(!out.exists());
+    }
+
+    #[test]
+    fn regional_aws_alias_keeps_its_endpoint_and_signing_region() {
+        let body = serde_json::json!({
+            "version": "10",
+            "aliases": {
+                "regional": {
+                    "url": "https://s3.us-west-2.amazonaws.com",
+                    "accessKey": "DEMOKEY",
+                    "secretKey": "demosecret"
+                },
+                "global": {
+                    "url": "https://s3.amazonaws.com",
+                    "accessKey": "DEMOKEY",
+                    "secretKey": "demosecret"
+                }
+            }
+        })
+        .to_string();
+        let path = write_tmp("regional-aws", &body);
+        let result = import_mc(&path).unwrap();
+        std::fs::remove_file(&path).ok();
+
+        for name in ["regional", "global"] {
+            let server = result.servers.iter().find(|s| s.name == name).unwrap();
+            let mut extra = HashMap::new();
+            crate::profile_loader::apply_profile_options(
+                &mut extra,
+                &serde_json::json!({"options": server.options}),
+            );
+            extra.insert("bucket".to_string(), "media".to_string());
+            let config = crate::providers::types::S3Config::from_provider_config(
+                &crate::providers::types::ProviderConfig {
+                    name: server.name.clone(),
+                    provider_type: crate::providers::types::ProviderType::S3,
+                    host: server.host.clone(),
+                    port: Some(server.port as u16),
+                    username: Some(server.username.clone()),
+                    password: None,
+                    initial_path: None,
+                    extra,
+                },
+            )
+            .unwrap();
+            if name == "regional" {
+                assert_eq!(
+                    config.endpoint.as_deref(),
+                    Some("https://s3.us-west-2.amazonaws.com")
+                );
+                assert_eq!(config.region, "us-west-2");
+            } else {
+                assert_eq!(config.endpoint, None);
+                assert_eq!(config.region, "us-east-1");
+            }
+        }
+    }
+
+    #[test]
+    fn uppercase_scheme_endpoint_is_normalized_to_lowercase_for_s3_config() {
+        let body = serde_json::json!({
+            "version": "10",
+            "aliases": {
+                "upper_https": {
+                    "url": "HTTPS://objects.example.test:9443",
+                    "accessKey": "AKIAUPPERHTTPS",
+                    "secretKey": "secret-https",
+                    "api": "S3v4",
+                    "path": "auto"
+                },
+                "mixed_http": {
+                    "url": "HtTp://objects.example.test:9000/prefix/",
+                    "accessKey": "AKIAMIXEDHTTP",
+                    "secretKey": "secret-http",
+                    "api": "S3v4",
+                    "path": "auto"
+                }
+            }
+        })
+        .to_string();
+        let path = write_tmp("uppercase-scheme", &body);
+        let res = import_mc(&path).expect("import should succeed");
+        std::fs::remove_file(&path).ok();
+
+        for (name, expected_endpoint) in [
+            ("upper_https", "https://objects.example.test:9443"),
+            ("mixed_http", "http://objects.example.test:9000/prefix"),
+        ] {
+            let srv = res
+                .servers
+                .iter()
+                .find(|s| s.name == name)
+                .unwrap_or_else(|| panic!("missing imported alias {name}"));
+            let saved_endpoint = srv
+                .options
+                .as_ref()
+                .and_then(|o| o.get("endpoint"))
+                .and_then(|v| v.as_str())
+                .expect("endpoint option present");
+            assert_eq!(
+                saved_endpoint, expected_endpoint,
+                "{name} saved endpoint must have lowercase scheme"
+            );
+            let mut extra = HashMap::new();
+            extra.insert("bucket".to_string(), "demo".to_string());
+            extra.insert("endpoint".to_string(), saved_endpoint.to_string());
+            let s3_cfg = crate::providers::types::S3Config::from_provider_config(
+                &crate::providers::types::ProviderConfig {
+                    name: srv.name.clone(),
+                    provider_type: crate::providers::types::ProviderType::S3,
+                    host: srv.host.clone(),
+                    port: Some(srv.port as u16),
+                    username: Some(srv.username.clone()),
+                    password: srv.credential.clone(),
+                    initial_path: None,
+                    extra,
+                },
+            )
+            .unwrap_or_else(|e| panic!("{name} failed S3Config: {e}"));
+            assert_eq!(
+                s3_cfg.endpoint.as_deref(),
+                Some(expected_endpoint),
+                "{name} effective S3Config endpoint must not double-prefix scheme"
             );
         }
     }

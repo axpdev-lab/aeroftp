@@ -42365,8 +42365,19 @@ fn rclone_import_listing(result: &ftp_client_gui_lib::rclone_import::RcloneImpor
         out.push('\n');
     }
 
+    out
+}
+
+/// Format the human-readable warning block for `import rclone` (printed to
+/// stderr so stdout carries data only, matching `AGENTS.md`).
+fn rclone_import_warnings_listing(
+    result: &ftp_client_gui_lib::rclone_import::RcloneImportResult,
+) -> String {
+    use std::fmt::Write as _;
+
+    let mut out = String::new();
     // Imported, but not whole: e.g. a password that does not reveal left the
-    // profile without a credential.
+    // profile without a credential, or an unimported proxy/ssh setting.
     if !result.warnings.is_empty() {
         let _ = writeln!(out, "Warnings ({}):", result.warnings.len());
         for w in &result.warnings {
@@ -42521,6 +42532,10 @@ async fn cmd_import_rclone(
                 );
             } else {
                 print!("{}", rclone_import_listing(&result));
+                let warnings_text = rclone_import_warnings_listing(&result);
+                if !warnings_text.is_empty() {
+                    eprint!("{warnings_text}");
+                }
 
                 if let Some(summary) = &applied_summary {
                     println!(
@@ -43384,6 +43399,11 @@ fn print_bridge_import(v: &serde_json::Value, json: bool, source_label: &str) ->
         .and_then(|s| s.as_array())
         .cloned()
         .unwrap_or_default();
+    let warnings = v
+        .get("warnings")
+        .and_then(|s| s.as_array())
+        .cloned()
+        .unwrap_or_default();
     let source_path = v
         .get("sourcePath")
         .and_then(|s| s.as_str())
@@ -43418,6 +43438,7 @@ fn print_bridge_import(v: &serde_json::Value, json: bool, source_label: &str) ->
         let envelope = serde_json::json!({
             "servers": redacted_servers,
             "skipped": skipped,
+            "warnings": warnings,
             "sourcePath": source_path,
             "totalRemotes": total_remotes,
         });
@@ -43468,6 +43489,23 @@ fn print_bridge_import(v: &serde_json::Value, json: bool, source_label: &str) ->
                 println!("  {} - {} ({})", name, kind, reason);
             }
             println!();
+        }
+
+        if !warnings.is_empty() {
+            eprintln!("Warnings ({}):", warnings.len());
+            for warning in &warnings {
+                let name = warning.get("name").and_then(|x| x.as_str()).unwrap_or("?");
+                let reason = warning
+                    .get("reason")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("?");
+                eprintln!(
+                    "  {} - {}",
+                    sanitize_filename(name),
+                    sanitize_filename(reason)
+                );
+            }
+            eprintln!();
         }
 
         println!(
@@ -44121,8 +44159,8 @@ async fn cmd_export_winscp(
     };
     let selectors = parse_profile_selectors(profiles);
 
-    // WinSCP only handles FTP/FTPS/SFTP. Everything else is skipped.
-    let supported = ["ftp", "ftps", "sftp"];
+    // WinSCP handles FTP/FTPS/SFTP and S3. Everything else is skipped.
+    let supported = ["ftp", "ftps", "sftp", "s3"];
     let oauth: [&str; 0] = [];
 
     let collected = match collect_export_scaffold(
@@ -44155,6 +44193,7 @@ async fn cmd_export_winscp(
             username: p.username.clone(),
             protocol: Some(p.protocol.clone()),
             options: p.options.clone(),
+            provider_id: p.provider_id.clone(),
             initial_path: p.initial_path.clone(),
         })
         .collect();
@@ -44196,7 +44235,10 @@ async fn cmd_export_filezilla(
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
-    use ftp_client_gui_lib::filezilla_import::{export_filezilla, FileZillaExportServer};
+    use ftp_client_gui_lib::{
+        bridge_shared::ExportReport,
+        filezilla_import::{export_filezilla, FileZillaExportServer},
+    };
 
     let store = match open_vault(cli) {
         Ok(s) => s,
@@ -44214,12 +44256,11 @@ async fn cmd_export_filezilla(
     };
     let selectors = parse_profile_selectors(profiles);
 
-    // FileZilla supports FTP/FTPS/SFTP and Storj (s3). For consistency
-    // with the GUI we restrict to the protocol set commonly tested.
-    let supported = ["ftp", "ftps", "sftp"];
+    // Keep the CLI protocol filter consistent with FileZilla and the GUI.
+    let supported = ["ftp", "ftps", "sftp", "s3"];
     let oauth: [&str; 0] = [];
 
-    let collected = match collect_export_scaffold(
+    let mut collected = match collect_export_scaffold(
         &store,
         &servers_json,
         selectors.as_deref(),
@@ -44259,21 +44300,24 @@ async fn cmd_export_filezilla(
     };
 
     match export_filezilla(&exportable, &collected.passwords, &target_path) {
-        // Nothing written, as for the other formats: the file at the
-        // destination is left as it was.
-        Ok(0) => {
-            emit_empty_export(json, &collected.skipped);
-            4
-        }
-        Ok(count) => {
-            emit_export_success(
-                json,
-                "FileZilla sitemanager.xml",
-                count,
-                &target_path,
-                &collected.skipped,
-            );
-            0
+        Ok(outcome) => {
+            let (count, refused) = outcome.into_export_parts();
+            collected.skipped.extend(refused);
+            // Nothing written, as for the other formats: the file at the
+            // destination is left as it was.
+            if count == 0 {
+                emit_empty_export(json, &collected.skipped);
+                4
+            } else {
+                emit_export_success(
+                    json,
+                    "FileZilla sitemanager.xml",
+                    count,
+                    &target_path,
+                    &collected.skipped,
+                );
+                0
+            }
         }
         Err(e) => {
             print_error(format, &format!("export failed: {}", e), 4);
@@ -46878,6 +46922,7 @@ async fn cmd_import_winscp(path: Option<String>, json: bool) -> i32 {
                         "hasCredential": s.credential.is_some(),
                     })).collect::<Vec<_>>(),
                     "skipped": serde_json::to_value(&result.skipped).unwrap_or_default(),
+                    "warnings": serde_json::to_value(&result.warnings).unwrap_or_default(),
                     "sourcePath": result.source_path,
                     "totalSessions": result.total_sessions,
                 });
@@ -46921,6 +46966,18 @@ async fn cmd_import_winscp(path: Option<String>, json: bool) -> i32 {
                         println!("  {} - FSProtocol {} ({})", s.name, s.fs_protocol, s.reason);
                     }
                     println!();
+                }
+
+                if !result.warnings.is_empty() {
+                    eprintln!("Warnings ({}):", result.warnings.len());
+                    for warning in &result.warnings {
+                        eprintln!(
+                            "  {} - {}",
+                            sanitize_filename(&warning.name),
+                            sanitize_filename(&warning.reason)
+                        );
+                    }
+                    eprintln!();
                 }
 
                 println!(
@@ -46992,6 +47049,7 @@ async fn cmd_import_filezilla(path: Option<String>, json: bool) -> i32 {
                         "hasCredential": s.credential.is_some(),
                     })).collect::<Vec<_>>(),
                     "skipped": serde_json::to_value(&result.skipped).unwrap_or_default(),
+                    "warnings": serde_json::to_value(&result.warnings).unwrap_or_default(),
                     "sourcePath": result.source_path,
                     "totalServers": result.total_servers,
                 });
@@ -47035,6 +47093,18 @@ async fn cmd_import_filezilla(path: Option<String>, json: bool) -> i32 {
                         println!("  {} - Protocol {} ({})", s.name, s.protocol, s.reason);
                     }
                     println!();
+                }
+
+                if !result.warnings.is_empty() {
+                    eprintln!("Warnings ({}):", result.warnings.len());
+                    for warning in &result.warnings {
+                        eprintln!(
+                            "  {} - {}",
+                            sanitize_filename(&warning.name),
+                            sanitize_filename(&warning.reason)
+                        );
+                    }
+                    eprintln!();
                 }
 
                 println!(
@@ -96953,9 +97023,18 @@ mod tests {
         assert_eq!(result.warnings.len(), 1);
 
         let listing = rclone_import_listing(&result);
+        let warnings_listing = rclone_import_warnings_listing(&result);
         assert!(
             !listing.chars().any(|c| c == '\x1b' || c == '\x07'),
             "a control sequence reaches the terminal: {listing:?}"
+        );
+        assert!(
+            !warnings_listing.chars().any(|c| c == '\x1b' || c == '\x07'),
+            "a control sequence reaches stderr warnings: {warnings_listing:?}"
+        );
+        assert!(
+            !listing.contains("Warnings ("),
+            "warnings must be written to stderr, not stdout: {listing:?}"
         );
         for kept in [
             "okcleared",
@@ -96963,9 +97042,14 @@ mod tests {
             "ixblink",
             "Importable (2)",
             "Skipped (1)",
-            "Warnings (1)",
         ] {
             assert!(listing.contains(kept), "'{kept}' missing: {listing:?}");
+        }
+        for kept in ["Warnings (1)", "ixblink"] {
+            assert!(
+                warnings_listing.contains(kept),
+                "'{kept}' missing from warnings: {warnings_listing:?}"
+            );
         }
     }
 

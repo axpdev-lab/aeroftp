@@ -52,8 +52,16 @@ pub struct CyberduckSkippedRemote {
 pub struct CyberduckImportResult {
     pub servers: Vec<ServerProfileExport>,
     pub skipped: Vec<CyberduckSkippedRemote>,
+    pub warnings: Vec<CyberduckImportWarning>,
     pub source_path: String,
     pub total_remotes: usize,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CyberduckImportWarning {
+    pub name: String,
+    pub reason: String,
 }
 
 /// A server profile to export as a `.duck` bookmark (metadata only).
@@ -151,18 +159,49 @@ fn map_duck(xml: &str) -> DuckOutcome {
     let field = |k: &str| crate::bridge_shared::plist_field(xml, k);
 
     // The protocol is a name from a fixed set, so it is read without the
-    // spaces at its ends; every other field is read as written (`plist_field`).
+    // spaces at its ends. Other fields keep their source spelling; a URL-shaped
+    // Hostname is reduced to its safe authority below.
     let protocol_raw = match field("Protocol").map(|p| p.trim().to_lowercase()) {
         Some(p) if !p.is_empty() => p,
         _ => return DuckOutcome::NotABookmark,
     };
 
-    let hostname = field("Hostname").unwrap_or_default();
+    let raw_hostname = field("Hostname").unwrap_or_default();
+    let cleaned_hostname = if raw_hostname.contains("://")
+        || raw_hostname.contains('@')
+        || raw_hostname.contains('?')
+        || raw_hostname.contains('#')
+        || raw_hostname.contains('/')
+    {
+        crate::bridge_shared::try_hostname_field(&raw_hostname)
+    } else {
+        Some(raw_hostname.clone())
+    };
+    let Some((hostname, inline_port)) = cleaned_hostname
+        .as_deref()
+        .and_then(crate::bridge_shared::split_host_port)
+    else {
+        return DuckOutcome::Skip {
+            kind: crate::bridge_shared::sanitize_warning_name(&protocol_raw, "unknown"),
+            reason: "invalid or ambiguous Hostname".into(),
+        };
+    };
     let username = field("Username").unwrap_or_default();
     let region = field("Region");
     let path = field("Path").filter(|s| !s.is_empty());
-    // A number, read without the spaces at its ends, as the protocol is.
-    let port_field = field("Port").and_then(|p| p.trim().parse::<u32>().ok());
+    let hostname_path = crate::bridge_shared::split_endpoint(&raw_hostname)
+        .map(|parts| {
+            percent_encoding::percent_decode_str(parts.path)
+                .decode_utf8()
+                .map(|path| path.into_owned())
+                .unwrap_or_else(|_| parts.path.to_string())
+        })
+        .filter(|path| !path.is_empty() && path != "/");
+    // A separate valid Port wins; an inline port is next, then the default.
+    let port_field = field("Port")
+        .and_then(|p| p.trim().parse::<u32>().ok())
+        .filter(|port| (1..=65535).contains(port))
+        .or_else(|| inline_port.map(u32::from));
 
     match protocol_raw.as_str() {
         "sftp" => DuckOutcome::Profile(MappedProfile {
@@ -237,6 +276,11 @@ fn map_duck(xml: &str) -> DuckOutcome {
                     by_host
                 }
             };
+            let initial_path = path.as_deref().and_then(|path| {
+                let path = path.trim_start_matches('/');
+                let (_, prefix) = path.split_once('/')?;
+                (!prefix.is_empty()).then(|| format!("/{prefix}"))
+            });
             let mut options = crate::bridge_shared::json_map(&opts);
             if path_style {
                 options.insert("pathStyle".into(), serde_json::Value::Bool(true));
@@ -252,7 +296,7 @@ fn map_duck(xml: &str) -> DuckOutcome {
                 } else {
                     Some(serde_json::Value::Object(options))
                 },
-                initial_path: path,
+                initial_path,
             })
         }
 
@@ -277,7 +321,7 @@ fn map_duck(xml: &str) -> DuckOutcome {
             port: port_field.unwrap_or(443),
             username,
             options: None,
-            initial_path: path,
+            initial_path: path.or(hostname_path),
         }),
 
         "dav" => DuckOutcome::Profile(MappedProfile {
@@ -287,7 +331,7 @@ fn map_duck(xml: &str) -> DuckOutcome {
             port: port_field.unwrap_or(443),
             username,
             options: None,
-            initial_path: path,
+            initial_path: path.or(hostname_path),
         }),
 
         // Azure needs a SAS token / account key that the bookmark never
@@ -303,32 +347,64 @@ fn map_duck(xml: &str) -> DuckOutcome {
             reason: "OAuth: provider-issued token, manual re-auth".into(),
         },
 
-        other => DuckOutcome::Skip {
-            kind: other.to_string(),
-            reason: format!("unsupported Cyberduck protocol: {other}"),
-        },
+        other => {
+            let kind = crate::bridge_shared::sanitize_warning_name(other, "unknown");
+            DuckOutcome::Skip {
+                reason: format!("unsupported Cyberduck protocol: {kind}"),
+                kind,
+            }
+        }
     }
 }
 
-/// Derive a human-readable bookmark name: `Nickname` if present, else the
-/// hostname, else the protocol.
+/// Derive a human-readable bookmark name: `Nickname` if present, else a
+/// sanitized host label (never raw URL userinfo or query tokens), else the
+/// protocol.
 fn bookmark_name(xml: &str) -> String {
     crate::bridge_shared::plist_field(xml, "Nickname")
         .filter(|s| !s.is_empty())
-        .or_else(|| crate::bridge_shared::plist_field(xml, "Hostname").filter(|s| !s.is_empty()))
-        .or_else(|| crate::bridge_shared::plist_field(xml, "Protocol"))
+        .map(|name| crate::bridge_shared::sanitize_warning_name(&name, "Cyberduck bookmark"))
+        .or_else(|| {
+            crate::bridge_shared::plist_field(xml, "Hostname")
+                .filter(|s| !s.is_empty())
+                .map(|host| crate::bridge_shared::safe_host_label(&host, "Cyberduck bookmark"))
+        })
+        .or_else(|| {
+            crate::bridge_shared::plist_field(xml, "Protocol").map(|protocol| {
+                crate::bridge_shared::sanitize_warning_name(&protocol, "Cyberduck bookmark")
+            })
+        })
         .unwrap_or_else(|| "Cyberduck bookmark".to_string())
 }
 
-/// Map one `.duck` body, pushing into `servers` or `skipped`.
+#[cfg(test)]
 fn ingest_duck(
     xml: &str,
     servers: &mut Vec<ServerProfileExport>,
     skipped: &mut Vec<CyberduckSkippedRemote>,
 ) {
+    ingest_duck_with_warnings(xml, servers, skipped, &mut Vec::new());
+}
+
+/// Map one `.duck` body, pushing into `servers`, `skipped` or `warnings`.
+fn ingest_duck_with_warnings(
+    xml: &str,
+    servers: &mut Vec<ServerProfileExport>,
+    skipped: &mut Vec<CyberduckSkippedRemote>,
+    warnings: &mut Vec<CyberduckImportWarning>,
+) {
     let name = bookmark_name(xml);
     match map_duck(xml) {
         DuckOutcome::Profile(m) => {
+            if matches!(m.protocol.as_str(), "ftp" | "ftps")
+                && crate::bridge_shared::plist_field(xml, "FTP Connect Mode")
+                    .is_some_and(|mode| mode.trim() == "active")
+            {
+                warnings.push(CyberduckImportWarning {
+                    name: crate::bridge_shared::sanitize_warning_name(&name, "Cyberduck bookmark"),
+                    reason: "Cyberduck requires active FTP for this bookmark; AeroFTP supports passive FTP only".to_string(),
+                });
+            }
             let id = format!(
                 "cyberduck-{}-{}",
                 name.to_lowercase().replace(' ', "-"),
@@ -412,6 +488,7 @@ pub fn default_cyberduck_config_path() -> Option<PathBuf> {
 pub fn import_cyberduck(path: &Path) -> Result<CyberduckImportResult, String> {
     let mut servers: Vec<ServerProfileExport> = Vec::new();
     let mut skipped: Vec<CyberduckSkippedRemote> = Vec::new();
+    let mut warnings: Vec<CyberduckImportWarning> = Vec::new();
     let mut total_remotes = 0usize;
 
     if path.is_dir() {
@@ -435,15 +512,17 @@ pub fn import_cyberduck(path: &Path) -> Result<CyberduckImportResult, String> {
             match std::fs::read_to_string(&p) {
                 Ok(xml) => {
                     total_remotes += 1;
-                    ingest_duck(&xml, &mut servers, &mut skipped);
+                    ingest_duck_with_warnings(&xml, &mut servers, &mut skipped, &mut warnings);
                 }
                 Err(e) => {
                     total_remotes += 1;
                     skipped.push(CyberduckSkippedRemote {
-                        name: p
-                            .file_name()
-                            .map(|s| s.to_string_lossy().into_owned())
-                            .unwrap_or_else(|| p.display().to_string()),
+                        name: crate::bridge_shared::sanitize_warning_name(
+                            &p.file_name()
+                                .map(|s| s.to_string_lossy().into_owned())
+                                .unwrap_or_else(|| p.display().to_string()),
+                            "Cyberduck bookmark",
+                        ),
                         kind: "unreadable".into(),
                         reason: format!("read .duck: {e}"),
                     });
@@ -453,12 +532,13 @@ pub fn import_cyberduck(path: &Path) -> Result<CyberduckImportResult, String> {
     } else {
         let xml = std::fs::read_to_string(path).map_err(|e| format!("read .duck: {e}"))?;
         total_remotes = 1;
-        ingest_duck(&xml, &mut servers, &mut skipped);
+        ingest_duck_with_warnings(&xml, &mut servers, &mut skipped, &mut warnings);
     }
 
     Ok(CyberduckImportResult {
         servers,
         skipped,
+        warnings,
         source_path: path.display().to_string(),
         total_remotes,
     })
@@ -531,8 +611,9 @@ fn sanitize_filename(name: &str) -> String {
 ///
 /// `Hostname` is a bare host: WebDAV and S3 addresses are resolved through
 /// [`crate::bridge_shared::resolve_export_endpoint`], the same rules the
-/// connection uses, so a URL stored in `host` or an endpoint stored in
-/// `options` lands as host + port + path. An S3 connection that addresses
+/// connection uses, so a WebDAV URL stored in `host` or `options` lands as
+/// host + port + path. An S3 endpoint base path is a reported refusal because
+/// the bookmark has no field for it. An S3 connection that addresses
 /// buckets path-style (MinIO and most self-hosted gateways answer only that
 /// way) carries Cyberduck's per-host `s3.bucket.virtualhost.disable`
 /// property in the bookmark's `Custom` dictionary.
@@ -588,6 +669,18 @@ pub fn export_cyberduck(
             }
         };
 
+        if duck_proto == "s3"
+            && endpoint
+                .as_ref()
+                .is_some_and(|endpoint| !endpoint.path.is_empty())
+        {
+            outcome.skip(
+                &server.name,
+                "Cyberduck's S3 bookmark cannot preserve an endpoint base path",
+            );
+            continue;
+        }
+
         // (Hostname, Port, server path prefix, path-style)
         let (hostname, port, base_path, path_style) = match (duck_proto, &endpoint) {
             // Native B2 talks to the B2 API host, never to the S3 gateway.
@@ -629,8 +722,9 @@ pub fn export_cyberduck(
             ),
         };
 
-        // Cyberduck S3 Path is bucket[/prefix]; prefer the options.bucket
-        // when present, else the stored initial_path. WebDAV Path is the
+        // Cyberduck S3 Path is bucket[/prefix]. The stored start folder is
+        // always bucket-relative, even when its first segment repeats the bucket.
+        // WebDAV Path is the
         // server path: the URL's own path, then the profile's start folder.
         // The start folder as the profile opens it: `{username}` filled, or
         // the profile skipped with the reason (`export_start_folder`).
@@ -655,7 +749,13 @@ pub fn export_cyberduck(
                 .and_then(|v| v.as_str())
                 .filter(|s| !s.is_empty())
                 .map(|s| s.to_string());
-            bucket.or(initial_path)
+            match (bucket, initial_path) {
+                (Some(bucket), Some(path)) => {
+                    Some(format!("{bucket}/{}", path.trim_start_matches('/')))
+                }
+                (Some(bucket), None) => Some(bucket),
+                (None, path) => path,
+            }
         } else {
             match (base_path.is_empty(), initial_path) {
                 (true, p) => p,
@@ -837,6 +937,220 @@ mod tests {
     }
 
     #[test]
+    fn ftp_connect_mode_active_is_warned_and_passive_is_unchanged() {
+        for (mode, expected_warnings) in [("active", 1), ("passive", 0)] {
+            let xml = format!(
+                r#"<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>Protocol</key><string>ftp</string><key>Nickname</key><string>FTP site</string><key>Hostname</key><string>ftp.example.com</string><key>Port</key><integer>21</integer><key>Username</key><string>user</string><key>FTP Connect Mode</key><string>{mode}</string></dict></plist>"#
+            );
+            let path = write_tmp(mode, &xml);
+            let result = import_cyberduck(&path).unwrap();
+            assert_eq!(result.servers.len(), 1, "{mode}");
+            assert!(result.skipped.is_empty(), "{mode}");
+            assert_eq!(result.warnings.len(), expected_warnings, "{mode}");
+            if mode == "active" {
+                assert!(result.warnings[0].reason.contains("active FTP"));
+            }
+        }
+    }
+
+    #[test]
+    fn sftp_inline_port_is_used_unless_a_separate_port_wins() {
+        let inline = r#"<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>Protocol</key><string>sftp</string><key>Hostname</key><string>sftp://nas.example.test:2222</string></dict></plist>"#;
+        let DuckOutcome::Profile(mapped) = map_duck(inline) else {
+            panic!("inline SFTP port must import");
+        };
+        assert_eq!(mapped.host, "nas.example.test");
+        assert_eq!(mapped.port, 2222);
+
+        let separate = r#"<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>Protocol</key><string>sftp</string><key>Hostname</key><string>sftp://nas.example.test:2222</string><key>Port</key><integer>22</integer></dict></plist>"#;
+        let DuckOutcome::Profile(mapped) = map_duck(separate) else {
+            panic!("separate SFTP port must import");
+        };
+        assert_eq!(mapped.port, 22);
+
+        let invalid = separate.replace("<integer>22</integer>", "<integer>65536</integer>");
+        let DuckOutcome::Profile(mapped) = map_duck(&invalid) else {
+            panic!("an invalid separate port must not prevent the inline import");
+        };
+        assert_eq!(mapped.port, 2222);
+    }
+
+    #[test]
+    fn webdav_hostname_url_preserves_its_path_when_path_is_omitted() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>Protocol</key><string>davs</string><key>Hostname</key><string>https://dav.example.test/team</string></dict></plist>"#;
+        let DuckOutcome::Profile(mapped) = map_duck(xml) else {
+            panic!("URL-shaped WebDAV hostname must import");
+        };
+        assert_eq!(mapped.host, "dav.example.test");
+        assert_eq!(mapped.initial_path.as_deref(), Some("/team"));
+        let config = crate::providers::WebDavConfig::from_provider_config(
+            &crate::providers::ProviderConfig {
+                name: "dav".to_string(),
+                provider_type: crate::providers::ProviderType::WebDav,
+                host: mapped.host.clone(),
+                port: Some(mapped.port as u16),
+                username: None,
+                password: None,
+                initial_path: mapped.initial_path.clone(),
+                extra: HashMap::new(),
+            },
+        )
+        .unwrap();
+        assert_eq!(config.url, "https://dav.example.test");
+        assert_eq!(config.initial_path.as_deref(), Some("/team"));
+
+        let separate = xml.replace("</dict>", "<key>Path</key><string>/other</string></dict>");
+        let DuckOutcome::Profile(mapped) = map_duck(&separate) else {
+            panic!("separate Path must import");
+        };
+        assert_eq!(mapped.initial_path.as_deref(), Some("/other"));
+    }
+
+    #[test]
+    fn webdav_hostname_url_percent_decodes_the_start_folder_once() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>Protocol</key><string>davs</string><key>Hostname</key><string>https://dav.example.test/team%20docs</string></dict></plist>"#;
+        let DuckOutcome::Profile(mapped) = map_duck(xml) else {
+            panic!("percent-encoded WebDAV hostname must import");
+        };
+        assert_eq!(mapped.initial_path.as_deref(), Some("/team docs"));
+        let config = crate::providers::ProviderConfig {
+            name: "dav".to_string(),
+            provider_type: crate::providers::ProviderType::WebDav,
+            host: mapped.host,
+            port: Some(mapped.port as u16),
+            username: None,
+            password: None,
+            initial_path: mapped.initial_path,
+            extra: HashMap::new(),
+        };
+        assert_eq!(
+            crate::providers::WebDavProvider::start_folder_request_url(&config),
+            "https://dav.example.test/team%20docs"
+        );
+    }
+
+    #[test]
+    fn azure_connection_string_nickname_is_redacted_in_profile_and_warning() {
+        let secret = "SYNTHETIC_AZURE_ACCOUNT_KEY";
+        let nickname = format!("DefaultEndpointsProtocol=https;AccountName=lab;AccountKey={secret};EndpointSuffix=core.windows.net");
+        let xml = format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>Protocol</key><string>ftp</string><key>Nickname</key><string>{nickname}</string><key>Hostname</key><string>ftp.example.test</string><key>FTP Connect Mode</key><string>active</string></dict></plist>"#
+        );
+        let mut servers = Vec::new();
+        let mut skipped = Vec::new();
+        let mut warnings = Vec::new();
+        ingest_duck_with_warnings(&xml, &mut servers, &mut skipped, &mut warnings);
+
+        assert_eq!(servers.len(), 1);
+        assert_eq!(servers[0].name, "Cyberduck bookmark");
+        assert_eq!(warnings.len(), 1);
+        assert_eq!(warnings[0].name, "Cyberduck bookmark");
+        let serialized = serde_json::to_string(&(&servers, &skipped, &warnings)).unwrap();
+        assert!(!serialized.contains(secret), "{serialized}");
+        assert!(!serialized.contains("AccountKey"), "{serialized}");
+    }
+
+    #[test]
+    fn invalid_host_skip_sanitizes_credential_bearing_protocol() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>Protocol</key><string>ftp://alice:pw@host?token=x</string><key>Hostname</key><string>ftp://alice:pa/ss@host</string></dict></plist>"#;
+        let mut servers = Vec::new();
+        let mut skipped = Vec::new();
+        ingest_duck(xml, &mut servers, &mut skipped);
+
+        assert!(servers.is_empty());
+        assert_eq!(skipped.len(), 1);
+        assert_eq!(skipped[0].kind, "host");
+        let serialized = serde_json::to_string(&skipped).unwrap();
+        for secret in ["alice", "pw", "token=x", "pa/ss"] {
+            assert!(!serialized.contains(secret), "{serialized}");
+        }
+    }
+
+    #[test]
+    fn protocol_fallback_skip_name_is_sanitized() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>Protocol</key><string>ftp://alice:pw@host?token=x</string></dict></plist>"#;
+        let mut servers = Vec::new();
+        let mut skipped = Vec::new();
+        ingest_duck(xml, &mut servers, &mut skipped);
+
+        assert!(servers.is_empty());
+        assert_eq!(skipped.len(), 1);
+        assert_eq!(skipped[0].name, "host");
+        assert_eq!(skipped[0].kind, "host");
+        let serialized = serde_json::to_string(&skipped).unwrap();
+        for secret in ["alice", "pw", "token=x"] {
+            assert!(!serialized.contains(secret), "{serialized}");
+        }
+    }
+
+    #[test]
+    fn unnamed_active_ftp_bookmark_warning_strips_url_credentials_from_hostname() {
+        let user = "duckuser";
+        let pw = "duckTopSecretPw";
+        let tok = "duckTokSecret";
+        let xml = format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>Protocol</key><string>ftp</string><key>Hostname</key><string>ftp://{user}:{pw}@ftp.example.com?token={tok}</string><key>Port</key><integer>21</integer><key>Username</key><string>user</string><key>FTP Connect Mode</key><string>active</string></dict></plist>"#
+        );
+        let path = write_tmp("unnamed-secret.duck", &xml);
+        let result = import_cyberduck(&path).unwrap();
+        assert_eq!(result.servers.len(), 1);
+        assert_eq!(result.warnings.len(), 1);
+        assert_eq!(result.warnings[0].name, "ftp.example.com");
+        assert!(result.warnings[0].reason.contains("active FTP"));
+        assert_eq!(result.servers[0].name, "ftp.example.com");
+        assert_eq!(result.servers[0].host, "ftp.example.com");
+        let serialized =
+            serde_json::to_string(&(&result.servers, &result.skipped, &result.warnings)).unwrap();
+        for secret in [user, pw, tok] {
+            assert!(
+                !serialized.contains(secret),
+                "{secret} leaked into warning: {serialized}"
+            );
+        }
+
+        // Ambiguous Hostname is skipped with a generic bookmark label.
+        let amb_pw = "pa/ssSecret";
+        let amb_xml = format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>Protocol</key><string>ftp</string><key>Hostname</key><string>ftp://{user}:{amb_pw}@ftp.example.com</string><key>Port</key><integer>21</integer><key>Username</key><string>user</string><key>FTP Connect Mode</key><string>active</string></dict></plist>"#
+        );
+        let amb_path = write_tmp("unnamed-amb.duck", &amb_xml);
+        let amb_result = import_cyberduck(&amb_path).unwrap();
+        assert!(amb_result.servers.is_empty());
+        assert!(amb_result.warnings.is_empty());
+        assert_eq!(amb_result.skipped.len(), 1);
+        assert_eq!(amb_result.skipped[0].name, "Cyberduck bookmark");
+        let amb_json = serde_json::to_string(&amb_result.skipped).unwrap();
+        for secret in [user, "pa/ss", "ssSecret"] {
+            assert!(
+                !amb_json.contains(secret),
+                "{secret} leaked into warning: {amb_json}"
+            );
+        }
+
+        // URL-shaped Nickname with credentials and query token is also redacted in warnings.
+        let nick_xml = format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>Protocol</key><string>ftp</string><key>Nickname</key><string>ftp://{user}:{pw}@ftp.example.com?token={tok}</string><key>Hostname</key><string>ftp.example.com</string><key>Port</key><integer>21</integer><key>Username</key><string>user</string><key>FTP Connect Mode</key><string>active</string></dict></plist>"#
+        );
+        let nick_path = write_tmp("named-url-secret.duck", &nick_xml);
+        let nick_result = import_cyberduck(&nick_path).unwrap();
+        assert_eq!(nick_result.warnings.len(), 1);
+        assert_eq!(nick_result.warnings[0].name, "ftp.example.com");
+        assert_eq!(nick_result.servers[0].name, "ftp.example.com");
+        let nick_json = serde_json::to_string(&(
+            &nick_result.servers,
+            &nick_result.skipped,
+            &nick_result.warnings,
+        ))
+        .unwrap();
+        for secret in [user, pw, tok] {
+            assert!(
+                !nick_json.contains(secret),
+                "{secret} leaked from Nickname into warning: {nick_json}"
+            );
+        }
+    }
+
+    #[test]
     fn test_parse_sftp_bookmark() {
         let mut servers = Vec::new();
         let mut skipped = Vec::new();
@@ -933,7 +1247,7 @@ mod tests {
             opts.get("bucket").and_then(|v| v.as_str()),
             Some("my-bucket")
         );
-        assert_eq!(s.initial_path.as_deref(), Some("/my-bucket/subfolder"));
+        assert_eq!(s.initial_path.as_deref(), Some("/subfolder"));
 
         // Case-insensitive hostname matching check.
         let xml_case = S3_DUCK
@@ -983,7 +1297,7 @@ mod tests {
         let opts = s.options.as_ref().expect("S3 options").as_object().unwrap();
         assert_eq!(opts.get("bucket").and_then(|v| v.as_str()), Some("backup"));
         assert_eq!(opts.get("pathStyle").and_then(|v| v.as_bool()), Some(true));
-        assert_eq!(s.initial_path.as_deref(), Some("/backup/files"));
+        assert_eq!(s.initial_path.as_deref(), Some("/files"));
     }
 
     #[test]
@@ -1345,6 +1659,100 @@ mod tests {
         let edge = back.servers.iter().find(|s| s.name == "edge").unwrap();
         assert_eq!(edge.username, "alice ");
         assert_eq!(edge.initial_path.as_deref(), Some("/home/alice /backup"));
+    }
+
+    #[test]
+    fn export_refuses_an_s3_endpoint_base_path() {
+        let server: CyberduckExportServer = serde_json::from_value(serde_json::json!({
+            "id": "path",
+            "name": "path",
+            "host": "",
+            "port": 443,
+            "username": "DEMOKEY",
+            "protocol": "s3",
+            "providerId": "custom-s3",
+            "options": {"endpoint": "https://objects.example.test:9000/gateway"},
+            "initialPath": null
+        }))
+        .unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("bookmarks");
+
+        let outcome = export_cyberduck(&[server], &HashMap::new(), &out).unwrap();
+        assert_eq!((outcome.exported, outcome.skipped.len()), (0, 1));
+        assert!(outcome.skipped[0].reason.contains("base path"));
+        assert!(!out.exists());
+    }
+
+    #[test]
+    fn export_joins_an_s3_bucket_and_start_folder_without_duplicating_the_bucket() {
+        let server = |name: &str, path: &str| -> CyberduckExportServer {
+            serde_json::from_value(serde_json::json!({
+                "id": name,
+                "name": name,
+                "host": "s3.amazonaws.com",
+                "port": 443,
+                "username": "DEMOKEY",
+                "protocol": "s3",
+                "providerId": "amazon-s3",
+                "options": {"bucket": "media"},
+                "initialPath": path
+            }))
+            .unwrap()
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let servers = [
+            server("plain", "/archive"),
+            server("scoped", "/photos"),
+            server("bucket-named", "/media/photos"),
+        ];
+
+        let outcome = export_cyberduck(&servers, &HashMap::new(), dir.path()).unwrap();
+        assert_eq!((outcome.exported, outcome.skipped.len()), (3, 0));
+        for (name, path) in [
+            ("plain", "media/archive"),
+            ("scoped", "media/photos"),
+            ("bucket-named", "media/media/photos"),
+        ] {
+            let duck = std::fs::read_to_string(dir.path().join(format!("{name}.duck"))).unwrap();
+            assert!(
+                duck.contains(&format!("<key>Path</key>\n\t<string>{path}</string>")),
+                "{name}:\n{duck}"
+            );
+        }
+
+        let back = import_cyberduck(dir.path()).unwrap();
+        for (name, prefix) in [
+            ("plain", "/archive"),
+            ("scoped", "/photos"),
+            ("bucket-named", "/media/photos"),
+        ] {
+            let server = back.servers.iter().find(|s| s.name == name).unwrap();
+            assert_eq!(server.initial_path.as_deref(), Some(prefix));
+            let config = crate::providers::types::S3Config::from_provider_config(
+                &crate::providers::types::ProviderConfig {
+                    name: server.name.clone(),
+                    provider_type: crate::providers::types::ProviderType::S3,
+                    host: server.host.clone(),
+                    port: Some(server.port as u16),
+                    username: Some(server.username.clone()),
+                    password: None,
+                    initial_path: server.initial_path.clone(),
+                    extra: HashMap::from([(
+                        "bucket".to_string(),
+                        server
+                            .options
+                            .as_ref()
+                            .and_then(|options| options.get("bucket"))
+                            .and_then(serde_json::Value::as_str)
+                            .expect("reimported bucket")
+                            .to_string(),
+                    )]),
+                },
+            )
+            .unwrap();
+            assert_eq!(config.prefix.as_deref(), Some(prefix));
+        }
     }
 
     /// A hand-edited bookmark is read as written, as a profile typed in the

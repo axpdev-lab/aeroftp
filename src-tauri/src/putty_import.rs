@@ -8,7 +8,9 @@
 //! session key carries `HostName`, `PortNumber` (REG_DWORD), `UserName`,
 //! `Protocol` (`ssh`/`raw`/`telnet`/`rlogin`/`serial`; modern builds also
 //! advertise `sftp` indirectly via SSH) and `PublicKeyFile` (path to a
-//! `.ppk`/key file). A session's key name is its name in the Windows ANSI
+//! `.ppk`/key file). `ProxyMethod`, with legacy `ProxyType` and
+//! `ProxySOCKSVersion` fallback, is read only to warn that the proxy is not
+//! imported. A session's key name is its name in the Windows ANSI
 //! code page with some bytes written as `%XX` (PuTTY's
 //! `escape_registry_key`/`unescape_registry_key`), so `My%20Server` is the
 //! session `My Server`; see [`encode_putty_name`].
@@ -300,6 +302,7 @@ fn legacy_putty_key_name(name: &str) -> Option<String> {
 /// is `#[cfg]`-gated to avoid a dead-code warning on a non-Windows build.
 #[cfg(any(test, target_os = "windows"))]
 fn map_putty_session(name: &str, kv: &HashMap<String, String>) -> Option<ServerProfileExport> {
+    let safe_name = crate::bridge_shared::sanitize_warning_name(name, "PuTTY session");
     let proto_raw = kv.get("Protocol").map(|s| s.as_str()).unwrap_or("ssh");
     let protocol = map_putty_protocol(proto_raw)?;
 
@@ -334,10 +337,10 @@ fn map_putty_session(name: &str, kv: &HashMap<String, String>) -> Option<ServerP
     Some(ServerProfileExport {
         id: format!(
             "putty-{}-{}",
-            name.to_lowercase().replace(' ', "-"),
+            safe_name.to_lowercase().replace(' ', "-"),
             &crate::bridge_shared::uuid_v4()[..8]
         ),
-        name: name.to_string(),
+        name: safe_name,
         host,
         port,
         username,
@@ -389,8 +392,146 @@ pub struct PuttySkippedRemote {
 pub struct PuttyImportResult {
     pub servers: Vec<ServerProfileExport>,
     pub skipped: Vec<PuttySkippedRemote>,
+    pub warnings: Vec<PuttyImportWarning>,
     pub source_path: String,
     pub total_remotes: usize,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PuttyImportWarning {
+    pub name: String,
+    pub reason: String,
+}
+
+#[cfg(any(test, target_os = "windows"))]
+fn putty_skip(name: &str, reason: impl Into<String>) -> PuttySkippedRemote {
+    PuttySkippedRemote {
+        name: crate::bridge_shared::sanitize_warning_name(name, "PuTTY session"),
+        kind: "session".to_string(),
+        reason: reason.into(),
+    }
+}
+
+#[cfg(any(test, target_os = "windows"))]
+fn putty_map_skip_reason(kv: &HashMap<String, String>) -> String {
+    if kv
+        .get("HostName")
+        .map(|host| host.trim().is_empty())
+        .unwrap_or(true)
+    {
+        "session has no HostName".to_string()
+    } else {
+        let protocol = kv.get("Protocol").map(String::as_str).unwrap_or("ssh");
+        let safe_protocol = crate::bridge_shared::sanitize_warning_name(protocol, "unknown");
+        format!("unsupported PuTTY protocol: {safe_protocol}")
+    }
+}
+
+#[cfg(any(test, target_os = "windows"))]
+fn putty_proxy_warning(name: &str, kv: &HashMap<String, String>) -> Option<PuttyImportWarning> {
+    let number = |key| {
+        kv.get(key)
+            .and_then(|value| value.trim().parse::<u32>().ok())
+    };
+    let legacy_proxy = || -> Option<(&'static str, u32, &'static str)> {
+        let legacy = number("ProxyType").unwrap_or(0);
+        let kind = match legacy {
+            0 => return None,
+            1 => "HTTP",
+            2 if number("ProxySOCKSVersion") == Some(4) => "SOCKS4",
+            2 => "SOCKS5",
+            3 => "Telnet",
+            4 => "local command",
+            _ => "unknown legacy",
+        };
+        Some(("ProxyType", legacy, kind))
+    };
+    // PuTTY 0.85 `settings.c:863-878` (`conf-enums.h:84-102`, `conf_data.c:33-42`)
+    // reads `ProxyMethod` with default `-1` (`0xFFFFFFFF` as a Windows REG_DWORD)
+    // and falls back to legacy `ProxyType` (`0..=4`) + `ProxySOCKSVersion`
+    // (`== 4` for SOCKS4, otherwise SOCKS5) whenever `ProxyMethod` is absent or
+    // not in `conf_enum_proxy_type` (`0..=8`).
+    let modern = number("ProxyMethod");
+    let (key, proxy_type, kind) = match modern {
+        Some(0) => return None,
+        Some(method @ 1..=8) => {
+            let kind = match method {
+                1 => "SOCKS4",
+                2 => "SOCKS5",
+                3 => "HTTP",
+                4 => "Telnet",
+                5 => "local command",
+                6 => "SSH TCP/IP",
+                7 => "SSH exec",
+                8 => "SSH subsystem",
+                _ => unreachable!(),
+            };
+            ("ProxyMethod", method, kind)
+        }
+        Some(other) => {
+            if let Some(legacy) = legacy_proxy() {
+                legacy
+            } else if other == u32::MAX {
+                return None;
+            } else {
+                ("ProxyMethod", other, "unknown modern")
+            }
+        }
+        None => legacy_proxy()?,
+    };
+    Some(PuttyImportWarning {
+        name: crate::bridge_shared::sanitize_warning_name(name, "PuTTY session"),
+        reason: format!(
+            "PuTTY uses {kind} proxy ({key}={proxy_type}) for this session; the proxy is not imported and AeroFTP will connect directly"
+        ),
+    })
+}
+
+/// Collect the PuTTY session keys AeroFTP reads from a Windows registry subkey.
+///
+/// Extracted from the `#[cfg(target_os = "windows")]` registry loop so the
+/// modern `ProxyMethod` precedence and legacy `ProxyType`/`ProxySOCKSVersion`
+/// fallback are pinned by unit tests on every platform.
+#[cfg(any(target_os = "windows", test))]
+fn collect_putty_registry_kv<FStr, FDword>(
+    get_str: FStr,
+    get_dword: FDword,
+) -> HashMap<String, String>
+where
+    FStr: Fn(&str) -> Option<String>,
+    FDword: Fn(&str) -> Option<u32>,
+{
+    let mut kv: HashMap<String, String> = HashMap::new();
+    // PortNumber and the proxy type/version values are REG_DWORD; the rest are REG_SZ strings.
+    if let Some(v) = get_str("HostName") {
+        kv.insert("HostName".into(), v);
+    }
+    if let Some(v) = get_dword("PortNumber") {
+        kv.insert("PortNumber".into(), v.to_string());
+    }
+    if let Some(v) = get_str("UserName") {
+        kv.insert("UserName".into(), v);
+    }
+    if let Some(v) = get_str("Protocol") {
+        kv.insert("Protocol".into(), v);
+    }
+    if let Some(v) = get_str("PublicKeyFile") {
+        kv.insert("PublicKeyFile".into(), v);
+    }
+    // Always read both modern and legacy proxy DWORDs: PuTTY falls back to
+    // `ProxyType`/`ProxySOCKSVersion` when `ProxyMethod` is absent or rejected
+    // (such as `0xFFFFFFFF` = `-1`).
+    if let Some(v) = get_dword("ProxyMethod") {
+        kv.insert("ProxyMethod".into(), v.to_string());
+    }
+    if let Some(v) = get_dword("ProxyType") {
+        kv.insert("ProxyType".into(), v.to_string());
+    }
+    if let Some(v) = get_dword("ProxySOCKSVersion") {
+        kv.insert("ProxySOCKSVersion".into(), v.to_string());
+    }
+    kv
 }
 
 /// Import all bridgeable PuTTY sessions.
@@ -417,6 +558,7 @@ pub fn import_putty(_path: &Path) -> Result<PuttyImportResult, String> {
                 return Ok(PuttyImportResult {
                     servers: Vec::new(),
                     skipped: Vec::new(),
+                    warnings: Vec::new(),
                     source_path,
                     total_remotes: 0,
                 });
@@ -425,6 +567,7 @@ pub fn import_putty(_path: &Path) -> Result<PuttyImportResult, String> {
 
         let mut servers = Vec::new();
         let mut skipped = Vec::new();
+        let mut warnings = Vec::new();
         let mut total_remotes = 0usize;
 
         for sub_name in sessions.enum_keys().flatten() {
@@ -440,66 +583,35 @@ pub fn import_putty(_path: &Path) -> Result<PuttyImportResult, String> {
             let decoded = match decode_putty_name(&sub_name, &SystemAnsiCodePage) {
                 Ok(name) => name,
                 Err(e) => {
-                    skipped.push(PuttySkippedRemote {
-                        name: sub_name,
-                        kind: "session".to_string(),
-                        reason: format!("session name unreadable: {}", e),
-                    });
+                    skipped.push(putty_skip(
+                        &sub_name,
+                        format!("session name unreadable: {}", e),
+                    ));
                     continue;
                 }
             };
             let sub = match sessions.open_subkey_with_flags(&sub_name, KEY_READ) {
                 Ok(s) => s,
                 Err(e) => {
-                    skipped.push(PuttySkippedRemote {
-                        name: decoded,
-                        kind: "session".to_string(),
-                        reason: format!("registry read failed: {}", e),
-                    });
+                    skipped.push(putty_skip(&decoded, format!("registry read failed: {}", e)));
                     continue;
                 }
             };
 
-            let mut kv: HashMap<String, String> = HashMap::new();
-            // PortNumber is REG_DWORD; the rest are REG_SZ strings.
-            if let Ok(v) = sub.get_value::<String, _>("HostName") {
-                kv.insert("HostName".into(), v);
-            }
-            if let Ok(v) = sub.get_value::<u32, _>("PortNumber") {
-                kv.insert("PortNumber".into(), v.to_string());
-            }
-            if let Ok(v) = sub.get_value::<String, _>("UserName") {
-                kv.insert("UserName".into(), v);
-            }
-            if let Ok(v) = sub.get_value::<String, _>("Protocol") {
-                kv.insert("Protocol".into(), v);
-            }
-            if let Ok(v) = sub.get_value::<String, _>("PublicKeyFile") {
-                kv.insert("PublicKeyFile".into(), v);
-            }
+            let kv = collect_putty_registry_kv(
+                |key| sub.get_value::<String, _>(key).ok(),
+                |key| sub.get_value::<u32, _>(key).ok(),
+            );
 
             match map_putty_session(&decoded, &kv) {
-                Some(profile) => servers.push(profile),
+                Some(profile) => {
+                    if let Some(warning) = putty_proxy_warning(&decoded, &kv) {
+                        warnings.push(warning);
+                    }
+                    servers.push(profile);
+                }
                 None => {
-                    let proto = kv
-                        .get("Protocol")
-                        .map(|s| s.as_str())
-                        .unwrap_or("ssh")
-                        .to_string();
-                    let reason = if kv
-                        .get("HostName")
-                        .map(|h| h.trim().is_empty())
-                        .unwrap_or(true)
-                    {
-                        "session has no HostName".to_string()
-                    } else {
-                        format!("unsupported PuTTY protocol: {}", proto)
-                    };
-                    skipped.push(PuttySkippedRemote {
-                        name: decoded,
-                        kind: "session".to_string(),
-                        reason,
-                    });
+                    skipped.push(putty_skip(&decoded, putty_map_skip_reason(&kv)));
                 }
             }
         }
@@ -507,6 +619,7 @@ pub fn import_putty(_path: &Path) -> Result<PuttyImportResult, String> {
         Ok(PuttyImportResult {
             servers,
             skipped,
+            warnings,
             source_path,
             total_remotes,
         })
@@ -521,6 +634,7 @@ pub fn import_putty(_path: &Path) -> Result<PuttyImportResult, String> {
         Ok(PuttyImportResult {
             servers: Vec::new(),
             skipped: Vec::new(),
+            warnings: Vec::new(),
             source_path: r"HKCU\Software\SimonTatham\PuTTY\Sessions".to_string(),
             total_remotes: 0,
         })
@@ -1034,6 +1148,85 @@ mod tests {
     }
 
     #[test]
+    fn proxy_types_are_named_without_changing_the_mapped_profile() {
+        let mut kv = HashMap::new();
+        kv.insert("HostName".to_string(), "ssh.example.com".to_string());
+        kv.insert("Protocol".to_string(), "ssh".to_string());
+        assert!(putty_proxy_warning("Direct", &kv).is_none());
+        kv.insert("ProxyMethod".to_string(), "0".to_string());
+        kv.insert("ProxyType".to_string(), "1".to_string());
+        assert!(putty_proxy_warning("Direct", &kv).is_none());
+
+        for (method, kind) in [
+            (1, "SOCKS4"),
+            (2, "SOCKS5"),
+            (3, "HTTP"),
+            (4, "Telnet"),
+            (5, "local command"),
+            (6, "SSH TCP/IP"),
+            (7, "SSH exec"),
+            (8, "SSH subsystem"),
+        ] {
+            kv.insert("ProxyMethod".to_string(), method.to_string());
+            assert!(map_putty_session("Proxied", &kv).is_some());
+            let warning = putty_proxy_warning("Proxied", &kv).expect("proxy warning");
+            assert_eq!(warning.name, "Proxied");
+            assert!(warning.reason.contains(kind), "{}", warning.reason);
+            assert!(warning.reason.contains("ProxyMethod="));
+            assert!(warning.reason.contains("connect directly"));
+        }
+
+        // Unrecognized `ProxyMethod` with a legacy `ProxyType=1` still present
+        // falls back to legacy HTTP (matching PuTTY `settings.c:865-877`).
+        kv.insert("ProxyMethod".to_string(), "9".to_string());
+        let fallback_warning =
+            putty_proxy_warning("FutureWithLegacy", &kv).expect("legacy fallback warning");
+        assert!(fallback_warning.reason.contains("HTTP"));
+        assert!(fallback_warning.reason.contains("ProxyType=1"));
+
+        // Without legacy `ProxyType`, an unknown modern `ProxyMethod=9` warns directly.
+        kv.remove("ProxyType");
+        let warning = putty_proxy_warning("Future", &kv).expect("future proxy warning");
+        assert!(warning.reason.contains("unknown modern"));
+        assert!(warning.reason.contains("ProxyMethod=9"));
+
+        kv.remove("ProxyMethod");
+        for (legacy, version, kind) in [
+            (1, 5, "HTTP"),
+            (2, 4, "SOCKS4"),
+            (2, 5, "SOCKS5"),
+            (3, 5, "Telnet"),
+            (4, 5, "local command"),
+        ] {
+            kv.insert("ProxyType".to_string(), legacy.to_string());
+            kv.insert("ProxySOCKSVersion".to_string(), version.to_string());
+            let warning = putty_proxy_warning("Legacy", &kv).expect("legacy warning");
+            assert!(warning.reason.contains(kind), "{}", warning.reason);
+            assert!(warning.reason.contains("ProxyType="));
+        }
+
+        kv.insert("ProxyMethod".to_string(), "2".to_string());
+        kv.insert("ProxyType".to_string(), "1".to_string());
+        let warning = putty_proxy_warning("Modern wins", &kv).expect("modern warning");
+        assert!(warning.reason.contains("SOCKS5"));
+        assert!(!warning.reason.contains("HTTP"));
+
+        let user = "puttyuser";
+        let pw = "puttyTopSecretPw";
+        let tok = "puttySecretTok";
+        let url_session = format!("ssh://{user}:{pw}@ssh.example.com?token={tok}");
+        let redacted = putty_proxy_warning(&url_session, &kv).expect("redacted warning");
+        assert_eq!(redacted.name, "ssh.example.com");
+        let serialized = serde_json::to_string(&redacted).unwrap();
+        for secret in [user, pw, tok] {
+            assert!(
+                !serialized.contains(secret),
+                "{secret} leaked: {serialized}"
+            );
+        }
+    }
+
+    #[test]
     fn test_map_putty_session_default_port_and_no_key() {
         let mut kv = HashMap::new();
         kv.insert("HostName".to_string(), "ssh.example.com".to_string());
@@ -1046,6 +1239,32 @@ mod tests {
         assert!(p.options.is_none());
         assert!(p.credential.is_none());
         assert_eq!(p.has_stored_credential, Some(false));
+    }
+
+    #[test]
+    fn credential_bearing_session_names_are_sanitized_in_profiles_and_skips() {
+        let name = "ssh://alice:pw@host?token=x";
+        let mut kv = HashMap::from([
+            ("HostName".to_string(), "ssh.example.test".to_string()),
+            ("Protocol".to_string(), "ssh".to_string()),
+        ]);
+        let profile = map_putty_session(name, &kv).unwrap();
+        assert_eq!(profile.name, "host");
+        assert!(profile.id.starts_with("putty-host-"));
+        let profile_json = serde_json::to_string(&profile).unwrap();
+        for secret in ["alice", "pw", "token=x"] {
+            assert!(!profile_json.contains(secret), "{profile_json}");
+        }
+
+        kv.insert("Protocol".to_string(), name.to_string());
+        assert!(map_putty_session(name, &kv).is_none());
+        let skipped = putty_skip(name, putty_map_skip_reason(&kv));
+        assert_eq!(skipped.name, "host");
+        assert!(skipped.reason.contains("host"));
+        let skip_json = serde_json::to_string(&skipped).unwrap();
+        for secret in ["alice", "pw", "token=x"] {
+            assert!(!skip_json.contains(secret), "{skip_json}");
+        }
     }
 
     /// Secret-policy / protocol-filter test: a telnet session is skipped
@@ -1272,6 +1491,95 @@ mod tests {
         servers[0].protocol = Some("ftp".to_string());
         let keys = putty_session_keys(&servers, &Cp1252).unwrap();
         assert_eq!(as_strs(&keys), [None, None, Some("Lab")]);
+    }
+
+    #[test]
+    fn registry_kv_loader_preserves_proxy_method_and_legacy_fallback() {
+        let modern_kv = collect_putty_registry_kv(
+            |key| match key {
+                "HostName" => Some("ssh.example.com".into()),
+                "UserName" => Some("alice".into()),
+                "Protocol" => Some("ssh".into()),
+                _ => None,
+            },
+            |key| match key {
+                "PortNumber" => Some(2222),
+                "ProxyMethod" => Some(6),
+                "ProxyType" => Some(1),
+                "ProxySOCKSVersion" => Some(4),
+                _ => None,
+            },
+        );
+        assert!(map_putty_session("Modern", &modern_kv).is_some());
+        let modern_warning = putty_proxy_warning("Modern", &modern_kv).expect("modern warning");
+        assert!(
+            modern_warning.reason.contains("SSH TCP/IP")
+                && modern_warning.reason.contains("ProxyMethod=6"),
+            "{}",
+            modern_warning.reason
+        );
+
+        // Modern `ProxyMethod=0` (None) must override legacy HTTP `ProxyType=1`.
+        let modern_none_kv = collect_putty_registry_kv(
+            |key| match key {
+                "HostName" => Some("direct.example.com".into()),
+                "Protocol" => Some("ssh".into()),
+                _ => None,
+            },
+            |key| match key {
+                "PortNumber" => Some(22),
+                "ProxyMethod" => Some(0),
+                "ProxyType" => Some(1),
+                _ => None,
+            },
+        );
+        assert!(putty_proxy_warning("ModernNone", &modern_none_kv).is_none());
+
+        // `ProxyMethod=0xFFFFFFFF` (-1) is rejected by PuTTY and falls back to legacy HTTP.
+        let rejected_method_kv = collect_putty_registry_kv(
+            |key| match key {
+                "HostName" => Some("fallback.example.com".into()),
+                "Protocol" => Some("ssh".into()),
+                _ => None,
+            },
+            |key| match key {
+                "PortNumber" => Some(22),
+                "ProxyMethod" => Some(u32::MAX),
+                "ProxyType" => Some(1),
+                _ => None,
+            },
+        );
+        let fallback_warning =
+            putty_proxy_warning("Fallback", &rejected_method_kv).expect("legacy HTTP warning");
+        assert!(
+            fallback_warning.reason.contains("HTTP")
+                && fallback_warning.reason.contains("ProxyType=1"),
+            "{}",
+            fallback_warning.reason
+        );
+
+        let legacy_kv = collect_putty_registry_kv(
+            |key| match key {
+                "HostName" => Some("legacy.example.com".into()),
+                "UserName" => Some("bob".into()),
+                "Protocol" => Some("ssh".into()),
+                _ => None,
+            },
+            |key| match key {
+                "PortNumber" => Some(22),
+                "ProxyType" => Some(2),
+                "ProxySOCKSVersion" => Some(4),
+                _ => None,
+            },
+        );
+        assert!(map_putty_session("Legacy", &legacy_kv).is_some());
+        let legacy_warning = putty_proxy_warning("Legacy", &legacy_kv).expect("legacy warning");
+        assert!(
+            legacy_warning.reason.contains("SOCKS4")
+                && legacy_warning.reason.contains("ProxyType=2"),
+            "{}",
+            legacy_warning.reason
+        );
     }
 
     /// The real registry, under a scratch key of its own: the sessions of
