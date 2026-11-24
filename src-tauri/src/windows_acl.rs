@@ -459,16 +459,14 @@ mod win {
         path: &Path,
     ) -> std::io::Result<()> {
         use std::os::windows::io::AsRawHandle;
-        let other = |e: String| std::io::Error::new(std::io::ErrorKind::Other, e);
+        let other = |e: String| std::io::Error::other(e);
         let denied =
             |msg: &str| std::io::Error::new(std::io::ErrorKind::PermissionDenied, msg.to_string());
-        let staging_handle = HANDLE(file.as_raw_handle() as *mut core::ffi::c_void);
+        let staging_handle = HANDLE(file.as_raw_handle());
         let staging = file_identity(staging_handle).map_err(other)?;
         let path_still_staged = || -> std::io::Result<()> {
             let path_file = open_path_metadata(path)?;
-            let via_path =
-                file_identity(HANDLE(path_file.as_raw_handle() as *mut core::ffi::c_void))
-                    .map_err(other)?;
+            let via_path = file_identity(HANDLE(path_file.as_raw_handle())).map_err(other)?;
             if via_path != staging {
                 return Err(denied("the staged path no longer refers to the open file"));
             }
@@ -513,7 +511,7 @@ mod win {
         fn drop(&mut self) {
             if !self.0 .0.is_null() {
                 unsafe {
-                    let _ = LocalFree(HLOCAL(self.0 .0 as *mut core::ffi::c_void));
+                    let _ = LocalFree(HLOCAL(self.0 .0));
                 }
             }
         }

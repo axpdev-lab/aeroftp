@@ -356,7 +356,7 @@ fn persist_staged_temp_impl(
         // cleanup (the old temp path no longer exists).
         let _ = tmp.keep();
         fsync_parent_dir(path);
-        return Ok(());
+        Ok(())
     }
     #[cfg(not(windows))]
     {
@@ -403,16 +403,13 @@ fn rename_staged_by_handle(
         (*info).FileNameLength = ((wide.len() - 1) * 2) as u32;
         std::ptr::copy_nonoverlapping(wide.as_ptr(), (*info).FileName.as_mut_ptr(), wide.len());
         SetFileInformationByHandle(
-            HANDLE(file.as_raw_handle() as *mut core::ffi::c_void),
+            HANDLE(file.as_raw_handle()),
             FileRenameInfo,
             buf.as_ptr() as *const core::ffi::c_void,
             size as u32,
         )
         .map_err(|e| {
-            std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("SetFileInformationByHandle(FileRenameInfo): {e}"),
-            )
+            std::io::Error::other(format!("SetFileInformationByHandle(FileRenameInfo): {e}"))
         })?;
     }
     Ok(())
