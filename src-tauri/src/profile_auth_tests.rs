@@ -2365,6 +2365,11 @@ fn with_unreadable_profile_vault(test: impl FnOnce(&CredentialStore)) {
 /// token through `resolve_profile_oauth_token` refuse instead of using it.
 #[test]
 fn an_unreadable_profile_token_never_falls_back_to_the_singleton() {
+    if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+        "profile_auth::tests::an_unreadable_profile_token_never_falls_back_to_the_singleton",
+    ) {
+        return;
+    }
     with_unreadable_profile_vault(|store| {
         store
             .store("oauth_fourshared_mine", "own-token:own-secret")
@@ -2429,6 +2434,11 @@ fn an_unreadable_profile_token_never_falls_back_to_the_singleton() {
 /// for the same profile id, the export must not pick the active account's.
 #[test]
 fn the_rclone_export_reads_the_token_of_the_captured_account() {
+    if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+        "profile_auth::tests::the_rclone_export_reads_the_token_of_the_captured_account",
+    ) {
+        return;
+    }
     with_unreadable_profile_vault(|store| {
         let captured = users::cli_create_user(store, "Export captured", None, None, None).unwrap();
         let active = users::cli_create_user(store, "Export active", None, None, None).unwrap();
@@ -2475,6 +2485,11 @@ fn the_rclone_export_reads_the_token_of_the_captured_account() {
 /// active account's `token:secret`.
 #[test]
 fn a_fourshared_connect_reads_the_token_of_the_captured_account() {
+    if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+        "profile_auth::tests::a_fourshared_connect_reads_the_token_of_the_captured_account",
+    ) {
+        return;
+    }
     with_unreadable_profile_vault(|store| {
         let captured =
             users::cli_create_user(store, "Fourshared captured", None, None, None).unwrap();
@@ -2524,6 +2539,11 @@ fn a_fourshared_connect_reads_the_token_of_the_captured_account() {
 /// active now and holds a token under the same profile id.
 #[test]
 fn a_legacy_only_fourshared_connect_never_reads_the_active_accounts_token() {
+    if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "profile_auth::tests::a_legacy_only_fourshared_connect_never_reads_the_active_accounts_token",
+        ) {
+            return;
+        }
     with_unreadable_profile_vault(|store| {
         let active = users::cli_create_user(store, "Fourshared active", None, None, None).unwrap();
         users::cli_set_active_user(store, active.id).unwrap();
@@ -2567,6 +2587,11 @@ fn a_legacy_only_fourshared_connect_never_reads_the_active_accounts_token() {
 /// fails instead of bundling the legacy singleton (CodeRabbit, #1574).
 #[test]
 fn an_unreadable_oauth_token_fails_the_profile_export() {
+    if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+        "profile_auth::tests::an_unreadable_oauth_token_fails_the_profile_export",
+    ) {
+        return;
+    }
     with_unreadable_profile_vault(|store| {
         store.store("oauth_google_mine", "own-google").unwrap();
         store.store("oauth_google", "other-google").unwrap();
@@ -2598,6 +2623,11 @@ fn an_unreadable_oauth_token_fails_the_profile_export() {
 /// token; the record must stay while the entry cannot be decrypted.
 #[test]
 fn an_unreadable_blocked_token_keeps_its_record_on_the_legacy_read() {
+    if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+        "profile_auth::tests::an_unreadable_blocked_token_keeps_its_record_on_the_legacy_read",
+    ) {
+        return;
+    }
     with_unreadable_profile_vault(|store| {
         let key = "oauth_dropbox_mine";
         store.store(key, "own-dropbox").unwrap();
@@ -2622,6 +2652,11 @@ fn an_unreadable_blocked_token_keeps_its_record_on_the_legacy_read() {
 /// `get_secret` must not read as absent and lift the block.
 #[test]
 fn an_unreadable_blocked_token_keeps_its_record_on_the_owner_profile_read() {
+    if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "profile_auth::tests::an_unreadable_blocked_token_keeps_its_record_on_the_owner_profile_read",
+        ) {
+            return;
+        }
     with_unreadable_profile_vault(|store| {
         let key = "oauth_dropbox_mine";
         store.store(key, "own-dropbox").unwrap();
@@ -2648,6 +2683,11 @@ fn an_unreadable_blocked_token_keeps_its_record_on_the_owner_profile_read() {
 /// The same for a Jottacloud refresh token (CodeRabbit, #1574).
 #[test]
 fn an_unreadable_jotta_token_fails_the_profile_export() {
+    if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+        "profile_auth::tests::an_unreadable_jotta_token_fails_the_profile_export",
+    ) {
+        return;
+    }
     with_unreadable_profile_vault(|store| {
         store.store("jottacloud_refresh_mine", "own-jotta").unwrap();
         store.store("jottacloud_refresh", "other-jotta").unwrap();
@@ -2946,6 +2986,11 @@ fn a_rollback_puts_a_rows_sign_in_stamp_back_with_it() {
 /// account's credential.
 #[test]
 fn an_export_reads_the_secrets_of_the_account_that_produced_the_list() {
+    if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+        "profile_auth::tests::an_export_reads_the_secrets_of_the_account_that_produced_the_list",
+    ) {
+        return;
+    }
     with_unreadable_profile_vault(|store| {
         let active = users::cli_get_active_user(store)
             .unwrap()

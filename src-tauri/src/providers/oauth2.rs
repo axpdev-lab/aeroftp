@@ -6642,6 +6642,11 @@ mod tests {
     /// check.
     #[test]
     fn a_blocked_token_does_not_return_through_the_memory_cache() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::oauth2::tests::a_blocked_token_does_not_return_through_the_memory_cache",
+        ) {
+            return;
+        }
         use crate::credential_store::CredentialStore;
         use crate::user_partitions as partitions;
 

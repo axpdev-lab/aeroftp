@@ -3461,6 +3461,11 @@ mod tests {
     /// and the exported password and salt must still be A's.
     #[test]
     fn crypt_export_secrets_stay_with_the_captured_account() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "bridge_commands::tests::crypt_export_secrets_stay_with_the_captured_account",
+        ) {
+            return;
+        }
         with_two_export_accounts(|store, captured, active| {
             for (user, pw, salt) in [
                 (captured, "pw-of-A", "salt-of-A"),
@@ -3508,6 +3513,11 @@ mod tests {
     /// answers nothing rather than whichever account is active.
     #[test]
     fn vault_export_password_reads_the_captured_account() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "bridge_commands::tests::vault_export_password_reads_the_captured_account",
+        ) {
+            return;
+        }
         with_two_export_accounts(|store, captured, active| {
             for (user, password) in [(captured, "pw-of-A"), (active, "pw-of-B")] {
                 crate::user_partitions::store_credential_for_user_dual(

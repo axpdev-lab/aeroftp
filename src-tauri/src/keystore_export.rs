@@ -7900,6 +7900,11 @@ mod tests {
     #[cfg(feature = "proton-native")]
     #[test]
     fn a_blocked_proton_session_vault_copy_does_not_replace_the_row_tokens() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "keystore_export::tests::a_blocked_proton_session_vault_copy_does_not_replace_the_row_tokens",
+        ) {
+            return;
+        }
         use crate::providers::proton_native::{
             session::{ProtonSession, SessionTokens, StoredSession},
             vault,

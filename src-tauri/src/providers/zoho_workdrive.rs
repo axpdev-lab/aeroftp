@@ -12077,6 +12077,11 @@ mod tests {
     #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn rclone_root_folder_discovery_keeps_the_captured_account() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::zoho_workdrive::tests::rclone_root_folder_discovery_keeps_the_captured_account",
+        ) {
+            return;
+        }
         let _env = crate::test_env::lock();
         let _partition = crate::user_partitions::test_lock();
         let dir = tempfile::TempDir::new().unwrap();
