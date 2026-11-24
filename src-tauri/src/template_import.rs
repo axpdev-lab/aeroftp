@@ -955,6 +955,10 @@ fn apply_eval_with_slots<S: SecretSlots>(
             }
         }
         let planned = build_plan(&eval, &current, options.existing, relax_policy);
+        let known_selection_ids: HashSet<String> = planned
+            .iter()
+            .map(|entry| entry.row.selection_id.clone())
+            .collect();
 
         let mut skipped_existing = Vec::new();
         let mut skipped_duplicate_in_template = Vec::new();
@@ -977,8 +981,10 @@ fn apply_eval_with_slots<S: SecretSlots>(
             }
             if let Some(ref sel) = selected_set {
                 let selected = sel.iter().any(|selected| {
-                    if selected.starts_with("source:") {
-                        selected == &entry.row.selection_id
+                    if selected == &entry.row.selection_id {
+                        true
+                    } else if known_selection_ids.contains(selected.as_str()) {
+                        false
                     } else {
                         selected == &entry.row.block_name || selected == &trimmed_block
                     }
@@ -3982,6 +3988,45 @@ pass = UniqueProfileSecret!
         assert_eq!(
             stored.as_deref().map(|s| s.as_str()),
             Some("IntendedSecret!")
+        );
+    }
+
+    #[test]
+    fn source_prefixed_legacy_name_remains_selectable_when_it_is_not_an_id() {
+        let input = TemplateInput::Text {
+            content: "[source:backup]\ntype = sftp\nhost = legacy.example.test\nuser = alice\n"
+                .to_string(),
+        };
+        let env = TestVaultEnv::new();
+        let preview = preview_template_with_current(
+            &input,
+            &TemplatePreviewOptions {
+                existing: ExistingProfileMode::Duplicate,
+                ..Default::default()
+            },
+            &[],
+        )
+        .unwrap();
+        let applied = apply_template_for_user(
+            &env.store,
+            env.user_id,
+            &input,
+            &TemplateApplyOptions {
+                existing: ExistingProfileMode::Duplicate,
+                selected_blocks: Some(vec!["source:backup".to_string()]),
+                expected_digest_sha256: Some(preview.digest_sha256),
+                expected_plan_digest_sha256: Some(preview.plan_digest_sha256),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        assert_eq!(applied.applied.len(), 1);
+        let (profiles, _) =
+            user_partitions::cli_read_active_profiles_at_revision(&env.store, env.user_id).unwrap();
+        assert_eq!(
+            profiles[0].get("host").and_then(Value::as_str),
+            Some("legacy.example.test")
         );
     }
 

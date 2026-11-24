@@ -3018,6 +3018,20 @@ mod tests {
                     written.is_empty(),
                     "{source} wrote an unrepresentable start folder"
                 );
+                assert!(!path.exists(), "{source} created a destination on refusal");
+                std::fs::write(&path, b"existing destination").unwrap();
+                let refused = export_bridge_profiles(
+                    source,
+                    &servers,
+                    false,
+                    &path.to_string_lossy(),
+                    None,
+                    |_| None,
+                )
+                .await
+                .unwrap();
+                assert_eq!(refused["exported"], 0, "{source}: {refused}");
+                assert_eq!(std::fs::read(&path).unwrap(), b"existing destination");
                 continue;
             }
             assert!(!written.is_empty(), "{source}: nothing written");

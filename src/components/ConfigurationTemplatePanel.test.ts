@@ -901,6 +901,31 @@ describe('ConfigurationTemplatePanel review state across previews', () => {
         expect(names[0]).not.toBe(names[1]);
     });
 
+    it('submits only the selected row ID when display names collide', async () => {
+        vi.mocked(invoke).mockImplementation(async (cmd) => {
+            if (cmd === 'preview_configuration_template') {
+                return report([
+                    { name: 'vault', selectionId: 'source-a' },
+                    { name: 'vault', selectionId: 'source-b' },
+                ]);
+            }
+            if (cmd === 'import_configuration_template') return importResult;
+            throw new Error(`unexpected command: ${cmd}`);
+        });
+        await renderPanel();
+        await type('[a]\n[b]\n');
+        await act(async () => { buttonWithText('settings.templateSelectNone').click(); });
+        const rows = host.querySelectorAll<HTMLInputElement>('[role="checkbox"]');
+        expect(rows).toHaveLength(2);
+        await act(async () => { rows[1].click(); });
+        await act(async () => {
+            host.querySelector<HTMLButtonElement>('[data-testid="template-import-submit"]')!.click();
+        });
+        await flush();
+
+        expect(lastImportOptions()!.options.selectedBlocks).toEqual(['source-b']);
+    });
+
     it('does not close the panel when the source changes before the first import resolves, and imports the new source', async () => {
         let resolveImport!: (value: unknown) => void;
         let imports = 0;

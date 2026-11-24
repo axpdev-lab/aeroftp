@@ -888,7 +888,7 @@ mod tests {
     fn export_reports_an_s3_initial_path_instead_of_dropping_it() {
         let dir = tempfile::tempdir().unwrap();
         let out = dir.path().join("repository.config");
-        let server: KopiaExportServer = serde_json::from_value(serde_json::json!({
+        let mut server: KopiaExportServer = serde_json::from_value(serde_json::json!({
             "id": "s3-start",
             "name": "S3 start folder",
             "host": "s3.amazonaws.com",
@@ -901,10 +901,15 @@ mod tests {
         }))
         .unwrap();
 
-        let outcome = export_kopia(&[server], &HashMap::new(), &out).unwrap();
+        let outcome = export_kopia(std::slice::from_ref(&server), &HashMap::new(), &out).unwrap();
         assert_eq!((outcome.exported, outcome.skipped.len()), (0, 1));
         assert!(outcome.skipped[0].reason.contains("initial path"));
         assert!(!out.exists());
+
+        server.initial_path = None;
+        let control = export_kopia(&[server], &HashMap::new(), &out).unwrap();
+        assert_eq!((control.exported, control.skipped.len()), (1, 0));
+        assert!(out.exists());
     }
 
     #[test]

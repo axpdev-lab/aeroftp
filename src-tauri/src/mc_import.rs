@@ -139,8 +139,21 @@ fn map_alias(alias: &McAlias) -> Result<MappedProfile, String> {
     // path-style, which AWS refuses for newer buckets.
     let url = alias.url.trim().trim_end_matches('/');
     let url_lower = url.to_ascii_lowercase();
-    let default_aws_transport =
-        provider_id == "amazon-s3" && url_lower.starts_with("https://") && port == 443;
+    let host_lower = host.to_ascii_lowercase();
+    if let Some(region) = host_lower
+        .strip_prefix("s3.")
+        .and_then(|host| host.strip_suffix(".amazonaws.com"))
+        .filter(|region| !region.is_empty() && !region.contains('.'))
+    {
+        options.insert(
+            "region".to_string(),
+            serde_json::Value::String(region.to_string()),
+        );
+    }
+    let default_aws_transport = provider_id == "amazon-s3"
+        && host_lower == "s3.amazonaws.com"
+        && url_lower.starts_with("https://")
+        && port == 443;
     if !default_aws_transport
         && (url_lower.starts_with("http://") || url_lower.starts_with("https://"))
     {
@@ -983,6 +996,62 @@ mod tests {
         assert_eq!((outcome.exported, outcome.skipped.len()), (0, 1));
         assert!(outcome.skipped[0].reason.contains("initial directory"));
         assert!(!out.exists());
+    }
+
+    #[test]
+    fn regional_aws_alias_keeps_its_endpoint_and_signing_region() {
+        let body = serde_json::json!({
+            "version": "10",
+            "aliases": {
+                "regional": {
+                    "url": "https://s3.us-west-2.amazonaws.com",
+                    "accessKey": "DEMOKEY",
+                    "secretKey": "demosecret"
+                },
+                "global": {
+                    "url": "https://s3.amazonaws.com",
+                    "accessKey": "DEMOKEY",
+                    "secretKey": "demosecret"
+                }
+            }
+        })
+        .to_string();
+        let path = write_tmp("regional-aws", &body);
+        let result = import_mc(&path).unwrap();
+        std::fs::remove_file(&path).ok();
+
+        for name in ["regional", "global"] {
+            let server = result.servers.iter().find(|s| s.name == name).unwrap();
+            let mut extra = HashMap::new();
+            crate::profile_loader::apply_profile_options(
+                &mut extra,
+                &serde_json::json!({"options": server.options}),
+            );
+            extra.insert("bucket".to_string(), "media".to_string());
+            let config = crate::providers::types::S3Config::from_provider_config(
+                &crate::providers::types::ProviderConfig {
+                    name: server.name.clone(),
+                    provider_type: crate::providers::types::ProviderType::S3,
+                    host: server.host.clone(),
+                    port: Some(server.port as u16),
+                    username: Some(server.username.clone()),
+                    password: None,
+                    initial_path: None,
+                    extra,
+                },
+            )
+            .unwrap();
+            if name == "regional" {
+                assert_eq!(
+                    config.endpoint.as_deref(),
+                    Some("https://s3.us-west-2.amazonaws.com")
+                );
+                assert_eq!(config.region, "us-west-2");
+            } else {
+                assert_eq!(config.endpoint, None);
+                assert_eq!(config.region, "us-east-1");
+            }
+        }
     }
 
     #[test]
