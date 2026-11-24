@@ -1161,11 +1161,18 @@ mod tests {
         CredentialStore::unlock_with_master("synthetic pool token master", None).unwrap();
         let store = CredentialStore::from_cache().unwrap();
         crate::user_partitions::init_or_migrate_cli(&store).unwrap();
+        // The migrated CLI activates a default account; clear the active row
+        // so the connect captures no account (legacy).
+        {
+            let conn = crate::user_partitions::open_or_init_cli().unwrap();
+            conn.execute("DELETE FROM global_state WHERE key = 'active_user_id'", [])
+                .unwrap();
+        }
         assert!(
             crate::user_partitions::cli_get_active_user(&store)
                 .unwrap()
                 .is_none(),
-            "fresh CLI state must capture no account (legacy)"
+            "cleared active row must give the legacy capture"
         );
 
         let profile = serde_json::json!({

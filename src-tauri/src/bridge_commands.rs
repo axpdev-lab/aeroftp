@@ -5611,11 +5611,18 @@ mod tests {
         CredentialStore::unlock_with_master("synthetic legacy capture master", None).unwrap();
         let store = CredentialStore::from_cache().unwrap();
         crate::user_partitions::init_or_migrate_cli(&store).unwrap();
+        // The migrated CLI activates a default account; clear the active row
+        // to get the confirmed legacy-only capture (no account active).
+        {
+            let conn = crate::user_partitions::open_or_init_cli().unwrap();
+            conn.execute("DELETE FROM global_state WHERE key = 'active_user_id'", [])
+                .unwrap();
+        }
         assert!(
             crate::user_partitions::cli_get_active_user(&store)
                 .unwrap()
                 .is_none(),
-            "fresh CLI state must confirm the legacy-only capture"
+            "cleared active row must confirm the legacy-only capture"
         );
         store.store("server_rb20", "LEGACY-PRIOR").unwrap();
         store
