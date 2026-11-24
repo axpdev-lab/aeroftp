@@ -191,6 +191,152 @@ fn export_rclone_with_user_reads_that_accounts_token_while_another_is_active() {
     );
 }
 
+fn jottacloud_profile() -> serde_json::Value {
+    serde_json::json!({
+        "id": "sharedjotta",
+        "name": "Shared Jotta",
+        "protocol": "jottacloud",
+        "host": "jottacloud.com",
+        "port": 443,
+        "username": "a@example.com",
+        "options": {}
+    })
+}
+
+fn ftp_profile() -> serde_json::Value {
+    serde_json::json!({
+        "id": "sharedftp",
+        "name": "Shared FTP",
+        "protocol": "ftp",
+        "host": "ftp.example.com",
+        "port": 21,
+        "username": "u",
+        "options": {}
+    })
+}
+
+fn give_profile_and_secret(
+    store: &CredentialStore,
+    user: &UserMetadata,
+    profile: serde_json::Value,
+    secret_key: &str,
+    secret: &str,
+) {
+    user_partitions::cli_update_server_profiles_for_user(store, user.id, |profiles| {
+        profiles.push(profile);
+        true
+    })
+    .unwrap_or_else(|e| panic!("profiles for {}: {e}", user.name));
+    user_partitions::store_credential_for_user_dual(store, user.id, secret_key, secret)
+        .unwrap_or_else(|e| panic!("secret for {}: {e}", user.name));
+}
+
+/// Two accounts hold the same profile ids with different secrets; B is
+/// active, A is the `--user` target. Returns after staging the portable
+/// vault, with `ENV_LOCK` and the env guards released.
+fn staged_two_account_vault(
+    root: &Path,
+    seed: impl Fn(&CredentialStore, &UserMetadata, &UserMetadata),
+) {
+    let _lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _env = point_env_at(root);
+    let (store, _owner) = vault_with_owner();
+    let user_a = user_partitions::cli_create_user(&store, "Alpha", None, None, None)
+        .expect("create account A");
+    let user_b = user_partitions::cli_create_user(&store, "Bravo", None, None, None)
+        .expect("create account B");
+    seed(&store, &user_a, &user_b);
+    user_partitions::cli_set_active_user(&store, user_b.id).expect("activate B");
+    drop(store);
+    stage_portable_vault(root);
+    drop(_lock);
+    drop(_env);
+}
+
+#[test]
+fn export_rclone_with_user_reads_that_accounts_jottacloud_chain() {
+    let root = isolated_cli::root();
+    let root = root.path();
+    staged_two_account_vault(root, |store, user_a, user_b| {
+        for (user, refresh) in [(user_a, "refresh-of-A"), (user_b, "refresh-of-B")] {
+            give_profile_and_secret(
+                store,
+                user,
+                jottacloud_profile(),
+                "jottacloud_refresh_sharedjotta",
+                &format!(
+                    r#"{{"refresh_token":"{refresh}","token_endpoint":"https://idp.jottacloud.com/token","username":"a@example.com"}}"#
+                ),
+            );
+        }
+    });
+
+    let out_path = root.join("export-jotta.conf");
+    let out = cli(
+        root,
+        &[
+            "--user",
+            "Alpha",
+            "export",
+            "rclone",
+            "-o",
+            out_path.to_str().unwrap(),
+            "--json",
+        ],
+    );
+    assert_eq!(out.status.code(), Some(0), "{}", describe(&out));
+    let exported = std::fs::read_to_string(&out_path).expect("export file");
+    assert!(
+        exported.contains("refresh-of-A"),
+        "the export must carry account A's Jotta chain:\n{exported}"
+    );
+    assert!(
+        !exported.contains("refresh-of-B"),
+        "account B's Jotta chain must not leak into A's export:\n{exported}"
+    );
+}
+
+#[test]
+fn export_lftp_with_user_reads_that_accounts_server_password() {
+    let root = isolated_cli::root();
+    let root = root.path();
+    staged_two_account_vault(root, |store, user_a, user_b| {
+        for (user, password) in [(user_a, "pw-of-A"), (user_b, "pw-of-B")] {
+            give_profile_and_secret(
+                store,
+                user,
+                ftp_profile(),
+                "server_sharedftp",
+                &format!(r#"{{"password":"{password}"}}"#),
+            );
+        }
+    });
+
+    let out_path = root.join("export.lftp");
+    let out = cli(
+        root,
+        &[
+            "--user",
+            "Alpha",
+            "export",
+            "lftp",
+            "-o",
+            out_path.to_str().unwrap(),
+            "--json",
+        ],
+    );
+    assert_eq!(out.status.code(), Some(0), "{}", describe(&out));
+    let exported = std::fs::read_to_string(&out_path).expect("export file");
+    assert!(
+        exported.contains("pw-of-A"),
+        "the export must carry account A's password:\n{exported}"
+    );
+    assert!(
+        !exported.contains("pw-of-B"),
+        "account B's password must not leak into A's export:\n{exported}"
+    );
+}
+
 #[test]
 fn export_rclone_without_user_and_no_active_account_reads_no_vault() {
     let root = isolated_cli::root();

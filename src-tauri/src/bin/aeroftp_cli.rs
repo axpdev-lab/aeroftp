@@ -43911,6 +43911,7 @@ fn collect_export_scaffold(
     source: &str,
     supported_protocols: &[&str],
     oauth_protocols: &[&str],
+    export_user: Option<i64>,
 ) -> Result<ExportCollected, String> {
     collect_export_scaffold_with(
         servers_json,
@@ -43918,20 +43919,32 @@ fn collect_export_scaffold(
         source,
         supported_protocols,
         oauth_protocols,
-        |id, protocol| export_vault_secret(store, id, protocol),
+        |id, protocol| export_vault_secret(store, export_user, id, protocol),
     )
 }
 
-/// The secret a profile is exported with, from the active user's partition
-/// with fallback to the legacy vault (MUV-3); empty when none is stored.
+/// The secret a profile is exported with, read for the account the profile
+/// list was read under (`export_user`), never for whichever account is
+/// active again later and never from an unscoped vault read: `None` leaves
+/// the secret empty.
 fn export_vault_secret(
     store: &ftp_client_gui_lib::credential_store::CredentialStore,
+    export_user: Option<i64>,
     id: &str,
     protocol: &str,
 ) -> String {
-    if id.is_empty() {
-        String::new()
-    } else if protocol == "jottacloud" {
+    let Some(user) = export_user.filter(|_| !id.is_empty()) else {
+        return String::new();
+    };
+    let read = |key: &str| {
+        ftp_client_gui_lib::user_partitions::resolve_credential_for_user_owner_aware(
+            store, user, key,
+        )
+        .ok()
+        .flatten()
+        .map(|s| s.to_string())
+    };
+    if protocol == "jottacloud" {
         // Jotta authenticates via its OIDC refresh blob ({refresh_token,
         // token_endpoint, username}), not a `server_<id>` password. The
         // provider persists it under the per-profile key
@@ -43940,16 +43953,11 @@ fn export_vault_secret(
         // `JottacloudProvider::refresh_token_account`). Try per-profile
         // first, then fall back to the singleton, so export_rclone can
         // rebuild the rclone `token` line from it.
-        let uid = active_credential_user_id(store);
-        read_server_cred(store, uid, &format!("jottacloud_refresh_{}", id))
-            .or_else(|| read_server_cred(store, uid, "jottacloud_refresh"))
+        read(&format!("jottacloud_refresh_{}", id))
+            .or_else(|| read("jottacloud_refresh"))
             .unwrap_or_default()
     } else {
-        match read_server_cred(
-            store,
-            active_credential_user_id(store),
-            &format!("server_{}", id),
-        ) {
+        match read(&format!("server_{}", id)) {
             Some(stored) => {
                 if let Ok(v) = serde_json::from_str::<serde_json::Value>(&stored) {
                     v.get("password")
@@ -44217,6 +44225,7 @@ async fn cmd_export_rclone(
         "rclone",
         &supported,
         &oauth,
+        export_user,
     ) {
         Ok(c) => c,
         Err(e) => {
@@ -44288,6 +44297,7 @@ async fn cmd_export_rclone(
             ftp_client_gui_lib::bridge_commands::ensure_zoho_rclone_root_folder(
                 &mut options,
                 &p.id,
+                export_user,
             )
             .await;
         }
@@ -44296,6 +44306,7 @@ async fn cmd_export_rclone(
             &store,
             &p.id,
             p.overlay.as_ref(),
+            export_user,
         );
         exportable.push(RcloneExportServer {
             id: p.id.clone(),
@@ -44368,7 +44379,7 @@ async fn cmd_export_winscp(
             return 5;
         }
     };
-    let (servers_json, _export_user) = match read_vault_profiles(cli, &store) {
+    let (servers_json, export_user) = match read_vault_profiles(cli, &store) {
         Ok(v) => v,
         Err(e) => {
             print_error(format, &format!("read profiles: {}", e), 4);
@@ -44388,6 +44399,7 @@ async fn cmd_export_winscp(
         "winscp",
         &supported,
         &oauth,
+        export_user,
     ) {
         Ok(c) => c,
         Err(e) => {
@@ -44461,7 +44473,7 @@ async fn cmd_export_filezilla(
             return 5;
         }
     };
-    let (servers_json, _export_user) = match read_vault_profiles(cli, &store) {
+    let (servers_json, export_user) = match read_vault_profiles(cli, &store) {
         Ok(v) => v,
         Err(e) => {
             print_error(format, &format!("read profiles: {}", e), 4);
@@ -44482,6 +44494,7 @@ async fn cmd_export_filezilla(
         "filezilla",
         &supported,
         &oauth,
+        export_user,
     ) {
         Ok(c) => c,
         Err(e) => {
@@ -44583,7 +44596,7 @@ async fn cmd_export_bridge(
             return 5;
         }
     };
-    let (servers_json, _export_user) = match read_vault_profiles(cli, &store) {
+    let (servers_json, export_user) = match read_vault_profiles(cli, &store) {
         Ok(v) => v,
         Err(e) => {
             print_error(format, &format!("read profiles: {}", e), 4);
@@ -44599,6 +44612,7 @@ async fn cmd_export_bridge(
         src,
         supported,
         &oauth,
+        export_user,
     ) {
         Ok(c) => c,
         Err(e) => {

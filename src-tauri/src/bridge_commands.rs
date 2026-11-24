@@ -1738,7 +1738,11 @@ pub fn inject_rclone_zoho_export_options(
 
 /// Live-discover Zoho's privatespace id when the profile does not already
 /// carry `root_folder_id`. rclone cannot list a zoho remote without it.
-pub async fn ensure_zoho_rclone_root_folder(options: &mut Option<Value>, profile_id: &str) {
+pub async fn ensure_zoho_rclone_root_folder(
+    options: &mut Option<Value>,
+    profile_id: &str,
+    user: Option<i64>,
+) {
     let needs = !options
         .as_ref()
         .and_then(|o| o.get("root_folder_id"))
@@ -1780,6 +1784,7 @@ pub async fn ensure_zoho_rclone_root_folder(options: &mut Option<Value>, profile
             &client_id,
             &client_secret,
             &region,
+            user,
         );
     let root = match tokio::time::timeout(std::time::Duration::from_secs(45), discovery).await {
         Ok(Some(root)) => root,
@@ -1817,6 +1822,7 @@ pub fn inject_rclone_crypt_export_options(
     store: &CredentialStore,
     id: &str,
     overlay: Option<&Value>,
+    user: Option<i64>,
 ) {
     let already = options
         .as_ref()
@@ -1867,7 +1873,8 @@ pub fn inject_rclone_crypt_export_options(
         if id.is_empty() {
             return None;
         }
-        crate::user_partitions::resolve_active_credential(store, &key)
+        let user = user?;
+        crate::user_partitions::resolve_credential_for_user_owner_aware(store, user, &key)
             .ok()
             .flatten()
             .map(|s| s.to_string())
@@ -1963,7 +1970,11 @@ pub async fn export_bridge_config(
         &file_path,
         store.as_ref(),
         user,
-        |id| store.as_ref().and_then(|st| vault_export_password(st, id)),
+        |id| {
+            store
+                .as_ref()
+                .and_then(|st| vault_export_password(st, user, id))
+        },
     )
     .await
 }
@@ -1971,12 +1982,16 @@ pub async fn export_bridge_config(
 /// The password the vault holds for the profile with id `id`, stored as a
 /// JSON credential blob (`{"password": "..."}`) or a bare string. MUV-3:
 /// per-user store (active user) with vault fallback.
-fn vault_export_password(store: &CredentialStore, id: &str) -> Option<String> {
-    let stored =
-        crate::user_partitions::resolve_active_credential(store, &format!("server_{}", id))
-            .ok()
-            .flatten()
-            .map(|s| s.to_string())?;
+fn vault_export_password(store: &CredentialStore, user: Option<i64>, id: &str) -> Option<String> {
+    let user = user?;
+    let stored = crate::user_partitions::resolve_credential_for_user_owner_aware(
+        store,
+        user,
+        &format!("server_{}", id),
+    )
+    .ok()
+    .flatten()
+    .map(|s| s.to_string())?;
     let pw = serde_json::from_str::<Value>(&stored)
         .ok()
         .and_then(|v| {
@@ -2107,13 +2122,14 @@ async fn export_bridge_profiles(
                         let initial_path = e.get("initialPath").and_then(|v| v.as_str());
                         inject_rclone_zoho_export_options(&mut opts, &proto, initial_path);
                         if proto == "zohoworkdrive" {
-                            ensure_zoho_rclone_root_folder(&mut opts, &id).await;
+                            ensure_zoho_rclone_root_folder(&mut opts, &id, user).await;
                         }
                         inject_rclone_crypt_export_options(
                             &mut opts,
                             st,
                             &id,
                             e.get("aeroCryptOverlay"),
+                            user,
                         );
                         injected_secret |= options_gained_a_secret(before.as_ref(), opts.as_ref());
                         if let Some(o) = opts {

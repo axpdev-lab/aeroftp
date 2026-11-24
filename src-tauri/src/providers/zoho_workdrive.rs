@@ -1252,12 +1252,14 @@ impl ZohoWorkdriveProvider {
         client_id: &str,
         client_secret: &str,
         region: &str,
+        user: Option<i64>,
     ) -> Option<String> {
         if profile_id.is_empty() {
             return None;
         }
         let mut provider = Self::new(ZohoWorkdriveConfig::new(client_id, client_secret, region))
-            .with_profile_id(profile_id);
+            .with_profile_id(profile_id)
+            .with_credential_user(user);
         if provider.discover_team().await.is_err() {
             return None;
         }
