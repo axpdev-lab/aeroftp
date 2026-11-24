@@ -252,7 +252,7 @@ export const storeSavedServerProfiles = async (
     try {
         if (expectedRevision?.startsWith(LEGACY_STORE_REVISION)) {
             const expected = JSON.parse(expectedRevision.slice(LEGACY_STORE_REVISION.length)) as ServerProfile[];
-            stored = await storeLegacyServerProfiles(profiles, expected);
+            stored = await storeLegacyServerProfiles(profiles, expected, expectedUserId);
         } else {
             const written = await saveActiveServerProfiles(profiles, expectedUserId, expectedRevision);
             stored = Array.isArray(written) ? written : profiles;

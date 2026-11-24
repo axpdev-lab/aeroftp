@@ -84,10 +84,20 @@ export const saveActiveServerProfiles = (profiles: ServerProfile[], expectedUser
 /**
  * Keep the list in the legacy store, for a partition that could not be reached. The
  * backend refuses with `PROFILES_CHANGED` if it can be reached now, or if the store no
- * longer holds `expectedList`. Resolves to the list stored.
+ * longer holds `expectedList`, and with `ACCOUNT_CHANGED` if the account the read was
+ * bound to (`expectedUserId`) is not the active one any more, including an account
+ * that appeared after an account-free read. Resolves to the list stored.
  */
-export const storeLegacyServerProfiles = (profiles: ServerProfile[], expectedList?: ServerProfile[]): Promise<ServerProfile[]> =>
-    invoke<ServerProfile[]>('user_partitions_store_legacy_server_profiles', { profiles, expectedList });
+export const storeLegacyServerProfiles = (
+    profiles: ServerProfile[],
+    expectedList?: ServerProfile[],
+    expectedUserId?: number,
+): Promise<ServerProfile[]> =>
+    invoke<ServerProfile[]>('user_partitions_store_legacy_server_profiles', {
+        profiles,
+        expectedList,
+        ...(expectedUserId === undefined ? {} : { expectedUserId }),
+    });
 
 /** The legacy blob, its recorded owner and the active account, read together under the list lock. */
 export interface LegacyServerProfilesRead {

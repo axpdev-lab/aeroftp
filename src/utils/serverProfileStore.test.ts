@@ -424,6 +424,16 @@ describe('a list read from the legacy store', () => {
         expect(read.userId).toBe(7);
         expect(read.activeUserId).toBe(7);
         expect(read.ownerUnknown).toBe(false);
+
+        // The write carries the captured account, so the backend refuses it
+        // once another account is active instead of stamping the list with it.
+        const edited = [sampleProfile({ name: 'edited' })];
+        mockInvoke.mockReset();
+        mockInvoke.mockResolvedValueOnce(edited);
+        await storeSavedServerProfiles(edited, false, read.userId, read.revision);
+        expect(mockInvoke.mock.calls).toEqual([
+            ['user_partitions_store_legacy_server_profiles', { profiles: edited, expectedList: legacy, expectedUserId: 7 }],
+        ]);
         mockInvoke.mockReset();
     });
 

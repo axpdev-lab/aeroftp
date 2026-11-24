@@ -1519,7 +1519,13 @@ fn run_eager_credential_migration_gui(conn: &Connection) {
 }
 
 pub fn init_or_migrate(app: &AppHandle) -> Result<MigrationReport, String> {
-    let mut conn = open_or_init(app)?;
+    init_or_migrate_at(&db_path(app)?)
+}
+
+/// [`init_or_migrate`] on an explicit database path, for callers and tests
+/// that already resolved it.
+fn init_or_migrate_at(db_path: &std::path::Path) -> Result<MigrationReport, String> {
+    let mut conn = open_or_init_path(db_path.to_path_buf())?;
     // Apply any pending in-place schema upgrades in cascade:
     //   v2 -> v3 (is_admin column + admin seed),
     //   v3 -> v4 (user_credentials table).
@@ -12286,29 +12292,52 @@ pub async fn user_partitions_read_legacy_server_profiles(
 /// be reached. Under [`ProfileListLock`], this refuses with [`PROFILES_CHANGED`] if
 /// the partition can be reached now, since the next load would replace the blob
 /// with the partition's list, or if the blob no longer holds `expected_list`, the
-/// list the caller read and changed. The list held decides who had a name first,
-/// as the partition's does (`util::profile_name`). Resolves to the list stored.
+/// list the caller read and changed. `expected_user_id` is the account the read
+/// was bound to: an active account that is not it (including one that appeared
+/// after an account-free read) refuses with [`ACCOUNT_CHANGED`] before any key
+/// is touched, so an unbound list never takes an account's name. The list held
+/// decides who had a name first, as the partition's does (`util::profile_name`).
+/// Resolves to the list stored.
 #[tauri::command]
 pub async fn user_partitions_store_legacy_server_profiles(
     app: AppHandle,
     mut profiles: Vec<Value>,
     expected_list: Option<Vec<Value>>,
+    expected_user_id: Option<i64>,
 ) -> Result<Vec<Value>, String> {
     crate::launch_url::launch_secret::strip_from_profiles(&mut profiles);
     let store = CredentialStore::from_cache().ok_or_else(|| "STORE_NOT_READY".to_string())?;
-    let lock = ProfileListLock::acquire_for_path(&db_path(&app)?)?;
+    store_legacy_server_profiles_at(
+        &store,
+        &db_path(&app)?,
+        profiles,
+        expected_list,
+        expected_user_id,
+    )
+}
+
+/// The body of [`user_partitions_store_legacy_server_profiles`] on an
+/// explicit database path, so tests drive the same checks the command runs.
+fn store_legacy_server_profiles_at(
+    store: &CredentialStore,
+    db_path: &std::path::Path,
+    profiles: Vec<Value>,
+    expected_list: Option<Vec<Value>>,
+    expected_user_id: Option<i64>,
+) -> Result<Vec<Value>, String> {
+    let lock = ProfileListLock::acquire_for_path(db_path)?;
     if !lock.is_exclusive() {
         return Err(NO_FILE_LOCKS.to_string());
     }
     // A store that opens holds the list, even with its account locked: the next load
     // would replace the blob with its list.
-    if init_or_migrate(&app)
-        .and_then(|_| open_or_init(&app))
+    if init_or_migrate_at(db_path)
+        .and_then(|_| open_or_init_path(db_path.to_path_buf()))
         .is_ok()
     {
         return Err(PROFILES_CHANGED.to_string());
     }
-    let held = get_optional_store_entry(&store, LEGACY_PROFILES_BLOB)?
+    let held = get_optional_store_entry(store, LEGACY_PROFILES_BLOB)?
         .map(|raw| serde_json::from_str::<Vec<Value>>(&raw))
         .transpose()
         .map_err(|e| format!("Invalid saved profiles: {e}"))?;
@@ -12317,15 +12346,21 @@ pub async fn user_partitions_store_legacy_server_profiles(
         return Err(PROFILES_CHANGED.to_string());
     }
     let (stored, _) = crate::util::profile_name::unique_profile_names(&held, &profiles);
-    // The blob names its account in LEGACY_PROFILES_OWNER: with the active
+    // The account the read was bound to must still be the active one: an
+    // active account that is not it, including one that appeared after an
+    // account-free read, refuses the write before any key is touched. The
+    // blob names its account in LEGACY_PROFILES_OWNER: with the active
     // account readable the list is its mirror, without proof the key goes so
     // no stale owner binds the list later. Blob and owner go out in the same
     // vault update, so they can never be observed apart.
-    let owner = match active_user_id_readonly(&db_path(&app)?) {
-        Ok(active) => active,
-        Err(_) => None,
-    };
-    mirror_active_profiles_to_legacy_blob(&store, owner, &stored)?;
+    let active = active_user_id_readonly(db_path);
+    if let Ok(Some(active_id)) = active {
+        if expected_user_id != Some(active_id) {
+            return Err(ACCOUNT_CHANGED.to_string());
+        }
+    }
+    let owner = active.ok().flatten();
+    mirror_active_profiles_to_legacy_blob(store, owner, &stored)?;
     Ok(stored)
 }
 
@@ -13050,6 +13085,119 @@ mod tests {
         assert!(value.get("active_user_id").is_none());
         assert!(value.get("owner_user_id").is_none());
         assert!(value.get("accounts_unknown").is_none());
+    }
+
+    /// `set_test_data_root` isolation for the command pins below: the
+    /// commands resolve the partitions database through the portable data
+    /// root, so the throwaway root is restored on drop.
+    struct LegacyStoreDataRoot {
+        previous: Option<std::path::PathBuf>,
+    }
+
+    impl LegacyStoreDataRoot {
+        fn new(dir: &std::path::Path) -> Self {
+            Self {
+                previous: crate::portable::set_test_data_root(Some(dir.to_path_buf())),
+            }
+        }
+    }
+
+    impl Drop for LegacyStoreDataRoot {
+        fn drop(&mut self) {
+            crate::portable::set_test_data_root(self.previous.take());
+        }
+    }
+
+    /// A partitions database at the resolved data root holding accounts A and
+    /// B with B active, made read-only so `init_or_migrate` fails while
+    /// `active_user_id_readonly` still answers: the store command's
+    /// partition-unreachable path. Returns the database path and both ids.
+    fn readonly_active_account_db(root_key: &[u8; 32]) -> (std::path::PathBuf, i64, i64) {
+        let cfg = crate::portable::aeroftp_data_root().unwrap();
+        let db = cfg.join(DB_FILENAME);
+        let mut conn = open_or_init_path(db.clone()).expect("create the partitions db");
+        let account_a = create_passphrase_less_user(&mut conn, root_key, "A", None, None)
+            .expect("create account A");
+        let account_b = create_passphrase_less_user(&mut conn, root_key, "B", None, None)
+            .expect("create account B");
+        set_active_user(&conn, account_b.id).expect("activate account B");
+        conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE); PRAGMA journal_mode=DELETE;")
+            .expect("leave WAL");
+        drop(conn);
+        for suffix in ["-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{}{suffix}", db.display()));
+        }
+        let mut permissions = std::fs::metadata(&db).unwrap().permissions();
+        permissions.set_readonly(true);
+        std::fs::set_permissions(&db, permissions).unwrap();
+        (db, account_a.id, account_b.id)
+    }
+
+    /// The legacy-store write is bound to the account its read captured:
+    /// with the partition unreachable but its active account readable, a
+    /// list read under A is refused once B is active, and a list read with
+    /// no account is refused once one appears. Neither refusal touches the
+    /// blob or the owner; the matching account still writes.
+    #[test]
+    fn a_legacy_store_write_bound_to_another_account_is_refused() {
+        let _env = crate::test_env::lock();
+        let _guard = test_lock();
+        let dir = tempfile::tempdir().unwrap();
+        let _root = LegacyStoreDataRoot::new(dir.path());
+        let (db, account_a, account_b) = readonly_active_account_db(&test_root());
+        assert_ne!(account_a, account_b);
+        let vault_path = dir.path().join("vault.db");
+        CredentialStore::write_test_vault(&vault_path, &test_root());
+        CredentialStore::cache_vault(vault_path.clone(), test_root());
+        let store = CredentialStore::from_verified_key(&vault_path, &test_root());
+        store
+            .store(LEGACY_PROFILES_BLOB, r#"[{"id":"srv_a","name":"A"}]"#)
+            .unwrap();
+        store
+            .store(LEGACY_PROFILES_OWNER, &account_a.to_string())
+            .unwrap();
+
+        let held = vec![json!({ "id": "srv_a", "name": "A" })];
+        let incoming = vec![json!({ "id": "srv_new", "name": "New" })];
+        let captured_a = store_legacy_server_profiles_at(
+            &store,
+            &db,
+            incoming.clone(),
+            Some(held.clone()),
+            Some(account_a),
+        );
+        let no_account = store_legacy_server_profiles_at(
+            &store,
+            &db,
+            incoming.clone(),
+            Some(held.clone()),
+            None,
+        );
+        let matching = store_legacy_server_profiles_at(
+            &store,
+            &db,
+            incoming.clone(),
+            Some(held.clone()),
+            Some(account_b),
+        );
+        // Windows cannot drop a read-only file: give the write bit back so
+        // the tempdir removes cleanly.
+        let mut permissions = std::fs::metadata(&db).unwrap().permissions();
+        permissions.set_readonly(false);
+        std::fs::set_permissions(&db, permissions).unwrap();
+        CredentialStore::clear_cache();
+
+        assert_eq!(captured_a.unwrap_err(), ACCOUNT_CHANGED);
+        assert_eq!(no_account.unwrap_err(), ACCOUNT_CHANGED);
+        assert!(matching.is_ok());
+        assert_eq!(
+            store.get(LEGACY_PROFILES_BLOB).unwrap(),
+            r#"[{"id":"srv_new","name":"New"}]"#
+        );
+        assert_eq!(
+            store.get(LEGACY_PROFILES_OWNER).unwrap(),
+            account_b.to_string()
+        );
     }
 
     /// A running deletion is settled as completed once it can never end
