@@ -254,8 +254,8 @@ mod tests {
             "FTP connect refuses a backslash parent step"
         );
         assert!(
-            production(sftp).contains("backslash_parent_step"),
-            "SFTP connect refuses a backslash parent step"
+            !production(sftp).contains("backslash_parent_step"),
+            "SFTP keeps a backslash as a filename character"
         );
     }
 
