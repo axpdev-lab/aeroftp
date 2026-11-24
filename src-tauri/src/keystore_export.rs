@@ -2086,23 +2086,38 @@ fn profile_plan_inputs(
                     // backup's partition first, then its vault entry. The
                     // sweep compare-and-writes it over the foreign value
                     // so the owner is not left with no credentials.
-                    let owner_token = backup_conn
-                        .as_ref()
-                        .zip(backup_legacy_owner)
-                        .and_then(|(conn, owner)| {
-                            crate::user_partitions::get_user_credential_for(
+                    // A row that cannot be read is not an absent row: only
+                    // the cases where the DEK itself cannot open (a
+                    // foreign machine's partition, a locked or resetting
+                    // account, whose vault copy the app still uses) fall
+                    // through to the backup's vault entry.
+                    let row_token = match backup_conn.as_ref().zip(backup_legacy_owner) {
+                        Some((conn, owner)) => {
+                            match crate::user_partitions::get_user_credential_for(
                                 conn, &root_key, owner, &key,
-                            )
-                            .ok()
+                            ) {
+                                Ok(token) => Some(Ok(token)),
+                                Err(e)
+                                    if e == "USER_LOCKED"
+                                        || e == "SECURITY_RESET_PENDING"
+                                        || e.starts_with("Unwrap user data key") =>
+                                {
+                                    None
+                                }
+                                Err(e) => Some(Err(KeystoreExportError::Encryption(format!(
+                                    "Read {key} from the backup's partition: {e}"
+                                )))),
+                            }
+                        }
+                        None => None,
+                    };
+                    let owner_token = row_token.transpose()?.flatten().or_else(|| {
+                        sections
+                            .vault
+                            .then(|| payload.vault_entries.get(&key))
                             .flatten()
-                        })
-                        .or_else(|| {
-                            sections
-                                .vault
-                                .then(|| payload.vault_entries.get(&key))
-                                .flatten()
-                                .map(|v| Zeroizing::new(v.clone()))
-                        });
+                            .map(|v| Zeroizing::new(v.clone()))
+                    });
                     vault_foreign_private.push((key.clone(), value.clone(), owner_token));
                 }
             }
@@ -7234,6 +7249,175 @@ mod tests {
             read.as_ref().map(|v| v.as_str()),
             Some("owner-token"),
             "the restored owner reads the backup-supplied token"
+        );
+    }
+
+    /// "Skip existing" with a non-owner active account and the backup's
+    /// legacy owner holding BOTH a partition row and a vault entry for the
+    /// key: the row is the token the owner reads, so the sweep
+    /// compare-and-writes `row-token`, not the vault's `vault-token`.
+    /// Red if the row is not read (the vault entry wins) or the vault
+    /// entry is preferred over the row.
+    #[test]
+    fn a_backup_owner_row_wins_over_its_vault_entry() {
+        let _guard = crate::user_partitions::test_lock();
+        crate::user_partitions::clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let cfg = dir.path().join("config");
+        let key = "oauth_dropbox_srv_drive";
+        let list = [dropbox("srv_drive", "Drive")];
+        partition_with(&store, &cfg, &list);
+        store.store(key, "local-token").unwrap();
+        let source_cfg = dir.path().join("source");
+        partition_with(&store, &source_cfg, &list);
+        let source_db = source_cfg.join("user_partitions.db");
+        let root = store.derive_user_partition_wrapping_key();
+        let mut source = rusqlite::Connection::open(&source_db).unwrap();
+        let owner = crate::user_partitions::nonprofile_secret_owner_unpersisted(&source)
+            .unwrap()
+            .expect("the backup partition has a legacy owner");
+        crate::user_partitions::set_user_credential_for(
+            &source,
+            &root,
+            owner,
+            key,
+            "oauth",
+            "row-token",
+        )
+        .unwrap();
+        let second = crate::user_partitions::create_passphrase_less_user(
+            &mut source,
+            &root,
+            "Second",
+            None,
+            None,
+        )
+        .unwrap();
+        crate::user_partitions::set_active_user(&source, second.id).unwrap();
+        drop(source);
+        let mut payload = ExportPayload::default();
+        payload.vault_entries.insert(
+            "config_server_profiles".to_string(),
+            serde_json::to_string(&list).unwrap(),
+        );
+        payload
+            .vault_entries
+            .insert(key.to_string(), "vault-token".to_string());
+        payload.sqlite_dumps.insert(
+            "user_partitions.db".to_string(),
+            snapshot_sqlite_db(&source_db).unwrap().unwrap(),
+        );
+        let backup = dir.path().join("nonowner.aeroftp-keystore");
+        seal_backup(&backup, PASSWORD_736, &payload);
+
+        let result = import_keystore_with_store(
+            &store,
+            PASSWORD_736,
+            &backup,
+            "skip_existing",
+            ImportSections::default(),
+            Some(&cfg),
+            None,
+            None,
+        )
+        .unwrap();
+        assert!(
+            result.sqlite_dbs_failed.is_empty(),
+            "{:?}",
+            result.sqlite_dbs_failed
+        );
+        assert_eq!(
+            store.get(key).unwrap(),
+            "row-token",
+            "the sweep wrote the backup owner's row token, not its vault entry"
+        );
+    }
+
+    /// The backup's legacy owner has a row for the key that this device's
+    /// DEK cannot decrypt (its nonce is corrupt): the DEK opened the
+    /// account, so the row is unreadable, not absent. The import refuses
+    /// with `Encryption` and the local vault keeps `local-token`; it must
+    /// not fall back to the backup's vault entry. Red if the row error is
+    /// flattened into "no row" and `vault-token` is written.
+    #[test]
+    fn an_unreadable_backup_owner_row_refuses_the_import() {
+        let _guard = crate::user_partitions::test_lock();
+        crate::user_partitions::clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let cfg = dir.path().join("config");
+        let key = "oauth_dropbox_srv_drive";
+        let list = [dropbox("srv_drive", "Drive")];
+        partition_with(&store, &cfg, &list);
+        store.store(key, "local-token").unwrap();
+        let source_cfg = dir.path().join("source");
+        partition_with(&store, &source_cfg, &list);
+        let source_db = source_cfg.join("user_partitions.db");
+        let root = store.derive_user_partition_wrapping_key();
+        let mut source = rusqlite::Connection::open(&source_db).unwrap();
+        let owner = crate::user_partitions::nonprofile_secret_owner_unpersisted(&source)
+            .unwrap()
+            .expect("the backup partition has a legacy owner");
+        crate::user_partitions::set_user_credential_for(
+            &source,
+            &root,
+            owner,
+            key,
+            "oauth",
+            "row-token",
+        )
+        .unwrap();
+        source
+            .execute(
+                "UPDATE user_credentials SET nonce = x''
+                 WHERE user_id = ?1 AND credential_id = ?2",
+                rusqlite::params![owner, key],
+            )
+            .unwrap();
+        let second = crate::user_partitions::create_passphrase_less_user(
+            &mut source,
+            &root,
+            "Second",
+            None,
+            None,
+        )
+        .unwrap();
+        crate::user_partitions::set_active_user(&source, second.id).unwrap();
+        drop(source);
+        let mut payload = ExportPayload::default();
+        payload.vault_entries.insert(
+            "config_server_profiles".to_string(),
+            serde_json::to_string(&list).unwrap(),
+        );
+        payload
+            .vault_entries
+            .insert(key.to_string(), "vault-token".to_string());
+        payload.sqlite_dumps.insert(
+            "user_partitions.db".to_string(),
+            snapshot_sqlite_db(&source_db).unwrap().unwrap(),
+        );
+        let backup = dir.path().join("nonowner.aeroftp-keystore");
+        seal_backup(&backup, PASSWORD_736, &payload);
+
+        let result = import_keystore_with_store(
+            &store,
+            PASSWORD_736,
+            &backup,
+            "skip_existing",
+            ImportSections::default(),
+            Some(&cfg),
+            None,
+            None,
+        );
+        assert!(
+            matches!(result, Err(KeystoreExportError::Encryption(_))),
+            "an unreadable owner row is an encryption failure"
+        );
+        assert_eq!(
+            store.get(key).unwrap(),
+            "local-token",
+            "the local vault keeps its value when the import refuses"
         );
     }
 
